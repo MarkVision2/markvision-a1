@@ -647,12 +647,27 @@ const CreateCampaignDialog = ({
           />
         </div>
 
+        {bakeStatus && (
+          <div className="rounded-xl border border-border/60 bg-background/60 px-4 py-3 text-xs">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">{bakeStatus}</span>
+              <span className="font-mono tabular-nums text-foreground">{bakePct}%</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full bg-success transition-[width]"
+                style={{ width: `${bakePct}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         <Button
           onClick={handleSubmit}
           disabled={submitting}
           className="h-12 w-full rounded-xl bg-success text-white hover:bg-success/90"
         >
-          {submitting ? "Отправляем…" : "🚀 Отправить на запуск AI"}
+          {submitting ? (bakeStatus ? "Готовим креатив…" : "Отправляем…") : "🚀 Отправить на запуск AI"}
         </Button>
       </DialogContent>
     </Dialog>
