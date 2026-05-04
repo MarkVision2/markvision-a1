@@ -32,6 +32,13 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { CONTENT_TYPES } from "@/data/contentTypes";
 import { postContentFactory } from "@/lib/contentFactory";
+import { buildStyleBrief, type StyleId as BriefStyleId } from "@/data/styleBriefs";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { ChevronDown, FileText } from "lucide-react";
 
 type StyleId =
   | "auto"
