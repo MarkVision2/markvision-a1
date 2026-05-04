@@ -16,15 +16,17 @@
 
 export type Fit = "contain" | "cover";
 
-export interface CropParams {
-  /** Желаемый аспект выходного файла, например "4:5" или "9:16". */
+/** Геометрия кропа без natural-размера (его вытащим из файла). */
+export interface ViewParams {
   ratio: string;
   fit: Fit;
   zoom: number;
-  /** Смещение исходного медиа в css-пикселях фрейма превью. */
   pos: { x: number; y: number };
-  /** Размер фрейма превью в css-пикселях, как его видел пользователь. */
   frame: { w: number; h: number };
+}
+
+export interface CropParams extends ViewParams {
+  /** Желаемый аспект выходного файла, например "4:5" или "9:16". */
   /** Натуральный размер исходного медиа в пикселях. */
   natural: { w: number; h: number };
 }
@@ -119,7 +121,7 @@ export function computeSourceRect(p: CropParams): SourceRect {
 }
 
 /** Запекает фото в файл нужного аспекта через canvas. */
-export async function cropImageFile(file: File, p: CropParams): Promise<File> {
+export async function cropImageFile(file: File, p: ViewParams): Promise<File> {
   const img = await loadImage(file);
   const natural = { w: img.naturalWidth, h: img.naturalHeight };
   const rect = computeSourceRect({ ...p, natural });
@@ -189,7 +191,7 @@ async function getFfmpeg(onProgress?: (p: number) => void) {
 /** Запекает видео через ffmpeg crop+scale. Прогресс — 0..100. */
 export async function cropVideoFile(
   file: File,
-  p: CropParams,
+  p: ViewParams,
   onProgress?: (pct: number) => void,
 ): Promise<File> {
   // Натуральный размер видео нужен для геометрии — берём из <video>.
