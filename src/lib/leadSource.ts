@@ -1,0 +1,92 @@
+// Single source of truth for lead "source" normalization.
+// Used by CRM, Analytics, Dashboard, Reports.
+import {
+  Camera,
+  Facebook,
+  FileText,
+  Globe,
+  Hand,
+  Megaphone,
+  MessageCircle,
+  Phone,
+  Send,
+  UserPlus,
+  type LucideIcon,
+} from "lucide-react";
+
+export type SourceKey =
+  | "whatsapp"
+  | "instagram"
+  | "facebook"
+  | "telegram"
+  | "site"
+  | "ads"
+  | "lead_form"
+  | "phone"
+  | "referral"
+  | "manual"
+  | "unknown";
+
+export interface SourceMeta {
+  key: SourceKey;
+  label: string;
+  Icon: LucideIcon;
+  /** Tailwind text color class for the icon */
+  cls: string;
+  /** Raw original value, useful for display when key is "unknown" */
+  raw: string;
+}
+
+const TABLE: Record<string, Omit<SourceMeta, "raw">> = {
+  // WhatsApp
+  whatsapp: { key: "whatsapp", label: "WhatsApp", Icon: MessageCircle, cls: "text-success" },
+  wa: { key: "whatsapp", label: "WhatsApp", Icon: MessageCircle, cls: "text-success" },
+  // Instagram
+  instagram: { key: "instagram", label: "Instagram", Icon: Camera, cls: "text-foreground" },
+  ig: { key: "instagram", label: "Instagram", Icon: Camera, cls: "text-foreground" },
+  // Facebook / Meta
+  facebook: { key: "facebook", label: "Facebook", Icon: Facebook, cls: "text-primary" },
+  fb: { key: "facebook", label: "Facebook", Icon: Facebook, cls: "text-primary" },
+  meta: { key: "facebook", label: "Facebook", Icon: Facebook, cls: "text-primary" },
+  // Telegram
+  telegram: { key: "telegram", label: "Telegram", Icon: Send, cls: "text-primary" },
+  tg: { key: "telegram", label: "Telegram", Icon: Send, cls: "text-primary" },
+  // Site
+  site: { key: "site", label: "Сайт", Icon: Globe, cls: "text-muted-foreground" },
+  tilda: { key: "site", label: "Сайт", Icon: Globe, cls: "text-muted-foreground" },
+  web: { key: "site", label: "Сайт", Icon: Globe, cls: "text-muted-foreground" },
+  website: { key: "site", label: "Сайт", Icon: Globe, cls: "text-muted-foreground" },
+  // Paid ads
+  ads: { key: "ads", label: "Реклама", Icon: Megaphone, cls: "text-warning" },
+  advert: { key: "ads", label: "Реклама", Icon: Megaphone, cls: "text-warning" },
+  google: { key: "ads", label: "Google Ads", Icon: Megaphone, cls: "text-warning" },
+  yandex: { key: "ads", label: "Яндекс.Директ", Icon: Megaphone, cls: "text-warning" },
+  cpc: { key: "ads", label: "Реклама", Icon: Megaphone, cls: "text-warning" },
+  // Lead forms
+  lead_form: { key: "lead_form", label: "Лид-форма", Icon: FileText, cls: "text-primary" },
+  leadform: { key: "lead_form", label: "Лид-форма", Icon: FileText, cls: "text-primary" },
+  // Phone
+  phone: { key: "phone", label: "Звонок", Icon: Phone, cls: "text-warning" },
+  call: { key: "phone", label: "Звонок", Icon: Phone, cls: "text-warning" },
+  // Other
+  referral: { key: "referral", label: "Рекомендация", Icon: UserPlus, cls: "text-foreground" },
+  manual: { key: "manual", label: "Вручную", Icon: Hand, cls: "text-muted-foreground" },
+};
+
+export function normalizeSource(raw: string | null | undefined): SourceMeta {
+  const v = (raw ?? "").trim().toLowerCase();
+  if (!v) {
+    return { key: "unknown", label: "Без источника", Icon: Globe, cls: "text-muted-foreground", raw: "" };
+  }
+  const hit = TABLE[v];
+  if (hit) return { ...hit, raw: raw ?? "" };
+  // Unknown utm_source — still show it, but bucket as "unknown"
+  return { key: "unknown", label: raw ?? "Без источника", Icon: Globe, cls: "text-muted-foreground", raw: raw ?? "" };
+}
+
+/** Canonical key for storing in DB (normalizes synonyms before insert). */
+export function canonicalSourceKey(raw: string | null | undefined): string {
+  const m = normalizeSource(raw);
+  if (m.key === "unknown") return (raw ?? "").trim() || "unknown";
+  return m.key;
+}

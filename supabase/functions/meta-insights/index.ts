@@ -1,0 +1,272 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type",
+};
+
+const META_API_VERSION = "v21.0";
+
+interface DailyRow {
+  date: string;
+  spend: number;
+  impressions: number;
+  clicks: number;
+  leads: number;
+  revenue: number;
+}
+
+interface InsightsResponse {
+  currency: string;
+  totals: {
+    spend: number;
+    impressions: number;
+    clicks: number;
+    leads: number;
+    revenue: number;
+    cpl: number;
+    cpm: number;
+    cpc: number;
+    ctr: number;
+    romi: number;
+  };
+  daily: DailyRow[];
+}
+
+function monthRange(month: string): { since: string; until: string } | null {
+  // month format: YYYY-MM
+  const m = /^(\d{4})-(\d{2})$/.exec(month);
+  if (!m) return null;
+  const year = Number(m[1]);
+  const monthIdx = Number(m[2]) - 1;
+  if (monthIdx < 0 || monthIdx > 11) return null;
+  const first = new Date(Date.UTC(year, monthIdx, 1));
+  const last = new Date(Date.UTC(year, monthIdx + 1, 0));
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+  return { since: fmt(first), until: fmt(last) };
+}
+
+function normalizeActId(id: string): string {
+  // Accept "act_123", "ACT_123", "123" — return "act_123"
+  const trimmed = id.trim();
+  if (/^act_\d+$/i.test(trimmed)) return `act_${trimmed.replace(/^act_/i, "")}`;
+  if (/^\d+$/.test(trimmed)) return `act_${trimmed}`;
+  return trimmed;
+}
+
+function maxAction(
+  actions: Array<{ action_type: string; value: string }> | undefined,
+  types: string[],
+): number {
+  if (!actions) return 0;
+  let max = 0;
+  for (const a of actions) {
+    if (types.includes(a.action_type)) {
+      const v = Number(a.value || 0);
+      if (v > max) max = v;
+    }
+  }
+  return max;
+}
+
+function sumActions(
+  actions: Array<{ action_type: string; value: string }> | undefined,
+  types: string[],
+): number {
+  if (!actions) return 0;
+  return actions
+    .filter((a) => types.includes(a.action_type))
+    .reduce((acc, a) => acc + Number(a.value || 0), 0);
+}
+
+const PURCHASE_ACTIONS = [
+  "purchase",
+  "offsite_conversion.fb_pixel_purchase",
+  "omni_purchase",
+];
+
+// Lead actions — we take the MAX across these (not sum) because Meta often
+// double-reports the same lead under multiple action_types (e.g. `lead` +
+// `offsite_conversion.fb_pixel_lead`).
+const LEAD_ACTIONS = [
+  "lead",
+  "leadgen.other",
+  "onsite_conversion.lead_grouped",
+  "offsite_conversion.fb_pixel_lead",
+  "onsite_web_lead",
+];
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
+  try {
+    // Auth: require logged-in user
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
+        Deno.env.get("SUPABASE_ANON_KEY")!,
+      { global: { headers: { Authorization: authHeader } } },
+    );
+    const token = authHeader.replace("Bearer ", "");
+    const { data: claims, error: claimsErr } = await supabase.auth.getClaims(
+      token,
+    );
+    if (claimsErr || !claims?.claims) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN");
+    if (!META_ACCESS_TOKEN) {
+      return new Response(
+        JSON.stringify({ error: "META_ACCESS_TOKEN is not configured" }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const url = new URL(req.url);
+    const rawActId = url.searchParams.get("actId");
+    const month = url.searchParams.get("month"); // YYYY-MM
+    if (!rawActId || !month) {
+      return new Response(
+        JSON.stringify({ error: "actId and month (YYYY-MM) are required" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+    const range = monthRange(month);
+    if (!range) {
+      return new Response(
+        JSON.stringify({ error: "month must be in YYYY-MM format" }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const actId = normalizeActId(rawActId);
+
+    const fields = [
+      "date_start",
+      "spend",
+      "impressions",
+      "clicks",
+      "actions",
+      "action_values",
+    ].join(",");
+    const timeRange = encodeURIComponent(
+      JSON.stringify({ since: range.since, until: range.until }),
+    );
+
+    const apiUrl =
+      `https://graph.facebook.com/${META_API_VERSION}/${actId}/insights` +
+      `?fields=${fields}` +
+      `&time_range=${timeRange}` +
+      `&time_increment=1` +
+      `&level=account` +
+      `&limit=500` +
+      `&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`;
+
+    // Fetch insights + account currency in parallel
+    const accountUrl =
+      `https://graph.facebook.com/${META_API_VERSION}/${actId}` +
+      `?fields=currency&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`;
+
+    const [metaResp, accountResp] = await Promise.all([
+      fetch(apiUrl),
+      fetch(accountUrl),
+    ]);
+    const metaJson = await metaResp.json();
+    const accountJson = await accountResp.json().catch(() => ({}));
+    if (!metaResp.ok) {
+      return new Response(
+        JSON.stringify({
+          error: "Meta API error",
+          status: metaResp.status,
+          details: metaJson?.error ?? metaJson,
+        }),
+        {
+          status: 502,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
+      );
+    }
+
+    const currency: string = accountJson?.currency ?? "USD";
+
+    const rows: DailyRow[] = ((metaJson.data ?? []) as Array<{
+      date_start: string;
+      spend?: string;
+      impressions?: string;
+      clicks?: string;
+      actions?: Array<{ action_type: string; value: string }>;
+      action_values?: Array<{ action_type: string; value: string }>;
+    }>).map((r) => ({
+      date: r.date_start,
+      spend: Number(r.spend ?? 0),
+      impressions: Number(r.impressions ?? 0),
+      clicks: Number(r.clicks ?? 0),
+      leads: maxAction(r.actions, LEAD_ACTIONS),
+      revenue: sumActions(r.action_values, PURCHASE_ACTIONS),
+    }));
+
+
+    const totals = rows.reduce(
+      (acc, r) => {
+        acc.spend += r.spend;
+        acc.impressions += r.impressions;
+        acc.clicks += r.clicks;
+        acc.leads += r.leads;
+        acc.revenue += r.revenue;
+        return acc;
+      },
+      { spend: 0, impressions: 0, clicks: 0, leads: 0, revenue: 0 },
+    );
+
+    const cpl = totals.leads > 0 ? totals.spend / totals.leads : 0;
+    const cpm =
+      totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0;
+    const cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
+    const ctr =
+      totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+    const romi =
+      totals.spend > 0 ? ((totals.revenue - totals.spend) / totals.spend) * 100 : 0;
+
+    const response: InsightsResponse = {
+      currency,
+      totals: { ...totals, cpl, cpm, cpc, ctr, romi },
+      daily: rows,
+    };
+
+    return new Response(JSON.stringify(response), {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Unknown error";
+    console.error("meta-insights error:", message);
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});

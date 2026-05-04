@@ -1,0 +1,2 @@
+ALTER TABLE public.communications ADD COLUMN IF NOT EXISTS external_id text;
+CREATE UNIQUE INDEX IF NOT EXISTS communications_external_id_unique ON public.communications(external_id) WHERE external_id IS NOT NULL;
