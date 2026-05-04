@@ -9,6 +9,7 @@ import {
   Search,
 } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import AddCabinetDialog from "@/components/ads/AddCabinetDialog";
 import CreateCampaignDialog from "@/components/ads/CreateCampaignDialog";
 import CabinetRow from "@/components/ads/CabinetRow";
@@ -189,8 +190,33 @@ const Ads = () => {
         onOpenChange={setAddOpen}
         onCreate={async (c) => {
           try {
-            await addCabinet(c);
+            const newId = await addCabinet(c);
             toast.success("Кабинет добавлен");
+            // Auto-sync stats from Meta in the background
+            if (newId && (c.adAccountId || c.externalId)) {
+              toast.message("Подтягиваем статистику из Meta…");
+              const today = new Date();
+              const since = new Date(today.getFullYear(), today.getMonth(), 1)
+                .toISOString().slice(0, 10);
+              const until = today.toISOString().slice(0, 10);
+              supabase.functions.invoke("meta-daily-sync", {
+                body: { cabinet_id: newId, since, until },
+              }).then(({ data, error }) => {
+                if (error) {
+                  toast.error("Sync ошибка: " + error.message);
+                  return;
+                }
+                const r = (data?.results ?? [])[0];
+                if (r?.ok) {
+                  toast.success(
+                    `Статистика загружена: ${r.days} дн., ${r.leads} лидов, расход ${Math.round(r.spend)}`,
+                  );
+                  setRefreshKey((k) => k + 1);
+                } else if (r) {
+                  toast.error("Meta: " + (r.error || "не удалось получить данные"));
+                }
+              });
+            }
           } catch (e) {
             toast.error(e instanceof Error ? e.message : "Не удалось добавить кабинет");
           }
