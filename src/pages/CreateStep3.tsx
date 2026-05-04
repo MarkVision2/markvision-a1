@@ -32,6 +32,13 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { CONTENT_TYPES } from "@/data/contentTypes";
 import { postContentFactory } from "@/lib/contentFactory";
+import { buildStyleBrief, type StyleId as BriefStyleId } from "@/data/styleBriefs";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { ChevronDown, FileText } from "lucide-react";
 
 type StyleId =
   | "auto"
@@ -452,10 +459,28 @@ const CreateStep3 = () => {
                 return { id: a.id, label: a.label, description: a.description };
               })
             : [];
+          const built = buildStyleBrief({
+            styleId: styleDef.id as BriefStyleId,
+            userBrief: brief.prompt,
+            format: {
+              aspect: (prevState.aspect as string | undefined) ?? null,
+              lang: (prevState.lang as string | undefined) ?? null,
+              variants: (prevState.variants as number | undefined) ?? null,
+            },
+            color: color
+              ? { id: color.id, label: color.label, swatch: color.swatch }
+              : null,
+            angles: anglesPayload,
+            autoCandidates: isAuto ? autoCandidates : null,
+          });
+
           const payload = {
             source: "lovable.content-factory",
             submittedAt: new Date().toISOString(),
             task,
+            // Готовый промпт со стилевыми инструкциями + бриф пользователя.
+            // В n8n именно это поле передаётся в AI image generator.
+            finalPrompt: built.technicalBrief,
             contentType: contentType
               ? {
                   id: contentType.id,
@@ -493,6 +518,12 @@ const CreateStep3 = () => {
                 label: styleDef.label,
                 description: styleDef.description,
                 auto: isAuto,
+                // Структурированный бриф стиля (composition, lighting, cameraAngle, ...)
+                brief: built.structured,
+                // Готовый текстовый промпт для AI.
+                technicalBrief: built.technicalBrief,
+                // Negative prompt — чего избегать.
+                avoid: built.avoid,
               },
               auto: isAuto,
               autoCandidates: isAuto ? autoCandidates : null,
@@ -800,6 +831,113 @@ const CreateStep3 = () => {
               : `Создать ${selectedStyles.length} ${selectedStyles.length === 1 ? "вариант" : "варианта"}`}
           </Button>
         </div>
+
+        {/* ТЗ-превью перед отправкой */}
+        <Collapsible className="mt-6">
+          <CollapsibleTrigger asChild>
+            <button
+              type="button"
+              className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-card px-5 py-4 text-left transition-all hover:border-primary/60"
+            >
+              <div className="flex items-center gap-3">
+                <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary/15 text-primary">
+                  <FileText className="h-4 w-4" />
+                </span>
+                <div>
+                  <div className="text-sm font-semibold text-foreground">
+                    Посмотреть ТЗ перед отправкой
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Финальный промпт, который пойдёт в AI-генератор
+                  </div>
+                </div>
+              </div>
+              <ChevronDown className="h-4 w-4 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+            </button>
+          </CollapsibleTrigger>
+          <CollapsibleContent className="mt-3 space-y-3">
+            {selectedStyles.map((sid) => {
+              const styleDef = activeStyles.find((s) => s.id === sid)!;
+              const Icon = styleDef.icon;
+              const color = COLORS.find((c) => c.id === colorId);
+              const isAuto = styleDef.isAuto === true;
+              const autoCandidates = activeStyles
+                .filter((s) => !s.isAuto)
+                .map((s) => ({ id: s.id, label: s.label, description: s.description }));
+              const anglesPayload = isNeuroPhoto
+                ? selectedAngles.map((aid) => {
+                    const a = ANGLES.find((x) => x.id === aid)!;
+                    return { id: a.id, label: a.label, description: a.description };
+                  })
+                : [];
+              const built = buildStyleBrief({
+                styleId: styleDef.id as BriefStyleId,
+                userBrief:
+                  ((prevState.description as string | undefined) ?? "") ||
+                  ((prevState.linkUrl as string | undefined) ?? "") ||
+                  ((prevState.productName as string | undefined) ?? ""),
+                format: {
+                  aspect: (prevState.aspect as string | undefined) ?? null,
+                  lang: (prevState.lang as string | undefined) ?? null,
+                  variants: (prevState.variants as number | undefined) ?? null,
+                },
+                color: color ? { id: color.id, label: color.label, swatch: color.swatch } : null,
+                angles: anglesPayload,
+                autoCandidates: isAuto ? autoCandidates : null,
+              });
+              return (
+                <div
+                  key={sid}
+                  className="overflow-hidden rounded-2xl border border-border bg-card"
+                >
+                  <div className="flex items-center justify-between gap-3 border-b border-border bg-secondary/40 px-5 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <div className="text-sm font-semibold">{styleDef.label}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(built.technicalBrief);
+                        toast.success("ТЗ скопировано");
+                      }}
+                      className="text-xs text-primary hover:underline"
+                    >
+                      Копировать
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 px-5 py-4 text-xs sm:grid-cols-2">
+                    <div>
+                      <span className="text-muted-foreground">Композиция: </span>
+                      <span className="text-foreground">{built.structured.composition}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Свет: </span>
+                      <span className="text-foreground">{built.structured.lighting}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Ракурс: </span>
+                      <span className="text-foreground">{built.structured.cameraAngle}</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Цветокор: </span>
+                      <span className="text-foreground">{built.structured.colorTreatment}</span>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <span className="text-muted-foreground">Типографика: </span>
+                      <span className="text-foreground">{built.structured.typography}</span>
+                    </div>
+                  </div>
+                  <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words border-t border-border bg-background/40 px-5 py-4 text-xs leading-relaxed text-foreground/90">
+                    {built.technicalBrief}
+                  </pre>
+                </div>
+              );
+            })}
+          </CollapsibleContent>
+        </Collapsible>
 
         {/* Status */}
         {status !== "idle" && (
