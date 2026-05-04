@@ -238,10 +238,54 @@ const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProp
                   <Input value={instagramId} onChange={(e) => setInstagramId(e.target.value)} className="h-11 rounded-xl bg-background/60" />
                 </div>
               </div>
+              <div className="space-y-1.5">
+                <Label className="flex items-center gap-1.5 text-xs uppercase tracking-wider text-muted-foreground">
+                  <Shield className="h-3.5 w-3.5" /> Access Token (опционально)
+                </Label>
+                <Input
+                  type="password"
+                  value={accessToken}
+                  onChange={(e) => setAccessToken(e.target.value)}
+                  placeholder="EAA…"
+                  className="h-11 rounded-xl bg-background/60"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Если не указан — используется системный токен Meta.
+                </p>
+              </div>
               <div className="flex items-start gap-2 rounded-xl border border-primary/30 bg-primary/10 p-3 text-sm text-primary">
                 <Info className="mt-0.5 h-4 w-4 shrink-0" />
                 <span>Данные Meta Ads будут автоматически синхронизироваться каждые 2 часа. Убедитесь, что ID кабинета указан верно.</span>
               </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={runValidation}
+                  disabled={validating || !adAccountId.trim()}
+                  className="h-10 rounded-xl"
+                >
+                  {validating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  Проверить данные кабинета
+                </Button>
+              </div>
+              {checks && (
+                <div className="space-y-1.5 rounded-xl border border-border/60 bg-background/40 p-3">
+                  {checks.map((c, i) => (
+                    <div key={i} className="flex items-start gap-2 text-sm">
+                      {c.ok ? (
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 text-success shrink-0" />
+                      ) : (
+                        <XCircle className="mt-0.5 h-4 w-4 text-destructive shrink-0" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <span className="font-medium">{c.label}</span>
+                        {c.detail && <span className="text-muted-foreground"> — {c.detail}</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </AccordionContent>
           </AccordionItem>
 
