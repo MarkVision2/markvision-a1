@@ -298,7 +298,7 @@ const CreateCampaignDialog = ({
   const [submitting, setSubmitting] = useState(false);
 
   const WEBHOOK_URL =
-    "https://n8n.srv1602169.hstgr.cloud/webhook/ai-target-launch";
+    "https://n8n.zapoinov.com/webhook/ai-target-launch";
 
   const handleSubmit = async () => {
     if (!cabinetId) {
@@ -317,10 +317,6 @@ const CreateCampaignDialog = ({
       toast.error("Выберите лид-форму");
       return;
     }
-    if (!text.trim()) {
-      toast.error("Добавьте текст объявления");
-      return;
-    }
 
     const cab = selectedCabinet;
     const payload = {
@@ -336,17 +332,51 @@ const CreateCampaignDialog = ({
         client_name: cab.name,
         ad_account_id: cab.adAccountId ?? "",
         page_id: cab.pageId ?? "",
+        page_name: cab.pageName ?? "",
         instagram_actor_id: cab.instagramId ?? "",
         instagram_user_id: cab.instagramId ?? "",
         fb_token: cab.accessToken ?? "",
         fb_pixel_id: goal === "site-leads" ? pixelId : (cab.pixelId ?? ""),
         pixel_event: goal === "site-leads" ? pixelEvent : (cab.pixelEvent ?? "Lead"),
         website_url: cab.websiteUrl ?? "",
+        landing_url: cab.landingUrl ?? "",
+        utm_template: cab.utmTemplate ?? "",
         whatsapp_number: goal === "whatsapp" ? whatsappId : (cab.whatsappNumber ?? ""),
+        telegram_group_id: cab.telegramGroupId ?? "",
+        business_id: cab.businessId ?? "",
+        app_id: cab.appId ?? "",
         daily_budget: (Number(budget) || 0) * 100, // cents for Meta API
+        currency: cab.currency ?? "USD",
+        campaign_objective: cab.campaignObjective ?? "",
+        optimization_goal: cab.optimizationGoal ?? "",
+        lead_form_id: goal === "meta-form" ? leadFormId : (cab.leadFormId ?? ""),
         city: cab.city ?? "",
         brief: cab.brief ?? "",
         region_key: "2037",
+        targeting: {
+          geo: cab.targetGeo ?? [],
+          age_min: cab.targetAgeMin ?? null,
+          age_max: cab.targetAgeMax ?? null,
+          gender: cab.targetGender ?? "all",
+          languages: cab.targetLanguages ?? [],
+          interests: cab.targetInterests ?? [],
+          exclusions: cab.targetExclusions ?? [],
+        },
+        schedule: {
+          timezone: cab.timezone ?? "Asia/Almaty",
+          days_of_week: cab.daysOfWeek ?? [1,2,3,4,5,6,7],
+          start_time: cab.startTime ?? null,
+          end_time: cab.endTime ?? null,
+          launch_hour: cab.launchHour ?? 9,
+          auto_launch_enabled: cab.autoLaunchEnabled ?? false,
+        },
+        creative_defaults: {
+          headline: cab.creativeHeadline ?? "",
+          primary_text: cab.creativePrimaryText ?? "",
+          description: cab.creativeDescription ?? "",
+          cta: cab.creativeCta ?? "",
+          media_urls: cab.creativeMediaUrls ?? [],
+        },
       } : undefined,
       cabinet: cab ? {
         id: cab.id,
@@ -357,7 +387,7 @@ const CreateCampaignDialog = ({
       } : { id: cabinetId },
       goal,
       budget: Number(budget) || 0,
-      currency: "USD",
+      currency: cab?.currency ?? "USD",
       text,
       whatsappNumber: goal === "whatsapp" ? whatsappId : undefined,
       pixelId: goal === "site-leads" ? pixelId : undefined,
