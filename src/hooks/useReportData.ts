@@ -65,10 +65,6 @@ const EMPTY_TOTALS: ReportTotals = {
   cpl: 0, cpv: 0, cac: 0, ctr: 0, romi: 0, aov: 0,
 };
 
-function isoMonth(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
 function daysBetween(a: Date, b: Date) {
   return Math.max(1, Math.round((b.getTime() - a.getTime()) / 86400000));
 }
