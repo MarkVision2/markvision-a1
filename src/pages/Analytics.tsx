@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useCabinetsStore } from "@/hooks/useCabinetsStore";
+import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useMultiMetaInsights } from "@/hooks/useMetaInsights";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
 import { normalizeSource } from "@/lib/leadSource";
@@ -152,7 +152,7 @@ const Analytics = () => {
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
   const [cabinetId, setCabinetId] = useState<string>("all");
-  const { cabinets } = useCabinetsStore();
+  const { cabinets } = usePersonalCabinets();
 
   const shiftMonth = (delta: number) =>
     setMonthCursor(
@@ -331,7 +331,7 @@ const Analytics = () => {
         />
         <KpiCard
           icon={Eye}
-          label="Визиты"
+          label="Диагностики"
           value={formatNumber(visits.length)}
           sub={visits.length === 0 ? "нет данных" : `${formatPct(crLeadVisit)} от лидов`}
         />
@@ -409,7 +409,7 @@ const Analytics = () => {
               color="bg-gradient-to-r from-success/60 to-success/30"
             />
             <FunnelRow
-              label="Визиты"
+              label="Диагностики"
               value={visits.length}
               base={funnelBase}
               prevValue={totalLeads}

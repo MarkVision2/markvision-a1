@@ -28,7 +28,7 @@ export function MarketingPage({ data, rangeLabel, comparing }: Props) {
     { label: "Показы", value: totals.impressions, prev: undefined as number | undefined },
     { label: "Клики", value: totals.clicks, prev: totals.impressions },
     { label: "Лиды", value: totals.totalLeads, prev: totals.clicks },
-    { label: "Визиты", value: totals.visits, prev: totals.totalLeads },
+    { label: "Диагностики", value: totals.visits, prev: totals.totalLeads },
     { label: "Продажи", value: totals.sales, prev: totals.visits },
   ];
   const max = Math.max(...funnel.map((f) => f.value), 1);
@@ -46,11 +46,11 @@ export function MarketingPage({ data, rangeLabel, comparing }: Props) {
         <KpiCard icon={DollarSign} label="Расходы" value={fmtTenge(totals.spend)} delta={deltaPct(totals.spend, prev?.spend)} comparing={comparing} invertDelta />
         <KpiCard icon={Users} label="Лиды" value={fmtNum(totals.totalLeads)} delta={deltaPct(totals.totalLeads, prev?.totalLeads)} comparing={comparing} />
         <KpiCard icon={Target} label="CPL" value={fmtTenge(totals.cpl)} delta={deltaPct(totals.cpl, prev?.cpl)} comparing={comparing} invertDelta />
-        <KpiCard icon={Eye} label="Визиты" value={fmtNum(totals.visits)} delta={deltaPct(totals.visits, prev?.visits)} comparing={comparing} />
+        <KpiCard icon={Eye} label="Диагностики" value={fmtNum(totals.visits)} delta={deltaPct(totals.visits, prev?.visits)} comparing={comparing} />
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <KpiCard icon={MapPin} label="CPV" value={fmtTenge(totals.cpv)} delta={deltaPct(totals.cpv, prev?.cpv)} comparing={comparing} invertDelta />
+        <KpiCard icon={MapPin} label="CPD" value={fmtTenge(totals.cpv)} delta={deltaPct(totals.cpv, prev?.cpv)} comparing={comparing} invertDelta />
         <KpiCard icon={ShoppingCart} label="Продажи" value={fmtNum(totals.sales)} delta={deltaPct(totals.sales, prev?.sales)} comparing={comparing} />
         <KpiCard icon={Flame} label="CAC" value={fmtTenge(totals.cac)} delta={deltaPct(totals.cac, prev?.cac)} comparing={comparing} emphasized invertDelta />
       </div>

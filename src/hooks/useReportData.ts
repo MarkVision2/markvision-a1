@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useCabinetsStore } from "@/hooks/useCabinetsStore";
+import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useLeadsLite, type LeadLite } from "@/hooks/useLeadsLite";
 import { normalizeSource } from "@/lib/leadSource";
 
@@ -65,10 +65,6 @@ const EMPTY_TOTALS: ReportTotals = {
   cpl: 0, cpv: 0, cac: 0, ctr: 0, romi: 0, aov: 0,
 };
 
-function isoMonth(d: Date) {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
 function daysBetween(a: Date, b: Date) {
   return Math.max(1, Math.round((b.getTime() - a.getTime()) / 86400000));
 }
@@ -82,63 +78,56 @@ function shiftRange({ from, to }: ReportPeriodRange): ReportPeriodRange {
   return { from: newFrom, to: newTo };
 }
 
+function ymd(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function normalizeActId(id: string) {
+  const t = id.trim();
+  if (/^act_\d+$/i.test(t)) return `act_${t.replace(/^act_/i, "")}`;
+  if (/^\d+$/.test(t)) return `act_${t}`;
+  return t;
+}
+
+/**
+ * Единый источник правды по фактам Meta — таблица cabinet_daily_insights.
+ * Заполняется ежедневно cron-задачей `meta-daily-sync-1am`.
+ */
 async function fetchMetaForRange(
-  cabinetIds: string[],
+  externalIds: string[],
   range: ReportPeriodRange,
 ): Promise<{ spend: number; impressions: number; clicks: number; leads: number; daily: { date: string; spend: number; leads: number }[] }> {
-  // edge function provides per-month aggregation. We fetch each month between from..to
-  // and then filter daily rows inside the range.
-  if (cabinetIds.length === 0) {
+  if (externalIds.length === 0) {
     return { spend: 0, impressions: 0, clicks: 0, leads: 0, daily: [] };
   }
-  const { data: sessionData } = await supabase.auth.getSession();
-  const token = sessionData.session?.access_token;
-  if (!token) {
-    return { spend: 0, impressions: 0, clicks: 0, leads: 0, daily: [] };
-  }
-  const apikey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "";
+  const ids = externalIds.map(normalizeActId);
+  const since = ymd(range.from);
+  const until = ymd(range.to);
 
-  // unique months in the range
-  const months = new Set<string>();
-  const cur = new Date(range.from.getFullYear(), range.from.getMonth(), 1);
-  const endMonth = new Date(range.to.getFullYear(), range.to.getMonth(), 1);
-  while (cur <= endMonth) {
-    months.add(isoMonth(cur));
-    cur.setMonth(cur.getMonth() + 1);
-  }
-
-  const fromTs = range.from.getTime();
-  const toTs = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate() + 1).getTime();
+  const { data, error } = await supabase
+    .from("cabinet_daily_insights")
+    .select("date, spend, impressions, clicks, leads")
+    .in("external_id", ids)
+    .gte("date", since)
+    .lte("date", until);
+  if (error) throw new Error(error.message);
 
   const dailyAgg = new Map<string, { spend: number; leads: number }>();
   let totSpend = 0, totImp = 0, totClicks = 0, totLeads = 0;
 
-  for (const actId of cabinetIds) {
-    for (const month of months) {
-      try {
-        const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/meta-insights?actId=${encodeURIComponent(actId)}&month=${encodeURIComponent(month)}`;
-        const resp = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}`, apikey },
-        });
-        if (!resp.ok) continue;
-        const json = await resp.json();
-        const daily: Array<{ date: string; spend: number; impressions: number; clicks: number; leads: number }> = json.daily ?? [];
-        for (const d of daily) {
-          const t = new Date(d.date).getTime();
-          if (t < fromTs || t >= toTs) continue;
-          totSpend += d.spend;
-          totImp += d.impressions;
-          totClicks += d.clicks;
-          totLeads += d.leads;
-          const cur = dailyAgg.get(d.date) ?? { spend: 0, leads: 0 };
-          cur.spend += d.spend;
-          cur.leads += d.leads;
-          dailyAgg.set(d.date, cur);
-        }
-      } catch {
-        /* noop */
-      }
-    }
+  for (const row of data ?? []) {
+    const spend = Number(row.spend) || 0;
+    const impressions = Number(row.impressions) || 0;
+    const clicks = Number(row.clicks) || 0;
+    const leads = Number(row.leads) || 0;
+    totSpend += spend;
+    totImp += impressions;
+    totClicks += clicks;
+    totLeads += leads;
+    const cur = dailyAgg.get(row.date) ?? { spend: 0, leads: 0 };
+    cur.spend += spend;
+    cur.leads += leads;
+    dailyAgg.set(row.date, cur);
   }
 
   return {
@@ -221,7 +210,8 @@ export function useReportData(
   compare: boolean,
 ) {
   const { leads } = useLeadsLite();
-  const { cabinets } = useCabinetsStore();
+  // Только Личные кабинеты активного проекта попадают в аналитику.
+  const { cabinets } = usePersonalCabinets();
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

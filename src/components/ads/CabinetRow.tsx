@@ -136,6 +136,14 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
               <span className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] uppercase text-muted-foreground">
                 {cabinet.type}
               </span>
+              {cabinet.type === "Агентский" && (
+                <span
+                  title="Агентский кабинет: данные не попадают в Дашборд / CRM / Аналитику"
+                  className="rounded-full border border-warning/30 bg-warning/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-warning"
+                >
+                  Только список
+                </span>
+              )}
               {loading && (
                 <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" />

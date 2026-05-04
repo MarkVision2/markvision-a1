@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
@@ -163,6 +163,20 @@ export function useCabinetsStore() {
   }, [refetch]);
 
   return { cabinets, addCabinet, updateCabinet, removeCabinet };
+}
+
+/**
+ * Кабинеты, которые попадают во все аналитические разделы проекта
+ * (Дашборд, Сквозная аналитика, Таблица показателей, Отчётность, CRM).
+ * Агентские кабинеты исключаются — они видны только в списке /ads.
+ */
+export function usePersonalCabinets() {
+  const { cabinets, ...rest } = useCabinetsStore();
+  const personal = useMemo(
+    () => cabinets.filter((c) => c.type === "Личный"),
+    [cabinets],
+  );
+  return { cabinets: personal, ...rest };
 }
 
 export type CampaignDraft = {

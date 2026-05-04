@@ -8,7 +8,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { useCabinetsStore } from "@/hooks/useCabinetsStore";
+import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useReportData } from "@/hooks/useReportData";
 import { exportReportPdf } from "@/lib/exportReportPdf";
 import { AiChatBar } from "@/components/reports/AiChatBar";
@@ -29,7 +29,7 @@ function defaultRange() {
 export default function Reports() {
   const [range, setRange] = useState(defaultRange);
   const [cabinetId, setCabinetId] = useState("all");
-  const { cabinets } = useCabinetsStore();
+  const { cabinets } = usePersonalCabinets();
   const [compare, setCompare] = useState(true);
   const [exporting, setExporting] = useState(false);
 

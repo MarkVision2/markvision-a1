@@ -1,104 +1,107 @@
-## Что я нашёл (важно прочитать)
+## Что нужно сделать
 
-1. **Проектов в БД нет ни одного.** Таблица `projects` пустая. То есть `useProjectsStore.activeId` всегда пуст, и привязки «по проекту» физически не существует — даже если код фильтрует по `project_id`, он фильтрует по `null`.
-2. **Кабинет «KOST MARKETING»** (`act_394987113464047`) создан с `project_id = NULL`.
-3. **Таблица `cabinet_daily_insights` пуста** — `meta-daily-sync` ни разу не отрабатывал по этому кабинету.
-4. **Дашборд / Сквозная аналитика / Reports** сейчас НЕ читают `cabinet_daily_insights` (только `useMetaInsights` дёргает её разово). То есть даже если данные зальются — на дашборде они не появятся, пока не подключим источник.
-5. Cron сейчас стоит на **03:00 UTC**, а пользователь просит **01:00**.
-
-Поэтому одних «залить данные» недостаточно — нужно сначала навести порядок с проектом и подключить отображение.
+Три задачи:
+1) Привести аналитику к единому источнику и проверить связи между разделами.
+2) В таблице показателей убрать колонку «Подписчики» и переименовать «Визиты» → «Диагностики».
+3) Разделить рекламные кабинеты по типу: «Личный» влияет на весь проект (Дашборд, CRM, Сквозная аналитика, Таблица показателей, Отчётность), «Агентский» — только список в «Управление рекламой».
 
 ---
 
-## План
+## 1. Аудит аналитики и связи разделов
 
-### Шаг 1. Создать проект «KOST MARKETING» и привязать к нему кабинет
-- Вставить запись в `projects` (name = «KOST MARKETING», `is_primary = true`, `created_by` = текущий пользователь).
-- Поставить его активным в `user_active_project` для пользователя.
-- Сделать `UPDATE ad_cabinets SET project_id = <new_project_id> WHERE id = 'b4d60ec5...'`.
+Текущая схема данных (после прошлых правок) — единая:
 
-### Шаг 2. Бэкфилл Meta-статистики с 2026-05-01 по вчера
-- Доработать `meta-daily-sync` так, чтобы принимал параметры `since` и `until` (диапазон дат) и `cabinet_id` (опционально — синк только по одному кабинету). Сейчас он умеет только одну дату.
-- Внутри: для каждой даты диапазона делать запрос `time_increment=1` (Meta вернёт массив по дням за один вызов) и upsert по `(external_id, date)` с `project_id` из кабинета.
-- Один раз вручную дёрнуть функцию: `since=2026-05-01`, `until=вчера`, `cabinet_id=b4d60ec5...`. Данные лягут в `cabinet_daily_insights` с `project_id` проекта.
+```text
+            ┌─────────────────────────┐
+            │  Meta Marketing API     │
+            └────────────┬────────────┘
+                         │ ежедневно 01:00 UTC
+                         ▼
+            ┌─────────────────────────┐
+            │ edge: meta-daily-sync   │ — пишет project_id + cabinet_id
+            └────────────┬────────────┘
+                         ▼
+            ┌─────────────────────────┐
+            │ cabinet_daily_insights  │ ← единая таблица фактов по дням
+            └────────────┬────────────┘
+                         │ читают:
+   ┌─────────────────────┼───────────────────────────┐
+   ▼                     ▼                           ▼
+Дашборд          Сквозная аналитика          Таблица показателей
+(useDashboardData) (useReportData)            (useMetaInsights)
+                         │
+                         └─→ + leads (CRM) для воронки/выручки
+```
 
-### Шаг 3. Поправить cron на 01:00 (а не 03:00)
-- `cron.unschedule('meta-daily-sync-3am')`.
-- `cron.schedule('meta-daily-sync-1am', '0 1 * * *', …)` — каждый день в 01:00 UTC дёргать `meta-daily-sync` без параметров (= синк за вчера по всем кабинетам).
-- Функция уже ставит `project_id` из кабинета, так что данные сразу разделены по проектам.
+Проблемы, которые сейчас есть:
+- `useReportData` (Дашборд + Сквозная аналитика) ходит через edge-функцию `meta-insights`, а `useMetaInsights` (Таблица показателей, CabinetRow) читает напрямую из `cabinet_daily_insights`. Два разных источника → возможны расхождения.
+- В `useDashboardData`/`useReportData` не учитывается `project_id` кабинета и тип (Личный/Агентский).
+- Cron `meta-daily-sync-1am` активен — проверено в `cron.job`. Запускается каждый день в 01:00 UTC и пишет за вчера. Это нормально.
 
-### Шаг 4. Подключить отображение Meta-данных по проекту
-Сейчас Dashboard / Метрики / Analytics показывают моки или агрегаты не из `cabinet_daily_insights`. Делаю единый хук-источник и перевожу страницы на него:
-
-- **Новый хук `useProjectDailyInsights(projectId, dateFrom, dateTo)`** — читает `cabinet_daily_insights` фильтром `project_id = activeId AND date BETWEEN …` и агрегирует: spend, leads, clicks, impressions, revenue, CPL, CPM, CPC, CTR.
-- **`Dashboard.tsx`** — KPI-карточки (расход, лиды, CPL, выручка) + график «Расход/Выручка» питать из этого хука по выбранному периоду; фильтр по `activeId` из `useProjectsStore`.
-- **`Metrics.tsx` (сквозная аналитика)** — таблица показателей по дням берёт строки `cabinet_daily_insights` за период и активный проект.
-- **`Reports`/MarketingPage** — суммы за период из того же источника.
-- **`CabinetRow.tsx`** на странице Ads — вместо моков из `ad_cabinets.spend/leads` показывать сумму за выбранный месяц из `cabinet_daily_insights` для этого `cabinet_id`. Кнопка «Обновить» вызывает `meta-daily-sync` за сегодня по этому кабинету и рефетчит.
-
-### Шаг 5. Гарантировать, что новые кабинеты всегда привязываются к активному проекту
-- В `AddCabinetDialog` / `useCabinetsStore.addCabinet` блокировать создание, если `activeId` пуст (показать тост «Сначала создайте проект»). Это уберёт повторение текущей ситуации.
+Что сделаю:
+- Перевести `useReportData` на чтение из `cabinet_daily_insights` (тот же путь, что `useMetaInsights`) → один источник, расхождений не будет.
+- Добавить во все запросы фильтр: только кабинеты с `type = 'Личный'` И `project_id = activeProjectId`.
+- В `useCabinetsStore.refetch()` оставить вывод всех кабинетов проекта (для страницы /ads), но добавить второй селектор `usePersonalCabinets()` для всех остальных разделов.
+- Проверить: после правок Дашборд, Сквозная, Таблица, Отчётность будут отдавать одинаковые суммы за один и тот же период.
 
 ---
 
-## Технические детали
+## 2. Таблица показателей: «Подписчики» → удалить, «Визиты» → «Диагностики»
 
-### SQL (через insert-tool, не миграция)
-```sql
--- 1. Создать проект и привязать кабинет (ID пользователя возьму из auth.users по email)
-WITH u AS (SELECT id FROM auth.users WHERE email = 'zapoinov@bk.ru' LIMIT 1),
-     p AS (
-       INSERT INTO projects (name, initials, is_primary, created_by)
-       SELECT 'KOST MARKETING', 'KM', true, u.id FROM u
-       RETURNING id
-     )
-INSERT INTO user_active_project (user_id, project_id)
-SELECT u.id, p.id FROM u, p
-ON CONFLICT (user_id) DO UPDATE SET project_id = EXCLUDED.project_id;
+Файл `src/pages/Metrics.tsx`:
+- Удалить колонку «Подписч.» из шапки и из всех строк (План / Факт / % выполн. / дни).
+- Заголовок «Визиты» → «Диагностики». Содержимое колонки оставить (использует `plan.visits`, в Факте сейчас 0).
+- В CSV-экспорте заголовки `"Подписчики", "Визиты"` → удалить «Подписчики», «Визиты» → «Диагностики». Лишние нули в строках убрать.
+- В саммари-карточках: «CPV» (`Расходы / Визиты`) → «CPD» (`Расходы / Диагностики`), «CR Визит→Продажа» → «CR Диагн.→Продажа».
 
-UPDATE ad_cabinets
-SET project_id = (SELECT id FROM projects WHERE name = 'KOST MARKETING')
-WHERE id = 'b4d60ec5-92e9-401e-95da-d7c3a1002321';
-```
-
-### Cron (через insert-tool)
-```sql
-SELECT cron.unschedule('meta-daily-sync-3am');
-SELECT cron.schedule(
-  'meta-daily-sync-1am',
-  '0 1 * * *',
-  $$ SELECT net.http_post(
-    url := 'https://zaxpweutxzepxzzduvpm.supabase.co/functions/v1/meta-daily-sync',
-    headers := '{"Content-Type":"application/json","apikey":"<ANON>"}'::jsonb,
-    body := '{}'::jsonb
-  ); $$
-);
-```
-
-### Бэкфилл (один curl edge-функции после доработки)
-```
-POST /functions/v1/meta-daily-sync
-{ "since": "2026-05-01", "until": "<вчера>", "cabinet_id": "b4d60ec5-92e9-401e-95da-d7c3a1002321" }
-```
-
-### Файлы
-- `supabase/functions/meta-daily-sync/index.ts` — поддержка `since/until/cabinet_id`, time_increment по диапазону.
-- `src/hooks/useProjectDailyInsights.ts` — НОВЫЙ.
-- `src/hooks/useDashboardData.ts`, `src/pages/Dashboard.tsx` — источник = новый хук.
-- `src/pages/Metrics.tsx` — таблица показателей из новых данных.
-- `src/components/reports/MarketingPage.tsx` — суммы из новых данных.
-- `src/components/ads/CabinetRow.tsx` — реальные цифры за месяц.
-- `src/hooks/useCabinetsStore.ts` / `src/components/ads/AddCabinetDialog.tsx` — запрет создания кабинета без активного проекта.
-
-### Что НЕ ломаем
-- RLS не трогаем — все таблицы уже доступны authenticated.
-- Старые поля `ad_cabinets.spend/leads/...` оставляем — они больше не источник правды, но не удаляем, чтобы не ломать формы.
+В `src/pages/Finance.tsx` (план) — оставить как есть, переименуем только пользовательские лейблы «Визиты» → «Диагностики» в KPI-карточках и подписях, ключи в БД (`visits` в `finance_plans`) не трогать, чтобы не ломать сохранённые планы.
 
 ---
 
-## Результат
-- Проект «KOST MARKETING» появляется в свитчере, кабинет привязан к нему.
-- Meta-данные с 1 мая 2026 по вчера лежат в `cabinet_daily_insights` с правильным `project_id`.
-- Каждую ночь в **01:00 UTC** cron автоматически тянет вчерашний день по всем кабинетам, раскладывая по проектам.
-- На странице Ads, в Dashboard, в Метриках (сквозная аналитика) и в Reports видны реальные расходы/лиды/клики/CPL/CPM по активному проекту за выбранный период.
-- Новые кабинеты нельзя создать без активного проекта — путаница «всё в одной куче» больше не повторится.
+## 3. Разделение Личный / Агентский
+
+Сейчас тип кабинета хранится (`ad_cabinets.type`), но нигде не фильтруется. Нужно:
+
+- **Список «Управление рекламой» (`/ads`)** — показывать ВСЕ кабинеты активного проекта (и личные, и агентские). Без изменений.
+- **Везде остальное** — только `type = 'Личный'`:
+  - Дашборд (`useDashboardData` → `useReportData`)
+  - Сквозная аналитика (`/analytics`)
+  - Таблица показателей (`/metrics`)
+  - CRM — лиды и так привязаны к проекту, но в селекторе кабинетов оставлять только личные
+  - Отчётность (`/reports`, `MarketingPage`, `UnitEconomicsPage`, `CreativesPage`)
+
+Реализация:
+- Новый хелпер `usePersonalCabinets()` в `useCabinetsStore.ts`: возвращает `cabinets.filter(c => c.type === 'Личный')`.
+- Подменить `useCabinetsStore().cabinets` → `usePersonalCabinets()` в: `Dashboard.tsx`, `Analytics.tsx`, `Metrics.tsx`, `Reports.tsx`, `MarketingPage.tsx`, `UnitEconomicsPage.tsx`, `CreativesPage.tsx`, `useDashboardData`, `useReportData`.
+- Визуальный маркер в `AddCabinetDialog`: рядом с кнопками «Личный/Агентский» добавить подсказку: «Личный — попадает во все разделы. Агентский — только в список рекламных кабинетов».
+- В `CabinetRow` бейдж типа уже есть; для агентских добавить мягкий значок «Только список» (info-tooltip).
+
+---
+
+## 4. Проверка ежедневного сбора
+
+Проверено в БД:
+- Cron `meta-daily-sync-1am` → расписание `0 1 * * *`, активен.
+- Edge-функция `meta-daily-sync` пишет `cabinet_id`, `external_id`, `project_id`, `date`, `spend`, `impressions`, `clicks`, `leads`, `revenue`, `cpl`, `cpm`, `cpc`, `ctr`, `currency` с `upsert` по `(external_id, date)` — дубликатов не будет, проекты не путаются.
+- Сейчас проект `KOST MARKETING` (`ee664469…`) и кабинет `KOST MARKETING / act_394987113464047` уже привязаны.
+
+Что добавлю для надёжности:
+- В edge-функции после успешной записи — лог `console.log` с количеством строк и суммой расходов для каждого кабинета (видно в Edge Function Logs).
+- Кнопку «Пересинхронизировать с 1 числа месяца» в Таблице показателей рядом с «Экспорт CSV» — вызывает `meta-daily-sync` с `since=YYYY-MM-01&until=вчера&cabinet_id=...`. Удобно для бэкфилла после добавления нового кабинета.
+
+---
+
+## Файлы, которые правлю
+
+- `src/pages/Metrics.tsx` — колонки, лейблы, кнопка ресинка
+- `src/pages/Finance.tsx` — лейблы «Визиты» → «Диагностики»
+- `src/pages/Dashboard.tsx`, `src/pages/Analytics.tsx`, `src/pages/Reports.tsx` — использовать `usePersonalCabinets`
+- `src/components/reports/MarketingPage.tsx`, `UnitEconomicsPage.tsx`, `CreativesPage.tsx` — то же
+- `src/hooks/useCabinetsStore.ts` — новый `usePersonalCabinets()`
+- `src/hooks/useReportData.ts` — переход на `cabinet_daily_insights` + фильтр Личных
+- `src/hooks/useDashboardData.ts` — фильтр Личных
+- `src/components/ads/AddCabinetDialog.tsx` — пояснение под радио-кнопками
+- `src/components/ads/CabinetRow.tsx` — мягкий маркер для Агентских
+- `supabase/functions/meta-daily-sync/index.ts` — добавить лог + опциональный параметр `project_id`
+
+Базу данных и RLS не трогаю — текущей структуры достаточно.

@@ -154,6 +154,10 @@ const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProp
                 </button>
               ))}
             </div>
+            <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
+              <span className="font-semibold text-foreground">Личный</span> — статистика попадает во все разделы проекта (Дашборд, CRM, Сквозная аналитика, Таблица показателей, Отчётность).{" "}
+              <span className="font-semibold text-foreground">Агентский</span> — отображается только в списке «Управление рекламой».
+            </p>
           </div>
         </div>
 
