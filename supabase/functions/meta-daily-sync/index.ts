@@ -61,26 +61,35 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    // Determine target date — default = yesterday (UTC).
+    // Read params: date | since/until | cabinet_id (from query OR JSON body).
     const url = new URL(req.url);
-    let dateParam = url.searchParams.get("date");
     let body: Record<string, unknown> = {};
-    if (!dateParam && (req.method === "POST")) {
-      body = await req.json().catch(() => ({}));
-      dateParam = (body.date as string) ?? null;
-    }
-    let target: string;
-    if (dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam)) {
-      target = dateParam;
+    if (req.method === "POST") body = await req.json().catch(() => ({}));
+    const qpDate = url.searchParams.get("date") ?? (body.date as string | undefined) ?? null;
+    const qpSince = url.searchParams.get("since") ?? (body.since as string | undefined) ?? null;
+    const qpUntil = url.searchParams.get("until") ?? (body.until as string | undefined) ?? null;
+    const qpCabinetId = url.searchParams.get("cabinet_id") ?? (body.cabinet_id as string | undefined) ?? null;
+
+    const isYmd = (s: string | null) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
+
+    let since: string;
+    let until: string;
+    if (isYmd(qpSince) && isYmd(qpUntil)) {
+      since = qpSince!;
+      until = qpUntil!;
+    } else if (isYmd(qpDate)) {
+      since = qpDate!;
+      until = qpDate!;
     } else {
       const d = new Date();
       d.setUTCDate(d.getUTCDate() - 1);
-      target = ymd(d);
+      since = until = ymd(d);
     }
+    if (since > until) [since, until] = [until, since];
 
-    const { data: cabinets, error: cabErr } = await admin
-      .from("ad_cabinets")
-      .select("id, external_id, project_id");
+    let cabQuery = admin.from("ad_cabinets").select("id, external_id, project_id");
+    if (qpCabinetId) cabQuery = cabQuery.eq("id", qpCabinetId);
+    const { data: cabinets, error: cabErr } = await cabQuery;
     if (cabErr) throw cabErr;
 
     const results: Array<Record<string, unknown>> = [];
@@ -91,7 +100,7 @@ Deno.serve(async (req) => {
       const actId = normalizeActId(ext);
 
       const fields = ["date_start", "spend", "impressions", "clicks", "actions", "action_values"].join(",");
-      const timeRange = encodeURIComponent(JSON.stringify({ since: target, until: target }));
+      const timeRange = encodeURIComponent(JSON.stringify({ since, until }));
       const apiUrl =
         `https://graph.facebook.com/${META_API_VERSION}/${actId}/insights` +
         `?fields=${fields}&time_range=${timeRange}&time_increment=1&level=account&limit=500` +
@@ -109,40 +118,52 @@ Deno.serve(async (req) => {
           continue;
         }
         const currency: string = aJson?.currency ?? "USD";
-        const row = (iJson.data ?? [])[0];
-        const spend = Number(row?.spend ?? 0);
-        const impressions = Number(row?.impressions ?? 0);
-        const clicks = Number(row?.clicks ?? 0);
-        const leads = maxAction(row?.actions, LEAD_ACTIONS);
-        const revenue = sumActions(row?.action_values, PURCHASE_ACTIONS);
-        const cpl = leads > 0 ? spend / leads : 0;
-        const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0;
-        const cpc = clicks > 0 ? spend / clicks : 0;
-        const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
-
-        const { error: upErr } = await admin
-          .from("cabinet_daily_insights")
-          .upsert({
+        const rows: Array<Record<string, unknown>> = [];
+        let totalSpend = 0, totalLeads = 0, totalClicks = 0, totalRevenue = 0;
+        for (const row of (iJson.data ?? [])) {
+          const date = String(row?.date_start ?? "");
+          if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+          const spend = Number(row?.spend ?? 0);
+          const impressions = Number(row?.impressions ?? 0);
+          const clicks = Number(row?.clicks ?? 0);
+          const leads = maxAction(row?.actions, LEAD_ACTIONS);
+          const revenue = sumActions(row?.action_values, PURCHASE_ACTIONS);
+          const cpl = leads > 0 ? spend / leads : 0;
+          const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0;
+          const cpc = clicks > 0 ? spend / clicks : 0;
+          const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+          rows.push({
             cabinet_id: cab.id,
             external_id: actId,
             project_id: (cab as any).project_id ?? null,
-            date: target,
+            date,
             spend, impressions, clicks, leads, revenue,
             cpl, cpm, cpc, ctr,
             currency,
             synced_at: new Date().toISOString(),
-          }, { onConflict: "external_id,date" });
-        if (upErr) {
-          results.push({ cabinet: ext, ok: false, error: upErr.message });
-          continue;
+          });
+          totalSpend += spend; totalLeads += leads; totalClicks += clicks; totalRevenue += revenue;
         }
-        results.push({ cabinet: ext, ok: true, date: target, spend, leads, clicks, revenue });
+        if (rows.length > 0) {
+          const { error: upErr } = await admin
+            .from("cabinet_daily_insights")
+            .upsert(rows, { onConflict: "external_id,date" });
+          if (upErr) {
+            results.push({ cabinet: ext, ok: false, error: upErr.message });
+            continue;
+          }
+        }
+        results.push({
+          cabinet: ext, ok: true,
+          since, until, days: rows.length,
+          spend: totalSpend, leads: totalLeads, clicks: totalClicks, revenue: totalRevenue,
+        });
       } catch (e) {
         results.push({ cabinet: ext, ok: false, error: (e as Error).message });
       }
     }
 
-    return new Response(JSON.stringify({ date: target, count: results.length, results }), {
+    return new Response(JSON.stringify({ since, until, count: results.length, results }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {
