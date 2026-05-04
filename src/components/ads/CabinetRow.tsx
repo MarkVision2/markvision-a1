@@ -4,10 +4,13 @@ import {
   BarChart3,
   ChevronDown,
   Copy,
+  Stethoscope,
+  ShoppingBag,
   Loader2,
   Megaphone,
   MoreHorizontal,
   Power,
+  Pencil,
   RefreshCw,
   Trash2,
 } from "lucide-react";
@@ -23,6 +26,9 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: "$",
@@ -150,6 +156,39 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
 
   const cpl = totals && totals.leads > 0 ? totals.spend / totals.leads : 0;
 
+  const handleManualDiagnostics = async (isoDate: string, newValue: number) => {
+    try {
+      const { data: existing } = await supabase
+        .from("cabinet_daily_insights")
+        .select("id")
+        .eq("cabinet_id", cabinet.id)
+        .eq("date", isoDate)
+        .maybeSingle();
+      if (existing?.id) {
+        const { error } = await supabase
+          .from("cabinet_daily_insights")
+          .update({ manual_diagnostics: newValue })
+          .eq("id", existing.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from("cabinet_daily_insights")
+          .insert({
+            cabinet_id: cabinet.id,
+            external_id: cabinet.externalId,
+            project_id: (cabinet as { projectId?: string }).projectId ?? null,
+            date: isoDate,
+            manual_diagnostics: newValue,
+          });
+        if (error) throw error;
+      }
+      toast.success("Сохранено");
+      refresh();
+    } catch (e) {
+      toast.error((e as Error).message || "Не удалось сохранить");
+    }
+  };
+
   return (
     <article className="rounded-2xl border border-border/60 bg-card/60 transition-colors hover:border-border">
       <div className="flex flex-col gap-4 p-4 lg:flex-row lg:items-center lg:gap-6">
@@ -190,7 +229,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:gap-8">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6 lg:gap-6">
           <Metric
             label="Расход"
             value={formatMoney(totals?.spend ?? 0, currency)}
@@ -211,7 +250,26 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
             value={cpl > 0 ? formatMoney(cpl, currency) : "—"}
           />
           <Metric
-            label="Выручка"
+            label="Диагностики"
+            value={
+              <span className="text-amber-400">
+                {formatNumber(totals?.diagnostics ?? 0)}
+              </span>
+            }
+          />
+          <Metric
+            label="Продажи"
+            value={
+              <span>
+                {formatNumber(totals?.sales ?? 0)}{" "}
+                <span className="text-xs text-muted-foreground">
+                  ({formatMoney(totals?.crmRevenue ?? 0, currency)})
+                </span>
+              </span>
+            }
+          />
+          <Metric
+            label="Выручка (Meta)"
             value={
               <span className="text-success">
                 {formatMoney(totals?.revenue ?? 0, currency)}
@@ -364,6 +422,9 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                   <th className="px-4 py-3 text-right font-medium">Клики</th>
                   <th className="px-4 py-3 text-right font-medium">Лиды</th>
                   <th className="px-4 py-3 text-right font-medium">CPL</th>
+                  <th className="px-4 py-3 text-right font-medium">Диагн.</th>
+                  <th className="px-4 py-3 text-right font-medium">Продажи</th>
+                  <th className="px-4 py-3 text-right font-medium">Сумма CRM</th>
                 </tr>
               </thead>
               <tbody>
@@ -371,6 +432,10 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                   const row = dailyByDate.get(d.iso);
                   const dayCpl =
                     row && row.leads > 0 ? row.spend / row.leads : 0;
+                  const diag = row?.diagnostics ?? 0;
+                  const manualDiag = row?.manualDiagnostics ?? 0;
+                  const sales = row?.sales ?? 0;
+                  const crmRev = row?.crmRevenue ?? 0;
                   return (
                     <tr
                       key={d.key}
@@ -419,6 +484,20 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                       >
                         {dayCpl > 0 ? formatMoney(dayCpl, currency) : "—"}
                       </td>
+                      <td className="px-4 py-3 text-right">
+                        <DiagnosticsCell
+                          isoDate={d.iso}
+                          diagnostics={diag}
+                          manual={manualDiag}
+                          onSave={(v) => handleManualDiagnostics(d.iso, v)}
+                        />
+                      </td>
+                      <td className={cn("px-4 py-3 text-right", !sales && "text-muted-foreground")}>
+                        {sales ? formatNumber(sales) : "—"}
+                      </td>
+                      <td className={cn("px-4 py-3 text-right", !crmRev && "text-muted-foreground")}>
+                        {crmRev ? formatMoney(crmRev, currency) : "—"}
+                      </td>
                     </tr>
                   );
                 })}
@@ -427,11 +506,78 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Данные подгружаются из Meta Marketing API в реальном времени.
+            Данные Meta + CRM подгружаются в реальном времени. Диагностики и продажи считаются автоматически по лидам этого кабинета. Кликни на ячейку «Диагн.» чтобы добавить вручную.
           </p>
         </div>
       )}
     </article>
+  );
+};
+
+const DiagnosticsCell = ({
+  isoDate,
+  diagnostics,
+  manual,
+  onSave,
+}: {
+  isoDate: string;
+  diagnostics: number;
+  manual: number;
+  onSave: (newManual: number) => Promise<void>;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [val, setVal] = useState<string>(String(manual));
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    const n = Math.max(0, Math.floor(Number(val) || 0));
+    setSaving(true);
+    try {
+      await onSave(n);
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) setVal(String(manual)); }}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-secondary",
+            !diagnostics && "text-muted-foreground",
+          )}
+          title={`Дата ${isoDate}. CRM + ручные`}
+        >
+          {diagnostics ? diagnostics : "—"}
+          <Pencil className="h-3 w-3 opacity-60" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56" align="end">
+        <div className="space-y-2">
+          <div className="text-xs font-medium">Диагностики вручную</div>
+          <div className="text-[11px] text-muted-foreground">
+            Из CRM: {Math.max(0, diagnostics - manual)} · Вручную: {manual}
+          </div>
+          <Input
+            type="number"
+            min={0}
+            value={val}
+            onChange={(e) => setVal(e.target.value)}
+          />
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
+              Отмена
+            </Button>
+            <Button size="sm" onClick={handleSave} disabled={saving}>
+              {saving ? "..." : "Сохранить"}
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 };
 
