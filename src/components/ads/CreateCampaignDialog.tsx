@@ -297,8 +297,9 @@ const CreateCampaignDialog = ({
 
   const [submitting, setSubmitting] = useState(false);
 
-  const WEBHOOK_URL =
-    "https://n8n.zapoinov.com/webhook/ai-target-launch";
+  // Запуск идёт через нашу edge-функцию, она подставляет META_ACCESS_TOKEN
+  // из секретов и алиасы ACCESS_TOKEN/AD_ACCOUNT/PAGE_ID, которые ждёт n8n.
+  const WEBHOOK_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/launch-campaign`;
 
   const handleSubmit = async () => {
     if (!cabinetId) {
