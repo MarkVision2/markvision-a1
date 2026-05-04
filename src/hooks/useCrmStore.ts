@@ -4,6 +4,7 @@ import type { TablesUpdate, TablesInsert } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type {
   ChatMessage,
   Lead,
