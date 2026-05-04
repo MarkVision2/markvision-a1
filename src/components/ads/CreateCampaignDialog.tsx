@@ -362,6 +362,57 @@ const CreateCampaignDialog = ({
     }
 
     const cab = selectedCabinet;
+
+    // ===== Запекаем кроп/зум/позицию пользователя в готовые файлы =====
+    // Картинки — мгновенно через canvas. Видео — через ffmpeg.wasm
+    // (загрузка ядра при первом запуске, дальше — кешируется).
+    setSubmitting(true);
+    let bakedFeed: File | null = feed;
+    let bakedStories: File | null = stories;
+    try {
+      const bake = async (
+        f: File | null,
+        view: CreativeViewState | null,
+        slotLabel: string,
+      ): Promise<File | null> => {
+        if (!f || !view || !view.frame.w || !view.frame.h) return f;
+        const params = {
+          ratio: view.ratio,
+          fit: view.fit,
+          zoom: view.zoom,
+          pos: view.pos,
+          frame: view.frame,
+        };
+        if (f.type.startsWith("image/")) {
+          setBakeStatus(`Готовим ${slotLabel}...`);
+          setBakePct(50);
+          return await cropImageFile(f, { ...params, natural: { w: 0, h: 0 } });
+        }
+        if (f.type.startsWith("video/")) {
+          setBakeStatus(`Кодируем видео ${slotLabel} (это может занять до минуты)...`);
+          setBakePct(0);
+          return await cropVideoFile(
+            f,
+            { ...params, natural: { w: 0, h: 0 } },
+            (pct) => setBakePct(pct),
+          );
+        }
+        return f;
+      };
+
+      bakedFeed = await bake(feed, feedViewRef.current, "ленту 4:5");
+      bakedStories = await bake(stories, storiesViewRef.current, "сторис 9:16");
+      setBakeStatus(null);
+      setBakePct(0);
+    } catch (e) {
+      setBakeStatus(null);
+      setBakePct(0);
+      setSubmitting(false);
+      const msg = e instanceof Error ? e.message : "Не удалось обработать креатив";
+      toast.error(`Ошибка обработки креатива: ${msg}`);
+      return;
+    }
+
     const payload = {
       // Root-level fields for n8n Parse Webhook compatibility
       source: "lovable-webhook",
@@ -437,11 +488,11 @@ const CreateCampaignDialog = ({
       pixelEvent: goal === "site-leads" ? pixelEvent : undefined,
       leadFormId: goal === "meta-form" ? leadFormId : undefined,
       creatives: {
-        feed: feed
-          ? { name: feed.name, type: feed.type, size: feed.size }
+        feed: bakedFeed
+          ? { name: bakedFeed.name, type: bakedFeed.type, size: bakedFeed.size, baked: true, ratio: "4:5" }
           : null,
-        stories: stories
-          ? { name: stories.name, type: stories.type, size: stories.size }
+        stories: bakedStories
+          ? { name: bakedStories.name, type: bakedStories.type, size: bakedStories.size, baked: true, ratio: "9:16" }
           : null,
       },
       submittedAt: new Date().toISOString(),
@@ -449,10 +500,9 @@ const CreateCampaignDialog = ({
 
     const fd = new FormData();
     fd.append("payload", JSON.stringify(payload));
-    if (feed) fd.append("creative_feed", feed, feed.name);
-    if (stories) fd.append("creative_stories", stories, stories.name);
+    if (bakedFeed) fd.append("creative_feed", bakedFeed, bakedFeed.name);
+    if (bakedStories) fd.append("creative_stories", bakedStories, bakedStories.name);
 
-    setSubmitting(true);
     try {
       const res = await fetch(WEBHOOK_URL, { method: "POST", body: fd });
       if (!res.ok) throw new Error(`Webhook ${res.status}`);
