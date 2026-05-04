@@ -476,13 +476,22 @@ const CreateStep3 = () => {
             autoCandidates: isAuto ? autoCandidates : null,
           });
 
+          // Если пользователь отредактировал ТЗ — отправляем его, иначе авто.
+          const userEdited =
+            typeof editedBriefs[styleDef.id] === "string" &&
+            (editedBriefs[styleDef.id] as string).trim().length > 0 &&
+            editedBriefs[styleDef.id] !== built.technicalBrief;
+          const finalTechnicalBrief = userEdited
+            ? (editedBriefs[styleDef.id] as string)
+            : built.technicalBrief;
+
           const payload = {
             source: "lovable.content-factory",
             submittedAt: new Date().toISOString(),
             task,
             // Готовый промпт со стилевыми инструкциями + бриф пользователя.
             // В n8n именно это поле передаётся в AI image generator.
-            finalPrompt: built.technicalBrief,
+            finalPrompt: finalTechnicalBrief,
             contentType: contentType
               ? {
                   id: contentType.id,
@@ -523,7 +532,8 @@ const CreateStep3 = () => {
                 // Структурированный бриф стиля (composition, lighting, cameraAngle, ...)
                 brief: built.structured,
                 // Готовый текстовый промпт для AI.
-                technicalBrief: built.technicalBrief,
+                technicalBrief: finalTechnicalBrief,
+                userEdited,
                 // Negative prompt — чего избегать.
                 avoid: built.avoid,
               },
