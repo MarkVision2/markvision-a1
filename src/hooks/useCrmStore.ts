@@ -4,6 +4,7 @@ import type { TablesUpdate, TablesInsert } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type {
   ChatMessage,
   Lead,
@@ -183,6 +184,7 @@ function leadRowToFrontIndexed(
 export function useCrmStore() {
   const { user } = useAuth();
   const { config: whatsapp, setWhatsapp } = useWhatsAppConfig();
+  const { activeId: projectId } = useProjectsStore();
 
   const [stages, setStages] = useState<LeadStage[]>(DEFAULT_STAGES);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -218,12 +220,16 @@ export function useCrmStore() {
   const refetchLeads = useCallback(async () => {
     if (stageIdMap.idToKey.size === 0) return;
     // Bounded fetches — don't drag the whole history of every table on each open.
+    let leadsQuery = supabase
+      .from("leads")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (projectId) {
+      leadsQuery = leadsQuery.or(`project_id.eq.${projectId},project_id.is.null`);
+    }
     const [leadsRes, commRes, evRes, tasksRes, histRes] = await Promise.all([
-      supabase
-        .from("leads")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(500),
+      leadsQuery,
       supabase
         .from("communications")
         .select("id,lead_id,type,direction,channel,content,status,template_key,is_draft,is_auto,created_by,created_at")
@@ -281,7 +287,7 @@ export function useCrmStore() {
     // Communications were fetched DESC for limit; chats expect ASC for chronological render.
     const commsAsc = ((commRes.data ?? []) as CommRow[]).slice().reverse();
     setChats(commsAsc.map(commToChat));
-  }, [stageIdMap.idToKey]);
+  }, [stageIdMap.idToKey, projectId]);
 
   useEffect(() => { void refetchStages(); }, [refetchStages]);
   useEffect(() => { void refetchLeads(); }, [refetchLeads]);
@@ -353,6 +359,7 @@ export function useCrmStore() {
     const { data, error } = await supabase.from("leads").insert({
       pipeline_id: pipelineId,
       stage_id: stageId,
+      project_id: projectId || null,
       name: input.name,
       phone: input.phone,
       email: input.email ?? null,
@@ -374,7 +381,7 @@ export function useCrmStore() {
     if (error || !data) return;
     await refetchLeads();
     return undefined;
-  }, [pipelineId, stageUuid, user?.id, refetchLeads]);
+  }, [pipelineId, stageUuid, user?.id, refetchLeads, projectId]);
 
   const updateLead = useCallback(async (id: string, patch: Partial<Lead>) => {
     const dbPatch: TablesUpdate<"leads"> = {};

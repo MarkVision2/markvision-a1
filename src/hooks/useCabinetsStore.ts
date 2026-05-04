@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type { AdCabinet } from "@/types/ads";
 
 const toCabinet = (r: any): AdCabinet => ({
@@ -121,12 +122,18 @@ const toDbPatch = (patch: Partial<AdCabinet>): Record<string, unknown> => {
 
 export function useCabinetsStore() {
   const { user } = useAuth();
+  const { activeId: projectId } = useProjectsStore();
   const [cabinets, setCabinets] = useState<AdCabinet[]>(() => []);
 
   const refetch = useCallback(async () => {
-    const { data } = await supabase.from("ad_cabinets").select("*").order("created_at", { ascending: false });
+    let q = supabase.from("ad_cabinets").select("*").order("created_at", { ascending: false });
+    if (projectId) {
+      // Show project-scoped cabinets + legacy rows without project_id
+      q = q.or(`project_id.eq.${projectId},project_id.is.null`);
+    }
+    const { data } = await q;
     setCabinets((data ?? []).map(toCabinet));
-  }, []);
+  }, [projectId]);
 
   useEffect(() => { void refetch(); }, [refetch]);
   useRealtimeTable("ad_cabinets", refetch);
@@ -136,10 +143,11 @@ export function useCabinetsStore() {
       ...toDbPatch(c),
       name: c.name,
       created_by: user?.id ?? null,
+      project_id: projectId || null,
     };
     await supabase.from("ad_cabinets").insert(dbRow as any);
     await refetch();
-  }, [user?.id, refetch]);
+  }, [user?.id, refetch, projectId]);
 
   const updateCabinet = useCallback(async (id: string, patch: Partial<AdCabinet>) => {
     await supabase.from("ad_cabinets").update(toDbPatch(patch) as any).eq("id", id);
@@ -167,7 +175,10 @@ export type CampaignDraft = {
   createdAt: string;
 };
 
-export async function saveCampaign(draft: Omit<CampaignDraft, "id" | "createdAt">) {
+export async function saveCampaign(
+  draft: Omit<CampaignDraft, "id" | "createdAt">,
+  projectId?: string | null,
+) {
   const { data, error } = await supabase
     .from("ad_campaigns")
     .insert({
@@ -179,6 +190,7 @@ export async function saveCampaign(draft: Omit<CampaignDraft, "id" | "createdAt"
       pixel_id: draft.pixelId ?? null,
       pixel_event: draft.pixelEvent ?? null,
       lead_form_id: draft.leadFormId ?? null,
+      project_id: projectId ?? null,
     })
     .select()
     .single();

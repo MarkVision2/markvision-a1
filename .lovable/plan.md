@@ -1,99 +1,119 @@
-Проблема не в таблице Lovable Cloud: я проверил запись `KOST MARKETING` — `ad_account_id = act_394987113464047`, токен в Cloud есть (`token_status: SET`, длина 199). Ошибка повторяется потому, что активный n8n workflow всё ещё приходит в `Upload Photo to FB` со старой логикой и пустыми полями.
 
-Что конкретно сейчас не так в активном n8n:
+## Что мы делаем
 
-```text
-Webhook Запуск
-  → Parse Webhook
-  → IF Is IG Boost?
-  → AI Agent Таргетолог
-  → Code in JavaScript2
-  → Parse JSON1
-  → IF Media Type
-  → Upload Photo to FB
+Связываем 4 потока данных с Supabase так, чтобы всё было привязано к проекту (`project_id`) и отображалось на сайте:
+
+1. **Кабинеты (clientConfig)** — форма «Добавить кабинет» сохраняет всё в `ad_cabinets` (это и есть наш «client config»).
+2. **Кампании** — кнопка «Создать кампанию» сохраняет в `ad_campaigns` И отправляет в n8n; n8n через edge-функцию `cabinet-config` вытаскивает все данные кабинета по `ad_account_id` / `cabinet_id` / `project_id`.
+3. **Лиды CRM** — лиды падают в `leads` (через `lead-intake` webhook), привязка к проекту, отображаются на странице CRM.
+4. **Daily data Meta** — `cabinet_daily_insights` ежедневно наполняется через `meta-daily-sync`, отображается на странице рекламы по выбранному месяцу с фильтром по проекту.
+
+---
+
+## Текущее состояние (что уже есть)
+
+- ✅ Таблица `ad_cabinets` (есть `project_id`, но **не заполняется** при создании)
+- ✅ Таблица `ad_campaigns` (нет `project_id`)
+- ✅ Таблица `cabinet_daily_insights` (нет `project_id` — приходит через `cabinet_id`)
+- ✅ Таблица `leads` (нет `project_id`)
+- ✅ Edge-функции: `cabinet-config`, `meta-daily-sync`, `lead-intake`
+- ✅ Все секреты заполнены (META_ACCESS_TOKEN, GREENAPI_*)
+- ❌ Нет привязки к `project_id` нигде → все пользователи видят все данные одной кучей
+- ❌ В UI Ads дневные/месячные цифры в `CabinetRow` не подтягиваются из `cabinet_daily_insights`
+- ❌ Нет cron-расписания для `meta-daily-sync`
+
+---
+
+## План изменений
+
+### 1. Схема БД — добавить `project_id` везде
+
+Миграция:
+- `ad_campaigns` → добавить `project_id uuid` (nullable)
+- `cabinet_daily_insights` → добавить `project_id uuid` (nullable, заполняется автоматом из cabinet)
+- `leads` → добавить `project_id uuid` (nullable)
+- Индексы: `(project_id, date)`, `(project_id, created_at)`
+- RLS остаются как есть (доступ для authenticated), но добавим фильтрацию по project_id в клиентских запросах
+
+### 2. Сохранение `project_id` при создании
+
+- **`AddCabinetDialog`** → `useCabinetsStore.addCabinet`: брать `activeId` из `useProjectsStore` и писать в `project_id`.
+- **`CreateCampaignDialog`** → `saveCampaign`: писать `project_id` активного проекта.
+- **`lead-intake` edge**: принимать `project_id` (или `cabinet_id` → определять project_id) и проставлять в `leads`.
+- **`meta-daily-sync` edge**: при upsert в `cabinet_daily_insights` подтягивать `project_id` из `ad_cabinets` и писать.
+
+### 3. Чтение по активному проекту
+
+- `useCabinetsStore` → фильтровать `.eq('project_id', activeId)` (с fallback на legacy без project_id).
+- `useCrmStore` (страница CRM) → фильтр `project_id`.
+- Дашборд / отчёты → фильтр `project_id`.
+
+### 4. Отображение Meta-статистики на странице Ads
+
+- Создать хук `useCabinetDailyInsights(monthCursor, projectId)` — запрашивает `cabinet_daily_insights` за выбранный месяц.
+- В `CabinetRow` показывать суммы за месяц (spend, leads, CPL, clicks, revenue) из реальных данных вместо моков из `ad_cabinets.spend/leads/...`.
+- Кнопка «Обновить» вызывает `meta-daily-sync` за сегодня + рефетч.
+
+### 5. Автоматический ежедневный sync
+
+- Включить расширения `pg_cron` и `pg_net`.
+- Создать cron job: каждый день в 03:00 UTC дёргать `meta-daily-sync` (за вчера) — через `net.http_post` с anon-ключом.
+
+### 6. n8n флоу запуска кампании
+
+Уже работает: `CreateCampaignDialog` шлёт payload с `clientConfig` в n8n webhook. Дополнительно n8n может звать `cabinet-config?cabinet_id=...` чтобы получить полный конфиг с сервера (надёжнее, чем client payload). В payload добавим `cabinet_id` и `project_id` для удобства n8n.
+
+---
+
+## Технические детали
+
+### Миграция SQL (схема)
+
+```sql
+ALTER TABLE ad_campaigns ADD COLUMN IF NOT EXISTS project_id uuid;
+ALTER TABLE cabinet_daily_insights ADD COLUMN IF NOT EXISTS project_id uuid;
+ALTER TABLE leads ADD COLUMN IF NOT EXISTS project_id uuid;
+
+CREATE INDEX IF NOT EXISTS idx_cdi_project_date ON cabinet_daily_insights (project_id, date);
+CREATE INDEX IF NOT EXISTS idx_leads_project ON leads (project_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_campaigns_project ON ad_campaigns (project_id, created_at DESC);
 ```
 
-В `Upload Photo to FB` сейчас код берёт только:
+### Cron (через insert tool, не миграцию)
 
-```js
-let ACCESS_TOKEN = item.creativeBody?.access_token;
-let AD_ACCOUNT = item.adAccount;
+```sql
+SELECT cron.schedule(
+  'meta-daily-sync-3am',
+  '0 3 * * *',
+  $$ SELECT net.http_post(
+    url := 'https://zaxpweutxzepxzzduvpm.supabase.co/functions/v1/meta-daily-sync',
+    headers := '{"Content-Type":"application/json","apikey":"<ANON>"}'::jsonb,
+    body := '{}'::jsonb
+  ); $$
+);
 ```
 
-И если хотя бы одно из них пустое — падает на строке 40. Fallback тоже слабый: он запускается только если `AD_ACCOUNT` уже есть. Если `adAccount` потерялся до этой ноды, fallback вообще не вызывается.
+### Файлы, которые меняем
 
-Дополнительный риск: вебхук из сайта отправляет `FormData`, где основной JSON лежит в поле `payload`. Текущий `Parse Webhook` читает `input.body || input`, но не гарантированно парсит `body.payload`. Из-за этого часть полей может теряться в production webhook-запуске, даже если на фронте payload правильный.
+- `src/hooks/useCabinetsStore.ts` — фильтр + запись `project_id`
+- `src/hooks/useCrmStore.ts` — фильтр `project_id` при чтении лидов
+- `src/components/ads/CabinetRow.tsx` — подключить хук дневных метрик
+- `src/hooks/useCabinetDailyInsights.ts` — НОВЫЙ хук
+- `src/components/ads/CreateCampaignDialog.tsx` — добавить `cabinet_id`/`project_id` в payload n8n
+- `supabase/functions/meta-daily-sync/index.ts` — писать `project_id`
+- `supabase/functions/lead-intake/index.ts` — принимать/проставлять `project_id`
 
-План исправления:
+### Что НЕ ломаем
+- Старые записи без `project_id` остаются видимыми (фильтр учитывает `OR project_id IS NULL` для legacy).
+- RLS-политики не меняем — только чтение фильтруется на клиенте.
 
-1. Исправить `Parse Webhook` в n8n
-   - Нормально разбирать вход из production webhook:
-     - если пришёл `body.payload` строкой — делать `JSON.parse(body.payload)`;
-     - если пришёл обычный JSON — работать как сейчас;
-     - если пришёл старый формат — оставить совместимость.
-   - Брать `ad_account_id` из всех возможных мест:
-     - `payload.ad_account_id`
-     - `payload.clientConfig.ad_account_id`
-     - `payload.cabinet.adAccountId`
-   - Брать `cabinet_id` из:
-     - `payload.cabinet.id`
-     - `payload.cabinet_id`
-   - Запрашивать конфиг из Lovable Cloud сначала по `cabinet_id`, потом по `ad_account_id`.
-   - В выход `Parse Webhook` обязательно класть:
-     - `clientConfig.fb_token`
-     - `clientConfig.ad_account_id`
-     - `adAccount`
-     - `cabinet_id`
+---
 
-2. Исправить `Parse JSON1`
-   - Не полагаться только на `$('Parse Webhook').first()` и `$('Set Client Config').first()`.
-   - Перед возвратом результата явно добавлять в output:
-     - `clientConfig`
-     - `adAccount`
-     - `access_token`/или `creativeBody.access_token`
-     - `cabinet_id`
-   - Если токена нет, но есть `cabinet_id` или `ad_account_id`, сделать прямой fallback-запрос к `cabinet-config` до формирования `creativeBody`.
+## Результат
 
-3. Исправить `Upload Photo to FB`
-   - Сделать его устойчивым и независимым от предыдущих потерь полей.
-   - Искать токен и кабинет в таком порядке:
-     - `item.creativeBody.access_token`
-     - `item.clientConfig.fb_token`
-     - `$('Parse Webhook').first().json.clientConfig.fb_token`
-     - `$('Set Client Config').first().json.clientConfig.fb_token`
-     - fallback в Lovable Cloud по `cabinet_id`
-     - fallback в Lovable Cloud по `ad_account_id`
-   - Искать ad account в таком порядке:
-     - `item.adAccount`
-     - `item.clientConfig.ad_account_id`
-     - `$('Parse Webhook').first().json.clientConfig.ad_account_id`
-     - `payload.cabinet.adAccountId`
-   - Не удалять `act_` без необходимости. Если нет `act_` — добавить, если есть — оставить.
-   - После нахождения токена принудительно записывать его обратно в `item.creativeBody.access_token`, чтобы следующие Meta-ноды тоже работали.
-
-4. Проверить Lovable Cloud функцию `cabinet-config`
-   - Убедиться, что lookup работает по:
-     - `cabinet_id=01e0b8b1-48f3-4849-94d7-76d375ca221b`
-     - `ad_account_id=act_394987113464047`
-     - `ad_account_id=394987113464047`
-   - В ответе должен быть `config.fb_token` и `config.ad_account_id`.
-
-5. Обновить и опубликовать n8n workflow
-   - Сохранить изменения в workflow `AI-targetolog1`.
-   - Опубликовать активную версию, потому что сейчас active workflow обновлён в `14:23:38`, а ошибка идёт из старого кода `Upload Photo to FB`.
-
-6. Протестировать именно webhook-запуск
-   - Отправить тестовый production webhook с тем же форматом, что сайт:
-
-```text
-FormData:
-  payload = JSON.stringify({...})
-  creative_feed = file
-```
-
-   - Проверить в execution data:
-     - после `Parse Webhook`: `clientConfig.fb_token = SET`, `adAccount = act_...`
-     - после `Parse JSON1`: `creativeBody.access_token = SET`, `adAccount = act_...`
-     - в `Upload Photo to FB`: ошибка `missing ACCESS_TOKEN or AD_ACCOUNT` больше не возникает.
-
-Технически таблицы в Lovable Cloud уже содержат нужные данные. Главная правка нужна в n8n path, чтобы production webhook не терял JSON из `FormData.payload` и чтобы `Upload Photo to FB` мог сам восстановить токен/ad account по `cabinet_id` или `ad_account_id`.
+После применения:
+- Каждый кабинет/кампания/лид/дневная статистика жёстко привязаны к проекту.
+- Переключение проекта в `ProjectSwitcher` показывает только данные этого проекта.
+- На странице Ads в строке кабинета видны реальные расходы/лиды/CPL за выбранный месяц из Meta.
+- Cron каждое утро автоматом подтягивает вчерашние данные по всем кабинетам.
+- n8n получает полный конфиг кабинета по `cabinet_id` и запускает рекламу.

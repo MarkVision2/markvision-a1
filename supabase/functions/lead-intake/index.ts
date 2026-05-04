@@ -50,6 +50,9 @@ const Schema = z.object({
   referrer: z.string().trim().max(500).optional().nullable(),
   landing_url: z.string().trim().max(500).optional().nullable(),
   page: z.string().trim().max(500).optional().nullable(),
+  project_id: z.string().trim().uuid().optional().nullable(),
+  cabinet_id: z.string().trim().uuid().optional().nullable(),
+  ad_account_id: z.string().trim().max(80).optional().nullable(),
 });
 
 async function parseBody(req: Request): Promise<Record<string, unknown>> {
@@ -199,6 +202,24 @@ Deno.serve(async (req) => {
   const note = [v.message, v.note].filter(Boolean).join("\n").trim() || null;
   const landingUrl = v.landing_url || v.page || null;
 
+  // Resolve project_id: explicit > via cabinet_id > via ad_account_id
+  let projectId: string | null = v.project_id || null;
+  if (!projectId && v.cabinet_id) {
+    const { data } = await admin.from("ad_cabinets").select("project_id").eq("id", v.cabinet_id).maybeSingle();
+    projectId = data?.project_id ?? null;
+  }
+  if (!projectId && v.ad_account_id) {
+    const raw = v.ad_account_id.trim();
+    const norm = raw.startsWith("act_") ? raw : `act_${raw}`;
+    const numeric = raw.replace(/^act_/, "");
+    const { data } = await admin
+      .from("ad_cabinets")
+      .select("project_id")
+      .in("ad_account_id", [raw, norm, numeric])
+      .limit(1);
+    projectId = data?.[0]?.project_id ?? null;
+  }
+
   try {
     // Dedupe by phone
     const existingId = await findExistingLeadByPhone(phoneE164);
@@ -243,6 +264,7 @@ Deno.serve(async (req) => {
       .insert({
         pipeline_id: def.pipeline_id,
         stage_id: def.stage_id,
+        project_id: projectId,
         name,
         phone: phoneE164,
         email: v.email || null,
