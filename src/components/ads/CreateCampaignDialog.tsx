@@ -24,6 +24,20 @@ import type { AdCabinet } from "@/types/ads";
 import { saveCampaign } from "@/hooks/useCabinetsStore";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import GoalAssetsPicker from "./GoalAssetsPicker";
+import { cropImageFile, cropVideoFile, type Fit } from "@/lib/cropMedia";
+
+/**
+ * View-state, который ребёнок-CreativeUpload отдаёт наверх при каждом изменении.
+ * Нужен, чтобы при сабмите «запечь» точно то, что видит пользователь.
+ */
+export interface CreativeViewState {
+  ratio: "4:5" | "9:16";
+  fit: Fit;
+  zoom: number;
+  pos: { x: number; y: number };
+  /** Размер фрейма превью в css-пикселях. */
+  frame: { w: number; h: number };
+}
 
 interface CreateCampaignDialogProps {
   open: boolean;
@@ -44,11 +58,13 @@ const CreativeUpload = ({
   ratio,
   file,
   onFile,
+  onView,
 }: {
   label: string;
   ratio: "4:5" | "9:16";
   file: File | null;
   onFile: (f: File | null) => void;
+  onView?: (s: CreativeViewState) => void;
 }) => {
   const ref = useRef<HTMLInputElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -56,6 +72,7 @@ const CreativeUpload = ({
   const [fit, setFit] = useState<"contain" | "cover">("contain");
   const [zoom, setZoom] = useState(1);
   const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [frameSize, setFrameSize] = useState({ w: 0, h: 0 });
   const dragRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null);
 
   const storageKey = file
@@ -108,6 +125,26 @@ const CreativeUpload = ({
       /* ignore quota */
     }
   }, [storageKey, fit, zoom, pos]);
+
+  // Меряем фрейм превью — нужно, чтобы пересчитать pos/zoom в координаты исходника.
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    const update = () => {
+      const r = el.getBoundingClientRect();
+      setFrameSize({ w: r.width, h: r.height });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [previewUrl]);
+
+  // Прокидываем view-state наверх на каждое изменение.
+  useEffect(() => {
+    if (!onView) return;
+    onView({ ratio, fit, zoom, pos, frame: frameSize });
+  }, [ratio, fit, zoom, pos, frameSize, onView]);
 
   const isVideo = file?.type.startsWith("video/");
   const isImage = file?.type.startsWith("image/");
