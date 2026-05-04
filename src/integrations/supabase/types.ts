@@ -1044,6 +1044,63 @@ export type Database = {
         }
         Relationships: []
       }
+      project_briefs: {
+        Row: {
+          ai_cta: string | null
+          ai_headline: string | null
+          ai_primary_text: string | null
+          ai_variants: Json
+          audience: string | null
+          brief_md: string | null
+          created_at: string
+          created_by: string | null
+          geo: string | null
+          monthly_budget: number | null
+          niche: string | null
+          product: string | null
+          project_id: string
+          tone: string | null
+          updated_at: string
+          usp: string | null
+        }
+        Insert: {
+          ai_cta?: string | null
+          ai_headline?: string | null
+          ai_primary_text?: string | null
+          ai_variants?: Json
+          audience?: string | null
+          brief_md?: string | null
+          created_at?: string
+          created_by?: string | null
+          geo?: string | null
+          monthly_budget?: number | null
+          niche?: string | null
+          product?: string | null
+          project_id: string
+          tone?: string | null
+          updated_at?: string
+          usp?: string | null
+        }
+        Update: {
+          ai_cta?: string | null
+          ai_headline?: string | null
+          ai_primary_text?: string | null
+          ai_variants?: Json
+          audience?: string | null
+          brief_md?: string | null
+          created_at?: string
+          created_by?: string | null
+          geo?: string | null
+          monthly_budget?: number | null
+          niche?: string | null
+          product?: string | null
+          project_id?: string
+          tone?: string | null
+          updated_at?: string
+          usp?: string | null
+        }
+        Relationships: []
+      }
       projects: {
         Row: {
           created_at: string

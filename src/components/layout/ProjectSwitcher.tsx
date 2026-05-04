@@ -1,29 +1,18 @@
 import { useState } from "react";
 import { Check, ChevronsUpDown, Plus, Trash2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { cn } from "@/lib/utils";
+import { ProjectOnboardingDialog } from "@/components/projects/ProjectOnboardingDialog";
 
 interface Props {
   collapsed: boolean;
 }
 
 export function ProjectSwitcher({ collapsed }: Props) {
-  const { projects, active, activeId, setActive, addProject, removeProject } = useProjectsStore();
+  const { projects, active, activeId, setActive, removeProject } = useProjectsStore();
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [domain, setDomain] = useState("");
-
-  const handleCreate = () => {
-    if (!name.trim()) return;
-    addProject(name, domain);
-    setName(""); setDomain(""); setCreateOpen(false); setOpen(false);
-  };
 
   return (
     <>
@@ -89,7 +78,7 @@ export function ProjectSwitcher({ collapsed }: Props) {
           <div className="mt-2 border-t border-border/60 pt-2">
             <button
               type="button"
-              onClick={() => setCreateOpen(true)}
+              onClick={() => { setCreateOpen(true); setOpen(false); }}
               className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-success hover:bg-success/10"
             >
               <Plus className="h-4 w-4" />
@@ -99,27 +88,7 @@ export function ProjectSwitcher({ collapsed }: Props) {
         </PopoverContent>
       </Popover>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Новый проект</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="project-name">Название</Label>
-              <Input id="project-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="example.kz" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="project-domain">Подпись (опционально)</Label>
-              <Input id="project-domain" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="Описание проекта" />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setCreateOpen(false)}>Отмена</Button>
-            <Button onClick={handleCreate} disabled={!name.trim()}>Создать</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ProjectOnboardingDialog open={createOpen} onOpenChange={setCreateOpen} />
     </>
   );
 }
