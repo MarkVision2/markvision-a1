@@ -24,7 +24,7 @@ import type { AdCabinet } from "@/types/ads";
 import { saveCampaign } from "@/hooks/useCabinetsStore";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import GoalAssetsPicker from "./GoalAssetsPicker";
-import { cropImageFile, cropVideoFile, type Fit } from "@/lib/cropMedia";
+import { cropImageFile, computeSourceRect, type Fit } from "@/lib/cropMedia";
 
 /**
  * View-state, который ребёнок-CreativeUpload отдаёт наверх при каждом изменении.
