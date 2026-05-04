@@ -165,6 +165,20 @@ export function useCabinetsStore() {
   return { cabinets, addCabinet, updateCabinet, removeCabinet };
 }
 
+/**
+ * Кабинеты, которые попадают во все аналитические разделы проекта
+ * (Дашборд, Сквозная аналитика, Таблица показателей, Отчётность, CRM).
+ * Агентские кабинеты исключаются — они видны только в списке /ads.
+ */
+export function usePersonalCabinets() {
+  const { cabinets, ...rest } = useCabinetsStore();
+  const personal = useMemo(
+    () => cabinets.filter((c) => c.type === "Личный"),
+    [cabinets],
+  );
+  return { cabinets: personal, ...rest };
+}
+
 export type CampaignDraft = {
   id: string;
   cabinetId: string;
