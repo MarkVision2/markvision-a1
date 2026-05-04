@@ -184,6 +184,7 @@ function leadRowToFrontIndexed(
 export function useCrmStore() {
   const { user } = useAuth();
   const { config: whatsapp, setWhatsapp } = useWhatsAppConfig();
+  const { activeId: projectId } = useProjectsStore();
 
   const [stages, setStages] = useState<LeadStage[]>(DEFAULT_STAGES);
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -219,12 +220,16 @@ export function useCrmStore() {
   const refetchLeads = useCallback(async () => {
     if (stageIdMap.idToKey.size === 0) return;
     // Bounded fetches — don't drag the whole history of every table on each open.
+    let leadsQuery = supabase
+      .from("leads")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(500);
+    if (projectId) {
+      leadsQuery = leadsQuery.or(`project_id.eq.${projectId},project_id.is.null`);
+    }
     const [leadsRes, commRes, evRes, tasksRes, histRes] = await Promise.all([
-      supabase
-        .from("leads")
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(500),
+      leadsQuery,
       supabase
         .from("communications")
         .select("id,lead_id,type,direction,channel,content,status,template_key,is_draft,is_auto,created_by,created_at")
