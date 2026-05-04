@@ -10,7 +10,7 @@ interface Props {
 }
 
 export function ProjectSwitcher({ collapsed }: Props) {
-  const { projects, active, activeId, setActive, addProject, removeProject } = useProjectsStore();
+  const { projects, active, activeId, setActive, removeProject } = useProjectsStore();
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 
