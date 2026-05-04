@@ -432,6 +432,9 @@ export type Database = {
           cpc: number
           cpl: number
           cpm: number
+          crm_diagnostics: number
+          crm_revenue: number
+          crm_sales: number
           ctr: number
           currency: string
           date: string
@@ -439,6 +442,7 @@ export type Database = {
           id: string
           impressions: number
           leads: number
+          manual_diagnostics: number
           project_id: string | null
           revenue: number
           spend: number
@@ -450,6 +454,9 @@ export type Database = {
           cpc?: number
           cpl?: number
           cpm?: number
+          crm_diagnostics?: number
+          crm_revenue?: number
+          crm_sales?: number
           ctr?: number
           currency?: string
           date: string
@@ -457,6 +464,7 @@ export type Database = {
           id?: string
           impressions?: number
           leads?: number
+          manual_diagnostics?: number
           project_id?: string | null
           revenue?: number
           spend?: number
@@ -468,6 +476,9 @@ export type Database = {
           cpc?: number
           cpl?: number
           cpm?: number
+          crm_diagnostics?: number
+          crm_revenue?: number
+          crm_sales?: number
           ctr?: number
           currency?: string
           date?: string
@@ -475,6 +486,7 @@ export type Database = {
           id?: string
           impressions?: number
           leads?: number
+          manual_diagnostics?: number
           project_id?: string | null
           revenue?: number
           spend?: number
@@ -743,6 +755,7 @@ export type Database = {
           ai_score: number
           amount: number
           assigned_to: string | null
+          cabinet_id: string | null
           campaign: string | null
           channel: Database["public"]["Enums"]["lead_channel"] | null
           city: string | null
@@ -782,6 +795,7 @@ export type Database = {
           ai_score?: number
           amount?: number
           assigned_to?: string | null
+          cabinet_id?: string | null
           campaign?: string | null
           channel?: Database["public"]["Enums"]["lead_channel"] | null
           city?: string | null
@@ -821,6 +835,7 @@ export type Database = {
           ai_score?: number
           amount?: number
           assigned_to?: string | null
+          cabinet_id?: string | null
           campaign?: string | null
           channel?: Database["public"]["Enums"]["lead_channel"] | null
           city?: string | null
@@ -943,6 +958,7 @@ export type Database = {
           created_at: string
           icon: string
           id: string
+          is_diagnostic: boolean
           is_terminal: boolean
           key: string
           order_index: number
@@ -955,6 +971,7 @@ export type Database = {
           created_at?: string
           icon?: string
           id?: string
+          is_diagnostic?: boolean
           is_terminal?: boolean
           key: string
           order_index: number
@@ -967,6 +984,7 @@ export type Database = {
           created_at?: string
           icon?: string
           id?: string
+          is_diagnostic?: boolean
           is_terminal?: boolean
           key?: string
           order_index?: number
@@ -1379,6 +1397,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      ensure_cdi_row: {
+        Args: { _cabinet_id: string; _date: string }
+        Returns: undefined
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
