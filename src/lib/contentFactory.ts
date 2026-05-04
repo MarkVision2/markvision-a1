@@ -8,7 +8,7 @@
  * `webhook/...` (without the `-test` suffix).
  */
 export const N8N_CONTENT_WEBHOOK =
-  "https://n8n.srv1602169.hstgr.cloud/webhook-test/581d3819-a0c2-43b3-8c89-e3efe65b15bd-neuro-test";
+  "https://n8n.zapoinov.com/webhook/clony-yurii";
 
 /** Hard timeout for a single style generation request (ms). */
 export const N8N_TIMEOUT_MS = 120_000;

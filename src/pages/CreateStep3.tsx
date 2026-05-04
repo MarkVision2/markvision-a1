@@ -312,6 +312,8 @@ const CreateStep3 = () => {
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<GeneratedVariant[] | null>(null);
+  // Отредактированные пользователем ТЗ (по styleId). Если пусто — используется авто-бриф.
+  const [editedBriefs, setEditedBriefs] = useState<Partial<Record<StyleId, string>>>({});
 
   const toggleStyle = (id: StyleId) => {
     setSelectedStyles((prev) => {
@@ -474,13 +476,22 @@ const CreateStep3 = () => {
             autoCandidates: isAuto ? autoCandidates : null,
           });
 
+          // Если пользователь отредактировал ТЗ — отправляем его, иначе авто.
+          const userEdited =
+            typeof editedBriefs[styleDef.id] === "string" &&
+            (editedBriefs[styleDef.id] as string).trim().length > 0 &&
+            editedBriefs[styleDef.id] !== built.technicalBrief;
+          const finalTechnicalBrief = userEdited
+            ? (editedBriefs[styleDef.id] as string)
+            : built.technicalBrief;
+
           const payload = {
             source: "lovable.content-factory",
             submittedAt: new Date().toISOString(),
             task,
             // Готовый промпт со стилевыми инструкциями + бриф пользователя.
             // В n8n именно это поле передаётся в AI image generator.
-            finalPrompt: built.technicalBrief,
+            finalPrompt: finalTechnicalBrief,
             contentType: contentType
               ? {
                   id: contentType.id,
@@ -521,7 +532,8 @@ const CreateStep3 = () => {
                 // Структурированный бриф стиля (composition, lighting, cameraAngle, ...)
                 brief: built.structured,
                 // Готовый текстовый промпт для AI.
-                technicalBrief: built.technicalBrief,
+                technicalBrief: finalTechnicalBrief,
+                userEdited,
                 // Negative prompt — чего избегать.
                 avoid: built.avoid,
               },
@@ -826,9 +838,7 @@ const CreateStep3 = () => {
             ) : (
               <Send className="h-4 w-4" />
             )}
-            {submitting
-              ? "Запускаем..."
-              : `Создать ${selectedStyles.length} ${selectedStyles.length === 1 ? "вариант" : "варианта"}`}
+            {submitting ? "Создаём дизайн…" : "Создать дизайн"}
           </Button>
         </div>
 
@@ -885,6 +895,13 @@ const CreateStep3 = () => {
                 angles: anglesPayload,
                 autoCandidates: isAuto ? autoCandidates : null,
               });
+              const currentValue =
+                typeof editedBriefs[sid] === "string"
+                  ? (editedBriefs[sid] as string)
+                  : built.technicalBrief;
+              const isEdited =
+                typeof editedBriefs[sid] === "string" &&
+                editedBriefs[sid] !== built.technicalBrief;
               return (
                 <div
                   key={sid}
@@ -896,17 +913,40 @@ const CreateStep3 = () => {
                         <Icon className="h-4 w-4" />
                       </span>
                       <div className="text-sm font-semibold">{styleDef.label}</div>
+                      {isEdited && (
+                        <span className="rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
+                          Отредактировано
+                        </span>
+                      )}
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        navigator.clipboard.writeText(built.technicalBrief);
-                        toast.success("ТЗ скопировано");
-                      }}
-                      className="text-xs text-primary hover:underline"
-                    >
-                      Копировать
-                    </button>
+                    <div className="flex items-center gap-3 text-xs">
+                      {isEdited && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditedBriefs((prev) => {
+                              const next = { ...prev };
+                              delete next[sid];
+                              return next;
+                            });
+                            toast.success("ТЗ сброшено к авто");
+                          }}
+                          className="text-muted-foreground hover:text-foreground hover:underline"
+                        >
+                          Сбросить
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          navigator.clipboard.writeText(currentValue);
+                          toast.success("ТЗ скопировано");
+                        }}
+                        className="text-primary hover:underline"
+                      >
+                        Копировать
+                      </button>
+                    </div>
                   </div>
                   <div className="grid grid-cols-1 gap-2 px-5 py-4 text-xs sm:grid-cols-2">
                     <div>
@@ -930,9 +970,23 @@ const CreateStep3 = () => {
                       <span className="text-foreground">{built.structured.typography}</span>
                     </div>
                   </div>
-                  <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words border-t border-border bg-background/40 px-5 py-4 text-xs leading-relaxed text-foreground/90">
-                    {built.technicalBrief}
-                  </pre>
+                  <div className="border-t border-border bg-background/40 px-5 py-4">
+                    <label className="mb-2 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Финальный промпт (можно редактировать)
+                    </label>
+                    <textarea
+                      value={currentValue}
+                      onChange={(e) =>
+                        setEditedBriefs((prev) => ({ ...prev, [sid]: e.target.value }))
+                      }
+                      rows={10}
+                      spellCheck={false}
+                      className="w-full resize-y rounded-xl border border-border bg-background px-4 py-3 font-mono text-xs leading-relaxed text-foreground/90 outline-none transition-colors focus:border-primary/60"
+                    />
+                    <div className="mt-2 text-[11px] text-muted-foreground">
+                      Этот текст уйдёт в AI-генератор как финальный промпт.
+                    </div>
+                  </div>
                 </div>
               );
             })}
