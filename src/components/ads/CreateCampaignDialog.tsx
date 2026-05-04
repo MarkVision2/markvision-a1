@@ -572,8 +572,20 @@ const CreateCampaignDialog = ({
           Креативы
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <CreativeUpload label="Лента (4:5)" ratio="4:5" file={feed} onFile={setFeed} />
-          <CreativeUpload label="Stories (9:16)" ratio="9:16" file={stories} onFile={setStories} />
+          <CreativeUpload
+            label="Лента (4:5)"
+            ratio="4:5"
+            file={feed}
+            onFile={setFeed}
+            onView={(s) => { feedViewRef.current = s; }}
+          />
+          <CreativeUpload
+            label="Stories (9:16)"
+            ratio="9:16"
+            file={stories}
+            onFile={setStories}
+            onView={(s) => { storiesViewRef.current = s; }}
+          />
         </div>
 
         <div className="space-y-2">
