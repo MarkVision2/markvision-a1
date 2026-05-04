@@ -1,90 +1,72 @@
+## Что я нашёл (важно прочитать)
 
-## Что мы делаем
+1. **Проектов в БД нет ни одного.** Таблица `projects` пустая. То есть `useProjectsStore.activeId` всегда пуст, и привязки «по проекту» физически не существует — даже если код фильтрует по `project_id`, он фильтрует по `null`.
+2. **Кабинет «KOST MARKETING»** (`act_394987113464047`) создан с `project_id = NULL`.
+3. **Таблица `cabinet_daily_insights` пуста** — `meta-daily-sync` ни разу не отрабатывал по этому кабинету.
+4. **Дашборд / Сквозная аналитика / Reports** сейчас НЕ читают `cabinet_daily_insights` (только `useMetaInsights` дёргает её разово). То есть даже если данные зальются — на дашборде они не появятся, пока не подключим источник.
+5. Cron сейчас стоит на **03:00 UTC**, а пользователь просит **01:00**.
 
-Связываем 4 потока данных с Supabase так, чтобы всё было привязано к проекту (`project_id`) и отображалось на сайте:
-
-1. **Кабинеты (clientConfig)** — форма «Добавить кабинет» сохраняет всё в `ad_cabinets` (это и есть наш «client config»).
-2. **Кампании** — кнопка «Создать кампанию» сохраняет в `ad_campaigns` И отправляет в n8n; n8n через edge-функцию `cabinet-config` вытаскивает все данные кабинета по `ad_account_id` / `cabinet_id` / `project_id`.
-3. **Лиды CRM** — лиды падают в `leads` (через `lead-intake` webhook), привязка к проекту, отображаются на странице CRM.
-4. **Daily data Meta** — `cabinet_daily_insights` ежедневно наполняется через `meta-daily-sync`, отображается на странице рекламы по выбранному месяцу с фильтром по проекту.
-
----
-
-## Текущее состояние (что уже есть)
-
-- ✅ Таблица `ad_cabinets` (есть `project_id`, но **не заполняется** при создании)
-- ✅ Таблица `ad_campaigns` (нет `project_id`)
-- ✅ Таблица `cabinet_daily_insights` (нет `project_id` — приходит через `cabinet_id`)
-- ✅ Таблица `leads` (нет `project_id`)
-- ✅ Edge-функции: `cabinet-config`, `meta-daily-sync`, `lead-intake`
-- ✅ Все секреты заполнены (META_ACCESS_TOKEN, GREENAPI_*)
-- ❌ Нет привязки к `project_id` нигде → все пользователи видят все данные одной кучей
-- ❌ В UI Ads дневные/месячные цифры в `CabinetRow` не подтягиваются из `cabinet_daily_insights`
-- ❌ Нет cron-расписания для `meta-daily-sync`
+Поэтому одних «залить данные» недостаточно — нужно сначала навести порядок с проектом и подключить отображение.
 
 ---
 
-## План изменений
+## План
 
-### 1. Схема БД — добавить `project_id` везде
+### Шаг 1. Создать проект «KOST MARKETING» и привязать к нему кабинет
+- Вставить запись в `projects` (name = «KOST MARKETING», `is_primary = true`, `created_by` = текущий пользователь).
+- Поставить его активным в `user_active_project` для пользователя.
+- Сделать `UPDATE ad_cabinets SET project_id = <new_project_id> WHERE id = 'b4d60ec5...'`.
 
-Миграция:
-- `ad_campaigns` → добавить `project_id uuid` (nullable)
-- `cabinet_daily_insights` → добавить `project_id uuid` (nullable, заполняется автоматом из cabinet)
-- `leads` → добавить `project_id uuid` (nullable)
-- Индексы: `(project_id, date)`, `(project_id, created_at)`
-- RLS остаются как есть (доступ для authenticated), но добавим фильтрацию по project_id в клиентских запросах
+### Шаг 2. Бэкфилл Meta-статистики с 2026-05-01 по вчера
+- Доработать `meta-daily-sync` так, чтобы принимал параметры `since` и `until` (диапазон дат) и `cabinet_id` (опционально — синк только по одному кабинету). Сейчас он умеет только одну дату.
+- Внутри: для каждой даты диапазона делать запрос `time_increment=1` (Meta вернёт массив по дням за один вызов) и upsert по `(external_id, date)` с `project_id` из кабинета.
+- Один раз вручную дёрнуть функцию: `since=2026-05-01`, `until=вчера`, `cabinet_id=b4d60ec5...`. Данные лягут в `cabinet_daily_insights` с `project_id` проекта.
 
-### 2. Сохранение `project_id` при создании
+### Шаг 3. Поправить cron на 01:00 (а не 03:00)
+- `cron.unschedule('meta-daily-sync-3am')`.
+- `cron.schedule('meta-daily-sync-1am', '0 1 * * *', …)` — каждый день в 01:00 UTC дёргать `meta-daily-sync` без параметров (= синк за вчера по всем кабинетам).
+- Функция уже ставит `project_id` из кабинета, так что данные сразу разделены по проектам.
 
-- **`AddCabinetDialog`** → `useCabinetsStore.addCabinet`: брать `activeId` из `useProjectsStore` и писать в `project_id`.
-- **`CreateCampaignDialog`** → `saveCampaign`: писать `project_id` активного проекта.
-- **`lead-intake` edge**: принимать `project_id` (или `cabinet_id` → определять project_id) и проставлять в `leads`.
-- **`meta-daily-sync` edge**: при upsert в `cabinet_daily_insights` подтягивать `project_id` из `ad_cabinets` и писать.
+### Шаг 4. Подключить отображение Meta-данных по проекту
+Сейчас Dashboard / Метрики / Analytics показывают моки или агрегаты не из `cabinet_daily_insights`. Делаю единый хук-источник и перевожу страницы на него:
 
-### 3. Чтение по активному проекту
+- **Новый хук `useProjectDailyInsights(projectId, dateFrom, dateTo)`** — читает `cabinet_daily_insights` фильтром `project_id = activeId AND date BETWEEN …` и агрегирует: spend, leads, clicks, impressions, revenue, CPL, CPM, CPC, CTR.
+- **`Dashboard.tsx`** — KPI-карточки (расход, лиды, CPL, выручка) + график «Расход/Выручка» питать из этого хука по выбранному периоду; фильтр по `activeId` из `useProjectsStore`.
+- **`Metrics.tsx` (сквозная аналитика)** — таблица показателей по дням берёт строки `cabinet_daily_insights` за период и активный проект.
+- **`Reports`/MarketingPage** — суммы за период из того же источника.
+- **`CabinetRow.tsx`** на странице Ads — вместо моков из `ad_cabinets.spend/leads` показывать сумму за выбранный месяц из `cabinet_daily_insights` для этого `cabinet_id`. Кнопка «Обновить» вызывает `meta-daily-sync` за сегодня по этому кабинету и рефетчит.
 
-- `useCabinetsStore` → фильтровать `.eq('project_id', activeId)` (с fallback на legacy без project_id).
-- `useCrmStore` (страница CRM) → фильтр `project_id`.
-- Дашборд / отчёты → фильтр `project_id`.
-
-### 4. Отображение Meta-статистики на странице Ads
-
-- Создать хук `useCabinetDailyInsights(monthCursor, projectId)` — запрашивает `cabinet_daily_insights` за выбранный месяц.
-- В `CabinetRow` показывать суммы за месяц (spend, leads, CPL, clicks, revenue) из реальных данных вместо моков из `ad_cabinets.spend/leads/...`.
-- Кнопка «Обновить» вызывает `meta-daily-sync` за сегодня + рефетч.
-
-### 5. Автоматический ежедневный sync
-
-- Включить расширения `pg_cron` и `pg_net`.
-- Создать cron job: каждый день в 03:00 UTC дёргать `meta-daily-sync` (за вчера) — через `net.http_post` с anon-ключом.
-
-### 6. n8n флоу запуска кампании
-
-Уже работает: `CreateCampaignDialog` шлёт payload с `clientConfig` в n8n webhook. Дополнительно n8n может звать `cabinet-config?cabinet_id=...` чтобы получить полный конфиг с сервера (надёжнее, чем client payload). В payload добавим `cabinet_id` и `project_id` для удобства n8n.
+### Шаг 5. Гарантировать, что новые кабинеты всегда привязываются к активному проекту
+- В `AddCabinetDialog` / `useCabinetsStore.addCabinet` блокировать создание, если `activeId` пуст (показать тост «Сначала создайте проект»). Это уберёт повторение текущей ситуации.
 
 ---
 
 ## Технические детали
 
-### Миграция SQL (схема)
-
+### SQL (через insert-tool, не миграция)
 ```sql
-ALTER TABLE ad_campaigns ADD COLUMN IF NOT EXISTS project_id uuid;
-ALTER TABLE cabinet_daily_insights ADD COLUMN IF NOT EXISTS project_id uuid;
-ALTER TABLE leads ADD COLUMN IF NOT EXISTS project_id uuid;
+-- 1. Создать проект и привязать кабинет (ID пользователя возьму из auth.users по email)
+WITH u AS (SELECT id FROM auth.users WHERE email = 'zapoinov@bk.ru' LIMIT 1),
+     p AS (
+       INSERT INTO projects (name, initials, is_primary, created_by)
+       SELECT 'KOST MARKETING', 'KM', true, u.id FROM u
+       RETURNING id
+     )
+INSERT INTO user_active_project (user_id, project_id)
+SELECT u.id, p.id FROM u, p
+ON CONFLICT (user_id) DO UPDATE SET project_id = EXCLUDED.project_id;
 
-CREATE INDEX IF NOT EXISTS idx_cdi_project_date ON cabinet_daily_insights (project_id, date);
-CREATE INDEX IF NOT EXISTS idx_leads_project ON leads (project_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_campaigns_project ON ad_campaigns (project_id, created_at DESC);
+UPDATE ad_cabinets
+SET project_id = (SELECT id FROM projects WHERE name = 'KOST MARKETING')
+WHERE id = 'b4d60ec5-92e9-401e-95da-d7c3a1002321';
 ```
 
-### Cron (через insert tool, не миграцию)
-
+### Cron (через insert-tool)
 ```sql
+SELECT cron.unschedule('meta-daily-sync-3am');
 SELECT cron.schedule(
-  'meta-daily-sync-3am',
-  '0 3 * * *',
+  'meta-daily-sync-1am',
+  '0 1 * * *',
   $$ SELECT net.http_post(
     url := 'https://zaxpweutxzepxzzduvpm.supabase.co/functions/v1/meta-daily-sync',
     headers := '{"Content-Type":"application/json","apikey":"<ANON>"}'::jsonb,
@@ -93,27 +75,30 @@ SELECT cron.schedule(
 );
 ```
 
-### Файлы, которые меняем
+### Бэкфилл (один curl edge-функции после доработки)
+```
+POST /functions/v1/meta-daily-sync
+{ "since": "2026-05-01", "until": "<вчера>", "cabinet_id": "b4d60ec5-92e9-401e-95da-d7c3a1002321" }
+```
 
-- `src/hooks/useCabinetsStore.ts` — фильтр + запись `project_id`
-- `src/hooks/useCrmStore.ts` — фильтр `project_id` при чтении лидов
-- `src/components/ads/CabinetRow.tsx` — подключить хук дневных метрик
-- `src/hooks/useCabinetDailyInsights.ts` — НОВЫЙ хук
-- `src/components/ads/CreateCampaignDialog.tsx` — добавить `cabinet_id`/`project_id` в payload n8n
-- `supabase/functions/meta-daily-sync/index.ts` — писать `project_id`
-- `supabase/functions/lead-intake/index.ts` — принимать/проставлять `project_id`
+### Файлы
+- `supabase/functions/meta-daily-sync/index.ts` — поддержка `since/until/cabinet_id`, time_increment по диапазону.
+- `src/hooks/useProjectDailyInsights.ts` — НОВЫЙ.
+- `src/hooks/useDashboardData.ts`, `src/pages/Dashboard.tsx` — источник = новый хук.
+- `src/pages/Metrics.tsx` — таблица показателей из новых данных.
+- `src/components/reports/MarketingPage.tsx` — суммы из новых данных.
+- `src/components/ads/CabinetRow.tsx` — реальные цифры за месяц.
+- `src/hooks/useCabinetsStore.ts` / `src/components/ads/AddCabinetDialog.tsx` — запрет создания кабинета без активного проекта.
 
 ### Что НЕ ломаем
-- Старые записи без `project_id` остаются видимыми (фильтр учитывает `OR project_id IS NULL` для legacy).
-- RLS-политики не меняем — только чтение фильтруется на клиенте.
+- RLS не трогаем — все таблицы уже доступны authenticated.
+- Старые поля `ad_cabinets.spend/leads/...` оставляем — они больше не источник правды, но не удаляем, чтобы не ломать формы.
 
 ---
 
 ## Результат
-
-После применения:
-- Каждый кабинет/кампания/лид/дневная статистика жёстко привязаны к проекту.
-- Переключение проекта в `ProjectSwitcher` показывает только данные этого проекта.
-- На странице Ads в строке кабинета видны реальные расходы/лиды/CPL за выбранный месяц из Meta.
-- Cron каждое утро автоматом подтягивает вчерашние данные по всем кабинетам.
-- n8n получает полный конфиг кабинета по `cabinet_id` и запускает рекламу.
+- Проект «KOST MARKETING» появляется в свитчере, кабинет привязан к нему.
+- Meta-данные с 1 мая 2026 по вчера лежат в `cabinet_daily_insights` с правильным `project_id`.
+- Каждую ночь в **01:00 UTC** cron автоматически тянет вчерашний день по всем кабинетам, раскладывая по проектам.
+- На странице Ads, в Dashboard, в Метриках (сквозная аналитика) и в Reports видны реальные расходы/лиды/клики/CPL/CPM по активному проекту за выбранный период.
+- Новые кабинеты нельзя создать без активного проекта — путаница «всё в одной куче» больше не повторится.

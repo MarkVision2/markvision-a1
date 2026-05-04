@@ -139,11 +139,14 @@ export function useCabinetsStore() {
   useRealtimeTable("ad_cabinets", refetch);
 
   const addCabinet = useCallback(async (c: AdCabinet) => {
+    if (!projectId) {
+      throw new Error("Сначала создайте проект и сделайте его активным");
+    }
     const dbRow = {
       ...toDbPatch(c),
       name: c.name,
       created_by: user?.id ?? null,
-      project_id: projectId || null,
+      project_id: projectId,
     };
     await supabase.from("ad_cabinets").insert(dbRow as any);
     await refetch();
