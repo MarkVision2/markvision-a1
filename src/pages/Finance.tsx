@@ -329,8 +329,8 @@ const Finance = () => {
               </div>
               <Row label="Количество лидов" value={fmt(calc.leads)} />
               <Row label="Стоимость лида (CPL)" value={fmtT(cpl)} />
-              <Row label="Количество визитов / диагностик" value={fmt(calc.visits)} />
-              <Row label="Стоимость визита (CPV)" value={fmtT(cpv)} />
+              <Row label="Количество диагностик" value={fmt(calc.visits)} />
+              <Row label="Стоимость диагностики (CPD)" value={fmtT(cpv)} />
               <Row label="Количество продаж" value={fmt(calc.sales)} />
               <Row label="Стоимость продажи / клиента (CAC)" value={fmtT(cac)} />
 
@@ -347,7 +347,7 @@ const Finance = () => {
             <Kpi icon={Wallet} label="Расходы" value={fmtT(calc.spend)} sub={`${fmt(calc.leads)} лидов × ${fmtT(cpl)}`} />
             <Kpi icon={UserPlus} label="Лиды" value={fmt(calc.leads)} sub={`CR ${crLeadVisit}% → визит`} />
             <Kpi icon={DollarSign} label="CPL" value={fmtT(cpl)} sub="Стоимость лида" />
-            <Kpi icon={Users} label="Визиты" value={fmt(calc.visits)} sub={`CR ${crVisitSale}% → продажа`} />
+            <Kpi icon={Users} label="Диагностики" value={fmt(calc.visits)} sub={`CR ${crVisitSale}% → продажа`} />
             <Kpi icon={Target} label="Оплаты" value={fmt(calc.sales)} sub="Стоимость CAC" />
             <Kpi icon={TrendingUp} label="Выручка" value={fmtT(calc.revenue)} sub="Прогноз по чеку" highlight />
           </div>
@@ -360,7 +360,7 @@ const Finance = () => {
             </div>
             <p className="mt-2 text-xs text-muted-foreground">
               План будет сохранён: Расходы {fmtT(calc.spend)} · Лиды {fmt(calc.leads)} ·
-              CPL {fmtT(cpl)} · Визиты {fmt(calc.visits)} · Оплаты {fmt(calc.sales)} ·
+              CPL {fmtT(cpl)} · Диагностики {fmt(calc.visits)} · Оплаты {fmt(calc.sales)} ·
               Выручка {fmtT(calc.revenue)}
             </p>
 
