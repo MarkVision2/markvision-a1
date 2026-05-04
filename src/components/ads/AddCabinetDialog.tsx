@@ -1,14 +1,18 @@
 import { useState } from "react";
 import {
+  CheckCircle2,
   Crosshair,
   Facebook,
   Globe,
   Info,
   Link2,
+  Loader2,
   MessageSquare,
   Shield,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
   DialogContent,
@@ -35,6 +39,8 @@ interface AddCabinetDialogProps {
   onCreate: (cabinet: AdCabinet) => void;
 }
 
+type CheckItem = { ok: boolean; label: string; detail?: string };
+
 const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProps) => {
   // Основное
   const [name, setName] = useState("");
@@ -58,11 +64,45 @@ const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProp
   // Заметки
   const [brief, setBrief] = useState("");
 
+  // Validation state
+  const [validating, setValidating] = useState(false);
+  const [checks, setChecks] = useState<CheckItem[] | null>(null);
+  const [accessToken, setAccessToken] = useState("");
+
   const reset = () => {
     setName(""); setType("Личный"); setDailyBudget("50000"); setCity("");
     setAdAccountId(""); setPageId(""); setPageName(""); setInstagramId("");
     setTelegramGroupId(""); setWhatsappNumber(""); setPixelId(""); setPixelEvent("Lead"); setWebsiteUrl("");
-    setBrief("");
+    setBrief(""); setAccessToken(""); setChecks(null); setValidating(false);
+  };
+
+  const runValidation = async () => {
+    if (!adAccountId.trim()) {
+      toast.error("Укажите ID кабинета (Ad Account)");
+      return;
+    }
+    setValidating(true);
+    setChecks(null);
+    try {
+      const { data, error } = await supabase.functions.invoke("meta-validate-cabinet", {
+        body: {
+          adAccountId: adAccountId.trim(),
+          pageId: pageId.trim() || undefined,
+          pixelId: pixelId.trim() || undefined,
+          instagramId: instagramId.trim() || undefined,
+          accessToken: accessToken.trim() || undefined,
+        },
+      });
+      if (error) throw error;
+      const items: CheckItem[] = data?.checks ?? [];
+      setChecks(items);
+      if (data?.ok) toast.success("Все данные кабинета проверены");
+      else toast.error("Есть ошибки в данных кабинета");
+    } catch (e) {
+      toast.error((e as Error).message || "Ошибка проверки");
+    } finally {
+      setValidating(false);
+    }
   };
 
   const handleSubmit = () => {
@@ -94,9 +134,10 @@ const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProp
       pixelEvent: pixelEvent || "Lead",
       websiteUrl: websiteUrl || undefined,
       brief: brief || undefined,
+      accessToken: accessToken || undefined,
     };
     onCreate(cabinet);
-    toast.success("Кабинет создан");
+    toast.success("Кабинет создан — статистика подтянется автоматически");
     onOpenChange(false);
     reset();
   };
