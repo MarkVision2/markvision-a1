@@ -1,18 +1,21 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   AlertCircle,
   ChevronDown,
   Copy,
+  Download,
   Loader2,
   Megaphone,
   MoreHorizontal,
   Power,
+  RefreshCw,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { AdCabinet } from "@/types/ads";
 import { useMetaInsights } from "@/hooks/useMetaInsights";
+import { supabase } from "@/integrations/supabase/client";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -83,11 +86,41 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
     monthCursor.getMonth() + 1,
   ).padStart(2, "0")}`;
 
-  const { data, loading, error } = useMetaInsights(
+  const { data, loading, error, refresh } = useMetaInsights(
     cabinet.externalId,
     monthParam,
     true,
   );
+
+  const [syncing, setSyncing] = useState(false);
+
+  const handleSync = async () => {
+    if (!cabinet.adAccountId && !cabinet.externalId) {
+      toast.error("Не указан Ad Account кабинета");
+      return;
+    }
+    setSyncing(true);
+    try {
+      const since = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}-01`;
+      const lastDay = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0).getDate();
+      const until = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`;
+      const { data: resp, error: err } = await supabase.functions.invoke("meta-daily-sync", {
+        body: { cabinet_id: cabinet.id, since, until },
+      });
+      if (err) throw err;
+      const r = (resp?.results ?? [])[0];
+      if (r?.ok) {
+        toast.success(`Загружено: ${r.days} дн., ${r.leads} лидов, расход ${Math.round(r.spend)}`);
+        refresh();
+      } else {
+        toast.error("Meta: " + (r?.error || "не удалось получить данные"));
+      }
+    } catch (e) {
+      toast.error((e as Error).message || "Ошибка синхронизации");
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const totals = data?.totals;
   const currency = data?.currency ?? cabinet.currency ?? "USD";
@@ -188,6 +221,16 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
         </div>
 
         <div className="flex items-center gap-1 self-end lg:self-center">
+          <button
+            type="button"
+            onClick={handleSync}
+            disabled={syncing}
+            title="Подтянуть статистику из Meta"
+            className="flex h-9 items-center gap-1.5 rounded-lg border border-border/60 bg-card/40 px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-60"
+          >
+            {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            <span className="hidden sm:inline">{syncing ? "Загрузка…" : "Подтянуть"}</span>
+          </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -198,6 +241,11 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={handleSync} disabled={syncing}>
+                <RefreshCw className={cn("mr-2 h-4 w-4", syncing && "animate-spin")} />
+                Подтянуть статистику
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={() => {
                   navigator.clipboard.writeText(cabinet.externalId);

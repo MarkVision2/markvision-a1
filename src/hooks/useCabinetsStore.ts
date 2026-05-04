@@ -148,8 +148,14 @@ export function useCabinetsStore() {
       created_by: user?.id ?? null,
       project_id: projectId,
     };
-    await supabase.from("ad_cabinets").insert(dbRow as any);
+    const { data, error } = await supabase
+      .from("ad_cabinets")
+      .insert(dbRow as any)
+      .select("id")
+      .single();
+    if (error) throw error;
     await refetch();
+    return (data?.id as string) ?? null;
   }, [user?.id, refetch, projectId]);
 
   const updateCabinet = useCallback(async (id: string, patch: Partial<AdCabinet>) => {
