@@ -152,9 +152,9 @@ function loadImage(file: File): Promise<HTMLImageElement> {
       URL.revokeObjectURL(url);
       resolve(img);
     };
-    img.onerror = (e) => {
+    img.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(e);
+      reject(new Error("Не удалось прочитать изображение (повреждённый или неподдерживаемый файл)"));
     };
     img.src = url;
   });
@@ -170,20 +170,31 @@ async function getFfmpeg(onProgress?: (p: number) => void) {
   if (ffmpegLoading) return ffmpegLoading;
 
   ffmpegLoading = (async () => {
-    const { FFmpeg } = await import("@ffmpeg/ffmpeg");
-    const { toBlobURL } = await import("@ffmpeg/util");
-    const ff = new FFmpeg();
-    if (onProgress) {
-      ff.on("progress", ({ progress }) => onProgress(Math.min(99, Math.round(progress * 100))));
+    try {
+      const { FFmpeg } = await import("@ffmpeg/ffmpeg");
+      const { toBlobURL } = await import("@ffmpeg/util");
+      const ff = new FFmpeg();
+      if (onProgress) {
+        ff.on("progress", ({ progress }) => onProgress(Math.min(99, Math.round(progress * 100))));
+      }
+      ff.on("log", ({ message }) => {
+        // Полезно для диагностики, в проде не мешает.
+        // eslint-disable-next-line no-console
+        console.debug("[ffmpeg]", message);
+      });
+      // Однопоточная сборка core — НЕ требует COOP/COEP/SharedArrayBuffer,
+      // поэтому работает в обычном lovable-превью и в проде без спец. заголовков.
+      const baseURL = "https://unpkg.com/@ffmpeg/core@0.12.6/dist/umd";
+      const coreURL = await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript");
+      const wasmURL = await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm");
+      await ff.load({ coreURL, wasmURL });
+      ffmpegInstance = ff;
+      return ff;
+    } catch (e) {
+      ffmpegLoading = null;
+      const msg = e instanceof Error && e.message ? e.message : String(e);
+      throw new Error(`Не удалось загрузить видео-кодировщик: ${msg}`);
     }
-    // Грузим ядро через CDN с правильным MIME (jsdelivr отдаёт application/wasm).
-    const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/umd";
-    await ff.load({
-      coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
-      wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
-    });
-    ffmpegInstance = ff;
-    return ff;
   })();
   return ffmpegLoading;
 }
@@ -245,9 +256,9 @@ function readVideoSize(file: File): Promise<{ w: number; h: number }> {
       URL.revokeObjectURL(url);
       resolve(size);
     };
-    v.onerror = (e) => {
+    v.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(e);
+      reject(new Error("Не удалось прочитать видео (повреждённый или неподдерживаемый формат)"));
     };
     v.src = url;
   });
