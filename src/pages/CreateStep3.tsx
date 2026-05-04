@@ -366,22 +366,15 @@ const CreateStep3 = () => {
     if (extraInstructions.trim())
       promptParts.push(`Инструкции:\n${extraInstructions.trim()}`);
 
-    const fileToDataUrl = (file: File) =>
-      new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
-    const photoPayloads = await Promise.all(
-      photos.map(async (f, idx) => ({
-        index: idx,
-        name: f.name,
-        mimeType: f.type,
-        size: f.size,
-        dataUrl: await fileToDataUrl(f),
-      })),
-    );
+    // Метаданные о фото — без base64. Сами файлы прикрепляются к FormData
+    // отдельно (поля photo_0, photo_1, ...), чтобы не раздувать JSON.
+    const photoMeta = photos.map((f, idx) => ({
+      index: idx,
+      field: `photo_${idx}`,
+      name: f.name,
+      mimeType: f.type,
+      size: f.size,
+    }));
 
     return {
       prompt: promptParts.join("\n\n"),
@@ -390,7 +383,7 @@ const CreateStep3 = () => {
       description,
       productName,
       extraInstructions,
-      photoPayloads,
+      photoMeta,
       photos,
     };
   };
@@ -513,7 +506,8 @@ const CreateStep3 = () => {
                   : null,
               photosCount:
                 brief.mode === "photo" ? brief.photos.length : 0,
-              photos: brief.mode === "photo" ? brief.photoPayloads : [],
+              // Только метаданные. Сами файлы — в FormData как photo_0..N.
+              photos: brief.mode === "photo" ? brief.photoMeta : [],
               photosRole: isNeuroPhoto ? "face_reference" : "brand_assets",
               extraInstructions: brief.extraInstructions || null,
             },
@@ -548,7 +542,16 @@ const CreateStep3 = () => {
             },
           };
 
-          const data = await postContentFactory(payload);
+          // Multipart: payload как JSON-строка + бинарные файлы рядом.
+          // Это в разы быстрее и легче, чем base64 в JSON.
+          const fd = new FormData();
+          fd.append("payload", JSON.stringify(payload));
+          if (brief.mode === "photo") {
+            brief.photos.forEach((file, idx) => {
+              fd.append(`photo_${idx}`, file, file.name);
+            });
+          }
+          const data = await postContentFactory(fd);
           return {
             styleId: styleDef.id,
             styleLabel: styleDef.label,

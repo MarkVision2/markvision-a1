@@ -15,15 +15,25 @@ export const N8N_TIMEOUT_MS = 120_000;
 
 /**
  * Send a single style payload to the n8n workflow.
+ *
+ * Поддерживает два режима:
+ *  - JSON      — когда передан plain object (без файлов).
+ *  - multipart — когда передан FormData (быстро, без base64-раздувания
+ *                для тяжёлых фото/видео).
+ *
  * Throws an Error with a human-readable message on non-2xx or timeout.
  */
-export async function postContentFactory(payload: unknown): Promise<unknown> {
+export async function postContentFactory(
+  payload: unknown | FormData,
+): Promise<unknown> {
   let res: Response;
+  const isForm = typeof FormData !== "undefined" && payload instanceof FormData;
   try {
     res = await fetch(N8N_CONTENT_WEBHOOK, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      // Для FormData НЕ ставим Content-Type — браузер сам добавит boundary.
+      headers: isForm ? undefined : { "Content-Type": "application/json" },
+      body: isForm ? (payload as FormData) : JSON.stringify(payload),
       signal: AbortSignal.timeout(N8N_TIMEOUT_MS),
     });
   } catch (e) {
