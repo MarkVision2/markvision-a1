@@ -158,6 +158,11 @@ Deno.serve(async (req) => {
           since, until, days: rows.length,
           spend: totalSpend, leads: totalLeads, clicks: totalClicks, revenue: totalRevenue,
         });
+        console.log(
+          `[meta-daily-sync] cabinet=${ext} project=${(cab as any).project_id ?? "—"} ` +
+          `range=${since}..${until} days=${rows.length} spend=${totalSpend.toFixed(2)} ` +
+          `leads=${totalLeads} clicks=${totalClicks} revenue=${totalRevenue.toFixed(2)}`,
+        );
       } catch (e) {
         results.push({ cabinet: ext, ok: false, error: (e as Error).message });
       }
