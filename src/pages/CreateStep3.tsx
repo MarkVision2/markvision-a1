@@ -320,6 +320,7 @@ const CreateStep3 = () => {
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<GeneratedVariant[] | null>(null);
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   // Отредактированные пользователем ТЗ (по styleId). Если пусто — используется авто-бриф.
   const [editedBriefs, setEditedBriefs] = useState<Partial<Record<StyleId, string>>>({});
 
@@ -432,6 +433,7 @@ const CreateStep3 = () => {
     setStatus("sending");
     setStatusMessage("Подготавливаем данные...");
     setProgress(10);
+    setTaskDialogOpen(true);
 
     let progressTimer: ReturnType<typeof setInterval> | null = null;
     try {
