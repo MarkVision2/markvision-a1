@@ -200,6 +200,7 @@ export type Database = {
           goal: string
           id: string
           last_error: string | null
+          launch_id: string | null
           lead_form_id: string | null
           meta_ad_id: string | null
           meta_adset_id: string | null
@@ -223,6 +224,7 @@ export type Database = {
           goal?: string
           id?: string
           last_error?: string | null
+          launch_id?: string | null
           lead_form_id?: string | null
           meta_ad_id?: string | null
           meta_adset_id?: string | null
@@ -246,6 +248,7 @@ export type Database = {
           goal?: string
           id?: string
           last_error?: string | null
+          launch_id?: string | null
           lead_form_id?: string | null
           meta_ad_id?: string | null
           meta_adset_id?: string | null
