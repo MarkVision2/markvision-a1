@@ -194,42 +194,72 @@ export type Database = {
         Row: {
           budget: string
           cabinet_id: string
+          completed_at: string | null
           created_at: string
           created_by: string | null
           goal: string
           id: string
+          last_error: string | null
+          launch_id: string | null
           lead_form_id: string | null
+          meta_ad_id: string | null
+          meta_adset_id: string | null
+          meta_campaign_id: string | null
           pixel_event: string | null
           pixel_id: string | null
           project_id: string | null
+          status: string
+          status_message: string | null
+          status_step: string | null
+          status_updated_at: string | null
           text: string
           whatsapp_id: string | null
         }
         Insert: {
           budget?: string
           cabinet_id: string
+          completed_at?: string | null
           created_at?: string
           created_by?: string | null
           goal?: string
           id?: string
+          last_error?: string | null
+          launch_id?: string | null
           lead_form_id?: string | null
+          meta_ad_id?: string | null
+          meta_adset_id?: string | null
+          meta_campaign_id?: string | null
           pixel_event?: string | null
           pixel_id?: string | null
           project_id?: string | null
+          status?: string
+          status_message?: string | null
+          status_step?: string | null
+          status_updated_at?: string | null
           text?: string
           whatsapp_id?: string | null
         }
         Update: {
           budget?: string
           cabinet_id?: string
+          completed_at?: string | null
           created_at?: string
           created_by?: string | null
           goal?: string
           id?: string
+          last_error?: string | null
+          launch_id?: string | null
           lead_form_id?: string | null
+          meta_ad_id?: string | null
+          meta_adset_id?: string | null
+          meta_campaign_id?: string | null
           pixel_event?: string | null
           pixel_id?: string | null
           project_id?: string | null
+          status?: string
+          status_message?: string | null
+          status_step?: string | null
+          status_updated_at?: string | null
           text?: string
           whatsapp_id?: string | null
         }

@@ -189,6 +189,8 @@ export type CampaignDraft = {
   pixelId?: string;
   pixelEvent?: string;
   leadFormId?: string;
+  launchId?: string;
+  status?: string;
   createdAt: string;
 };
 
@@ -208,6 +210,9 @@ export async function saveCampaign(
       pixel_event: draft.pixelEvent ?? null,
       lead_form_id: draft.leadFormId ?? null,
       project_id: projectId ?? null,
+      launch_id: draft.launchId ?? null,
+      status: draft.status ?? "queued",
+      status_updated_at: new Date().toISOString(),
     })
     .select()
     .single();
@@ -222,6 +227,8 @@ export async function saveCampaign(
     pixelId: (data as any).pixel_id ?? undefined,
     pixelEvent: (data as any).pixel_event ?? undefined,
     leadFormId: (data as any).lead_form_id ?? undefined,
+    launchId: (data as any).launch_id ?? undefined,
+    status: (data as any).status ?? undefined,
     createdAt: data.created_at,
   } as CampaignDraft;
 }
