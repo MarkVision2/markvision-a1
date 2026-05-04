@@ -838,9 +838,7 @@ const CreateStep3 = () => {
             ) : (
               <Send className="h-4 w-4" />
             )}
-            {submitting
-              ? "Запускаем..."
-              : `Создать ${selectedStyles.length} ${selectedStyles.length === 1 ? "вариант" : "варианта"}`}
+            {submitting ? "Создаём дизайн…" : "Создать дизайн"}
           </Button>
         </div>
 
