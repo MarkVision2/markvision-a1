@@ -324,6 +324,11 @@ const CreateCampaignDialog = ({
   const [budget, setBudget] = useState("50");
   const [feed, setFeed] = useState<File | null>(null);
   const [stories, setStories] = useState<File | null>(null);
+  // View-state каждого превью — обновляется коллбеком onView.
+  const feedViewRef = useRef<CreativeViewState | null>(null);
+  const storiesViewRef = useRef<CreativeViewState | null>(null);
+  const [bakeStatus, setBakeStatus] = useState<string | null>(null);
+  const [bakePct, setBakePct] = useState<number>(0);
   const [text, setText] = useState("");
   const [whatsappId, setWhatsappId] = useState("");
   const [pixelId, setPixelId] = useState("");
