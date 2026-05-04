@@ -22,10 +22,12 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { useCabinetsStore } from "@/hooks/useCabinetsStore";
+import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useMultiMetaInsights, type DailyInsightRow } from "@/hooks/useMetaInsights";
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 const MONTHS_RU = [
   "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
@@ -79,7 +81,8 @@ const Metrics = () => {
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
   const [cabinetId, setCabinetId] = useState<string>("all");
-  const { cabinets } = useCabinetsStore();
+  const { cabinets } = usePersonalCabinets();
+  const [resyncing, setResyncing] = useState(false);
 
   const shiftMonth = (delta: number) =>
     setMonthCursor(
@@ -138,7 +141,7 @@ const Metrics = () => {
     const header = [
       "Дата", "День",
       "Расходы", "Лиды", "CPL",
-      "Подписчики", "Визиты", "Оплаты", "Выручка",
+      "Диагностики", "Оплаты", "Выручка",
       "Показы", "Клики", "CTR", "CPC", "CPM",
     ];
     const rows = monthDays.map(({ day, iso, weekday }) => {
@@ -153,8 +156,6 @@ const Metrics = () => {
         d?.spend ?? 0,
         d?.leads ?? 0,
         cpl ? Math.round(cpl) : "",
-        0,
-        0,
         0,
         d?.revenue ?? 0,
         d?.impressions ?? 0,
@@ -179,6 +180,31 @@ const Metrics = () => {
     a.download = `metrics-${monthParam}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  const handleResync = async () => {
+    setResyncing(true);
+    try {
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const since = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}-01`;
+      const lastDay = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0);
+      const monthEnd = lastDay < yesterday ? lastDay : yesterday;
+      const until = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, "0")}-${String(monthEnd.getDate()).padStart(2, "0")}`;
+      const targetCab = cabinetId !== "all"
+        ? cabinets.find((c) => c.id === cabinetId)
+        : null;
+      const body: Record<string, string> = { since, until };
+      if (targetCab) body.cabinet_id = targetCab.id;
+      const { error: invErr } = await supabase.functions.invoke("meta-daily-sync", { body });
+      if (invErr) throw invErr;
+      toast.success(`Синхронизация ${since} → ${until} выполнена`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось синхронизировать");
+    } finally {
+      setResyncing(false);
+    }
   };
 
   return (
@@ -219,9 +245,9 @@ const Metrics = () => {
         />
         <SummaryCard
           icon={Eye}
-          label="CPV"
+          label="CPD"
           value={<Dash />}
-          sub="Расходы / Визиты"
+          sub="Расходы / Диагностики"
         />
         <SummaryCard
           icon={Target}
@@ -237,15 +263,15 @@ const Metrics = () => {
         />
         <SummaryCard
           icon={Repeat}
-          label="CR Лид→Визит"
+          label="CR Лид→Диагн."
           value={<span>0%</span>}
-          sub="Визиты / Лиды"
+          sub="Диагностики / Лиды"
         />
         <SummaryCard
           icon={TrendingUp}
-          label="CR Визит→Продажа"
+          label="CR Диагн.→Продажа"
           value={<Dash />}
-          sub="Продажи / Визиты"
+          sub="Продажи / Диагностики"
         />
       </div>
 
@@ -292,6 +318,16 @@ const Metrics = () => {
           <span className="text-xs text-muted-foreground">
             {plan ? "План задан" : "План не задан"}
           </span>
+          <Button
+            variant="outline"
+            className="h-12 gap-2 rounded-2xl border-border/60"
+            onClick={handleResync}
+            disabled={resyncing || actIds.length === 0}
+            title="Перетянуть данные с 1 числа выбранного месяца"
+          >
+            {resyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            Пересинхронизировать
+          </Button>
           <Button
             variant="outline"
             className="h-12 gap-2 rounded-2xl border-border/60"
