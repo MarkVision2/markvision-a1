@@ -546,10 +546,26 @@ const CreateCampaignDialog = ({
       leadFormId: goal === "meta-form" ? leadFormId : undefined,
       creatives: {
         feed: bakedFeed
-          ? { name: bakedFeed.name, type: bakedFeed.type, size: bakedFeed.size, baked: true, ratio: "4:5" }
+          ? {
+              name: bakedFeed.name,
+              type: bakedFeed.type,
+              size: bakedFeed.size,
+              ratio: "4:5",
+              // baked=true для фото (готовый JPEG нужного аспекта),
+              // baked=false для видео — нужно резать на стороне n8n по cropMeta.
+              baked: !bakedFeed.type.startsWith("video/"),
+              cropMeta: feedCropMeta,
+            }
           : null,
         stories: bakedStories
-          ? { name: bakedStories.name, type: bakedStories.type, size: bakedStories.size, baked: true, ratio: "9:16" }
+          ? {
+              name: bakedStories.name,
+              type: bakedStories.type,
+              size: bakedStories.size,
+              ratio: "9:16",
+              baked: !bakedStories.type.startsWith("video/"),
+              cropMeta: storiesCropMeta,
+            }
           : null,
       },
       submittedAt: new Date().toISOString(),
