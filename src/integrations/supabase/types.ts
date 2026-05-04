@@ -201,6 +201,7 @@ export type Database = {
           lead_form_id: string | null
           pixel_event: string | null
           pixel_id: string | null
+          project_id: string | null
           text: string
           whatsapp_id: string | null
         }
@@ -214,6 +215,7 @@ export type Database = {
           lead_form_id?: string | null
           pixel_event?: string | null
           pixel_id?: string | null
+          project_id?: string | null
           text?: string
           whatsapp_id?: string | null
         }
@@ -227,6 +229,7 @@ export type Database = {
           lead_form_id?: string | null
           pixel_event?: string | null
           pixel_id?: string | null
+          project_id?: string | null
           text?: string
           whatsapp_id?: string | null
         }
@@ -406,6 +409,7 @@ export type Database = {
           id: string
           impressions: number
           leads: number
+          project_id: string | null
           revenue: number
           spend: number
           synced_at: string
@@ -423,6 +427,7 @@ export type Database = {
           id?: string
           impressions?: number
           leads?: number
+          project_id?: string | null
           revenue?: number
           spend?: number
           synced_at?: string
@@ -440,6 +445,7 @@ export type Database = {
           id?: string
           impressions?: number
           leads?: number
+          project_id?: string | null
           revenue?: number
           spend?: number
           synced_at?: string
@@ -731,6 +737,7 @@ export type Database = {
           phone: string
           pinned: boolean
           pipeline_id: string
+          project_id: string | null
           referrer: string | null
           reject_reason: string | null
           rejected_at: string | null
@@ -769,6 +776,7 @@ export type Database = {
           phone: string
           pinned?: boolean
           pipeline_id: string
+          project_id?: string | null
           referrer?: string | null
           reject_reason?: string | null
           rejected_at?: string | null
@@ -807,6 +815,7 @@ export type Database = {
           phone?: string
           pinned?: boolean
           pipeline_id?: string
+          project_id?: string | null
           referrer?: string | null
           reject_reason?: string | null
           rejected_at?: string | null
