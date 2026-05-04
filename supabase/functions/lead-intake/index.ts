@@ -202,22 +202,36 @@ Deno.serve(async (req) => {
   const note = [v.message, v.note].filter(Boolean).join("\n").trim() || null;
   const landingUrl = v.landing_url || v.page || null;
 
-  // Resolve project_id: explicit > via cabinet_id > via ad_account_id
+  // Resolve project_id and cabinet_id: explicit > via cabinet_id > via ad_account_id
   let projectId: string | null = v.project_id || null;
-  if (!projectId && v.cabinet_id) {
-    const { data } = await admin.from("ad_cabinets").select("project_id").eq("id", v.cabinet_id).maybeSingle();
-    projectId = data?.project_id ?? null;
+  let cabinetId: string | null = v.cabinet_id || null;
+  if (cabinetId) {
+    const { data } = await admin.from("ad_cabinets").select("project_id").eq("id", cabinetId).maybeSingle();
+    if (!projectId) projectId = data?.project_id ?? null;
   }
-  if (!projectId && v.ad_account_id) {
+  if (!cabinetId && v.ad_account_id) {
     const raw = v.ad_account_id.trim();
     const norm = raw.startsWith("act_") ? raw : `act_${raw}`;
     const numeric = raw.replace(/^act_/, "");
     const { data } = await admin
       .from("ad_cabinets")
-      .select("project_id")
+      .select("id, project_id")
       .in("ad_account_id", [raw, norm, numeric])
       .limit(1);
-    projectId = data?.[0]?.project_id ?? null;
+    cabinetId = data?.[0]?.id ?? null;
+    if (!projectId) projectId = data?.[0]?.project_id ?? null;
+  }
+  // Last resort: try utm_source as external_id
+  if (!cabinetId && utm.utm_source) {
+    const { data } = await admin
+      .from("ad_cabinets")
+      .select("id, project_id")
+      .eq("external_id", utm.utm_source)
+      .limit(1);
+    if (data?.[0]) {
+      cabinetId = data[0].id;
+      if (!projectId) projectId = data[0].project_id ?? null;
+    }
   }
 
   try {
@@ -265,6 +279,7 @@ Deno.serve(async (req) => {
         pipeline_id: def.pipeline_id,
         stage_id: def.stage_id,
         project_id: projectId,
+        cabinet_id: cabinetId,
         name,
         phone: phoneE164,
         email: v.email || null,
