@@ -22,6 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { AdCabinet } from "@/types/ads";
 import { saveCampaign } from "@/hooks/useCabinetsStore";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import GoalAssetsPicker from "./GoalAssetsPicker";
 
 interface CreateCampaignDialogProps {
@@ -280,6 +281,7 @@ const CreateCampaignDialog = ({
   onOpenChange,
   cabinets,
 }: CreateCampaignDialogProps) => {
+  const { activeId: projectId, active: activeProject } = useProjectsStore();
   const [cabinetId, setCabinetId] = useState<string>(cabinets[0]?.id ?? "");
   const [goal, setGoal] = useState<Goal>("whatsapp");
   const [budget, setBudget] = useState("50");
@@ -324,8 +326,13 @@ const CreateCampaignDialog = ({
     const payload = {
       // Root-level fields for n8n Parse Webhook compatibility
       source: "lovable-webhook",
+      cabinet_id: cabinetId,
+      project_id: projectId || null,
+      project_name: activeProject?.name ?? null,
       ad_account_id: cab?.adAccountId ?? "",
       clientConfig: cab ? {
+        cabinet_id: cab.id,
+        project_id: projectId || null,
         client_name: cab.name,
         ad_account_id: cab.adAccountId ?? "",
         page_id: cab.pageId ?? "",
@@ -386,7 +393,7 @@ const CreateCampaignDialog = ({
         pixelId: goal === "site-leads" ? pixelId : undefined,
         pixelEvent: goal === "site-leads" ? pixelEvent : undefined,
         leadFormId: goal === "meta-form" ? leadFormId : undefined,
-      });
+      }, projectId || null);
       toast.success("Кампания отправлена в n8n");
       onOpenChange(false);
       setText("");
