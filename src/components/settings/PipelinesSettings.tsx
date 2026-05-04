@@ -148,9 +148,11 @@ export function PipelinesSettings() {
                   <Stethoscope className="h-3 w-3" />
                   Диагностика
                 </button>
-                {s.is_terminal && (
-                  <Badge variant="outline" className="text-[9px]">терминальная</Badge>
-                )}
+                <div className="min-w-[80px] text-right">
+                  {s.is_terminal && (
+                    <Badge variant="outline" className="text-[9px]">терминальная</Badge>
+                  )}
+                </div>
                 <button
                   onClick={() => removeStage(s.id)}
                   disabled={!isAdmin || s.is_terminal}
