@@ -187,7 +187,14 @@ const Ads = () => {
       <AddCabinetDialog
         open={addOpen}
         onOpenChange={setAddOpen}
-        onCreate={addCabinet}
+        onCreate={async (c) => {
+          try {
+            await addCabinet(c);
+            toast.success("Кабинет добавлен");
+          } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Не удалось добавить кабинет");
+          }
+        }}
       />
       <CreateCampaignDialog
         open={campaignOpen}
