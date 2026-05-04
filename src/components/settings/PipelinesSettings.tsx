@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { GitBranch, Plus, Trash2 } from "lucide-react";
+import { GitBranch, Plus, Stethoscope, Trash2 } from "lucide-react";
 
 type Pipeline = { id: string; name: string; is_default: boolean };
-type Stage = { id: string; pipeline_id: string; key: string; title: string; order_index: number; is_terminal: boolean; color: string };
+type Stage = { id: string; pipeline_id: string; key: string; title: string; order_index: number; is_terminal: boolean; is_diagnostic: boolean; color: string };
 
 export function PipelinesSettings() {
   const { isAdmin } = useAuth();
@@ -23,7 +23,7 @@ export function PipelinesSettings() {
     setLoading(true);
     const [{ data: ps, error: pe }, { data: ss, error: se }] = await Promise.all([
       supabase.from("pipelines").select("id, name, is_default").order("created_at"),
-      supabase.from("pipeline_stages").select("id, pipeline_id, key, title, order_index, is_terminal, color").order("order_index"),
+      supabase.from("pipeline_stages").select("id, pipeline_id, key, title, order_index, is_terminal, is_diagnostic, color").order("order_index"),
     ]);
     if (pe) toast.error(pe.message);
     if (se) toast.error(se.message);
@@ -60,6 +60,15 @@ export function PipelinesSettings() {
     const { error } = await supabase.from("pipeline_stages").delete().eq("id", id);
     if (error) toast.error(error.message);
     else { setStages((prev) => prev.filter((s) => s.id !== id)); toast.success("Стадия удалена"); }
+  };
+
+  const toggleDiagnostic = async (id: string, value: boolean) => {
+    const { error } = await supabase.from("pipeline_stages").update({ is_diagnostic: value } as never).eq("id", id);
+    if (error) toast.error(error.message);
+    else {
+      setStages((prev) => prev.map((s) => (s.id === id ? { ...s, is_diagnostic: value } : s)));
+      toast.success(value ? "Этап помечен как диагностика" : "Снят флаг диагностики");
+    }
   };
 
   return (
@@ -118,7 +127,7 @@ export function PipelinesSettings() {
 
           <div className="space-y-1.5">
             {currentStages.map((s, idx) => (
-              <div key={s.id} className="grid grid-cols-[auto_1fr_auto_auto] items-center gap-3 rounded-lg border border-border/60 bg-background/40 px-3 py-2">
+              <div key={s.id} className="grid grid-cols-[auto_1fr_auto_auto_auto] items-center gap-3 rounded-lg border border-border/60 bg-background/40 px-3 py-2">
                 <span className="grid h-7 w-7 place-items-center rounded-md bg-secondary text-xs font-bold text-muted-foreground">
                   {idx + 1}
                 </span>
@@ -126,6 +135,19 @@ export function PipelinesSettings() {
                   <div className="truncate text-sm">{s.title}</div>
                   <div className="truncate text-[10px] text-muted-foreground">{s.key}</div>
                 </div>
+                <button
+                  onClick={() => toggleDiagnostic(s.id, !s.is_diagnostic)}
+                  disabled={!isAdmin}
+                  className={`inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[10px] uppercase tracking-wider transition-colors disabled:opacity-40 ${
+                    s.is_diagnostic
+                      ? "border-amber-400/60 bg-amber-400/10 text-amber-400"
+                      : "border-border/60 text-muted-foreground hover:bg-secondary"
+                  }`}
+                  title="Считать переход в эту стадию диагностикой"
+                >
+                  <Stethoscope className="h-3 w-3" />
+                  Диагностика
+                </button>
                 {s.is_terminal && (
                   <Badge variant="outline" className="text-[9px]">терминальная</Badge>
                 )}
