@@ -858,6 +858,7 @@ const CreateStep3 = () => {
           <CollapsibleContent className="mt-3 space-y-3">
             {selectedStyles.map((sid) => {
               const styleDef = activeStyles.find((s) => s.id === sid)!;
+              const Icon = styleDef.icon;
               const color = COLORS.find((c) => c.id === colorId);
               const isAuto = styleDef.isAuto === true;
               const autoCandidates = activeStyles
@@ -892,7 +893,7 @@ const CreateStep3 = () => {
                   <div className="flex items-center justify-between gap-3 border-b border-border bg-secondary/40 px-5 py-3">
                     <div className="flex items-center gap-2">
                       <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
-                        <styleDef.icon className="h-4 w-4" />
+                        <Icon className="h-4 w-4" />
                       </span>
                       <div className="text-sm font-semibold">{styleDef.label}</div>
                     </div>
