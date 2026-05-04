@@ -1,76 +1,83 @@
-## Контент-завод: чистый поток до n8n
+Понял проблему. Сейчас фронт ждёт ответ от n8n до конца выполнения, поэтому кнопка долго остаётся “Отправляем…”. Плюс n8n получает нужные токены/кабинет внутри `body.payload`, но в дальнейшем workflow, судя по примеру, работает уже с распарсенным item, где поля называются `clientConfig.fbtoken` и `clientConfig.adaccountid`, а мы отправляем `fb_token` и `ad_account_id`. Из-за этого нода “Upload Photo to FB” видит пустые `ACCESS_TOKEN / AD_ACCOUNT`. Также выбранная в интерфейсе цель `site-leads` не превращается в готовые Meta-поля для сайта, поэтому workflow строит WhatsApp-кампанию.
 
-### 1. Новый webhook
+План исправления:
 
-`src/lib/contentFactory.ts`:
-- `N8N_CONTENT_WEBHOOK = "https://n8n.zapoinov.com/webhook/clony-yurii"` (production, без `-test`).
-- Оставляем 120-секундный таймаут и человеко-понятные ошибки (404 → подсказка активировать workflow, timeout → «n8n не ответил»).
+1. Сделать отправку быстрой для пользователя
+- В `launch-campaign` добавить короткий режим ожидания ответа от n8n: ждать только быстрый ACK, а не весь долгий запуск.
+- На фронте после успешного принятия запроса сразу закрывать окно и показывать понятный статус: “Реклама успешно отправлена на проверку”.
+- Кнопка не будет висеть бесконечно в “Отправляем…”. Если webhook принял задачу — пользователь сразу получает результат.
 
-### 2. Редактируемое ТЗ перед отправкой
+2. Добавить нормальную сводку после отправки
+- После отправки показать toast/сообщение с деталями:
+  - кабинет: название и `adAccountId`
+  - цель: “Лиды с сайта” / WhatsApp / Лид-форма
+  - пиксель и событие для цели “Лиды с сайта”
+  - бюджет и валюта
+  - страница/Instagram, если есть
+- Текст будет не “отправлено в n8n”, а пользовательский: “Реклама успешно отправлена на проверку”.
 
-Сейчас в `CreateStep3.tsx` блок «Посмотреть ТЗ перед отправкой» — read-only `<pre>`. Делаю его редактируемым:
+3. Исправить payload под то, что реально ждёт n8n
+- В edge-функции `launch-campaign` продублировать критичные поля во всех форматах, которые сейчас ищет workflow:
+  - `item.ACCESS_TOKEN`
+  - `item.accesstoken`
+  - `item.clientConfig.fb_token`
+  - `item.clientConfig.fbtoken`
+  - `item.clientConfig.access_token`
+  - `item.AD_ACCOUNT`
+  - `item.adAccount`
+  - `item.clientConfig.ad_account_id`
+  - `item.clientConfig.adaccountid`
+- Заполнить `creativeBody.access_token`, `campaignBody.access_token`, `adSetBody.access_token`, `adBody.access_token`, если эти объекты уже сформированы или будут сформированы прокси.
+- Нормализовать рекламный кабинет в формат `act_...`.
 
-- Для каждого выбранного стиля держу `editedBriefs: Record<StyleId, string>` в стейте.
-- В Collapsible — `<textarea>` с автоhigh, кнопки **«Сохранить»**, **«Сбросить к авто»**, **«Копировать»**.
-- При первом открытии заполняю `editedBriefs[sid] = built.technicalBrief`.
-- Если `editedBriefs[sid]` есть — `payload.finalPrompt = editedBriefs[sid]` и `design.currentStyle.technicalBrief = editedBriefs[sid]` + флаг `design.currentStyle.userEdited = true`. Иначе — авто-бриф как сейчас.
-- Бейдж «Отредактировано» рядом со стилем, если бриф изменён.
+4. Жёстко исправить цель “Лиды с сайта” перед отправкой в n8n
+- Если `goal === "site-leads"`, edge-функция будет добавлять/переопределять технические поля для сайта:
+  - `isWebsiteGoal: true`
+  - `plan.goal: "SITE_LEADS"`
+  - `campaignBody.objective: "OUTCOME_SALES"` или совместимый website-конверсионный objective для текущей n8n-схемы
+  - `adSetBody.optimization_goal: "OFFSITE_CONVERSIONS"`
+  - `adSetBody.destination_type: "WEBSITE"`
+  - `adSetBody.promoted_object.pixel_id`
+  - `adSetBody.promoted_object.custom_event_type`
+  - `creativeBody.object_story_spec.link_data.link` = сайт/лендинг из кабинета
+  - CTA не WhatsApp, а сайт-CTA, например `LEARN_MORE`
+- Убрать WhatsApp-значения из site-leads ветки, чтобы workflow не уходил в `OUTCOME_ENGAGEMENT / CONVERSATIONS / WHATSAPP`.
 
-### 3. Переименовать кнопку
+5. Добавить в payload явный `launchSummary` и `tracking`
+- В payload добавить структурированный блок:
+  - `launchSummary.goalLabel`
+  - `launchSummary.cabinetName`
+  - `launchSummary.adAccountId`
+  - `launchSummary.pixelId`
+  - `launchSummary.pixelEvent`
+  - `launchSummary.websiteUrl`
+- Это поможет и n8n, и UI отображать “что именно отправили”.
 
-Кнопка «Создать N вариантов» → **«Создать дизайн»** (одинаково для 1 и нескольких стилей). В состоянии загрузки — «Создаём дизайн…».
+6. Заложить получение реального статуса от n8n
+- Добавить `requestId`/`launchId` при каждом запуске и передавать его в n8n.
+- Создать/обновить запись в базе со статусом запуска: `queued/submitted/running/success/error`.
+- Добавить backend endpoint для callback от n8n, например `campaign-status-callback`, куда n8n сможет присылать:
+  - `launchId`
+  - `status`
+  - `step`
+  - `message`
+  - `campaignId/adSetId/adId`, если созданы
+  - `error`, если ошибка
+- На фронте можно будет показывать “Принято”, “Загружаем креатив”, “Создаём кампанию”, “Ошибка Meta: ...”, а не гадать.
 
-### 4. Гарантировать полный payload в webhook
+7. Улучшить обработку ошибок
+- Если n8n вернул ошибку быстро — показать её пользователю нормально, не просто `Webhook 502`.
+- Если ошибка пришла позже через callback — сохранить её и показать в статусе кампании/уведомлении.
 
-Структура отправки на каждый стиль (сейчас почти всё уже есть, добавляю/проверяю):
+Технически затрону:
+- `src/components/ads/CreateCampaignDialog.tsx`
+- `supabase/functions/launch-campaign/index.ts`
+- возможно `src/hooks/useCabinetsStore.ts` для сохранения `requestId/status`
+- новая backend-функция для callback статусов от n8n
+- миграция базы для полей статуса запуска, если текущих колонок недостаточно
 
-```text
-{
-  source: "lovable.content-factory",
-  submittedAt,
-  task: "ad_creative" | "neuro_photo_session",
-  finalPrompt,              // ← отредактированный ИЛИ авто technicalBrief
-  contentType: { id, title, subtitle, category, tooltip },   // что хотите создать
-  prompt,                   // сырой бриф пользователя
-  source_input: {
-    mode,                   // link | photo | description
-    linkUrl, description, productName,
-    photosCount, photos: [{ name, mimeType, size, dataUrl }],
-    photosRole,             // face_reference | brand_assets
-    extraInstructions
-  },
-  format: { aspect, lang, variants },                         // из шага 2
-  design: {
-    style: [...selectedStyles],
-    currentStyle: {
-      id, label, description, auto,
-      brief: structured,    // composition, lighting, cameraAngle, colorTreatment, typography, ...
-      technicalBrief,       // финальный текст промпта
-      userEdited: boolean,
-      avoid                 // negative prompt
-    },
-    auto, autoCandidates,
-    angles,                 // [{id,label,description}] для нейрофото
-    color: { id, label, swatch }
-  }
-}
-```
-
-Запрос идёт `Promise.allSettled` параллельно для всех стилей — N генераций стартуют одновременно, ошибка одного не валит остальные.
-
-### 5. Скорость
-
-- Готовлю `photoPayloads` (FileReader → dataURL) **один раз** перед циклом стилей и переиспользую для всех (сейчас тоже так), так что 4 стиля не пережимают фото 4 раза.
-- Параллельный запуск уже есть.
-- Прогресс-бар идёт «псевдо»-инкрементом до 85 % и резко в 100 % при ответе.
-
-### 6. Что НЕ трогаю
-
-- Шаги 1–2 (источник, формат) — там уже всё передаётся через `location.state`.
-- Управление рекламой — оставляю как есть (вы правите параллельно).
-- Warning «Function components cannot be given refs» в консоли — не ломает поведение, исходит от lovable-tagger в dev-режиме.
-
-### Затронутые файлы
-
-- `src/lib/contentFactory.ts` — новый URL.
-- `src/pages/CreateStep3.tsx` — редактируемое ТЗ, новая кнопка, флаг `userEdited`, использование `editedBriefs[sid]` в `finalPrompt`/`technicalBrief`.
+Что нужно будет настроить в n8n после кода:
+- В начале workflow распарсить `body.payload` в JSON, если ещё не распаршено.
+- После принятия задачи быстро вернуть HTTP 200, а долгие шаги выполнять дальше.
+- На ключевых шагах дергать callback URL с `launchId` и статусом.
+- В ноде “Upload Photo to FB” можно оставить текущий код: после дублирования `fbtoken/adaccountid/adAccount/accesstoken` он перестанет падать на missing `ACCESS_TOKEN or AD_ACCOUNT`.
