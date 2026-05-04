@@ -4,8 +4,6 @@ import {
   BarChart3,
   ChevronDown,
   Copy,
-  Stethoscope,
-  ShoppingBag,
   Loader2,
   Megaphone,
   MoreHorizontal,
