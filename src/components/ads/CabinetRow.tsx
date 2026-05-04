@@ -1,9 +1,9 @@
 import { useMemo, useState } from "react";
 import {
   AlertCircle,
+  BarChart3,
   ChevronDown,
   Copy,
-  Download,
   Loader2,
   Megaphone,
   MoreHorizontal,
@@ -225,11 +225,11 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
             type="button"
             onClick={handleSync}
             disabled={syncing}
-            title="Подтянуть статистику из Meta"
+            title="Получить статистику из Meta"
             className="flex h-9 items-center gap-1.5 rounded-lg border border-border/60 bg-card/40 px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:opacity-60"
           >
-            {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            <span className="hidden sm:inline">{syncing ? "Загрузка…" : "Подтянуть"}</span>
+            {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BarChart3 className="h-3.5 w-3.5" />}
+            <span className="hidden sm:inline">{syncing ? "Загрузка…" : "Получить статистику"}</span>
           </button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -243,7 +243,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuItem onClick={handleSync} disabled={syncing}>
                 <RefreshCw className={cn("mr-2 h-4 w-4", syncing && "animate-spin")} />
-                Подтянуть статистику
+                Получить статистику
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
