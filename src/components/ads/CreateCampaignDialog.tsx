@@ -817,7 +817,11 @@ const CreateCampaignDialog = ({
           disabled={submitting}
           className="h-12 w-full rounded-xl bg-success text-white hover:bg-success/90"
         >
-          {submitting ? (bakeStatus ? "Готовим креатив…" : "Отправляем…") : "🚀 Отправить на запуск AI"}
+          {submitting
+            ? bakeStatus
+              ? "Готовим креатив…"
+              : "Отправляем на проверку…"
+            : "🚀 Отправить на запуск AI"}
         </Button>
       </DialogContent>
     </Dialog>
