@@ -287,7 +287,7 @@ export function useCrmStore() {
     // Communications were fetched DESC for limit; chats expect ASC for chronological render.
     const commsAsc = ((commRes.data ?? []) as CommRow[]).slice().reverse();
     setChats(commsAsc.map(commToChat));
-  }, [stageIdMap.idToKey]);
+  }, [stageIdMap.idToKey, projectId]);
 
   useEffect(() => { void refetchStages(); }, [refetchStages]);
   useEffect(() => { void refetchLeads(); }, [refetchLeads]);
@@ -359,6 +359,7 @@ export function useCrmStore() {
     const { data, error } = await supabase.from("leads").insert({
       pipeline_id: pipelineId,
       stage_id: stageId,
+      project_id: projectId || null,
       name: input.name,
       phone: input.phone,
       email: input.email ?? null,
@@ -380,7 +381,7 @@ export function useCrmStore() {
     if (error || !data) return;
     await refetchLeads();
     return undefined;
-  }, [pipelineId, stageUuid, user?.id, refetchLeads]);
+  }, [pipelineId, stageUuid, user?.id, refetchLeads, projectId]);
 
   const updateLead = useCallback(async (id: string, patch: Partial<Lead>) => {
     const dbPatch: TablesUpdate<"leads"> = {};
