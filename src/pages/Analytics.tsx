@@ -331,7 +331,7 @@ const Analytics = () => {
         />
         <KpiCard
           icon={Eye}
-          label="Визиты"
+          label="Диагностики"
           value={formatNumber(visits.length)}
           sub={visits.length === 0 ? "нет данных" : `${formatPct(crLeadVisit)} от лидов`}
         />
@@ -409,7 +409,7 @@ const Analytics = () => {
               color="bg-gradient-to-r from-success/60 to-success/30"
             />
             <FunnelRow
-              label="Визиты"
+              label="Диагностики"
               value={visits.length}
               base={funnelBase}
               prevValue={totalLeads}
