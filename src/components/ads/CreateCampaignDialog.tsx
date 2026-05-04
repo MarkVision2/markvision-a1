@@ -569,6 +569,12 @@ const CreateCampaignDialog = ({
           : null,
       },
       submittedAt: new Date().toISOString(),
+      // launchId генерируется фронтом, чтобы и edge, и БД, и n8n работали
+      // с одним идентификатором запуска (для callback статусов).
+      launchId:
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`,
     };
 
     const fd = new FormData();
@@ -576,31 +582,98 @@ const CreateCampaignDialog = ({
     if (bakedFeed) fd.append("creative_feed", bakedFeed, bakedFeed.name);
     if (bakedStories) fd.append("creative_stories", bakedStories, bakedStories.name);
 
+    // Жёсткий фронт-таймаут 12с: edge-функция отвечает за ≤8с, плюс запас на сеть.
+    // Если n8n тормозит — мы всё равно покажем «принято» и не вешаем UI.
+    const ctrl = new AbortController();
+    const timeoutId = setTimeout(() => ctrl.abort(), 12_000);
+    let accepted = false;
+    let serverError: string | null = null;
     try {
-      const res = await fetch(WEBHOOK_URL, { method: "POST", body: fd });
-      if (!res.ok) throw new Error(`Webhook ${res.status}`);
-
-      saveCampaign({
-        cabinetId,
-        goal,
-        budget,
-        text,
-        whatsappId: goal === "whatsapp" ? whatsappId : undefined,
-        pixelId: goal === "site-leads" ? pixelId : undefined,
-        pixelEvent: goal === "site-leads" ? pixelEvent : undefined,
-        leadFormId: goal === "meta-form" ? leadFormId : undefined,
-      }, projectId || null);
-      toast.success("Кампания отправлена в n8n");
-      onOpenChange(false);
-      setText("");
-      setFeed(null);
-      setStories(null);
+      const res = await fetch(WEBHOOK_URL, {
+        method: "POST",
+        body: fd,
+        signal: ctrl.signal,
+      });
+      const data = await res.json().catch(() => null) as
+        | { ok?: boolean; accepted?: boolean; error?: string }
+        | null;
+      if (res.ok && (data?.ok || data?.accepted)) {
+        accepted = true;
+      } else {
+        serverError =
+          data?.error || `Не удалось отправить (HTTP ${res.status})`;
+      }
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Не удалось отправить";
-      toast.error(`Ошибка отправки в n8n: ${msg}`);
+      // Таймаут на нашей стороне — считаем «принято» (n8n часто молча работает дальше).
+      const msg = e instanceof Error ? e.message : String(e);
+      if (msg.includes("aborted") || ctrl.signal.aborted) {
+        accepted = true;
+      } else {
+        serverError = `Сеть: ${msg}`;
+      }
     } finally {
-      setSubmitting(false);
+      clearTimeout(timeoutId);
     }
+
+    if (!accepted) {
+      setSubmitting(false);
+      toast.error(serverError || "Не удалось отправить кампанию");
+      return;
+    }
+
+    // Сохраняем кампанию со статусом queued + launchId,
+    // чтобы потом n8n мог обновить статус через callback.
+    try {
+      await saveCampaign(
+        {
+          cabinetId,
+          goal,
+          budget,
+          text,
+          whatsappId: goal === "whatsapp" ? whatsappId : undefined,
+          pixelId: goal === "site-leads" ? pixelId : undefined,
+          pixelEvent: goal === "site-leads" ? pixelEvent : undefined,
+          leadFormId: goal === "meta-form" ? leadFormId : undefined,
+          launchId: payload.launchId,
+          status: "queued",
+        },
+        projectId || null,
+      );
+    } catch {
+      /* не блокируем UX, если запись не сохранилась локально */
+    }
+
+    // ===== Красивая сводка пользователю =====
+    const goalLabel =
+      goal === "site-leads"
+        ? "Лиды с сайта"
+        : goal === "meta-form"
+          ? "Лид-форма Meta"
+          : "WhatsApp";
+    const lines: string[] = [];
+    if (cab?.name) lines.push(`Кабинет: ${cab.name}`);
+    lines.push(`Цель: ${goalLabel}`);
+    if (goal === "site-leads") {
+      if (pixelId) lines.push(`Пиксель: ${pixelId}`);
+      if (pixelEvent) lines.push(`Событие: ${pixelEvent}`);
+      if (cab?.websiteUrl) lines.push(`Сайт: ${cab.websiteUrl}`);
+    } else if (goal === "whatsapp") {
+      if (whatsappId) lines.push(`WhatsApp: ${whatsappId}`);
+    } else if (goal === "meta-form") {
+      if (leadFormId) lines.push(`Лид-форма: ${leadFormId}`);
+    }
+    lines.push(`Бюджет: ${budget} ${cab?.currency ?? "USD"}/день`);
+
+    toast.success("Реклама успешно отправлена на проверку", {
+      description: lines.join(" · "),
+      duration: 8000,
+    });
+
+    onOpenChange(false);
+    setText("");
+    setFeed(null);
+    setStories(null);
+    setSubmitting(false);
   };
 
   return (
