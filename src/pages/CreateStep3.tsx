@@ -506,7 +506,8 @@ const CreateStep3 = () => {
                   : null,
               photosCount:
                 brief.mode === "photo" ? brief.photos.length : 0,
-              photos: brief.mode === "photo" ? brief.photoPayloads : [],
+              // Только метаданные. Сами файлы — в FormData как photo_0..N.
+              photos: brief.mode === "photo" ? brief.photoMeta : [],
               photosRole: isNeuroPhoto ? "face_reference" : "brand_assets",
               extraInstructions: brief.extraInstructions || null,
             },
@@ -541,7 +542,16 @@ const CreateStep3 = () => {
             },
           };
 
-          const data = await postContentFactory(payload);
+          // Multipart: payload как JSON-строка + бинарные файлы рядом.
+          // Это в разы быстрее и легче, чем base64 в JSON.
+          const fd = new FormData();
+          fd.append("payload", JSON.stringify(payload));
+          if (brief.mode === "photo") {
+            brief.photos.forEach((file, idx) => {
+              fd.append(`photo_${idx}`, file, file.name);
+            });
+          }
+          const data = await postContentFactory(fd);
           return {
             styleId: styleDef.id,
             styleLabel: styleDef.label,
