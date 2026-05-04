@@ -26,6 +26,26 @@ import { useProjectsStore } from "@/hooks/useProjectsStore";
 import GoalAssetsPicker from "./GoalAssetsPicker";
 import { cropImageFile, computeSourceRect, type Fit } from "@/lib/cropMedia";
 
+/** Быстро узнаём натуральный размер видео из <video preload="metadata">. */
+function readVideoNaturalSize(file: File): Promise<{ w: number; h: number }> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const v = document.createElement("video");
+    v.preload = "metadata";
+    v.muted = true;
+    v.onloadedmetadata = () => {
+      const size = { w: v.videoWidth, h: v.videoHeight };
+      URL.revokeObjectURL(url);
+      resolve(size);
+    };
+    v.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Не удалось прочитать видео"));
+    };
+    v.src = url;
+  });
+}
+
 /**
  * View-state, который ребёнок-CreativeUpload отдаёт наверх при каждом изменении.
  * Нужен, чтобы при сабмите «запечь» точно то, что видит пользователь.
