@@ -39,6 +39,14 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { ChevronDown, FileText } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 type StyleId =
   | "auto"
@@ -312,6 +320,7 @@ const CreateStep3 = () => {
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<GeneratedVariant[] | null>(null);
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   // Отредактированные пользователем ТЗ (по styleId). Если пусто — используется авто-бриф.
   const [editedBriefs, setEditedBriefs] = useState<Partial<Record<StyleId, string>>>({});
 
@@ -424,6 +433,7 @@ const CreateStep3 = () => {
     setStatus("sending");
     setStatusMessage("Подготавливаем данные...");
     setProgress(10);
+    setTaskDialogOpen(true);
 
     let progressTimer: ReturnType<typeof setInterval> | null = null;
     try {
@@ -1096,6 +1106,74 @@ const CreateStep3 = () => {
           </div>
         )}
       </section>
+
+      <Dialog
+        open={taskDialogOpen}
+        onOpenChange={(o) => {
+          // Не даём закрыть пока идёт генерация
+          if (submitting) return;
+          setTaskDialogOpen(o);
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-primary text-primary-foreground shadow-glow">
+              {status === "success" ? (
+                <CheckCircle2 className="h-7 w-7" />
+              ) : status === "error" ? (
+                <AlertCircle className="h-7 w-7" />
+              ) : (
+                <Loader2 className="h-7 w-7 animate-spin" />
+              )}
+            </div>
+            <DialogTitle className="text-center text-xl">
+              {status === "success"
+                ? "Креативы готовы"
+                : status === "error"
+                  ? "Не удалось отправить задачу"
+                  : "Задача дизайнера поставлена"}
+            </DialogTitle>
+            <DialogDescription className="text-center">
+              {status === "success"
+                ? statusMessage || "Готово. Результаты появились ниже на странице."
+                : status === "error"
+                  ? statusMessage || "Произошла ошибка. Попробуйте ещё раз."
+                  : "Создание креатива в работу. Ожидайте — это может занять до пары минут."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {status === "sending" && (
+            <div className="space-y-3 px-1">
+              <Progress value={progress} className="h-2" />
+              <div className="text-center text-xs text-muted-foreground">
+                {statusMessage || "Отправляем задачу AI-дизайнеру…"}
+              </div>
+              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
+                <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-primary" />
+                {selectedStyles.length}{" "}
+                {selectedStyles.length === 1 ? "вариант" : "вариантов"} в работе
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="sm:justify-center">
+            <Button
+              variant={status === "success" ? "default" : "outline"}
+              onClick={() => setTaskDialogOpen(false)}
+              disabled={submitting}
+              className="min-w-[140px]"
+            >
+              {submitting
+                ? "Дизайнер работает…"
+                : status === "success"
+                  ? "Посмотреть результат"
+                  : status === "error"
+                    ? "Закрыть"
+                    : "Скрыть"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </main>
   );
 };
