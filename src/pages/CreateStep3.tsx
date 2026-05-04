@@ -459,10 +459,28 @@ const CreateStep3 = () => {
                 return { id: a.id, label: a.label, description: a.description };
               })
             : [];
+          const built = buildStyleBrief({
+            styleId: styleDef.id as BriefStyleId,
+            userBrief: brief.prompt,
+            format: {
+              aspect: (prevState.aspect as string | undefined) ?? null,
+              lang: (prevState.lang as string | undefined) ?? null,
+              variants: (prevState.variants as number | undefined) ?? null,
+            },
+            color: color
+              ? { id: color.id, label: color.label, swatch: color.swatch }
+              : null,
+            angles: anglesPayload,
+            autoCandidates: isAuto ? autoCandidates : null,
+          });
+
           const payload = {
             source: "lovable.content-factory",
             submittedAt: new Date().toISOString(),
             task,
+            // Готовый промпт со стилевыми инструкциями + бриф пользователя.
+            // В n8n именно это поле передаётся в AI image generator.
+            finalPrompt: built.technicalBrief,
             contentType: contentType
               ? {
                   id: contentType.id,
@@ -500,6 +518,12 @@ const CreateStep3 = () => {
                 label: styleDef.label,
                 description: styleDef.description,
                 auto: isAuto,
+                // Структурированный бриф стиля (composition, lighting, cameraAngle, ...)
+                brief: built.structured,
+                // Готовый текстовый промпт для AI.
+                technicalBrief: built.technicalBrief,
+                // Negative prompt — чего избегать.
+                avoid: built.avoid,
               },
               auto: isAuto,
               autoCandidates: isAuto ? autoCandidates : null,
