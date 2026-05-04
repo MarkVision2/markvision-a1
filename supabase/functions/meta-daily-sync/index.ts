@@ -80,7 +80,7 @@ Deno.serve(async (req) => {
 
     const { data: cabinets, error: cabErr } = await admin
       .from("ad_cabinets")
-      .select("id, external_id");
+      .select("id, external_id, project_id");
     if (cabErr) throw cabErr;
 
     const results: Array<Record<string, unknown>> = [];
@@ -125,6 +125,7 @@ Deno.serve(async (req) => {
           .upsert({
             cabinet_id: cab.id,
             external_id: actId,
+            project_id: (cab as any).project_id ?? null,
             date: target,
             spend, impressions, clicks, leads, revenue,
             cpl, cpm, cpc, ctr,
