@@ -312,6 +312,8 @@ const CreateStep3 = () => {
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<GeneratedVariant[] | null>(null);
+  // Отредактированные пользователем ТЗ (по styleId). Если пусто — используется авто-бриф.
+  const [editedBriefs, setEditedBriefs] = useState<Partial<Record<StyleId, string>>>({});
 
   const toggleStyle = (id: StyleId) => {
     setSelectedStyles((prev) => {
