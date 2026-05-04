@@ -24,6 +24,20 @@ import type { AdCabinet } from "@/types/ads";
 import { saveCampaign } from "@/hooks/useCabinetsStore";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import GoalAssetsPicker from "./GoalAssetsPicker";
+import { cropImageFile, cropVideoFile, type Fit } from "@/lib/cropMedia";
+
+/**
+ * View-state, который ребёнок-CreativeUpload отдаёт наверх при каждом изменении.
+ * Нужен, чтобы при сабмите «запечь» точно то, что видит пользователь.
+ */
+export interface CreativeViewState {
+  ratio: "4:5" | "9:16";
+  fit: Fit;
+  zoom: number;
+  pos: { x: number; y: number };
+  /** Размер фрейма превью в css-пикселях. */
+  frame: { w: number; h: number };
+}
 
 interface CreateCampaignDialogProps {
   open: boolean;
@@ -44,11 +58,13 @@ const CreativeUpload = ({
   ratio,
   file,
   onFile,
+  onView,
 }: {
   label: string;
   ratio: "4:5" | "9:16";
   file: File | null;
   onFile: (f: File | null) => void;
+  onView?: (s: CreativeViewState) => void;
 }) => {
   const ref = useRef<HTMLInputElement>(null);
   const frameRef = useRef<HTMLDivElement>(null);
@@ -56,6 +72,7 @@ const CreativeUpload = ({
   const [fit, setFit] = useState<"contain" | "cover">("contain");
   const [zoom, setZoom] = useState(1);
   const [pos, setPos] = useState({ x: 0, y: 0 });
+  const [frameSize, setFrameSize] = useState({ w: 0, h: 0 });
   const dragRef = useRef<{ sx: number; sy: number; px: number; py: number } | null>(null);
 
   const storageKey = file
@@ -108,6 +125,26 @@ const CreativeUpload = ({
       /* ignore quota */
     }
   }, [storageKey, fit, zoom, pos]);
+
+  // Меряем фрейм превью — нужно, чтобы пересчитать pos/zoom в координаты исходника.
+  useEffect(() => {
+    const el = frameRef.current;
+    if (!el) return;
+    const update = () => {
+      const r = el.getBoundingClientRect();
+      setFrameSize({ w: r.width, h: r.height });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [previewUrl]);
+
+  // Прокидываем view-state наверх на каждое изменение.
+  useEffect(() => {
+    if (!onView) return;
+    onView({ ratio, fit, zoom, pos, frame: frameSize });
+  }, [ratio, fit, zoom, pos, frameSize, onView]);
 
   const isVideo = file?.type.startsWith("video/");
   const isImage = file?.type.startsWith("image/");
@@ -287,6 +324,11 @@ const CreateCampaignDialog = ({
   const [budget, setBudget] = useState("50");
   const [feed, setFeed] = useState<File | null>(null);
   const [stories, setStories] = useState<File | null>(null);
+  // View-state каждого превью — обновляется коллбеком onView.
+  const feedViewRef = useRef<CreativeViewState | null>(null);
+  const storiesViewRef = useRef<CreativeViewState | null>(null);
+  const [bakeStatus, setBakeStatus] = useState<string | null>(null);
+  const [bakePct, setBakePct] = useState<number>(0);
   const [text, setText] = useState("");
   const [whatsappId, setWhatsappId] = useState("");
   const [pixelId, setPixelId] = useState("");
@@ -320,6 +362,53 @@ const CreateCampaignDialog = ({
     }
 
     const cab = selectedCabinet;
+
+    // ===== Запекаем кроп/зум/позицию пользователя в готовые файлы =====
+    // Картинки — мгновенно через canvas. Видео — через ffmpeg.wasm
+    // (загрузка ядра при первом запуске, дальше — кешируется).
+    setSubmitting(true);
+    let bakedFeed: File | null = feed;
+    let bakedStories: File | null = stories;
+    try {
+      const bake = async (
+        f: File | null,
+        view: CreativeViewState | null,
+        slotLabel: string,
+      ): Promise<File | null> => {
+        if (!f || !view || !view.frame.w || !view.frame.h) return f;
+        const params = {
+          ratio: view.ratio,
+          fit: view.fit,
+          zoom: view.zoom,
+          pos: view.pos,
+          frame: view.frame,
+        };
+        if (f.type.startsWith("image/")) {
+          setBakeStatus(`Готовим ${slotLabel}...`);
+          setBakePct(50);
+          return await cropImageFile(f, params);
+        }
+        if (f.type.startsWith("video/")) {
+          setBakeStatus(`Кодируем видео ${slotLabel} (это может занять до минуты)...`);
+          setBakePct(0);
+          return await cropVideoFile(f, params, (pct) => setBakePct(pct));
+        }
+        return f;
+      };
+
+      bakedFeed = await bake(feed, feedViewRef.current, "ленту 4:5");
+      bakedStories = await bake(stories, storiesViewRef.current, "сторис 9:16");
+      setBakeStatus(null);
+      setBakePct(0);
+    } catch (e) {
+      setBakeStatus(null);
+      setBakePct(0);
+      setSubmitting(false);
+      const msg = e instanceof Error ? e.message : "Не удалось обработать креатив";
+      toast.error(`Ошибка обработки креатива: ${msg}`);
+      return;
+    }
+
     const payload = {
       // Root-level fields for n8n Parse Webhook compatibility
       source: "lovable-webhook",
@@ -395,11 +484,11 @@ const CreateCampaignDialog = ({
       pixelEvent: goal === "site-leads" ? pixelEvent : undefined,
       leadFormId: goal === "meta-form" ? leadFormId : undefined,
       creatives: {
-        feed: feed
-          ? { name: feed.name, type: feed.type, size: feed.size }
+        feed: bakedFeed
+          ? { name: bakedFeed.name, type: bakedFeed.type, size: bakedFeed.size, baked: true, ratio: "4:5" }
           : null,
-        stories: stories
-          ? { name: stories.name, type: stories.type, size: stories.size }
+        stories: bakedStories
+          ? { name: bakedStories.name, type: bakedStories.type, size: bakedStories.size, baked: true, ratio: "9:16" }
           : null,
       },
       submittedAt: new Date().toISOString(),
@@ -407,10 +496,9 @@ const CreateCampaignDialog = ({
 
     const fd = new FormData();
     fd.append("payload", JSON.stringify(payload));
-    if (feed) fd.append("creative_feed", feed, feed.name);
-    if (stories) fd.append("creative_stories", stories, stories.name);
+    if (bakedFeed) fd.append("creative_feed", bakedFeed, bakedFeed.name);
+    if (bakedStories) fd.append("creative_stories", bakedStories, bakedStories.name);
 
-    setSubmitting(true);
     try {
       const res = await fetch(WEBHOOK_URL, { method: "POST", body: fd });
       if (!res.ok) throw new Error(`Webhook ${res.status}`);
@@ -530,8 +618,20 @@ const CreateCampaignDialog = ({
           Креативы
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <CreativeUpload label="Лента (4:5)" ratio="4:5" file={feed} onFile={setFeed} />
-          <CreativeUpload label="Stories (9:16)" ratio="9:16" file={stories} onFile={setStories} />
+          <CreativeUpload
+            label="Лента (4:5)"
+            ratio="4:5"
+            file={feed}
+            onFile={setFeed}
+            onView={(s) => { feedViewRef.current = s; }}
+          />
+          <CreativeUpload
+            label="Stories (9:16)"
+            ratio="9:16"
+            file={stories}
+            onFile={setStories}
+            onView={(s) => { storiesViewRef.current = s; }}
+          />
         </div>
 
         <div className="space-y-2">
@@ -547,12 +647,27 @@ const CreateCampaignDialog = ({
           />
         </div>
 
+        {bakeStatus && (
+          <div className="rounded-xl border border-border/60 bg-background/60 px-4 py-3 text-xs">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="text-muted-foreground">{bakeStatus}</span>
+              <span className="font-mono tabular-nums text-foreground">{bakePct}%</span>
+            </div>
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+              <div
+                className="h-full bg-success transition-[width]"
+                style={{ width: `${bakePct}%` }}
+              />
+            </div>
+          </div>
+        )}
+
         <Button
           onClick={handleSubmit}
           disabled={submitting}
           className="h-12 w-full rounded-xl bg-success text-white hover:bg-success/90"
         >
-          {submitting ? "Отправляем…" : "🚀 Отправить на запуск AI"}
+          {submitting ? (bakeStatus ? "Готовим креатив…" : "Отправляем…") : "🚀 Отправить на запуск AI"}
         </Button>
       </DialogContent>
     </Dialog>
