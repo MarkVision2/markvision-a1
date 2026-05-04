@@ -386,16 +386,12 @@ const CreateCampaignDialog = ({
         if (f.type.startsWith("image/")) {
           setBakeStatus(`Готовим ${slotLabel}...`);
           setBakePct(50);
-          return await cropImageFile(f, { ...params, natural: { w: 0, h: 0 } });
+          return await cropImageFile(f, params);
         }
         if (f.type.startsWith("video/")) {
           setBakeStatus(`Кодируем видео ${slotLabel} (это может занять до минуты)...`);
           setBakePct(0);
-          return await cropVideoFile(
-            f,
-            { ...params, natural: { w: 0, h: 0 } },
-            (pct) => setBakePct(pct),
-          );
+          return await cropVideoFile(f, params, (pct) => setBakePct(pct));
         }
         return f;
       };
