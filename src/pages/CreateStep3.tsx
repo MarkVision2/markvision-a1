@@ -458,6 +458,22 @@ const CreateStep3 = () => {
             description: s.description,
           }));
           const task = isNeuroPhoto ? "neuro_photo_session" : "ad_creative";
+          // Routing-ключ для n8n Switch-ноды. ДОЛЖЕН совпадать с именами веток
+          // в воркфлоу: insta-carousel, fb-target, youtube, events, google ads,
+          // neuro-photo, reels-cover, instagram-stories, banner, marketplace, logo.
+          const ROUTE_MAP: Record<string, string> = {
+            "facebook-ads": "fb-target",
+            "google-ads": "google ads",
+            "marketplace": "marketplace",
+            "insta-carousel": "insta-carousel",
+            "reels-cover": "reels-cover",
+            "stories": "instagram-stories",
+            "youtube-thumb": "youtube",
+            "web-banner": "banner",
+            "neuro-photo": "neuro-photo",
+          };
+          const typeId = (contentType?.id ?? (prevState.typeId as string | undefined) ?? "") as string;
+          const route = ROUTE_MAP[typeId] ?? "Fallback";
           const anglesPayload = isNeuroPhoto
             ? selectedAngles.map((aid) => {
                 const a = ANGLES.find((x) => x.id === aid)!;
@@ -492,6 +508,11 @@ const CreateStep3 = () => {
             source: "lovable.content-factory",
             submittedAt: new Date().toISOString(),
             task,
+            // Главный routing-ключ для Switch-ноды в n8n.
+            route,
+            // Дублируем на верхний уровень для удобства разных нод.
+            typeId,
+            category: contentType?.category ?? null,
             // Готовый промпт со стилевыми инструкциями + бриф пользователя.
             // В n8n именно это поле передаётся в AI image generator.
             finalPrompt: finalTechnicalBrief,
