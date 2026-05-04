@@ -404,7 +404,14 @@ const CreateCampaignDialog = ({
       setBakeStatus(null);
       setBakePct(0);
       setSubmitting(false);
-      const msg = e instanceof Error ? e.message : "Не удалось обработать креатив";
+      const msg =
+        e instanceof Error && e.message
+          ? e.message
+          : typeof e === "string"
+            ? e
+            : "Не удалось обработать креатив (неизвестная ошибка)";
+      // eslint-disable-next-line no-console
+      console.error("[bake] error", e);
       toast.error(`Ошибка обработки креатива: ${msg}`);
       return;
     }
