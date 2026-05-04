@@ -166,8 +166,8 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
             }
           />
           <Metric
-            label="Клики"
-            value={formatNumber(totals?.clicks ?? 0)}
+            label="CPL"
+            value={cpl > 0 ? formatMoney(cpl, currency) : "—"}
           />
           <Metric
             label="Выручка"
