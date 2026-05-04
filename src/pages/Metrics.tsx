@@ -361,7 +361,7 @@ const Metrics = () => {
                 </th>
                 {[
                   "Расходы", "Лиды", "CPL",
-                  "Подписч.", "Визиты", "Оплаты", "Выручка",
+                  "Диагностики", "Оплаты", "Выручка",
                 ].map((h) => (
                   <th
                     key={h}
@@ -388,7 +388,6 @@ const Metrics = () => {
                 <Cell>{plan ? formatNumber(plan.spend) : <Dash />}</Cell>
                 <Cell>{plan ? formatNumber(plan.leads) : <Dash />}</Cell>
                 <Cell>{plan ? formatNumber(plan.cpl) : <Dash />}</Cell>
-                <Cell><Dash /></Cell>
                 <Cell>{plan ? formatNumber(plan.visits) : <Dash />}</Cell>
                 <Cell>{plan ? formatNumber(plan.sales) : <Dash />}</Cell>
                 <Cell>{plan ? formatNumber(plan.revenue) : <Dash />}</Cell>
@@ -423,7 +422,6 @@ const Metrics = () => {
                 </Cell>
                 <Cell><span className="font-bold">0</span></Cell>
                 <Cell><span className="font-bold">0</span></Cell>
-                <Cell><span className="font-bold">0</span></Cell>
                 <Cell>
                   <span className="font-bold">
                     {totals ? formatNumber(totals.revenue) : <Dash />}
@@ -452,7 +450,6 @@ const Metrics = () => {
                   const cells = [
                     pct(factSpend, plan?.spend ?? 0),
                     pct(factLeads, plan?.leads ?? 0),
-                    null,
                     null,
                     null,
                     null,
@@ -485,7 +482,6 @@ const Metrics = () => {
                     <Cell>{hasData ? formatNumber(d!.spend) : <Dash />}</Cell>
                     <Cell>{hasData && d!.leads > 0 ? formatNumber(d!.leads) : <Dash />}</Cell>
                     <Cell>{cpl > 0 ? formatNumber(cpl) : <Dash />}</Cell>
-                    <Cell><Dash /></Cell>
                     <Cell><Dash /></Cell>
                     <Cell><Dash /></Cell>
                     <Cell>{hasData && d!.revenue > 0 ? formatNumber(d!.revenue) : <Dash />}</Cell>
