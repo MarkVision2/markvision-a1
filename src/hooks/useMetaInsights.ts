@@ -8,6 +8,10 @@ export interface DailyInsightRow {
   clicks: number;
   leads: number;
   revenue: number;
+  diagnostics: number;
+  manualDiagnostics: number;
+  sales: number;
+  crmRevenue: number;
 }
 
 export interface InsightTotals {
@@ -21,6 +25,9 @@ export interface InsightTotals {
   cpc: number;
   ctr: number;
   romi: number;
+  diagnostics: number;
+  sales: number;
+  crmRevenue: number;
 }
 
 export interface InsightsData {
@@ -32,6 +39,7 @@ export interface InsightsData {
 const EMPTY_TOTALS: InsightTotals = {
   spend: 0, impressions: 0, clicks: 0, leads: 0, revenue: 0,
   cpl: 0, cpm: 0, cpc: 0, ctr: 0, romi: 0,
+  diagnostics: 0, sales: 0, crmRevenue: 0,
 };
 
 function normalizeActId(id: string) {
@@ -60,6 +68,10 @@ interface CdiRow {
   leads: number;
   revenue: number | string;
   currency: string;
+  crm_diagnostics?: number;
+  manual_diagnostics?: number;
+  crm_sales?: number;
+  crm_revenue?: number | string;
 }
 
 function aggregate(rows: CdiRow[]): InsightsData {
@@ -73,11 +85,19 @@ function aggregate(rows: CdiRow[]): InsightsData {
     const impressions = Number(r.impressions) || 0;
     const clicks = Number(r.clicks) || 0;
     const leads = Number(r.leads) || 0;
+    const crmDiag = Number(r.crm_diagnostics) || 0;
+    const manDiag = Number(r.manual_diagnostics) || 0;
+    const diagnostics = crmDiag + manDiag;
+    const sales = Number(r.crm_sales) || 0;
+    const crmRevenue = Number(r.crm_revenue) || 0;
     totals.spend += spend;
     totals.impressions += impressions;
     totals.clicks += clicks;
     totals.leads += leads;
     totals.revenue += revenue;
+    totals.diagnostics += diagnostics;
+    totals.sales += sales;
+    totals.crmRevenue += crmRevenue;
     const cur = dailyMap.get(r.date);
     if (cur) {
       cur.spend += spend;
@@ -85,8 +105,15 @@ function aggregate(rows: CdiRow[]): InsightsData {
       cur.clicks += clicks;
       cur.leads += leads;
       cur.revenue += revenue;
+      cur.diagnostics += diagnostics;
+      cur.manualDiagnostics += manDiag;
+      cur.sales += sales;
+      cur.crmRevenue += crmRevenue;
     } else {
-      dailyMap.set(r.date, { date: r.date, spend, impressions, clicks, leads, revenue });
+      dailyMap.set(r.date, {
+        date: r.date, spend, impressions, clicks, leads, revenue,
+        diagnostics, manualDiagnostics: manDiag, sales, crmRevenue,
+      });
     }
   }
   totals.cpl = totals.leads > 0 ? totals.spend / totals.leads : 0;
@@ -106,7 +133,7 @@ async function fetchInsights(actIds: string[], month: string): Promise<InsightsD
   const ids = actIds.map(normalizeActId);
   const { data, error } = await supabase
     .from("cabinet_daily_insights")
-    .select("date, spend, impressions, clicks, leads, revenue, currency")
+    .select("date, spend, impressions, clicks, leads, revenue, currency, crm_diagnostics, manual_diagnostics, crm_sales, crm_revenue")
     .in("external_id", ids)
     .gte("date", range.since)
     .lte("date", range.until)
@@ -141,7 +168,22 @@ export function useMetaInsights(
         setData({ currency: "USD", totals: EMPTY_TOTALS, daily: [] });
       })
       .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+    // Realtime: subscribe to changes in cabinet_daily_insights for this external_id
+    const norm = normalizeActId(actId);
+    const channel = supabase
+      .channel(`cdi-${norm}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "cabinet_daily_insights", filter: `external_id=eq.${norm}` },
+        () => {
+          fetchInsights([actId], month).then((d) => { if (!cancelled) setData(d); }).catch(() => {});
+        },
+      )
+      .subscribe();
+    return () => {
+      cancelled = true;
+      supabase.removeChannel(channel);
+    };
   }, [actId, month, enabled, refreshKey]);
 
   return { data, loading, error, refresh: () => setRefreshKey((k) => k + 1) };
