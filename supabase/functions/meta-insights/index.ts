@@ -211,9 +211,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    const currency: string = accountJson?.currency ?? "USD";
+    const accountCurrency: string = accountJson?.currency ?? "USD";
 
-    const rows: DailyRow[] = ((metaJson.data ?? []) as Array<{
+    let rows: DailyRow[] = ((metaJson.data ?? []) as Array<{
       date_start: string;
       spend?: string;
       impressions?: string;
@@ -229,6 +229,28 @@ Deno.serve(async (req) => {
       revenue: sumActions(r.action_values, PURCHASE_ACTIONS),
     }));
 
+    let displayCurrency = accountCurrency;
+    if (accountCurrency !== "KZT" && rows.length > 0) {
+      try {
+        const admin = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+        );
+        const dates = Array.from(new Set(rows.map((r) => r.date)));
+        const { data: cached } = await admin.from("fx_rates").select("date, usd_kzt").in("date", dates);
+        const map = new Map<string, number>();
+        for (const c of (cached ?? []) as Array<{ date: string; usd_kzt: number | string }>) {
+          map.set(c.date, Number(c.usd_kzt));
+        }
+        rows = rows.map((r) => {
+          const rate = map.get(r.date);
+          if (!rate) return r;
+          return { ...r, spend: r.spend * rate, revenue: r.revenue * rate };
+        });
+        if (rows.every((r) => map.has(r.date))) displayCurrency = "KZT";
+        else if (rows.some((r) => map.has(r.date))) displayCurrency = "KZT";
+      } catch (_) { /* fall back to original currency */ }
+    }
 
     const totals = rows.reduce(
       (acc, r) => {
@@ -252,7 +274,7 @@ Deno.serve(async (req) => {
       totals.spend > 0 ? ((totals.revenue - totals.spend) / totals.spend) * 100 : 0;
 
     const response: InsightsResponse = {
-      currency,
+      currency: displayCurrency,
       totals: { ...totals, cpl, cpm, cpc, ctr, romi },
       daily: rows,
     };
