@@ -443,7 +443,9 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                   const diag = row?.diagnostics ?? 0;
                   const manualDiag = row?.manualDiagnostics ?? 0;
                   const sales = row?.sales ?? 0;
+                  const manualSales = row?.manualSales ?? 0;
                   const crmRev = row?.crmRevenue ?? 0;
+                  const manualRev = row?.manualRevenue ?? 0;
                   return (
                     <tr
                       key={d.key}
