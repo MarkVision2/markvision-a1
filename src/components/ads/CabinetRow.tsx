@@ -158,6 +158,9 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
     isoDate: string,
     patch: Record<string, number>,
   ) => {
+    const sb = supabase as unknown as {
+      from: (t: string) => ReturnType<typeof supabase.from>;
+    };
     try {
       const { data: existing } = await supabase
         .from("cabinet_daily_insights")
