@@ -1,99 +1,64 @@
-## Цель
+## Что сейчас не так
 
-Перевести всю систему MarkVision AI на единый минималистичный стиль из скриншота: глубокий тёмно-синий фон, изумрудный акцент, чёткая типографика, высокий контраст, без обилия цветов.
+- KPI-блоки показывают «+100%» как дельту даже когда сравнивать не с чем — выглядит как баг.
+- Воронка и «По каналам» рядом, но «По каналам» содержит только одну строку «Реклама» (бакет `ads`) — реальные каналы (FB/Google/TikTok/Instagram) не разделяются.
+- UTM сохраняются в `leads.utm` (jsonb), но `useLeadsLite` их не вытягивает и аналитика их не использует.
+- Нет сравнения с прошлым периодом, нет графика динамики, нет таблицы UTM-кампаний.
 
-## Палитра (single source of truth — `src/index.css`)
+## Что сделаю
+
+### 1. Атрибуция по UTM (бэкенд + фронт)
+
+- В `useLeadsLite` добавить поля `utm` (source/medium/campaign/content/term), `cabinetId`, `paidAt`.
+- Новый файл `src/lib/channelAttribution.ts`: функция `resolveChannel(lead)` возвращает один из:
+  `facebook`, `instagram`, `google`, `tiktok`, `youtube`, `vk`, `yandex`, `telegram`, `whatsapp`, `direct`, `referral`, `other`.
+  Логика приоритетов: `utm.source` → `utm.medium` → `lead.source` → `lead.channel` → `referrer host`.
+  Распознаются варианты: `fb|facebook|meta|ig|instagram|tt|tiktok|google|adwords|yt|youtube|yandex|direct|vk|tg|telegram|wa|whatsapp`.
+- В `lead-intake/index.ts` расширить `SOURCE_ALIASES` (tiktok, youtube, vk) и автозапись `utm.source = lower(...)` если `source` пуст — это уже работает, докручу детект из `referrer`.
+
+### 2. Связка расхода Meta ↔ канал
+
+- Расход из `cabinet_daily_insights` (Meta) считается как канал `facebook` (+ `instagram` если кабинет помечен IG-only — пока кладём в `facebook`).
+- Под Google / TikTok / Yandex расход = 0 пока пользователь не подключит соответствующий рекламный кабинет (UI оставляет место под подключение).
+
+### 3. Редизайн страницы `/analytics`
+
+Структура (сверху вниз):
 
 ```text
-Background:    deep navy   #0B1420  (hsl 215 45% 8%)
-Surface/Card:  navy-800    #0F1B2D  (hsl 215 40% 12%)
-Surface-2:     navy-700    #14233A  (hsl 215 38% 16%)
-Border:        slate-700   #1F2E47  (hsl 215 30% 20%)
-Foreground:    near-white  #E6EEF7  (hsl 210 30% 94%)
-Muted text:    slate-400   #8AA0BC  (hsl 215 20% 64%)
-Primary/Accent: emerald    #22C39A  (hsl 162 70% 45%)  ← единственный цветной акцент
-Primary glow:  emerald-300 (hsl 162 70% 55%)
-Destructive:   coral 0 72% 55%   (используется ТОЛЬКО для ошибок/удаления)
-Warning:       amber 38 92% 58%  (только для SLA-алёртов)
+[ Header: Сквозная аналитика | период | кабинет ]
+
+[ KPI grid 4 кол. ]
+  Расход · Лиды · CPL · Продажи · Выручка · ROMI · Конверсия · Средний чек
+  - дельта vs прошлый месяц (реальная), без «+100%»-затычки
+  - акцент только на CPL и ROMI
+
+[ Воронка | График Динамика по дням (расход vs лиды vs продажи) ]
+
+[ Эффективность каналов — карточки + таблица ]
+  Карточки FB · Google · TikTok · Instagram · Яндекс · Прямой · Прочие
+  По каждой: Расход · Лиды · CPL · Продажи · Выручка · ROMI
+  Под карточками — таблица «UTM-кампании»:
+    utm_source / utm_campaign | Лиды | Продажи | Выручка | CPL (если есть расход)
+
+[ Топ источников трафика — компактный список с прогресс-барами ]
 ```
 
-Никаких фиолетовых градиентов, никаких розовых/синих свечений. Один акцент = emerald.
+Дизайн: сохранить deep-navy/emerald, убрать ярко-красный «-100%» на ROMI без расхода (показать «—»), прибрать «+100%» дельты, добавить иконки соцсетей (lucide), скруглённые карточки с тонкой границей.
 
-## Что меняется
+### 4. Файлы
 
-### 1. Дизайн-токены (`src/index.css`, `tailwind.config.ts`)
-- Переписать `:root` и `.dark` под новую палитру.
-- Заменить `--gradient-primary` на тонкий emerald-градиент (135deg, emerald → emerald-glow), `--gradient-hero` на бело-слейт текстовый градиент.
-- Убрать фиолетовые radial-gradients из `body` background-image — оставить чистый плоский фон + одно очень слабое emerald-свечение сверху (opacity ≤ 0.06).
-- `--shadow-glow` → `0 0 32px hsl(162 70% 45% / 0.25)`.
-- `--radius`: 0.75rem (чуть строже).
+- `src/pages/Analytics.tsx` — переработка верстки, новые секции.
+- `src/lib/channelAttribution.ts` — новая функция атрибуции.
+- `src/hooks/useLeadsLite.ts` — добавить `utm`, `cabinetId`, `paidAt`, `referrer`.
+- `src/components/analytics/ChannelCard.tsx` — карточка канала (новый).
+- `src/components/analytics/UtmTable.tsx` — таблица UTM-кампаний (новый).
+- `src/components/analytics/TrendChart.tsx` — график по дням на recharts (новый).
+- `supabase/functions/lead-intake/index.ts` — добавить алиасы tiktok/youtube/vk и детект источника из `referrer` (host → source).
 
-### 2. Сайдбар (`src/components/layout/AppSidebar.tsx`, `ProjectSwitcher.tsx`)
-- Фон сайдбара = `--background` (как на скриншоте — слитный с контентом, разделён только бордером).
-- Активный пункт: emerald-фон 12% + emerald-текст + левый бордер 2px emerald.
-- Иконки: muted в обычном, emerald в активном/hover.
-- Логотип-плашка проекта: emerald-градиент, скругление xl.
-- Убрать любые фиолетовые тени/градиенты.
+### 5. Что НЕ делаю в этой итерации
 
-### 3. Хедер / топбар (`src/components/factory/Header.tsx` и хедер AppLayout)
-- Плашка лого: emerald gradient, glow убрать (только subtle).
-- Поле «Спросите ИИ…»: широкое, плоское, бордер `--border`, focus-ring emerald.
+- Реальные API Google/TikTok/Yandex — только UI и место под расход. Подключение кабинетов этих сетей — отдельная задача.
+- Изменения схемы БД не нужны: `utm` уже хранится в `leads.utm`.
 
-### 4. Карточки KPI (CrmKpiBar, MoneyKpiCard, KpiCard, UnitEconomicsCard)
-- Единый стиль: surface bg, border 1px, radius lg, padding 5–6.
-- Иконка в квадрате 40×40 со скруглением md, фон `emerald/12`, цвет emerald.
-- Заголовок UPPERCASE 11px tracking-wider muted, значение 28–32px semibold, подпись 12px muted.
-- Без градиентов внутри карточек.
-
-### 5. Табы и кнопки
-- Tabs: контейнер surface, активный таб = emerald/15 фон + emerald текст. Остальные — muted.
-- Primary button: emerald solid, hover чуть светлее, без heavy shadow-glow (только subtle).
-- Secondary/outline: border `--border`, hover surface-2.
-
-### 6. Воронка / Kanban (StageColumn, LeadCard)
-- Колонки: surface bg, бордер, header с иконкой стадии (emerald accent для активных стадий, muted для прочих).
-- Карточки лидов: surface-2, hover чуть светлее + emerald-border на 1px.
-- Drag-over состояние: emerald dashed border + emerald/8 фон.
-
-### 7. Контент-завод и страницы создания
-- ContentTypeCard / SourceModeCard: убрать `bg-gradient-card-hover` (фиолет), заменить на emerald hover overlay.
-- Hero: текстовый градиент через `--gradient-hero` (бело-слейт), без фиолета.
-
-### 8. Формы, инпуты, диалоги
-- Input/Textarea/Select: bg `--secondary`, border `--border`, focus emerald ring.
-- Dialog/Sheet: bg `--popover`, border, без backdrop-blur тяжёлых эффектов.
-
-### 9. Графики (Recharts wrappers — RevenueSpendChart, MonthlyDynamics и т.п.)
-- Основной цвет линий/баров: emerald. Второй ряд: slate-400. Сетка: `--border` с opacity.
-- Tooltip: surface-2 + border + emerald accent.
-
-### 10. Логин / Auth (`Login.tsx`, `AuthForm.tsx`, `MarketingPanel.tsx`)
-- Убрать фиолетовые градиенты, заменить на emerald accent + плоский navy фон.
-
-## Производительность
-
-- Удалить тяжёлый `background-attachment: fixed` + двойные radial-gradients из body — оставить плоский фон (быстрее на скролле).
-- Убрать `backdrop-blur-xl` со sticky header → `backdrop-blur-sm` или вовсе solid bg (заметно быстрее на слабых машинах).
-- Снизить количество `shadow-elevated`/`shadow-glow` — оставить только на primary CTA и активной карточке проекта.
-
-## Что НЕ трогаем
-
-- Структуру компонентов, роутинг, бизнес-логику, Supabase, edge-функции.
-- Иконки (lucide-react остаётся).
-- Содержимое страниц.
-
-## Файлы (основные правки)
-
-- `src/index.css` — палитра + градиенты + body bg
-- `tailwind.config.ts` — при необходимости (цвета берутся из CSS-переменных, скорее всего без изменений)
-- `src/components/layout/AppSidebar.tsx`, `AppLayout.tsx`, `ProjectSwitcher.tsx`
-- `src/components/factory/Header.tsx`, `Hero.tsx`, `ContentTypeCard.tsx`, `SourceModeCard.tsx`
-- `src/components/crm/CrmKpiBar.tsx`, `StageColumn.tsx`, `LeadCard.tsx`, `SlaAlerts.tsx`
-- `src/components/dashboard/*` — KPI и графики
-- `src/components/reports/KpiCard.tsx`
-- `src/components/auth/*`, `src/pages/Login.tsx`
-- Точечно: убрать классы `bg-gradient-card-hover`, `shadow-glow` где они визуально лишние.
-
-## Результат
-
-Единый чёткий дизайн как на референсе: navy + emerald, высокая читаемость, минимум эффектов, заметно более быстрый рендер.
+После апрува — реализую всё одним проходом.
