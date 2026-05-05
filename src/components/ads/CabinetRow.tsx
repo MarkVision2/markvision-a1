@@ -608,4 +608,80 @@ const DiagnosticsCell = ({
   );
 };
 
+const EditableNumberCell = ({
+  value,
+  manual,
+  fromAuto,
+  autoLabel,
+  render,
+  onSave,
+  title,
+  allowDecimal,
+}: {
+  value: number;
+  manual: number;
+  fromAuto: number;
+  autoLabel: string;
+  render: (v: number) => React.ReactNode;
+  onSave: (newManual: number) => Promise<void>;
+  title: string;
+  allowDecimal?: boolean;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [val, setVal] = useState<string>(String(manual));
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    const num = Number(val) || 0;
+    const n = allowDecimal ? Math.max(0, num) : Math.max(0, Math.floor(num));
+    setSaving(true);
+    try {
+      await onSave(n);
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) setVal(String(manual)); }}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-secondary",
+            !value && "text-muted-foreground",
+          )}
+        >
+          {render(value)}
+          <Pencil className="h-3 w-3 opacity-60" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56" align="end">
+        <div className="space-y-2">
+          <div className="text-xs font-medium">{title}</div>
+          <div className="text-[11px] text-muted-foreground">
+            {autoLabel}: {fromAuto} · Вручную: {manual}
+          </div>
+          <Input
+            type="number"
+            min={0}
+            step={allowDecimal ? "0.01" : "1"}
+            value={val}
+            onChange={(e) => setVal(e.target.value)}
+          />
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
+              Отмена
+            </Button>
+            <Button size="sm" onClick={handleSave} disabled={saving}>
+              {saving ? "..." : "Сохранить"}
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
 export default CabinetRow;
