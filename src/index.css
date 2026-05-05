@@ -2,105 +2,98 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
-All colors MUST be HSL.
+/* Design system — MarkVision AI
+   Стиль: глубокий navy + один emerald-акцент. Все цвета HSL.
 */
 
 @layer base {
   :root {
-    /* Тёмная премиум-палитра (Vercel/Framer) — используется по умолчанию (html.dark) */
-    --background: 240 10% 4%;
-    --foreground: 0 0% 98%;
+    /* Surfaces */
+    --background: 215 45% 8%;
+    --foreground: 210 30% 94%;
 
-    --card: 240 8% 7%;
-    --card-foreground: 0 0% 98%;
+    --card: 215 40% 12%;
+    --card-foreground: 210 30% 94%;
 
-    --popover: 240 10% 6%;
-    --popover-foreground: 0 0% 98%;
+    --popover: 215 42% 10%;
+    --popover-foreground: 210 30% 94%;
 
-    /* Акцент: электрик-фиолетовый */
-    --primary: 258 90% 66%;
-    --primary-foreground: 0 0% 100%;
-    --primary-glow: 280 95% 70%;
+    /* Accent — emerald */
+    --primary: 162 70% 45%;
+    --primary-foreground: 215 45% 8%;
+    --primary-glow: 162 70% 55%;
 
-    --secondary: 240 6% 12%;
-    --secondary-foreground: 0 0% 98%;
+    --secondary: 215 38% 16%;
+    --secondary-foreground: 210 30% 94%;
 
-    --muted: 240 6% 12%;
-    --muted-foreground: 240 5% 60%;
+    --muted: 215 35% 14%;
+    --muted-foreground: 215 20% 64%;
 
-    --accent: 258 90% 66%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 162 70% 45%;
+    --accent-foreground: 215 45% 8%;
 
-    --destructive: 0 72% 51%;
+    --destructive: 0 72% 55%;
     --destructive-foreground: 0 0% 98%;
 
-    --success: 142 70% 45%;
-    --warning: 38 95% 58%;
+    --success: 162 70% 45%;
+    --warning: 38 92% 58%;
 
-    --border: 240 6% 14%;
-    --input: 240 6% 14%;
-    --ring: 258 90% 66%;
+    --border: 215 30% 20%;
+    --input: 215 30% 20%;
+    --ring: 162 70% 45%;
 
-    --radius: 0.875rem;
+    --radius: 0.75rem;
 
-    /* Градиенты и свечения */
-    --gradient-primary: linear-gradient(135deg, hsl(258 90% 66%), hsl(280 95% 70%));
-    --gradient-hero: linear-gradient(180deg, hsl(0 0% 98%) 0%, hsl(240 5% 70%) 100%);
-    --gradient-card-hover: linear-gradient(135deg, hsl(258 90% 66% / 0.08), hsl(280 95% 70% / 0.04));
-    --shadow-glow: 0 0 40px hsl(258 90% 66% / 0.35);
-    --shadow-card: 0 4px 24px -8px hsl(0 0% 0% / 0.5);
-    --shadow-elevated: 0 20px 60px -20px hsl(258 90% 66% / 0.45);
+    /* Gradients & shadows */
+    --gradient-primary: linear-gradient(135deg, hsl(162 70% 45%), hsl(162 70% 55%));
+    --gradient-hero: linear-gradient(180deg, hsl(210 30% 98%) 0%, hsl(215 20% 70%) 100%);
+    --gradient-card-hover: linear-gradient(135deg, hsl(162 70% 45% / 0.10), hsl(162 70% 55% / 0.04));
+    --shadow-glow: 0 0 32px hsl(162 70% 45% / 0.25);
+    --shadow-card: 0 2px 12px -4px hsl(215 50% 4% / 0.6);
+    --shadow-elevated: 0 16px 48px -16px hsl(162 70% 45% / 0.30);
 
-    --sidebar-background: 0 0% 98%;
-
-    --sidebar-foreground: 240 5.3% 26.1%;
-
-    --sidebar-primary: 240 5.9% 10%;
-
-    --sidebar-primary-foreground: 0 0% 98%;
-
-    --sidebar-accent: 240 4.8% 95.9%;
-
-    --sidebar-accent-foreground: 240 5.9% 10%;
-
-    --sidebar-border: 220 13% 91%;
-
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    /* Sidebar */
+    --sidebar-background: 215 45% 8%;
+    --sidebar-foreground: 210 25% 80%;
+    --sidebar-primary: 162 70% 45%;
+    --sidebar-primary-foreground: 215 45% 8%;
+    --sidebar-accent: 215 38% 14%;
+    --sidebar-accent-foreground: 210 30% 94%;
+    --sidebar-border: 215 30% 18%;
+    --sidebar-ring: 162 70% 45%;
   }
 
   .dark {
-    /* Дублирует :root, т.к. тёмная — единственная тема */
-    --background: 240 10% 4%;
-    --foreground: 0 0% 98%;
-    --card: 240 8% 7%;
-    --card-foreground: 0 0% 98%;
-    --popover: 240 10% 6%;
-    --popover-foreground: 0 0% 98%;
-    --primary: 258 90% 66%;
-    --primary-foreground: 0 0% 100%;
-    --primary-glow: 280 95% 70%;
-    --secondary: 240 6% 12%;
-    --secondary-foreground: 0 0% 98%;
-    --muted: 240 6% 12%;
-    --muted-foreground: 240 5% 60%;
-    --accent: 258 90% 66%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 72% 51%;
+    --background: 215 45% 8%;
+    --foreground: 210 30% 94%;
+    --card: 215 40% 12%;
+    --card-foreground: 210 30% 94%;
+    --popover: 215 42% 10%;
+    --popover-foreground: 210 30% 94%;
+    --primary: 162 70% 45%;
+    --primary-foreground: 215 45% 8%;
+    --primary-glow: 162 70% 55%;
+    --secondary: 215 38% 16%;
+    --secondary-foreground: 210 30% 94%;
+    --muted: 215 35% 14%;
+    --muted-foreground: 215 20% 64%;
+    --accent: 162 70% 45%;
+    --accent-foreground: 215 45% 8%;
+    --destructive: 0 72% 55%;
     --destructive-foreground: 0 0% 98%;
-    --success: 142 70% 45%;
-    --warning: 38 95% 58%;
-    --border: 240 6% 14%;
-    --input: 240 6% 14%;
-    --ring: 258 90% 66%;
-    --sidebar-background: 240 5.9% 10%;
-    --sidebar-foreground: 240 4.8% 95.9%;
-    --sidebar-primary: 224.3 76.3% 48%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 240 3.7% 15.9%;
-    --sidebar-accent-foreground: 240 4.8% 95.9%;
-    --sidebar-border: 240 3.7% 15.9%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --success: 162 70% 45%;
+    --warning: 38 92% 58%;
+    --border: 215 30% 20%;
+    --input: 215 30% 20%;
+    --ring: 162 70% 45%;
+    --sidebar-background: 215 45% 8%;
+    --sidebar-foreground: 210 25% 80%;
+    --sidebar-primary: 162 70% 45%;
+    --sidebar-primary-foreground: 215 45% 8%;
+    --sidebar-accent: 215 38% 14%;
+    --sidebar-accent-foreground: 210 30% 94%;
+    --sidebar-border: 215 30% 18%;
+    --sidebar-ring: 162 70% 45%;
   }
 }
 
@@ -112,11 +105,8 @@ All colors MUST be HSL.
   body {
     @apply bg-background text-foreground;
     font-feature-settings: "cv11", "ss01";
-    font-variation-settings: "opsz" 32;
     background-image:
-      radial-gradient(ellipse 80% 50% at 50% -10%, hsl(258 90% 66% / 0.18), transparent),
-      radial-gradient(ellipse 60% 40% at 90% 10%, hsl(280 95% 70% / 0.10), transparent);
-    background-attachment: fixed;
+      radial-gradient(ellipse 70% 40% at 50% -10%, hsl(162 70% 45% / 0.06), transparent);
   }
 }
 
