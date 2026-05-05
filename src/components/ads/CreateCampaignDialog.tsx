@@ -700,151 +700,156 @@ const CreateCampaignDialog = ({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto border-border/60 bg-card">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-2xl">
-            <Rocket className="h-6 w-6 text-success" />
-            Создать кампанию
-          </DialogTitle>
-          <DialogDescription>
-            Настройте параметры и отправьте на запуск через Webhook
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent className="max-h-[92vh] w-[96vw] max-w-6xl overflow-hidden border-border/60 bg-card p-0">
+        <div className="flex max-h-[92vh] flex-col">
+          <DialogHeader className="border-b border-border/60 px-6 py-4">
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <Rocket className="h-5 w-5 text-success" />
+              Создать кампанию
+            </DialogTitle>
+            <DialogDescription className="text-xs">
+              Настройте параметры и отправьте на запуск через Webhook
+            </DialogDescription>
+          </DialogHeader>
 
-        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Основные настройки
-        </div>
+          <div className="grid flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+            <div className="space-y-4 overflow-y-auto border-border/60 px-6 py-5 lg:border-r">
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Клиент / Кабинет
+                </Label>
+                <Select value={cabinetId} onValueChange={setCabinetId}>
+                  <SelectTrigger className="h-11 rounded-xl bg-background/60">
+                    <SelectValue placeholder="Выберите клиента" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {cabinets.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-        <div className="space-y-2">
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-            Клиент / Кабинет
-          </Label>
-          <Select value={cabinetId} onValueChange={setCabinetId}>
-            <SelectTrigger className="h-12 rounded-xl bg-background/60">
-              <SelectValue placeholder="Выберите клиента" />
-            </SelectTrigger>
-            <SelectContent>
-              {cabinets.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Цель кампании
+                </Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {GOALS.map((g) => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      onClick={() => setGoal(g.id)}
+                      className={cn(
+                        "rounded-xl border bg-background/60 px-3 py-2.5 text-xs font-medium transition-colors",
+                        goal === g.id
+                          ? "border-success text-foreground shadow-[inset_0_0_0_1px_hsl(var(--success))]"
+                          : "border-border/60 text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {g.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
-        <div className="space-y-2">
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-            Цель кампании
-          </Label>
-          <div className="grid grid-cols-3 gap-2">
-            {GOALS.map((g) => (
-              <button
-                key={g.id}
-                type="button"
-                onClick={() => setGoal(g.id)}
-                className={cn(
-                  "rounded-xl border bg-background/60 px-4 py-3 text-sm font-medium transition-colors",
-                  goal === g.id
-                    ? "border-success text-foreground shadow-[inset_0_0_0_1px_hsl(var(--success))]"
-                    : "border-border/60 text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {g.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <GoalAssetsPicker
-          goal={goal}
-          cabinet={selectedCabinet}
-          whatsappId={whatsappId}
-          setWhatsappId={setWhatsappId}
-          pixelId={pixelId}
-          setPixelId={setPixelId}
-          pixelEvent={pixelEvent}
-          setPixelEvent={setPixelEvent}
-          leadFormId={leadFormId}
-          setLeadFormId={setLeadFormId}
-        />
-
-        <div className="space-y-2">
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-            Бюджет
-          </Label>
-          <div className="relative">
-            <Input
-              value={budget}
-              onChange={(e) => setBudget(e.target.value)}
-              inputMode="numeric"
-              className="h-12 rounded-xl bg-background/60 pr-10"
-            />
-            <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-              $
-            </span>
-          </div>
-        </div>
-
-        <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Креативы
-        </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <CreativeUpload
-            label="Лента (4:5)"
-            ratio="4:5"
-            file={feed}
-            onFile={setFeed}
-            onView={(s) => { feedViewRef.current = s; }}
-          />
-          <CreativeUpload
-            label="Stories (9:16)"
-            ratio="9:16"
-            file={stories}
-            onFile={setStories}
-            onView={(s) => { storiesViewRef.current = s; }}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <Label className="text-xs uppercase tracking-wider text-muted-foreground">
-            Текст объявления
-          </Label>
-          <Textarea
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            rows={4}
-            placeholder="Краткий цепляющий текст с CTA…"
-            className="rounded-xl bg-background/60"
-          />
-        </div>
-
-        {bakeStatus && (
-          <div className="rounded-xl border border-border/60 bg-background/60 px-4 py-3 text-xs">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <span className="text-muted-foreground">{bakeStatus}</span>
-              <span className="font-mono tabular-nums text-foreground">{bakePct}%</span>
-            </div>
-            <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className="h-full bg-success transition-[width]"
-                style={{ width: `${bakePct}%` }}
+              <GoalAssetsPicker
+                goal={goal}
+                cabinet={selectedCabinet}
+                whatsappId={whatsappId}
+                setWhatsappId={setWhatsappId}
+                pixelId={pixelId}
+                setPixelId={setPixelId}
+                pixelEvent={pixelEvent}
+                setPixelEvent={setPixelEvent}
+                leadFormId={leadFormId}
+                setLeadFormId={setLeadFormId}
               />
+
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Бюджет в день
+                </Label>
+                <div className="relative">
+                  <Input
+                    value={budget}
+                    onChange={(e) => setBudget(e.target.value)}
+                    inputMode="numeric"
+                    className="h-11 rounded-xl bg-background/60 pr-10"
+                  />
+                  <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
+                    $
+                  </span>
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Текст объявления
+                </Label>
+                <Textarea
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  rows={5}
+                  placeholder="Краткий цепляющий текст с CTA…"
+                  className="rounded-xl bg-background/60"
+                />
+              </div>
+            </div>
+
+            <div className="overflow-y-auto px-6 py-5">
+              <div className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Креативы
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <CreativeUpload
+                  label="Лента (4:5)"
+                  ratio="4:5"
+                  file={feed}
+                  onFile={setFeed}
+                  onView={(s) => { feedViewRef.current = s; }}
+                />
+                <CreativeUpload
+                  label="Stories (9:16)"
+                  ratio="9:16"
+                  file={stories}
+                  onFile={setStories}
+                  onView={(s) => { storiesViewRef.current = s; }}
+                />
+              </div>
             </div>
           </div>
-        )}
 
-        <Button
-          onClick={handleSubmit}
-          disabled={submitting}
-          className="h-12 w-full rounded-xl bg-success text-white hover:bg-success/90"
-        >
-          {submitting
-            ? bakeStatus
-              ? "Готовим креатив…"
-              : "Отправляем на проверку…"
-            : "🚀 Отправить на запуск AI"}
-        </Button>
+          <div className="border-t border-border/60 bg-background/40 px-6 py-4">
+            {bakeStatus && (
+              <div className="mb-3 rounded-xl border border-border/60 bg-background/60 px-4 py-2.5 text-xs">
+                <div className="mb-1.5 flex items-center justify-between gap-3">
+                  <span className="text-muted-foreground">{bakeStatus}</span>
+                  <span className="font-mono tabular-nums text-foreground">{bakePct}%</span>
+                </div>
+                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                  <div
+                    className="h-full bg-success transition-[width]"
+                    style={{ width: `${bakePct}%` }}
+                  />
+                </div>
+              </div>
+            )}
+            <Button
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="h-12 w-full rounded-xl bg-success text-white hover:bg-success/90"
+            >
+              {submitting
+                ? bakeStatus
+                  ? "Готовим креатив…"
+                  : "Отправляем на проверку…"
+                : "🚀 Отправить на запуск AI"}
+            </Button>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
     {successInfo && (
