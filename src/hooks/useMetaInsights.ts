@@ -145,7 +145,7 @@ async function fetchInsights(actIds: string[], month: string): Promise<InsightsD
   const ids = actIds.map(normalizeActId);
   const { data, error } = await supabase
     .from("cabinet_daily_insights")
-    .select("date, spend, impressions, clicks, leads, revenue, currency, crm_diagnostics, manual_diagnostics, crm_sales, crm_revenue")
+    .select("date, spend, impressions, clicks, leads, revenue, currency, crm_diagnostics, manual_diagnostics, crm_sales, manual_sales, crm_revenue, manual_revenue")
     .in("external_id", ids)
     .gte("date", range.since)
     .lte("date", range.until)
