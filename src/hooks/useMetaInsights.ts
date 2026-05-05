@@ -11,7 +11,9 @@ export interface DailyInsightRow {
   diagnostics: number;
   manualDiagnostics: number;
   sales: number;
+  manualSales: number;
   crmRevenue: number;
+  manualRevenue: number;
 }
 
 export interface InsightTotals {
@@ -71,7 +73,9 @@ interface CdiRow {
   crm_diagnostics?: number;
   manual_diagnostics?: number;
   crm_sales?: number;
+  manual_sales?: number;
   crm_revenue?: number | string;
+  manual_revenue?: number | string;
 }
 
 function aggregate(rows: CdiRow[]): InsightsData {
@@ -88,8 +92,12 @@ function aggregate(rows: CdiRow[]): InsightsData {
     const crmDiag = Number(r.crm_diagnostics) || 0;
     const manDiag = Number(r.manual_diagnostics) || 0;
     const diagnostics = crmDiag + manDiag;
-    const sales = Number(r.crm_sales) || 0;
+    const crmSales = Number(r.crm_sales) || 0;
+    const manSales = Number(r.manual_sales) || 0;
+    const sales = crmSales + manSales;
     const crmRevenue = Number(r.crm_revenue) || 0;
+    const manRevenue = Number(r.manual_revenue) || 0;
+    const totalRevenue = crmRevenue + manRevenue;
     totals.spend += spend;
     totals.impressions += impressions;
     totals.clicks += clicks;
@@ -97,7 +105,7 @@ function aggregate(rows: CdiRow[]): InsightsData {
     totals.revenue += revenue;
     totals.diagnostics += diagnostics;
     totals.sales += sales;
-    totals.crmRevenue += crmRevenue;
+    totals.crmRevenue += totalRevenue;
     const cur = dailyMap.get(r.date);
     if (cur) {
       cur.spend += spend;
@@ -108,11 +116,15 @@ function aggregate(rows: CdiRow[]): InsightsData {
       cur.diagnostics += diagnostics;
       cur.manualDiagnostics += manDiag;
       cur.sales += sales;
-      cur.crmRevenue += crmRevenue;
+      cur.manualSales += manSales;
+      cur.crmRevenue += totalRevenue;
+      cur.manualRevenue += manRevenue;
     } else {
       dailyMap.set(r.date, {
         date: r.date, spend, impressions, clicks, leads, revenue,
-        diagnostics, manualDiagnostics: manDiag, sales, crmRevenue,
+        diagnostics, manualDiagnostics: manDiag,
+        sales, manualSales: manSales,
+        crmRevenue: totalRevenue, manualRevenue: manRevenue,
       });
     }
   }
@@ -133,7 +145,7 @@ async function fetchInsights(actIds: string[], month: string): Promise<InsightsD
   const ids = actIds.map(normalizeActId);
   const { data, error } = await supabase
     .from("cabinet_daily_insights")
-    .select("date, spend, impressions, clicks, leads, revenue, currency, crm_diagnostics, manual_diagnostics, crm_sales, crm_revenue")
+    .select("date, spend, impressions, clicks, leads, revenue, currency, crm_diagnostics, manual_diagnostics, crm_sales, manual_sales, crm_revenue, manual_revenue")
     .in("external_id", ids)
     .gte("date", range.since)
     .lte("date", range.until)

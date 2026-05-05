@@ -154,7 +154,10 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
 
   const cpl = totals && totals.leads > 0 ? totals.spend / totals.leads : 0;
 
-  const handleManualDiagnostics = async (isoDate: string, newValue: number) => {
+  const upsertManual = async (
+    isoDate: string,
+    patch: Record<string, number>,
+  ) => {
     try {
       const { data: existing } = await supabase
         .from("cabinet_daily_insights")
@@ -163,20 +166,20 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
         .eq("date", isoDate)
         .maybeSingle();
       if (existing?.id) {
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from("cabinet_daily_insights")
-          .update({ manual_diagnostics: newValue })
+          .update(patch)
           .eq("id", existing.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from("cabinet_daily_insights")
           .insert({
             cabinet_id: cabinet.id,
             external_id: cabinet.externalId,
             project_id: (cabinet as { projectId?: string }).projectId ?? null,
             date: isoDate,
-            manual_diagnostics: newValue,
+            ...patch,
           });
         if (error) throw error;
       }
@@ -186,6 +189,13 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
       toast.error((e as Error).message || "Не удалось сохранить");
     }
   };
+
+  const handleManualDiagnostics = (isoDate: string, v: number) =>
+    upsertManual(isoDate, { manual_diagnostics: v });
+  const handleManualSales = (isoDate: string, v: number) =>
+    upsertManual(isoDate, { manual_sales: v });
+  const handleManualRevenue = (isoDate: string, v: number) =>
+    upsertManual(isoDate, { manual_revenue: v });
 
   return (
     <article className="rounded-2xl border border-border/60 bg-card/60 transition-colors hover:border-border">
@@ -433,7 +443,9 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                   const diag = row?.diagnostics ?? 0;
                   const manualDiag = row?.manualDiagnostics ?? 0;
                   const sales = row?.sales ?? 0;
+                  const manualSales = row?.manualSales ?? 0;
                   const crmRev = row?.crmRevenue ?? 0;
+                  const manualRev = row?.manualRevenue ?? 0;
                   return (
                     <tr
                       key={d.key}
@@ -490,11 +502,28 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                           onSave={(v) => handleManualDiagnostics(d.iso, v)}
                         />
                       </td>
-                      <td className={cn("px-4 py-3 text-right", !sales && "text-muted-foreground")}>
-                        {sales ? formatNumber(sales) : "—"}
+                      <td className="px-4 py-3 text-right">
+                        <EditableNumberCell
+                          value={sales}
+                          manual={manualSales}
+                          autoLabel="Из CRM"
+                          fromAuto={Math.max(0, sales - manualSales)}
+                          render={(v) => (v ? formatNumber(v) : "—")}
+                          onSave={(v) => handleManualSales(d.iso, v)}
+                          title="Продажи вручную"
+                        />
                       </td>
-                      <td className={cn("px-4 py-3 text-right", !crmRev && "text-muted-foreground")}>
-                        {crmRev ? formatMoney(crmRev, currency) : "—"}
+                      <td className="px-4 py-3 text-right">
+                        <EditableNumberCell
+                          value={crmRev}
+                          manual={manualRev}
+                          autoLabel="Из CRM"
+                          fromAuto={Math.max(0, crmRev - manualRev)}
+                          render={(v) => (v ? formatMoney(v, currency) : "—")}
+                          onSave={(v) => handleManualRevenue(d.iso, v)}
+                          title="Сумма вручную"
+                          allowDecimal
+                        />
                       </td>
                     </tr>
                   );
@@ -562,6 +591,82 @@ const DiagnosticsCell = ({
           <Input
             type="number"
             min={0}
+            value={val}
+            onChange={(e) => setVal(e.target.value)}
+          />
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
+              Отмена
+            </Button>
+            <Button size="sm" onClick={handleSave} disabled={saving}>
+              {saving ? "..." : "Сохранить"}
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+};
+
+const EditableNumberCell = ({
+  value,
+  manual,
+  fromAuto,
+  autoLabel,
+  render,
+  onSave,
+  title,
+  allowDecimal,
+}: {
+  value: number;
+  manual: number;
+  fromAuto: number;
+  autoLabel: string;
+  render: (v: number) => React.ReactNode;
+  onSave: (newManual: number) => Promise<void>;
+  title: string;
+  allowDecimal?: boolean;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [val, setVal] = useState<string>(String(manual));
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    const num = Number(val) || 0;
+    const n = allowDecimal ? Math.max(0, num) : Math.max(0, Math.floor(num));
+    setSaving(true);
+    try {
+      await onSave(n);
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) setVal(String(manual)); }}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-secondary",
+            !value && "text-muted-foreground",
+          )}
+        >
+          {render(value)}
+          <Pencil className="h-3 w-3 opacity-60" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-56" align="end">
+        <div className="space-y-2">
+          <div className="text-xs font-medium">{title}</div>
+          <div className="text-[11px] text-muted-foreground">
+            {autoLabel}: {fromAuto} · Вручную: {manual}
+          </div>
+          <Input
+            type="number"
+            min={0}
+            step={allowDecimal ? "0.01" : "1"}
             value={val}
             onChange={(e) => setVal(e.target.value)}
           />
