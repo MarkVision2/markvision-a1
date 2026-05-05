@@ -187,12 +187,32 @@ Deno.serve(async (req) => {
   const SOURCE_ALIASES: Record<string, string> = {
     wa: "whatsapp", ig: "instagram", fb: "facebook", meta: "facebook", tg: "telegram",
     tilda: "site", web: "site", website: "site",
-    google: "ads", yandex: "ads", cpc: "ads", advert: "ads",
+    google: "google", googleads: "google", adwords: "google", gads: "google",
+    yandex: "yandex", ya: "yandex",
+    tt: "tiktok", tiktok: "tiktok", tiktokads: "tiktok",
+    yt: "youtube", youtube: "youtube",
+    vk: "vk", vkontakte: "vk",
+    cpc: "ads", advert: "ads",
     leadform: "lead_form", call: "phone",
   };
+  // Detect source from referrer host if no explicit source/utm_source
+  function detectFromReferrer(ref: string | null | undefined): string | null {
+    if (!ref) return null;
+    const r = ref.toLowerCase();
+    if (/facebook\.com|fb\.com/.test(r)) return "facebook";
+    if (/instagram\.com/.test(r)) return "instagram";
+    if (/google\./.test(r)) return "google";
+    if (/tiktok\.com/.test(r)) return "tiktok";
+    if (/youtube\.com|youtu\.be/.test(r)) return "youtube";
+    if (/yandex\./.test(r)) return "yandex";
+    if (/vk\.com/.test(r)) return "vk";
+    if (/t\.me|telegram\./.test(r)) return "telegram";
+    return null;
+  }
   const rawSource =
     (v.source && v.source.trim()) ||
     (v.utm_source && v.utm_source.trim()) ||
+    detectFromReferrer(v.referrer) ||
     "site";
   const source = SOURCE_ALIASES[rawSource.toLowerCase()] ?? rawSource.toLowerCase();
   // channel is a DB enum: whatsapp | telegram | instagram | phone | web
