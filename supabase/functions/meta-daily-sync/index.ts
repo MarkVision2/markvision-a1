@@ -45,6 +45,60 @@ function ymd(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
+function ymdToDmy(s: string) {
+  const [y, m, d] = s.split("-");
+  return `${d}.${m}.${y}`;
+}
+function parseUsdFromXml(xml: string): number | null {
+  const items = xml.split(/<item[\s>]/i).slice(1);
+  for (const it of items) {
+    const t = it.match(/<title>\s*([^<]+?)\s*<\/title>/i);
+    const dsc = it.match(/<description>\s*([^<]+?)\s*<\/description>/i);
+    if (t && dsc && t[1].trim().toUpperCase() === "USD") {
+      const v = Number(dsc[1].replace(",", "."));
+      if (Number.isFinite(v) && v > 0) return v;
+    }
+  }
+  return null;
+}
+async function fetchNbkRate(date: string): Promise<number | null> {
+  for (let i = 0; i < 8; i++) {
+    const d = new Date(`${date}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - i);
+    const dStr = d.toISOString().slice(0, 10);
+    try {
+      const r = await fetch(`https://nationalbank.kz/rss/get_rates.cfm?fdate=${ymdToDmy(dStr)}`);
+      if (!r.ok) continue;
+      const v = parseUsdFromXml(await r.text());
+      if (v) return v;
+    } catch (_) { /* next */ }
+  }
+  return null;
+}
+async function getRatesForDates(
+  admin: ReturnType<typeof createClient>,
+  dates: string[],
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (dates.length === 0) return map;
+  const { data } = await admin.from("fx_rates").select("date, usd_kzt").in("date", dates);
+  for (const r of (data ?? []) as Array<{ date: string; usd_kzt: number | string }>) {
+    map.set(r.date, Number(r.usd_kzt));
+  }
+  for (const d of dates) {
+    if (map.has(d)) continue;
+    const rate = await fetchNbkRate(d);
+    if (rate) {
+      map.set(d, rate);
+      await admin.from("fx_rates").upsert(
+        { date: d, usd_kzt: rate, source: "nbk", fetched_at: new Date().toISOString() },
+        { onConflict: "date" },
+      );
+    }
+  }
+  return map;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -117,17 +171,33 @@ Deno.serve(async (req) => {
           results.push({ cabinet: ext, ok: false, error: iJson?.error?.message ?? "meta error" });
           continue;
         }
-        const currency: string = aJson?.currency ?? "USD";
+        const accountCurrency: string = aJson?.currency ?? "USD";
+        const rawRows = (iJson.data ?? []) as Array<Record<string, unknown>>;
+        const dates = Array.from(new Set(
+          rawRows.map((r) => String(r?.date_start ?? "")).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+        ));
+        const needConvert = accountCurrency !== "KZT";
+        const ratesMap = needConvert ? await getRatesForDates(admin, dates) : new Map<string, number>();
+
         const rows: Array<Record<string, unknown>> = [];
         let totalSpend = 0, totalLeads = 0, totalClicks = 0, totalRevenue = 0;
-        for (const row of (iJson.data ?? [])) {
+        for (const row of rawRows) {
           const date = String(row?.date_start ?? "");
           if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-          const spend = Number(row?.spend ?? 0);
+          let spend = Number(row?.spend ?? 0);
           const impressions = Number(row?.impressions ?? 0);
           const clicks = Number(row?.clicks ?? 0);
-          const leads = maxAction(row?.actions, LEAD_ACTIONS);
-          const revenue = sumActions(row?.action_values, PURCHASE_ACTIONS);
+          const leads = maxAction(row?.actions as any, LEAD_ACTIONS);
+          let revenue = sumActions(row?.action_values as any, PURCHASE_ACTIONS);
+          let storedCurrency = accountCurrency;
+          if (needConvert) {
+            const rate = ratesMap.get(date);
+            if (rate) {
+              spend = spend * rate;
+              revenue = revenue * rate;
+              storedCurrency = "KZT";
+            }
+          }
           const cpl = leads > 0 ? spend / leads : 0;
           const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0;
           const cpc = clicks > 0 ? spend / clicks : 0;
@@ -139,7 +209,7 @@ Deno.serve(async (req) => {
             date,
             spend, impressions, clicks, leads, revenue,
             cpl, cpm, cpc, ctr,
-            currency,
+            currency: storedCurrency,
             synced_at: new Date().toISOString(),
           });
           totalSpend += spend; totalLeads += leads; totalClicks += clicks; totalRevenue += revenue;
