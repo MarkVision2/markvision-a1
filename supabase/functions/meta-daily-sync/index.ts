@@ -171,17 +171,33 @@ Deno.serve(async (req) => {
           results.push({ cabinet: ext, ok: false, error: iJson?.error?.message ?? "meta error" });
           continue;
         }
-        const currency: string = aJson?.currency ?? "USD";
+        const accountCurrency: string = aJson?.currency ?? "USD";
+        const rawRows = (iJson.data ?? []) as Array<Record<string, unknown>>;
+        const dates = Array.from(new Set(
+          rawRows.map((r) => String(r?.date_start ?? "")).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d))
+        ));
+        const needConvert = accountCurrency !== "KZT";
+        const ratesMap = needConvert ? await getRatesForDates(admin, dates) : new Map<string, number>();
+
         const rows: Array<Record<string, unknown>> = [];
         let totalSpend = 0, totalLeads = 0, totalClicks = 0, totalRevenue = 0;
-        for (const row of (iJson.data ?? [])) {
+        for (const row of rawRows) {
           const date = String(row?.date_start ?? "");
           if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-          const spend = Number(row?.spend ?? 0);
+          let spend = Number(row?.spend ?? 0);
           const impressions = Number(row?.impressions ?? 0);
           const clicks = Number(row?.clicks ?? 0);
-          const leads = maxAction(row?.actions, LEAD_ACTIONS);
-          const revenue = sumActions(row?.action_values, PURCHASE_ACTIONS);
+          const leads = maxAction(row?.actions as any, LEAD_ACTIONS);
+          let revenue = sumActions(row?.action_values as any, PURCHASE_ACTIONS);
+          let storedCurrency = accountCurrency;
+          if (needConvert) {
+            const rate = ratesMap.get(date);
+            if (rate) {
+              spend = spend * rate;
+              revenue = revenue * rate;
+              storedCurrency = "KZT";
+            }
+          }
           const cpl = leads > 0 ? spend / leads : 0;
           const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0;
           const cpc = clicks > 0 ? spend / clicks : 0;
@@ -193,7 +209,7 @@ Deno.serve(async (req) => {
             date,
             spend, impressions, clicks, leads, revenue,
             cpl, cpm, cpc, ctr,
-            currency,
+            currency: storedCurrency,
             synced_at: new Date().toISOString(),
           });
           totalSpend += spend; totalLeads += leads; totalClicks += clicks; totalRevenue += revenue;
