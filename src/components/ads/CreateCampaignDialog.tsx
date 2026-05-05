@@ -846,6 +846,80 @@ const CreateCampaignDialog = ({
         </Button>
       </DialogContent>
     </Dialog>
+    {successInfo && (
+      <Dialog open={successOpen} onOpenChange={setSuccessOpen}>
+        <DialogContent className="max-w-md overflow-hidden border-border/60 bg-card p-0">
+          <div className="relative bg-gradient-to-br from-success/20 via-success/5 to-transparent px-6 pt-6 pb-5">
+            <div className="absolute right-4 top-4">
+              <Sparkles className="h-5 w-5 text-success/70" />
+            </div>
+            <div className="flex items-start gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-success/15 ring-1 ring-success/30">
+                <CheckCircle2 className="h-7 w-7 text-success" />
+              </div>
+              <div>
+                <DialogTitle className="text-lg leading-tight">
+                  Реклама отправлена на проверку
+                </DialogTitle>
+                <DialogDescription className="mt-1 text-xs">
+                  AI-модерация займёт пару минут. Статус появится в карточке кабинета.
+                </DialogDescription>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3 px-6 pb-6">
+            {successInfo.cabinet && (
+              <div className="rounded-xl border border-border/60 bg-background/60 px-4 py-3">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Кабинет
+                </div>
+                <div className="mt-0.5 truncate text-sm font-semibold text-foreground">
+                  {successInfo.cabinet}
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-xl border border-success/30 bg-success/5 px-4 py-3">
+              <div className="text-[10px] uppercase tracking-wider text-success/80">
+                Бюджет в день
+              </div>
+              <div className="mt-0.5 text-2xl font-bold tabular-nums text-foreground">
+                {successInfo.currencySymbol}
+                {successInfo.budget}
+                <span className="ml-1 text-xs font-medium text-muted-foreground">
+                  / день
+                </span>
+              </div>
+            </div>
+
+            {successInfo.rows.length > 0 && (
+              <div className="divide-y divide-border/60 rounded-xl border border-border/60 bg-background/60">
+                {successInfo.rows.map((r) => (
+                  <div
+                    key={r.label}
+                    className="flex items-center justify-between gap-3 px-4 py-2.5"
+                  >
+                    <span className="text-xs text-muted-foreground">{r.label}</span>
+                    <span className="truncate text-sm font-medium text-foreground">
+                      {r.value}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <Button
+              onClick={() => setSuccessOpen(false)}
+              className="mt-2 h-11 w-full rounded-xl bg-success text-white hover:bg-success/90"
+            >
+              Отлично
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    )}
+  </>
   );
 };
 
