@@ -502,11 +502,28 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                           onSave={(v) => handleManualDiagnostics(d.iso, v)}
                         />
                       </td>
-                      <td className={cn("px-4 py-3 text-right", !sales && "text-muted-foreground")}>
-                        {sales ? formatNumber(sales) : "—"}
+                      <td className="px-4 py-3 text-right">
+                        <EditableNumberCell
+                          value={sales}
+                          manual={manualSales}
+                          autoLabel="Из CRM"
+                          fromAuto={Math.max(0, sales - manualSales)}
+                          render={(v) => (v ? formatNumber(v) : "—")}
+                          onSave={(v) => handleManualSales(d.iso, v)}
+                          title="Продажи вручную"
+                        />
                       </td>
-                      <td className={cn("px-4 py-3 text-right", !crmRev && "text-muted-foreground")}>
-                        {crmRev ? formatMoney(crmRev, currency) : "—"}
+                      <td className="px-4 py-3 text-right">
+                        <EditableNumberCell
+                          value={crmRev}
+                          manual={manualRev}
+                          autoLabel="Из CRM"
+                          fromAuto={Math.max(0, crmRev - manualRev)}
+                          render={(v) => (v ? formatMoney(v, currency) : "—")}
+                          onSave={(v) => handleManualRevenue(d.iso, v)}
+                          title="Сумма вручную"
+                          allowDecimal
+                        />
                       </td>
                     </tr>
                   );
