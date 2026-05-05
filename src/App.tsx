@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Loader2 } from "lucide-react";
@@ -11,29 +11,51 @@ import AppLayout from "./components/layout/AppLayout";
 import { AuthProvider } from "./hooks/useAuth";
 import { RequireAuth } from "./components/auth/RequireAuth";
 
-// Code-split heavy/secondary pages so the first paint stays small.
-const NotFound = lazy(() => import("./pages/NotFound.tsx"));
-const CreateStep1 = lazy(() => import("./pages/CreateStep1.tsx"));
-const CreateStep2 = lazy(() => import("./pages/CreateStep2.tsx"));
-const CreateStep3 = lazy(() => import("./pages/CreateStep3.tsx"));
-const Ads = lazy(() => import("./pages/Ads.tsx"));
-const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
-const Metrics = lazy(() => import("./pages/Metrics.tsx"));
-const Crm = lazy(() => import("./pages/Crm.tsx"));
-const CallsHistory = lazy(() => import("./pages/Calls.tsx"));
-const Analytics = lazy(() => import("./pages/Analytics.tsx"));
-const Finance = lazy(() => import("./pages/Finance.tsx"));
-const Reports = lazy(() => import("./pages/Reports.tsx"));
-const Settings = lazy(() => import("./pages/Settings.tsx"));
-const SettingsConnection = lazy(() => import("./pages/SettingsConnection.tsx"));
-const ResetPassword = lazy(() => import("./pages/ResetPassword.tsx"));
+// Lazy imports stored as factories so we can both render them and
+// prefetch their chunks during idle time after first paint.
+const lazyImports = {
+  NotFound: () => import("./pages/NotFound.tsx"),
+  CreateStep1: () => import("./pages/CreateStep1.tsx"),
+  CreateStep2: () => import("./pages/CreateStep2.tsx"),
+  CreateStep3: () => import("./pages/CreateStep3.tsx"),
+  Ads: () => import("./pages/Ads.tsx"),
+  Dashboard: () => import("./pages/Dashboard.tsx"),
+  Metrics: () => import("./pages/Metrics.tsx"),
+  Crm: () => import("./pages/Crm.tsx"),
+  Calls: () => import("./pages/Calls.tsx"),
+  Analytics: () => import("./pages/Analytics.tsx"),
+  Finance: () => import("./pages/Finance.tsx"),
+  Reports: () => import("./pages/Reports.tsx"),
+  Settings: () => import("./pages/Settings.tsx"),
+  SettingsConnection: () => import("./pages/SettingsConnection.tsx"),
+  ResetPassword: () => import("./pages/ResetPassword.tsx"),
+};
+
+const NotFound = lazy(lazyImports.NotFound);
+const CreateStep1 = lazy(lazyImports.CreateStep1);
+const CreateStep2 = lazy(lazyImports.CreateStep2);
+const CreateStep3 = lazy(lazyImports.CreateStep3);
+const Ads = lazy(lazyImports.Ads);
+const Dashboard = lazy(lazyImports.Dashboard);
+const Metrics = lazy(lazyImports.Metrics);
+const Crm = lazy(lazyImports.Crm);
+const CallsHistory = lazy(lazyImports.Calls);
+const Analytics = lazy(lazyImports.Analytics);
+const Finance = lazy(lazyImports.Finance);
+const Reports = lazy(lazyImports.Reports);
+const Settings = lazy(lazyImports.Settings);
+const SettingsConnection = lazy(lazyImports.SettingsConnection);
+const ResetPassword = lazy(lazyImports.ResetPassword);
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 30_000,
-      gcTime: 5 * 60_000,
+      // Кешируем ответы на 5 минут — повторное открытие страниц
+      // отрисовывается мгновенно из кеша, фоновое обновление подтянет свежие данные.
+      staleTime: 5 * 60_000,
+      gcTime: 30 * 60_000,
       refetchOnWindowFocus: false,
+      refetchOnMount: false,
       retry: 1,
     },
   },
@@ -45,7 +67,21 @@ const RouteFallback = () => (
   </div>
 );
 
-// rev: auth-pages-3 + code-split
+function ChunkPrefetcher() {
+  useEffect(() => {
+    const idle =
+      (window as unknown as { requestIdleCallback?: (cb: () => void) => void })
+        .requestIdleCallback ?? ((cb: () => void) => setTimeout(cb, 800));
+    idle(() => {
+      // Прогреваем все маршруты в фоне, чтобы клик по сайдбару открывал страницу мгновенно.
+      Object.values(lazyImports).forEach((load) => {
+        load().catch(() => {});
+      });
+    });
+  }, []);
+  return null;
+}
+
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -53,6 +89,7 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
+          <ChunkPrefetcher />
           <Suspense fallback={<RouteFallback />}>
             <Routes>
               <Route path="/login" element={<Login />} />
@@ -71,7 +108,6 @@ const App = () => (
               <Route path="/create/step-1" element={<RequireAuth><AppLayout><CreateStep1 /></AppLayout></RequireAuth>} />
               <Route path="/create/step-2" element={<RequireAuth><AppLayout><CreateStep2 /></AppLayout></RequireAuth>} />
               <Route path="/create/step-3" element={<RequireAuth><AppLayout><CreateStep3 /></AppLayout></RequireAuth>} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>
