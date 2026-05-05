@@ -14,7 +14,7 @@ const Header = ({ onClose }: HeaderProps) => {
             <Zap className="h-4 w-4 text-primary-foreground" />
           </span>
           <span className="text-sm sm:text-base">
-            kostagency<span className="text-muted-foreground">.kz</span>
+            MarkVision<span className="text-muted-foreground"> AI</span>
           </span>
         </a>
 
