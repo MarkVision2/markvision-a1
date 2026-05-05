@@ -5,11 +5,8 @@ import {
   ChevronLeft,
   ChevronRight,
   DollarSign,
-  Eye,
   GitBranch,
-  Inbox,
   Loader2,
-  MousePointerClick,
   RefreshCw,
   ShoppingBag,
   Target,
@@ -26,8 +23,11 @@ import {
 } from "@/components/ui/select";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useMultiMetaInsights } from "@/hooks/useMetaInsights";
-import { useLeadsLite } from "@/hooks/useLeadsLite";
-import { normalizeSource } from "@/lib/leadSource";
+import { useLeadsLite, type LeadLite } from "@/hooks/useLeadsLite";
+import { CHANNELS, resolveChannel, type ChannelKey } from "@/lib/channelAttribution";
+import { ChannelCard, type ChannelStat } from "@/components/analytics/ChannelCard";
+import { UtmTable, type UtmRow } from "@/components/analytics/UtmTable";
+import { TrendChart, type TrendPoint } from "@/components/analytics/TrendChart";
 import { cn } from "@/lib/utils";
 
 const MONTHS_RU = [
@@ -35,12 +35,9 @@ const MONTHS_RU = [
   "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек",
 ];
 
-const formatTenge = (n: number) =>
-  n >= 1000
-    ? `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}K $`
-    : `${Math.round(n).toLocaleString("ru-RU")} $`;
-const formatNumber = (n: number) => Math.round(n).toLocaleString("ru-RU");
-const formatPct = (n: number) => `${n.toFixed(n >= 10 ? 0 : 1)}%`;
+const fmtMoney = (n: number) => `$${Math.round(n).toLocaleString("ru-RU")}`;
+const fmtNumber = (n: number) => Math.round(n).toLocaleString("ru-RU");
+const fmtPct = (n: number) => `${n.toFixed(n >= 10 ? 0 : 1)}%`;
 
 interface KpiCardProps {
   icon: React.ElementType;
@@ -48,19 +45,10 @@ interface KpiCardProps {
   value: React.ReactNode;
   sub: string;
   delta?: number | null;
-  accent?: boolean;
   emphasized?: boolean;
 }
 
-const KpiCard = ({
-  icon: Icon,
-  label,
-  value,
-  sub,
-  delta,
-  accent,
-  emphasized,
-}: KpiCardProps) => (
+const KpiCard = ({ icon: Icon, label, value, sub, delta, emphasized }: KpiCardProps) => (
   <div
     className={cn(
       "rounded-2xl border border-border/60 bg-card/60 p-5 transition-colors",
@@ -69,25 +57,18 @@ const KpiCard = ({
   >
     <div className="flex items-center justify-between gap-2">
       <div className="flex items-center gap-2">
-        <span
-          className={cn(
-            "grid h-8 w-8 place-items-center rounded-xl",
-            "bg-success/10 text-success",
-          )}
-        >
+        <span className="grid h-8 w-8 place-items-center rounded-xl bg-success/10 text-success">
           <Icon className="h-4 w-4" />
         </span>
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {label}
         </span>
       </div>
-      {delta !== undefined && delta !== null && (
+      {delta !== null && delta !== undefined && Math.abs(delta) > 0.5 && (
         <span
           className={cn(
             "rounded-full px-1.5 py-0.5 text-[10px] font-bold",
-            delta >= 0
-              ? "bg-success/15 text-success"
-              : "bg-destructive/15 text-destructive",
+            delta >= 0 ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive",
           )}
         >
           {delta >= 0 ? "+" : ""}
@@ -95,14 +76,7 @@ const KpiCard = ({
         </span>
       )}
     </div>
-    <div
-      className={cn(
-        "mt-4 text-2xl font-bold tabular-nums",
-        accent && "text-success",
-      )}
-    >
-      {value}
-    </div>
+    <div className="mt-4 text-2xl font-bold tabular-nums">{value}</div>
     <div className="mt-1 text-[11px] text-muted-foreground">{sub}</div>
   </div>
 );
@@ -117,8 +91,7 @@ interface FunnelRowProps {
 
 const FunnelRow = ({ label, value, base, prevValue, color }: FunnelRowProps) => {
   const widthPct = base > 0 ? Math.max((value / base) * 100, value > 0 ? 4 : 0) : 0;
-  const conversion =
-    prevValue !== undefined && prevValue > 0 ? (value / prevValue) * 100 : null;
+  const conv = prevValue !== undefined && prevValue > 0 ? (value / prevValue) * 100 : null;
   return (
     <div>
       <div className="flex items-end justify-between text-sm">
@@ -126,25 +99,25 @@ const FunnelRow = ({ label, value, base, prevValue, color }: FunnelRowProps) => 
           {label}
         </span>
         <div className="flex items-center gap-2">
-          <span className="text-xl font-bold tabular-nums">
-            {formatNumber(value)}
-          </span>
-          {conversion !== null && (
+          <span className="text-xl font-bold tabular-nums">{fmtNumber(value)}</span>
+          {conv !== null && (
             <span className="rounded-md bg-success/15 px-1.5 py-0.5 text-[10px] font-bold text-success">
-              {formatPct(conversion)}
+              {fmtPct(conv)}
             </span>
           )}
         </div>
       </div>
       <div className="mt-2 h-3 overflow-hidden rounded-full bg-secondary/40">
-        <div
-          className={cn("h-full rounded-full transition-all", color)}
-          style={{ width: `${widthPct}%` }}
-        />
+        <div className={cn("h-full rounded-full transition-all", color)} style={{ width: `${widthPct}%` }} />
       </div>
     </div>
   );
 };
+
+function pctDelta(cur: number, prev: number): number | null {
+  if (prev === 0) return cur > 0 ? 100 : null;
+  return ((cur - prev) / prev) * 100;
+}
 
 const Analytics = () => {
   const [monthCursor, setMonthCursor] = useState(() => {
@@ -155,11 +128,11 @@ const Analytics = () => {
   const { cabinets } = usePersonalCabinets();
 
   const shiftMonth = (delta: number) =>
-    setMonthCursor(
-      (prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1),
-    );
+    setMonthCursor((p) => new Date(p.getFullYear(), p.getMonth() + delta, 1));
 
   const monthParam = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}`;
+  const prevCursor = new Date(monthCursor.getFullYear(), monthCursor.getMonth() - 1, 1);
+  const prevParam = `${prevCursor.getFullYear()}-${String(prevCursor.getMonth() + 1).padStart(2, "0")}`;
   const monthLabel = `1 ${MONTHS_RU[monthCursor.getMonth()]}. – ${new Date(
     monthCursor.getFullYear(),
     monthCursor.getMonth() + 1,
@@ -176,70 +149,142 @@ const Analytics = () => {
     return cab?.externalId ? [cab.externalId] : [];
   }, [cabinetId, allActIds, cabinets]);
 
-  const { data, loading, error, refresh } = useMultiMetaInsights(
-    actIds,
-    monthParam,
-    actIds.length > 0,
-  );
+  const { data, loading, error, refresh } = useMultiMetaInsights(actIds, monthParam, actIds.length > 0);
+  const { data: prevData } = useMultiMetaInsights(actIds, prevParam, actIds.length > 0);
 
-  const { leads } = useLeadsLite();
+  const { leads, refetch } = useLeadsLite();
 
-  // CRM data filtered to current month
+  // Filter leads by month
   const monthStart = monthCursor.getTime();
-  const monthEnd = new Date(
-    monthCursor.getFullYear(),
-    monthCursor.getMonth() + 1,
-    1,
-  ).getTime();
+  const monthEnd = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 1).getTime();
+  const prevStart = prevCursor.getTime();
+  const prevEnd = monthStart;
+
   const monthLeads = useMemo(
-    () =>
-      leads.filter((l) => {
-        const t = new Date(l.createdAt).getTime();
-        return t >= monthStart && t < monthEnd;
-      }),
+    () => leads.filter((l) => {
+      const t = new Date(l.createdAt).getTime();
+      return t >= monthStart && t < monthEnd;
+    }),
     [leads, monthStart, monthEnd],
   );
+  const prevLeads = useMemo(
+    () => leads.filter((l) => {
+      const t = new Date(l.createdAt).getTime();
+      return t >= prevStart && t < prevEnd;
+    }),
+    [leads, prevStart, prevEnd],
+  );
 
-  const sales = monthLeads.filter((l) => l.stageKey === "paid");
-  const visits = monthLeads.filter((l) => l.stageKey === "visit" || l.stageKey === "paid");
+  // Optional cabinet filter on leads
+  const filteredLeads = useMemo(() => {
+    if (cabinetId === "all") return monthLeads;
+    return monthLeads.filter((l) => l.cabinetId === cabinetId);
+  }, [monthLeads, cabinetId]);
+
+  const sales = filteredLeads.filter((l) => l.stageKey === "paid");
+  const visits = filteredLeads.filter((l) => l.stageKey === "visit" || l.stageKey === "paid");
   const revenue = sales.reduce((sum, l) => sum + (l.amount || 0), 0);
 
-  // KPI
+  const prevSales = prevLeads.filter((l) => l.stageKey === "paid");
+  const prevRevenue = prevSales.reduce((s, l) => s + (l.amount || 0), 0);
+
   const spend = data?.totals.spend ?? 0;
+  const prevSpend = prevData?.totals.spend ?? 0;
   const adsLeads = data?.totals.leads ?? 0;
   const impressions = data?.totals.impressions ?? 0;
   const clicks = data?.totals.clicks ?? 0;
-  const totalLeads = adsLeads + monthLeads.length;
-  const cpl = totalLeads > 0 ? spend / totalLeads : 0;
-  const romi = spend > 0 ? ((revenue - spend) / spend) * 100 : revenue > 0 ? 100 : -100;
+  const totalLeads = adsLeads + filteredLeads.length;
+  const prevTotalLeads = (prevData?.totals.leads ?? 0) + prevLeads.length;
+  const cpl = totalLeads > 0 && spend > 0 ? spend / totalLeads : 0;
+  const romi = spend > 0 ? ((revenue - spend) / spend) * 100 : null;
+  const avgCheck = sales.length > 0 ? revenue / sales.length : 0;
+  const conversion = totalLeads > 0 ? (sales.length / totalLeads) * 100 : 0;
 
   const crLeadVisit = totalLeads > 0 ? (visits.length / totalLeads) * 100 : 0;
   const crVisitSale = visits.length > 0 ? (sales.length / visits.length) * 100 : 0;
-  const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
 
-  // Per-source breakdown — REAL sources from CRM, not mock cabinets.
-  // Bucket leads by normalized source key, compute leads/sales/revenue per bucket.
-  const channels = useMemo(() => {
-    const map = new Map<string, { id: string; name: string; spend: number; leads: number; sales: number; revenue: number }>();
-    for (const l of monthLeads) {
-      const meta = normalizeSource(l.source);
-      const id = meta.key === "unknown" && meta.raw ? meta.raw : meta.key;
-      const cur = map.get(id) ?? { id, name: meta.label, spend: 0, leads: 0, sales: 0, revenue: 0 };
+  // Per-channel attribution
+  const channels = useMemo<ChannelStat[]>(() => {
+    const map = new Map<ChannelKey, ChannelStat>();
+    for (const l of filteredLeads) {
+      const meta = resolveChannel(l as LeadLite);
+      const cur = map.get(meta.key) ?? { meta, spend: 0, leads: 0, sales: 0, revenue: 0 };
       cur.leads += 1;
       if (l.stageKey === "paid") {
         cur.sales += 1;
         cur.revenue += l.amount || 0;
       }
-      map.set(id, cur);
+      map.set(meta.key, cur);
     }
-    // Attribute ad spend to the "ads" bucket so ROMI per source makes sense.
+    // Attribute Meta ad spend to facebook bucket (extend later for google/tiktok)
     if (spend > 0) {
-      const adsBucket = map.get("ads") ?? { id: "ads", name: "Реклама", spend: 0, leads: 0, sales: 0, revenue: 0 };
-      adsBucket.spend = spend;
-      map.set("ads", adsBucket);
+      const fb = map.get("facebook") ?? { meta: CHANNELS.facebook, spend: 0, leads: 0, sales: 0, revenue: 0 };
+      fb.spend += spend;
+      fb.leads += adsLeads;
+      map.set("facebook", fb);
     }
-    return Array.from(map.values()).sort((a, b) => b.leads - a.leads);
-  }, [monthLeads, spend]);
+    // Always show core 4 channels even if empty so user sees structure
+    for (const k of ["facebook", "google", "tiktok", "instagram"] as ChannelKey[]) {
+      if (!map.has(k)) {
+        map.set(k, { meta: CHANNELS[k], spend: 0, leads: 0, sales: 0, revenue: 0 });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => {
+      const order: ChannelKey[] = ["facebook", "instagram", "google", "tiktok", "youtube", "yandex", "vk", "telegram", "whatsapp", "direct", "referral", "other"];
+      return order.indexOf(a.meta.key) - order.indexOf(b.meta.key);
+    });
+  }, [filteredLeads, spend, adsLeads]);
+
+  // UTM campaigns table
+  const utmRows = useMemo<UtmRow[]>(() => {
+    const map = new Map<string, UtmRow>();
+    for (const l of filteredLeads) {
+      const u = l.utm ?? {};
+      if (!u.source && !u.campaign && !u.medium) continue;
+      const key = `${u.source ?? ""}|${u.campaign ?? ""}|${u.medium ?? ""}`;
+      const cur = map.get(key) ?? {
+        source: u.source ?? "",
+        campaign: u.campaign ?? "",
+        medium: u.medium ?? "",
+        leads: 0, sales: 0, revenue: 0,
+      };
+      cur.leads += 1;
+      if (l.stageKey === "paid") {
+        cur.sales += 1;
+        cur.revenue += l.amount || 0;
+      }
+      map.set(key, cur);
+    }
+    return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue || b.leads - a.leads);
+  }, [filteredLeads]);
+
+  // Trend data: per day
+  const trend = useMemo<TrendPoint[]>(() => {
+    const days = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0).getDate();
+    const points: TrendPoint[] = [];
+    const dailyMap = new Map<string, { spend: number }>();
+    for (const d of data?.daily ?? []) {
+      dailyMap.set(d.date, { spend: d.spend });
+    }
+    const leadsByDate = new Map<string, { leads: number; sales: number }>();
+    for (const l of filteredLeads) {
+      const d = new Date(l.createdAt).toISOString().slice(0, 10);
+      const cur = leadsByDate.get(d) ?? { leads: 0, sales: 0 };
+      cur.leads += 1;
+      if (l.stageKey === "paid") cur.sales += 1;
+      leadsByDate.set(d, cur);
+    }
+    for (let i = 1; i <= days; i++) {
+      const iso = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}-${String(i).padStart(2, "0")}`;
+      points.push({
+        date: iso,
+        spend: Math.round(dailyMap.get(iso)?.spend ?? 0),
+        leads: leadsByDate.get(iso)?.leads ?? 0,
+        sales: leadsByDate.get(iso)?.sales ?? 0,
+      });
+    }
+    return points;
+  }, [data, filteredLeads, monthCursor]);
 
   const funnelBase = Math.max(impressions, clicks, totalLeads, visits.length, sales.length, 1);
 
@@ -252,38 +297,28 @@ const Analytics = () => {
             <Zap className="h-6 w-6" />
           </span>
           <div>
-            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-              Сквозная аналитика
-            </h1>
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Сквозная аналитика</h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Полная воронка: от показа до продажи
+              UTM-атрибуция · эффективность каналов · полная воронка
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1 rounded-2xl border border-border/60 bg-card/60 px-2 py-1.5">
-            <button
-              onClick={() => shiftMonth(-1)}
-              className="grid h-9 w-9 place-items-center rounded-xl hover:bg-secondary"
-              aria-label="Предыдущий месяц"
-            >
+            <button onClick={() => shiftMonth(-1)} className="grid h-9 w-9 place-items-center rounded-xl hover:bg-secondary" aria-label="Предыдущий">
               <ChevronLeft className="h-4 w-4" />
             </button>
             <span className="flex items-center gap-2 px-3 text-sm font-semibold tabular-nums">
               <CalendarDays className="h-4 w-4 text-muted-foreground" />
               {monthLabel}
             </span>
-            <button
-              onClick={() => shiftMonth(1)}
-              className="grid h-9 w-9 place-items-center rounded-xl hover:bg-secondary"
-              aria-label="Следующий месяц"
-            >
+            <button onClick={() => shiftMonth(1)} className="grid h-9 w-9 place-items-center rounded-xl hover:bg-secondary" aria-label="Следующий">
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
           <button
-            onClick={refresh}
+            onClick={() => { refresh(); refetch(); }}
             className="grid h-12 w-12 place-items-center rounded-2xl border border-border/60 bg-card/60 hover:bg-secondary"
             aria-label="Обновить"
           >
@@ -291,14 +326,12 @@ const Analytics = () => {
           </button>
           <Select value={cabinetId} onValueChange={setCabinetId}>
             <SelectTrigger className="h-12 min-w-[200px] rounded-2xl border-border/60 bg-card/60">
-              <SelectValue placeholder="Все каналы" />
+              <SelectValue placeholder="Все кабинеты" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Все каналы</SelectItem>
+              <SelectItem value="all">Все кабинеты</SelectItem>
               {cabinets.map((c) => (
-                <SelectItem key={c.id} value={c.id}>
-                  {c.name}
-                </SelectItem>
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
               ))}
             </SelectContent>
           </Select>
@@ -306,58 +339,15 @@ const Analytics = () => {
       </div>
 
       {/* KPI grid */}
-      <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-7">
-        <KpiCard
-          icon={DollarSign}
-          label="Расход"
-          value={spend > 0 ? formatTenge(spend) : "0 $"}
-          sub="за период"
-          delta={spend > 0 ? 100 : null}
-        />
-        <KpiCard
-          icon={Users}
-          label="Лиды"
-          value={formatNumber(totalLeads)}
-          sub={`${monthLeads.length} в CRM`}
-          delta={totalLeads > 0 ? 100 : null}
-        />
-        <KpiCard
-          icon={Target}
-          label="CPL"
-          value={cpl > 0 ? formatTenge(cpl) : "—"}
-          sub="стоимость лида"
-          accent
-          emphasized
-        />
-        <KpiCard
-          icon={Eye}
-          label="Диагностики"
-          value={formatNumber(visits.length)}
-          sub={visits.length === 0 ? "нет данных" : `${formatPct(crLeadVisit)} от лидов`}
-        />
-        <KpiCard
-          icon={ShoppingBag}
-          label="Продажи"
-          value={formatNumber(sales.length)}
-          sub={sales.length === 0 ? "нет данных" : `${formatPct(crVisitSale)} конверсия`}
-        />
-        <KpiCard
-          icon={TrendingUp}
-          label="Выручка"
-          value={revenue > 0 ? formatTenge(revenue) : "0 $"}
-          sub={sales.length === 0 ? "нет данных" : `${formatNumber(sales.length)} продаж`}
-        />
-        <KpiCard
-          icon={GitBranch}
-          label="ROMI"
-          value={
-            <span className={romi >= 0 ? "text-success" : "text-destructive"}>
-              {romi >= 0 ? "+" : ""}
-              {Math.round(romi)}%
-            </span>
-          }
-          sub={spend > 0 ? "возврат инвестиций" : "нет расходов"}
-        />
+      <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-4">
+        <KpiCard icon={DollarSign} label="Расход" value={spend > 0 ? fmtMoney(spend) : "—"} sub="за период" delta={pctDelta(spend, prevSpend)} />
+        <KpiCard icon={Users} label="Лиды" value={fmtNumber(totalLeads)} sub={`${filteredLeads.length} в CRM · ${adsLeads} реклама`} delta={pctDelta(totalLeads, prevTotalLeads)} />
+        <KpiCard icon={Target} label="CPL" value={cpl > 0 ? fmtMoney(cpl) : "—"} sub="стоимость лида" emphasized />
+        <KpiCard icon={ShoppingBag} label="Продажи" value={fmtNumber(sales.length)} sub={sales.length > 0 ? fmtPct(conversion) + " конверсия" : "нет продаж"} delta={pctDelta(sales.length, prevSales.length)} />
+        <KpiCard icon={TrendingUp} label="Выручка" value={revenue > 0 ? fmtMoney(revenue) : "—"} sub={sales.length > 0 ? `${sales.length} продаж` : "нет данных"} delta={pctDelta(revenue, prevRevenue)} />
+        <KpiCard icon={GitBranch} label="ROMI" value={romi !== null ? <span className={romi >= 0 ? "text-success" : "text-destructive"}>{romi >= 0 ? "+" : ""}{Math.round(romi)}%</span> : "—"} sub={spend > 0 ? "возврат инвестиций" : "нет расходов"} emphasized />
+        <KpiCard icon={Target} label="Средний чек" value={avgCheck > 0 ? fmtMoney(avgCheck) : "—"} sub={sales.length > 0 ? `по ${sales.length} продажам` : "нет продаж"} />
+        <KpiCard icon={Zap} label="Конв. лид→визит" value={fmtPct(crLeadVisit)} sub={`визит→продажа ${fmtPct(crVisitSale)}`} />
       </div>
 
       {error && (
@@ -370,197 +360,74 @@ const Analytics = () => {
         </div>
       )}
 
-      {/* Funnel + Channels */}
+      {/* Funnel + Trend */}
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
-        {/* Funnel */}
         <div className="rounded-2xl border border-border/60 bg-card/40 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-bold uppercase tracking-wider">
-                Воронка конверсий
-              </h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                От охвата до реальных продаж
-              </p>
+              <h2 className="text-sm font-bold uppercase tracking-wider">Воронка конверсий</h2>
+              <p className="mt-1 text-xs text-muted-foreground">От охвата до реальных продаж</p>
             </div>
-            <span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-success">
-              Live
-            </span>
+            <span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-success">Live</span>
           </div>
           <div className="mt-6 space-y-5">
-            <FunnelRow
-              label="Показы"
-              value={impressions}
-              base={funnelBase}
-              color="bg-gradient-to-r from-success to-success/60"
-            />
-            <FunnelRow
-              label="Клики"
-              value={clicks}
-              base={funnelBase}
-              prevValue={impressions}
-              color="bg-gradient-to-r from-success/80 to-success/40"
-            />
-            <FunnelRow
-              label="Лиды"
-              value={totalLeads}
-              base={funnelBase}
-              prevValue={clicks || impressions}
-              color="bg-gradient-to-r from-success/60 to-success/30"
-            />
-            <FunnelRow
-              label="Диагностики"
-              value={visits.length}
-              base={funnelBase}
-              prevValue={totalLeads}
-              color="bg-gradient-to-r from-primary/70 to-primary/30"
-            />
-            <FunnelRow
-              label="Продажи"
-              value={sales.length}
-              base={funnelBase}
-              prevValue={visits.length}
-              color="bg-gradient-to-r from-warning/70 to-warning/30"
-            />
+            <FunnelRow label="Показы" value={impressions} base={funnelBase} color="bg-gradient-to-r from-success to-success/60" />
+            <FunnelRow label="Клики" value={clicks} base={funnelBase} prevValue={impressions} color="bg-gradient-to-r from-success/80 to-success/40" />
+            <FunnelRow label="Лиды" value={totalLeads} base={funnelBase} prevValue={clicks || impressions} color="bg-gradient-to-r from-success/60 to-success/30" />
+            <FunnelRow label="Диагностики" value={visits.length} base={funnelBase} prevValue={totalLeads} color="bg-gradient-to-r from-primary/70 to-primary/30" />
+            <FunnelRow label="Продажи" value={sales.length} base={funnelBase} prevValue={visits.length} color="bg-gradient-to-r from-warning/70 to-warning/30" />
           </div>
           {loading && (
             <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Обновляем данные...
+              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Обновляем данные...
             </div>
           )}
         </div>
 
-        {/* Channels */}
         <div className="rounded-2xl border border-border/60 bg-card/40 p-6">
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-bold uppercase tracking-wider">
-                По каналам
-              </h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Распределение расходов и продаж
-              </p>
+              <h2 className="text-sm font-bold uppercase tracking-wider">Динамика по дням</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Расход / лиды / продажи</p>
             </div>
           </div>
-          {channels.length === 0 ? (
-            <div className="mt-10 flex flex-col items-center justify-center gap-3 py-10 text-center">
-              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-secondary/40 text-muted-foreground">
-                <Inbox className="h-5 w-5" />
-              </span>
-              <div className="text-sm text-muted-foreground">
-                Нет данных по каналам
-              </div>
-            </div>
-          ) : (
-            <div className="mt-6 space-y-3">
-              {channels.map((c) => {
-                const romiC =
-                  c.spend > 0 ? ((c.revenue - c.spend) / c.spend) * 100 : 0;
-                return (
-                  <div
-                    key={c.id}
-                    className="rounded-xl border border-border/40 bg-card/40 p-4"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm font-semibold">{c.name}</div>
-                      <span
-                        className={cn(
-                          "rounded-md px-1.5 py-0.5 text-[10px] font-bold",
-                          romiC >= 0
-                            ? "bg-success/15 text-success"
-                            : "bg-destructive/15 text-destructive",
-                        )}
-                      >
-                        ROMI {romiC >= 0 ? "+" : ""}
-                        {Math.round(romiC)}%
-                      </span>
-                    </div>
-                    <div className="mt-3 grid grid-cols-4 gap-2 text-xs">
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                          Расход
-                        </div>
-                        <div className="mt-0.5 font-bold tabular-nums">
-                          {formatTenge(c.spend)}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                          Лиды
-                        </div>
-                        <div className="mt-0.5 font-bold tabular-nums">
-                          {formatNumber(c.leads)}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                          Продажи
-                        </div>
-                        <div className="mt-0.5 font-bold tabular-nums">
-                          {formatNumber(c.sales)}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
-                          Выручка
-                        </div>
-                        <div className="mt-0.5 font-bold tabular-nums">
-                          {formatTenge(c.revenue)}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Secondary metrics */}
-      <div className="mt-6 grid grid-cols-2 gap-4 md:grid-cols-4">
-        <div className="rounded-2xl border border-border/60 bg-card/40 p-4">
-          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <MousePointerClick className="h-3.5 w-3.5" />
-            CTR
-          </div>
-          <div className="mt-3 text-xl font-bold tabular-nums">
-            {ctr > 0 ? formatPct(ctr) : "—"}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-border/60 bg-card/40 p-4">
-          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <DollarSign className="h-3.5 w-3.5" />
-            CPC
-          </div>
-          <div className="mt-3 text-xl font-bold tabular-nums">
-            {clicks > 0 ? formatTenge(spend / clicks) : "—"}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-border/60 bg-card/40 p-4">
-          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <Eye className="h-3.5 w-3.5" />
-            CPM
-          </div>
-          <div className="mt-3 text-xl font-bold tabular-nums">
-            {impressions > 0 ? formatTenge((spend / impressions) * 1000) : "—"}
-          </div>
-        </div>
-        <div className="rounded-2xl border border-border/60 bg-card/40 p-4">
-          <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            <ShoppingBag className="h-3.5 w-3.5" />
-            Средний чек
-          </div>
-          <div className="mt-3 text-xl font-bold tabular-nums">
-            {sales.length > 0 ? formatTenge(revenue / sales.length) : "—"}
+          <div className="mt-4">
+            <TrendChart data={trend} />
           </div>
         </div>
       </div>
 
-      <p className="mt-4 text-xs text-muted-foreground">
-        Данные собираются из рекламных кабинетов и CRM за выбранный период.
-      </p>
+      {/* Channels */}
+      <section className="mt-8">
+        <div className="flex items-end justify-between">
+          <div>
+            <h2 className="text-lg font-bold tracking-tight">Эффективность каналов</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Атрибуция автоматически по UTM-меткам и источнику лида
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {channels.map((c) => (
+            <ChannelCard key={c.meta.key} stat={c} />
+          ))}
+        </div>
+      </section>
+
+      {/* UTM table */}
+      <section className="mt-8">
+        <div className="flex items-end justify-between">
+          <div>
+            <h2 className="text-lg font-bold tracking-tight">UTM-кампании</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Срез по utm_source / utm_campaign / utm_medium из лидов CRM
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 rounded-2xl border border-border/60 bg-card/40 p-4">
+          <UtmTable rows={utmRows} />
+        </div>
+      </section>
     </main>
   );
 };
