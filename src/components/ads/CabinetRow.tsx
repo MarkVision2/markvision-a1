@@ -154,7 +154,10 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
 
   const cpl = totals && totals.leads > 0 ? totals.spend / totals.leads : 0;
 
-  const handleManualDiagnostics = async (isoDate: string, newValue: number) => {
+  const upsertManual = async (
+    isoDate: string,
+    patch: Record<string, number>,
+  ) => {
     try {
       const { data: existing } = await supabase
         .from("cabinet_daily_insights")
@@ -165,7 +168,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
       if (existing?.id) {
         const { error } = await supabase
           .from("cabinet_daily_insights")
-          .update({ manual_diagnostics: newValue })
+          .update(patch)
           .eq("id", existing.id);
         if (error) throw error;
       } else {
@@ -176,7 +179,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
             external_id: cabinet.externalId,
             project_id: (cabinet as { projectId?: string }).projectId ?? null,
             date: isoDate,
-            manual_diagnostics: newValue,
+            ...patch,
           });
         if (error) throw error;
       }
@@ -186,6 +189,13 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
       toast.error((e as Error).message || "Не удалось сохранить");
     }
   };
+
+  const handleManualDiagnostics = (isoDate: string, v: number) =>
+    upsertManual(isoDate, { manual_diagnostics: v });
+  const handleManualSales = (isoDate: string, v: number) =>
+    upsertManual(isoDate, { manual_sales: v });
+  const handleManualRevenue = (isoDate: string, v: number) =>
+    upsertManual(isoDate, { manual_revenue: v });
 
   return (
     <article className="rounded-2xl border border-border/60 bg-card/60 transition-colors hover:border-border">
