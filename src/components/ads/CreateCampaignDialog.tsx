@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Rocket, Upload } from "lucide-react";
+import { Rocket, Upload, CheckCircle2, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -358,6 +358,14 @@ const CreateCampaignDialog = ({
   const selectedCabinet = cabinets.find((c) => c.id === cabinetId);
 
   const [submitting, setSubmitting] = useState(false);
+  const [successOpen, setSuccessOpen] = useState(false);
+  const [successInfo, setSuccessInfo] = useState<{
+    cabinet?: string;
+    goal: string;
+    budget: string;
+    currencySymbol: string;
+    rows: { label: string; value: string }[];
+  } | null>(null);
 
   // Запуск идёт через нашу edge-функцию, она подставляет META_ACCESS_TOKEN
   // из секретов и алиасы ACCESS_TOKEN/AD_ACCOUNT/PAGE_ID, которые ждёт n8n.
@@ -650,24 +658,37 @@ const CreateCampaignDialog = ({
         : goal === "meta-form"
           ? "Лид-форма Meta"
           : "WhatsApp";
-    const lines: string[] = [];
-    if (cab?.name) lines.push(`Кабинет: ${cab.name}`);
-    lines.push(`Цель: ${goalLabel}`);
+    const currency = (cab?.currency ?? "USD").toUpperCase();
+    const currencySymbol =
+      currency === "USD"
+        ? "$"
+        : currency === "EUR"
+          ? "€"
+          : currency === "RUB"
+            ? "₽"
+            : currency === "KZT"
+              ? "₸"
+              : currency;
+    const rows: { label: string; value: string }[] = [];
+    rows.push({ label: "Цель", value: goalLabel });
     if (goal === "site-leads") {
-      if (pixelId) lines.push(`Пиксель: ${pixelId}`);
-      if (pixelEvent) lines.push(`Событие: ${pixelEvent}`);
-      if (cab?.websiteUrl) lines.push(`Сайт: ${cab.websiteUrl}`);
+      if (pixelId) rows.push({ label: "Пиксель", value: pixelId });
+      if (pixelEvent) rows.push({ label: "Событие", value: pixelEvent });
+      if (cab?.websiteUrl) rows.push({ label: "Сайт", value: cab.websiteUrl });
     } else if (goal === "whatsapp") {
-      if (whatsappId) lines.push(`WhatsApp: ${whatsappId}`);
+      if (whatsappId) rows.push({ label: "WhatsApp", value: whatsappId });
     } else if (goal === "meta-form") {
-      if (leadFormId) lines.push(`Лид-форма: ${leadFormId}`);
+      if (leadFormId) rows.push({ label: "Лид-форма", value: leadFormId });
     }
-    lines.push(`Бюджет: ${budget} ${cab?.currency ?? "USD"}/день`);
 
-    toast.success("Реклама успешно отправлена на проверку", {
-      description: lines.join(" · "),
-      duration: 8000,
+    setSuccessInfo({
+      cabinet: cab?.name,
+      goal: goalLabel,
+      budget,
+      currencySymbol,
+      rows,
     });
+    setSuccessOpen(true);
 
     onOpenChange(false);
     setText("");
