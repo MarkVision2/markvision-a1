@@ -698,6 +698,7 @@ const CreateCampaignDialog = ({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto border-border/60 bg-card">
         <DialogHeader>
