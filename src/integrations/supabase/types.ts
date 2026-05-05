@@ -706,6 +706,27 @@ export type Database = {
           },
         ]
       }
+      fx_rates: {
+        Row: {
+          date: string
+          fetched_at: string
+          source: string
+          usd_kzt: number
+        }
+        Insert: {
+          date: string
+          fetched_at?: string
+          source?: string
+          usd_kzt: number
+        }
+        Update: {
+          date?: string
+          fetched_at?: string
+          source?: string
+          usd_kzt?: number
+        }
+        Relationships: []
+      }
       lead_status_history: {
         Row: {
           changed_at: string
