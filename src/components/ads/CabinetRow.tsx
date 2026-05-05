@@ -158,9 +158,6 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
     isoDate: string,
     patch: Record<string, number>,
   ) => {
-    const sb = supabase as unknown as {
-      from: (t: string) => ReturnType<typeof supabase.from>;
-    };
     try {
       const { data: existing } = await supabase
         .from("cabinet_daily_insights")
@@ -169,13 +166,13 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
         .eq("date", isoDate)
         .maybeSingle();
       if (existing?.id) {
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from("cabinet_daily_insights")
           .update(patch)
           .eq("id", existing.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase
+        const { error } = await (supabase as any)
           .from("cabinet_daily_insights")
           .insert({
             cabinet_id: cabinet.id,
