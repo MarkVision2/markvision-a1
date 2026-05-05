@@ -45,6 +45,60 @@ function ymd(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
+function ymdToDmy(s: string) {
+  const [y, m, d] = s.split("-");
+  return `${d}.${m}.${y}`;
+}
+function parseUsdFromXml(xml: string): number | null {
+  const items = xml.split(/<item[\s>]/i).slice(1);
+  for (const it of items) {
+    const t = it.match(/<title>\s*([^<]+?)\s*<\/title>/i);
+    const dsc = it.match(/<description>\s*([^<]+?)\s*<\/description>/i);
+    if (t && dsc && t[1].trim().toUpperCase() === "USD") {
+      const v = Number(dsc[1].replace(",", "."));
+      if (Number.isFinite(v) && v > 0) return v;
+    }
+  }
+  return null;
+}
+async function fetchNbkRate(date: string): Promise<number | null> {
+  for (let i = 0; i < 8; i++) {
+    const d = new Date(`${date}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - i);
+    const dStr = d.toISOString().slice(0, 10);
+    try {
+      const r = await fetch(`https://nationalbank.kz/rss/get_rates.cfm?fdate=${ymdToDmy(dStr)}`);
+      if (!r.ok) continue;
+      const v = parseUsdFromXml(await r.text());
+      if (v) return v;
+    } catch (_) { /* next */ }
+  }
+  return null;
+}
+async function getRatesForDates(
+  admin: ReturnType<typeof createClient>,
+  dates: string[],
+): Promise<Map<string, number>> {
+  const map = new Map<string, number>();
+  if (dates.length === 0) return map;
+  const { data } = await admin.from("fx_rates").select("date, usd_kzt").in("date", dates);
+  for (const r of (data ?? []) as Array<{ date: string; usd_kzt: number | string }>) {
+    map.set(r.date, Number(r.usd_kzt));
+  }
+  for (const d of dates) {
+    if (map.has(d)) continue;
+    const rate = await fetchNbkRate(d);
+    if (rate) {
+      map.set(d, rate);
+      await admin.from("fx_rates").upsert(
+        { date: d, usd_kzt: rate, source: "nbk", fetched_at: new Date().toISOString() },
+        { onConflict: "date" },
+      );
+    }
+  }
+  return map;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
