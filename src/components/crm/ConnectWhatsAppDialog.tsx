@@ -72,7 +72,7 @@ export function ConnectWhatsAppDialog({
               id="wa-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Kost Agency"
+              placeholder="MarkVision AI"
               maxLength={80}
             />
           </div>
