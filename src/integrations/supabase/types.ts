@@ -443,6 +443,8 @@ export type Database = {
           impressions: number
           leads: number
           manual_diagnostics: number
+          manual_revenue: number
+          manual_sales: number
           project_id: string | null
           revenue: number
           spend: number
@@ -465,6 +467,8 @@ export type Database = {
           impressions?: number
           leads?: number
           manual_diagnostics?: number
+          manual_revenue?: number
+          manual_sales?: number
           project_id?: string | null
           revenue?: number
           spend?: number
@@ -487,6 +491,8 @@ export type Database = {
           impressions?: number
           leads?: number
           manual_diagnostics?: number
+          manual_revenue?: number
+          manual_sales?: number
           project_id?: string | null
           revenue?: number
           spend?: number
