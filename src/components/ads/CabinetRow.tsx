@@ -237,7 +237,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6 lg:gap-6">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5 lg:gap-6">
           <Metric
             label="Расход"
             value={formatMoney(totals?.spend ?? 0, currency)}
@@ -270,17 +270,9 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
             value={
               <span>
                 {formatNumber(totals?.sales ?? 0)}{" "}
-                <span className="text-xs text-muted-foreground">
+                <span className="text-xs text-success">
                   ({formatMoney(totals?.crmRevenue ?? 0, currency)})
                 </span>
-              </span>
-            }
-          />
-          <Metric
-            label="Выручка (Meta)"
-            value={
-              <span className="text-success">
-                {formatMoney(totals?.revenue ?? 0, currency)}
               </span>
             }
           />
