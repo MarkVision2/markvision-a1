@@ -11,7 +11,9 @@ export interface DailyInsightRow {
   diagnostics: number;
   manualDiagnostics: number;
   sales: number;
+  manualSales: number;
   crmRevenue: number;
+  manualRevenue: number;
 }
 
 export interface InsightTotals {
