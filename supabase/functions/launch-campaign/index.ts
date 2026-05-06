@@ -277,8 +277,16 @@ Deno.serve(async (req) => {
     } catch (e) {
       // Таймаут на ACK — это ок: n8n принял запрос и продолжает работу.
       // Считаем "принято" и не блокируем UI пользователя.
-      const msg = (e as Error)?.message ?? "";
-      if (msg.includes("aborted") || msg.includes("timeout")) {
+      const err = e as { name?: string; message?: string };
+      const msg = (err?.message ?? "").toLowerCase();
+      const name = err?.name ?? "";
+      if (
+        name === "TimeoutError" ||
+        name === "AbortError" ||
+        msg.includes("aborted") ||
+        msg.includes("timeout") ||
+        msg.includes("timed out")
+      ) {
         ackOk = true;
         ackStatus = 202;
         ackBody = "queued (ack timeout — n8n продолжает в фоне)";
