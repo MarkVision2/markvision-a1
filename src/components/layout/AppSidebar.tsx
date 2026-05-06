@@ -9,8 +9,10 @@ import {
   FileBarChart2,
   Settings,
   PhoneCall,
+  Sparkles,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
   Sidebar,
   SidebarContent,
@@ -42,6 +44,9 @@ const marketing: NavItem[] = [
   { title: "Контент-завод", url: "/", icon: Wand2 },
 ];
 
+// Marketing OS — собирается динамически в компоненте, т.к. URL зависит от активного проекта
+const marketingOsIcon = Sparkles;
+
 const sales: NavItem[] = [
   { title: "CRM", url: "/crm", icon: Users },
   { title: "История звонков", url: "/calls", icon: PhoneCall },
@@ -58,17 +63,24 @@ const system: NavItem[] = [
   { title: "Настройки", url: "/settings", icon: Settings },
 ];
 
-const GROUPS: { label: string; items: NavItem[] }[] = [
-  { label: "Главное", items: main },
-  { label: "Маркетинг", items: marketing },
-  { label: "Продажи", items: sales },
-  { label: "Аналитика", items: analytics },
-];
+function buildGroups(activeProjectId: string): { label: string; items: NavItem[] }[] {
+  const marketingOs: NavItem[] = activeProjectId
+    ? [{ title: "Стратегия", url: `/projects/${activeProjectId}/strategy`, icon: marketingOsIcon }]
+    : [];
+  return [
+    { label: "Главное", items: main },
+    { label: "Маркетинг", items: [...marketing, ...marketingOs] },
+    { label: "Продажи", items: sales },
+    { label: "Аналитика", items: analytics },
+  ];
+}
 
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const { pathname } = useLocation();
+  const { activeId } = useProjectsStore();
+  const GROUPS = buildGroups(activeId);
 
   const itemClass = ({ isActive }: { isActive: boolean }) =>
     cn(

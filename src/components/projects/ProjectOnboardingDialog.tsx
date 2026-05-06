@@ -1,10 +1,12 @@
 import { useState } from "react";
-import { Loader2, Check, ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Loader2, Check, ChevronLeft, ChevronRight, Sparkles, ExternalLink } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { useAuth } from "@/hooks/useAuth";
@@ -18,30 +20,69 @@ interface Props {
 }
 
 type Variant = { primary_text: string; headline: string; cta: string };
+interface Segment {
+  code: string;
+  name: string;
+  radical_psychotype: string;
+  index_score: number;
+  class: "A" | "B" | "C" | "D";
+  offer: string;
+}
+interface ProductMatrix {
+  lead_magnet: string;
+  entry: string;
+  main: string;
+  vip: string;
+}
+
+const PRODUCT_TYPES = [
+  "B2C импульс",
+  "B2C обдуманная",
+  "B2C luxury",
+  "B2B",
+  "Подписка",
+] as const;
+
+const CHANNELS = ["Instagram", "TikTok", "Google", "Яндекс", "2GIS", "VK", "Telegram", "YouTube"] as const;
+const PRICE_MODELS = ["разово", "подписка", "за лид", "пакет/тариф"] as const;
+const RESEARCH_DEPTHS = ["быстрый", "глубокий"] as const;
+
+const TOTAL_STEPS = 5;
 
 export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
   const { addProject, setActive } = useProjectsStore();
   const { user } = useAuth();
+  const navigate = useNavigate();
 
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
 
-  // Step 1
+  // Step 1 — basics
   const [name, setName] = useState("");
   const [domain, setDomain] = useState("");
   const [city, setCity] = useState("");
 
-  // Step 2 — brief
+  // Step 2 — product brief
   const [niche, setNiche] = useState("");
-  const [audience, setAudience] = useState("");
   const [product, setProduct] = useState("");
+  const [audience, setAudience] = useState("");
   const [usp, setUsp] = useState("");
   const [geo, setGeo] = useState("");
   const [tone, setTone] = useState("дружелюбный, экспертный");
   const [monthlyBudget, setMonthlyBudget] = useState("");
+  const [priceModel, setPriceModel] = useState<typeof PRICE_MODELS[number]>("разово");
+  const [productType, setProductType] = useState<typeof PRODUCT_TYPES[number]>("B2C обдуманная");
 
-  // Step 3 — cabinet (optional)
-  const [skipCabinet, setSkipCabinet] = useState(false);
+  // Step 3 — market
+  const [currentClients, setCurrentClients] = useState("");
+  const [channels, setChannels] = useState<string[]>(["Instagram"]);
+  const [directCompetitors, setDirectCompetitors] = useState("");
+  const [indirectCompetitors, setIndirectCompetitors] = useState("");
+  const [differentiator, setDifferentiator] = useState("");
+  const [painsRaw, setPainsRaw] = useState("");
+  const [researchDepth, setResearchDepth] = useState<typeof RESEARCH_DEPTHS[number]>("быстрый");
+
+  // Step 4 — cabinet (optional)
   const [cabName, setCabName] = useState("");
   const [cabType, setCabType] = useState("Личный");
   const [adAccountId, setAdAccountId] = useState("");
@@ -52,40 +93,49 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
   const [whatsappNumber, setWhatsappNumber] = useState("");
   const [pixelEvent, setPixelEvent] = useState("Lead");
 
-  // Step 4 — AI result
+  // Step 5 — AI result
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
   const [briefMd, setBriefMd] = useState<string>("");
   const [variants, setVariants] = useState<Variant[]>([]);
   const [selectedVariant, setSelectedVariant] = useState(0);
+  const [segments, setSegments] = useState<Segment[]>([]);
+  const [productMatrix, setProductMatrix] = useState<ProductMatrix | null>(null);
+  const [recommendedScenario, setRecommendedScenario] = useState<string>("");
+  const [resolvedProductType, setResolvedProductType] = useState<string>("");
   const [aiError, setAiError] = useState<string | null>(null);
 
   const reset = () => {
     setStep(1); setBusy(false);
     setName(""); setDomain(""); setCity("");
-    setNiche(""); setAudience(""); setProduct(""); setUsp(""); setGeo(""); setTone("дружелюбный, экспертный"); setMonthlyBudget("");
-    setSkipCabinet(false); setCabName(""); setCabType("Личный");
-    setAdAccountId(""); setPageId(""); setPixelId(""); setInstagramId(""); setAccessToken(""); setWhatsappNumber(""); setPixelEvent("Lead");
-    setCreatedProjectId(null); setBriefMd(""); setVariants([]); setSelectedVariant(0); setAiError(null);
+    setNiche(""); setProduct(""); setAudience(""); setUsp(""); setGeo("");
+    setTone("дружелюбный, экспертный"); setMonthlyBudget("");
+    setPriceModel("разово"); setProductType("B2C обдуманная");
+    setCurrentClients(""); setChannels(["Instagram"]);
+    setDirectCompetitors(""); setIndirectCompetitors(""); setDifferentiator("");
+    setPainsRaw(""); setResearchDepth("быстрый");
+    setCabName(""); setCabType("Личный");
+    setAdAccountId(""); setPageId(""); setPixelId(""); setInstagramId("");
+    setAccessToken(""); setWhatsappNumber(""); setPixelEvent("Lead");
+    setCreatedProjectId(null); setBriefMd(""); setVariants([]); setSelectedVariant(0);
+    setSegments([]); setProductMatrix(null); setRecommendedScenario(""); setResolvedProductType("");
+    setAiError(null);
   };
 
   const close = () => { onOpenChange(false); setTimeout(reset, 200); };
 
-  // ======== actions ========
-  const goStep2 = async () => {
-    if (!name.trim()) { toast.error("Введите название проекта"); return; }
-    setStep(2);
+  const toggleChannel = (c: string) => {
+    setChannels((prev) => prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]);
   };
 
-  const goStep3 = () => setStep(3);
-
   const finalize = async (skipCab: boolean) => {
+    if (!name.trim()) { toast.error("Введите название проекта"); setStep(1); return; }
     setBusy(true);
     try {
       // 1) Create project
       const project = await addProject(name, domain || undefined);
       setCreatedProjectId(project.id);
 
-      // 2) Insert brief row (admin policy required — handled by RLS)
+      // 2) Insert brief row (admin RLS handled server-side via service role on edge fn update)
       const briefPayload = {
         project_id: project.id,
         niche: niche || null,
@@ -96,8 +146,17 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
         tone: tone || null,
         monthly_budget: monthlyBudget ? Number(monthlyBudget) : 0,
         created_by: user?.id ?? null,
+        product_type: productType,
+        research_depth: researchDepth,
+        price_model: priceModel,
+        current_clients: currentClients || null,
+        channels,
+        direct_competitors: directCompetitors || null,
+        indirect_competitors: indirectCompetitors || null,
+        differentiator: differentiator || null,
+        pains_raw: painsRaw || null,
       };
-      const { error: briefErr } = await supabase.from("project_briefs").insert(briefPayload as any);
+      const { error: briefErr } = await supabase.from("project_briefs").insert(briefPayload as never);
       if (briefErr) console.warn("brief insert err", briefErr);
 
       // 3) Insert cabinet (optional)
@@ -119,17 +178,15 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
           city: city.trim() || null,
           online: true,
         };
-        const { error: cabErr } = await supabase.from("ad_cabinets").insert(cabRow as any);
+        const { error: cabErr } = await supabase.from("ad_cabinets").insert(cabRow as never);
         if (cabErr) toast.error("Кабинет не сохранён: " + cabErr.message);
       }
 
       // 4) Switch active project
       await setActive(project.id);
 
-      // 5) Generate AI brief — go to step 4 with loader
-      setStep(4);
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 25000);
+      // 5) Generate AI strategy — go to step 5 with loader
+      setStep(5);
       try {
         const { data, error } = await supabase.functions.invoke("generate-project-brief", {
           body: {
@@ -140,56 +197,78 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
             city,
             websiteUrl: domain,
             monthlyBudget: monthlyBudget ? Number(monthlyBudget) : undefined,
+            productType,
+            researchDepth,
+            priceModel,
+            currentClients,
+            channels,
+            directCompetitors,
+            indirectCompetitors,
+            differentiator,
+            painsRaw,
           },
         });
-        clearTimeout(timer);
         if (error) throw error;
         if (data?.brief_md) setBriefMd(data.brief_md);
         if (Array.isArray(data?.variants)) setVariants(data.variants);
-      } catch (e: any) {
-        clearTimeout(timer);
+        if (Array.isArray(data?.segments)) setSegments(data.segments);
+        if (data?.product_matrix) setProductMatrix(data.product_matrix);
+        if (data?.recommended_scenario) setRecommendedScenario(data.recommended_scenario);
+        if (data?.product_type) setResolvedProductType(data.product_type);
+      } catch (e: unknown) {
         console.error(e);
-        setAiError(e?.message || "Не удалось сгенерировать бриф");
+        const msg = e instanceof Error ? e.message : "Не удалось сгенерировать стратегию";
+        setAiError(msg);
       }
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error(e);
-      toast.error(e?.message || "Не удалось создать проект");
+      const msg = e instanceof Error ? e.message : "Не удалось создать проект";
+      toast.error(msg);
     } finally {
       setBusy(false);
     }
   };
 
-  const saveSelectedVariant = async () => {
-    if (!createdProjectId || !variants[selectedVariant]) { close(); return; }
-    const v = variants[selectedVariant];
-    await supabase.from("project_briefs").update({
-      ai_primary_text: v.primary_text,
-      ai_headline: v.headline,
-      ai_cta: v.cta,
-    }).eq("project_id", createdProjectId);
-    toast.success("Проект готов");
+  const saveSelectedVariantAndOpen = async (target: "project" | "strategy") => {
+    if (!createdProjectId) { close(); return; }
+    if (variants[selectedVariant]) {
+      const v = variants[selectedVariant];
+      await supabase.from("project_briefs").update({
+        ai_primary_text: v.primary_text,
+        ai_headline: v.headline,
+        ai_cta: v.cta,
+      } as never).eq("project_id", createdProjectId);
+    }
+    toast.success("Стратегия проекта готова");
+    const nextRoute = target === "strategy"
+      ? `/projects/${createdProjectId}/strategy`
+      : `/`;
     close();
+    navigate(nextRoute);
   };
 
-  // ======== UI ========
-  const totalSteps = 4;
+  const topSegments = segments
+    .filter((s) => s.class === "A" || s.class === "B")
+    .sort((a, b) => b.index_score - a.index_score)
+    .slice(0, 4);
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!busy) (v ? onOpenChange(true) : close()); }}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-success" />
             {step === 1 && "Новый проект"}
             {step === 2 && "Бриф проекта"}
-            {step === 3 && "Рекламный кабинет"}
-            {step === 4 && "Готово"}
+            {step === 3 && "Рынок и сегменты"}
+            {step === 4 && "Рекламный кабинет"}
+            {step === 5 && "Стратегия Marketing OS"}
           </DialogTitle>
         </DialogHeader>
 
         {/* Progress */}
         <div className="flex items-center gap-2 pb-2">
-          {Array.from({ length: totalSteps }).map((_, i) => (
+          {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
             <div
               key={i}
               className={cn(
@@ -232,9 +311,9 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
               </div>
             </div>
             <div className="space-y-1.5">
-              <Label>Продукт / услуга</Label>
+              <Label>Продукт / услуга — одним предложением</Label>
               <Textarea rows={2} value={product} onChange={(e) => setProduct(e.target.value)}
-                placeholder="Имплантация, виниры, отбеливание под ключ" />
+                placeholder="Имплантация под ключ за 1 день, гарантия 5 лет" />
             </div>
             <div className="space-y-1.5">
               <Label>Целевая аудитория</Label>
@@ -246,20 +325,92 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
               <Textarea rows={2} value={usp} onChange={(e) => setUsp(e.target.value)}
                 placeholder="Гарантия 5 лет, рассрочка 0%, первый приём бесплатно" />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label>Бюджет / мес (₸)</Label>
+                <Input type="number" value={monthlyBudget} onChange={(e) => setMonthlyBudget(e.target.value)} placeholder="500000" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Модель оплаты</Label>
+                <Select value={priceModel} onValueChange={(v) => setPriceModel(v as typeof PRICE_MODELS[number])}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {PRICE_MODELS.map((m) => <SelectItem key={m} value={m}>{m}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="space-y-1.5">
                 <Label>Тон коммуникации</Label>
                 <Input value={tone} onChange={(e) => setTone(e.target.value)} />
               </div>
-              <div className="space-y-1.5">
-                <Label>Бюджет / мес</Label>
-                <Input type="number" value={monthlyBudget} onChange={(e) => setMonthlyBudget(e.target.value)} placeholder="500000" />
-              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Тип продукта (определяет веса для индекса сегментов)</Label>
+              <Select value={productType} onValueChange={(v) => setProductType(v as typeof PRODUCT_TYPES[number])}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {PRODUCT_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         )}
 
         {step === 3 && (
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label>Текущие клиенты — опиши 2-3 реальных (опционально)</Label>
+              <Textarea rows={3} value={currentClients} onChange={(e) => setCurrentClients(e.target.value)}
+                placeholder="Айгерим, 32, мама двух детей, выбрала за рассрочку и удобный график..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Каналы размещения</Label>
+              <div className="flex flex-wrap gap-2 rounded-lg border border-border/60 bg-card/40 p-2">
+                {CHANNELS.map((c) => (
+                  <label key={c} className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 hover:bg-secondary/60">
+                    <Checkbox
+                      checked={channels.includes(c)}
+                      onCheckedChange={() => toggleChannel(c)}
+                    />
+                    <span className="text-sm">{c}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Прямые конкуренты (опционально)</Label>
+                <Textarea rows={2} value={directCompetitors} onChange={(e) => setDirectCompetitors(e.target.value)}
+                  placeholder="@aura_dental, @denta_lux..." />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Косвенные конкуренты</Label>
+                <Textarea rows={2} value={indirectCompetitors} onChange={(e) => setIndirectCompetitors(e.target.value)}
+                  placeholder="Клиники общей стоматологии, виниры через ортодонтов..." />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Чем отличаешься от рынка</Label>
+              <Textarea rows={2} value={differentiator} onChange={(e) => setDifferentiator(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Боли клиентов — конкретные фразы если слышал</Label>
+              <Textarea rows={2} value={painsRaw} onChange={(e) => setPainsRaw(e.target.value)}
+                placeholder="«Боюсь что криво поставят» «Долго не могу решиться»..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Глубина анализа стратегии</Label>
+              <Select value={researchDepth} onValueChange={(v) => setResearchDepth(v as typeof RESEARCH_DEPTHS[number])}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {RESEARCH_DEPTHS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+
+        {step === 4 && (
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
               Подключите рекламный кабинет сейчас или пропустите — добавите позже в разделе «Реклама».
@@ -314,30 +465,88 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
           </div>
         )}
 
-        {step === 4 && (
+        {step === 5 && (
           <div className="space-y-4">
             {busy || (!briefMd && !aiError) ? (
               <div className="flex flex-col items-center justify-center gap-3 py-10 text-center">
                 <Loader2 className="h-8 w-8 animate-spin text-success" />
-                <div className="text-sm text-muted-foreground">AI пишет бриф проекта и варианты рекламы…</div>
+                <div className="text-sm text-muted-foreground">
+                  Marketing OS строит стратегию: сегменты, продуктовая матрица, сценарии запуска и креативы…
+                </div>
               </div>
             ) : aiError ? (
               <div className="space-y-3">
                 <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm">
-                  Не удалось сгенерировать бриф: {aiError}
+                  Не удалось сгенерировать стратегию: {aiError}
                 </div>
                 <p className="text-sm text-muted-foreground">
-                  Проект создан. Бриф можно сгенерировать позже в настройках.
+                  Проект создан. Стратегию можно перегенерировать на вкладке «Стратегия» внутри проекта.
                 </p>
               </div>
             ) : (
               <>
-                <div>
-                  <div className="mb-1 text-xs uppercase tracking-wider text-muted-foreground">Бриф</div>
-                  <div className="max-h-40 overflow-auto rounded-lg border border-border/60 bg-card/40 p-3 text-sm whitespace-pre-wrap">
-                    {briefMd}
+                {(resolvedProductType || recommendedScenario) && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-lg border border-border/60 bg-card/40 p-3">
+                      <div className="text-xs uppercase tracking-wider text-muted-foreground">Тип продукта</div>
+                      <div className="text-sm font-semibold">{resolvedProductType || "—"}</div>
+                    </div>
+                    <div className="rounded-lg border border-success/30 bg-success/10 p-3">
+                      <div className="text-xs uppercase tracking-wider text-muted-foreground">Рекомендованный сценарий</div>
+                      <div className="text-sm font-semibold">{recommendedScenario || "—"}</div>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {topSegments.length > 0 && (
+                  <div>
+                    <div className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">
+                      Топ-сегменты
+                    </div>
+                    <div className="space-y-1.5">
+                      {topSegments.map((s) => (
+                        <div key={s.code} className="flex items-center gap-3 rounded-lg border border-border/60 bg-card/40 p-2.5">
+                          <div className={cn(
+                            "rounded-md px-2 py-0.5 text-xs font-bold",
+                            s.class === "A" ? "bg-success/20 text-success" : "bg-warning/20 text-warning",
+                          )}>
+                            {s.class}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-sm font-semibold truncate">{s.code} · {s.name}</div>
+                            <div className="text-xs text-muted-foreground truncate">{s.radical_psychotype} · {s.offer}</div>
+                          </div>
+                          <div className="text-sm font-mono tabular-nums">{Math.round(s.index_score)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {productMatrix && (
+                  <div>
+                    <div className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">Продуктовая матрица</div>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div className="rounded-md border border-border/60 bg-card/40 p-2">
+                        <div className="text-xs text-muted-foreground">Лид-магнит</div>
+                        <div>{productMatrix.lead_magnet}</div>
+                      </div>
+                      <div className="rounded-md border border-border/60 bg-card/40 p-2">
+                        <div className="text-xs text-muted-foreground">Входной</div>
+                        <div>{productMatrix.entry}</div>
+                      </div>
+                      <div className="rounded-md border border-border/60 bg-card/40 p-2">
+                        <div className="text-xs text-muted-foreground">Основной</div>
+                        <div>{productMatrix.main}</div>
+                      </div>
+                      <div className="rounded-md border border-border/60 bg-card/40 p-2">
+                        <div className="text-xs text-muted-foreground">VIP</div>
+                        <div>{productMatrix.vip}</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {variants.length > 0 && (
                   <div>
                     <div className="mb-2 text-xs uppercase tracking-wider text-muted-foreground">
@@ -353,7 +562,7 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
                             onClick={() => setSelectedVariant(i)}
                             className={cn(
                               "w-full rounded-lg border p-3 text-left transition-colors",
-                              active ? "border-success bg-success/10" : "border-border/60 hover:bg-secondary/60"
+                              active ? "border-success bg-success/10" : "border-border/60 hover:bg-secondary/60",
                             )}
                           >
                             <div className="mb-1 flex items-center justify-between gap-2">
@@ -375,33 +584,43 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
 
         {/* Footer */}
         <div className="flex items-center justify-between gap-2 pt-2">
-          {step > 1 && step < 4 ? (
-            <Button variant="ghost" onClick={() => setStep((s) => s - 1)} disabled={busy}>
+          {step > 1 && step < 5 ? (
+            <Button variant="ghost" onClick={() => setStep((s) => Math.max(1, s - 1))} disabled={busy}>
               <ChevronLeft className="mr-1 h-4 w-4" /> Назад
             </Button>
           ) : <span />}
           <div className="flex items-center gap-2">
-            {(step === 2 || step === 3) && (
+            {(step === 2 || step === 3 || step === 4) && (
               <Button
                 variant="ghost"
-                onClick={() => step === 2 ? setStep(3) : finalize(true)}
+                onClick={() => step === 4 ? finalize(true) : setStep((s) => s + 1)}
                 disabled={busy}
               >
                 Пропустить
               </Button>
             )}
-            {step === 1 && <Button onClick={goStep2}>Далее <ChevronRight className="ml-1 h-4 w-4" /></Button>}
-            {step === 2 && <Button onClick={goStep3}>Далее <ChevronRight className="ml-1 h-4 w-4" /></Button>}
-            {step === 3 && (
-              <Button onClick={() => finalize(false)} disabled={busy}>
-                {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
-                Создать проект
+            {step === 1 && (
+              <Button onClick={() => { if (!name.trim()) { toast.error("Введите название проекта"); return; } setStep(2); }}>
+                Далее <ChevronRight className="ml-1 h-4 w-4" />
               </Button>
             )}
+            {step === 2 && <Button onClick={() => setStep(3)}>Далее <ChevronRight className="ml-1 h-4 w-4" /></Button>}
+            {step === 3 && <Button onClick={() => setStep(4)}>Далее <ChevronRight className="ml-1 h-4 w-4" /></Button>}
             {step === 4 && (
-              <Button onClick={saveSelectedVariant} disabled={busy}>
-                Перейти в проект
+              <Button onClick={() => finalize(false)} disabled={busy}>
+                {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+                Создать проект и стратегию
               </Button>
+            )}
+            {step === 5 && !busy && (briefMd || aiError) && (
+              <>
+                <Button variant="ghost" onClick={() => saveSelectedVariantAndOpen("project")} disabled={busy}>
+                  В проект
+                </Button>
+                <Button onClick={() => saveSelectedVariantAndOpen("strategy")} disabled={busy}>
+                  Открыть стратегию <ExternalLink className="ml-1 h-4 w-4" />
+                </Button>
+              </>
             )}
           </div>
         </div>
