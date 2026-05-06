@@ -237,6 +237,8 @@ export function useReportData(
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  useRealtimeTable("cabinet_daily_insights", () => setTick((t) => t + 1), true, 800);
 
   const cabinetIds = useMemo(() => {
     if (cabinetId === "all") return cabinets.map((c) => c.externalId).filter(Boolean);
