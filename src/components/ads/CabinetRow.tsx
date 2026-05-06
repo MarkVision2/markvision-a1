@@ -31,7 +31,7 @@ import { Button } from "@/components/ui/button";
 const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: "$",
   EUR: "€",
-  KZT: "$",
+  KZT: "₸",
   RUB: "₽",
   UAH: "₴",
   GBP: "£",
