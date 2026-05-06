@@ -96,9 +96,13 @@ function normalizeActId(id: string) {
 async function fetchMetaForRange(
   externalIds: string[],
   range: ReportPeriodRange,
-): Promise<{ spend: number; impressions: number; clicks: number; leads: number; daily: { date: string; spend: number; leads: number }[] }> {
+): Promise<{
+  spend: number; impressions: number; clicks: number; leads: number;
+  cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number;
+  daily: { date: string; spend: number; leads: number; revenue: number }[];
+}> {
   if (externalIds.length === 0) {
-    return { spend: 0, impressions: 0, clicks: 0, leads: 0, daily: [] };
+    return { spend: 0, impressions: 0, clicks: 0, leads: 0, cabinetSales: 0, cabinetRevenue: 0, cabinetDiagnostics: 0, daily: [] };
   }
   const ids = externalIds.map(normalizeActId);
   const since = ymd(range.from);
@@ -106,27 +110,30 @@ async function fetchMetaForRange(
 
   const { data, error } = await supabase
     .from("cabinet_daily_insights")
-    .select("date, spend, impressions, clicks, leads")
+    .select("date, spend, impressions, clicks, leads, crm_sales, manual_sales, crm_revenue, manual_revenue, crm_diagnostics, manual_diagnostics")
     .in("external_id", ids)
     .gte("date", since)
     .lte("date", until);
   if (error) throw new Error(error.message);
 
-  const dailyAgg = new Map<string, { spend: number; leads: number }>();
+  const dailyAgg = new Map<string, { spend: number; leads: number; revenue: number }>();
   let totSpend = 0, totImp = 0, totClicks = 0, totLeads = 0;
+  let totSales = 0, totRevenue = 0, totDiag = 0;
 
   for (const row of data ?? []) {
     const spend = Number(row.spend) || 0;
     const impressions = Number(row.impressions) || 0;
     const clicks = Number(row.clicks) || 0;
     const leads = Number(row.leads) || 0;
-    totSpend += spend;
-    totImp += impressions;
-    totClicks += clicks;
-    totLeads += leads;
-    const cur = dailyAgg.get(row.date) ?? { spend: 0, leads: 0 };
+    const sales = (Number(row.crm_sales) || 0) + (Number(row.manual_sales) || 0);
+    const revenue = (Number(row.crm_revenue) || 0) + (Number(row.manual_revenue) || 0);
+    const diag = (Number(row.crm_diagnostics) || 0) + (Number(row.manual_diagnostics) || 0);
+    totSpend += spend; totImp += impressions; totClicks += clicks; totLeads += leads;
+    totSales += sales; totRevenue += revenue; totDiag += diag;
+    const cur = dailyAgg.get(row.date) ?? { spend: 0, leads: 0, revenue: 0 };
     cur.spend += spend;
     cur.leads += leads;
+    cur.revenue += revenue;
     dailyAgg.set(row.date, cur);
   }
 
@@ -135,6 +142,9 @@ async function fetchMetaForRange(
     impressions: totImp,
     clicks: totClicks,
     leads: totLeads,
+    cabinetSales: totSales,
+    cabinetRevenue: totRevenue,
+    cabinetDiagnostics: totDiag,
     daily: Array.from(dailyAgg.entries())
       .map(([date, v]) => ({ date, ...v }))
       .sort((a, b) => a.date.localeCompare(b.date)),
