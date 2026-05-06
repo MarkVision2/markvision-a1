@@ -1,0 +1,54 @@
+name: Deploy Supabase (migrations + functions)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/**"
+      - ".github/workflows/supabase-deploy.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: supabase-deploy
+  cancel-in-progress: false
+
+env:
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+  SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Verify required secrets
+        run: |
+          set -e
+          test -n "$SUPABASE_ACCESS_TOKEN" || (echo "::error::Secret SUPABASE_ACCESS_TOKEN is missing"; exit 1)
+          test -n "$SUPABASE_PROJECT_REF" || (echo "::error::Secret SUPABASE_PROJECT_REF is missing"; exit 1)
+          test -n "$SUPABASE_DB_PASSWORD" || (echo "::error::Secret SUPABASE_DB_PASSWORD is missing"; exit 1)
+
+      - name: Link project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Apply database migrations
+        run: supabase db push --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Deploy edge functions
+        run: |
+          set -e
+          # Discover top-level function dirs (skip helpers prefixed with "_")
+          FUNCS=$(ls supabase/functions | grep -v '^_' | tr '\n' ' ')
+          echo "Deploying: $FUNCS"
+          for fn in $FUNCS; do
+            echo "::group::Deploying $fn"
+            supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"
+            echo "::endgroup::"
+          done
