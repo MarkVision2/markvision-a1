@@ -73,7 +73,7 @@ export function useLeadsLite() {
     }));
     setLeads(list);
     setLoading(false);
-  }, []);
+  }, [activeId]);
 
   useEffect(() => {
     void refetch();
