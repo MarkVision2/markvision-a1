@@ -9,7 +9,7 @@ export interface ChannelStat {
   revenue: number;
 }
 
-const fmtMoney = (n: number) => `$${Math.round(n).toLocaleString("ru-RU")}`;
+const fmtMoney = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 
 export const ChannelCard = ({ stat }: { stat: ChannelStat }) => {
