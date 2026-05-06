@@ -282,7 +282,7 @@ export function useReportData(
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cabinetIds.join(","), range.from.getTime(), range.to.getTime(), compare, leads.length]);
+  }, [cabinetIds.join(","), range.from.getTime(), range.to.getTime(), compare, leads.length, tick]);
 
   return { data, loading, error };
 }
