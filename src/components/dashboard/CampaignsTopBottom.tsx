@@ -1,7 +1,7 @@
 import { TrendingDown, TrendingUp } from "lucide-react";
 import type { ReportCreative } from "@/hooks/useReportData";
 
-const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} $`;
+const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 
 interface Props {
   creatives: ReportCreative[];

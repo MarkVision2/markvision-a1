@@ -2,7 +2,7 @@ import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
-const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} $`;
+const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 
 interface ChannelRow {
   name: string;

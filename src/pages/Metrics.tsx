@@ -37,7 +37,7 @@ const MONTHS_RU = [
 
 const WEEKDAYS_RU = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
 
-const formatTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} $`;
+const formatTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 const formatNumber = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const formatPercent = (n: number) => `${n.toFixed(0)}%`;
 

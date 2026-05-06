@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 import type { ReportTotals } from "@/hooks/useReportData";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
-const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} $`;
+const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 
 interface Props {
   totals: ReportTotals;

@@ -2,7 +2,7 @@ import { Users, Repeat, BarChart3, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ReportTotals } from "@/hooks/useReportData";
 
-const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} $`;
+const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 
 interface Props {
   totals: ReportTotals;
