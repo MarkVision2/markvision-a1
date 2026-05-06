@@ -56,7 +56,7 @@ export interface ReportData {
   creatives: ReportCreative[];
   channels: ReportChannel[];
   scoring: ReportScoring;
-  monthlyMeta: { date: string; spend: number; leads: number }[];
+  monthlyMeta: { date: string; spend: number; leads: number; revenue: number }[];
 }
 
 const EMPTY_TOTALS: ReportTotals = {
