@@ -17,7 +17,7 @@ import { getPresetRange, useDashboardData, type PeriodPreset } from "@/hooks/use
 import { deltaPct, type ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
 
-const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
+const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}\u00A0₸`;
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 
 const SectionTitle = ({ children, accent }: { children: React.ReactNode; accent?: string }) => (
