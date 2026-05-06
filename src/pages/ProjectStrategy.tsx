@@ -28,6 +28,7 @@ import {
   briefToInvokeBody,
   useBriefFormState,
 } from "@/components/strategy/BriefForm";
+import { StrategyChat } from "@/components/strategy/StrategyChat";
 
 interface StepDef {
   key: "onboarding" | MarketingOsCommand;
@@ -197,8 +198,8 @@ export default function ProjectStrategy() {
 
   return (
     <div className="grid grid-cols-12 gap-4">
-      {/* Левая колонка — список шагов */}
-      <div className="col-span-12 md:col-span-3">
+      {/* Левая колонка — список шагов + чат */}
+      <div className="col-span-12 md:col-span-3 space-y-4">
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
@@ -231,6 +232,12 @@ export default function ProjectStrategy() {
             })}
           </CardContent>
         </Card>
+
+        {projectId && (
+          <div className="h-[560px]">
+            <StrategyChat projectId={projectId} />
+          </div>
+        )}
       </div>
 
       {/* Правая колонка — содержимое активного шага */}
