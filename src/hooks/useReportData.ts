@@ -158,23 +158,34 @@ function aggregateCrm(leads: LeadLite[], range: ReportPeriodRange) {
     const t = new Date(l.createdAt).getTime();
     return t >= fromTs && t < toTs;
   });
-  const visits = inRange.filter((l) => l.stageKey === "visit" || l.stageKey === "paid");
-  const sales = inRange.filter((l) => l.stageKey === "paid");
-  const revenue = sales.reduce((s, l) => s + (l.amount || 0), 0);
-  return { leads: inRange, visits, sales, revenue };
+  // Только лиды БЕЗ cabinet_id — данные кабинетов берём из CDI, чтобы не дублировать.
+  const orphan = inRange.filter((l) => !l.cabinetId);
+  const orphanVisits = orphan.filter((l) => l.stageKey === "visit" || l.stageKey === "paid");
+  const orphanSales = orphan.filter((l) => l.stageKey === "paid");
+  const orphanRevenue = orphanSales.reduce((s, l) => s + (l.amount || 0), 0);
+  return {
+    leads: inRange,
+    orphanVisits,
+    orphanSales,
+    orphanRevenue,
+  };
 }
 
 function computeTotals(
-  meta: { spend: number; impressions: number; clicks: number; leads: number },
-  crm: { leads: LeadLite[]; visits: LeadLite[]; sales: LeadLite[]; revenue: number },
+  meta: { spend: number; impressions: number; clicks: number; leads: number;
+          cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number },
+  crm: { leads: LeadLite[]; orphanVisits: LeadLite[]; orphanSales: LeadLite[]; orphanRevenue: number },
 ): ReportTotals {
   const totalLeads = meta.leads + crm.leads.length;
   const cpl = totalLeads > 0 ? meta.spend / totalLeads : 0;
-  const cpv = crm.visits.length > 0 ? meta.spend / crm.visits.length : 0;
-  const cac = crm.sales.length > 0 ? meta.spend / crm.sales.length : 0;
+  const visits = meta.cabinetDiagnostics + crm.orphanVisits.length;
+  const sales = meta.cabinetSales + crm.orphanSales.length;
+  const revenue = meta.cabinetRevenue + crm.orphanRevenue;
+  const cpv = visits > 0 ? meta.spend / visits : 0;
+  const cac = sales > 0 ? meta.spend / sales : 0;
   const ctr = meta.impressions > 0 ? (meta.clicks / meta.impressions) * 100 : 0;
-  const romi = meta.spend > 0 ? ((crm.revenue - meta.spend) / meta.spend) * 100 : crm.revenue > 0 ? 100 : 0;
-  const aov = crm.sales.length > 0 ? crm.revenue / crm.sales.length : 0;
+  const romi = meta.spend > 0 ? ((revenue - meta.spend) / meta.spend) * 100 : revenue > 0 ? 100 : 0;
+  const aov = sales > 0 ? revenue / sales : 0;
   return {
     spend: meta.spend,
     impressions: meta.impressions,
@@ -182,9 +193,9 @@ function computeTotals(
     adsLeads: meta.leads,
     crmLeads: crm.leads.length,
     totalLeads,
-    visits: crm.visits.length,
-    sales: crm.sales.length,
-    revenue: crm.revenue,
+    visits,
+    sales,
+    revenue,
     cpl, cpv, cac, ctr, romi, aov,
   };
 }
