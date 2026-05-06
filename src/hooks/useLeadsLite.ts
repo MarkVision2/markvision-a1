@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 
 export interface LeadLiteUtm {
   source?: string | null;
@@ -32,20 +33,24 @@ export interface LeadLite {
 }
 
 export function useLeadsLite() {
+  const { activeId } = useProjectsStore();
   const [leads, setLeads] = useState<LeadLite[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refetch = useCallback(async () => {
-    // Resolve stage uuid → key in a single small query (cached)
+    let leadsQuery = supabase
+      .from("leads")
+      .select(
+        "id,source,channel,referrer,utm,cabinet_id,stage_id,amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id",
+      )
+      .order("created_at", { ascending: false })
+      .limit(2000);
+    if (activeId) {
+      leadsQuery = leadsQuery.or(`project_id.eq.${activeId},project_id.is.null`);
+    }
     const [stagesRes, leadsRes] = await Promise.all([
       supabase.from("pipeline_stages").select("id,key"),
-      supabase
-        .from("leads")
-        .select(
-          "id,source,channel,referrer,utm,cabinet_id,stage_id,amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid",
-        )
-        .order("created_at", { ascending: false })
-        .limit(2000),
+      leadsQuery,
     ]);
     const idToKey = new Map<string, string>();
     for (const s of stagesRes.data ?? []) idToKey.set(s.id, s.key);
@@ -68,7 +73,7 @@ export function useLeadsLite() {
     }));
     setLeads(list);
     setLoading(false);
-  }, []);
+  }, [activeId]);
 
   useEffect(() => {
     void refetch();

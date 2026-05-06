@@ -22,7 +22,7 @@ const fmtShort = (d: string) => {
   const [, m, day] = d.split("-");
   return `${day}.${m}`;
 };
-const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} $`;
+const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 
 export function RevenueSpendChart({ data }: Props) {
   const [mode, setMode] = useState<Mode>("money");

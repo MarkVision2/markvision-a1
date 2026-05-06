@@ -90,13 +90,15 @@ export function useDashboardData(
     if (!data) return [];
     const spendByDay = new Map<string, number>();
     const leadsByDay = new Map<string, number>();
+    const revByDay = new Map<string, number>();
     for (const d of data.monthlyMeta) {
       spendByDay.set(d.date, (spendByDay.get(d.date) ?? 0) + d.spend);
       leadsByDay.set(d.date, (leadsByDay.get(d.date) ?? 0) + d.leads);
+      revByDay.set(d.date, (revByDay.get(d.date) ?? 0) + (d.revenue ?? 0));
     }
-    const revByDay = new Map<string, number>();
+    // CRM-лиды без cabinet_id — добавляем их выручку отдельно (чтобы не задвоить CDI).
     for (const l of leads) {
-      if (l.stageKey !== "paid") continue;
+      if (l.stageKey !== "paid" || l.cabinetId) continue;
       const t = new Date(l.createdAt).getTime();
       if (t < fromTs || t >= toTs) continue;
       const k = dayKey(l.createdAt);

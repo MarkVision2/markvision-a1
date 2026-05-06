@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useLeadsLite, type LeadLite } from "@/hooks/useLeadsLite";
+import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { normalizeSource } from "@/lib/leadSource";
 
 export interface ReportPeriodRange {
@@ -56,7 +57,7 @@ export interface ReportData {
   creatives: ReportCreative[];
   channels: ReportChannel[];
   scoring: ReportScoring;
-  monthlyMeta: { date: string; spend: number; leads: number }[];
+  monthlyMeta: { date: string; spend: number; leads: number; revenue: number }[];
 }
 
 const EMPTY_TOTALS: ReportTotals = {
@@ -96,9 +97,13 @@ function normalizeActId(id: string) {
 async function fetchMetaForRange(
   externalIds: string[],
   range: ReportPeriodRange,
-): Promise<{ spend: number; impressions: number; clicks: number; leads: number; daily: { date: string; spend: number; leads: number }[] }> {
+): Promise<{
+  spend: number; impressions: number; clicks: number; leads: number;
+  cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number;
+  daily: { date: string; spend: number; leads: number; revenue: number }[];
+}> {
   if (externalIds.length === 0) {
-    return { spend: 0, impressions: 0, clicks: 0, leads: 0, daily: [] };
+    return { spend: 0, impressions: 0, clicks: 0, leads: 0, cabinetSales: 0, cabinetRevenue: 0, cabinetDiagnostics: 0, daily: [] };
   }
   const ids = externalIds.map(normalizeActId);
   const since = ymd(range.from);
@@ -106,27 +111,30 @@ async function fetchMetaForRange(
 
   const { data, error } = await supabase
     .from("cabinet_daily_insights")
-    .select("date, spend, impressions, clicks, leads")
+    .select("date, spend, impressions, clicks, leads, crm_sales, manual_sales, crm_revenue, manual_revenue, crm_diagnostics, manual_diagnostics")
     .in("external_id", ids)
     .gte("date", since)
     .lte("date", until);
   if (error) throw new Error(error.message);
 
-  const dailyAgg = new Map<string, { spend: number; leads: number }>();
+  const dailyAgg = new Map<string, { spend: number; leads: number; revenue: number }>();
   let totSpend = 0, totImp = 0, totClicks = 0, totLeads = 0;
+  let totSales = 0, totRevenue = 0, totDiag = 0;
 
   for (const row of data ?? []) {
     const spend = Number(row.spend) || 0;
     const impressions = Number(row.impressions) || 0;
     const clicks = Number(row.clicks) || 0;
     const leads = Number(row.leads) || 0;
-    totSpend += spend;
-    totImp += impressions;
-    totClicks += clicks;
-    totLeads += leads;
-    const cur = dailyAgg.get(row.date) ?? { spend: 0, leads: 0 };
+    const sales = (Number(row.crm_sales) || 0) + (Number(row.manual_sales) || 0);
+    const revenue = (Number(row.crm_revenue) || 0) + (Number(row.manual_revenue) || 0);
+    const diag = (Number(row.crm_diagnostics) || 0) + (Number(row.manual_diagnostics) || 0);
+    totSpend += spend; totImp += impressions; totClicks += clicks; totLeads += leads;
+    totSales += sales; totRevenue += revenue; totDiag += diag;
+    const cur = dailyAgg.get(row.date) ?? { spend: 0, leads: 0, revenue: 0 };
     cur.spend += spend;
     cur.leads += leads;
+    cur.revenue += revenue;
     dailyAgg.set(row.date, cur);
   }
 
@@ -135,6 +143,9 @@ async function fetchMetaForRange(
     impressions: totImp,
     clicks: totClicks,
     leads: totLeads,
+    cabinetSales: totSales,
+    cabinetRevenue: totRevenue,
+    cabinetDiagnostics: totDiag,
     daily: Array.from(dailyAgg.entries())
       .map(([date, v]) => ({ date, ...v }))
       .sort((a, b) => a.date.localeCompare(b.date)),
@@ -148,23 +159,34 @@ function aggregateCrm(leads: LeadLite[], range: ReportPeriodRange) {
     const t = new Date(l.createdAt).getTime();
     return t >= fromTs && t < toTs;
   });
-  const visits = inRange.filter((l) => l.stageKey === "visit" || l.stageKey === "paid");
-  const sales = inRange.filter((l) => l.stageKey === "paid");
-  const revenue = sales.reduce((s, l) => s + (l.amount || 0), 0);
-  return { leads: inRange, visits, sales, revenue };
+  // Только лиды БЕЗ cabinet_id — данные кабинетов берём из CDI, чтобы не дублировать.
+  const orphan = inRange.filter((l) => !l.cabinetId);
+  const orphanVisits = orphan.filter((l) => l.stageKey === "visit" || l.stageKey === "paid");
+  const orphanSales = orphan.filter((l) => l.stageKey === "paid");
+  const orphanRevenue = orphanSales.reduce((s, l) => s + (l.amount || 0), 0);
+  return {
+    leads: inRange,
+    orphanVisits,
+    orphanSales,
+    orphanRevenue,
+  };
 }
 
 function computeTotals(
-  meta: { spend: number; impressions: number; clicks: number; leads: number },
-  crm: { leads: LeadLite[]; visits: LeadLite[]; sales: LeadLite[]; revenue: number },
+  meta: { spend: number; impressions: number; clicks: number; leads: number;
+          cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number },
+  crm: { leads: LeadLite[]; orphanVisits: LeadLite[]; orphanSales: LeadLite[]; orphanRevenue: number },
 ): ReportTotals {
   const totalLeads = meta.leads + crm.leads.length;
   const cpl = totalLeads > 0 ? meta.spend / totalLeads : 0;
-  const cpv = crm.visits.length > 0 ? meta.spend / crm.visits.length : 0;
-  const cac = crm.sales.length > 0 ? meta.spend / crm.sales.length : 0;
+  const visits = meta.cabinetDiagnostics + crm.orphanVisits.length;
+  const sales = meta.cabinetSales + crm.orphanSales.length;
+  const revenue = meta.cabinetRevenue + crm.orphanRevenue;
+  const cpv = visits > 0 ? meta.spend / visits : 0;
+  const cac = sales > 0 ? meta.spend / sales : 0;
   const ctr = meta.impressions > 0 ? (meta.clicks / meta.impressions) * 100 : 0;
-  const romi = meta.spend > 0 ? ((crm.revenue - meta.spend) / meta.spend) * 100 : crm.revenue > 0 ? 100 : 0;
-  const aov = crm.sales.length > 0 ? crm.revenue / crm.sales.length : 0;
+  const romi = meta.spend > 0 ? ((revenue - meta.spend) / meta.spend) * 100 : revenue > 0 ? 100 : 0;
+  const aov = sales > 0 ? revenue / sales : 0;
   return {
     spend: meta.spend,
     impressions: meta.impressions,
@@ -172,9 +194,9 @@ function computeTotals(
     adsLeads: meta.leads,
     crmLeads: crm.leads.length,
     totalLeads,
-    visits: crm.visits.length,
-    sales: crm.sales.length,
-    revenue: crm.revenue,
+    visits,
+    sales,
+    revenue,
     cpl, cpv, cac, ctr, romi, aov,
   };
 }
@@ -215,6 +237,8 @@ export function useReportData(
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
+  useRealtimeTable("cabinet_daily_insights", () => setTick((t) => t + 1), true, 800);
 
   const cabinetIds = useMemo(() => {
     if (cabinetId === "all") return cabinets.map((c) => c.externalId).filter(Boolean);
@@ -258,7 +282,7 @@ export function useReportData(
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cabinetIds.join(","), range.from.getTime(), range.to.getTime(), compare, leads.length]);
+  }, [cabinetIds.join(","), range.from.getTime(), range.to.getTime(), compare, leads.length, tick]);
 
   return { data, loading, error };
 }
