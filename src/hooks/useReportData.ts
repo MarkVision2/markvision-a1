@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useLeadsLite, type LeadLite } from "@/hooks/useLeadsLite";
+import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { normalizeSource } from "@/lib/leadSource";
 
 export interface ReportPeriodRange {
