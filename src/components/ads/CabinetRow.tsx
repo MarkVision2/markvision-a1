@@ -386,10 +386,9 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
               },
               {
                 label: "ROMI",
-                value:
-                  totals && totals.romi !== 0
-                    ? `${totals.romi.toFixed(0)}%`
-                    : "—",
+                value: totals && totals.spend > 0
+                  ? `${totals.romi.toFixed(0)}%`
+                  : "—",
                 color: "text-rose-400",
               },
             ].map((m) => (
