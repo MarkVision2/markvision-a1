@@ -103,7 +103,7 @@ export default function ProjectStrategy() {
   const [activeKey, setActiveKey] = useState<StepDef["key"]>("onboarding");
   const [patches, setPatches] = useState<Record<string, string>>({});
   const [running, setRunning] = useState<Record<string, boolean>>({});
-  const [briefForm, setBriefForm] = useBriefFormState(brief as Record<string, unknown> | null);
+  const [briefForm, setBriefForm] = useBriefFormState(brief as unknown as Record<string, unknown> | null);
   const [editingBrief, setEditingBrief] = useState(false);
 
   const statusMap: StatusMap = useMemo(() => {
