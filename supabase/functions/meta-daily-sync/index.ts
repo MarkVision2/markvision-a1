@@ -196,6 +196,8 @@ Deno.serve(async (req) => {
           const impressions = Number(row?.impressions ?? 0);
           const clicks = Number(row?.clicks ?? 0);
           // Лиды = заявки (форма/сайт/пиксель) + начатые переписки в мессенджерах.
+          // Внутри каждой группы берём MAX, чтобы не задвоить (Meta дублирует одно и то же
+          // событие под разными action_type), а между группами — суммируем.
           const formLeads = maxAction(row?.actions as any, LEAD_ACTIONS);
           const msgLeads = maxAction(row?.actions as any, MESSAGING_ACTIONS);
           const leads = formLeads + msgLeads;
