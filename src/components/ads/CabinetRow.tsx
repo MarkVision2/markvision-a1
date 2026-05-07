@@ -392,11 +392,6 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                     : "—",
                 color: "text-rose-400",
               },
-              {
-                label: "Показы",
-                value: formatNumber(totals?.impressions ?? 0),
-                color: "text-foreground",
-              },
             ].map((m) => (
               <div
                 key={m.label}
