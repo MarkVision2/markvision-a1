@@ -17,10 +17,9 @@ const LEAD_ACTIONS = [
   "onsite_web_lead",
 ];
 // "Начатые переписки" — отдельное событие, считаем как лид и СУММИРУЕМ с лидами выше.
+// Только то событие, что Meta UI показывает в графе "Начало переписки".
 const MESSAGING_ACTIONS = [
   "onsite_conversion.messaging_conversation_started_7d",
-  "onsite_conversion.messaging_first_reply",
-  "onsite_conversion.total_messaging_connection",
 ];
 const PURCHASE_ACTIONS = [
   "purchase",
