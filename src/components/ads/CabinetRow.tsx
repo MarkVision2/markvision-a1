@@ -413,8 +413,6 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                 <tr>
                   <th className="px-4 py-3 text-left font-medium">Дата</th>
                   <th className="px-4 py-3 text-right font-medium">Расход</th>
-                  <th className="px-4 py-3 text-right font-medium">Показы</th>
-                  <th className="px-4 py-3 text-right font-medium">Клики</th>
                   <th className="px-4 py-3 text-right font-medium">Лиды</th>
                   <th className="px-4 py-3 text-right font-medium">CPL</th>
                   <th className="px-4 py-3 text-right font-medium">Диагн.</th>
@@ -446,24 +444,6 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                         )}
                       >
                         {row?.spend ? formatMoney(row.spend, currency) : "—"}
-                      </td>
-                      <td
-                        className={cn(
-                          "px-4 py-3 text-right",
-                          !row?.impressions && "text-muted-foreground",
-                        )}
-                      >
-                        {row?.impressions
-                          ? formatNumber(row.impressions)
-                          : "—"}
-                      </td>
-                      <td
-                        className={cn(
-                          "px-4 py-3 text-right",
-                          !row?.clicks && "text-muted-foreground",
-                        )}
-                      >
-                        {row?.clicks ? formatNumber(row.clicks) : "—"}
                       </td>
                       <td
                         className={cn(
