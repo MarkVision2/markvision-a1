@@ -195,7 +195,10 @@ Deno.serve(async (req) => {
           let spend = Number(row?.spend ?? 0);
           const impressions = Number(row?.impressions ?? 0);
           const clicks = Number(row?.clicks ?? 0);
-          const leads = maxAction(row?.actions as any, LEAD_ACTIONS);
+          // Лиды = заявки (форма/сайт/пиксель) + начатые переписки в мессенджерах.
+          const formLeads = maxAction(row?.actions as any, LEAD_ACTIONS);
+          const msgLeads = maxAction(row?.actions as any, MESSAGING_ACTIONS);
+          const leads = formLeads + msgLeads;
           let revenue = sumActions(row?.action_values as any, PURCHASE_ACTIONS);
           let storedCurrency = accountCurrency;
           if (needConvert) {
