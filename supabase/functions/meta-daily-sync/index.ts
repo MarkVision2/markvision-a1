@@ -17,10 +17,9 @@ const LEAD_ACTIONS = [
   "onsite_web_lead",
 ];
 // "Начатые переписки" — отдельное событие, считаем как лид и СУММИРУЕМ с лидами выше.
+// Только то событие, что Meta UI показывает в графе "Начало переписки".
 const MESSAGING_ACTIONS = [
   "onsite_conversion.messaging_conversation_started_7d",
-  "onsite_conversion.messaging_first_reply",
-  "onsite_conversion.total_messaging_connection",
 ];
 const PURCHASE_ACTIONS = [
   "purchase",
@@ -196,6 +195,8 @@ Deno.serve(async (req) => {
           const impressions = Number(row?.impressions ?? 0);
           const clicks = Number(row?.clicks ?? 0);
           // Лиды = заявки (форма/сайт/пиксель) + начатые переписки в мессенджерах.
+          // Внутри каждой группы берём MAX, чтобы не задвоить (Meta дублирует одно и то же
+          // событие под разными action_type), а между группами — суммируем.
           const formLeads = maxAction(row?.actions as any, LEAD_ACTIONS);
           const msgLeads = maxAction(row?.actions as any, MESSAGING_ACTIONS);
           const leads = formLeads + msgLeads;

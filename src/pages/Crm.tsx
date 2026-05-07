@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
+  Plus,
   Columns3,
   MessageCircle,
   Database,
-  Plus,
   Sparkles,
   Users,
   BarChart3,
@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useCrmStore } from "@/hooks/useCrmStore";
 import type { Lead } from "@/types/crm";
 import { useTeamStore } from "@/hooks/useTeamStore";
@@ -51,6 +52,10 @@ const Crm = () => {
     chats,
     whatsapp,
     setWhatsapp,
+    addStage,
+    renameStage,
+    removeStage,
+    moveStage,
     addLead,
     updateLead,
     removeLead,
@@ -79,6 +84,7 @@ const Crm = () => {
     const id = searchParams.get("lead");
     if (id && id !== activeLeadId) setActiveLeadId(id);
   }, [searchParams, activeLeadId]);
+  const [newStageDraft, setNewStageDraft] = useState("");
   const [filters, setFilters] = useState<CrmFilterState>({ search: "", source: null, assigneeId: null });
   const [rejectFor, setRejectFor] = useState<{ leadId: string; prevStageId?: string; viaDrag: boolean } | null>(null);
 
@@ -127,6 +133,14 @@ const Crm = () => {
 
   const analytics = useCrmAnalytics(leads, stages, members);
 
+  const handleAddStage = () => {
+    const name = newStageDraft.trim();
+    if (!name) return;
+    addStage(name);
+    setNewStageDraft("");
+    toast.success("Этап добавлен");
+  };
+
   const handleDropLead = useCallback((leadId: string, stageId: string) => {
     if (stageId === "rejected") {
       const current = leads.find((l) => l.id === leadId);
@@ -139,6 +153,12 @@ const Crm = () => {
   }, [leads, moveLead]);
 
   const handleOpenLead = useCallback((l: Lead) => setActiveLeadId(l.id), []);
+  const handleDeleteStage = useCallback((id: string) => {
+    if (confirm("Удалить этап? Лиды перейдут в первый этап.")) {
+      removeStage(id, stages[0]?.id);
+      toast.success("Этап удалён");
+    }
+  }, [removeStage, stages]);
 
   const jumpToNoAnswer = () => {
     setTab("funnel");
@@ -223,7 +243,31 @@ const Crm = () => {
                 members={members}
               />
             </div>
-            <div className="flex h-[calc(100vh-460px)] min-h-[420px] gap-3 overflow-x-auto pb-3">
+            <div className="flex flex-wrap items-center gap-2 pb-3">
+              <Input
+                value={newStageDraft}
+                onChange={(e) => setNewStageDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleAddStage();
+                }}
+                placeholder="Название нового этапа..."
+                className="max-w-xs"
+                maxLength={40}
+              />
+              <Button
+                onClick={handleAddStage}
+                disabled={!newStageDraft.trim()}
+                variant="outline"
+              >
+                <Plus className="h-4 w-4" />
+                Добавить этап
+              </Button>
+              <span className="ml-2 text-xs text-muted-foreground">
+                Двойной клик по названию этапа — переименовать
+              </span>
+            </div>
+
+            <div className="flex h-[calc(100vh-520px)] min-h-[420px] gap-3 overflow-x-auto pb-3">
               {stages.map((stage, idx) => (
                 <div
                   key={stage.id}
@@ -235,6 +279,12 @@ const Crm = () => {
                     leads={leadsByStage.get(stage.id) ?? EMPTY_LEADS}
                     metrics={analytics.stageMetrics[idx]}
                     members={members}
+                    isFirst={idx === 0}
+                    isLast={idx === stages.length - 1}
+                    canDelete={stages.length > 2}
+                    onRename={renameStage}
+                    onMove={moveStage}
+                    onDelete={handleDeleteStage}
                     onDropLead={handleDropLead}
                     onOpenLead={handleOpenLead}
                     onTogglePin={togglePin}

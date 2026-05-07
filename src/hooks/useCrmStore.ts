@@ -322,8 +322,7 @@ export function useCrmStore() {
     const id = stageUuid(key);
     if (!id) return;
     await supabase.from("pipeline_stages").update({ title }).eq("id", id);
-    await refetchStages();
-  }, [stageUuid, refetchStages]);
+  }, [stageUuid]);
 
   const removeStage = useCallback(async (key: string, fallbackKey?: string) => {
     if (stages.length <= 2) return;
