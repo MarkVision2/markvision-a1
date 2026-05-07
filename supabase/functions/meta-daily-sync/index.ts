@@ -7,12 +7,20 @@ const corsHeaders = {
 
 const META_API_VERSION = "v21.0";
 
+// "Лиды с сайта / лид-формы" — берём максимум среди вариантов одного и того же события,
+// чтобы не задвоить (Meta часто дублирует одно и то же действие под разными именами).
 const LEAD_ACTIONS = [
   "lead",
   "leadgen.other",
   "onsite_conversion.lead_grouped",
   "offsite_conversion.fb_pixel_lead",
   "onsite_web_lead",
+];
+// "Начатые переписки" — отдельное событие, считаем как лид и СУММИРУЕМ с лидами выше.
+const MESSAGING_ACTIONS = [
+  "onsite_conversion.messaging_conversation_started_7d",
+  "onsite_conversion.messaging_first_reply",
+  "onsite_conversion.total_messaging_connection",
 ];
 const PURCHASE_ACTIONS = [
   "purchase",
