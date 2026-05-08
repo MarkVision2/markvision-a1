@@ -52,6 +52,23 @@ function ymd(d: Date) {
   return d.toISOString().slice(0, 10);
 }
 
+function ymdInTimeZone(d: Date, timeZone = "Asia/Almaty") {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function addDaysYmd(date: string, days: number) {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return ymd(d);
+}
+
 function ymdToDmy(s: string) {
   const [y, m, d] = s.split("-");
   return `${d}.${m}.${y}`;
@@ -142,9 +159,8 @@ Deno.serve(async (req) => {
       since = qpDate!;
       until = qpDate!;
     } else {
-      const d = new Date();
-      d.setUTCDate(d.getUTCDate() - 1);
-      since = until = ymd(d);
+      const yesterdayAlmaty = addDaysYmd(ymdInTimeZone(new Date(), "Asia/Almaty"), -1);
+      since = until = yesterdayAlmaty;
     }
     if (since > until) [since, until] = [until, since];
 
