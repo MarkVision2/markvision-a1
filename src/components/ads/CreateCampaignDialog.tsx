@@ -576,6 +576,11 @@ const CreateCampaignDialog = ({
             }
           : null,
       },
+      // mediaType — чтобы n8n не угадывал по mime бинаря.
+      // VIDEO если хоть один файл (feed или stories) видео, иначе PHOTO.
+      mediaType: ((bakedFeed?.type || bakedStories?.type || "").startsWith("video/"))
+        ? "VIDEO"
+        : "PHOTO",
       submittedAt: new Date().toISOString(),
       // launchId генерируется фронтом, чтобы и edge, и БД, и n8n работали
       // с одним идентификатором запуска (для callback статусов).
