@@ -254,6 +254,47 @@ Deno.serve(async (req) => {
       payload.launchId = crypto.randomUUID();
     }
 
+    // ===== 6b. Если creative_feed — видео, заливаем его в FB /advideos СРАЗУ =====
+    // n8n Code-нода не может делать multipart upload (sandbox блокирует form-data
+    // и crypto). Здесь Deno без sandbox + uploader — самое надёжное место.
+    // На выходе кладём в payload готовый video_id как mediaID, n8n им просто пользуется.
+    payload.mediaUploadDebug = "";
+    try {
+      const adAccountForUpload = String(
+        client.ad_account_id ?? client.adaccountid ?? payload.ad_account_id ?? payload.adAccount ?? ""
+      ).replace(/^act_/, "");
+      const feedFile = incoming.get("creative_feed");
+      const isFile = feedFile && typeof feedFile === "object" && "type" in feedFile && "name" in feedFile;
+      const feedType = isFile ? String((feedFile as File).type || "") : "";
+      const isVideo = feedType.startsWith("video/");
+      if (isVideo && adAccountForUpload && accessToken) {
+        const fbForm = new FormData();
+        fbForm.append("source", feedFile as File, (feedFile as File).name || "creative.mp4");
+        fbForm.append("title", "AI Creative");
+        fbForm.append("access_token", accessToken);
+        const fbResp = await fetch(
+          `https://graph.facebook.com/v22.0/act_${adAccountForUpload}/advideos`,
+          { method: "POST", body: fbForm, signal: AbortSignal.timeout(120_000) },
+        );
+        const fbText = await fbResp.text();
+        let fbJson: { id?: string; error?: { message?: string } } | null = null;
+        try { fbJson = JSON.parse(fbText); } catch { /* ignore */ }
+        if (fbResp.ok && fbJson?.id) {
+          payload.mediaID = String(fbJson.id);
+          payload.mediaType = "VIDEO";
+          payload.mediaUploadDebug = `OK videoId=${fbJson.id}`;
+        } else {
+          payload.mediaUploadDebug = `FB ${fbResp.status}: ${fbText.slice(0, 300)}`;
+        }
+      } else if (isFile && feedType.startsWith("image/")) {
+        payload.mediaUploadDebug = "skip: image (n8n handles)";
+      } else {
+        payload.mediaUploadDebug = `skip: isFile=${isFile} type=${feedType} adAcc=${!!adAccountForUpload} tok=${!!accessToken}`;
+      }
+    } catch (e) {
+      payload.mediaUploadDebug = `EXC: ${(e as Error).message ?? String(e)}`;
+    }
+
     // ===== 7. Шлём в n8n с коротким таймаутом ACK =====
     const out = new FormData();
     out.append("payload", JSON.stringify(payload));
