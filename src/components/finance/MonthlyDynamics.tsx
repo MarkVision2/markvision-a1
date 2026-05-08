@@ -1,18 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
-  ChevronLeft, ChevronRight, Download, DollarSign, Target,
+  ChevronLeft, ChevronRight, DollarSign, Target,
   PiggyBank, Receipt,
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, Legend, LineChart, Line,
 } from "recharts";
-import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { useMonthlyFinance, monthlyKey } from "@/hooks/useMonthlyFinance";
-import { useAgencyClients } from "@/hooks/useAgencyClients";
-import { useFinancePlans } from "@/hooks/useFinancePlan";
-import { toast } from "sonner";
+import { useMonthlyAggregates } from "@/hooks/useMonthlyAggregates";
+import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 
 const MONTHS_RU_FULL = [
   "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
@@ -24,8 +21,12 @@ const MONTHS_RU_SHORT = [
 ];
 
 const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU");
-const fmtT = (n: number) => `${fmt(n)} $`;
-const fmtMln = (n: number) => `${(n / 1_000_000).toFixed(1)}M`;
+const fmtT = (n: number) => `${fmt(n)}\u00A0₸`;
+const fmtMln = (n: number) => {
+  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}М`;
+  if (Math.abs(n) >= 1_000) return `${Math.round(n / 1_000)}K`;
+  return `${Math.round(n)}`;
+};
 
 type Mode = "fact" | "plan_vs_fact" | "yoy";
 
@@ -54,8 +55,8 @@ const Kpi = ({ icon: Icon, label, value, tone = "default" }: KpiProps) => (
 const MonthlyDynamics = () => {
   const [year, setYear] = useState(() => new Date().getFullYear());
   const [mode, setMode] = useState<Mode>("fact");
-  const { store, setEntry } = useMonthlyFinance();
-  const { clients } = useAgencyClients();
+  const { data: current } = useMonthlyAggregates(year);
+  const { data: prev } = useMonthlyAggregates(year - 1);
   const { store: planStore } = useFinancePlans();
 
   const now = new Date();
@@ -64,14 +65,13 @@ const MonthlyDynamics = () => {
 
   const monthsData = useMemo(() => {
     return Array.from({ length: 12 }, (_, m) => {
-      const key = monthlyKey(year, m);
-      const e = store[key] ?? { revenue: 0, spend: 0 };
+      const e = current[m] ?? { revenue: 0, spend: 0 };
       const tax = e.revenue * 0.1;
       const profit = e.revenue - e.spend - tax;
+      const key = `${year}-${String(m + 1).padStart(2, "0")}`;
       const planRevenue = planStore[key]?.revenue ?? 0;
       const planSpend = planStore[key]?.spend ?? 0;
-      const prevYearKey = monthlyKey(year - 1, m);
-      const prevRevenue = store[prevYearKey]?.revenue ?? 0;
+      const prevRevenue = prev[m]?.revenue ?? 0;
       return {
         idx: m,
         key,
@@ -86,7 +86,7 @@ const MonthlyDynamics = () => {
         prevRevenue,
       };
     });
-  }, [year, store, planStore]);
+  }, [year, current, prev, planStore]);
 
   const totals = useMemo(() => {
     const revenue = monthsData.reduce((s, m) => s + m.revenue, 0);
@@ -95,25 +95,6 @@ const MonthlyDynamics = () => {
     const afterMarketing = revenue - spend - tax;
     return { revenue, spend, tax, afterMarketing };
   }, [monthsData]);
-
-  // Pull current month data from agency analytics (paid clients of current year/month)
-  const handlePullFromAgency = () => {
-    const monthIdx = isCurrentYear ? currentMonthIdx : 0;
-    const key = monthlyKey(year, monthIdx);
-    const paid = clients.filter((c) => c.status === "paid");
-    const revenue = paid.reduce(
-      (s, c) => s + c.services.reduce((x, sv) => x + sv.price, 0),
-      0,
-    );
-    const spend = clients.reduce(
-      (s, c) => s + c.services.reduce((x, sv) => x + sv.cost, 0),
-      0,
-    );
-    setEntry(key, { revenue, spend });
-    toast.success(`Подтянуто: ${MONTHS_RU_SHORT[monthIdx]} ${year}`, {
-      description: `Выручка ${fmtT(revenue)} · Расходы ${fmtT(spend)}`,
-    });
-  };
 
   const chart1 = monthsData.map((m) => ({
     label: m.label,
@@ -173,20 +154,16 @@ const MonthlyDynamics = () => {
           </div>
         </div>
 
-        <button
-          onClick={handlePullFromAgency}
-          className="flex items-center gap-2 text-sm font-semibold text-success hover:text-success/80"
-        >
-          <Download className="h-4 w-4" />
-          Подтянуть из агентской ({MONTHS_RU_SHORT[isCurrentYear ? currentMonthIdx : 0]})
-        </button>
+        <div className="text-xs text-muted-foreground">
+          Выручка — оплаченные клиенты из «Агентской аналитики». Расходы — общие затраты по кабинетам.
+        </div>
       </div>
 
       {/* KPI */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Kpi icon={DollarSign} label="Выручка за год" value={fmtT(totals.revenue)} tone="success" />
         <Kpi icon={Target} label="Расходы" value={fmtT(totals.spend)} tone="danger" />
-        <Kpi icon={PiggyBank} label="Выручка (после маркетинга)" value={fmtT(totals.afterMarketing)} tone="success" />
+        <Kpi icon={PiggyBank} label="После маркетинга и налогов" value={fmtT(totals.afterMarketing)} tone="success" />
         <Kpi icon={Receipt} label="Налоги (10%)" value={fmtT(totals.tax)} tone="warning" />
       </div>
 
@@ -238,7 +215,7 @@ const MonthlyDynamics = () => {
         </div>
 
         <div className="rounded-2xl border border-border/60 bg-card/40 p-5">
-          <div className="text-sm font-semibold">Выручка (после маркетинга)</div>
+          <div className="text-sm font-semibold">Прибыль (после маркетинга и налогов)</div>
           <div className="mt-4 h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chart2} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -286,6 +263,7 @@ const MonthlyDynamics = () => {
             <tbody>
               {monthsData.map((m) => {
                 const isCurrent = isCurrentYear && m.idx === currentMonthIdx;
+                const empty = m.revenue === 0 && m.spend === 0;
                 return (
                   <tr key={m.key} className="border-b border-border/30 hover:bg-card/40">
                     <td className="px-6 py-3">
@@ -297,32 +275,21 @@ const MonthlyDynamics = () => {
                         {isCurrent && <span className="h-1.5 w-1.5 rounded-full bg-success" />}
                       </span>
                     </td>
-                    <td className="px-4 py-2 text-right">
-                      <Input
-                        type="number"
-                        value={m.revenue || ""}
-                        onChange={(e) => setEntry(m.key, { revenue: Number(e.target.value) || 0 })}
-                        placeholder="0"
-                        className="h-9 ml-auto w-36 rounded-lg text-right tabular-nums"
-                      />
+                    <td className="px-4 py-3 text-right tabular-nums text-success">
+                      {m.revenue > 0 ? fmtT(m.revenue) : <span className="text-muted-foreground/50">—</span>}
                     </td>
-                    <td className="px-4 py-2 text-right">
-                      <Input
-                        type="number"
-                        value={m.spend || ""}
-                        onChange={(e) => setEntry(m.key, { spend: Number(e.target.value) || 0 })}
-                        placeholder="0"
-                        className="h-9 ml-auto w-36 rounded-lg text-right tabular-nums"
-                      />
+                    <td className="px-4 py-3 text-right tabular-nums text-destructive">
+                      {m.spend > 0 ? fmtT(m.spend) : <span className="text-muted-foreground/50">—</span>}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-warning">
                       {m.tax > 0 ? fmtT(m.tax) : <span className="text-muted-foreground/50">—</span>}
                     </td>
                     <td className={cn(
                       "px-4 py-3 text-right font-semibold tabular-nums",
-                      m.profit > 0 ? "text-success" : m.profit < 0 ? "text-destructive" : "text-muted-foreground/50",
+                      empty ? "text-muted-foreground/50"
+                        : m.profit > 0 ? "text-success" : m.profit < 0 ? "text-destructive" : "text-muted-foreground/50",
                     )}>
-                      {m.revenue > 0 || m.spend > 0 ? fmtT(m.profit) : "—"}
+                      {empty ? "—" : fmtT(m.profit)}
                     </td>
                   </tr>
                 );

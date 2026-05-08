@@ -27,7 +27,7 @@ const MONTHS_RU = [
 ];
 
 const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU");
-const fmtT = (n: number) => `${fmt(n)} $`;
+const fmtT = (n: number) => `${fmt(n)}\u00A0₸`;
 
 type Mode = "revenue" | "budget";
 type Tab = "decomp" | "agency" | "dynamics";
@@ -245,11 +245,11 @@ const Finance = () => {
             <NumField
               icon="🎯" label="Целевая выручка"
               value={revenue} onChange={setRevenue}
-              suffix="$" disabled={mode === "budget"}
+              suffix="₸" disabled={mode === "budget"}
             />
             <NumField
               icon="💰" label="Средний чек"
-              value={avgCheck} onChange={setAvgCheck} suffix="$"
+              value={avgCheck} onChange={setAvgCheck} suffix="₸"
             />
             <NumField
               icon="📈" label="CR лид → диагностика"
@@ -261,7 +261,7 @@ const Finance = () => {
             />
             <NumField
               icon="💸" label="Стоимость лида (CPL)"
-              value={cpl} onChange={setCpl} suffix="$"
+              value={cpl} onChange={setCpl} suffix="₸"
             />
           </div>
 
@@ -269,7 +269,7 @@ const Finance = () => {
             <div className="mt-4 max-w-xs">
               <NumField
                 icon="💼" label="Бюджет на рекламу"
-                value={budget} onChange={setBudget} suffix="$"
+                value={budget} onChange={setBudget} suffix="₸"
               />
             </div>
           )}

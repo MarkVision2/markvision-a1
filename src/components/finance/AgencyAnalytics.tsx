@@ -18,7 +18,7 @@ import {
 } from "@/hooks/useAgencyClients";
 
 const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU");
-const fmtT = (n: number) => `${fmt(n)} $`;
+const fmtT = (n: number) => `${fmt(n)}\u00A0₸`;
 
 const STATUS: Record<AgencyClientStatus, { label: string; color: string }> = {
   waiting:   { label: "Ожидает оплаты", color: "bg-warning/15 text-warning border-warning/30" },
