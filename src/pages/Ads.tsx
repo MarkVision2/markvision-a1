@@ -7,6 +7,10 @@ import {
   RefreshCw,
   Rocket,
   Search,
+  ShoppingCart,
+  Target,
+  Wallet,
+  type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
