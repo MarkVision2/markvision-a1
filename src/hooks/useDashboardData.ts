@@ -64,7 +64,9 @@ export function useDashboardData(
     return { total, reached, scheduled, visited, paid };
   }, [leads, fromTs, toTs]);
 
-  // Channels enriched with revenue/sales — uses normalized source labels
+  // Channels enriched with revenue/sales — uses normalized source labels.
+  // Если CRM пуст — подтягиваем агрегат из Meta (рекламные кабинеты),
+  // чтобы блок не был пустым при наличии рекламы.
   const channels = useMemo(() => {
     const inRange = leads.filter((l) => {
       const t = new Date(l.createdAt).getTime();
@@ -82,8 +84,20 @@ export function useDashboardData(
       }
       map.set(k, cur);
     }
-    return Array.from(map.values()).sort((a, b) => b.leads - a.leads);
-  }, [leads, fromTs, toTs]);
+    const list = Array.from(map.values()).sort((a, b) => b.leads - a.leads);
+
+    // Fallback: если у нас нет CRM-каналов, но есть данные Meta — показываем
+    // одну строку "Meta Ads" с лидами/продажами/выручкой из рекламных кабинетов.
+    if (list.length === 0 && data?.totals && data.totals.totalLeads > 0) {
+      list.push({
+        name: "Meta Ads",
+        leads: data.totals.totalLeads,
+        sales: data.totals.sales,
+        revenue: data.totals.revenue,
+      });
+    }
+    return list;
+  }, [leads, fromTs, toTs, data?.totals]);
 
   // Daily timeseries: spend (from meta) + revenue (from CRM paid leads)
   const timeseries = useMemo(() => {

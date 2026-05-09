@@ -9,7 +9,7 @@ import { MoneyKpiCard } from "@/components/dashboard/MoneyKpiCard";
 import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
 import { EnhancedFunnel } from "@/components/dashboard/EnhancedFunnel";
 import { ChannelsTable } from "@/components/dashboard/ChannelsTable";
-import { CampaignsTopBottom } from "@/components/dashboard/CampaignsTopBottom";
+
 import { CrmFunnel } from "@/components/dashboard/CrmFunnel";
 import { RevenueSpendChart } from "@/components/dashboard/RevenueSpendChart";
 import { UnitEconomicsCard } from "@/components/dashboard/UnitEconomicsCard";
@@ -161,12 +161,8 @@ const Dashboard = () => {
         totalLeads={totals?.totalLeads ?? 0}
       />
 
-      {/* Block 5 — Campaigns */}
-      <SectionTitle>Кампании и креативы</SectionTitle>
-      <CampaignsTopBottom creatives={data?.creatives ?? []} />
-
       {/* Block 6 — CRM funnel */}
-      <SectionTitle accent="bg-success">CRM: путь пациента</SectionTitle>
+      <SectionTitle accent="bg-success">CRM: путь клиента</SectionTitle>
       <CrmFunnel data={crmFunnel} />
 
       {/* Block 7 — Charts */}
