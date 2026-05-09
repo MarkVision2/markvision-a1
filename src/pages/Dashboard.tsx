@@ -161,12 +161,8 @@ const Dashboard = () => {
         totalLeads={totals?.totalLeads ?? 0}
       />
 
-      {/* Block 5 — Campaigns */}
-      <SectionTitle>Кампании и креативы</SectionTitle>
-      <CampaignsTopBottom creatives={data?.creatives ?? []} />
-
       {/* Block 6 — CRM funnel */}
-      <SectionTitle accent="bg-success">CRM: путь пациента</SectionTitle>
+      <SectionTitle accent="bg-success">CRM: путь клиента</SectionTitle>
       <CrmFunnel data={crmFunnel} />
 
       {/* Block 7 — Charts */}
