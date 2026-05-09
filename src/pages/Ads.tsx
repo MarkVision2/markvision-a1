@@ -36,6 +36,30 @@ const MONTHS_RU = [
   "Декабрь",
 ];
 
+const StatCard = ({
+  label,
+  value,
+  accent,
+  icon: Icon,
+}: {
+  label: string;
+  value: string;
+  accent: string;
+  icon: LucideIcon;
+}) => (
+  <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+    <div className="flex items-start justify-between gap-2">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {label}
+      </span>
+      <span className={`grid h-8 w-8 place-items-center rounded-xl ${accent}`}>
+        <Icon className="h-4 w-4" />
+      </span>
+    </div>
+    <div className="mt-2 truncate text-xl font-bold tabular-nums">{value}</div>
+  </div>
+);
+
 const Ads = () => {
   const { cabinets, addCabinet, updateCabinet, removeCabinet } = useCabinetsStore();
   const [query, setQuery] = useState("");
