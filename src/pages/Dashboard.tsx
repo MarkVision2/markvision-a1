@@ -9,7 +9,7 @@ import { MoneyKpiCard } from "@/components/dashboard/MoneyKpiCard";
 import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
 import { EnhancedFunnel } from "@/components/dashboard/EnhancedFunnel";
 import { ChannelsTable } from "@/components/dashboard/ChannelsTable";
-import { CampaignsTopBottom } from "@/components/dashboard/CampaignsTopBottom";
+
 import { CrmFunnel } from "@/components/dashboard/CrmFunnel";
 import { RevenueSpendChart } from "@/components/dashboard/RevenueSpendChart";
 import { UnitEconomicsCard } from "@/components/dashboard/UnitEconomicsCard";
