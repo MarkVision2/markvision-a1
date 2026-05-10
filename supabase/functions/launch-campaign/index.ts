@@ -263,8 +263,25 @@ Deno.serve(async (req) => {
       const adAccountForUpload = String(
         client.ad_account_id ?? client.adaccountid ?? payload.ad_account_id ?? payload.adAccount ?? ""
       ).replace(/^act_/, "");
-      const feedFile = incoming.get("creative_feed");
-      const isFile = feedFile && typeof feedFile === "object" && "type" in feedFile && "name" in feedFile;
+      // Берём первый видео-файл из любого поля (creative_feed предпочтительно, иначе creative_stories).
+      const candidateKeys = ["creative_feed", "creative_stories"];
+      let feedFile: File | null = null;
+      let feedKeyUsed = "";
+      for (const k of candidateKeys) {
+        const f = incoming.get(k);
+        if (f && typeof f === "object" && "type" in f && "name" in f) {
+          if (String((f as File).type || "").startsWith("video/")) {
+            feedFile = f as File;
+            feedKeyUsed = k;
+            break;
+          }
+          if (!feedFile) {
+            feedFile = f as File;
+            feedKeyUsed = k;
+          }
+        }
+      }
+      const isFile = feedFile !== null;
       const feedType = isFile ? String((feedFile as File).type || "") : "";
       const isVideo = feedType.startsWith("video/");
       if (isVideo && adAccountForUpload && accessToken) {
@@ -282,9 +299,9 @@ Deno.serve(async (req) => {
         if (fbResp.ok && fbJson?.id) {
           payload.mediaID = String(fbJson.id);
           payload.mediaType = "VIDEO";
-          payload.mediaUploadDebug = `OK videoId=${fbJson.id}`;
+          payload.mediaUploadDebug = `OK videoId=${fbJson.id} from=${feedKeyUsed}`;
         } else {
-          payload.mediaUploadDebug = `FB ${fbResp.status}: ${fbText.slice(0, 300)}`;
+          payload.mediaUploadDebug = `FB ${fbResp.status} from=${feedKeyUsed}: ${fbText.slice(0, 300)}`;
         }
       } else if (isFile && feedType.startsWith("image/")) {
         payload.mediaUploadDebug = "skip: image (n8n handles)";

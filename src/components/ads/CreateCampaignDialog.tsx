@@ -367,9 +367,12 @@ const CreateCampaignDialog = ({
     rows: { label: string; value: string }[];
   } | null>(null);
 
-  // Запуск идёт через нашу edge-функцию, она подставляет META_ACCESS_TOKEN
-  // из секретов и алиасы ACCESS_TOKEN/AD_ACCOUNT/PAGE_ID, которые ждёт n8n.
-  const WEBHOOK_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/launch-campaign`;
+  // Запуск кампании идёт через edge-функцию НОВОГО Supabase, где живут
+  // clients_config + актуальная функция (поддержка creative_feed/creative_stories,
+  // upload в FB /advideos). Auth/проекты остаются на VITE_SUPABASE_URL (Lovable).
+  const LAUNCH_BASE = (import.meta.env.VITE_CLIENT_SUPABASE_URL as string | undefined) || (import.meta.env.VITE_SUPABASE_URL as string);
+  const LAUNCH_KEY = (import.meta.env.VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY as string | undefined) || (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string);
+  const WEBHOOK_URL = `${LAUNCH_BASE}/functions/v1/launch-campaign`;
 
   const handleSubmit = async () => {
     if (!cabinetId) {
@@ -606,6 +609,9 @@ const CreateCampaignDialog = ({
         method: "POST",
         body: fd,
         signal: ctrl.signal,
+        headers: LAUNCH_KEY
+          ? { Authorization: `Bearer ${LAUNCH_KEY}`, apikey: LAUNCH_KEY }
+          : undefined,
       });
       const data = await res.json().catch(() => null) as
         | { ok?: boolean; accepted?: boolean; error?: string }
