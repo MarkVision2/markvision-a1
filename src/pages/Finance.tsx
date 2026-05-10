@@ -329,19 +329,15 @@ const Finance = () => {
             </div>
           </div>
 
-          {/* Inputs */}
+          {/* Inputs — порядок: Бюджет → CPL → CR1 → CR2 → Чек → Выручка */}
           <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <SmartInput
-              icon={Target} label="Целевая выручка"
-              hint={mode === "budget" ? "Рассчитывается из бюджета" : "Сколько хотим заработать за месяц"}
-              value={revenue} onChange={setRevenue}
-              suffix="₸" disabled={mode === "budget"}
-              highlight={mode === "revenue"}
-            />
-            <SmartInput
-              icon={Receipt} label="Средний чек"
-              hint="Сколько в среднем платит один клиент"
-              value={avgCheck} onChange={setAvgCheck} suffix="₸"
+              icon={Wallet} label="Бюджет на рекламу"
+              hint={mode === "revenue" ? "Рассчитывается из выручки" : "Сколько готовы вложить за месяц"}
+              value={mode === "revenue" ? Math.round(calc.spend) : budget}
+              onChange={setBudget}
+              suffix="₸" disabled={mode === "revenue"}
+              highlight={mode === "budget"}
             />
             <SmartInput
               icon={DollarSign} label="Стоимость лида (CPL)"
@@ -357,12 +353,17 @@ const Finance = () => {
               value={crVisitSale} onChange={setCrVisitSale}
             />
             <SmartInput
-              icon={Wallet} label="Бюджет на рекламу"
-              hint={mode === "revenue" ? "Рассчитывается из выручки" : "Сколько готовы вложить за месяц"}
-              value={mode === "revenue" ? Math.round(calc.spend) : budget}
-              onChange={setBudget}
-              suffix="₸" disabled={mode === "revenue"}
-              highlight={mode === "budget"}
+              icon={Receipt} label="Средний чек"
+              hint="Сколько в среднем платит один клиент"
+              value={avgCheck} onChange={setAvgCheck} suffix="₸"
+            />
+            <SmartInput
+              icon={Target} label="Целевая выручка"
+              hint={mode === "budget" ? "Рассчитывается из бюджета" : "Сколько хотим заработать за месяц"}
+              value={mode === "budget" ? Math.round(calc.revenue) : revenue}
+              onChange={setRevenue}
+              suffix="₸" disabled={mode === "budget"}
+              highlight={mode === "revenue"}
             />
           </div>
 
