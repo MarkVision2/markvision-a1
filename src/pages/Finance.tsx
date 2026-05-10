@@ -329,19 +329,15 @@ const Finance = () => {
             </div>
           </div>
 
-          {/* Inputs */}
+          {/* Inputs — порядок: Бюджет → CPL → CR1 → CR2 → Чек → Выручка */}
           <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <SmartInput
-              icon={Target} label="Целевая выручка"
-              hint={mode === "budget" ? "Рассчитывается из бюджета" : "Сколько хотим заработать за месяц"}
-              value={revenue} onChange={setRevenue}
-              suffix="₸" disabled={mode === "budget"}
-              highlight={mode === "revenue"}
-            />
-            <SmartInput
-              icon={Receipt} label="Средний чек"
-              hint="Сколько в среднем платит один клиент"
-              value={avgCheck} onChange={setAvgCheck} suffix="₸"
+              icon={Wallet} label="Бюджет на рекламу"
+              hint={mode === "revenue" ? "Рассчитывается из выручки" : "Сколько готовы вложить за месяц"}
+              value={mode === "revenue" ? Math.round(calc.spend) : budget}
+              onChange={setBudget}
+              suffix="₸" disabled={mode === "revenue"}
+              highlight={mode === "budget"}
             />
             <SmartInput
               icon={DollarSign} label="Стоимость лида (CPL)"
@@ -357,12 +353,17 @@ const Finance = () => {
               value={crVisitSale} onChange={setCrVisitSale}
             />
             <SmartInput
-              icon={Wallet} label="Бюджет на рекламу"
-              hint={mode === "revenue" ? "Рассчитывается из выручки" : "Сколько готовы вложить за месяц"}
-              value={mode === "revenue" ? Math.round(calc.spend) : budget}
-              onChange={setBudget}
-              suffix="₸" disabled={mode === "revenue"}
-              highlight={mode === "budget"}
+              icon={Receipt} label="Средний чек"
+              hint="Сколько в среднем платит один клиент"
+              value={avgCheck} onChange={setAvgCheck} suffix="₸"
+            />
+            <SmartInput
+              icon={Target} label="Целевая выручка"
+              hint={mode === "budget" ? "Рассчитывается из бюджета" : "Сколько хотим заработать за месяц"}
+              value={mode === "budget" ? Math.round(calc.revenue) : revenue}
+              onChange={setRevenue}
+              suffix="₸" disabled={mode === "budget"}
+              highlight={mode === "revenue"}
             />
           </div>
 
@@ -381,31 +382,48 @@ const Finance = () => {
             </div>
 
             <div className="mt-6 grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr_auto_1fr]">
-              <FunnelStep
-                step={1} icon={DollarSign} label="Целевая выручка"
-                value={fmtT(calc.revenue)} highlight={mode === "revenue"}
-              />
-              <FunnelArrow />
-              <FunnelStep
-                step={2} icon={Target} label="Нужно продаж"
-                value={fmt(calc.sales)} sub={`чек ${fmtT(avgCheck)}`}
-              />
-              <FunnelArrow />
-              <FunnelStep
-                step={3} icon={Users} label="Нужно диагностик"
-                value={fmt(calc.visits)} sub={`CR ${crVisitSale}% → продажа`}
-              />
-              <FunnelArrow />
-              <FunnelStep
-                step={4} icon={UserPlus} label="Нужно лидов"
-                value={fmt(calc.leads)} sub={`CR ${crLeadVisit}% → диагностика`}
-              />
-              <FunnelArrow />
-              <FunnelStep
-                step={5} icon={Wallet} label="Бюджет на рекламу"
-                value={fmtT(calc.spend)} sub={`CPL ${fmtT(cpl)}`}
-                highlight={mode === "budget"}
-              />
+              {(() => {
+                const stepBudget = (
+                  <FunnelStep
+                    step={1} icon={Wallet} label="Бюджет на рекламу"
+                    value={fmtT(calc.spend)} sub={`CPL ${fmtT(cpl)}`}
+                    highlight={mode === "budget"}
+                  />
+                );
+                const stepLeads = (
+                  <FunnelStep
+                    step={2} icon={UserPlus} label="Нужно лидов"
+                    value={fmt(calc.leads)} sub={`CR ${crLeadVisit}% → диагностика`}
+                  />
+                );
+                const stepVisits = (
+                  <FunnelStep
+                    step={3} icon={Users} label="Нужно диагностик"
+                    value={fmt(calc.visits)} sub={`CR ${crVisitSale}% → продажа`}
+                  />
+                );
+                const stepSales = (
+                  <FunnelStep
+                    step={4} icon={Target} label="Нужно продаж"
+                    value={fmt(calc.sales)} sub={`чек ${fmtT(avgCheck)}`}
+                  />
+                );
+                const stepRevenue = (
+                  <FunnelStep
+                    step={5} icon={DollarSign} label="Целевая выручка"
+                    value={fmtT(calc.revenue)} highlight={mode === "revenue"}
+                  />
+                );
+                const order = mode === "budget"
+                  ? [stepBudget, stepLeads, stepVisits, stepSales, stepRevenue]
+                  : [stepRevenue, stepSales, stepVisits, stepLeads, stepBudget];
+                return order.map((s, i) => (
+                  <div key={i} className="contents">
+                    {s}
+                    {i < order.length - 1 && <FunnelArrow />}
+                  </div>
+                ));
+              })()}
             </div>
           </div>
 
