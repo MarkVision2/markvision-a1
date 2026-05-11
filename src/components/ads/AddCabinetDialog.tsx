@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { upsertClientsConfig } from "@/integrations/clientConfig/client";
 import {
   Dialog,
   DialogContent,
@@ -162,35 +161,9 @@ const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProp
       accessToken: accessToken || undefined,
     };
 
-    try {
-      await upsertClientsConfig(
-        {
-          id: cabinet.id,
-          client_name: cabinet.name,
-          is_active: true,
-          type,
-          daily_budget: cabinet.dailyBudget || null,
-          city: city || null,
-          ad_account_id: adAccountId || null,
-          page_id: pageId || null,
-          page_name: pageName || null,
-          instagram_id: instagramId || null,
-          whatsapp_number: whatsappNumber || null,
-          waba_phone_number_id: null,
-          telegram_group_id: telegramGroupId || null,
-          pixel_id: pixelId || null,
-          pixel_event: pixelEvent || "Lead",
-          website_url: websiteUrl || null,
-          brief: brief || null,
-        },
-        { fb_token: accessToken || null },
-      );
-      toast.success("Кабинет сохранён в clients_config");
-    } catch (e) {
-      toast.error(`clients_config: ${(e as Error).message}`);
-      return;
-    }
-
+    // Sync в client_configs выполняется внутри useCabinetsStore.addCabinet
+    // (он же дёргает src/lib/cabinetSync.ts → syncCabinetToClientConfig).
+    // Здесь только передаём данные наверх — никакой прямой записи в client_configs.
     onCreate(cabinet);
     onOpenChange(false);
     reset();
