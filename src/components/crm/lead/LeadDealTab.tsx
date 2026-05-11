@@ -1,12 +1,10 @@
-import { Wallet, Calendar, Stethoscope, Percent, CreditCard } from "lucide-react";
-import { Slider } from "@/components/ui/slider";
+import { Calendar, Stethoscope, CreditCard } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import type { Lead, PaymentMethod } from "@/types/crm";
-import { InlineEdit } from "./InlineEdit";
 
 const SERVICES = ["Имплант", "Чистка", "Консультация", "Отбеливание", "Брекеты", "Удаление", "Лечение"];
 const METHODS: { id: PaymentMethod; label: string }[] = [
@@ -30,46 +28,8 @@ interface Props {
 }
 
 export function LeadDealTab({ lead, onUpdate }: Props) {
-  const expRev = Math.round((lead.amount || 0) * (lead.aiScore || 0) / 100);
-
   return (
-    <div className="space-y-4">
-      {/* Сумма */}
-      <div className="rounded-xl border border-border/60 bg-card/40 p-3">
-        <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
-          <Wallet className="h-3.5 w-3.5 text-success" /> Сумма сделки
-        </div>
-        <div className="mt-2 flex items-baseline gap-2 text-2xl font-bold tabular-nums">
-          <InlineEdit
-            value={String(lead.amount || "")}
-            onSave={(v) => onUpdate({ amount: Number(v) || 0 })}
-            placeholder="0"
-            numeric
-            inputClassName="text-2xl font-bold"
-          />
-          <span className="text-base font-normal text-muted-foreground">$</span>
-        </div>
-        <div className="mt-1 text-xs text-muted-foreground">
-          Ожидаемая выручка: <span className="font-semibold text-foreground">{expRev.toLocaleString("ru-RU")} $</span>
-        </div>
-      </div>
-
-      {/* Вероятность */}
-      <div className="rounded-xl border border-border/60 bg-card/40 p-3">
-        <div className="flex items-center justify-between text-[11px] uppercase tracking-wider text-muted-foreground">
-          <span className="inline-flex items-center gap-2"><Percent className="h-3.5 w-3.5 text-primary" /> Вероятность закрытия</span>
-          <span className="text-base font-bold tabular-nums text-foreground">{lead.aiScore}%</span>
-        </div>
-        <Slider
-          className="mt-3"
-          value={[lead.aiScore]}
-          min={0}
-          max={100}
-          step={5}
-          onValueChange={(v) => onUpdate({ aiScore: v[0] })}
-        />
-      </div>
-
+    <div className="space-y-3">
       {/* Услуга и визит */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="rounded-xl border border-border/60 bg-card/40 p-3">
@@ -105,7 +65,7 @@ export function LeadDealTab({ lead, onUpdate }: Props) {
         </div>
       </div>
 
-      {/* Деньги */}
+      {/* Оплата */}
       <div className="rounded-xl border border-border/60 bg-card/40 p-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
