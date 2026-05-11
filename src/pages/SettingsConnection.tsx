@@ -243,9 +243,6 @@ const SettingsConnection = () => {
         {/* Bind WhatsApp instance to a project */}
         <WhatsappProjectBindCard />
 
-        {/* Site intake URL */}
-        <SiteIntakeCard />
-
         {/* Auth Methods */}
         <Card className="mt-6 border-border bg-card">
           <CardHeader>
