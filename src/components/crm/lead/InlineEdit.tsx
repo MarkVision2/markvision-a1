@@ -11,11 +11,13 @@ interface Props {
   numeric?: boolean;
   suffix?: string;
   ariaLabel?: string;
+  /** When true, allow text to wrap onto multiple lines instead of truncating. */
+  wrap?: boolean;
 }
 
 /** Click to edit. Saves on blur or Enter. Esc cancels. */
 export function InlineEdit({
-  value, onSave, placeholder, className, inputClassName, multiline, numeric, suffix, ariaLabel,
+  value, onSave, placeholder, className, inputClassName, multiline, numeric, suffix, ariaLabel, wrap,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -76,13 +78,14 @@ export function InlineEdit({
       type="button"
       onClick={() => setEditing(true)}
       className={cn(
-        "group inline-flex max-w-full items-baseline gap-1 rounded-md px-1 -mx-1 text-left hover:bg-secondary/60",
+        "group max-w-full items-baseline gap-1 rounded-md px-1 -mx-1 text-left hover:bg-secondary/60",
+        wrap ? "flex" : "inline-flex",
         !value && "text-muted-foreground",
         className,
       )}
-      title="Кликните чтобы изменить"
+      title={wrap ? (value || "Кликните чтобы изменить") : "Кликните чтобы изменить"}
     >
-      <span className="truncate">{value || placeholder || "—"}</span>
+      <span className={wrap ? "break-words" : "truncate"}>{value || placeholder || "—"}</span>
       {suffix && value && <span className="text-xs text-muted-foreground">{suffix}</span>}
     </button>
   );
