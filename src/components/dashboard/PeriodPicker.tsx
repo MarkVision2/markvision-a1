@@ -11,9 +11,12 @@ import type { ReportPeriodRange } from "@/hooks/useReportData";
 
 const PRESETS: { id: PeriodPreset; label: string }[] = [
   { id: "today", label: "Сегодня" },
+  { id: "yesterday", label: "Вчера" },
+  { id: "week", label: "Эта неделя" },
   { id: "7d", label: "7 дней" },
   { id: "30d", label: "30 дней" },
-  { id: "month", label: "Месяц" },
+  { id: "month", label: "Этот месяц" },
+  { id: "prevMonth", label: "Прошлый месяц" },
 ];
 
 interface Props {

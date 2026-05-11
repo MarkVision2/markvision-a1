@@ -4,13 +4,26 @@ import { useLeadsLite } from "./useLeadsLite";
 import { buildAlerts } from "@/lib/dashboardAlerts";
 import { normalizeSource } from "@/lib/leadSource";
 
-export type PeriodPreset = "today" | "7d" | "30d" | "month" | "custom";
+export type PeriodPreset =
+  | "today"
+  | "yesterday"
+  | "7d"
+  | "30d"
+  | "week"
+  | "month"
+  | "prevMonth"
+  | "custom";
 
 export function getPresetRange(preset: PeriodPreset, custom?: ReportPeriodRange): ReportPeriodRange {
   const now = new Date();
   const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   if (preset === "custom" && custom) return custom;
   if (preset === "today") return { from: end, to: end };
+  if (preset === "yesterday") {
+    const y = new Date(end);
+    y.setDate(y.getDate() - 1);
+    return { from: y, to: y };
+  }
   if (preset === "7d") {
     const f = new Date(end);
     f.setDate(f.getDate() - 6);
@@ -21,7 +34,19 @@ export function getPresetRange(preset: PeriodPreset, custom?: ReportPeriodRange)
     f.setDate(f.getDate() - 29);
     return { from: f, to: end };
   }
-  // month
+  if (preset === "week") {
+    // Эта неделя — с понедельника по сегодня
+    const dow = (end.getDay() + 6) % 7; // Mon=0 ... Sun=6
+    const f = new Date(end);
+    f.setDate(f.getDate() - dow);
+    return { from: f, to: end };
+  }
+  if (preset === "prevMonth") {
+    const f = new Date(end.getFullYear(), end.getMonth() - 1, 1);
+    const t = new Date(end.getFullYear(), end.getMonth(), 0);
+    return { from: f, to: t };
+  }
+  // month — этот месяц
   const f = new Date(end.getFullYear(), end.getMonth(), 1);
   return { from: f, to: end };
 }
