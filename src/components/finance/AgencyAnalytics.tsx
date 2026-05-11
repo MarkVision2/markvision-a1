@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Plus, Percent, Wallet, PiggyBank, Receipt, Trash2, X, Pencil } from "lucide-react";
+import { Plus, Percent, Wallet, PiggyBank, TrendingDown, Trash2, X, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -35,17 +35,20 @@ interface KpiCardProps {
 }
 
 const KpiCard = ({ icon: Icon, label, value, tone = "default" }: KpiCardProps) => (
-  <div className="rounded-2xl border border-border/60 bg-card/60 p-5">
-    <div className="flex items-center gap-3">
-      <span className="grid h-9 w-9 place-items-center rounded-xl bg-success/10 text-success">
+  <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+    <div className="flex items-center gap-2.5">
+      <span className={cn(
+        "grid h-9 w-9 place-items-center rounded-xl ring-1",
+        tone === "warning" ? "bg-warning/10 text-warning ring-warning/30" : "bg-success/10 text-success ring-success/30",
+      )}>
         <Icon className="h-4 w-4" />
       </span>
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
         {label}
       </span>
     </div>
     <div className={cn(
-      "mt-5 text-3xl font-bold tabular-nums",
+      "mt-3 text-2xl font-bold tabular-nums",
       tone === "success" && "text-success",
       tone === "warning" && "text-warning",
     )}>
@@ -72,18 +75,17 @@ const AgencyAnalytics = () => {
       (sum, c) => sum + c.services.reduce((s, sv) => s + sv.cost, 0),
       0,
     );
-    const tax = mrr * 0.1;
-    const afterMarketing = mrr - totalCost - tax;
-    const margin = mrr > 0 ? (afterMarketing / mrr) * 100 : 0;
-    return { mrr, grossRevenue, totalCost, tax, afterMarketing, margin };
+    const profit = mrr - totalCost;
+    const margin = mrr > 0 ? (profit / mrr) * 100 : 0;
+    return { mrr, grossRevenue, totalCost, profit, margin };
   }, [clients]);
 
   return (
     <>
-      <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard icon={Wallet} label="MRR" value={fmtT(totals.mrr)} />
-        <KpiCard icon={Receipt} label="Налоги (10%)" value={fmtT(totals.tax)} tone="warning" />
-        <KpiCard icon={PiggyBank} label="Выручка (после маркетинга)" value={fmtT(totals.afterMarketing)} tone="success" />
+      <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KpiCard icon={Wallet} label="MRR (оплачено)" value={fmtT(totals.mrr)} />
+        <KpiCard icon={TrendingDown} label="Расходы" value={fmtT(totals.totalCost)} tone="warning" />
+        <KpiCard icon={PiggyBank} label="Прибыль" value={fmtT(totals.profit)} tone="success" />
         <KpiCard icon={Percent} label="Маржинальность" value={`${Math.round(totals.margin)}%`} tone="success" />
       </div>
 
