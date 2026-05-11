@@ -1471,8 +1471,16 @@ const CreateStep3 = () => {
               </div>
               <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
                 <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-primary" />
-                {selectedStyles.length}{" "}
-                {selectedStyles.length === 1 ? "вариант" : "вариантов"} в работе
+                {(() => {
+                  const variantsPerStyle =
+                    typeof prevState.variants === "number" && prevState.variants > 0
+                      ? (prevState.variants as number)
+                      : 1;
+                  const total = selectedStyles.length * variantsPerStyle;
+                  return variantsPerStyle > 1
+                    ? `${selectedStyles.length} ${selectedStyles.length === 1 ? "стиль" : "стилей"} × ${variantsPerStyle} ${variantsPerStyle === 1 ? "вариант" : "вариантов"} = ${total} креативов в работе`
+                    : `${selectedStyles.length} ${selectedStyles.length === 1 ? "вариант" : "вариантов"} в работе`;
+                })()}
               </div>
             </div>
           )}
