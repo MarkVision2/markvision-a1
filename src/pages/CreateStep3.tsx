@@ -672,6 +672,20 @@ const CreateStep3 = () => {
           ]
             .filter((s): s is string => Boolean(s && s.trim()))
             .join(" | ");
+          // Определяем платформу по ссылке (как в HTML CLONY.AI).
+          // Маркетплейс-ветка в n8n использует platform для выбора парсера.
+          const detectPlatform = (url: string): string => {
+            const u = url.toLowerCase();
+            if (u.includes("wildberries") || u.includes("wb.ru")) return "wildberries";
+            if (u.includes("ozon.ru") || u.includes("ozon.kz")) return "ozon";
+            if (u.includes("kaspi.kz")) return "kaspi";
+            return "web";
+          };
+          const platform =
+            brief.mode === "link" && brief.linkUrl
+              ? detectPlatform(brief.linkUrl)
+              : "web";
+
           const flatForN8n = {
             // routing ключ для Switch1 (читает body.content_type)
             content_type: route,
@@ -708,12 +722,27 @@ const CreateStep3 = () => {
             // ctas — массив, как в рабочем HTML-фронте (n8n .join'ит/итерирует).
             // Если у нас нет UI-выбора CTA — отдаём пустой массив, а не строку.
             ctas: [] as string[],
+            // Type-specific поля. В HTML CLONY.AI у каждого типа свой UI-инпут;
+            // у нас в React этих полей в UI пока нет — отдаём пустые строки,
+            // чтобы соответствующие n8n-ноды не получили undefined и не упали
+            // (напр. body.video_title в YouTube-ветке, body.neuro_style и т.д.).
+            video_title: brief.mode === "description" ? brief.productName || "" : "",
+            ad_goal: "",
+            neuro_style: isNeuroPhoto ? styleDef.label : "",
+            google_size: typeId === "google-ads" ? "all" : "",
+            stories_style: typeId === "stories" ? "native" : "",
             username: "",
-            platform: "web",
+            platform,
+            // chat_id / telegram_id — куда n8n шлёт уведомление о готовности.
+            // Хардкод как в рабочем HTML CLONY.AI — иначе нода Send-To-WhatsApp
+            // получает undefined и роняет весь воркфлоу.
+            chat_id: "120363405546691727@g.us",
+            telegram_id: "0000",
             // tracking
             request_id: requestId,
             session_id: batchId,
             input_mode: brief.mode,
+            timestamp: new Date().toISOString(),
           };
 
           const payload = {
