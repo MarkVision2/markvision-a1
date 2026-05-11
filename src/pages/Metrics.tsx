@@ -52,23 +52,47 @@ interface SummaryCardProps {
   icon: React.ElementType;
   label: string;
   value: React.ReactNode;
-  sub: string;
+  formula: string;
+  badge: string;
+  accent?: "success" | "warning" | "primary";
 }
 
-const SummaryCard = ({ icon: Icon, label, value, sub }: SummaryCardProps) => (
-  <div className="rounded-2xl border border-border/60 bg-card/60 p-5">
-    <div className="flex items-center gap-3">
-      <span className="grid h-9 w-9 place-items-center rounded-xl bg-success/10 text-success">
-        <Icon className="h-4 w-4" />
-      </span>
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+const SummaryCard = ({
+  icon: Icon,
+  label,
+  value,
+  formula,
+  badge,
+  accent = "success",
+}: SummaryCardProps) => {
+  const tone = {
+    success: "bg-success/10 text-success border-success/20",
+    warning: "bg-warning/10 text-warning border-warning/20",
+    primary: "bg-primary/10 text-primary border-primary/20",
+  }[accent];
+
+  return (
+    <div className="min-h-[168px] rounded-2xl border border-border/60 bg-card/60 p-5 transition-colors hover:border-success/30 hover:bg-card/80">
+      <div className="flex items-start justify-between gap-3">
+        <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl border", tone)}>
+          <Icon className="h-4 w-4" />
+        </span>
+        <span className={cn("rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wider", tone)}>
+          {badge}
+        </span>
+      </div>
+      <div className="mt-5 min-h-[42px] text-[15px] font-bold leading-5 text-foreground">
         {label}
-      </span>
+      </div>
+      <div className="mt-4 text-3xl font-bold leading-none tabular-nums text-foreground md:text-[2rem]">
+        {value}
+      </div>
+      <div className="mt-3 text-xs leading-4 text-muted-foreground">
+        {formula}
+      </div>
     </div>
-    <div className="mt-5 text-3xl font-bold tabular-nums">{value}</div>
-    <div className="mt-2 text-xs text-muted-foreground">{sub}</div>
-  </div>
-);
+  );
+};
 
 const Cell = ({ children, mono = true }: { children: React.ReactNode; mono?: boolean }) => (
   <td
@@ -325,20 +349,26 @@ const Metrics = () => {
       {/* Summary cards */}
       <div className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-5">
         <SummaryCard
-          icon={DollarSign}
-          label="CAC"
-          value={factCac > 0 ? formatTenge(factCac) : <Dash />}
-          sub="Расходы / Продажи"
-        />
-        <SummaryCard
           icon={Eye}
-          label="CPD"
+          label="Стоимость диагностики"
+          badge="CPD"
+          accent="success"
           value={factCpd > 0 ? formatTenge(factCpd) : <Dash />}
-          sub="Расходы / Диагностики"
+          formula="Расходы / диагностики"
         />
         <SummaryCard
-          icon={Target}
-          label="CPL"
+          icon={Wallet}
+          label="Стоимость клиента"
+          badge="CAC"
+          accent="warning"
+          value={factCac > 0 ? formatTenge(factCac) : <Dash />}
+          formula="Расходы / оплаты"
+        />
+        <SummaryCard
+          icon={DollarSign}
+          label="Стоимость заявки"
+          badge="CPL"
+          accent="primary"
           value={
             totals && totals.cpl > 0 ? (
               <span>{formatTenge(totals.cpl)}</span>
@@ -346,19 +376,23 @@ const Metrics = () => {
               <Dash />
             )
           }
-          sub="Расходы / Лиды"
+          formula="Расходы / заявки"
         />
         <SummaryCard
           icon={Repeat}
-          label="CR Лид→Диагн."
+          label="Лид в диагностику"
+          badge="CR"
+          accent="success"
           value={crLeadDiagnostics > 0 ? <span>{formatPercent(crLeadDiagnostics)}</span> : <Dash />}
-          sub="Диагностики / Лиды"
+          formula="Диагностики / лиды"
         />
         <SummaryCard
           icon={TrendingUp}
-          label="CR Диагн.→Продажа"
+          label="Диагностика в продажу"
+          badge="CR"
+          accent="success"
           value={crDiagnosticsSale > 0 ? <span>{formatPercent(crDiagnosticsSale)}</span> : <Dash />}
-          sub="Продажи / Диагностики"
+          formula="Оплаты / диагностики"
         />
       </div>
 
