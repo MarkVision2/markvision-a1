@@ -178,8 +178,42 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
           city: city.trim() || null,
           online: true,
         };
-        const { error: cabErr } = await supabase.from("ad_cabinets").insert(cabRow as never);
-        if (cabErr) toast.error("Кабинет не сохранён: " + cabErr.message);
+        const { data: cabData, error: cabErr } = await supabase
+          .from("ad_cabinets")
+          .insert(cabRow as never)
+          .select("*")
+          .single();
+        if (cabErr) {
+          toast.error("Кабинет не сохранён: " + cabErr.message);
+        } else if (cabData) {
+          // Зеркалим в client config supabase для n8n + content factory.
+          const { syncCabinetToClientConfig } = await import(
+            "@/lib/cabinetSync"
+          );
+          const r = cabData as Record<string, unknown>;
+          await syncCabinetToClientConfig({
+            id: r.id as string,
+            name: (r.name as string) ?? "",
+            externalId: (r.external_id as string) ?? "",
+            online: !!r.online,
+            type: r.type as "Личный" | "Агентский",
+            spend: 0, leads: 0, leadCost: 0, sales: 0, revenue: 0,
+            city: (r.city as string) ?? undefined,
+            dailyBudget: (r.daily_budget as number) ?? 0,
+            currency: (r.currency as string) ?? "KZT",
+            adAccountId: (r.ad_account_id as string) ?? undefined,
+            pageId: (r.page_id as string) ?? undefined,
+            pageName: (r.page_name as string) ?? undefined,
+            instagramId: (r.instagram_id as string) ?? undefined,
+            telegramGroupId: (r.telegram_group_id as string) ?? undefined,
+            whatsappNumber: (r.whatsapp_number as string) ?? undefined,
+            pixelId: (r.pixel_id as string) ?? undefined,
+            pixelEvent: (r.pixel_event as string) ?? "Lead",
+            websiteUrl: (r.website_url as string) ?? undefined,
+            brief: (r.brief as string) ?? undefined,
+            accessToken: (r.access_token as string) ?? undefined,
+          } as unknown as Parameters<typeof syncCabinetToClientConfig>[0]);
+        }
       }
 
       // 4) Switch active project
