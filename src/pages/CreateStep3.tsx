@@ -669,21 +669,24 @@ const CreateStep3 = () => {
           ]
             .filter((s): s is string => Boolean(s && s.trim()))
             .join(" | ");
-          const flatForN8n = {
+          // ВАЖНО: опциональные поля (audio_url, link) НЕ включаем когда они
+          // пустые — n8n IF-ноды проверяют их через `exists`, пустая строка
+          // проходит как существующая, и последующие HTTP/audio ноды падают
+          // с "Invalid URL". Используем undefined чтобы ключ не попал в JSON.
+          const linkValue =
+            brief.mode === "link" && brief.linkUrl ? brief.linkUrl : undefined;
+          const flatForN8n: Record<string, unknown> = {
             // routing ключ для Switch1 (читает body.content_type)
             content_type: route,
             // основной brief — это поле читает каждая chainLlm-нода как "ТЗ".
             // Сюда идёт finalTechnicalBrief — полная техзадача со стилевыми
             // инструкциями и пользовательским запросом, а не сырой текст.
             prompt: finalTechnicalBrief,
-            // имя продукта / описание / ссылка — отдельные поля для разных веток
+            // имя продукта / описание — пустая строка ок, эти ноды толерантны
             name: brief.productName || "",
             description: brief.description || "",
-            link: brief.mode === "link" ? brief.linkUrl || "" : "",
-            // Публичные URL фото, залитых в Supabase Storage (bucket
-            // content-factory-uploads). n8n берёт первое как референс.
+            // Публичные URL фото из Supabase Storage. n8n берёт первое как референс.
             image_urls: imageUrls,
-            audio_url: "",
             // стиль / цвет / язык / aspect — flat string, не объект
             style: styleDef.label,
             color: color?.label ?? "auto",
@@ -701,6 +704,10 @@ const CreateStep3 = () => {
             session_id: batchId,
             input_mode: brief.mode,
           };
+          // Опциональные поля только если есть значение — иначе n8n IF=exists
+          // пропустит пустую строку дальше и HTTP-нода упадёт.
+          if (linkValue) flatForN8n.link = linkValue;
+          // audio_url намеренно НЕ выставляем — нет аудио в content-factory.
 
           const payload = {
             source: "lovable.content-factory",
