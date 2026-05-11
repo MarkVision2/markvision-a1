@@ -30,6 +30,7 @@ const lazyImports = {
   SettingsConnection: () => import("./pages/SettingsConnection.tsx"),
   ResetPassword: () => import("./pages/ResetPassword.tsx"),
   ProjectStrategy: () => import("./pages/ProjectStrategy.tsx"),
+  ClientDashboard: () => import("./pages/ClientDashboard.tsx"),
 };
 
 const NotFound = lazy(lazyImports.NotFound);
@@ -48,6 +49,7 @@ const Settings = lazy(lazyImports.Settings);
 const SettingsConnection = lazy(lazyImports.SettingsConnection);
 const ResetPassword = lazy(lazyImports.ResetPassword);
 const ProjectStrategy = lazy(lazyImports.ProjectStrategy);
+const ClientDashboard = lazy(lazyImports.ClientDashboard);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -96,6 +98,7 @@ const App = () => (
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/client/:token" element={<ClientDashboard />} />
               <Route path="/" element={<RequireAuth><AppLayout><Index /></AppLayout></RequireAuth>} />
               <Route path="/dashboard" element={<RequireAuth><AppLayout><Dashboard /></AppLayout></RequireAuth>} />
               <Route path="/metrics" element={<RequireAuth><AppLayout><Metrics /></AppLayout></RequireAuth>} />

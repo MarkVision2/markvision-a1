@@ -53,6 +53,11 @@ const Schema = z.object({
   project_id: z.string().trim().uuid().optional().nullable(),
   cabinet_id: z.string().trim().uuid().optional().nullable(),
   ad_account_id: z.string().trim().max(80).optional().nullable(),
+  token: z.string().trim().max(120).optional().nullable(),
+  // Атрибуция Meta (cookies со стороны лендинга)
+  fbc: z.string().trim().max(255).optional().nullable(),
+  fbp: z.string().trim().max(255).optional().nullable(),
+  email: z.string().trim().max(160).optional().nullable(),
 });
 
 async function parseBody(req: Request): Promise<Record<string, unknown>> {
@@ -294,10 +299,26 @@ Deno.serve(async (req) => {
   const landingUrl = v.landing_url || v.page || null;
 
   // Resolve project_id and cabinet_id.
-  // Priority: token in URL > explicit project_id in body > cabinet_id > ad_account_id.
-  // Token wins because it's the secret bound to the project on creation.
+  // Priority: URL token > body project_id > inbound_tokens(body token) > cabinet_id > ad_account_id.
+  // URL token wins — it is the secret bound to the project on creation.
   let projectId: string | null = tokenProjectId ?? v.project_id ?? null;
   let cabinetId: string | null = v.cabinet_id || null;
+
+  // Inbound token: один из самых надёжных способов привязки лида к клиенту.
+  if (v.token) {
+    try {
+      const { data: tok } = await admin
+        .from("inbound_tokens")
+        .select("client_id, project_id, is_active")
+        .eq("token", v.token.trim())
+        .maybeSingle();
+      if (tok && tok.is_active !== false) {
+        if (!cabinetId && tok.client_id) cabinetId = String(tok.client_id);
+        if (!projectId && tok.project_id) projectId = String(tok.project_id);
+      }
+    } catch { /* нет таблицы / иное — fallback на старую логику */ }
+  }
+
   if (cabinetId) {
     const { data } = await admin.from("ad_cabinets").select("project_id").eq("id", cabinetId).maybeSingle();
     if (!projectId) projectId = data?.project_id ?? null;
