@@ -55,55 +55,96 @@ function extractText(messageData: Record<string, unknown> | undefined): string {
   return "[Сообщение]";
 }
 
-async function getDefaultStage(): Promise<{ pipeline_id: string; stage_id: string } | null> {
-  const { data: pipe } = await admin
-    .from("pipelines")
-    .select("id")
-    .eq("is_default", true)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (!pipe?.id) return null;
-  const { data: stage } = await admin
+async function firstStage(pipelineId: string): Promise<string | null> {
+  const { data } = await admin
     .from("pipeline_stages")
     .select("id")
-    .eq("pipeline_id", pipe.id)
+    .eq("pipeline_id", pipelineId)
     .order("order_index", { ascending: true })
     .limit(1)
     .maybeSingle();
-  if (!stage?.id) return null;
-  return { pipeline_id: pipe.id, stage_id: stage.id };
+  return data?.id ?? null;
+}
+
+// Resolve pipeline + first stage:
+//   1) project-scoped default → 2) any project pipeline →
+//   3) global default → 4) any. Mirrors lead-intake routing.
+async function getDefaultStage(
+  projectId: string | null,
+): Promise<{ pipeline_id: string; stage_id: string } | null> {
+  const tryPipe = async (id: string | null | undefined) => {
+    if (!id) return null;
+    const sid = await firstStage(id);
+    return sid ? { pipeline_id: id, stage_id: sid } : null;
+  };
+  if (projectId) {
+    const { data: d1 } = await admin
+      .from("pipelines").select("id")
+      .eq("project_id", projectId).eq("is_default", true)
+      .order("created_at", { ascending: true }).limit(1).maybeSingle();
+    const r1 = await tryPipe(d1?.id);
+    if (r1) return r1;
+    const { data: d2 } = await admin
+      .from("pipelines").select("id")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: true }).limit(1).maybeSingle();
+    const r2 = await tryPipe(d2?.id);
+    if (r2) return r2;
+  }
+  const { data: d3 } = await admin
+    .from("pipelines").select("id")
+    .is("project_id", null).eq("is_default", true)
+    .order("created_at", { ascending: true }).limit(1).maybeSingle();
+  const r3 = await tryPipe(d3?.id);
+  if (r3) return r3;
+  const { data: d4 } = await admin
+    .from("pipelines").select("id")
+    .order("created_at", { ascending: true }).limit(1).maybeSingle();
+  return tryPipe(d4?.id);
+}
+
+// Resolve which project a webhook belongs to via whatsapp_config.id_instance.
+async function projectFromInstance(idInstance: number | string | null | undefined): Promise<string | null> {
+  if (!idInstance) return null;
+  const { data } = await admin
+    .from("whatsapp_config")
+    .select("project_id")
+    .eq("id_instance", String(idInstance))
+    .maybeSingle();
+  return data?.project_id ?? null;
 }
 
 async function findOrCreateLead(
   phone: string,
   displayName: string,
+  projectId: string | null,
 ): Promise<string | null> {
   const d = digits(phone);
   if (!d) return null;
 
-  // Try to find by normalized phone digits
-  const { data: existing } = await admin
+  // Dedupe scoped to the project (one client = one project).
+  let q = admin
     .from("leads")
     .select("id, phone")
     .or(`phone.eq.${phone},phone.eq.+${d},phone.eq.${d}`)
     .limit(1);
-
+  if (projectId) q = q.eq("project_id", projectId);
+  const { data: existing } = await q;
   if (existing && existing.length > 0) return existing[0].id;
 
-  // Broader search: scan recent leads matching by digits (fallback)
-  const { data: recent } = await admin
+  let scan = admin
     .from("leads")
     .select("id, phone")
     .order("created_at", { ascending: false })
     .limit(500);
+  if (projectId) scan = scan.eq("project_id", projectId);
+  const { data: recent } = await scan;
   const match = (recent ?? []).find((l) => digits(l.phone) === d);
   if (match) return match.id;
 
-  // Create new lead
-  const def = await getDefaultStage();
+  const def = await getDefaultStage(projectId);
   if (!def) {
-    console.error("No default pipeline/stage found");
+    console.error("No default pipeline/stage found", { projectId });
     return null;
   }
   const { data: created, error } = await admin
@@ -113,6 +154,7 @@ async function findOrCreateLead(
       phone: `+${d}`,
       source: "whatsapp",
       channel: "whatsapp",
+      project_id: projectId,
       pipeline_id: def.pipeline_id,
       stage_id: def.stage_id,
     })
@@ -180,6 +222,10 @@ Deno.serve(async (req) => {
   }
 
   const type = body.typeWebhook as string | undefined;
+  // Resolve project from the Green API instance id. The same webhook URL
+  // can serve multiple instances — one per project — so we route based
+  // on which instance actually pinged us.
+  const projectId = await projectFromInstance(instanceData?.idInstance);
 
   try {
     const idMessage = (body.idMessage as string | undefined) ?? null;
@@ -192,11 +238,11 @@ Deno.serve(async (req) => {
       const phone = chatIdToPhone(senderData?.chatId ?? senderData?.sender);
       const name = senderData?.senderName?.trim() || "";
       if (!phone) return json({ ok: true, skipped: "no phone" });
-      const leadId = await findOrCreateLead(phone, name);
+      const leadId = await findOrCreateLead(phone, name, projectId);
       if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
       const text = extractText(messageData);
       await insertCommunication({ leadId, direction: "in", text, externalId: idMessage });
-      return json({ ok: true, leadId });
+      return json({ ok: true, leadId, projectId });
     }
 
     if (
@@ -207,7 +253,7 @@ Deno.serve(async (req) => {
       const messageData = body.messageData as Record<string, unknown> | undefined;
       const phone = chatIdToPhone(senderData?.chatId);
       if (!phone) return json({ ok: true, skipped: "no phone" });
-      const leadId = await findOrCreateLead(phone, "");
+      const leadId = await findOrCreateLead(phone, "", projectId);
       if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
       const text = extractText(messageData);
       await insertCommunication({
@@ -217,7 +263,7 @@ Deno.serve(async (req) => {
         isAuto: type === "outgoingAPIMessageReceived",
         externalId: idMessage,
       });
-      return json({ ok: true, leadId });
+      return json({ ok: true, leadId, projectId });
     }
 
     if (type === "stateInstanceChanged") {
