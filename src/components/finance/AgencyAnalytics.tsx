@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
-import { Plus, Percent, Wallet, PiggyBank, TrendingDown, Trash2, X, Pencil } from "lucide-react";
+import {
+  Plus, Wallet, PiggyBank, TrendingDown, Trash2, X, Pencil,
+  Hourglass, AlertTriangle, CheckCircle2, Users,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -18,28 +21,64 @@ import {
 } from "@/hooks/useAgencyClients";
 
 const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU");
-const fmtT = (n: number) => `${fmt(n)}\u00A0₸`;
+const fmtT = (n: number) => `${fmt(n)} ₸`;
 
-const STATUS: Record<AgencyClientStatus, { label: string; color: string }> = {
-  waiting:   { label: "Ожидает оплаты", color: "bg-warning/15 text-warning border-warning/30" },
-  paid:      { label: "Оплачено",       color: "bg-success/15 text-success border-success/30" },
-  overdue:   { label: "Просрочено",     color: "bg-destructive/15 text-destructive border-destructive/30" },
-  cancelled: { label: "Отменено",       color: "bg-muted text-muted-foreground border-border" },
+const STATUS: Record<AgencyClientStatus, {
+  label: string;
+  chip: string;
+  pill: string;
+  rowAccent: string;
+  icon: typeof CheckCircle2;
+}> = {
+  paid: {
+    label: "Оплачено",
+    chip: "border-success/30 bg-success/10 text-success",
+    pill: "bg-success/15 text-success border-success/30",
+    rowAccent: "before:bg-success/60",
+    icon: CheckCircle2,
+  },
+  waiting: {
+    label: "Ожидает оплаты",
+    chip: "border-warning/30 bg-warning/10 text-warning",
+    pill: "bg-warning/15 text-warning border-warning/30",
+    rowAccent: "before:bg-warning/60",
+    icon: Hourglass,
+  },
+  overdue: {
+    label: "Просрочено",
+    chip: "border-destructive/30 bg-destructive/10 text-destructive",
+    pill: "bg-destructive/15 text-destructive border-destructive/30",
+    rowAccent: "before:bg-destructive/60",
+    icon: AlertTriangle,
+  },
+  cancelled: {
+    label: "Отменено",
+    chip: "border-border/60 bg-muted/40 text-muted-foreground",
+    pill: "bg-muted text-muted-foreground border-border",
+    rowAccent: "before:bg-muted-foreground/40",
+    icon: X,
+  },
 };
+
+const STATUS_ORDER: AgencyClientStatus[] = ["paid", "waiting", "overdue", "cancelled"];
 
 interface KpiCardProps {
   icon: React.ElementType;
   label: string;
   value: string;
-  tone?: "default" | "success" | "warning";
+  hint?: string;
+  tone?: "default" | "success" | "warning" | "destructive";
 }
 
-const KpiCard = ({ icon: Icon, label, value, tone = "default" }: KpiCardProps) => (
-  <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+const KpiCard = ({ icon: Icon, label, value, hint, tone = "default" }: KpiCardProps) => (
+  <div className="min-w-0 rounded-2xl border border-border/60 bg-card/60 p-4">
     <div className="flex items-center gap-2.5">
       <span className={cn(
-        "grid h-9 w-9 place-items-center rounded-xl ring-1",
-        tone === "warning" ? "bg-warning/10 text-warning ring-warning/30" : "bg-success/10 text-success ring-success/30",
+        "grid h-9 w-9 shrink-0 place-items-center rounded-xl ring-1",
+        tone === "warning" && "bg-warning/10 text-warning ring-warning/30",
+        tone === "destructive" && "bg-destructive/10 text-destructive ring-destructive/30",
+        tone === "success" && "bg-success/10 text-success ring-success/30",
+        tone === "default" && "bg-primary/10 text-primary ring-primary/30",
       )}>
         <Icon className="h-4 w-4" />
       </span>
@@ -48,258 +87,350 @@ const KpiCard = ({ icon: Icon, label, value, tone = "default" }: KpiCardProps) =
       </span>
     </div>
     <div className={cn(
-      "mt-3 text-2xl font-bold tabular-nums",
+      "mt-2.5 truncate text-2xl font-bold tabular-nums",
       tone === "success" && "text-success",
       tone === "warning" && "text-warning",
+      tone === "destructive" && "text-destructive",
     )}>
       {value}
     </div>
+    {hint && <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{hint}</div>}
   </div>
 );
 
 const AgencyAnalytics = () => {
   const { clients, addClient, updateClient, removeClient } = useAgencyClients();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<AgencyClientStatus | "all">("all");
+
+  const buckets = useMemo(() => {
+    const map: Record<AgencyClientStatus, AgencyClient[]> = {
+      paid: [], waiting: [], overdue: [], cancelled: [],
+    };
+    clients.forEach((c) => map[c.status].push(c));
+    return map;
+  }, [clients]);
 
   const totals = useMemo(() => {
-    const paidClients = clients.filter((c) => c.status === "paid");
-    const mrr = paidClients.reduce(
-      (sum, c) => sum + c.services.reduce((s, sv) => s + sv.price, 0),
-      0,
-    );
-    const grossRevenue = clients.reduce(
-      (sum, c) => sum + c.services.reduce((s, sv) => s + sv.price, 0),
-      0,
-    );
-    const totalCost = clients.reduce(
-      (sum, c) => sum + c.services.reduce((s, sv) => s + sv.cost, 0),
-      0,
-    );
-    const profit = mrr - totalCost;
+    const sumPrice = (arr: AgencyClient[]) =>
+      arr.reduce((s, c) => s + c.services.reduce((x, sv) => x + sv.price, 0), 0);
+    const sumCost = (arr: AgencyClient[]) =>
+      arr.reduce((s, c) => s + c.services.reduce((x, sv) => x + sv.cost, 0), 0);
+
+    const mrr = sumPrice(buckets.paid);
+    const cost = sumCost(buckets.paid);
+    const pending = sumPrice(buckets.waiting) + sumPrice(buckets.overdue);
+    const profit = mrr - cost;
     const margin = mrr > 0 ? (profit / mrr) * 100 : 0;
-    return { mrr, grossRevenue, totalCost, profit, margin };
-  }, [clients]);
+
+    return { mrr, cost, pending, profit, margin };
+  }, [buckets]);
+
+  const filteredClients = useMemo(() => {
+    if (statusFilter === "all") return clients;
+    return clients.filter((c) => c.status === statusFilter);
+  }, [clients, statusFilter]);
 
   return (
     <>
+      {/* KPI grid */}
       <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <KpiCard icon={Wallet} label="MRR (оплачено)" value={fmtT(totals.mrr)} />
-        <KpiCard icon={TrendingDown} label="Расходы" value={fmtT(totals.totalCost)} tone="warning" />
-        <KpiCard icon={PiggyBank} label="Прибыль" value={fmtT(totals.profit)} tone="success" />
-        <KpiCard icon={Percent} label="Маржинальность" value={`${Math.round(totals.margin)}%`} tone="success" />
+        <KpiCard
+          icon={Wallet}
+          label="MRR · оплачено"
+          value={fmtT(totals.mrr)}
+          hint={`${buckets.paid.length} ${pluralClient(buckets.paid.length)}`}
+        />
+        <KpiCard
+          icon={Hourglass}
+          label="Ожидается"
+          value={fmtT(totals.pending)}
+          hint={`${buckets.waiting.length + buckets.overdue.length} ${pluralClient(buckets.waiting.length + buckets.overdue.length)} (вкл. просрочки)`}
+          tone="warning"
+        />
+        <KpiCard
+          icon={TrendingDown}
+          label="Расходы"
+          value={fmtT(totals.cost)}
+          hint="По оплаченным клиентам"
+          tone="destructive"
+        />
+        <KpiCard
+          icon={PiggyBank}
+          label="Прибыль"
+          value={fmtT(totals.profit)}
+          hint={`Маржа ${Math.round(totals.margin)}%`}
+          tone="success"
+        />
       </div>
 
-      <div className="mt-6 overflow-hidden rounded-2xl border border-border/60 bg-card/40">
-        <div className="flex items-center justify-between border-b border-border/60 px-6 py-4">
-          <span className="text-sm font-semibold">
-            Клиенты · {clients.length}
-          </span>
-          <button
-            onClick={() => setDialogOpen(true)}
-            className="flex items-center gap-2 text-sm font-semibold text-success hover:text-success/80"
-          >
-            <Plus className="h-4 w-4" />
-            Добавить клиента
-          </button>
+      {/* Status filter strip + add */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <FilterChip
+            active={statusFilter === "all"}
+            onClick={() => setStatusFilter("all")}
+            label="Все"
+            count={clients.length}
+            icon={Users}
+            tone="default"
+          />
+          {STATUS_ORDER.map((s) => {
+            const count = buckets[s].length;
+            if (count === 0 && statusFilter !== s) return null;
+            return (
+              <FilterChip
+                key={s}
+                active={statusFilter === s}
+                onClick={() => setStatusFilter(s)}
+                label={STATUS[s].label}
+                count={count}
+                icon={STATUS[s].icon}
+                tone={s}
+              />
+            );
+          })}
         </div>
+        <Button
+          onClick={() => setDialogOpen(true)}
+          className="h-9 gap-1.5 rounded-xl bg-success text-success-foreground hover:bg-success/90"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          Добавить клиента
+        </Button>
+      </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] text-sm">
-            <thead>
-              <tr className="border-b border-border/60 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                <th className="px-6 py-3 text-left">Клиент</th>
-                <th className="px-4 py-3 text-left">Услуги</th>
-                <th className="px-4 py-3 text-right">Оплата</th>
-                <th className="px-4 py-3 text-right">Расходы</th>
-                <th className="px-4 py-3 text-right">Прибыль</th>
-                <th className="px-4 py-3 text-right">Маржа</th>
-                <th className="px-4 py-3 text-left">Оплата до</th>
-                <th className="px-4 py-3 text-left">Статус</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody>
-              {clients.length === 0 && (
-                <tr>
-                  <td colSpan={9} className="px-6 py-12 text-center text-sm text-muted-foreground">
-                    Пока нет клиентов. Нажмите «Добавить клиента» чтобы начать.
-                  </td>
+      {/* Clients table */}
+      <div className="mt-3 overflow-hidden rounded-2xl border border-border/60 bg-card/40">
+        {filteredClients.length === 0 ? (
+          <div className="grid place-items-center px-6 py-12 text-center">
+            <div className="grid h-12 w-12 place-items-center rounded-2xl bg-success/10 text-success">
+              <Users className="h-5 w-5" />
+            </div>
+            <div className="mt-3 text-sm font-semibold">
+              {clients.length === 0 ? "Пока нет клиентов" : "По фильтру ничего не найдено"}
+            </div>
+            <p className="mt-1 max-w-md text-xs text-muted-foreground">
+              {clients.length === 0
+                ? "Добавьте первого клиента — будем считать MRR, расходы, прибыль и маржу автоматически."
+                : "Снимите фильтр или добавьте клиента с этим статусом."}
+            </p>
+            {clients.length === 0 && (
+              <Button
+                onClick={() => setDialogOpen(true)}
+                className="mt-4 h-9 gap-1.5 rounded-xl bg-success text-success-foreground hover:bg-success/90"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Добавить первого клиента
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[860px] text-sm">
+              <thead>
+                <tr className="border-b border-border/60 bg-card/50 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  <th className="px-5 py-3 text-left">Клиент</th>
+                  <th className="px-3 py-3 text-left">Услуги</th>
+                  <th className="px-3 py-3 text-right">Оплата</th>
+                  <th className="px-3 py-3 text-right">Расходы</th>
+                  <th className="px-3 py-3 text-right">Прибыль</th>
+                  <th className="px-3 py-3 text-right">Маржа</th>
+                  <th className="px-3 py-3 text-left">Оплата до</th>
+                  <th className="px-3 py-3 text-left">Статус</th>
+                  <th className="px-3 py-3" />
                 </tr>
-              )}
-              {clients.map((c) => {
-                const pay = c.services.reduce((s, sv) => s + sv.price, 0);
-                const cost = c.services.reduce((s, sv) => s + sv.cost, 0);
-                const profit = pay - cost;
-                const margin = pay > 0 ? (profit / pay) * 100 : 0;
+              </thead>
+              <tbody>
+                {filteredClients.map((c) => {
+                  const pay = c.services.reduce((s, sv) => s + sv.price, 0);
+                  const cost = c.services.reduce((s, sv) => s + sv.cost, 0);
+                  const profit = pay - cost;
+                  const margin = pay > 0 ? (profit / pay) * 100 : 0;
+                  const status = STATUS[c.status];
 
-                const updateName = (name: string) => updateClient(c.id, { name });
+                  const updateName = (name: string) => updateClient(c.id, { name });
 
-                const setTotalPay = (next: number) => {
-                  if (c.services.length === 0) return;
-                  if (pay === 0) {
-                    const per = next / c.services.length;
-                    updateClient(c.id, {
-                      services: c.services.map((s) => ({ ...s, price: per })),
-                    });
-                  } else {
-                    const k = next / pay;
-                    updateClient(c.id, {
-                      services: c.services.map((s) => ({ ...s, price: Math.round(s.price * k) })),
-                    });
-                  }
-                };
+                  const setTotalPay = (next: number) => {
+                    if (c.services.length === 0) return;
+                    if (pay === 0) {
+                      const per = next / c.services.length;
+                      updateClient(c.id, { services: c.services.map((s) => ({ ...s, price: per })) });
+                    } else {
+                      const k = next / pay;
+                      updateClient(c.id, { services: c.services.map((s) => ({ ...s, price: Math.round(s.price * k) })) });
+                    }
+                  };
+                  const setTotalCost = (next: number) => {
+                    if (c.services.length === 0) return;
+                    if (cost === 0) {
+                      const per = next / c.services.length;
+                      updateClient(c.id, { services: c.services.map((s) => ({ ...s, cost: per })) });
+                    } else {
+                      const k = next / cost;
+                      updateClient(c.id, { services: c.services.map((s) => ({ ...s, cost: Math.round(s.cost * k) })) });
+                    }
+                  };
+                  const toggleService = (id: string) => {
+                    const exists = c.services.find((s) => s.id === id);
+                    if (exists) {
+                      updateClient(c.id, { services: c.services.filter((s) => s.id !== id) });
+                    } else {
+                      const def = SERVICE_CATALOG.find((s) => s.id === id)!;
+                      const next: AgencyService = { id: def.id, name: def.name, price: def.price, cost: def.cost };
+                      updateClient(c.id, { services: [...c.services, next] });
+                    }
+                  };
 
-                const setTotalCost = (next: number) => {
-                  if (c.services.length === 0) return;
-                  if (cost === 0) {
-                    const per = next / c.services.length;
-                    updateClient(c.id, {
-                      services: c.services.map((s) => ({ ...s, cost: per })),
-                    });
-                  } else {
-                    const k = next / cost;
-                    updateClient(c.id, {
-                      services: c.services.map((s) => ({ ...s, cost: Math.round(s.cost * k) })),
-                    });
-                  }
-                };
-
-                const toggleService = (id: string) => {
-                  const exists = c.services.find((s) => s.id === id);
-                  if (exists) {
-                    updateClient(c.id, { services: c.services.filter((s) => s.id !== id) });
-                  } else {
-                    const def = SERVICE_CATALOG.find((s) => s.id === id)!;
-                    const next: AgencyService = { id: def.id, name: def.name, price: def.price, cost: def.cost };
-                    updateClient(c.id, { services: [...c.services, next] });
-                  }
-                };
-
-                return (
-                  <tr key={c.id} className="border-b border-border/30 hover:bg-card/40">
-                    <td className="px-6 py-3">
-                      <Input
-                        value={c.name}
-                        onChange={(e) => updateName(e.target.value)}
-                        className="h-9 w-44 rounded-lg font-semibold"
-                      />
+                  return (
+                    <tr
+                      key={c.id}
+                      className={cn(
+                        "relative border-b border-border/30 transition-colors hover:bg-card/60",
+                        "before:absolute before:left-0 before:top-2 before:bottom-2 before:w-0.5 before:rounded-r",
+                        status.rowAccent,
+                      )}
+                    >
+                      <td className="px-5 py-2.5">
+                        <Input
+                          value={c.name}
+                          onChange={(e) => updateName(e.target.value)}
+                          className="h-8 w-44 rounded-md font-semibold"
+                        />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <button className="inline-flex max-w-[160px] items-center gap-1.5 rounded-md border border-border/60 bg-background/40 px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground">
+                              <span className="truncate">
+                                {c.services.length === 0 ? "0 услуг" : c.services.map((s) => s.name).join(", ")}
+                              </span>
+                              <Pencil className="h-3 w-3 shrink-0 opacity-60" />
+                            </button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-72 p-3" align="start">
+                            <div className="mb-2 text-xs font-semibold text-muted-foreground">Услуги</div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {SERVICE_CATALOG.map((s) => {
+                                const active = c.services.some((x) => x.id === s.id);
+                                return (
+                                  <button
+                                    key={s.id}
+                                    onClick={() => toggleService(s.id)}
+                                    className={cn(
+                                      "rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+                                      active
+                                        ? "border-success bg-success/15 text-success"
+                                        : "border-border/60 text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+                                    )}
+                                  >
+                                    {s.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <Input
+                          type="number"
+                          value={pay || ""}
+                          onChange={(e) => setTotalPay(Number(e.target.value) || 0)}
+                          placeholder="0"
+                          disabled={c.services.length === 0}
+                          className="ml-auto h-8 w-28 rounded-md text-right font-semibold tabular-nums"
+                        />
+                      </td>
+                      <td className="px-3 py-2.5 text-right">
+                        <Input
+                          type="number"
+                          value={cost || ""}
+                          onChange={(e) => setTotalCost(Number(e.target.value) || 0)}
+                          placeholder="0"
+                          disabled={c.services.length === 0}
+                          className="ml-auto h-8 w-28 rounded-md text-right font-semibold tabular-nums text-destructive"
+                        />
+                      </td>
+                      <td className={cn(
+                        "px-3 py-2.5 text-right font-semibold tabular-nums",
+                        profit >= 0 ? "text-success" : "text-destructive",
+                      )}>
+                        {fmtT(profit)}
+                      </td>
+                      <td className={cn(
+                        "px-3 py-2.5 text-right tabular-nums",
+                        margin >= 0 ? "text-foreground" : "text-destructive",
+                      )}>
+                        {Math.round(margin)}%
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <Input
+                          type="date"
+                          value={c.payDate ?? ""}
+                          onChange={(e) => updateClient(c.id, { payDate: e.target.value || undefined })}
+                          className="h-8 w-36 rounded-md"
+                        />
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <Select
+                          value={c.status}
+                          onValueChange={(v) => updateClient(c.id, { status: v as AgencyClientStatus })}
+                        >
+                          <SelectTrigger className={cn(
+                            "h-8 w-[150px] rounded-md border text-xs font-semibold",
+                            status.pill,
+                          )}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.entries(STATUS).map(([k, v]) => (
+                              <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <button
+                          onClick={() => removeClient(c.id)}
+                          className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                          aria-label="Удалить"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {filteredClients.length > 0 && (
+                  <tr className="bg-card/60 font-bold">
+                    <td className="px-5 py-3 text-xs uppercase tracking-wider text-muted-foreground">Итого</td>
+                    <td className="px-3 py-3 text-xs text-muted-foreground">
+                      {filteredClients.reduce((s, c) => s + c.services.length, 0)} услуг
                     </td>
-                    <td className="px-4 py-3">
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <button className="flex items-center gap-1.5 rounded-lg border border-border/60 bg-background/40 px-3 py-1.5 text-xs text-muted-foreground hover:text-foreground">
-                            {c.services.length === 0
-                              ? "0 услуг"
-                              : c.services.map((s) => s.name).join(", ")}
-                            <Pencil className="h-3 w-3 opacity-60" />
-                          </button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-72 p-3" align="start">
-                          <div className="text-xs font-semibold text-muted-foreground mb-2">Услуги</div>
-                          <div className="flex flex-wrap gap-2">
-                            {SERVICE_CATALOG.map((s) => {
-                              const active = c.services.some((x) => x.id === s.id);
-                              return (
-                                <button
-                                  key={s.id}
-                                  onClick={() => toggleService(s.id)}
-                                  className={cn(
-                                    "rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors",
-                                    active
-                                      ? "border-success bg-success/15 text-success"
-                                      : "border-border/60 text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
-                                  )}
-                                >
-                                  {s.name}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </PopoverContent>
-                      </Popover>
+                    <td className="px-3 py-3 text-right tabular-nums">
+                      {fmtT(filteredClients.reduce((s, c) => s + c.services.reduce((x, sv) => x + sv.price, 0), 0))}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <Input
-                        type="number"
-                        value={pay || ""}
-                        onChange={(e) => setTotalPay(Number(e.target.value) || 0)}
-                        placeholder="0"
-                        disabled={c.services.length === 0}
-                        className="h-9 ml-auto w-32 rounded-lg text-right font-semibold tabular-nums"
-                      />
+                    <td className="px-3 py-3 text-right tabular-nums text-destructive">
+                      {fmtT(filteredClients.reduce((s, c) => s + c.services.reduce((x, sv) => x + sv.cost, 0), 0))}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <Input
-                        type="number"
-                        value={cost || ""}
-                        onChange={(e) => setTotalCost(Number(e.target.value) || 0)}
-                        placeholder="0"
-                        disabled={c.services.length === 0}
-                        className="h-9 ml-auto w-32 rounded-lg text-right font-semibold tabular-nums text-destructive"
-                      />
+                    <td className="px-3 py-3 text-right tabular-nums text-success">
+                      {fmtT(filteredClients.reduce((s, c) => {
+                        const p = c.services.reduce((x, sv) => x + sv.price, 0);
+                        const co = c.services.reduce((x, sv) => x + sv.cost, 0);
+                        return s + (p - co);
+                      }, 0))}
                     </td>
-                    <td className="px-4 py-4 text-right font-semibold tabular-nums text-success">{fmtT(profit)}</td>
-                    <td className="px-4 py-4 text-right tabular-nums">{Math.round(margin)}%</td>
-                    <td className="px-4 py-3">
-                      <Input
-                        type="date"
-                        value={c.payDate ?? ""}
-                        onChange={(e) => updateClient(c.id, { payDate: e.target.value || undefined })}
-                        className="h-9 w-40 rounded-lg"
-                      />
-                    </td>
-                    <td className="px-4 py-4">
-                      <Select
-                        value={c.status}
-                        onValueChange={(v) => updateClient(c.id, { status: v as AgencyClientStatus })}
-                      >
-                        <SelectTrigger className={cn(
-                          "h-9 w-[160px] rounded-xl border text-xs font-semibold",
-                          STATUS[c.status].color,
-                        )}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(STATUS).map(([k, v]) => (
-                            <SelectItem key={k} value={k}>{v.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="px-4 py-4">
-                      <button
-                        onClick={() => removeClient(c.id)}
-                        className="text-muted-foreground transition-colors hover:text-destructive"
-                        aria-label="Удалить"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </td>
+                    <td className="px-3 py-3" />
+                    <td className="px-3 py-3" />
+                    <td className="px-3 py-3" />
+                    <td className="px-3 py-3" />
                   </tr>
-                );
-              })}
-              {clients.length > 0 && (
-                <tr className="bg-card/60 font-bold">
-                  <td className="px-6 py-4">Итого</td>
-                  <td className="px-4 py-4 text-muted-foreground">
-                    {clients.reduce((s, c) => s + c.services.length, 0)} услуг
-                  </td>
-                  <td className="px-4 py-4 text-right tabular-nums">{fmtT(totals.grossRevenue)}</td>
-                  <td className="px-4 py-4 text-right tabular-nums text-destructive">{fmtT(totals.totalCost)}</td>
-                  <td className="px-4 py-4 text-right tabular-nums text-success">{fmtT(totals.grossRevenue - totals.totalCost)}</td>
-                  <td className="px-4 py-4 text-right tabular-nums">
-                    {totals.grossRevenue > 0
-                      ? `${Math.round(((totals.grossRevenue - totals.totalCost) / totals.grossRevenue) * 100)}%`
-                      : "0%"}
-                  </td>
-                  <td className="px-4 py-4" />
-                  <td className="px-4 py-4" />
-                  <td className="px-4 py-4" />
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       <NewClientDialog
@@ -308,6 +439,49 @@ const AgencyAnalytics = () => {
         onAdd={(c) => addClient(c)}
       />
     </>
+  );
+};
+
+function pluralClient(n: number) {
+  const m = n % 10;
+  if (n % 100 >= 11 && n % 100 <= 14) return "клиентов";
+  if (m === 1) return "клиент";
+  if (m >= 2 && m <= 4) return "клиента";
+  return "клиентов";
+}
+
+interface FilterChipProps {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  count: number;
+  icon: typeof Users;
+  tone: AgencyClientStatus | "default";
+}
+
+const FilterChip = ({ active, onClick, label, count, icon: Icon, tone }: FilterChipProps) => {
+  const toneClass = tone === "default"
+    ? "border-border/60 bg-card/60 text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
+    : STATUS[tone].chip;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1 text-xs font-semibold transition-all",
+        toneClass,
+        active && "ring-2 ring-offset-2 ring-offset-background",
+        active && tone === "default" && "ring-primary/40",
+        active && tone === "paid" && "ring-success/40",
+        active && tone === "waiting" && "ring-warning/40",
+        active && tone === "overdue" && "ring-destructive/40",
+        active && tone === "cancelled" && "ring-border",
+      )}
+    >
+      <Icon className="h-3 w-3" />
+      {label}
+      <span className="rounded-md bg-background/40 px-1.5 text-[10px] tabular-nums">{count}</span>
+    </button>
   );
 };
 
