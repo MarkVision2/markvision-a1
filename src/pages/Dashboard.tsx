@@ -157,7 +157,7 @@ const Dashboard = () => {
 
       {/* Block 3 — Funnel */}
       <SectionTitle>Путь от рекламы до оплаты</SectionTitle>
-      {totals && <EnhancedFunnel totals={totals} />}
+      {totals && <EnhancedFunnel totals={totals} periodLabel={rangeLabel} />}
 
       {/* Block 4 — Channels */}
       <SectionTitle>Источники заявок</SectionTitle>
