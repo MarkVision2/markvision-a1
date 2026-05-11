@@ -50,7 +50,7 @@ const marketingOsIcon = Sparkles;
 
 const sales: NavItem[] = [
   { title: "CRM", url: "/crm", icon: Users },
-  { title: "История звонков", url: "/calls", icon: PhoneCall },
+  { title: "AI РОП", url: "/sales-ai", icon: PhoneCall },
 ];
 
 const analytics: NavItem[] = [

@@ -21,6 +21,7 @@ const Dashboard = lazy(routeImports.Dashboard);
 const Metrics = lazy(routeImports.Metrics);
 const Crm = lazy(routeImports.Crm);
 const CallsHistory = lazy(routeImports.Calls);
+const SalesAI = lazy(routeImports.SalesAI);
 const Analytics = lazy(routeImports.Analytics);
 const Finance = lazy(routeImports.Finance);
 const Reports = lazy(routeImports.Reports);
@@ -68,6 +69,7 @@ const App = () => (
               <Route path="/ads" element={<RequireAuth><AppLayout><Ads /></AppLayout></RequireAuth>} />
               <Route path="/crm" element={<RequireAuth><AppLayout><Crm /></AppLayout></RequireAuth>} />
               <Route path="/calls" element={<RequireAuth><AppLayout><CallsHistory /></AppLayout></RequireAuth>} />
+              <Route path="/sales-ai" element={<RequireAuth><AppLayout><SalesAI /></AppLayout></RequireAuth>} />
               <Route path="/analytics" element={<RequireAuth><AppLayout><Analytics /></AppLayout></RequireAuth>} />
               <Route path="/finance" element={<RequireAuth><AppLayout><Finance /></AppLayout></RequireAuth>} />
               <Route path="/reports" element={<RequireAuth><AppLayout><Reports /></AppLayout></RequireAuth>} />
