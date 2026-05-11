@@ -604,19 +604,22 @@ const CreateStep3 = () => {
           // Routing-ключ для n8n Switch-ноды. ДОЛЖЕН совпадать с именами веток
           // в воркфлоу: insta-carousel, fb-target, youtube, events, google ads,
           // neuro-photo, reels-cover, instagram-stories, banner, marketplace, logo.
+          // Значения должны 1-в-1 совпадать с именами веток в n8n Switch.
+          // Сверено по рабочему HTML-фронту CLONY.AI (см. конфиг WEBHOOK_URL там же).
           const ROUTE_MAP: Record<string, string> = {
             "facebook-ads": "fb-target",
-            "google-ads": "google ads",
+            "google-ads": "google-ads",
             "marketplace": "marketplace",
             "insta-carousel": "insta-carousel",
-            "reels-cover": "reels-cover",
+            "reels-cover": "reels",
             "stories": "instagram-stories",
             "youtube-thumb": "youtube",
             "web-banner": "banner",
             "neuro-photo": "neuro-photo",
+            "events": "events",
           };
           const typeId = (contentType?.id ?? (prevState.typeId as string | undefined) ?? "") as string;
-          const route = ROUTE_MAP[typeId] ?? "Fallback";
+          const route = ROUTE_MAP[typeId] ?? typeId;
           const anglesPayload = isNeuroPhoto
             ? selectedAngles.map((aid) => {
                 const a = ANGLES.find((x) => x.id === aid)!;
@@ -672,13 +675,21 @@ const CreateStep3 = () => {
           const flatForN8n = {
             // routing ключ для Switch1 (читает body.content_type)
             content_type: route,
-            // основной brief — это поле читает каждая chainLlm-нода как "ТЗ".
-            // Сюда идёт finalTechnicalBrief — полная техзадача со стилевыми
-            // инструкциями и пользовательским запросом, а не сырой текст.
-            prompt: finalTechnicalBrief,
-            // имя продукта / описание / ссылка — отдельные поля для разных веток
+            // ВАЖНО: в body.prompt идёт СЫРОЕ пользовательское ТЗ, как в рабочем
+            // HTML-фронте CLONY.AI. n8n-нода сама добавляет инструкции — если
+            // подсунуть готовый стилевой бриф, AI начинает галлюцинировать
+            // (кейс "часы вместо мир без границ"). Структурный бриф уходит
+            // отдельным полем final_prompt — пусть берёт тот, кому нужен.
+            prompt: brief.prompt,
+            final_prompt: finalTechnicalBrief,
+            // имя продукта / описание / ссылка — отдельные поля для разных веток.
+            // product_name — основной ключ для маркетплейс-ветки в n8n (HTML
+            // шлёт именно его). name оставляем как алиас для обратной совместимости.
+            product_name: brief.productName || "",
             name: brief.productName || "",
             description: brief.description || "",
+            main_description: brief.description || "",
+            additional_prompt: brief.extraInstructions || "",
             link: brief.mode === "link" ? brief.linkUrl || "" : "",
             // Публичные URL фото, залитых в Supabase Storage (bucket
             // content-factory-uploads). n8n берёт первое как референс.
@@ -690,10 +701,13 @@ const CreateStep3 = () => {
             language: (prevState.lang as string | undefined) ?? "ru",
             aspect: (prevState.aspect as string | undefined) ?? "1:1",
             slides: slidesCount,
-            image_count: slidesCount,
+            ab_test_count: slidesCount,
+            image_count: imageUrls.length,
             // niche / cta — содержательные сведения о продукте для fb-target.
             fb_niche: nicheBits,
-            ctas: brief.extraInstructions || "",
+            // ctas — массив, как в рабочем HTML-фронте (n8n .join'ит/итерирует).
+            // Если у нас нет UI-выбора CTA — отдаём пустой массив, а не строку.
+            ctas: [] as string[],
             username: "",
             platform: "web",
             // tracking
@@ -774,11 +788,15 @@ const CreateStep3 = () => {
             },
           };
 
-          // Шлём JSON. Фото уже залиты в Supabase Storage и присутствуют
-          // в payload.image_urls. n8n при multipart клал бы всё в
-          // body.payload как строку, и body.content_type / .prompt были бы
-          // undefined — AI сгенерил бы шляпу вместо ТЗ.
-          const data = await postContentFactory(payload);
+          // КРИТИЧНО: n8n-ноды читают ПЛОСКИЕ ключи (body.content_type,
+          // body.prompt, body.product_name и т.д.) — это поведение синхронизировано
+          // с рабочим HTML-фронтом CLONY.AI. Раньше тут шёл только `payload` без
+          // content_type → Switch-нода всегда валилась в Fallback и AI генерил
+          // мусор. Теперь сначала кладём flatForN8n (плоский контракт n8n),
+          // затем payload как debug-обёртку поверх — но плоские ключи переопределить
+          // нельзя, иначе вернётся старый баг.
+          const finalBody = { ...payload, ...flatForN8n };
+          const data = await postContentFactory(finalBody);
           return {
             styleId: styleDef.id,
             styleLabel: styleDef.label,
