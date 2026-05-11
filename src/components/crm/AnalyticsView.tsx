@@ -5,15 +5,18 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { StageMetrics, RejectStat } from "@/hooks/useCrmAnalytics";
 import { monthKey, useRevenuePlan } from "@/hooks/useRevenuePlan";
+import type { Lead } from "@/types/crm";
+import { QualityBlock, QualityFunnel } from "@/components/crm/QualityBlock";
 
 interface Props {
   stageMetrics: StageMetrics[];
   rejectStats: RejectStat[];
   forecast: number;
   actual: number;
+  leads?: readonly Lead[];
 }
 
-export function AnalyticsView({ stageMetrics, rejectStats, forecast, actual }: Props) {
+export function AnalyticsView({ stageMetrics, rejectStats, forecast, actual, leads = [] }: Props) {
   const { store, setForMonth } = useRevenuePlan();
   const mk = monthKey();
   const plan = store[mk] ?? 0;
@@ -27,6 +30,17 @@ export function AnalyticsView({ stageMetrics, rejectStats, forecast, actual }: P
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+      {leads.length > 0 && (
+        <>
+          <div className="lg:col-span-2">
+            <QualityBlock leads={leads} />
+          </div>
+          <div className="lg:col-span-2">
+            <QualityFunnel leads={leads} />
+          </div>
+        </>
+      )}
+
       {/* Funnel */}
       <div className="rounded-2xl border border-border/60 bg-card/40 p-4">
         <div className="flex items-center gap-2 text-sm font-semibold">

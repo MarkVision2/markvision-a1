@@ -29,6 +29,7 @@ import { CrmFilters, type CrmFilterState } from "@/components/crm/CrmFilters";
 import { RejectReasonDialog } from "@/components/crm/RejectReasonDialog";
 import { ManagersView } from "@/components/crm/ManagersView";
 import { AnalyticsView } from "@/components/crm/AnalyticsView";
+import { QualityBlock } from "@/components/crm/QualityBlock";
 import { AutomationsSettings } from "@/components/crm/AutomationsSettings";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -322,6 +323,7 @@ const Crm = () => {
             rejectStats={analytics.rejectStats}
             forecast={analytics.forecast}
             actual={analytics.actual}
+            leads={leads}
           />
         )}
 

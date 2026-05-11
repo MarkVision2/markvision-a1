@@ -14,6 +14,8 @@ import { CrmFunnel } from "@/components/dashboard/CrmFunnel";
 import { RevenueSpendChart } from "@/components/dashboard/RevenueSpendChart";
 import { UnitEconomicsCard } from "@/components/dashboard/UnitEconomicsCard";
 import { getPresetRange, useDashboardData, type PeriodPreset } from "@/hooks/useDashboardData";
+import { useLeadsLite } from "@/hooks/useLeadsLite";
+import { QualityBlock, QualityFunnel } from "@/components/crm/QualityBlock";
 import { deltaPct, type ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +38,11 @@ const Dashboard = () => {
 
   const { data, loading, error, alerts, crmFunnel, channels, timeseries } =
     useDashboardData("all", range, comparing);
+  const { leads: liteLeads } = useLeadsLite();
+  const periodLeads = useMemo(() => liteLeads.filter((l) => {
+    const t = new Date(l.createdAt).getTime();
+    return t >= range.from.getTime() && t <= range.to.getTime();
+  }), [liteLeads, range]);
 
   const totals = data?.totals;
   const prev = data?.prev;
@@ -164,6 +171,13 @@ const Dashboard = () => {
       {/* Block 6 — CRM funnel */}
       <SectionTitle accent="bg-success">CRM: путь клиента</SectionTitle>
       <CrmFunnel data={crmFunnel} />
+
+      {/* Block 6.1 — Quality + Funnel: lead → diagnosis → payment */}
+      <SectionTitle accent="bg-warning">Качество лидов</SectionTitle>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        <QualityBlock leads={periodLeads} />
+        <QualityFunnel leads={periodLeads} />
+      </div>
 
       {/* Block 7 — Charts */}
       <SectionTitle>Динамика</SectionTitle>

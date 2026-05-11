@@ -30,6 +30,8 @@ export interface LeadLite {
   firstResponseAt: string | null;
   assigneeId: string | null;
   paid: boolean;
+  aiScore: number;
+  scoreLabel: string | null;
 }
 
 export function useLeadsLite() {
@@ -41,7 +43,7 @@ export function useLeadsLite() {
     let leadsQuery = supabase
       .from("leads")
       .select(
-        "id,source,channel,referrer,utm,cabinet_id,stage_id,amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id",
+        "id,source,channel,referrer,utm,cabinet_id,stage_id,amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,score_label",
       )
       .order("created_at", { ascending: false })
       .limit(2000);
@@ -70,6 +72,8 @@ export function useLeadsLite() {
       firstResponseAt: (r.first_response_at as string | null) ?? null,
       assigneeId: (r.assigned_to as string | null) ?? null,
       paid: Boolean(r.paid),
+      aiScore: Number((r as { ai_score?: number | null }).ai_score ?? 0),
+      scoreLabel: ((r as { score_label?: string | null }).score_label ?? null) as string | null,
     }));
     setLeads(list);
     setLoading(false);

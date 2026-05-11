@@ -235,9 +235,9 @@ const Analytics = () => {
     });
   }, [filteredLeads, spend, adsLeads]);
 
-  // UTM campaigns table
+  // UTM campaigns table + AI quality aggregates
   const utmRows = useMemo<UtmRow[]>(() => {
-    const map = new Map<string, UtmRow>();
+    const map = new Map<string, UtmRow & { _scoreSum: number; _scoreCount: number }>();
     for (const l of filteredLeads) {
       const u = l.utm ?? {};
       if (!u.source && !u.campaign && !u.medium) continue;
@@ -247,15 +247,31 @@ const Analytics = () => {
         campaign: u.campaign ?? "",
         medium: u.medium ?? "",
         leads: 0, sales: 0, revenue: 0,
+        avgScore: 0, hotCount: 0, paidCount: 0,
+        _scoreSum: 0, _scoreCount: 0,
       };
       cur.leads += 1;
       if (l.stageKey === "paid") {
         cur.sales += 1;
         cur.revenue += l.amount || 0;
+        cur.paidCount = (cur.paidCount ?? 0) + 1;
+      }
+      const score = Number((l as { aiScore?: number }).aiScore ?? 0);
+      if (score > 0) {
+        cur._scoreSum += score;
+        cur._scoreCount += 1;
+        if (score >= 75 || l.stageKey === "scheduled" || l.stageKey === "diagnosed") {
+          cur.hotCount = (cur.hotCount ?? 0) + 1;
+        }
       }
       map.set(key, cur);
     }
-    return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue || b.leads - a.leads);
+    return Array.from(map.values())
+      .map(({ _scoreSum, _scoreCount, ...r }) => ({
+        ...r,
+        avgScore: _scoreCount > 0 ? _scoreSum / _scoreCount : 0,
+      }))
+      .sort((a, b) => b.revenue - a.revenue || (b.avgScore ?? 0) - (a.avgScore ?? 0) || b.leads - a.leads);
   }, [filteredLeads]);
 
   // Trend data: per day

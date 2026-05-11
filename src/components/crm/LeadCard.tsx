@@ -24,18 +24,12 @@ function timeAgo(iso: string) {
   return `${d} д`;
 }
 
+import { classifyQuality, QUALITY_LABEL, QUALITY_BADGE_CLS } from "@/lib/quality";
+
 function scoreColor(score: number) {
   if (score >= 75) return "text-success";
   if (score >= 50) return "text-warning";
   return "text-muted-foreground";
-}
-
-function qualityLabel(score: number, stageId?: string): { label: string; cls: string } {
-  if (stageId === "paid") return { label: "Оплатил", cls: "bg-success/15 text-success" };
-  if (stageId === "scheduled" || score >= 75) return { label: "Горячий", cls: "bg-destructive/15 text-destructive" };
-  if (score >= 50) return { label: "Тёплый", cls: "bg-warning/15 text-warning" };
-  if (score > 0) return { label: "Холодный", cls: "bg-muted text-muted-foreground" };
-  return { label: "Нет данных", cls: "bg-muted/50 text-muted-foreground" };
 }
 
 function LeadCardImpl({ lead, assigneeName, highlightSla, onClick, onTogglePin }: LeadCardProps) {
@@ -100,13 +94,13 @@ function LeadCardImpl({ lead, assigneeName, highlightSla, onClick, onTogglePin }
             {lead.aiScore}
           </span>
           {(() => {
-            const q = qualityLabel(lead.aiScore, lead.stageId);
+            const cat = classifyQuality(lead.aiScore, lead.stageId);
             return (
               <span
-                className={cn("rounded-md px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide", q.cls)}
+                className={cn("rounded-md px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide", QUALITY_BADGE_CLS[cat])}
                 title="Категория качества"
               >
-                {q.label}
+                {QUALITY_LABEL[cat]}
               </span>
             );
           })()}
