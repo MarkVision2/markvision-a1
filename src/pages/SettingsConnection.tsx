@@ -465,9 +465,8 @@ function WebhookCard() {
 
 export function SiteIntakeCard() {
   const { active, rotateIntakeToken } = useProjectsStore();
-  const base = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/lead-intake`;
+  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/lead-intake`;
   const token = active?.intakeToken ?? "";
-  const url = token ? `${base}/t/${token}` : base;
   const projectName = active?.name ?? "—";
   const [testing, setTesting] = useState(false);
   const [rotating, setRotating] = useState(false);
@@ -483,6 +482,7 @@ export function SiteIntakeCard() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          token,
           name: "Тестовая заявка",
           phone: `+7700${Math.floor(1000000 + Math.random() * 8999999)}`,
           email: "test@example.com",
@@ -543,6 +543,9 @@ export function SiteIntakeCard() {
 
 <script>
 (function () {
+  // Токен проекта — НЕ удалять, привязывает заявки к нужному CRM-проекту.
+  var PROJECT_TOKEN = '${token}';
+  var WEBHOOK_URL = '${url}';
   var form = document.getElementById('lead-form');
   if (!form) return;
   // Подхватываем UTM из URL и сохраняем между страницами
@@ -557,11 +560,12 @@ export function SiteIntakeCard() {
     ['utm_source','utm_medium','utm_campaign','utm_content','utm_term'].forEach(function (k) {
       try { var v = sessionStorage.getItem(k); if (v && !payload[k]) payload[k] = v; } catch(e) {}
     });
+    payload.token = PROJECT_TOKEN;
     payload.referrer = document.referrer || '';
     payload.landing_url = location.href;
     payload.source = payload.source || 'site';
     try {
-      var r = await fetch('${url}', {
+      var r = await fetch(WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -577,15 +581,19 @@ export function SiteIntakeCard() {
 URL: ${url}
 Метод: POST (JSON)
 Проект: ${projectName}
-Готово: имя, телефон, email, комментарий и UTM-метки сохранятся автоматически.`;
+
+ВАЖНО: добавь в форму скрытое поле:
+  Имя поля: token
+  Значение: ${token}
+
+Без этого поля заявка не привяжется к проекту. Также сохранятся имя, телефон, email, комментарий и UTM-метки.`;
 
   return (
     <Card className="mt-6 border-border bg-card">
       <CardHeader>
         <CardTitle className="text-lg">Webhook для заявок с сайта</CardTitle>
         <CardDescription>
-          Привязан к активному проекту: <strong>{projectName}</strong>. Каждая заявка попадёт в CRM именно этого проекта, в первый этап («Новая»).
-          Один URL можно использовать на нескольких сайтах одного проекта. Чтобы привязать к другому проекту — переключите проект в шапке.
+          Активный проект: <strong>{projectName}</strong>. На сайте используйте <strong>URL вебхука</strong> + добавьте <strong>скрытое поле <code>token</code></strong> со значением токена ниже — это привяжет заявку к нужному проекту. Заявка попадёт в этап «Новая».
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -629,7 +637,32 @@ URL: ${url}
           </div>
           <p className="mt-1.5 text-[11px] text-muted-foreground">
             «Отправить тест» создаст одну тестовую заявку в CRM текущего проекта.
-            «Перевыпустить» меняет токен — после этого старый URL <strong>перестаёт работать</strong> на всех сайтах.
+            «Перевыпустить» меняет токен — после этого старый токен <strong>перестаёт работать</strong> на всех сайтах.
+          </p>
+        </div>
+
+        <div>
+          <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+            Токен проекта (добавьте в форму как скрытое поле <code>token</code>)
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 break-all rounded-md bg-muted px-3 py-2 text-xs">
+              {token || "—"}
+            </code>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={!token}
+              onClick={() => {
+                navigator.clipboard.writeText(token);
+                toast.success("Токен скопирован");
+              }}
+            >
+              Копировать
+            </Button>
+          </div>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            Без этого токена заявка попадёт в общий пул без привязки к проекту.
           </p>
         </div>
 
