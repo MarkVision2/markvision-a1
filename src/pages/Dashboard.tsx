@@ -9,7 +9,6 @@ import { MoneyKpiCard } from "@/components/dashboard/MoneyKpiCard";
 import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
 import { EnhancedFunnel } from "@/components/dashboard/EnhancedFunnel";
 import { ChannelsTable } from "@/components/dashboard/ChannelsTable";
-
 import { CrmFunnel } from "@/components/dashboard/CrmFunnel";
 import { RevenueSpendChart } from "@/components/dashboard/RevenueSpendChart";
 import { UnitEconomicsCard } from "@/components/dashboard/UnitEconomicsCard";
@@ -126,7 +125,7 @@ const Dashboard = () => {
         />
         <MoneyKpiCard
           icon={Repeat}
-          label="ROMI"
+          label="Окупаемость рекламы"
           value={
             <span className={cn((totals?.romi ?? 0) >= 0 ? "text-success" : "text-destructive")}>
               {totals && totals.spend > 0 ? `${totals.romi >= 0 ? "+" : ""}${Math.round(totals.romi)}%` : "—"}
@@ -137,7 +136,7 @@ const Dashboard = () => {
         />
         <MoneyKpiCard
           icon={Target}
-          label="CAC"
+          label="Стоимость клиента"
           value={totals && totals.cac > 0 ? fmtTenge(totals.cac) : "—"}
           delta={deltaPct(totals?.cac ?? 0, prev?.cac)}
           comparing={comparing}
@@ -153,15 +152,15 @@ const Dashboard = () => {
       </div>
 
       {/* Block 2 — Alerts */}
-      <SectionTitle accent="bg-warning">Алерты и инсайты</SectionTitle>
+      <SectionTitle accent="bg-warning">Что требует внимания</SectionTitle>
       <AlertsPanel alerts={alerts} />
 
       {/* Block 3 — Funnel */}
-      <SectionTitle>Воронка конверсии</SectionTitle>
+      <SectionTitle>Путь от рекламы до оплаты</SectionTitle>
       {totals && <EnhancedFunnel totals={totals} />}
 
       {/* Block 4 — Channels */}
-      <SectionTitle>Каналы трафика</SectionTitle>
+      <SectionTitle>Источники заявок</SectionTitle>
       <ChannelsTable
         channels={channels}
         totalSpend={totals?.spend ?? 0}
@@ -169,7 +168,7 @@ const Dashboard = () => {
       />
 
       {/* Block 6 — CRM funnel */}
-      <SectionTitle accent="bg-success">CRM: путь клиента</SectionTitle>
+      <SectionTitle accent="bg-success">CRM: движение заявок</SectionTitle>
       <CrmFunnel data={crmFunnel} />
 
       {/* Block 6.1 — Quality + Funnel: lead → diagnosis → payment */}
@@ -184,21 +183,21 @@ const Dashboard = () => {
       <RevenueSpendChart data={timeseries} />
 
       {/* Block 8 — Unit economics */}
-      <SectionTitle accent="bg-primary">Юнит-экономика</SectionTitle>
+      <SectionTitle accent="bg-primary">Окупаемость и стоимость результата</SectionTitle>
       {totals && <UnitEconomicsCard totals={totals} />}
 
       <div className="mt-12 grid grid-cols-2 gap-3 text-[11px] text-muted-foreground sm:grid-cols-4">
         <div>
-          Лидов всего: <span className="font-semibold text-foreground">{fmtNum(totals?.totalLeads ?? 0)}</span>
+          Заявок всего: <span className="font-semibold text-foreground">{fmtNum(totals?.totalLeads ?? 0)}</span>
         </div>
         <div>
           Кликов: <span className="font-semibold text-foreground">{fmtNum(totals?.clicks ?? 0)}</span>
         </div>
         <div>
-          CTR: <span className="font-semibold text-foreground">{totals && totals.ctr > 0 ? `${totals.ctr.toFixed(2)}%` : "—"}</span>
+          Клики из показов: <span className="font-semibold text-foreground">{totals && totals.ctr > 0 ? `${totals.ctr.toFixed(2)}%` : "—"}</span>
         </div>
         <div>
-          CPL: <span className="font-semibold text-foreground">{totals && totals.cpl > 0 ? fmtTenge(totals.cpl) : "—"}</span>
+          Стоимость заявки: <span className="font-semibold text-foreground">{totals && totals.cpl > 0 ? fmtTenge(totals.cpl) : "—"}</span>
         </div>
       </div>
     </main>

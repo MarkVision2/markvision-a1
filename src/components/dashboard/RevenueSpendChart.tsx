@@ -27,9 +27,9 @@ const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 export function RevenueSpendChart({ data }: Props) {
   const [mode, setMode] = useState<Mode>("money");
   const tabs: { id: Mode; label: string }[] = [
-    { id: "money", label: "Расход vs Выручка" },
-    { id: "leads", label: "Лиды" },
-    { id: "cpl", label: "CPL" },
+    { id: "money", label: "Расход и выручка" },
+    { id: "leads", label: "Заявки" },
+    { id: "cpl", label: "Стоимость заявки" },
   ];
 
   return (
@@ -72,8 +72,8 @@ export function RevenueSpendChart({ data }: Props) {
               }}
               labelFormatter={fmtShort}
               formatter={(value: number, name: string) => {
-                if (name === "Лиды") return [Math.round(value), name];
-                if (name === "CPL") return [fmtTenge(value), name];
+                if (name === "Заявки") return [Math.round(value), name];
+                if (name === "Стоимость заявки") return [fmtTenge(value), name];
                 return [fmtTenge(value), name];
               }}
             />
@@ -85,10 +85,10 @@ export function RevenueSpendChart({ data }: Props) {
               </>
             )}
             {mode === "leads" && (
-              <Bar dataKey="leads" name="Лиды" fill="hsl(var(--primary) / 0.7)" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="leads" name="Заявки" fill="hsl(var(--primary) / 0.7)" radius={[4, 4, 0, 0]} />
             )}
             {mode === "cpl" && (
-              <Line type="monotone" dataKey="cpl" name="CPL" stroke="hsl(var(--warning))" strokeWidth={2.5} dot={{ r: 3 }} />
+              <Line type="monotone" dataKey="cpl" name="Стоимость заявки" stroke="hsl(var(--warning))" strokeWidth={2.5} dot={{ r: 3 }} />
             )}
           </ComposedChart>
         </ResponsiveContainer>

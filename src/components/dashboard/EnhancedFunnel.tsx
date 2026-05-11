@@ -13,16 +13,10 @@ interface Props {
 export function EnhancedFunnel({ totals }: Props) {
   const steps = [
     { id: "imp", label: "Показы", value: totals.impressions, cost: null as number | null, costLabel: "" },
-    {
-      id: "clk",
-      label: "Клики",
-      value: totals.clicks,
-      cost: totals.clicks > 0 ? totals.spend / totals.clicks : 0,
-      costLabel: "CPC",
-    },
-    { id: "led", label: "Лиды", value: totals.totalLeads, cost: totals.cpl, costLabel: "CPL" },
-    { id: "vis", label: "Визиты", value: totals.visits, cost: totals.cpv, costLabel: "CPV" },
-    { id: "sal", label: "Продажи", value: totals.sales, cost: totals.cac, costLabel: "CPA" },
+    { id: "clk", label: "Клики", value: totals.clicks, cost: totals.clicks > 0 ? totals.spend / totals.clicks : 0, costLabel: "Цена клика" },
+    { id: "led", label: "Заявки", value: totals.totalLeads, cost: totals.cpl, costLabel: "Цена заявки" },
+    { id: "vis", label: "Диагностики", value: totals.visits, cost: totals.cpv, costLabel: "Цена диагностики" },
+    { id: "sal", label: "Оплаты", value: totals.sales, cost: totals.cac, costLabel: "Цена клиента" },
   ];
 
   const max = Math.max(...steps.map((s) => s.value), 1);
@@ -53,13 +47,13 @@ export function EnhancedFunnel({ totals }: Props) {
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-success" />
           <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            Воронка с конверсиями
+            Путь клиента
           </span>
         </div>
         {worstIdx > 0 && (
           <span className="flex items-center gap-1.5 rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-1 text-[10px] font-bold text-destructive">
             <AlertTriangle className="h-3 w-3" />
-            Узкое место: {steps[worstIdx - 1].label} → {steps[worstIdx].label}
+            Теряем больше всего: {steps[worstIdx - 1].label} → {steps[worstIdx].label}
           </span>
         )}
       </div>

@@ -21,7 +21,7 @@ export function ChannelsTable({ channels, totalSpend, totalLeads }: Props) {
   if (channels.length === 0) {
     return (
       <div className="rounded-2xl border border-border/60 bg-card/60 p-6 text-center text-sm text-muted-foreground">
-        Нет данных по каналам. Добавьте лидов в CRM с указанием источника.
+        Пока нет данных по источникам. Когда заявки попадут в CRM с источником, здесь будет видно, откуда приходят клиенты.
       </div>
     );
   }
@@ -40,12 +40,12 @@ export function ChannelsTable({ channels, totalSpend, totalLeads }: Props) {
         <table className="w-full text-sm">
           <thead className="bg-secondary/30 text-[10px] uppercase tracking-wider text-muted-foreground">
             <tr>
-              <th className="px-4 py-3 text-left font-semibold">Канал</th>
+              <th className="px-4 py-3 text-left font-semibold">Источник</th>
               <th className="px-4 py-3 text-right font-semibold">Расход*</th>
-              <th className="px-4 py-3 text-right font-semibold">Лиды</th>
-              <th className="px-4 py-3 text-right font-semibold">Продажи</th>
-              <th className="px-4 py-3 text-right font-semibold">CPL</th>
-              <th className="px-4 py-3 text-right font-semibold">ROMI</th>
+              <th className="px-4 py-3 text-right font-semibold">Заявки</th>
+              <th className="px-4 py-3 text-right font-semibold">Оплаты</th>
+              <th className="px-4 py-3 text-right font-semibold">Цена заявки</th>
+              <th className="px-4 py-3 text-right font-semibold">Окупаемость</th>
             </tr>
           </thead>
           <tbody>
@@ -78,7 +78,7 @@ export function ChannelsTable({ channels, totalSpend, totalLeads }: Props) {
         </table>
       </div>
       <div className="border-t border-border/30 bg-secondary/20 px-4 py-2 text-[10px] text-muted-foreground">
-        * Расход распределён пропорционально доле лидов канала. Точный расход появится после привязки UTM к рекламным кабинетам.
+        * Расход распределён пропорционально доле заявок источника. Точный расход появится после привязки UTM к рекламным кабинетам.
       </div>
     </div>
   );
