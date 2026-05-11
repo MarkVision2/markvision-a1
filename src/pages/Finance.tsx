@@ -18,7 +18,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Slider } from "@/components/ui/slider";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
@@ -89,33 +88,6 @@ const SmartInput = ({
     </div>
   );
 };
-
-const CrSlider = ({
-  icon: Icon, label, value, onChange,
-}: {
-  icon: React.ElementType; label: string; value: number; onChange: (v: number) => void;
-}) => (
-  <div className="rounded-2xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-success/30">
-    <div className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
-      <span className="flex items-center gap-2">
-        <Icon className="h-3.5 w-3.5" />
-        {label}
-      </span>
-      <span className="rounded-md bg-success/15 px-2 py-0.5 text-sm font-bold tabular-nums text-success">
-        {value}%
-      </span>
-    </div>
-    <Slider
-      className="mt-3"
-      min={0} max={100} step={1}
-      value={[value]}
-      onValueChange={(v) => onChange(v[0] ?? 0)}
-    />
-    <div className="mt-1 flex justify-between text-[10px] text-muted-foreground/70">
-      <span>0%</span><span>50%</span><span>100%</span>
-    </div>
-  </div>
-);
 
 interface FunnelStepProps {
   icon: React.ElementType;
@@ -281,13 +253,17 @@ const Finance = () => {
               hint="Цена одной заявки"
               value={cpl} onChange={setCpl} suffix="₸"
             />
-            <CrSlider
+            <SmartInput
               icon={Percent} label="CR лид → диагностика"
-              value={crLeadVisit} onChange={setCrLeadVisit}
+              hint="Какой процент лидов доходит до диагностики"
+              value={crLeadVisit} onChange={(v) => setCrLeadVisit(Math.min(100, Math.max(0, v)))}
+              suffix="%"
             />
-            <CrSlider
+            <SmartInput
               icon={Percent} label="CR диагностика → продажа"
-              value={crVisitSale} onChange={setCrVisitSale}
+              hint="Какой процент диагностик закрывается в продажу"
+              value={crVisitSale} onChange={(v) => setCrVisitSale(Math.min(100, Math.max(0, v)))}
+              suffix="%"
             />
             <SmartInput
               icon={Receipt} label="Средний чек"
