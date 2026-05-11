@@ -415,7 +415,38 @@ export function useCrmStore() {
     const sid = stageUuid(stageKey);
     if (!sid) return;
     await supabase.from("leads").update({ stage_id: sid }).eq("id", leadId);
-  }, [stageUuid]);
+
+    // Параллельно дёргаем CAPI на нового Supabase — он сам решит, слать ли Schedule/Purchase в Meta.
+    try {
+      const NEW_URL = (import.meta.env.VITE_CLIENT_SUPABASE_URL as string | undefined) || "";
+      const NEW_KEY = (import.meta.env.VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY as string | undefined) || "";
+      if (!NEW_URL || !NEW_KEY) return;
+      const lead = leads.find((l) => l.id === leadId);
+      void fetch(`${NEW_URL}/functions/v1/crm-stage-capi`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${NEW_KEY}`,
+          apikey: NEW_KEY,
+        },
+        body: JSON.stringify({
+          lead_id: leadId,
+          stage_key: stageKey,
+          cabinet_id: lead?.cabinetId,
+          event_value: lead?.amount && Number(lead.amount) > 0 ? Number(lead.amount) : undefined,
+          event_source_url: lead?.landingUrl,
+          user_data: {
+            phone: lead?.phone,
+            email: lead?.email,
+            external_id: leadId,
+            fbc: (lead?.utm as { fbc?: string } | undefined)?.fbc,
+            fbp: (lead?.utm as { fbp?: string } | undefined)?.fbp,
+          },
+        }),
+        keepalive: true,
+      }).catch(() => { /* fire-and-forget */ });
+    } catch { /* silent */ }
+  }, [stageUuid, leads]);
 
   // ---------- chats ----------
   const sendMessage = useCallback(async (

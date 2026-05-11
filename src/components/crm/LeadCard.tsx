@@ -30,6 +30,14 @@ function scoreColor(score: number) {
   return "text-muted-foreground";
 }
 
+function qualityLabel(score: number, stageId?: string): { label: string; cls: string } {
+  if (stageId === "paid") return { label: "Оплатил", cls: "bg-success/15 text-success" };
+  if (stageId === "scheduled" || score >= 75) return { label: "Горячий", cls: "bg-destructive/15 text-destructive" };
+  if (score >= 50) return { label: "Тёплый", cls: "bg-warning/15 text-warning" };
+  if (score > 0) return { label: "Холодный", cls: "bg-muted text-muted-foreground" };
+  return { label: "Нет данных", cls: "bg-muted/50 text-muted-foreground" };
+}
+
 function LeadCardImpl({ lead, assigneeName, highlightSla, onClick, onTogglePin }: LeadCardProps) {
   const handleDragStart = (e: DragEvent) => {
     e.dataTransfer.setData("text/lead-id", lead.id);
@@ -80,16 +88,29 @@ function LeadCardImpl({ lead, assigneeName, highlightSla, onClick, onTogglePin }
             <span className="truncate">{lead.phone}</span>
           </div>
         </div>
-        <span
-          className={cn(
-            "flex shrink-0 items-center gap-0.5 rounded-md bg-secondary/60 px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
-            scoreColor(lead.aiScore),
-          )}
-          title="AI-скоринг"
-        >
-          <Sparkles className="h-2.5 w-2.5" />
-          {lead.aiScore}
-        </span>
+        <div className="flex shrink-0 flex-col items-end gap-0.5">
+          <span
+            className={cn(
+              "flex items-center gap-0.5 rounded-md bg-secondary/60 px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+              scoreColor(lead.aiScore),
+            )}
+            title="AI-скоринг качества лида (0–100)"
+          >
+            <Sparkles className="h-2.5 w-2.5" />
+            {lead.aiScore}
+          </span>
+          {(() => {
+            const q = qualityLabel(lead.aiScore, lead.stageId);
+            return (
+              <span
+                className={cn("rounded-md px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide", q.cls)}
+                title="Категория качества"
+              >
+                {q.label}
+              </span>
+            );
+          })()}
+        </div>
       </div>
 
       <div className="mt-2 flex items-center justify-between gap-2">
