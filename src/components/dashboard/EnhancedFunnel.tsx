@@ -1,4 +1,4 @@
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, MousePointerClick } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ReportTotals } from "@/hooks/useReportData";
 
@@ -8,16 +8,19 @@ const fmtTenge = (n: number) =>
 
 interface Props {
   totals: ReportTotals;
+  /** Optional period label rendered in the header so user sees which window the data covers. */
+  periodLabel?: string;
 }
 
-export function EnhancedFunnel({ totals }: Props) {
-  const steps = [
-    { id: "imp", label: "Показы", value: totals.impressions, cost: null as number | null, costLabel: "" },
-    { id: "clk", label: "Клики", value: totals.clicks, cost: totals.clicks > 0 ? totals.spend / totals.clicks : 0, costLabel: "Цена клика" },
-    { id: "led", label: "Заявки", value: totals.totalLeads, cost: totals.cpl, costLabel: "Цена заявки" },
-    { id: "vis", label: "Диагностики", value: totals.visits, cost: totals.cpv, costLabel: "Цена диагностики" },
-    { id: "sal", label: "Оплаты", value: totals.sales, cost: totals.cac, costLabel: "Цена клиента" },
+export function EnhancedFunnel({ totals, periodLabel }: Props) {
+  const steps: { id: string; label: string; transition?: string; value: number; cost: number | null; costLabel: string }[] = [
+    { id: "imp", label: "Показы", value: totals.impressions, cost: null, costLabel: "" },
+    { id: "clk", label: "Клики", transition: "CTR", value: totals.clicks, cost: totals.clicks > 0 ? totals.spend / totals.clicks : 0, costLabel: "Цена клика" },
+    { id: "led", label: "Заявки", transition: "Конверсия сайта", value: totals.totalLeads, cost: totals.cpl, costLabel: "Цена заявки" },
+    { id: "vis", label: "Диагностики", transition: "Дошли", value: totals.visits, cost: totals.cpv, costLabel: "Цена диагностики" },
+    { id: "sal", label: "Оплаты", transition: "Закрыли", value: totals.sales, cost: totals.cac, costLabel: "Цена клиента" },
   ];
+  const siteCr = totals.clicks > 0 ? (totals.totalLeads / totals.clicks) * 100 : null;
 
   const max = Math.max(...steps.map((s) => s.value), 1);
   const convs = steps.map((s, i) =>
@@ -43,19 +46,32 @@ export function EnhancedFunnel({ totals }: Props) {
 
   return (
     <div className="rounded-2xl border border-border/60 bg-card/60 p-5 sm:p-6">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-success" />
           <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             Путь клиента
           </span>
+          {periodLabel && (
+            <span className="rounded-full border border-border/60 bg-secondary/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              {periodLabel}
+            </span>
+          )}
         </div>
-        {worstIdx > 0 && (
-          <span className="flex items-center gap-1.5 rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-1 text-[10px] font-bold text-destructive">
-            <AlertTriangle className="h-3 w-3" />
-            Теряем больше всего: {steps[worstIdx - 1].label} → {steps[worstIdx].label}
-          </span>
-        )}
+        <div className="flex items-center gap-2">
+          {siteCr !== null && (
+            <span className="flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[10px] font-bold text-success">
+              <MousePointerClick className="h-3 w-3" />
+              Конверсия сайта: {siteCr.toFixed(1)}%
+            </span>
+          )}
+          {worstIdx > 0 && (
+            <span className="flex items-center gap-1.5 rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-1 text-[10px] font-bold text-destructive">
+              <AlertTriangle className="h-3 w-3" />
+              Теряем больше всего: {steps[worstIdx - 1].label} → {steps[worstIdx].label}
+            </span>
+          )}
+        </div>
       </div>
 
       <div className="space-y-2.5">
@@ -83,8 +99,14 @@ export function EnhancedFunnel({ totals }: Props) {
                       "mt-0.5 text-[11px] font-bold tabular-nums",
                       isWorst ? "text-destructive" : "text-success",
                     )}
+                    title={s.transition ? `${s.transition}: ${conv.toFixed(1)}%` : undefined}
                   >
                     {conv.toFixed(1)}%
+                  </span>
+                )}
+                {s.transition && (
+                  <span className="mt-0.5 text-[9px] uppercase tracking-wider text-muted-foreground/70">
+                    {s.transition}
                   </span>
                 )}
               </div>
