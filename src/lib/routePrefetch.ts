@@ -18,6 +18,7 @@ export const routeImports = {
   Settings: () => import("@/pages/Settings"),
   SettingsConnection: () => import("@/pages/SettingsConnection"),
   ProjectStrategy: () => import("@/pages/ProjectStrategy"),
+  ClientDashboard: () => import("@/pages/ClientDashboard"),
 };
 
 const prefetched = new Set<string>();

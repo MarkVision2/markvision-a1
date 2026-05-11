@@ -1,9 +1,7 @@
 import { useMemo, useState } from "react";
 import {
-  BarChart3,
   ChevronLeft,
   ChevronRight,
-  CreditCard,
   Megaphone,
   Plus,
   RefreshCw,
@@ -11,6 +9,8 @@ import {
   Search,
   ShoppingCart,
   Target,
+  Wallet,
+  type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -20,27 +20,6 @@ import CabinetRow from "@/components/ads/CabinetRow";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
-import { useMultiMetaInsights } from "@/hooks/useMetaInsights";
-
-const CURRENCY_SYMBOLS: Record<string, string> = {
-  USD: "$",
-  EUR: "€",
-  KZT: "₸",
-  RUB: "₽",
-  UAH: "₴",
-  GBP: "£",
-  TRY: "₺",
-  BYN: "Br",
-};
-
-const formatMoney = (n: number, currency: string) => {
-  const sym = CURRENCY_SYMBOLS[currency] ?? currency;
-  const isPrefix = ["$", "€", "£"].includes(sym);
-  const num = Math.round(n).toLocaleString("ru-RU");
-  return isPrefix ? `${sym}${num}` : `${num} ${sym}`;
-};
-
-const formatNumber = (n: number) => Math.round(n).toLocaleString("ru-RU");
 
 const MONTHS_RU = [
   "Январь",
@@ -101,18 +80,6 @@ const Ads = () => {
     );
 
   const monthLabel = `${MONTHS_RU[monthCursor.getMonth()]} ${monthCursor.getFullYear()}`;
-  const monthParam = `${monthCursor.getFullYear()}-${String(
-    monthCursor.getMonth() + 1,
-  ).padStart(2, "0")}`;
-  const insightIds = useMemo(
-    () => cabinets.map((c) => c.externalId).filter(Boolean),
-    [cabinets],
-  );
-  const {
-    data: monthInsights,
-    loading: insightsLoading,
-    refresh: refreshInsights,
-  } = useMultiMetaInsights(insightIds, monthParam, insightIds.length > 0);
 
   const toggleExpanded = (id: string) =>
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -129,13 +96,8 @@ const Ads = () => {
   const showSearch = cabinets.length > SEARCH_THRESHOLD;
   const showAggregate = cabinets.length > 1;
 
-  const refreshPageData = () => {
-    refreshInsights();
-    setRefreshKey((k) => k + 1);
-  };
-
   const handleRefresh = () => {
-    refreshPageData();
+    setRefreshKey((k) => k + 1);
     toast.success("Данные обновлены");
   };
 
@@ -146,20 +108,34 @@ const Ads = () => {
     toast.success(c.online ? "Кабинет на паузе" : "Кабинет запущен");
   };
 
-  const hasMonthData = !!monthInsights?.daily.length;
-  const totals = monthInsights?.totals;
-  const currency = hasMonthData ? monthInsights.currency : cabinets[0]?.currency ?? "KZT";
+  const totalSpend = cabinets.reduce((s, c) => s + (c.spend || 0), 0);
+  const totalLeads = cabinets.reduce((s, c) => s + (c.leads || 0), 0);
+  const totalSales = cabinets.reduce((s, c) => s + (c.sales || 0), 0);
 
   return (
-    <main className="container max-w-7xl py-8 animate-fade-in-up">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Управление рекламой
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {cabinets.length} кабинетов · {active} активных
-          </p>
+    <main className="container max-w-6xl py-6 animate-fade-in-up">
+      {/* Header */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-xl bg-success/15 text-success ring-1 ring-success/30">
+            <Megaphone className="h-5 w-5" />
+          </span>
+          <div className="leading-tight">
+            <h1 className="text-xl font-bold tracking-tight sm:text-2xl">
+              Управление рекламой
+            </h1>
+            <p className="text-xs text-muted-foreground">
+              {cabinets.length === 0
+                ? "Нет подключённых кабинетов"
+                : (
+                  <>
+                    {cabinets.length} {cabinets.length === 1 ? "кабинет" : cabinets.length < 5 ? "кабинета" : "кабинетов"}
+                    {" · "}
+                    <span className="text-success">{active} активных</span>
+                  </>
+                )}
+            </p>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -191,7 +167,7 @@ const Ads = () => {
             onClick={handleRefresh}
             title="Обновить данные"
           >
-            <RefreshCw className={insightsLoading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+            <RefreshCw className="h-3.5 w-3.5" />
           </Button>
 
           <Button
@@ -215,53 +191,29 @@ const Ads = () => {
         </div>
       </div>
 
-      <section className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard
-          label="Кабинеты"
-          value={formatNumber(cabinets.length)}
-          detail={`${formatNumber(active)} активных`}
-          icon={Megaphone}
-          tone="success"
-        />
-        <SummaryCard
-          label="Расход за месяц"
-          value={formatMoney(totals?.spend ?? 0, currency)}
-          detail={hasMonthData ? monthLabel : "Нет данных за месяц"}
-          icon={CreditCard}
-          tone="warning"
-          loading={insightsLoading}
-        />
-        <SummaryCard
-          label="Лиды"
-          value={formatNumber(totals?.leads ?? 0)}
-          detail={
-            totals?.cpl
-              ? `CPL ${formatMoney(totals.cpl, currency)}`
-              : hasMonthData ? "CPL пока нет" : "Нажмите обновить"
-          }
-          icon={Target}
-          tone="success"
-          loading={insightsLoading}
-        />
-        <SummaryCard
-          label="Продажи"
-          value={formatNumber(totals?.sales ?? 0)}
-          detail={formatMoney(totals?.crmRevenue ?? 0, currency)}
-          icon={ShoppingCart}
-          tone="success"
-          loading={insightsLoading}
-        />
-      </section>
-
-      <div className="relative mt-6">
-        <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Поиск по кабинетам…"
-          className="h-12 rounded-2xl border-border/60 bg-card/60 pl-11"
-        />
-      </div>
+      {/* Aggregate KPIs — only when multiple cabinets (otherwise the row itself shows the same numbers) */}
+      {showAggregate && (
+        <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <StatChip
+            label="Расход за месяц"
+            value={`${Math.round(totalSpend).toLocaleString("ru-RU").replace(/\s/g, " ")} ₸`}
+            accent="bg-warning/15 text-warning"
+            icon={Wallet}
+          />
+          <StatChip
+            label="Лиды"
+            value={totalLeads.toLocaleString("ru-RU")}
+            accent="bg-success/15 text-success"
+            icon={Target}
+          />
+          <StatChip
+            label="Продажи"
+            value={totalSales.toLocaleString("ru-RU")}
+            accent="bg-success/15 text-success"
+            icon={ShoppingCart}
+          />
+        </div>
+      )}
 
       {/* Search — only when there's a real list */}
       {showSearch && (
@@ -287,7 +239,6 @@ const Ads = () => {
             monthCursor={monthCursor}
             onToggleOnline={handleToggleOnline}
             onRemove={removeCabinet}
-            onSynced={refreshPageData}
           />
         ))}
 
@@ -359,50 +310,6 @@ const Ads = () => {
         cabinets={cabinets}
       />
     </main>
-  );
-};
-
-type SummaryTone = "success" | "warning";
-
-const SummaryCard = ({
-  label,
-  value,
-  detail,
-  icon: Icon,
-  tone,
-  loading,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-  icon: typeof BarChart3;
-  tone: SummaryTone;
-  loading?: boolean;
-}) => {
-  const toneClass =
-    tone === "warning"
-      ? "bg-warning/10 text-warning"
-      : "bg-success/10 text-success";
-
-  return (
-    <div className="rounded-2xl border border-border/60 bg-card/60 p-5">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
-            {label}
-          </div>
-          <div className="mt-4 text-3xl font-bold tracking-tight">
-            {loading ? "..." : value}
-          </div>
-          <div className="mt-2 truncate text-sm text-muted-foreground">
-            {detail}
-          </div>
-        </div>
-        <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ${toneClass}`}>
-          <Icon className="h-5 w-5" />
-        </div>
-      </div>
-    </div>
   );
 };
 
