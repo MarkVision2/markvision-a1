@@ -9,6 +9,7 @@ export type Project = {
   domain?: string;
   initials: string;
   isPrimary?: boolean;
+  intakeToken?: string;
 };
 
 function makeInitials(name: string) {
@@ -23,6 +24,7 @@ type Row = {
   domain: string | null;
   initials: string;
   is_primary: boolean;
+  intake_token?: string | null;
 };
 
 const toProject = (r: Row): Project => ({
@@ -31,6 +33,7 @@ const toProject = (r: Row): Project => ({
   domain: r.domain ?? undefined,
   initials: r.initials,
   isPrimary: r.is_primary,
+  intakeToken: r.intake_token ?? undefined,
 });
 
 export function useProjectsStore() {
@@ -108,7 +111,19 @@ export function useProjectsStore() {
     [user?.id],
   );
 
+  const rotateIntakeToken = useCallback(
+    async (projectId: string) => {
+      const { data, error } = await supabase.rpc("rotate_project_intake_token", {
+        p_project_id: projectId,
+      });
+      if (error) throw error;
+      await refetch();
+      return data as unknown as string;
+    },
+    [refetch],
+  );
+
   const active = projects.find((p) => p.id === activeId) ?? projects[0];
 
-  return { projects, active, activeId, addProject, removeProject, setActive };
+  return { projects, active, activeId, addProject, removeProject, setActive, rotateIntakeToken };
 }

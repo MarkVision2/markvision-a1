@@ -90,70 +90,134 @@ async function parseBody(req: Request): Promise<Record<string, unknown>> {
   return {};
 }
 
-async function getDefaultStage(): Promise<{ pipeline_id: string; stage_id: string } | null> {
-  const { data: pipe } = await admin
+async function firstStage(pipelineId: string): Promise<string | null> {
+  const { data } = await admin
+    .from("pipeline_stages")
+    .select("id")
+    .eq("pipeline_id", pipelineId)
+    .order("order_index", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return data?.id ?? null;
+}
+
+// Resolve pipeline + first stage:
+//   1) project-scoped default pipeline
+//   2) any project-scoped pipeline
+//   3) global default pipeline (legacy)
+//   4) any pipeline at all
+async function getDefaultStage(
+  projectId: string | null,
+): Promise<{ pipeline_id: string; stage_id: string } | null> {
+  const tryPipe = async (id: string | null | undefined) => {
+    if (!id) return null;
+    const stage_id = await firstStage(id);
+    return stage_id ? { pipeline_id: id, stage_id } : null;
+  };
+
+  if (projectId) {
+    const { data: defaultProj } = await admin
+      .from("pipelines")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("is_default", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const r1 = await tryPipe(defaultProj?.id);
+    if (r1) return r1;
+
+    const { data: anyProj } = await admin
+      .from("pipelines")
+      .select("id")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const r2 = await tryPipe(anyProj?.id);
+    if (r2) return r2;
+  }
+
+  const { data: defaultGlobal } = await admin
     .from("pipelines")
     .select("id")
+    .is("project_id", null)
     .eq("is_default", true)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
-  if (!pipe?.id) {
-    // fallback: first pipeline overall
-    const { data: anyPipe } = await admin
-      .from("pipelines")
-      .select("id")
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (!anyPipe?.id) return null;
-    const { data: stage } = await admin
-      .from("pipeline_stages")
-      .select("id")
-      .eq("pipeline_id", anyPipe.id)
-      .order("order_index", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (!stage?.id) return null;
-    return { pipeline_id: anyPipe.id, stage_id: stage.id };
-  }
-  const { data: stage } = await admin
-    .from("pipeline_stages")
+  const r3 = await tryPipe(defaultGlobal?.id);
+  if (r3) return r3;
+
+  const { data: anyPipe } = await admin
+    .from("pipelines")
     .select("id")
-    .eq("pipeline_id", pipe.id)
-    .order("order_index", { ascending: true })
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
-  if (!stage?.id) return null;
-  return { pipeline_id: pipe.id, stage_id: stage.id };
+  return tryPipe(anyPipe?.id);
 }
 
-async function findExistingLeadByPhone(phone: string): Promise<string | null> {
+async function findExistingLeadByPhone(
+  phone: string,
+  projectId: string | null,
+): Promise<string | null> {
   const d = digits(phone);
   if (!d) return null;
-  const { data } = await admin
-    .from("leads")
-    .select("id, phone")
-    .or(`phone.eq.+${d},phone.eq.${d}`)
-    .limit(1);
+  // Phone dedupe is scoped per-project (one client = one project).
+  // Without a projectId we fall back to global match for legacy intakes.
+  let q = admin.from("leads").select("id, phone").or(`phone.eq.+${d},phone.eq.${d}`).limit(1);
+  if (projectId) q = q.eq("project_id", projectId);
+  const { data } = await q;
   if (data && data.length > 0) return data[0].id;
-  // broader scan
-  const { data: recent } = await admin
+
+  let scan = admin
     .from("leads")
     .select("id, phone")
     .order("created_at", { ascending: false })
     .limit(500);
+  if (projectId) scan = scan.eq("project_id", projectId);
+  const { data: recent } = await scan;
   return (recent ?? []).find((l) => digits(l.phone) === d)?.id ?? null;
+}
+
+// Path: /functions/v1/lead-intake/t/<token>  →  returns the token, else null.
+function extractToken(req: Request): string | null {
+  try {
+    const path = new URL(req.url).pathname;
+    const m = path.match(/\/lead-intake\/t\/([A-Za-z0-9_\-x]{8,64})\/?$/);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+async function projectFromToken(token: string): Promise<string | null> {
+  const { data } = await admin
+    .from("projects")
+    .select("id")
+    .eq("intake_token", token)
+    .maybeSingle();
+  return data?.id ?? null;
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+  // Token from path: /lead-intake/t/<token>. When present, lead is bound to
+  // exactly that project — its pipeline, its dedupe scope.
+  const tokenFromPath = extractToken(req);
+  const tokenProjectId = tokenFromPath ? await projectFromToken(tokenFromPath) : null;
+  if (tokenFromPath && !tokenProjectId) {
+    return json({ error: "Invalid intake token" }, 404);
+  }
+
   if (req.method === "GET") {
     return json({
       ok: true,
       hint: "POST your lead here. Required: phone. Recommended: name, utm_*",
+      project_bound: !!tokenProjectId,
     });
   }
   if (req.method !== "POST") {
@@ -161,6 +225,13 @@ Deno.serve(async (req) => {
   }
 
   const raw = await parseBody(req);
+
+  // Honeypot — silently 200 if a bot filled the hidden field. Two common
+  // names so users can pick whichever fits their form.
+  const hp = String((raw as Record<string, unknown>)._hp ?? (raw as Record<string, unknown>).company ?? "").trim();
+  if (hp) {
+    return json({ ok: true, leadId: null, skipped: "honeypot" });
+  }
   const parsed = Schema.safeParse(raw);
   if (!parsed.success) {
     return json(
@@ -222,8 +293,10 @@ Deno.serve(async (req) => {
   const note = [v.message, v.note].filter(Boolean).join("\n").trim() || null;
   const landingUrl = v.landing_url || v.page || null;
 
-  // Resolve project_id and cabinet_id: explicit > via cabinet_id > via ad_account_id
-  let projectId: string | null = v.project_id || null;
+  // Resolve project_id and cabinet_id.
+  // Priority: token in URL > explicit project_id in body > cabinet_id > ad_account_id.
+  // Token wins because it's the secret bound to the project on creation.
+  let projectId: string | null = tokenProjectId ?? v.project_id ?? null;
   let cabinetId: string | null = v.cabinet_id || null;
   if (cabinetId) {
     const { data } = await admin.from("ad_cabinets").select("project_id").eq("id", cabinetId).maybeSingle();
@@ -255,8 +328,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Dedupe by phone
-    const existingId = await findExistingLeadByPhone(phoneE164);
+    // Dedupe by phone — scoped to the resolved project.
+    const existingId = await findExistingLeadByPhone(phoneE164, projectId);
     if (existingId) {
       await admin
         .from("leads")
@@ -287,8 +360,8 @@ Deno.serve(async (req) => {
       return json({ ok: true, leadId: existingId, duplicate: true });
     }
 
-    // Create new
-    const def = await getDefaultStage();
+    // Create new — pipeline is resolved within the project's scope.
+    const def = await getDefaultStage(projectId);
     if (!def) {
       return json({ error: "No default pipeline/stage configured" }, 500);
     }

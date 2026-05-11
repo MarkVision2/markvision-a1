@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 
 type GreenResp<T = unknown> = {
   ok: boolean;
@@ -463,10 +464,19 @@ function WebhookCard() {
 }
 
 export function SiteIntakeCard() {
-  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/lead-intake`;
+  const { active, rotateIntakeToken } = useProjectsStore();
+  const base = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/lead-intake`;
+  const token = active?.intakeToken ?? "";
+  const url = token ? `${base}/t/${token}` : base;
+  const projectName = active?.name ?? "—";
   const [testing, setTesting] = useState(false);
+  const [rotating, setRotating] = useState(false);
 
   const sendTestLead = async () => {
+    if (!token) {
+      toast.error("Сначала выберите проект");
+      return;
+    }
     setTesting(true);
     try {
       const res = await fetch(url, {
@@ -485,8 +495,8 @@ export function SiteIntakeCard() {
       });
       const data = await res.json().catch(() => null);
       if (res.ok && (data as { ok?: boolean } | null)?.ok) {
-        toast.success("Тест прошёл — заявка в CRM, этап «Новая»", {
-          description: "Откройте CRM, чтобы её увидеть.",
+        toast.success(`Тест прошёл — заявка в CRM проекта «${projectName}»`, {
+          description: "Откройте CRM, чтобы её увидеть в этапе «Новая».",
         });
       } else {
         toast.error("Тест не прошёл", {
@@ -502,12 +512,32 @@ export function SiteIntakeCard() {
     }
   };
 
-  const htmlSnippet = `<!-- Форма заявки. Лид сразу попадёт в CRM в этап «Новая» -->
+  const onRotate = async () => {
+    if (!active?.id) return;
+    if (!confirm("Перевыпустить webhook? Старый URL перестанет работать на всех сайтах этого проекта.")) {
+      return;
+    }
+    setRotating(true);
+    try {
+      await rotateIntakeToken(active.id);
+      toast.success("Webhook перевыпущен", {
+        description: "Скопируйте новый URL и обновите его на всех сайтах проекта.",
+      });
+    } catch (e) {
+      toast.error("Не удалось перевыпустить", { description: (e as Error).message });
+    } finally {
+      setRotating(false);
+    }
+  };
+
+  const htmlSnippet = `<!-- Форма заявки → CRM проекта «${projectName}», этап «Новая» -->
 <form id="lead-form">
   <input name="name" placeholder="Имя" required />
   <input name="phone" placeholder="+7..." required />
   <input name="email" placeholder="Email" type="email" />
   <textarea name="message" placeholder="Комментарий"></textarea>
+  <!-- honeypot: скрытое поле против ботов, оставьте пустым -->
+  <input name="company" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" />
   <button type="submit">Отправить</button>
 </form>
 
@@ -546,6 +576,7 @@ export function SiteIntakeCard() {
   const tildaHint = `Tilda → Настройки сайта → Формы → WebHook
 URL: ${url}
 Метод: POST (JSON)
+Проект: ${projectName}
 Готово: имя, телефон, email, комментарий и UTM-метки сохранятся автоматически.`;
 
   return (
@@ -553,10 +584,16 @@ URL: ${url}
       <CardHeader>
         <CardTitle className="text-lg">Webhook для заявок с сайта</CardTitle>
         <CardDescription>
-          Каждая заявка с сайта создаст новую сделку в этапе «Новая» с источником из <code>utm_source</code> (или «site», если меток нет). Дубли по телефону объединяются автоматически.
+          Привязан к активному проекту: <strong>{projectName}</strong>. Каждая заявка попадёт в CRM именно этого проекта, в первый этап («Новая»).
+          Один URL можно использовать на нескольких сайтах одного проекта. Чтобы привязать к другому проекту — переключите проект в шапке.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {!token && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+            Создайте или выберите проект — тогда здесь появится уникальный webhook.
+          </div>
+        )}
         <div>
           <p className="mb-1.5 text-xs font-medium text-muted-foreground">URL вебхука</p>
           <div className="flex items-center gap-2">
@@ -564,6 +601,7 @@ URL: ${url}
             <Button
               variant="outline"
               size="sm"
+              disabled={!token}
               onClick={() => {
                 navigator.clipboard.writeText(url);
                 toast.success("URL скопирован");
@@ -572,16 +610,26 @@ URL: ${url}
               Копировать
             </Button>
             <Button
+              variant="outline"
+              size="sm"
+              disabled={!token || rotating}
+              onClick={onRotate}
+              title="Перевыпустить токен (старый URL перестанет работать)"
+            >
+              {rotating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            </Button>
+            <Button
               size="sm"
               onClick={sendTestLead}
-              disabled={testing}
+              disabled={!token || testing}
             >
               {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
               Отправить тест
             </Button>
           </div>
           <p className="mt-1.5 text-[11px] text-muted-foreground">
-            «Отправить тест» создаст одну тестовую заявку в CRM (этап «Новая») для проверки.
+            «Отправить тест» создаст одну тестовую заявку в CRM текущего проекта.
+            «Перевыпустить» меняет токен — после этого старый URL <strong>перестаёт работать</strong> на всех сайтах.
           </p>
         </div>
 
