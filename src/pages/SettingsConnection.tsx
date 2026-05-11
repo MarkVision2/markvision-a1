@@ -240,6 +240,9 @@ const SettingsConnection = () => {
         {/* Webhook URL */}
         <WebhookCard />
 
+        {/* Bind WhatsApp instance to a project */}
+        <WhatsappProjectBindCard />
+
         {/* Site intake URL */}
         <SiteIntakeCard />
 
@@ -458,6 +461,156 @@ function WebhookCard() {
             </Button>
           </div>
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+type WaBindRow = {
+  id: string;
+  project_id: string | null;
+  id_instance: string | null;
+  phone: string | null;
+  connected: boolean | null;
+};
+
+export function WhatsappProjectBindCard() {
+  const { active, projects } = useProjectsStore();
+  const [rows, setRows] = useState<WaBindRow[]>([]);
+  const [instance, setInstance] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    const { data } = await supabase
+      .from("whatsapp_config")
+      .select("id, project_id, id_instance, phone, connected");
+    setRows((data ?? []) as WaBindRow[]);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  const currentRow = rows.find((r) => r.project_id === active?.id) ?? null;
+  useEffect(() => {
+    setInstance(currentRow?.id_instance ?? "");
+  }, [currentRow?.id_instance]);
+
+  const onBind = async () => {
+    if (!active?.id) {
+      toast.error("Сначала выберите активный проект");
+      return;
+    }
+    const idInstance = instance.trim();
+    if (!/^\d{6,}$/.test(idInstance)) {
+      toast.error("idInstance — это число из Green API console");
+      return;
+    }
+    setSaving(true);
+    try {
+      const { error } = await supabase.rpc("bind_whatsapp_to_project", {
+        p_project_id: active.id,
+        p_id_instance: idInstance,
+      });
+      if (error) throw error;
+      toast.success(`WhatsApp ${idInstance} привязан к «${active.name}»`);
+      await refresh();
+    } catch (e) {
+      toast.error("Не удалось привязать", { description: (e as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Найти конфликт: один и тот же idInstance уже привязан к другому проекту
+  const conflict = instance.trim() && rows.find(
+    (r) => r.id_instance === instance.trim() && r.project_id !== active?.id,
+  );
+  const conflictProject = conflict
+    ? projects.find((p) => p.id === conflict.project_id)?.name
+    : null;
+
+  return (
+    <Card className="mt-6 border-border bg-card">
+      <CardHeader>
+        <CardTitle className="text-lg">WhatsApp → проект</CardTitle>
+        <CardDescription>
+          Каждый Green API инстанс привязывается к одному проекту. Входящее сообщение на этот номер попадёт в CRM именно этого проекта, в этап «Новая». Активный проект: <strong>{active?.name ?? "—"}</strong>.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {loading ? (
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Загрузка…
+          </div>
+        ) : (
+          <>
+            <div>
+              <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                idInstance из Green API (число, видно в Green API console)
+              </p>
+              <div className="flex items-center gap-2">
+                <Input
+                  value={instance}
+                  onChange={(e) => setInstance(e.target.value)}
+                  placeholder="например 7107605912"
+                  className="flex-1"
+                />
+                <Button onClick={onBind} disabled={saving || !active?.id}>
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  {currentRow?.id_instance ? "Перепривязать" : "Привязать"}
+                </Button>
+              </div>
+              {conflictProject ? (
+                <p className="mt-1.5 text-[11px] text-destructive">
+                  Этот idInstance уже привязан к проекту «{conflictProject}». Перепривязка перенесёт его на «{active?.name}».
+                </p>
+              ) : currentRow ? (
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  Текущая привязка: <code>{currentRow.id_instance ?? "—"}</code>
+                  {currentRow.phone ? `, номер ${currentRow.phone}` : ""}
+                  {currentRow.connected ? " · подключён" : ""}
+                </p>
+              ) : (
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  У этого проекта пока нет привязанного WhatsApp.
+                </p>
+              )}
+            </div>
+
+            {rows.length > 0 && (
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                  Все привязки в системе
+                </p>
+                <div className="overflow-hidden rounded-md border border-border/60">
+                  <table className="w-full text-xs">
+                    <thead className="bg-muted/40 text-left text-muted-foreground">
+                      <tr>
+                        <th className="px-3 py-2 font-medium">Проект</th>
+                        <th className="px-3 py-2 font-medium">idInstance</th>
+                        <th className="px-3 py-2 font-medium">Номер</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {rows.map((r) => {
+                        const proj = projects.find((p) => p.id === r.project_id);
+                        return (
+                          <tr key={r.id} className="border-t border-border/40">
+                            <td className="px-3 py-2">{proj?.name ?? "—"}</td>
+                            <td className="px-3 py-2"><code>{r.id_instance ?? "—"}</code></td>
+                            <td className="px-3 py-2">{r.phone ?? "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </>
+        )}
       </CardContent>
     </Card>
   );
