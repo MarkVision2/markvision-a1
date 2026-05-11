@@ -4,6 +4,7 @@ import type { TablesUpdate, TablesInsert } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { fetchPendingAdvances, markAdvanceDone } from "@/integrations/clientConfig/client";
+import { markAutoMoved } from "@/lib/autoMoveTracker";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type {
@@ -328,6 +329,7 @@ export function useCrmStore() {
           // Двигаем (попутно сработает CAPI через moveLead → crm-stage-capi,
           // но он де-дуплицируется по capi_schedule_sent_at на стороне функции).
           await moveLead(oldLead.id, p.auto_advance_stage);
+          markAutoMoved(oldLead.id, p.auto_advance_stage);
           await markAdvanceDone(p.id);
         }
       } catch (e) {
