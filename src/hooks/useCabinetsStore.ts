@@ -3,6 +3,10 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import {
+  syncCabinetToClientConfig,
+  deleteCabinetFromClientConfig,
+} from "@/lib/cabinetSync";
 import type { AdCabinet } from "@/types/ads";
 
 const toCabinet = (r: any): AdCabinet => ({
@@ -151,20 +155,37 @@ export function useCabinetsStore() {
     const { data, error } = await supabase
       .from("ad_cabinets")
       .insert(dbRow as any)
-      .select("id")
+      .select("*")
       .single();
     if (error) throw error;
+    // Зеркалим в client config supabase (туда смотрят n8n + content factory).
+    // Используем серверный id (real UUID), а не c.id — фронт может слать
+    // временный slug, реальный id выдаёт DB.
+    if (data) {
+      await syncCabinetToClientConfig(toCabinet(data));
+    }
     await refetch();
     return (data?.id as string) ?? null;
   }, [user?.id, refetch, projectId]);
 
   const updateCabinet = useCallback(async (id: string, patch: Partial<AdCabinet>) => {
-    await supabase.from("ad_cabinets").update(toDbPatch(patch) as any).eq("id", id);
+    const { data, error } = await supabase
+      .from("ad_cabinets")
+      .update(toDbPatch(patch) as any)
+      .eq("id", id)
+      .select("*")
+      .single();
+    if (error) throw error;
+    // Перезеркалить актуальный снимок строки.
+    if (data) {
+      await syncCabinetToClientConfig(toCabinet(data));
+    }
     await refetch();
   }, [refetch]);
 
   const removeCabinet = useCallback(async (id: string) => {
     await supabase.from("ad_cabinets").delete().eq("id", id);
+    await deleteCabinetFromClientConfig(id);
     await refetch();
   }, [refetch]);
 
