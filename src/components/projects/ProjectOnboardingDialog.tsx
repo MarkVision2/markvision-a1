@@ -253,7 +253,14 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
     .slice(0, 4);
 
   return (
-    <Dialog open={open} onOpenChange={(v) => { if (!busy) (v ? onOpenChange(true) : close()); }}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (busy) return;
+        if (v) onOpenChange(true);
+        else close();
+      }}
+    >
       <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">

@@ -83,9 +83,10 @@ interface Props {
   monthCursor: Date;
   onToggleOnline: (id: string) => void;
   onRemove: (id: string) => void;
+  onSynced?: () => void;
 }
 
-const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, onRemove }: Props) => {
+const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, onRemove, onSynced }: Props) => {
   const monthParam = `${monthCursor.getFullYear()}-${String(
     monthCursor.getMonth() + 1,
   ).padStart(2, "0")}`;
@@ -116,6 +117,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
       if (r?.ok) {
         toast.success(`Загружено: ${r.days} дн., ${r.leads} лидов, расход ${Math.round(r.spend)}`);
         refresh();
+        onSynced?.();
       } else {
         toast.error("Meta: " + (r?.error || "не удалось получить данные"));
       }
@@ -128,6 +130,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
 
   const totals = data?.totals;
   const currency = data?.currency ?? cabinet.currency ?? "USD";
+  const hasDailyData = !!data?.daily.length;
   const dailyByDate = useMemo(() => {
     const map = new Map<string, NonNullable<typeof data>["daily"][number]>();
     for (const d of data?.daily ?? []) {
@@ -237,7 +240,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-5 lg:gap-6">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:gap-6">
           <Metric
             label="Расход"
             value={formatMoney(totals?.spend ?? 0, currency)}
@@ -252,10 +255,6 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                 </span>
               </span>
             }
-          />
-          <Metric
-            label="CPL"
-            value={cpl > 0 ? formatMoney(cpl, currency) : "—"}
           />
           <Metric
             label="Диагностики"
@@ -347,6 +346,25 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
 
       {expanded && (
         <div className="border-t border-border/60 p-4 space-y-4 animate-fade-in-up">
+          {!loading && !error && !hasDailyData && (
+            <div className="flex flex-col gap-3 rounded-xl border border-warning/30 bg-warning/10 p-3 text-sm text-warning sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="font-semibold">За выбранный месяц статистика не подтянута</div>
+                <div className="text-xs opacity-80">Нажмите «Получить статистику», чтобы загрузить данные из Meta.</div>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleSync}
+                disabled={syncing}
+                className="border-warning/40 bg-background/30 text-warning hover:bg-warning/10"
+              >
+                {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <BarChart3 className="h-3.5 w-3.5" />}
+                Получить статистику
+              </Button>
+            </div>
+          )}
+
           {error && (
             <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
               <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />

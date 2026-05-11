@@ -5,16 +5,22 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  ClipboardCheck,
   DollarSign,
   Download,
   Eye,
   Loader2,
+  Pencil,
   RefreshCw,
   Repeat,
+  Save,
   Target,
   TrendingUp,
+  Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -29,6 +35,7 @@ import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import type { AdCabinet } from "@/types/ads";
 
 const MONTHS_RU = [
   "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
@@ -45,28 +52,52 @@ interface SummaryCardProps {
   icon: React.ElementType;
   label: string;
   value: React.ReactNode;
-  sub: string;
+  formula: string;
+  badge: string;
+  accent?: "success" | "warning" | "primary";
 }
 
-const SummaryCard = ({ icon: Icon, label, value, sub }: SummaryCardProps) => (
-  <div className="rounded-2xl border border-border/60 bg-card/60 p-5">
-    <div className="flex items-center gap-3">
-      <span className="grid h-9 w-9 place-items-center rounded-xl bg-success/10 text-success">
-        <Icon className="h-4 w-4" />
-      </span>
-      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+const SummaryCard = ({
+  icon: Icon,
+  label,
+  value,
+  formula,
+  badge,
+  accent = "success",
+}: SummaryCardProps) => {
+  const tone = {
+    success: "bg-success/10 text-success border-success/20",
+    warning: "bg-warning/10 text-warning border-warning/20",
+    primary: "bg-primary/10 text-primary border-primary/20",
+  }[accent];
+
+  return (
+    <div className="min-h-[168px] rounded-2xl border border-border/60 bg-card/60 p-5 transition-colors hover:border-success/30 hover:bg-card/80">
+      <div className="flex items-start justify-between gap-3">
+        <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl border", tone)}>
+          <Icon className="h-4 w-4" />
+        </span>
+        <span className={cn("rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wider", tone)}>
+          {badge}
+        </span>
+      </div>
+      <div className="mt-5 min-h-[42px] text-[15px] font-bold leading-5 text-foreground">
         {label}
-      </span>
+      </div>
+      <div className="mt-4 text-3xl font-bold leading-none tabular-nums text-foreground md:text-[2rem]">
+        {value}
+      </div>
+      <div className="mt-3 text-xs leading-4 text-muted-foreground">
+        {formula}
+      </div>
     </div>
-    <div className="mt-5 text-3xl font-bold tabular-nums">{value}</div>
-    <div className="mt-2 text-xs text-muted-foreground">{sub}</div>
-  </div>
-);
+  );
+};
 
 const Cell = ({ children, mono = true }: { children: React.ReactNode; mono?: boolean }) => (
   <td
     className={cn(
-      "px-4 py-3 text-right text-sm",
+      "px-3 py-3 text-right text-sm",
       mono && "tabular-nums",
     )}
   >
@@ -97,6 +128,10 @@ const Metrics = () => {
     () => cabinets.map((c) => c.externalId).filter(Boolean),
     [cabinets],
   );
+  const cabinetsWithExternalId = useMemo(
+    () => cabinets.filter((c) => Boolean(c.externalId)),
+    [cabinets],
+  );
 
   const actIds = useMemo(() => {
     if (cabinetId === "all") return allActIds;
@@ -104,7 +139,18 @@ const Metrics = () => {
     return cab?.externalId ? [cab.externalId] : [];
   }, [cabinetId, allActIds, cabinets]);
 
-  const { data, loading, error } = useMultiMetaInsights(
+  const manualCabinet = useMemo(() => {
+    if (cabinetId !== "all") return cabinets.find((c) => c.id === cabinetId) ?? null;
+    return cabinetsWithExternalId.length === 1 ? cabinetsWithExternalId[0] : null;
+  }, [cabinetId, cabinets, cabinetsWithExternalId]);
+
+  const manualHint = manualCabinet
+    ? `Ручной факт пишется в кабинет «${manualCabinet.name}»`
+    : cabinetId === "all"
+      ? "Выбери один кабинет, чтобы вносить ручные диагностики, оплаты и сумму"
+      : "У выбранного кабинета нет внешнего ID для единой статистики";
+
+  const { data, loading, error, refresh } = useMultiMetaInsights(
     actIds,
     monthParam,
     actIds.length > 0,
@@ -137,6 +183,15 @@ const Metrics = () => {
 
   const filledDays = data?.daily.length ?? 0;
   const monthProgress = Math.round((filledDays / daysInMonth) * 100);
+  const factDiagnostics = totals?.diagnostics ?? 0;
+  const factSales = totals?.sales ?? 0;
+  const factRevenue = totals?.crmRevenue || totals?.revenue || 0;
+  const factCac = factSales > 0 ? (totals?.spend ?? 0) / factSales : 0;
+  const factCpd = factDiagnostics > 0 ? (totals?.spend ?? 0) / factDiagnostics : 0;
+  const crLeadDiagnostics =
+    totals && totals.leads > 0 ? (factDiagnostics / totals.leads) * 100 : 0;
+  const crDiagnosticsSale =
+    factDiagnostics > 0 ? (factSales / factDiagnostics) * 100 : 0;
 
   const handleExportCsv = () => {
     const header = [
@@ -157,8 +212,9 @@ const Metrics = () => {
         d?.spend ?? 0,
         d?.leads ?? 0,
         cpl ? Math.round(cpl) : "",
-        0,
-        d?.revenue ?? 0,
+        d?.diagnostics ?? 0,
+        d?.sales ?? 0,
+        d?.crmRevenue || d?.revenue || 0,
         d?.impressions ?? 0,
         d?.clicks ?? 0,
         ctr ? ctr.toFixed(2) : "",
@@ -200,6 +256,7 @@ const Metrics = () => {
       if (targetCab) body.cabinet_id = targetCab.id;
       const { error: invErr } = await supabase.functions.invoke("meta-daily-sync", { body });
       if (invErr) throw invErr;
+      refresh();
       toast.success(`Синхронизация ${since} → ${until} выполнена`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось синхронизировать");
@@ -208,8 +265,61 @@ const Metrics = () => {
     }
   };
 
+  const upsertManualFact = async (
+    isoDate: string,
+    patch: {
+      manual_diagnostics?: number;
+      manual_sales?: number;
+      manual_revenue?: number;
+    },
+  ) => {
+    if (!manualCabinet?.externalId) {
+      toast.error("Выбери конкретный кабинет для ручного ввода");
+      return;
+    }
+
+    const cleanPatch = Object.fromEntries(
+      Object.entries(patch).map(([key, value]) => [key, Math.max(0, Number(value) || 0)]),
+    );
+
+    try {
+      const { data: existing, error: findError } = await supabase
+        .from("cabinet_daily_insights")
+        .select("id")
+        .eq("cabinet_id", manualCabinet.id)
+        .eq("date", isoDate)
+        .maybeSingle();
+      if (findError) throw findError;
+
+      if (existing?.id) {
+        const { error: updateError } = await (supabase as any)
+          .from("cabinet_daily_insights")
+          .update(cleanPatch)
+          .eq("id", existing.id);
+        if (updateError) throw updateError;
+      } else {
+        const { error: insertError } = await supabase
+          .from("cabinet_daily_insights")
+          .insert({
+            cabinet_id: manualCabinet.id,
+            external_id: manualCabinet.externalId,
+            project_id: (manualCabinet as AdCabinet & { projectId?: string }).projectId ?? null,
+            date: isoDate,
+            currency: manualCabinet.currency ?? "KZT",
+            ...cleanPatch,
+          });
+        if (insertError) throw insertError;
+      }
+
+      refresh();
+      toast.success("Ручной факт сохранен");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось сохранить факт");
+    }
+  };
+
   return (
-    <main className="container max-w-7xl py-8 animate-fade-in-up">
+    <main className="container max-w-[1500px] py-8 animate-fade-in-up">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-4">
@@ -239,20 +349,26 @@ const Metrics = () => {
       {/* Summary cards */}
       <div className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-5">
         <SummaryCard
-          icon={DollarSign}
-          label="CAC"
-          value={<Dash />}
-          sub="Расходы / Продажи"
-        />
-        <SummaryCard
           icon={Eye}
-          label="CPD"
-          value={<Dash />}
-          sub="Расходы / Диагностики"
+          label="Стоимость диагностики"
+          badge="CPD"
+          accent="success"
+          value={factCpd > 0 ? formatTenge(factCpd) : <Dash />}
+          formula="Расходы / диагностики"
         />
         <SummaryCard
-          icon={Target}
-          label="CPL"
+          icon={Wallet}
+          label="Стоимость клиента"
+          badge="CAC"
+          accent="warning"
+          value={factCac > 0 ? formatTenge(factCac) : <Dash />}
+          formula="Расходы / оплаты"
+        />
+        <SummaryCard
+          icon={DollarSign}
+          label="Стоимость заявки"
+          badge="CPL"
+          accent="primary"
           value={
             totals && totals.cpl > 0 ? (
               <span>{formatTenge(totals.cpl)}</span>
@@ -260,20 +376,48 @@ const Metrics = () => {
               <Dash />
             )
           }
-          sub="Расходы / Лиды"
+          formula="Расходы / заявки"
         />
         <SummaryCard
           icon={Repeat}
-          label="CR Лид→Диагн."
-          value={<span>0%</span>}
-          sub="Диагностики / Лиды"
+          label="Лид в диагностику"
+          badge="CR"
+          accent="success"
+          value={crLeadDiagnostics > 0 ? <span>{formatPercent(crLeadDiagnostics)}</span> : <Dash />}
+          formula="Диагностики / лиды"
         />
         <SummaryCard
           icon={TrendingUp}
-          label="CR Диагн.→Продажа"
-          value={<Dash />}
-          sub="Продажи / Диагностики"
+          label="Диагностика в продажу"
+          badge="CR"
+          accent="success"
+          value={crDiagnosticsSale > 0 ? <span>{formatPercent(crDiagnosticsSale)}</span> : <Dash />}
+          formula="Оплаты / диагностики"
         />
+      </div>
+
+      <div className="mt-6 rounded-2xl border border-success/20 bg-success/5 p-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-success/15 text-success">
+              <ClipboardCheck className="h-5 w-5" />
+            </span>
+            <div>
+              <div className="text-sm font-semibold">Единый ручной факт</div>
+              <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
+                Редактируй диагностики, оплаты и сумму прямо в дневных строках. Эти значения складываются с CRM и сразу попадают в сквозную аналитику, рекламный кабинет и сводку этой таблицы.
+              </p>
+            </div>
+          </div>
+          <div className={cn(
+            "rounded-xl border px-3 py-2 text-xs font-medium",
+            manualCabinet
+              ? "border-success/30 bg-success/10 text-success"
+              : "border-warning/30 bg-warning/10 text-warning",
+          )}>
+            {manualHint}
+          </div>
+        </div>
       </div>
 
       {/* Controls */}
@@ -353,7 +497,7 @@ const Metrics = () => {
       {/* Table */}
       <div className="mt-6 overflow-hidden rounded-2xl border border-border/60 bg-card/40">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[920px] border-collapse text-sm">
+          <table className="w-full min-w-[1040px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-border/60 bg-card/60">
                 <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -365,7 +509,7 @@ const Metrics = () => {
                 ].map((h) => (
                   <th
                     key={h}
-                    className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
+                    className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
                   >
                     {h}
                   </th>
@@ -420,11 +564,19 @@ const Metrics = () => {
                     {totals && totals.cpl > 0 ? formatNumber(totals.cpl) : <Dash />}
                   </span>
                 </Cell>
-                <Cell><span className="font-bold">0</span></Cell>
-                <Cell><span className="font-bold">0</span></Cell>
                 <Cell>
                   <span className="font-bold">
-                    {totals ? formatNumber(totals.revenue) : <Dash />}
+                    {factDiagnostics > 0 ? formatNumber(factDiagnostics) : <Dash />}
+                  </span>
+                </Cell>
+                <Cell>
+                  <span className="font-bold">
+                    {factSales > 0 ? formatNumber(factSales) : <Dash />}
+                  </span>
+                </Cell>
+                <Cell>
+                  <span className="font-bold">
+                    {factRevenue > 0 ? formatNumber(factRevenue) : <Dash />}
                   </span>
                 </Cell>
               </tr>
@@ -446,13 +598,12 @@ const Metrics = () => {
                     plan && p > 0 ? `${Math.round((fact / p) * 100)}%` : null;
                   const factSpend = totals?.spend ?? 0;
                   const factLeads = totals?.leads ?? 0;
-                  const factRevenue = totals?.revenue ?? 0;
                   const cells = [
                     pct(factSpend, plan?.spend ?? 0),
                     pct(factLeads, plan?.leads ?? 0),
                     null,
-                    null,
-                    null,
+                    pct(factDiagnostics, plan?.visits ?? 0),
+                    pct(factSales, plan?.sales ?? 0),
                     pct(factRevenue, plan?.revenue ?? 0),
                   ];
                   return cells.map((v, i) => (
@@ -467,7 +618,15 @@ const Metrics = () => {
               {monthDays.map(({ day, iso, weekday }) => {
                 const d = dailyMap.get(iso);
                 const cpl = d && d.leads > 0 ? d.spend / d.leads : 0;
-                const hasData = !!d && (d.spend > 0 || d.leads > 0 || d.impressions > 0);
+                const dayRevenue = d ? d.crmRevenue || d.revenue : 0;
+                const hasData = !!d && (
+                  d.spend > 0 ||
+                  d.leads > 0 ||
+                  d.impressions > 0 ||
+                  d.diagnostics > 0 ||
+                  d.sales > 0 ||
+                  dayRevenue > 0
+                );
                 return (
                   <tr
                     key={iso}
@@ -482,9 +641,44 @@ const Metrics = () => {
                     <Cell>{hasData ? formatNumber(d!.spend) : <Dash />}</Cell>
                     <Cell>{hasData && d!.leads > 0 ? formatNumber(d!.leads) : <Dash />}</Cell>
                     <Cell>{cpl > 0 ? formatNumber(cpl) : <Dash />}</Cell>
-                    <Cell><Dash /></Cell>
-                    <Cell><Dash /></Cell>
-                    <Cell>{hasData && d!.revenue > 0 ? formatNumber(d!.revenue) : <Dash />}</Cell>
+                    <Cell>
+                      <ManualFactCell
+                        title="Диагностики"
+                        icon={Eye}
+                        isoDate={iso}
+                        value={d?.diagnostics ?? 0}
+                        manual={d?.manualDiagnostics ?? 0}
+                        autoLabel="CRM"
+                        disabled={!manualCabinet}
+                        onSave={(next) => upsertManualFact(iso, { manual_diagnostics: next })}
+                      />
+                    </Cell>
+                    <Cell>
+                      <ManualFactCell
+                        title="Оплаты"
+                        icon={Wallet}
+                        isoDate={iso}
+                        value={d?.sales ?? 0}
+                        manual={d?.manualSales ?? 0}
+                        autoLabel="CRM"
+                        disabled={!manualCabinet}
+                        onSave={(next) => upsertManualFact(iso, { manual_sales: next })}
+                      />
+                    </Cell>
+                    <Cell>
+                      <ManualFactCell
+                        title="Сумма оплат"
+                        icon={DollarSign}
+                        isoDate={iso}
+                        value={dayRevenue}
+                        manual={d?.manualRevenue ?? 0}
+                        autoLabel="CRM"
+                        disabled={!manualCabinet}
+                        format={formatNumber}
+                        allowDecimal
+                        onSave={(next) => upsertManualFact(iso, { manual_revenue: next })}
+                      />
+                    </Cell>
                   </tr>
                 );
               })}
@@ -501,9 +695,131 @@ const Metrics = () => {
       </div>
 
       <p className="mt-4 text-xs text-muted-foreground">
-        Данные подгружаются из подключенных рекламных кабинетов за выбранный месяц с 1-го числа.
+        Данные подгружаются из подключенных личных рекламных кабинетов: расходы и лиды из Meta, диагностики, оплаты и выручка из CRM плюс ручной факт из этой таблицы.
       </p>
     </main>
+  );
+};
+
+const ManualFactCell = ({
+  title,
+  icon: Icon,
+  isoDate,
+  value,
+  manual,
+  autoLabel,
+  onSave,
+  disabled,
+  format = formatNumber,
+  allowDecimal,
+}: {
+  title: string;
+  icon: React.ElementType;
+  isoDate: string;
+  value: number;
+  manual: number;
+  autoLabel: string;
+  onSave: (newManual: number) => Promise<void>;
+  disabled?: boolean;
+  format?: (n: number) => string;
+  allowDecimal?: boolean;
+}) => {
+  const [open, setOpen] = useState(false);
+  const [val, setVal] = useState(String(manual || ""));
+  const [saving, setSaving] = useState(false);
+  const auto = Math.max(0, value - manual);
+  const hasValue = value > 0;
+
+  const handleSave = async () => {
+    const raw = Number(val) || 0;
+    const next = allowDecimal ? Math.max(0, raw) : Math.max(0, Math.floor(raw));
+    setSaving(true);
+    try {
+      await onSave(next);
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (disabled) {
+    return (
+      <span className="inline-flex min-w-[86px] justify-end text-muted-foreground/50">
+        {hasValue ? format(value) : "—"}
+      </span>
+    );
+  }
+
+  return (
+    <Popover open={open} onOpenChange={(next) => { setOpen(next); if (next) setVal(manual ? String(manual) : ""); }}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className={cn(
+            "group inline-flex min-w-[86px] items-center justify-end gap-1.5 rounded-lg border border-transparent px-2 py-1 text-right transition-colors hover:border-success/30 hover:bg-success/10",
+            !hasValue && "text-muted-foreground",
+            manual > 0 && "border-success/20 bg-success/5 text-success",
+          )}
+          title={`${title}: ${isoDate}`}
+        >
+          <span className="font-semibold tabular-nums">{hasValue ? format(value) : "—"}</span>
+          <Pencil className="h-3 w-3 opacity-45 transition-opacity group-hover:opacity-100" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-72 rounded-2xl border-border/70" align="end">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-success/10 text-success">
+              <Icon className="h-4 w-4" />
+            </span>
+            <div>
+              <div className="text-sm font-semibold">{title}</div>
+              <div className="text-xs text-muted-foreground">{isoDate}</div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-xl border border-border/60 bg-card/60 p-2">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{autoLabel}</div>
+              <div className="mt-1 text-sm font-bold tabular-nums">{format(auto)}</div>
+            </div>
+            <div className="rounded-xl border border-success/25 bg-success/10 p-2">
+              <div className="text-[10px] uppercase tracking-wider text-success">Вручную</div>
+              <div className="mt-1 text-sm font-bold tabular-nums text-success">{format(manual)}</div>
+            </div>
+            <div className="rounded-xl border border-border/60 bg-card/60 p-2">
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Итого</div>
+              <div className="mt-1 text-sm font-bold tabular-nums">{format(value)}</div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-muted-foreground">
+              Ввести ручное значение
+            </label>
+            <Input
+              type="number"
+              min={0}
+              step={allowDecimal ? "0.01" : "1"}
+              value={val}
+              onChange={(e) => setVal(e.target.value)}
+              placeholder="0"
+              className="h-11 rounded-xl text-right text-base font-semibold tabular-nums"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
+              Отмена
+            </Button>
+            <Button size="sm" className="gap-2" onClick={handleSave} disabled={saving}>
+              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              Сохранить
+            </Button>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 };
 

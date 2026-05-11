@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { prefetchRoute } from "@/lib/routePrefetch";
 import {
   Sidebar,
   SidebarContent,
@@ -109,6 +110,8 @@ export function AppSidebar() {
                     <SidebarMenuButton asChild>
                       <NavLink
                         to={item.url}
+                        onFocus={() => prefetchRoute(item.url)}
+                        onMouseEnter={() => prefetchRoute(item.url)}
                         className={({ isActive }) =>
                           itemClass({
                             isActive:
@@ -139,6 +142,8 @@ export function AppSidebar() {
                   <SidebarMenuButton asChild>
                     <NavLink
                       to={item.url}
+                      onFocus={() => prefetchRoute(item.url)}
+                      onMouseEnter={() => prefetchRoute(item.url)}
                       className={({ isActive }) => itemClass({ isActive })}
                     >
                       <item.icon className="h-4 w-4 shrink-0" />
