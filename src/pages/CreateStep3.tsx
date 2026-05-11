@@ -718,6 +718,11 @@ const CreateStep3 = () => {
             // в плоский body.prompt пишется finalTechnicalBrief (см. flatForN8n),
             // потому что n8n-ноды читают body.prompt как готовое ТЗ для AI.
             user_raw_prompt: brief.prompt,
+            // КРИТИЧНО: плоские поля для n8n. Без этого body.content_type /
+            // body.prompt / body.style / body.image_urls / body.request_id
+            // и т.д. будут undefined, Switch1 уйдёт в Fallback, AI получит
+            // пустой ввод и сгенерит дефолтное (кейс «кофемашина вместо ТЗ»).
+            ...flatForN8n,
             contentType: contentType
               ? {
                   id: contentType.id,
