@@ -152,7 +152,7 @@ const Analytics = () => {
   const { data, loading, error, refresh } = useMultiMetaInsights(actIds, monthParam, actIds.length > 0);
   const { data: prevData } = useMultiMetaInsights(actIds, prevParam, actIds.length > 0);
 
-  const { leads, refetch } = useLeadsLite();
+  const { leads, loading: leadsLoading, refetch } = useLeadsLite();
 
   // Filter leads by month
   const monthStart = monthCursor.getTime();
@@ -183,25 +183,27 @@ const Analytics = () => {
 
   const sales = filteredLeads.filter((l) => l.stageKey === "paid");
   const visits = filteredLeads.filter((l) => l.stageKey === "visit" || l.stageKey === "paid");
-  const revenue = sales.reduce((sum, l) => sum + (l.amount || 0), 0);
+  const leadCount = data?.totals.leads || filteredLeads.length;
+  const diagnosticsCount = data?.totals.diagnostics || visits.length;
+  const salesCount = data?.totals.sales || sales.length;
+  const revenue = data?.totals.crmRevenue || sales.reduce((sum, l) => sum + (l.amount || 0), 0);
 
   const prevSales = prevLeads.filter((l) => l.stageKey === "paid");
-  const prevRevenue = prevSales.reduce((s, l) => s + (l.amount || 0), 0);
+  const prevRevenue = prevData?.totals.crmRevenue || prevSales.reduce((s, l) => s + (l.amount || 0), 0);
 
   const spend = data?.totals.spend ?? 0;
   const prevSpend = prevData?.totals.spend ?? 0;
   const adsLeads = data?.totals.leads ?? 0;
   const impressions = data?.totals.impressions ?? 0;
   const clicks = data?.totals.clicks ?? 0;
-  const totalLeads = adsLeads + filteredLeads.length;
-  const prevTotalLeads = (prevData?.totals.leads ?? 0) + prevLeads.length;
-  const cpl = totalLeads > 0 && spend > 0 ? spend / totalLeads : 0;
+  const prevTotalLeads = prevData?.totals.leads || prevLeads.length;
+  const cpl = leadCount > 0 && spend > 0 ? spend / leadCount : 0;
   const romi = spend > 0 ? ((revenue - spend) / spend) * 100 : null;
-  const avgCheck = sales.length > 0 ? revenue / sales.length : 0;
-  const conversion = totalLeads > 0 ? (sales.length / totalLeads) * 100 : 0;
+  const avgCheck = salesCount > 0 ? revenue / salesCount : 0;
+  const conversion = leadCount > 0 ? (salesCount / leadCount) * 100 : 0;
 
-  const crLeadVisit = totalLeads > 0 ? (visits.length / totalLeads) * 100 : 0;
-  const crVisitSale = visits.length > 0 ? (sales.length / visits.length) * 100 : 0;
+  const crLeadVisit = leadCount > 0 ? (diagnosticsCount / leadCount) * 100 : 0;
+  const crVisitSale = diagnosticsCount > 0 ? (salesCount / diagnosticsCount) * 100 : 0;
 
   // Per-channel attribution
   const channels = useMemo<ChannelStat[]>(() => {
@@ -220,7 +222,7 @@ const Analytics = () => {
     if (spend > 0) {
       const fb = map.get("facebook") ?? { meta: CHANNELS.facebook, spend: 0, leads: 0, sales: 0, revenue: 0 };
       fb.spend += spend;
-      fb.leads += adsLeads;
+      fb.leads = Math.max(fb.leads, adsLeads);
       map.set("facebook", fb);
     }
     // Always show core 4 channels even if empty so user sees structure
@@ -286,7 +288,9 @@ const Analytics = () => {
     return points;
   }, [data, filteredLeads, monthCursor]);
 
-  const funnelBase = Math.max(impressions, clicks, totalLeads, visits.length, sales.length, 1);
+  const hasLinkedData = actIds.length > 0;
+  const hasMonthData = !!data?.daily.length || filteredLeads.length > 0;
+  const funnelBase = Math.max(impressions, clicks, leadCount, diagnosticsCount, salesCount, 1);
 
   return (
     <main className="container max-w-7xl py-8 animate-fade-in-up">
@@ -341,14 +345,27 @@ const Analytics = () => {
       {/* KPI grid */}
       <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-4">
         <KpiCard icon={DollarSign} label="Расход" value={spend > 0 ? fmtMoney(spend) : "—"} sub="за период" delta={pctDelta(spend, prevSpend)} />
-        <KpiCard icon={Users} label="Лиды" value={fmtNumber(totalLeads)} sub={`${filteredLeads.length} в CRM · ${adsLeads} реклама`} delta={pctDelta(totalLeads, prevTotalLeads)} />
+        <KpiCard icon={Users} label="Лиды" value={fmtNumber(leadCount)} sub={adsLeads ? `${adsLeads} из рекламы` : `${filteredLeads.length} в CRM`} delta={pctDelta(leadCount, prevTotalLeads)} />
         <KpiCard icon={Target} label="CPL" value={cpl > 0 ? fmtMoney(cpl) : "—"} sub="стоимость лида" emphasized />
-        <KpiCard icon={ShoppingBag} label="Продажи" value={fmtNumber(sales.length)} sub={sales.length > 0 ? fmtPct(conversion) + " конверсия" : "нет продаж"} delta={pctDelta(sales.length, prevSales.length)} />
-        <KpiCard icon={TrendingUp} label="Выручка" value={revenue > 0 ? fmtMoney(revenue) : "—"} sub={sales.length > 0 ? `${sales.length} продаж` : "нет данных"} delta={pctDelta(revenue, prevRevenue)} />
+        <KpiCard icon={ShoppingBag} label="Продажи" value={fmtNumber(salesCount)} sub={salesCount > 0 ? fmtPct(conversion) + " конверсия" : "нет продаж"} delta={pctDelta(salesCount, prevData?.totals.sales || prevSales.length)} />
+        <KpiCard icon={TrendingUp} label="Выручка" value={revenue > 0 ? fmtMoney(revenue) : "—"} sub={salesCount > 0 ? `${salesCount} продаж` : "нет данных"} delta={pctDelta(revenue, prevRevenue)} />
         <KpiCard icon={GitBranch} label="ROMI" value={romi !== null ? <span className={romi >= 0 ? "text-success" : "text-destructive"}>{romi >= 0 ? "+" : ""}{Math.round(romi)}%</span> : "—"} sub={spend > 0 ? "возврат инвестиций" : "нет расходов"} emphasized />
-        <KpiCard icon={Target} label="Средний чек" value={avgCheck > 0 ? fmtMoney(avgCheck) : "—"} sub={sales.length > 0 ? `по ${sales.length} продажам` : "нет продаж"} />
+        <KpiCard icon={Target} label="Средний чек" value={avgCheck > 0 ? fmtMoney(avgCheck) : "—"} sub={salesCount > 0 ? `по ${salesCount} продажам` : "нет продаж"} />
         <KpiCard icon={Zap} label="Конв. лид→визит" value={fmtPct(crLeadVisit)} sub={`визит→продажа ${fmtPct(crVisitSale)}`} />
       </div>
+
+      {!loading && !leadsLoading && !hasMonthData && (
+        <div className="mt-6 rounded-2xl border border-warning/30 bg-warning/10 p-4 text-sm text-warning">
+          <div className="font-semibold">
+            {hasLinkedData ? "За выбранный месяц данных пока нет" : "Нет подключенных личных рекламных кабинетов"}
+          </div>
+          <div className="mt-1 text-xs opacity-80">
+            {hasLinkedData
+              ? "Перейдите в «Управление рекламой» и нажмите «Получить статистику» по кабинету или обновите период здесь."
+              : "Добавьте личный рекламный кабинет в разделе «Управление рекламой», чтобы сквозная аналитика считалась автоматически."}
+          </div>
+        </div>
+      )}
 
       {error && (
         <div className="mt-6 flex items-start gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
@@ -373,9 +390,9 @@ const Analytics = () => {
           <div className="mt-6 space-y-5">
             <FunnelRow label="Показы" value={impressions} base={funnelBase} color="bg-gradient-to-r from-success to-success/60" />
             <FunnelRow label="Клики" value={clicks} base={funnelBase} prevValue={impressions} color="bg-gradient-to-r from-success/80 to-success/40" />
-            <FunnelRow label="Лиды" value={totalLeads} base={funnelBase} prevValue={clicks || impressions} color="bg-gradient-to-r from-success/60 to-success/30" />
-            <FunnelRow label="Диагностики" value={visits.length} base={funnelBase} prevValue={totalLeads} color="bg-gradient-to-r from-primary/70 to-primary/30" />
-            <FunnelRow label="Продажи" value={sales.length} base={funnelBase} prevValue={visits.length} color="bg-gradient-to-r from-warning/70 to-warning/30" />
+            <FunnelRow label="Лиды" value={leadCount} base={funnelBase} prevValue={clicks || impressions} color="bg-gradient-to-r from-success/60 to-success/30" />
+            <FunnelRow label="Диагностики" value={diagnosticsCount} base={funnelBase} prevValue={leadCount} color="bg-gradient-to-r from-primary/70 to-primary/30" />
+            <FunnelRow label="Продажи" value={salesCount} base={funnelBase} prevValue={diagnosticsCount} color="bg-gradient-to-r from-warning/70 to-warning/30" />
           </div>
           {loading && (
             <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground">

@@ -1,12 +1,16 @@
 import { useMemo, useState } from "react";
 import {
+  BarChart3,
   ChevronLeft,
   ChevronRight,
+  CreditCard,
   Megaphone,
   Plus,
   RefreshCw,
   Rocket,
   Search,
+  ShoppingCart,
+  Target,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,6 +20,27 @@ import CabinetRow from "@/components/ads/CabinetRow";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
+import { useMultiMetaInsights } from "@/hooks/useMetaInsights";
+
+const CURRENCY_SYMBOLS: Record<string, string> = {
+  USD: "$",
+  EUR: "€",
+  KZT: "₸",
+  RUB: "₽",
+  UAH: "₴",
+  GBP: "£",
+  TRY: "₺",
+  BYN: "Br",
+};
+
+const formatMoney = (n: number, currency: string) => {
+  const sym = CURRENCY_SYMBOLS[currency] ?? currency;
+  const isPrefix = ["$", "€", "£"].includes(sym);
+  const num = Math.round(n).toLocaleString("ru-RU");
+  return isPrefix ? `${sym}${num}` : `${num} ${sym}`;
+};
+
+const formatNumber = (n: number) => Math.round(n).toLocaleString("ru-RU");
 
 const MONTHS_RU = [
   "Январь",
@@ -50,6 +75,18 @@ const Ads = () => {
     );
 
   const monthLabel = `${MONTHS_RU[monthCursor.getMonth()]} ${monthCursor.getFullYear()}`;
+  const monthParam = `${monthCursor.getFullYear()}-${String(
+    monthCursor.getMonth() + 1,
+  ).padStart(2, "0")}`;
+  const insightIds = useMemo(
+    () => cabinets.map((c) => c.externalId).filter(Boolean),
+    [cabinets],
+  );
+  const {
+    data: monthInsights,
+    loading: insightsLoading,
+    refresh: refreshInsights,
+  } = useMultiMetaInsights(insightIds, monthParam, insightIds.length > 0);
 
   const toggleExpanded = (id: string) =>
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -64,8 +101,13 @@ const Ads = () => {
 
   const active = cabinets.filter((c) => c.online).length;
 
-  const handleRefresh = () => {
+  const refreshPageData = () => {
+    refreshInsights();
     setRefreshKey((k) => k + 1);
+  };
+
+  const handleRefresh = () => {
+    refreshPageData();
     toast.success("Данные обновлены");
   };
 
@@ -76,8 +118,12 @@ const Ads = () => {
     toast.success(c.online ? "Кабинет на паузе" : "Кабинет запущен");
   };
 
+  const hasMonthData = !!monthInsights?.daily.length;
+  const totals = monthInsights?.totals;
+  const currency = hasMonthData ? monthInsights.currency : cabinets[0]?.currency ?? "KZT";
+
   return (
-    <main className="container max-w-6xl py-8 animate-fade-in-up">
+    <main className="container max-w-7xl py-8 animate-fade-in-up">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
@@ -112,7 +158,7 @@ const Ads = () => {
             aria-label="Обновить"
             onClick={handleRefresh}
           >
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className={insightsLoading ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
           </Button>
           <Button
             onClick={() => setAddOpen(true)}
@@ -130,6 +176,44 @@ const Ads = () => {
           </Button>
         </div>
       </div>
+
+      <section className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <SummaryCard
+          label="Кабинеты"
+          value={formatNumber(cabinets.length)}
+          detail={`${formatNumber(active)} активных`}
+          icon={Megaphone}
+          tone="success"
+        />
+        <SummaryCard
+          label="Расход за месяц"
+          value={formatMoney(totals?.spend ?? 0, currency)}
+          detail={hasMonthData ? monthLabel : "Нет данных за месяц"}
+          icon={CreditCard}
+          tone="warning"
+          loading={insightsLoading}
+        />
+        <SummaryCard
+          label="Лиды"
+          value={formatNumber(totals?.leads ?? 0)}
+          detail={
+            totals?.cpl
+              ? `CPL ${formatMoney(totals.cpl, currency)}`
+              : hasMonthData ? "CPL пока нет" : "Нажмите обновить"
+          }
+          icon={Target}
+          tone="success"
+          loading={insightsLoading}
+        />
+        <SummaryCard
+          label="Продажи"
+          value={formatNumber(totals?.sales ?? 0)}
+          detail={formatMoney(totals?.crmRevenue ?? 0, currency)}
+          icon={ShoppingCart}
+          tone="success"
+          loading={insightsLoading}
+        />
+      </section>
 
       <div className="relative mt-6">
         <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -156,6 +240,7 @@ const Ads = () => {
             monthCursor={monthCursor}
             onToggleOnline={handleToggleOnline}
             onRemove={removeCabinet}
+            onSynced={refreshPageData}
           />
         ))}
 
@@ -228,6 +313,50 @@ const Ads = () => {
         cabinets={cabinets}
       />
     </main>
+  );
+};
+
+type SummaryTone = "success" | "warning";
+
+const SummaryCard = ({
+  label,
+  value,
+  detail,
+  icon: Icon,
+  tone,
+  loading,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  icon: typeof BarChart3;
+  tone: SummaryTone;
+  loading?: boolean;
+}) => {
+  const toneClass =
+    tone === "warning"
+      ? "bg-warning/10 text-warning"
+      : "bg-success/10 text-success";
+
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card/60 p-5">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+            {label}
+          </div>
+          <div className="mt-4 text-3xl font-bold tracking-tight">
+            {loading ? "..." : value}
+          </div>
+          <div className="mt-2 truncate text-sm text-muted-foreground">
+            {detail}
+          </div>
+        </div>
+        <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-2xl ${toneClass}`}>
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+    </div>
   );
 };
 

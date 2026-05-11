@@ -10,7 +10,6 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useReportData } from "@/hooks/useReportData";
-import { exportReportPdf } from "@/lib/exportReportPdf";
 import { AiChatBar } from "@/components/reports/AiChatBar";
 import { AiSummary } from "@/components/reports/AiSummary";
 import { AutoSendDialog } from "@/components/reports/AutoSendDialog";
@@ -46,6 +45,7 @@ export default function Reports() {
     if (!printRef.current) return;
     setExporting(true);
     try {
+      const { exportReportPdf } = await import("@/lib/exportReportPdf");
       await exportReportPdf(
         printRef.current,
         `report-${format(range.from, "yyyy-MM-dd")}-${format(range.to, "yyyy-MM-dd")}.pdf`,
