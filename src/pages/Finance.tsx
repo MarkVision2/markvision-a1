@@ -208,7 +208,7 @@ const Finance = () => {
   };
 
   return (
-    <main className="container max-w-7xl py-6 animate-fade-in-up">
+    <main className="container max-w-[1600px] py-6 animate-fade-in-up">
       <div className="flex items-center gap-3">
         <span className="grid h-10 w-10 place-items-center rounded-xl bg-success/15 text-success ring-1 ring-success/30">
           <Wallet className="h-5 w-5" />

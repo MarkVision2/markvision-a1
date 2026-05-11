@@ -166,7 +166,7 @@ const AgencyAnalytics = () => {
 
       {/* Status filter strip + add */}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
           <FilterChip
             active={statusFilter === "all"}
             onClick={() => setStatusFilter("all")}
@@ -227,18 +227,18 @@ const AgencyAnalytics = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-sm">
+            <table className="w-full min-w-[760px] text-xs">
               <thead>
                 <tr className="border-b border-border/60 bg-card/50 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  <th className="px-5 py-3 text-left">Клиент</th>
-                  <th className="px-3 py-3 text-left">Услуги</th>
-                  <th className="px-3 py-3 text-right">Оплата</th>
-                  <th className="px-3 py-3 text-right">Расходы</th>
-                  <th className="px-3 py-3 text-right">Прибыль</th>
-                  <th className="px-3 py-3 text-right">Маржа</th>
-                  <th className="px-3 py-3 text-left">Оплата до</th>
-                  <th className="px-3 py-3 text-left">Статус</th>
-                  <th className="px-3 py-3" />
+                  <th className="px-3 py-2.5 text-left">Клиент</th>
+                  <th className="px-2 py-2.5 text-left">Услуги</th>
+                  <th className="px-2 py-2.5 text-right">Оплата</th>
+                  <th className="px-2 py-2.5 text-right">Расходы</th>
+                  <th className="px-2 py-2.5 text-right">Прибыль</th>
+                  <th className="px-2 py-2.5 text-right">Маржа</th>
+                  <th className="px-2 py-2.5 text-left">Оплата до</th>
+                  <th className="px-2 py-2.5 text-left">Статус</th>
+                  <th className="px-2 py-2.5" />
                 </tr>
               </thead>
               <tbody>
@@ -291,17 +291,17 @@ const AgencyAnalytics = () => {
                         status.rowAccent,
                       )}
                     >
-                      <td className="px-5 py-2.5">
+                      <td className="px-3 py-2">
                         <Input
                           value={c.name}
                           onChange={(e) => updateName(e.target.value)}
-                          className="h-8 w-44 rounded-md font-semibold"
+                          className="h-8 w-36 rounded-md font-semibold"
                         />
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-2 py-2">
                         <Popover>
                           <PopoverTrigger asChild>
-                            <button className="inline-flex max-w-[160px] items-center gap-1.5 rounded-md border border-border/60 bg-background/40 px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground">
+                            <button className="inline-flex max-w-[140px] items-center gap-1.5 rounded-md border border-border/60 bg-background/40 px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground">
                               <span className="truncate">
                                 {c.services.length === 0 ? "0 услуг" : c.services.map((s) => s.name).join(", ")}
                               </span>
@@ -332,53 +332,53 @@ const AgencyAnalytics = () => {
                           </PopoverContent>
                         </Popover>
                       </td>
-                      <td className="px-3 py-2.5 text-right">
+                      <td className="px-2 py-2 text-right">
                         <Input
                           type="number"
                           value={pay || ""}
                           onChange={(e) => setTotalPay(Number(e.target.value) || 0)}
                           placeholder="0"
                           disabled={c.services.length === 0}
-                          className="ml-auto h-8 w-28 rounded-md text-right font-semibold tabular-nums"
+                          className="ml-auto h-8 w-24 rounded-md text-right font-semibold tabular-nums"
                         />
                       </td>
-                      <td className="px-3 py-2.5 text-right">
+                      <td className="px-2 py-2 text-right">
                         <Input
                           type="number"
                           value={cost || ""}
                           onChange={(e) => setTotalCost(Number(e.target.value) || 0)}
                           placeholder="0"
                           disabled={c.services.length === 0}
-                          className="ml-auto h-8 w-28 rounded-md text-right font-semibold tabular-nums text-destructive"
+                          className="ml-auto h-8 w-24 rounded-md text-right font-semibold tabular-nums text-destructive"
                         />
                       </td>
                       <td className={cn(
-                        "px-3 py-2.5 text-right font-semibold tabular-nums",
+                        "whitespace-nowrap px-2 py-2 text-right font-semibold tabular-nums",
                         profit >= 0 ? "text-success" : "text-destructive",
                       )}>
                         {fmtT(profit)}
                       </td>
                       <td className={cn(
-                        "px-3 py-2.5 text-right tabular-nums",
+                        "px-2 py-2 text-right tabular-nums",
                         margin >= 0 ? "text-foreground" : "text-destructive",
                       )}>
                         {Math.round(margin)}%
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-2 py-2">
                         <Input
                           type="date"
                           value={c.payDate ?? ""}
                           onChange={(e) => updateClient(c.id, { payDate: e.target.value || undefined })}
-                          className="h-8 w-36 rounded-md"
+                          className="h-8 w-32 rounded-md text-xs"
                         />
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-2 py-2">
                         <Select
                           value={c.status}
                           onValueChange={(v) => updateClient(c.id, { status: v as AgencyClientStatus })}
                         >
                           <SelectTrigger className={cn(
-                            "h-8 w-[150px] rounded-md border text-xs font-semibold",
+                            "h-8 w-[130px] rounded-md border text-[11px] font-semibold",
                             status.pill,
                           )}>
                             <SelectValue />
@@ -390,7 +390,7 @@ const AgencyAnalytics = () => {
                           </SelectContent>
                         </Select>
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-2 py-2">
                         <button
                           onClick={() => removeClient(c.id)}
                           className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
@@ -402,31 +402,35 @@ const AgencyAnalytics = () => {
                     </tr>
                   );
                 })}
-                {filteredClients.length > 0 && (
-                  <tr className="bg-card/60 font-bold">
-                    <td className="px-5 py-3 text-xs uppercase tracking-wider text-muted-foreground">Итого</td>
-                    <td className="px-3 py-3 text-xs text-muted-foreground">
-                      {filteredClients.reduce((s, c) => s + c.services.length, 0)} услуг
-                    </td>
-                    <td className="px-3 py-3 text-right tabular-nums">
-                      {fmtT(filteredClients.reduce((s, c) => s + c.services.reduce((x, sv) => x + sv.price, 0), 0))}
-                    </td>
-                    <td className="px-3 py-3 text-right tabular-nums text-destructive">
-                      {fmtT(filteredClients.reduce((s, c) => s + c.services.reduce((x, sv) => x + sv.cost, 0), 0))}
-                    </td>
-                    <td className="px-3 py-3 text-right tabular-nums text-success">
-                      {fmtT(filteredClients.reduce((s, c) => {
-                        const p = c.services.reduce((x, sv) => x + sv.price, 0);
-                        const co = c.services.reduce((x, sv) => x + sv.cost, 0);
-                        return s + (p - co);
-                      }, 0))}
-                    </td>
-                    <td className="px-3 py-3" />
-                    <td className="px-3 py-3" />
-                    <td className="px-3 py-3" />
-                    <td className="px-3 py-3" />
-                  </tr>
-                )}
+                {filteredClients.length > 0 && (() => {
+                  const totPay = filteredClients.reduce((s, c) => s + c.services.reduce((x, sv) => x + sv.price, 0), 0);
+                  const totCost = filteredClients.reduce((s, c) => s + c.services.reduce((x, sv) => x + sv.cost, 0), 0);
+                  const totProfit = totPay - totCost;
+                  const totMargin = totPay > 0 ? (totProfit / totPay) * 100 : 0;
+                  return (
+                    <tr className="border-t-2 border-border/60 bg-card/70 font-bold">
+                      <td className="px-3 py-3 text-[10px] uppercase tracking-wider text-muted-foreground">Итого</td>
+                      <td className="px-2 py-3 text-[11px] text-muted-foreground">
+                        {filteredClients.reduce((s, c) => s + c.services.length, 0)} услуг
+                      </td>
+                      <td className="whitespace-nowrap px-2 py-3 text-right tabular-nums">{fmtT(totPay)}</td>
+                      <td className="whitespace-nowrap px-2 py-3 text-right tabular-nums text-destructive">{fmtT(totCost)}</td>
+                      <td className={cn(
+                        "whitespace-nowrap px-2 py-3 text-right tabular-nums",
+                        totProfit >= 0 ? "text-success" : "text-destructive",
+                      )}>{fmtT(totProfit)}</td>
+                      <td className={cn(
+                        "px-2 py-3 text-right tabular-nums",
+                        totMargin >= 0 ? "text-foreground" : "text-destructive",
+                      )}>{Math.round(totMargin)}%</td>
+                      <td className="px-2 py-3 text-[11px] text-muted-foreground">—</td>
+                      <td className="px-2 py-3 text-[11px] text-muted-foreground">
+                        {filteredClients.length} {pluralClient(filteredClients.length)}
+                      </td>
+                      <td className="px-2 py-3" />
+                    </tr>
+                  );
+                })()}
               </tbody>
             </table>
           </div>
