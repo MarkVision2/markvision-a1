@@ -227,7 +227,18 @@ const AgencyAnalytics = () => {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[760px] text-xs">
+            <table className="w-full min-w-[760px] table-fixed text-xs">
+              <colgroup>
+                <col className="w-[14%]" />
+                <col className="w-[16%]" />
+                <col className="w-[10%]" />
+                <col className="w-[10%]" />
+                <col className="w-[10%]" />
+                <col className="w-[7%]" />
+                <col className="w-[12%]" />
+                <col className="w-[16%]" />
+                <col className="w-[5%]" />
+              </colgroup>
               <thead>
                 <tr className="border-b border-border/60 bg-card/50 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   <th className="px-3 py-2.5 text-left">Клиент</th>
@@ -295,13 +306,13 @@ const AgencyAnalytics = () => {
                         <Input
                           value={c.name}
                           onChange={(e) => updateName(e.target.value)}
-                          className="h-8 w-36 rounded-md font-semibold"
+                          className="h-7 w-full border-0 bg-transparent px-0 font-semibold shadow-none hover:bg-secondary/40 focus-visible:bg-background focus-visible:px-2 focus-visible:ring-1"
                         />
                       </td>
                       <td className="px-2 py-2">
                         <Popover>
                           <PopoverTrigger asChild>
-                            <button className="inline-flex max-w-[140px] items-center gap-1.5 rounded-md border border-border/60 bg-background/40 px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground">
+                            <button className="inline-flex w-full max-w-full items-center justify-between gap-1.5 rounded-md border-0 bg-transparent px-0 text-[11px] text-muted-foreground transition-colors hover:bg-secondary/40 hover:px-2 hover:text-foreground">
                               <span className="truncate">
                                 {c.services.length === 0 ? "0 услуг" : c.services.map((s) => s.name).join(", ")}
                               </span>
@@ -339,7 +350,7 @@ const AgencyAnalytics = () => {
                           onChange={(e) => setTotalPay(Number(e.target.value) || 0)}
                           placeholder="0"
                           disabled={c.services.length === 0}
-                          className="ml-auto h-8 w-24 rounded-md text-right font-semibold tabular-nums"
+                          className="h-7 w-full border-0 bg-transparent px-0 text-right font-semibold tabular-nums shadow-none hover:bg-secondary/40 focus-visible:bg-background focus-visible:px-2 focus-visible:ring-1"
                         />
                       </td>
                       <td className="px-2 py-2 text-right">
@@ -349,7 +360,7 @@ const AgencyAnalytics = () => {
                           onChange={(e) => setTotalCost(Number(e.target.value) || 0)}
                           placeholder="0"
                           disabled={c.services.length === 0}
-                          className="ml-auto h-8 w-24 rounded-md text-right font-semibold tabular-nums text-destructive"
+                          className="h-7 w-full border-0 bg-transparent px-0 text-right font-semibold tabular-nums text-destructive shadow-none hover:bg-secondary/40 focus-visible:bg-background focus-visible:px-2 focus-visible:ring-1"
                         />
                       </td>
                       <td className={cn(
@@ -369,7 +380,7 @@ const AgencyAnalytics = () => {
                           type="date"
                           value={c.payDate ?? ""}
                           onChange={(e) => updateClient(c.id, { payDate: e.target.value || undefined })}
-                          className="h-8 w-32 rounded-md text-xs"
+                          className="h-7 w-full border-0 bg-transparent px-0 text-xs shadow-none hover:bg-secondary/40 focus-visible:bg-background focus-visible:px-2 focus-visible:ring-1"
                         />
                       </td>
                       <td className="px-2 py-2">
