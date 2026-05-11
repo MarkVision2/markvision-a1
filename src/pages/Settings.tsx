@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Edit2, Globe, GitBranch, Link2, MessageCircle, Phone, Plus, Search, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
+import { Edit2, Eye, Globe, GitBranch, Link2, MessageCircle, Phone, Plus, Search, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ import { ProfileSettings } from "@/components/settings/ProfileSettings";
 import { PipelinesSettings } from "@/components/settings/PipelinesSettings";
 import { LossReasonsSettings } from "@/components/settings/LossReasonsSettings";
 import { InboundTokensSettings } from "@/components/settings/InboundTokensSettings";
+import { ClientDashTokensSettings } from "@/components/settings/ClientDashTokensSettings";
 import { SiteIntakeCard } from "@/pages/SettingsConnection";
 import {
   MODULES,
@@ -85,6 +86,7 @@ export default function Settings() {
           <TabsTrigger value="whatsapp" className="gap-2"><MessageCircle className="h-3.5 w-3.5" /> WhatsApp</TabsTrigger>
           <TabsTrigger value="site" className="gap-2"><Globe className="h-3.5 w-3.5" /> Сайт</TabsTrigger>
           <TabsTrigger value="inbound" className="gap-2"><Link2 className="h-3.5 w-3.5" /> Лендинги</TabsTrigger>
+          <TabsTrigger value="clientview" className="gap-2"><Eye className="h-3.5 w-3.5" /> Доступ клиента</TabsTrigger>
         </TabsList>
 
         <TabsContent value="team" className="mt-0">
@@ -258,6 +260,23 @@ export default function Settings() {
               </div>
             </div>
             <InboundTokensSettings />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="clientview" className="mt-0">
+          <div className="rounded-2xl border border-border bg-card p-6">
+            <div className="mb-4 flex items-start gap-4">
+              <span className="grid h-12 w-12 place-items-center rounded-xl bg-primary/15 text-primary">
+                <Eye className="h-6 w-6" />
+              </span>
+              <div className="flex-1">
+                <h3 className="text-base font-semibold">Доступ клиента к дашборду</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Создайте read-only ссылку для клиента: лиды, качество, конверсии, выручка. Без логина, без доступа к контактам и админке.
+                </p>
+              </div>
+            </div>
+            <ClientDashTokensSettings />
           </div>
         </TabsContent>
       </Tabs>
