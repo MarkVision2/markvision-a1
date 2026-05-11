@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type { TablesUpdate, TablesInsert } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
+import { fetchPendingAdvances, markAdvanceDone } from "@/integrations/clientConfig/client";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type {
@@ -303,6 +304,45 @@ export function useCrmStore() {
 
   // capture utm on mount
   useEffect(() => { getLastTouch(); }, []);
+
+  // ── Авто-движение лидов из leads_crm.auto_advance_stage (от n8n WA-анализа) ──
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | null = null;
+
+    const tick = async () => {
+      try {
+        const pending = await fetchPendingAdvances();
+        if (cancelled || pending.length === 0) return;
+        for (const p of pending) {
+          if (!p.phone || !p.auto_advance_stage) continue;
+          // Найти OLD-лида по нормализованному phone
+          const digits = String(p.phone).replace(/\D/g, "");
+          const oldLead = leads.find((l) => String(l.phone).replace(/\D/g, "") === digits);
+          if (!oldLead) continue;
+          if (oldLead.stageId === p.auto_advance_stage) {
+            // Уже в нужном этапе — закрываем флаг
+            await markAdvanceDone(p.id);
+            continue;
+          }
+          // Двигаем (попутно сработает CAPI через moveLead → crm-stage-capi,
+          // но он де-дуплицируется по capi_schedule_sent_at на стороне функции).
+          await moveLead(oldLead.id, p.auto_advance_stage);
+          await markAdvanceDone(p.id);
+        }
+      } catch (e) {
+        // silent — поллер не должен ронять UI
+      }
+    };
+    // Сразу + каждые 30 сек
+    void tick();
+    timer = setInterval(() => void tick(), 30_000);
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leads]);
 
   // ---------- helpers ----------
   const stageUuid = useCallback((key: string) => stageIdMap.keyToId.get(key), [stageIdMap]);
