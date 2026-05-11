@@ -1,14 +1,12 @@
 // Прокси-эндпоинт для запуска кампании в n8n.
 // 1. Принимает FormData от фронта.
-// 2. Обогащает payload секретным META_ACCESS_TOKEN и кладёт ВСЕ возможные
-//    варианты названий полей, которые исторически использует n8n-workflow
-//    (camel/snake/UPPER, fbtoken/fb_token/access_token, adAccount/ad_account_id/...).
-// 3. Если цель — "Лиды с сайта", жёстко переписывает campaignBody/adSetBody
-//    чтобы workflow не ушёл в ветку WhatsApp.
-// 4. Отвечает фронту максимально быстро (короткий таймаут на ACK от n8n,
-//    дальше n8n продолжает в фоне).
+// 2. Загружает creative_feed / creative_stories в Meta Graph API → получает image_hash.
+// 3. Вставляет image_hash в creativeBody.object_story_spec.link_data.image_hash.
+// 4. Обогащает payload секретным META_ACCESS_TOKEN и всеми алиасами полей.
+// 5. Отвечает фронту быстро (короткий таймаут на ACK от n8n, дальше n8n работает в фоне).
 
 const N8N_WEBHOOK = "https://n8n.zapoinov.com/webhook/ai-target-launch";
+const META_GRAPH = "https://graph.facebook.com/v19.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,8 +15,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-/** Сколько ждём первичный ACK от n8n. Дальше отвечаем «принято» фронту,
- *  а n8n продолжает работу в фоне. */
+/** Сколько ждём первичный ACK от n8n. */
 const N8N_ACK_TIMEOUT_MS = 8_000;
 
 function pickStr(...vals: unknown[]): string {
@@ -26,6 +23,47 @@ function pickStr(...vals: unknown[]): string {
     if (typeof v === "string" && v.trim()) return v.trim();
   }
   return "";
+}
+
+/**
+ * Загружает изображение в Meta adimages API.
+ * Возвращает { hash, url } или null при ошибке.
+ */
+async function uploadImageToMeta(
+  adAccount: string,
+  accessToken: string,
+  file: File,
+): Promise<{ hash: string; url: string } | null> {
+  try {
+    const fd = new FormData();
+    fd.append(file.name, file, file.name);
+    fd.append("access_token", accessToken);
+
+    const res = await fetch(`${META_GRAPH}/${adAccount}/adimages`, {
+      method: "POST",
+      body: fd,
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    const data = (await res.json()) as {
+      images?: Record<string, { hash?: string; url?: string }>;
+      error?: { message?: string };
+    };
+
+    if (!res.ok || data.error) {
+      console.error("[uploadImage] Meta error:", data.error?.message ?? JSON.stringify(data));
+      return null;
+    }
+
+    const entry = data.images ? Object.values(data.images)[0] : null;
+    if (entry?.hash) {
+      return { hash: entry.hash, url: entry.url ?? "" };
+    }
+    return null;
+  } catch (e) {
+    console.error("[uploadImage] exception:", (e as Error).message);
+    return null;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -54,7 +92,7 @@ Deno.serve(async (req) => {
     const payload = JSON.parse(payloadStr) as Record<string, unknown>;
     const client = (payload.clientConfig ?? {}) as Record<string, unknown>;
 
-    // ===== 1. ACCESS_TOKEN: дублируем во всех вариантах имени =====
+    // ===== 1. ACCESS_TOKEN =====
     const accessToken = pickStr(
       client.fb_token,
       client.access_token,
@@ -65,12 +103,12 @@ Deno.serve(async (req) => {
     );
 
     client.fb_token = accessToken;
-    client.fbtoken = accessToken;            // legacy n8n key
+    client.fbtoken = accessToken;
     client.access_token = accessToken;
-    client.accesstoken = accessToken;        // legacy n8n key
+    client.accesstoken = accessToken;
     payload.clientConfig = client;
 
-    // ===== 2. AD_ACCOUNT: нормализуем + дублируем =====
+    // ===== 2. AD_ACCOUNT =====
     const adAccountRaw = pickStr(
       client.ad_account_id,
       client.adaccountid,
@@ -95,12 +133,12 @@ Deno.serve(async (req) => {
     }
 
     client.ad_account_id = adAccount;
-    client.adaccountid = adAccount;          // legacy n8n key
+    client.adaccountid = adAccount;
     payload.clientConfig = client;
-    payload.adAccount = adAccount;           // legacy
+    payload.adAccount = adAccount;
     payload.ad_account_id = adAccount;
 
-    // ===== 3. UPPER_CASE-алиасы для готовых нод n8n =====
+    // ===== 3. UPPER_CASE aliases =====
     const pageId = pickStr(client.page_id, client.pageid);
     const pageName = pickStr(client.page_name, client.pagename);
     const instagramId = pickStr(
@@ -128,7 +166,7 @@ Deno.serve(async (req) => {
     payload.APP_ID = pickStr(client.app_id);
     payload.LEAD_FORM_ID = leadFormId;
 
-    // ===== 4. Цель кампании: site-leads / whatsapp / meta-form =====
+    // ===== 4. Цель кампании =====
     const goal = pickStr(payload.goal);
     const isWebsiteGoal = goal === "site-leads";
     const isMetaForm = goal === "meta-form";
@@ -137,7 +175,6 @@ Deno.serve(async (req) => {
     payload.isMetaForm = isMetaForm;
     payload.isWhatsApp = isWhatsApp;
 
-    // Сводка для отображения пользователю и для логов n8n
     const goalLabel = isWebsiteGoal
       ? "Лиды с сайта"
       : isMetaForm
@@ -145,6 +182,7 @@ Deno.serve(async (req) => {
         : isWhatsApp
           ? "WhatsApp"
           : goal;
+
     payload.launchSummary = {
       goal,
       goalLabel,
@@ -161,7 +199,7 @@ Deno.serve(async (req) => {
       currency: payload.currency ?? client.currency ?? "USD",
     };
 
-    // ===== 5. Готовые Meta-объекты в формате, который ждёт n8n =====
+    // ===== 5. Meta campaign / adSet / ad bodies =====
     const dailyBudgetCents = (() => {
       const v = client.daily_budget;
       if (typeof v === "number" && v > 0) return Math.round(v);
@@ -219,102 +257,126 @@ Deno.serve(async (req) => {
       ? (websiteUrl || pickStr(client.landing_url) || "https://facebook.com/")
       : "https://facebook.com/";
 
+    // ===== 6. ЗАГРУЖАЕМ КРЕАТИВЫ В META → получаем image_hash =====
+    const creativeFeedFile = incoming.get("creative_feed");
+    const creativeStoriesFile = incoming.get("creative_stories");
+
+    let feedImageHash: string | null = null;
+    let feedImageUrl: string | null = null;
+    let storiesImageHash: string | null = null;
+    let storiesImageUrl: string | null = null;
+
+    // Параллельно загружаем feed и stories (только изображения; видео обрабатывает n8n)
+    const uploadTasks: Promise<void>[] = [];
+
+    if (creativeFeedFile instanceof File && creativeFeedFile.type.startsWith("image/")) {
+      uploadTasks.push(
+        uploadImageToMeta(adAccount, accessToken, creativeFeedFile).then((r) => {
+          if (r) { feedImageHash = r.hash; feedImageUrl = r.url; }
+        }),
+      );
+    }
+    if (creativeStoriesFile instanceof File && creativeStoriesFile.type.startsWith("image/")) {
+      uploadTasks.push(
+        uploadImageToMeta(adAccount, accessToken, creativeStoriesFile).then((r) => {
+          if (r) { storiesImageHash = r.hash; storiesImageUrl = r.url; }
+        }),
+      );
+    }
+
+    if (uploadTasks.length > 0) {
+      await Promise.all(uploadTasks);
+    }
+
+    // Добавляем image_hash в payload для n8n и в creativeBody
+    payload.feedImageHash = feedImageHash;
+    payload.feedImageUrl = feedImageUrl;
+    payload.storiesImageHash = storiesImageHash;
+    payload.storiesImageUrl = storiesImageUrl;
+
+    // ===== 7. Строим creativeBody с image_hash =====
+    const linkData: Record<string, unknown> = {
+      link: linkUrl,
+      message: pickStr(payload.text),
+      name: pickStr(payload.text).slice(0, 60) || goalLabel,
+      call_to_action: {
+        type: ctaType,
+        value: isWebsiteGoal
+          ? { link: linkUrl }
+          : isWhatsApp
+            ? { app_destination: "WHATSAPP" }
+            : {},
+      },
+    };
+
+    // Вставляем hash изображения ленты (feed 4:5)
+    if (feedImageHash) {
+      linkData.image_hash = feedImageHash;
+    }
+
     const creativeBody: Record<string, unknown> = {
       access_token: accessToken,
       name: `creative_${Date.now()}`,
       object_story_spec: {
         page_id: pageId,
-        link_data: {
-          link: linkUrl,
-          message: pickStr(payload.text),
-          name: pickStr(payload.text).slice(0, 60) || goalLabel,
-          call_to_action: {
-            type: ctaType,
-            value: isWebsiteGoal
-              ? { link: linkUrl }
-              : isWhatsApp
-                ? { app_destination: "WHATSAPP" }
-                : {},
-          },
-        },
+        link_data: linkData,
+      },
+    };
+
+    // Для видео — n8n получит файл и сам загрузит через video upload API
+    // Флаги помогают n8n понять, что нужно сделать
+    if (
+      creativeFeedFile instanceof File &&
+      creativeFeedFile.type.startsWith("video/")
+    ) {
+      payload.feedIsVideo = true;
+      payload.feedVideoFileName = creativeFeedFile.name;
+    }
+    if (
+      creativeStoriesFile instanceof File &&
+      creativeStoriesFile.type.startsWith("video/")
+    ) {
+      payload.storiesIsVideo = true;
+      payload.storiesVideoFileName = creativeStoriesFile.name;
+    }
+
+    // Stories creativeBody (9:16) — отдельный объект для n8n
+    const storiesLinkData: Record<string, unknown> = { ...linkData };
+    if (storiesImageHash) {
+      storiesLinkData.image_hash = storiesImageHash;
+    } else if (feedImageHash) {
+      // Фоллбек: используем feed-хеш если stories не загружен
+      storiesLinkData.image_hash = feedImageHash;
+    }
+
+    const storiesCreativeBody: Record<string, unknown> = {
+      access_token: accessToken,
+      name: `creative_stories_${Date.now()}`,
+      object_story_spec: {
+        page_id: pageId,
+        link_data: storiesLinkData,
       },
     };
 
     payload.campaignBody = campaignBody;
     payload.adSetBody = adSetBody;
     payload.creativeBody = creativeBody;
+    payload.storiesCreativeBody = storiesCreativeBody;
     payload.adBody = {
       name: `${goalLabel} | ad`,
       status: "PAUSED",
       access_token: accessToken,
     };
 
-    // ===== 6. launchId для трекинга =====
+    // ===== 8. launchId =====
     if (!payload.launchId) {
       payload.launchId = crypto.randomUUID();
     }
 
-    // ===== 6b. Если creative_feed — видео, заливаем его в FB /advideos СРАЗУ =====
-    // n8n Code-нода не может делать multipart upload (sandbox блокирует form-data
-    // и crypto). Здесь Deno без sandbox + uploader — самое надёжное место.
-    // На выходе кладём в payload готовый video_id как mediaID, n8n им просто пользуется.
-    payload.mediaUploadDebug = "";
-    try {
-      const adAccountForUpload = String(
-        client.ad_account_id ?? client.adaccountid ?? payload.ad_account_id ?? payload.adAccount ?? ""
-      ).replace(/^act_/, "");
-      // Берём первый видео-файл из любого поля (creative_feed предпочтительно, иначе creative_stories).
-      const candidateKeys = ["creative_feed", "creative_stories"];
-      let feedFile: File | null = null;
-      let feedKeyUsed = "";
-      for (const k of candidateKeys) {
-        const f = incoming.get(k);
-        if (f && typeof f === "object" && "type" in f && "name" in f) {
-          if (String((f as File).type || "").startsWith("video/")) {
-            feedFile = f as File;
-            feedKeyUsed = k;
-            break;
-          }
-          if (!feedFile) {
-            feedFile = f as File;
-            feedKeyUsed = k;
-          }
-        }
-      }
-      const isFile = feedFile !== null;
-      const feedType = isFile ? String((feedFile as File).type || "") : "";
-      const isVideo = feedType.startsWith("video/");
-      if (isVideo && adAccountForUpload && accessToken) {
-        const fbForm = new FormData();
-        fbForm.append("source", feedFile as File, (feedFile as File).name || "creative.mp4");
-        fbForm.append("title", "AI Creative");
-        fbForm.append("access_token", accessToken);
-        const fbResp = await fetch(
-          `https://graph.facebook.com/v22.0/act_${adAccountForUpload}/advideos`,
-          { method: "POST", body: fbForm, signal: AbortSignal.timeout(120_000) },
-        );
-        const fbText = await fbResp.text();
-        let fbJson: { id?: string; error?: { message?: string } } | null = null;
-        try { fbJson = JSON.parse(fbText); } catch { /* ignore */ }
-        if (fbResp.ok && fbJson?.id) {
-          payload.mediaID = String(fbJson.id);
-          payload.mediaType = "VIDEO";
-          payload.mediaUploadDebug = `OK videoId=${fbJson.id} from=${feedKeyUsed}`;
-        } else {
-          payload.mediaUploadDebug = `FB ${fbResp.status} from=${feedKeyUsed}: ${fbText.slice(0, 300)}`;
-        }
-      } else if (isFile && feedType.startsWith("image/")) {
-        payload.mediaUploadDebug = "skip: image (n8n handles)";
-      } else {
-        payload.mediaUploadDebug = `skip: isFile=${isFile} type=${feedType} adAcc=${!!adAccountForUpload} tok=${!!accessToken}`;
-      }
-    } catch (e) {
-      payload.mediaUploadDebug = `EXC: ${(e as Error).message ?? String(e)}`;
-    }
-
-    // ===== 7. Шлём в n8n с коротким таймаутом ACK =====
+    // ===== 9. Шлём в n8n с коротким таймаутом ACK =====
     const out = new FormData();
     out.append("payload", JSON.stringify(payload));
+    // Пересылаем оригинальные файлы — n8n обработает видео самостоятельно
     for (const [key, value] of incoming.entries()) {
       if (key === "payload") continue;
       out.append(key, value);
@@ -333,8 +395,6 @@ Deno.serve(async (req) => {
       ackStatus = res.status;
       ackBody = (await res.text()).slice(0, 500);
     } catch (e) {
-      // Таймаут на ACK — это ок: n8n принял запрос и продолжает работу.
-      // Считаем "принято" и не блокируем UI пользователя.
       const err = e as { name?: string; message?: string };
       const msg = (err?.message ?? "").toLowerCase();
       const name = err?.name ?? "";
@@ -362,6 +422,8 @@ Deno.serve(async (req) => {
         accepted: ackOk,
         launchId: payload.launchId,
         summary: payload.launchSummary,
+        feedImageHash,
+        storiesImageHash,
         response: ackBody,
       }),
       {

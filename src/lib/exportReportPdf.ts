@@ -1,6 +1,3 @@
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
-
 /**
  * Render every element with class `.report-page` inside `root` to a multipage PDF.
  * Each section is captured as a hi-res screenshot in its original colors.
@@ -11,6 +8,11 @@ export async function exportReportPdf(
 ) {
   const pages = Array.from(root.querySelectorAll<HTMLElement>(".report-page"));
   if (pages.length === 0) throw new Error("Нет страниц для экспорта");
+
+  const [{ default: html2canvas }, { default: jsPDF }] = await Promise.all([
+    import("html2canvas"),
+    import("jspdf"),
+  ]);
 
   const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: "a4" });
   const pageW = pdf.internal.pageSize.getWidth();

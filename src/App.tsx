@@ -1,55 +1,33 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import Index from "./pages/Index.tsx";
-import Login from "./pages/Login.tsx";
-import AppLayout from "./components/layout/AppLayout";
 import { AuthProvider } from "./hooks/useAuth";
 import { RequireAuth } from "./components/auth/RequireAuth";
+import { routeImports } from "./lib/routePrefetch";
 
-// Lazy imports stored as factories so we can both render them and
-// prefetch their chunks during idle time after first paint.
-const lazyImports = {
-  NotFound: () => import("./pages/NotFound.tsx"),
-  CreateStep1: () => import("./pages/CreateStep1.tsx"),
-  CreateStep2: () => import("./pages/CreateStep2.tsx"),
-  CreateStep3: () => import("./pages/CreateStep3.tsx"),
-  Ads: () => import("./pages/Ads.tsx"),
-  Dashboard: () => import("./pages/Dashboard.tsx"),
-  Metrics: () => import("./pages/Metrics.tsx"),
-  Crm: () => import("./pages/Crm.tsx"),
-  Calls: () => import("./pages/Calls.tsx"),
-  Analytics: () => import("./pages/Analytics.tsx"),
-  Finance: () => import("./pages/Finance.tsx"),
-  Reports: () => import("./pages/Reports.tsx"),
-  Settings: () => import("./pages/Settings.tsx"),
-  SettingsConnection: () => import("./pages/SettingsConnection.tsx"),
-  ResetPassword: () => import("./pages/ResetPassword.tsx"),
-  ProjectStrategy: () => import("./pages/ProjectStrategy.tsx"),
-  ClientDashboard: () => import("./pages/ClientDashboard.tsx"),
-};
-
-const NotFound = lazy(lazyImports.NotFound);
-const CreateStep1 = lazy(lazyImports.CreateStep1);
-const CreateStep2 = lazy(lazyImports.CreateStep2);
-const CreateStep3 = lazy(lazyImports.CreateStep3);
-const Ads = lazy(lazyImports.Ads);
-const Dashboard = lazy(lazyImports.Dashboard);
-const Metrics = lazy(lazyImports.Metrics);
-const Crm = lazy(lazyImports.Crm);
-const CallsHistory = lazy(lazyImports.Calls);
-const Analytics = lazy(lazyImports.Analytics);
-const Finance = lazy(lazyImports.Finance);
-const Reports = lazy(lazyImports.Reports);
-const Settings = lazy(lazyImports.Settings);
-const SettingsConnection = lazy(lazyImports.SettingsConnection);
-const ResetPassword = lazy(lazyImports.ResetPassword);
-const ProjectStrategy = lazy(lazyImports.ProjectStrategy);
-const ClientDashboard = lazy(lazyImports.ClientDashboard);
+const AppLayout = lazy(routeImports.AppLayout);
+const NotFound = lazy(routeImports.NotFound);
+const Index = lazy(routeImports.Index);
+const Login = lazy(routeImports.Login);
+const CreateStep1 = lazy(routeImports.CreateStep1);
+const CreateStep2 = lazy(routeImports.CreateStep2);
+const CreateStep3 = lazy(routeImports.CreateStep3);
+const Ads = lazy(routeImports.Ads);
+const Dashboard = lazy(routeImports.Dashboard);
+const Metrics = lazy(routeImports.Metrics);
+const Crm = lazy(routeImports.Crm);
+const CallsHistory = lazy(routeImports.Calls);
+const Analytics = lazy(routeImports.Analytics);
+const Finance = lazy(routeImports.Finance);
+const Reports = lazy(routeImports.Reports);
+const Settings = lazy(routeImports.Settings);
+const SettingsConnection = lazy(routeImports.SettingsConnection);
+const ResetPassword = lazy(routeImports.ResetPassword);
+const ProjectStrategy = lazy(routeImports.ProjectStrategy);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -71,21 +49,6 @@ const RouteFallback = () => (
   </div>
 );
 
-function ChunkPrefetcher() {
-  useEffect(() => {
-    const idle =
-      (window as unknown as { requestIdleCallback?: (cb: () => void) => void })
-        .requestIdleCallback ?? ((cb: () => void) => setTimeout(cb, 800));
-    idle(() => {
-      // Прогреваем все маршруты в фоне, чтобы клик по сайдбару открывал страницу мгновенно.
-      Object.values(lazyImports).forEach((load) => {
-        load().catch(() => {});
-      });
-    });
-  }, []);
-  return null;
-}
-
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
@@ -93,7 +56,6 @@ const App = () => (
       <Sonner />
       <BrowserRouter>
         <AuthProvider>
-          <ChunkPrefetcher />
           <Suspense fallback={<RouteFallback />}>
             <Routes>
               <Route path="/login" element={<Login />} />

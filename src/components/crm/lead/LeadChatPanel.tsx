@@ -61,7 +61,10 @@ export function LeadChatPanel({ lead, chats, whatsappConnected, stageTitle, onSe
 
   const counts = useMemo(() => {
     let calls = 0, msgs = 0;
-    for (const c of sorted) (c.kind === "call" ? calls++ : msgs++);
+    for (const c of sorted) {
+      if (c.kind === "call") calls++;
+      else msgs++;
+    }
     return { all: sorted.length, calls, msgs };
   }, [sorted]);
 
