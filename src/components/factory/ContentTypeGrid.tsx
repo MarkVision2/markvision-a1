@@ -9,15 +9,7 @@ interface ContentTypeGridProps {
 const ContentTypeGrid = ({ selectedId, onSelect }: ContentTypeGridProps) => {
   return (
     <section className="container pb-6" aria-labelledby="content-type-title">
-      <div className="mb-3 text-center sm:mb-4">
-        <h2 id="content-type-title" className="text-base font-semibold tracking-tight sm:text-lg">
-          Выберите, что хотите создать
-        </h2>
-        <p className="mt-1 text-xs text-muted-foreground">
-          Система автоматически подберет структуру и стиль
-        </p>
-      </div>
-
+      <h2 id="content-type-title" className="sr-only">Выберите формат креатива</h2>
       <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3 lg:grid-cols-5">
         {CONTENT_TYPES.map((type) => (
           <ContentTypeCard

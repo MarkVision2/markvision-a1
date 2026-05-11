@@ -12,6 +12,7 @@ export const routeImports = {
   Metrics: () => import("@/pages/Metrics"),
   Crm: () => import("@/pages/Crm"),
   Calls: () => import("@/pages/Calls"),
+  SalesAI: () => import("@/pages/SalesAI"),
   Analytics: () => import("@/pages/Analytics"),
   Finance: () => import("@/pages/Finance"),
   Reports: () => import("@/pages/Reports"),
