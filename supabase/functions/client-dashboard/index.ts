@@ -66,12 +66,16 @@ Deno.serve(async (req) => {
     return json({ error: "token expired" }, 401);
   }
 
-  // Client info
-  const { data: client } = await supa
-    .from("clients_config")
-    .select("client_name, city, ad_account_id, currency, daily_budget, website_url")
+  // Client info — main supabase stores cabinet data in ad_cabinets, не clients_config.
+  // Маппим: name (вместо client_name) → клиентское имя.
+  const { data: clientRow } = await supa
+    .from("ad_cabinets")
+    .select("name, city, ad_account_id, currency, daily_budget, website_url")
     .eq("id", tok.client_id)
     .single();
+  const client = clientRow
+    ? { ...clientRow, client_name: (clientRow as any).name }
+    : null;
   if (!client) return json({ error: "client not found" }, 404);
 
   // Leads from last 90 days

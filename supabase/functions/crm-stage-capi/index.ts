@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
       currency = "USD",
       event_source_url,
       event_id,
-      cabinet_id, // если знаем — берём токен/pixel из clients_config
+      cabinet_id, // если знаем — берём токен/pixel из client_configs
     } = body || {};
 
     if (!stage_key) {
@@ -87,18 +87,17 @@ Deno.serve(async (req) => {
     let pixelId = String(pxIn || "");
 
     if (cabinet_id && (!token || !adAccount || !pixelId)) {
+      // На main supabase данные кабинета лежат в ad_cabinets (там и access_token,
+      // и ad_account_id, и pixel_id одной строкой — отдельной clients_secrets нет).
       const { data: cfg } = await supa
-        .from("clients_config")
-        .select("ad_account_id, pixel_id, clients_secrets(fb_token)")
+        .from("ad_cabinets")
+        .select("ad_account_id, pixel_id, access_token")
         .eq("id", cabinet_id)
         .single();
       if (cfg) {
         adAccount = adAccount || String(cfg.ad_account_id || "");
         pixelId = pixelId || String(cfg.pixel_id || "");
-        const sec = Array.isArray((cfg as any).clients_secrets)
-          ? (cfg as any).clients_secrets[0]
-          : (cfg as any).clients_secrets;
-        if (sec && !token) token = String(sec.fb_token || "");
+        if (!token) token = String((cfg as any).access_token || "");
       }
     }
 
