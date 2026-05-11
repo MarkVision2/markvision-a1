@@ -39,6 +39,7 @@ const fmtT = (n: number) => {
 };
 
 type Tab = "decomp" | "agency" | "dynamics";
+type DecompMode = "budget" | "revenue";
 
 interface SmartInputProps {
   icon: React.ElementType;
@@ -135,6 +136,7 @@ const FunnelArrow = () => (
 
 const Finance = () => {
   const [tab, setTab] = useState<Tab>("decomp");
+  const [mode, setMode] = useState<DecompMode>("budget");
   const [monthCursor, setMonthCursor] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -142,8 +144,8 @@ const Finance = () => {
 
   const { savePlan, getPlan } = useFinancePlans();
 
-  // Inputs in linear order: бюджет → CPL → CR1 → CR2 → чек.
   const [budget, setBudget] = useState(500_000);
+  const [revenue, setRevenue] = useState(5_000_000);
   const [cpl, setCpl] = useState(2_000);
   const [crLeadVisit, setCrLeadVisit] = useState(20);
   const [crVisitSale, setCrVisitSale] = useState(40);
@@ -157,22 +159,31 @@ const Finance = () => {
       setCrLeadVisit(p.crLeadVisit || 20);
       setCrVisitSale(p.crVisitSale || 40);
       setAvgCheck(p.avgCheck || 500_000);
+      if (p.revenue) setRevenue(p.revenue);
     }
   }, [monthCursor, getPlan]);
 
   const calc = useMemo(() => {
     const safe = (n: number) => (isFinite(n) && !isNaN(n) ? n : 0);
-    const leads = cpl > 0 ? safe(budget / cpl) : 0;
-    const visits = leads * (crLeadVisit / 100);
-    const sales = visits * (crVisitSale / 100);
-    const revenue = sales * avgCheck;
-    return { leads, visits, sales, revenue };
-  }, [budget, cpl, crLeadVisit, crVisitSale, avgCheck]);
+    if (mode === "budget") {
+      const leads = cpl > 0 ? safe(budget / cpl) : 0;
+      const visits = leads * (crLeadVisit / 100);
+      const sales = visits * (crVisitSale / 100);
+      const rev = sales * avgCheck;
+      return { budget, leads, visits, sales, revenue: rev };
+    }
+    // mode === "revenue" — обратный счёт: сколько нужно вложить, чтобы получить эту выручку
+    const sales = avgCheck > 0 ? safe(revenue / avgCheck) : 0;
+    const visits = crVisitSale > 0 ? safe(sales / (crVisitSale / 100)) : 0;
+    const leads = crLeadVisit > 0 ? safe(visits / (crLeadVisit / 100)) : 0;
+    const requiredBudget = leads * cpl;
+    return { budget: requiredBudget, leads, visits, sales, revenue };
+  }, [mode, budget, revenue, cpl, crLeadVisit, crVisitSale, avgCheck]);
 
-  const cpv = calc.visits > 0 ? budget / calc.visits : 0;
-  const cac = calc.sales > 0 ? budget / calc.sales : 0;
-  const profit = calc.revenue - budget;
-  const romi = budget > 0 ? ((calc.revenue - budget) / budget) * 100 : 0;
+  const cpv = calc.visits > 0 ? calc.budget / calc.visits : 0;
+  const cac = calc.sales > 0 ? calc.budget / calc.sales : 0;
+  const profit = calc.revenue - calc.budget;
+  const romi = calc.budget > 0 ? ((calc.revenue - calc.budget) / calc.budget) * 100 : 0;
   const margin = calc.revenue > 0 ? (profit / calc.revenue) * 100 : 0;
 
   const shiftMonth = (delta: number) =>
@@ -181,7 +192,7 @@ const Finance = () => {
 
   const handleSave = () => {
     savePlan(monthKey(monthCursor), {
-      spend: Math.round(budget),
+      spend: Math.round(calc.budget),
       leads: Math.round(calc.leads),
       cpl: Math.round(cpl),
       visits: Math.round(calc.visits),
@@ -237,17 +248,50 @@ const Finance = () => {
 
       {tab === "decomp" && (
         <>
-          <div className="mt-5 rounded-xl border border-border/60 bg-card/40 p-3 text-xs text-muted-foreground">
-            Введите бюджет и пройдите вниз по воронке — справа считается результат: <span className="text-foreground">бюджет</span> → лиды → диагностики → продажи → <span className="text-success">выручка</span>.
+          {/* Mode switch */}
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <div className="inline-flex rounded-xl border border-border/60 bg-card/60 p-1">
+              {([
+                { id: "budget" as const, label: "От бюджета", icon: Wallet },
+                { id: "revenue" as const, label: "От выручки", icon: Target },
+              ]).map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => setMode(m.id)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+                    mode === m.id
+                      ? "bg-success/15 text-success"
+                      : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+                  )}
+                >
+                  <m.icon className="h-3.5 w-3.5" />
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <div className="text-xs text-muted-foreground">
+              {mode === "budget"
+                ? "Введите бюджет — посчитаем выручку"
+                : "Введите целевую выручку — посчитаем нужный бюджет"}
+            </div>
           </div>
 
-          {/* Inputs: linear left-to-right Бюджет → CPL → CR1 → CR2 → чек */}
+          {/* Inputs: 5 fields, first one changes based on mode */}
           <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <SmartInput
-              icon={Wallet} label="Бюджет на месяц"
-              hint="Сколько готовы вложить в рекламу"
-              value={budget} onChange={setBudget} suffix="₸"
-            />
+            {mode === "budget" ? (
+              <SmartInput
+                icon={Wallet} label="Бюджет на месяц"
+                hint="Сколько готовы вложить в рекламу"
+                value={budget} onChange={setBudget} suffix="₸"
+              />
+            ) : (
+              <SmartInput
+                icon={Target} label="Целевая выручка"
+                hint="Сколько хотим заработать за месяц"
+                value={revenue} onChange={setRevenue} suffix="₸"
+              />
+            )}
             <SmartInput
               icon={DollarSign} label="Стоимость лида (CPL)"
               hint="Цена одной заявки"
@@ -275,14 +319,17 @@ const Finance = () => {
           {/* Funnel: forward */}
           <div className="mt-5 rounded-2xl border border-border/60 bg-gradient-to-br from-card/60 to-card/30 p-4">
             <div className="mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-success">
-              Воронка — от бюджета к выручке
+              {mode === "budget"
+                ? "Воронка — от бюджета к выручке"
+                : "Обратная воронка — от выручки к бюджету"}
             </div>
             <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr_auto_1fr]">
               {(() => {
                 const order = [
                   <FunnelStep
                     key="b" step={1} icon={Wallet} label="Бюджет"
-                    value={fmtT(budget)} sub={`CPL ${fmtT(cpl)}`}
+                    value={fmtT(calc.budget)} sub={`CPL ${fmtT(cpl)}`}
+                    primary={mode === "revenue"}
                   />,
                   <FunnelStep
                     key="l" step={2} icon={UserPlus} label="Лиды"
@@ -298,7 +345,7 @@ const Finance = () => {
                   />,
                   <FunnelStep
                     key="r" step={5} icon={DollarSign} label="Выручка"
-                    value={fmtT(calc.revenue)} primary
+                    value={fmtT(calc.revenue)} primary={mode === "budget"}
                   />,
                 ];
                 return order.map((s, i) => (
@@ -330,7 +377,7 @@ const Finance = () => {
             </div>
             <div className="divide-y divide-border/40">
               <Row label="Прогнозная выручка" value={fmtT(calc.revenue)} accent="success" big />
-              <Row label="Расходы на рекламу" value={`− ${fmtT(budget)}`} />
+              <Row label="Расходы на рекламу" value={`− ${fmtT(calc.budget)}`} />
               <Row label="Прибыль" value={fmtT(profit)} accent={profit >= 0 ? "success" : "destructive"} big />
               <Row label="Маржинальность" value={`${fmt(margin)}%`} accent={margin >= 0 ? "success" : "destructive"} />
               <Row label="ROMI" value={`${fmt(romi)}%`} accent={romi >= 0 ? "success" : "destructive"} />
@@ -344,7 +391,7 @@ const Finance = () => {
               Сохранить план в Таблицу показателей
             </div>
             <p className="mt-1.5 text-xs text-muted-foreground">
-              Бюджет {fmtT(budget)} · Лиды {fmt(calc.leads)} ·
+              Бюджет {fmtT(calc.budget)} · Лиды {fmt(calc.leads)} ·
               CPL {fmtT(cpl)} · Диагностики {fmt(calc.visits)} · Продажи {fmt(calc.sales)} ·
               Выручка {fmtT(calc.revenue)}
             </p>
