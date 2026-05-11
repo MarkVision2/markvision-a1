@@ -9,7 +9,7 @@ interface Props {
   hint?: string;
   delta?: number | null;
   comparing?: boolean;
-  /** When true, positive delta is bad (CPL/CAC/Spend). */
+  /** When true, positive delta is bad for costs/spend. */
   invertDelta?: boolean;
   emphasize?: boolean;
 }
@@ -33,7 +33,7 @@ export function MoneyKpiCard({
         <span className="grid h-8 w-8 place-items-center rounded-xl bg-secondary/60">
           <Icon className="h-4 w-4" />
         </span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider">
+        <span className="text-xs font-semibold leading-4 text-muted-foreground">
           {label}
         </span>
       </div>

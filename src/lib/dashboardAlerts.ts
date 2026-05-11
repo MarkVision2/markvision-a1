@@ -17,40 +17,40 @@ function pct(cur: number, prev: number): number {
 export function buildAlerts(totals: ReportTotals, prev?: ReportTotals): DashAlert[] {
   const out: DashAlert[] = [];
 
-  // ROMI убыточный
+  // Реклама убыточна
   if (totals.spend > 0 && totals.romi < 0) {
     out.push({
       level: "critical",
       title: "Период убыточный",
-      message: `ROMI = ${Math.round(totals.romi)}%. Расходы превышают выручку.`,
-      recommendation: "Отключите худшие кампании, пересмотрите офер и креативы.",
+      message: `Окупаемость рекламы ${Math.round(totals.romi)}%. Расходы превышают выручку.`,
+      recommendation: "Проверьте источники заявок, оффер и путь клиента до оплаты.",
     });
   }
 
-  // CPL вырос
+  // Стоимость заявки выросла
   if (prev && prev.cpl > 0 && totals.cpl > 0) {
     const d = pct(totals.cpl, prev.cpl);
     if (d >= 20) {
       out.push({
         level: d >= 40 ? "critical" : "warning",
-        title: `CPL вырос на ${Math.round(d)}%`,
-        message: `Стоимость лида ${Math.round(totals.cpl).toLocaleString("ru-RU")} $ против ${Math.round(prev.cpl).toLocaleString("ru-RU")} $ ранее.`,
-        recommendation: "Проверь креативы и аудитории — выгорает связка.",
+        title: `Стоимость заявки выросла на ${Math.round(d)}%`,
+        message: `Сейчас ${Math.round(totals.cpl).toLocaleString("ru-RU")} ₸ за заявку против ${Math.round(prev.cpl).toLocaleString("ru-RU")} ₸ ранее.`,
+        recommendation: "Проверьте рекламу и качество обращений: цена растет, значит нужно быстро найти слабый источник.",
       });
     }
   }
 
-  // CTR ниже нормы
+  // Доля кликов ниже нормы
   if (totals.impressions > 1000 && totals.ctr > 0 && totals.ctr < 0.8) {
     out.push({
       level: "warning",
-      title: `CTR ${totals.ctr.toFixed(2)}% — ниже нормы`,
-      message: "Креатив не цепляет аудиторию.",
-      recommendation: "Обнови оффер/визуал, протестируй 2–3 новых креатива.",
+      title: `Мало кликов из показов: ${totals.ctr.toFixed(2)}%`,
+      message: "Люди видят рекламу, но редко переходят дальше.",
+      recommendation: "Проверьте оффер, текст и посадочную страницу: первое касание не убеждает аудиторию.",
     });
   }
 
-  // Конверсия лид → продажа просела
+  // Конверсия заявка → оплата просела
   if (prev) {
     const cur = totals.totalLeads > 0 ? totals.sales / totals.totalLeads : 0;
     const prevCr = prev.totalLeads > 0 ? prev.sales / prev.totalLeads : 0;
@@ -59,15 +59,15 @@ export function buildAlerts(totals: ReportTotals, prev?: ReportTotals): DashAler
       if (drop >= 15) {
         out.push({
           level: drop >= 30 ? "critical" : "warning",
-          title: `Конверсия лид → продажа упала на ${Math.round(drop)}%`,
+          title: `Заявки хуже доходят до оплаты: -${Math.round(drop)}%`,
           message: `${(cur * 100).toFixed(1)}% против ${(prevCr * 100).toFixed(1)}% ранее.`,
-          recommendation: "Слушай звонки, проверь скрипт и скорость обработки заявок.",
+          recommendation: "Проверьте скорость ответа, звонки и скрипт продаж.",
         });
       }
     }
   }
 
-  // Перегрев бюджета: расход растёт, лиды падают
+  // Перегрев бюджета: расход растёт, заявки падают
   if (prev && prev.spend > 0 && prev.totalLeads > 0) {
     const dSpend = pct(totals.spend, prev.spend);
     const dLeads = pct(totals.totalLeads, prev.totalLeads);
@@ -75,8 +75,8 @@ export function buildAlerts(totals: ReportTotals, prev?: ReportTotals): DashAler
       out.push({
         level: "critical",
         title: "Перегрев бюджета",
-        message: `Расход +${Math.round(dSpend)}%, а лиды ${Math.round(dLeads)}%.`,
-        recommendation: "Сократи ставки/бюджеты на убыточных группах объявлений.",
+        message: `Расход +${Math.round(dSpend)}%, а заявки ${Math.round(dLeads)}%.`,
+        recommendation: "Сократите бюджет на слабых источниках и перераспределите деньги туда, где заявки дешевле.",
       });
     }
   }

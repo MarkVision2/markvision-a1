@@ -7,17 +7,17 @@ interface Props {
 
 export function CrmFunnel({ data }: Props) {
   const steps = [
-    { id: "total", label: "Лиды всего", icon: Users, value: data.total, base: data.total },
+    { id: "total", label: "Заявки всего", icon: Users, value: data.total, base: data.total },
     { id: "reached", label: "Дозвон", icon: Phone, value: data.reached, base: data.total },
-    { id: "scheduled", label: "Запись", icon: CalendarCheck, value: data.scheduled, base: data.total },
-    { id: "visited", label: "Визит", icon: MapPin, value: data.visited, base: data.total },
-    { id: "paid", label: "Купили", icon: CreditCard, value: data.paid, base: data.total },
+    { id: "scheduled", label: "Записались", icon: CalendarCheck, value: data.scheduled, base: data.total },
+    { id: "visited", label: "Пришли", icon: MapPin, value: data.visited, base: data.total },
+    { id: "paid", label: "Оплатили", icon: CreditCard, value: data.paid, base: data.total },
   ];
 
   if (data.total === 0) {
     return (
       <div className="rounded-2xl border border-border/60 bg-card/60 p-6 text-center text-sm text-muted-foreground">
-        Пока нет лидов в CRM за выбранный период.
+        Пока нет заявок в CRM за выбранный период.
       </div>
     );
   }
