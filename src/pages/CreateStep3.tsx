@@ -714,7 +714,14 @@ const CreateStep3 = () => {
             // Публичные URL фото, залитых в Supabase Storage (bucket
             // content-factory-uploads). n8n берёт первое как референс.
             image_urls: imageUrls,
-            audio_url: "",
+            // КРИТИЧНО: audio_url должен быть null, а НЕ "" если аудио нет.
+            // В воркфлоу нода `audio` проверяет наличие оператором `exists`
+            // в strict-режиме — он считает пустую строку существующей и
+            // пускает дальше в `get audio file`, который падает с
+            // "Invalid URL: ." Рабочий HTML-фронт шлёт null, и IF падает в
+            // false-ветку. Когда добавим UI записи аудио — кладём сюда
+            // публичный URL загруженного файла.
+            audio_url: null as string | null,
             // стиль / цвет / язык / aspect — flat string, не объект
             style: styleDef.label,
             color: color?.label ?? "auto",
