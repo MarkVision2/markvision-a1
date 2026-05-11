@@ -604,14 +604,20 @@ const CreateStep3 = () => {
           // Routing-ключ для n8n Switch-ноды. ДОЛЖЕН совпадать с именами веток
           // в воркфлоу: insta-carousel, fb-target, youtube, events, google ads,
           // neuro-photo, reels-cover, instagram-stories, banner, marketplace, logo.
-          // Значения должны 1-в-1 совпадать с именами веток в n8n Switch.
-          // Сверено по рабочему HTML-фронту CLONY.AI (см. конфиг WEBHOOK_URL там же).
+          // Значения сверены 1-в-1 со Switch1 в воркфлоу n8n "Clony AI"
+          // (https://n8n.zapoinov.com/workflow/sWhNUAx8tFXU0O47). Это
+          // источник истины — Switch сравнивает body.content_type по equals
+          // с этими строками. ПОДКАПОТНЫЕ rightValue для веток:
+          //   insta-carousel, fb-target, youtube, events, google-ads,
+          //   neuro-photo, reels-cover, instagram-stories, banner,
+          //   marketplace, logo.
+          // Если значение не совпадает — Switch падает в Extra (fallback).
           const ROUTE_MAP: Record<string, string> = {
             "facebook-ads": "fb-target",
             "google-ads": "google-ads",
             "marketplace": "marketplace",
             "insta-carousel": "insta-carousel",
-            "reels-cover": "reels",
+            "reels-cover": "reels-cover",
             "stories": "instagram-stories",
             "youtube-thumb": "youtube",
             "web-banner": "banner",
