@@ -391,6 +391,11 @@ export function useCrmStore() {
   }, [stages, stageUuid]);
 
   // ---------- leads ----------
+  /** Apply a patch to a single lead in local state immediately, without waiting for realtime. */
+  const patchLeadLocal = useCallback((id: string, patcher: (l: Lead) => Lead) => {
+    setLeads((prev) => prev.map((l) => (l.id === id ? patcher(l) : l)));
+  }, []);
+
   const addLead = useCallback(async (
     input: Omit<Lead, "id" | "createdAt" | "lastActivityAt">,
   ): Promise<Lead | undefined> => {
@@ -421,9 +426,41 @@ export function useCrmStore() {
       created_by: user?.id ?? null,
     }).select().single();
     if (error || !data) return;
-    await refetchLeads();
-    return undefined;
-  }, [pipelineId, stageUuid, user?.id, refetchLeads, projectId]);
+    // Optimistically prepend the new lead so it shows immediately.
+    const row = data as LeadRow;
+    const newLead: Lead = {
+      id: row.id,
+      name: row.name,
+      phone: row.phone,
+      email: row.email ?? undefined,
+      source: row.source,
+      stageId: input.stageId,
+      amount: Number(row.amount ?? 0),
+      aiScore: row.ai_score ?? input.aiScore ?? 50,
+      note: row.note ?? undefined,
+      utm: (row.utm as UtmTags) ?? undefined,
+      referrer: row.referrer ?? undefined,
+      landingUrl: row.landing_url ?? undefined,
+      firstTouchAt: row.first_touch_at ?? undefined,
+      createdAt: row.created_at,
+      lastActivityAt: row.last_activity_at,
+      assigneeId: row.assigned_to ?? undefined,
+      pinned: !!row.pinned,
+      channel: (row.channel as Lead["channel"]) ?? undefined,
+      service: row.service ?? undefined,
+      city: row.city ?? undefined,
+      age: row.age ?? undefined,
+      nextVisitAt: row.next_visit_at ?? undefined,
+      paid: !!row.paid,
+      paymentMethod: (row.payment_method as PaymentMethod) ?? undefined,
+      paidAt: row.paid_at ?? undefined,
+      tasks: [],
+      events: [],
+      stageHistory: [],
+    };
+    setLeads((prev) => (prev.some((l) => l.id === newLead.id) ? prev : [newLead, ...prev]));
+    return newLead;
+  }, [pipelineId, stageUuid, user?.id, projectId]);
 
   const updateLead = useCallback(async (id: string, patch: Partial<Lead>) => {
     const dbPatch: TablesUpdate<"leads"> = {};
@@ -446,16 +483,21 @@ export function useCrmStore() {
       if (sid) dbPatch.stage_id = sid;
     }
     if (Object.keys(dbPatch).length === 0) return;
+    // Optimistic update — patch locally before/around the network call.
+    patchLeadLocal(id, (l) => ({ ...l, ...patch, lastActivityAt: new Date().toISOString() }));
     await supabase.from("leads").update(dbPatch).eq("id", id);
-  }, [stageUuid]);
+  }, [stageUuid, patchLeadLocal]);
 
   const removeLead = useCallback(async (id: string) => {
+    // Optimistic removal — drop locally first so UI feels instant.
+    setLeads((prev) => prev.filter((l) => l.id !== id));
     await supabase.from("leads").delete().eq("id", id);
   }, []);
 
   const moveLead = useCallback(async (leadId: string, stageKey: string) => {
     const sid = stageUuid(stageKey);
     if (!sid) return;
+    patchLeadLocal(leadId, (l) => ({ ...l, stageId: stageKey, lastActivityAt: new Date().toISOString() }));
     await supabase.from("leads").update({ stage_id: sid }).eq("id", leadId);
 
     // Параллельно дёргаем CAPI на нового Supabase — он сам решит, слать ли Schedule/Purchase в Meta.
@@ -550,12 +592,15 @@ export function useCrmStore() {
   const togglePin = useCallback(async (leadId: string) => {
     const lead = leads.find((l) => l.id === leadId);
     if (!lead) return;
-    await supabase.from("leads").update({ pinned: !lead.pinned }).eq("id", leadId);
-  }, [leads]);
+    const next = !lead.pinned;
+    patchLeadLocal(leadId, (l) => ({ ...l, pinned: next }));
+    await supabase.from("leads").update({ pinned: next }).eq("id", leadId);
+  }, [leads, patchLeadLocal]);
 
   const assignLead = useCallback(async (leadId: string, assigneeId?: string) => {
+    patchLeadLocal(leadId, (l) => ({ ...l, assigneeId }));
     await supabase.from("leads").update({ assigned_to: assigneeId ?? null }).eq("id", leadId);
-  }, []);
+  }, [patchLeadLocal]);
 
   const setRejectReason = useCallback(async (
     leadId: string,
@@ -567,9 +612,16 @@ export function useCrmStore() {
     const newNote = trimmed
       ? [lead?.note, `Отказ: ${trimmed}`].filter(Boolean).join("\n")
       : lead?.note ?? null;
+    const nowIso = new Date().toISOString();
+    patchLeadLocal(leadId, (l) => ({
+      ...l,
+      rejectReason: reason,
+      rejectedAt: nowIso,
+      note: newNote ?? undefined,
+    }));
     await supabase.from("leads").update({
       reject_reason: reason,
-      rejected_at: new Date().toISOString(),
+      rejected_at: nowIso,
       note: newNote,
     }).eq("id", leadId);
     await supabase.from("events").insert({
@@ -578,7 +630,7 @@ export function useCrmStore() {
       payload: { reason, ...(trimmed ? { note: trimmed } : {}) },
       actor_id: user?.id ?? null,
     });
-  }, [leads, user?.id]);
+  }, [leads, user?.id, patchLeadLocal]);
 
   // ---------- card actions ----------
   const markCall = useCallback(async (
@@ -610,13 +662,25 @@ export function useCrmStore() {
     const lead = leads.find((l) => l.id === leadId);
     const finalAmount = amount ?? lead?.amount ?? 0;
     const note = opts?.note?.trim();
+    const nowIso = new Date().toISOString();
+    const noteCombined = note ? [lead?.note, `Оплата: ${note}`].filter(Boolean).join("\n") : lead?.note;
+    patchLeadLocal(leadId, (l) => ({
+      ...l,
+      paid: true,
+      paymentMethod: method,
+      paidAt: nowIso,
+      amount: finalAmount,
+      stageId: paidStageId ? "paid" : l.stageId,
+      note: noteCombined,
+      lastActivityAt: nowIso,
+    }));
     await supabase.from("leads").update({
       paid: true,
       payment_method: method,
-      paid_at: new Date().toISOString(),
+      paid_at: nowIso,
       amount: finalAmount,
       stage_id: paidStageId ?? lead?.stageId,
-      note: note ? [lead?.note, `Оплата: ${note}`].filter(Boolean).join("\n") : lead?.note ?? null,
+      note: noteCombined ?? null,
     }).eq("id", leadId);
     await supabase.from("deals").insert({
       lead_id: leadId,
@@ -631,10 +695,17 @@ export function useCrmStore() {
   const setVisit = useCallback(async (leadId: string, dateIso: string, moveToScheduled = true) => {
     const lead = leads.find((l) => l.id === leadId);
     const update: TablesUpdate<"leads"> = { next_visit_at: dateIso };
+    let nextStageKey: string | undefined;
     if (moveToScheduled && lead && lead.stageId !== "scheduled" && lead.stageId !== "visit" && lead.stageId !== "paid") {
       const sid = stageUuid("scheduled");
-      if (sid) update.stage_id = sid;
+      if (sid) { update.stage_id = sid; nextStageKey = "scheduled"; }
     }
+    patchLeadLocal(leadId, (l) => ({
+      ...l,
+      nextVisitAt: dateIso,
+      stageId: nextStageKey ?? l.stageId,
+      lastActivityAt: new Date().toISOString(),
+    }));
     await supabase.from("leads").update(update).eq("id", leadId);
     await supabase.from("events").insert({
       lead_id: leadId,
@@ -645,7 +716,7 @@ export function useCrmStore() {
   }, [leads, stageUuid, user?.id]);
 
   const addTask = useCallback(async (leadId: string, title: string, dueAt: string) => {
-    await supabase.from("tasks").insert({
+    const { data } = await supabase.from("tasks").insert({
       lead_id: leadId,
       title,
       due_at: dueAt,
@@ -654,23 +725,39 @@ export function useCrmStore() {
       source: "manual",
       assigned_to: user?.id ?? null,
       created_by: user?.id ?? null,
-    });
-  }, [user?.id]);
+    }).select("id").single();
+    const newId = (data as { id?: string } | null)?.id;
+    if (newId) {
+      patchLeadLocal(leadId, (l) => ({
+        ...l,
+        tasks: [...(l.tasks ?? []), { id: newId, title, dueAt }],
+      }));
+    }
+  }, [user?.id, patchLeadLocal]);
 
   const toggleTask = useCallback(async (leadId: string, taskId: string) => {
     const lead = leads.find((l) => l.id === leadId);
     const task = lead?.tasks?.find((t) => t.id === taskId);
     if (!task) return;
     const nextDone = !task.doneAt;
+    const nowIso = nextDone ? new Date().toISOString() : undefined;
+    patchLeadLocal(leadId, (l) => ({
+      ...l,
+      tasks: (l.tasks ?? []).map((t) => (t.id === taskId ? { ...t, doneAt: nowIso } : t)),
+    }));
     await supabase.from("tasks").update({
       status: nextDone ? "done" : "pending",
-      done_at: nextDone ? new Date().toISOString() : null,
+      done_at: nowIso ?? null,
     }).eq("id", taskId);
-  }, [leads]);
+  }, [leads, patchLeadLocal]);
 
   const removeTask = useCallback(async (leadId: string, taskId: string) => {
+    patchLeadLocal(leadId, (l) => ({
+      ...l,
+      tasks: (l.tasks ?? []).filter((t) => t.id !== taskId),
+    }));
     await supabase.from("tasks").delete().eq("id", taskId);
-  }, []);
+  }, [patchLeadLocal]);
 
   const logCallAttempt = useCallback(async (leadId: string, info: {
     provider: string; ok: boolean; phone?: string; warning?: string; error?: string;
