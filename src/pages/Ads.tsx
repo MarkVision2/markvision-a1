@@ -36,7 +36,9 @@ const MONTHS_RU = [
   "Декабрь",
 ];
 
-const StatCard = ({
+const SEARCH_THRESHOLD = 3;
+
+const StatChip = ({
   label,
   value,
   accent,
@@ -47,16 +49,16 @@ const StatCard = ({
   accent: string;
   icon: LucideIcon;
 }) => (
-  <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
-    <div className="flex items-start justify-between gap-2">
-      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+  <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-card/60 px-3 py-2">
+    <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${accent}`}>
+      <Icon className="h-4 w-4" />
+    </span>
+    <div className="min-w-0 flex-1">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
         {label}
-      </span>
-      <span className={`grid h-8 w-8 place-items-center rounded-xl ${accent}`}>
-        <Icon className="h-4 w-4" />
-      </span>
+      </div>
+      <div className="truncate text-lg font-bold tabular-nums leading-tight">{value}</div>
     </div>
-    <div className="mt-2 truncate text-xl font-bold tabular-nums">{value}</div>
   </div>
 );
 
@@ -91,6 +93,8 @@ const Ads = () => {
   );
 
   const active = cabinets.filter((c) => c.online).length;
+  const showSearch = cabinets.length > SEARCH_THRESHOLD;
+  const showAggregate = cabinets.length > 1;
 
   const handleRefresh = () => {
     setRefreshKey((k) => k + 1);
@@ -109,34 +113,46 @@ const Ads = () => {
   const totalSales = cabinets.reduce((s, c) => s + (c.sales || 0), 0);
 
   return (
-    <main className="container max-w-6xl py-8 animate-fade-in-up">
+    <main className="container max-w-6xl py-6 animate-fade-in-up">
       {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-            Управление рекламой
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            {cabinets.length} {cabinets.length === 1 ? "кабинет" : "кабинетов"} ·{" "}
-            <span className="text-success">{active} активных</span>
-          </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <span className="grid h-10 w-10 place-items-center rounded-xl bg-success/15 text-success ring-1 ring-success/30">
+            <Megaphone className="h-5 w-5" />
+          </span>
+          <div className="leading-tight">
+            <h1 className="text-xl font-bold tracking-tight sm:text-2xl">
+              Управление рекламой
+            </h1>
+            <p className="text-xs text-muted-foreground">
+              {cabinets.length === 0
+                ? "Нет подключённых кабинетов"
+                : (
+                  <>
+                    {cabinets.length} {cabinets.length === 1 ? "кабинет" : cabinets.length < 5 ? "кабинета" : "кабинетов"}
+                    {" · "}
+                    <span className="text-success">{active} активных</span>
+                  </>
+                )}
+            </p>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex h-11 items-center gap-1 rounded-xl border border-border/60 bg-card/60 px-1.5">
+          <div className="flex h-9 items-center gap-0.5 rounded-lg border border-border/60 bg-card/60 px-1">
             <button
               onClick={() => shiftMonth(-1)}
-              className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
+              className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
               aria-label="Предыдущий месяц"
             >
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <span className="px-2 text-sm font-medium capitalize tabular-nums">
+            <span className="px-2 text-xs font-medium capitalize tabular-nums">
               {monthLabel}
             </span>
             <button
               onClick={() => shiftMonth(1)}
-              className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground"
+              className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
               aria-label="Следующий месяц"
             >
               <ChevronRight className="h-4 w-4" />
@@ -145,55 +161,52 @@ const Ads = () => {
 
           <Button
             variant="outline"
-            size="icon"
-            className="h-11 w-11 rounded-xl border-border/60"
+            size="sm"
+            className="h-9"
             aria-label="Обновить"
             onClick={handleRefresh}
+            title="Обновить данные"
           >
-            <RefreshCw className="h-4 w-4" />
+            <RefreshCw className="h-3.5 w-3.5" />
           </Button>
 
           <Button
             onClick={() => setAddOpen(true)}
             variant="outline"
-            className="h-11 rounded-xl border-border/60"
+            size="sm"
+            className="h-9"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-3.5 w-3.5" />
             Кабинет
           </Button>
 
           <Button
             onClick={() => setCampaignOpen(true)}
-            className="h-11 rounded-xl bg-success text-white hover:bg-success/90"
+            size="sm"
+            className="h-9 bg-success text-white hover:bg-success/90"
           >
-            <Rocket className="h-4 w-4" />
+            <Rocket className="h-3.5 w-3.5" />
             Создать кампанию
           </Button>
         </div>
       </div>
 
-      {/* Stats summary */}
-      {cabinets.length > 0 && (
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <StatCard
-            label="Кабинетов"
-            value={cabinets.length.toString()}
-            accent="bg-primary/15 text-primary"
-            icon={Megaphone}
-          />
-          <StatCard
+      {/* Aggregate KPIs — only when multiple cabinets (otherwise the row itself shows the same numbers) */}
+      {showAggregate && (
+        <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <StatChip
             label="Расход за месяц"
-            value={`${Math.round(totalSpend).toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}\u00A0₸`}
+            value={`${Math.round(totalSpend).toLocaleString("ru-RU").replace(/\s/g, " ")} ₸`}
             accent="bg-warning/15 text-warning"
             icon={Wallet}
           />
-          <StatCard
+          <StatChip
             label="Лиды"
             value={totalLeads.toLocaleString("ru-RU")}
             accent="bg-success/15 text-success"
             icon={Target}
           />
-          <StatCard
+          <StatChip
             label="Продажи"
             value={totalSales.toLocaleString("ru-RU")}
             accent="bg-success/15 text-success"
@@ -202,21 +215,21 @@ const Ads = () => {
         </div>
       )}
 
-      {/* Search */}
-      {cabinets.length > 0 && (
-        <div className="relative mt-6">
-          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      {/* Search — only when there's a real list */}
+      {showSearch && (
+        <div className="relative mt-5">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Поиск по кабинетам…"
-            className="h-12 rounded-2xl border-border/60 bg-card/60 pl-11"
+            className="h-10 rounded-xl border-border/60 bg-card/60 pl-10"
           />
         </div>
       )}
 
       {/* List */}
-      <div className="mt-6 space-y-3">
+      <div className="mt-5 space-y-3">
         {filtered.map((c) => (
           <CabinetRow
             key={`${c.id}-${refreshKey}`}
@@ -262,7 +275,6 @@ const Ads = () => {
           try {
             const newId = await addCabinet(c);
             toast.success("Кабинет добавлен");
-            // Auto-sync stats from Meta in the background
             if (newId && (c.adAccountId || c.externalId)) {
               toast.message("Подтягиваем статистику из Meta…");
               const today = new Date();
