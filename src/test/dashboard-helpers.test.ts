@@ -19,14 +19,36 @@ describe("classifyGoal (Meta campaign objective → human-readable goal)", () =>
     expect(classifyGoal(null, "INSTAGRAM_DIRECT").key).toBe("messages");
   });
 
-  it("LEAD_GENERATION → leads (форма / сайт)", () => {
+  it("LEAD_GENERATION без destination → leads (общее)", () => {
     const g = classifyGoal("LEAD_GENERATION", null);
     expect(g.key).toBe("leads");
     expect(g.successMetric).toBe("leads");
   });
 
-  it("OUTCOME_LEADS → leads", () => {
+  it("OUTCOME_LEADS + WEBSITE → лиды с сайта (пиксель)", () => {
+    const g = classifyGoal("OUTCOME_LEADS", "WEBSITE");
+    expect(g.key).toBe("leads_pixel");
+    expect(g.label).toBe("Лиды с сайта (пиксель)");
+  });
+
+  it("OUTCOME_LEADS + ON_AD → лиды через форму Meta", () => {
+    const g = classifyGoal("OUTCOME_LEADS", "ON_AD");
+    expect(g.key).toBe("leads_form");
+    expect(g.label).toBe("Лиды через форму Meta");
+  });
+
+  it("OUTCOME_LEADS без destination → fallback leads", () => {
     expect(classifyGoal("OUTCOME_LEADS", null).key).toBe("leads");
+  });
+
+  it("MESSAGING_INSTAGRAM_DIRECT_WHATSAPP — мультимессенджер", () => {
+    const g = classifyGoal("OUTCOME_ENGAGEMENT", "MESSAGING_INSTAGRAM_DIRECT_WHATSAPP");
+    expect(g.key).toBe("messages_multi");
+    expect(g.label).toBe("WhatsApp + Direct/Messenger");
+  });
+
+  it("OUTCOME_ENGAGEMENT без destination → engagement", () => {
+    expect(classifyGoal("OUTCOME_ENGAGEMENT", null).key).toBe("engagement");
   });
 
   it("MESSAGES objective без destination → messages", () => {

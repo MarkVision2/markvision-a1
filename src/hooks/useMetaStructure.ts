@@ -284,7 +284,19 @@ export function useMetaCampaigns(range: Range) {
 
 // ---------------- Goal labeling helpers ----------------
 
-export type GoalKey = "leads" | "messages" | "whatsapp" | "traffic" | "purchase" | "awareness" | "video" | "other";
+export type GoalKey =
+  | "leads_pixel"
+  | "leads_form"
+  | "leads"
+  | "whatsapp"
+  | "messages_multi"
+  | "messages"
+  | "engagement"
+  | "traffic"
+  | "purchase"
+  | "video"
+  | "awareness"
+  | "other";
 
 export interface GoalMeta {
   key: GoalKey;
@@ -294,30 +306,55 @@ export interface GoalMeta {
 }
 
 const GOAL_TABLE: Array<{ match: (obj: string, dest: string | null) => boolean; meta: GoalMeta }> = [
-  // WhatsApp — приоритет: destination_type ===  WHATSAPP перекрывает остальное.
+  // === Лиды — приоритет, чтобы не перекрылись destination'ом ===
+  // OUTCOME_LEADS + WEBSITE → лиды через пиксель на сайте (типичный «Conversion Lead»)
+  {
+    match: (obj, dest) => /LEAD/.test(obj) && dest === "WEBSITE",
+    meta: { key: "leads_pixel", label: "Лиды с сайта (пиксель)", successMetric: "leads" },
+  },
+  // OUTCOME_LEADS + ON_AD → instant-форма Meta внутри объявления
+  {
+    match: (obj, dest) => /LEAD/.test(obj) && dest === "ON_AD",
+    meta: { key: "leads_form", label: "Лиды через форму Meta", successMetric: "leads" },
+  },
+  // === Мессенджеры ===
+  // Чистый WhatsApp
   {
     match: (_o, dest) => dest === "WHATSAPP",
     meta: { key: "whatsapp", label: "WhatsApp", successMetric: "messages" },
   },
+  // Мультимессенджер: WhatsApp + Direct/Messenger (новый Meta-формат)
+  {
+    match: (_o, dest) => !!dest && /WHATSAPP/.test(dest) && dest !== "WHATSAPP",
+    meta: { key: "messages_multi", label: "WhatsApp + Direct/Messenger", successMetric: "messages" },
+  },
+  // Чистый Direct / Messenger
   {
     match: (_o, dest) => dest === "MESSENGER" || dest === "INSTAGRAM_DIRECT",
-    meta: { key: "messages", label: "Сообщения в Direct/Messenger", successMetric: "messages" },
+    meta: { key: "messages", label: "Direct / Messenger", successMetric: "messages" },
   },
+  // Лиды без указанного destination — фоллбэк
   {
     match: (obj) => /LEAD/.test(obj),
     meta: { key: "leads", label: "Лиды (форма / сайт)", successMetric: "leads" },
   },
+  // === Остальные цели по objective ===
   {
     match: (obj) => /MESSAGE/.test(obj),
     meta: { key: "messages", label: "Сообщения", successMetric: "messages" },
   },
   {
-    match: (obj) => /TRAFFIC|LINK_CLICK|OUTCOME_TRAFFIC/.test(obj),
+    match: (obj) => /TRAFFIC|LINK_CLICK/.test(obj),
     meta: { key: "traffic", label: "Трафик на сайт", successMetric: "clicks" },
   },
   {
     match: (obj) => /PURCHASE|SALES|CONVERSION/.test(obj),
     meta: { key: "purchase", label: "Продажи / покупки", successMetric: "purchases" },
+  },
+  // Engagement без destination — взаимодействие с контентом
+  {
+    match: (obj) => /ENGAGEMENT/.test(obj),
+    meta: { key: "engagement", label: "Вовлечённость", successMetric: "messages" },
   },
   {
     match: (obj) => /VIDEO/.test(obj),
