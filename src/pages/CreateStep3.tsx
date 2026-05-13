@@ -548,6 +548,20 @@ const CreateStep3 = () => {
       toast.error("Выберите минимум 1 стиль");
       return;
     }
+    // Aspect обязателен: без него n8n получает молчаливый fallback "1:1"
+    // и вся партия рендерится не в том формате (см. кейс «выбрал 4:5 — получил 1:1»).
+    // Если state потерян (F5 или deep-link на шаг 3) — возвращаем юзера на шаг 2.
+    const aspect = prevState.aspect as string | undefined;
+    if (!aspect) {
+      toast.error("Сначала выберите формат на шаге 2", {
+        description: "Возвращаемся к выбору соотношения сторон",
+      });
+      setTimeout(
+        () => navigate("/create/step-2", { state: prevState }),
+        800,
+      );
+      return;
+    }
     setSubmitting(true);
     setResults(null);
     setStatus("sending");
@@ -691,7 +705,9 @@ const CreateStep3 = () => {
             style: styleDef.label,
             color: color?.label ?? "auto",
             language: (prevState.lang as string | undefined) ?? "ru",
-            aspect: (prevState.aspect as string | undefined) ?? "1:1",
+            // aspect гарантированно есть — проверено в начале handleCreate.
+            // Если упадёт сюда без aspect — это баг, лучше орать чем тихо 1:1.
+            aspect,
             slides: slidesCount,
             image_count: slidesCount,
             // niche / cta — содержательные сведения о продукте для fb-target.
