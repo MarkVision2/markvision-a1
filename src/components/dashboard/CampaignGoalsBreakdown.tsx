@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Target, MessageCircle, Globe, ShoppingBag, Megaphone, Video, Users } from "lucide-react";
+import { FileText, Globe, Heart, Megaphone, MessageCircle, ShoppingBag, Target, Users, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { classifyGoal, type GoalKey, type MetaCampaignRow } from "@/hooks/useMetaStructure";
 
@@ -21,24 +21,32 @@ interface GoalBucket {
 }
 
 const GOAL_ICONS: Record<GoalKey, typeof Target> = {
+  leads_pixel: Globe,
+  leads_form: FileText,
   leads: Users,
-  messages: MessageCircle,
   whatsapp: MessageCircle,
+  messages_multi: MessageCircle,
+  messages: MessageCircle,
+  engagement: Heart,
   traffic: Globe,
   purchase: ShoppingBag,
-  awareness: Megaphone,
   video: Video,
+  awareness: Megaphone,
   other: Target,
 };
 
 const GOAL_TONE: Record<GoalKey, string> = {
+  leads_pixel: "bg-primary/15 text-primary",
+  leads_form: "bg-primary/15 text-primary",
   leads: "bg-primary/15 text-primary",
-  messages: "bg-success/15 text-success",
   whatsapp: "bg-success/15 text-success",
+  messages_multi: "bg-success/15 text-success",
+  messages: "bg-success/15 text-success",
+  engagement: "bg-pink-500/15 text-pink-500",
   traffic: "bg-warning/15 text-warning",
   purchase: "bg-success/15 text-success",
-  awareness: "bg-muted text-muted-foreground",
   video: "bg-primary/15 text-primary",
+  awareness: "bg-muted text-muted-foreground",
   other: "bg-secondary text-foreground",
 };
 
