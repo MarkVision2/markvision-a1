@@ -312,9 +312,9 @@ const GOAL_TABLE: Array<{ match: (obj: string, dest: string | null) => boolean; 
     match: (obj, dest) => /LEAD/.test(obj) && dest === "WEBSITE",
     meta: { key: "leads_pixel", label: "Лиды с сайта (пиксель)", successMetric: "leads" },
   },
-  // OUTCOME_LEADS + ON_AD → instant-форма Meta внутри объявления
+  // OUTCOME_LEADS + ON_AD / INSTANT_FORM / LEAD_FORM → instant-форма Meta внутри объявления
   {
-    match: (obj, dest) => /LEAD/.test(obj) && dest === "ON_AD",
+    match: (obj, dest) => /LEAD/.test(obj) && !!dest && /(ON_AD|INSTANT_FORM|LEAD_FORM|LEADS_FORM)/.test(dest),
     meta: { key: "leads_form", label: "Лиды через форму Meta", successMetric: "leads" },
   },
   // === Мессенджеры ===

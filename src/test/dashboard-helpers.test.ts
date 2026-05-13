@@ -37,6 +37,18 @@ describe("classifyGoal (Meta campaign objective → human-readable goal)", () =>
     expect(g.label).toBe("Лиды через форму Meta");
   });
 
+  it("OUTCOME_LEADS + INSTANT_FORM → leads_form", () => {
+    expect(classifyGoal("OUTCOME_LEADS", "INSTANT_FORM").key).toBe("leads_form");
+  });
+
+  it("OUTCOME_LEADS + LEAD_FORM → leads_form", () => {
+    expect(classifyGoal("OUTCOME_LEADS", "LEAD_FORM").key).toBe("leads_form");
+  });
+
+  it("LEAD_GENERATION + ON_AD → leads_form", () => {
+    expect(classifyGoal("LEAD_GENERATION", "ON_AD").key).toBe("leads_form");
+  });
+
   it("OUTCOME_LEADS без destination → fallback leads", () => {
     expect(classifyGoal("OUTCOME_LEADS", null).key).toBe("leads");
   });
