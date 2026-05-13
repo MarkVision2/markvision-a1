@@ -11,7 +11,7 @@ SELECT cron.schedule(
   '30 1 * * *',
   $$
   SELECT net.http_post(
-    url     := 'https://xwhfixsqhbkdnnxrryux.supabase.co/functions/v1/meta-structure-sync',
+    url     := 'https://mekwfbqmsqiborjdrjxc.supabase.co/functions/v1/meta-structure-sync',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'x-automation-key', (SELECT cron_secret FROM public.automation_settings WHERE id = true)
@@ -30,7 +30,7 @@ SELECT cron.schedule(
   '15 1 * * *',
   $$
   SELECT net.http_post(
-    url     := 'https://xwhfixsqhbkdnnxrryux.supabase.co/functions/v1/google-ads-daily-sync',
+    url     := 'https://mekwfbqmsqiborjdrjxc.supabase.co/functions/v1/google-ads-daily-sync',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'x-automation-key', (SELECT cron_secret FROM public.automation_settings WHERE id = true)
