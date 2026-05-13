@@ -1,19 +1,28 @@
 import { useMemo, useState } from "react";
 import {
-  AlertCircle, BarChart3, DollarSign, Loader2, RefreshCw, Repeat, ShoppingCart,
+  AlertCircle, BarChart3, DollarSign, Download, Loader2, RefreshCw, Repeat, ShoppingCart,
   Target, TrendingUp, Users, Wallet,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { supabase } from "@/integrations/supabase/client";
 import { PeriodPicker } from "@/components/dashboard/PeriodPicker";
 import { MoneyKpiCard } from "@/components/dashboard/MoneyKpiCard";
 import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
 import { EnhancedFunnel } from "@/components/dashboard/EnhancedFunnel";
+import { CampaignGoalsBreakdown } from "@/components/dashboard/CampaignGoalsBreakdown";
 import { ChannelsTable } from "@/components/dashboard/ChannelsTable";
+import { CreativesGrid } from "@/components/dashboard/CreativesGrid";
 import { CrmFunnel } from "@/components/dashboard/CrmFunnel";
+import { CrmFlowPanel } from "@/components/dashboard/CrmFlowPanel";
+import { InstagramOrganicFunnel } from "@/components/dashboard/InstagramOrganicFunnel";
 import { RevenueSpendChart } from "@/components/dashboard/RevenueSpendChart";
 import { UnitEconomicsCard } from "@/components/dashboard/UnitEconomicsCard";
 import { getPresetRange, useDashboardData, type PeriodPreset } from "@/hooks/useDashboardData";
+import { useCodewordStats } from "@/hooks/useInstagramOrganic";
+import { useCrmFlow } from "@/hooks/useCrmFlow";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
+import { useMetaCampaigns, useMetaCreatives } from "@/hooks/useMetaStructure";
 import { QualityBlock, QualityFunnel } from "@/components/crm/QualityBlock";
 import { deltaPct, type ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
@@ -30,13 +39,49 @@ const SectionTitle = ({ children, accent }: { children: React.ReactNode; accent?
   </div>
 );
 
+function ymdLocal(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 const Dashboard = () => {
   const [preset, setPreset] = useState<PeriodPreset>("30d");
   const [range, setRange] = useState<ReportPeriodRange>(() => getPresetRange("30d"));
   const [comparing] = useState(true);
+  const [syncing, setSyncing] = useState(false);
 
-  const { data, loading, error, alerts, crmFunnel, channels, timeseries } =
+  const handleSyncMetaStructure = async () => {
+    setSyncing(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("meta-structure-sync", {
+        body: { since: ymdLocal(range.from), until: ymdLocal(range.to) },
+      });
+      if (error) throw new Error(error.message);
+      const results = (data as { results?: Array<{ ok: boolean; cabinet: string; campaigns?: number; creatives?: number }> } | null)?.results ?? [];
+      const ok = results.filter((r) => r.ok);
+      const failed = results.filter((r) => !r.ok);
+      if (ok.length > 0) {
+        const camps = ok.reduce((s, r) => s + (r.campaigns ?? 0), 0);
+        const ads = ok.reduce((s, r) => s + (r.creatives ?? 0), 0);
+        toast.success(`Синхронизировано: ${ok.length} кабинет(ов), ${camps} кампаний, ${ads} креативов`);
+      }
+      if (failed.length > 0) {
+        toast.error(`Ошибка по ${failed.length} кабинет(ам): ${failed[0].cabinet}`);
+      }
+      // Триггерим перезагрузку данных тем же приёмом, что и кнопка «Обновить».
+      setRange({ ...range });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось синхронизировать Meta");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const { data, loading, error, alerts, crmFunnel, channels, timeseries, instagramFunnel } =
     useDashboardData("all", range, comparing);
+  const { stats: codewordStats } = useCodewordStats();
+  const crmFlow = useCrmFlow(range);
+  const { rows: metaCreatives } = useMetaCreatives(range);
+  const { rows: metaCampaigns } = useMetaCampaigns(range);
   const { leads: liteLeads } = useLeadsLite();
   const periodLeads = useMemo(() => liteLeads.filter((l) => {
     const t = new Date(l.createdAt).getTime();
@@ -70,6 +115,16 @@ const Dashboard = () => {
               setRange(r);
             }}
           />
+          <Button
+            variant="outline"
+            className="h-10 gap-2 rounded-xl border-border/60"
+            onClick={handleSyncMetaStructure}
+            disabled={syncing}
+            title="Синхронизировать кампании и креативы Meta с серверов Facebook"
+          >
+            {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Синхронизировать Meta
+          </Button>
           <Button
             variant="outline"
             size="icon"
@@ -167,9 +222,34 @@ const Dashboard = () => {
         totalLeads={totals?.totalLeads ?? 0}
       />
 
-      {/* Block 6 — CRM funnel */}
+      {/* Block 4.1 — Instagram organic funnel (код-слова → DM → клик → заявка) */}
+      {(instagramFunnel.codewordDms > 0 || codewordStats.length > 0) && (
+        <>
+          <SectionTitle accent="bg-pink-500">Instagram organic — воронка код-слов</SectionTitle>
+          <InstagramOrganicFunnel funnel={instagramFunnel} topCodewords={codewordStats} />
+        </>
+      )}
+
+      {/* Block 4.2 — Цели кампаний Meta (WhatsApp / лиды с сайта / direct и т.д.) */}
+      <SectionTitle accent="bg-primary">Цели рекламных кампаний Meta</SectionTitle>
+      <CampaignGoalsBreakdown rows={metaCampaigns} />
+
+      {/* Block 4.3 — Аналитика креативов Meta с превью */}
+      <SectionTitle>Аналитика креативов Meta</SectionTitle>
+      <CreativesGrid rows={metaCreatives} />
+
+      {/* Block 6 — CRM funnel + SLA / stage distribution / reject reasons */}
       <SectionTitle accent="bg-success">CRM: движение заявок</SectionTitle>
-      <CrmFunnel data={crmFunnel} />
+      <div className="space-y-4">
+        <CrmFlowPanel
+          sla={crmFlow.sla}
+          stages={crmFlow.stageBuckets}
+          reasons={crmFlow.topRejectReasons}
+          activeLeadsTotal={crmFlow.activeLeadsTotal}
+          periodLeadsTotal={crmFlow.periodLeadsTotal}
+        />
+        <CrmFunnel data={crmFunnel} />
+      </div>
 
       {/* Block 6.1 — Quality + Funnel: lead → diagnosis → payment */}
       <SectionTitle accent="bg-warning">Качество лидов</SectionTitle>

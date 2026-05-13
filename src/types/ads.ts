@@ -1,8 +1,11 @@
+export type CabinetProvider = "meta" | "google" | "instagram_organic";
+
 export interface AdCabinetConfig {
   // Основное
   city?: string;
   dailyBudget?: number;
   currency?: string;
+  provider?: CabinetProvider;
 
   // Интеграция Meta
   adAccountId?: string;

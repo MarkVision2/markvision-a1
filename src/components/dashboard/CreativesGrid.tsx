@@ -1,0 +1,182 @@
+import { useMemo, useState } from "react";
+import { Eye, Image as ImageIcon, Layers, MousePointerClick, Play, TrendingDown, TrendingUp, Video } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
+
+const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
+const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
+
+type SortKey = "spend" | "ctr" | "cpl" | "leads" | "romi";
+
+const SORT_LABELS: Record<SortKey, string> = {
+  spend: "по расходу",
+  ctr: "по CTR",
+  cpl: "по CPL",
+  leads: "по заявкам",
+  romi: "по окупаемости",
+};
+
+interface Props {
+  rows: MetaCreativeRow[];
+  /** Сколько карточек показывать в свёрнутом виде. */
+  initialLimit?: number;
+}
+
+function CreativePreview({ row }: { row: MetaCreativeRow }) {
+  const isVideo = row.creativeType === "video";
+  const isCarousel = row.creativeType === "carousel";
+  const src = row.thumbnailUrl || row.imageUrl;
+
+  return (
+    <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-secondary/30">
+      {src ? (
+        <img
+          src={src}
+          alt={row.name}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+        />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center">
+          <ImageIcon className="h-8 w-8 text-muted-foreground/40" />
+        </div>
+      )}
+      <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-background/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider backdrop-blur">
+        {isVideo ? <Video className="h-3 w-3" /> : isCarousel ? <Layers className="h-3 w-3" /> : <ImageIcon className="h-3 w-3" />}
+        {row.creativeType}
+      </span>
+      {isVideo && (
+        <span className="absolute inset-0 grid place-items-center">
+          <span className="grid h-12 w-12 place-items-center rounded-full bg-background/60 backdrop-blur">
+            <Play className="h-5 w-5 text-foreground" />
+          </span>
+        </span>
+      )}
+      {row.effectiveStatus && row.effectiveStatus !== "ACTIVE" && (
+        <span className="absolute right-2 top-2 rounded-md bg-warning/80 px-1.5 py-0.5 text-[10px] font-bold uppercase text-warning-foreground">
+          {row.effectiveStatus}
+        </span>
+      )}
+    </div>
+  );
+}
+
+export function CreativesGrid({ rows, initialLimit = 8 }: Props) {
+  const [sortKey, setSortKey] = useState<SortKey>("spend");
+  const [showAll, setShowAll] = useState(false);
+
+  const sorted = useMemo(() => {
+    const copy = [...rows];
+    copy.sort((a, b) => {
+      if (sortKey === "cpl") {
+        const av = a.cpl > 0 ? a.cpl : Number.POSITIVE_INFINITY;
+        const bv = b.cpl > 0 ? b.cpl : Number.POSITIVE_INFINITY;
+        return av - bv;
+      }
+      return (b[sortKey] ?? 0) - (a[sortKey] ?? 0);
+    });
+    return copy;
+  }, [rows, sortKey]);
+
+  const visible = showAll ? sorted : sorted.slice(0, initialLimit);
+
+  if (rows.length === 0) {
+    return (
+      <div className="rounded-2xl border border-border/60 bg-card/60 p-6 text-center text-sm text-muted-foreground">
+        <ImageIcon className="mx-auto mb-2 h-5 w-5" />
+        Креативы появятся здесь после первого запуска <code className="rounded bg-secondary px-1 text-[11px]">meta-structure-sync</code> по подключённому кабинету Meta.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="text-xs text-muted-foreground">
+          Всего креативов: <span className="font-semibold text-foreground">{rows.length}</span>
+        </div>
+        <div className="flex items-center gap-1 text-xs">
+          <span className="text-muted-foreground">Сортировка:</span>
+          <select
+            value={sortKey}
+            onChange={(e) => setSortKey(e.target.value as SortKey)}
+            className="rounded-md border border-border/60 bg-background px-2 py-1 text-xs font-medium"
+          >
+            {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
+              <option key={k} value={k}>{SORT_LABELS[k]}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        {visible.map((row) => {
+          const romiClass = row.romi >= 0 ? "text-success" : "text-destructive";
+          const RomiIcon = row.romi >= 0 ? TrendingUp : TrendingDown;
+          return (
+            <div key={row.id} className="overflow-hidden rounded-2xl border border-border/60 bg-card/60">
+              <CreativePreview row={row} />
+              <div className="p-3">
+                <div className="line-clamp-2 min-h-[2.5rem] text-xs font-semibold leading-snug" title={row.name}>
+                  {row.name || "Без названия"}
+                </div>
+                {row.headline && (
+                  <div className="mt-1 line-clamp-1 text-[11px] text-muted-foreground" title={row.headline}>
+                    {row.headline}
+                  </div>
+                )}
+                <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+                  <div>
+                    <div className="text-muted-foreground">Расход</div>
+                    <div className="font-bold tabular-nums">{row.spend > 0 ? fmtTenge(row.spend) : "—"}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">Заявки</div>
+                    <div className="font-bold tabular-nums">{fmtNum(row.leads)}</div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">CTR</div>
+                    <div className="font-bold tabular-nums">
+                      {row.ctr > 0 ? `${row.ctr.toFixed(2)}%` : "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-muted-foreground">CPL</div>
+                    <div className="font-bold tabular-nums">{row.cpl > 0 ? fmtTenge(row.cpl) : "—"}</div>
+                  </div>
+                </div>
+                {row.spend > 0 && (
+                  <div className={cn(
+                    "mt-2 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+                    row.romi >= 0 ? "bg-success/10" : "bg-destructive/10",
+                    romiClass,
+                  )}>
+                    <RomiIcon className="h-3 w-3" />
+                    ROMI {row.romi >= 0 ? "+" : ""}{Math.round(row.romi)}%
+                  </div>
+                )}
+                <div className="mt-2 flex items-center gap-3 text-[10px] text-muted-foreground">
+                  <span className="inline-flex items-center gap-1"><Eye className="h-3 w-3" />{fmtNum(row.impressions)}</span>
+                  <span className="inline-flex items-center gap-1"><MousePointerClick className="h-3 w-3" />{fmtNum(row.clicks)}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {sorted.length > initialLimit && (
+        <div className="flex justify-center">
+          <button
+            type="button"
+            onClick={() => setShowAll((v) => !v)}
+            className="rounded-md border border-border/60 bg-background px-3 py-1.5 text-xs font-semibold hover:bg-secondary/50"
+          >
+            {showAll ? "Свернуть" : `Показать все (${sorted.length})`}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}

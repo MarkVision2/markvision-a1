@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Edit2, Eye, Globe, GitBranch, Link2, MessageCircle, Phone, Plus, Search, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
+import { Camera, Edit2, Eye, Globe, GitBranch, Link2, MessageCircle, Phone, Plus, Search, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,7 @@ import { PipelinesSettings } from "@/components/settings/PipelinesSettings";
 import { LossReasonsSettings } from "@/components/settings/LossReasonsSettings";
 import { InboundTokensSettings } from "@/components/settings/InboundTokensSettings";
 import { ClientDashTokensSettings } from "@/components/settings/ClientDashTokensSettings";
+import { InstagramOrganicSettings } from "@/components/settings/InstagramOrganicSettings";
 import { SiteIntakeCard } from "@/pages/SettingsConnection";
 import {
   MODULES,
@@ -86,6 +87,7 @@ export default function Settings() {
           <TabsTrigger value="whatsapp" className="gap-2"><MessageCircle className="h-3.5 w-3.5" /> WhatsApp</TabsTrigger>
           <TabsTrigger value="site" className="gap-2"><Globe className="h-3.5 w-3.5" /> Сайт</TabsTrigger>
           <TabsTrigger value="inbound" className="gap-2"><Link2 className="h-3.5 w-3.5" /> Лендинги</TabsTrigger>
+          <TabsTrigger value="ig-organic" className="gap-2"><Camera className="h-3.5 w-3.5" /> Instagram organic</TabsTrigger>
           <TabsTrigger value="clientview" className="gap-2"><Eye className="h-3.5 w-3.5" /> Доступ клиента</TabsTrigger>
         </TabsList>
 
@@ -244,6 +246,10 @@ export default function Settings() {
             </div>
             <SiteIntakeCard />
           </div>
+        </TabsContent>
+
+        <TabsContent value="ig-organic" className="mt-0">
+          <InstagramOrganicSettings />
         </TabsContent>
 
         <TabsContent value="inbound" className="mt-0">
