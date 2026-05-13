@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { AlertTriangle, Clock, MoveRight, Timer, Users2, XCircle } from "lucide-react";
+import { AlertTriangle, Clock, MoveRight, Timer, Users2, XCircle, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { stageColorClasses } from "@/components/crm/StageIcon";
 import {
