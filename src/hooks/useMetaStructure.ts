@@ -289,7 +289,6 @@ export type GoalKey =
   | "leads_form"
   | "leads"
   | "whatsapp"
-  | "messages_multi"
   | "messages"
   | "engagement"
   | "traffic"
@@ -318,17 +317,13 @@ const GOAL_TABLE: Array<{ match: (obj: string, dest: string | null) => boolean; 
     meta: { key: "leads_form", label: "Лиды через форму Meta", successMetric: "leads" },
   },
   // === Мессенджеры ===
-  // Чистый WhatsApp
+  // WhatsApp — любой destination, содержащий WHATSAPP
+  // (чистый WHATSAPP или мультимессенджер MESSAGING_*_WHATSAPP).
   {
-    match: (_o, dest) => dest === "WHATSAPP",
+    match: (_o, dest) => !!dest && /WHATSAPP/.test(dest),
     meta: { key: "whatsapp", label: "WhatsApp", successMetric: "messages" },
   },
-  // Мультимессенджер: WhatsApp + Direct/Messenger (новый Meta-формат)
-  {
-    match: (_o, dest) => !!dest && /WHATSAPP/.test(dest) && dest !== "WHATSAPP",
-    meta: { key: "messages_multi", label: "WhatsApp + Direct/Messenger", successMetric: "messages" },
-  },
-  // Чистый Direct / Messenger
+  // Direct / Messenger без WhatsApp
   {
     match: (_o, dest) => dest === "MESSENGER" || dest === "INSTAGRAM_DIRECT",
     meta: { key: "messages", label: "Direct / Messenger", successMetric: "messages" },

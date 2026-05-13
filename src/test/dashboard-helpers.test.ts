@@ -53,10 +53,14 @@ describe("classifyGoal (Meta campaign objective → human-readable goal)", () =>
     expect(classifyGoal("OUTCOME_LEADS", null).key).toBe("leads");
   });
 
-  it("MESSAGING_INSTAGRAM_DIRECT_WHATSAPP — мультимессенджер", () => {
+  it("MESSAGING_INSTAGRAM_DIRECT_WHATSAPP — тоже WhatsApp (объединено)", () => {
     const g = classifyGoal("OUTCOME_ENGAGEMENT", "MESSAGING_INSTAGRAM_DIRECT_WHATSAPP");
-    expect(g.key).toBe("messages_multi");
-    expect(g.label).toBe("WhatsApp + Direct/Messenger");
+    expect(g.key).toBe("whatsapp");
+    expect(g.label).toBe("WhatsApp");
+  });
+
+  it("WHATSAPP_BUSINESS_API → whatsapp", () => {
+    expect(classifyGoal("OUTCOME_TRAFFIC", "WHATSAPP_BUSINESS_API").key).toBe("whatsapp");
   });
 
   it("OUTCOME_ENGAGEMENT без destination → engagement", () => {
