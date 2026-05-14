@@ -14,6 +14,7 @@ export interface MetaCreativeRow {
   creativeType: "image" | "video" | "carousel" | "dynamic" | string;
   thumbnailUrl: string | null;
   imageUrl: string | null;
+  posterUrl: string | null;
   videoUrl: string | null;
   videoId: string | null;
   primaryText: string | null;
