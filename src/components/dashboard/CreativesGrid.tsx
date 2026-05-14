@@ -44,6 +44,16 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
     size: 960,
   });
 
+  const refreshVideoPreview = async () => {
+    if (!row.adId) return;
+    const { data } = await supabase.functions.invoke<{ ok: boolean; video_url?: string; thumbnail_url?: string }>(
+      "meta-creative-refresh",
+      { body: { ad_id: row.adId } },
+    );
+    if (data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
+    if (data?.ok && data.video_url) setPreviewVideoUrl(data.video_url);
+  };
+
   useEffect(() => {
     setPreviewVideoUrl(row.videoUrl);
     setRefreshedThumb(null);
@@ -91,7 +101,10 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
           loop
           preload="metadata"
           className="h-full w-full bg-background object-cover transition duration-300 group-hover:scale-[1.01]"
-          onError={() => setPreviewVideoUrl(null)}
+          onError={() => {
+            setPreviewVideoUrl(null);
+            void refreshVideoPreview();
+          }}
         />
       ) : src ? (
         <img
