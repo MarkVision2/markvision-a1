@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
 
 type StatusFilter = "active" | "active_or_spent" | "all";
 type TypeFilter = "all" | "video" | "image" | "carousel";
-type SortKey = "spend" | "ctr" | "cpl" | "leads" | "messages" | "romi";
+type SortKey = "spend" | "ctr" | "cpl" | "leads" | "messages" | "romi" | "crmLeads" | "crmSales" | "crmRevenue" | "crmRomi" | "crmCpl";
 
 const PRESETS: { key: PeriodPreset; label: string }[] = [
   { key: "7d", label: "7 дн" },
@@ -29,12 +29,17 @@ const PRESETS: { key: PeriodPreset; label: string }[] = [
 ];
 
 const SORT_LABELS: Record<SortKey, string> = {
-  spend: "по расходу",
-  ctr: "по CTR",
-  cpl: "по CPL",
-  leads: "по заявкам",
-  messages: "по сообщениям",
-  romi: "по ROMI",
+  crmRomi: "ROMI (CRM)",
+  crmRevenue: "Выручка CRM",
+  crmSales: "Продажи CRM",
+  crmLeads: "Лиды CRM",
+  crmCpl: "CPL CRM",
+  spend: "Расход",
+  romi: "ROMI Meta",
+  ctr: "CTR",
+  cpl: "CPL Meta",
+  leads: "Заявки Meta",
+  messages: "Сообщения",
 };
 
 function ymd(d: Date) {
@@ -53,7 +58,7 @@ export function AdsCreativesPanel() {
   const [status, setStatus] = useState<StatusFilter>("active_or_spent");
   const [typeF, setTypeF] = useState<TypeFilter>("all");
   const [goalF, setGoalF] = useState<"all" | "whatsapp" | "site">("all");
-  const [sort, setSort] = useState<SortKey>("spend");
+  const [sort, setSort] = useState<SortKey>("crmRomi");
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
@@ -92,12 +97,12 @@ export function AdsCreativesPanel() {
         return true;
       })
       .sort((a, b) => {
-        if (sort === "cpl") {
-          const av = a.row.cpl > 0 ? a.row.cpl : Number.POSITIVE_INFINITY;
-          const bv = b.row.cpl > 0 ? b.row.cpl : Number.POSITIVE_INFINITY;
+        if (sort === "cpl" || sort === "crmCpl") {
+          const av = (a.row[sort] as number) > 0 ? (a.row[sort] as number) : Number.POSITIVE_INFINITY;
+          const bv = (b.row[sort] as number) > 0 ? (b.row[sort] as number) : Number.POSITIVE_INFINITY;
           return av - bv;
         }
-        return (b.row[sort] ?? 0) - (a.row[sort] ?? 0);
+        return ((b.row[sort] as number) ?? 0) - ((a.row[sort] as number) ?? 0);
       });
   }, [creatives, campaignById, typeF, status, goalF, query, sort, cabinetFilter]);
 
