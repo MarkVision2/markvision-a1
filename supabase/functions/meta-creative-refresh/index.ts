@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
       picture?: string;
       thumbnails?: { data?: Array<{ uri: string; width?: number; height?: number; is_preferred?: boolean; scale?: number }> };
     };
-    if (!v.source) return json({ ok: false, error: "no source url" }, 502);
+    if (!v.source) return json({ ok: false, error: "no source url", fallback: true }, 200);
 
     // Выбираем самый большой постер: предпочтительный → max(width*height) → picture
     const thumbs = v.thumbnails?.data ?? [];
