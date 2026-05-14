@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { Copy, Eye, Loader2, MessageCircle, MousePointerClick, Play, RefreshCw, ShoppingBag, Target, X } from "lucide-react";
+import { Copy, Eye, Loader2, MessageCircle, MousePointerClick, Play, RefreshCw, ShoppingBag, Target, TrendingUp, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
+import { useCreativeFunnel } from "@/hooks/useCreativeFunnel";
 
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
@@ -14,6 +15,7 @@ interface Props {
   campaignName?: string | null;
   goalLabel?: string | null;
   isWhatsApp?: boolean;
+  range: { from: Date; to: Date };
   onClose: () => void;
 }
 
@@ -26,7 +28,8 @@ function MetricBox({ label, value, accent }: { label: string; value: string; acc
   );
 }
 
-export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, onClose }: Props) {
+export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, range, onClose }: Props) {
+  const { data: funnel } = useCreativeFunnel(row.adId, range);
   const isVideo = row.creativeType === "video";
   const [videoUrl, setVideoUrl] = useState<string | null>(row.videoUrl);
   const [refreshing, setRefreshing] = useState(false);
