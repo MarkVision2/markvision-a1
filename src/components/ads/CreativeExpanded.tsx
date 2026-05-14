@@ -86,7 +86,9 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
     toast.success("ID объявления скопирован");
   };
 
-  const romiClass = row.romi >= 0 ? "text-success" : "text-destructive";
+  const hasMetaRevenue = row.revenue > 0;
+  const hasCrmRevenue = row.crmRevenue > 0;
+  const romiClass = hasMetaRevenue && row.romi >= 0 ? "text-success" : "text-destructive";
   const poster = bestCreativeImage({ thumbnailUrl: row.thumbnailUrl, imageUrl: row.imageUrl, size: 720 }) || undefined;
 
   return (
@@ -184,8 +186,8 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
             <MetricBox label="CPC" value={row.cpc > 0 ? fmtTenge(row.cpc) : "—"} />
             <MetricBox
               label="ROMI"
-              value={row.spend > 0 ? `${row.romi >= 0 ? "+" : ""}${Math.round(row.romi)}%` : "—"}
-              accent={row.spend > 0 ? romiClass : undefined}
+              value={row.spend > 0 && hasMetaRevenue ? `${row.romi >= 0 ? "+" : ""}${Math.round(row.romi)}%` : "нет продаж"}
+              accent={row.spend > 0 && hasMetaRevenue ? romiClass : undefined}
             />
           </div>
 
@@ -201,8 +203,8 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
               <MetricBox label="Выручка" value={fmtTenge(row.crmRevenue)} accent="text-success" />
               <MetricBox
                 label="ROMI"
-                value={row.spend > 0 ? `${row.crmRomi >= 0 ? "+" : ""}${Math.round(row.crmRomi)}%` : "—"}
-                accent={row.spend > 0 ? (row.crmRomi >= 0 ? "text-success" : "text-destructive") : undefined}
+                value={row.spend > 0 && hasCrmRevenue ? `${row.crmRomi >= 0 ? "+" : ""}${Math.round(row.crmRomi)}%` : "нет продаж"}
+                accent={row.spend > 0 && hasCrmRevenue ? (row.crmRomi >= 0 ? "text-success" : "text-destructive") : undefined}
               />
               <MetricBox label="CPL" value={row.crmCpl > 0 ? fmtTenge(row.crmCpl) : "—"} />
               <MetricBox label="CPS" value={row.crmCps > 0 ? fmtTenge(row.crmCps) : "—"} />
@@ -237,7 +239,7 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
                 </div>
                 <div className="flex justify-between gap-2">
                   <span>Выручка CRM</span>
-                  <span className="tabular-nums text-foreground">{row.crmRevenue > 0 ? fmtTenge(row.crmRevenue) : "—"}</span>
+                  <span className="tabular-nums text-foreground">{hasCrmRevenue ? fmtTenge(row.crmRevenue) : "нет продаж"}</span>
                 </div>
                 <div className="flex justify-between gap-2">
                   <span>Период</span>
