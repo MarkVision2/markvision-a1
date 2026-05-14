@@ -2370,6 +2370,10 @@ export type Database = {
         Args: { p_project_id: string }
         Returns: string
       }
+      user_can_access_project: {
+        Args: { _project_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "admin" | "manager" | "director" | "marketer" | "viewer"
