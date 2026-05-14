@@ -76,6 +76,8 @@ type LeadRow = {
   rejected_at: string | null; reject_reason: string | null;
   pinned: boolean; assigned_to: string | null; created_by: string | null;
   created_at: string; updated_at: string; last_activity_at: string;
+  cabinet_id?: string | null;
+  meta_ad_id?: string | null; meta_adset_id?: string | null; meta_campaign_id?: string | null;
 };
 
 type CommRow = {
