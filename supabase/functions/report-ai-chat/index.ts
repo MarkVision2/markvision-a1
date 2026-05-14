@@ -1,4 +1,5 @@
 const corsHeaders = {
+import { requireUser } from "../_lib/auth.ts";
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };

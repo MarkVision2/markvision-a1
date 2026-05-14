@@ -1,4 +1,5 @@
 // Marketing OS / Creatives (Этап 2): рекламные крео под алгоритм Meta Andromeda.
+import { requireUser } from "../_lib/auth.ts";
 // Читает project_briefs.* и возвращает 9 креативов (3 формата × 3 угла) на каждый топ-сегмент.
 
 import {

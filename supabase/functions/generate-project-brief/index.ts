@@ -1,4 +1,5 @@
 // Marketing OS / Onboarding (Этап 1).
+import { requireUser } from "../_lib/auth.ts";
 // System prompt = SKILL.md из supabase/functions/_marketing_os/onboarding/.
 // Возвращает полный документ 01-onboarding.md + структурированные сегменты, конкурентов, продуктовую матрицу,
 // сценарии запуска и 3 рекламных варианта (для шага 4 диалога).

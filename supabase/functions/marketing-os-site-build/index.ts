@@ -1,4 +1,5 @@
 // Marketing OS / Site Build (Этап 5): собирает рабочий single-file HTML по ТЗ из site_brief.
+import { requireUser } from "../_lib/auth.ts";
 
 import {
   callLovableWithTool,

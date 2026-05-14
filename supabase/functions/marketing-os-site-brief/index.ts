@@ -1,4 +1,5 @@
 // Marketing OS / Site Brief (Этап 4): ТЗ на посадочную страницу с готовыми текстами всех блоков.
+import { requireUser } from "../_lib/auth.ts";
 
 import {
   briefToContext,
