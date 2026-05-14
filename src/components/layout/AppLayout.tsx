@@ -41,7 +41,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
               <Bell className="h-4 w-4" />
             </button>
           </header>
-          <div className="flex-1">{children}</div>
+          <main className="flex-1">{children}</main>
         </SidebarInset>
       </div>
     </SidebarProvider>
