@@ -171,6 +171,12 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Require authenticated user
+    const userId = await getUserId(req);
+    if (!userId) {
+      return json({ error: "Unauthorized" }, 401);
+    }
+
     const url = new URL(req.url);
     let body: Record<string, unknown> = {};
     if (req.method === "POST") {
@@ -180,6 +186,17 @@ Deno.serve(async (req) => {
       (body.action as string | undefined) ??
       url.searchParams.get("action") ??
       "";
+
+    // Restrict destructive admin actions
+    if (action === "logout" || action === "setWebhook") {
+      const { data: roleRow } = await admin
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId)
+        .eq("role", "admin")
+        .maybeSingle();
+      if (!roleRow) return json({ error: "Forbidden" }, 403);
+    }
 
     const projectId =
       typeof body.project_id === "string" && body.project_id

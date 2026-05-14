@@ -36,9 +36,9 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Проверка секрета (если задан)
+  // Always require the cron secret. Fail closed if not configured.
   const provided = req.headers.get('x-automation-key');
-  if (settings.cron_secret && provided !== settings.cron_secret) {
+  if (!settings.cron_secret || !provided || provided !== settings.cron_secret) {
     return new Response(JSON.stringify({ error: 'unauthorized' }), {
       status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

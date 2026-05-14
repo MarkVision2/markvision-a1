@@ -1,4 +1,5 @@
 // Marketing OS / Creatives (Этап 2): рекламные крео под алгоритм Meta Andromeda.
+import { requireUser } from "../_lib/auth.ts";
 // Читает project_briefs.* и возвращает 9 креативов (3 формата × 3 угла) на каждый топ-сегмент.
 
 import {
@@ -86,6 +87,11 @@ const TOOL_SCHEMA: Record<string, unknown> = {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const __auth = await requireUser(req);
+    if (!__auth.ok) return __auth.response;
+  } catch { return new Response(JSON.stringify({error:"Unauthorized"}),{status:401,headers:{...corsHeaders,"Content-Type":"application/json"}}); }
   try {
     const body = (await req.json()) as Body;
     if (!body.projectId) return errorResponse("projectId required", 400);

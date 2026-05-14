@@ -1,4 +1,5 @@
 // Marketing OS / Content (Этап 3): контент-воронка для органики.
+import { requireUser } from "../_lib/auth.ts";
 // Лид-магнит + 5 рилсов на его выдачу + 10 контентных рилсов + 8 постов + календарь.
 
 import {
@@ -111,6 +112,11 @@ const TOOL_SCHEMA: Record<string, unknown> = {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const __auth = await requireUser(req);
+    if (!__auth.ok) return __auth.response;
+  } catch { return new Response(JSON.stringify({error:"Unauthorized"}),{status:401,headers:{...corsHeaders,"Content-Type":"application/json"}}); }
   try {
     const body = (await req.json()) as Body;
     if (!body.projectId) return errorResponse("projectId required", 400);

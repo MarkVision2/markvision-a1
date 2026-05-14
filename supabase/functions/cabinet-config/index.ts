@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { requireUser, userHasRole } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,6 +10,15 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    const auth = await requireUser(req);
+    if (!auth.ok) return auth.response;
+    const isAdmin = await userHasRole(auth.userId, "admin");
+    if (!isAdmin) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -57,7 +67,8 @@ Deno.serve(async (req) => {
       page_id: row.page_id || "",
       instagram_actor_id: row.instagram_id || null,
       instagram_user_id: row.instagram_id || null,
-      fb_token: row.access_token || "",
+      // Note: fb_token intentionally omitted from client responses to prevent
+      // credential leakage. Server-to-server callers should resolve via service role.
       fb_pixel_id: row.pixel_id || null,
       website_url: row.website_url || null,
       whatsapp_number: row.whatsapp_number || "",

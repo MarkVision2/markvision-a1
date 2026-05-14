@@ -1,4 +1,5 @@
 // Marketing OS / Onboarding (Этап 1).
+import { requireUser } from "../_lib/auth.ts";
 // System prompt = SKILL.md из supabase/functions/_marketing_os/onboarding/.
 // Возвращает полный документ 01-onboarding.md + структурированные сегменты, конкурентов, продуктовую матрицу,
 // сценарии запуска и 3 рекламных варианта (для шага 4 диалога).
@@ -241,6 +242,11 @@ function classifySegments(segments: Segment[]): Segment[] {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+
+  try {
+    const __auth = await requireUser(req);
+    if (!__auth.ok) return __auth.response;
+  } catch { return new Response(JSON.stringify({error:"Unauthorized"}),{status:401,headers:{...corsHeaders,"Content-Type":"application/json"}}); }
 
   try {
     const body = (await req.json()) as OnboardingBody;

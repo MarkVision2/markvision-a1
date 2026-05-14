@@ -5,6 +5,8 @@
 // 4. Обогащает payload секретным META_ACCESS_TOKEN и всеми алиасами полей.
 // 5. Отвечает фронту быстро (короткий таймаут на ACK от n8n, дальше n8n работает в фоне).
 
+import { requireUser, userHasRole } from "../_lib/auth.ts";
+
 const N8N_WEBHOOK = "https://n8n.zapoinov.com/webhook/ai-target-launch";
 const META_GRAPH = "https://graph.facebook.com/v19.0";
 
@@ -72,6 +74,15 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const auth = await requireUser(req);
+    if (!auth.ok) return auth.response;
+    const isAdmin = await userHasRole(auth.userId, "admin");
+    const isManager = isAdmin || (await userHasRole(auth.userId, "manager"));
+    if (!isManager) {
+      return new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
     const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN");
     if (!META_ACCESS_TOKEN) {
       return new Response(

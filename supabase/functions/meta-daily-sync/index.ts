@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { requireUser, userHasRole } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -127,6 +128,19 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    // Allow internal cron call via shared secret OR require admin user JWT.
+    const cronKey = Deno.env.get("META_SYNC_CRON_KEY");
+    const provided = req.headers.get("x-cron-key");
+    const isCron = !!cronKey && provided === cronKey;
+    if (!isCron) {
+      const auth = await requireUser(req);
+      if (!auth.ok) return auth.response;
+      if (!(await userHasRole(auth.userId, "admin"))) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
     const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN");
     if (!META_ACCESS_TOKEN) {
       return new Response(JSON.stringify({ error: "META_ACCESS_TOKEN missing" }), {
