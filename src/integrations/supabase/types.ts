@@ -2006,6 +2006,7 @@ export type Database = {
       }
       whatsapp_config: {
         Row: {
+          ads_only: boolean
           api_token: string | null
           api_url: string | null
           connected: boolean
@@ -2019,6 +2020,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          ads_only?: boolean
           api_token?: string | null
           api_url?: string | null
           connected?: boolean
@@ -2032,6 +2034,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          ads_only?: boolean
           api_token?: string | null
           api_url?: string | null
           connected?: boolean
