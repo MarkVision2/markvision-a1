@@ -987,6 +987,7 @@ export type Database = {
           campaign: string | null
           channel: Database["public"]["Enums"]["lead_channel"] | null
           city: string | null
+          click_id: string | null
           created_at: string
           created_by: string | null
           email: string | null
@@ -998,6 +999,9 @@ export type Database = {
           last_contact_at: string | null
           last_inbound_at: string | null
           last_outbound_at: string | null
+          meta_ad_id: string | null
+          meta_adset_id: string | null
+          meta_campaign_id: string | null
           name: string
           next_action_at: string | null
           next_visit_at: string | null
@@ -1027,6 +1031,7 @@ export type Database = {
           campaign?: string | null
           channel?: Database["public"]["Enums"]["lead_channel"] | null
           city?: string | null
+          click_id?: string | null
           created_at?: string
           created_by?: string | null
           email?: string | null
@@ -1038,6 +1043,9 @@ export type Database = {
           last_contact_at?: string | null
           last_inbound_at?: string | null
           last_outbound_at?: string | null
+          meta_ad_id?: string | null
+          meta_adset_id?: string | null
+          meta_campaign_id?: string | null
           name: string
           next_action_at?: string | null
           next_visit_at?: string | null
@@ -1067,6 +1075,7 @@ export type Database = {
           campaign?: string | null
           channel?: Database["public"]["Enums"]["lead_channel"] | null
           city?: string | null
+          click_id?: string | null
           created_at?: string
           created_by?: string | null
           email?: string | null
@@ -1078,6 +1087,9 @@ export type Database = {
           last_contact_at?: string | null
           last_inbound_at?: string | null
           last_outbound_at?: string | null
+          meta_ad_id?: string | null
+          meta_adset_id?: string | null
+          meta_campaign_id?: string | null
           name?: string
           next_action_at?: string | null
           next_visit_at?: string | null
@@ -2216,6 +2228,18 @@ export type Database = {
           },
         ]
       }
+      meta_creative_crm_daily: {
+        Row: {
+          ad_id: string | null
+          crm_leads: number | null
+          crm_qualified: number | null
+          crm_revenue: number | null
+          crm_sales: number | null
+          date: string | null
+          project_id: string | null
+        }
+        Relationships: []
+      }
       meta_creative_overview: {
         Row: {
           ad_id: string | null
@@ -2322,6 +2346,10 @@ export type Database = {
         Returns: string
       }
       gen_intake_token: { Args: never; Returns: string }
+      get_creative_funnel: {
+        Args: { p_ad_id: string; p_since?: string; p_until?: string }
+        Returns: Json
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
