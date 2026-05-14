@@ -104,14 +104,54 @@ async function getDefaultStage(
 }
 
 // Resolve which project a webhook belongs to via whatsapp_config.id_instance.
-async function projectFromInstance(idInstance: number | string | null | undefined): Promise<string | null> {
-  if (!idInstance) return null;
+// Also returns the ads_only flag — when true, only ad-sourced incoming
+// messages create new leads (existing leads still receive every message).
+async function configFromInstance(
+  idInstance: number | string | null | undefined,
+): Promise<{ project_id: string | null; ads_only: boolean }> {
+  if (!idInstance) return { project_id: null, ads_only: false };
   const { data } = await admin
     .from("whatsapp_config")
-    .select("project_id")
+    .select("project_id, ads_only")
     .eq("id_instance", String(idInstance))
     .maybeSingle();
-  return data?.project_id ?? null;
+  return {
+    project_id: data?.project_id ?? null,
+    ads_only: !!data?.ads_only,
+  };
+}
+
+// Detect Meta Click-to-WhatsApp ad context in a Green API incoming payload.
+// Meta forwards ad-click messages with referral metadata: source URL points
+// to fb.me / l.facebook / wa.me, the click id (ctwa_clid) appears in URLs,
+// or the message is decorated with a `sourceType: "ad"` block.
+function isFromMetaAd(body: Record<string, unknown>): boolean {
+  const md = body.messageData as Record<string, unknown> | undefined;
+  if (!md) return false;
+
+  const haystack = JSON.stringify(body).toLowerCase();
+  if (haystack.includes("ctwa_clid")) return true;
+  if (haystack.includes("\"sourcetype\":\"ad\"")) return true;
+  if (haystack.includes("\"sourceid\":\"ad")) return true;
+  if (
+    /https?:\/\/(?:[^"\s]*\.)?(?:fb\.me|l\.facebook\.com|facebook\.com\/ads|business\.facebook\.com|wa\.me|api\.whatsapp\.com)/i
+      .test(haystack)
+  ) {
+    // wa.me alone is weak — require it to live alongside fb/instagram/ad markers.
+    if (
+      haystack.includes("fb.me") ||
+      haystack.includes("facebook.com") ||
+      haystack.includes("instagram.com") ||
+      haystack.includes("ad_id") ||
+      haystack.includes("\"sourcetype\"")
+    ) {
+      return true;
+    }
+  }
+  // Quoted advertisement object (older Green API shape).
+  const quoted = md.quotedMessage as Record<string, unknown> | undefined;
+  if (quoted && (quoted.advertisement || quoted.externalAdReply)) return true;
+  return false;
 }
 
 async function findOrCreateLead(
