@@ -353,12 +353,26 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Сквозная атрибуция: ad_id может прийти явно или в utm_content (шаблон {{ad.id}}).
+    const numericId = (s: string | null | undefined) =>
+      s && /^[0-9]{6,}$/.test(s.trim()) ? s.trim() : null;
+    const metaAdId = (v.ad_id && v.ad_id.trim()) || numericId(v.utm_content);
+    const metaAdsetId = (v.adset_id && v.adset_id.trim()) || numericId(v.utm_term);
+    const metaCampaignId = (v.campaign_id && v.campaign_id.trim()) || numericId(v.utm_campaign);
+    const clickId = (v.fbclid && v.fbclid.trim()) || null;
+
     // Dedupe by phone — scoped to the resolved project.
     const existingId = await findExistingLeadByPhone(phoneE164, projectId);
     if (existingId) {
+      const patch: Record<string, unknown> = { last_activity_at: new Date().toISOString() };
+      if (Object.keys(utm).length) patch.utm = utm;
+      if (metaAdId) patch.meta_ad_id = metaAdId;
+      if (metaAdsetId) patch.meta_adset_id = metaAdsetId;
+      if (metaCampaignId) patch.meta_campaign_id = metaCampaignId;
+      if (clickId) patch.click_id = clickId;
       await admin
         .from("leads")
-        .update({ last_activity_at: new Date().toISOString() })
+        .update(patch)
         .eq("id", existingId);
       await admin.from("events").insert({
         lead_id: existingId,
@@ -390,14 +404,6 @@ Deno.serve(async (req) => {
     if (!def) {
       return json({ error: "No default pipeline/stage configured" }, 500);
     }
-
-    // Сквозная атрибуция: ad_id может прийти явно или в utm_content (шаблон {{ad.id}}).
-    const numericId = (s: string | null | undefined) =>
-      s && /^[0-9]{6,}$/.test(s.trim()) ? s.trim() : null;
-    const metaAdId = (v.ad_id && v.ad_id.trim()) || numericId(v.utm_content);
-    const metaAdsetId = (v.adset_id && v.adset_id.trim()) || numericId(v.utm_term);
-    const metaCampaignId = (v.campaign_id && v.campaign_id.trim()) || numericId(v.utm_campaign);
-    const clickId = (v.fbclid && v.fbclid.trim()) || null;
 
     const { data: created, error } = await admin
       .from("leads")
