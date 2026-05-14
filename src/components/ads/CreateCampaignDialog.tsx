@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { DEFAULT_META_UTM_TEMPLATE } from "@/lib/utmDefaults";
 import type { AdCabinet } from "@/types/ads";
 import { saveCampaign } from "@/hooks/useCabinetsStore";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
