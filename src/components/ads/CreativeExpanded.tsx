@@ -192,76 +192,71 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
               />
             </div>
 
-            {/* Воронка по этапам пайплайна */}
-            {funnel && funnel.stages.length > 0 && funnel.total_leads > 0 && (
-              <div className="space-y-1.5 pt-1">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Воронка по этапам
-                </div>
-                {funnel.stages.map((s) => {
-                  const pct = funnel.total_leads > 0 ? (s.count / funnel.total_leads) * 100 : 0;
-                  return (
-                    <div key={s.stage_id} className="flex items-center gap-2 text-xs">
-                      <div className="w-32 shrink-0 truncate text-muted-foreground" title={s.title}>
-                        {s.title}
-                      </div>
-                      <div className="relative h-5 flex-1 overflow-hidden rounded bg-secondary/40">
-                        <div
-                          className={cn(
-                            "h-full transition-all",
-                            s.is_terminal && s.key === "paid" ? "bg-success" : s.is_terminal ? "bg-destructive/60" : "bg-primary/60",
-                          )}
-                          style={{ width: `${Math.max(pct, s.count > 0 ? 4 : 0)}%` }}
-                        />
-                        <div className="absolute inset-0 flex items-center justify-end px-2 text-[10px] font-bold tabular-nums">
-                          {s.count} · {pct.toFixed(0)}%
+            {/* Воронка + последние лиды бок о бок */}
+            {funnel && funnel.total_leads > 0 && (
+              <div className="grid gap-2 lg:grid-cols-2">
+                {funnel.stages.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Воронка</div>
+                    {funnel.stages.filter((s) => s.count > 0 || s.is_terminal).slice(0, 6).map((s) => {
+                      const pct = funnel.total_leads > 0 ? (s.count / funnel.total_leads) * 100 : 0;
+                      return (
+                        <div key={s.stage_id} className="flex items-center gap-1.5 text-[11px]">
+                          <div className="w-20 shrink-0 truncate text-muted-foreground" title={s.title}>{s.title}</div>
+                          <div className="relative h-3.5 flex-1 overflow-hidden rounded bg-secondary/40">
+                            <div
+                              className={cn(
+                                "h-full",
+                                s.is_terminal && s.key === "paid" ? "bg-success" : s.is_terminal ? "bg-destructive/60" : "bg-primary/60",
+                              )}
+                              style={{ width: `${Math.max(pct, s.count > 0 ? 4 : 0)}%` }}
+                            />
+                            <div className="absolute inset-0 flex items-center justify-end px-1.5 text-[9px] font-bold tabular-nums">
+                              {s.count}·{pct.toFixed(0)}%
+                            </div>
+                          </div>
                         </div>
-                      </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {funnel.recent_leads.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <Users className="h-2.5 w-2.5" />
+                      Лиды ({funnel.total_leads})
                     </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Последние лиды с этого креатива */}
-            {funnel && funnel.recent_leads.length > 0 && (
-              <div className="space-y-1 pt-1">
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  <Users className="h-3 w-3" />
-                  Последние лиды ({funnel.total_leads})
-                </div>
-                <div className="space-y-1">
-                  {funnel.recent_leads.slice(0, 6).map((l) => (
-                    <a
-                      key={l.id}
-                      href={`/crm?lead=${l.id}`}
-                      className="flex items-center justify-between gap-2 rounded-md border border-border/40 bg-card/60 px-2 py-1 text-xs hover:border-primary/40"
-                    >
-                      <span className="min-w-0 flex-1 truncate">
-                        <span className="font-semibold">{l.name}</span>
-                        <span className="ml-2 text-muted-foreground">{l.phone}</span>
-                      </span>
-                      {l.paid ? (
-                        <span className="shrink-0 rounded bg-success/15 px-1.5 py-0.5 text-[10px] font-bold text-success">
-                          Оплата · {fmtTenge(l.amount)}
-                        </span>
-                      ) : (
-                        <span className="shrink-0 text-[10px] text-muted-foreground">
-                          {new Date(l.created_at).toLocaleDateString("ru-RU")}
-                        </span>
-                      )}
-                    </a>
-                  ))}
-                </div>
+                    <div className="space-y-1">
+                      {funnel.recent_leads.slice(0, 4).map((l) => (
+                        <a
+                          key={l.id}
+                          href={`/crm?lead=${l.id}`}
+                          className="flex items-center justify-between gap-2 rounded border border-border/40 bg-card/60 px-1.5 py-1 text-[11px] hover:border-primary/40"
+                        >
+                          <span className="min-w-0 flex-1 truncate">
+                            <span className="font-semibold">{l.name}</span>
+                            <span className="ml-1.5 text-muted-foreground">{l.phone}</span>
+                          </span>
+                          {l.paid ? (
+                            <span className="shrink-0 rounded bg-success/15 px-1.5 py-0.5 text-[9px] font-bold text-success">
+                              {fmtTenge(l.amount)}
+                            </span>
+                          ) : (
+                            <span className="shrink-0 text-[9px] text-muted-foreground">
+                              {new Date(l.created_at).toLocaleDateString("ru-RU")}
+                            </span>
+                          )}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
             {(!funnel || funnel.total_leads === 0) && (
-              <div className="rounded-md border border-dashed border-border/60 bg-card/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
-                В CRM пока нет лидов с этого креатива.{" "}
-                {isWhatsApp
-                  ? "Для CTWA-кампаний атрибуция придёт автоматически с первым входящим WhatsApp."
-                  : "Проверьте, что в UTM лендинга есть utm_content={{ad.id}} или передаётся ad_id."}
+              <div className="rounded-md border border-dashed border-border/60 bg-card/40 px-2 py-1.5 text-[10px] leading-relaxed text-muted-foreground">
+                В CRM пока нет лидов с этого креатива. Проверьте UTM (utm_content = ad.id или ad.name).
               </div>
             )}
           </div>
