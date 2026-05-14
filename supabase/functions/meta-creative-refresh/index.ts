@@ -50,29 +50,46 @@ Deno.serve(async (req) => {
 
   try {
     const r = await fetch(
-      `https://graph.facebook.com/${META_API_VERSION}/${videoId}?fields=source,picture&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`,
+      `https://graph.facebook.com/${META_API_VERSION}/${videoId}?fields=source,picture,thumbnails{uri,width,height,is_preferred,scale}&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`,
     );
     if (!r.ok) {
       const t = await r.text();
       return json({ ok: false, error: `meta ${r.status}: ${t.slice(0, 200)}` }, 502);
     }
-    const v = await r.json() as { source?: string; picture?: string };
+    const v = await r.json() as {
+      source?: string;
+      picture?: string;
+      thumbnails?: { data?: Array<{ uri: string; width?: number; height?: number; is_preferred?: boolean; scale?: number }> };
+    };
     if (!v.source) return json({ ok: false, error: "no source url" }, 502);
+
+    // Выбираем самый большой постер: предпочтительный → max(width*height) → picture
+    const thumbs = v.thumbnails?.data ?? [];
+    let bestThumb: string | null = null;
+    if (thumbs.length) {
+      const preferred = thumbs.find((t) => t.is_preferred);
+      const sorted = [...thumbs].sort(
+        (a, b) => ((b.width ?? 0) * (b.height ?? 0)) - ((a.width ?? 0) * (a.height ?? 0)),
+      );
+      bestThumb = (preferred?.uri && (preferred.width ?? 0) >= 320 ? preferred.uri : null)
+        ?? sorted[0]?.uri
+        ?? null;
+    }
+    if (!bestThumb && v.picture) bestThumb = v.picture;
 
     const patch: Record<string, unknown> = {
       video_url: v.source,
       last_synced_at: new Date().toISOString(),
     };
-    if (v.picture && !(row as { thumbnail_url?: string }).thumbnail_url) {
-      patch.thumbnail_url = v.picture;
-    }
+    if (bestThumb) patch.thumbnail_url = bestThumb;
+
     const { error: upErr } = await admin
       .from("meta_creatives")
       .update(patch)
       .eq("ad_id", adId);
     if (upErr) return json({ ok: false, error: upErr.message }, 500);
 
-    return json({ ok: true, video_url: v.source, thumbnail_url: v.picture ?? null });
+    return json({ ok: true, video_url: v.source, thumbnail_url: bestThumb });
   } catch (e) {
     return json({ ok: false, error: (e as Error).message }, 500);
   }
