@@ -99,6 +99,7 @@ const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProp
     setName(""); setType("Личный"); setDailyBudget("50000"); setCity("");
     setAdAccountId(""); setPageId(""); setPageName(""); setInstagramId("");
     setTelegramGroupId(""); setWhatsappNumber(""); setPixelId(""); setPixelEvent("Lead"); setWebsiteUrl("");
+    setUtmTemplate(DEFAULT_META_UTM_TEMPLATE);
     setBrief(""); setAccessToken(""); setChecks(null); setValidating(false);
   };
 
