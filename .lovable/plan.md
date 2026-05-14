@@ -1,90 +1,142 @@
-## Проблемы
+## Цель
 
-### 1. Данные не переключаются при смене проекта (нужно обновлять страницу)
-- `useLeadsLite` (Dashboard, Analytics, Reports, Metrics) **вообще не фильтрует по `project_id`** — всегда грузит ВСЕ лиды. Поэтому CRM-данные одинаковые для всех проектов.
-- `useReportData` зависит от `leads.length`, но не от `activeId` — при смене проекта эффект не перезапускается, пока количество лидов случайно не совпадёт.
-- `useCabinetsStore` фильтрует по `project_id`, но `usePersonalCabinets` отдаёт `cabinets`, которые меняются после async refetch — между моментами Dashboard видит «чужие» кабинеты.
-
-### 2. Везде висит знак `$` вместо тенге
-Жёстко прописано в 8 местах:
-- `src/pages/Dashboard.tsx` (`fmtTenge` → `… $`)
-- `src/pages/Analytics.tsx` (`fmtMoney` → `$…`)
-- `src/pages/Metrics.tsx` (`formatTenge` → `… $`)
-- `src/components/dashboard/`: `EnhancedFunnel.tsx`, `ChannelsTable.tsx`, `RevenueSpendChart.tsx`, `UnitEconomicsCard.tsx`, `CampaignsTopBottom.tsx`
-- `src/components/analytics/ChannelCard.tsx`
-- `src/components/ads/CabinetRow.tsx`: `CURRENCY_SYMBOLS.KZT = "$"` (!)
-
-### 3. Ручные данные кабинета (диагностика/продажа/сумма) не попадают в Dashboard и Analytics
-В `/ads` ввод сохраняется в `cabinet_daily_insights.manual_diagnostics / manual_sales / manual_revenue`. Это видит только `useMetaInsights` (страница /metrics). Dashboard и Analytics берут продажи и выручку **только из CRM-лидов** (`leads.stageKey === "paid"`), игнорируя `manual_*` и `crm_*` поля CDI.
+Сделать прозрачную рабочую среду для просмотра действующей рекламы Meta: видеть все объявления, превью, метрики, без кнопки «Открыть в Ads Manager». Полная версия — в разделе **Управление рекламой** (`/ads`), компактная — на дашборде.
 
 ---
 
-## План исправлений
+## Где что живёт
 
-### A. Единый фильтр по активному проекту
+```text
+/ads (Управление рекламой)
+ ├── Шапка (как сейчас) — кабинеты, кнопка «Создать кампанию»
+ ├── НОВОЕ: вкладки [ Кабинеты | Креативы | Кампании ]
+ │     • Кабинеты — текущий список (без изменений)
+ │     • Креативы — полноценная галерея (главный экран этой задачи)
+ │     • Кампании — таблица + цели (расширенная версия CampaignGoalsBreakdown)
+ └── Период: общий месячный селектор сверху
 
-**`src/hooks/useLeadsLite.ts`**
-- Подключить `useProjectsStore`, добавить в SELECT условие `.or('project_id.eq.{activeId},project_id.is.null')`.
-- В `useEffect` зависимость от `activeId`, чтобы при смене проекта данные перезапрашивались.
-- Realtime-канал переподписать с фильтром по проекту.
-
-**`src/hooks/useReportData.ts`**
-- Добавить `activeId` в зависимости эффекта (через `cabinetIds` уже частично решается, но `leads` приходят отфильтрованные после фикса A).
-
-**`src/hooks/useCabinetsStore.ts`**
-- В `useRealtimeTable` добавить debounce + ререндер при смене `projectId` (уже есть `refetch` зависимость — ок, но добавить `setCabinets([])` пока идёт refetch, чтобы не показывать старое).
-
-### B. Ввести единый формат валюты — тенге (₸)
-
-Создать `src/lib/format.ts`:
-```ts
-export const fmtKzt = (n: number) =>
-  `${Math.round(n).toLocaleString("ru-RU")} ₸`;
-export const fmtNum = (n: number) =>
-  Math.round(n).toLocaleString("ru-RU");
+/dashboard
+ ├── «Цели рекламных кампаний Meta» — оставляем, но компактнее (top-3 + ссылка «Все цели → /ads?tab=campaigns»)
+ ├── «Каналы трафика» — редизайн карточек (см. ниже), без изменения логики
+ └── «Аналитика креативов Meta» — заменяем на компактный «Топ-6 по расходу» + ссылка «Все креативы → /ads?tab=creatives»
 ```
 
-Заменить все локальные `fmtTenge / fmtMoney / formatTenge` на импорт `fmtKzt`. Поправить:
-- `Dashboard.tsx`, `Analytics.tsx`, `Metrics.tsx`
-- `dashboard/EnhancedFunnel.tsx`, `ChannelsTable.tsx`, `RevenueSpendChart.tsx`, `UnitEconomicsCard.tsx`, `CampaignsTopBottom.tsx`
-- `analytics/ChannelCard.tsx`
-- В `CabinetRow.tsx`: `CURRENCY_SYMBOLS.KZT = "₸"`, `CURRENCY_SYMBOLS.USD = "$"` (для агентских USD-кабинетов сохраняется конверсия, которую мы уже сделали через `fx-rate`).
+---
 
-### C. Объединить ручные и CRM-данные кабинетов в общую аналитику
+## 1. Раздел «Креативы» в /ads — главный экран
 
-В `useReportData.ts` помимо `spend/leads` тянуть из `cabinet_daily_insights` ещё и `crm_sales, manual_sales, crm_revenue, manual_revenue, crm_diagnostics, manual_diagnostics`.
+### Шапка раздела
+- Период (пресеты: 7д / 14д / 30д / месяц / произвольный)
+- Кабинет (мульти-фильтр; по умолчанию все)
+- Статус: `Все` · `Активные` · `На паузе` · `Архив` (по `effective_status`)
+- Тип: `Все` · `Видео` · `Фото` · `Карусель`
+- Цель: WhatsApp / Лиды-пиксель / Лиды-форма / Сообщения / Трафик …
+- Сортировка: расход / CTR / CPL / лиды / ROMI / дата
+- Поиск по названию / тексту / ID
+- Кнопка «Синхронизировать Meta» (та же `meta-structure-sync`)
 
-В `computeTotals` объединить:
+### Сетка карточек (гибрид — компактная карточка + раскрытие)
+
+Сетка `grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5`, карточки 9:16 (Reels-ratio).
+
+```text
+┌──────────────────┐
+│ [статус-чип]     │  ← ACTIVE / PAUSED, цвет
+│                  │
+│   ▶ постер 9:16  │  ← thumbnail_url, по клику — модалка с видео
+│                  │
+│ [WhatsApp] чип   │
+├──────────────────┤
+│ Название (1 стр) │
+│ CPL  ·  CTR      │  ← 2 ключевые метрики
+│ Расход · Лиды    │
+└──────────────────┘
 ```
-totals.sales   = crm.sales.length + Σ(manual_sales + crm_sales из CDI)
-totals.revenue = Σ(lead.amount из paid) + Σ(manual_revenue + crm_revenue из CDI)
-totals.visits  = crm.visits.length + Σ(manual_diagnostics + crm_diagnostics)
-```
 
-Чтобы не дублировать — триггеры `on_deal_paid_attribution` и `on_lead_stage_change_attribution` уже пишут CRM-события в `cabinet_daily_insights.crm_*`. Значит:
-- Берём revenue/sales/diagnostics ТОЛЬКО из CDI (`crm_* + manual_*`), а не из `leads` напрямую — это и устраняет дублирование, и даёт «единый источник правды».
-- В `useDashboardData.timeseries` revenue по дням брать из CDI (`crm_revenue + manual_revenue`).
-- `channels` в `useDashboardData` — оставить как есть (источник трафика — это срез по `leads.source`).
+**Раскрытие (клик по карточке)** — карточка расширяется inline на всю ширину строки (без модалки), показывает:
+- Видео-плеер (`<video controls preload="none" poster={thumbnail}>`) или большое фото
+- Полный текст объявления (primary_text + headline + CTA-чип)
+- Все метрики плиткой: Расход, Показы, Клики, CPM, CPC, CTR, Лиды/Сообщения, CPL, ROMI, Покупки, Выручка
+- Цель кампании (badge) и название родительской кампании (кликабельно → вкладка «Кампании» с фильтром)
+- ID объявления (копируется), последняя синхронизация
+- **Без кнопки «Открыть в Ads Manager»**
 
-### D. Реалтайм для CDI
+### Превью видео — как подгружать
 
-Добавить таблицу `cabinet_daily_insights` в `supabase_realtime` publication (миграция), чтобы Dashboard/Analytics обновлялись сразу после ввода в `/ads`.
+Текущая проблема: `video_url` в `meta_creatives` хранит Graph URL `…/{video_id}?fields=source&access_token=…` — это JSON-эндпойнт, а не файл, и токен попадёт в браузер. Нужно починить.
+
+Решения (выбираем тихо во время реализации, без вопроса):
+1. **В `meta-structure-sync`** при наличии `video_id` дополнительно дёргать `GET /{video_id}?fields=source,picture` и сохранять в `meta_creatives.video_url` уже **готовый mp4 source-URL** (он публичный, с временной подписью fbcdn). При следующем sync — обновлять (URL живёт ~сутки, что для нашего «нажал → посмотрел» достаточно: модалка догружает по запросу, а не из кэша).
+2. Если `source` истёк — на клиенте при ошибке `<video>` показываем кнопку «Обновить превью», которая зовёт edge-функцию `meta-creative-refresh` (создадим) — она подтянет свежий `source` для конкретного `ad_id` и обновит строку.
+
+Постер берём из `thumbnail_url` / `image_url` (как сейчас). Видео грузится **только при клике** (preload="none") — никаких автоплеев в сетке, как выбрано.
+
+### Какие креативы показывать
+
+Все за выбранный период с фильтром по статусу:
+- Запрос `meta_creatives` → все строки проекта.
+- Запрос `meta_creative_daily` → агрегаты за период.
+- Карточка показывается, если **либо** `effective_status='ACTIVE'`, **либо** в периоде был расход > 0. Архив без расхода — скрываем по умолчанию (видно через фильтр «Все»).
+
+---
+
+## 2. Раздел «Кампании» в /ads (вкладка)
+
+Перенос текущего `CampaignGoalsBreakdown` сюда + расширения:
+- Группировка по цели (Лиды-пиксель / WhatsApp / Сообщения / …) — как сейчас, но карточки крупнее, с прогресс-полоской «доля расхода в проекте».
+- Внутри каждой цели — таблица кампаний: название, статус-чип, расход, показы, клики, CTR, цена результата (CPL/CPM в зависимости от цели), ROMI.
+- Клик по строке кампании → разворот: список объявлений (использует тот же `MetaCreativeRow`, отфильтровано по `campaignId`), карточки в горизонтальном скролле (поменьше).
+
+---
+
+## 3. Дашборд — что меняется
+
+### «Каналы трафика» (редизайн без смены логики)
+Сейчас плоская таблица. Делаем 3 вертикальные **карточки-канала** (WhatsApp / Сайт / Прочее) рядом, каждая:
+- Иконка канала + название + кол-во объявлений
+- Большая цифра: Расход
+- Под ней мини-метрики: Лиды/Сообщения, CTR, CPL
+- Тонкая горизонтальная полоса «доля канала» относительно общего расхода
+- Hover: лёгкая подсветка border-цветом канала
+
+### «Цели рекламных кампаний Meta» (компакт)
+Оставляем верхний список целей (как сейчас), но без блока «Топ кампаний по расходу» внутри каждой цели. Внизу — кнопка `Все цели и кампании →` ведёт на `/ads?tab=campaigns`.
+
+### «Аналитика креативов Meta» (компакт)
+Заменяем сетку на горизонтальный скролл «Топ-6 креативов по расходу» (карточки-постеры с CTR/CPL поверх) + кнопка `Все креативы →` ведёт на `/ads?tab=creatives`.
 
 ---
 
 ## Технические детали
 
-| Файл | Изменение |
-|---|---|
-| `src/lib/format.ts` (новый) | `fmtKzt`, `fmtNum` |
-| `src/hooks/useLeadsLite.ts` | Фильтр по `activeId` + перезапуск при смене |
-| `src/hooks/useReportData.ts` | Тянуть `crm_*/manual_*`; считать totals из CDI; использовать `monthlyMeta` для revenue по дням |
-| `src/hooks/useDashboardData.ts` | Брать `revenue` из новой структуры monthlyMeta (включая manual) |
-| 8 компонентов с валютой | Импорт `fmtKzt`, удалить локальные функции |
-| `src/components/ads/CabinetRow.tsx` | `KZT: "₸"` |
-| миграция | `ALTER PUBLICATION supabase_realtime ADD TABLE public.cabinet_daily_insights;` |
+### Новые/изменяемые файлы
+- `src/pages/Ads.tsx` — добавить `Tabs` (Кабинеты / Креативы / Кампании), читать `?tab=` из URL.
+- `src/components/ads/AdsCreativesPanel.tsx` — **новый**, главный экран галереи (фильтры + сетка + раскрытие).
+- `src/components/ads/CreativeCard.tsx` — **новый**, компактная карточка.
+- `src/components/ads/CreativeExpanded.tsx` — **новый**, развёрнутая строка с плеером и метриками.
+- `src/components/ads/AdsCampaignsPanel.tsx` — **новый**, расширенная версия `CampaignGoalsBreakdown` с разворотами.
+- `src/components/dashboard/ChannelsTable.tsx` — переделать в карточки-каналы (логика та же).
+- `src/components/dashboard/CreativesGrid.tsx` — упростить в «Топ-6 + ссылка».
+- `src/components/dashboard/CampaignGoalsBreakdown.tsx` — убрать «топ кампаний», добавить ссылку.
+- `src/hooks/useMetaStructure.ts` — добавить опциональный фильтр `cabinetIds[]`, `status[]`, использовать существующий realtime.
 
-После этих правок:
-- Смена проекта → данные обновляются сразу (без F5).
-- Везде ₸ вместо $.
-- Ручные диагностики/продажи/выручка из `/ads` появляются в Дашборде и Аналитике рядом с CRM-данными — единый аналитический центр.
+### Backend
+- `supabase/functions/meta-structure-sync/index.ts` — дополнить: если `video_id` → подзапрос `/{video_id}?fields=source` (батчем через `?ids=…`), писать готовый mp4-URL в `meta_creatives.video_url`. Без миграции схемы.
+- **Новая** `supabase/functions/meta-creative-refresh/index.ts` — принимает `{ad_id}`, обновляет `video_url` для одного объявления (вызывается по клику «Обновить превью» если ссылка истекла). JWT-валидация через существующий `_lib/auth.ts`.
+
+### Что НЕ делаем
+- Без автоплея в сетке (выбран постер + play).
+- Без кнопки «Открыть в Ads Manager» нигде.
+- Без миграций БД.
+- Не трогаем CRM, WhatsApp, settings, прочие модули.
+
+---
+
+## Порядок работы
+
+1. Backend: правка `meta-structure-sync` (резолв `video.source`) + новая `meta-creative-refresh`.
+2. Хук `useMetaCreatives` — фильтры + статус.
+3. Новые компоненты в `/ads`: вкладки, галерея, карточка, разворот, плеер.
+4. Перенос/расширение «Кампании» во вкладку.
+5. Дашборд: компактные версии 3 блоков + ссылки на `/ads?tab=…`.
+6. QA: проверить, что видео реально играет в модалке/разворот, что фильтры работают, что состояние вкладок переживает navigate.

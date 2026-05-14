@@ -1,7 +1,10 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   ChevronLeft,
   ChevronRight,
+  Film,
+  LayoutGrid,
   Megaphone,
   Plus,
   RefreshCw,
@@ -17,6 +20,11 @@ import { supabase } from "@/integrations/supabase/client";
 import AddCabinetDialog from "@/components/ads/AddCabinetDialog";
 import CreateCampaignDialog from "@/components/ads/CreateCampaignDialog";
 import CabinetRow from "@/components/ads/CabinetRow";
+import { AdsCreativesPanel } from "@/components/ads/AdsCreativesPanel";
+import { CampaignGoalsBreakdown } from "@/components/dashboard/CampaignGoalsBreakdown";
+import { useMetaCampaigns } from "@/hooks/useMetaStructure";
+import { getPresetRange } from "@/hooks/useDashboardData";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
@@ -62,8 +70,16 @@ const StatChip = ({
   </div>
 );
 
+function CampaignsTabContent() {
+  const [range] = useState(() => getPresetRange("30d"));
+  const { rows } = useMetaCampaigns(range);
+  return <CampaignGoalsBreakdown rows={rows} />;
+}
+
 const Ads = () => {
   const { cabinets, addCabinet, updateCabinet, removeCabinet } = useCabinetsStore();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get("tab") ?? "cabinets";
   const [query, setQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [campaignOpen, setCampaignOpen] = useState(false);
@@ -215,58 +231,80 @@ const Ads = () => {
         </div>
       )}
 
-      {/* Search — only when there's a real list */}
-      {showSearch && (
-        <div className="relative mt-5">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Поиск по кабинетам…"
-            className="h-10 rounded-xl border-border/60 bg-card/60 pl-10"
-          />
-        </div>
-      )}
+      {/* Tabs */}
+      <Tabs value={tab} onValueChange={(v) => setSearchParams((sp) => { sp.set("tab", v); return sp; }, { replace: true })} className="mt-6">
+        <TabsList className="h-10 rounded-xl bg-card/60 p-1">
+          <TabsTrigger value="cabinets" className="gap-2 rounded-lg px-3 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <LayoutGrid className="h-3.5 w-3.5" />
+            Кабинеты
+          </TabsTrigger>
+          <TabsTrigger value="creatives" className="gap-2 rounded-lg px-3 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <Film className="h-3.5 w-3.5" />
+            Креативы
+          </TabsTrigger>
+          <TabsTrigger value="campaigns" className="gap-2 rounded-lg px-3 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+            <Target className="h-3.5 w-3.5" />
+            Кампании
+          </TabsTrigger>
+        </TabsList>
 
-      {/* List */}
-      <div className="mt-5 space-y-3">
-        {filtered.map((c) => (
-          <CabinetRow
-            key={`${c.id}-${refreshKey}`}
-            cabinet={c}
-            expanded={!!expanded[c.id]}
-            onToggle={() => toggleExpanded(c.id)}
-            monthCursor={monthCursor}
-            onToggleOnline={handleToggleOnline}
-            onRemove={removeCabinet}
-          />
-        ))}
-
-        {filtered.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-border/60 bg-card/30 p-12 text-center">
-            <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-success/10 text-success">
-              <Megaphone className="h-6 w-6" />
+        <TabsContent value="cabinets" className="mt-5 space-y-3">
+          {showSearch && (
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Поиск по кабинетам…"
+                className="h-10 rounded-xl border-border/60 bg-card/60 pl-10"
+              />
             </div>
-            <h3 className="mt-4 text-base font-semibold">
-              {cabinets.length === 0 ? "Пока нет кабинетов" : "Кабинеты не найдены"}
-            </h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {cabinets.length === 0
-                ? "Подключите рекламный кабинет, чтобы видеть метрики и запускать кампании"
-                : "Попробуйте изменить поисковый запрос"}
-            </p>
-            {cabinets.length === 0 && (
-              <Button
-                onClick={() => setAddOpen(true)}
-                className="mt-5 h-11 rounded-xl bg-success text-white hover:bg-success/90"
-              >
-                <Plus className="h-4 w-4" />
-                Добавить первый кабинет
-              </Button>
-            )}
-          </div>
-        )}
-      </div>
+          )}
+          {filtered.map((c) => (
+            <CabinetRow
+              key={`${c.id}-${refreshKey}`}
+              cabinet={c}
+              expanded={!!expanded[c.id]}
+              onToggle={() => toggleExpanded(c.id)}
+              monthCursor={monthCursor}
+              onToggleOnline={handleToggleOnline}
+              onRemove={removeCabinet}
+            />
+          ))}
+          {filtered.length === 0 && (
+            <div className="rounded-2xl border border-dashed border-border/60 bg-card/30 p-12 text-center">
+              <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-success/10 text-success">
+                <Megaphone className="h-6 w-6" />
+              </div>
+              <h3 className="mt-4 text-base font-semibold">
+                {cabinets.length === 0 ? "Пока нет кабинетов" : "Кабинеты не найдены"}
+              </h3>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {cabinets.length === 0
+                  ? "Подключите рекламный кабинет, чтобы видеть метрики и запускать кампании"
+                  : "Попробуйте изменить поисковый запрос"}
+              </p>
+              {cabinets.length === 0 && (
+                <Button
+                  onClick={() => setAddOpen(true)}
+                  className="mt-5 h-11 rounded-xl bg-success text-white hover:bg-success/90"
+                >
+                  <Plus className="h-4 w-4" />
+                  Добавить первый кабинет
+                </Button>
+              )}
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="creatives" className="mt-5">
+          <AdsCreativesPanel />
+        </TabsContent>
+
+        <TabsContent value="campaigns" className="mt-5">
+          <CampaignsTabContent />
+        </TabsContent>
+      </Tabs>
 
       <AddCabinetDialog
         open={addOpen}

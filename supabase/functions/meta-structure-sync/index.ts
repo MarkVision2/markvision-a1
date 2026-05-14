@@ -343,33 +343,56 @@ Deno.serve(async (req) => {
       const ads = await fetchAllPages<Record<string, unknown>>(
         `https://graph.facebook.com/${META_API_VERSION}/${actId}/ads?fields=${adFields}&limit=200&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`,
       );
-      const creativeRows = ads.map((a) => {
+      // Pre-extract creative metadata.
+      const adsMeta = ads.map((a) => {
         const cr = a.creative as Record<string, unknown> | undefined;
         const media = pickThumbnail(cr);
-        const ctype = inferCreativeType(cr);
-        return {
-          cabinet_id: cabinetId,
-          project_id: projectId,
-          ad_id: String(a.id),
-          adset_id: (a.adset_id as string | undefined) ?? null,
-          campaign_id: (a.campaign_id as string | undefined) ?? null,
-          name: String(a.name ?? ""),
-          status: (a.status as string | undefined) ?? null,
-          effective_status: (a.effective_status as string | undefined) ?? null,
-          creative_type: ctype,
-          thumbnail_url: media.thumbnail,
-          image_url: media.image,
-          video_id: media.video_id,
-          video_url: media.video_id
-            ? `https://graph.facebook.com/${META_API_VERSION}/${media.video_id}?fields=source&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`
-            : null,
-          primary_text: (cr?.body as string | undefined) ?? null,
-          headline: (cr?.title as string | undefined) ?? null,
-          cta: (cr?.call_to_action_type as string | undefined) ?? null,
-          destination_url: (cr?.object_url as string | undefined) ?? null,
-          last_synced_at: new Date().toISOString(),
-        };
+        return { a, cr, media, ctype: inferCreativeType(cr) };
       });
+
+      // Resolve mp4 source URL for video creatives via batched ?ids=…
+      const videoIds = Array.from(new Set(
+        adsMeta.map((m) => m.media.video_id).filter((v): v is string => !!v),
+      ));
+      const videoSourceById = new Map<string, string>();
+      const videoPosterById = new Map<string, string>();
+      for (let i = 0; i < videoIds.length; i += 50) {
+        const chunk = videoIds.slice(i, i + 50);
+        try {
+          const url = `https://graph.facebook.com/${META_API_VERSION}/?ids=${encodeURIComponent(chunk.join(","))}&fields=source,picture&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`;
+          const r = await fetch(url);
+          if (!r.ok) continue;
+          const body = await r.json() as Record<string, { source?: string; picture?: string }>;
+          for (const [vid, val] of Object.entries(body)) {
+            if (val?.source) videoSourceById.set(vid, val.source);
+            if (val?.picture) videoPosterById.set(vid, val.picture);
+          }
+        } catch (_) { /* ignore */ }
+      }
+
+      const creativeRows = adsMeta.map(({ a, cr, media, ctype }) => ({
+        cabinet_id: cabinetId,
+        project_id: projectId,
+        ad_id: String(a.id),
+        adset_id: (a.adset_id as string | undefined) ?? null,
+        campaign_id: (a.campaign_id as string | undefined) ?? null,
+        name: String(a.name ?? ""),
+        status: (a.status as string | undefined) ?? null,
+        effective_status: (a.effective_status as string | undefined) ?? null,
+        creative_type: ctype,
+        thumbnail_url: media.thumbnail
+          ?? (media.video_id ? videoPosterById.get(media.video_id) ?? null : null),
+        image_url: media.image,
+        video_id: media.video_id,
+        // Готовый mp4 source URL (fbcdn, временная подпись ~24h). Если не удалось
+        // достать — пишем null, фронт покажет постер с кнопкой обновить.
+        video_url: media.video_id ? videoSourceById.get(media.video_id) ?? null : null,
+        primary_text: (cr?.body as string | undefined) ?? null,
+        headline: (cr?.title as string | undefined) ?? null,
+        cta: (cr?.call_to_action_type as string | undefined) ?? null,
+        destination_url: (cr?.object_url as string | undefined) ?? null,
+        last_synced_at: new Date().toISOString(),
+      }));
       if (creativeRows.length > 0) {
         const { error } = await admin
           .from("meta_creatives")
