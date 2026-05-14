@@ -61,6 +61,7 @@ interface RawCreative {
   creative_type: string | null;
   thumbnail_url: string | null;
   image_url: string | null;
+  poster_url: string | null;
   video_url: string | null;
   video_id: string | null;
   primary_text: string | null;
