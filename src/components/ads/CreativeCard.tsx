@@ -21,10 +21,14 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
   const src = bestCreativeImage({ thumbnailUrl: row.thumbnailUrl, imageUrl: row.imageUrl, size: 600 });
   const isActive = (row.effectiveStatus ?? "").toUpperCase() === "ACTIVE";
 
-  const showCrm = metricsView === "crm" && (row.crmLeads > 0 || row.crmSales > 0 || row.spend > 0);
-  const romiPositive = row.crmRomi >= 0;
+  const showCrm = metricsView === "crm";
+  const metaLeadCount = isWhatsApp ? (row.messages || row.leads) : row.leads;
+  const leadValue = row.crmLeads > 0 ? row.crmLeads : metaLeadCount;
+  const leadLabel = row.crmLeads > 0 ? "Лиды CRM" : "Лиды Meta";
+  const hasCrmRevenue = row.crmRevenue > 0;
+  const romiPositive = hasCrmRevenue && row.crmRomi >= 0;
   const romiClass =
-    row.spend === 0
+    row.spend === 0 || !hasCrmRevenue
       ? "text-muted-foreground"
       : row.crmRomi >= 100
         ? "text-success"
@@ -79,7 +83,7 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
         </span>
 
         {/* ROMI bubble */}
-        {showCrm && row.spend > 0 && (
+        {showCrm && row.spend > 0 && hasCrmRevenue && (
           <span
             className={cn(
               "absolute right-2 top-2 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-bold backdrop-blur",
@@ -147,8 +151,8 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
           // Сквозные CRM-метрики: лид → продажа → деньги
           <div className="grid grid-cols-2 gap-1.5 text-[11px]">
             <div className="rounded-md bg-secondary/30 px-2 py-1">
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Лидов CRM</div>
-              <div className="font-bold tabular-nums">{fmtNum(row.crmLeads)}</div>
+              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">{leadLabel}</div>
+              <div className="font-bold tabular-nums">{fmtNum(leadValue)}</div>
             </div>
             <div className="rounded-md bg-secondary/30 px-2 py-1">
               <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Продаж</div>
@@ -161,7 +165,7 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
             <div className="rounded-md bg-secondary/30 px-2 py-1">
               <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Выручка</div>
               <div className={cn("font-bold tabular-nums", romiClass)}>
-                {row.crmRevenue > 0 ? fmtTenge(row.crmRevenue) : "—"}
+                {hasCrmRevenue ? fmtTenge(row.crmRevenue) : "нет продаж"}
               </div>
             </div>
           </div>
