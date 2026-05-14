@@ -45,6 +45,8 @@ const callProxy = async <T = unknown,>(
 
 const SettingsConnection = () => {
   const navigate = useNavigate();
+  const { active } = useProjectsStore();
+  const projectId = active?.id ?? null;
   const [state, setState] = useState<string | null>(null);
   const [loadingState, setLoadingState] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
