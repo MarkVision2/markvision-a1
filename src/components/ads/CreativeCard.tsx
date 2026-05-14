@@ -1,5 +1,6 @@
 import { Image as ImageIcon, Layers, MessageCircle, Play, TrendingDown, TrendingUp, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { bestCreativeImage } from "@/lib/metaThumb";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
 
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
@@ -17,7 +18,7 @@ interface Props {
 export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "crm" }: Props) {
   const isVideo = row.creativeType === "video";
   const isCarousel = row.creativeType === "carousel";
-  const src = row.thumbnailUrl || row.imageUrl;
+  const src = bestCreativeImage({ thumbnailUrl: row.thumbnailUrl, imageUrl: row.imageUrl, size: 600 });
   const isActive = (row.effectiveStatus ?? "").toUpperCase() === "ACTIVE";
 
   const showCrm = metricsView === "crm" && (row.crmLeads > 0 || row.crmSales > 0 || row.spend > 0);
