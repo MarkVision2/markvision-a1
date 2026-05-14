@@ -112,10 +112,9 @@ export function useMetaCreatives(range: Range) {
           .eq("project_id", projectId)
           .gte("date", since)
           .lte("date", until),
-        // Сквозные CRM-метрики из view
-        (supabase as unknown as {
-          from: (t: string) => { select: (s: string) => { eq: (k: string, v: string) => { gte: (k: string, v: string) => { lte: (k: string, v: string) => Promise<{ data: Array<{ ad_id: string; crm_leads: number; crm_qualified: number; crm_sales: number; crm_revenue: number }> | null }> } } } } };
-        }).from("meta_creative_crm_daily")
+        // Сквозные CRM-метрики из view (нет в сгенерированных типах — используем any-каст)
+        (supabase as unknown as { from: (t: string) => any })
+          .from("meta_creative_crm_daily")
           .select("ad_id, crm_leads, crm_qualified, crm_sales, crm_revenue")
           .eq("project_id", projectId)
           .gte("date", since)
