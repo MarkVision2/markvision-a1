@@ -160,6 +160,7 @@ const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProp
       pixelId: pixelId || undefined,
       pixelEvent: pixelEvent || "Lead",
       websiteUrl: websiteUrl || undefined,
+      utmTemplate: utmTemplate.trim() || DEFAULT_META_UTM_TEMPLATE,
       brief: brief || undefined,
       accessToken: accessToken || undefined,
     };
