@@ -32,11 +32,12 @@ const STATE_LABELS: Record<string, { label: string; tone: "success" | "warning" 
 };
 
 const callProxy = async <T = unknown,>(
-  action: "status" | "qr" | "getCode" | "logout",
+  action: "status" | "qr" | "getCode" | "logout" | "settings" | "setWebhook",
   body?: Record<string, unknown>,
+  projectId?: string | null,
 ): Promise<GreenResp<T>> => {
   const { data, error } = await supabase.functions.invoke("greenapi-proxy", {
-    body: { action, ...(body ?? {}) },
+    body: { action, ...(projectId ? { project_id: projectId } : {}), ...(body ?? {}) },
   });
   if (error) throw new Error(error.message);
   return data as GreenResp<T>;
