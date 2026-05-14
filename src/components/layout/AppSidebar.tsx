@@ -10,6 +10,7 @@ import {
   Settings,
   PhoneCall,
   Sparkles,
+  Filter,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -55,6 +56,7 @@ const sales: NavItem[] = [
 
 const analytics: NavItem[] = [
   { title: "Сквозная аналитика", url: "/analytics", icon: GitBranch },
+  { title: "Воронка по креативам", url: "/analytics/creatives", icon: Filter },
   { title: "Таблица показателей", url: "/metrics", icon: TableProperties },
   { title: "Финансы", url: "/finance", icon: Wallet },
   { title: "Отчётность", url: "/reports", icon: FileBarChart2 },
