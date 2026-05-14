@@ -490,7 +490,7 @@ export function WhatsappProjectBindCard() {
     setLoading(true);
     const { data } = await supabase
       .from("whatsapp_config")
-      .select("id, project_id, id_instance, api_token, api_url, phone, connected");
+      .select("id, project_id, id_instance, api_token, api_url, phone, connected, ads_only");
     setRows((data ?? []) as WaBindRow[]);
     setLoading(false);
   }, []);
