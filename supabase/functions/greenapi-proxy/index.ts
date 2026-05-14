@@ -1,11 +1,34 @@
-// Green API proxy edge function
-// Actions: status, qr, getCode, logout
+// Green API proxy edge function — per-project routing.
+//
+// Each project has its own Green API instance bound via whatsapp_config
+// (id_instance, api_token, api_url). Calls resolve credentials from that
+// row and only fall back to GREENAPI_* env vars when the project has no
+// binding (legacy single-tenant behaviour).
+//
+// Actions: status, qr, getCode, logout, settings, setWebhook, sendMessage.
 import { corsHeaders } from "https://esm.sh/@supabase/supabase-js@2.95.0/cors";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 
-const ID = Deno.env.get("GREENAPI_ID_INSTANCE") ?? "";
-const TOKEN = Deno.env.get("GREENAPI_API_TOKEN") ?? "";
-const RAW_URL = Deno.env.get("GREENAPI_API_URL") ?? "https://api.green-api.com";
-const BASE = RAW_URL.replace(/\/+$/, "");
+const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
+const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+
+const ENV_ID = Deno.env.get("GREENAPI_ID_INSTANCE") ?? "";
+const ENV_TOKEN = Deno.env.get("GREENAPI_API_TOKEN") ?? "";
+const ENV_URL = Deno.env.get("GREENAPI_API_URL") ?? "https://api.green-api.com";
+
+const admin: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
+
+type Creds = {
+  source: "db" | "env";
+  rowId: string | null;
+  projectId: string | null;
+  idInstance: string;
+  apiToken: string;
+  baseUrl: string;
+};
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -14,17 +37,132 @@ function json(body: unknown, status = 200) {
   });
 }
 
-async function callGreen(path: string, init?: RequestInit) {
-  const url = `${BASE}/waInstance${ID}/${path}/${TOKEN}`;
+function normalizeUrl(u: string | null | undefined): string {
+  return String(u || ENV_URL).trim().replace(/\/+$/, "");
+}
+
+async function getUserId(req: Request): Promise<string | null> {
+  const auth = req.headers.get("Authorization") ?? req.headers.get("authorization");
+  if (!auth || !ANON_KEY) return null;
+  try {
+    const userClient = createClient(SUPABASE_URL, ANON_KEY, {
+      global: { headers: { Authorization: auth } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data } = await userClient.auth.getUser();
+    return data.user?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveCreds(
+  req: Request,
+  bodyProjectId: string | null,
+): Promise<Creds | { error: string; status: number }> {
+  let projectId = bodyProjectId;
+
+  if (!projectId) {
+    const userId = await getUserId(req);
+    if (userId) {
+      const { data } = await admin
+        .from("user_active_project")
+        .select("project_id")
+        .eq("user_id", userId)
+        .maybeSingle();
+      projectId = data?.project_id ?? null;
+    }
+  }
+
+  if (projectId) {
+    const { data: row } = await admin
+      .from("whatsapp_config")
+      .select("id, project_id, id_instance, api_token, api_url")
+      .eq("project_id", projectId)
+      .maybeSingle();
+
+    if (row?.id_instance) {
+      const apiToken = (row.api_token ?? "").trim();
+      if (!apiToken) {
+        if (ENV_TOKEN && row.id_instance === ENV_ID) {
+          return {
+            source: "db",
+            rowId: row.id,
+            projectId: row.project_id,
+            idInstance: row.id_instance,
+            apiToken: ENV_TOKEN,
+            baseUrl: normalizeUrl(row.api_url),
+          };
+        }
+        return {
+          error:
+            "API-токен Green API для этого проекта не задан. Откройте «Настройки → Подключение WhatsApp» и введите apiTokenInstance из Green API console.",
+          status: 400,
+        };
+      }
+      return {
+        source: "db",
+        rowId: row.id,
+        projectId: row.project_id,
+        idInstance: row.id_instance,
+        apiToken,
+        baseUrl: normalizeUrl(row.api_url),
+      };
+    }
+  }
+
+  if (ENV_ID && ENV_TOKEN) {
+    return {
+      source: "env",
+      rowId: null,
+      projectId,
+      idInstance: ENV_ID,
+      apiToken: ENV_TOKEN,
+      baseUrl: normalizeUrl(ENV_URL),
+    };
+  }
+
+  return {
+    error:
+      "Green API не настроен: привяжите инстанс к проекту в «Настройках → Подключение WhatsApp» (idInstance + apiTokenInstance из Green API console).",
+    status: 400,
+  };
+}
+
+async function callGreen(
+  creds: Creds,
+  path: string,
+  init?: RequestInit,
+): Promise<{ ok: boolean; status: number; data: unknown }> {
+  const url =
+    `${creds.baseUrl}/waInstance${creds.idInstance}/${path}/${creds.apiToken}`;
   const res = await fetch(url, init);
   const text = await res.text();
   let data: unknown = text;
-  try {
-    data = JSON.parse(text);
-  } catch {
-    /* keep text */
-  }
+  try { data = JSON.parse(text); } catch { /* keep text */ }
   return { ok: res.ok, status: res.status, data };
+}
+
+async function syncState(
+  creds: Creds,
+  stateInstance: string | null,
+  phoneFromSettings?: string | null,
+) {
+  if (!creds.rowId) return;
+  const isAuth = stateInstance === "authorized";
+  const patch: Record<string, unknown> = {
+    connected: isAuth,
+    updated_at: new Date().toISOString(),
+  };
+  if (isAuth) patch.connected_at = new Date().toISOString();
+  if (phoneFromSettings) patch.phone = phoneFromSettings;
+  await admin.from("whatsapp_config").update(patch).eq("id", creds.rowId);
+}
+
+function widToPhone(wid: unknown): string | null {
+  const s = String(wid ?? "").replace(/\D/g, "");
+  if (s.length < 8) return null;
+  return `+${s}`;
 }
 
 Deno.serve(async (req) => {
@@ -32,41 +170,54 @@ Deno.serve(async (req) => {
     return new Response("ok", { headers: corsHeaders });
   }
 
-  if (!ID || !TOKEN) {
-    return json(
-      { error: "Green API credentials are not configured on the server" },
-      500,
-    );
-  }
-
   try {
     const url = new URL(req.url);
+    let body: Record<string, unknown> = {};
+    if (req.method === "POST") {
+      body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    }
     const action =
+      (body.action as string | undefined) ??
       url.searchParams.get("action") ??
-      (req.method === "POST"
-        ? ((await req.clone().json().catch(() => ({}))) as { action?: string })
-            .action
-        : null);
+      "";
+
+    const projectId =
+      typeof body.project_id === "string" && body.project_id
+        ? body.project_id
+        : null;
+
+    const credsOrErr = await resolveCreds(req, projectId);
+    if ("error" in credsOrErr) {
+      return json({ error: credsOrErr.error, code: "NO_CREDENTIALS" }, credsOrErr.status);
+    }
+    const creds = credsOrErr;
 
     switch (action) {
       case "status": {
-        const r = await callGreen("getStateInstance");
-        return json({ ok: r.ok, status: r.status, data: r.data });
+        const r = await callGreen(creds, "getStateInstance");
+        const stateInstance =
+          (r.data as { stateInstance?: string } | null)?.stateInstance ?? null;
+        let phone: string | null = null;
+        if (stateInstance === "authorized") {
+          const ws = await callGreen(creds, "getWaSettings").catch(() => null);
+          phone = widToPhone((ws?.data as { wid?: string } | null | undefined)?.wid) ?? null;
+        }
+        await syncState(creds, stateInstance, phone);
+        return json({
+          ok: r.ok, status: r.status, data: r.data,
+          meta: { source: creds.source, id_instance: creds.idInstance, project_id: creds.projectId, phone },
+        });
       }
       case "qr": {
-        const r = await callGreen("qr");
+        const r = await callGreen(creds, "qr");
         return json({ ok: r.ok, status: r.status, data: r.data });
       }
       case "getCode": {
-        const body = (await req.json().catch(() => ({}))) as {
-          phoneNumber?: string | number;
-          action?: string;
-        };
         const phoneRaw = String(body.phoneNumber ?? "").replace(/\D/g, "");
         if (!phoneRaw || phoneRaw.length < 8 || phoneRaw.length > 15) {
           return json({ error: "Invalid phone number" }, 400);
         }
-        const r = await callGreen("getAuthorizationCode", {
+        const r = await callGreen(creds, "getAuthorizationCode", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ phoneNumber: Number(phoneRaw) }),
@@ -74,19 +225,15 @@ Deno.serve(async (req) => {
         return json({ ok: r.ok, status: r.status, data: r.data });
       }
       case "logout": {
-        const r = await callGreen("logout");
+        const r = await callGreen(creds, "logout");
+        await syncState(creds, "notAuthorized", null);
         return json({ ok: r.ok, status: r.status, data: r.data });
       }
       case "settings": {
-        const r = await callGreen("getSettings");
+        const r = await callGreen(creds, "getSettings");
         return json({ ok: r.ok, status: r.status, data: r.data });
       }
       case "setWebhook": {
-        const body = (await req.json().catch(() => ({}))) as {
-          webhookUrl?: string;
-          action?: string;
-        };
-        const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
         const defaultUrl = SUPABASE_URL
           ? `${SUPABASE_URL.replace(/\/+$/, "")}/functions/v1/greenapi-webhook`
           : "";
@@ -94,40 +241,29 @@ Deno.serve(async (req) => {
         if (!webhookUrl.startsWith("http")) {
           return json({ error: "Invalid webhook URL" }, 400);
         }
-        const r = await callGreen("setSettings", {
+        const r = await callGreen(creds, "setSettings", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            webhookUrl,
-            webhookUrlToken: "",
-            outgoingWebhook: "yes",
-            outgoingMessageWebhook: "yes",
-            outgoingAPIMessageWebhook: "yes",
-            incomingWebhook: "yes",
+            webhookUrl, webhookUrlToken: "",
+            outgoingWebhook: "yes", outgoingMessageWebhook: "yes",
+            outgoingAPIMessageWebhook: "yes", incomingWebhook: "yes",
             stateWebhook: "yes",
           }),
         });
         return json({ ok: r.ok, status: r.status, data: r.data });
       }
       case "sendMessage": {
-        const body = (await req.json().catch(() => ({}))) as {
-          phone?: string;
-          message?: string;
-          action?: string;
-        };
         const phoneRaw = String(body.phone ?? "").replace(/\D/g, "");
         const message = String(body.message ?? "").trim();
         if (!phoneRaw || phoneRaw.length < 8 || phoneRaw.length > 15) {
           return json({ error: "Invalid phone number" }, 400);
         }
         if (!message) return json({ error: "Empty message" }, 400);
-        const r = await callGreen("sendMessage", {
+        const r = await callGreen(creds, "sendMessage", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chatId: `${phoneRaw}@c.us`,
-            message,
-          }),
+          body: JSON.stringify({ chatId: `${phoneRaw}@c.us`, message }),
         });
         return json({ ok: r.ok, status: r.status, data: r.data });
       }
