@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 import type { Lead, LeadStage, LeadChannel } from "@/types/crm";
 import type { TeamMember } from "@/hooks/useTeamStore";
 import { InlineEdit } from "./InlineEdit";
+import { LeadAttribution } from "./LeadAttribution";
 import { recommendationFor, leadSlaMinutes, slaTone } from "@/hooks/useCrmAnalytics";
 
 interface Props {
@@ -213,6 +214,9 @@ export function LeadHeader({
           </div>
         </div>
       </div>
+
+      {/* Откуда пришёл лид (конкретный креатив Meta) */}
+      <LeadAttribution lead={lead} />
 
       {/* Атрибуция и UTM */}
       <UtmStrip lead={lead} />

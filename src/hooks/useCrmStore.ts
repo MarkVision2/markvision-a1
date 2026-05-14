@@ -76,6 +76,8 @@ type LeadRow = {
   rejected_at: string | null; reject_reason: string | null;
   pinned: boolean; assigned_to: string | null; created_by: string | null;
   created_at: string; updated_at: string; last_activity_at: string;
+  cabinet_id?: string | null;
+  meta_ad_id?: string | null; meta_adset_id?: string | null; meta_campaign_id?: string | null;
 };
 
 type CommRow = {
@@ -157,6 +159,10 @@ function leadRowToFrontIndexed(
     pinned: r.pinned,
     firstResponseAt: r.first_response_at ?? undefined,
     channel: (r.channel as Lead["channel"]) ?? undefined,
+    cabinetId: r.cabinet_id ?? undefined,
+    metaAdId: r.meta_ad_id ?? undefined,
+    metaAdsetId: r.meta_adset_id ?? undefined,
+    metaCampaignId: r.meta_campaign_id ?? undefined,
     service: r.service ?? undefined,
     city: r.city ?? undefined,
     age: r.age ?? undefined,
@@ -447,6 +453,10 @@ export function useCrmStore() {
       assigneeId: row.assigned_to ?? undefined,
       pinned: !!row.pinned,
       channel: (row.channel as Lead["channel"]) ?? undefined,
+      cabinetId: row.cabinet_id ?? undefined,
+      metaAdId: row.meta_ad_id ?? undefined,
+      metaAdsetId: row.meta_adset_id ?? undefined,
+      metaCampaignId: row.meta_campaign_id ?? undefined,
       service: row.service ?? undefined,
       city: row.city ?? undefined,
       age: row.age ?? undefined,
