@@ -65,7 +65,8 @@ function normalizeCodeword(raw: string | null | undefined): string | null {
 }
 
 async function resolveProjectId(req: Request, body: IntakePayload): Promise<string | null> {
-  if (body.project_id) return body.project_id;
+  // Always require a valid intake token. Do NOT trust body.project_id alone,
+  // since project UUIDs may be discoverable by other authenticated users.
   const headerToken = req.headers.get("x-intake-token") || body.token || null;
   if (!headerToken) return null;
   const { data } = await admin
@@ -73,7 +74,11 @@ async function resolveProjectId(req: Request, body: IntakePayload): Promise<stri
     .select("project_id")
     .eq("token", headerToken)
     .maybeSingle();
-  return (data as { project_id?: string } | null)?.project_id ?? null;
+  const tokenProject = (data as { project_id?: string } | null)?.project_id ?? null;
+  if (!tokenProject) return null;
+  // If body also provides project_id, it must match the token's project.
+  if (body.project_id && body.project_id !== tokenProject) return null;
+  return tokenProject;
 }
 
 async function resolveCodeword(projectId: string, codeword: string | null) {
