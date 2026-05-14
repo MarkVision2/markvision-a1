@@ -6,6 +6,12 @@
  */
 export function upscaleMetaThumb(url: string | null | undefined, size = 480): string | null {
   if (!url) return null;
+  // У scontent/fbcdn ссылки подписаны под конкретный stp. Если заменить p64x64
+  // на p720x720, Meta часто отдаёт 403 — в итоге видео-превью становится пустым.
+  // Поэтому апскейлим только external-* превью, а подписанные CDN-постеры оставляем как есть.
+  if (/\/scontent-[^/]+\.xx\.fbcdn\.net\//i.test(url) || /[?&]__cft__=|[?&]_nc_ht=/i.test(url)) {
+    return url;
+  }
   // p64x64 → p480x480 (внутри stp= параметра)
   let out = url.replace(/p\d{2,4}x\d{2,4}/g, `p${size}x${size}`);
   // q75 → q90 (выше качество jpeg)
