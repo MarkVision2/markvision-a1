@@ -36,12 +36,19 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
   const isCarousel = row.creativeType === "carousel";
   const [capturedPoster, setCapturedPoster] = useState<string | null>(null);
   const [refreshedThumb, setRefreshedThumb] = useState<string | null>(null);
+  const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(row.videoUrl);
   const src = bestCreativeImage({
     posterUrl: capturedPoster ?? row.posterUrl,
     thumbnailUrl: refreshedThumb ?? row.thumbnailUrl,
     imageUrl: row.imageUrl,
     size: 960,
   });
+
+  useEffect(() => {
+    setPreviewVideoUrl(row.videoUrl);
+    setRefreshedThumb(null);
+    setCapturedPoster(null);
+  }, [row.id, row.videoUrl]);
 
   useEffect(() => {
     if (!isVideo || !row.adId || row.posterUrl || capturedPoster) return;
@@ -59,6 +66,7 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
         if (!cancelled && data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
         videoUrl = data?.ok ? data.video_url ?? null : null;
       }
+      if (!cancelled && videoUrl) setPreviewVideoUrl(videoUrl);
       if (!videoUrl || cancelled) return;
       const poster = await enqueuePosterCapture(row.adId, videoUrl);
       if (poster && !cancelled) setCapturedPoster(poster);
@@ -72,30 +80,30 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
   }, [capturedPoster, isVideo, row.adId, row.posterUrl, row.videoUrl]);
 
   return (
-    <div className="relative aspect-[4/5] w-full overflow-hidden rounded-xl bg-secondary/30">
-      {src ? (
-        <>
-          {isVideo && (
-            <img
-              src={src}
-              alt=""
-              aria-hidden
-              className="absolute inset-0 h-full w-full scale-105 object-cover opacity-35 blur-2xl"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-            />
+    <div className="relative aspect-[4/5] w-full overflow-hidden rounded-xl bg-background">
+      {isVideo && previewVideoUrl ? (
+        <video
+          src={previewVideoUrl}
+          poster={src ?? undefined}
+          muted
+          playsInline
+          autoPlay
+          loop
+          preload="metadata"
+          className="h-full w-full bg-background object-cover transition duration-300 group-hover:scale-[1.01]"
+          onError={() => setPreviewVideoUrl(null)}
+        />
+      ) : src ? (
+        <img
+          src={src}
+          alt={row.name}
+          className={cn(
+            "h-full w-full transition duration-300 group-hover:scale-[1.01]",
+            isVideo ? "object-cover" : "object-cover",
           )}
-          <img
-            src={src}
-            alt={row.name}
-            className={cn(
-              "relative h-full w-full transition duration-300 group-hover:scale-[1.015]",
-              isVideo ? "object-contain" : "object-cover",
-            )}
-            loading="lazy"
-            referrerPolicy="no-referrer"
-          />
-        </>
+          loading="lazy"
+          referrerPolicy="no-referrer"
+        />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
           <ImageIcon className="h-8 w-8 text-muted-foreground/40" />
