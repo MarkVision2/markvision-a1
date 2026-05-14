@@ -174,6 +174,7 @@ export function useMetaCreatives(range: Range) {
           creativeType: (c.creative_type ?? "image") as MetaCreativeRow["creativeType"],
           thumbnailUrl: c.thumbnail_url,
           imageUrl: c.image_url,
+          posterUrl: c.poster_url,
           videoUrl: c.video_url,
           videoId: c.video_id,
           primaryText: c.primary_text,
