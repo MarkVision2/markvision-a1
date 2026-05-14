@@ -1,7 +1,12 @@
+import { useEffect } from "react";
 import { Image as ImageIcon, Layers, MessageCircle, Play, TrendingDown, TrendingUp, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { bestCreativeImage } from "@/lib/metaThumb";
+import { supabase } from "@/integrations/supabase/client";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
+
+// Глобальный набор уже запрошенных ad_id, чтобы не спамить рефреш постеров
+const refreshedPosters = new Set<string>();
 
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
@@ -20,6 +25,17 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
   const isCarousel = row.creativeType === "carousel";
   const src = bestCreativeImage({ thumbnailUrl: row.thumbnailUrl, imageUrl: row.imageUrl, size: 600 });
   const isActive = (row.effectiveStatus ?? "").toUpperCase() === "ACTIVE";
+
+  // Авто-рефреш низкокачественного постера 64x64 для видео
+  const looksLowRes = !!src && /p64x64/.test(src);
+  useEffect(() => {
+    if (!isVideo || !looksLowRes || !row.adId) return;
+    if (refreshedPosters.has(row.adId)) return;
+    refreshedPosters.add(row.adId);
+    supabase.functions.invoke("meta-creative-refresh", { body: { ad_id: row.adId } }).catch(() => {
+      refreshedPosters.delete(row.adId);
+    });
+  }, [isVideo, looksLowRes, row.adId]);
 
   const showCrm = metricsView === "crm";
   const metaLeadCount = isWhatsApp ? (row.messages || row.leads) : row.leads;
