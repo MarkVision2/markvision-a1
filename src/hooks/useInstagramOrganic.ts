@@ -255,7 +255,7 @@ export function useInstagramCodewords() {
     if (patch.publishedAt !== undefined) payload.published_at = patch.publishedAt;
     if (patch.targetUrl !== undefined) payload.target_url = patch.targetUrl;
     if (patch.active !== undefined) payload.active = patch.active;
-    const { error } = await supabase.from("instagram_codewords").update(payload).eq("id", id);
+    const { error } = await supabase.from("instagram_codewords").update(payload as never).eq("id", id);
     if (error) throw error;
   };
 
