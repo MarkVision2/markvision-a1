@@ -14,6 +14,7 @@ export const routeImports = {
   Calls: () => import("@/pages/Calls"),
   SalesAI: () => import("@/pages/SalesAI"),
   Analytics: () => import("@/pages/Analytics"),
+  CreativeFunnel: () => import("@/pages/CreativeFunnel"),
   Finance: () => import("@/pages/Finance"),
   Reports: () => import("@/pages/Reports"),
   Settings: () => import("@/pages/Settings"),
