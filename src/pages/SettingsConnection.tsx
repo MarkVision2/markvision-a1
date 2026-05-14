@@ -126,7 +126,7 @@ const SettingsConnection = () => {
     setCodeLoading(true);
     setCode(null);
     try {
-      const r = await callProxy<CodeData>("getCode", { phoneNumber: digits });
+      const r = await callProxy<CodeData>("getCode", { phoneNumber: digits }, projectId);
       const d = r.data as CodeData;
       if (d?.status && d.code) {
         setCode(d.code);
