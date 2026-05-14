@@ -594,6 +594,31 @@ export function WhatsappProjectBindCard() {
                   placeholder="https://api.green-api.com"
                 />
               </div>
+              {currentRow?.id ? (
+                <div className="flex items-start justify-between gap-3 rounded-md border border-border/60 bg-muted/30 p-3">
+                  <div className="text-xs">
+                    <p className="font-medium text-foreground">Только заявки с рекламы Meta</p>
+                    <p className="mt-1 text-muted-foreground">
+                      Когда включено, новые лиды в CRM создаются только для входящих сообщений из Click-to-WhatsApp рекламы Facebook/Instagram. Личные чаты и обычные сообщения не попадут в CRM. Существующим лидам сообщения сохраняются всегда.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={!!currentRow.ads_only}
+                    onCheckedChange={async (v) => {
+                      const { error } = await supabase
+                        .from("whatsapp_config")
+                        .update({ ads_only: v })
+                        .eq("id", currentRow.id);
+                      if (error) {
+                        toast.error("Не удалось сохранить", { description: error.message });
+                      } else {
+                        toast.success(v ? "Фильтр включён: только реклама" : "Фильтр выключен: все входящие");
+                        await refresh();
+                      }
+                    }}
+                  />
+                </div>
+              ) : null}
               <div className="flex items-center justify-between gap-2">
                 <div className="text-[11px] text-muted-foreground">
                   {conflictProject ? (
