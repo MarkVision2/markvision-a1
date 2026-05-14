@@ -93,6 +93,7 @@ export type Lead = {
   pinned?: boolean;
   firstResponseAt?: string;  // when manager first replied
   channel?: LeadChannel;
+  cabinetId?: string | null;
   // Card extensions (rich lead workspace)
   service?: string;
   city?: string;
