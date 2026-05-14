@@ -561,37 +561,59 @@ export function WhatsappProjectBindCard() {
           </div>
         ) : (
           <>
-            <div>
-              <p className="mb-1.5 text-xs font-medium text-muted-foreground">
-                idInstance из Green API (число, видно в Green API console)
-              </p>
-              <div className="flex items-center gap-2">
+            <div className="space-y-3">
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                  idInstance (число из Green API console)
+                </p>
                 <Input
                   value={instance}
                   onChange={(e) => setInstance(e.target.value)}
                   placeholder="например 7107605912"
-                  className="flex-1"
                 />
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                  apiTokenInstance (длинный токен, видно рядом с idInstance)
+                </p>
+                <Input
+                  value={apiToken}
+                  onChange={(e) => setApiToken(e.target.value)}
+                  placeholder="b3e0…"
+                  type="password"
+                />
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                  apiUrl (опционально — если у вашего инстанса другой регион)
+                </p>
+                <Input
+                  value={apiUrl}
+                  onChange={(e) => setApiUrl(e.target.value)}
+                  placeholder="https://api.green-api.com"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] text-muted-foreground">
+                  {conflictProject ? (
+                    <span className="text-destructive">
+                      Этот idInstance уже привязан к «{conflictProject}». Перепривязка перенесёт его на «{active?.name}».
+                    </span>
+                  ) : currentRow ? (
+                    <>
+                      Текущая привязка: <code>{currentRow.id_instance ?? "—"}</code>
+                      {currentRow.phone ? `, номер ${currentRow.phone}` : ""}
+                      {currentRow.connected ? " · подключён" : ""}
+                    </>
+                  ) : (
+                    "У этого проекта пока нет привязанного WhatsApp."
+                  )}
+                </div>
                 <Button onClick={onBind} disabled={saving || !active?.id}>
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                   {currentRow?.id_instance ? "Перепривязать" : "Привязать"}
                 </Button>
               </div>
-              {conflictProject ? (
-                <p className="mt-1.5 text-[11px] text-destructive">
-                  Этот idInstance уже привязан к проекту «{conflictProject}». Перепривязка перенесёт его на «{active?.name}».
-                </p>
-              ) : currentRow ? (
-                <p className="mt-1.5 text-[11px] text-muted-foreground">
-                  Текущая привязка: <code>{currentRow.id_instance ?? "—"}</code>
-                  {currentRow.phone ? `, номер ${currentRow.phone}` : ""}
-                  {currentRow.connected ? " · подключён" : ""}
-                </p>
-              ) : (
-                <p className="mt-1.5 text-[11px] text-muted-foreground">
-                  У этого проекта пока нет привязанного WhatsApp.
-                </p>
-              )}
             </div>
 
             {rows.length > 0 && (
