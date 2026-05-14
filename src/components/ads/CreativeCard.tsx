@@ -1,7 +1,12 @@
+import { useEffect } from "react";
 import { Image as ImageIcon, Layers, MessageCircle, Play, TrendingDown, TrendingUp, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { bestCreativeImage } from "@/lib/metaThumb";
+import { supabase } from "@/integrations/supabase/client";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
+
+// Глобальный набор уже запрошенных ad_id, чтобы не спамить рефреш постеров
+const refreshedPosters = new Set<string>();
 
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
