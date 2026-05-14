@@ -118,7 +118,7 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
               <span className="text-muted-foreground">
                 {videoError ? "Ссылка на видео истекла" : "Видео ещё не загружено"}
               </span>
-              <Button size="sm" variant="outline" onClick={refreshVideo} disabled={refreshing} className="h-7">
+              <Button size="sm" variant="outline" onClick={() => refreshVideo(false)} disabled={refreshing} className="h-7">
                 {refreshing ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                 Обновить
               </Button>
