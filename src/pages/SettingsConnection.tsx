@@ -80,7 +80,7 @@ const SettingsConnection = () => {
     setQrLoading(true);
     setQrMsg(null);
     try {
-      const r = await callProxy<QrData>("qr");
+      const r = await callProxy<QrData>("qr", undefined, projectId);
       const d = r.data as QrData;
       if (d?.type === "qrCode" && d.message) {
         setQrImage(`data:image/png;base64,${d.message}`);
@@ -98,7 +98,7 @@ const SettingsConnection = () => {
     } finally {
       setQrLoading(false);
     }
-  }, [refreshState]);
+  }, [refreshState, projectId]);
 
   // Polling every 20s when modal is open
   useEffect(() => {
