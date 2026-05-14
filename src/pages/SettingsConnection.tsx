@@ -470,6 +470,8 @@ type WaBindRow = {
   id: string;
   project_id: string | null;
   id_instance: string | null;
+  api_token: string | null;
+  api_url: string | null;
   phone: string | null;
   connected: boolean | null;
 };
@@ -478,6 +480,8 @@ export function WhatsappProjectBindCard() {
   const { active, projects } = useProjectsStore();
   const [rows, setRows] = useState<WaBindRow[]>([]);
   const [instance, setInstance] = useState("");
+  const [apiToken, setApiToken] = useState("");
+  const [apiUrl, setApiUrl] = useState("");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -485,7 +489,7 @@ export function WhatsappProjectBindCard() {
     setLoading(true);
     const { data } = await supabase
       .from("whatsapp_config")
-      .select("id, project_id, id_instance, phone, connected");
+      .select("id, project_id, id_instance, api_token, api_url, phone, connected");
     setRows((data ?? []) as WaBindRow[]);
     setLoading(false);
   }, []);
@@ -495,7 +499,9 @@ export function WhatsappProjectBindCard() {
   const currentRow = rows.find((r) => r.project_id === active?.id) ?? null;
   useEffect(() => {
     setInstance(currentRow?.id_instance ?? "");
-  }, [currentRow?.id_instance]);
+    setApiToken(currentRow?.api_token ?? "");
+    setApiUrl(currentRow?.api_url ?? "");
+  }, [currentRow?.id_instance, currentRow?.api_token, currentRow?.api_url]);
 
   const onBind = async () => {
     if (!active?.id) {
@@ -503,8 +509,13 @@ export function WhatsappProjectBindCard() {
       return;
     }
     const idInstance = instance.trim();
+    const token = apiToken.trim();
     if (!/^\d{6,}$/.test(idInstance)) {
       toast.error("idInstance — это число из Green API console");
+      return;
+    }
+    if (!token || token.length < 20) {
+      toast.error("apiTokenInstance обязателен — скопируйте его из Green API console");
       return;
     }
     setSaving(true);
@@ -512,9 +523,13 @@ export function WhatsappProjectBindCard() {
       const { error } = await supabase.rpc("bind_whatsapp_to_project", {
         p_project_id: active.id,
         p_id_instance: idInstance,
+        p_api_token: token,
+        p_api_url: apiUrl.trim() || null,
       });
       if (error) throw error;
-      toast.success(`WhatsApp ${idInstance} привязан к «${active.name}»`);
+      toast.success(`WhatsApp ${idInstance} привязан к «${active.name}»`, {
+        description: "Теперь нажмите «Получить QR-код» или «По номеру», чтобы авторизовать инстанс.",
+      });
       await refresh();
     } catch (e) {
       toast.error("Не удалось привязать", { description: (e as Error).message });
