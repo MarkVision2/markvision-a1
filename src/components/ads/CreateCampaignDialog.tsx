@@ -503,7 +503,7 @@ const CreateCampaignDialog = ({
         pixel_event: goal === "site-leads" ? pixelEvent : (cab.pixelEvent ?? "Lead"),
         website_url: cab.websiteUrl ?? "",
         landing_url: cab.landingUrl ?? "",
-        utm_template: cab.utmTemplate ?? "",
+        utm_template: cab.utmTemplate?.trim() || DEFAULT_META_UTM_TEMPLATE,
         whatsapp_number: goal === "whatsapp" ? whatsappId : (cab.whatsappNumber ?? ""),
         telegram_group_id: cab.telegramGroupId ?? "",
         business_id: cab.businessId ?? "",
