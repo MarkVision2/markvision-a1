@@ -21,7 +21,7 @@ export interface MetaCreativeRow {
   cta: string | null;
   destinationUrl: string | null;
   effectiveStatus: string | null;
-  /** Метрики за выбранный период (либо ALL_TIME, если view без фильтра). */
+  /** Метрики Meta за выбранный период. */
   spend: number;
   impressions: number;
   clicks: number;
@@ -34,6 +34,17 @@ export interface MetaCreativeRow {
   cpc: number;
   cpm: number;
   romi: number;
+  /** Сквозные CRM-метрики за выбранный период. */
+  crmLeads: number;
+  crmQualified: number;
+  crmSales: number;
+  crmRevenue: number;
+  /** Расчётные сквозные показатели. */
+  crmCpl: number;
+  crmCps: number;
+  crmAvgCheck: number;
+  crmRomi: number;
+  crmProfit: number;
 }
 
 function ymd(d: Date) {
@@ -89,7 +100,7 @@ export function useMetaCreatives(range: Range) {
     let cancelled = false;
     setLoading(true);
     void (async () => {
-      const [creativesRes, dailyRes] = await Promise.all([
+      const [creativesRes, dailyRes, crmRes] = await Promise.all([
         supabase
           .from("meta_creatives")
           .select("id, ad_id, campaign_id, cabinet_id, name, creative_type, thumbnail_url, image_url, video_url, video_id, primary_text, headline, cta, destination_url, effective_status")
@@ -101,11 +112,20 @@ export function useMetaCreatives(range: Range) {
           .eq("project_id", projectId)
           .gte("date", since)
           .lte("date", until),
+        // Сквозные CRM-метрики из view
+        (supabase as unknown as {
+          from: (t: string) => { select: (s: string) => { eq: (k: string, v: string) => { gte: (k: string, v: string) => { lte: (k: string, v: string) => Promise<{ data: Array<{ ad_id: string; crm_leads: number; crm_qualified: number; crm_sales: number; crm_revenue: number }> | null }> } } } } };
+        }).from("meta_creative_crm_daily")
+          .select("ad_id, crm_leads, crm_qualified, crm_sales, crm_revenue")
+          .eq("project_id", projectId)
+          .gte("date", since)
+          .lte("date", until),
       ]);
       if (cancelled) return;
 
       const creatives = (creativesRes.data ?? []) as RawCreative[];
       const daily = (dailyRes.data ?? []) as RawDailyAgg[];
+      const crm = (crmRes.data ?? []) as Array<{ ad_id: string; crm_leads: number | string; crm_qualified: number | string; crm_sales: number | string; crm_revenue: number | string }>;
       const agg = new Map<string, {
         spend: number; impressions: number; clicks: number;
         leads: number; messages: number; purchases: number; revenue: number;
@@ -121,14 +141,29 @@ export function useMetaCreatives(range: Range) {
         cur.revenue += Number(d.revenue) || 0;
         agg.set(d.ad_id, cur);
       }
+      const crmAgg = new Map<string, { crmLeads: number; crmQualified: number; crmSales: number; crmRevenue: number }>();
+      for (const c of crm) {
+        const cur = crmAgg.get(c.ad_id) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 };
+        cur.crmLeads += Number(c.crm_leads) || 0;
+        cur.crmQualified += Number(c.crm_qualified) || 0;
+        cur.crmSales += Number(c.crm_sales) || 0;
+        cur.crmRevenue += Number(c.crm_revenue) || 0;
+        crmAgg.set(c.ad_id, cur);
+      }
 
       const out: MetaCreativeRow[] = creatives.map((c) => {
         const a = agg.get(c.ad_id) ?? { spend: 0, impressions: 0, clicks: 0, leads: 0, messages: 0, purchases: 0, revenue: 0 };
+        const cr = crmAgg.get(c.ad_id) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 };
         const ctr = a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0;
         const cpl = a.leads > 0 ? a.spend / a.leads : 0;
         const cpc = a.clicks > 0 ? a.spend / a.clicks : 0;
         const cpm = a.impressions > 0 ? (a.spend / a.impressions) * 1000 : 0;
         const romi = a.spend > 0 ? ((a.revenue - a.spend) / a.spend) * 100 : 0;
+        const crmCpl = cr.crmLeads > 0 ? a.spend / cr.crmLeads : 0;
+        const crmCps = cr.crmSales > 0 ? a.spend / cr.crmSales : 0;
+        const crmAvgCheck = cr.crmSales > 0 ? cr.crmRevenue / cr.crmSales : 0;
+        const crmRomi = a.spend > 0 ? ((cr.crmRevenue - a.spend) / a.spend) * 100 : 0;
+        const crmProfit = cr.crmRevenue - a.spend;
         return {
           id: c.id,
           adId: c.ad_id,
@@ -147,6 +182,8 @@ export function useMetaCreatives(range: Range) {
           effectiveStatus: c.effective_status,
           ...a,
           ctr, cpl, cpc, cpm, romi,
+          ...cr,
+          crmCpl, crmCps, crmAvgCheck, crmRomi, crmProfit,
         };
       });
       out.sort((a, b) => b.spend - a.spend);
