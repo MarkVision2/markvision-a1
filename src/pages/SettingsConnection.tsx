@@ -144,7 +144,7 @@ const SettingsConnection = () => {
   const handleLogout = async () => {
     setLogoutLoading(true);
     try {
-      await callProxy("logout");
+      await callProxy("logout", undefined, projectId);
       toast.success("Вы вышли из WhatsApp");
       setCode(null);
       await refreshState();
