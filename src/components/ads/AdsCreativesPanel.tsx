@@ -268,6 +268,7 @@ export function AdsCreativesPanel() {
               isWhatsApp={isWhatsApp}
               goalLabel={goalLabel}
               isOpen={openId === row.id}
+              range={range}
               onToggle={() => setOpenId((cur) => (cur === row.id ? null : row.id))}
             />
           ))}
@@ -278,13 +279,14 @@ export function AdsCreativesPanel() {
 }
 
 function FragmentCard({
-  row, campaign, isWhatsApp, goalLabel, isOpen, onToggle,
+  row, campaign, isWhatsApp, goalLabel, isOpen, range, onToggle,
 }: {
   row: MetaCreativeRow;
   campaign?: MetaCampaignRow;
   isWhatsApp: boolean;
   goalLabel: string | null;
   isOpen: boolean;
+  range: ReportPeriodRange;
   onToggle: () => void;
 }) {
   return (
@@ -296,6 +298,7 @@ function FragmentCard({
           campaignName={campaign?.name ?? null}
           goalLabel={goalLabel}
           isWhatsApp={isWhatsApp}
+          range={range}
           onClose={onToggle}
         />
       )}
