@@ -61,8 +61,6 @@ Deno.serve(async (req) => {
       picture?: string;
       thumbnails?: { data?: Array<{ uri: string; width?: number; height?: number; is_preferred?: boolean; scale?: number }> };
     };
-    if (!v.source) return json({ ok: false, error: "no source url", fallback: true }, 200);
-
     // Выбираем самый большой постер: предпочтительный → max(width*height) → picture
     const thumbs = v.thumbnails?.data ?? [];
     let bestThumb: string | null = null;
@@ -76,6 +74,17 @@ Deno.serve(async (req) => {
         ?? null;
     }
     if (!bestThumb && v.picture) bestThumb = v.picture;
+
+    if (!v.source) {
+      if (bestThumb) {
+        const { error: thumbErr } = await admin
+          .from("meta_creatives")
+          .update({ thumbnail_url: bestThumb, last_synced_at: new Date().toISOString() })
+          .eq("ad_id", adId);
+        if (thumbErr) return json({ ok: false, error: thumbErr.message }, 500);
+      }
+      return json({ ok: false, error: "no source url", fallback: true, thumbnail_url: bestThumb }, 200);
+    }
 
     const patch: Record<string, unknown> = {
       video_url: v.source,
