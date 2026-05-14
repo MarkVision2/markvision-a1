@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Eye, Image as ImageIcon, Layers, MousePointerClick, Play, TrendingDown, TrendingUp, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { bestCreativeImage } from "@/lib/metaThumb";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
@@ -30,7 +31,7 @@ interface Props {
 function CreativePreview({ row }: { row: MetaCreativeRow }) {
   const isVideo = row.creativeType === "video";
   const isCarousel = row.creativeType === "carousel";
-  const src = (await import("@/lib/metaThumb")).bestCreativeImage({ thumbnailUrl: row.thumbnailUrl, imageUrl: row.imageUrl, size: 480 });
+  const src = bestCreativeImage({ thumbnailUrl: row.thumbnailUrl, imageUrl: row.imageUrl, size: 480 });
 
   return (
     <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-secondary/30">

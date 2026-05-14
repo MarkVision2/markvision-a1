@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
 import { useCreativeFunnel } from "@/hooks/useCreativeFunnel";
+import { bestCreativeImage } from "@/lib/metaThumb";
 
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
@@ -65,7 +66,7 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
   };
 
   const romiClass = row.romi >= 0 ? "text-success" : "text-destructive";
-  const poster = row.thumbnailUrl || row.imageUrl || undefined;
+  const poster = bestCreativeImage({ thumbnailUrl: row.thumbnailUrl, imageUrl: row.imageUrl, size: 720 }) || undefined;
 
   return (
     <div className="col-span-full overflow-hidden rounded-2xl border border-primary/40 bg-card/80 shadow-xl ring-1 ring-primary/20 animate-fade-in-up">

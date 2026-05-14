@@ -27,7 +27,10 @@ const SORT_LABELS: Record<SortKey, string> = {
 const STAGE_COLORS = ["bg-primary", "bg-accent", "bg-warning", "bg-success"] as const;
 
 function CreativeThumb({ row }: { row: MetaCreativeRow }) {
-  const src = row.thumbnailUrl || row.imageUrl;
+  const src = (() => {
+    if (row.imageUrl) return row.imageUrl;
+    return row.thumbnailUrl?.replace(/p\d{2,4}x\d{2,4}/g, "p240x240") ?? null;
+  })();
   const Icon = row.creativeType === "video" ? Video : row.creativeType === "carousel" ? Layers : ImageIcon;
   return (
     <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-secondary/40 ring-1 ring-border/40">
