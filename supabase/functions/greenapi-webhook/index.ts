@@ -154,15 +154,12 @@ function isFromMetaAd(body: Record<string, unknown>): boolean {
   return false;
 }
 
-async function findOrCreateLead(
+async function findExistingLead(
   phone: string,
-  displayName: string,
   projectId: string | null,
 ): Promise<string | null> {
   const d = digits(phone);
   if (!d) return null;
-
-  // Dedupe scoped to the project (one client = one project).
   let q = admin
     .from("leads")
     .select("id, phone")
@@ -180,8 +177,17 @@ async function findOrCreateLead(
   if (projectId) scan = scan.eq("project_id", projectId);
   const { data: recent } = await scan;
   const match = (recent ?? []).find((l) => digits(l.phone) === d);
-  if (match) return match.id;
+  return match?.id ?? null;
+}
 
+async function createLead(
+  phone: string,
+  displayName: string,
+  projectId: string | null,
+  source: string,
+): Promise<string | null> {
+  const d = digits(phone);
+  if (!d) return null;
   const def = await getDefaultStage(projectId);
   if (!def) {
     console.error("No default pipeline/stage found", { projectId });
@@ -192,7 +198,7 @@ async function findOrCreateLead(
     .insert({
       name: displayName || `+${d}`,
       phone: `+${d}`,
-      source: "whatsapp",
+      source,
       channel: "whatsapp",
       project_id: projectId,
       pipeline_id: def.pipeline_id,
@@ -205,6 +211,17 @@ async function findOrCreateLead(
     return null;
   }
   return created.id;
+}
+
+async function findOrCreateLead(
+  phone: string,
+  displayName: string,
+  projectId: string | null,
+  source = "whatsapp",
+): Promise<string | null> {
+  const existing = await findExistingLead(phone, projectId);
+  if (existing) return existing;
+  return createLead(phone, displayName, projectId, source);
 }
 
 async function insertCommunication(opts: {
