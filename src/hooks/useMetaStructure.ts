@@ -14,6 +14,7 @@ export interface MetaCreativeRow {
   creativeType: "image" | "video" | "carousel" | "dynamic" | string;
   thumbnailUrl: string | null;
   imageUrl: string | null;
+  posterUrl: string | null;
   videoUrl: string | null;
   videoId: string | null;
   primaryText: string | null;
@@ -60,6 +61,7 @@ interface RawCreative {
   creative_type: string | null;
   thumbnail_url: string | null;
   image_url: string | null;
+  poster_url: string | null;
   video_url: string | null;
   video_id: string | null;
   primary_text: string | null;
@@ -103,7 +105,7 @@ export function useMetaCreatives(range: Range) {
       const [creativesRes, dailyRes, crmRes] = await Promise.all([
         supabase
           .from("meta_creatives")
-          .select("id, ad_id, campaign_id, cabinet_id, name, creative_type, thumbnail_url, image_url, video_url, video_id, primary_text, headline, cta, destination_url, effective_status")
+          .select("id, ad_id, campaign_id, cabinet_id, name, creative_type, thumbnail_url, image_url, poster_url, video_url, video_id, primary_text, headline, cta, destination_url, effective_status")
           .eq("project_id", projectId)
           .limit(500),
         supabase
@@ -172,6 +174,7 @@ export function useMetaCreatives(range: Range) {
           creativeType: (c.creative_type ?? "image") as MetaCreativeRow["creativeType"],
           thumbnailUrl: c.thumbnail_url,
           imageUrl: c.image_url,
+          posterUrl: c.poster_url,
           videoUrl: c.video_url,
           videoId: c.video_id,
           primaryText: c.primary_text,

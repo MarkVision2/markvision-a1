@@ -31,7 +31,7 @@ interface Props {
 function CreativePreview({ row }: { row: MetaCreativeRow }) {
   const isVideo = row.creativeType === "video";
   const isCarousel = row.creativeType === "carousel";
-  const src = bestCreativeImage({ thumbnailUrl: row.thumbnailUrl, imageUrl: row.imageUrl, size: 480 });
+  const src = bestCreativeImage({ posterUrl: row.posterUrl, thumbnailUrl: row.thumbnailUrl, imageUrl: row.imageUrl, size: 480 });
 
   return (
     <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-secondary/30">

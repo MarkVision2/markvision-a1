@@ -21,11 +21,14 @@ export function upscaleMetaThumb(url: string | null | undefined, size = 480): st
 
 /** Лучший доступный URL картинки для креатива. */
 export function bestCreativeImage(args: {
+  posterUrl?: string | null;
   thumbnailUrl?: string | null;
   imageUrl?: string | null;
   size?: number;
 }): string | null {
-  // image_url — это полноразмерный постер, всегда лучше thumbnail.
+  // poster_url — захвачен с самого видео в HD, всегда лучший вариант.
+  if (args.posterUrl) return args.posterUrl;
+  // image_url — полноразмерный постер от Meta.
   if (args.imageUrl) return args.imageUrl;
   return upscaleMetaThumb(args.thumbnailUrl, args.size ?? 480);
 }

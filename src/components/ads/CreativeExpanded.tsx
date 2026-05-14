@@ -89,7 +89,7 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
   const hasMetaRevenue = row.revenue > 0;
   const hasCrmRevenue = row.crmRevenue > 0;
   const romiClass = hasMetaRevenue && row.romi >= 0 ? "text-success" : "text-destructive";
-  const poster = bestCreativeImage({ thumbnailUrl: row.thumbnailUrl, imageUrl: row.imageUrl, size: 720 }) || undefined;
+  const poster = bestCreativeImage({ posterUrl: row.posterUrl, thumbnailUrl: row.thumbnailUrl, imageUrl: row.imageUrl, size: 720 }) || undefined;
 
   return (
     <div className="col-span-full overflow-hidden rounded-2xl border border-primary/40 bg-card/80 shadow-xl ring-1 ring-primary/20 animate-fade-in-up">
