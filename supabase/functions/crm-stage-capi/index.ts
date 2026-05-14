@@ -6,6 +6,7 @@
 // Возвращает: { ok, sent: boolean, event_name, fb_response, score_delta }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { requireUser } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -55,6 +56,8 @@ Deno.serve(async (req) => {
   }
 
   try {
+    const auth = await requireUser(req);
+    if (!auth.ok) return auth.response;
     const body = await req.json();
     const {
       lead_id,
