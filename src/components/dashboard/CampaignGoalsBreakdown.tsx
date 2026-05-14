@@ -130,17 +130,15 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-b from-card/70 to-card/30 backdrop-blur-sm transition-all hover:border-border/90 hover:shadow-[0_8px_32px_-12px_hsl(var(--background))]",
-        isInactive && "opacity-60",
+        "group relative overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-br from-card/85 via-card/55 to-card/25 backdrop-blur-md transition-all hover:border-border hover:shadow-[0_24px_70px_-24px_hsl(var(--background))]",
+        isInactive && "opacity-50",
       )}
     >
-      {/* top accent line */}
+      {/* left accent stripe */}
       <span
         className={cn(
-          "pointer-events-none absolute inset-x-0 top-0 h-px",
-          activeCount > 0
-            ? "bg-gradient-to-r from-transparent via-primary/40 to-transparent"
-            : "bg-gradient-to-r from-transparent via-border to-transparent",
+          "pointer-events-none absolute inset-y-0 left-0 w-[3px]",
+          activeCount > 0 ? accent.dot : "bg-border/50",
         )}
         aria-hidden
       />
@@ -148,7 +146,7 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
       {activeCount > 0 && (
         <span
           className={cn(
-            "pointer-events-none absolute -left-16 -top-16 h-40 w-40 rounded-full opacity-[0.07] blur-3xl",
+            "pointer-events-none absolute -left-24 -top-24 h-56 w-56 rounded-full opacity-[0.10] blur-3xl",
             accent.dot,
           )}
           aria-hidden
@@ -156,53 +154,48 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
       )}
 
       {/* HEADER */}
-      <div className="relative grid grid-cols-1 items-center gap-x-6 gap-y-4 px-5 py-5 sm:px-6 lg:grid-cols-[minmax(220px,1fr)_auto]">
+      <div className="relative flex flex-wrap items-center gap-x-6 gap-y-5 px-5 py-5 pl-6 sm:px-6 sm:pl-7">
         {/* Title block */}
-        <div className="flex min-w-0 items-center gap-3.5">
+        <div className="flex min-w-0 flex-1 items-center gap-4">
           <span
             className={cn(
-              "grid h-12 w-12 shrink-0 place-items-center rounded-2xl border transition-all",
+              "grid h-14 w-14 shrink-0 place-items-center rounded-2xl border transition-all",
               accent.icon,
-              activeCount > 0 && "shadow-[0_4px_24px_-6px] " + accent.ring,
+              activeCount > 0 && "shadow-[0_8px_28px_-8px] " + accent.ring,
             )}
           >
-            <Icon className="h-[22px] w-[22px]" strokeWidth={1.5} />
+            <Icon className="h-6 w-6" strokeWidth={1.5} />
           </span>
           <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <h3 className="truncate text-[16px] font-semibold leading-tight tracking-[-0.01em] text-foreground">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="truncate text-[18px] font-semibold leading-tight tracking-[-0.015em] text-foreground">
                 {g.label}
               </h3>
-              <span className="inline-flex items-center rounded-full border border-border/50 bg-secondary/40 px-2 py-0.5 text-[10px] font-bold tabular-nums text-muted-foreground">
+              <span className="inline-flex items-center rounded-md border border-border/50 bg-secondary/50 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-muted-foreground">
                 {g.campaigns.length}
               </span>
-            </div>
-            <div className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
-              <span
-                className={cn(
-                  "relative flex h-1.5 w-1.5 items-center justify-center",
-                )}
-              >
-                {activeCount > 0 && (
-                  <span className={cn("absolute inset-0 animate-ping rounded-full opacity-60", accent.dot)} />
-                )}
-                <span
-                  className={cn(
-                    "relative h-1.5 w-1.5 rounded-full",
-                    activeCount > 0 ? accent.dot : "bg-muted-foreground/30",
-                  )}
-                />
-              </span>
-              <span className="tabular-nums">{activeCount}</span>
-              <span>активных</span>
+              {activeCount > 0 ? (
+                <span className={cn("inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider", accent.icon)}>
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className={cn("absolute inset-0 animate-ping rounded-full opacity-70", accent.dot)} />
+                    <span className={cn("relative h-1.5 w-1.5 rounded-full", accent.dot)} />
+                  </span>
+                  {activeCount} активных
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-muted/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30" />
+                  Нет активных
+                </span>
+              )}
             </div>
           </div>
         </div>
 
-        {/* KPI grid — fixed columns, perfect alignment */}
-        <div className="grid grid-cols-5 gap-x-1 sm:gap-x-3">
+        {/* KPI grid */}
+        <div className="grid w-full grid-cols-5 gap-2 sm:w-auto sm:gap-2.5">
           <KpiCell label="Расход" amount={spendParts?.amount ?? "—"} unit={spendParts?.unit} />
-          <KpiCell label={successLabelOf(g.successMetric)} amount={fmtNum(successValue)} />
+          <KpiCell label={successLabelOf(g.successMetric)} amount={fmtNum(successValue)} highlight />
           <KpiCell label="Цена рез." amount={costParts?.amount ?? "—"} unit={costParts?.unit} />
           <KpiCell label="CTR" amount={ctr > 0 ? `${ctr.toFixed(2)}%` : "—"} />
           <KpiCell
@@ -215,10 +208,10 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
 
       {/* CAMPAIGNS */}
       {visible.length > 0 && (
-        <div className="relative border-t border-border/40 bg-background/30 px-3 pb-3 pt-2.5 sm:px-4">
-          <div className="mb-2 flex items-center justify-between px-1.5">
+        <div className="relative border-t border-border/40 bg-background/40 px-3 pb-3 pt-3 pl-6 sm:px-4 sm:pl-7">
+          <div className="mb-2.5 flex items-center justify-between px-1">
             <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
-              <span className="h-px w-4 bg-border" />
+              <span className="h-px w-5 bg-border" />
               Кампании · по расходу
             </div>
             {hasMore && (
@@ -248,24 +241,34 @@ function KpiCell({
   amount,
   unit,
   tone,
+  highlight,
 }: {
   label: string;
   amount: string;
   unit?: string;
   tone?: "success" | "destructive";
+  highlight?: boolean;
 }) {
   return (
-    <div className="flex min-w-[72px] flex-col items-end gap-1.5 border-l border-border/30 pl-3 first:border-l-0 first:pl-0">
-      <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground/60">{label}</div>
+    <div
+      className={cn(
+        "flex min-w-[78px] flex-col items-start gap-1.5 rounded-xl border border-border/40 bg-background/40 px-3 py-2 backdrop-blur-sm transition-colors",
+        highlight && "border-primary/25 bg-primary/[0.06]",
+        tone === "destructive" && "border-destructive/25 bg-destructive/[0.05]",
+        tone === "success" && "border-success/25 bg-success/[0.05]",
+      )}
+    >
+      <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground/70">{label}</div>
       <div
         className={cn(
-          "text-[15px] font-semibold tabular-nums leading-none tracking-[-0.02em] text-foreground",
+          "text-[17px] font-bold tabular-nums leading-none tracking-[-0.02em] text-foreground",
+          highlight && "text-primary",
           tone === "success" && "text-success",
           tone === "destructive" && "text-destructive",
         )}
       >
         {amount}
-        {unit && <span className="ml-0.5 text-[11px] font-medium text-muted-foreground/80">{unit}</span>}
+        {unit && <span className="ml-0.5 text-[12px] font-medium opacity-70">{unit}</span>}
       </div>
     </div>
   );
