@@ -23,6 +23,7 @@ const Crm = lazy(routeImports.Crm);
 const CallsHistory = lazy(routeImports.Calls);
 const SalesAI = lazy(routeImports.SalesAI);
 const Analytics = lazy(routeImports.Analytics);
+const CreativeFunnel = lazy(routeImports.CreativeFunnel);
 const Finance = lazy(routeImports.Finance);
 const Reports = lazy(routeImports.Reports);
 const Settings = lazy(routeImports.Settings);
