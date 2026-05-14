@@ -57,7 +57,11 @@ const Schema = z.object({
   // Атрибуция Meta (cookies со стороны лендинга)
   fbc: z.string().trim().max(255).optional().nullable(),
   fbp: z.string().trim().max(255).optional().nullable(),
-  email: z.string().trim().max(160).optional().nullable(),
+  fbclid: z.string().trim().max(255).optional().nullable(),
+  // Сквозная атрибуция «креатив → лид»
+  ad_id: z.string().trim().max(40).optional().nullable(),
+  adset_id: z.string().trim().max(40).optional().nullable(),
+  campaign_id: z.string().trim().max(40).optional().nullable(),
 });
 
 async function parseBody(req: Request): Promise<Record<string, unknown>> {
@@ -387,6 +391,14 @@ Deno.serve(async (req) => {
       return json({ error: "No default pipeline/stage configured" }, 500);
     }
 
+    // Сквозная атрибуция: ad_id может прийти явно или в utm_content (шаблон {{ad.id}}).
+    const numericId = (s: string | null | undefined) =>
+      s && /^[0-9]{6,}$/.test(s.trim()) ? s.trim() : null;
+    const metaAdId = (v.ad_id && v.ad_id.trim()) || numericId(v.utm_content);
+    const metaAdsetId = (v.adset_id && v.adset_id.trim()) || numericId(v.utm_term);
+    const metaCampaignId = (v.campaign_id && v.campaign_id.trim()) || numericId(v.utm_campaign);
+    const clickId = (v.fbclid && v.fbclid.trim()) || null;
+
     const { data: created, error } = await admin
       .from("leads")
       .insert({
@@ -406,6 +418,10 @@ Deno.serve(async (req) => {
         referrer: v.referrer || null,
         landing_url: landingUrl,
         first_touch_at: new Date().toISOString(),
+        meta_ad_id: metaAdId,
+        meta_adset_id: metaAdsetId,
+        meta_campaign_id: metaCampaignId,
+        click_id: clickId,
       })
       .select("id")
       .single();
