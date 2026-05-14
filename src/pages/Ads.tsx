@@ -70,8 +70,16 @@ const StatChip = ({
   </div>
 );
 
+function CampaignsTabContent() {
+  const [range] = useState(() => getPresetRange("30d"));
+  const { rows } = useMetaCampaigns(range);
+  return <CampaignGoalsBreakdown rows={rows} />;
+}
+
 const Ads = () => {
   const { cabinets, addCabinet, updateCabinet, removeCabinet } = useCabinetsStore();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get("tab") ?? "cabinets";
   const [query, setQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   const [campaignOpen, setCampaignOpen] = useState(false);
