@@ -116,37 +116,121 @@ async function projectFromInstance(idInstance: number | string | null | undefine
   return data?.project_id ?? null;
 }
 
+// Best-effort parser of Meta CTWA (Click-To-WhatsApp) referral payload.
+// Green API не имеет жёсткой схемы, поэтому ищем известные ключи в нескольких
+// местах и собираем то, что нашли.
+interface CtwaAttribution {
+  meta_ad_id: string | null;
+  meta_adset_id: string | null;
+  meta_campaign_id: string | null;
+  click_id: string | null;
+  headline: string | null;
+}
+function parseCtwa(messageData: Record<string, unknown> | undefined, body: Record<string, unknown>): CtwaAttribution {
+  const out: CtwaAttribution = { meta_ad_id: null, meta_adset_id: null, meta_campaign_id: null, click_id: null, headline: null };
+  if (!messageData) return out;
+  const candidates: Record<string, unknown>[] = [];
+  const ext = messageData.extendedTextMessageData as Record<string, unknown> | undefined;
+  if (ext) candidates.push(ext);
+  const ctx = messageData.contextInfo as Record<string, unknown> | undefined;
+  if (ctx) candidates.push(ctx);
+  const refTop = body.referralData as Record<string, unknown> | undefined;
+  if (refTop) candidates.push(refTop);
+  const refExt = ext?.referral as Record<string, unknown> | undefined;
+  if (refExt) candidates.push(refExt);
+  const refCtx = ctx?.referral as Record<string, unknown> | undefined;
+  if (refCtx) candidates.push(refCtx);
+
+  for (const c of candidates) {
+    const sourceId = c.sourceId ?? c.source_id ?? c.adId ?? c.ad_id;
+    if (sourceId && !out.meta_ad_id) out.meta_ad_id = String(sourceId);
+    const ctwa = c.ctwaClid ?? c.ctwa_clid ?? c.clickId ?? c.click_id;
+    if (ctwa && !out.click_id) out.click_id = String(ctwa);
+    const camp = c.campaignId ?? c.campaign_id;
+    if (camp && !out.meta_campaign_id) out.meta_campaign_id = String(camp);
+    const adset = c.adsetId ?? c.adset_id;
+    if (adset && !out.meta_adset_id) out.meta_adset_id = String(adset);
+    const headline = c.headline ?? c.title;
+    if (headline && !out.headline) out.headline = String(headline);
+  }
+  return out;
+}
+
+async function enrichFromCreative(adId: string): Promise<{ campaign_id: string | null; cabinet_id: string | null; project_id: string | null }> {
+  const { data } = await admin
+    .from("meta_creatives")
+    .select("campaign_id, cabinet_id, project_id")
+    .eq("ad_id", adId)
+    .maybeSingle();
+  return {
+    campaign_id: data?.campaign_id ?? null,
+    cabinet_id: data?.cabinet_id ?? null,
+    project_id: data?.project_id ?? null,
+  };
+}
+
 async function findOrCreateLead(
   phone: string,
   displayName: string,
   projectId: string | null,
+  attribution?: CtwaAttribution,
 ): Promise<string | null> {
   const d = digits(phone);
   if (!d) return null;
 
-  // Dedupe scoped to the project (one client = one project).
   let q = admin
     .from("leads")
-    .select("id, phone")
+    .select("id, phone, meta_ad_id")
     .or(`phone.eq.${phone},phone.eq.+${d},phone.eq.${d}`)
     .limit(1);
   if (projectId) q = q.eq("project_id", projectId);
   const { data: existing } = await q;
-  if (existing && existing.length > 0) return existing[0].id;
+  if (existing && existing.length > 0) {
+    const row = existing[0] as { id: string; meta_ad_id: string | null };
+    if (attribution?.meta_ad_id && !row.meta_ad_id) {
+      await admin.from("leads").update({
+        meta_ad_id: attribution.meta_ad_id,
+        meta_adset_id: attribution.meta_adset_id,
+        meta_campaign_id: attribution.meta_campaign_id,
+        click_id: attribution.click_id,
+      }).eq("id", row.id);
+    }
+    return row.id;
+  }
 
   let scan = admin
     .from("leads")
-    .select("id, phone")
+    .select("id, phone, meta_ad_id")
     .order("created_at", { ascending: false })
     .limit(500);
   if (projectId) scan = scan.eq("project_id", projectId);
   const { data: recent } = await scan;
-  const match = (recent ?? []).find((l) => digits(l.phone) === d);
-  if (match) return match.id;
+  const match = (recent ?? []).find((l) => digits(l.phone) === d) as { id: string; meta_ad_id: string | null } | undefined;
+  if (match) {
+    if (attribution?.meta_ad_id && !match.meta_ad_id) {
+      await admin.from("leads").update({
+        meta_ad_id: attribution.meta_ad_id,
+        meta_adset_id: attribution.meta_adset_id,
+        meta_campaign_id: attribution.meta_campaign_id,
+        click_id: attribution.click_id,
+      }).eq("id", match.id);
+    }
+    return match.id;
+  }
 
-  const def = await getDefaultStage(projectId);
+  let resolvedProject = projectId;
+  let cabinetId: string | null = null;
+  let metaCampaignId = attribution?.meta_campaign_id ?? null;
+  if (attribution?.meta_ad_id) {
+    const enriched = await enrichFromCreative(attribution.meta_ad_id);
+    if (!resolvedProject && enriched.project_id) resolvedProject = enriched.project_id;
+    if (!cabinetId && enriched.cabinet_id) cabinetId = enriched.cabinet_id;
+    if (!metaCampaignId && enriched.campaign_id) metaCampaignId = enriched.campaign_id;
+  }
+
+  const def = await getDefaultStage(resolvedProject);
   if (!def) {
-    console.error("No default pipeline/stage found", { projectId });
+    console.error("No default pipeline/stage found", { projectId: resolvedProject });
     return null;
   }
   const { data: created, error } = await admin
@@ -154,11 +238,16 @@ async function findOrCreateLead(
     .insert({
       name: displayName || `+${d}`,
       phone: `+${d}`,
-      source: "whatsapp",
+      source: attribution?.meta_ad_id ? "meta" : "whatsapp",
       channel: "whatsapp",
-      project_id: projectId,
+      project_id: resolvedProject,
+      cabinet_id: cabinetId,
       pipeline_id: def.pipeline_id,
       stage_id: def.stage_id,
+      meta_ad_id: attribution?.meta_ad_id ?? null,
+      meta_adset_id: attribution?.meta_adset_id ?? null,
+      meta_campaign_id: metaCampaignId,
+      click_id: attribution?.click_id ?? null,
     })
     .select("id")
     .single();
@@ -232,11 +321,12 @@ Deno.serve(async (req) => {
       const phone = chatIdToPhone(senderData?.chatId ?? senderData?.sender);
       const name = senderData?.senderName?.trim() || "";
       if (!phone) return json({ ok: true, skipped: "no phone" });
-      const leadId = await findOrCreateLead(phone, name, projectId);
+      const attribution = parseCtwa(messageData, body);
+      const leadId = await findOrCreateLead(phone, name, projectId, attribution);
       if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
       const text = extractText(messageData);
       await insertCommunication({ leadId, direction: "in", text, externalId: idMessage });
-      return json({ ok: true, leadId, projectId });
+      return json({ ok: true, leadId, projectId, attribution });
     }
 
     if (
