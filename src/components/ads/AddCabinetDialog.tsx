@@ -428,6 +428,25 @@ const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProp
                       className={inputCls}
                     />
                   </div>
+
+                  <div className="space-y-1.5">
+                    <FieldLabel icon={Link2}>UTM-шаблон (Meta URL parameters)</FieldLabel>
+                    <Textarea
+                      value={utmTemplate}
+                      onChange={(e) => setUtmTemplate(e.target.value)}
+                      rows={2}
+                      placeholder={DEFAULT_META_UTM_TEMPLATE}
+                      className="rounded-xl bg-background/60 font-mono text-xs"
+                    />
+                    <p className="flex items-start gap-1.5 text-[11px] leading-snug text-muted-foreground">
+                      <Info className="mt-0.5 h-3 w-3 shrink-0" />
+                      <span>
+                        Подставится в поле <b>URL parameters</b> каждой кампании Meta.
+                        <b className="text-foreground"> utm_content=&#123;&#123;ad.id&#125;&#125;</b> обязателен —
+                        по нему сквозная аналитика связывает лиды с конкретным креативом.
+                      </span>
+                    </p>
+                  </div>
                 </div>
               </section>
 
