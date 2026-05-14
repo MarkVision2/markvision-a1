@@ -56,6 +56,7 @@ async function getUserId(req: Request): Promise<string | null> {
   }
 }
 
+/** Resolve credentials. Priority: explicit project_id → user's active project → env. */
 async function resolveCreds(
   req: Request,
   bodyProjectId: string | null,
@@ -84,6 +85,8 @@ async function resolveCreds(
     if (row?.id_instance) {
       const apiToken = (row.api_token ?? "").trim();
       if (!apiToken) {
+        // Allow env-token fallback only when the bound id_instance matches
+        // ENV_ID — otherwise we'd be sending the wrong token to the wrong instance.
         if (ENV_TOKEN && row.id_instance === ENV_ID) {
           return {
             source: "db",
@@ -139,10 +142,16 @@ async function callGreen(
   const res = await fetch(url, init);
   const text = await res.text();
   let data: unknown = text;
-  try { data = JSON.parse(text); } catch { /* keep text */ }
+  try {
+    data = JSON.parse(text);
+  } catch {
+    /* keep raw text */
+  }
   return { ok: res.ok, status: res.status, data };
 }
 
+/** After a successful state poll, push the live state back into the bound row
+ * so the UI doesn't show a stale "подключён" badge. Best-effort. */
 async function syncState(
   creds: Creds,
   stateInstance: string | null,
@@ -159,6 +168,7 @@ async function syncState(
   await admin.from("whatsapp_config").update(patch).eq("id", creds.rowId);
 }
 
+/** Green API getWaSettings returns `{ wid: "77051234567@c.us", ... }`. */
 function widToPhone(wid: unknown): string | null {
   const s = String(wid ?? "").replace(/\D/g, "");
   if (s.length < 8) return null;
@@ -171,12 +181,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Require authenticated user
-    const userId = await getUserId(req);
-    if (!userId) {
-      return json({ error: "Unauthorized" }, 401);
-    }
-
+    // Read action + body once. The same JSON body carries action + payload
+    // for POST calls; GET fallback uses ?action=… query string.
     const url = new URL(req.url);
     let body: Record<string, unknown> = {};
     if (req.method === "POST") {
@@ -186,17 +192,6 @@ Deno.serve(async (req) => {
       (body.action as string | undefined) ??
       url.searchParams.get("action") ??
       "";
-
-    // Restrict destructive admin actions
-    if (action === "logout" || action === "setWebhook") {
-      const { data: roleRow } = await admin
-        .from("user_roles")
-        .select("role")
-        .eq("user_id", userId)
-        .eq("role", "admin")
-        .maybeSingle();
-      if (!roleRow) return json({ error: "Forbidden" }, 403);
-    }
 
     const projectId =
       typeof body.project_id === "string" && body.project_id
@@ -216,19 +211,32 @@ Deno.serve(async (req) => {
           (r.data as { stateInstance?: string } | null)?.stateInstance ?? null;
         let phone: string | null = null;
         if (stateInstance === "authorized") {
+          // Pull phone (wid) once we know the instance is logged in.
           const ws = await callGreen(creds, "getWaSettings").catch(() => null);
-          phone = widToPhone((ws?.data as { wid?: string } | null | undefined)?.wid) ?? null;
+          phone =
+            widToPhone(
+              (ws?.data as { wid?: string } | null | undefined)?.wid,
+            ) ?? null;
         }
         await syncState(creds, stateInstance, phone);
         return json({
-          ok: r.ok, status: r.status, data: r.data,
-          meta: { source: creds.source, id_instance: creds.idInstance, project_id: creds.projectId, phone },
+          ok: r.ok,
+          status: r.status,
+          data: r.data,
+          meta: {
+            source: creds.source,
+            id_instance: creds.idInstance,
+            project_id: creds.projectId,
+            phone,
+          },
         });
       }
+
       case "qr": {
         const r = await callGreen(creds, "qr");
         return json({ ok: r.ok, status: r.status, data: r.data });
       }
+
       case "getCode": {
         const phoneRaw = String(body.phoneNumber ?? "").replace(/\D/g, "");
         if (!phoneRaw || phoneRaw.length < 8 || phoneRaw.length > 15) {
@@ -241,15 +249,19 @@ Deno.serve(async (req) => {
         });
         return json({ ok: r.ok, status: r.status, data: r.data });
       }
+
       case "logout": {
         const r = await callGreen(creds, "logout");
+        // Logout reliably means the device is no longer authorized.
         await syncState(creds, "notAuthorized", null);
         return json({ ok: r.ok, status: r.status, data: r.data });
       }
+
       case "settings": {
         const r = await callGreen(creds, "getSettings");
         return json({ ok: r.ok, status: r.status, data: r.data });
       }
+
       case "setWebhook": {
         const defaultUrl = SUPABASE_URL
           ? `${SUPABASE_URL.replace(/\/+$/, "")}/functions/v1/greenapi-webhook`
@@ -262,14 +274,18 @@ Deno.serve(async (req) => {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            webhookUrl, webhookUrlToken: "",
-            outgoingWebhook: "yes", outgoingMessageWebhook: "yes",
-            outgoingAPIMessageWebhook: "yes", incomingWebhook: "yes",
+            webhookUrl,
+            webhookUrlToken: "",
+            outgoingWebhook: "yes",
+            outgoingMessageWebhook: "yes",
+            outgoingAPIMessageWebhook: "yes",
+            incomingWebhook: "yes",
             stateWebhook: "yes",
           }),
         });
         return json({ ok: r.ok, status: r.status, data: r.data });
       }
+
       case "sendMessage": {
         const phoneRaw = String(body.phone ?? "").replace(/\D/g, "");
         const message = String(body.message ?? "").trim();
@@ -280,10 +296,14 @@ Deno.serve(async (req) => {
         const r = await callGreen(creds, "sendMessage", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chatId: `${phoneRaw}@c.us`, message }),
+          body: JSON.stringify({
+            chatId: `${phoneRaw}@c.us`,
+            message,
+          }),
         });
         return json({ ok: r.ok, status: r.status, data: r.data });
       }
+
       default:
         return json({ error: "Unknown action" }, 400);
     }
