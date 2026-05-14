@@ -37,7 +37,7 @@ export function MoneyKpiCard({
           {label}
         </span>
       </div>
-      <div className="mt-4 text-3xl font-bold tabular-nums whitespace-nowrap">{value}</div>
+      <div className="mt-3 text-xl font-bold tabular-nums whitespace-nowrap sm:text-2xl">{value}</div>
       <div className="mt-2 flex items-center gap-2 text-[11px]">
         {comparing && hasDelta ? (
           noChange ? (
