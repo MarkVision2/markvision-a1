@@ -62,7 +62,7 @@ const SettingsConnection = () => {
   const refreshState = useCallback(async () => {
     setLoadingState(true);
     try {
-      const r = await callProxy<StateData>("status");
+      const r = await callProxy<StateData>("status", undefined, projectId);
       const s = (r.data as StateData)?.stateInstance ?? null;
       setState(s);
     } catch (e) {
@@ -70,7 +70,7 @@ const SettingsConnection = () => {
     } finally {
       setLoadingState(false);
     }
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     refreshState();
