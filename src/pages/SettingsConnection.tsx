@@ -474,6 +474,7 @@ type WaBindRow = {
   api_url: string | null;
   phone: string | null;
   connected: boolean | null;
+  ads_only: boolean | null;
 };
 
 export function WhatsappProjectBindCard() {
