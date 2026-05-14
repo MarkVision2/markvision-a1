@@ -86,6 +86,7 @@ const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProp
   const [pixelId, setPixelId] = useState("");
   const [pixelEvent, setPixelEvent] = useState("Lead");
   const [websiteUrl, setWebsiteUrl] = useState("");
+  const [utmTemplate, setUtmTemplate] = useState(DEFAULT_META_UTM_TEMPLATE);
 
   // Заметки
   const [brief, setBrief] = useState("");
