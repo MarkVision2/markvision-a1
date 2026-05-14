@@ -104,7 +104,7 @@ export function useMetaCreatives(range: Range) {
       const [creativesRes, dailyRes, crmRes] = await Promise.all([
         supabase
           .from("meta_creatives")
-          .select("id, ad_id, campaign_id, cabinet_id, name, creative_type, thumbnail_url, image_url, video_url, video_id, primary_text, headline, cta, destination_url, effective_status")
+          .select("id, ad_id, campaign_id, cabinet_id, name, creative_type, thumbnail_url, image_url, poster_url, video_url, video_id, primary_text, headline, cta, destination_url, effective_status")
           .eq("project_id", projectId)
           .limit(500),
         supabase
