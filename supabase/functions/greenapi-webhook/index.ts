@@ -6,14 +6,16 @@
 // - incomingMessageReceived       → save inbound message, create lead if missing
 // - outgoingMessageReceived       → save outbound (sent from phone)
 // - outgoingAPIMessageReceived    → save outbound (sent via API)
-// - outgoingMessageStatus         → ignored (could update status later)
+// - outgoingMessageStatus         → update communications.status
 // - stateInstanceChanged          → updates whatsapp_config.connected
+//
+// Multi-instance: routing happens via whatsapp_config.id_instance, so the
+// same URL serves every project's Green API instance.
 import { corsHeaders } from "https://esm.sh/@supabase/supabase-js@2.95.0/cors";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const ID_INSTANCE = Deno.env.get("GREENAPI_ID_INSTANCE") ?? "";
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -104,62 +106,25 @@ async function getDefaultStage(
 }
 
 // Resolve which project a webhook belongs to via whatsapp_config.id_instance.
-// Also returns the ads_only flag — when true, only ad-sourced incoming
-// messages create new leads (existing leads still receive every message).
-async function configFromInstance(
-  idInstance: number | string | null | undefined,
-): Promise<{ project_id: string | null; ads_only: boolean }> {
-  if (!idInstance) return { project_id: null, ads_only: false };
+async function projectFromInstance(idInstance: number | string | null | undefined): Promise<string | null> {
+  if (!idInstance) return null;
   const { data } = await admin
     .from("whatsapp_config")
-    .select("project_id, ads_only")
+    .select("project_id")
     .eq("id_instance", String(idInstance))
     .maybeSingle();
-  return {
-    project_id: data?.project_id ?? null,
-    ads_only: !!data?.ads_only,
-  };
+  return data?.project_id ?? null;
 }
 
-// Detect Meta Click-to-WhatsApp ad context in a Green API incoming payload.
-// Meta forwards ad-click messages with referral metadata: source URL points
-// to fb.me / l.facebook / wa.me, the click id (ctwa_clid) appears in URLs,
-// or the message is decorated with a `sourceType: "ad"` block.
-function isFromMetaAd(body: Record<string, unknown>): boolean {
-  const md = body.messageData as Record<string, unknown> | undefined;
-  if (!md) return false;
-
-  const haystack = JSON.stringify(body).toLowerCase();
-  if (haystack.includes("ctwa_clid")) return true;
-  if (haystack.includes("\"sourcetype\":\"ad\"")) return true;
-  if (haystack.includes("\"sourceid\":\"ad")) return true;
-  if (
-    /https?:\/\/(?:[^"\s]*\.)?(?:fb\.me|l\.facebook\.com|facebook\.com\/ads|business\.facebook\.com|wa\.me|api\.whatsapp\.com)/i
-      .test(haystack)
-  ) {
-    // wa.me alone is weak — require it to live alongside fb/instagram/ad markers.
-    if (
-      haystack.includes("fb.me") ||
-      haystack.includes("facebook.com") ||
-      haystack.includes("instagram.com") ||
-      haystack.includes("ad_id") ||
-      haystack.includes("\"sourcetype\"")
-    ) {
-      return true;
-    }
-  }
-  // Quoted advertisement object (older Green API shape).
-  const quoted = md.quotedMessage as Record<string, unknown> | undefined;
-  if (quoted && (quoted.advertisement || quoted.externalAdReply)) return true;
-  return false;
-}
-
-async function findExistingLead(
+async function findOrCreateLead(
   phone: string,
+  displayName: string,
   projectId: string | null,
 ): Promise<string | null> {
   const d = digits(phone);
   if (!d) return null;
+
+  // Dedupe scoped to the project (one client = one project).
   let q = admin
     .from("leads")
     .select("id, phone")
@@ -177,17 +142,8 @@ async function findExistingLead(
   if (projectId) scan = scan.eq("project_id", projectId);
   const { data: recent } = await scan;
   const match = (recent ?? []).find((l) => digits(l.phone) === d);
-  return match?.id ?? null;
-}
+  if (match) return match.id;
 
-async function createLead(
-  phone: string,
-  displayName: string,
-  projectId: string | null,
-  source: string,
-): Promise<string | null> {
-  const d = digits(phone);
-  if (!d) return null;
   const def = await getDefaultStage(projectId);
   if (!def) {
     console.error("No default pipeline/stage found", { projectId });
@@ -198,7 +154,7 @@ async function createLead(
     .insert({
       name: displayName || `+${d}`,
       phone: `+${d}`,
-      source,
+      source: "whatsapp",
       channel: "whatsapp",
       project_id: projectId,
       pipeline_id: def.pipeline_id,
@@ -211,17 +167,6 @@ async function createLead(
     return null;
   }
   return created.id;
-}
-
-async function findOrCreateLead(
-  phone: string,
-  displayName: string,
-  projectId: string | null,
-  source = "whatsapp",
-): Promise<string | null> {
-  const existing = await findExistingLead(phone, projectId);
-  if (existing) return existing;
-  return createLead(phone, displayName, projectId, source);
 }
 
 async function insertCommunication(opts: {
@@ -268,22 +213,13 @@ Deno.serve(async (req) => {
     return json({ error: "Invalid JSON" }, 400);
   }
 
-  // Optional: ignore notifications from other instances
   const instanceData = body.instanceData as { idInstance?: number } | undefined;
-  if (
-    ID_INSTANCE &&
-    instanceData?.idInstance &&
-    String(instanceData.idInstance) !== String(ID_INSTANCE)
-  ) {
-    return json({ ok: true, skipped: "other instance" });
-  }
-
   const type = body.typeWebhook as string | undefined;
-  // Resolve project + ads_only flag from the Green API instance id. The same
-  // webhook URL can serve multiple instances — one per project — so we route
-  // based on which instance actually pinged us.
-  const cfg = await configFromInstance(instanceData?.idInstance);
-  const projectId = cfg.project_id;
+  // Resolve project from the Green API instance id. The same webhook URL
+  // serves every project's instance — we route based on which one pinged us.
+  // No env-based filter: multi-instance routing relies entirely on the
+  // whatsapp_config.id_instance binding.
+  const projectId = await projectFromInstance(instanceData?.idInstance);
 
   try {
     const idMessage = (body.idMessage as string | undefined) ?? null;
@@ -296,32 +232,11 @@ Deno.serve(async (req) => {
       const phone = chatIdToPhone(senderData?.chatId ?? senderData?.sender);
       const name = senderData?.senderName?.trim() || "";
       if (!phone) return json({ ok: true, skipped: "no phone" });
-
-      const fromAd = isFromMetaAd(body);
-
-      // Always append to an existing lead — even non-ad chats are part of
-      // the conversation history once the lead is in CRM.
-      let leadId = await findExistingLead(phone, projectId);
-
-      if (!leadId) {
-        // No existing lead. In ads_only mode, create a lead only when the
-        // message originated from a Meta Click-to-WhatsApp ad. Otherwise
-        // treat it as personal chatter and skip CRM entirely.
-        if (cfg.ads_only && !fromAd) {
-          return json({ ok: true, skipped: "not from ad", projectId });
-        }
-        leadId = await createLead(
-          phone,
-          name,
-          projectId,
-          fromAd ? "whatsapp_ad" : "whatsapp",
-        );
-        if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
-      }
-
+      const leadId = await findOrCreateLead(phone, name, projectId);
+      if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
       const text = extractText(messageData);
       await insertCommunication({ leadId, direction: "in", text, externalId: idMessage });
-      return json({ ok: true, leadId, projectId, fromAd });
+      return json({ ok: true, leadId, projectId });
     }
 
     if (
@@ -332,11 +247,8 @@ Deno.serve(async (req) => {
       const messageData = body.messageData as Record<string, unknown> | undefined;
       const phone = chatIdToPhone(senderData?.chatId);
       if (!phone) return json({ ok: true, skipped: "no phone" });
-      // Outgoing messages never create new leads — only append to existing
-      // CRM contacts. Otherwise replying from the phone to anyone would
-      // pollute the CRM with personal contacts.
-      const leadId = await findExistingLead(phone, projectId);
-      if (!leadId) return json({ ok: true, skipped: "no matching lead" });
+      const leadId = await findOrCreateLead(phone, "", projectId);
+      if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
       const text = extractText(messageData);
       await insertCommunication({
         leadId,
@@ -349,8 +261,23 @@ Deno.serve(async (req) => {
     }
 
     if (type === "stateInstanceChanged") {
-      // Could refresh whatsapp_config here. Skip for now.
-      return json({ ok: true });
+      // Push the live state into the bound row so the UI status badge
+      // doesn't go stale between manual "Обновить" clicks.
+      const stateInstance = (body.stateInstance as string | undefined) ?? null;
+      const isAuth = stateInstance === "authorized";
+      const idi = instanceData?.idInstance;
+      if (idi) {
+        const patch: Record<string, unknown> = {
+          connected: isAuth,
+          updated_at: new Date().toISOString(),
+        };
+        if (isAuth) patch.connected_at = new Date().toISOString();
+        await admin
+          .from("whatsapp_config")
+          .update(patch)
+          .eq("id_instance", String(idi));
+      }
+      return json({ ok: true, state: stateInstance, projectId });
     }
 
     if (type === "outgoingMessageStatus") {
