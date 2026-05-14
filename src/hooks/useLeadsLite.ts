@@ -46,7 +46,7 @@ export function useLeadsLite() {
     let leadsQuery = supabase
       .from("leads")
       .select(
-        "id,source,channel,referrer,utm,cabinet_id,stage_id,amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,score_label,reject_reason,rejected_at",
+        "id,source,channel,referrer,utm,cabinet_id,stage_id,amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,reject_reason,rejected_at",
       )
       .order("created_at", { ascending: false })
       .limit(2000);
