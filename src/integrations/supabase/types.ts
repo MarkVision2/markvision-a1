@@ -1412,6 +1412,7 @@ export type Database = {
           image_url: string | null
           last_synced_at: string
           name: string
+          poster_url: string | null
           primary_text: string | null
           project_id: string | null
           status: string | null
@@ -1433,6 +1434,7 @@ export type Database = {
           image_url?: string | null
           last_synced_at?: string
           name: string
+          poster_url?: string | null
           primary_text?: string | null
           project_id?: string | null
           status?: string | null
@@ -1454,6 +1456,7 @@ export type Database = {
           image_url?: string | null
           last_synced_at?: string
           name?: string
+          poster_url?: string | null
           primary_text?: string | null
           project_id?: string | null
           status?: string | null

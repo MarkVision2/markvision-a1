@@ -1,99 +1,84 @@
-# Сквозная аналитика по креативам
+## Проблема
 
-Сейчас мы знаем по креативу только то, что отдаёт Meta (показы, клики, spend, лиды на стороне Meta). Связи **креатив → лид в CRM → сделка → деньги** нет. Сделаем её сквозной.
+Фото-креативы рендерятся чётко (используем `image_url` — полноразмерный постер от Meta). Видео-креативы выглядят размыто, потому что Meta в `creative.thumbnail_url` отдаёт картинку **64×64**, и при растягивании на карточку 9:16 она блюрится.
 
-## 1. Привязка лида к конкретному креативу
+Текущий авто-рефреш (`meta-creative-refresh`) дёргает `thumbnails{}` у видео и берёт самый большой `uri` — но Meta для многих видео отдаёт `thumbnails` максимум **640×360** (горизонтально), что для вертикального 9:16 контейнера всё ещё мыло (плюс кроп по бокам).
 
-Добавим в `leads` колонки:
-- `meta_ad_id text` (главный ключ креатива)
-- `meta_adset_id text`
-- `meta_campaign_id text`
-- `click_id text` (fbclid / ctwa_clid — для дедупа и сверки)
+## Цель
 
-Индексы по `meta_ad_id`, `meta_campaign_id`.
+Везде, где есть видео-креатив — показывать **чёткий постер 1080×1920 (вертикаль)**, идентичный по качеству фото-креативам.
 
-Источники, откуда эти поля будут заполняться (порядок приоритета):
+## План
 
-1. **WhatsApp / CTWA (Click-to-WhatsApp)** — основной канал.  
-   В `greenapi-webhook` приходит `referral` объект от Meta (`source_id` = ad_id, `source_type=ad`, `headline`, `body`, `ctwa_clid`). Парсим его при создании лида и сохраняем `meta_ad_id`, `meta_adset_id` (если есть), `meta_campaign_id`, `click_id`. Это даёт точную атрибуцию — никаких UTM не нужно.
-2. **Сайт / лендинг** — `lead-intake` принимает `ad_id`, `adset_id`, `campaign_id`, `fbclid` явно + парсит из `utm_content` (шаблон `{{ad.id}}`) и из `fbclid`.
-3. **Lead Form (нативные лидформы Meta)** — добавим в `meta-structure-sync` функционал-побратим (отдельная задача, опционально на этом шаге заглушка).
+### 1. Сервер: расширить `meta-creative-refresh`
 
-В UTM-шаблоне кабинета (`ad_cabinets.utm_template`) проставим дефолт:  
-`utm_source=meta&utm_medium={{placement}}&utm_campaign={{campaign.id}}&utm_content={{ad.id}}&utm_term={{adset.id}}`  
-и подскажем это в UI настроек кабинета.
+- Запрашивать у Meta video поля: `source, picture, thumbnails{uri,width,height,is_preferred,scale}, format{width,height,picture}`.
+- `format` возвращает массив форматов с превью разных ориентаций — выбираем тот, у которого `width/height ≈ 9/16` (или максимальный по площади среди вертикальных).
+- Если ни один thumbnail/format не даёт ≥ 720px по высоте — fallback: захватить кадр из видео **на сервере** через ffmpeg (Edge Functions поддерживают через WASM-обёртку) ИЛИ переложить захват на клиент (см. шаг 2 — дешевле и надёжнее).
+- Сохранять лучший URL в `meta_creatives.thumbnail_url` + новое поле `poster_url` (если хотим хранить отдельно высококачественный постер, не теряя оригинал Meta).
 
-## 2. Агрегация «креатив × CRM»
+### 2. Клиент: захватывать постер из самого видео
 
-Создаём view `meta_creative_crm_daily` (materialized refresh nightly + on-demand) с колонками:
+Самый надёжный способ получить чёткий вертикальный постер — взять **первый кадр mp4** прямо в браузере:
 
-```text
-ad_id | date | crm_leads | crm_qualified | crm_sales | crm_revenue | crm_avg_check
-```
+- В `CreativeCard` для видео-креативов с `looksLowRes === true`:
+  1. Через edge-функцию получить свежий `video_url` (уже есть).
+  2. Создать скрытый `<video crossOrigin="anonymous" preload="metadata">`, выставить `currentTime = 0.1`.
+  3. На событие `seeked` нарисовать кадр на `<canvas>` (1080×1920), получить `dataURL` (jpeg, q=0.85).
+  4. Загрузить blob в Supabase Storage (бакет `creative-posters`, путь `{cabinet_id}/{ad_id}.jpg`).
+  5. Сохранить публичный URL в `meta_creatives.poster_url` через RPC/edge-функцию.
+- На последующих рендерах использовать `poster_url` вместо `thumbnail_url` — он отдаётся с CDN Supabase, не протухает.
 
-Где:
-- `crm_leads` — `count(leads)` где `meta_ad_id = ad_id` и `created_at::date = date`
-- `crm_qualified` — лиды, дошедшие до квалифицирующего этапа (`pipeline_stages.is_diagnostic` или дальше)
-- `crm_sales` / `crm_revenue` — из `deals` со `status='paid'`, дата = `paid_at::date`, привязка через `lead → meta_ad_id`
+### 3. Хранилище
 
-Дополнительно — RPC `get_creative_funnel(ad_id, since, until)` возвращает воронку по этапам пайплайна для конкретного креатива (сколько лидов в каждом этапе, конверсии между этапами, среднее время).
+- Создать публичный bucket `creative-posters` (read public, write only через service role / edge).
+- Миграция: добавить колонку `meta_creatives.poster_url text`.
+- Edge-функция `meta-poster-upload`:
+  - Принимает `ad_id` + jpeg-blob.
+  - Проверяет, что юзер имеет доступ к кабинету этого креатива.
+  - Кладёт в Storage, апдейтит `poster_url`.
 
-## 3. Расширение карточки креатива
+### 4. Утилита `bestCreativeImage`
 
-`CreativeCard` — добавить две группы KPI с переключателем:
-- **Meta**: spend, CPM, CTR, CPL(meta)
-- **CRM**: лиды, продажи, выручка, **ROMI** = `(crm_revenue − spend) / spend`, CPL(crm), CPS, средний чек
-
-Цветовая маркировка ROMI (красный <0, серый 0-100%, зелёный >100%).
-
-`CreativeExpanded` — отдельный блок «Сквозная воронка»:
+Обновить приоритет:
 
 ```text
-Показы → Клики → CRM-лиды → Квалифицировано → Запись → Визит → Продажа
-   12k      210        38           22          14       9       6
-              17.6%   18.1%        57.9%      63.6%   64.3%  66.7%
+poster_url → image_url → upscaleMetaThumb(thumbnail_url)
 ```
 
-+ список последних 10 лидов с этого креатива (имя, статус, сумма) — клик ведёт в карточку лида в CRM.
+### 5. UX в карточке
 
-+ сводка снизу: Spend / Revenue / Profit / ROMI / CPL / CPS / Avg check.
+- Пока постер генерится (видео ещё грузится в скрытом теге) — показывать blur-up плейсхолдер из текущего 64×64 (как сейчас), без раздражающего скачка.
+- После готовности — мягкий fade-in нового постера.
+- Кнопка Play и блюр-фон остаются.
 
-## 4. Сортировки и фильтры в `AdsCreativesPanel`
+### 6. Бэкфилл
 
-Добавляем сортировки: `crm_leads`, `crm_sales`, `crm_revenue`, `romi`, `cps`, `avg_check`.  
-Фильтр «Только с CRM-лидами» / «Только прибыльные (ROMI>0)».  
-Тогглы метрик (Meta / CRM / Both) сохраняются в URL.
-
-## 5. Дашборд: топ-креативы по ROMI
-
-В разделе «Аналитика креативов» на дашборде Top-6 пересобираем по `crm_revenue` и подписываем ROMI вместо CPL. Ссылка → `/ads?tab=creatives&sort=romi`.
-
-## 6. Что не делаем сейчас
-
-- Не трогаем структуру `meta_creative_daily` (Meta-side метрики остаются как есть).
-- Не делаем мульти-touch атрибуцию (только last-click / referral).
-- Не подключаем Google Ads креативы — только Meta.
-- Не пишем CAPI-обратную отправку продаж в Meta (это отдельная задача).
+- Одноразовая кнопка в Settings (или авто-batch при первом просмотре карточки) — пройтись по всем `creativeType='video' AND poster_url IS NULL` и сгенерировать постеры. На клиенте через очередь по 3 в параллель, чтобы не положить браузер.
 
 ## Технические детали
 
-**Миграции:**
-- `ALTER TABLE leads ADD COLUMN meta_ad_id text, meta_adset_id text, meta_campaign_id text, click_id text` + индексы.
-- View `meta_creative_crm_daily` (обычный view; если будет тяжело — превратим в materialized).
-- RPC `get_creative_funnel(p_ad_id text, p_since date, p_until date) returns jsonb`.
-- Бэкфилл: `UPDATE leads SET meta_ad_id = utm->>'content' WHERE utm ? 'content' AND utm->>'source' IN ('meta','facebook','instagram')`.
+**Почему клиентский захват кадра, а не серверный ffmpeg:**
+- Edge Functions Deno: ffmpeg только через wasm (медленно, лимит CPU 2с).
+- Видео уже подгружается в плеер при открытии креатива — переиспользуем.
+- Меньше нагрузка на edge, не нужен heavy worker.
 
-**Edge functions:**
-- `greenapi-webhook` — парсить `messageData.extendedTextMessageData.contextInfo` / `referral` от Meta CTWA, заполнять `meta_ad_id` при создании лида.
-- `lead-intake` — добавить в Zod схему `ad_id`, `adset_id`, `campaign_id`, `fbclid`; парсить `fbclid` из URL.
+**CORS:** Meta CDN (`fbcdn.net`) отдаёт видео с `Access-Control-Allow-Origin: *` — `crossOrigin="anonymous"` + `canvas.toDataURL()` будут работать без tainted-canvas. Если для какого-то домена не сработает — фолбэк: грузить mp4 fetch'ем через edge-проксю (`meta-video-proxy`), отдавать с нужными CORS-хедерами.
 
-**Хуки:**
-- `useMetaStructure` — добавить join с `meta_creative_crm_daily`, возвращать объединённую агрегацию `{ meta: {...}, crm: {...} }` по каждому креативу.
-- Новый `useCreativeFunnel(adId, period)` — для блока воронки.
+**Размер постера:** 1080×1920 jpeg q=0.85 ≈ 150–250 КБ. На 200 видео-креативов — ~40 МБ в Storage, копейки.
 
-**Компоненты:**
-- `CreativeCard.tsx` — KPI-toggle и ROMI-бейдж.
-- `CreativeExpanded.tsx` — блок «Сквозная воронка» + таблица последних лидов.
-- `AdsCreativesPanel.tsx` — новые сортировки/фильтры.
-- `src/components/dashboard/CreativesGrid.tsx` (топ-6) — сортировка по ROMI.
-- `SettingsAdCabinet` (или где редактируется кабинет) — подсказка про UTM-шаблон с `{{ad.id}}`.
+**Затрагиваемые файлы:**
+- `supabase/functions/meta-creative-refresh/index.ts` — расширить fields.
+- `supabase/functions/meta-poster-upload/index.ts` — новая функция.
+- `supabase/migrations/...` — `poster_url` + bucket.
+- `src/lib/metaThumb.ts` — учесть `posterUrl`.
+- `src/hooks/useMetaStructure.ts` — пробросить `posterUrl`.
+- `src/components/ads/CreativeCard.tsx` — захват кадра + загрузка.
+- `src/components/dashboard/CreativesGrid.tsx` — то же поле.
+- (опц.) `src/components/ads/CreativeExpanded.tsx` — использовать poster_url для `<video poster=...>`.
+
+## Что **не** делаем
+
+- Не трогаем фото-креативы (там всё ок).
+- Не меняем дизайн карточки кроме fade-in постера.
+- Не меняем формулы ROMI/метрик.
