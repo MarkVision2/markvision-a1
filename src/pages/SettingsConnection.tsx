@@ -32,11 +32,12 @@ const STATE_LABELS: Record<string, { label: string; tone: "success" | "warning" 
 };
 
 const callProxy = async <T = unknown,>(
-  action: "status" | "qr" | "getCode" | "logout",
+  action: "status" | "qr" | "getCode" | "logout" | "settings" | "setWebhook",
   body?: Record<string, unknown>,
+  projectId?: string | null,
 ): Promise<GreenResp<T>> => {
   const { data, error } = await supabase.functions.invoke("greenapi-proxy", {
-    body: { action, ...(body ?? {}) },
+    body: { action, ...(projectId ? { project_id: projectId } : {}), ...(body ?? {}) },
   });
   if (error) throw new Error(error.message);
   return data as GreenResp<T>;
@@ -44,6 +45,8 @@ const callProxy = async <T = unknown,>(
 
 const SettingsConnection = () => {
   const navigate = useNavigate();
+  const { active } = useProjectsStore();
+  const projectId = active?.id ?? null;
   const [state, setState] = useState<string | null>(null);
   const [loadingState, setLoadingState] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
@@ -59,7 +62,7 @@ const SettingsConnection = () => {
   const refreshState = useCallback(async () => {
     setLoadingState(true);
     try {
-      const r = await callProxy<StateData>("status");
+      const r = await callProxy<StateData>("status", undefined, projectId);
       const s = (r.data as StateData)?.stateInstance ?? null;
       setState(s);
     } catch (e) {
@@ -67,7 +70,7 @@ const SettingsConnection = () => {
     } finally {
       setLoadingState(false);
     }
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     refreshState();
@@ -77,7 +80,7 @@ const SettingsConnection = () => {
     setQrLoading(true);
     setQrMsg(null);
     try {
-      const r = await callProxy<QrData>("qr");
+      const r = await callProxy<QrData>("qr", undefined, projectId);
       const d = r.data as QrData;
       if (d?.type === "qrCode" && d.message) {
         setQrImage(`data:image/png;base64,${d.message}`);
@@ -95,7 +98,7 @@ const SettingsConnection = () => {
     } finally {
       setQrLoading(false);
     }
-  }, [refreshState]);
+  }, [refreshState, projectId]);
 
   // Polling every 20s when modal is open
   useEffect(() => {
@@ -123,7 +126,7 @@ const SettingsConnection = () => {
     setCodeLoading(true);
     setCode(null);
     try {
-      const r = await callProxy<CodeData>("getCode", { phoneNumber: digits });
+      const r = await callProxy<CodeData>("getCode", { phoneNumber: digits }, projectId);
       const d = r.data as CodeData;
       if (d?.status && d.code) {
         setCode(d.code);
@@ -141,7 +144,7 @@ const SettingsConnection = () => {
   const handleLogout = async () => {
     setLogoutLoading(true);
     try {
-      await callProxy("logout");
+      await callProxy("logout", undefined, projectId);
       toast.success("Вы вышли из WhatsApp");
       setCode(null);
       await refreshState();
@@ -238,7 +241,7 @@ const SettingsConnection = () => {
         </Card>
 
         {/* Webhook URL */}
-        <WebhookCard />
+        <WebhookCard projectId={projectId} />
 
         {/* Bind WhatsApp instance to a project */}
         <WhatsappProjectBindCard />
@@ -356,7 +359,7 @@ const SettingsConnection = () => {
   );
 };
 
-function WebhookCard() {
+function WebhookCard({ projectId }: { projectId: string | null }) {
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/greenapi-webhook`;
   const [current, setCurrent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -366,7 +369,7 @@ function WebhookCard() {
     setLoading(true);
     try {
       const { data } = await supabase.functions.invoke("greenapi-proxy", {
-        body: { action: "settings" },
+        body: { action: "settings", ...(projectId ? { project_id: projectId } : {}) },
       });
       const s = (data as { data?: { webhookUrl?: string } } | null)?.data;
       setCurrent(s?.webhookUrl ?? "");
@@ -375,7 +378,7 @@ function WebhookCard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     void checkSettings();
@@ -385,7 +388,7 @@ function WebhookCard() {
     setSaving(true);
     try {
       const { data, error } = await supabase.functions.invoke("greenapi-proxy", {
-        body: { action: "setWebhook", webhookUrl: url },
+        body: { action: "setWebhook", webhookUrl: url, ...(projectId ? { project_id: projectId } : {}) },
       });
       const ok = !error && (data as { ok?: boolean } | null)?.ok !== false;
       if (ok) {
@@ -467,6 +470,8 @@ type WaBindRow = {
   id: string;
   project_id: string | null;
   id_instance: string | null;
+  api_token: string | null;
+  api_url: string | null;
   phone: string | null;
   connected: boolean | null;
 };
@@ -475,6 +480,8 @@ export function WhatsappProjectBindCard() {
   const { active, projects } = useProjectsStore();
   const [rows, setRows] = useState<WaBindRow[]>([]);
   const [instance, setInstance] = useState("");
+  const [apiToken, setApiToken] = useState("");
+  const [apiUrl, setApiUrl] = useState("");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -482,7 +489,7 @@ export function WhatsappProjectBindCard() {
     setLoading(true);
     const { data } = await supabase
       .from("whatsapp_config")
-      .select("id, project_id, id_instance, phone, connected");
+      .select("id, project_id, id_instance, api_token, api_url, phone, connected");
     setRows((data ?? []) as WaBindRow[]);
     setLoading(false);
   }, []);
@@ -492,7 +499,9 @@ export function WhatsappProjectBindCard() {
   const currentRow = rows.find((r) => r.project_id === active?.id) ?? null;
   useEffect(() => {
     setInstance(currentRow?.id_instance ?? "");
-  }, [currentRow?.id_instance]);
+    setApiToken(currentRow?.api_token ?? "");
+    setApiUrl(currentRow?.api_url ?? "");
+  }, [currentRow?.id_instance, currentRow?.api_token, currentRow?.api_url]);
 
   const onBind = async () => {
     if (!active?.id) {
@@ -500,8 +509,13 @@ export function WhatsappProjectBindCard() {
       return;
     }
     const idInstance = instance.trim();
+    const token = apiToken.trim();
     if (!/^\d{6,}$/.test(idInstance)) {
       toast.error("idInstance — это число из Green API console");
+      return;
+    }
+    if (!token || token.length < 20) {
+      toast.error("apiTokenInstance обязателен — скопируйте его из Green API console");
       return;
     }
     setSaving(true);
@@ -509,9 +523,13 @@ export function WhatsappProjectBindCard() {
       const { error } = await supabase.rpc("bind_whatsapp_to_project", {
         p_project_id: active.id,
         p_id_instance: idInstance,
+        p_api_token: token,
+        p_api_url: apiUrl.trim() || null,
       });
       if (error) throw error;
-      toast.success(`WhatsApp ${idInstance} привязан к «${active.name}»`);
+      toast.success(`WhatsApp ${idInstance} привязан к «${active.name}»`, {
+        description: "Теперь нажмите «Получить QR-код» или «По номеру», чтобы авторизовать инстанс.",
+      });
       await refresh();
     } catch (e) {
       toast.error("Не удалось привязать", { description: (e as Error).message });
@@ -543,37 +561,59 @@ export function WhatsappProjectBindCard() {
           </div>
         ) : (
           <>
-            <div>
-              <p className="mb-1.5 text-xs font-medium text-muted-foreground">
-                idInstance из Green API (число, видно в Green API console)
-              </p>
-              <div className="flex items-center gap-2">
+            <div className="space-y-3">
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                  idInstance (число из Green API console)
+                </p>
                 <Input
                   value={instance}
                   onChange={(e) => setInstance(e.target.value)}
                   placeholder="например 7107605912"
-                  className="flex-1"
                 />
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                  apiTokenInstance (длинный токен, видно рядом с idInstance)
+                </p>
+                <Input
+                  value={apiToken}
+                  onChange={(e) => setApiToken(e.target.value)}
+                  placeholder="b3e0…"
+                  type="password"
+                />
+              </div>
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                  apiUrl (опционально — если у вашего инстанса другой регион)
+                </p>
+                <Input
+                  value={apiUrl}
+                  onChange={(e) => setApiUrl(e.target.value)}
+                  placeholder="https://api.green-api.com"
+                />
+              </div>
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] text-muted-foreground">
+                  {conflictProject ? (
+                    <span className="text-destructive">
+                      Этот idInstance уже привязан к «{conflictProject}». Перепривязка перенесёт его на «{active?.name}».
+                    </span>
+                  ) : currentRow ? (
+                    <>
+                      Текущая привязка: <code>{currentRow.id_instance ?? "—"}</code>
+                      {currentRow.phone ? `, номер ${currentRow.phone}` : ""}
+                      {currentRow.connected ? " · подключён" : ""}
+                    </>
+                  ) : (
+                    "У этого проекта пока нет привязанного WhatsApp."
+                  )}
+                </div>
                 <Button onClick={onBind} disabled={saving || !active?.id}>
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                   {currentRow?.id_instance ? "Перепривязать" : "Привязать"}
                 </Button>
               </div>
-              {conflictProject ? (
-                <p className="mt-1.5 text-[11px] text-destructive">
-                  Этот idInstance уже привязан к проекту «{conflictProject}». Перепривязка перенесёт его на «{active?.name}».
-                </p>
-              ) : currentRow ? (
-                <p className="mt-1.5 text-[11px] text-muted-foreground">
-                  Текущая привязка: <code>{currentRow.id_instance ?? "—"}</code>
-                  {currentRow.phone ? `, номер ${currentRow.phone}` : ""}
-                  {currentRow.connected ? " · подключён" : ""}
-                </p>
-              ) : (
-                <p className="mt-1.5 text-[11px] text-muted-foreground">
-                  У этого проекта пока нет привязанного WhatsApp.
-                </p>
-              )}
             </div>
 
             {rows.length > 0 && (
