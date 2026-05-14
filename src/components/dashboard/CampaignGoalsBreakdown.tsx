@@ -130,57 +130,81 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-2xl border border-border/60 bg-card/40 backdrop-blur-sm shadow-[0_1px_0_0_hsl(var(--border)/0.4)_inset] transition-all hover:border-border hover:bg-card/60",
-        isInactive && "opacity-70",
+        "group relative overflow-hidden rounded-2xl border border-border/60 bg-gradient-to-b from-card/70 to-card/30 backdrop-blur-sm transition-all hover:border-border/90 hover:shadow-[0_8px_32px_-12px_hsl(var(--background))]",
+        isInactive && "opacity-60",
       )}
     >
+      {/* top accent line */}
+      <span
+        className={cn(
+          "pointer-events-none absolute inset-x-0 top-0 h-px",
+          activeCount > 0
+            ? "bg-gradient-to-r from-transparent via-primary/40 to-transparent"
+            : "bg-gradient-to-r from-transparent via-border to-transparent",
+        )}
+        aria-hidden
+      />
+      {/* corner glow */}
+      {activeCount > 0 && (
+        <span
+          className={cn(
+            "pointer-events-none absolute -left-16 -top-16 h-40 w-40 rounded-full opacity-[0.07] blur-3xl",
+            accent.dot,
+          )}
+          aria-hidden
+        />
+      )}
+
       {/* HEADER */}
-      <div className="relative flex flex-wrap items-center gap-4 px-5 py-4 sm:px-6">
-        <div className="flex min-w-0 flex-1 items-center gap-4">
-          <span className={cn("grid h-12 w-12 shrink-0 place-items-center rounded-xl border", accent.icon)}>
-            <Icon className="h-5 w-5" strokeWidth={1.6} />
+      <div className="relative grid grid-cols-1 items-center gap-x-6 gap-y-4 px-5 py-5 sm:px-6 lg:grid-cols-[minmax(220px,1fr)_auto]">
+        {/* Title block */}
+        <div className="flex min-w-0 items-center gap-3.5">
+          <span
+            className={cn(
+              "grid h-12 w-12 shrink-0 place-items-center rounded-2xl border transition-all",
+              accent.icon,
+              activeCount > 0 && "shadow-[0_4px_24px_-6px] " + accent.ring,
+            )}
+          >
+            <Icon className="h-[22px] w-[22px]" strokeWidth={1.5} />
           </span>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="truncate text-[17px] font-semibold leading-tight tracking-tight text-foreground">
+              <h3 className="truncate text-[16px] font-semibold leading-tight tracking-[-0.01em] text-foreground">
                 {g.label}
               </h3>
-              <span className="rounded-full border border-border/60 bg-secondary/70 px-2 py-0.5 text-[10px] font-bold tabular-nums text-muted-foreground">
+              <span className="inline-flex items-center rounded-full border border-border/50 bg-secondary/40 px-2 py-0.5 text-[10px] font-bold tabular-nums text-muted-foreground">
                 {g.campaigns.length}
               </span>
             </div>
-            <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <div className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
               <span
                 className={cn(
-                  "h-1.5 w-1.5 rounded-full",
-                  activeCount > 0 ? cn(accent.dot, "shadow-[0_0_8px] " + accent.ring) : "bg-muted-foreground/30",
+                  "relative flex h-1.5 w-1.5 items-center justify-center",
                 )}
-              />
-              {activeCount} активных
+              >
+                {activeCount > 0 && (
+                  <span className={cn("absolute inset-0 animate-ping rounded-full opacity-60", accent.dot)} />
+                )}
+                <span
+                  className={cn(
+                    "relative h-1.5 w-1.5 rounded-full",
+                    activeCount > 0 ? accent.dot : "bg-muted-foreground/30",
+                  )}
+                />
+              </span>
+              <span className="tabular-nums">{activeCount}</span>
+              <span>активных</span>
             </div>
           </div>
         </div>
 
-        {/* KPI strip */}
-        <div className="flex flex-wrap items-end gap-x-7 gap-y-2 text-right">
-          <KpiCell
-            label="Расход"
-            amount={spendParts?.amount ?? "—"}
-            unit={spendParts?.unit}
-          />
-          <KpiCell
-            label={successLabelOf(g.successMetric)}
-            amount={fmtNum(successValue)}
-          />
-          <KpiCell
-            label="Цена рез."
-            amount={costParts?.amount ?? "—"}
-            unit={costParts?.unit}
-          />
-          <KpiCell
-            label="CTR"
-            amount={ctr > 0 ? `${ctr.toFixed(2)}%` : "—"}
-          />
+        {/* KPI grid — fixed columns, perfect alignment */}
+        <div className="grid grid-cols-5 gap-x-1 sm:gap-x-3">
+          <KpiCell label="Расход" amount={spendParts?.amount ?? "—"} unit={spendParts?.unit} />
+          <KpiCell label={successLabelOf(g.successMetric)} amount={fmtNum(successValue)} />
+          <KpiCell label="Цена рез." amount={costParts?.amount ?? "—"} unit={costParts?.unit} />
+          <KpiCell label="CTR" amount={ctr > 0 ? `${ctr.toFixed(2)}%` : "—"} />
           <KpiCell
             label="ROMI"
             amount={g.spend > 0 ? `${romi >= 0 ? "+" : ""}${Math.round(romi)}%` : "—"}
@@ -191,16 +215,17 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
 
       {/* CAMPAIGNS */}
       {visible.length > 0 && (
-        <div className="relative border-t border-border/40 bg-background/40 px-3 py-3 sm:px-4">
+        <div className="relative border-t border-border/40 bg-background/30 px-3 pb-3 pt-2.5 sm:px-4">
           <div className="mb-2 flex items-center justify-between px-1.5">
-            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
+            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
+              <span className="h-px w-4 bg-border" />
               Кампании · по расходу
             </div>
             {hasMore && (
               <button
                 type="button"
                 onClick={() => setExpanded((v) => !v)}
-                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground transition hover:bg-secondary/60 hover:text-foreground"
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground transition hover:bg-secondary/60 hover:text-foreground"
               >
                 {expanded ? "Свернуть" : `Ещё ${sorted.length - 3}`}
                 <ChevronDown className={cn("h-3 w-3 transition", expanded && "rotate-180")} />
