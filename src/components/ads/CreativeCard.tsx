@@ -1,21 +1,35 @@
-import { Image as ImageIcon, Layers, MessageCircle, Play, Video } from "lucide-react";
+import { Image as ImageIcon, Layers, MessageCircle, Play, TrendingDown, TrendingUp, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
 
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
+const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 
 interface Props {
   row: MetaCreativeRow;
   isWhatsApp?: boolean;
   onOpen: () => void;
   active?: boolean;
+  /** Какие KPI показывать на карточке: meta-метрики или сквозные CRM. */
+  metricsView?: "meta" | "crm";
 }
 
-export function CreativeCard({ row, isWhatsApp, onOpen, active }: Props) {
+export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "crm" }: Props) {
   const isVideo = row.creativeType === "video";
   const isCarousel = row.creativeType === "carousel";
   const src = row.thumbnailUrl || row.imageUrl;
   const isActive = (row.effectiveStatus ?? "").toUpperCase() === "ACTIVE";
+
+  const showCrm = metricsView === "crm" && (row.crmLeads > 0 || row.crmSales > 0 || row.spend > 0);
+  const romiPositive = row.crmRomi >= 0;
+  const romiClass =
+    row.spend === 0
+      ? "text-muted-foreground"
+      : row.crmRomi >= 100
+        ? "text-success"
+        : row.crmRomi >= 0
+          ? "text-foreground"
+          : "text-destructive";
 
   return (
     <button
@@ -52,8 +66,27 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active }: Props) {
           {isActive ? "Активно" : (row.effectiveStatus ?? "—").toLowerCase()}
         </span>
 
+        {/* ROMI bubble — главный сквозной показатель */}
+        {showCrm && row.spend > 0 && (
+          <span
+            className={cn(
+              "absolute right-2 top-2 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-bold backdrop-blur",
+              row.crmRomi >= 100
+                ? "bg-success/90 text-success-foreground"
+                : row.crmRomi >= 0
+                  ? "bg-background/85 text-foreground"
+                  : "bg-destructive/85 text-destructive-foreground",
+            )}
+            title="ROMI = (Выручка − Расход) / Расход"
+          >
+            {romiPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+            ROMI {row.crmRomi >= 0 ? "+" : ""}
+            {Math.round(row.crmRomi)}%
+          </span>
+        )}
+
         {/* Channel chip */}
-        {isWhatsApp && (
+        {isWhatsApp && !showCrm && (
           <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md bg-success/85 px-1.5 py-0.5 text-[10px] font-bold text-success-foreground backdrop-blur">
             <MessageCircle className="h-3 w-3" /> WhatsApp
           </span>
@@ -65,9 +98,15 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active }: Props) {
           {row.creativeType}
         </span>
 
+        {isWhatsApp && showCrm && (
+          <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-md bg-success/85 px-1.5 py-0.5 text-[10px] font-bold text-success-foreground backdrop-blur">
+            <MessageCircle className="h-3 w-3" /> WA
+          </span>
+        )}
+
         {/* Play overlay */}
         {isVideo && (
-          <span className="absolute inset-0 grid place-items-center">
+          <span className="absolute inset-0 grid place-items-center pointer-events-none">
             <span className="grid h-12 w-12 place-items-center rounded-full bg-background/70 backdrop-blur transition group-hover:scale-110">
               <Play className="h-5 w-5 fill-foreground text-foreground" />
             </span>
@@ -80,26 +119,54 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active }: Props) {
         <div className="line-clamp-2 min-h-[2.4rem] text-xs font-semibold leading-snug" title={row.name}>
           {row.name || "Без названия"}
         </div>
-        <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-          <div className="rounded-md bg-secondary/30 px-2 py-1">
-            <div className="text-[9px] uppercase tracking-wider text-muted-foreground">CTR</div>
-            <div className="font-bold tabular-nums">{row.ctr > 0 ? `${row.ctr.toFixed(2)}%` : "—"}</div>
-          </div>
-          <div className="rounded-md bg-secondary/30 px-2 py-1">
-            <div className="text-[9px] uppercase tracking-wider text-muted-foreground">CPL</div>
-            <div className="font-bold tabular-nums text-success">{row.cpl > 0 ? fmtTenge(row.cpl) : "—"}</div>
-          </div>
-          <div className="rounded-md bg-secondary/30 px-2 py-1">
-            <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Расход</div>
-            <div className="font-bold tabular-nums">{row.spend > 0 ? fmtTenge(row.spend) : "—"}</div>
-          </div>
-          <div className="rounded-md bg-secondary/30 px-2 py-1">
-            <div className="text-[9px] uppercase tracking-wider text-muted-foreground">
-              {isWhatsApp ? "Сообщ." : "Заявки"}
+
+        {showCrm ? (
+          // Сквозные CRM-метрики: лид → продажа → деньги
+          <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+            <div className="rounded-md bg-secondary/30 px-2 py-1">
+              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Лидов CRM</div>
+              <div className="font-bold tabular-nums">{fmtNum(row.crmLeads)}</div>
             </div>
-            <div className="font-bold tabular-nums">{Math.round(isWhatsApp ? row.messages : row.leads).toLocaleString("ru-RU")}</div>
+            <div className="rounded-md bg-secondary/30 px-2 py-1">
+              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Продаж</div>
+              <div className="font-bold tabular-nums text-success">{fmtNum(row.crmSales)}</div>
+            </div>
+            <div className="rounded-md bg-secondary/30 px-2 py-1">
+              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Расход</div>
+              <div className="font-bold tabular-nums">{row.spend > 0 ? fmtTenge(row.spend) : "—"}</div>
+            </div>
+            <div className="rounded-md bg-secondary/30 px-2 py-1">
+              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Выручка</div>
+              <div className={cn("font-bold tabular-nums", romiClass)}>
+                {row.crmRevenue > 0 ? fmtTenge(row.crmRevenue) : "—"}
+              </div>
+            </div>
           </div>
-        </div>
+        ) : (
+          // Чистые Meta-метрики
+          <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+            <div className="rounded-md bg-secondary/30 px-2 py-1">
+              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">CTR</div>
+              <div className="font-bold tabular-nums">{row.ctr > 0 ? `${row.ctr.toFixed(2)}%` : "—"}</div>
+            </div>
+            <div className="rounded-md bg-secondary/30 px-2 py-1">
+              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">CPL</div>
+              <div className="font-bold tabular-nums text-success">{row.cpl > 0 ? fmtTenge(row.cpl) : "—"}</div>
+            </div>
+            <div className="rounded-md bg-secondary/30 px-2 py-1">
+              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Расход</div>
+              <div className="font-bold tabular-nums">{row.spend > 0 ? fmtTenge(row.spend) : "—"}</div>
+            </div>
+            <div className="rounded-md bg-secondary/30 px-2 py-1">
+              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">
+                {isWhatsApp ? "Сообщ." : "Заявки"}
+              </div>
+              <div className="font-bold tabular-nums">
+                {fmtNum(isWhatsApp ? row.messages : row.leads)}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </button>
   );
