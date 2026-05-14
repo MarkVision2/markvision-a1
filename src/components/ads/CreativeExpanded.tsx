@@ -6,6 +6,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
 import { useCreativeFunnel } from "@/hooks/useCreativeFunnel";
+import { bestCreativeImage } from "@/lib/metaThumb";
 
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
@@ -21,9 +22,9 @@ interface Props {
 
 function MetricBox({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (
-    <div className="rounded-lg border border-border/60 bg-card/40 p-3">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className={cn("mt-1 text-lg font-bold tabular-nums", accent)}>{value}</div>
+    <div className="rounded-md border border-border/60 bg-card/40 px-2 py-1.5">
+      <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground leading-none">{label}</div>
+      <div className={cn("mt-1 text-sm font-bold tabular-nums leading-none", accent)}>{value}</div>
     </div>
   );
 }
@@ -65,13 +66,13 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
   };
 
   const romiClass = row.romi >= 0 ? "text-success" : "text-destructive";
-  const poster = row.thumbnailUrl || row.imageUrl || undefined;
+  const poster = bestCreativeImage({ thumbnailUrl: row.thumbnailUrl, imageUrl: row.imageUrl, size: 720 }) || undefined;
 
   return (
     <div className="col-span-full overflow-hidden rounded-2xl border border-primary/40 bg-card/80 shadow-xl ring-1 ring-primary/20 animate-fade-in-up">
-      <div className="grid gap-0 lg:grid-cols-[minmax(280px,420px)_1fr]">
+      <div className="grid gap-0 lg:grid-cols-[minmax(220px,300px)_1fr]">
         {/* Media */}
-        <div className="relative aspect-[9/16] w-full bg-black lg:aspect-auto">
+        <div className="relative aspect-[9/16] max-h-[420px] w-full bg-black lg:aspect-auto lg:max-h-[560px]">
           {isVideo && videoUrl && !videoError ? (
             <video
               ref={videoRef}
@@ -104,7 +105,7 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
         </div>
 
         {/* Details */}
-        <div className="space-y-4 p-5">
+        <div className="space-y-3 p-4">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1 space-y-1">
               <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -135,28 +136,28 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
           </div>
 
           {(row.headline || row.primaryText) && (
-            <div className="space-y-2 rounded-lg border border-border/40 bg-secondary/20 p-3">
-              {row.headline && (
-                <div className="text-sm font-semibold">{row.headline}</div>
-              )}
+            <details className="rounded-md border border-border/40 bg-secondary/20 px-3 py-2 text-xs">
+              <summary className="cursor-pointer font-semibold text-foreground/90">
+                {row.headline || "Текст объявления"}
+              </summary>
               {row.primaryText && (
-                <div className="whitespace-pre-line text-xs leading-relaxed text-muted-foreground">{row.primaryText}</div>
+                <div className="mt-2 whitespace-pre-line text-[11px] leading-relaxed text-muted-foreground">{row.primaryText}</div>
               )}
               {row.cta && (
-                <div className="inline-flex rounded-md bg-primary/15 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
+                <div className="mt-2 inline-flex rounded-md bg-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
                   {row.cta}
                 </div>
               )}
-            </div>
+            </details>
           )}
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-5">
             <MetricBox label="Расход" value={row.spend > 0 ? fmtTenge(row.spend) : "—"} />
             <MetricBox label="Показы" value={fmtNum(row.impressions)} />
             <MetricBox label="Клики" value={fmtNum(row.clicks)} />
             <MetricBox label="CTR" value={row.ctr > 0 ? `${row.ctr.toFixed(2)}%` : "—"} />
-            <MetricBox label={isWhatsApp ? "Сообщения" : "Заявки"} value={fmtNum(isWhatsApp ? row.messages : row.leads)} accent="text-success" />
-            <MetricBox label="Цена результата" value={row.cpl > 0 ? fmtTenge(row.cpl) : "—"} />
+            <MetricBox label={isWhatsApp ? "Сообщ." : "Заявки"} value={fmtNum(isWhatsApp ? row.messages : row.leads)} accent="text-success" />
+            <MetricBox label="Цена рез." value={row.cpl > 0 ? fmtTenge(row.cpl) : "—"} />
             <MetricBox label="CPM" value={row.cpm > 0 ? fmtTenge(row.cpm) : "—"} />
             <MetricBox label="CPC" value={row.cpc > 0 ? fmtTenge(row.cpc) : "—"} />
             <MetricBox
@@ -167,23 +168,23 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
           </div>
 
           {/* === Сквозная аналитика CRM === */}
-          <div className="space-y-3 rounded-xl border border-primary/30 bg-primary/5 p-3">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-primary">
-              <TrendingUp className="h-3.5 w-3.5" />
+          <div className="space-y-2 rounded-xl border border-primary/30 bg-primary/5 p-2.5">
+            <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-primary">
+              <TrendingUp className="h-3 w-3" />
               Сквозная аналитика
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <MetricBox label="Лидов CRM" value={fmtNum(row.crmLeads)} />
-              <MetricBox label="Продаж" value={fmtNum(row.crmSales)} accent="text-success" />
-              <MetricBox label="Выручка CRM" value={fmtTenge(row.crmRevenue)} accent="text-success" />
+            <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-4 lg:grid-cols-8">
+              <MetricBox label="Лиды" value={fmtNum(row.crmLeads)} />
+              <MetricBox label="Продажи" value={fmtNum(row.crmSales)} accent="text-success" />
+              <MetricBox label="Выручка" value={fmtTenge(row.crmRevenue)} accent="text-success" />
               <MetricBox
-                label="ROMI CRM"
+                label="ROMI"
                 value={row.spend > 0 ? `${row.crmRomi >= 0 ? "+" : ""}${Math.round(row.crmRomi)}%` : "—"}
                 accent={row.spend > 0 ? (row.crmRomi >= 0 ? "text-success" : "text-destructive") : undefined}
               />
-              <MetricBox label="CPL CRM" value={row.crmCpl > 0 ? fmtTenge(row.crmCpl) : "—"} />
-              <MetricBox label="CPS (цена продажи)" value={row.crmCps > 0 ? fmtTenge(row.crmCps) : "—"} />
-              <MetricBox label="Средний чек" value={row.crmAvgCheck > 0 ? fmtTenge(row.crmAvgCheck) : "—"} />
+              <MetricBox label="CPL" value={row.crmCpl > 0 ? fmtTenge(row.crmCpl) : "—"} />
+              <MetricBox label="CPS" value={row.crmCps > 0 ? fmtTenge(row.crmCps) : "—"} />
+              <MetricBox label="Ср. чек" value={row.crmAvgCheck > 0 ? fmtTenge(row.crmAvgCheck) : "—"} />
               <MetricBox
                 label="Прибыль"
                 value={row.spend > 0 ? fmtTenge(row.crmProfit) : "—"}
@@ -191,76 +192,71 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
               />
             </div>
 
-            {/* Воронка по этапам пайплайна */}
-            {funnel && funnel.stages.length > 0 && funnel.total_leads > 0 && (
-              <div className="space-y-1.5 pt-1">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Воронка по этапам
-                </div>
-                {funnel.stages.map((s) => {
-                  const pct = funnel.total_leads > 0 ? (s.count / funnel.total_leads) * 100 : 0;
-                  return (
-                    <div key={s.stage_id} className="flex items-center gap-2 text-xs">
-                      <div className="w-32 shrink-0 truncate text-muted-foreground" title={s.title}>
-                        {s.title}
-                      </div>
-                      <div className="relative h-5 flex-1 overflow-hidden rounded bg-secondary/40">
-                        <div
-                          className={cn(
-                            "h-full transition-all",
-                            s.is_terminal && s.key === "paid" ? "bg-success" : s.is_terminal ? "bg-destructive/60" : "bg-primary/60",
-                          )}
-                          style={{ width: `${Math.max(pct, s.count > 0 ? 4 : 0)}%` }}
-                        />
-                        <div className="absolute inset-0 flex items-center justify-end px-2 text-[10px] font-bold tabular-nums">
-                          {s.count} · {pct.toFixed(0)}%
+            {/* Воронка + последние лиды бок о бок */}
+            {funnel && funnel.total_leads > 0 && (
+              <div className="grid gap-2 lg:grid-cols-2">
+                {funnel.stages.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">Воронка</div>
+                    {funnel.stages.filter((s) => s.count > 0 || s.is_terminal).slice(0, 6).map((s) => {
+                      const pct = funnel.total_leads > 0 ? (s.count / funnel.total_leads) * 100 : 0;
+                      return (
+                        <div key={s.stage_id} className="flex items-center gap-1.5 text-[11px]">
+                          <div className="w-20 shrink-0 truncate text-muted-foreground" title={s.title}>{s.title}</div>
+                          <div className="relative h-3.5 flex-1 overflow-hidden rounded bg-secondary/40">
+                            <div
+                              className={cn(
+                                "h-full",
+                                s.is_terminal && s.key === "paid" ? "bg-success" : s.is_terminal ? "bg-destructive/60" : "bg-primary/60",
+                              )}
+                              style={{ width: `${Math.max(pct, s.count > 0 ? 4 : 0)}%` }}
+                            />
+                            <div className="absolute inset-0 flex items-center justify-end px-1.5 text-[9px] font-bold tabular-nums">
+                              {s.count}·{pct.toFixed(0)}%
+                            </div>
+                          </div>
                         </div>
-                      </div>
+                      );
+                    })}
+                  </div>
+                )}
+                {funnel.recent_leads.length > 0 && (
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-1 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      <Users className="h-2.5 w-2.5" />
+                      Лиды ({funnel.total_leads})
                     </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {/* Последние лиды с этого креатива */}
-            {funnel && funnel.recent_leads.length > 0 && (
-              <div className="space-y-1 pt-1">
-                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  <Users className="h-3 w-3" />
-                  Последние лиды ({funnel.total_leads})
-                </div>
-                <div className="space-y-1">
-                  {funnel.recent_leads.slice(0, 6).map((l) => (
-                    <a
-                      key={l.id}
-                      href={`/crm?lead=${l.id}`}
-                      className="flex items-center justify-between gap-2 rounded-md border border-border/40 bg-card/60 px-2 py-1 text-xs hover:border-primary/40"
-                    >
-                      <span className="min-w-0 flex-1 truncate">
-                        <span className="font-semibold">{l.name}</span>
-                        <span className="ml-2 text-muted-foreground">{l.phone}</span>
-                      </span>
-                      {l.paid ? (
-                        <span className="shrink-0 rounded bg-success/15 px-1.5 py-0.5 text-[10px] font-bold text-success">
-                          Оплата · {fmtTenge(l.amount)}
-                        </span>
-                      ) : (
-                        <span className="shrink-0 text-[10px] text-muted-foreground">
-                          {new Date(l.created_at).toLocaleDateString("ru-RU")}
-                        </span>
-                      )}
-                    </a>
-                  ))}
-                </div>
+                    <div className="space-y-1">
+                      {funnel.recent_leads.slice(0, 4).map((l) => (
+                        <a
+                          key={l.id}
+                          href={`/crm?lead=${l.id}`}
+                          className="flex items-center justify-between gap-2 rounded border border-border/40 bg-card/60 px-1.5 py-1 text-[11px] hover:border-primary/40"
+                        >
+                          <span className="min-w-0 flex-1 truncate">
+                            <span className="font-semibold">{l.name}</span>
+                            <span className="ml-1.5 text-muted-foreground">{l.phone}</span>
+                          </span>
+                          {l.paid ? (
+                            <span className="shrink-0 rounded bg-success/15 px-1.5 py-0.5 text-[9px] font-bold text-success">
+                              {fmtTenge(l.amount)}
+                            </span>
+                          ) : (
+                            <span className="shrink-0 text-[9px] text-muted-foreground">
+                              {new Date(l.created_at).toLocaleDateString("ru-RU")}
+                            </span>
+                          )}
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
             {(!funnel || funnel.total_leads === 0) && (
-              <div className="rounded-md border border-dashed border-border/60 bg-card/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
-                В CRM пока нет лидов с этого креатива.{" "}
-                {isWhatsApp
-                  ? "Для CTWA-кампаний атрибуция придёт автоматически с первым входящим WhatsApp."
-                  : "Проверьте, что в UTM лендинга есть utm_content={{ad.id}} или передаётся ad_id."}
+              <div className="rounded-md border border-dashed border-border/60 bg-card/40 px-2 py-1.5 text-[10px] leading-relaxed text-muted-foreground">
+                В CRM пока нет лидов с этого креатива. Проверьте UTM (utm_content = ad.id или ad.name).
               </div>
             )}
           </div>
