@@ -359,7 +359,7 @@ const SettingsConnection = () => {
   );
 };
 
-function WebhookCard() {
+function WebhookCard({ projectId }: { projectId: string | null }) {
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/greenapi-webhook`;
   const [current, setCurrent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -369,7 +369,7 @@ function WebhookCard() {
     setLoading(true);
     try {
       const { data } = await supabase.functions.invoke("greenapi-proxy", {
-        body: { action: "settings" },
+        body: { action: "settings", ...(projectId ? { project_id: projectId } : {}) },
       });
       const s = (data as { data?: { webhookUrl?: string } } | null)?.data;
       setCurrent(s?.webhookUrl ?? "");
@@ -378,7 +378,7 @@ function WebhookCard() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [projectId]);
 
   useEffect(() => {
     void checkSettings();
@@ -388,7 +388,7 @@ function WebhookCard() {
     setSaving(true);
     try {
       const { data, error } = await supabase.functions.invoke("greenapi-proxy", {
-        body: { action: "setWebhook", webhookUrl: url },
+        body: { action: "setWebhook", webhookUrl: url, ...(projectId ? { project_id: projectId } : {}) },
       });
       const ok = !error && (data as { ok?: boolean } | null)?.ok !== false;
       if (ok) {
