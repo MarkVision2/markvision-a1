@@ -36,9 +36,26 @@ Deno.serve(async (req) => {
     });
   }
 
-  // Always require the cron secret. Fail closed if not configured.
+  // Authorize: either valid cron secret (cron) OR signed-in admin (manual run).
   const provided = req.headers.get('x-automation-key');
-  if (!settings.cron_secret || !provided || provided !== settings.cron_secret) {
+  const cronOk = !!provided && !!settings.cron_secret && provided === settings.cron_secret;
+  let adminOk = false;
+  if (!cronOk) {
+    const authHeader = req.headers.get('Authorization') ?? '';
+    const jwt = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+    if (jwt) {
+      const userClient = createClient(SUPABASE_URL, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        global: { headers: { Authorization: `Bearer ${jwt}` } },
+      });
+      const { data: { user } } = await userClient.auth.getUser();
+      if (user?.id) {
+        const { data: roleRow } = await supabase
+          .from('user_roles').select('role').eq('user_id', user.id).eq('role', 'admin').maybeSingle();
+        adminOk = !!roleRow;
+      }
+    }
+  }
+  if (!cronOk && !adminOk) {
     return new Response(JSON.stringify({ error: 'unauthorized' }), {
       status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
