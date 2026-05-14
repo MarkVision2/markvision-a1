@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { DEFAULT_META_UTM_TEMPLATE } from "@/lib/utmDefaults";
 import type { AdCabinet } from "@/types/ads";
 
 interface AddCabinetDialogProps {
@@ -85,6 +86,7 @@ const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProp
   const [pixelId, setPixelId] = useState("");
   const [pixelEvent, setPixelEvent] = useState("Lead");
   const [websiteUrl, setWebsiteUrl] = useState("");
+  const [utmTemplate, setUtmTemplate] = useState(DEFAULT_META_UTM_TEMPLATE);
 
   // Заметки
   const [brief, setBrief] = useState("");
@@ -97,6 +99,7 @@ const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProp
     setName(""); setType("Личный"); setDailyBudget("50000"); setCity("");
     setAdAccountId(""); setPageId(""); setPageName(""); setInstagramId("");
     setTelegramGroupId(""); setWhatsappNumber(""); setPixelId(""); setPixelEvent("Lead"); setWebsiteUrl("");
+    setUtmTemplate(DEFAULT_META_UTM_TEMPLATE);
     setBrief(""); setAccessToken(""); setChecks(null); setValidating(false);
   };
 
@@ -157,6 +160,7 @@ const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProp
       pixelId: pixelId || undefined,
       pixelEvent: pixelEvent || "Lead",
       websiteUrl: websiteUrl || undefined,
+      utmTemplate: utmTemplate.trim() || DEFAULT_META_UTM_TEMPLATE,
       brief: brief || undefined,
       accessToken: accessToken || undefined,
     };
@@ -423,6 +427,25 @@ const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProp
                       placeholder="https://"
                       className={inputCls}
                     />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <FieldLabel icon={Link2}>UTM-шаблон (Meta URL parameters)</FieldLabel>
+                    <Textarea
+                      value={utmTemplate}
+                      onChange={(e) => setUtmTemplate(e.target.value)}
+                      rows={2}
+                      placeholder={DEFAULT_META_UTM_TEMPLATE}
+                      className="rounded-xl bg-background/60 font-mono text-xs"
+                    />
+                    <p className="flex items-start gap-1.5 text-[11px] leading-snug text-muted-foreground">
+                      <Info className="mt-0.5 h-3 w-3 shrink-0" />
+                      <span>
+                        Подставится в поле <b>URL parameters</b> каждой кампании Meta.
+                        <b className="text-foreground"> utm_content=&#123;&#123;ad.id&#125;&#125;</b> обязателен —
+                        по нему сквозная аналитика связывает лиды с конкретным креативом.
+                      </span>
+                    </p>
                   </div>
                 </div>
               </section>
