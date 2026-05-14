@@ -1,7 +1,10 @@
 import { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   ChevronLeft,
   ChevronRight,
+  Film,
+  LayoutGrid,
   Megaphone,
   Plus,
   RefreshCw,
@@ -17,6 +20,11 @@ import { supabase } from "@/integrations/supabase/client";
 import AddCabinetDialog from "@/components/ads/AddCabinetDialog";
 import CreateCampaignDialog from "@/components/ads/CreateCampaignDialog";
 import CabinetRow from "@/components/ads/CabinetRow";
+import { AdsCreativesPanel } from "@/components/ads/AdsCreativesPanel";
+import { CampaignGoalsBreakdown } from "@/components/dashboard/CampaignGoalsBreakdown";
+import { useMetaCampaigns } from "@/hooks/useMetaStructure";
+import { getPresetRange } from "@/hooks/useDashboardData";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
