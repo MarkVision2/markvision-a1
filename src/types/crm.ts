@@ -94,6 +94,10 @@ export type Lead = {
   firstResponseAt?: string;  // when manager first replied
   channel?: LeadChannel;
   cabinetId?: string | null;
+  // Meta attribution — set by trigger from utm_content / utm_campaign
+  metaAdId?: string | null;
+  metaAdsetId?: string | null;
+  metaCampaignId?: string | null;
   // Card extensions (rich lead workspace)
   service?: string;
   city?: string;
