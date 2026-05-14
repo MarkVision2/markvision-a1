@@ -1,12 +1,15 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Eye, Image as ImageIcon, Layers, MousePointerClick, Play, TrendingDown, TrendingUp, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { bestCreativeImage } from "@/lib/metaThumb";
+import { enqueuePosterCapture } from "@/lib/videoPosterCapture";
+import { supabase } from "@/integrations/supabase/client";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
+const requestedDashboardPosters = new Set<string>();
 
 type SortKey = "crmRevenue" | "crmRomi" | "spend" | "ctr" | "cpl" | "leads" | "romi";
 
@@ -31,18 +34,68 @@ interface Props {
 function CreativePreview({ row }: { row: MetaCreativeRow }) {
   const isVideo = row.creativeType === "video";
   const isCarousel = row.creativeType === "carousel";
-  const src = bestCreativeImage({ posterUrl: row.posterUrl, thumbnailUrl: row.thumbnailUrl, imageUrl: row.imageUrl, size: 480 });
+  const [capturedPoster, setCapturedPoster] = useState<string | null>(null);
+  const [refreshedThumb, setRefreshedThumb] = useState<string | null>(null);
+  const src = bestCreativeImage({
+    posterUrl: capturedPoster ?? row.posterUrl,
+    thumbnailUrl: refreshedThumb ?? row.thumbnailUrl,
+    imageUrl: row.imageUrl,
+    size: 960,
+  });
+
+  useEffect(() => {
+    if (!isVideo || !row.adId || row.posterUrl || capturedPoster) return;
+    if (requestedDashboardPosters.has(row.adId)) return;
+    requestedDashboardPosters.add(row.adId);
+
+    let cancelled = false;
+    void (async () => {
+      let videoUrl = row.videoUrl;
+      if (!videoUrl) {
+        const { data } = await supabase.functions.invoke<{ ok: boolean; video_url?: string; thumbnail_url?: string }>(
+          "meta-creative-refresh",
+          { body: { ad_id: row.adId } },
+        );
+        if (!cancelled && data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
+        videoUrl = data?.ok ? data.video_url ?? null : null;
+      }
+      if (!videoUrl || cancelled) return;
+      const poster = await enqueuePosterCapture(row.adId, videoUrl);
+      if (poster && !cancelled) setCapturedPoster(poster);
+    })().catch(() => {
+      requestedDashboardPosters.delete(row.adId);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [capturedPoster, isVideo, row.adId, row.posterUrl, row.videoUrl]);
 
   return (
-    <div className="relative aspect-square w-full overflow-hidden rounded-xl bg-secondary/30">
+    <div className="relative aspect-[4/5] w-full overflow-hidden rounded-xl bg-secondary/30">
       {src ? (
-        <img
-          src={src}
-          alt={row.name}
-          className="h-full w-full object-cover"
-          loading="lazy"
-          referrerPolicy="no-referrer"
-        />
+        <>
+          {isVideo && (
+            <img
+              src={src}
+              alt=""
+              aria-hidden
+              className="absolute inset-0 h-full w-full scale-105 object-cover opacity-35 blur-2xl"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+            />
+          )}
+          <img
+            src={src}
+            alt={row.name}
+            className={cn(
+              "relative h-full w-full transition duration-300 group-hover:scale-[1.015]",
+              isVideo ? "object-contain" : "object-cover",
+            )}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
+        </>
       ) : (
         <div className="flex h-full w-full items-center justify-center">
           <ImageIcon className="h-8 w-8 text-muted-foreground/40" />
@@ -54,8 +107,8 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
       </span>
       {isVideo && (
         <span className="absolute inset-0 grid place-items-center">
-          <span className="grid h-12 w-12 place-items-center rounded-full bg-background/60 backdrop-blur">
-            <Play className="h-5 w-5 text-foreground" />
+          <span className="grid h-10 w-10 place-items-center rounded-full border border-border/40 bg-background/45 backdrop-blur-sm transition group-hover:scale-105 group-hover:bg-background/65">
+            <Play className="h-4 w-4 text-foreground" />
           </span>
         </span>
       )}
