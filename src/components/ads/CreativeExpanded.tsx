@@ -39,7 +39,7 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
 
   useEffect(() => { setVideoUrl(row.videoUrl); setVideoError(false); }, [row.id, row.videoUrl]);
 
-  const refreshVideo = async () => {
+  const refreshVideo = async (silent = false) => {
     setRefreshing(true);
     try {
       const { data, error } = await supabase.functions.invoke("meta-creative-refresh", {
@@ -50,13 +50,34 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
       if (!url) throw new Error("Не удалось получить ссылку на видео");
       setVideoUrl(url);
       setVideoError(false);
-      toast.success("Превью видео обновлено");
-      // Force reload
+      if (!silent) toast.success("Превью видео обновлено");
       requestAnimationFrame(() => videoRef.current?.load());
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Не удалось обновить превью");
+      if (!silent) toast.error(e instanceof Error ? e.message : "Не удалось обновить превью");
     } finally {
       setRefreshing(false);
+    }
+  };
+
+  // Авто-резолв ссылки при открытии видео-креатива (Meta не отдаёт source при синке)
+  const triedAutoRef = useRef(false);
+  useEffect(() => {
+    triedAutoRef.current = false;
+  }, [row.id]);
+  useEffect(() => {
+    if (isVideo && !videoUrl && !triedAutoRef.current && !refreshing) {
+      triedAutoRef.current = true;
+      void refreshVideo(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isVideo, videoUrl, row.adId]);
+
+  const handleVideoError = () => {
+    setVideoError(true);
+    // Подпись fbcdn могла истечь — пробуем один раз автоматически перезапросить
+    if (!triedAutoRef.current) {
+      triedAutoRef.current = true;
+      void refreshVideo(true);
     }
   };
 
