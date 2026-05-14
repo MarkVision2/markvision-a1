@@ -279,10 +279,11 @@ Deno.serve(async (req) => {
   }
 
   const type = body.typeWebhook as string | undefined;
-  // Resolve project from the Green API instance id. The same webhook URL
-  // can serve multiple instances — one per project — so we route based
-  // on which instance actually pinged us.
-  const projectId = await projectFromInstance(instanceData?.idInstance);
+  // Resolve project + ads_only flag from the Green API instance id. The same
+  // webhook URL can serve multiple instances — one per project — so we route
+  // based on which instance actually pinged us.
+  const cfg = await configFromInstance(instanceData?.idInstance);
+  const projectId = cfg.project_id;
 
   try {
     const idMessage = (body.idMessage as string | undefined) ?? null;
@@ -295,11 +296,32 @@ Deno.serve(async (req) => {
       const phone = chatIdToPhone(senderData?.chatId ?? senderData?.sender);
       const name = senderData?.senderName?.trim() || "";
       if (!phone) return json({ ok: true, skipped: "no phone" });
-      const leadId = await findOrCreateLead(phone, name, projectId);
-      if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
+
+      const fromAd = isFromMetaAd(body);
+
+      // Always append to an existing lead — even non-ad chats are part of
+      // the conversation history once the lead is in CRM.
+      let leadId = await findExistingLead(phone, projectId);
+
+      if (!leadId) {
+        // No existing lead. In ads_only mode, create a lead only when the
+        // message originated from a Meta Click-to-WhatsApp ad. Otherwise
+        // treat it as personal chatter and skip CRM entirely.
+        if (cfg.ads_only && !fromAd) {
+          return json({ ok: true, skipped: "not from ad", projectId });
+        }
+        leadId = await createLead(
+          phone,
+          name,
+          projectId,
+          fromAd ? "whatsapp_ad" : "whatsapp",
+        );
+        if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
+      }
+
       const text = extractText(messageData);
       await insertCommunication({ leadId, direction: "in", text, externalId: idMessage });
-      return json({ ok: true, leadId, projectId });
+      return json({ ok: true, leadId, projectId, fromAd });
     }
 
     if (
@@ -310,8 +332,11 @@ Deno.serve(async (req) => {
       const messageData = body.messageData as Record<string, unknown> | undefined;
       const phone = chatIdToPhone(senderData?.chatId);
       if (!phone) return json({ ok: true, skipped: "no phone" });
-      const leadId = await findOrCreateLead(phone, "", projectId);
-      if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
+      // Outgoing messages never create new leads — only append to existing
+      // CRM contacts. Otherwise replying from the phone to anyone would
+      // pollute the CRM with personal contacts.
+      const leadId = await findExistingLead(phone, projectId);
+      if (!leadId) return json({ ok: true, skipped: "no matching lead" });
       const text = extractText(messageData);
       await insertCommunication({
         leadId,
