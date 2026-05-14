@@ -27,15 +27,33 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
 
   // Локальный override постера, если мы только что захватили его из видео
   const [capturedPoster, setCapturedPoster] = useState<string | null>(null);
+  const [refreshedThumb, setRefreshedThumb] = useState<string | null>(null);
+  const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(row.videoUrl);
   const src = bestCreativeImage({
     posterUrl: capturedPoster ?? row.posterUrl,
-    thumbnailUrl: row.thumbnailUrl,
+    thumbnailUrl: refreshedThumb ?? row.thumbnailUrl,
     imageUrl: row.imageUrl,
-    size: 600,
+    size: 1080,
   });
   const isActive = (row.effectiveStatus ?? "").toUpperCase() === "ACTIVE";
 
-  // Для видео без HQ-постера: 1) гарантируем свежий video_url, 2) захватываем кадр
+  const refreshVideoPreview = async () => {
+    if (!row.adId) return;
+    const { data } = await supabase.functions.invoke<{ ok: boolean; video_url?: string; thumbnail_url?: string }>(
+      "meta-creative-refresh",
+      { body: { ad_id: row.adId } },
+    );
+    if (data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
+    if (data?.ok && data.video_url) setPreviewVideoUrl(data.video_url);
+  };
+
+  useEffect(() => {
+    setPreviewVideoUrl(row.videoUrl);
+    setRefreshedThumb(null);
+    setCapturedPoster(null);
+  }, [row.id, row.videoUrl]);
+
+  // Для видео без HQ-постера: 1) гарантируем свежие video_url/thumbnail_url, 2) захватываем кадр
   const needsPoster = isVideo && !row.posterUrl;
   useEffect(() => {
     if (!needsPoster || !row.adId) return;
@@ -46,12 +64,14 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
     void (async () => {
       let videoUrl = row.videoUrl;
       if (!videoUrl) {
-        const { data } = await supabase.functions.invoke<{ ok: boolean; video_url?: string }>(
+        const { data } = await supabase.functions.invoke<{ ok: boolean; video_url?: string; thumbnail_url?: string }>(
           "meta-creative-refresh",
           { body: { ad_id: row.adId } },
         );
+        if (!cancelled && data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
         videoUrl = data?.ok ? data.video_url ?? null : null;
       }
+      if (!cancelled && videoUrl) setPreviewVideoUrl(videoUrl);
       if (!videoUrl || cancelled) return;
       const poster = await enqueuePosterCapture(row.adId, videoUrl);
       if (poster && !cancelled) setCapturedPoster(poster);
@@ -85,27 +105,34 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
         active ? "border-primary/60 ring-1 ring-primary/40" : "border-border/60",
       )}
     >
-      {/* Poster 9:16 — full creative visible (no crop) */}
-      <div className="relative aspect-[9/16] w-full overflow-hidden bg-black">
-        {src ? (
-          <>
-            {/* blurred backdrop fills empty space */}
-            <img
-              src={src}
-              alt=""
-              aria-hidden
-              className="absolute inset-0 h-full w-full scale-110 object-cover opacity-40 blur-2xl"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-            />
-            <img
-              src={src}
-              alt={row.name}
-              className="relative h-full w-full object-contain transition group-hover:scale-[1.02]"
-              loading="lazy"
-              referrerPolicy="no-referrer"
-            />
-          </>
+      {/* Poster 9:16 — без blur-слоёв: видео/кадр должны быть читаемыми */}
+      <div className="relative aspect-[9/16] w-full overflow-hidden bg-background">
+        {isVideo && previewVideoUrl ? (
+          <video
+            src={previewVideoUrl}
+            poster={src ?? undefined}
+            muted
+            playsInline
+            autoPlay
+            loop
+            preload="metadata"
+            className="h-full w-full bg-background object-cover transition group-hover:scale-[1.01]"
+            onError={() => {
+              setPreviewVideoUrl(null);
+              void refreshVideoPreview();
+            }}
+          />
+        ) : src ? (
+          <img
+            src={src}
+            alt={row.name}
+            className={cn(
+              "h-full w-full transition group-hover:scale-[1.01]",
+              isVideo ? "object-cover" : "object-contain",
+            )}
+            loading="lazy"
+            referrerPolicy="no-referrer"
+          />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <ImageIcon className="h-8 w-8 text-muted-foreground/40" />
