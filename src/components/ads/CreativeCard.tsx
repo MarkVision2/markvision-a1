@@ -1,8 +1,9 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Image as ImageIcon, Layers, MessageCircle, Play, TrendingDown, TrendingUp, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { bestCreativeImage } from "@/lib/metaThumb";
 import { supabase } from "@/integrations/supabase/client";
+import { enqueuePosterCapture } from "@/lib/videoPosterCapture";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
 
 // Глобальный набор уже запрошенных ad_id, чтобы не спамить рефреш постеров
@@ -23,19 +24,42 @@ interface Props {
 export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "crm" }: Props) {
   const isVideo = row.creativeType === "video";
   const isCarousel = row.creativeType === "carousel";
-  const src = bestCreativeImage({ thumbnailUrl: row.thumbnailUrl, imageUrl: row.imageUrl, size: 600 });
+
+  // Локальный override постера, если мы только что захватили его из видео
+  const [capturedPoster, setCapturedPoster] = useState<string | null>(null);
+  const src = bestCreativeImage({
+    posterUrl: capturedPoster ?? row.posterUrl,
+    thumbnailUrl: row.thumbnailUrl,
+    imageUrl: row.imageUrl,
+    size: 600,
+  });
   const isActive = (row.effectiveStatus ?? "").toUpperCase() === "ACTIVE";
 
-  // Авто-рефреш низкокачественного постера 64x64 для видео
-  const looksLowRes = !!src && /p64x64/.test(src);
+  // Для видео без HQ-постера: 1) гарантируем свежий video_url, 2) захватываем кадр
+  const needsPoster = isVideo && !row.posterUrl;
   useEffect(() => {
-    if (!isVideo || !looksLowRes || !row.adId) return;
+    if (!needsPoster || !row.adId) return;
     if (refreshedPosters.has(row.adId)) return;
     refreshedPosters.add(row.adId);
-    supabase.functions.invoke("meta-creative-refresh", { body: { ad_id: row.adId } }).catch(() => {
-      refreshedPosters.delete(row.adId);
-    });
-  }, [isVideo, looksLowRes, row.adId]);
+
+    let cancelled = false;
+    void (async () => {
+      let videoUrl = row.videoUrl;
+      if (!videoUrl) {
+        const { data } = await supabase.functions.invoke<{ ok: boolean; video_url?: string }>(
+          "meta-creative-refresh",
+          { body: { ad_id: row.adId } },
+        );
+        videoUrl = data?.ok ? data.video_url ?? null : null;
+      }
+      if (!videoUrl || cancelled) return;
+      const poster = await enqueuePosterCapture(row.adId, videoUrl);
+      if (poster && !cancelled) setCapturedPoster(poster);
+    })().catch(() => { refreshedPosters.delete(row.adId); });
+
+    return () => { cancelled = true; };
+  }, [needsPoster, row.adId, row.videoUrl]);
+
 
   const showCrm = metricsView === "crm";
   const metaLeadCount = isWhatsApp ? (row.messages || row.leads) : row.leads;
