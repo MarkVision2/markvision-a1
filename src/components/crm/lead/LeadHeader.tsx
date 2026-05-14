@@ -215,6 +215,9 @@ export function LeadHeader({
         </div>
       </div>
 
+      {/* Откуда пришёл лид (конкретный креатив Meta) */}
+      <LeadAttribution lead={lead} />
+
       {/* Атрибуция и UTM */}
       <UtmStrip lead={lead} />
     </div>
