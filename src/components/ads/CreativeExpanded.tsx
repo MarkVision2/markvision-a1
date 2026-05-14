@@ -100,6 +100,7 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
               src={videoUrl}
               poster={poster}
               controls
+              onErrorCapture={handleVideoError}
               playsInline
               preload="none"
               className="h-full w-full object-contain"
