@@ -192,6 +192,44 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
               />
             </div>
 
+            <details className="rounded-md border border-border/40 bg-card/40 text-[11px]">
+              <summary className="cursor-pointer px-3 py-2 font-semibold text-foreground/90 select-none">
+                Как считается ROMI
+              </summary>
+              <div className="space-y-1 border-t border-border/30 px-3 py-2 text-muted-foreground">
+                <div className="flex justify-between gap-2">
+                  <span>Формула</span>
+                  <span className="font-mono text-foreground">(Выручка − Расход) / Расход × 100%</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span>Расход</span>
+                  <span className="tabular-nums text-foreground">{row.spend > 0 ? fmtTenge(row.spend) : "—"}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span>Квалифицированные лиды</span>
+                  <span className="tabular-nums text-foreground">{fmtNum(row.crmQualified)}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span>Продажи</span>
+                  <span className="tabular-nums text-foreground">{fmtNum(row.crmSales)}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span>Выручка CRM</span>
+                  <span className="tabular-nums text-foreground">{row.crmRevenue > 0 ? fmtTenge(row.crmRevenue) : "—"}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span>Период</span>
+                  <span className="text-foreground">
+                    {range.from.toLocaleDateString("ru-RU")} – {range.to.toLocaleDateString("ru-RU")}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span>Источник данных</span>
+                  <span className="text-foreground">Meta Ads + CRM</span>
+                </div>
+              </div>
+            </details>
+
             {/* Воронка + последние лиды бок о бок */}
             {funnel && funnel.total_leads > 0 && (
               <div className="grid gap-2 lg:grid-cols-2">
