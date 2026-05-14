@@ -5,6 +5,7 @@ import { classifyGoal, type GoalKey, type MetaCampaignRow } from "@/hooks/useMet
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
+const splitTenge = (n: number) => ({ amount: Math.round(n).toLocaleString("ru-RU"), unit: "₸" });
 
 interface GoalBucket {
   key: GoalKey;
@@ -34,19 +35,18 @@ const GOAL_ICONS: Record<GoalKey, typeof Target> = {
   other: Target,
 };
 
-/** Цветовая палитра для левого акцента + иконки. */
-const GOAL_ACCENT: Record<GoalKey, { stripe: string; icon: string; soft: string }> = {
-  leads_pixel: { stripe: "bg-primary", icon: "bg-primary/15 text-primary", soft: "from-primary/8" },
-  leads_form: { stripe: "bg-primary", icon: "bg-primary/15 text-primary", soft: "from-primary/8" },
-  leads: { stripe: "bg-primary", icon: "bg-primary/15 text-primary", soft: "from-primary/8" },
-  whatsapp: { stripe: "bg-success", icon: "bg-success/15 text-success", soft: "from-success/8" },
-  messages: { stripe: "bg-success", icon: "bg-success/15 text-success", soft: "from-success/8" },
-  engagement: { stripe: "bg-pink-500", icon: "bg-pink-500/15 text-pink-500", soft: "from-pink-500/8" },
-  traffic: { stripe: "bg-warning", icon: "bg-warning/15 text-warning", soft: "from-warning/8" },
-  purchase: { stripe: "bg-success", icon: "bg-success/15 text-success", soft: "from-success/8" },
-  video: { stripe: "bg-primary", icon: "bg-primary/15 text-primary", soft: "from-primary/8" },
-  awareness: { stripe: "bg-muted-foreground/40", icon: "bg-muted text-muted-foreground", soft: "from-muted/30" },
-  other: { stripe: "bg-secondary", icon: "bg-secondary text-foreground", soft: "from-secondary/30" },
+const GOAL_ACCENT: Record<GoalKey, { icon: string; ring: string; dot: string }> = {
+  leads_pixel: { icon: "bg-primary/10 text-primary border-primary/20", ring: "shadow-primary/30", dot: "bg-primary" },
+  leads_form:  { icon: "bg-primary/10 text-primary border-primary/20", ring: "shadow-primary/30", dot: "bg-primary" },
+  leads:       { icon: "bg-primary/10 text-primary border-primary/20", ring: "shadow-primary/30", dot: "bg-primary" },
+  whatsapp:    { icon: "bg-success/10 text-success border-success/20", ring: "shadow-success/30", dot: "bg-success" },
+  messages:    { icon: "bg-success/10 text-success border-success/20", ring: "shadow-success/30", dot: "bg-success" },
+  engagement:  { icon: "bg-pink-500/10 text-pink-500 border-pink-500/20", ring: "shadow-pink-500/30", dot: "bg-pink-500" },
+  traffic:     { icon: "bg-warning/10 text-warning border-warning/20", ring: "shadow-warning/30", dot: "bg-warning" },
+  purchase:    { icon: "bg-success/10 text-success border-success/20", ring: "shadow-success/30", dot: "bg-success" },
+  video:       { icon: "bg-primary/10 text-primary border-primary/20", ring: "shadow-primary/30", dot: "bg-primary" },
+  awareness:   { icon: "bg-muted text-muted-foreground border-border/60", ring: "shadow-muted/30", dot: "bg-muted-foreground/40" },
+  other:       { icon: "bg-secondary text-foreground border-border/60", ring: "shadow-muted/30", dot: "bg-muted-foreground/40" },
 };
 
 const successLabelOf = (m: GoalBucket["successMetric"]) =>
@@ -95,7 +95,7 @@ export function CampaignGoalsBreakdown({ rows }: Props) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {goals.map((g) => (
         <GoalCard key={g.key} goal={g} />
       ))}
@@ -121,42 +121,69 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
   const visible = expanded ? sorted : sorted.slice(0, 3);
   const hasMore = sorted.length > 3;
   const maxSpend = sorted[0]?.spend || 1;
+  const activeCount = sorted.filter((c) => c.effectiveStatus === "ACTIVE").length;
+  const isInactive = activeCount === 0 && g.spend === 0;
+
+  const spendParts = g.spend > 0 ? splitTenge(g.spend) : null;
+  const costParts = costPerResult > 0 ? splitTenge(costPerResult) : null;
 
   return (
-    <div className="group relative overflow-hidden rounded-2xl border border-border/60 bg-card/60 transition hover:border-border">
-      {/* left accent stripe */}
-      <span className={cn("absolute inset-y-0 left-0 w-1", accent.stripe)} aria-hidden />
-      {/* subtle gradient wash */}
-      <span className={cn("pointer-events-none absolute inset-0 bg-gradient-to-r to-transparent opacity-60", accent.soft)} aria-hidden />
-
+    <div
+      className={cn(
+        "group relative overflow-hidden rounded-2xl border border-border/60 bg-card/40 backdrop-blur-sm shadow-[0_1px_0_0_hsl(var(--border)/0.4)_inset] transition-all hover:border-border hover:bg-card/60",
+        isInactive && "opacity-70",
+      )}
+    >
       {/* HEADER */}
-      <div className="relative flex flex-wrap items-center gap-4 px-4 py-3.5 pl-5 sm:px-5 sm:pl-6">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <span className={cn("grid h-11 w-11 shrink-0 place-items-center rounded-xl", accent.icon)}>
-            <Icon className="h-5 w-5" />
+      <div className="relative flex flex-wrap items-center gap-4 px-5 py-4 sm:px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-4">
+          <span className={cn("grid h-12 w-12 shrink-0 place-items-center rounded-xl border", accent.icon)}>
+            <Icon className="h-5 w-5" strokeWidth={1.6} />
           </span>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <h3 className="truncate text-base font-bold leading-tight">{g.label}</h3>
-              <span className="rounded-full border border-border/60 bg-card px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-muted-foreground">
+              <h3 className="truncate text-[17px] font-semibold leading-tight tracking-tight text-foreground">
+                {g.label}
+              </h3>
+              <span className="rounded-full border border-border/60 bg-secondary/70 px-2 py-0.5 text-[10px] font-bold tabular-nums text-muted-foreground">
                 {g.campaigns.length}
               </span>
             </div>
-            <div className="mt-0.5 text-[11px] text-muted-foreground">
-              {sorted.filter((c) => c.effectiveStatus === "ACTIVE").length} активных
+            <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  activeCount > 0 ? cn(accent.dot, "shadow-[0_0_8px] " + accent.ring) : "bg-muted-foreground/30",
+                )}
+              />
+              {activeCount} активных
             </div>
           </div>
         </div>
 
         {/* KPI strip */}
-        <div className="flex flex-wrap items-stretch gap-x-5 gap-y-1 text-right">
-          <KpiCell label="Расход" value={g.spend > 0 ? fmtTenge(g.spend) : "—"} />
-          <KpiCell label={successLabelOf(g.successMetric)} value={fmtNum(successValue)} />
-          <KpiCell label="Цена рез." value={costPerResult > 0 ? fmtTenge(costPerResult) : "—"} />
-          <KpiCell label="CTR" value={ctr > 0 ? `${ctr.toFixed(2)}%` : "—"} />
+        <div className="flex flex-wrap items-end gap-x-7 gap-y-2 text-right">
+          <KpiCell
+            label="Расход"
+            amount={spendParts?.amount ?? "—"}
+            unit={spendParts?.unit}
+          />
+          <KpiCell
+            label={successLabelOf(g.successMetric)}
+            amount={fmtNum(successValue)}
+          />
+          <KpiCell
+            label="Цена рез."
+            amount={costParts?.amount ?? "—"}
+            unit={costParts?.unit}
+          />
+          <KpiCell
+            label="CTR"
+            amount={ctr > 0 ? `${ctr.toFixed(2)}%` : "—"}
+          />
           <KpiCell
             label="ROMI"
-            value={g.spend > 0 ? `${romi >= 0 ? "+" : ""}${Math.round(romi)}%` : "—"}
+            amount={g.spend > 0 ? `${romi >= 0 ? "+" : ""}${Math.round(romi)}%` : "—"}
             tone={g.spend === 0 ? undefined : romi >= 0 ? "success" : "destructive"}
           />
         </div>
@@ -164,25 +191,25 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
 
       {/* CAMPAIGNS */}
       {visible.length > 0 && (
-        <div className="relative border-t border-border/40 bg-background/30 px-3 py-2.5 pl-5 sm:pl-6">
-          <div className="mb-1.5 flex items-center justify-between px-1">
-            <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-muted-foreground">
+        <div className="relative border-t border-border/40 bg-background/40 px-3 py-3 sm:px-4">
+          <div className="mb-2 flex items-center justify-between px-1.5">
+            <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">
               Кампании · по расходу
             </div>
             {hasMore && (
               <button
                 type="button"
                 onClick={() => setExpanded((v) => !v)}
-                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-semibold text-muted-foreground transition hover:bg-secondary/50 hover:text-foreground"
+                className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground transition hover:bg-secondary/60 hover:text-foreground"
               >
                 {expanded ? "Свернуть" : `Ещё ${sorted.length - 3}`}
                 <ChevronDown className={cn("h-3 w-3 transition", expanded && "rotate-180")} />
               </button>
             )}
           </div>
-          <ul className="space-y-1">
+          <ul className="space-y-1.5">
             {visible.map((c) => (
-              <CampaignRow key={c.id} campaign={c} maxSpend={maxSpend} successMetric={g.successMetric} stripeClass={accent.stripe} />
+              <CampaignRow key={c.id} campaign={c} maxSpend={maxSpend} successMetric={g.successMetric} dotClass={accent.dot} ringClass={accent.ring} />
             ))}
           </ul>
         </div>
@@ -191,18 +218,29 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
   );
 }
 
-function KpiCell({ label, value, tone }: { label: string; value: string; tone?: "success" | "destructive" }) {
+function KpiCell({
+  label,
+  amount,
+  unit,
+  tone,
+}: {
+  label: string;
+  amount: string;
+  unit?: string;
+  tone?: "success" | "destructive";
+}) {
   return (
-    <div className="min-w-[68px]">
-      <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-muted-foreground/80">{label}</div>
+    <div className="min-w-[64px] space-y-1">
+      <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">{label}</div>
       <div
         className={cn(
-          "text-[15px] font-bold tabular-nums leading-tight",
+          "text-[16px] font-semibold tabular-nums leading-none tracking-tight text-foreground",
           tone === "success" && "text-success",
           tone === "destructive" && "text-destructive",
         )}
       >
-        {value}
+        {amount}
+        {unit && <span className="ml-1 text-[12px] font-medium text-muted-foreground">{unit}</span>}
       </div>
     </div>
   );
@@ -212,12 +250,14 @@ function CampaignRow({
   campaign: c,
   maxSpend,
   successMetric,
-  stripeClass,
+  dotClass,
+  ringClass,
 }: {
   campaign: MetaCampaignRow;
   maxSpend: number;
   successMetric: GoalBucket["successMetric"];
-  stripeClass: string;
+  dotClass: string;
+  ringClass: string;
 }) {
   const success = successMetric === "leads" ? c.leads
     : successMetric === "messages" ? c.messages
@@ -231,10 +271,17 @@ function CampaignRow({
   const hasRomi = c.revenue > 0 && c.spend > 0;
 
   return (
-    <li className="group/row relative overflow-hidden rounded-lg border border-transparent bg-card/40 px-2.5 py-2 transition hover:border-border/60 hover:bg-card/80">
+    <li
+      className={cn(
+        "group/row relative overflow-hidden rounded-xl border px-3 py-2.5 transition-all",
+        isActive
+          ? "border-success/15 bg-success/[0.04] hover:border-success/25 hover:bg-success/[0.07]"
+          : "border-border/40 bg-card/30 hover:border-border/70 hover:bg-card/60",
+      )}
+    >
       {/* bg progress bar (share of spend) */}
       <span
-        className={cn("pointer-events-none absolute inset-y-0 left-0 opacity-[0.07] transition group-hover/row:opacity-[0.14]", stripeClass)}
+        className={cn("pointer-events-none absolute inset-y-0 left-0 opacity-[0.05] transition group-hover/row:opacity-[0.10]", dotClass)}
         style={{ width: `${sharePct}%` }}
         aria-hidden
       />
@@ -243,19 +290,25 @@ function CampaignRow({
         <span
           className={cn(
             "h-2 w-2 shrink-0 rounded-full",
-            isActive ? "bg-success shadow-[0_0_0_3px] shadow-success/20" : "bg-muted-foreground/30",
+            isActive ? cn(dotClass, "shadow-[0_0_8px] " + ringClass) : "bg-muted-foreground/25",
           )}
           title={isActive ? "Активна" : c.effectiveStatus ?? "Неактивна"}
         />
         {/* name */}
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-semibold leading-tight" title={c.name || c.campaignId}>
+          <div
+            className={cn(
+              "truncate text-[13px] font-medium leading-tight tracking-tight transition-colors",
+              isActive ? "text-foreground" : "text-muted-foreground group-hover/row:text-foreground",
+            )}
+            title={c.name || c.campaignId}
+          >
             {c.name || c.campaignId}
           </div>
-          <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-muted-foreground">
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-muted-foreground/80">
             <span className="tabular-nums">{fmtNum(c.impressions)} показов</span>
-            <span className="text-border">·</span>
-            <span className="tabular-nums">CTR {c.ctr > 0 ? `${c.ctr.toFixed(2)}%` : "—"}</span>
+            <span className="h-1 w-1 rounded-full bg-border" />
+            <span className="tabular-nums">CTR <span className="text-foreground/80">{c.ctr > 0 ? `${c.ctr.toFixed(2)}%` : "—"}</span></span>
           </div>
         </div>
         {/* metric chips */}
@@ -298,16 +351,16 @@ function Chip({
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-1 rounded-md border border-border/40 bg-background/60 px-1.5 py-0.5 text-[10.5px]",
-        accent === "primary" && "border-primary/30 bg-primary/5",
-        accent === "success" && "border-success/30 bg-success/5",
-        accent === "destructive" && "border-destructive/30 bg-destructive/5",
+        "inline-flex items-center gap-1.5 rounded-lg border border-border/40 bg-background/70 px-2 py-1 text-[10.5px] backdrop-blur-sm transition-colors",
+        accent === "primary" && "border-primary/25 bg-primary/[0.07]",
+        accent === "success" && "border-success/25 bg-success/[0.07]",
+        accent === "destructive" && "border-destructive/25 bg-destructive/[0.07]",
       )}
     >
-      <span className="font-semibold uppercase tracking-wider text-muted-foreground/80 text-[9px]">{label}</span>
+      <span className="font-bold uppercase tracking-wider text-muted-foreground/70 text-[9px]">{label}</span>
       <span
         className={cn(
-          "inline-flex items-center gap-0.5 font-bold tabular-nums",
+          "inline-flex items-center gap-0.5 font-semibold tabular-nums text-foreground",
           accent === "primary" && "text-primary",
           accent === "success" && "text-success",
           accent === "destructive" && "text-destructive",
