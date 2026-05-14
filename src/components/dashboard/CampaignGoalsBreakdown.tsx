@@ -255,17 +255,17 @@ function KpiCell({
   tone?: "success" | "destructive";
 }) {
   return (
-    <div className="min-w-[64px] space-y-1">
-      <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground/70">{label}</div>
+    <div className="flex min-w-[72px] flex-col items-end gap-1.5 border-l border-border/30 pl-3 first:border-l-0 first:pl-0">
+      <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-muted-foreground/60">{label}</div>
       <div
         className={cn(
-          "text-[16px] font-semibold tabular-nums leading-none tracking-tight text-foreground",
+          "text-[15px] font-semibold tabular-nums leading-none tracking-[-0.02em] text-foreground",
           tone === "success" && "text-success",
           tone === "destructive" && "text-destructive",
         )}
       >
         {amount}
-        {unit && <span className="ml-1 text-[12px] font-medium text-muted-foreground">{unit}</span>}
+        {unit && <span className="ml-0.5 text-[11px] font-medium text-muted-foreground/80">{unit}</span>}
       </div>
     </div>
   );
