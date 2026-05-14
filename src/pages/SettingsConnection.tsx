@@ -241,7 +241,7 @@ const SettingsConnection = () => {
         </Card>
 
         {/* Webhook URL */}
-        <WebhookCard />
+        <WebhookCard projectId={projectId} />
 
         {/* Bind WhatsApp instance to a project */}
         <WhatsappProjectBindCard />
