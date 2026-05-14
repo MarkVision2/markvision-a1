@@ -1,68 +1,65 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import type { WhatsAppConfig } from "@/types/crm";
 
+/**
+ * Reads whatsapp_config for the active project. The greenapi-proxy edge
+ * function syncs `connected/phone` back to this row after every status
+ * call, and the webhook does the same on stateInstanceChanged — so we
+ * just project the row and rely on realtime for fresh data.
+ */
 export function useWhatsAppConfig() {
   const { user } = useAuth();
+  const { active } = useProjectsStore();
+  const projectId = active?.id ?? null;
   const [config, setConfig] = useState<WhatsAppConfig>({ connected: false });
 
   const refetch = useCallback(async () => {
-    if (!user?.id) { setConfig({ connected: false }); return; }
-    const [configRes, statusRes] = await Promise.all([
-      supabase
-        .from("whatsapp_config")
-        .select("*")
-        .eq("user_id", user.id)
-        .maybeSingle(),
-      supabase.functions.invoke("greenapi-proxy", {
-        body: { action: "status" },
-      }).catch(() => null),
-    ]);
-
-    const data = configRes.data;
-    const liveState = ((statusRes as { data?: { data?: { stateInstance?: string } } } | null)?.data?.data?.stateInstance) ?? null;
-    const liveConnected = liveState ? liveState === "authorized" : undefined;
-    const connected = typeof liveConnected === "boolean" ? liveConnected : !!data?.connected;
+    if (!user?.id || !projectId) {
+      setConfig({ connected: false });
+      return;
+    }
+    // Cast: generated types are pre-per-project — they're missing the
+    // `project_id`, `id_instance`, `api_token`, `api_url` columns.
+    const { data } = await (supabase as unknown as {
+      from: (t: string) => {
+        select: (cols: string) => {
+          eq: (col: string, val: string) => {
+            maybeSingle: () => Promise<{ data: {
+              connected?: boolean;
+              phone?: string | null;
+              display_name?: string | null;
+              connected_at?: string | null;
+            } | null }>;
+          };
+        };
+      };
+    })
+      .from("whatsapp_config")
+      .select("connected, phone, display_name, connected_at")
+      .eq("project_id", projectId)
+      .maybeSingle();
 
     setConfig({
-      connected,
+      connected: !!data?.connected,
       phone: data?.phone ?? undefined,
       displayName: data?.display_name ?? undefined,
-      connectedAt: connected ? (data?.connected_at ?? new Date().toISOString()) : undefined,
+      connectedAt: data?.connected_at ?? undefined,
     });
-
-    const shouldSyncRow = typeof liveConnected === "boolean" && (
-      (!!data && !!data.connected !== liveConnected) ||
-      (!data && liveConnected)
-    );
-
-    if (shouldSyncRow) {
-      await supabase.from("whatsapp_config").upsert({
-        user_id: user.id,
-        connected: liveConnected,
-        phone: data?.phone ?? null,
-        display_name: data?.display_name ?? null,
-        connected_at: liveConnected ? (data?.connected_at ?? new Date().toISOString()) : null,
-      });
-    }
-  }, [user?.id]);
+  }, [user?.id, projectId]);
 
   useEffect(() => { void refetch(); }, [refetch]);
   useRealtimeTable("whatsapp_config", refetch, !!user?.id);
 
-  const setWhatsapp = useCallback(async (cfg: WhatsAppConfig) => {
-    if (!user?.id) return;
-    setConfig(cfg); // optimistic
-    await supabase.from("whatsapp_config").upsert({
-      user_id: user.id,
-      connected: cfg.connected,
-      phone: cfg.phone ?? null,
-      display_name: cfg.displayName ?? null,
-      connected_at: cfg.connectedAt ?? (cfg.connected ? new Date().toISOString() : null),
-    });
-  }, [user?.id]);
+  // Optimistic local override — the actual row is owned by the edge
+  // functions, but UI flows (e.g. ConnectWhatsAppDialog) want to flip
+  // the badge before the next refetch.
+  const setWhatsapp = useCallback((cfg: WhatsAppConfig) => {
+    setConfig(cfg);
+  }, []);
 
   return { config, setWhatsapp };
 }

@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2, QrCode, Phone, CheckCircle2, XCircle, LogOut, RefreshCw } from "lucide-react";
+import { ArrowLeft, Loader2, QrCode, Phone, CheckCircle2, XCircle, LogOut, RefreshCw, Eye, EyeOff, KeyRound } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,12 @@ type GreenResp<T = unknown> = {
   ok: boolean;
   status: number;
   data: T | { message?: string } | string;
+  meta?: {
+    source?: "db" | "env";
+    id_instance?: string;
+    project_id?: string | null;
+    phone?: string | null;
+  };
 };
 
 type StateData = { stateInstance?: string };
@@ -31,20 +37,52 @@ const STATE_LABELS: Record<string, { label: string; tone: "success" | "warning" 
   yellowCard: { label: "Жёлтая карточка", tone: "warning" },
 };
 
-const callProxy = async <T = unknown,>(
-  action: "status" | "qr" | "getCode" | "logout",
-  body?: Record<string, unknown>,
-): Promise<GreenResp<T>> => {
-  const { data, error } = await supabase.functions.invoke("greenapi-proxy", {
-    body: { action, ...(body ?? {}) },
-  });
-  if (error) throw new Error(error.message);
-  return data as GreenResp<T>;
-};
+const NO_CREDS_CODE = "NO_CREDENTIALS";
+
+type ProxyError = Error & { code?: string; httpStatus?: number };
+
+/** Wrap supabase.functions.invoke with project_id auto-attach + structured errors. */
+function makeCallProxy(projectId: string | null) {
+  return async function callProxy<T = unknown>(
+    action: "status" | "qr" | "getCode" | "logout" | "settings" | "setWebhook" | "sendMessage",
+    body?: Record<string, unknown>,
+  ): Promise<GreenResp<T>> {
+    const payload: Record<string, unknown> = { action, ...(body ?? {}) };
+    if (projectId && payload.project_id == null) payload.project_id = projectId;
+
+    const { data, error } = await supabase.functions.invoke("greenapi-proxy", { body: payload });
+    if (error) {
+      // supabase-js wraps non-2xx as FunctionsHttpError; the original payload
+      // is on `error.context` but we'd rather surface the server message.
+      const ctx = (error as { context?: Response }).context;
+      if (ctx?.json) {
+        try {
+          const j = (await ctx.json()) as { error?: string; code?: string };
+          const e: ProxyError = new Error(j.error || error.message);
+          e.code = j.code;
+          e.httpStatus = ctx.status;
+          throw e;
+        } catch (parseErr) {
+          if ((parseErr as ProxyError).code) throw parseErr;
+          // fall through to generic error
+        }
+      }
+      throw new Error(error.message);
+    }
+    // Server may also return 200 with {error, code} for soft failures —
+    // but currently it doesn't; just pass data through.
+    return data as GreenResp<T>;
+  };
+}
 
 const SettingsConnection = () => {
   const navigate = useNavigate();
+  const { active } = useProjectsStore();
+  const projectId = active?.id ?? null;
+  const callProxy = useMemo(() => makeCallProxy(projectId), [projectId]);
+
   const [state, setState] = useState<string | null>(null);
+  const [credsError, setCredsError] = useState<string | null>(null);
   const [loadingState, setLoadingState] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const [qrImage, setQrImage] = useState<string | null>(null);
@@ -62,12 +100,19 @@ const SettingsConnection = () => {
       const r = await callProxy<StateData>("status");
       const s = (r.data as StateData)?.stateInstance ?? null;
       setState(s);
+      setCredsError(null);
     } catch (e) {
-      toast.error("Не удалось получить статус", { description: (e as Error).message });
+      const err = e as ProxyError;
+      if (err.code === NO_CREDS_CODE) {
+        setCredsError(err.message);
+        setState(null);
+      } else {
+        toast.error("Не удалось получить статус", { description: err.message });
+      }
     } finally {
       setLoadingState(false);
     }
-  }, []);
+  }, [callProxy]);
 
   useEffect(() => {
     refreshState();
@@ -132,7 +177,13 @@ const SettingsConnection = () => {
         toast.error("Не удалось получить код. Возможно, инстанс уже авторизован.");
       }
     } catch (e) {
-      toast.error("Ошибка запроса", { description: (e as Error).message });
+      const err = e as ProxyError;
+      if (err.code === NO_CREDS_CODE) {
+        toast.error("Сначала введите учётные данные Green API ниже");
+        setCredsError(err.message);
+      } else {
+        toast.error("Ошибка запроса", { description: err.message });
+      }
     } finally {
       setCodeLoading(false);
     }
@@ -172,6 +223,17 @@ const SettingsConnection = () => {
         <p className="mt-2 text-sm text-muted-foreground sm:text-base">
           Авторизуйте инстанс Green API через QR-код или по номеру телефона
         </p>
+
+        {credsError && (
+          <div className="mt-6 flex items-start gap-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-700 dark:text-amber-300">
+            <KeyRound className="mt-0.5 h-4 w-4 shrink-0" />
+            <div className="flex-1">
+              <p className="font-medium">Нет учётных данных Green API</p>
+              <p className="mt-0.5 text-xs opacity-90">{credsError}</p>
+              <p className="mt-1 text-xs opacity-80">Заполните <strong>idInstance</strong> и <strong>apiTokenInstance</strong> в карточке «WhatsApp → проект» ниже, затем повторите запрос.</p>
+            </div>
+          </div>
+        )}
 
         {/* Status Card */}
         <Card className="mt-8 border-border bg-card">
@@ -357,25 +419,30 @@ const SettingsConnection = () => {
 };
 
 function WebhookCard() {
+  const { active } = useProjectsStore();
+  const projectId = active?.id ?? null;
+  const callProxy = useMemo(() => makeCallProxy(projectId), [projectId]);
   const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/greenapi-webhook`;
   const [current, setCurrent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [unavailable, setUnavailable] = useState(false);
 
   const checkSettings = useCallback(async () => {
     setLoading(true);
     try {
-      const { data } = await supabase.functions.invoke("greenapi-proxy", {
-        body: { action: "settings" },
-      });
-      const s = (data as { data?: { webhookUrl?: string } } | null)?.data;
+      const r = await callProxy<{ webhookUrl?: string }>("settings");
+      const s = (r.data as { webhookUrl?: string } | null) ?? null;
       setCurrent(s?.webhookUrl ?? "");
-    } catch {
+      setUnavailable(false);
+    } catch (e) {
+      const err = e as ProxyError;
       setCurrent(null);
+      setUnavailable(err.code === NO_CREDS_CODE);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [callProxy]);
 
   useEffect(() => {
     void checkSettings();
@@ -384,20 +451,22 @@ function WebhookCard() {
   const setupWebhook = async () => {
     setSaving(true);
     try {
-      const { data, error } = await supabase.functions.invoke("greenapi-proxy", {
-        body: { action: "setWebhook", webhookUrl: url },
-      });
-      const ok = !error && (data as { ok?: boolean } | null)?.ok !== false;
-      if (ok) {
+      const r = await callProxy("setWebhook", { webhookUrl: url });
+      if (r.ok) {
         toast.success("Webhook настроен в Green API");
         await checkSettings();
       } else {
         toast.error("Не удалось настроить webhook", {
-          description: JSON.stringify((data as { data?: unknown })?.data ?? error),
+          description: JSON.stringify(r.data),
         });
       }
     } catch (e) {
-      toast.error("Ошибка", { description: (e as Error).message });
+      const err = e as ProxyError;
+      if (err.code === NO_CREDS_CODE) {
+        toast.error("Сначала введите учётные данные Green API ниже");
+      } else {
+        toast.error("Ошибка", { description: err.message });
+      }
     } finally {
       setSaving(false);
     }
@@ -440,11 +509,13 @@ function WebhookCard() {
             <span className="text-muted-foreground">
               {loading
                 ? "Проверка настроек…"
-                : matched
-                  ? "Webhook настроен и совпадает"
-                  : current
-                    ? `В Green API сейчас другой URL: ${current || "(пусто)"}`
-                    : "Webhook не настроен"}
+                : unavailable
+                  ? "Сначала введите учётные данные Green API ниже"
+                  : matched
+                    ? "Webhook настроен и совпадает"
+                    : current
+                      ? `В Green API сейчас другой URL: ${current || "(пусто)"}`
+                      : "Webhook не настроен"}
             </span>
           </div>
           <div className="flex gap-2">
@@ -467,14 +538,21 @@ type WaBindRow = {
   id: string;
   project_id: string | null;
   id_instance: string | null;
+  api_token: string | null;
+  api_url: string | null;
   phone: string | null;
   connected: boolean | null;
 };
+
+const DEFAULT_GREEN_URL = "https://api.green-api.com";
 
 export function WhatsappProjectBindCard() {
   const { active, projects } = useProjectsStore();
   const [rows, setRows] = useState<WaBindRow[]>([]);
   const [instance, setInstance] = useState("");
+  const [token, setToken] = useState("");
+  const [apiUrl, setApiUrl] = useState("");
+  const [showToken, setShowToken] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
@@ -482,7 +560,7 @@ export function WhatsappProjectBindCard() {
     setLoading(true);
     const { data } = await supabase
       .from("whatsapp_config")
-      .select("id, project_id, id_instance, phone, connected");
+      .select("id, project_id, id_instance, api_token, api_url, phone, connected");
     setRows((data ?? []) as WaBindRow[]);
     setLoading(false);
   }, []);
@@ -490,9 +568,16 @@ export function WhatsappProjectBindCard() {
   useEffect(() => { void refresh(); }, [refresh]);
 
   const currentRow = rows.find((r) => r.project_id === active?.id) ?? null;
+  // Reset form fields when active project changes — selecting another project
+  // shouldn't show another project's token in masked input.
   useEffect(() => {
     setInstance(currentRow?.id_instance ?? "");
-  }, [currentRow?.id_instance]);
+    setToken("");
+    setApiUrl(currentRow?.api_url ?? "");
+    setShowToken(false);
+  }, [currentRow?.id, currentRow?.id_instance, currentRow?.api_url]);
+
+  const hasToken = !!currentRow?.api_token;
 
   const onBind = async () => {
     if (!active?.id) {
@@ -504,14 +589,30 @@ export function WhatsappProjectBindCard() {
       toast.error("idInstance — это число из Green API console");
       return;
     }
+    const apiToken = token.trim();
+    // First-time bind requires the token. On rebind/update we accept empty
+    // and keep the saved one.
+    if (!hasToken && !apiToken) {
+      toast.error("Введите apiTokenInstance из Green API console");
+      return;
+    }
+    const urlClean = apiUrl.trim().replace(/\/+$/, "");
+    if (urlClean && !/^https?:\/\//i.test(urlClean)) {
+      toast.error("API URL должен начинаться с http:// или https://");
+      return;
+    }
     setSaving(true);
     try {
       const { error } = await supabase.rpc("bind_whatsapp_to_project", {
         p_project_id: active.id,
         p_id_instance: idInstance,
+        p_api_token: apiToken || null,
+        p_api_url: urlClean || null,
       });
       if (error) throw error;
       toast.success(`WhatsApp ${idInstance} привязан к «${active.name}»`);
+      setToken("");
+      setShowToken(false);
       await refresh();
     } catch (e) {
       toast.error("Не удалось привязать", { description: (e as Error).message });
@@ -543,34 +644,77 @@ export function WhatsappProjectBindCard() {
           </div>
         ) : (
           <>
-            <div>
-              <p className="mb-1.5 text-xs font-medium text-muted-foreground">
-                idInstance из Green API (число, видно в Green API console)
-              </p>
-              <div className="flex items-center gap-2">
+            <div className="space-y-3">
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                  idInstance из Green API (число, видно в Green API console)
+                </p>
                 <Input
                   value={instance}
                   onChange={(e) => setInstance(e.target.value)}
                   placeholder="например 7107605912"
-                  className="flex-1"
                 />
+              </div>
+
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                  apiTokenInstance {hasToken && <span className="text-success">· сохранён</span>}
+                </p>
+                <div className="relative">
+                  <Input
+                    type={showToken ? "text" : "password"}
+                    value={token}
+                    onChange={(e) => setToken(e.target.value)}
+                    placeholder={hasToken ? "Оставьте пустым, чтобы не менять" : "Скопируйте из Green API console"}
+                    className="pr-10 font-mono text-xs"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-7 w-7 text-muted-foreground"
+                    onClick={() => setShowToken((v) => !v)}
+                  >
+                    {showToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  </Button>
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Токен хранится только на сервере; в интерфейсе всегда маскируется.
+                </p>
+              </div>
+
+              <div>
+                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
+                  API URL <span className="text-muted-foreground/70">(опционально, по умолчанию {DEFAULT_GREEN_URL})</span>
+                </p>
+                <Input
+                  value={apiUrl}
+                  onChange={(e) => setApiUrl(e.target.value)}
+                  placeholder={DEFAULT_GREEN_URL}
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
                 <Button onClick={onBind} disabled={saving || !active?.id}>
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                  {currentRow?.id_instance ? "Перепривязать" : "Привязать"}
+                  {currentRow?.id_instance ? "Сохранить" : "Привязать"}
                 </Button>
+                {conflictProject && (
+                  <span className="text-[11px] text-destructive">
+                    Этот idInstance уже привязан к «{conflictProject}» — будет перенесён.
+                  </span>
+                )}
               </div>
-              {conflictProject ? (
-                <p className="mt-1.5 text-[11px] text-destructive">
-                  Этот idInstance уже привязан к проекту «{conflictProject}». Перепривязка перенесёт его на «{active?.name}».
-                </p>
-              ) : currentRow ? (
-                <p className="mt-1.5 text-[11px] text-muted-foreground">
+
+              {currentRow ? (
+                <p className="text-[11px] text-muted-foreground">
                   Текущая привязка: <code>{currentRow.id_instance ?? "—"}</code>
                   {currentRow.phone ? `, номер ${currentRow.phone}` : ""}
-                  {currentRow.connected ? " · подключён" : ""}
+                  {currentRow.connected ? " · подключён" : " · не авторизован"}
+                  {!currentRow.api_token && <span className="text-amber-600 dark:text-amber-400"> · токен не задан</span>}
                 </p>
               ) : (
-                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                <p className="text-[11px] text-muted-foreground">
                   У этого проекта пока нет привязанного WhatsApp.
                 </p>
               )}
@@ -588,6 +732,7 @@ export function WhatsappProjectBindCard() {
                         <th className="px-3 py-2 font-medium">Проект</th>
                         <th className="px-3 py-2 font-medium">idInstance</th>
                         <th className="px-3 py-2 font-medium">Номер</th>
+                        <th className="px-3 py-2 font-medium">Токен</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -598,6 +743,7 @@ export function WhatsappProjectBindCard() {
                             <td className="px-3 py-2">{proj?.name ?? "—"}</td>
                             <td className="px-3 py-2"><code>{r.id_instance ?? "—"}</code></td>
                             <td className="px-3 py-2">{r.phone ?? "—"}</td>
+                            <td className="px-3 py-2">{r.api_token ? "✓" : <span className="text-amber-600 dark:text-amber-400">нет</span>}</td>
                           </tr>
                         );
                       })}

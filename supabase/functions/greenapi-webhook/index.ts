@@ -6,14 +6,16 @@
 // - incomingMessageReceived       → save inbound message, create lead if missing
 // - outgoingMessageReceived       → save outbound (sent from phone)
 // - outgoingAPIMessageReceived    → save outbound (sent via API)
-// - outgoingMessageStatus         → ignored (could update status later)
+// - outgoingMessageStatus         → update communications.status
 // - stateInstanceChanged          → updates whatsapp_config.connected
+//
+// Multi-instance: routing happens via whatsapp_config.id_instance, so the
+// same URL serves every project's Green API instance.
 import { corsHeaders } from "https://esm.sh/@supabase/supabase-js@2.95.0/cors";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const ID_INSTANCE = Deno.env.get("GREENAPI_ID_INSTANCE") ?? "";
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -211,20 +213,12 @@ Deno.serve(async (req) => {
     return json({ error: "Invalid JSON" }, 400);
   }
 
-  // Optional: ignore notifications from other instances
   const instanceData = body.instanceData as { idInstance?: number } | undefined;
-  if (
-    ID_INSTANCE &&
-    instanceData?.idInstance &&
-    String(instanceData.idInstance) !== String(ID_INSTANCE)
-  ) {
-    return json({ ok: true, skipped: "other instance" });
-  }
-
   const type = body.typeWebhook as string | undefined;
   // Resolve project from the Green API instance id. The same webhook URL
-  // can serve multiple instances — one per project — so we route based
-  // on which instance actually pinged us.
+  // serves every project's instance — we route based on which one pinged us.
+  // No env-based filter: multi-instance routing relies entirely on the
+  // whatsapp_config.id_instance binding.
   const projectId = await projectFromInstance(instanceData?.idInstance);
 
   try {
@@ -267,8 +261,23 @@ Deno.serve(async (req) => {
     }
 
     if (type === "stateInstanceChanged") {
-      // Could refresh whatsapp_config here. Skip for now.
-      return json({ ok: true });
+      // Push the live state into the bound row so the UI status badge
+      // doesn't go stale between manual "Обновить" clicks.
+      const stateInstance = (body.stateInstance as string | undefined) ?? null;
+      const isAuth = stateInstance === "authorized";
+      const idi = instanceData?.idInstance;
+      if (idi) {
+        const patch: Record<string, unknown> = {
+          connected: isAuth,
+          updated_at: new Date().toISOString(),
+        };
+        if (isAuth) patch.connected_at = new Date().toISOString();
+        await admin
+          .from("whatsapp_config")
+          .update(patch)
+          .eq("id_instance", String(idi));
+      }
+      return json({ ok: true, state: stateInstance, projectId });
     }
 
     if (type === "outgoingMessageStatus") {
