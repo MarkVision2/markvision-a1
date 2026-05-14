@@ -138,7 +138,10 @@ export function CreativesGrid({
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-6">
         {visible.map((row) => {
-          const romiVal = (row.crmRomi ?? row.romi) || 0;
+          const hasCrmRevenue = (row.crmRevenue ?? 0) > 0;
+          const leadValue = (row.crmLeads ?? 0) > 0 ? row.crmLeads : row.leads;
+          const leadLabel = (row.crmLeads ?? 0) > 0 ? "Лиды CRM" : "Лиды Meta";
+          const romiVal = hasCrmRevenue ? row.crmRomi : 0;
           const romiPositive = romiVal >= 0;
           const RomiIcon = romiPositive ? TrendingUp : TrendingDown;
           const cardInner = (
@@ -160,18 +163,18 @@ export function CreativesGrid({
                   </div>
                   <div>
                     <div className="text-muted-foreground">Выручка CRM</div>
-                    <div className="font-bold tabular-nums">{(row.crmRevenue ?? 0) > 0 ? fmtTenge(row.crmRevenue) : "—"}</div>
+                    <div className="font-bold tabular-nums">{hasCrmRevenue ? fmtTenge(row.crmRevenue) : "нет продаж"}</div>
                   </div>
                   <div>
-                    <div className="text-muted-foreground">Лиды CRM</div>
-                    <div className="font-bold tabular-nums">{fmtNum(row.crmLeads ?? 0)}</div>
+                    <div className="text-muted-foreground">{leadLabel}</div>
+                    <div className="font-bold tabular-nums">{fmtNum(leadValue)}</div>
                   </div>
                   <div>
                     <div className="text-muted-foreground">Продажи</div>
                     <div className="font-bold tabular-nums">{fmtNum(row.crmSales ?? 0)}</div>
                   </div>
                 </div>
-                {row.spend > 0 && (
+                {row.spend > 0 && hasCrmRevenue && (
                   <div className={cn(
                     "mt-2 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
                     romiPositive ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive",
