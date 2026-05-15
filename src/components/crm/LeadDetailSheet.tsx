@@ -50,7 +50,6 @@ export function LeadDetailSheet({
   busySlots,
 }: Props) {
   const [tab, setTab] = useState("deal");
-  const [chatFocus, setChatFocus] = useState(0);
 
   if (!lead) return null;
 
@@ -101,8 +100,6 @@ export function LeadDetailSheet({
                   lead={lead}
                   onCall={(opts) => onMarkCall(lead.id, opts)}
                   onCallAttempt={onLogCallAttempt ? (info) => onLogCallAttempt(lead.id, info) : undefined}
-                  onWrite={() => { setChatFocus((n) => n + 1); }}
-                  onWriteTemplate={(text) => onSendMessage(lead.id, text)}
                   onScheduleVisit={(iso) => onSetVisit(lead.id, iso)}
                   onMarkPaid={(method, amount, opts) => onMarkPaid(lead.id, method, amount, opts)}
                   onClose={() => onRequestReject(lead.id)}
@@ -191,7 +188,6 @@ export function LeadDetailSheet({
                 whatsappConnected={whatsapp.connected}
                 stageTitle={stageTitle}
                 onSend={(t) => onSendMessage(lead.id, t)}
-                focusToken={chatFocus}
               />
             </div>
           </div>
