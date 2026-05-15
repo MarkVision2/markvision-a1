@@ -994,6 +994,7 @@ export type Database = {
           first_response_at: string | null
           first_touch_at: string | null
           id: string
+          is_personal: boolean
           landing_url: string | null
           last_activity_at: string
           last_contact_at: string | null
@@ -1038,6 +1039,7 @@ export type Database = {
           first_response_at?: string | null
           first_touch_at?: string | null
           id?: string
+          is_personal?: boolean
           landing_url?: string | null
           last_activity_at?: string
           last_contact_at?: string | null
@@ -1082,6 +1084,7 @@ export type Database = {
           first_response_at?: string | null
           first_touch_at?: string | null
           id?: string
+          is_personal?: boolean
           landing_url?: string | null
           last_activity_at?: string
           last_contact_at?: string | null

@@ -78,6 +78,7 @@ type LeadRow = {
   created_at: string; updated_at: string; last_activity_at: string;
   cabinet_id?: string | null;
   meta_ad_id?: string | null; meta_adset_id?: string | null; meta_campaign_id?: string | null;
+  is_personal?: boolean | null;
 };
 
 type CommRow = {
@@ -163,6 +164,7 @@ function leadRowToFrontIndexed(
     metaAdId: r.meta_ad_id ?? undefined,
     metaAdsetId: r.meta_adset_id ?? undefined,
     metaCampaignId: r.meta_campaign_id ?? undefined,
+    isPersonal: r.is_personal ?? false,
     service: r.service ?? undefined,
     city: r.city ?? undefined,
     age: r.age ?? undefined,
@@ -228,9 +230,11 @@ export function useCrmStore() {
   const refetchLeads = useCallback(async () => {
     if (stageIdMap.idToKey.size === 0) return;
     // Bounded fetches — don't drag the whole history of every table on each open.
+    // Личные заявки полностью исключаем — они не должны попадать ни в одну выборку CRM.
     let leadsQuery = supabase
       .from("leads")
       .select("*")
+      .eq("is_personal", false)
       .order("created_at", { ascending: false })
       .limit(500);
     if (projectId) {
@@ -289,11 +293,17 @@ export function useCrmStore() {
       arr.sort((a, b) => a.changed_at.localeCompare(b.changed_at));
     }
 
-    setLeads(((leadsRes.data ?? []) as LeadRow[]).map((r) =>
+    const visibleLeads = ((leadsRes.data ?? []) as LeadRow[]).map((r) =>
       leadRowToFrontIndexed(r, stageIdMap.idToKey, eventsByLead, tasksByLead, historyByLead),
-    ));
+    );
+    setLeads(visibleLeads);
     // Communications were fetched DESC for limit; chats expect ASC for chronological render.
-    const commsAsc = ((commRes.data ?? []) as CommRow[]).slice().reverse();
+    // Чаты «личных» лидов тоже не показываем — фильтруем по id видимых лидов.
+    const visibleIds = new Set(visibleLeads.map((l) => l.id));
+    const commsAsc = ((commRes.data ?? []) as CommRow[])
+      .slice()
+      .reverse()
+      .filter((c) => visibleIds.has(c.lead_id));
     setChats(commsAsc.map(commToChat));
   }, [stageIdMap.idToKey, projectId]);
 
@@ -457,6 +467,7 @@ export function useCrmStore() {
       metaAdId: row.meta_ad_id ?? undefined,
       metaAdsetId: row.meta_adset_id ?? undefined,
       metaCampaignId: row.meta_campaign_id ?? undefined,
+      isPersonal: row.is_personal ?? false,
       service: row.service ?? undefined,
       city: row.city ?? undefined,
       age: row.age ?? undefined,
@@ -502,6 +513,20 @@ export function useCrmStore() {
     // Optimistic removal — drop locally first so UI feels instant.
     setLeads((prev) => prev.filter((l) => l.id !== id));
     await supabase.from("leads").delete().eq("id", id);
+  }, []);
+
+  /**
+   * «Убрать в личные» — заявка не от клиента, а от личного контакта владельца.
+   * Лид остаётся в БД (чтобы повторное сообщение с того же номера не создавало
+   * нового лида), но проставляется is_personal=true и пропадает из всех выборок:
+   * воронки, чатов, базы клиентов, аналитики, дашборда. Восстановление из UI
+   * не предусмотрено — пользователь явно не хочет видеть раздел «Личные».
+   */
+  const markPersonal = useCallback(async (id: string) => {
+    // Optimistic — убираем из state, чтобы карточка/строка пропала мгновенно.
+    setLeads((prev) => prev.filter((l) => l.id !== id));
+    setChats((prev) => prev.filter((c) => c.leadId !== id));
+    await supabase.from("leads").update({ is_personal: true }).eq("id", id);
   }, []);
 
   const moveLead = useCallback(async (leadId: string, stageKey: string) => {
@@ -799,6 +824,7 @@ export function useCrmStore() {
     addLead,
     updateLead,
     removeLead,
+    markPersonal,
     moveLead,
     sendMessage,
     togglePin,
@@ -814,7 +840,7 @@ export function useCrmStore() {
   }), [
     stages, leads, chats, whatsapp, setWhatsapp,
     addStage, renameStage, removeStage, moveStage,
-    addLead, updateLead, removeLead, moveLead, sendMessage,
+    addLead, updateLead, removeLead, markPersonal, moveLead, sendMessage,
     togglePin, assignLead, setRejectReason,
     markCall, logCallAttempt, markPaid, setVisit,
     addTask, toggleTask, removeTask,

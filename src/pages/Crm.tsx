@@ -51,6 +51,7 @@ const Crm = () => {
     addLead,
     updateLead,
     removeLead,
+    markPersonal,
     moveLead,
     sendMessage,
     togglePin,
@@ -390,6 +391,10 @@ const Crm = () => {
         onDelete={(id) => {
           removeLead(id);
           toast.success("Лид удалён");
+        }}
+        onMarkPersonal={(id) => {
+          markPersonal(id);
+          toast.success("Заявка убрана в личные — её больше нет в CRM");
         }}
         onTogglePin={togglePin}
         onAssign={assignLead}
