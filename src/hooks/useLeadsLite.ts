@@ -48,6 +48,8 @@ export function useLeadsLite() {
       .select(
         "id,source,channel,referrer,utm,cabinet_id,stage_id,amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,reject_reason,rejected_at",
       )
+      // Личные заявки исключаем из аналитики/дашборда/отчётов.
+      .eq("is_personal", false)
       .order("created_at", { ascending: false })
       .limit(2000);
     if (activeId) {

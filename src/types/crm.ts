@@ -108,6 +108,12 @@ export type Lead = {
   paidAt?: string;
   tasks?: LeadTask[];
   events?: LeadEvent[];
+  /**
+   * Отметка «личное» — заявку на самом деле прислал не клиент, а кто-то из
+   * личных контактов владельца WhatsApp. Такие лиды полностью скрыты из CRM:
+   * не отображаются ни в воронке, ни в чатах, ни в базе, ни в аналитике.
+   */
+  isPersonal?: boolean;
 };
 
 export type ChatMessage = {
