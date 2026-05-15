@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { TablesUpdate, TablesInsert } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
@@ -504,15 +505,43 @@ export function useCrmStore() {
       if (sid) dbPatch.stage_id = sid;
     }
     if (Object.keys(dbPatch).length === 0) return;
-    // Optimistic update — patch locally before/around the network call.
-    patchLeadLocal(id, (l) => ({ ...l, ...patch, lastActivityAt: new Date().toISOString() }));
-    await supabase.from("leads").update(dbPatch).eq("id", id);
-  }, [stageUuid, patchLeadLocal]);
+    // Snapshot до patcha — чтобы откатить, если БД отказала.
+    let prevSnapshot: Lead | undefined;
+    setLeads((prev) => {
+      prevSnapshot = prev.find((l) => l.id === id);
+      return prev.map((l) => (l.id === id ? { ...l, ...patch, lastActivityAt: new Date().toISOString() } : l));
+    });
+    const { data, error } = await supabase
+      .from("leads")
+      .update(dbPatch)
+      .eq("id", id)
+      .select("id");
+    if (error || !data || data.length === 0) {
+      // RLS не пустил, либо колонки нет, либо id не найден — откатываем локально.
+      if (prevSnapshot) {
+        const snap = prevSnapshot;
+        setLeads((prev) => prev.map((l) => (l.id === id ? snap : l)));
+      }
+      const reason = error?.message
+        ?? "Supabase не вернул обновлённую строку (возможно, RLS блокирует UPDATE).";
+      console.error("[useCrmStore.updateLead] failed:", reason, { id, dbPatch });
+      toast.error(`Не удалось сохранить изменение: ${reason}`);
+    }
+  }, [stageUuid]);
 
   const removeLead = useCallback(async (id: string) => {
-    // Optimistic removal — drop locally first so UI feels instant.
-    setLeads((prev) => prev.filter((l) => l.id !== id));
-    await supabase.from("leads").delete().eq("id", id);
+    // Snapshot для отката, если delete не пройдёт.
+    let prevSnapshot: Lead[] | undefined;
+    setLeads((prev) => {
+      prevSnapshot = prev;
+      return prev.filter((l) => l.id !== id);
+    });
+    const { error } = await supabase.from("leads").delete().eq("id", id);
+    if (error) {
+      if (prevSnapshot) setLeads(prevSnapshot);
+      console.error("[useCrmStore.removeLead] failed:", error.message, { id });
+      toast.error(`Не удалось удалить лида: ${error.message}`);
+    }
   }, []);
 
   /**
@@ -523,10 +552,23 @@ export function useCrmStore() {
    * не предусмотрено — пользователь явно не хочет видеть раздел «Личные».
    */
   const markPersonal = useCallback(async (id: string) => {
-    // Optimistic — убираем из state, чтобы карточка/строка пропала мгновенно.
-    setLeads((prev) => prev.filter((l) => l.id !== id));
-    setChats((prev) => prev.filter((c) => c.leadId !== id));
-    await supabase.from("leads").update({ is_personal: true }).eq("id", id);
+    let prevLeads: Lead[] | undefined;
+    let prevChats: ChatMessage[] | undefined;
+    setLeads((prev) => { prevLeads = prev; return prev.filter((l) => l.id !== id); });
+    setChats((prev) => { prevChats = prev; return prev.filter((c) => c.leadId !== id); });
+    const { data, error } = await supabase
+      .from("leads")
+      .update({ is_personal: true })
+      .eq("id", id)
+      .select("id");
+    if (error || !data || data.length === 0) {
+      if (prevLeads) setLeads(prevLeads);
+      if (prevChats) setChats(prevChats);
+      const reason = error?.message
+        ?? "Колонка is_personal ещё не применена в БД либо RLS блокирует UPDATE.";
+      console.error("[useCrmStore.markPersonal] failed:", reason, { id });
+      toast.error(`Не удалось убрать в личные: ${reason}`);
+    }
   }, []);
 
   const moveLead = useCallback(async (leadId: string, stageKey: string) => {
