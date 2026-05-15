@@ -16,17 +16,11 @@ import {
 import { getPresetRange, type PeriodPreset } from "@/hooks/useDashboardData";
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
-import { cn } from "@/lib/utils";
+import { PeriodPicker } from "@/components/dashboard/PeriodPicker";
 
 type StatusFilter = "active" | "active_or_spent" | "all";
 type TypeFilter = "all" | "video" | "image" | "carousel";
 type SortKey = "spend" | "ctr" | "cpl" | "leads" | "messages" | "romi" | "crmLeads" | "crmSales" | "crmRevenue" | "crmRomi" | "crmCpl";
-
-const PRESETS: { key: PeriodPreset; label: string }[] = [
-  { key: "7d", label: "7 дн" },
-  { key: "30d", label: "30 дн" },
-  { key: "month", label: "Месяц" },
-];
 
 const SORT_LABELS: Record<SortKey, string> = {
   crmRomi: "ROMI (CRM)",
@@ -128,31 +122,20 @@ export function AdsCreativesPanel() {
     }
   };
 
-  const setPresetAndRange = (p: PeriodPreset) => {
-    setPreset(p);
-    setRange(getPresetRange(p));
-  };
-
   return (
     <div className="space-y-4">
       {/* Toolbar */}
       <div className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-card/50 p-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           {/* Period */}
-          <div className="inline-flex h-9 items-center rounded-lg border border-border/60 bg-background p-0.5">
-            {PRESETS.map((p) => (
-              <button
-                key={p.key}
-                onClick={() => setPresetAndRange(p.key)}
-                className={cn(
-                  "h-8 rounded-md px-3 text-xs font-semibold transition",
-                  preset === p.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+          <PeriodPicker
+            preset={preset}
+            range={range}
+            onChange={(p, r) => {
+              setPreset(p);
+              setRange(r);
+            }}
+          />
 
           {/* Status */}
           <select
