@@ -1,12 +1,20 @@
-import { Calendar, Stethoscope, CreditCard } from "lucide-react";
+import { Calendar, Megaphone, CreditCard } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import type { Lead, PaymentMethod } from "@/types/crm";
 
-const SERVICES = ["Имплант", "Чистка", "Консультация", "Отбеливание", "Брекеты", "Удаление", "Лечение"];
+const SOURCE_PRESETS: { id: string; label: string }[] = [
+  { id: "meta", label: "Meta" },
+  { id: "google", label: "Google" },
+  { id: "tiktok", label: "TikTok" },
+  { id: "sarafan", label: "Сарафан" },
+];
+const PRESET_IDS = new Set(SOURCE_PRESETS.map((s) => s.id));
+
 const METHODS: { id: PaymentMethod; label: string }[] = [
   { id: "kaspi", label: "Kaspi" },
   { id: "card", label: "Карта" },
@@ -28,25 +36,45 @@ interface Props {
 }
 
 export function LeadDealTab({ lead, onUpdate }: Props) {
+  const sourceKey = (lead.source ?? "").toLowerCase();
+  const activePreset = PRESET_IDS.has(sourceKey) ? sourceKey : null;
+
   return (
     <div className="space-y-3">
-      {/* Услуга и визит */}
+      {/* Источник и визит */}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div className="rounded-xl border border-border/60 bg-card/40 p-3">
           <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
-            <Stethoscope className="h-3.5 w-3.5 text-primary" /> Услуга
+            <Megaphone className="h-3.5 w-3.5 text-primary" /> Источник
           </div>
-          <Input
-            list="lead-services"
-            value={lead.service ?? ""}
-            onChange={(e) => onUpdate({ service: e.target.value || undefined })}
-            placeholder="например, Имплант"
-            className="mt-2"
-          />
-          <datalist id="lead-services">
-            {SERVICES.map((s) => <option key={s} value={s} />)}
-          </datalist>
+          <div className="mt-2 grid grid-cols-2 gap-1.5">
+            {SOURCE_PRESETS.map((s) => {
+              const active = activePreset === s.id;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => onUpdate({ source: s.id })}
+                  className={cn(
+                    "rounded-md border px-2 py-1.5 text-xs font-medium transition-colors",
+                    active
+                      ? "border-primary bg-primary/15 text-primary"
+                      : "border-border/60 bg-card/40 hover:border-primary/40 hover:bg-primary/5",
+                  )}
+                >
+                  {s.label}
+                </button>
+              );
+            })}
+          </div>
+          {!activePreset && lead.source && (
+            <div className="mt-2 text-[10px] text-muted-foreground">
+              Текущий источник: <span className="font-mono text-foreground/80">{lead.source}</span>
+              <span className="ml-1 text-muted-foreground/70">(из UTM — выберите вручную, чтобы перезаписать)</span>
+            </div>
+          )}
         </div>
+
         <div className="rounded-xl border border-border/60 bg-card/40 p-3">
           <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
             <Calendar className="h-3.5 w-3.5 text-warning" /> Планируемый визит

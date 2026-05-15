@@ -27,6 +27,7 @@ import { CrmKpiBar } from "@/components/crm/CrmKpiBar";
 import { SlaAlerts } from "@/components/crm/SlaAlerts";
 import { CrmFilters, type CrmFilterState } from "@/components/crm/CrmFilters";
 import { RejectReasonDialog } from "@/components/crm/RejectReasonDialog";
+import { PaymentAmountDialog } from "@/components/crm/PaymentAmountDialog";
 import { ManagersView } from "@/components/crm/ManagersView";
 import { AnalyticsView } from "@/components/crm/AnalyticsView";
 import { AutomationsSettings } from "@/components/crm/AutomationsSettings";
@@ -87,6 +88,7 @@ const Crm = () => {
   const [addingStage, setAddingStage] = useState(false);
   const [filters, setFilters] = useState<CrmFilterState>({ search: "", source: null, assigneeId: null });
   const [rejectFor, setRejectFor] = useState<{ leadId: string; prevStageId?: string; viaDrag: boolean } | null>(null);
+  const [payFor, setPayFor] = useState<{ leadId: string; prevStageId?: string } | null>(null);
 
   useEffect(() => {
     const id = searchParams.get("lead");
@@ -155,6 +157,13 @@ const Crm = () => {
       const prev = current?.stageId;
       moveLead(leadId, stageId);
       setRejectFor({ leadId, prevStageId: prev, viaDrag: true });
+      return;
+    }
+    if (stageId === "paid") {
+      // Перевод на «Оплачен» только через ввод суммы — этап не двигаем заранее,
+      // markPaid внутри подтверждения переведёт его сам.
+      const current = leads.find((l) => l.id === leadId);
+      setPayFor({ leadId, prevStageId: current?.stageId });
       return;
     }
     moveLead(leadId, stageId);
@@ -425,6 +434,10 @@ const Crm = () => {
           const current = leads.find((l) => l.id === id);
           setRejectFor({ leadId: id, prevStageId: current?.stageId, viaDrag: false });
         }}
+        onRequestPay={(id) => {
+          const current = leads.find((l) => l.id === id);
+          setPayFor({ leadId: id, prevStageId: current?.stageId });
+        }}
         busySlots={busySlots}
       />
 
@@ -441,6 +454,19 @@ const Crm = () => {
             toast.success("Лид закрыт. Причина сохранена в истории.");
           }
           setRejectFor(null);
+        }}
+      />
+
+      <PaymentAmountDialog
+        open={!!payFor}
+        defaultAmount={payFor ? leads.find((l) => l.id === payFor.leadId)?.amount : undefined}
+        onOpenChange={(v) => { if (!v) setPayFor(null); }}
+        onCancel={() => setPayFor(null)}
+        onConfirm={(method, amount, opts) => {
+          if (!payFor) return;
+          markPaid(payFor.leadId, method, amount, opts);
+          toast.success("Оплата зафиксирована, сделка в «Оплачен»");
+          setPayFor(null);
         }}
       />
 
