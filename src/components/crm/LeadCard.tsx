@@ -1,8 +1,8 @@
 import { memo, type DragEvent } from "react";
-import { Phone, Sparkles, Star, Tag } from "lucide-react";
+import { Clock3, Phone, Star, Tag, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Lead } from "@/types/crm";
-import { leadSlaMinutes, recommendationFor, slaTone } from "@/hooks/useCrmAnalytics";
+import { leadSlaMinutes, slaTone } from "@/hooks/useCrmAnalytics";
 import { normalizeSource } from "@/lib/leadSource";
 
 interface LeadCardProps {
@@ -24,10 +24,18 @@ function timeAgo(iso: string) {
   return `${d} д`;
 }
 
-function scoreColor(score: number) {
-  if (score >= 75) return "text-success";
-  if (score >= 50) return "text-warning";
-  return "text-muted-foreground";
+function dueLabel(iso: string) {
+  const diff = new Date(iso).getTime() - Date.now();
+  const absMin = Math.max(1, Math.round(Math.abs(diff) / 60000));
+  if (diff < 0) {
+    if (absMin < 60) return `просрочено ${absMin} мин`;
+    const h = Math.round(absMin / 60);
+    return `просрочено ${h} ч`;
+  }
+  if (absMin < 60) return `через ${absMin} мин`;
+  const h = Math.round(absMin / 60);
+  if (h < 24) return `через ${h} ч`;
+  return `через ${Math.round(h / 24)} д`;
 }
 
 function LeadCardImpl({ lead, assigneeName, highlightSla, onClick, onTogglePin }: LeadCardProps) {
@@ -39,7 +47,10 @@ function LeadCardImpl({ lead, assigneeName, highlightSla, onClick, onTogglePin }
   const sla = leadSlaMinutes(lead);
   const tone = slaTone(sla);
   const showSlaTimer = highlightSla || (!lead.firstResponseAt && (lead.stageId === "new" || lead.stageId === "no_answer"));
-  const rec = recommendationFor(lead.aiScore);
+  const nextTask = (lead.tasks ?? [])
+    .filter((task) => !task.doneAt)
+    .sort((a, b) => a.dueAt.localeCompare(b.dueAt))[0];
+  const taskOverdue = nextTask ? new Date(nextTask.dueAt).getTime() <= Date.now() : false;
 
   return (
     <button
@@ -80,16 +91,15 @@ function LeadCardImpl({ lead, assigneeName, highlightSla, onClick, onTogglePin }
             <span className="truncate">{lead.phone}</span>
           </div>
         </div>
-        <span
-          className={cn(
-            "flex shrink-0 items-center gap-0.5 rounded-md bg-secondary/60 px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
-            scoreColor(lead.aiScore),
-          )}
-          title="AI-скоринг"
-        >
-          <Sparkles className="h-2.5 w-2.5" />
-          {lead.aiScore}
-        </span>
+        {assigneeName && (
+          <span
+            className="inline-flex max-w-[100px] shrink-0 items-center gap-1 truncate rounded-md bg-secondary/70 px-1.5 py-0.5 text-[10px] font-semibold text-muted-foreground"
+            title={`Ответственный: ${assigneeName}`}
+          >
+            <UserRound className="h-2.5 w-2.5 shrink-0" />
+            <span className="truncate">{assigneeName}</span>
+          </span>
+        )}
       </div>
 
       <div className="mt-2 flex items-center justify-between gap-2">
@@ -114,17 +124,19 @@ function LeadCardImpl({ lead, assigneeName, highlightSla, onClick, onTogglePin }
         </span>
       </div>
 
-      <div
-        className={cn(
-          "mt-2 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-semibold",
-          rec.level === "hot" && "bg-destructive/15 text-destructive",
-          rec.level === "warm" && "bg-warning/15 text-warning",
-          rec.level === "cold" && "bg-secondary/60 text-muted-foreground",
-        )}
-      >
-        <span>{rec.emoji}</span>
-        {rec.label}
-      </div>
+      {nextTask && (
+        <div
+          className={cn(
+            "mt-2 flex items-center gap-1 rounded-md px-1.5 py-1 text-[10px] font-semibold",
+            taskOverdue ? "bg-destructive/15 text-destructive" : "bg-primary/10 text-primary",
+          )}
+          title={nextTask.title}
+        >
+          <Clock3 className="h-3 w-3 shrink-0" />
+          <span className="truncate">{nextTask.title}</span>
+          <span className="ml-auto shrink-0 tabular-nums">{dueLabel(nextTask.dueAt)}</span>
+        </div>
+      )}
 
       {(lead.utm?.campaign || lead.utm?.source) && (
         <div
@@ -138,13 +150,7 @@ function LeadCardImpl({ lead, assigneeName, highlightSla, onClick, onTogglePin }
 
       <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
         <span>Активность: {timeAgo(lead.lastActivityAt)}</span>
-        {assigneeName ? (
-          <span className="truncate rounded bg-secondary/60 px-1.5 py-0.5 font-medium text-foreground/70">
-            👤 {assigneeName}
-          </span>
-        ) : (
-          <span className="text-muted-foreground/70">не назначен</span>
-        )}
+        <span className="text-muted-foreground/70">{lead.channel ?? "канал не указан"}</span>
       </div>
 
       {onTogglePin && (

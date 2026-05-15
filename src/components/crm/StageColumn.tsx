@@ -1,7 +1,7 @@
 import { memo, useState, type DragEvent } from "react";
 import {
   AlertTriangle, ChevronDown,
-  Clock, TrendingUp, Wallet,
+  Clock, CreditCard, Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LeadCard } from "./LeadCard";
@@ -104,15 +104,15 @@ function StageColumnImpl({
       </div>
 
       {!collapsed && (
-        <div className="mt-2 grid grid-cols-2 gap-1.5 rounded-lg bg-secondary/20 p-2 text-[10px]">
+        <div className="mt-2 grid grid-cols-2 gap-1.5 rounded-xl bg-secondary/20 p-2 text-[10px]">
           <div className="flex items-center gap-1 text-muted-foreground">
-            <Wallet className="h-3 w-3" />
+            <CreditCard className="h-3 w-3" />
             <span>{(metrics?.potential ?? total).toLocaleString("ru-RU")} $</span>
           </div>
           <div className="flex items-center justify-end gap-1 text-muted-foreground">
-            <TrendingUp className="h-3 w-3" />
+            <Users className="h-3 w-3" />
             <span>
-              CR: {metrics?.conversionFromPrev !== null && metrics?.conversionFromPrev !== undefined
+              перешло: {metrics?.conversionFromPrev !== null && metrics?.conversionFromPrev !== undefined
                 ? `${metrics.conversionFromPrev.toFixed(0)}%`
                 : "—"}
             </span>

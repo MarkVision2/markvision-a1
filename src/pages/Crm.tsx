@@ -147,9 +147,44 @@ const Crm = () => {
     }, 50);
   };
 
+  const notifiedTaskIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const checkTasks = () => {
+      const now = Date.now();
+      for (const lead of leads) {
+        for (const task of lead.tasks ?? []) {
+          if (task.doneAt || notifiedTaskIdsRef.current.has(task.id)) continue;
+          if (new Date(task.dueAt).getTime() > now) continue;
+          notifiedTaskIdsRef.current.add(task.id);
+          toast.warning("Пора выполнить задачу", {
+            description: `${lead.name}: ${task.title}`,
+            action: {
+              label: "Открыть",
+              onClick: () => setActiveLeadId(lead.id),
+            },
+          });
+          if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+            const notification = new Notification("Пора выполнить задачу", {
+              body: `${lead.name}: ${task.title}`,
+            });
+            notification.onclick = () => {
+              window.focus();
+              setActiveLeadId(lead.id);
+              notification.close();
+            };
+          }
+        }
+      }
+    };
+    checkTasks();
+    const interval = window.setInterval(checkTasks, 30_000);
+    return () => window.clearInterval(interval);
+  }, [leads]);
+
   return (
-    <main className="container max-w-[1400px] py-8 sm:py-10 animate-fade-in-up">
-      {/* hero */}
+    <main className="min-w-0 w-full overflow-hidden px-4 py-6 sm:px-6 sm:py-8 animate-fade-in-up">
+      {/* header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-4">
           <span className="grid h-14 w-14 place-items-center rounded-2xl bg-success/15 text-success ring-1 ring-success/30">
@@ -157,10 +192,10 @@ const Crm = () => {
           </span>
           <div>
             <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-              CRM Система
+              CRM
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              Управление лидами · Воронка продаж · AI-скоринг
+              Заявки, задачи, записи и оплаты в одном рабочем окне
             </p>
           </div>
         </div>
@@ -212,9 +247,9 @@ const Crm = () => {
       </div>
 
       {/* Tab content */}
-      <div className="mt-6">
+      <div className="mt-6 min-w-0">
         {tab === "funnel" && (
-          <div>
+          <div className="min-w-0">
             <div className="pb-3">
               <CrmFilters
                 state={filters}
@@ -223,7 +258,7 @@ const Crm = () => {
                 members={members}
               />
             </div>
-            <div className="flex h-[calc(100vh-460px)] min-h-[420px] gap-3 overflow-x-auto pb-3">
+            <div className="flex h-[calc(100vh-460px)] min-h-[420px] max-w-full gap-3 overflow-x-auto pb-3">
               {stages.map((stage, idx) => (
                 <div
                   key={stage.id}
@@ -333,7 +368,17 @@ const Crm = () => {
           setVisit(id, iso);
           toast.success("Визит назначен");
         }}
-        onAddTask={addTask}
+        onAddTask={(id, title, dueAt) => {
+          void addTask(id, title, dueAt);
+          toast.success("Задача сохранена", {
+            description: new Date(dueAt).toLocaleString("ru-RU", {
+              day: "2-digit",
+              month: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          });
+        }}
         onToggleTask={toggleTask}
         onRemoveTask={removeTask}
         onRequestReject={(id) => {

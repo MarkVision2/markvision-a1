@@ -38,15 +38,15 @@ export function CrmFilters({ state, onChange, sources, members }: Props) {
   const hasFilters = !!source || !!assigneeId || !!search;
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="rounded-2xl border border-border/60 bg-card/50 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="relative flex-1 min-w-[220px] max-w-sm">
           <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => onChange({ ...state, search: e.target.value })}
-            placeholder="Поиск по имени или телефону…"
-            className="pl-9"
+            placeholder="Найти клиента по имени или телефону"
+            className="border-border/60 bg-background/70 pl-9"
           />
         </div>
         {hasFilters && (
@@ -59,7 +59,7 @@ export function CrmFilters({ state, onChange, sources, members }: Props) {
         )}
       </div>
       {(sources.length > 0 || members.length > 0) && (
-        <div className="flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1">
+        <div className="mt-2 flex flex-wrap items-center gap-1.5 overflow-x-auto pb-1">
           {sources.length > 0 && (
             <>
               <span className="mr-1 text-[10px] uppercase tracking-wider text-muted-foreground">Источник:</span>

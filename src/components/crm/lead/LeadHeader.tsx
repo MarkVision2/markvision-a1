@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
 import {
-  Star, Sparkles, Wallet, Clock, Phone as PhoneIcon, MessageCircle, Send, Camera, Globe,
+  Star, Phone as PhoneIcon, MessageCircle, Send, Camera, Globe, UserRound,
 } from "lucide-react";
 import {
   Popover, PopoverContent, PopoverTrigger,
@@ -10,7 +9,6 @@ import { cn } from "@/lib/utils";
 import type { Lead, LeadStage, LeadChannel } from "@/types/crm";
 import type { TeamMember } from "@/hooks/useTeamStore";
 import { InlineEdit } from "./InlineEdit";
-import { recommendationFor, leadSlaMinutes, slaTone } from "@/hooks/useCrmAnalytics";
 
 interface Props {
   lead: Lead;
@@ -20,15 +18,6 @@ interface Props {
   onTogglePin: () => void;
   onAssign: (assigneeId?: string) => void;
   onChangeStage: (stageId: string) => void;
-}
-
-function timeAgo(iso: string, ref: number) {
-  const m = Math.max(0, Math.floor((ref - new Date(iso).getTime()) / 60000));
-  if (m < 1) return "только что";
-  if (m < 60) return `${m} мин`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h} ч`;
-  return `${Math.floor(h / 24)} д`;
 }
 
 function ChannelIcon({ channel }: { channel?: LeadChannel }) {
@@ -44,27 +33,18 @@ function ChannelIcon({ channel }: { channel?: LeadChannel }) {
 export function LeadHeader({
   lead, stages, members, onUpdate, onTogglePin, onAssign, onChangeStage,
 }: Props) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(id);
-  }, []);
-
-  const rec = recommendationFor(lead.aiScore);
-  const sla = leadSlaMinutes(lead, now);
-  const tone = slaTone(sla);
   const stage = stages.find((s) => s.id === lead.stageId);
   const assignee = members.find((m) => m.id === lead.assigneeId);
 
   return (
-    <div className="border-b border-border/60 bg-background pb-3">
+    <div className="border-b border-border/60 bg-background pb-4">
       <div className="flex items-start gap-3">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/15 text-base font-bold text-primary ring-1 ring-primary/30">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-primary/15 text-lg font-bold text-primary ring-1 ring-primary/30">
           {lead.name.slice(0, 1).toUpperCase()}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <div className="min-w-0 text-base font-bold sm:text-lg">
+          <div className="flex items-start gap-1.5">
+            <div className="min-w-0 text-xl font-bold leading-tight sm:text-2xl">
               <InlineEdit
                 value={lead.name}
                 onSave={(v) => v && onUpdate({ name: v })}
@@ -85,8 +65,8 @@ export function LeadHeader({
             </button>
           </div>
 
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
-            <span className="inline-flex items-center gap-1 rounded-md bg-secondary/60 px-1.5 py-0.5 font-medium">
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary/70 px-2.5 py-1 font-semibold">
               <ChannelIcon channel={lead.channel} />
               {lead.source}
             </span>
@@ -96,7 +76,7 @@ export function LeadHeader({
               <PopoverTrigger asChild>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 font-semibold text-primary hover:bg-primary/20"
+                  className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 font-semibold text-primary hover:bg-primary/20"
                 >
                   {stage?.title ?? lead.stageId}
                 </button>
@@ -124,9 +104,10 @@ export function LeadHeader({
               <PopoverTrigger asChild>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 rounded-md bg-secondary/60 px-1.5 py-0.5 hover:bg-secondary"
+                  className="inline-flex items-center gap-1 rounded-full bg-secondary/70 px-2.5 py-1 font-semibold hover:bg-secondary"
                 >
-                  👤 {assignee?.name ?? "не назначен"}
+                  <UserRound className="h-3.5 w-3.5" />
+                  {assignee?.name ?? "не назначен"}
                 </button>
               </PopoverTrigger>
               <PopoverContent className="w-56" align="start">
@@ -143,72 +124,6 @@ export function LeadHeader({
                 </Select>
               </PopoverContent>
             </Popover>
-          </div>
-        </div>
-      </div>
-
-      {/* KPI strip */}
-      <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <div className={cn(
-          "rounded-lg border bg-card/60 p-2",
-          rec.level === "hot" && "border-border/60",
-          rec.level === "warm" && "border-border/60",
-          rec.level === "cold" && "border-border/60",
-        )}>
-          <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-            <Sparkles className="h-3 w-3" /> AI-скор
-          </div>
-          <div className="mt-0.5 flex items-baseline gap-1">
-            <span className="text-xl font-bold tabular-nums">{lead.aiScore}</span>
-            <span className="text-xs text-muted-foreground">%</span>
-          </div>
-          <div className={cn(
-            "text-[10px] font-semibold",
-            rec.level === "hot" && "text-foreground",
-            rec.level === "warm" && "text-foreground",
-            rec.level === "cold" && "text-muted-foreground",
-          )}>{rec.emoji} {rec.label}</div>
-        </div>
-
-        <div className="rounded-lg border border-border/60 bg-card/60 p-2">
-          <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-            <Wallet className="h-3 w-3" /> Потенциал
-          </div>
-          <div className="mt-0.5 text-xl font-bold tabular-nums">
-            <InlineEdit
-              value={String(lead.amount || "")}
-              onSave={(v) => onUpdate({ amount: Number(v) || 0 })}
-              placeholder="0"
-              numeric
-              suffix="$"
-              inputClassName="text-xl font-bold"
-              ariaLabel="Сумма сделки"
-            />
-          </div>
-          <div className="text-[10px] text-muted-foreground">
-            {lead.amount ? `≈ ${Math.round(lead.amount * lead.aiScore / 100).toLocaleString("ru-RU")} $ ожид.` : "укажите сумму"}
-          </div>
-        </div>
-
-        <div className={cn(
-          "rounded-lg border bg-card/60 p-2",
-          tone === "good" && "border-border/60",
-          tone === "warn" && "border-border/60",
-          tone === "bad" && "border-border/60",
-        )}>
-          <div className="flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
-            <Clock className="h-3 w-3" /> Таймеры
-          </div>
-          <div className={cn(
-            "mt-0.5 text-base font-bold tabular-nums",
-            tone === "good" && "text-foreground",
-            tone === "warn" && "text-foreground",
-            tone === "bad" && "text-foreground",
-          )}>
-            {timeAgo(lead.createdAt, now)}
-          </div>
-          <div className="text-[10px] text-muted-foreground">
-            контакт: {timeAgo(lead.lastActivityAt, now)} назад
           </div>
         </div>
       </div>

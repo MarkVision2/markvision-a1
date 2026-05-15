@@ -15,7 +15,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
         <AppSidebar />
-        <SidebarInset className="flex flex-1 flex-col bg-background">
+        <SidebarInset className="flex min-w-0 flex-1 flex-col bg-background">
           <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-border/60 bg-background/70 px-3 backdrop-blur-xl sm:px-6">
             <SidebarTrigger className="-ml-1" />
             <div className="hidden text-sm text-muted-foreground sm:block">
@@ -41,7 +41,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
               <Bell className="h-4 w-4" />
             </button>
           </header>
-          <div className="flex-1">{children}</div>
+          <div className="min-w-0 flex-1">{children}</div>
         </SidebarInset>
       </div>
     </SidebarProvider>

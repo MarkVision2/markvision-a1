@@ -15,9 +15,9 @@ export function SlaAlerts({ alerts, onJumpToNoAnswer }: Props) {
     return (
       <div className="flex items-center gap-3 rounded-2xl border border-success/30 bg-success/10 px-4 py-3 text-sm">
         <CheckCircle2 className="h-5 w-5 text-success" />
-        <div>
-          <div className="font-semibold">SLA в норме</div>
-          <div className="text-xs text-muted-foreground">Нет лидов без ответа дольше 5 минут.</div>
+          <div>
+          <div className="font-semibold">Все новые заявки обработаны вовремя</div>
+          <div className="text-xs text-muted-foreground">Нет клиентов, которые ждут ответа дольше 5 минут.</div>
         </div>
       </div>
     );
@@ -35,10 +35,10 @@ export function SlaAlerts({ alerts, onJumpToNoAnswer }: Props) {
           <AlertTriangle className="mt-0.5 h-5 w-5 text-destructive" />
           <div className="min-w-0 flex-1">
             <div className="text-sm font-bold text-destructive">
-              🔴 {red} {leadWord(red)} без ответа более 15 минут
+              {red} {leadWord(red)} без ответа более 15 минут
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
-              Деньги горят. Откройте «Без ответа» и реанимируйте контакт.
+              Откройте «Без ответа» и назначьте следующий контакт.
             </div>
           </div>
         </button>
@@ -51,10 +51,10 @@ export function SlaAlerts({ alerts, onJumpToNoAnswer }: Props) {
           <Clock className="mt-0.5 h-5 w-5 text-warning" />
           <div className="min-w-0 flex-1">
             <div className="text-sm font-bold text-warning">
-              🟡 {yellow} {leadWord(yellow)} ожидает ответа 5–15 минут
+              {yellow} {leadWord(yellow)} ждёт ответа 5–15 минут
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
-              Свяжитесь сейчас, пока контакт ещё «тёплый».
+              Лучше связаться сейчас или поставить задачу на точное время.
             </div>
           </div>
         </button>
