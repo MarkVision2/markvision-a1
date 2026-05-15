@@ -56,16 +56,37 @@ const Dashboard = () => {
         body: { since: ymdLocal(range.from), until: ymdLocal(range.to) },
       });
       if (error) throw new Error(error.message);
-      const results = (data as { results?: Array<{ ok: boolean; cabinet: string; campaigns?: number; creatives?: number }> } | null)?.results ?? [];
+      const results = (data as {
+        results?: Array<{
+          ok: boolean;
+          cabinet: string;
+          campaigns?: number;
+          creatives?: number;
+          account_daily?: number;
+          spend?: number;
+          leads?: number;
+          error?: string;
+        }>;
+      } | null)?.results ?? [];
       const ok = results.filter((r) => r.ok);
       const failed = results.filter((r) => !r.ok);
       if (ok.length > 0) {
         const camps = ok.reduce((s, r) => s + (r.campaigns ?? 0), 0);
         const ads = ok.reduce((s, r) => s + (r.creatives ?? 0), 0);
-        toast.success(`Синхронизировано: ${ok.length} кабинет(ов), ${camps} кампаний, ${ads} креативов`);
+        const days = ok.reduce((s, r) => s + (r.account_daily ?? 0), 0);
+        const spend = ok.reduce((s, r) => s + (r.spend ?? 0), 0);
+        const leads = ok.reduce((s, r) => s + (r.leads ?? 0), 0);
+        const spendFmt = `${Math.round(spend).toLocaleString("ru-RU")} ₸`;
+        toast.success(
+          `Синхронизировано: ${ok.length} кабинет(ов), ${camps} кампаний, ${ads} креативов. ` +
+          `Период ${days} дн.: ${spendFmt}, ${leads} заявок Meta.`,
+        );
       }
       if (failed.length > 0) {
-        toast.error(`Ошибка по ${failed.length} кабинет(ам): ${failed[0].cabinet}`);
+        const first = failed[0];
+        toast.error(
+          `Ошибка по ${failed.length} кабинет(ам): ${first.cabinet}${first.error ? ` — ${first.error}` : ""}`,
+        );
       }
       // Триггерим перезагрузку данных тем же приёмом, что и кнопка «Обновить».
       setRange({ ...range });

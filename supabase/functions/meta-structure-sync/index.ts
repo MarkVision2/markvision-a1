@@ -350,22 +350,102 @@ Deno.serve(async (req) => {
         return { a, cr, media, ctype: inferCreativeType(cr) };
       });
 
-      // Resolve mp4 source URL for video creatives via batched ?ids=…
-      const videoIds = Array.from(new Set(
-        adsMeta.map((m) => m.media.video_id).filter((v): v is string => !!v),
-      ));
-      const videoSourceById = new Map<string, string>();
+      // Resolve mp4 source URL + HD thumbnail for video creatives via batched ?ids=…
+      //
+      // Оптимизация нагрузки:
+      //   • mp4 `source` — запрашиваем ТОЛЬКО для активных ads (у paused подпись
+      //     всё равно истечёт через 24h, фронт умеет lazy-refresh при onError
+      //     через meta-creative-refresh, поэтому массово их пуллить смысла нет).
+      //   • HD thumbnails — запрашиваем ТОЛЬКО для НОВЫХ video_id (нет в БД)
+      //     и для тех, у кого сохранён мелкий `p64x64`. Один раз получили
+      //     постоянный CDN-url — больше не дёргаем Graph.
+      const adIdsInBatch = adsMeta.map((m) => String(m.a.id));
+      const { data: existingCreatives } = await admin
+        .from("meta_creatives")
+        .select("ad_id, video_id, thumbnail_url, video_url, last_synced_at")
+        .eq("cabinet_id", cabinetId)
+        .in("ad_id", adIdsInBatch);
+      type ExistingRow = {
+        ad_id: string;
+        video_id: string | null;
+        thumbnail_url: string | null;
+        video_url: string | null;
+        last_synced_at: string | null;
+      };
+      const existingByAdId = new Map<string, ExistingRow>();
+      for (const row of (existingCreatives ?? []) as ExistingRow[]) {
+        existingByAdId.set(row.ad_id, row);
+      }
+      const isLowResThumb = (url: string | null | undefined) =>
+        !url || /p64x64|p100x100|p110x110/.test(url);
+      const isStaleSource = (lastSyncedAt: string | null | undefined) => {
+        if (!lastSyncedAt) return true;
+        return Date.now() - new Date(lastSyncedAt).getTime() > 20 * 3600 * 1000;
+      };
+
+      const videoIdsForThumb = new Set<string>();
+      const videoIdsForSource = new Set<string>();
       const videoPosterById = new Map<string, string>();
-      for (let i = 0; i < videoIds.length; i += 50) {
-        const chunk = videoIds.slice(i, i + 50);
+      const videoSourceById = new Map<string, string>();
+
+      for (const m of adsMeta) {
+        const vid = m.media.video_id;
+        if (!vid) continue;
+        const existing = existingByAdId.get(String(m.a.id));
+        // HD thumbnail запрашиваем только если в БД нет, либо текущий мелкий 64×64.
+        if (isLowResThumb(existing?.thumbnail_url ?? null)) {
+          videoIdsForThumb.add(vid);
+        } else if (existing?.thumbnail_url) {
+          // Уже есть HD — переиспользуем, чтобы не сбросить на маленький.
+          videoPosterById.set(vid, existing.thumbnail_url);
+        }
+        // mp4 source — только для активных, и только если в БД нет свежего.
+        const status = (m.a.effective_status as string | undefined) ?? "";
+        const isActive = status === "ACTIVE";
+        if (isActive && (isStaleSource(existing?.last_synced_at) || !existing?.video_url)) {
+          videoIdsForSource.add(vid);
+        } else if (existing?.video_url) {
+          // Свежий source из БД — переиспользуем.
+          videoSourceById.set(vid, existing.video_url);
+        }
+      }
+
+      type ThumbItem = { uri?: string; width?: number; height?: number; is_preferred?: boolean };
+      type VideoResp = { source?: string; picture?: string; thumbnails?: { data?: ThumbItem[] } };
+      const pickBestThumb = (v: VideoResp): string | null => {
+        const thumbs = v.thumbnails?.data ?? [];
+        if (thumbs.length) {
+          const preferred = thumbs.find((t) => t.is_preferred && (t.width ?? 0) >= 320);
+          if (preferred?.uri) return preferred.uri;
+          const sorted = [...thumbs].sort(
+            (a, b) => ((b.width ?? 0) * (b.height ?? 0)) - ((a.width ?? 0) * (a.height ?? 0)),
+          );
+          if (sorted[0]?.uri) return sorted[0].uri;
+        }
+        return v.picture ?? null;
+      };
+
+      // Объединяем video_id, по которым реально нужно запросить Graph, чтобы
+      // не дёргать API дважды по одному id (source и thumb идут в одном GET).
+      const videoIdsToFetch = Array.from(new Set([
+        ...videoIdsForSource,
+        ...videoIdsForThumb,
+      ]));
+      const needSource = videoIdsForSource;
+      const needThumb = videoIdsForThumb;
+      for (let i = 0; i < videoIdsToFetch.length; i += 50) {
+        const chunk = videoIdsToFetch.slice(i, i + 50);
         try {
-          const url = `https://graph.facebook.com/${META_API_VERSION}/?ids=${encodeURIComponent(chunk.join(","))}&fields=source,picture&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`;
+          const url = `https://graph.facebook.com/${META_API_VERSION}/?ids=${encodeURIComponent(chunk.join(","))}&fields=source,picture,thumbnails{uri,width,height,is_preferred,scale}&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`;
           const r = await fetch(url);
           if (!r.ok) continue;
-          const body = await r.json() as Record<string, { source?: string; picture?: string }>;
+          const body = await r.json() as Record<string, VideoResp>;
           for (const [vid, val] of Object.entries(body)) {
-            if (val?.source) videoSourceById.set(vid, val.source);
-            if (val?.picture) videoPosterById.set(vid, val.picture);
+            if (needSource.has(vid) && val?.source) videoSourceById.set(vid, val.source);
+            if (needThumb.has(vid)) {
+              const best = pickBestThumb(val);
+              if (best) videoPosterById.set(vid, best);
+            }
           }
         } catch (_) { /* ignore */ }
       }
@@ -380,8 +460,11 @@ Deno.serve(async (req) => {
         status: (a.status as string | undefined) ?? null,
         effective_status: (a.effective_status as string | undefined) ?? null,
         creative_type: ctype,
-        thumbnail_url: media.thumbnail
-          ?? (media.video_id ? videoPosterById.get(media.video_id) ?? null : null),
+        // Для видео: предпочитаем HD-постер из thumbnails[] (видео Graph API),
+        // а маленький 64×64 thumbnail из creative используем только как fallback.
+        thumbnail_url: media.video_id
+          ? (videoPosterById.get(media.video_id) ?? media.thumbnail ?? null)
+          : (media.thumbnail ?? null),
         image_url: media.image,
         video_id: media.video_id,
         // Готовый mp4 source URL (fbcdn, временная подпись ~24h). Если не удалось
@@ -483,6 +566,62 @@ Deno.serve(async (req) => {
         if (error) throw error;
       }
 
+      // ---- 5. Account-level rollup → cabinet_daily_insights ---------------
+      // Этот агрегат — основной источник KPI на дашборде (useReportData).
+      // Без него «Синхронизировать Meta» обновит только структуру, и при выборе
+      // пресета «Сегодня» дашборд будет показывать нули, пока ночной cron
+      // (`meta-daily-sync-1am`) не догонит за вчера.
+      //
+      // Оптимизация: не делаем отдельный запрос с level=account — он бы вернул
+      // ровно ту же сумму, что и Σ campaign-level. Агрегируем уже посчитанные
+      // campDailyRows (там уже применена FX-конвертация в KZT при необходимости).
+      const cdiAgg = new Map<string, { spend: number; impressions: number; clicks: number; leads: number; revenue: number; currency: string }>();
+      for (const r of campDailyRows) {
+        const cur = cdiAgg.get(r.date) ?? { spend: 0, impressions: 0, clicks: 0, leads: 0, revenue: 0, currency: r.currency };
+        cur.spend += r.spend;
+        cur.impressions += r.impressions;
+        cur.clicks += r.clicks;
+        cur.leads += r.leads;
+        cur.revenue += r.revenue;
+        cdiAgg.set(r.date, cur);
+      }
+      const nowIso = new Date().toISOString();
+      const cdiRows = Array.from(cdiAgg.entries()).map(([date, v]) => ({
+        cabinet_id: cabinetId,
+        external_id: actId,
+        project_id: projectId,
+        provider: "meta",
+        date,
+        spend: v.spend,
+        impressions: v.impressions,
+        clicks: v.clicks,
+        leads: v.leads,
+        revenue: v.revenue,
+        cpl: v.leads > 0 ? v.spend / v.leads : 0,
+        cpm: v.impressions > 0 ? (v.spend / v.impressions) * 1000 : 0,
+        cpc: v.clicks > 0 ? v.spend / v.clicks : 0,
+        ctr: v.impressions > 0 ? (v.clicks / v.impressions) * 100 : 0,
+        currency: v.currency,
+        synced_at: nowIso,
+      }));
+
+      if (cdiRows.length > 0) {
+        const { error } = await admin
+          .from("cabinet_daily_insights")
+          .upsert(cdiRows, { onConflict: "external_id,date" });
+        if (error) throw error;
+      }
+
+      const cdiTotals = cdiRows.reduce(
+        (acc, r) => ({
+          spend: acc.spend + r.spend,
+          leads: acc.leads + r.leads,
+          clicks: acc.clicks + r.clicks,
+          revenue: acc.revenue + r.revenue,
+        }),
+        { spend: 0, leads: 0, clicks: 0, revenue: 0 },
+      );
+
       results.push({
         cabinet: ext,
         ok: true,
@@ -491,11 +630,17 @@ Deno.serve(async (req) => {
         creatives: creativeRows.length,
         campaign_daily: campDailyRows.length,
         creative_daily: adDailyRows.length,
+        account_daily: cdiRows.length,
+        spend: cdiTotals.spend,
+        leads: cdiTotals.leads,
+        clicks: cdiTotals.clicks,
+        revenue: cdiTotals.revenue,
       });
       console.log(
         `[meta-structure-sync] cabinet=${ext} since=${since}..${until} ` +
         `campaigns=${campaignRows.length} creatives=${creativeRows.length} ` +
-        `camp_days=${campDailyRows.length} ad_days=${adDailyRows.length}`,
+        `camp_days=${campDailyRows.length} ad_days=${adDailyRows.length} ` +
+        `account_days=${cdiRows.length} spend=${cdiTotals.spend.toFixed(2)} leads=${cdiTotals.leads}`,
       );
     } catch (e) {
       results.push({ cabinet: ext, ok: false, error: (e as Error).message });

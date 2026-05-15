@@ -94,7 +94,8 @@ export function useDashboardData(
   const [providerAgg, setProviderAgg] = useState<ProviderAgg[]>([]);
   const [pTick, setPTick] = useState(0);
 
-  useRealtimeTable("cabinet_daily_insights", () => setPTick((t) => t + 1), true, 1000);
+  // Throttle 3s — синхронизирован с useReportData, см. комментарий там.
+  useRealtimeTable("cabinet_daily_insights", () => setPTick((t) => t + 1), true, 3000);
 
   const alerts = useMemo(
     () => (data ? buildAlerts(data.totals, data.prev) : []),
