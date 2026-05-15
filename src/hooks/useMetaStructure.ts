@@ -88,8 +88,8 @@ export function useMetaCreatives(range: Range) {
   const [loading, setLoading] = useState(false);
   const [tick, setTick] = useState(0);
 
-  useRealtimeTable("meta_creative_daily", () => setTick((t) => t + 1), true, 2000);
-  useRealtimeTable("meta_creatives", () => setTick((t) => t + 1), true, 1000);
+  useRealtimeTable("meta_creative_daily", () => setTick((t) => t + 1), true, 3000);
+  useRealtimeTable("meta_creatives", () => setTick((t) => t + 1), true, 3000);
 
   const since = useMemo(() => ymd(range.from), [range.from]);
   const until = useMemo(() => ymd(range.to), [range.to]);
@@ -249,8 +249,8 @@ export function useMetaCampaigns(range: Range) {
   const [loading, setLoading] = useState(false);
   const [tick, setTick] = useState(0);
 
-  useRealtimeTable("meta_campaigns", () => setTick((t) => t + 1), true, 1000);
-  useRealtimeTable("meta_campaign_daily", () => setTick((t) => t + 1), true, 2000);
+  useRealtimeTable("meta_campaigns", () => setTick((t) => t + 1), true, 3000);
+  useRealtimeTable("meta_campaign_daily", () => setTick((t) => t + 1), true, 3000);
 
   const since = useMemo(() => ymd(range.from), [range.from]);
   const until = useMemo(() => ymd(range.to), [range.to]);

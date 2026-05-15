@@ -238,7 +238,10 @@ export function useReportData(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
-  useRealtimeTable("cabinet_daily_insights", () => setTick((t) => t + 1), true, 800);
+  // Throttle 3s — пакетный UPSERT в meta-structure-sync присылает 1 событие
+  // на каждый записанный день. Без троттла дашборд бы делал refetch 14–30 раз
+  // за секунду; 3s достаточно, чтобы дождаться завершения батча.
+  useRealtimeTable("cabinet_daily_insights", () => setTick((t) => t + 1), true, 3000);
 
   const cabinetIds = useMemo(() => {
     if (cabinetId === "all") return cabinets.map((c) => c.externalId).filter(Boolean);
