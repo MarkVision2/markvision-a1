@@ -17,10 +17,13 @@ import {
 export type SourceKey =
   | "whatsapp"
   | "instagram"
+  | "instagram_organic"
   | "facebook"
   | "telegram"
   | "site"
   | "ads"
+  | "google"
+  | "meta"
   | "lead_form"
   | "phone"
   | "referral"
@@ -44,6 +47,10 @@ const TABLE: Record<string, Omit<SourceMeta, "raw">> = {
   // Instagram
   instagram: { key: "instagram", label: "Instagram", Icon: Camera, cls: "text-foreground" },
   ig: { key: "instagram", label: "Instagram", Icon: Camera, cls: "text-foreground" },
+  // Instagram organic (от код-словов в рилсах)
+  instagram_organic: { key: "instagram_organic", label: "Instagram (organic)", Icon: Camera, cls: "text-pink-500" },
+  ig_organic: { key: "instagram_organic", label: "Instagram (organic)", Icon: Camera, cls: "text-pink-500" },
+  reels: { key: "instagram_organic", label: "Instagram (organic)", Icon: Camera, cls: "text-pink-500" },
   // Facebook / Meta
   facebook: { key: "facebook", label: "Facebook", Icon: Facebook, cls: "text-primary" },
   fb: { key: "facebook", label: "Facebook", Icon: Facebook, cls: "text-primary" },
@@ -59,7 +66,9 @@ const TABLE: Record<string, Omit<SourceMeta, "raw">> = {
   // Paid ads
   ads: { key: "ads", label: "Реклама", Icon: Megaphone, cls: "text-warning" },
   advert: { key: "ads", label: "Реклама", Icon: Megaphone, cls: "text-warning" },
-  google: { key: "ads", label: "Google Ads", Icon: Megaphone, cls: "text-warning" },
+  google: { key: "google", label: "Google Ads", Icon: Megaphone, cls: "text-warning" },
+  google_ads: { key: "google", label: "Google Ads", Icon: Megaphone, cls: "text-warning" },
+  googleads: { key: "google", label: "Google Ads", Icon: Megaphone, cls: "text-warning" },
   yandex: { key: "ads", label: "Яндекс.Директ", Icon: Megaphone, cls: "text-warning" },
   cpc: { key: "ads", label: "Реклама", Icon: Megaphone, cls: "text-warning" },
   // Lead forms

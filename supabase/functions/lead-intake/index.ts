@@ -53,6 +53,15 @@ const Schema = z.object({
   project_id: z.string().trim().uuid().optional().nullable(),
   cabinet_id: z.string().trim().uuid().optional().nullable(),
   ad_account_id: z.string().trim().max(80).optional().nullable(),
+  token: z.string().trim().max(120).optional().nullable(),
+  // Атрибуция Meta (cookies со стороны лендинга)
+  fbc: z.string().trim().max(255).optional().nullable(),
+  fbp: z.string().trim().max(255).optional().nullable(),
+  fbclid: z.string().trim().max(255).optional().nullable(),
+  // Сквозная атрибуция «креатив → лид»
+  ad_id: z.string().trim().max(40).optional().nullable(),
+  adset_id: z.string().trim().max(40).optional().nullable(),
+  campaign_id: z.string().trim().max(40).optional().nullable(),
 });
 
 async function parseBody(req: Request): Promise<Record<string, unknown>> {
@@ -90,70 +99,134 @@ async function parseBody(req: Request): Promise<Record<string, unknown>> {
   return {};
 }
 
-async function getDefaultStage(): Promise<{ pipeline_id: string; stage_id: string } | null> {
-  const { data: pipe } = await admin
+async function firstStage(pipelineId: string): Promise<string | null> {
+  const { data } = await admin
+    .from("pipeline_stages")
+    .select("id")
+    .eq("pipeline_id", pipelineId)
+    .order("order_index", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  return data?.id ?? null;
+}
+
+// Resolve pipeline + first stage:
+//   1) project-scoped default pipeline
+//   2) any project-scoped pipeline
+//   3) global default pipeline (legacy)
+//   4) any pipeline at all
+async function getDefaultStage(
+  projectId: string | null,
+): Promise<{ pipeline_id: string; stage_id: string } | null> {
+  const tryPipe = async (id: string | null | undefined) => {
+    if (!id) return null;
+    const stage_id = await firstStage(id);
+    return stage_id ? { pipeline_id: id, stage_id } : null;
+  };
+
+  if (projectId) {
+    const { data: defaultProj } = await admin
+      .from("pipelines")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("is_default", true)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const r1 = await tryPipe(defaultProj?.id);
+    if (r1) return r1;
+
+    const { data: anyProj } = await admin
+      .from("pipelines")
+      .select("id")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const r2 = await tryPipe(anyProj?.id);
+    if (r2) return r2;
+  }
+
+  const { data: defaultGlobal } = await admin
     .from("pipelines")
     .select("id")
+    .is("project_id", null)
     .eq("is_default", true)
     .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
-  if (!pipe?.id) {
-    // fallback: first pipeline overall
-    const { data: anyPipe } = await admin
-      .from("pipelines")
-      .select("id")
-      .order("created_at", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (!anyPipe?.id) return null;
-    const { data: stage } = await admin
-      .from("pipeline_stages")
-      .select("id")
-      .eq("pipeline_id", anyPipe.id)
-      .order("order_index", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-    if (!stage?.id) return null;
-    return { pipeline_id: anyPipe.id, stage_id: stage.id };
-  }
-  const { data: stage } = await admin
-    .from("pipeline_stages")
+  const r3 = await tryPipe(defaultGlobal?.id);
+  if (r3) return r3;
+
+  const { data: anyPipe } = await admin
+    .from("pipelines")
     .select("id")
-    .eq("pipeline_id", pipe.id)
-    .order("order_index", { ascending: true })
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
-  if (!stage?.id) return null;
-  return { pipeline_id: pipe.id, stage_id: stage.id };
+  return tryPipe(anyPipe?.id);
 }
 
-async function findExistingLeadByPhone(phone: string): Promise<string | null> {
+async function findExistingLeadByPhone(
+  phone: string,
+  projectId: string | null,
+): Promise<string | null> {
   const d = digits(phone);
   if (!d) return null;
-  const { data } = await admin
-    .from("leads")
-    .select("id, phone")
-    .or(`phone.eq.+${d},phone.eq.${d}`)
-    .limit(1);
+  // Phone dedupe is scoped per-project (one client = one project).
+  // Without a projectId we fall back to global match for legacy intakes.
+  let q = admin.from("leads").select("id, phone").or(`phone.eq.+${d},phone.eq.${d}`).limit(1);
+  if (projectId) q = q.eq("project_id", projectId);
+  const { data } = await q;
   if (data && data.length > 0) return data[0].id;
-  // broader scan
-  const { data: recent } = await admin
+
+  let scan = admin
     .from("leads")
     .select("id, phone")
     .order("created_at", { ascending: false })
     .limit(500);
+  if (projectId) scan = scan.eq("project_id", projectId);
+  const { data: recent } = await scan;
   return (recent ?? []).find((l) => digits(l.phone) === d)?.id ?? null;
+}
+
+// Path: /functions/v1/lead-intake/t/<token>  →  returns the token, else null.
+function extractToken(req: Request): string | null {
+  try {
+    const path = new URL(req.url).pathname;
+    const m = path.match(/\/lead-intake\/t\/([A-Za-z0-9_\-x]{8,64})\/?$/);
+    return m ? m[1] : null;
+  } catch {
+    return null;
+  }
+}
+
+async function projectFromToken(token: string): Promise<string | null> {
+  const { data } = await admin
+    .from("projects")
+    .select("id")
+    .eq("intake_token", token)
+    .maybeSingle();
+  return data?.id ?? null;
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
+  // Token from path: /lead-intake/t/<token>. When present, lead is bound to
+  // exactly that project — its pipeline, its dedupe scope.
+  const tokenFromPath = extractToken(req);
+  const tokenProjectId = tokenFromPath ? await projectFromToken(tokenFromPath) : null;
+  if (tokenFromPath && !tokenProjectId) {
+    return json({ error: "Invalid intake token" }, 404);
+  }
+
   if (req.method === "GET") {
     return json({
       ok: true,
       hint: "POST your lead here. Required: phone. Recommended: name, utm_*",
+      project_bound: !!tokenProjectId,
     });
   }
   if (req.method !== "POST") {
@@ -161,6 +234,13 @@ Deno.serve(async (req) => {
   }
 
   const raw = await parseBody(req);
+
+  // Honeypot — silently 200 if a bot filled the hidden field. Two common
+  // names so users can pick whichever fits their form.
+  const hp = String((raw as Record<string, unknown>)._hp ?? (raw as Record<string, unknown>).company ?? "").trim();
+  if (hp) {
+    return json({ ok: true, leadId: null, skipped: "honeypot" });
+  }
   const parsed = Schema.safeParse(raw);
   if (!parsed.success) {
     return json(
@@ -222,9 +302,27 @@ Deno.serve(async (req) => {
   const note = [v.message, v.note].filter(Boolean).join("\n").trim() || null;
   const landingUrl = v.landing_url || v.page || null;
 
-  // Resolve project_id and cabinet_id: explicit > via cabinet_id > via ad_account_id
-  let projectId: string | null = v.project_id || null;
+  // Resolve project_id and cabinet_id.
+  // Priority: URL token > body project_id > inbound_tokens(body token) > cabinet_id > ad_account_id.
+  // URL token wins — it is the secret bound to the project on creation.
+  let projectId: string | null = tokenProjectId ?? v.project_id ?? null;
   let cabinetId: string | null = v.cabinet_id || null;
+
+  // Inbound token: один из самых надёжных способов привязки лида к клиенту.
+  if (v.token) {
+    try {
+      const { data: tok } = await admin
+        .from("inbound_tokens")
+        .select("client_id, project_id, is_active")
+        .eq("token", v.token.trim())
+        .maybeSingle();
+      if (tok && tok.is_active !== false) {
+        if (!cabinetId && tok.client_id) cabinetId = String(tok.client_id);
+        if (!projectId && tok.project_id) projectId = String(tok.project_id);
+      }
+    } catch { /* нет таблицы / иное — fallback на старую логику */ }
+  }
+
   if (cabinetId) {
     const { data } = await admin.from("ad_cabinets").select("project_id").eq("id", cabinetId).maybeSingle();
     if (!projectId) projectId = data?.project_id ?? null;
@@ -255,12 +353,26 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Dedupe by phone
-    const existingId = await findExistingLeadByPhone(phoneE164);
+    // Сквозная атрибуция: ad_id может прийти явно или в utm_content (шаблон {{ad.id}}).
+    const numericId = (s: string | null | undefined) =>
+      s && /^[0-9]{6,}$/.test(s.trim()) ? s.trim() : null;
+    const metaAdId = (v.ad_id && v.ad_id.trim()) || numericId(v.utm_content);
+    const metaAdsetId = (v.adset_id && v.adset_id.trim()) || numericId(v.utm_term);
+    const metaCampaignId = (v.campaign_id && v.campaign_id.trim()) || numericId(v.utm_campaign);
+    const clickId = (v.fbclid && v.fbclid.trim()) || null;
+
+    // Dedupe by phone — scoped to the resolved project.
+    const existingId = await findExistingLeadByPhone(phoneE164, projectId);
     if (existingId) {
+      const patch: Record<string, unknown> = { last_activity_at: new Date().toISOString() };
+      if (Object.keys(utm).length) patch.utm = utm;
+      if (metaAdId) patch.meta_ad_id = metaAdId;
+      if (metaAdsetId) patch.meta_adset_id = metaAdsetId;
+      if (metaCampaignId) patch.meta_campaign_id = metaCampaignId;
+      if (clickId) patch.click_id = clickId;
       await admin
         .from("leads")
-        .update({ last_activity_at: new Date().toISOString() })
+        .update(patch)
         .eq("id", existingId);
       await admin.from("events").insert({
         lead_id: existingId,
@@ -287,8 +399,8 @@ Deno.serve(async (req) => {
       return json({ ok: true, leadId: existingId, duplicate: true });
     }
 
-    // Create new
-    const def = await getDefaultStage();
+    // Create new — pipeline is resolved within the project's scope.
+    const def = await getDefaultStage(projectId);
     if (!def) {
       return json({ error: "No default pipeline/stage configured" }, 500);
     }
@@ -312,6 +424,10 @@ Deno.serve(async (req) => {
         referrer: v.referrer || null,
         landing_url: landingUrl,
         first_touch_at: new Date().toISOString(),
+        meta_ad_id: metaAdId,
+        meta_adset_id: metaAdsetId,
+        meta_campaign_id: metaCampaignId,
+        click_id: clickId,
       })
       .select("id")
       .single();

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
+  Plus,
   Columns3,
   MessageCircle,
   Database,
-  Plus,
   Sparkles,
   Users,
   BarChart3,
@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useCrmStore } from "@/hooks/useCrmStore";
 import type { Lead } from "@/types/crm";
 import { useTeamStore } from "@/hooks/useTeamStore";
@@ -26,6 +27,7 @@ import { CrmKpiBar } from "@/components/crm/CrmKpiBar";
 import { SlaAlerts } from "@/components/crm/SlaAlerts";
 import { CrmFilters, type CrmFilterState } from "@/components/crm/CrmFilters";
 import { RejectReasonDialog } from "@/components/crm/RejectReasonDialog";
+import { PaymentAmountDialog } from "@/components/crm/PaymentAmountDialog";
 import { ManagersView } from "@/components/crm/ManagersView";
 import { AnalyticsView } from "@/components/crm/AnalyticsView";
 import { AutomationsSettings } from "@/components/crm/AutomationsSettings";
@@ -33,14 +35,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
 type Tab = "funnel" | "chats" | "clients" | "managers" | "analytics" | "automations";
-
-const BASE_TABS: { id: Tab; label: string; icon: typeof Columns3 }[] = [
-  { id: "funnel", label: "Воронка", icon: Columns3 },
-  { id: "chats", label: "Чаты", icon: MessageCircle },
-  { id: "clients", label: "База клиентов", icon: Database },
-  { id: "managers", label: "Менеджеры", icon: Users },
-  { id: "analytics", label: "Аналитика", icon: BarChart3 },
-];
 
 const Crm = () => {
   const { isAdmin } = useAuth();
@@ -51,9 +45,14 @@ const Crm = () => {
     chats,
     whatsapp,
     setWhatsapp,
+    addStage,
+    renameStage,
+    removeStage,
+    moveStage,
     addLead,
     updateLead,
     removeLead,
+    markPersonal,
     moveLead,
     sendMessage,
     togglePin,
@@ -69,18 +68,32 @@ const Crm = () => {
   } = useCrmStore();
   const { members } = useTeamStore();
 
+  const TABS: { id: Tab; label: string; icon: typeof Columns3 }[] = useMemo(
+    () => [
+      { id: "funnel", label: "Воронка", icon: Columns3 },
+      { id: "chats", label: "Чаты", icon: MessageCircle },
+      { id: "clients", label: "База", icon: Database },
+      { id: "managers", label: "Менеджеры", icon: Users },
+      { id: "analytics", label: "Аналитика", icon: BarChart3 },
+      { id: "automations", label: isAdmin ? "Автоматизации" : "Телефония", icon: Zap },
+    ],
+    [isAdmin],
+  );
+
   const [tab, setTab] = useState<Tab>("funnel");
   const [newOpen, setNewOpen] = useState(false);
   const [waOpen, setWaOpen] = useState(false);
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null);
+  const [newStageDraft, setNewStageDraft] = useState("");
+  const [addingStage, setAddingStage] = useState(false);
+  const [filters, setFilters] = useState<CrmFilterState>({ search: "", source: null, assigneeId: null });
+  const [rejectFor, setRejectFor] = useState<{ leadId: string; prevStageId?: string; viaDrag: boolean } | null>(null);
+  const [payFor, setPayFor] = useState<{ leadId: string; prevStageId?: string } | null>(null);
 
-  // Open a lead via ?lead=<id> (e.g. from "История звонков").
   useEffect(() => {
     const id = searchParams.get("lead");
     if (id && id !== activeLeadId) setActiveLeadId(id);
   }, [searchParams, activeLeadId]);
-  const [filters, setFilters] = useState<CrmFilterState>({ search: "", source: null, assigneeId: null });
-  const [rejectFor, setRejectFor] = useState<{ leadId: string; prevStageId?: string; viaDrag: boolean } | null>(null);
 
   const activeLead = useMemo(
     () => leads.find((l) => l.id === activeLeadId) ?? null,
@@ -113,7 +126,6 @@ const Crm = () => {
     });
   }, [leads, filters]);
 
-  // Index leads by stageId once — avoids O(N×M) refilter inside stages.map on every render.
   const leadsByStage = useMemo(() => {
     const map = new Map<string, Lead[]>();
     for (const l of filteredLeads) {
@@ -127,6 +139,18 @@ const Crm = () => {
 
   const analytics = useCrmAnalytics(leads, stages, members);
 
+  const handleAddStage = () => {
+    const name = newStageDraft.trim();
+    if (!name) {
+      setAddingStage(false);
+      return;
+    }
+    addStage(name);
+    setNewStageDraft("");
+    setAddingStage(false);
+    toast.success("Этап добавлен");
+  };
+
   const handleDropLead = useCallback((leadId: string, stageId: string) => {
     if (stageId === "rejected") {
       const current = leads.find((l) => l.id === leadId);
@@ -135,10 +159,23 @@ const Crm = () => {
       setRejectFor({ leadId, prevStageId: prev, viaDrag: true });
       return;
     }
+    if (stageId === "paid") {
+      // Перевод на «Оплачен» только через ввод суммы — этап не двигаем заранее,
+      // markPaid внутри подтверждения переведёт его сам.
+      const current = leads.find((l) => l.id === leadId);
+      setPayFor({ leadId, prevStageId: current?.stageId });
+      return;
+    }
     moveLead(leadId, stageId);
   }, [leads, moveLead]);
 
   const handleOpenLead = useCallback((l: Lead) => setActiveLeadId(l.id), []);
+  const handleDeleteStage = useCallback((id: string) => {
+    if (confirm("Удалить этап? Лиды перейдут в первый этап.")) {
+      removeStage(id, stages[0]?.id);
+      toast.success("Этап удалён");
+    }
+  }, [removeStage, stages]);
 
   const jumpToNoAnswer = () => {
     setTab("funnel");
@@ -183,55 +220,67 @@ const Crm = () => {
   }, [leads]);
 
   return (
-    <main className="min-w-0 w-full overflow-hidden px-4 py-6 sm:px-6 sm:py-8 animate-fade-in-up">
-      {/* header */}
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="flex items-start gap-4">
-          <span className="grid h-14 w-14 place-items-center rounded-2xl bg-success/15 text-success ring-1 ring-success/30">
-            <Sparkles className="h-6 w-6" />
-          </span>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-              CRM
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Заявки, задачи, записи и оплаты в одном рабочем окне
-            </p>
+    <main className="flex h-[calc(100vh-3.5rem)] min-h-0 flex-col animate-fade-in-up">
+      {/* Compact header */}
+      <header className="border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur sm:px-6">
+        <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2.5">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-success/15 text-success ring-1 ring-success/30">
+              <Sparkles className="h-4 w-4" />
+            </span>
+            <div className="leading-tight">
+              <div className="text-base font-bold sm:text-lg">CRM</div>
+              <div className="text-[10px] text-muted-foreground sm:text-xs">
+                Заявки · Задачи · Записи · Оплаты
+              </div>
+            </div>
+          </div>
+
+          <div className="ml-auto flex items-center gap-2">
+            {!whatsapp.connected && (
+              <Button
+                onClick={() => setWaOpen(true)}
+                variant="outline"
+                size="sm"
+                className="hidden sm:inline-flex"
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                WhatsApp
+              </Button>
+            )}
+            <Button
+              onClick={() => setNewOpen(true)}
+              size="sm"
+              className="bg-gradient-primary text-primary-foreground shadow-glow"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Новый лид
+            </Button>
           </div>
         </div>
-        <Button
-          onClick={() => setNewOpen(true)}
-          className="bg-gradient-primary text-primary-foreground shadow-glow"
-        >
-          <Plus className="h-4 w-4" />
-          Новый лид
-        </Button>
-      </div>
 
-      {/* KPI */}
-      <div className="mt-6">
-        <CrmKpiBar kpi={analytics.kpi} />
-      </div>
+        {/* KPI strip */}
+        <div className="mx-auto mt-3 max-w-[1600px]">
+          <CrmKpiBar kpi={analytics.kpi} />
+        </div>
 
-      {/* SLA Alerts */}
-      <div className="mt-4">
-        <SlaAlerts alerts={analytics.slaAlerts} onJumpToNoAnswer={jumpToNoAnswer} />
-      </div>
+        {/* Inline SLA strip (only when there are issues) */}
+        {(analytics.slaAlerts.red.length > 0 || analytics.slaAlerts.yellow.length > 0) && (
+          <div className="mx-auto mt-2 max-w-[1600px]">
+            <SlaAlerts alerts={analytics.slaAlerts} onJumpToNoAnswer={jumpToNoAnswer} compact />
+          </div>
+        )}
 
-      {/* Tabs */}
-      <div className="mt-6 flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap gap-1 rounded-2xl border border-border/60 bg-card/60 p-1">
-          {[
-            ...BASE_TABS,
-            { id: "automations" as Tab, label: isAdmin ? "Автоматизации" : "Телефония", icon: Zap },
-          ].map((t) => {
+        {/* Tabs */}
+        <div className="mx-auto mt-3 flex max-w-[1600px] gap-1 overflow-x-auto">
+          {TABS.map((t) => {
             const active = tab === t.id;
             return (
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
                 className={cn(
-                  "flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold uppercase tracking-wider transition-colors sm:px-4",
+                  "inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
                   active
                     ? "bg-success/15 text-success"
                     : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
@@ -243,75 +292,116 @@ const Crm = () => {
             );
           })}
         </div>
+      </header>
 
-      </div>
-
-      {/* Tab content */}
-      <div className="mt-6 min-w-0">
-        {tab === "funnel" && (
-          <div className="min-w-0">
-            <div className="pb-3">
+      {/* Tab content — fills remaining viewport */}
+      <section className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6">
+        <div className="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col">
+          {tab === "funnel" && (
+            <div className="flex min-h-0 flex-1 flex-col gap-3">
               <CrmFilters
                 state={filters}
                 onChange={setFilters}
                 sources={sources}
                 members={members}
               />
-            </div>
-            <div className="flex h-[calc(100vh-460px)] min-h-[420px] max-w-full gap-3 overflow-x-auto pb-3">
-              {stages.map((stage, idx) => (
-                <div
-                  key={stage.id}
-                  ref={stage.id === "no_answer" ? noAnswerRef : undefined}
-                  className="contents"
-                >
-                  <StageColumn
-                    stage={stage}
-                    leads={leadsByStage.get(stage.id) ?? EMPTY_LEADS}
-                    metrics={analytics.stageMetrics[idx]}
-                    members={members}
-                    onDropLead={handleDropLead}
-                    onOpenLead={handleOpenLead}
-                    onTogglePin={togglePin}
-                  />
+
+              <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto pb-2">
+                {stages.map((stage, idx) => (
+                  <div
+                    key={stage.id}
+                    ref={stage.id === "no_answer" ? noAnswerRef : undefined}
+                    className="contents"
+                  >
+                    <StageColumn
+                      stage={stage}
+                      leads={leadsByStage.get(stage.id) ?? EMPTY_LEADS}
+                      metrics={analytics.stageMetrics[idx]}
+                      members={members}
+                      isFirst={idx === 0}
+                      isLast={idx === stages.length - 1}
+                      canDelete={stages.length > 2}
+                      onRename={renameStage}
+                      onMove={moveStage}
+                      onDelete={handleDeleteStage}
+                      onDropLead={handleDropLead}
+                      onOpenLead={handleOpenLead}
+                      onTogglePin={togglePin}
+                    />
+                  </div>
+                ))}
+
+                {/* Ghost "add stage" column */}
+                <div className="flex h-full w-[260px] shrink-0 flex-col">
+                  {addingStage ? (
+                    <div className="flex flex-col gap-2 rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-3">
+                      <Input
+                        autoFocus
+                        value={newStageDraft}
+                        onChange={(e) => setNewStageDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleAddStage();
+                          if (e.key === "Escape") { setNewStageDraft(""); setAddingStage(false); }
+                        }}
+                        onBlur={handleAddStage}
+                        placeholder="Название этапа..."
+                        maxLength={40}
+                        className="h-9"
+                      />
+                      <div className="text-[10px] text-muted-foreground">
+                        Enter — сохранить · Esc — отмена
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setAddingStage(true)}
+                      className="flex h-12 items-center justify-center gap-2 rounded-2xl border border-dashed border-border/60 bg-card/30 text-xs font-semibold text-muted-foreground transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+                      title="Добавить новый этап"
+                    >
+                      <Plus className="h-4 w-4" />
+                      Этап
+                    </button>
+                  )}
                 </div>
-              ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {tab === "chats" && (
-          <ChatsView
-            leads={leads}
-            stages={stages}
-            chats={chats}
-            whatsapp={whatsapp}
-            onSend={sendMessage}
-            onConnectWhatsApp={() => setWaOpen(true)}
-          />
-        )}
+          {tab === "chats" && (
+            <ChatsView
+              leads={leads}
+              stages={stages}
+              chats={chats}
+              whatsapp={whatsapp}
+              onSend={sendMessage}
+              onConnectWhatsApp={() => setWaOpen(true)}
+            />
+          )}
 
-        {tab === "clients" && (
-          <ClientsView
-            leads={leads}
-            stages={stages}
-            onOpenLead={(l) => setActiveLeadId(l.id)}
-          />
-        )}
+          {tab === "clients" && (
+            <ClientsView
+              leads={leads}
+              stages={stages}
+              onOpenLead={(l) => setActiveLeadId(l.id)}
+            />
+          )}
 
-        {tab === "managers" && <ManagersView stats={analytics.managerStats} />}
+          {tab === "managers" && <ManagersView stats={analytics.managerStats} />}
 
-        {tab === "analytics" && (
-          <AnalyticsView
-            stageMetrics={analytics.stageMetrics}
-            rejectStats={analytics.rejectStats}
-            forecast={analytics.forecast}
-            actual={analytics.actual}
-          />
-        )}
+          {tab === "analytics" && (
+            <AnalyticsView
+              stageMetrics={analytics.stageMetrics}
+              rejectStats={analytics.rejectStats}
+              forecast={analytics.forecast}
+              actual={analytics.actual}
+              leads={leads}
+            />
+          )}
 
-        {tab === "automations" && <AutomationsSettings />}
-      </div>
+          {tab === "automations" && <AutomationsSettings />}
+        </div>
+      </section>
 
       {/* Dialogs */}
       <NewLeadDialog
@@ -345,6 +435,10 @@ const Crm = () => {
         onDelete={(id) => {
           removeLead(id);
           toast.success("Лид удалён");
+        }}
+        onMarkPersonal={(id) => {
+          markPersonal(id);
+          toast.success("Заявка убрана в личные — её больше нет в CRM");
         }}
         onTogglePin={togglePin}
         onAssign={assignLead}
@@ -385,6 +479,10 @@ const Crm = () => {
           const current = leads.find((l) => l.id === id);
           setRejectFor({ leadId: id, prevStageId: current?.stageId, viaDrag: false });
         }}
+        onRequestPay={(id) => {
+          const current = leads.find((l) => l.id === id);
+          setPayFor({ leadId: id, prevStageId: current?.stageId });
+        }}
         busySlots={busySlots}
       />
 
@@ -396,12 +494,24 @@ const Crm = () => {
         onOpenChange={(v) => { if (!v) setRejectFor(null); }}
         onPick={(reason, note) => {
           if (rejectFor) {
-            // если закрытие инициировано не через drag — двигаем в стадию «Отказ» сейчас
             if (!rejectFor.viaDrag) moveLead(rejectFor.leadId, "rejected");
             setRejectReason(rejectFor.leadId, reason, note);
             toast.success("Лид закрыт. Причина сохранена в истории.");
           }
           setRejectFor(null);
+        }}
+      />
+
+      <PaymentAmountDialog
+        open={!!payFor}
+        defaultAmount={payFor ? leads.find((l) => l.id === payFor.leadId)?.amount : undefined}
+        onOpenChange={(v) => { if (!v) setPayFor(null); }}
+        onCancel={() => setPayFor(null)}
+        onConfirm={(method, amount, opts) => {
+          if (!payFor) return;
+          markPaid(payFor.leadId, method, amount, opts);
+          toast.success("Оплата зафиксирована, сделка в «Оплачен»");
+          setPayFor(null);
         }}
       />
 

@@ -51,6 +51,7 @@ export type Database = {
           pixel_event: string | null
           pixel_id: string | null
           project_id: string | null
+          provider: string
           revenue: number
           sales: number
           spend: number
@@ -106,6 +107,7 @@ export type Database = {
           pixel_event?: string | null
           pixel_id?: string | null
           project_id?: string | null
+          provider?: string
           revenue?: number
           sales?: number
           spend?: number
@@ -161,6 +163,7 @@ export type Database = {
           pixel_event?: string | null
           pixel_id?: string | null
           project_id?: string | null
+          provider?: string
           revenue?: number
           sales?: number
           spend?: number
@@ -185,7 +188,21 @@ export type Database = {
             foreignKeyName: "ad_cabinets_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "ad_cabinets_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ad_cabinets_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
             referencedColumns: ["id"]
           },
         ]
@@ -374,6 +391,7 @@ export type Database = {
           followup_2h_enabled: boolean
           followup_2h_minutes: number
           id: boolean
+          meta_access_token: string | null
           revival_7d_days: number
           revival_7d_enabled: boolean
           revival_7d_template_key: string
@@ -393,6 +411,7 @@ export type Database = {
           followup_2h_enabled?: boolean
           followup_2h_minutes?: number
           id?: boolean
+          meta_access_token?: string | null
           revival_7d_days?: number
           revival_7d_enabled?: boolean
           revival_7d_template_key?: string
@@ -412,6 +431,7 @@ export type Database = {
           followup_2h_enabled?: boolean
           followup_2h_minutes?: number
           id?: boolean
+          meta_access_token?: string | null
           revival_7d_days?: number
           revival_7d_enabled?: boolean
           revival_7d_template_key?: string
@@ -446,6 +466,7 @@ export type Database = {
           manual_revenue: number
           manual_sales: number
           project_id: string | null
+          provider: string
           revenue: number
           spend: number
           synced_at: string
@@ -470,6 +491,7 @@ export type Database = {
           manual_revenue?: number
           manual_sales?: number
           project_id?: string | null
+          provider?: string
           revenue?: number
           spend?: number
           synced_at?: string
@@ -494,6 +516,7 @@ export type Database = {
           manual_revenue?: number
           manual_sales?: number
           project_id?: string | null
+          provider?: string
           revenue?: number
           spend?: number
           synced_at?: string
@@ -701,7 +724,21 @@ export type Database = {
             foreignKeyName: "finance_plans_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "finance_plans_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "finance_plans_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
             referencedColumns: ["id"]
           },
         ]
@@ -726,6 +763,170 @@ export type Database = {
           usd_kzt?: number
         }
         Relationships: []
+      }
+      instagram_codewords: {
+        Row: {
+          active: boolean
+          caption: string | null
+          codeword: string
+          created_at: string
+          created_by: string | null
+          id: string
+          project_id: string
+          published_at: string | null
+          reel_id: string | null
+          reel_url: string | null
+          target_url: string | null
+          thumbnail_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          caption?: string | null
+          codeword: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          project_id: string
+          published_at?: string | null
+          reel_id?: string | null
+          reel_url?: string | null
+          target_url?: string | null
+          thumbnail_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          caption?: string | null
+          codeword?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          project_id?: string
+          published_at?: string | null
+          reel_id?: string | null
+          reel_url?: string | null
+          target_url?: string | null
+          thumbnail_url?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instagram_codewords_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "instagram_codewords_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instagram_codewords_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      instagram_organic_events: {
+        Row: {
+          codeword: string | null
+          codeword_id: string | null
+          contact: string | null
+          created_at: string
+          date: string
+          event_type: string
+          id: string
+          lead_id: string | null
+          occurred_at: string
+          payload: Json
+          project_id: string | null
+          reel_id: string | null
+          reel_url: string | null
+          username: string | null
+        }
+        Insert: {
+          codeword?: string | null
+          codeword_id?: string | null
+          contact?: string | null
+          created_at?: string
+          date?: string
+          event_type: string
+          id?: string
+          lead_id?: string | null
+          occurred_at?: string
+          payload?: Json
+          project_id?: string | null
+          reel_id?: string | null
+          reel_url?: string | null
+          username?: string | null
+        }
+        Update: {
+          codeword?: string | null
+          codeword_id?: string | null
+          contact?: string | null
+          created_at?: string
+          date?: string
+          event_type?: string
+          id?: string
+          lead_id?: string | null
+          occurred_at?: string
+          payload?: Json
+          project_id?: string | null
+          reel_id?: string | null
+          reel_url?: string | null
+          username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instagram_organic_events_codeword_id_fkey"
+            columns: ["codeword_id"]
+            isOneToOne: false
+            referencedRelation: "instagram_codeword_stats"
+            referencedColumns: ["codeword_id"]
+          },
+          {
+            foreignKeyName: "instagram_organic_events_codeword_id_fkey"
+            columns: ["codeword_id"]
+            isOneToOne: false
+            referencedRelation: "instagram_codewords"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instagram_organic_events_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instagram_organic_events_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "instagram_organic_events_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instagram_organic_events_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       lead_status_history: {
         Row: {
@@ -786,17 +987,22 @@ export type Database = {
           campaign: string | null
           channel: Database["public"]["Enums"]["lead_channel"] | null
           city: string | null
+          click_id: string | null
           created_at: string
           created_by: string | null
           email: string | null
           first_response_at: string | null
           first_touch_at: string | null
           id: string
+          is_personal: boolean
           landing_url: string | null
           last_activity_at: string
           last_contact_at: string | null
           last_inbound_at: string | null
           last_outbound_at: string | null
+          meta_ad_id: string | null
+          meta_adset_id: string | null
+          meta_campaign_id: string | null
           name: string
           next_action_at: string | null
           next_visit_at: string | null
@@ -826,17 +1032,22 @@ export type Database = {
           campaign?: string | null
           channel?: Database["public"]["Enums"]["lead_channel"] | null
           city?: string | null
+          click_id?: string | null
           created_at?: string
           created_by?: string | null
           email?: string | null
           first_response_at?: string | null
           first_touch_at?: string | null
           id?: string
+          is_personal?: boolean
           landing_url?: string | null
           last_activity_at?: string
           last_contact_at?: string | null
           last_inbound_at?: string | null
           last_outbound_at?: string | null
+          meta_ad_id?: string | null
+          meta_adset_id?: string | null
+          meta_campaign_id?: string | null
           name: string
           next_action_at?: string | null
           next_visit_at?: string | null
@@ -866,17 +1077,22 @@ export type Database = {
           campaign?: string | null
           channel?: Database["public"]["Enums"]["lead_channel"] | null
           city?: string | null
+          click_id?: string | null
           created_at?: string
           created_by?: string | null
           email?: string | null
           first_response_at?: string | null
           first_touch_at?: string | null
           id?: string
+          is_personal?: boolean
           landing_url?: string | null
           last_activity_at?: string
           last_contact_at?: string | null
           last_inbound_at?: string | null
           last_outbound_at?: string | null
+          meta_ad_id?: string | null
+          meta_adset_id?: string | null
+          meta_campaign_id?: string | null
           name?: string
           next_action_at?: string | null
           next_visit_at?: string | null
@@ -941,6 +1157,347 @@ export type Database = {
         }
         Relationships: []
       }
+      meta_campaign_daily: {
+        Row: {
+          cabinet_id: string | null
+          campaign_id: string
+          clicks: number
+          currency: string
+          date: string
+          id: string
+          impressions: number
+          leads: number
+          messages: number
+          project_id: string | null
+          purchases: number
+          revenue: number
+          spend: number
+          synced_at: string
+        }
+        Insert: {
+          cabinet_id?: string | null
+          campaign_id: string
+          clicks?: number
+          currency?: string
+          date: string
+          id?: string
+          impressions?: number
+          leads?: number
+          messages?: number
+          project_id?: string | null
+          purchases?: number
+          revenue?: number
+          spend?: number
+          synced_at?: string
+        }
+        Update: {
+          cabinet_id?: string | null
+          campaign_id?: string
+          clicks?: number
+          currency?: string
+          date?: string
+          id?: string
+          impressions?: number
+          leads?: number
+          messages?: number
+          project_id?: string | null
+          purchases?: number
+          revenue?: number
+          spend?: number
+          synced_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_campaign_daily_cabinet_id_fkey"
+            columns: ["cabinet_id"]
+            isOneToOne: false
+            referencedRelation: "ad_cabinets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_campaign_daily_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "meta_campaign_daily_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_campaign_daily_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_campaigns: {
+        Row: {
+          cabinet_id: string | null
+          campaign_id: string
+          daily_budget: number | null
+          destination_type: string | null
+          effective_status: string | null
+          id: string
+          last_synced_at: string
+          lifetime_budget: number | null
+          name: string
+          objective: string | null
+          project_id: string | null
+          start_time: string | null
+          status: string | null
+          stop_time: string | null
+        }
+        Insert: {
+          cabinet_id?: string | null
+          campaign_id: string
+          daily_budget?: number | null
+          destination_type?: string | null
+          effective_status?: string | null
+          id?: string
+          last_synced_at?: string
+          lifetime_budget?: number | null
+          name: string
+          objective?: string | null
+          project_id?: string | null
+          start_time?: string | null
+          status?: string | null
+          stop_time?: string | null
+        }
+        Update: {
+          cabinet_id?: string | null
+          campaign_id?: string
+          daily_budget?: number | null
+          destination_type?: string | null
+          effective_status?: string | null
+          id?: string
+          last_synced_at?: string
+          lifetime_budget?: number | null
+          name?: string
+          objective?: string | null
+          project_id?: string | null
+          start_time?: string | null
+          status?: string | null
+          stop_time?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_campaigns_cabinet_id_fkey"
+            columns: ["cabinet_id"]
+            isOneToOne: false
+            referencedRelation: "ad_cabinets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_campaigns_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "meta_campaigns_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_campaigns_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_creative_daily: {
+        Row: {
+          ad_id: string
+          cabinet_id: string | null
+          campaign_id: string | null
+          clicks: number
+          currency: string
+          date: string
+          id: string
+          impressions: number
+          leads: number
+          messages: number
+          project_id: string | null
+          purchases: number
+          revenue: number
+          spend: number
+          synced_at: string
+        }
+        Insert: {
+          ad_id: string
+          cabinet_id?: string | null
+          campaign_id?: string | null
+          clicks?: number
+          currency?: string
+          date: string
+          id?: string
+          impressions?: number
+          leads?: number
+          messages?: number
+          project_id?: string | null
+          purchases?: number
+          revenue?: number
+          spend?: number
+          synced_at?: string
+        }
+        Update: {
+          ad_id?: string
+          cabinet_id?: string | null
+          campaign_id?: string | null
+          clicks?: number
+          currency?: string
+          date?: string
+          id?: string
+          impressions?: number
+          leads?: number
+          messages?: number
+          project_id?: string | null
+          purchases?: number
+          revenue?: number
+          spend?: number
+          synced_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_creative_daily_cabinet_id_fkey"
+            columns: ["cabinet_id"]
+            isOneToOne: false
+            referencedRelation: "ad_cabinets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_creative_daily_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "meta_creative_daily_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_creative_daily_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_creatives: {
+        Row: {
+          ad_id: string
+          adset_id: string | null
+          cabinet_id: string | null
+          campaign_id: string | null
+          creative_type: string
+          cta: string | null
+          destination_url: string | null
+          effective_status: string | null
+          headline: string | null
+          id: string
+          image_url: string | null
+          last_synced_at: string
+          name: string
+          poster_url: string | null
+          primary_text: string | null
+          project_id: string | null
+          status: string | null
+          thumbnail_url: string | null
+          video_id: string | null
+          video_url: string | null
+        }
+        Insert: {
+          ad_id: string
+          adset_id?: string | null
+          cabinet_id?: string | null
+          campaign_id?: string | null
+          creative_type?: string
+          cta?: string | null
+          destination_url?: string | null
+          effective_status?: string | null
+          headline?: string | null
+          id?: string
+          image_url?: string | null
+          last_synced_at?: string
+          name: string
+          poster_url?: string | null
+          primary_text?: string | null
+          project_id?: string | null
+          status?: string | null
+          thumbnail_url?: string | null
+          video_id?: string | null
+          video_url?: string | null
+        }
+        Update: {
+          ad_id?: string
+          adset_id?: string | null
+          cabinet_id?: string | null
+          campaign_id?: string | null
+          creative_type?: string
+          cta?: string | null
+          destination_url?: string | null
+          effective_status?: string | null
+          headline?: string | null
+          id?: string
+          image_url?: string | null
+          last_synced_at?: string
+          name?: string
+          poster_url?: string | null
+          primary_text?: string | null
+          project_id?: string | null
+          status?: string | null
+          thumbnail_url?: string | null
+          video_id?: string | null
+          video_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_creatives_cabinet_id_fkey"
+            columns: ["cabinet_id"]
+            isOneToOne: false
+            referencedRelation: "ad_cabinets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_creatives_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "meta_creatives_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_creatives_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       monthly_finance: {
         Row: {
           created_by: string | null
@@ -974,7 +1531,21 @@ export type Database = {
             foreignKeyName: "monthly_finance_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "monthly_finance_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "monthly_finance_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
             referencedColumns: ["id"]
           },
         ]
@@ -1035,6 +1606,7 @@ export type Database = {
           id: string
           is_default: boolean
           name: string
+          project_id: string | null
           updated_at: string
         }
         Insert: {
@@ -1042,6 +1614,7 @@ export type Database = {
           id?: string
           is_default?: boolean
           name: string
+          project_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -1049,9 +1622,32 @@ export type Database = {
           id?: string
           is_default?: boolean
           name?: string
+          project_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "pipelines_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "pipelines_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipelines_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -1153,6 +1749,7 @@ export type Database = {
           domain: string | null
           id: string
           initials: string
+          intake_token: string
           is_primary: boolean
           name: string
           updated_at: string
@@ -1163,6 +1760,7 @@ export type Database = {
           domain?: string | null
           id?: string
           initials?: string
+          intake_token?: string
           is_primary?: boolean
           name: string
           updated_at?: string
@@ -1173,6 +1771,7 @@ export type Database = {
           domain?: string | null
           id?: string
           initials?: string
+          intake_token?: string
           is_primary?: boolean
           name?: string
           updated_at?: string
@@ -1208,6 +1807,7 @@ export type Database = {
           cabinet_ids: Json
           chat_id: string
           created_at: string
+          created_by: string | null
           enabled: boolean
           id: string
           last_sent_at: string | null
@@ -1221,6 +1821,7 @@ export type Database = {
           cabinet_ids?: Json
           chat_id: string
           created_at?: string
+          created_by?: string | null
           enabled?: boolean
           id?: string
           last_sent_at?: string | null
@@ -1234,6 +1835,7 @@ export type Database = {
           cabinet_ids?: Json
           chat_id?: string
           created_at?: string
+          created_by?: string | null
           enabled?: boolean
           id?: string
           last_sent_at?: string | null
@@ -1272,7 +1874,21 @@ export type Database = {
             foreignKeyName: "revenue_plan_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "revenue_plan_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "revenue_plan_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
             referencedColumns: ["id"]
           },
         ]
@@ -1366,7 +1982,21 @@ export type Database = {
             foreignKeyName: "user_active_project_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "user_active_project_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_active_project_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
             referencedColumns: ["id"]
           },
         ]
@@ -1394,39 +2024,337 @@ export type Database = {
       }
       whatsapp_config: {
         Row: {
+          ads_only: boolean
+          api_token: string | null
+          api_url: string | null
           connected: boolean
           connected_at: string | null
           display_name: string | null
+          id: string
+          id_instance: string | null
           phone: string | null
+          project_id: string | null
           updated_at: string
           user_id: string
         }
         Insert: {
+          ads_only?: boolean
+          api_token?: string | null
+          api_url?: string | null
           connected?: boolean
           connected_at?: string | null
           display_name?: string | null
+          id?: string
+          id_instance?: string | null
           phone?: string | null
+          project_id?: string | null
           updated_at?: string
           user_id: string
         }
         Update: {
+          ads_only?: boolean
+          api_token?: string | null
+          api_url?: string | null
           connected?: boolean
           connected_at?: string | null
           display_name?: string | null
+          id?: string
+          id_instance?: string | null
           phone?: string | null
+          project_id?: string | null
           updated_at?: string
           user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_config_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_config_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_config_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+    }
+    Views: {
+      inbound_tokens: {
+        Row: {
+          client_id: string | null
+          is_active: boolean | null
+          project_id: string | null
+          token: string | null
+        }
+        Insert: {
+          client_id?: never
+          is_active?: never
+          project_id?: string | null
+          token?: string | null
+        }
+        Update: {
+          client_id?: never
+          is_active?: never
+          project_id?: string | null
+          token?: string | null
+        }
+        Relationships: []
+      }
+      instagram_codeword_stats: {
+        Row: {
+          active: boolean | null
+          codeword: string | null
+          codeword_dms: number | null
+          codeword_id: string | null
+          last_event_at: string | null
+          leads: number | null
+          link_clicks: number | null
+          project_id: string | null
+          reel_url: string | null
+          thumbnail_url: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instagram_codewords_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "instagram_codewords_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instagram_codewords_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      instagram_organic_daily: {
+        Row: {
+          codeword_dms: number | null
+          date: string | null
+          leads: number | null
+          link_clicks: number | null
+          project_id: string | null
+          unique_codeword_users: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "instagram_organic_events_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "instagram_organic_events_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "instagram_organic_events_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_campaign_overview: {
+        Row: {
+          cabinet_id: string | null
+          campaign_id: string | null
+          clicks_all: number | null
+          daily_budget: number | null
+          destination_type: string | null
+          effective_status: string | null
+          id: string | null
+          impressions_all: number | null
+          last_synced_at: string | null
+          leads_all: number | null
+          messages_all: number | null
+          name: string | null
+          objective: string | null
+          project_id: string | null
+          purchases_all: number | null
+          revenue_all: number | null
+          spend_all: number | null
+          status: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_campaigns_cabinet_id_fkey"
+            columns: ["cabinet_id"]
+            isOneToOne: false
+            referencedRelation: "ad_cabinets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_campaigns_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "meta_campaigns_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_campaigns_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_creative_crm_daily: {
+        Row: {
+          ad_id: string | null
+          crm_leads: number | null
+          crm_qualified: number | null
+          crm_revenue: number | null
+          crm_sales: number | null
+          date: string | null
+          project_id: string | null
+        }
+        Relationships: []
+      }
+      meta_creative_overview: {
+        Row: {
+          ad_id: string | null
+          cabinet_id: string | null
+          campaign_id: string | null
+          clicks_all: number | null
+          creative_type: string | null
+          cta: string | null
+          destination_url: string | null
+          effective_status: string | null
+          headline: string | null
+          id: string | null
+          image_url: string | null
+          impressions_all: number | null
+          last_active_date: string | null
+          last_synced_at: string | null
+          leads_all: number | null
+          messages_all: number | null
+          name: string | null
+          primary_text: string | null
+          project_id: string | null
+          purchases_all: number | null
+          revenue_all: number | null
+          spend_all: number | null
+          thumbnail_url: string | null
+          video_id: string | null
+          video_url: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_creatives_cabinet_id_fkey"
+            columns: ["cabinet_id"]
+            isOneToOne: false
+            referencedRelation: "ad_cabinets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_creatives_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "meta_creatives_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_creatives_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      projects_public: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string | null
+          name: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string | null
+          name?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string | null
+          name?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }
     }
-    Views: {
-      [_ in never]: never
-    }
     Functions: {
+      _get_usd_kzt_rate: { Args: { p_date: string }; Returns: number }
+      _meta_get: { Args: { p_url: string }; Returns: Json }
+      _normalize_act_id: { Args: { p_id: string }; Returns: string }
+      bind_whatsapp_to_project: {
+        Args: {
+          p_api_token?: string
+          p_api_url?: string
+          p_id_instance: string
+          p_project_id: string
+        }
+        Returns: string
+      }
       ensure_cdi_row: {
         Args: { _cabinet_id: string; _date: string }
         Returns: undefined
+      }
+      ensure_project_pipeline: {
+        Args: { p_project_id: string }
+        Returns: string
+      }
+      gen_intake_token: { Args: never; Returns: string }
+      get_creative_funnel: {
+        Args: { p_ad_id: string; p_since?: string; p_until?: string }
+        Returns: Json
       }
       has_role: {
         Args: {
@@ -1435,7 +2363,20 @@ export type Database = {
         }
         Returns: boolean
       }
+      meta_structure_sync: {
+        Args: { p_cabinet_id?: string; p_since?: string; p_until?: string }
+        Returns: Json
+      }
       normalize_phone: { Args: { p: string }; Returns: string }
+      resolve_intake_project: { Args: { p_token: string }; Returns: string }
+      rotate_project_intake_token: {
+        Args: { p_project_id: string }
+        Returns: string
+      }
+      user_can_access_project: {
+        Args: { _project_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "admin" | "manager" | "director" | "marketer" | "viewer"

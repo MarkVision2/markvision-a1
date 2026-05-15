@@ -21,13 +21,16 @@ const Dashboard = lazy(routeImports.Dashboard);
 const Metrics = lazy(routeImports.Metrics);
 const Crm = lazy(routeImports.Crm);
 const CallsHistory = lazy(routeImports.Calls);
+const SalesAI = lazy(routeImports.SalesAI);
 const Analytics = lazy(routeImports.Analytics);
+const CreativeFunnel = lazy(routeImports.CreativeFunnel);
 const Finance = lazy(routeImports.Finance);
 const Reports = lazy(routeImports.Reports);
 const Settings = lazy(routeImports.Settings);
 const SettingsConnection = lazy(routeImports.SettingsConnection);
 const ResetPassword = lazy(routeImports.ResetPassword);
 const ProjectStrategy = lazy(routeImports.ProjectStrategy);
+const ClientDashboard = lazy(routeImports.ClientDashboard);
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -60,13 +63,16 @@ const App = () => (
             <Routes>
               <Route path="/login" element={<Login />} />
               <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/client/:token" element={<ClientDashboard />} />
               <Route path="/" element={<RequireAuth><AppLayout><Index /></AppLayout></RequireAuth>} />
               <Route path="/dashboard" element={<RequireAuth><AppLayout><Dashboard /></AppLayout></RequireAuth>} />
               <Route path="/metrics" element={<RequireAuth><AppLayout><Metrics /></AppLayout></RequireAuth>} />
               <Route path="/ads" element={<RequireAuth><AppLayout><Ads /></AppLayout></RequireAuth>} />
               <Route path="/crm" element={<RequireAuth><AppLayout><Crm /></AppLayout></RequireAuth>} />
               <Route path="/calls" element={<RequireAuth><AppLayout><CallsHistory /></AppLayout></RequireAuth>} />
+              <Route path="/sales-ai" element={<RequireAuth><AppLayout><SalesAI /></AppLayout></RequireAuth>} />
               <Route path="/analytics" element={<RequireAuth><AppLayout><Analytics /></AppLayout></RequireAuth>} />
+              <Route path="/analytics/creatives" element={<RequireAuth><AppLayout><CreativeFunnel /></AppLayout></RequireAuth>} />
               <Route path="/finance" element={<RequireAuth><AppLayout><Finance /></AppLayout></RequireAuth>} />
               <Route path="/reports" element={<RequireAuth><AppLayout><Reports /></AppLayout></RequireAuth>} />
               <Route path="/settings" element={<RequireAuth><AppLayout><Settings /></AppLayout></RequireAuth>} />

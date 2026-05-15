@@ -12,12 +12,15 @@ export const routeImports = {
   Metrics: () => import("@/pages/Metrics"),
   Crm: () => import("@/pages/Crm"),
   Calls: () => import("@/pages/Calls"),
+  SalesAI: () => import("@/pages/SalesAI"),
   Analytics: () => import("@/pages/Analytics"),
+  CreativeFunnel: () => import("@/pages/CreativeFunnel"),
   Finance: () => import("@/pages/Finance"),
   Reports: () => import("@/pages/Reports"),
   Settings: () => import("@/pages/Settings"),
   SettingsConnection: () => import("@/pages/SettingsConnection"),
   ProjectStrategy: () => import("@/pages/ProjectStrategy"),
+  ClientDashboard: () => import("@/pages/ClientDashboard"),
 };
 
 const prefetched = new Set<string>();

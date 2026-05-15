@@ -4,7 +4,7 @@ import {
 } from "@/components/ui/sheet";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Trash2, MessageSquare, ShoppingCart, ListChecks, User, History } from "lucide-react";
+import { Trash2, MessageSquare, ShoppingCart, ListChecks, User, History, EyeOff } from "lucide-react";
 import type { ChatMessage, Lead, LeadStage, PaymentMethod, WhatsAppConfig } from "@/types/crm";
 import type { TeamMember } from "@/hooks/useTeamStore";
 import { LeadHeader } from "./lead/LeadHeader";
@@ -25,6 +25,7 @@ interface Props {
   onOpenChange: (v: boolean) => void;
   onUpdate: (id: string, patch: Partial<Lead>) => void;
   onDelete: (id: string) => void;
+  onMarkPersonal: (id: string) => void;
   onTogglePin: (id: string) => void;
   onAssign: (id: string, assigneeId?: string) => void;
   onSendMessage: (id: string, text: string) => void;
@@ -36,14 +37,16 @@ interface Props {
   onToggleTask: (id: string, taskId: string) => void;
   onRemoveTask: (id: string, taskId: string) => void;
   onRequestReject: (id: string) => void;
+  /** Перевод сделки в этап «Оплачен» — обязательно через диалог суммы. */
+  onRequestPay: (id: string) => void;
   /** Other leads' booked visits (ISO timestamps) — used by visit popover. */
   busySlots?: { iso: string; leadName?: string }[];
 }
 
 export function LeadDetailSheet({
   lead, stages, members, chats, whatsapp, open, onOpenChange,
-  onUpdate, onDelete, onTogglePin, onAssign, onSendMessage,
-  onMarkCall, onLogCallAttempt, onMarkPaid, onSetVisit, onAddTask, onToggleTask, onRemoveTask, onRequestReject,
+  onUpdate, onDelete, onMarkPersonal, onTogglePin, onAssign, onSendMessage,
+  onMarkCall, onLogCallAttempt, onMarkPaid, onSetVisit, onAddTask, onToggleTask, onRemoveTask, onRequestReject, onRequestPay,
   busySlots,
 }: Props) {
   const [tab, setTab] = useState("deal");
@@ -77,7 +80,17 @@ export function LeadDetailSheet({
                   onTogglePin={() => onTogglePin(lead.id)}
                   onAssign={(aid) => onAssign(lead.id, aid)}
                   onChangeStage={(sid) => {
-                    if (sid === "rejected") onRequestReject(lead.id);
+                    if (sid === "rejected") {
+                      onRequestReject(lead.id);
+                      onUpdate(lead.id, { stageId: sid });
+                      return;
+                    }
+                    if (sid === "paid") {
+                      // Этап «Оплачен» нельзя выставлять без суммы — ждём диалог.
+                      // markPaid внутри обработчика подтверждения сам переведёт stage и создаст deal.
+                      onRequestPay(lead.id);
+                      return;
+                    }
                     onUpdate(lead.id, { stageId: sid });
                   }}
                 />
@@ -127,19 +140,37 @@ export function LeadDetailSheet({
               </Tabs>
             </div>
 
-            <div className="flex items-center justify-between border-t border-border/60 px-5 py-3">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  if (confirm("Удалить лида?")) {
-                    onDelete(lead.id);
-                    onOpenChange(false);
-                  }
-                }}
-                className="text-destructive hover:text-destructive"
-              >
-                <Trash2 className="h-4 w-4" />Удалить
-              </Button>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-5 py-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (confirm("Удалить лида?")) {
+                      onDelete(lead.id);
+                      onOpenChange(false);
+                    }
+                  }}
+                  className="text-destructive hover:text-destructive"
+                >
+                  <Trash2 className="h-4 w-4" />Удалить
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    if (confirm(
+                      "Убрать в личные?\n\nЭто не клиент — заявка пришла из вашей личной переписки. " +
+                      "После подтверждения лид полностью исчезнет из CRM: воронки, чатов, базы и аналитики. " +
+                      "Восстановить из интерфейса нельзя.",
+                    )) {
+                      onMarkPersonal(lead.id);
+                      onOpenChange(false);
+                    }
+                  }}
+                  title="Скрыть лид как личную переписку — он не будет учитываться нигде в CRM и аналитике"
+                >
+                  <EyeOff className="h-4 w-4" />Убрать в личные
+                </Button>
+              </div>
               <Button variant="outline" onClick={() => onOpenChange(false)}>Закрыть</Button>
             </div>
           </div>

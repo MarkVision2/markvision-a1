@@ -93,6 +93,11 @@ export type Lead = {
   pinned?: boolean;
   firstResponseAt?: string;  // when manager first replied
   channel?: LeadChannel;
+  cabinetId?: string | null;
+  // Meta attribution — set by trigger from utm_content / utm_campaign
+  metaAdId?: string | null;
+  metaAdsetId?: string | null;
+  metaCampaignId?: string | null;
   // Card extensions (rich lead workspace)
   service?: string;
   city?: string;
@@ -103,6 +108,12 @@ export type Lead = {
   paidAt?: string;
   tasks?: LeadTask[];
   events?: LeadEvent[];
+  /**
+   * Отметка «личное» — заявку на самом деле прислал не клиент, а кто-то из
+   * личных контактов владельца WhatsApp. Такие лиды полностью скрыты из CRM:
+   * не отображаются ни в воронке, ни в чатах, ни в базе, ни в аналитике.
+   */
+  isPersonal?: boolean;
 };
 
 export type ChatMessage = {

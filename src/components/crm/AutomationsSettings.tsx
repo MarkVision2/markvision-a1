@@ -86,21 +86,12 @@ export function AutomationsSettings() {
   useEffect(() => { if (error) toast.error(error); }, [error]);
 
   const runNow = async () => {
-    if (!s?.cron_secret) {
-      toast.error("Секрет недоступен — нужно быть админом");
-      return;
-    }
     setRunning(true);
     try {
-      const url = `https://xwhfixsqhbkdnnxrryux.supabase.co/functions/v1/crm-automations`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-automation-key": s.cron_secret },
-        body: JSON.stringify({}),
-      });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? "fail");
-      toast.success(`Запущено: 2ч=${j.followup_2h}, 24ч=${j.auto_msg_24h}, 7д=${j.revival_7d}`);
+      const { data, error } = await supabase.functions.invoke("crm-automations", { body: {} });
+      if (error) throw error;
+      const j = data as { followup_2h?: number; auto_msg_24h?: number; revival_7d?: number };
+      toast.success(`Запущено: 2ч=${j.followup_2h ?? 0}, 24ч=${j.auto_msg_24h ?? 0}, 7д=${j.revival_7d ?? 0}`);
       await load();
     } catch (e: any) {
       toast.error(e.message);

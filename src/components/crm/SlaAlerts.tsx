@@ -5,13 +5,16 @@ import type { SlaAlertBucket } from "@/hooks/useCrmAnalytics";
 interface Props {
   alerts: SlaAlertBucket;
   onJumpToNoAnswer: () => void;
+  /** When true, render a slim single-line strip suitable for the page header. */
+  compact?: boolean;
 }
 
-export function SlaAlerts({ alerts, onJumpToNoAnswer }: Props) {
+export function SlaAlerts({ alerts, onJumpToNoAnswer, compact }: Props) {
   const red = alerts.red.length;
   const yellow = alerts.yellow.length;
 
   if (red === 0 && yellow === 0) {
+    if (compact) return null;
     return (
       <div className="flex items-center gap-3 rounded-2xl border border-success/30 bg-success/10 px-4 py-3 text-sm">
         <CheckCircle2 className="h-5 w-5 text-success" />
@@ -23,14 +26,41 @@ export function SlaAlerts({ alerts, onJumpToNoAnswer }: Props) {
     );
   }
 
+  if (compact) {
+    return (
+      <button
+        type="button"
+        onClick={onJumpToNoAnswer}
+        className={cn(
+          "flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left text-xs transition-colors",
+          red > 0
+            ? "border-destructive/40 bg-destructive/10 text-destructive hover:bg-destructive/15"
+            : "border-warning/40 bg-warning/10 text-warning hover:bg-warning/15",
+        )}
+      >
+        {red > 0 ? (
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+        ) : (
+          <Clock className="h-4 w-4 shrink-0" />
+        )}
+        <span className="flex-1 truncate font-semibold">
+          {red > 0 && `🔴 ${red} ${leadWord(red)} без ответа > 15 мин`}
+          {red > 0 && yellow > 0 && " · "}
+          {yellow > 0 && `🟡 ${yellow} ${leadWord(yellow)} ждёт 5–15 мин`}
+        </span>
+        <span className="shrink-0 text-[10px] uppercase tracking-wider opacity-70">
+          Открыть →
+        </span>
+      </button>
+    );
+  }
+
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
       {red > 0 && (
         <button
           onClick={onJumpToNoAnswer}
-          className={cn(
-            "group flex items-start gap-3 rounded-2xl border border-destructive/40 bg-destructive/10 p-4 text-left transition-colors hover:bg-destructive/15",
-          )}
+          className="group flex items-start gap-3 rounded-2xl border border-destructive/40 bg-destructive/10 p-4 text-left transition-colors hover:bg-destructive/15"
         >
           <AlertTriangle className="mt-0.5 h-5 w-5 text-destructive" />
           <div className="min-w-0 flex-1">

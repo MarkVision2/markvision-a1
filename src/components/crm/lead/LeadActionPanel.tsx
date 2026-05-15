@@ -1,7 +1,7 @@
-import { Phone, MessageSquare, Calendar, Wallet, XCircle, Lightbulb } from "lucide-react";
+import { Phone, MessageSquare, Calendar, Wallet, XCircle, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Lead } from "@/types/crm";
-import { recommendationFor, leadSlaMinutes } from "@/hooks/useCrmAnalytics";
+import { leadSlaMinutes } from "@/hooks/useCrmAnalytics";
 import { PaymentPopover } from "./PaymentPopover";
 import { VisitSlotPopover } from "./VisitSlotPopover";
 import { CallDialPopover, type CallResult } from "./CallDialPopover";
@@ -25,7 +25,6 @@ interface Props {
 export function LeadActionPanel({
   lead, onCall, onCallAttempt, onWrite, onWriteTemplate, onScheduleVisit, onMarkPaid, onClose, busySlots,
 }: Props) {
-  const rec = recommendationFor(lead.aiScore);
   const sla = leadSlaMinutes(lead);
   const slaHint = sla > 5 && !lead.firstResponseAt ? `Связаться немедленно — ждёт ${sla} мин` : null;
 
@@ -101,13 +100,12 @@ export function LeadActionPanel({
           className="border-border/70 bg-secondary/50 text-foreground hover:bg-secondary" />
       </div>
 
-      <div className="mt-2.5 flex items-start gap-2 rounded-lg bg-secondary/40 px-3 py-2 text-[11px]">
-        <Lightbulb className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-        <div className="min-w-0">
-          <span className="font-semibold">{rec.emoji} {rec.label}.</span>
-          {slaHint && <span className="ml-1 font-semibold text-destructive">{slaHint}</span>}
+      {slaHint && (
+        <div className="mt-2.5 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span className="font-semibold">{slaHint}</span>
         </div>
-      </div>
+      )}
     </div>
   );
 }

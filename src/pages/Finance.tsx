@@ -12,6 +12,9 @@ import {
   Users,
   Wallet,
   CircleDollarSign,
+  ArrowRight,
+  Percent,
+  Receipt,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,70 +29,98 @@ const MONTHS_RU = [
   "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
 ];
 
-const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU");
-const fmtT = (n: number) => `${fmt(n)} $`;
+const fmt = (n: number) => {
+  if (!isFinite(n) || isNaN(n)) return "—";
+  return Math.round(n).toLocaleString("ru-RU");
+};
+const fmtT = (n: number) => {
+  if (!isFinite(n) || isNaN(n)) return "—";
+  return `${fmt(n)} ₸`;
+};
 
-type Mode = "revenue" | "budget";
 type Tab = "decomp" | "agency" | "dynamics";
+type DecompMode = "budget" | "revenue";
 
-interface FieldProps {
-  icon: string;
+interface SmartInputProps {
+  icon: React.ElementType;
   label: string;
+  hint?: string;
   value: number;
   onChange: (v: number) => void;
   suffix: string;
-  disabled?: boolean;
+  placeholder?: string;
 }
 
-const NumField = ({ icon, label, value, onChange, suffix, disabled }: FieldProps) => (
-  <div className={cn(
-    "rounded-2xl border border-border/60 bg-card/60 p-4",
-    disabled && "opacity-60",
-  )}>
-    <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-      <span>{icon}</span>
-      <span>{label}</span>
+const SmartInput = ({
+  icon: Icon, label, hint, value, onChange, suffix, placeholder,
+}: SmartInputProps) => {
+  const [raw, setRaw] = useState<string>(value ? String(value) : "");
+
+  useEffect(() => {
+    setRaw(value ? String(value) : "");
+  }, [value]);
+
+  const handle = (v: string) => {
+    const cleaned = v.replace(/[^\d.,]/g, "").replace(",", ".");
+    setRaw(cleaned);
+    onChange(Number(cleaned) || 0);
+  };
+
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-success/30 focus-within:border-success/50">
+      <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" />
+        <span>{label}</span>
+      </div>
+      <div className="mt-2.5 flex items-baseline gap-2">
+        <Input
+          type="text"
+          inputMode="decimal"
+          value={raw}
+          onChange={(e) => handle(e.target.value)}
+          placeholder={placeholder ?? "0"}
+          className="h-auto border-0 bg-transparent p-0 text-2xl font-bold tabular-nums shadow-none focus-visible:ring-0 placeholder:text-muted-foreground/30"
+        />
+        <span className="text-sm font-semibold text-muted-foreground">{suffix}</span>
+      </div>
+      {hint && (
+        <div className="mt-1 text-[11px] text-muted-foreground/80">{hint}</div>
+      )}
     </div>
-    <div className="mt-3 flex items-center gap-2 rounded-xl border border-border/60 bg-background/40 px-3">
-      <Input
-        type="number"
-        value={value || ""}
-        onChange={(e) => onChange(Number(e.target.value) || 0)}
-        disabled={disabled}
-        className="border-0 bg-transparent p-0 text-lg font-semibold tabular-nums shadow-none focus-visible:ring-0"
-      />
-      <span className="text-sm font-medium text-muted-foreground">{suffix}</span>
-    </div>
-  </div>
-);
+  );
+};
 
 interface FunnelStepProps {
   icon: React.ElementType;
   label: string;
   value: string;
   sub?: string;
-  highlight?: boolean;
+  step: number;
+  primary?: boolean;
 }
 
-const FunnelStep = ({ icon: Icon, label, value, sub, highlight }: FunnelStepProps) => (
+const FunnelStep = ({ icon: Icon, label, value, sub, step, primary }: FunnelStepProps) => (
   <div className={cn(
-    "flex-1 rounded-2xl border p-5 text-center",
-    highlight
-      ? "border-success/40 bg-success/5"
+    "relative flex-1 overflow-hidden rounded-2xl border p-4 transition-all",
+    primary
+      ? "border-success/50 bg-gradient-to-br from-success/10 to-success/5 shadow-[0_0_24px_-8px_hsl(var(--success)/0.5)]"
       : "border-border/60 bg-card/40",
   )}>
+    <div className="absolute right-3 top-3 text-[10px] font-bold tabular-nums text-muted-foreground/40">
+      {String(step).padStart(2, "0")}
+    </div>
     <span className={cn(
-      "mx-auto grid h-10 w-10 place-items-center rounded-xl",
-      highlight ? "bg-success/15 text-success" : "bg-secondary text-muted-foreground",
+      "grid h-9 w-9 place-items-center rounded-xl",
+      primary ? "bg-success/20 text-success" : "bg-secondary text-muted-foreground",
     )}>
-      <Icon className="h-5 w-5" />
+      <Icon className="h-4 w-4" />
     </span>
-    <div className="mt-3 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+    <div className="mt-2.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
       {label}
     </div>
     <div className={cn(
-      "mt-2 text-xl font-bold tabular-nums",
-      highlight && "text-success",
+      "mt-1 text-xl font-bold tabular-nums",
+      primary ? "text-success" : "text-foreground",
     )}>
       {value}
     </div>
@@ -98,14 +129,14 @@ const FunnelStep = ({ icon: Icon, label, value, sub, highlight }: FunnelStepProp
 );
 
 const FunnelArrow = () => (
-  <div className="hidden items-center justify-center px-1 text-muted-foreground/50 lg:flex">
-    →
+  <div className="hidden items-center justify-center px-1 lg:flex">
+    <ArrowRight className="h-4 w-4 text-success/40" />
   </div>
 );
 
 const Finance = () => {
   const [tab, setTab] = useState<Tab>("decomp");
-  const [mode, setMode] = useState<Mode>("revenue");
+  const [mode, setMode] = useState<DecompMode>("budget");
   const [monthCursor, setMonthCursor] = useState(() => {
     const d = new Date();
     return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -113,47 +144,47 @@ const Finance = () => {
 
   const { savePlan, getPlan } = useFinancePlans();
 
-  // Inputs
-  const [revenue, setRevenue] = useState(5_000_000);
-  const [avgCheck, setAvgCheck] = useState(1_000_000);
-  const [crLeadVisit, setCrLeadVisit] = useState(10);  // %
-  const [crVisitSale, setCrVisitSale] = useState(20);  // %
-  const [cpl, setCpl] = useState(2_000);
   const [budget, setBudget] = useState(500_000);
+  const [revenue, setRevenue] = useState(5_000_000);
+  const [cpl, setCpl] = useState(2_000);
+  const [crLeadVisit, setCrLeadVisit] = useState(20);
+  const [crVisitSale, setCrVisitSale] = useState(40);
+  const [avgCheck, setAvgCheck] = useState(500_000);
 
-  // Load existing plan when month changes
   useEffect(() => {
     const p = getPlan(monthKey(monthCursor));
     if (p) {
-      setRevenue(p.revenue);
-      setAvgCheck(p.avgCheck);
-      setCrLeadVisit(p.crLeadVisit);
-      setCrVisitSale(p.crVisitSale);
-      setCpl(p.cpl);
-      setBudget(p.spend);
+      setBudget(p.spend || 500_000);
+      setCpl(p.cpl || 2_000);
+      setCrLeadVisit(p.crLeadVisit || 20);
+      setCrVisitSale(p.crVisitSale || 40);
+      setAvgCheck(p.avgCheck || 500_000);
+      if (p.revenue) setRevenue(p.revenue);
     }
   }, [monthCursor, getPlan]);
 
-  // Decomposition math
   const calc = useMemo(() => {
-    if (mode === "revenue") {
-      const sales = avgCheck > 0 ? revenue / avgCheck : 0;
-      const visits = crVisitSale > 0 ? sales / (crVisitSale / 100) : 0;
-      const leads = crLeadVisit > 0 ? visits / (crLeadVisit / 100) : 0;
-      const spend = leads * cpl;
-      return { sales, visits, leads, spend, revenue };
+    const safe = (n: number) => (isFinite(n) && !isNaN(n) ? n : 0);
+    if (mode === "budget") {
+      const leads = cpl > 0 ? safe(budget / cpl) : 0;
+      const visits = leads * (crLeadVisit / 100);
+      const sales = visits * (crVisitSale / 100);
+      const rev = sales * avgCheck;
+      return { budget, leads, visits, sales, revenue: rev };
     }
-    // mode === "budget"
-    const leads = cpl > 0 ? budget / cpl : 0;
-    const visits = leads * (crLeadVisit / 100);
-    const sales = visits * (crVisitSale / 100);
-    const rev = sales * avgCheck;
-    return { sales, visits, leads, spend: budget, revenue: rev };
-  }, [mode, revenue, avgCheck, crLeadVisit, crVisitSale, cpl, budget]);
+    // mode === "revenue" — обратный счёт: сколько нужно вложить, чтобы получить эту выручку
+    const sales = avgCheck > 0 ? safe(revenue / avgCheck) : 0;
+    const visits = crVisitSale > 0 ? safe(sales / (crVisitSale / 100)) : 0;
+    const leads = crLeadVisit > 0 ? safe(visits / (crLeadVisit / 100)) : 0;
+    const requiredBudget = leads * cpl;
+    return { budget: requiredBudget, leads, visits, sales, revenue };
+  }, [mode, budget, revenue, cpl, crLeadVisit, crVisitSale, avgCheck]);
 
-  const cpv = calc.visits > 0 ? calc.spend / calc.visits : 0;
-  const cac = calc.sales > 0 ? calc.spend / calc.sales : 0;
-  const romi = calc.spend > 0 ? ((calc.revenue - calc.spend) / calc.spend) * 100 : 0;
+  const cpv = calc.visits > 0 ? calc.budget / calc.visits : 0;
+  const cac = calc.sales > 0 ? calc.budget / calc.sales : 0;
+  const profit = calc.revenue - calc.budget;
+  const romi = calc.budget > 0 ? ((calc.revenue - calc.budget) / calc.budget) * 100 : 0;
+  const margin = calc.revenue > 0 ? (profit / calc.revenue) * 100 : 0;
 
   const shiftMonth = (delta: number) =>
     setMonthCursor((p) => new Date(p.getFullYear(), p.getMonth() + delta, 1));
@@ -161,7 +192,7 @@ const Finance = () => {
 
   const handleSave = () => {
     savePlan(monthKey(monthCursor), {
-      spend: Math.round(calc.spend),
+      spend: Math.round(calc.budget),
       leads: Math.round(calc.leads),
       cpl: Math.round(cpl),
       visits: Math.round(calc.visits),
@@ -177,21 +208,20 @@ const Finance = () => {
   };
 
   return (
-    <main className="container max-w-7xl py-8 animate-fade-in-up">
-      <div className="flex items-center gap-4">
-        <span className="grid h-12 w-12 place-items-center rounded-2xl bg-success/10 text-success">
-          <Wallet className="h-6 w-6" />
+    <main className="container max-w-[1600px] py-6 animate-fade-in-up">
+      <div className="flex items-center gap-3">
+        <span className="grid h-10 w-10 place-items-center rounded-xl bg-success/15 text-success ring-1 ring-success/30">
+          <Wallet className="h-5 w-5" />
         </span>
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Финансы</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+        <div className="leading-tight">
+          <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Финансы</h1>
+          <p className="mt-0.5 text-xs text-muted-foreground">
             Юнит-экономика, агентская аналитика и динамика
           </p>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="mt-8 inline-flex flex-wrap rounded-2xl border border-border/60 bg-card/60 p-1.5">
+      <div className="mt-5 inline-flex flex-wrap rounded-xl border border-border/60 bg-card/60 p-1">
         {([
           { id: "decomp", label: "Декомпозиция", icon: Calculator },
           { id: "agency", label: "Агентская аналитика", icon: CircleDollarSign },
@@ -201,183 +231,185 @@ const Finance = () => {
             key={t.id}
             onClick={() => setTab(t.id)}
             className={cn(
-              "flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-colors",
+              "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
               tab === t.id
                 ? "bg-success/15 text-success"
                 : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
             )}
           >
-            <t.icon className="h-4 w-4" />
+            <t.icon className="h-3.5 w-3.5" />
             {t.label}
           </button>
         ))}
       </div>
 
       {tab === "agency" && <AgencyAnalytics />}
-
       {tab === "dynamics" && <MonthlyDynamics />}
 
       {tab === "decomp" && (
         <>
           {/* Mode switch */}
-          <div className="mt-8 inline-flex rounded-2xl border border-border/60 bg-card/60 p-1.5">
-            {([
-              { id: "revenue" as const, label: "От целевой выручки" },
-              { id: "budget" as const, label: "От бюджета" },
-            ]).map((m) => (
-              <button
-                key={m.id}
-                onClick={() => setMode(m.id)}
-                className={cn(
-                  "rounded-xl px-4 py-2.5 text-sm font-medium transition-colors",
-                  mode === m.id
-                    ? "bg-success/15 text-success"
-                    : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
-                )}
-              >
-                {m.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Inputs */}
-          <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
-            <NumField
-              icon="🎯" label="Целевая выручка"
-              value={revenue} onChange={setRevenue}
-              suffix="$" disabled={mode === "budget"}
-            />
-            <NumField
-              icon="💰" label="Средний чек"
-              value={avgCheck} onChange={setAvgCheck} suffix="$"
-            />
-            <NumField
-              icon="📈" label="CR лид → диагностика"
-              value={crLeadVisit} onChange={setCrLeadVisit} suffix="%"
-            />
-            <NumField
-              icon="📊" label="CR диагностика → продажа"
-              value={crVisitSale} onChange={setCrVisitSale} suffix="%"
-            />
-            <NumField
-              icon="💸" label="Стоимость лида (CPL)"
-              value={cpl} onChange={setCpl} suffix="$"
-            />
-          </div>
-
-          {mode === "budget" && (
-            <div className="mt-4 max-w-xs">
-              <NumField
-                icon="💼" label="Бюджет на рекламу"
-                value={budget} onChange={setBudget} suffix="$"
-              />
+          <div className="mt-5 flex flex-wrap items-center gap-3">
+            <div className="inline-flex rounded-xl border border-border/60 bg-card/60 p-1">
+              {([
+                { id: "budget" as const, label: "От бюджета", icon: Wallet },
+                { id: "revenue" as const, label: "От выручки", icon: Target },
+              ]).map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => setMode(m.id)}
+                  className={cn(
+                    "flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+                    mode === m.id
+                      ? "bg-success/15 text-success"
+                      : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+                  )}
+                >
+                  <m.icon className="h-3.5 w-3.5" />
+                  {m.label}
+                </button>
+              ))}
             </div>
-          )}
-
-          {/* Funnel */}
-          <div className="mt-8 rounded-2xl border border-border/60 bg-card/40 p-6">
-            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-success">
-              <Calculator className="h-4 w-4" />
-              {mode === "revenue"
-                ? "Обратная воронка — от выручки к бюджету"
-                : "Прямая воронка — от бюджета к выручке"}
-            </div>
-
-            <div className="mt-6 grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr_auto_1fr]">
-              <FunnelStep
-                icon={DollarSign} label="Целевая выручка"
-                value={fmtT(calc.revenue)} highlight
-              />
-              <FunnelArrow />
-              <FunnelStep
-                icon={Target} label="Нужно продаж"
-                value={fmt(calc.sales)} sub={`чек ${fmtT(avgCheck)}`}
-              />
-              <FunnelArrow />
-              <FunnelStep
-                icon={Users} label="Нужно диагностик"
-                value={fmt(calc.visits)} sub={`CR ${crVisitSale}% → продажа`}
-              />
-              <FunnelArrow />
-              <FunnelStep
-                icon={UserPlus} label="Нужно лидов"
-                value={fmt(calc.leads)} sub={`CR ${crLeadVisit}% → диагностика`}
-              />
-              <FunnelArrow />
-              <FunnelStep
-                icon={Wallet} label="Бюджет на рекламу"
-                value={fmtT(calc.spend)} sub={`CPL ${fmtT(cpl)}`} highlight
-              />
+            <div className="text-xs text-muted-foreground">
+              {mode === "budget"
+                ? "Введите бюджет — посчитаем выручку"
+                : "Введите целевую выручку — посчитаем нужный бюджет"}
             </div>
           </div>
 
-          {/* Summary table */}
-          <div className="mt-6 overflow-hidden rounded-2xl border border-border/60 bg-card/40">
-            <div className="border-b border-border/60 px-6 py-4">
-              <span className="text-xs font-bold uppercase tracking-wider">
-                Сводная таблица
-              </span>
+          {/* Inputs: 5 fields, first one changes based on mode */}
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            {mode === "budget" ? (
+              <SmartInput
+                icon={Wallet} label="Бюджет на месяц"
+                hint="Сколько готовы вложить в рекламу"
+                value={budget} onChange={setBudget} suffix="₸"
+              />
+            ) : (
+              <SmartInput
+                icon={Target} label="Целевая выручка"
+                hint="Сколько хотим заработать за месяц"
+                value={revenue} onChange={setRevenue} suffix="₸"
+              />
+            )}
+            <SmartInput
+              icon={DollarSign} label="Стоимость лида (CPL)"
+              hint="Цена одной заявки"
+              value={cpl} onChange={setCpl} suffix="₸"
+            />
+            <SmartInput
+              icon={Percent} label="CR лид → диагностика"
+              hint="Какой процент лидов доходит до диагностики"
+              value={crLeadVisit} onChange={(v) => setCrLeadVisit(Math.min(100, Math.max(0, v)))}
+              suffix="%"
+            />
+            <SmartInput
+              icon={Percent} label="CR диагностика → продажа"
+              hint="Какой процент диагностик закрывается в продажу"
+              value={crVisitSale} onChange={(v) => setCrVisitSale(Math.min(100, Math.max(0, v)))}
+              suffix="%"
+            />
+            <SmartInput
+              icon={Receipt} label="Средний чек"
+              hint="Сколько платит один клиент"
+              value={avgCheck} onChange={setAvgCheck} suffix="₸"
+            />
+          </div>
+
+          {/* Funnel: forward */}
+          <div className="mt-5 rounded-2xl border border-border/60 bg-gradient-to-br from-card/60 to-card/30 p-4">
+            <div className="mb-3 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-success">
+              {mode === "budget"
+                ? "Воронка — от бюджета к выручке"
+                : "Обратная воронка — от выручки к бюджету"}
             </div>
-            <div className="divide-y divide-border/40">
-              <div className="bg-card/30 px-6 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                Блок 1: Затраты
-              </div>
-              <Row label="Расходы на рекламу (Бюджет)" value={fmtT(calc.spend)} />
-
-              <div className="bg-card/30 px-6 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                Блок 2: Воронка и стоимость
-              </div>
-              <Row label="Количество лидов" value={fmt(calc.leads)} />
-              <Row label="Стоимость лида (CPL)" value={fmtT(cpl)} />
-              <Row label="Количество диагностик" value={fmt(calc.visits)} />
-              <Row label="Стоимость диагностики (CPD)" value={fmtT(cpv)} />
-              <Row label="Количество продаж" value={fmt(calc.sales)} />
-              <Row label="Стоимость продажи / клиента (CAC)" value={fmtT(cac)} />
-
-              <div className="bg-card/30 px-6 py-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                Блок 3: Финансовый итог
-              </div>
-              <Row label="Прогнозная выручка" value={fmtT(calc.revenue)} />
-              <Row label="Реальный ROMI" value={`${fmt(romi)}%`} />
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1fr_auto_1fr_auto_1fr_auto_1fr_auto_1fr]">
+              {(() => {
+                const order = [
+                  <FunnelStep
+                    key="b" step={1} icon={Wallet} label="Бюджет"
+                    value={fmtT(calc.budget)} sub={`CPL ${fmtT(cpl)}`}
+                    primary={mode === "revenue"}
+                  />,
+                  <FunnelStep
+                    key="l" step={2} icon={UserPlus} label="Лиды"
+                    value={fmt(calc.leads)} sub={`CR ${crLeadVisit}% → диагностика`}
+                  />,
+                  <FunnelStep
+                    key="v" step={3} icon={Users} label="Диагностики"
+                    value={fmt(calc.visits)} sub={`CR ${crVisitSale}% → продажа`}
+                  />,
+                  <FunnelStep
+                    key="s" step={4} icon={Target} label="Продажи"
+                    value={fmt(calc.sales)} sub={`чек ${fmtT(avgCheck)}`}
+                  />,
+                  <FunnelStep
+                    key="r" step={5} icon={DollarSign} label="Выручка"
+                    value={fmtT(calc.revenue)} primary={mode === "budget"}
+                  />,
+                ];
+                return order.map((s, i) => (
+                  <div key={i} className="contents">
+                    {s}
+                    {i < order.length - 1 && <FunnelArrow />}
+                  </div>
+                ));
+              })()}
             </div>
           </div>
 
           {/* KPI cards */}
-          <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-6">
-            <Kpi icon={Wallet} label="Расходы" value={fmtT(calc.spend)} sub={`${fmt(calc.leads)} лидов × ${fmtT(cpl)}`} />
-            <Kpi icon={UserPlus} label="Лиды" value={fmt(calc.leads)} sub={`CR ${crLeadVisit}% → визит`} />
+          <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Kpi icon={DollarSign} label="CPL" value={fmtT(cpl)} sub="Стоимость лида" />
-            <Kpi icon={Users} label="Диагностики" value={fmt(calc.visits)} sub={`CR ${crVisitSale}% → продажа`} />
-            <Kpi icon={Target} label="Оплаты" value={fmt(calc.sales)} sub="Стоимость CAC" />
-            <Kpi icon={TrendingUp} label="Выручка" value={fmtT(calc.revenue)} sub="Прогноз по чеку" highlight />
+            <Kpi icon={Users} label="CPD" value={fmtT(cpv)} sub="Стоимость диагностики" />
+            <Kpi icon={Target} label="CAC" value={fmtT(cac)} sub="Стоимость клиента" />
+            <Kpi icon={TrendingUp} label="ROMI" value={`${fmt(romi)}%`}
+              sub="Возврат на маркетинг" highlight={romi > 0} />
+          </div>
+
+          {/* P&L */}
+          <div className="mt-4 overflow-hidden rounded-2xl border border-border/60 bg-card/40">
+            <div className="flex items-center justify-between border-b border-border/60 px-5 py-3">
+              <span className="text-xs font-bold uppercase tracking-wider">
+                Финансовый итог
+              </span>
+              <span className="text-[11px] text-muted-foreground">{monthLabel}</span>
+            </div>
+            <div className="divide-y divide-border/40">
+              <Row label="Прогнозная выручка" value={fmtT(calc.revenue)} accent="success" big />
+              <Row label="Расходы на рекламу" value={`− ${fmtT(calc.budget)}`} />
+              <Row label="Прибыль" value={fmtT(profit)} accent={profit >= 0 ? "success" : "destructive"} big />
+              <Row label="Маржинальность" value={`${fmt(margin)}%`} accent={margin >= 0 ? "success" : "destructive"} />
+              <Row label="ROMI" value={`${fmt(romi)}%`} accent={romi >= 0 ? "success" : "destructive"} />
+            </div>
           </div>
 
           {/* Save */}
-          <div className="mt-6 rounded-2xl border border-border/60 bg-card/40 p-6">
+          <div className="mt-4 rounded-2xl border border-border/60 bg-card/40 p-5">
             <div className="flex items-center gap-2 text-sm font-semibold">
               <Save className="h-4 w-4 text-success" />
               Сохранить план в Таблицу показателей
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              План будет сохранён: Расходы {fmtT(calc.spend)} · Лиды {fmt(calc.leads)} ·
-              CPL {fmtT(cpl)} · Диагностики {fmt(calc.visits)} · Оплаты {fmt(calc.sales)} ·
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Бюджет {fmtT(calc.budget)} · Лиды {fmt(calc.leads)} ·
+              CPL {fmtT(cpl)} · Диагностики {fmt(calc.visits)} · Продажи {fmt(calc.sales)} ·
               Выручка {fmtT(calc.revenue)}
             </p>
 
-            <div className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="flex items-center gap-1 rounded-2xl border border-border/60 bg-card/60 px-2 py-1.5">
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="flex items-center gap-1 rounded-xl border border-border/60 bg-card/60 px-2 py-1">
                 <button
                   onClick={() => shiftMonth(-1)}
-                  className="grid h-9 w-9 place-items-center rounded-xl hover:bg-secondary"
+                  className="grid h-8 w-8 place-items-center rounded-lg hover:bg-secondary"
                 >
                   <ChevronLeft className="h-4 w-4" />
                 </button>
-                <span className="px-3 text-sm font-semibold capitalize tabular-nums">
+                <span className="px-2 text-xs font-semibold capitalize tabular-nums">
                   {monthLabel}
                 </span>
                 <button
                   onClick={() => shiftMonth(1)}
-                  className="grid h-9 w-9 place-items-center rounded-xl hover:bg-secondary"
+                  className="grid h-8 w-8 place-items-center rounded-lg hover:bg-secondary"
                 >
                   <ChevronRight className="h-4 w-4" />
                 </button>
@@ -385,7 +417,7 @@ const Finance = () => {
 
               <Button
                 onClick={handleSave}
-                className="h-12 flex-1 gap-2 rounded-2xl bg-success text-success-foreground hover:bg-success/90"
+                className="h-10 flex-1 gap-2 rounded-xl bg-success text-success-foreground hover:bg-success/90"
               >
                 <Save className="h-4 w-4" />
                 Сохранить план на {MONTHS_RU[monthCursor.getMonth()]}
@@ -398,10 +430,20 @@ const Finance = () => {
   );
 };
 
-const Row = ({ label, value }: { label: string; value: string }) => (
-  <div className="flex items-center justify-between px-6 py-3">
-    <span className="text-sm">{label}</span>
-    <span className="text-sm font-bold tabular-nums text-success">{value}</span>
+const Row = ({
+  label, value, accent, big,
+}: {
+  label: string; value: string; accent?: "success" | "destructive"; big?: boolean;
+}) => (
+  <div className="flex items-center justify-between px-5 py-2.5">
+    <span className={cn("text-sm", big && "font-semibold")}>{label}</span>
+    <span className={cn(
+      "tabular-nums font-bold",
+      big ? "text-base" : "text-sm",
+      accent === "success" && "text-success",
+      accent === "destructive" && "text-destructive",
+      !accent && "text-foreground",
+    )}>{value}</span>
   </div>
 );
 
@@ -411,7 +453,7 @@ const Kpi = ({
   icon: React.ElementType; label: string; value: string; sub: string; highlight?: boolean;
 }) => (
   <div className={cn(
-    "rounded-2xl border p-4",
+    "rounded-2xl border p-4 transition-colors",
     highlight ? "border-success/40 bg-success/5" : "border-border/60 bg-card/40",
   )}>
     <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -424,7 +466,7 @@ const Kpi = ({
     )}>
       {value}
     </div>
-    <div className="mt-1 text-[11px] text-muted-foreground">{sub}</div>
+    <div className="mt-0.5 text-[11px] text-muted-foreground">{sub}</div>
   </div>
 );
 

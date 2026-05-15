@@ -1,5 +1,6 @@
-import { memo, type DragEvent } from "react";
-import { Clock3, Phone, Star, Tag, UserRound } from "lucide-react";
+import { memo, useSyncExternalStore, type DragEvent } from "react";
+import { Bot, Clock3, Phone, Star, Tag, UserRound } from "lucide-react";
+import { subscribeAutoMoved, isRecentlyAutoMoved, getAutoMovedSnapshot } from "@/lib/autoMoveTracker";
 import { cn } from "@/lib/utils";
 import type { Lead } from "@/types/crm";
 import { leadSlaMinutes, slaTone } from "@/hooks/useCrmAnalytics";
@@ -52,6 +53,10 @@ function LeadCardImpl({ lead, assigneeName, highlightSla, onClick, onTogglePin }
     .sort((a, b) => a.dueAt.localeCompare(b.dueAt))[0];
   const taskOverdue = nextTask ? new Date(nextTask.dueAt).getTime() <= Date.now() : false;
 
+  // Бейдж «🤖 авто» — если лид недавно был автоматически передвинут n8n-WA-анализом
+  useSyncExternalStore(subscribeAutoMoved, getAutoMovedSnapshot, getAutoMovedSnapshot);
+  const autoMoved = isRecentlyAutoMoved(lead.id);
+
   return (
     <button
       type="button"
@@ -84,6 +89,15 @@ function LeadCardImpl({ lead, assigneeName, highlightSla, onClick, onTogglePin }
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
             {lead.pinned && <Star className="h-3 w-3 shrink-0 fill-primary text-primary" />}
+            {autoMoved && (
+              <span
+                className="inline-flex items-center gap-0.5 rounded-md bg-primary/15 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-primary"
+                title="Лид авто-перенесён по результату WA-анализа"
+              >
+                <Bot className="h-2.5 w-2.5" />
+                авто
+              </span>
+            )}
             <div className="truncate text-sm font-semibold text-foreground">{lead.name}</div>
           </div>
           <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { clientConfigSupabase } from "@/integrations/clientConfig/client";
 import {
   ArrowLeft,
   Send,
@@ -32,6 +33,10 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { CONTENT_TYPES } from "@/data/contentTypes";
 import { postContentFactory } from "@/lib/contentFactory";
+import {
+  uploadContentFactoryPhotos,
+  type UploadedAsset,
+} from "@/lib/contentFactoryUpload";
 import { buildStyleBrief, type StyleId as BriefStyleId } from "@/data/styleBriefs";
 import {
   Collapsible,
@@ -275,6 +280,9 @@ interface GeneratedVariant {
   imageUrl: string | null;
   raw: unknown;
   error?: string;
+  // request_id, который ушёл в n8n для этой задачи. По нему фронт
+  // подписывается на supabase realtime и ловит готовое изображение.
+  requestId?: string;
 }
 
 const StylePreviewImage = ({ style, selected }: { style: StyleDef; selected: boolean }) => {
@@ -314,15 +322,127 @@ const CreateStep3 = () => {
   );
   const [colorId, setColorId] = useState<ColorId>("auto");
   const [submitting, setSubmitting] = useState(false);
-  const [status, setStatus] = useState<"idle" | "sending" | "success" | "error">(
-    "idle",
-  );
+  const [status, setStatus] = useState<
+    "idle" | "sending" | "queued" | "success" | "error"
+  >("idle");
+  const [taskStartedAt, setTaskStartedAt] = useState<number | null>(null);
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<GeneratedVariant[] | null>(null);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   // Отредактированные пользователем ТЗ (по styleId). Если пусто — используется авто-бриф.
   const [editedBriefs, setEditedBriefs] = useState<Partial<Record<StyleId, string>>>({});
+  // Ref на актуальные results — чтобы realtime-обработчик не зависел от
+  // closure и не пере-подписывался при каждом обновлении карточки.
+  const resultsRef = useRef<GeneratedVariant[] | null>(null);
+  useEffect(() => {
+    resultsRef.current = results;
+  }, [results]);
+
+  // Realtime подписка: ловим INSERT/UPDATE в content_factory_results и
+  // подменяем imageUrl в нужной карточке по request_id. n8n воркфлоу
+  // должен сделать INSERT в эту таблицу после каждого готового слайда.
+  useEffect(() => {
+    if (!results || results.length === 0) return;
+    const requestIds = Array.from(
+      new Set(results.map((r) => r.requestId).filter(Boolean) as string[]),
+    );
+    if (requestIds.length === 0) return;
+
+    const idSet = new Set(requestIds);
+
+    const applyRow = (row: {
+      request_id?: string;
+      status?: string;
+      image_url?: string | null;
+      error_message?: string | null;
+    }) => {
+      if (!row.request_id || !idSet.has(row.request_id)) return;
+      setResults((prev) => {
+        if (!prev) return prev;
+        let touched = false;
+        const next = prev.map((v) => {
+          if (v.requestId !== row.request_id) return v;
+          if (row.status === "ready" && row.image_url) {
+            touched = true;
+            return { ...v, imageUrl: row.image_url, error: undefined };
+          }
+          if (row.status === "error") {
+            touched = true;
+            return {
+              ...v,
+              error: row.error_message || "Генератор вернул ошибку",
+            };
+          }
+          return v;
+        });
+        if (!touched) return prev;
+        // Если все карточки получили картинку — переводим общий статус в success.
+        const allReady = next.every((v) => v.imageUrl || v.error);
+        if (allReady) {
+          setStatus("success");
+          const readyCount = next.filter((v) => v.imageUrl).length;
+          setStatusMessage(
+            `Готово: ${readyCount} ${readyCount === 1 ? "вариант" : "варианта(ов)"} сгенерировано`,
+          );
+          toast.success("Креативы готовы", {
+            description: next
+              .filter((v) => v.imageUrl)
+              .map((v) => v.styleLabel)
+              .join(" · "),
+          });
+        }
+        return next;
+      });
+    };
+
+    if (!clientConfigSupabase) return;
+    const sb = clientConfigSupabase;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const channel = (sb as any)
+      .channel(`content-factory:${requestIds.join(",")}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "content_factory_results",
+        },
+        (payload: { new: Record<string, unknown> }) =>
+          applyRow(payload.new as Parameters<typeof applyRow>[0]),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "content_factory_results",
+        },
+        (payload: { new: Record<string, unknown> }) =>
+          applyRow(payload.new as Parameters<typeof applyRow>[0]),
+      )
+      .subscribe();
+
+    // На случай, если строка успела появиться до подписки (race),
+    // делаем initial fetch.
+    (async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const { data, error } = await (sb as any)
+        .from("content_factory_results")
+        .select("request_id,status,image_url,error_message")
+        .in("request_id", requestIds);
+      if (error) return;
+      (data ?? []).forEach((row: Parameters<typeof applyRow>[0]) =>
+        applyRow(row),
+      );
+    })();
+
+    return () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (sb as any).removeChannel(channel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results?.map((r) => r.requestId).join("|")]);
 
   const toggleStyle = (id: StyleId) => {
     setSelectedStyles((prev) => {
@@ -434,11 +554,34 @@ const CreateStep3 = () => {
     setStatusMessage("Подготавливаем данные...");
     setProgress(10);
     setTaskDialogOpen(true);
+    setTaskStartedAt(Date.now());
 
     let progressTimer: ReturnType<typeof setInterval> | null = null;
     try {
       const brief = await buildBriefPrompt();
       const color = COLORS.find((c) => c.id === colorId);
+
+      // Одна партия = один batch_id. По нему аплоад фото и подписка на realtime.
+      const batchId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+      // Аплоад фото в Supabase Storage ДО старта n8n-генерации.
+      // n8n читает image_urls: string[] из body — multipart-файлы не парсит.
+      let uploadedAssets: UploadedAsset[] = [];
+      if (brief.mode === "photo" && brief.photos.length > 0) {
+        setStatusMessage(`Загружаем ${brief.photos.length} фото…`);
+        setProgress(15);
+        uploadedAssets = await uploadContentFactoryPhotos(brief.photos, batchId);
+        if (uploadedAssets.length < brief.photos.length) {
+          toast.warning(
+            `Загружено ${uploadedAssets.length} из ${brief.photos.length} фото`,
+            { description: "Часть файлов не залилась — генерация пойдёт без них." },
+          );
+        }
+      }
+      const imageUrls = uploadedAssets.map((a) => a.url);
 
       setStatusMessage(
         `Запускаем ${selectedStyles.length} ${selectedStyles.length === 1 ? "генерацию" : "генерации"}...`,
@@ -504,6 +647,68 @@ const CreateStep3 = () => {
             ? (editedBriefs[styleDef.id] as string)
             : built.technicalBrief;
 
+          // ВАЖНО: эти ключи (content_type, prompt, name, description, link,
+          // image_urls, color, style, language, aspect, slides, fb_niche,
+          // ctas, request_id, ...) читаются нодами n8n воркфлоу "Clony AI"
+          // напрямую из $node["Webhook"].json.body. Если их переименовать
+          // или вложить — AI начнёт галлюцинировать (см. кейс "часы вместо
+          // мир без границ"). Менять имена этих полей только синхронно с
+          // workflow в https://n8n.zapoinov.com/workflow/sWhNUAx8tFXU0O47
+          // Один request_id на стиль — фронт по нему ловит результат
+          // в content_factory_results через realtime.
+          const requestId = `${batchId}:${styleDef.id}`;
+          const slidesCount =
+            typeof prevState.variants === "number" && prevState.variants > 0
+              ? (prevState.variants as number)
+              : 1;
+          // Niche / контекст — собираем из всех источников ТЗ.
+          const nicheBits = [
+            brief.productName,
+            brief.description,
+            brief.mode === "link" ? brief.linkUrl : null,
+          ]
+            .filter((s): s is string => Boolean(s && s.trim()))
+            .join(" | ");
+          // ВАЖНО: опциональные поля (audio_url, link) НЕ включаем когда они
+          // пустые — n8n IF-ноды проверяют их через `exists`, пустая строка
+          // проходит как существующая, и последующие HTTP/audio ноды падают
+          // с "Invalid URL". Используем undefined чтобы ключ не попал в JSON.
+          const linkValue =
+            brief.mode === "link" && brief.linkUrl ? brief.linkUrl : undefined;
+          const flatForN8n: Record<string, unknown> = {
+            // routing ключ для Switch1 (читает body.content_type)
+            content_type: route,
+            // основной brief — это поле читает каждая chainLlm-нода как "ТЗ".
+            // Сюда идёт finalTechnicalBrief — полная техзадача со стилевыми
+            // инструкциями и пользовательским запросом, а не сырой текст.
+            prompt: finalTechnicalBrief,
+            // имя продукта / описание — пустая строка ок, эти ноды толерантны
+            name: brief.productName || "",
+            description: brief.description || "",
+            // Публичные URL фото из Supabase Storage. n8n берёт первое как референс.
+            image_urls: imageUrls,
+            // стиль / цвет / язык / aspect — flat string, не объект
+            style: styleDef.label,
+            color: color?.label ?? "auto",
+            language: (prevState.lang as string | undefined) ?? "ru",
+            aspect: (prevState.aspect as string | undefined) ?? "1:1",
+            slides: slidesCount,
+            image_count: slidesCount,
+            // niche / cta — содержательные сведения о продукте для fb-target.
+            fb_niche: nicheBits,
+            ctas: brief.extraInstructions || "",
+            username: "",
+            platform: "web",
+            // tracking
+            request_id: requestId,
+            session_id: batchId,
+            input_mode: brief.mode,
+          };
+          // Опциональные поля только если есть значение — иначе n8n IF=exists
+          // пропустит пустую строку дальше и HTTP-нода упадёт.
+          if (linkValue) flatForN8n.link = linkValue;
+          // audio_url намеренно НЕ выставляем — нет аудио в content-factory.
+
           const payload = {
             source: "lovable.content-factory",
             submittedAt: new Date().toISOString(),
@@ -516,6 +721,15 @@ const CreateStep3 = () => {
             // Готовый промпт со стилевыми инструкциями + бриф пользователя.
             // В n8n именно это поле передаётся в AI image generator.
             finalPrompt: finalTechnicalBrief,
+            // Сырой пользовательский ввод — для дебага. ВНИМАНИЕ:
+            // в плоский body.prompt пишется finalTechnicalBrief (см. flatForN8n),
+            // потому что n8n-ноды читают body.prompt как готовое ТЗ для AI.
+            user_raw_prompt: brief.prompt,
+            // КРИТИЧНО: плоские поля для n8n. Без этого body.content_type /
+            // body.prompt / body.style / body.image_urls / body.request_id
+            // и т.д. будут undefined, Switch1 уйдёт в Fallback, AI получит
+            // пустой ввод и сгенерит дефолтное (кейс «кофемашина вместо ТЗ»).
+            ...flatForN8n,
             contentType: contentType
               ? {
                   id: contentType.id,
@@ -525,7 +739,6 @@ const CreateStep3 = () => {
                   tooltip: contentType.tooltip,
                 }
               : { id: prevState.typeId ?? null },
-            prompt: brief.prompt,
             source_input: {
               mode: brief.mode,
               linkUrl: brief.mode === "link" ? brief.linkUrl || null : null,
@@ -573,21 +786,17 @@ const CreateStep3 = () => {
             },
           };
 
-          // Multipart: payload как JSON-строка + бинарные файлы рядом.
-          // Это в разы быстрее и легче, чем base64 в JSON.
-          const fd = new FormData();
-          fd.append("payload", JSON.stringify(payload));
-          if (brief.mode === "photo") {
-            brief.photos.forEach((file, idx) => {
-              fd.append(`photo_${idx}`, file, file.name);
-            });
-          }
-          const data = await postContentFactory(fd);
+          // Шлём JSON. Фото уже залиты в Supabase Storage и присутствуют
+          // в payload.image_urls. n8n при multipart клал бы всё в
+          // body.payload как строку, и body.content_type / .prompt были бы
+          // undefined — AI сгенерил бы шляпу вместо ТЗ.
+          const data = await postContentFactory(payload);
           return {
             styleId: styleDef.id,
             styleLabel: styleDef.label,
             imageUrl: extractImageUrl(data),
             raw: data,
+            requestId,
           };
         }),
       );
@@ -603,7 +812,7 @@ const CreateStep3 = () => {
           imageUrl: null,
           raw: null,
           error: r.reason instanceof Error ? r.reason.message : String(r.reason),
-        };
+        } as GeneratedVariant;
       });
 
       if (progressTimer) {
@@ -613,25 +822,36 @@ const CreateStep3 = () => {
       setProgress(100);
       const okCount = variants.filter((v) => !v.error).length;
       const failCount = variants.length - okCount;
+      const readyCount = variants.filter((v) => !v.error && v.imageUrl).length;
       setResults(variants);
       if (okCount === 0) {
         setStatus("error");
         setStatusMessage(
-          variants[0]?.error ?? "Не удалось сгенерировать ни один вариант",
+          variants[0]?.error ?? "Не удалось поставить задачу",
         );
         toast.error("Все варианты упали", {
           description: variants[0]?.error,
+        });
+      } else if (readyCount === 0) {
+        // n8n принял задачу, но картинку ещё не вернул — это нормальный
+        // асинхронный режим. Не врём пользователю «готово».
+        setStatus("queued");
+        setStatusMessage(
+          `Задача поставлена дизайнеру: ${okCount} ${okCount === 1 ? "вариант" : "вариант(а/ов)"} в работе. Результат появится автоматически.`,
+        );
+        toast.success("Задача поставлена в работу", {
+          description: "Дизайнер начал генерацию. Это может занять до пары минут.",
         });
       } else {
         setStatus("success");
         setStatusMessage(
           failCount > 0
-            ? `Готово: ${okCount} из ${variants.length} (${failCount} с ошибкой)`
-            : `Готово: ${variants.length} ${variants.length === 1 ? "вариант" : "варианта(ов)"} сгенерировано`,
+            ? `Готово: ${readyCount} из ${variants.length} (${failCount} с ошибкой)`
+            : `Готово: ${readyCount} ${readyCount === 1 ? "вариант" : "варианта(ов)"} сгенерировано`,
         );
         toast.success("Креативы готовы", {
           description: variants
-            .filter((v) => !v.error)
+            .filter((v) => !v.error && v.imageUrl)
             .map((v) => v.styleLabel)
             .join(" · "),
         });
@@ -1033,6 +1253,7 @@ const CreateStep3 = () => {
             className={cn(
               "mt-6 rounded-2xl border p-4 transition-all",
               status === "sending" && "border-primary/40 bg-primary/5",
+              status === "queued" && "border-primary/40 bg-primary/5",
               status === "success" && "border-emerald-500/40 bg-emerald-500/10",
               status === "error" && "border-destructive/50 bg-destructive/10",
             )}
@@ -1041,6 +1262,9 @@ const CreateStep3 = () => {
           >
             <div className="flex items-center gap-3">
               {status === "sending" && (
+                <Loader2 className="h-5 w-5 shrink-0 animate-spin text-primary" />
+              )}
+              {status === "queued" && (
                 <Loader2 className="h-5 w-5 shrink-0 animate-spin text-primary" />
               )}
               {status === "success" && (
@@ -1054,12 +1278,14 @@ const CreateStep3 = () => {
                   className={cn(
                     "text-sm font-semibold",
                     status === "sending" && "text-foreground",
+                    status === "queued" && "text-foreground",
                     status === "success" &&
                       "text-emerald-600 dark:text-emerald-400",
                     status === "error" && "text-destructive",
                   )}
                 >
-                  {status === "sending" && "Генерируем креативы..."}
+                  {status === "sending" && "Отправляем задачу дизайнеру…"}
+                  {status === "queued" && "Креатив в работе — ожидайте результат"}
                   {status === "success" && "Готово"}
                   {status === "error" && "Ошибка отправки"}
                 </div>
@@ -1085,45 +1311,118 @@ const CreateStep3 = () => {
         {/* Results */}
         {results && results.length > 0 && (
           <div className="mt-10">
-            <h2 className="text-2xl font-bold tracking-tight">
-              Результаты генерации
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              По одному варианту на каждый выбранный стиль
-            </p>
-            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              {results.map((v, i) => (
-                <div
-                  key={`${v.styleId}-${i}`}
-                  className="overflow-hidden rounded-2xl border border-border bg-card shadow-elevated"
-                >
-                  <div className="aspect-square w-full overflow-hidden bg-secondary/40">
-                    {v.imageUrl ? (
-                      <img
-                        src={v.imageUrl}
-                        alt={`Креатив в стиле ${v.styleLabel}`}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center text-xs text-muted-foreground">
-                        <Loader2 className="h-5 w-5 animate-pulse text-primary" />
-                        <span>
-                          Задача отправлена, изображение появится после ответа n8n
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="px-3 py-3">
-                    <div className="text-xs uppercase tracking-wider text-muted-foreground">
-                      Стиль
-                    </div>
-                    <div className="text-sm font-semibold text-foreground">
-                      {v.styleLabel}
-                    </div>
-                  </div>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-bold tracking-tight">
+                  Результаты генерации
+                </h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {status === "queued"
+                    ? "Дизайнер в работе. Карточки обновятся, как только придёт изображение."
+                    : "По одному варианту на каждый выбранный стиль"}
+                </p>
+              </div>
+              {status === "queued" && (
+                <div className="rounded-xl border border-primary/40 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary">
+                  В очереди: {results.filter((v) => !v.error && !v.imageUrl).length}
+                  {" · "}
+                  Готово: {results.filter((v) => v.imageUrl).length}
+                  {" · "}
+                  Ошибок: {results.filter((v) => v.error).length}
                 </div>
-              ))}
+              )}
             </div>
+            <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {results.map((v, i) => {
+                const isReady = Boolean(v.imageUrl) && !v.error;
+                const isError = Boolean(v.error);
+                const isPending = !isReady && !isError;
+                return (
+                  <div
+                    key={`${v.styleId}-${i}`}
+                    className={cn(
+                      "overflow-hidden rounded-2xl border bg-card shadow-elevated transition-colors",
+                      isReady && "border-emerald-500/50",
+                      isPending && "border-primary/40",
+                      isError && "border-destructive/50",
+                    )}
+                  >
+                    <div className="relative aspect-square w-full overflow-hidden bg-secondary/40">
+                      {isReady && (
+                        <img
+                          src={v.imageUrl as string}
+                          alt={`Креатив в стиле ${v.styleLabel}`}
+                          className="h-full w-full object-cover"
+                        />
+                      )}
+                      {isPending && (
+                        <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-5 text-center">
+                          <Loader2 className="h-7 w-7 animate-spin text-primary" />
+                          <div className="space-y-1">
+                            <div className="text-sm font-semibold text-foreground">
+                              Дизайнер работает
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Изображение появится здесь автоматически
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {isError && (
+                        <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-5 text-center">
+                          <AlertCircle className="h-7 w-7 text-destructive" />
+                          <div className="space-y-1">
+                            <div className="text-sm font-semibold text-destructive">
+                              Ошибка
+                            </div>
+                            <div className="line-clamp-3 text-xs text-muted-foreground">
+                              {v.error}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      <span
+                        className={cn(
+                          "absolute right-2 top-2 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                          isReady && "bg-emerald-500 text-white",
+                          isPending && "bg-primary text-primary-foreground",
+                          isError && "bg-destructive text-destructive-foreground",
+                        )}
+                      >
+                        {isReady ? "Готово" : isPending ? "В работе" : "Ошибка"}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 px-3 py-3">
+                      <div className="min-w-0">
+                        <div className="text-xs uppercase tracking-wider text-muted-foreground">
+                          Стиль
+                        </div>
+                        <div className="truncate text-sm font-semibold text-foreground">
+                          {v.styleLabel}
+                        </div>
+                      </div>
+                      {isReady && (
+                        <a
+                          href={v.imageUrl as string}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0 rounded-lg border border-border px-2 py-1 text-[11px] font-medium text-primary hover:bg-primary/10"
+                        >
+                          Открыть
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {status === "queued" && taskStartedAt && (
+              <p className="mt-4 text-xs text-muted-foreground">
+                Задача отправлена {new Date(taskStartedAt).toLocaleTimeString("ru-RU")}.
+                Можно закрыть это окно и вернуться позже — результат сохранится
+                после ответа n8n.
+              </p>
+            )}
           </div>
         )}
       </section>
@@ -1152,27 +1451,48 @@ const CreateStep3 = () => {
                 ? "Креативы готовы"
                 : status === "error"
                   ? "Не удалось отправить задачу"
-                  : "Задача дизайнера поставлена"}
+                  : status === "queued"
+                    ? "Задача поставлена дизайнеру"
+                    : "Отправляем задачу дизайнеру…"}
             </DialogTitle>
             <DialogDescription className="text-center">
               {status === "success"
                 ? statusMessage || "Готово. Результаты появились ниже на странице."
                 : status === "error"
                   ? statusMessage || "Произошла ошибка. Попробуйте ещё раз."
-                  : "Создание креатива в работу. Ожидайте — это может занять до пары минут."}
+                  : status === "queued"
+                    ? "Креатив в работе. Ожидайте — это может занять до пары минут. Изображение появится в карточках ниже автоматически."
+                    : "Готовим payload и поднимаем AI-дизайнера…"}
             </DialogDescription>
           </DialogHeader>
 
-          {status === "sending" && (
+          {(status === "sending" || status === "queued") && (
             <div className="space-y-3 px-1">
-              <Progress value={progress} className="h-2" />
+              <Progress
+                value={status === "queued" ? 100 : progress}
+                className={cn(
+                  "h-2",
+                  status === "queued" && "[&>div]:animate-pulse [&>div]:bg-primary",
+                )}
+              />
               <div className="text-center text-xs text-muted-foreground">
-                {statusMessage || "Отправляем задачу AI-дизайнеру…"}
+                {statusMessage ||
+                  (status === "queued"
+                    ? "Дизайнер начал работу…"
+                    : "Отправляем задачу AI-дизайнеру…")}
               </div>
               <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
                 <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-primary" />
-                {selectedStyles.length}{" "}
-                {selectedStyles.length === 1 ? "вариант" : "вариантов"} в работе
+                {(() => {
+                  const variantsPerStyle =
+                    typeof prevState.variants === "number" && prevState.variants > 0
+                      ? (prevState.variants as number)
+                      : 1;
+                  const total = selectedStyles.length * variantsPerStyle;
+                  return variantsPerStyle > 1
+                    ? `${selectedStyles.length} ${selectedStyles.length === 1 ? "стиль" : "стилей"} × ${variantsPerStyle} ${variantsPerStyle === 1 ? "вариант" : "вариантов"} = ${total} креативов в работе`
+                    : `${selectedStyles.length} ${selectedStyles.length === 1 ? "вариант" : "вариантов"} в работе`;
+                })()}
               </div>
             </div>
           )}
@@ -1185,12 +1505,14 @@ const CreateStep3 = () => {
               className="min-w-[140px]"
             >
               {submitting
-                ? "Дизайнер работает…"
+                ? "Отправляем…"
                 : status === "success"
                   ? "Посмотреть результат"
                   : status === "error"
                     ? "Закрыть"
-                    : "Скрыть"}
+                    : status === "queued"
+                      ? "Свернуть и ждать"
+                      : "Скрыть"}
             </Button>
           </DialogFooter>
         </DialogContent>

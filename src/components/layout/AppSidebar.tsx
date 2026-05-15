@@ -10,6 +10,7 @@ import {
   Settings,
   PhoneCall,
   Sparkles,
+  Filter,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -50,11 +51,12 @@ const marketingOsIcon = Sparkles;
 
 const sales: NavItem[] = [
   { title: "CRM", url: "/crm", icon: Users },
-  { title: "История звонков", url: "/calls", icon: PhoneCall },
+  { title: "AI РОП", url: "/sales-ai", icon: PhoneCall },
 ];
 
 const analytics: NavItem[] = [
   { title: "Сквозная аналитика", url: "/analytics", icon: GitBranch },
+  { title: "Воронка по креативам", url: "/analytics/creatives", icon: Filter },
   { title: "Таблица показателей", url: "/metrics", icon: TableProperties },
   { title: "Финансы", url: "/finance", icon: Wallet },
   { title: "Отчётность", url: "/reports", icon: FileBarChart2 },

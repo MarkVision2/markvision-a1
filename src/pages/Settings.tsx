@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { CheckCircle2, Edit2, GitBranch, Globe, MessageCircle, Phone, Plus, Search, Trash2, UserCircle2, Users2, XCircle, Zap } from "lucide-react";
+import { Camera, Edit2, Eye, Globe, GitBranch, Link2, MessageCircle, Phone, Plus, Search, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,9 @@ import { SipuniSettings } from "@/components/settings/SipuniSettings";
 import { ProfileSettings } from "@/components/settings/ProfileSettings";
 import { PipelinesSettings } from "@/components/settings/PipelinesSettings";
 import { LossReasonsSettings } from "@/components/settings/LossReasonsSettings";
+import { InboundTokensSettings } from "@/components/settings/InboundTokensSettings";
+import { ClientDashTokensSettings } from "@/components/settings/ClientDashTokensSettings";
+import { InstagramOrganicSettings } from "@/components/settings/InstagramOrganicSettings";
 import { SiteIntakeCard } from "@/pages/SettingsConnection";
 import {
   MODULES,
@@ -27,7 +30,6 @@ import {
   TeamMember,
   useTeamStore,
 } from "@/hooks/useTeamStore";
-import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { toast } from "sonner";
 
 const ROLE_COLOR: Record<string, string> = {
@@ -40,7 +42,6 @@ const ROLE_COLOR: Record<string, string> = {
 
 export default function Settings() {
   const { members, removeMember } = useTeamStore();
-  const { config: waConfig } = useWhatsAppConfig();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<TeamMember | null>(null);
   const [query, setQuery] = useState("");
@@ -85,6 +86,9 @@ export default function Settings() {
           <TabsTrigger value="telephony" className="gap-2"><Phone className="h-3.5 w-3.5" /> Телефония</TabsTrigger>
           <TabsTrigger value="whatsapp" className="gap-2"><MessageCircle className="h-3.5 w-3.5" /> WhatsApp</TabsTrigger>
           <TabsTrigger value="site" className="gap-2"><Globe className="h-3.5 w-3.5" /> Сайт</TabsTrigger>
+          <TabsTrigger value="inbound" className="gap-2"><Link2 className="h-3.5 w-3.5" /> Лендинги</TabsTrigger>
+          <TabsTrigger value="ig-organic" className="gap-2"><Camera className="h-3.5 w-3.5" /> Instagram organic</TabsTrigger>
+          <TabsTrigger value="clientview" className="gap-2"><Eye className="h-3.5 w-3.5" /> Доступ клиента</TabsTrigger>
         </TabsList>
 
         <TabsContent value="team" className="mt-0">
@@ -209,63 +213,21 @@ export default function Settings() {
         </TabsContent>
 
         <TabsContent value="whatsapp" className="mt-0">
-          <div className="rounded-2xl border border-border/60 bg-card/40 p-5">
-            <div className="mb-4 flex items-center gap-3">
-              <span className="grid h-9 w-9 place-items-center rounded-lg bg-success/15 text-success">
-                <MessageCircle className="h-4 w-4" />
+          <div className="rounded-2xl border border-border bg-card p-6">
+            <div className="flex items-start gap-4">
+              <span className="grid h-12 w-12 place-items-center rounded-xl bg-success/15 text-success">
+                <MessageCircle className="h-6 w-6" />
               </span>
-              <div>
-                <h2 className="text-base font-semibold">WhatsApp (Green API)</h2>
-                <p className="text-xs text-muted-foreground">Входящие сообщения и рассылки через CRM</p>
+              <div className="flex-1">
+                <h3 className="text-base font-semibold">Подключение WhatsApp (Green API)</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Авторизуйте инстанс Green API через QR-код или по номеру телефона.
+                </p>
               </div>
+              <Button asChild>
+                <Link to="/settings/connection">Открыть</Link>
+              </Button>
             </div>
-
-            {waConfig.connected ? (
-              /* ── Connected state ── */
-              <div className="space-y-3">
-                <div className="flex items-center gap-3 rounded-xl border border-success/30 bg-success/5 px-4 py-3">
-                  <CheckCircle2 className="h-5 w-5 shrink-0 text-success" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-success">Подключено</p>
-                    {waConfig.phone && (
-                      <p className="text-xs text-muted-foreground">
-                        Номер: <span className="font-mono">{waConfig.phone}</span>
-                      </p>
-                    )}
-                    {waConfig.connectedAt && (
-                      <p className="text-xs text-muted-foreground">
-                        С {new Date(waConfig.connectedAt).toLocaleDateString("ru-RU", {
-                          day: "numeric", month: "long", year: "numeric",
-                        })}
-                      </p>
-                    )}
-                  </div>
-                  <Button asChild size="sm" variant="outline">
-                    <Link to="/settings/connection">Управлять</Link>
-                  </Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Webhook, отвязка аккаунта и дополнительные настройки — на странице управления.
-                </p>
-              </div>
-            ) : (
-              /* ── Not connected state ── */
-              <div className="grid place-items-center rounded-xl border border-dashed border-border/60 py-10 text-center">
-                <span className="mb-3 grid h-12 w-12 place-items-center rounded-full bg-muted">
-                  <XCircle className="h-6 w-6 text-muted-foreground/60" />
-                </span>
-                <p className="text-sm font-medium">Нет активных подключений</p>
-                <p className="mt-1 mb-5 max-w-xs text-xs text-muted-foreground">
-                  Подключите WhatsApp через Green API — авторизация по QR-коду или номеру телефона.
-                </p>
-                <Button asChild className="gap-2">
-                  <Link to="/settings/connection">
-                    <Zap className="h-4 w-4" />
-                    Подключить WhatsApp
-                  </Link>
-                </Button>
-              </div>
-            )}
           </div>
         </TabsContent>
 
@@ -283,6 +245,44 @@ export default function Settings() {
               </div>
             </div>
             <SiteIntakeCard />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="ig-organic" className="mt-0">
+          <InstagramOrganicSettings />
+        </TabsContent>
+
+        <TabsContent value="inbound" className="mt-0">
+          <div className="rounded-2xl border border-border bg-card p-6">
+            <div className="mb-4 flex items-start gap-4">
+              <span className="grid h-12 w-12 place-items-center rounded-xl bg-primary/15 text-primary">
+                <Link2 className="h-6 w-6" />
+              </span>
+              <div className="flex-1">
+                <h3 className="text-base font-semibold">Лендинги и формы</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Создайте токен для каждого лендинга. Скопируйте HTML-сниппет — все заявки автоматически уйдут в нужного клиента/кабинет, с UTM, fbc/fbp и автоматическим CAPI Lead в Meta.
+                </p>
+              </div>
+            </div>
+            <InboundTokensSettings />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="clientview" className="mt-0">
+          <div className="rounded-2xl border border-border bg-card p-6">
+            <div className="mb-4 flex items-start gap-4">
+              <span className="grid h-12 w-12 place-items-center rounded-xl bg-primary/15 text-primary">
+                <Eye className="h-6 w-6" />
+              </span>
+              <div className="flex-1">
+                <h3 className="text-base font-semibold">Доступ клиента к дашборду</h3>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Создайте read-only ссылку для клиента: лиды, качество, конверсии, выручка. Без логина, без доступа к контактам и админке.
+                </p>
+              </div>
+            </div>
+            <ClientDashTokensSettings />
           </div>
         </TabsContent>
       </Tabs>

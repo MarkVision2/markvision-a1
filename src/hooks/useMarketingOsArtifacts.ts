@@ -43,9 +43,18 @@ export function useMarketingOs(projectId: string | null) {
 
   const refresh = useCallback(async () => {
     if (!projectId) return;
+    const sb = supabase as unknown as {
+      from: (t: string) => {
+        select: (c: string) => {
+          eq: (k: string, v: string) => {
+            maybeSingle: () => Promise<{ data: unknown }>;
+          } & Promise<{ data: unknown }>;
+        };
+      };
+    };
     const [{ data: briefRow }, { data: artRows }] = await Promise.all([
-      supabase.from("project_briefs").select("*").eq("project_id", projectId).maybeSingle(),
-      supabase.from("marketing_os_artifacts").select("*").eq("project_id", projectId),
+      sb.from("project_briefs").select("*").eq("project_id", projectId).maybeSingle(),
+      sb.from("marketing_os_artifacts").select("*").eq("project_id", projectId),
     ]);
     setBrief(briefRow as ProjectBrief | null);
     const next: Record<MarketingOsCommand, MarketingOsArtifact | null> = {

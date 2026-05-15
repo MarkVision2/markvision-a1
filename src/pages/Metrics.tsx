@@ -292,7 +292,7 @@ const Metrics = () => {
       if (findError) throw findError;
 
       if (existing?.id) {
-        const { error: updateError } = await supabase
+        const { error: updateError } = await (supabase as any)
           .from("cabinet_daily_insights")
           .update(cleanPatch)
           .eq("id", existing.id);

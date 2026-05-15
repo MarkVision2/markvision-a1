@@ -81,12 +81,6 @@ export function LeadProfileTab({ lead, onUpdate }: Props) {
               </SelectContent>
             </Select>
           </Field>
-          <Field label="Источник">
-            <Input
-              value={lead.source}
-              onChange={(e) => onUpdate({ source: e.target.value })}
-            />
-          </Field>
         </div>
 
         <div className="mt-3 grid gap-1">

@@ -1,9 +1,14 @@
 import { memo, useState, type DragEvent } from "react";
 import {
-  AlertTriangle, ChevronDown,
-  Clock, CreditCard, Users,
+  AlertTriangle, ChevronDown, ChevronLeft, ChevronRight,
+  Clock, CreditCard, MoreVertical, Pencil, Trash2, Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { LeadCard } from "./LeadCard";
 import { getStageIcon, stageColorClasses } from "./StageIcon";
 import { leadSlaMinutes } from "@/hooks/useCrmAnalytics";
@@ -16,6 +21,12 @@ interface StageColumnProps {
   leads: Lead[];
   metrics?: StageMetrics;
   members: TeamMember[];
+  isFirst: boolean;
+  isLast: boolean;
+  canDelete: boolean;
+  onRename: (id: string, title: string) => void;
+  onMove: (id: string, dir: -1 | 1) => void;
+  onDelete: (id: string) => void;
   onDropLead: (leadId: string, stageId: string) => void;
   onOpenLead: (lead: Lead) => void;
   onTogglePin: (leadId: string) => void;
@@ -31,8 +42,11 @@ function fmtMin(m: number | null) {
 
 function StageColumnImpl({
   stage, leads, metrics, members,
-  onDropLead, onOpenLead, onTogglePin,
+  isFirst, isLast, canDelete,
+  onRename, onMove, onDelete, onDropLead, onOpenLead, onTogglePin,
 }: StageColumnProps) {
+  const [editing, setEditing] = useState(false);
+  const [draftTitle, setDraftTitle] = useState(stage.title);
   const [collapsed, setCollapsed] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
@@ -50,6 +64,12 @@ function StageColumnImpl({
   });
 
   const total = leads.reduce((s, l) => s + (l.amount || 0), 0);
+
+  const commitRename = () => {
+    const next = draftTitle.trim();
+    if (next && next !== stage.title) onRename(stage.id, next);
+    setEditing(false);
+  };
 
   const handleDrop = (e: DragEvent) => {
     e.preventDefault();
@@ -81,17 +101,35 @@ function StageColumnImpl({
           {isAlertColumn ? <AlertTriangle className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}
         </span>
 
-        <span className="flex flex-1 items-center gap-2 text-left text-sm font-semibold">
-          <span className="truncate">{stage.title}</span>
-          <span
-            className={cn(
-              "grid min-w-[22px] place-items-center rounded-full px-1.5 text-[10px] font-bold",
-              isAlertColumn ? "bg-destructive/20 text-destructive" : cn(colors.bg, colors.text),
-            )}
+        {editing ? (
+          <Input
+            autoFocus value={draftTitle}
+            onChange={(e) => setDraftTitle(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitRename();
+              if (e.key === "Escape") { setDraftTitle(stage.title); setEditing(false); }
+            }}
+            className="h-7 flex-1 px-2 text-sm"
+          />
+        ) : (
+          <button
+            type="button"
+            onDoubleClick={() => { setDraftTitle(stage.title); setEditing(true); }}
+            className="flex flex-1 items-center gap-2 text-left text-sm font-semibold"
+            title="Двойной клик — переименовать"
           >
-            {leads.length}
-          </span>
-        </span>
+            <span className="truncate">{stage.title}</span>
+            <span
+              className={cn(
+                "grid min-w-[22px] place-items-center rounded-full px-1.5 text-[10px] font-bold",
+                isAlertColumn ? "bg-destructive/20 text-destructive" : cn(colors.bg, colors.text),
+              )}
+            >
+              {leads.length}
+            </span>
+          </button>
+        )}
 
         <button
           type="button"
@@ -101,6 +139,32 @@ function StageColumnImpl({
         >
           <ChevronDown className={cn("h-4 w-4 transition-transform", collapsed && "-rotate-90")} />
         </button>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-secondary/60">
+            <MoreVertical className="h-4 w-4" />
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem onClick={() => { setDraftTitle(stage.title); setEditing(true); }}>
+              <Pencil className="h-3.5 w-3.5" />
+              Переименовать
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onMove(stage.id, -1)} disabled={isFirst}>
+              <ChevronLeft className="h-3.5 w-3.5" /> Сдвинуть влево
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => onMove(stage.id, 1)} disabled={isLast}>
+              <ChevronRight className="h-3.5 w-3.5" /> Сдвинуть вправо
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => onDelete(stage.id)}
+              disabled={!canDelete}
+              className="text-destructive focus:text-destructive"
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Удалить этап
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {!collapsed && (

@@ -87,17 +87,25 @@ interface FunnelRowProps {
   base: number;
   prevValue?: number;
   color: string;
+  transition?: string;
 }
 
-const FunnelRow = ({ label, value, base, prevValue, color }: FunnelRowProps) => {
+const FunnelRow = ({ label, value, base, prevValue, color, transition }: FunnelRowProps) => {
   const widthPct = base > 0 ? Math.max((value / base) * 100, value > 0 ? 4 : 0) : 0;
   const conv = prevValue !== undefined && prevValue > 0 ? (value / prevValue) * 100 : null;
   return (
     <div>
       <div className="flex items-end justify-between text-sm">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {label}
-        </span>
+        <div className="flex flex-col">
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {label}
+          </span>
+          {transition && (
+            <span className="mt-0.5 text-[9px] uppercase tracking-wider text-muted-foreground/70">
+              {transition}
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <span className="text-xl font-bold tabular-nums">{fmtNumber(value)}</span>
           {conv !== null && (
@@ -237,9 +245,9 @@ const Analytics = () => {
     });
   }, [filteredLeads, spend, adsLeads]);
 
-  // UTM campaigns table
+  // UTM campaigns table + AI quality aggregates
   const utmRows = useMemo<UtmRow[]>(() => {
-    const map = new Map<string, UtmRow>();
+    const map = new Map<string, UtmRow & { _scoreSum: number; _scoreCount: number }>();
     for (const l of filteredLeads) {
       const u = l.utm ?? {};
       if (!u.source && !u.campaign && !u.medium) continue;
@@ -249,15 +257,31 @@ const Analytics = () => {
         campaign: u.campaign ?? "",
         medium: u.medium ?? "",
         leads: 0, sales: 0, revenue: 0,
+        avgScore: 0, hotCount: 0, paidCount: 0,
+        _scoreSum: 0, _scoreCount: 0,
       };
       cur.leads += 1;
       if (l.stageKey === "paid") {
         cur.sales += 1;
         cur.revenue += l.amount || 0;
+        cur.paidCount = (cur.paidCount ?? 0) + 1;
+      }
+      const score = Number((l as { aiScore?: number }).aiScore ?? 0);
+      if (score > 0) {
+        cur._scoreSum += score;
+        cur._scoreCount += 1;
+        if (score >= 75 || l.stageKey === "scheduled" || l.stageKey === "diagnosed") {
+          cur.hotCount = (cur.hotCount ?? 0) + 1;
+        }
       }
       map.set(key, cur);
     }
-    return Array.from(map.values()).sort((a, b) => b.revenue - a.revenue || b.leads - a.leads);
+    return Array.from(map.values())
+      .map(({ _scoreSum, _scoreCount, ...r }) => ({
+        ...r,
+        avgScore: _scoreCount > 0 ? _scoreSum / _scoreCount : 0,
+      }))
+      .sort((a, b) => b.revenue - a.revenue || (b.avgScore ?? 0) - (a.avgScore ?? 0) || b.leads - a.leads);
   }, [filteredLeads]);
 
   // Trend data: per day
@@ -380,19 +404,26 @@ const Analytics = () => {
       {/* Funnel + Trend */}
       <div className="mt-6 grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-border/60 bg-card/40 p-6">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="text-sm font-bold uppercase tracking-wider">Воронка конверсий</h2>
-              <p className="mt-1 text-xs text-muted-foreground">От охвата до реальных продаж</p>
+              <p className="mt-1 text-xs text-muted-foreground">От охвата до реальных продаж · {monthLabel}</p>
             </div>
-            <span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-success">Live</span>
+            <div className="flex items-center gap-2">
+              {clicks > 0 && (
+                <span className="rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-success">
+                  Конверсия сайта: {((leadCount / clicks) * 100).toFixed(1)}%
+                </span>
+              )}
+              <span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-success">Live</span>
+            </div>
           </div>
           <div className="mt-6 space-y-5">
             <FunnelRow label="Показы" value={impressions} base={funnelBase} color="bg-gradient-to-r from-success to-success/60" />
-            <FunnelRow label="Клики" value={clicks} base={funnelBase} prevValue={impressions} color="bg-gradient-to-r from-success/80 to-success/40" />
-            <FunnelRow label="Лиды" value={leadCount} base={funnelBase} prevValue={clicks || impressions} color="bg-gradient-to-r from-success/60 to-success/30" />
-            <FunnelRow label="Диагностики" value={diagnosticsCount} base={funnelBase} prevValue={leadCount} color="bg-gradient-to-r from-primary/70 to-primary/30" />
-            <FunnelRow label="Продажи" value={salesCount} base={funnelBase} prevValue={diagnosticsCount} color="bg-gradient-to-r from-warning/70 to-warning/30" />
+            <FunnelRow label="Клики" transition="CTR" value={clicks} base={funnelBase} prevValue={impressions} color="bg-gradient-to-r from-success/80 to-success/40" />
+            <FunnelRow label="Лиды" transition="Конверсия сайта" value={leadCount} base={funnelBase} prevValue={clicks || impressions} color="bg-gradient-to-r from-success/60 to-success/30" />
+            <FunnelRow label="Диагностики" transition="Дошли" value={diagnosticsCount} base={funnelBase} prevValue={leadCount} color="bg-gradient-to-r from-primary/70 to-primary/30" />
+            <FunnelRow label="Продажи" transition="Закрыли" value={salesCount} base={funnelBase} prevValue={diagnosticsCount} color="bg-gradient-to-r from-warning/70 to-warning/30" />
           </div>
           {loading && (
             <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground">

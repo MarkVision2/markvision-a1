@@ -1,5 +1,5 @@
 import {
-  Star, Phone as PhoneIcon, MessageCircle, Send, Camera, Globe, UserRound,
+  Star, Phone as PhoneIcon, MessageCircle, Send, Camera, Globe, Tag, Link2, UserRound,
 } from "lucide-react";
 import {
   Popover, PopoverContent, PopoverTrigger,
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import type { Lead, LeadStage, LeadChannel } from "@/types/crm";
 import type { TeamMember } from "@/hooks/useTeamStore";
 import { InlineEdit } from "./InlineEdit";
+import { LeadAttribution } from "./LeadAttribution";
 
 interface Props {
   lead: Lead;
@@ -44,12 +45,13 @@ export function LeadHeader({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-start gap-1.5">
-            <div className="min-w-0 text-xl font-bold leading-tight sm:text-2xl">
+            <div className="min-w-0 flex-1 text-xl font-bold leading-tight sm:text-2xl">
               <InlineEdit
                 value={lead.name}
                 onSave={(v) => v && onUpdate({ name: v })}
                 placeholder="Имя"
                 ariaLabel="Имя клиента"
+                wrap
               />
             </div>
             <button
@@ -127,6 +129,85 @@ export function LeadHeader({
           </div>
         </div>
       </div>
+
+      {/* Откуда пришёл лид (конкретный креатив Meta) */}
+      <LeadAttribution lead={lead} />
+
+      {/* Атрибуция и UTM */}
+      <UtmStrip lead={lead} />
+    </div>
+  );
+}
+
+const UTM_LABELS: Record<string, string> = {
+  source: "source",
+  medium: "medium",
+  campaign: "campaign",
+  content: "content",
+  term: "term",
+};
+
+function UtmStrip({ lead }: { lead: Lead }) {
+  const entries = lead.utm
+    ? (Object.entries(lead.utm).filter(([, v]) => !!v) as Array<[string, string]>)
+    : [];
+  const hasAny = entries.length > 0 || !!lead.referrer || !!lead.landingUrl;
+
+  return (
+    <div className="mt-3 rounded-lg border border-border/60 bg-card/40 p-2">
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+        <Tag className="h-3 w-3 text-primary" />
+        Источник и UTM
+      </div>
+
+      {entries.length > 0 ? (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {entries.map(([k, v]) => (
+            <span
+              key={k}
+              className="inline-flex max-w-full items-center gap-1 rounded-md bg-secondary/60 px-1.5 py-0.5 text-[10px]"
+              title={`utm_${k}: ${v}`}
+            >
+              <span className="font-mono text-muted-foreground">utm_{UTM_LABELS[k] ?? k}</span>
+              <span className="truncate font-semibold">{v}</span>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-1.5 text-[11px] text-muted-foreground">
+          UTM-метки не зафиксированы
+          <span className="ml-1 text-muted-foreground/70" title="Лид пришёл без utm_source/medium/campaign. Проверьте, что форма на сайте передаёт UTM-параметры из URL.">
+            ⓘ
+          </span>
+        </div>
+      )}
+
+      {hasAny && (lead.referrer || lead.landingUrl) && (
+        <div className="mt-1.5 grid gap-0.5 border-t border-border/60 pt-1.5 text-[10px] text-muted-foreground">
+          {lead.landingUrl && (
+            <div className="flex items-start gap-1">
+              <Globe className="mt-0.5 h-3 w-3 shrink-0" />
+              <a
+                href={lead.landingUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="truncate text-foreground/80 hover:underline"
+                title={lead.landingUrl}
+              >
+                {lead.landingUrl}
+              </a>
+            </div>
+          )}
+          {lead.referrer && (
+            <div className="flex items-start gap-1">
+              <Link2 className="mt-0.5 h-3 w-3 shrink-0" />
+              <span className="truncate text-foreground/80" title={lead.referrer}>
+                {lead.referrer}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { requireUser, userHasRole } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,12 +8,19 @@ const corsHeaders = {
 
 const META_API_VERSION = "v21.0";
 
+// "Лиды с сайта / лид-формы" — берём максимум среди вариантов одного и того же события,
+// чтобы не задвоить (Meta часто дублирует одно и то же действие под разными именами).
 const LEAD_ACTIONS = [
   "lead",
   "leadgen.other",
   "onsite_conversion.lead_grouped",
   "offsite_conversion.fb_pixel_lead",
   "onsite_web_lead",
+];
+// "Начатые переписки" — отдельное событие, считаем как лид и СУММИРУЕМ с лидами выше.
+// Только то событие, что Meta UI показывает в графе "Начало переписки".
+const MESSAGING_ACTIONS = [
+  "onsite_conversion.messaging_conversation_started_7d",
 ];
 const PURCHASE_ACTIONS = [
   "purchase",
@@ -43,6 +51,23 @@ function normalizeActId(id: string) {
 }
 function ymd(d: Date) {
   return d.toISOString().slice(0, 10);
+}
+
+function ymdInTimeZone(d: Date, timeZone = "Asia/Almaty") {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+function addDaysYmd(date: string, days: number) {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return ymd(d);
 }
 
 function ymdToDmy(s: string) {
@@ -103,6 +128,19 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    // Allow internal cron call via shared secret OR require admin user JWT.
+    const cronKey = Deno.env.get("META_SYNC_CRON_KEY");
+    const provided = req.headers.get("x-cron-key");
+    const isCron = !!cronKey && provided === cronKey;
+    if (!isCron) {
+      const auth = await requireUser(req);
+      if (!auth.ok) return auth.response;
+      if (!(await userHasRole(auth.userId, "admin"))) {
+        return new Response(JSON.stringify({ error: "Forbidden" }), {
+          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+    }
     const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN");
     if (!META_ACCESS_TOKEN) {
       return new Response(JSON.stringify({ error: "META_ACCESS_TOKEN missing" }), {
@@ -135,9 +173,8 @@ Deno.serve(async (req) => {
       since = qpDate!;
       until = qpDate!;
     } else {
-      const d = new Date();
-      d.setUTCDate(d.getUTCDate() - 1);
-      since = until = ymd(d);
+      const yesterdayAlmaty = addDaysYmd(ymdInTimeZone(new Date(), "Asia/Almaty"), -1);
+      since = until = yesterdayAlmaty;
     }
     if (since > until) [since, until] = [until, since];
 
@@ -187,7 +224,12 @@ Deno.serve(async (req) => {
           let spend = Number(row?.spend ?? 0);
           const impressions = Number(row?.impressions ?? 0);
           const clicks = Number(row?.clicks ?? 0);
-          const leads = maxAction(row?.actions as any, LEAD_ACTIONS);
+          // Лиды = заявки (форма/сайт/пиксель) + начатые переписки в мессенджерах.
+          // Внутри каждой группы берём MAX, чтобы не задвоить (Meta дублирует одно и то же
+          // событие под разными action_type), а между группами — суммируем.
+          const formLeads = maxAction(row?.actions as any, LEAD_ACTIONS);
+          const msgLeads = maxAction(row?.actions as any, MESSAGING_ACTIONS);
+          const leads = formLeads + msgLeads;
           let revenue = sumActions(row?.action_values as any, PURCHASE_ACTIONS);
           let storedCurrency = accountCurrency;
           if (needConvert) {

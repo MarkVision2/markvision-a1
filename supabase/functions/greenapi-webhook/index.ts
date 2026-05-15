@@ -6,14 +6,16 @@
 // - incomingMessageReceived       → save inbound message, create lead if missing
 // - outgoingMessageReceived       → save outbound (sent from phone)
 // - outgoingAPIMessageReceived    → save outbound (sent via API)
-// - outgoingMessageStatus         → ignored (could update status later)
+// - outgoingMessageStatus         → update communications.status
 // - stateInstanceChanged          → updates whatsapp_config.connected
+//
+// Multi-instance: routing happens via whatsapp_config.id_instance, so the
+// same URL serves every project's Green API instance.
 import { corsHeaders } from "https://esm.sh/@supabase/supabase-js@2.95.0/cors";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const ID_INSTANCE = Deno.env.get("GREENAPI_ID_INSTANCE") ?? "";
 
 const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -55,55 +57,180 @@ function extractText(messageData: Record<string, unknown> | undefined): string {
   return "[Сообщение]";
 }
 
-async function getDefaultStage(): Promise<{ pipeline_id: string; stage_id: string } | null> {
-  const { data: pipe } = await admin
-    .from("pipelines")
-    .select("id")
-    .eq("is_default", true)
-    .order("created_at", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-  if (!pipe?.id) return null;
-  const { data: stage } = await admin
+async function firstStage(pipelineId: string): Promise<string | null> {
+  const { data } = await admin
     .from("pipeline_stages")
     .select("id")
-    .eq("pipeline_id", pipe.id)
+    .eq("pipeline_id", pipelineId)
     .order("order_index", { ascending: true })
     .limit(1)
     .maybeSingle();
-  if (!stage?.id) return null;
-  return { pipeline_id: pipe.id, stage_id: stage.id };
+  return data?.id ?? null;
+}
+
+// Resolve pipeline + first stage:
+//   1) project-scoped default → 2) any project pipeline →
+//   3) global default → 4) any. Mirrors lead-intake routing.
+async function getDefaultStage(
+  projectId: string | null,
+): Promise<{ pipeline_id: string; stage_id: string } | null> {
+  const tryPipe = async (id: string | null | undefined) => {
+    if (!id) return null;
+    const sid = await firstStage(id);
+    return sid ? { pipeline_id: id, stage_id: sid } : null;
+  };
+  if (projectId) {
+    const { data: d1 } = await admin
+      .from("pipelines").select("id")
+      .eq("project_id", projectId).eq("is_default", true)
+      .order("created_at", { ascending: true }).limit(1).maybeSingle();
+    const r1 = await tryPipe(d1?.id);
+    if (r1) return r1;
+    const { data: d2 } = await admin
+      .from("pipelines").select("id")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: true }).limit(1).maybeSingle();
+    const r2 = await tryPipe(d2?.id);
+    if (r2) return r2;
+  }
+  const { data: d3 } = await admin
+    .from("pipelines").select("id")
+    .is("project_id", null).eq("is_default", true)
+    .order("created_at", { ascending: true }).limit(1).maybeSingle();
+  const r3 = await tryPipe(d3?.id);
+  if (r3) return r3;
+  const { data: d4 } = await admin
+    .from("pipelines").select("id")
+    .order("created_at", { ascending: true }).limit(1).maybeSingle();
+  return tryPipe(d4?.id);
+}
+
+// Resolve which project a webhook belongs to via whatsapp_config.id_instance.
+async function projectFromInstance(idInstance: number | string | null | undefined): Promise<string | null> {
+  if (!idInstance) return null;
+  const { data } = await admin
+    .from("whatsapp_config")
+    .select("project_id")
+    .eq("id_instance", String(idInstance))
+    .maybeSingle();
+  return data?.project_id ?? null;
+}
+
+// Best-effort parser of Meta CTWA (Click-To-WhatsApp) referral payload.
+// Green API не имеет жёсткой схемы, поэтому ищем известные ключи в нескольких
+// местах и собираем то, что нашли.
+interface CtwaAttribution {
+  meta_ad_id: string | null;
+  meta_adset_id: string | null;
+  meta_campaign_id: string | null;
+  click_id: string | null;
+  headline: string | null;
+}
+function parseCtwa(messageData: Record<string, unknown> | undefined, body: Record<string, unknown>): CtwaAttribution {
+  const out: CtwaAttribution = { meta_ad_id: null, meta_adset_id: null, meta_campaign_id: null, click_id: null, headline: null };
+  if (!messageData) return out;
+  const candidates: Record<string, unknown>[] = [];
+  const ext = messageData.extendedTextMessageData as Record<string, unknown> | undefined;
+  if (ext) candidates.push(ext);
+  const ctx = messageData.contextInfo as Record<string, unknown> | undefined;
+  if (ctx) candidates.push(ctx);
+  const refTop = body.referralData as Record<string, unknown> | undefined;
+  if (refTop) candidates.push(refTop);
+  const refExt = ext?.referral as Record<string, unknown> | undefined;
+  if (refExt) candidates.push(refExt);
+  const refCtx = ctx?.referral as Record<string, unknown> | undefined;
+  if (refCtx) candidates.push(refCtx);
+
+  for (const c of candidates) {
+    const sourceId = c.sourceId ?? c.source_id ?? c.adId ?? c.ad_id;
+    if (sourceId && !out.meta_ad_id) out.meta_ad_id = String(sourceId);
+    const ctwa = c.ctwaClid ?? c.ctwa_clid ?? c.clickId ?? c.click_id;
+    if (ctwa && !out.click_id) out.click_id = String(ctwa);
+    const camp = c.campaignId ?? c.campaign_id;
+    if (camp && !out.meta_campaign_id) out.meta_campaign_id = String(camp);
+    const adset = c.adsetId ?? c.adset_id;
+    if (adset && !out.meta_adset_id) out.meta_adset_id = String(adset);
+    const headline = c.headline ?? c.title;
+    if (headline && !out.headline) out.headline = String(headline);
+  }
+  return out;
+}
+
+async function enrichFromCreative(adId: string): Promise<{ campaign_id: string | null; cabinet_id: string | null; project_id: string | null }> {
+  const { data } = await admin
+    .from("meta_creatives")
+    .select("campaign_id, cabinet_id, project_id")
+    .eq("ad_id", adId)
+    .maybeSingle();
+  return {
+    campaign_id: data?.campaign_id ?? null,
+    cabinet_id: data?.cabinet_id ?? null,
+    project_id: data?.project_id ?? null,
+  };
 }
 
 async function findOrCreateLead(
   phone: string,
   displayName: string,
+  projectId: string | null,
+  attribution?: CtwaAttribution,
 ): Promise<string | null> {
   const d = digits(phone);
   if (!d) return null;
 
-  // Try to find by normalized phone digits
-  const { data: existing } = await admin
+  let q = admin
     .from("leads")
-    .select("id, phone")
+    .select("id, phone, meta_ad_id")
     .or(`phone.eq.${phone},phone.eq.+${d},phone.eq.${d}`)
     .limit(1);
+  if (projectId) q = q.eq("project_id", projectId);
+  const { data: existing } = await q;
+  if (existing && existing.length > 0) {
+    const row = existing[0] as { id: string; meta_ad_id: string | null };
+    if (attribution?.meta_ad_id && !row.meta_ad_id) {
+      await admin.from("leads").update({
+        meta_ad_id: attribution.meta_ad_id,
+        meta_adset_id: attribution.meta_adset_id,
+        meta_campaign_id: attribution.meta_campaign_id,
+        click_id: attribution.click_id,
+      }).eq("id", row.id);
+    }
+    return row.id;
+  }
 
-  if (existing && existing.length > 0) return existing[0].id;
-
-  // Broader search: scan recent leads matching by digits (fallback)
-  const { data: recent } = await admin
+  let scan = admin
     .from("leads")
-    .select("id, phone")
+    .select("id, phone, meta_ad_id")
     .order("created_at", { ascending: false })
     .limit(500);
-  const match = (recent ?? []).find((l) => digits(l.phone) === d);
-  if (match) return match.id;
+  if (projectId) scan = scan.eq("project_id", projectId);
+  const { data: recent } = await scan;
+  const match = (recent ?? []).find((l) => digits(l.phone) === d) as { id: string; meta_ad_id: string | null } | undefined;
+  if (match) {
+    if (attribution?.meta_ad_id && !match.meta_ad_id) {
+      await admin.from("leads").update({
+        meta_ad_id: attribution.meta_ad_id,
+        meta_adset_id: attribution.meta_adset_id,
+        meta_campaign_id: attribution.meta_campaign_id,
+        click_id: attribution.click_id,
+      }).eq("id", match.id);
+    }
+    return match.id;
+  }
 
-  // Create new lead
-  const def = await getDefaultStage();
+  let resolvedProject = projectId;
+  let cabinetId: string | null = null;
+  let metaCampaignId = attribution?.meta_campaign_id ?? null;
+  if (attribution?.meta_ad_id) {
+    const enriched = await enrichFromCreative(attribution.meta_ad_id);
+    if (!resolvedProject && enriched.project_id) resolvedProject = enriched.project_id;
+    if (!cabinetId && enriched.cabinet_id) cabinetId = enriched.cabinet_id;
+    if (!metaCampaignId && enriched.campaign_id) metaCampaignId = enriched.campaign_id;
+  }
+
+  const def = await getDefaultStage(resolvedProject);
   if (!def) {
-    console.error("No default pipeline/stage found");
+    console.error("No default pipeline/stage found", { projectId: resolvedProject });
     return null;
   }
   const { data: created, error } = await admin
@@ -111,10 +238,16 @@ async function findOrCreateLead(
     .insert({
       name: displayName || `+${d}`,
       phone: `+${d}`,
-      source: "whatsapp",
+      source: attribution?.meta_ad_id ? "meta" : "whatsapp",
       channel: "whatsapp",
+      project_id: resolvedProject,
+      cabinet_id: cabinetId,
       pipeline_id: def.pipeline_id,
       stage_id: def.stage_id,
+      meta_ad_id: attribution?.meta_ad_id ?? null,
+      meta_adset_id: attribution?.meta_adset_id ?? null,
+      meta_campaign_id: metaCampaignId,
+      click_id: attribution?.click_id ?? null,
     })
     .select("id")
     .single();
@@ -169,17 +302,13 @@ Deno.serve(async (req) => {
     return json({ error: "Invalid JSON" }, 400);
   }
 
-  // Optional: ignore notifications from other instances
   const instanceData = body.instanceData as { idInstance?: number } | undefined;
-  if (
-    ID_INSTANCE &&
-    instanceData?.idInstance &&
-    String(instanceData.idInstance) !== String(ID_INSTANCE)
-  ) {
-    return json({ ok: true, skipped: "other instance" });
-  }
-
   const type = body.typeWebhook as string | undefined;
+  // Resolve project from the Green API instance id. The same webhook URL
+  // serves every project's instance — we route based on which one pinged us.
+  // No env-based filter: multi-instance routing relies entirely on the
+  // whatsapp_config.id_instance binding.
+  const projectId = await projectFromInstance(instanceData?.idInstance);
 
   try {
     const idMessage = (body.idMessage as string | undefined) ?? null;
@@ -192,11 +321,12 @@ Deno.serve(async (req) => {
       const phone = chatIdToPhone(senderData?.chatId ?? senderData?.sender);
       const name = senderData?.senderName?.trim() || "";
       if (!phone) return json({ ok: true, skipped: "no phone" });
-      const leadId = await findOrCreateLead(phone, name);
+      const attribution = parseCtwa(messageData, body);
+      const leadId = await findOrCreateLead(phone, name, projectId, attribution);
       if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
       const text = extractText(messageData);
       await insertCommunication({ leadId, direction: "in", text, externalId: idMessage });
-      return json({ ok: true, leadId });
+      return json({ ok: true, leadId, projectId, attribution });
     }
 
     if (
@@ -207,7 +337,7 @@ Deno.serve(async (req) => {
       const messageData = body.messageData as Record<string, unknown> | undefined;
       const phone = chatIdToPhone(senderData?.chatId);
       if (!phone) return json({ ok: true, skipped: "no phone" });
-      const leadId = await findOrCreateLead(phone, "");
+      const leadId = await findOrCreateLead(phone, "", projectId);
       if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
       const text = extractText(messageData);
       await insertCommunication({
@@ -217,12 +347,27 @@ Deno.serve(async (req) => {
         isAuto: type === "outgoingAPIMessageReceived",
         externalId: idMessage,
       });
-      return json({ ok: true, leadId });
+      return json({ ok: true, leadId, projectId });
     }
 
     if (type === "stateInstanceChanged") {
-      // Could refresh whatsapp_config here. Skip for now.
-      return json({ ok: true });
+      // Push the live state into the bound row so the UI status badge
+      // doesn't go stale between manual "Обновить" clicks.
+      const stateInstance = (body.stateInstance as string | undefined) ?? null;
+      const isAuth = stateInstance === "authorized";
+      const idi = instanceData?.idInstance;
+      if (idi) {
+        const patch: Record<string, unknown> = {
+          connected: isAuth,
+          updated_at: new Date().toISOString(),
+        };
+        if (isAuth) patch.connected_at = new Date().toISOString();
+        await admin
+          .from("whatsapp_config")
+          .update(patch)
+          .eq("id_instance", String(idi));
+      }
+      return json({ ok: true, state: stateInstance, projectId });
     }
 
     if (type === "outgoingMessageStatus") {

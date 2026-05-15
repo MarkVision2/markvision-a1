@@ -1,90 +1,29 @@
-## Проблемы
+Проблема не в карточке как таковой: сейчас на дашборде `CreativesGrid` показывает квадратное изображение из `bestCreativeImage()`. Для видео часто приходит низкокачественный/размытый `thumbnail_url` от Meta, а реальный кадр из видео не захватывается в этом компоненте. Поэтому карточка физически отображает blur-миниатюру.
 
-### 1. Данные не переключаются при смене проекта (нужно обновлять страницу)
-- `useLeadsLite` (Dashboard, Analytics, Reports, Metrics) **вообще не фильтрует по `project_id`** — всегда грузит ВСЕ лиды. Поэтому CRM-данные одинаковые для всех проектов.
-- `useReportData` зависит от `leads.length`, но не от `activeId` — при смене проекта эффект не перезапускается, пока количество лидов случайно не совпадёт.
-- `useCabinetsStore` фильтрует по `project_id`, но `usePersonalCabinets` отдаёт `cabinets`, которые меняются после async refetch — между моментами Dashboard видит «чужие» кабинеты.
+План исправления:
 
-### 2. Везде висит знак `$` вместо тенге
-Жёстко прописано в 8 местах:
-- `src/pages/Dashboard.tsx` (`fmtTenge` → `… $`)
-- `src/pages/Analytics.tsx` (`fmtMoney` → `$…`)
-- `src/pages/Metrics.tsx` (`formatTenge` → `… $`)
-- `src/components/dashboard/`: `EnhancedFunnel.tsx`, `ChannelsTable.tsx`, `RevenueSpendChart.tsx`, `UnitEconomicsCard.tsx`, `CampaignsTopBottom.tsx`
-- `src/components/analytics/ChannelCard.tsx`
-- `src/components/ads/CabinetRow.tsx`: `CURRENCY_SYMBOLS.KZT = "$"` (!)
+1. **Сделать отдельный умный компонент превью для топ-креативов**
+   - Для видео сначала показывать лучший доступный постер (`poster_url` / `image_url`).
+   - Если постера нет, автоматически получить свежий `video_url` через `meta-creative-refresh`.
+   - После этого захватить реальный кадр из видео через уже существующий `enqueuePosterCapture()` и сохранить его как `poster_url`.
+   - После сохранения карточка будет обновляться уже с чётким кадром, а не с Meta thumbnail.
 
-### 3. Ручные данные кабинета (диагностика/продажа/сумма) не попадают в Dashboard и Analytics
-В `/ads` ввод сохраняется в `cabinet_daily_insights.manual_diagnostics / manual_sales / manual_revenue`. Это видит только `useMetaInsights` (страница /metrics). Dashboard и Analytics берут продажи и выручку **только из CRM-лидов** (`leads.stageKey === "paid"`), игнорируя `manual_*` и `crm_*` поля CDI.
+2. **Не использовать растянутый квадрат для видео**
+   - Заменить `aspect-square` на вертикальный формат `aspect-[4/5]` или `aspect-[9/12]`, чтобы видео/реклама были крупнее и читабельнее.
+   - Для вертикальных креативов использовать `object-contain` поверх мягкого фонового слоя, чтобы не обрезать текст на объявлении.
+   - Для изображений оставить аккуратный full-cover, если это выглядит лучше.
 
----
+3. **Убрать визуальное ощущение blur**
+   - Не применять блюр к основному изображению.
+   - Если нужен фон за `object-contain`, блюр будет только у фоновой подложки, а основной кадр сверху останется резким.
+   - Play-кнопку сделать меньше и прозрачнее, чтобы она не закрывала важный текст на видео.
 
-## План исправлений
+4. **Исправить fallback для плохих Meta thumbnail**
+   - Если у видео есть только `thumbnail_url`, показывать его временно, но сразу запускать получение нормального кадра.
+   - После успешного захвата использовать новый `poster_url`, чтобы при следующем открытии/обновлении карточка была чёткой.
 
-### A. Единый фильтр по активному проекту
+5. **Точечно применить на дашборде**
+   - Менять только секцию «Топ креативов по выручке CRM» / `src/components/dashboard/CreativesGrid.tsx` и при необходимости переиспользовать существующие утилиты `bestCreativeImage` и `enqueuePosterCapture`.
+   - Логику карточек в других разделах не трогать, если она не связана с этим блюром.
 
-**`src/hooks/useLeadsLite.ts`**
-- Подключить `useProjectsStore`, добавить в SELECT условие `.or('project_id.eq.{activeId},project_id.is.null')`.
-- В `useEffect` зависимость от `activeId`, чтобы при смене проекта данные перезапрашивались.
-- Realtime-канал переподписать с фильтром по проекту.
-
-**`src/hooks/useReportData.ts`**
-- Добавить `activeId` в зависимости эффекта (через `cabinetIds` уже частично решается, но `leads` приходят отфильтрованные после фикса A).
-
-**`src/hooks/useCabinetsStore.ts`**
-- В `useRealtimeTable` добавить debounce + ререндер при смене `projectId` (уже есть `refetch` зависимость — ок, но добавить `setCabinets([])` пока идёт refetch, чтобы не показывать старое).
-
-### B. Ввести единый формат валюты — тенге (₸)
-
-Создать `src/lib/format.ts`:
-```ts
-export const fmtKzt = (n: number) =>
-  `${Math.round(n).toLocaleString("ru-RU")} ₸`;
-export const fmtNum = (n: number) =>
-  Math.round(n).toLocaleString("ru-RU");
-```
-
-Заменить все локальные `fmtTenge / fmtMoney / formatTenge` на импорт `fmtKzt`. Поправить:
-- `Dashboard.tsx`, `Analytics.tsx`, `Metrics.tsx`
-- `dashboard/EnhancedFunnel.tsx`, `ChannelsTable.tsx`, `RevenueSpendChart.tsx`, `UnitEconomicsCard.tsx`, `CampaignsTopBottom.tsx`
-- `analytics/ChannelCard.tsx`
-- В `CabinetRow.tsx`: `CURRENCY_SYMBOLS.KZT = "₸"`, `CURRENCY_SYMBOLS.USD = "$"` (для агентских USD-кабинетов сохраняется конверсия, которую мы уже сделали через `fx-rate`).
-
-### C. Объединить ручные и CRM-данные кабинетов в общую аналитику
-
-В `useReportData.ts` помимо `spend/leads` тянуть из `cabinet_daily_insights` ещё и `crm_sales, manual_sales, crm_revenue, manual_revenue, crm_diagnostics, manual_diagnostics`.
-
-В `computeTotals` объединить:
-```
-totals.sales   = crm.sales.length + Σ(manual_sales + crm_sales из CDI)
-totals.revenue = Σ(lead.amount из paid) + Σ(manual_revenue + crm_revenue из CDI)
-totals.visits  = crm.visits.length + Σ(manual_diagnostics + crm_diagnostics)
-```
-
-Чтобы не дублировать — триггеры `on_deal_paid_attribution` и `on_lead_stage_change_attribution` уже пишут CRM-события в `cabinet_daily_insights.crm_*`. Значит:
-- Берём revenue/sales/diagnostics ТОЛЬКО из CDI (`crm_* + manual_*`), а не из `leads` напрямую — это и устраняет дублирование, и даёт «единый источник правды».
-- В `useDashboardData.timeseries` revenue по дням брать из CDI (`crm_revenue + manual_revenue`).
-- `channels` в `useDashboardData` — оставить как есть (источник трафика — это срез по `leads.source`).
-
-### D. Реалтайм для CDI
-
-Добавить таблицу `cabinet_daily_insights` в `supabase_realtime` publication (миграция), чтобы Dashboard/Analytics обновлялись сразу после ввода в `/ads`.
-
----
-
-## Технические детали
-
-| Файл | Изменение |
-|---|---|
-| `src/lib/format.ts` (новый) | `fmtKzt`, `fmtNum` |
-| `src/hooks/useLeadsLite.ts` | Фильтр по `activeId` + перезапуск при смене |
-| `src/hooks/useReportData.ts` | Тянуть `crm_*/manual_*`; считать totals из CDI; использовать `monthlyMeta` для revenue по дням |
-| `src/hooks/useDashboardData.ts` | Брать `revenue` из новой структуры monthlyMeta (включая manual) |
-| 8 компонентов с валютой | Импорт `fmtKzt`, удалить локальные функции |
-| `src/components/ads/CabinetRow.tsx` | `KZT: "₸"` |
-| миграция | `ALTER PUBLICATION supabase_realtime ADD TABLE public.cabinet_daily_insights;` |
-
-После этих правок:
-- Смена проекта → данные обновляются сразу (без F5).
-- Везде ₸ вместо $.
-- Ручные диагностики/продажи/выручка из `/ads` появляются в Дашборде и Аналитике рядом с CRM-данными — единый аналитический центр.
+Ожидаемый результат: вместо размытой Meta-заглушки видео-карточки будут показывать реальный чёткий кадр из ролика, а текст/лица/баннеры на превью станут заметно читаемее.

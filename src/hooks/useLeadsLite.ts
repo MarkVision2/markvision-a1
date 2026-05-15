@@ -30,6 +30,11 @@ export interface LeadLite {
   firstResponseAt: string | null;
   assigneeId: string | null;
   paid: boolean;
+  aiScore: number;
+  scoreLabel: string | null;
+  rejectReason: string | null;
+  rejectedAt: string | null;
+  stageId: string | null;
 }
 
 export function useLeadsLite() {
@@ -41,8 +46,10 @@ export function useLeadsLite() {
     let leadsQuery = supabase
       .from("leads")
       .select(
-        "id,source,channel,referrer,utm,cabinet_id,stage_id,amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id",
+        "id,source,channel,referrer,utm,cabinet_id,stage_id,amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,reject_reason,rejected_at",
       )
+      // Личные заявки исключаем из аналитики/дашборда/отчётов.
+      .eq("is_personal", false)
       .order("created_at", { ascending: false })
       .limit(2000);
     if (activeId) {
@@ -70,6 +77,11 @@ export function useLeadsLite() {
       firstResponseAt: (r.first_response_at as string | null) ?? null,
       assigneeId: (r.assigned_to as string | null) ?? null,
       paid: Boolean(r.paid),
+      aiScore: Number((r as { ai_score?: number | null }).ai_score ?? 0),
+      scoreLabel: ((r as { score_label?: string | null }).score_label ?? null) as string | null,
+      rejectReason: ((r as { reject_reason?: string | null }).reject_reason ?? null) as string | null,
+      rejectedAt: ((r as { rejected_at?: string | null }).rejected_at ?? null) as string | null,
+      stageId: (r.stage_id as string | null) ?? null,
     }));
     setLeads(list);
     setLoading(false);
