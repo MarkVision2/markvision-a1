@@ -1,12 +1,11 @@
 import { Phone, MessageSquare, Calendar, Wallet, XCircle, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Lead } from "@/types/crm";
+import type { Lead, PaymentMethod } from "@/types/crm";
 import { leadSlaMinutes } from "@/hooks/useCrmAnalytics";
 import { PaymentPopover } from "./PaymentPopover";
 import { VisitSlotPopover } from "./VisitSlotPopover";
 import { CallDialPopover, type CallResult } from "./CallDialPopover";
 import { WriteWhatsAppPopover } from "./WriteWhatsAppPopover";
-import type { PaymentMethod } from "@/types/crm";
 
 interface Props {
   lead: Lead;
@@ -22,44 +21,60 @@ interface Props {
   busySlots?: { iso: string; leadName?: string }[];
 }
 
+/**
+ * Одна action-кнопка фиксированной ширины с иконкой и подписью.
+ * Используется и сама по себе (onClick), и как `asChild` триггер для Popover.
+ */
+function ActionButton({
+  icon: Icon,
+  label,
+  onClick,
+  tone = "neutral",
+  asChild,
+}: {
+  icon: typeof Phone;
+  label: string;
+  onClick?: () => void;
+  tone?: "neutral" | "danger";
+  asChild?: boolean;
+}) {
+  const className = cn(
+    "flex h-full w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-[11px] font-semibold transition-all hover:-translate-y-0.5 hover:shadow-elevated",
+    tone === "danger"
+      ? "border-destructive/30 bg-destructive/5 text-destructive hover:bg-destructive/10"
+      : "border-border/70 bg-secondary/50 text-foreground hover:bg-secondary",
+  );
+  if (asChild) {
+    return (
+      <span className={className}>
+        <Icon className="h-4 w-4 shrink-0" />
+        <span className="truncate">{label}</span>
+      </span>
+    );
+  }
+  return (
+    <button type="button" onClick={onClick} className={className}>
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="truncate">{label}</span>
+    </button>
+  );
+}
+
 export function LeadActionPanel({
   lead, onCall, onCallAttempt, onWrite, onWriteTemplate, onScheduleVisit, onMarkPaid, onClose, busySlots,
 }: Props) {
   const sla = leadSlaMinutes(lead);
   const slaHint = sla > 5 && !lead.firstResponseAt ? `Связаться немедленно — ждёт ${sla} мин` : null;
 
-  const Btn = ({
-    icon: Icon, label, onClick, className, asChild,
-  }: {
-    icon: typeof Phone; label: string; onClick?: () => void; className?: string; asChild?: boolean;
-  }) => {
-    const inner = (
-      <span className={cn(
-        "flex shrink-0 flex-col items-center gap-1 rounded-xl border px-3 py-2 text-[11px] font-semibold transition-all hover:-translate-y-0.5 hover:shadow-elevated sm:flex-row sm:gap-1.5 sm:px-3.5",
-        className,
-      )}>
-        <Icon className="h-4 w-4" />
-        {label}
-      </span>
-    );
-    if (asChild) return inner;
-    return <button type="button" onClick={onClick} className="contents">{inner}</button>;
-  };
-
   return (
     <div className="border-b border-border/60 bg-background py-3">
-      <div className="flex gap-2 overflow-x-auto pb-1">
+      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-5">
         <CallDialPopover
           phone={lead.phone}
           leadId={lead.id}
           onConfirm={(r: CallResult) => onCall(r)}
           onAttempt={onCallAttempt}
-          trigger={
-            <button type="button" className="contents">
-              <Btn icon={Phone} label="Позвонить" asChild
-                className="border-border/70 bg-secondary/50 text-foreground hover:bg-secondary" />
-            </button>
-          }
+          trigger={<ActionButton icon={Phone} label="Позвонить" asChild />}
         />
         <WriteWhatsAppPopover
           lead={lead}
@@ -67,37 +82,21 @@ export function LeadActionPanel({
             if (text && onWriteTemplate) onWriteTemplate(text, key);
             onWrite();
           }}
-          trigger={
-            <button type="button" className="contents">
-              <Btn icon={MessageSquare} label="Написать" asChild
-                className="border-border/70 bg-secondary/50 text-foreground hover:bg-secondary" />
-            </button>
-          }
+          trigger={<ActionButton icon={MessageSquare} label="Написать" asChild />}
         />
         <VisitSlotPopover
           current={lead.nextVisitAt}
           busy={busySlots}
           onConfirm={onScheduleVisit}
-          trigger={
-            <button type="button" className="contents">
-              <Btn icon={Calendar} label="Записать на визит" asChild
-                className="border-border/70 bg-secondary/50 text-foreground hover:bg-secondary" />
-            </button>
-          }
+          trigger={<ActionButton icon={Calendar} label="Визит" asChild />}
         />
         <PaymentPopover
           amount={lead.amount}
           defaultNote={lead.service}
           onConfirm={(method, amount, opts) => onMarkPaid(method, amount, opts)}
-          trigger={
-            <button type="button" className="contents">
-              <Btn icon={Wallet} label="Отметить оплату" asChild
-                className="border-border/70 bg-secondary/50 text-foreground hover:bg-secondary" />
-            </button>
-          }
+          trigger={<ActionButton icon={Wallet} label="Оплата" asChild />}
         />
-        <Btn icon={XCircle} label="Закрыть" onClick={onClose}
-          className="border-border/70 bg-secondary/50 text-foreground hover:bg-secondary" />
+        <ActionButton icon={XCircle} label="Отказ" tone="danger" onClick={onClose} />
       </div>
 
       {slaHint && (
