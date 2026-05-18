@@ -24,6 +24,8 @@ interface Props {
   row: CreativePreviewSource;
   /** Сжатый формат (для строк таблицы): без бейджа и без play-кнопки. */
   compact?: boolean;
+  /** Включить кнопку полноразмерного воспроизведения видео со звуком. */
+  playable?: boolean;
   className?: string;
 }
 
