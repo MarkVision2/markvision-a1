@@ -23,6 +23,8 @@ import { CampaignGoalsBreakdown } from "@/components/dashboard/CampaignGoalsBrea
 import { PeriodPicker, monthRange, currentMonthRange } from "@/components/dashboard/PeriodPicker";
 import { useMetaCampaigns } from "@/hooks/useMetaStructure";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
+import { PageContainer } from "@/components/layout/PageContainer";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
