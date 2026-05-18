@@ -1,9 +1,6 @@
 import { useMemo, useState } from "react";
 import {
   AlertCircle,
-  CalendarDays,
-  ChevronLeft,
-  ChevronRight,
   DollarSign,
   GitBranch,
   Loader2,
@@ -28,6 +25,8 @@ import { CHANNELS, resolveChannel, type ChannelKey } from "@/lib/channelAttribut
 import { ChannelCard, type ChannelStat } from "@/components/analytics/ChannelCard";
 import { UtmTable, type UtmRow } from "@/components/analytics/UtmTable";
 import { TrendChart, type TrendPoint } from "@/components/analytics/TrendChart";
+import { PeriodPicker, monthRange } from "@/components/dashboard/PeriodPicker";
+import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
 
 const MONTHS_RU = [
@@ -128,15 +127,10 @@ function pctDelta(cur: number, prev: number): number | null {
 }
 
 const Analytics = () => {
-  const [monthCursor, setMonthCursor] = useState(() => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1);
-  });
+  const [period, setPeriod] = useState<ReportPeriodRange>(() => monthRange(new Date()));
+  const monthCursor = period.from;
   const [cabinetId, setCabinetId] = useState<string>("all");
   const { cabinets } = usePersonalCabinets();
-
-  const shiftMonth = (delta: number) =>
-    setMonthCursor((p) => new Date(p.getFullYear(), p.getMonth() + delta, 1));
 
   const monthParam = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}`;
   const prevCursor = new Date(monthCursor.getFullYear(), monthCursor.getMonth() - 1, 1);
@@ -333,18 +327,7 @@ const Analytics = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex items-center gap-1 rounded-2xl border border-border/60 bg-card/60 px-2 py-1.5">
-            <button onClick={() => shiftMonth(-1)} className="grid h-9 w-9 place-items-center rounded-xl hover:bg-secondary" aria-label="Предыдущий">
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="flex items-center gap-2 px-3 text-sm font-semibold tabular-nums">
-              <CalendarDays className="h-4 w-4 text-muted-foreground" />
-              {monthLabel}
-            </span>
-            <button onClick={() => shiftMonth(1)} className="grid h-9 w-9 place-items-center rounded-xl hover:bg-secondary" aria-label="Следующий">
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
+          <PeriodPicker range={period} onChange={setPeriod} />
           <button
             onClick={() => { refresh(); refetch(); }}
             className="grid h-12 w-12 place-items-center rounded-2xl border border-border/60 bg-card/60 hover:bg-secondary"

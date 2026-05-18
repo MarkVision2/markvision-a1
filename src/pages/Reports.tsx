@@ -13,16 +13,14 @@ import { useReportData } from "@/hooks/useReportData";
 import { AiChatBar } from "@/components/reports/AiChatBar";
 import { AiSummary } from "@/components/reports/AiSummary";
 import { AutoSendDialog } from "@/components/reports/AutoSendDialog";
-import { PeriodPicker } from "@/components/dashboard/PeriodPicker";
+import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPicker";
 import { MarketingPage } from "@/components/reports/MarketingPage";
 import { CreativesPage } from "@/components/reports/CreativesPage";
 import { UnitEconomicsPage } from "@/components/reports/UnitEconomicsPage";
-import { getPresetRange, type PeriodPreset } from "@/hooks/useDashboardData";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 
 export default function Reports() {
-  const [preset, setPreset] = useState<PeriodPreset>("7d");
-  const [range, setRange] = useState<ReportPeriodRange>(() => getPresetRange("7d"));
+  const [range, setRange] = useState<ReportPeriodRange>(() => currentMonthRange());
   const [cabinetId, setCabinetId] = useState("all");
   const { cabinets } = usePersonalCabinets();
   const [compare, setCompare] = useState(true);
@@ -83,14 +81,7 @@ export default function Reports() {
           </SelectContent>
         </Select>
 
-        <PeriodPicker
-          preset={preset}
-          range={range}
-          onChange={(p, r) => {
-            setPreset(p);
-            setRange(r);
-          }}
-        />
+        <PeriodPicker range={range} onChange={setRange} />
 
         <div className="flex h-12 items-center gap-3 rounded-2xl border border-border/60 bg-card/40 px-4">
           <Switch checked={compare} onCheckedChange={setCompare} />
