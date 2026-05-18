@@ -95,20 +95,41 @@ export function CreativeDetailDrawer({
         {/* Hero: media + header */}
         <div className="grid gap-0 md:grid-cols-[minmax(280px,360px)_1fr]">
           <div className="relative bg-black">
-            <CreativePreview row={row} className="aspect-[9/16] w-full" />
+            <CreativePreview row={row} playable className="aspect-[9/16] w-full" />
           </div>
 
           <div className="space-y-3 p-5">
             {campaignName && (
-              <div className="text-[11px] text-muted-foreground">
+              <div className="text-[11px] text-muted-foreground break-words">
                 <span className="font-semibold text-foreground/80">Кампания:</span> {campaignName}
               </div>
             )}
-            <h2 className="text-xl font-bold leading-tight">{row.name || "Креатив"}</h2>
-            {(row.headline || row.primaryText) && (
-              <p className="line-clamp-4 whitespace-pre-line text-sm leading-relaxed text-muted-foreground">
-                {row.primaryText || row.headline}
+            <h2 className="text-xl font-bold leading-tight break-words">{row.name || "Креатив"}</h2>
+            {row.headline && (
+              <p className="whitespace-pre-line text-sm font-semibold leading-relaxed text-foreground break-words">
+                {row.headline}
               </p>
+            )}
+            {row.primaryText && (
+              <div>
+                <p
+                  className={cn(
+                    "whitespace-pre-line text-sm leading-relaxed text-muted-foreground break-words",
+                    !textExpanded && "line-clamp-6",
+                  )}
+                >
+                  {row.primaryText}
+                </p>
+                {row.primaryText.length > 240 && (
+                  <button
+                    type="button"
+                    onClick={() => setTextExpanded((v) => !v)}
+                    className="mt-1 text-xs font-semibold text-primary hover:underline"
+                  >
+                    {textExpanded ? "Свернуть" : "Показать полностью"}
+                  </button>
+                )}
+              </div>
             )}
 
             <div className="flex flex-wrap items-center gap-2 pt-1">
