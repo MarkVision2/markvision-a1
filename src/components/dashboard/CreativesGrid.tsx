@@ -4,7 +4,7 @@ import { ArrowRight, Eye, Image as ImageIcon, Layers, MousePointerClick, Play, T
 import { cn } from "@/lib/utils";
 import { bestCreativeImage } from "@/lib/metaThumb";
 import { enqueuePosterCapture } from "@/lib/videoPosterCapture";
-import { supabase } from "@/integrations/supabase/client";
+import { refreshMetaCreative } from "@/lib/metaCreativeRefresh";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
