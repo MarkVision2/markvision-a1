@@ -121,7 +121,6 @@ const CreativeFunnel = () => {
 
   return (
     <PageContainer>
-    <PageContainer>
       <PageHeader
         icon={Filter}
         title="Воронка по креативам"
