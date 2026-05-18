@@ -1,86 +1,69 @@
-## Цель
+## Что не так сейчас
 
-Сделать страницу **Показатели (Metrics)** единственным источником правды для всей аналитики (Dashboard, Сквозная аналитика, Отчёты). Любое ручное редактирование там → отображается везде. Плюс добавить учёт оплаты диагностик.
+Прошёл по всем 22 страницам и нашёл системные расхождения:
 
-## Откуда сейчас приходит лишние 400 000
+**Шрифты**
+- В `index.html` вообще не подключён шрифт — браузер рисует системным (на Mac San Francisco, на Windows Segoe UI → выглядит по-разному).
+- В `index.css` нет `font-family` для body.
 
-Сегодня Dashboard/Analytics/Reports считают по формуле:
-```
-Факт = CDI (Meta + ручной факт по кабинету) + orphan-CRM (лиды без cabinet_id)
-```
-Лид "Венера" (400 000) лежит в CRM без `cabinet_id` → попадает в orphan-блок, который суммируется поверх 800 000 из таблицы показателей. Отсюда 1 200 000.
+**Заголовки страниц (H1)** — 4 разных размера на одном уровне навигации:
+- `text-3xl sm:text-4xl` → Дашборд, Метрики, Аналитика, Воронка, Подключение, Placeholder
+- `text-2xl` → Настройки, Звонки, Отчёты
+- `text-xl sm:text-2xl` → Финансы, Ads, ClientDashboard
+- `text-4xl sm:text-5xl` → CreateStep1/2/3 (мастер — допустимо)
 
-В Metrics этот orphan-блок уже отделён как предупреждение, а в остальных местах — нет.
+**Контейнеры страниц** — у каждой свой max-width:
+- `max-w-[1500px]` Метрики, `max-w-[1600px]` Финансы, `max-w-7xl` Дашборд/Аналитика/Воронка/Отчёты, `max-w-6xl` Ads, `max-w-3xl` Placeholder, плюс страницы вообще без `container` (Settings, Crm, SettingsConnection).
+- Паддинги: `py-6` / `py-8` вперемешку.
 
-## Что меняем
+**Иконка-контейнеры в шапке страницы** — `h-9/h-10/h-12/h-14`, `rounded-lg/xl/2xl`, `bg-success/10` vs `bg-success/15`, ring есть/нет. Каждая страница на свой лад.
 
-### 1. CDI — добавить колонки оплат за диагностики
-```
-crm_diagnostic_revenue   numeric default 0   -- авто из CRM (сумма из попапа в этапе "Диагностика")
-manual_diagnostic_revenue numeric default 0  -- ручной ввод в Metrics
-```
+**Lucide-иконки** внутри — в основном `h-4 w-4` (246), но 113 раз `h-3 w-3`, 38 раз `h-5 w-5`, плюс случайные h-6/7/8. Внутри одной карточки часто разные размеры.
 
-### 2. CRM: попап "Сумма за диагностику"
-- При переводе сделки в этап с `is_diagnostic = true` открывать диалог (по аналогии с PaymentPopover): сумма (можно 0), способ оплаты.
-- Сохраняем в новую таблицу `diagnostic_payments(lead_id, amount, method, paid_at)` ИЛИ как `deals.service_type='diagnostic'` (предпочту deals, чтобы не плодить таблицы).
-- Триггер `on_diagnostic_paid_attribution` → инкремент `cabinet_daily_insights.crm_diagnostic_revenue` (идемпотентно, как уже сделано для sales).
+**Радиусы** — `rounded-md/lg/xl/2xl` рассыпаны без правила.
 
-### 3. Таблица показателей (Metrics.tsx)
-Колонки на кабинет/день:
-```
-Расход | Лиды | CPL  (auto из Meta)
-Диагностики (шт) | Оплата за диагностику ₸  ← новое, редактируется
-Продажи (шт)     | Выручка за продажи ₸     ← существующее, редактируется
-Итого выручка = (оплата диагностик) + (выручка продаж)   ← вычисляется
-ROMI = (Итого выручка − Расход) / Расход
-```
-Override-семантика остаётся: `manual_* > 0` → перезаписывает `crm_*`.
+## Что делаю
 
-### 4. Единый хук `useTruthMetrics(range, cabinetId)`
-Один источник для Dashboard / Analytics / Reports / Metrics:
-```ts
-{
-  spend, leads, cpl,
-  diagnostics, diagnosticRevenue,
-  sales, salesRevenue,
-  revenue: diagnosticRevenue + salesRevenue,
-  romi
-}
-```
-Внутри читает только `cabinet_daily_insights` с override-логикой. **Orphan-CRM больше НЕ суммируется в "Факт"** — выносится в отдельный блок "Несвязанные заявки" с предупреждением и кнопкой "Привязать к кабинету" (как сейчас в Metrics, но во всех разделах).
+### 1. Глобальная типографика (один раз, тянет всё)
+- В `index.html` добавляю preconnect + `Inter` (400/500/600/700/800) и `JetBrains Mono` (для tabular цифр).
+- В `index.css` ставлю `body { font-family: Inter, ui-sans-serif, system-ui... }`, `.tabular-nums { font-variant-numeric: tabular-nums; }`.
+- В `tailwind.config.ts` расширяю `fontFamily: { sans: ['Inter', ...], mono: ['JetBrains Mono', ...] }`.
 
-### 5. Переключение страниц на единый хук
-- `useDashboardData.ts` — заменить `factRevenue/factSales/factDiagnostics` на `useTruthMetrics`.
-- `useReportData.ts` — `computeTotals` берёт `diagnosticRevenue`, orphan убираем из totals.
-- `Analytics` / `Финансы` — те же поля.
+### 2. Единый компонент шапки страницы `PageHeader`
+Новый файл `src/components/layout/PageHeader.tsx` — иконка-плашка `h-11 w-11 rounded-2xl bg-success/10 text-success`, H1 `text-2xl sm:text-3xl font-bold tracking-tight`, подзаголовок `text-sm text-muted-foreground`, слот справа для контролов. Заменяю руками собранные шапки во всех 12 страницах списка (Dashboard, Metrics, Analytics, Finance, Reports, Ads, Crm, Calls, Settings, SettingsConnection, CreativeFunnel, Placeholder, ClientDashboard, SalesAI).
 
-### 6. UI Metrics
-- Новая колонка "Оплата за диагностику" с inline-Pencil редактором (как у Manual sales).
-- Под таблицей карточка "Итого по периоду", показывающая ровно те же числа, что Dashboard.
-- Бейдж "Источник правды" → на всех страницах ссылка ведёт сюда.
+### 3. Единая обёртка `PageContainer`
+`src/components/layout/PageContainer.tsx` — `mx-auto w-full max-w-[1400px] px-4 sm:px-6 lg:px-8 py-6 sm:py-8 animate-fade-in-up`. Применяю на всех страницах вместо `container max-w-...`. Финансы остаются `max-w-[1600px]` через проп `wide`.
 
-## Технические детали
+### 4. Стандарт иконок
+Правило (правлю по страницам):
+- Иконки в кнопках/инпутах/строках таблиц: `h-4 w-4`.
+- Иконки в карточках-плашках (h-10/h-11): `h-5 w-5`.
+- Иконки в крупных hero-плашках (h-14): `h-6 w-6`.
+- Декоративные точки/индикаторы статуса: `h-2 w-2`.
+Прохожу страницы и привожу к правилу; внутри одной строки/карточки — один размер.
 
-**Миграции:**
-```sql
-ALTER TABLE cabinet_daily_insights
-  ADD COLUMN crm_diagnostic_revenue numeric NOT NULL DEFAULT 0,
-  ADD COLUMN manual_diagnostic_revenue numeric NOT NULL DEFAULT 0;
+### 5. Радиусы
+Канон:
+- Карточки и панели: `rounded-2xl`.
+- Кнопки, инпуты, чипы: `rounded-xl`.
+- Маленькие бейджи, аватары-плашки иконок: `rounded-lg` или `rounded-full`.
+Привожу несовпадения внутри Metrics/Dashboard/Analytics/Reports/Ads/Crm/Settings.
 
-CREATE FUNCTION on_diagnostic_paid_attribution() …  -- триггер на deals (service_type='diagnostic')
-```
+### 6. KPI-карточки чисел
+Везде число `text-3xl font-bold tabular-nums`, лейбл `text-xs uppercase tracking-wider text-muted-foreground`. Сейчас в Analytics `text-2xl`, в Metrics `text-3xl md:text-[2rem]`, в SalesAI `text-2xl` — выравниваю.
 
-**Файлы:**
-- `src/hooks/useTruthMetrics.ts` — новый
-- `src/pages/Metrics.tsx` — +колонка, +строка "Итого выручка"
-- `src/components/crm/StageColumn.tsx` (или место смены стадии) — открывать `DiagnosticPaymentPopover` при переходе в этап с `is_diagnostic`
-- `src/components/crm/lead/DiagnosticPaymentPopover.tsx` — новый (клон PaymentPopover)
-- `src/hooks/useDashboardData.ts`, `src/hooks/useReportData.ts`, `src/pages/Analytics.tsx` — переход на `useTruthMetrics`
-- supabase migration
+### 7. Проверка по странице
+По каждой странице из списка пробегаю шапку → контейнер → KPI → таблицы/списки → кнопки. Финальный чек — скриншот превью на `/dashboard`, `/metrics`, `/analytics`, `/finance`, `/reports`, `/ads`, `/crm`, `/settings` через browser-screenshot, ищу остаточные расхождения.
 
-**Совместимость:** существующие manual_sales / manual_revenue не трогаем, только добавляем диагностики.
+## Что НЕ трогаю
+- Логику данных, хуки, supabase — только presentation.
+- CreateStep1/2/3 (онбординг-мастер с большой типографикой — намеренно другой).
+- Цвета токенов в `:root` (palette уже единая).
+
+## Технический раздел
+Файлы новые: `src/components/layout/PageHeader.tsx`, `src/components/layout/PageContainer.tsx`.
+Файлы правлю: `index.html`, `src/index.css`, `tailwind.config.ts`, плюс 14 страниц в `src/pages/` и несколько общих компонентов (`MoneyKpiCard`, `KpiCard`, `SummaryCard` в Metrics) для согласования размеров.
 
 ## Результат
-- В Metrics видно 2 диагностики / 2 продажи / 800 000 → ровно те же числа в Dashboard, Сквозной аналитике, Отчётах.
-- Orphan-лид "Венера" показывается отдельным предупреждением, не задваивает сумму.
-- При записи сделки в этап "Диагностика" менеджер сразу вносит сумму оплаты диагностики (или 0) — она автоматом подтягивается в Metrics → во всю аналитику.
+Один шрифт на всё приложение. Одна высота шапки страницы. Один максимум ширины. Иконки трёх размеров по правилу. Радиусы по правилу. KPI-числа одного размера. Любая страница «как из одной коробки».
