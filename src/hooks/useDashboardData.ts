@@ -4,6 +4,7 @@ import { useLeadsLite } from "./useLeadsLite";
 import { useInstagramOrganic } from "./useInstagramOrganic";
 import { buildAlerts } from "@/lib/dashboardAlerts";
 import { normalizeSource } from "@/lib/leadSource";
+import { isLeadPaid } from "@/lib/leadStageFlags";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "./useProjectsStore";
 import { useRealtimeTable } from "./useRealtimeTable";
@@ -170,7 +171,7 @@ export function useDashboardData(
     const reached = inRange.filter((l) => l.stageKey !== "new" && l.stageKey !== "no_answer").length;
     const scheduled = inRange.filter((l) => ["scheduled", "visit", "paid"].includes(l.stageKey)).length;
     const visited = inRange.filter((l) => ["visit", "paid"].includes(l.stageKey)).length;
-    const paid = inRange.filter((l) => l.stageKey === "paid").length;
+    const paid = inRange.filter((l) => isLeadPaid(l)).length;
     return { total, reached, scheduled, visited, paid };
   }, [leads, fromTs, toTs]);
 
@@ -212,11 +213,14 @@ export function useDashboardData(
         .filter((e) => e.eventType === "lead" && e.leadId)
         .reduce((sum, e) => {
           const lead = leads.find((l) => l.id === e.leadId);
-          return sum + (lead?.stageKey === "paid" ? lead.amount || 0 : 0);
+          return sum + (lead && isLeadPaid(lead) ? lead.amount || 0 : 0);
         }, 0);
       const igSales = igEvents
         .filter((e) => e.eventType === "lead" && e.leadId)
-        .filter((e) => leads.find((l) => l.id === e.leadId)?.stageKey === "paid")
+        .filter((e) => {
+          const lead = leads.find((l) => l.id === e.leadId);
+          return lead ? isLeadPaid(lead) : false;
+        })
         .length;
       rows.push({
         key: "instagram_organic",
@@ -246,7 +250,7 @@ export function useDashboardData(
           spend: 0, leads: 0, sales: 0, revenue: 0,
         };
         cur.leads += 1;
-        if (l.stageKey === "paid") {
+        if (isLeadPaid(l)) {
           cur.sales += 1;
           cur.revenue += l.amount || 0;
         }

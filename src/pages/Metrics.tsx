@@ -33,6 +33,7 @@ import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useMultiMetaInsights, type DailyInsightRow } from "@/hooks/useMetaInsights";
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
+import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -202,11 +203,10 @@ const Metrics = () => {
     }),
     [allLeads, cabinetId, monthStartTs, monthEndTs],
   );
-  const orphanDiagnostics = orphanThisMonth.filter((l) => l.stageKey === "visit" || l.stageKey === "paid").length;
-  const orphanSalesCount = orphanThisMonth.filter((l) => l.stageKey === "paid").length;
-  const orphanRevenue = orphanThisMonth
-    .filter((l) => l.stageKey === "paid")
-    .reduce((s, l) => s + (l.amount || 0), 0);
+  const orphanDiagnostics = orphanThisMonth.filter(isLeadVisit).length;
+  const orphanPaid = orphanThisMonth.filter(isLeadPaid);
+  const orphanSalesCount = orphanPaid.length;
+  const orphanRevenue = orphanPaid.reduce((s, l) => s + (l.amount || 0), 0);
 
   // Факт = CDI (override-aware) + orphan CRM. Та же формула, что в useReportData,
   // поэтому цифры в Metrics, Dashboard, Analytics, Reports совпадают.
@@ -422,6 +422,44 @@ const Metrics = () => {
           value={crDiagnosticsSale > 0 ? <span>{formatPercent(crDiagnosticsSale)}</span> : <Dash />}
           formula="Оплаты / диагностики"
         />
+      </div>
+
+      {/* Диагностика источников выручки: чтобы было видно, из чего складывается factRevenue.
+          Помогает понять, если сумма не сходится с CRM (например, в orphan лежат старые/тестовые лиды). */}
+      <div className="mt-6 grid gap-3 rounded-2xl border border-border/60 bg-card/40 p-4 sm:grid-cols-3">
+        <div className="rounded-xl border border-border/40 bg-background/40 p-3">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Из рекламных кабинетов (CDI)
+          </div>
+          <div className="mt-1.5 text-lg font-bold tabular-nums">{formatTenge(totals?.crmRevenue ?? 0)}</div>
+          <div className="mt-0.5 text-[11px] text-muted-foreground">
+            {totals?.sales ?? 0} оплат · авто-синк из CRM + ручной факт
+          </div>
+        </div>
+        <div className={cn(
+          "rounded-xl border p-3",
+          orphanRevenue > 0 ? "border-warning/30 bg-warning/5" : "border-border/40 bg-background/40",
+        )}>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Из CRM без привязки к кабинету
+          </div>
+          <div className="mt-1.5 text-lg font-bold tabular-nums">{formatTenge(orphanRevenue)}</div>
+          <div className="mt-0.5 text-[11px] text-muted-foreground">
+            {orphanSalesCount} оплат · сайт/WhatsApp без cabinet_id
+            {orphanRevenue > 0 && cabinetId === "all" && (
+              <span className="ml-1 text-warning">⚠ если это лишние — проверь CRM</span>
+            )}
+          </div>
+        </div>
+        <div className="rounded-xl border border-success/30 bg-success/5 p-3">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-success">
+            Итого (видно везде)
+          </div>
+          <div className="mt-1.5 text-lg font-bold tabular-nums text-success">{formatTenge(factRevenue)}</div>
+          <div className="mt-0.5 text-[11px] text-muted-foreground">
+            {factSales} оплат · совпадает с Дашбордом и Аналитикой
+          </div>
+        </div>
       </div>
 
       <div className="mt-6 rounded-2xl border border-success/20 bg-success/5 p-4">

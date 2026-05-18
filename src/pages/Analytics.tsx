@@ -25,6 +25,7 @@ import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useMultiMetaInsights } from "@/hooks/useMetaInsights";
 import { useLeadsLite, type LeadLite } from "@/hooks/useLeadsLite";
 import { CHANNELS, resolveChannel, type ChannelKey } from "@/lib/channelAttribution";
+import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
 import { ChannelCard, type ChannelStat } from "@/components/analytics/ChannelCard";
 import { UtmTable, type UtmRow } from "@/components/analytics/UtmTable";
 import { TrendChart, type TrendPoint } from "@/components/analytics/TrendChart";
@@ -194,8 +195,8 @@ const Analytics = () => {
   // Лиды с cabinet_id уже учтены через CDI.crm_sales / crm_revenue, поэтому
   // повторно их не считаем — иначе на Analytics получим разные цифры с Dashboard.
   const orphanLeads = filteredLeads.filter((l) => !l.cabinetId);
-  const orphanSales = orphanLeads.filter((l) => l.stageKey === "paid");
-  const orphanVisits = orphanLeads.filter((l) => l.stageKey === "visit" || l.stageKey === "paid");
+  const orphanSales = orphanLeads.filter((l) => isLeadPaid(l));
+  const orphanVisits = orphanLeads.filter(isLeadVisit);
   const orphanRevenue = orphanSales.reduce((sum, l) => sum + (l.amount || 0), 0);
 
   const adsLeads = data?.totals.leads ?? 0;
@@ -209,7 +210,7 @@ const Analytics = () => {
   const revenue = cabinetRevenue + orphanRevenue;
 
   const prevOrphan = prevLeads.filter((l) => !l.cabinetId);
-  const prevOrphanSales = prevOrphan.filter((l) => l.stageKey === "paid");
+  const prevOrphanSales = prevOrphan.filter((l) => isLeadPaid(l));
   const prevOrphanRevenue = prevOrphanSales.reduce((s, l) => s + (l.amount || 0), 0);
   const prevRevenue = (prevData?.totals.crmRevenue ?? 0) + prevOrphanRevenue;
 
@@ -241,7 +242,7 @@ const Analytics = () => {
       const meta = resolveChannel(l as LeadLite);
       const cur = map.get(meta.key) ?? { meta, spend: 0, leads: 0, sales: 0, revenue: 0 };
       cur.leads += 1;
-      if (l.stageKey === "paid") {
+      if (isLeadPaid(l)) {
         cur.sales += 1;
         cur.revenue += l.amount || 0;
       }
@@ -285,7 +286,7 @@ const Analytics = () => {
         _scoreSum: 0, _scoreCount: 0,
       };
       cur.leads += 1;
-      if (l.stageKey === "paid") {
+      if (isLeadPaid(l)) {
         cur.sales += 1;
         cur.revenue += l.amount || 0;
         cur.paidCount = (cur.paidCount ?? 0) + 1;
@@ -321,7 +322,7 @@ const Analytics = () => {
       const d = new Date(l.createdAt).toISOString().slice(0, 10);
       const cur = leadsByDate.get(d) ?? { leads: 0, sales: 0 };
       cur.leads += 1;
-      if (l.stageKey === "paid") cur.sales += 1;
+      if (isLeadPaid(l)) cur.sales += 1;
       leadsByDate.set(d, cur);
     }
     for (let i = 1; i <= days; i++) {

@@ -5,6 +5,7 @@ import { useLeadsLite, type LeadLite } from "@/hooks/useLeadsLite";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { normalizeSource } from "@/lib/leadSource";
+import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
 
 export interface ReportPeriodRange {
   from: Date;
@@ -175,8 +176,12 @@ function aggregateCrm(leads: LeadLite[], range: ReportPeriodRange) {
   });
   // Только лиды БЕЗ cabinet_id — данные кабинетов берём из CDI, чтобы не дублировать.
   const orphanLeads = inRange.filter((l) => !l.cabinetId);
-  const orphanVisits = orphanLeads.filter((l) => l.stageKey === "visit" || l.stageKey === "paid");
-  const orphanSales = orphanLeads.filter((l) => l.stageKey === "paid");
+  // isLeadPaid / isLeadVisit смотрят на колонку `leads.paid` (выставляется CRM
+  // при переводе в терминальную оплаченную стадию) и поддерживают разные
+  // языковые варианты ключа стадии. Раньше было захардкожено "paid" —
+  // у проектов с переименованной стадией orphan-выручка просто не считалась.
+  const orphanVisits = orphanLeads.filter(isLeadVisit);
+  const orphanSales = orphanLeads.filter(isLeadPaid);
   const orphanRevenue = orphanSales.reduce((s, l) => s + (l.amount || 0), 0);
   return {
     leads: inRange,
