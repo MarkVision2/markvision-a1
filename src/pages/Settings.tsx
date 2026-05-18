@@ -72,15 +72,14 @@ export default function Settings() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Настройки</h1>
-          <p className="text-sm text-muted-foreground">Команда, воронки, телефония и личный профиль</p>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        icon={SettingsIcon}
+        title="Настройки"
+        description="Команда, воронки, телефония и личный профиль"
+      />
 
-      <Tabs defaultValue="team" className="w-full">
+      <Tabs defaultValue="team" className="mt-6 w-full">
         <TabsList className="mb-5 flex h-auto w-full flex-wrap justify-start gap-1 bg-card/40 p-1">
           <TabsTrigger value="team" className="gap-2"><Users2 className="h-3.5 w-3.5" /> Команда</TabsTrigger>
           <TabsTrigger value="profile" className="gap-2"><UserCircle2 className="h-3.5 w-3.5" /> Профиль</TabsTrigger>
