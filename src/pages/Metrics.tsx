@@ -718,7 +718,22 @@ const Metrics = () => {
                     </Cell>
                     <Cell>
                       <ManualFactCell
-                        title="Оплаты"
+                        title="Опл. диагностик"
+                        icon={DollarSign}
+                        isoDate={iso}
+                        value={d?.diagnosticRevenue ?? 0}
+                        crm={d?.crmDiagnosticRevenue ?? 0}
+                        manual={d?.manualDiagnosticRevenue ?? 0}
+                        autoLabel="CRM"
+                        disabled={!manualCabinet}
+                        format={formatNumber}
+                        allowDecimal
+                        onSave={(next) => upsertManualFact(iso, { manual_diagnostic_revenue: next })}
+                      />
+                    </Cell>
+                    <Cell>
+                      <ManualFactCell
+                        title="Продажи"
                         icon={Wallet}
                         isoDate={iso}
                         value={d?.sales ?? 0}
@@ -731,18 +746,23 @@ const Metrics = () => {
                     </Cell>
                     <Cell>
                       <ManualFactCell
-                        title="Сумма оплат"
+                        title="Выр. продаж"
                         icon={DollarSign}
                         isoDate={iso}
-                        value={dayRevenue}
-                        crm={d?.crmRevenueOnly ?? 0}
-                        manual={d?.manualRevenue ?? 0}
+                        value={d?.salesRevenue ?? 0}
+                        crm={d?.crmSalesRevenueOnly ?? 0}
+                        manual={d?.manualSalesRevenue ?? 0}
                         autoLabel="CRM"
                         disabled={!manualCabinet}
                         format={formatNumber}
                         allowDecimal
                         onSave={(next) => upsertManualFact(iso, { manual_revenue: next })}
                       />
+                    </Cell>
+                    <Cell>
+                      <span className="font-semibold tabular-nums text-success">
+                        {dayRevenue > 0 ? formatNumber(dayRevenue) : <Dash />}
+                      </span>
                     </Cell>
                   </tr>
                 );
