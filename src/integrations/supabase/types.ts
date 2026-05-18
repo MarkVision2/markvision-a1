@@ -452,6 +452,7 @@ export type Database = {
           cpc: number
           cpl: number
           cpm: number
+          crm_diagnostic_revenue: number
           crm_diagnostics: number
           crm_revenue: number
           crm_sales: number
@@ -462,6 +463,7 @@ export type Database = {
           id: string
           impressions: number
           leads: number
+          manual_diagnostic_revenue: number
           manual_diagnostics: number
           manual_revenue: number
           manual_sales: number
@@ -477,6 +479,7 @@ export type Database = {
           cpc?: number
           cpl?: number
           cpm?: number
+          crm_diagnostic_revenue?: number
           crm_diagnostics?: number
           crm_revenue?: number
           crm_sales?: number
@@ -487,6 +490,7 @@ export type Database = {
           id?: string
           impressions?: number
           leads?: number
+          manual_diagnostic_revenue?: number
           manual_diagnostics?: number
           manual_revenue?: number
           manual_sales?: number
@@ -502,6 +506,7 @@ export type Database = {
           cpc?: number
           cpl?: number
           cpm?: number
+          crm_diagnostic_revenue?: number
           crm_diagnostics?: number
           crm_revenue?: number
           crm_sales?: number
@@ -512,6 +517,7 @@ export type Database = {
           id?: string
           impressions?: number
           leads?: number
+          manual_diagnostic_revenue?: number
           manual_diagnostics?: number
           manual_revenue?: number
           manual_sales?: number
