@@ -652,6 +652,7 @@ const Metrics = () => {
                         icon={Eye}
                         isoDate={iso}
                         value={d?.diagnostics ?? 0}
+                        crm={d?.crmDiagnostics ?? 0}
                         manual={d?.manualDiagnostics ?? 0}
                         autoLabel="CRM"
                         disabled={!manualCabinet}
@@ -664,6 +665,7 @@ const Metrics = () => {
                         icon={Wallet}
                         isoDate={iso}
                         value={d?.sales ?? 0}
+                        crm={d?.crmSales ?? 0}
                         manual={d?.manualSales ?? 0}
                         autoLabel="CRM"
                         disabled={!manualCabinet}
@@ -676,6 +678,7 @@ const Metrics = () => {
                         icon={DollarSign}
                         isoDate={iso}
                         value={dayRevenue}
+                        crm={d?.crmRevenueOnly ?? 0}
                         manual={d?.manualRevenue ?? 0}
                         autoLabel="CRM"
                         disabled={!manualCabinet}
@@ -711,6 +714,7 @@ const ManualFactCell = ({
   icon: Icon,
   isoDate,
   value,
+  crm,
   manual,
   autoLabel,
   onSave,
@@ -721,7 +725,10 @@ const ManualFactCell = ({
   title: string;
   icon: React.ElementType;
   isoDate: string;
+  /** Итоговое значение, которое реально показывается (override-aware). */
   value: number;
+  /** Чистое CRM значение, БЕЗ применения override. Нужно, чтобы попап показал "Из CRM: N" корректно. */
+  crm: number;
   manual: number;
   autoLabel: string;
   onSave: (newManual: number) => Promise<void>;
@@ -732,7 +739,9 @@ const ManualFactCell = ({
   const [open, setOpen] = useState(false);
   const [val, setVal] = useState(String(manual || ""));
   const [saving, setSaving] = useState(false);
-  const auto = Math.max(0, value - manual);
+  // В попапе всегда показываем настоящее CRM-значение (а не "value - manual",
+  // которое после override-семантики равно 0 как только пользователь ввёл manual).
+  const auto = Math.max(0, crm);
   const hasValue = value > 0;
 
   const handleSave = async () => {
@@ -793,10 +802,13 @@ const ManualFactCell = ({
               <div className="mt-1 text-sm font-bold tabular-nums text-success">{format(manual)}</div>
             </div>
             <div className="rounded-xl border border-border/60 bg-card/60 p-2">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Итого</div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Показано</div>
               <div className="mt-1 text-sm font-bold tabular-nums">{format(value)}</div>
             </div>
           </div>
+          <p className="text-[11px] leading-4 text-muted-foreground">
+            Если задано «Вручную» — оно перезаписывает значение из CRM. Чтобы вернуться к авто-данным, очисти поле (0).
+          </p>
 
           <div className="space-y-2">
             <label className="text-xs font-medium text-muted-foreground">

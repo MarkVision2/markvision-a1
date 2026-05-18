@@ -255,14 +255,16 @@ export function useDashboardData(
       for (const v of map.values()) rows.push(v);
     }
 
-    // Fallback: если у нас вообще пусто, но есть totals из ReportData — показываем одну строку Meta.
-    if (rows.length === 0 && data?.totals && data.totals.totalLeads > 0) {
+    // Fallback: если у нас пусто (провайдер не записал в CDI provider-колонку), но в Meta totals есть
+    // лиды — показываем одну Meta-строку строго с ads-метриками. Раньше тут было `totalLeads`,
+    // что включало orphan CRM-лиды в Meta-строку и искажало CPL.
+    if (rows.length === 0 && data?.totals && data.totals.adsLeads > 0) {
       rows.push({
         key: "meta",
         name: PROVIDER_LABELS.meta,
         provider: "meta",
         spend: data.totals.spend,
-        leads: data.totals.totalLeads,
+        leads: data.totals.adsLeads,
         sales: data.totals.sales,
         revenue: data.totals.revenue,
       });

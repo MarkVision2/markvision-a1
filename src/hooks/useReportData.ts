@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useLeadsLite, type LeadLite } from "@/hooks/useLeadsLite";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { normalizeSource } from "@/lib/leadSource";
 
 export interface ReportPeriodRange {
@@ -97,6 +98,7 @@ function normalizeActId(id: string) {
 async function fetchMetaForRange(
   externalIds: string[],
   range: ReportPeriodRange,
+  projectId?: string | null,
 ): Promise<{
   spend: number; impressions: number; clicks: number; leads: number;
   cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number;
@@ -109,12 +111,16 @@ async function fetchMetaForRange(
   const since = ymd(range.from);
   const until = ymd(range.to);
 
-  const { data, error } = await supabase
+  let q = supabase
     .from("cabinet_daily_insights")
     .select("date, spend, impressions, clicks, leads, crm_sales, manual_sales, crm_revenue, manual_revenue, crm_diagnostics, manual_diagnostics")
     .in("external_id", ids)
     .gte("date", since)
     .lte("date", until);
+  // Изолируем по проекту, чтобы цифры совпадали с useDashboardData / useMonthlyAggregates,
+  // которые тоже фильтруют по project_id.
+  if (projectId) q = q.eq("project_id", projectId);
+  const { data, error } = await q;
   if (error) throw new Error(error.message);
 
   const dailyAgg = new Map<string, { spend: number; leads: number; revenue: number }>();
@@ -190,7 +196,9 @@ function computeTotals(
   // (те, что без cabinet_id — органика, сайт, WhatsApp). Лиды с cabinet_id
   // уже учтены через CDI.
   const totalLeads = meta.leads + crm.orphanLeads.length;
-  const cpl = totalLeads > 0 ? meta.spend / totalLeads : 0;
+  // CPL = расход / только платные лиды (которые этот расход и сгенерировал).
+  // Раньше делили на totalLeads — и orphan-лиды занижали CPL, искажая marketing-метрику.
+  const cpl = meta.leads > 0 ? meta.spend / meta.leads : 0;
   const visits = meta.cabinetDiagnostics + crm.orphanVisits.length;
   const sales = meta.cabinetSales + crm.orphanSales.length;
   const revenue = meta.cabinetRevenue + crm.orphanRevenue;
@@ -246,6 +254,7 @@ export function useReportData(
   const { leads } = useLeadsLite();
   // Только Личные кабинеты активного проекта попадают в аналитику.
   const { cabinets } = usePersonalCabinets();
+  const { activeId: projectId } = useProjectsStore();
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -264,7 +273,7 @@ export function useReportData(
     setError(null);
     (async () => {
       try {
-        const meta = await fetchMetaForRange(cabinetIds, range);
+        const meta = await fetchMetaForRange(cabinetIds, range, projectId);
         const crm = aggregateCrm(leads, range);
         const totals = computeTotals(meta, crm);
         const scoring = computeScoring(crm.leads);
@@ -274,7 +283,7 @@ export function useReportData(
         let prev: ReportTotals | undefined;
         if (compare) {
           const prevRange = shiftRange(range);
-          const prevMeta = await fetchMetaForRange(cabinetIds, prevRange);
+          const prevMeta = await fetchMetaForRange(cabinetIds, prevRange, projectId);
           const prevCrm = aggregateCrm(leads, prevRange);
           prev = computeTotals(prevMeta, prevCrm);
         }
@@ -294,7 +303,7 @@ export function useReportData(
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cabinetIds.join(","), range.from.getTime(), range.to.getTime(), compare, leads.length, tick]);
+  }, [cabinetIds.join(","), range.from.getTime(), range.to.getTime(), compare, leads.length, tick, projectId]);
 
   return { data, loading, error };
 }

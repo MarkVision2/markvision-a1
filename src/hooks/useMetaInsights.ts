@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 
 export interface DailyInsightRow {
   date: string;
@@ -7,12 +8,22 @@ export interface DailyInsightRow {
   impressions: number;
   clicks: number;
   leads: number;
+  /** FB pixel revenue. НЕ используется для бизнес-выручки — это событийная атрибуция. */
+  pixelRevenue: number;
+  /** @deprecated alias на pixelRevenue для обратной совместимости. */
   revenue: number;
+  /** Override-результат: manual если задан, иначе crm. */
   diagnostics: number;
+  /** Чистое CRM значение, без manual override (для отображения «Из CRM: N» в попапах). */
+  crmDiagnostics: number;
   manualDiagnostics: number;
+  /** Override-результат: manual если задан, иначе crm. */
   sales: number;
+  crmSales: number;
   manualSales: number;
+  /** Override-результат: manual если задан, иначе crm. Единственный источник правды для денег. */
   crmRevenue: number;
+  crmRevenueOnly: number;
   manualRevenue: number;
 }
 
@@ -21,6 +32,9 @@ export interface InsightTotals {
   impressions: number;
   clicks: number;
   leads: number;
+  /** FB pixel revenue. Не используется в KPI выручки. */
+  pixelRevenue: number;
+  /** @deprecated alias на pixelRevenue. */
   revenue: number;
   cpl: number;
   cpm: number;
@@ -29,6 +43,7 @@ export interface InsightTotals {
   romi: number;
   diagnostics: number;
   sales: number;
+  /** Override-aware CRM revenue. Это «выручка факт» в Metrics/Analytics/Dashboard. */
   crmRevenue: number;
 }
 
@@ -39,7 +54,7 @@ export interface InsightsData {
 }
 
 const EMPTY_TOTALS: InsightTotals = {
-  spend: 0, impressions: 0, clicks: 0, leads: 0, revenue: 0,
+  spend: 0, impressions: 0, clicks: 0, leads: 0, pixelRevenue: 0, revenue: 0,
   cpl: 0, cpm: 0, cpc: 0, ctr: 0, romi: 0,
   diagnostics: 0, sales: 0, crmRevenue: 0,
 };
@@ -85,7 +100,7 @@ function aggregate(rows: CdiRow[]): InsightsData {
   for (const r of rows) {
     currency = r.currency || currency;
     const spend = Number(r.spend) || 0;
-    const revenue = Number(r.revenue) || 0;
+    const pixelRevenue = Number(r.revenue) || 0;
     const impressions = Number(r.impressions) || 0;
     const clicks = Number(r.clicks) || 0;
     const leads = Number(r.leads) || 0;
@@ -98,14 +113,15 @@ function aggregate(rows: CdiRow[]): InsightsData {
     const crmSales = Number(r.crm_sales) || 0;
     const manSales = Number(r.manual_sales) || 0;
     const sales = manSales > 0 ? manSales : crmSales;
-    const crmRevenue = Number(r.crm_revenue) || 0;
+    const crmRevenueRaw = Number(r.crm_revenue) || 0;
     const manRevenue = Number(r.manual_revenue) || 0;
-    const totalRevenue = manRevenue > 0 ? manRevenue : crmRevenue;
+    const totalRevenue = manRevenue > 0 ? manRevenue : crmRevenueRaw;
     totals.spend += spend;
     totals.impressions += impressions;
     totals.clicks += clicks;
     totals.leads += leads;
-    totals.revenue += revenue;
+    totals.pixelRevenue += pixelRevenue;
+    totals.revenue += pixelRevenue;
     totals.diagnostics += diagnostics;
     totals.sales += sales;
     totals.crmRevenue += totalRevenue;
@@ -115,19 +131,24 @@ function aggregate(rows: CdiRow[]): InsightsData {
       cur.impressions += impressions;
       cur.clicks += clicks;
       cur.leads += leads;
-      cur.revenue += revenue;
+      cur.pixelRevenue += pixelRevenue;
+      cur.revenue += pixelRevenue;
       cur.diagnostics += diagnostics;
+      cur.crmDiagnostics += crmDiag;
       cur.manualDiagnostics += manDiag;
       cur.sales += sales;
+      cur.crmSales += crmSales;
       cur.manualSales += manSales;
       cur.crmRevenue += totalRevenue;
+      cur.crmRevenueOnly += crmRevenueRaw;
       cur.manualRevenue += manRevenue;
     } else {
       dailyMap.set(r.date, {
-        date: r.date, spend, impressions, clicks, leads, revenue,
-        diagnostics, manualDiagnostics: manDiag,
-        sales, manualSales: manSales,
-        crmRevenue: totalRevenue, manualRevenue: manRevenue,
+        date: r.date, spend, impressions, clicks, leads,
+        pixelRevenue, revenue: pixelRevenue,
+        diagnostics, crmDiagnostics: crmDiag, manualDiagnostics: manDiag,
+        sales, crmSales, manualSales: manSales,
+        crmRevenue: totalRevenue, crmRevenueOnly: crmRevenueRaw, manualRevenue: manRevenue,
       });
     }
   }
@@ -135,25 +156,34 @@ function aggregate(rows: CdiRow[]): InsightsData {
   totals.cpm = totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0;
   totals.cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
   totals.ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
-  const effectiveRevenue = totals.crmRevenue || totals.revenue;
-  totals.romi = totals.spend > 0 ? ((effectiveRevenue - totals.spend) / totals.spend) * 100 : 0;
+  // ROMI считается строго по реальной выручке (CRM/manual), без FB pixel fallback.
+  // Это даёт ту же ROMI на Dashboard/Reports/Analytics/Metrics для одного периода.
+  totals.romi = totals.spend > 0 ? ((totals.crmRevenue - totals.spend) / totals.spend) * 100 : 0;
   const daily = Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date));
   return { currency, totals, daily };
 }
 
-async function fetchInsights(actIds: string[], month: string): Promise<InsightsData> {
+async function fetchInsights(
+  actIds: string[],
+  month: string,
+  projectId?: string | null,
+): Promise<InsightsData> {
   const range = monthRange(month);
   if (!range || actIds.length === 0) {
     return { currency: "USD", totals: EMPTY_TOTALS, daily: [] };
   }
   const ids = actIds.map(normalizeActId);
-  const { data, error } = await supabase
+  let q = supabase
     .from("cabinet_daily_insights")
     .select("date, spend, impressions, clicks, leads, revenue, currency, crm_diagnostics, manual_diagnostics, crm_sales, manual_sales, crm_revenue, manual_revenue")
     .in("external_id", ids)
     .gte("date", range.since)
     .lte("date", range.until)
     .order("date", { ascending: true });
+  // Изоляция проекта: если несколько проектов делили один external_id (миграция кабинета и т.п.),
+  // чужие строки в выборку не попадут.
+  if (projectId) q = q.eq("project_id", projectId);
+  const { data, error } = await q;
   if (error) throw new Error(error.message);
   return aggregate((data ?? []) as CdiRow[]);
 }
@@ -163,6 +193,7 @@ export function useMetaInsights(
   month: string,
   enabled = true,
 ) {
+  const { activeId: projectId } = useProjectsStore();
   const [data, setData] = useState<InsightsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -176,7 +207,7 @@ export function useMetaInsights(
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchInsights([actId], month)
+    fetchInsights([actId], month, projectId)
       .then((d) => { if (!cancelled) setData(d); })
       .catch((e) => {
         if (cancelled) return;
@@ -192,7 +223,7 @@ export function useMetaInsights(
         "postgres_changes",
         { event: "*", schema: "public", table: "cabinet_daily_insights", filter: `external_id=eq.${norm}` },
         () => {
-          fetchInsights([actId], month).then((d) => { if (!cancelled) setData(d); }).catch(() => {});
+          fetchInsights([actId], month, projectId).then((d) => { if (!cancelled) setData(d); }).catch(() => {});
         },
       )
       .subscribe();
@@ -200,7 +231,7 @@ export function useMetaInsights(
       cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, [actId, month, enabled, refreshKey]);
+  }, [actId, month, enabled, refreshKey, projectId]);
 
   return { data, loading, error, refresh: () => setRefreshKey((k) => k + 1) };
 }
@@ -210,6 +241,7 @@ export function useMultiMetaInsights(
   month: string,
   enabled = true,
 ) {
+  const { activeId: projectId } = useProjectsStore();
   const [data, setData] = useState<InsightsData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -224,7 +256,7 @@ export function useMultiMetaInsights(
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchInsights(actIds, month)
+    fetchInsights(actIds, month, projectId)
       .then((d) => { if (!cancelled) setData(d); })
       .catch((e) => {
         if (cancelled) return;
@@ -234,7 +266,7 @@ export function useMultiMetaInsights(
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, month, enabled, refreshKey]);
+  }, [key, month, enabled, refreshKey, projectId]);
 
   return { data, loading, error, refresh: () => setRefreshKey((k) => k + 1) };
 }
