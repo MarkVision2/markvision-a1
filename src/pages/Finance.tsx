@@ -402,7 +402,7 @@ const Finance = () => {
           </div>
         </>
       )}
-    </main>
+    </PageContainer>
   );
 };
 
