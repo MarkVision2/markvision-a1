@@ -172,8 +172,8 @@ const SettingsConnection = () => {
           К настройкам
         </Button>
 
-        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Подключение WhatsApp</h1>
-        <p className="mt-2 text-sm text-muted-foreground sm:text-base">
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Подключение WhatsApp</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
           Авторизуйте инстанс Green API через QR-код или по номеру телефона
         </p>
 
