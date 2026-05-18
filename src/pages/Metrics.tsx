@@ -32,6 +32,7 @@ import { Progress } from "@/components/ui/progress";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useMultiMetaInsights, type DailyInsightRow } from "@/hooks/useMetaInsights";
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
+import { useLeadsLite } from "@/hooks/useLeadsLite";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -183,16 +184,40 @@ const Metrics = () => {
 
   const filledDays = data?.daily.length ?? 0;
   const monthProgress = Math.round((filledDays / daysInMonth) * 100);
-  const factDiagnostics = totals?.diagnostics ?? 0;
-  const factSales = totals?.sales ?? 0;
-  // Выручка считается только из CRM (paid leads + manual override). FB pixel
-  // revenue (totals.revenue) больше не используется как fallback — это
-  // событийная атрибуция, а не реальный денежный поток.
-  const factRevenue = totals?.crmRevenue ?? 0;
+
+  // Orphan CRM-лиды этого месяца (без cabinet_id) — заявки с сайта/WhatsApp,
+  // которые не относятся ни к одному рекламному кабинету. Чтобы факты Metrics
+  // совпадали с Dashboard/Analytics, прибавляем их к CDI-суммам.
+  const { leads: allLeads } = useLeadsLite();
+  const monthStartTs = monthCursor.getTime();
+  const monthEndTs = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 1).getTime();
+  const orphanThisMonth = useMemo(
+    () => allLeads.filter((l) => {
+      if (l.cabinetId) return false;
+      // Если выбран конкретный кабинет — orphan-лиды не показываем,
+      // т.к. они не относятся ни к какому кабинету.
+      if (cabinetId !== "all") return false;
+      const t = new Date(l.createdAt).getTime();
+      return t >= monthStartTs && t < monthEndTs;
+    }),
+    [allLeads, cabinetId, monthStartTs, monthEndTs],
+  );
+  const orphanDiagnostics = orphanThisMonth.filter((l) => l.stageKey === "visit" || l.stageKey === "paid").length;
+  const orphanSalesCount = orphanThisMonth.filter((l) => l.stageKey === "paid").length;
+  const orphanRevenue = orphanThisMonth
+    .filter((l) => l.stageKey === "paid")
+    .reduce((s, l) => s + (l.amount || 0), 0);
+
+  // Факт = CDI (override-aware) + orphan CRM. Та же формула, что в useReportData,
+  // поэтому цифры в Metrics, Dashboard, Analytics, Reports совпадают.
+  const factDiagnostics = (totals?.diagnostics ?? 0) + orphanDiagnostics;
+  const factSales = (totals?.sales ?? 0) + orphanSalesCount;
+  const factRevenue = (totals?.crmRevenue ?? 0) + orphanRevenue;
+  const factLeads = (totals?.leads ?? 0) + orphanThisMonth.length;
   const factCac = factSales > 0 ? (totals?.spend ?? 0) / factSales : 0;
   const factCpd = factDiagnostics > 0 ? (totals?.spend ?? 0) / factDiagnostics : 0;
   const crLeadDiagnostics =
-    totals && totals.leads > 0 ? (factDiagnostics / totals.leads) * 100 : 0;
+    factLeads > 0 ? (factDiagnostics / factLeads) * 100 : 0;
   const crDiagnosticsSale =
     factDiagnostics > 0 ? (factSales / factDiagnostics) * 100 : 0;
 
@@ -559,7 +584,7 @@ const Metrics = () => {
                 </Cell>
                 <Cell>
                   <span className="font-bold text-success">
-                    {totals ? formatNumber(totals.leads) : <Dash />}
+                    {factLeads > 0 ? formatNumber(factLeads) : <Dash />}
                   </span>
                 </Cell>
                 <Cell>
@@ -600,7 +625,6 @@ const Metrics = () => {
                   const pct = (fact: number, p: number) =>
                     plan && p > 0 ? `${Math.round((fact / p) * 100)}%` : null;
                   const factSpend = totals?.spend ?? 0;
-                  const factLeads = totals?.leads ?? 0;
                   const cells = [
                     pct(factSpend, plan?.spend ?? 0),
                     pct(factLeads, plan?.leads ?? 0),
