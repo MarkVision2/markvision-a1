@@ -297,6 +297,7 @@ const Metrics = () => {
       manual_diagnostics?: number;
       manual_sales?: number;
       manual_revenue?: number;
+      manual_diagnostic_revenue?: number;
     },
   ) => {
     if (!manualCabinet?.externalId) {
