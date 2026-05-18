@@ -3,7 +3,7 @@ import { Image as ImageIcon, Layers, Play, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { bestCreativeImage } from "@/lib/metaThumb";
 import { enqueuePosterCapture } from "@/lib/videoPosterCapture";
-import { supabase } from "@/integrations/supabase/client";
+import { refreshMetaCreative } from "@/lib/metaCreativeRefresh";
 
 const requestedPosters = new Set<string>();
 
