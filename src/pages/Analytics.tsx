@@ -29,6 +29,8 @@ import { TrendChart, type TrendPoint } from "@/components/analytics/TrendChart";
 import { PeriodPicker, monthRange } from "@/components/dashboard/PeriodPicker";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
+import { PageContainer } from "@/components/layout/PageContainer";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 const MONTHS_RU = [
   "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
