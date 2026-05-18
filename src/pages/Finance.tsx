@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Calculator,
-  ChevronLeft,
-  ChevronRight,
   DollarSign,
   LineChart,
   Save,
@@ -21,6 +19,8 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
+import { PeriodPicker, monthRange } from "@/components/dashboard/PeriodPicker";
+import type { ReportPeriodRange } from "@/hooks/useReportData";
 import AgencyAnalytics from "@/components/finance/AgencyAnalytics";
 import MonthlyDynamics from "@/components/finance/MonthlyDynamics";
 
@@ -137,10 +137,8 @@ const FunnelArrow = () => (
 const Finance = () => {
   const [tab, setTab] = useState<Tab>("decomp");
   const [mode, setMode] = useState<DecompMode>("budget");
-  const [monthCursor, setMonthCursor] = useState(() => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1);
-  });
+  const [period, setPeriod] = useState<ReportPeriodRange>(() => monthRange(new Date()));
+  const monthCursor = period.from;
 
   const { savePlan, getPlan } = useFinancePlans();
 
@@ -186,8 +184,6 @@ const Finance = () => {
   const romi = calc.budget > 0 ? ((calc.revenue - calc.budget) / calc.budget) * 100 : 0;
   const margin = calc.revenue > 0 ? (profit / calc.revenue) * 100 : 0;
 
-  const shiftMonth = (delta: number) =>
-    setMonthCursor((p) => new Date(p.getFullYear(), p.getMonth() + delta, 1));
   const monthLabel = `${MONTHS_RU[monthCursor.getMonth()]} ${monthCursor.getFullYear()}`;
 
   const handleSave = () => {
@@ -397,23 +393,7 @@ const Finance = () => {
             </p>
 
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="flex items-center gap-1 rounded-xl border border-border/60 bg-card/60 px-2 py-1">
-                <button
-                  onClick={() => shiftMonth(-1)}
-                  className="grid h-8 w-8 place-items-center rounded-lg hover:bg-secondary"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <span className="px-2 text-xs font-semibold capitalize tabular-nums">
-                  {monthLabel}
-                </span>
-                <button
-                  onClick={() => shiftMonth(1)}
-                  className="grid h-8 w-8 place-items-center rounded-lg hover:bg-secondary"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
+              <PeriodPicker range={period} onChange={setPeriod} />
 
               <Button
                 onClick={handleSave}

@@ -3,8 +3,6 @@ import {
   AlertCircle,
   BarChart3,
   CalendarDays,
-  ChevronLeft,
-  ChevronRight,
   ClipboardCheck,
   DollarSign,
   Download,
@@ -29,19 +27,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
+import { PeriodPicker, monthRange } from "@/components/dashboard/PeriodPicker";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useMultiMetaInsights, type DailyInsightRow } from "@/hooks/useMetaInsights";
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
 import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
+import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { AdCabinet } from "@/types/ads";
 
-const MONTHS_RU = [
-  "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
-  "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
+const MONTHS_GEN_RU = [
+  "январь", "февраль", "март", "апрель", "май", "июнь",
+  "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь",
 ];
 
 const WEEKDAYS_RU = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
@@ -110,20 +110,12 @@ const Cell = ({ children, mono = true }: { children: React.ReactNode; mono?: boo
 const Dash = () => <span className="text-muted-foreground/50">—</span>;
 
 const Metrics = () => {
-  const [monthCursor, setMonthCursor] = useState(() => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1);
-  });
+  const [period, setPeriod] = useState<ReportPeriodRange>(() => monthRange(new Date()));
+  const monthCursor = period.from;
   const [cabinetId, setCabinetId] = useState<string>("all");
   const { cabinets } = usePersonalCabinets();
   const [resyncing, setResyncing] = useState(false);
 
-  const shiftMonth = (delta: number) =>
-    setMonthCursor(
-      (prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1),
-    );
-
-  const monthLabel = `${MONTHS_RU[monthCursor.getMonth()]} ${monthCursor.getFullYear()}`;
   const monthParam = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}`;
 
   const allActIds = useMemo(
@@ -489,25 +481,7 @@ const Metrics = () => {
       {/* Controls */}
       <div className="mt-6 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1 rounded-2xl border border-border/60 bg-card/60 px-2 py-1.5">
-            <button
-              onClick={() => shiftMonth(-1)}
-              className="grid h-9 w-9 place-items-center rounded-xl hover:bg-secondary"
-              aria-label="Предыдущий месяц"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="px-3 text-sm font-semibold capitalize tabular-nums">
-              {monthLabel}
-            </span>
-            <button
-              onClick={() => shiftMonth(1)}
-              className="grid h-9 w-9 place-items-center rounded-xl hover:bg-secondary"
-              aria-label="Следующий месяц"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
+          <PeriodPicker range={period} onChange={setPeriod} />
 
           <Select value={cabinetId} onValueChange={setCabinetId}>
             <SelectTrigger className="h-12 min-w-[220px] rounded-2xl border-border/60 bg-card/60">
@@ -759,7 +733,7 @@ const Metrics = () => {
         {loading && (
           <div className="flex items-center justify-center gap-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Загружаем данные за {monthLabel.toLowerCase()}...
+            Загружаем данные за {MONTHS_GEN_RU[monthCursor.getMonth()]} {monthCursor.getFullYear()}...
           </div>
         )}
       </div>

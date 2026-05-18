@@ -1,8 +1,6 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  ChevronLeft,
-  ChevronRight,
   Film,
   LayoutGrid,
   Megaphone,
@@ -22,27 +20,13 @@ import CreateCampaignDialog from "@/components/ads/CreateCampaignDialog";
 import CabinetRow from "@/components/ads/CabinetRow";
 import { AdsCreativesPanel } from "@/components/ads/AdsCreativesPanel";
 import { CampaignGoalsBreakdown } from "@/components/dashboard/CampaignGoalsBreakdown";
+import { PeriodPicker, monthRange, currentMonthRange } from "@/components/dashboard/PeriodPicker";
 import { useMetaCampaigns } from "@/hooks/useMetaStructure";
-import { getPresetRange } from "@/hooks/useDashboardData";
+import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
-
-const MONTHS_RU = [
-  "Январь",
-  "Февраль",
-  "Март",
-  "Апрель",
-  "Май",
-  "Июнь",
-  "Июль",
-  "Август",
-  "Сентябрь",
-  "Октябрь",
-  "Ноябрь",
-  "Декабрь",
-];
 
 const SEARCH_THRESHOLD = 3;
 
@@ -71,7 +55,7 @@ const StatChip = ({
 );
 
 function CampaignsTabContent() {
-  const [range] = useState(() => getPresetRange("30d"));
+  const [range] = useState(() => currentMonthRange());
   const { rows } = useMetaCampaigns(range);
   return <CampaignGoalsBreakdown rows={rows} />;
 }
@@ -85,17 +69,8 @@ const Ads = () => {
   const [campaignOpen, setCampaignOpen] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [refreshKey, setRefreshKey] = useState(0);
-  const [monthCursor, setMonthCursor] = useState(() => {
-    const d = new Date();
-    return new Date(d.getFullYear(), d.getMonth(), 1);
-  });
-
-  const shiftMonth = (delta: number) =>
-    setMonthCursor(
-      (prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1),
-    );
-
-  const monthLabel = `${MONTHS_RU[monthCursor.getMonth()]} ${monthCursor.getFullYear()}`;
+  const [period, setPeriod] = useState<ReportPeriodRange>(() => monthRange(new Date()));
+  const monthCursor = period.from;
 
   const toggleExpanded = (id: string) =>
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -155,25 +130,7 @@ const Ads = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex h-9 items-center gap-0.5 rounded-lg border border-border/60 bg-card/60 px-1">
-            <button
-              onClick={() => shiftMonth(-1)}
-              className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-              aria-label="Предыдущий месяц"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="px-2 text-xs font-medium capitalize tabular-nums">
-              {monthLabel}
-            </span>
-            <button
-              onClick={() => shiftMonth(1)}
-              className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-              aria-label="Следующий месяц"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
+          <PeriodPicker range={period} onChange={setPeriod} />
 
           <Button
             variant="outline"

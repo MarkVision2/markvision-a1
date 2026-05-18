@@ -13,10 +13,9 @@ import {
   type MetaCampaignRow,
   type MetaCreativeRow,
 } from "@/hooks/useMetaStructure";
-import { getPresetRange, type PeriodPreset } from "@/hooks/useDashboardData";
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
-import { PeriodPicker } from "@/components/dashboard/PeriodPicker";
+import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPicker";
 
 type StatusFilter = "active" | "active_or_spent" | "all";
 type TypeFilter = "all" | "video" | "image" | "carousel";
@@ -47,8 +46,7 @@ function classifyCampaignWa(camp: MetaCampaignRow | undefined): { isWhatsApp: bo
 }
 
 export function AdsCreativesPanel() {
-  const [preset, setPreset] = useState<PeriodPreset>("30d");
-  const [range, setRange] = useState<ReportPeriodRange>(() => getPresetRange("30d"));
+  const [range, setRange] = useState<ReportPeriodRange>(() => currentMonthRange());
   const [status, setStatus] = useState<StatusFilter>("active_or_spent");
   const [typeF, setTypeF] = useState<TypeFilter>("all");
   const [goalF, setGoalF] = useState<"all" | "whatsapp" | "site">("all");
@@ -128,14 +126,7 @@ export function AdsCreativesPanel() {
       <div className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-card/50 p-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-2">
           {/* Period */}
-          <PeriodPicker
-            preset={preset}
-            range={range}
-            onChange={(p, r) => {
-              setPreset(p);
-              setRange(r);
-            }}
-          />
+          <PeriodPicker range={range} onChange={setRange} />
 
           {/* Status */}
           <select

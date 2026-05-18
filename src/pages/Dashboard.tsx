@@ -6,7 +6,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { PeriodPicker } from "@/components/dashboard/PeriodPicker";
+import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPicker";
 import { MoneyKpiCard } from "@/components/dashboard/MoneyKpiCard";
 import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
 import { EnhancedFunnel } from "@/components/dashboard/EnhancedFunnel";
@@ -18,7 +18,7 @@ import { CrmFlowPanel } from "@/components/dashboard/CrmFlowPanel";
 import { InstagramOrganicFunnel } from "@/components/dashboard/InstagramOrganicFunnel";
 import { RevenueSpendChart } from "@/components/dashboard/RevenueSpendChart";
 import { UnitEconomicsCard } from "@/components/dashboard/UnitEconomicsCard";
-import { getPresetRange, useDashboardData, type PeriodPreset } from "@/hooks/useDashboardData";
+import { useDashboardData } from "@/hooks/useDashboardData";
 import { useCodewordStats } from "@/hooks/useInstagramOrganic";
 import { useCrmFlow } from "@/hooks/useCrmFlow";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
@@ -44,8 +44,7 @@ function ymdLocal(d: Date) {
 }
 
 const Dashboard = () => {
-  const [preset, setPreset] = useState<PeriodPreset>("30d");
-  const [range, setRange] = useState<ReportPeriodRange>(() => getPresetRange("30d"));
+  const [range, setRange] = useState<ReportPeriodRange>(() => currentMonthRange());
   const [comparing] = useState(true);
   const [syncing, setSyncing] = useState(false);
 
@@ -114,14 +113,7 @@ const Dashboard = () => {
           <p className="mt-1 text-sm text-muted-foreground">{rangeLabel}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <PeriodPicker
-            preset={preset}
-            range={range}
-            onChange={(p, r) => {
-              setPreset(p);
-              setRange(r);
-            }}
-          />
+          <PeriodPicker range={range} onChange={setRange} />
           <Button
             variant="outline"
             className="h-10 gap-2 rounded-xl border-border/60"

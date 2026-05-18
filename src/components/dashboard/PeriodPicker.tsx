@@ -1,80 +1,97 @@
 import { useState } from "react";
-import { CalendarIcon } from "lucide-react";
-import { format } from "date-fns";
-import { ru } from "date-fns/locale";
-import { Button } from "@/components/ui/button";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { getPresetRange, type PeriodPreset } from "@/hooks/useDashboardData";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 
-const PRESETS: { id: PeriodPreset; label: string }[] = [
-  { id: "today", label: "Сегодня" },
-  { id: "yesterday", label: "Вчера" },
-  { id: "week", label: "Эта неделя" },
-  { id: "7d", label: "7 дней" },
-  { id: "30d", label: "30 дней" },
-  { id: "month", label: "Этот месяц" },
-  { id: "prevMonth", label: "Прошлый месяц" },
+const MONTHS_RU = [
+  "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
+  "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек",
 ];
 
-interface Props {
-  preset: PeriodPreset;
-  range: ReportPeriodRange;
-  onChange: (preset: PeriodPreset, range: ReportPeriodRange) => void;
+export function monthRange(date: Date): ReportPeriodRange {
+  const from = new Date(date.getFullYear(), date.getMonth(), 1);
+  const to = new Date(date.getFullYear(), date.getMonth() + 1, 0);
+  return { from, to };
 }
 
-export function PeriodPicker({ preset, range, onChange }: Props) {
+export function currentMonthRange(): ReportPeriodRange {
+  return monthRange(new Date());
+}
+
+function formatMonthLabel(from: Date): string {
+  const month = MONTHS_RU[from.getMonth()];
+  const lastDay = new Date(from.getFullYear(), from.getMonth() + 1, 0).getDate();
+  return `1 ${month}. – ${lastDay} ${month}. ${from.getFullYear()}`;
+}
+
+interface Props {
+  range: ReportPeriodRange;
+  onChange: (range: ReportPeriodRange) => void;
+  className?: string;
+}
+
+export function PeriodPicker({ range, onChange, className }: Props) {
   const [open, setOpen] = useState(false);
+
+  const shiftMonth = (delta: number) => {
+    const next = new Date(range.from.getFullYear(), range.from.getMonth() + delta, 1);
+    onChange(monthRange(next));
+  };
+
   return (
-    <div className="flex flex-wrap items-center gap-1 rounded-xl border border-border/60 bg-card/60 p-1">
-      {PRESETS.map((p) => (
-        <button
-          key={p.id}
-          onClick={() => onChange(p.id, getPresetRange(p.id))}
-          className={cn(
-            "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
-            preset === p.id
-              ? "bg-primary text-primary-foreground"
-              : "text-muted-foreground hover:bg-secondary",
-          )}
-        >
-          {p.label}
-        </button>
-      ))}
+    <div
+      className={cn(
+        "inline-flex items-center gap-1 rounded-2xl border border-border/60 bg-card/60 px-2 py-1.5",
+        className,
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => shiftMonth(-1)}
+        className="grid h-9 w-9 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        aria-label="Предыдущий месяц"
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </button>
+
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button
-            variant="ghost"
-            size="sm"
-            className={cn(
-              "h-8 rounded-lg px-3 text-xs font-medium",
-              preset === "custom" && "bg-primary text-primary-foreground",
-            )}
+          <button
+            type="button"
+            className="flex items-center gap-2 rounded-xl px-3 py-1 text-sm font-semibold tabular-nums transition-colors hover:bg-secondary"
+            aria-label="Выбрать месяц"
           >
-            <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
-            {preset === "custom"
-              ? `${format(range.from, "d MMM", { locale: ru })} – ${format(range.to, "d MMM", { locale: ru })}`
-              : "Свой период"}
-          </Button>
+            <CalendarDays className="h-4 w-4 text-muted-foreground" />
+            {formatMonthLabel(range.from)}
+          </button>
         </PopoverTrigger>
-        <PopoverContent className="w-auto p-0" align="end">
+        <PopoverContent className="w-auto p-0" align="center">
           <Calendar
-            mode="range"
-            selected={{ from: range.from, to: range.to }}
-            onSelect={(r) => {
-              if (r?.from && r?.to) {
-                onChange("custom", { from: r.from, to: r.to });
+            mode="single"
+            selected={range.from}
+            onSelect={(date) => {
+              if (date) {
+                onChange(monthRange(date));
                 setOpen(false);
               }
             }}
-            numberOfMonths={2}
+            defaultMonth={range.from}
             initialFocus
             className={cn("p-3 pointer-events-auto")}
           />
         </PopoverContent>
       </Popover>
+
+      <button
+        type="button"
+        onClick={() => shiftMonth(1)}
+        className="grid h-9 w-9 place-items-center rounded-xl text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+        aria-label="Следующий месяц"
+      >
+        <ChevronRight className="h-4 w-4" />
+      </button>
     </div>
   );
 }
