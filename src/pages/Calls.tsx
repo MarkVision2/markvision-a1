@@ -302,7 +302,7 @@ const CallsHistory = () => {
           </ul>
         )}
       </Card>
-    </div>
+    </PageContainer>
   );
 };
 
