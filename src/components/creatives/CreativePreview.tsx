@@ -3,7 +3,7 @@ import { Image as ImageIcon, Layers, Play, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { bestCreativeImage } from "@/lib/metaThumb";
 import { enqueuePosterCapture } from "@/lib/videoPosterCapture";
-import { supabase } from "@/integrations/supabase/client";
+import { refreshMetaCreative } from "@/lib/metaCreativeRefresh";
 
 const requestedPosters = new Set<string>();
 
@@ -45,10 +45,7 @@ export function CreativePreview({ row, compact = false, className }: Props) {
 
   const refreshVideoPreview = async () => {
     if (!row.adId) return;
-    const { data } = await supabase.functions.invoke<{ ok: boolean; video_url?: string; thumbnail_url?: string }>(
-      "meta-creative-refresh",
-      { body: { ad_id: row.adId } },
-    );
+    const data = await refreshMetaCreative(row.adId);
     if (data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
     if (data?.ok && data.video_url) setPreviewVideoUrl(data.video_url);
   };
@@ -68,10 +65,7 @@ export function CreativePreview({ row, compact = false, className }: Props) {
     void (async () => {
       let videoUrl = row.videoUrl;
       if (!videoUrl) {
-        const { data } = await supabase.functions.invoke<{ ok: boolean; video_url?: string; thumbnail_url?: string }>(
-          "meta-creative-refresh",
-          { body: { ad_id: row.adId } },
-        );
+        const data = await refreshMetaCreative(row.adId);
         if (!cancelled && data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
         videoUrl = data?.ok ? data.video_url ?? null : null;
       }
