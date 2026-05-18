@@ -34,12 +34,14 @@ interface Props {
  * картинка / карусель с fallback-иконкой, автообновление протухших ссылок
  * через edge-функцию meta-creative-refresh.
  */
-export function CreativePreview({ row, compact = false, className }: Props) {
+export function CreativePreview({ row, compact = false, playable = false, className }: Props) {
   const isVideo = row.creativeType === "video";
   const isCarousel = row.creativeType === "carousel";
   const [capturedPoster, setCapturedPoster] = useState<string | null>(null);
   const [refreshedThumb, setRefreshedThumb] = useState<string | null>(null);
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(row.videoUrl);
+  const [playerOpen, setPlayerOpen] = useState(false);
+  const [loadingFullVideo, setLoadingFullVideo] = useState(false);
   const src = bestCreativeImage({
     posterUrl: capturedPoster ?? row.posterUrl,
     thumbnailUrl: refreshedThumb ?? row.thumbnailUrl,
@@ -48,10 +50,14 @@ export function CreativePreview({ row, compact = false, className }: Props) {
   });
 
   const refreshVideoPreview = async () => {
-    if (!row.adId) return;
+    if (!row.adId) return null;
     const data = await refreshMetaCreative(row.adId);
     if (data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
-    if (data?.ok && data.video_url) setPreviewVideoUrl(data.video_url);
+    if (data?.ok && data.video_url) {
+      setPreviewVideoUrl(data.video_url);
+      return data.video_url;
+    }
+    return null;
   };
 
   useEffect(() => {
@@ -87,6 +93,22 @@ export function CreativePreview({ row, compact = false, className }: Props) {
   }, [capturedPoster, isVideo, row.adId, row.posterUrl, row.videoUrl]);
 
   const TypeIcon = isVideo ? Video : isCarousel ? Layers : ImageIcon;
+
+  const handlePlayClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (previewVideoUrl) {
+      setPlayerOpen(true);
+      return;
+    }
+    setLoadingFullVideo(true);
+    const url = await refreshVideoPreview().catch(() => null);
+    setLoadingFullVideo(false);
+    if (url) {
+      setPlayerOpen(true);
+    } else {
+      toast.error("Не удалось получить видео из Meta");
+    }
+  };
 
   return (
     <div className={cn("relative overflow-hidden rounded-xl bg-background", className)}>
@@ -131,16 +153,56 @@ export function CreativePreview({ row, compact = false, className }: Props) {
         </span>
       )}
       {!compact && isVideo && (
-        <span className="absolute inset-0 grid place-items-center pointer-events-none">
-          <span className="grid h-10 w-10 place-items-center rounded-full border border-border/40 bg-background/45 backdrop-blur-sm">
-            <Play className="h-4 w-4 text-foreground" />
+        playable ? (
+          <button
+            type="button"
+            onClick={handlePlayClick}
+            disabled={loadingFullVideo}
+            className="absolute inset-0 grid place-items-center transition-colors hover:bg-black/20"
+            aria-label="Смотреть видео"
+          >
+            <span className="grid h-14 w-14 place-items-center rounded-full border border-white/30 bg-black/55 backdrop-blur-sm transition-transform hover:scale-110">
+              {loadingFullVideo ? (
+                <Loader2 className="h-6 w-6 animate-spin text-white" />
+              ) : (
+                <Play className="h-6 w-6 fill-white text-white" />
+              )}
+            </span>
+          </button>
+        ) : (
+          <span className="pointer-events-none absolute inset-0 grid place-items-center">
+            <span className="grid h-10 w-10 place-items-center rounded-full border border-border/40 bg-background/45 backdrop-blur-sm">
+              <Play className="h-4 w-4 text-foreground" />
+            </span>
           </span>
-        </span>
+        )
       )}
       {!compact && row.effectiveStatus && row.effectiveStatus !== "ACTIVE" && (
         <span className="absolute right-2 top-2 rounded-md bg-warning/80 px-1.5 py-0.5 text-[10px] font-bold uppercase text-warning-foreground">
           {row.effectiveStatus}
         </span>
+      )}
+
+      {playable && isVideo && (
+        <Dialog open={playerOpen} onOpenChange={setPlayerOpen}>
+          <DialogContent className="max-w-[min(420px,95vw)] border-0 bg-black p-0 sm:max-w-[420px]">
+            <DialogTitle className="sr-only">{row.name ?? "Видео из Meta"}</DialogTitle>
+            {previewVideoUrl ? (
+              <video
+                src={previewVideoUrl}
+                poster={src ?? undefined}
+                controls
+                autoPlay
+                playsInline
+                className="aspect-[9/16] h-auto max-h-[85vh] w-full bg-black"
+              />
+            ) : (
+              <div className="grid aspect-[9/16] place-items-center bg-black text-sm text-white/70">
+                Видео недоступно
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );
