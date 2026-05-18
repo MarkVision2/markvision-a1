@@ -59,8 +59,8 @@ const KpiCard = ({ icon: Icon, label, value, sub, delta, emphasized }: KpiCardPr
   >
     <div className="flex items-center justify-between gap-2">
       <div className="flex items-center gap-2">
-        <span className="grid h-8 w-8 place-items-center rounded-xl bg-success/10 text-success">
-          <Icon className="h-4 w-4" />
+        <span className="grid h-9 w-9 place-items-center rounded-xl bg-success/10 text-success">
+          <Icon className="h-5 w-5" />
         </span>
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {label}
