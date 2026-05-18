@@ -356,8 +356,38 @@ const CreateCampaignDialog = ({
   const [pixelId, setPixelId] = useState("");
   const [pixelEvent, setPixelEvent] = useState("Lead");
   const [leadFormId, setLeadFormId] = useState("");
+  const [pageId, setPageId] = useState<string>("");
+  const [websiteUrl, setWebsiteUrl] = useState<string>("");
 
   const selectedCabinet = cabinets.find((c) => c.id === cabinetId);
+
+  // Подгружаем список FB-страниц для выбранного рекламного кабинета —
+  // менеджер может запустить рекламу от любой доступной странице, а не
+  // только от той, что прописана в настройках клиента.
+  const pagesAssets = useMetaPageAssets({
+    kind: "pages",
+    actId: selectedCabinet?.adAccountId,
+    enabled: !!selectedCabinet?.adAccountId,
+  });
+
+  // При смене кабинета сбрасываем выбранную страницу на дефолтную из настроек кабинета.
+  useEffect(() => {
+    setPageId(selectedCabinet?.pageId ?? "");
+    setWebsiteUrl(selectedCabinet?.websiteUrl ?? "");
+  }, [cabinetId, selectedCabinet?.pageId, selectedCabinet?.websiteUrl]);
+
+  // Если в списке доступных страниц нет текущей — но дефолт из настроек уже задан,
+  // оставляем; иначе автоматически выбираем первую из списка.
+  useEffect(() => {
+    if (pageId) return;
+    if (pagesAssets.data.length > 0) setPageId(pagesAssets.data[0].id);
+  }, [pagesAssets.data, pageId]);
+
+  // «Эффективная» страница — то, что реально уйдёт в запуск.
+  const effectivePageId = pageId || selectedCabinet?.pageId || "";
+  const effectivePageName =
+    pagesAssets.data.find((p) => p.id === effectivePageId)?.name ??
+    selectedCabinet?.pageName ?? "";
 
   const [submitting, setSubmitting] = useState(false);
   const [successOpen, setSuccessOpen] = useState(false);
