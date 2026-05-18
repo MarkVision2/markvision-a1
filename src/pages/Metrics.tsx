@@ -580,7 +580,9 @@ const Metrics = () => {
                 <Cell>{plan ? formatNumber(plan.leads) : <Dash />}</Cell>
                 <Cell>{plan ? formatNumber(plan.cpl) : <Dash />}</Cell>
                 <Cell>{plan ? formatNumber(plan.visits) : <Dash />}</Cell>
+                <Cell><Dash /></Cell>
                 <Cell>{plan ? formatNumber(plan.sales) : <Dash />}</Cell>
+                <Cell><Dash /></Cell>
                 <Cell>{plan ? formatNumber(plan.revenue) : <Dash />}</Cell>
               </tr>
 
@@ -618,11 +620,21 @@ const Metrics = () => {
                 </Cell>
                 <Cell>
                   <span className="font-bold">
+                    {factDiagnosticRevenue > 0 ? formatNumber(factDiagnosticRevenue) : <Dash />}
+                  </span>
+                </Cell>
+                <Cell>
+                  <span className="font-bold">
                     {factSales > 0 ? formatNumber(factSales) : <Dash />}
                   </span>
                 </Cell>
                 <Cell>
                   <span className="font-bold">
+                    {factSalesRevenue > 0 ? formatNumber(factSalesRevenue) : <Dash />}
+                  </span>
+                </Cell>
+                <Cell>
+                  <span className="font-bold text-success">
                     {factRevenue > 0 ? formatNumber(factRevenue) : <Dash />}
                   </span>
                 </Cell>
@@ -649,7 +661,9 @@ const Metrics = () => {
                     pct(factLeads, plan?.leads ?? 0),
                     null,
                     pct(factDiagnostics, plan?.visits ?? 0),
+                    null,
                     pct(factSales, plan?.sales ?? 0),
+                    null,
                     pct(factRevenue, plan?.revenue ?? 0),
                   ];
                   return cells.map((v, i) => (
