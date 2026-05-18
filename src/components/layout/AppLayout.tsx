@@ -2,7 +2,6 @@ import { Bell, Sparkles } from "lucide-react";
 import {
   SidebarInset,
   SidebarProvider,
-  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import AppSidebar from "./AppSidebar";
 
@@ -17,10 +16,6 @@ const AppLayout = ({ children }: AppLayoutProps) => {
         <AppSidebar />
         <SidebarInset className="flex flex-1 flex-col bg-background">
           <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-border/60 bg-background/70 px-3 backdrop-blur-xl sm:px-6">
-            <SidebarTrigger className="-ml-1" />
-            <div className="hidden text-sm text-muted-foreground sm:block">
-              Таргетолог
-            </div>
             <div className="relative mx-auto w-full max-w-2xl">
               <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
               <input
