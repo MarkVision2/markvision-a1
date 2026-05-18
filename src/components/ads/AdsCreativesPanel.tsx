@@ -11,7 +11,6 @@ import {
   useMetaCampaigns,
   useMetaCreatives,
   type MetaCampaignRow,
-  type MetaCreativeRow,
 } from "@/hooks/useMetaStructure";
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
