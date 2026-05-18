@@ -99,6 +99,10 @@ export function AdsCreativesPanel() {
   }, [creatives, campaignById, typeF, status, goalF, query, sort, cabinetFilter]);
 
   const activeCount = creatives.filter((c) => (c.effectiveStatus ?? "").toUpperCase() === "ACTIVE").length;
+  const openCreative = useMemo(
+    () => (openId ? filtered.find((f) => f.row.id === openId) ?? null : null),
+    [filtered, openId],
+  );
 
   // Close opened card if it's no longer in the filtered list
   useEffect(() => {
