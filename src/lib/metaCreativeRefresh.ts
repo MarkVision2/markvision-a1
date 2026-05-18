@@ -8,6 +8,9 @@ export interface RefreshResult {
   ok: boolean;
   video_url?: string | null;
   thumbnail_url?: string | null;
+  fallback?: boolean;
+  rate_limited?: boolean;
+  retry_after_seconds?: number;
 }
 
 const cache = new Map<string, RefreshResult>();
@@ -33,6 +36,7 @@ function release() {
 
 export function refreshMetaCreative(adId: string): Promise<RefreshResult> {
   if (!adId) return Promise.resolve({ ok: false });
+  if (cooldownUntil > Date.now()) return Promise.resolve({ ok: false, fallback: true, rate_limited: true });
   const cached = cache.get(adId);
   if (cached) return Promise.resolve(cached);
   const exists = inflight.get(adId);
@@ -44,6 +48,9 @@ export function refreshMetaCreative(adId: string): Promise<RefreshResult> {
       if (wait > 0) await new Promise((r) => setTimeout(r, wait));
       await acquire();
       try {
+        if (cooldownUntil > Date.now()) {
+          return { ok: false, fallback: true, rate_limited: true };
+        }
         // throttle: spacing ~250ms between calls
         await new Promise((r) => setTimeout(r, 250));
         const { data, error } = await supabase.functions.invoke<RefreshResult>(
@@ -52,12 +59,15 @@ export function refreshMetaCreative(adId: string): Promise<RefreshResult> {
         );
         if (error) {
           // Rate-limited or other failure → long cooldown to stop the storm
-          cooldownUntil = Date.now() + 60_000;
+          cooldownUntil = Date.now() + 300_000;
           const failed: RefreshResult = { ok: false };
           cache.set(adId, failed);
           return failed;
         }
         const res: RefreshResult = data ?? { ok: false };
+        if (res.fallback || res.rate_limited) {
+          cooldownUntil = Date.now() + Math.max(60, res.retry_after_seconds ?? 300) * 1000;
+        }
         cache.set(adId, res);
         return res;
       } finally {
