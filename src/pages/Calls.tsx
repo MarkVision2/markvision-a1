@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useCrmStore } from "@/hooks/useCrmStore";
 import type { Lead, LeadEvent } from "@/types/crm";
+import { PageContainer } from "@/components/layout/PageContainer";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 type Status = "success" | "error" | "answered" | "missed";
 type Provider = "tel" | "sip" | "sipuni" | "manual";
