@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MonthSwitcher, monthRange, monthRangeLabel } from "@/components/ui/month-switcher";
 import { useMetaCreatives, type MetaCreativeRow } from "@/hooks/useMetaStructure";
+import { bestCreativeImage } from "@/lib/metaThumb";
 import { cn } from "@/lib/utils";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
@@ -24,23 +25,61 @@ const SORT_LABELS: Record<SortKey, string> = {
 
 const STAGE_COLORS = ["bg-primary", "bg-accent", "bg-warning", "bg-success"] as const;
 
+const STATUS_LABELS: Record<string, { label: string; className: string }> = {
+  ACTIVE: { label: "Активен", className: "bg-success/15 text-success" },
+  PAUSED: { label: "На паузе", className: "bg-warning/15 text-warning" },
+  CAMPAIGN_PAUSED: { label: "Кампания на паузе", className: "bg-warning/15 text-warning" },
+  ADSET_PAUSED: { label: "Группа на паузе", className: "bg-warning/15 text-warning" },
+  DELETED: { label: "Удален", className: "bg-muted/50 text-muted-foreground" },
+  ARCHIVED: { label: "В архиве", className: "bg-muted/50 text-muted-foreground" },
+};
+
+function creativeStatus(status: string | null) {
+  const key = (status ?? "").toUpperCase();
+  return STATUS_LABELS[key] ?? {
+    label: status ? status.replace(/_/g, " ").toLowerCase() : "Статус не задан",
+    className: "bg-muted/50 text-muted-foreground",
+  };
+}
+
+function prettyCreativeName(row: MetaCreativeRow) {
+  const source = row.headline || row.name || "Без названия";
+  return source
+    .replace(/_/g, " ")
+    .replace(/\s+\|\s+/g, " · ")
+    .trim();
+}
+
 function CreativeThumb({ row }: { row: MetaCreativeRow }) {
-  const src = (() => {
-    if (row.imageUrl) return row.imageUrl;
-    return row.thumbnailUrl?.replace(/p\d{2,4}x\d{2,4}/g, "p240x240") ?? null;
-  })();
+  const [failed, setFailed] = useState(false);
+  const src = failed
+    ? null
+    : bestCreativeImage({
+      posterUrl: row.posterUrl,
+      thumbnailUrl: row.thumbnailUrl,
+      imageUrl: row.imageUrl,
+      size: 480,
+    });
   const Icon = row.creativeType === "video" ? Video : row.creativeType === "carousel" ? Layers : ImageIcon;
   return (
-    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-secondary/40 ring-1 ring-border/40">
+    <div className="relative h-20 w-16 shrink-0 overflow-hidden rounded-xl bg-secondary/40 ring-1 ring-border/50">
       {src ? (
-        <img src={src} alt="" className="h-full w-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
+        <img
+          src={src}
+          alt=""
+          className="h-full w-full object-cover"
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+        />
       ) : (
-        <div className="flex h-full w-full items-center justify-center">
-          <Icon className="h-5 w-5 text-muted-foreground/50" />
+        <div className="flex h-full w-full flex-col items-center justify-center gap-1 text-muted-foreground/60">
+          <Icon className="h-5 w-5" />
+          <span className="px-1 text-center text-[9px] leading-tight">нет превью</span>
         </div>
       )}
-      <span className="absolute right-0.5 top-0.5 grid h-4 w-4 place-items-center rounded bg-background/80 backdrop-blur">
-        <Icon className="h-2.5 w-2.5" />
+      <span className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-md bg-background/85 backdrop-blur">
+        <Icon className="h-3 w-3" />
       </span>
     </div>
   );
@@ -193,88 +232,90 @@ const CreativeFunnel = () => {
         </div>
       </div>
 
-      {/* Table */}
-      <div className="mt-4 overflow-hidden rounded-2xl border border-border/60 bg-card/60">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-secondary/30 text-[10px] uppercase tracking-wider text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3 text-left font-semibold">Креатив</th>
-                <th className="px-4 py-3 text-left font-semibold">Воронка</th>
-                <th className="px-4 py-3 text-right font-semibold">CR лид→продажа</th>
-                <th className="px-4 py-3 text-right font-semibold">Сред. чек</th>
-                <th className="px-4 py-3 text-right font-semibold">Расход</th>
-                <th className="px-4 py-3 text-right font-semibold">Выручка</th>
-                <th className="px-4 py-3 text-right font-semibold">ROMI</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-muted-foreground">
-                    {loading ? "Загружаем креативы…" : "Нет креативов с лидами за выбранный период."}
-                  </td>
-                </tr>
-              )}
-              {filtered.map((row) => {
-                const cr = row.crmLeads > 0 ? (row.crmSales / row.crmLeads) * 100 : 0;
-                const romiPositive = row.crmRomi >= 0;
-                const RomiIcon = romiPositive ? ArrowUpRight : ArrowDownRight;
-                return (
-                  <tr key={row.id} className="border-t border-border/30 hover:bg-secondary/20">
-                    <td className="px-4 py-3">
-                      <Link to={`/ads?tab=creatives&ad=${row.adId}`} className="flex items-center gap-3 group">
-                        <CreativeThumb row={row} />
-                        <div className="min-w-0">
-                          <div className="line-clamp-1 text-sm font-semibold group-hover:text-primary" title={row.name}>
-                            {row.name || "Без названия"}
-                          </div>
-                          <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
-                            <code className="rounded bg-secondary/60 px-1 tabular-nums">{row.adId}</code>
-                            {row.effectiveStatus && (
-                              <span className={cn(
-                                "rounded px-1 font-bold uppercase",
-                                row.effectiveStatus === "ACTIVE" ? "bg-success/15 text-success" : "bg-warning/15 text-warning",
-                              )}>
-                                {row.effectiveStatus}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3">
-                      <MiniFunnel
-                        stages={[
-                          { label: "Лид", value: row.crmLeads, display: fmtNum(row.crmLeads) },
-                          { label: "Квал.", value: row.crmQualified, display: fmtNum(row.crmQualified) },
-                          { label: "Прод.", value: row.crmSales, display: fmtNum(row.crmSales) },
-                          { label: "₸", value: row.crmRevenue, display: row.crmRevenue > 0 ? `${Math.round(row.crmRevenue / 1000)}k` : "0" },
-                        ]}
-                      />
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums">{cr > 0 ? pct(cr) : "—"}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{row.crmAvgCheck > 0 ? fmtTenge(row.crmAvgCheck) : "—"}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{row.spend > 0 ? fmtTenge(row.spend) : "—"}</td>
-                    <td className="px-4 py-3 text-right font-semibold tabular-nums">{row.crmRevenue > 0 ? fmtTenge(row.crmRevenue) : "—"}</td>
-                    <td className="px-4 py-3 text-right">
-                      {row.spend > 0 ? (
-                        <span className={cn(
-                          "inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-xs font-bold tabular-nums",
-                          romiPositive ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive",
-                        )}>
-                          <RomiIcon className="h-3 w-3" />
-                          {romiPositive ? "+" : ""}{Math.round(row.crmRomi)}%
-                        </span>
-                      ) : "—"}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      {filtered.length === 0 ? (
+        <div className="mt-4 rounded-2xl border border-dashed border-border/60 bg-card/40 px-4 py-12 text-center text-sm text-muted-foreground">
+          {loading ? "Загружаем креативы…" : "Нет креативов с лидами за выбранный месяц."}
         </div>
-      </div>
+      ) : (
+        <div className="mt-4 grid gap-3 xl:grid-cols-2">
+          {filtered.map((row) => {
+            const cr = row.crmLeads > 0 ? (row.crmSales / row.crmLeads) * 100 : 0;
+            const romiPositive = row.crmRomi >= 0;
+            const RomiIcon = romiPositive ? ArrowUpRight : ArrowDownRight;
+            const status = creativeStatus(row.effectiveStatus);
+            return (
+              <Link
+                key={row.id}
+                to={`/ads?tab=creatives&ad=${row.adId}`}
+                className="group rounded-2xl border border-border/60 bg-card/60 p-3 transition hover:border-primary/40 hover:bg-card/80"
+              >
+                <div className="flex min-w-0 gap-3">
+                  <CreativeThumb row={row} />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className={cn("rounded-md px-2 py-0.5 text-[10px] font-bold", status.className)}>
+                        {status.label}
+                      </span>
+                      <span className="rounded-md bg-secondary/50 px-2 py-0.5 text-[10px] text-muted-foreground">
+                        ID {row.adId}
+                      </span>
+                    </div>
+                    <div className="mt-2 line-clamp-2 text-base font-bold leading-tight group-hover:text-primary" title={row.name}>
+                      {prettyCreativeName(row)}
+                    </div>
+                    {row.primaryText && (
+                      <div className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+                        {row.primaryText}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="mt-3 rounded-xl border border-border/40 bg-background/30 p-3">
+                  <MiniFunnel
+                    stages={[
+                      { label: "Заявки", value: row.crmLeads, display: fmtNum(row.crmLeads) },
+                      { label: "Диагн.", value: row.crmQualified, display: fmtNum(row.crmQualified) },
+                      { label: "Оплаты", value: row.crmSales, display: fmtNum(row.crmSales) },
+                      { label: "Выручка", value: row.crmRevenue, display: row.crmRevenue > 0 ? `${Math.round(row.crmRevenue / 1000)}k` : "0" },
+                    ]}
+                  />
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  <div className="rounded-lg bg-secondary/30 px-2 py-2">
+                    <div className="text-[10px] text-muted-foreground">Конверсия в оплату</div>
+                    <div className="mt-1 font-bold tabular-nums">{cr > 0 ? pct(cr) : "—"}</div>
+                  </div>
+                  <div className="rounded-lg bg-secondary/30 px-2 py-2">
+                    <div className="text-[10px] text-muted-foreground">Средний чек</div>
+                    <div className="mt-1 font-bold tabular-nums">{row.crmAvgCheck > 0 ? fmtTenge(row.crmAvgCheck) : "—"}</div>
+                  </div>
+                  <div className="rounded-lg bg-secondary/30 px-2 py-2">
+                    <div className="text-[10px] text-muted-foreground">Расход</div>
+                    <div className="mt-1 font-bold tabular-nums">{row.spend > 0 ? fmtTenge(row.spend) : "—"}</div>
+                  </div>
+                  <div className="rounded-lg bg-secondary/30 px-2 py-2">
+                    <div className="text-[10px] text-muted-foreground">Выручка</div>
+                    <div className="mt-1 font-bold tabular-nums text-success">{row.crmRevenue > 0 ? fmtTenge(row.crmRevenue) : "—"}</div>
+                  </div>
+                  <div className="rounded-lg bg-secondary/30 px-2 py-2">
+                    <div className="text-[10px] text-muted-foreground">Окупаемость</div>
+                    {row.spend > 0 ? (
+                      <div className={cn("mt-1 inline-flex items-center gap-1 font-bold tabular-nums", romiPositive ? "text-success" : "text-destructive")}>
+                        <RomiIcon className="h-3.5 w-3.5" />
+                        {romiPositive ? "+" : ""}{Math.round(row.crmRomi)}%
+                      </div>
+                    ) : (
+                      <div className="mt-1 font-bold">—</div>
+                    )}
+                  </div>
+                </div>
+              </Link>
+            );
+          })}
+        </div>
+      )}
 
       <p className="mt-4 text-[11px] text-muted-foreground">
         Атрибуция: WhatsApp — через Meta CTWA referral; сайт — через UTM-шаблон с <code className="rounded bg-secondary/60 px-1">utm_content=&#123;&#123;ad.id&#125;&#125;</code>.

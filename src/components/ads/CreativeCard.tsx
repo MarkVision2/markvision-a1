@@ -29,7 +29,8 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
   const [capturedPoster, setCapturedPoster] = useState<string | null>(null);
   const [refreshedThumb, setRefreshedThumb] = useState<string | null>(null);
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(row.videoUrl);
-  const src = bestCreativeImage({
+  const [imageFailed, setImageFailed] = useState(false);
+  const src = imageFailed ? null : bestCreativeImage({
     posterUrl: capturedPoster ?? row.posterUrl,
     thumbnailUrl: refreshedThumb ?? row.thumbnailUrl,
     imageUrl: row.imageUrl,
@@ -51,6 +52,7 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
     setPreviewVideoUrl(row.videoUrl);
     setRefreshedThumb(null);
     setCapturedPoster(null);
+    setImageFailed(false);
   }, [row.id, row.videoUrl]);
 
   // Для видео без HQ-постера: 1) гарантируем свежие video_url/thumbnail_url, 2) захватываем кадр
@@ -132,10 +134,12 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
             )}
             loading="lazy"
             referrerPolicy="no-referrer"
+            onError={() => setImageFailed(true)}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center">
-            <ImageIcon className="h-8 w-8 text-muted-foreground/40" />
+          <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-3 text-center text-muted-foreground/55">
+            <ImageIcon className="h-8 w-8" />
+            <span className="text-[11px] leading-tight">Превью недоступно</span>
           </div>
         )}
 

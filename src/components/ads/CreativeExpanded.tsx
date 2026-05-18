@@ -35,9 +35,10 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
   const [videoUrl, setVideoUrl] = useState<string | null>(row.videoUrl);
   const [refreshing, setRefreshing] = useState(false);
   const [videoError, setVideoError] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
-  useEffect(() => { setVideoUrl(row.videoUrl); setVideoError(false); }, [row.id, row.videoUrl]);
+  useEffect(() => { setVideoUrl(row.videoUrl); setVideoError(false); setImageFailed(false); }, [row.id, row.videoUrl]);
 
   const refreshVideo = async (silent = false) => {
     setRefreshing(true);
@@ -108,11 +109,20 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
               className="h-full w-full object-contain"
               onError={() => setVideoError(true)}
             />
-          ) : poster ? (
-            <img src={poster} alt={row.name} className="h-full w-full object-cover" referrerPolicy="no-referrer" />
+          ) : poster && !imageFailed ? (
+            <img
+              src={poster}
+              alt={row.name}
+              className="h-full w-full object-cover"
+              referrerPolicy="no-referrer"
+              onError={() => setImageFailed(true)}
+            />
           ) : (
-            <div className="grid h-full w-full place-items-center text-muted-foreground">
-              <Play className="h-10 w-10" />
+            <div className="grid h-full w-full place-items-center px-6 text-center text-muted-foreground">
+              <div>
+                <Play className="mx-auto h-10 w-10" />
+                <div className="mt-2 text-xs">Превью недоступно</div>
+              </div>
             </div>
           )}
           {isVideo && (videoError || !videoUrl) && (

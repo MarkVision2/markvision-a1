@@ -82,6 +82,67 @@ interface RawDailyAgg {
   revenue: number | string;
 }
 
+interface RawCrmAgg {
+  ad_id: string;
+  crm_leads: number | string;
+  crm_qualified: number | string;
+  crm_sales: number | string;
+  crm_revenue: number | string;
+}
+
+interface RawLeadForAttribution {
+  id: string;
+  project_id: string | null;
+  stage_id: string | null;
+  amount: number | string | null;
+  created_at: string;
+  updated_at: string;
+  paid: boolean | null;
+  paid_at: string | null;
+  meta_ad_id: string | null;
+  utm: { content?: string | null } | null;
+}
+
+interface RawStageForAttribution {
+  id: string;
+  key: string | null;
+  is_diagnostic: boolean | null;
+}
+
+type CrmAgg = {
+  crmLeads: number;
+  crmQualified: number;
+  crmSales: number;
+  crmRevenue: number;
+};
+
+function cleanToken(value: unknown) {
+  if (typeof value !== "string") return "";
+  try {
+    return decodeURIComponent(value).trim();
+  } catch {
+    return value.trim();
+  }
+}
+
+function normalizeName(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[_-]+/g, " ");
+}
+
+function numericMetaId(value: string) {
+  return value.match(/\d{6,}/)?.[0] ?? null;
+}
+
+function isInRange(value: string | null | undefined, from: Date, to: Date) {
+  if (!value) return false;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) && time >= from.getTime() && time <= to.getTime();
+}
+
 export function useMetaCreatives(range: Range) {
   const { activeId: projectId } = useProjectsStore();
   const [rows, setRows] = useState<MetaCreativeRow[]>([]);
@@ -90,6 +151,8 @@ export function useMetaCreatives(range: Range) {
 
   useRealtimeTable("meta_creative_daily", () => setTick((t) => t + 1), true, 2000);
   useRealtimeTable("meta_creatives", () => setTick((t) => t + 1), true, 1000);
+  useRealtimeTable("leads", () => setTick((t) => t + 1), true, 800);
+  useRealtimeTable("deals", () => setTick((t) => t + 1), true, 800);
 
   const since = useMemo(() => ymd(range.from), [range.from]);
   const until = useMemo(() => ymd(range.to), [range.to]);
@@ -102,7 +165,7 @@ export function useMetaCreatives(range: Range) {
     let cancelled = false;
     setLoading(true);
     void (async () => {
-      const [creativesRes, dailyRes, crmRes] = await Promise.all([
+      const [creativesRes, dailyRes, crmRes, leadsRes, stagesRes] = await Promise.all([
         supabase
           .from("meta_creatives")
           .select("id, ad_id, campaign_id, cabinet_id, name, creative_type, thumbnail_url, image_url, poster_url, video_url, video_id, primary_text, headline, cta, destination_url, effective_status")
@@ -121,12 +184,32 @@ export function useMetaCreatives(range: Range) {
           .eq("project_id", projectId)
           .gte("date", since)
           .lte("date", until),
+        supabase
+          .from("leads")
+          .select("id, project_id, stage_id, amount, created_at, updated_at, paid, paid_at, meta_ad_id, utm")
+          .eq("is_personal", false)
+          .or(`project_id.eq.${projectId},project_id.is.null`)
+          .order("created_at", { ascending: false })
+          .limit(5000),
+        supabase
+          .from("pipeline_stages")
+          .select("id, key, is_diagnostic"),
       ]);
       if (cancelled) return;
 
       const creatives = (creativesRes.data ?? []) as RawCreative[];
       const daily = (dailyRes.data ?? []) as RawDailyAgg[];
-      const crm = (crmRes.data ?? []) as Array<{ ad_id: string; crm_leads: number | string; crm_qualified: number | string; crm_sales: number | string; crm_revenue: number | string }>;
+      const crm = (crmRes.data ?? []) as RawCrmAgg[];
+      const leads = (leadsRes.data ?? []) as RawLeadForAttribution[];
+      const stages = (stagesRes.data ?? []) as RawStageForAttribution[];
+      const creativeNameToAdId = new Map<string, string>();
+      for (const c of creatives) {
+        if (c.name) creativeNameToAdId.set(normalizeName(c.name), c.ad_id);
+      }
+      const stageMeta = new Map<string, { key: string; isDiagnostic: boolean }>();
+      for (const s of stages) {
+        stageMeta.set(s.id, { key: s.key ?? "", isDiagnostic: !!s.is_diagnostic });
+      }
       const agg = new Map<string, {
         spend: number; impressions: number; clicks: number;
         leads: number; messages: number; purchases: number; revenue: number;
@@ -142,7 +225,7 @@ export function useMetaCreatives(range: Range) {
         cur.revenue += Number(d.revenue) || 0;
         agg.set(d.ad_id, cur);
       }
-      const crmAgg = new Map<string, { crmLeads: number; crmQualified: number; crmSales: number; crmRevenue: number }>();
+      const crmAgg = new Map<string, CrmAgg>();
       for (const c of crm) {
         const cur = crmAgg.get(c.ad_id) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 };
         cur.crmLeads += Number(c.crm_leads) || 0;
@@ -151,10 +234,50 @@ export function useMetaCreatives(range: Range) {
         cur.crmRevenue += Number(c.crm_revenue) || 0;
         crmAgg.set(c.ad_id, cur);
       }
+      const directCrmAgg = new Map<string, CrmAgg>();
+      const resolveLeadAdId = (lead: RawLeadForAttribution) => {
+        if (lead.meta_ad_id) return lead.meta_ad_id;
+        const content = cleanToken(lead.utm?.content);
+        if (!content) return null;
+        const numeric = numericMetaId(content);
+        if (numeric) return numeric;
+        return creativeNameToAdId.get(normalizeName(content)) ?? null;
+      };
+      for (const lead of leads) {
+        const adId = resolveLeadAdId(lead);
+        if (!adId) continue;
+        const createdInRange = isInRange(lead.created_at, range.from, range.to);
+        const paidInRange = isInRange(lead.paid_at ?? lead.updated_at, range.from, range.to);
+        if (!createdInRange && !(lead.paid && paidInRange)) continue;
+        const cur = directCrmAgg.get(adId) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 };
+        const stage = lead.stage_id ? stageMeta.get(lead.stage_id) : undefined;
+        const stageKey = stage?.key ?? "";
+        if (createdInRange) {
+          cur.crmLeads += 1;
+          if (
+            stage?.isDiagnostic ||
+            ["scheduled", "visit", "paid", "completed", "diagnosed"].includes(stageKey)
+          ) {
+            cur.crmQualified += 1;
+          }
+        }
+        if (lead.paid && paidInRange) {
+          cur.crmSales += 1;
+          cur.crmRevenue += Number(lead.amount) || 0;
+        }
+        directCrmAgg.set(adId, cur);
+      }
 
       const out: MetaCreativeRow[] = creatives.map((c) => {
         const a = agg.get(c.ad_id) ?? { spend: 0, impressions: 0, clicks: 0, leads: 0, messages: 0, purchases: 0, revenue: 0 };
-        const cr = crmAgg.get(c.ad_id) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 };
+        const viewCr = crmAgg.get(c.ad_id) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 };
+        const directCr = directCrmAgg.get(c.ad_id) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 };
+        const cr = {
+          crmLeads: Math.max(viewCr.crmLeads, directCr.crmLeads),
+          crmQualified: Math.max(viewCr.crmQualified, directCr.crmQualified),
+          crmSales: Math.max(viewCr.crmSales, directCr.crmSales),
+          crmRevenue: Math.max(viewCr.crmRevenue, directCr.crmRevenue),
+        };
         const ctr = a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0;
         const cpl = a.leads > 0 ? a.spend / a.leads : 0;
         const cpc = a.clicks > 0 ? a.spend / a.clicks : 0;

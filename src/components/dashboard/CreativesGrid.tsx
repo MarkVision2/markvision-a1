@@ -37,7 +37,8 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
   const [capturedPoster, setCapturedPoster] = useState<string | null>(null);
   const [refreshedThumb, setRefreshedThumb] = useState<string | null>(null);
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(row.videoUrl);
-  const src = bestCreativeImage({
+  const [imageFailed, setImageFailed] = useState(false);
+  const src = imageFailed ? null : bestCreativeImage({
     posterUrl: capturedPoster ?? row.posterUrl,
     thumbnailUrl: refreshedThumb ?? row.thumbnailUrl,
     imageUrl: row.imageUrl,
@@ -58,6 +59,7 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
     setPreviewVideoUrl(row.videoUrl);
     setRefreshedThumb(null);
     setCapturedPoster(null);
+    setImageFailed(false);
   }, [row.id, row.videoUrl]);
 
   useEffect(() => {
@@ -116,10 +118,12 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
           )}
           loading="lazy"
           referrerPolicy="no-referrer"
+          onError={() => setImageFailed(true)}
         />
       ) : (
-        <div className="flex h-full w-full items-center justify-center">
-          <ImageIcon className="h-8 w-8 text-muted-foreground/40" />
+        <div className="flex h-full w-full flex-col items-center justify-center gap-2 px-3 text-center text-muted-foreground/55">
+          <ImageIcon className="h-8 w-8" />
+          <span className="text-[11px] leading-tight">Превью недоступно</span>
         </div>
       )}
       <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-background/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider backdrop-blur">

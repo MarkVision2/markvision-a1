@@ -499,6 +499,15 @@ export function useCrmStore() {
     if (patch.assigneeId !== undefined) dbPatch.assigned_to = patch.assigneeId ?? null;
     if (patch.pinned !== undefined) dbPatch.pinned = patch.pinned;
     if (patch.nextVisitAt !== undefined) dbPatch.next_visit_at = patch.nextVisitAt ?? null;
+    if (patch.paid !== undefined) {
+      dbPatch.paid = patch.paid;
+      const lead = leads.find((l) => l.id === id);
+      if (patch.paid && lead?.utm && !lead.metaAdId) {
+        dbPatch.utm = lead.utm as TablesUpdate<"leads">["utm"];
+      }
+    }
+    if (patch.paymentMethod !== undefined) dbPatch.payment_method = patch.paymentMethod ?? null;
+    if (patch.paidAt !== undefined) dbPatch.paid_at = patch.paidAt ?? null;
     if (patch.stageId !== undefined) {
       const sid = stageUuid(patch.stageId);
       if (sid) dbPatch.stage_id = sid;
@@ -507,7 +516,7 @@ export function useCrmStore() {
     // Optimistic update — patch locally before/around the network call.
     patchLeadLocal(id, (l) => ({ ...l, ...patch, lastActivityAt: new Date().toISOString() }));
     await supabase.from("leads").update(dbPatch).eq("id", id);
-  }, [stageUuid, patchLeadLocal]);
+  }, [stageUuid, patchLeadLocal, leads]);
 
   const removeLead = useCallback(async (id: string) => {
     // Optimistic removal — drop locally first so UI feels instant.
@@ -709,14 +718,19 @@ export function useCrmStore() {
       note: noteCombined,
       lastActivityAt: nowIso,
     }));
-    await supabase.from("leads").update({
+    const leadPatch: TablesUpdate<"leads"> = {
       paid: true,
       payment_method: method,
       paid_at: nowIso,
       amount: finalAmount,
       stage_id: paidStageId ?? lead?.stageId,
       note: noteCombined ?? null,
-    }).eq("id", leadId);
+    };
+    if (lead?.utm && !lead.metaAdId) {
+      // Re-save UTM so the DB trigger resolves meta_ad_id for older leads.
+      leadPatch.utm = lead.utm as TablesUpdate<"leads">["utm"];
+    }
+    await supabase.from("leads").update(leadPatch).eq("id", leadId);
     await supabase.from("deals").insert({
       lead_id: leadId,
       amount: finalAmount,
