@@ -117,7 +117,7 @@ Deno.serve(async (req) => {
     if (upErr) return json({ ok: false, error: upErr.message }, 500);
 
     return json({ ok: true, video_url: v.source, thumbnail_url: bestThumb });
-  } catch (e) {
-    return json({ ok: false, error: (e as Error).message }, 500);
+  } catch (_e) {
+    return json({ ok: false, fallback: true, error: "META_REFRESH_FAILED", retry_after_seconds: 60 });
   }
 });
