@@ -525,15 +525,21 @@ const CreateCampaignDialog = ({
         project_id: projectId || null,
         client_name: cab.name,
         ad_account_id: cab.adAccountId ?? "",
-        page_id: cab.pageId ?? "",
-        page_name: cab.pageName ?? "",
+        page_id: effectivePageId || cab.pageId || "",
+        page_name: effectivePageName || cab.pageName || "",
         instagram_actor_id: cab.instagramId ?? "",
         instagram_user_id: cab.instagramId ?? "",
         fb_token: cab.accessToken ?? "",
         fb_pixel_id: goal === "site-leads" ? pixelId : (cab.pixelId ?? ""),
         pixel_event: goal === "site-leads" ? pixelEvent : (cab.pixelEvent ?? "Lead"),
-        website_url: cab.websiteUrl ?? "",
-        landing_url: cab.landingUrl ?? "",
+        // Если для цели «Лиды с сайта» пользователь ввёл свой URL — отправляем его,
+        // иначе используем дефолтный сайт/лендинг из настроек кабинета.
+        website_url: (goal === "site-leads" && websiteUrl.trim())
+          ? websiteUrl.trim()
+          : (cab.websiteUrl ?? ""),
+        landing_url: (goal === "site-leads" && websiteUrl.trim())
+          ? websiteUrl.trim()
+          : (cab.landingUrl ?? ""),
         utm_template: cab.utmTemplate?.trim() || DEFAULT_META_UTM_TEMPLATE,
         whatsapp_number: goal === "whatsapp" ? whatsappId : (cab.whatsappNumber ?? ""),
         telegram_group_id: cab.telegramGroupId ?? "",
