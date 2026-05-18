@@ -185,7 +185,10 @@ const Metrics = () => {
   const monthProgress = Math.round((filledDays / daysInMonth) * 100);
   const factDiagnostics = totals?.diagnostics ?? 0;
   const factSales = totals?.sales ?? 0;
-  const factRevenue = totals?.crmRevenue || totals?.revenue || 0;
+  // Выручка считается только из CRM (paid leads + manual override). FB pixel
+  // revenue (totals.revenue) больше не используется как fallback — это
+  // событийная атрибуция, а не реальный денежный поток.
+  const factRevenue = totals?.crmRevenue ?? 0;
   const factCac = factSales > 0 ? (totals?.spend ?? 0) / factSales : 0;
   const factCpd = factDiagnostics > 0 ? (totals?.spend ?? 0) / factDiagnostics : 0;
   const crLeadDiagnostics =
@@ -214,7 +217,7 @@ const Metrics = () => {
         cpl ? Math.round(cpl) : "",
         d?.diagnostics ?? 0,
         d?.sales ?? 0,
-        d?.crmRevenue || d?.revenue || 0,
+        d?.crmRevenue ?? 0,
         d?.impressions ?? 0,
         d?.clicks ?? 0,
         ctr ? ctr.toFixed(2) : "",
@@ -405,7 +408,7 @@ const Metrics = () => {
             <div>
               <div className="text-sm font-semibold">Единый ручной факт</div>
               <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
-                Редактируй диагностики, оплаты и сумму прямо в дневных строках. Эти значения складываются с CRM и сразу попадают в сквозную аналитику, рекламный кабинет и сводку этой таблицы.
+                Редактируй диагностики, оплаты и сумму прямо в дневных строках. Ручное значение ПЕРЕЗАПИСЫВАЕТ авто-данные из CRM за этот день (если поле пустое — берётся факт из CRM). Так цифры в отчётах всегда совпадают с реальностью.
               </p>
             </div>
           </div>
@@ -618,7 +621,9 @@ const Metrics = () => {
               {monthDays.map(({ day, iso, weekday }) => {
                 const d = dailyMap.get(iso);
                 const cpl = d && d.leads > 0 ? d.spend / d.leads : 0;
-                const dayRevenue = d ? d.crmRevenue || d.revenue : 0;
+                // d.crmRevenue теперь уже override-aware (manual если задан, иначе CRM).
+                // FB pixel revenue (d.revenue) больше не используем — это атрибуционный сигнал, а не реальные деньги.
+                const dayRevenue = d?.crmRevenue ?? 0;
                 const hasData = !!d && (
                   d.spend > 0 ||
                   d.leads > 0 ||

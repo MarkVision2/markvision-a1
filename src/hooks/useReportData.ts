@@ -126,9 +126,17 @@ async function fetchMetaForRange(
     const impressions = Number(row.impressions) || 0;
     const clicks = Number(row.clicks) || 0;
     const leads = Number(row.leads) || 0;
-    const sales = (Number(row.crm_sales) || 0) + (Number(row.manual_sales) || 0);
-    const revenue = (Number(row.crm_revenue) || 0) + (Number(row.manual_revenue) || 0);
-    const diag = (Number(row.crm_diagnostics) || 0) + (Number(row.manual_diagnostics) || 0);
+    // Override-семантика: manual_* перезаписывает crm_* (а не суммируется).
+    // Раньше складывали → задвоение, когда оба источника содержат одну и ту же продажу.
+    const crmSales = Number(row.crm_sales) || 0;
+    const manSales = Number(row.manual_sales) || 0;
+    const sales = manSales > 0 ? manSales : crmSales;
+    const crmRev = Number(row.crm_revenue) || 0;
+    const manRev = Number(row.manual_revenue) || 0;
+    const revenue = manRev > 0 ? manRev : crmRev;
+    const crmDiag = Number(row.crm_diagnostics) || 0;
+    const manDiag = Number(row.manual_diagnostics) || 0;
+    const diag = manDiag > 0 ? manDiag : crmDiag;
     totSpend += spend; totImp += impressions; totClicks += clicks; totLeads += leads;
     totSales += sales; totRevenue += revenue; totDiag += diag;
     const cur = dailyAgg.get(row.date) ?? { spend: 0, leads: 0, revenue: 0 };
@@ -160,12 +168,13 @@ function aggregateCrm(leads: LeadLite[], range: ReportPeriodRange) {
     return t >= fromTs && t < toTs;
   });
   // Только лиды БЕЗ cabinet_id — данные кабинетов берём из CDI, чтобы не дублировать.
-  const orphan = inRange.filter((l) => !l.cabinetId);
-  const orphanVisits = orphan.filter((l) => l.stageKey === "visit" || l.stageKey === "paid");
-  const orphanSales = orphan.filter((l) => l.stageKey === "paid");
+  const orphanLeads = inRange.filter((l) => !l.cabinetId);
+  const orphanVisits = orphanLeads.filter((l) => l.stageKey === "visit" || l.stageKey === "paid");
+  const orphanSales = orphanLeads.filter((l) => l.stageKey === "paid");
   const orphanRevenue = orphanSales.reduce((s, l) => s + (l.amount || 0), 0);
   return {
     leads: inRange,
+    orphanLeads,
     orphanVisits,
     orphanSales,
     orphanRevenue,
@@ -175,9 +184,12 @@ function aggregateCrm(leads: LeadLite[], range: ReportPeriodRange) {
 function computeTotals(
   meta: { spend: number; impressions: number; clicks: number; leads: number;
           cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number },
-  crm: { leads: LeadLite[]; orphanVisits: LeadLite[]; orphanSales: LeadLite[]; orphanRevenue: number },
+  crm: { leads: LeadLite[]; orphanLeads: LeadLite[]; orphanVisits: LeadLite[]; orphanSales: LeadLite[]; orphanRevenue: number },
 ): ReportTotals {
-  const totalLeads = meta.leads + crm.leads.length;
+  // Чтобы не задвоить заявки: FB-лиды из CDI + только orphan CRM-лиды
+  // (те, что без cabinet_id — органика, сайт, WhatsApp). Лиды с cabinet_id
+  // уже учтены через CDI.
+  const totalLeads = meta.leads + crm.orphanLeads.length;
   const cpl = totalLeads > 0 ? meta.spend / totalLeads : 0;
   const visits = meta.cabinetDiagnostics + crm.orphanVisits.length;
   const sales = meta.cabinetSales + crm.orphanSales.length;

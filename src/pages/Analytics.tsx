@@ -191,13 +191,21 @@ const Analytics = () => {
 
   const sales = filteredLeads.filter((l) => l.stageKey === "paid");
   const visits = filteredLeads.filter((l) => l.stageKey === "visit" || l.stageKey === "paid");
-  const leadCount = data?.totals.leads || filteredLeads.length;
-  const diagnosticsCount = data?.totals.diagnostics || visits.length;
-  const salesCount = data?.totals.sales || sales.length;
-  const revenue = data?.totals.crmRevenue || sales.reduce((sum, l) => sum + (l.amount || 0), 0);
+  // CRM — единственный источник правды для продаж/выручки/визитов.
+  // Meta Insights даёт spend/impressions/clicks/ads-leads, а sales/revenue
+  // считаем по факту оплаченных лидов CRM. Это не даёт цифрам "плавать"
+  // из-за CAPI/manual фактов.
+  const crmSalesCount = sales.length;
+  const crmVisitsCount = visits.length;
+  const crmRevenueAmount = sales.reduce((sum, l) => sum + (l.amount || 0), 0);
+  const leadCount = Math.max(data?.totals.leads ?? 0, filteredLeads.length);
+  const diagnosticsCount = crmVisitsCount > 0 ? crmVisitsCount : (data?.totals.diagnostics ?? 0);
+  const salesCount = crmSalesCount > 0 ? crmSalesCount : (data?.totals.sales ?? 0);
+  const revenue = crmRevenueAmount > 0 ? crmRevenueAmount : (data?.totals.crmRevenue ?? 0);
 
   const prevSales = prevLeads.filter((l) => l.stageKey === "paid");
-  const prevRevenue = prevData?.totals.crmRevenue || prevSales.reduce((s, l) => s + (l.amount || 0), 0);
+  const prevCrmRevenue = prevSales.reduce((s, l) => s + (l.amount || 0), 0);
+  const prevRevenue = prevCrmRevenue > 0 ? prevCrmRevenue : (prevData?.totals.crmRevenue ?? 0);
 
   const spend = data?.totals.spend ?? 0;
   const prevSpend = prevData?.totals.spend ?? 0;

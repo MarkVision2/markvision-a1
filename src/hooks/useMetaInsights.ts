@@ -89,15 +89,18 @@ function aggregate(rows: CdiRow[]): InsightsData {
     const impressions = Number(r.impressions) || 0;
     const clicks = Number(r.clicks) || 0;
     const leads = Number(r.leads) || 0;
+    // Override-семантика: ручные значения ПЕРЕЗАПИСЫВАЮТ CRM, а не суммируются с ним.
+    // Раньше складывали (crm + manual) — это приводило к задвоению, когда менеджер вводил
+    // 400к manual поверх 800к из CRM и получал 1.2М вместо 800к. См. жалобу пользователя.
     const crmDiag = Number(r.crm_diagnostics) || 0;
     const manDiag = Number(r.manual_diagnostics) || 0;
-    const diagnostics = crmDiag + manDiag;
+    const diagnostics = manDiag > 0 ? manDiag : crmDiag;
     const crmSales = Number(r.crm_sales) || 0;
     const manSales = Number(r.manual_sales) || 0;
-    const sales = crmSales + manSales;
+    const sales = manSales > 0 ? manSales : crmSales;
     const crmRevenue = Number(r.crm_revenue) || 0;
     const manRevenue = Number(r.manual_revenue) || 0;
-    const totalRevenue = crmRevenue + manRevenue;
+    const totalRevenue = manRevenue > 0 ? manRevenue : crmRevenue;
     totals.spend += spend;
     totals.impressions += impressions;
     totals.clicks += clicks;
