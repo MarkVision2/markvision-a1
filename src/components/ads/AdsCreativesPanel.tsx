@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { CreativeCard } from "./CreativeCard";
-import { CreativeExpanded } from "./CreativeExpanded";
+import { CreativeDetailDrawer } from "@/components/creatives/CreativeDetailDrawer";
 import {
   classifyGoal,
   useMetaCampaigns,
