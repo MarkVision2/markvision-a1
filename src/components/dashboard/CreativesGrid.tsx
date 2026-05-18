@@ -46,10 +46,7 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
 
   const refreshVideoPreview = async () => {
     if (!row.adId) return;
-    const { data } = await supabase.functions.invoke<{ ok: boolean; video_url?: string; thumbnail_url?: string }>(
-      "meta-creative-refresh",
-      { body: { ad_id: row.adId } },
-    );
+    const data = await refreshMetaCreative(row.adId);
     if (data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
     if (data?.ok && data.video_url) setPreviewVideoUrl(data.video_url);
   };
