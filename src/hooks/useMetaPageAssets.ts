@@ -72,6 +72,7 @@ export function useMetaPageAssets<K extends AssetKind>({
       if (kind === "pixels" && !actId) return;
       if (kind === "pixel_events" && !pixelId) return;
       if (kind === "lead_forms" && !pageId) return;
+      if (kind === "pages" && !actId) return;
 
       const cached = cache.get(cacheKey);
       if (!force && cached && Date.now() - cached.ts < TTL) {
