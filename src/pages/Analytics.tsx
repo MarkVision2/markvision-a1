@@ -78,7 +78,7 @@ const KpiCard = ({ icon: Icon, label, value, sub, delta, emphasized }: KpiCardPr
         </span>
       )}
     </div>
-    <div className="mt-4 text-2xl font-bold tabular-nums">{value}</div>
+    <div className="mt-4 text-3xl font-bold tabular-nums">{value}</div>
     <div className="mt-1 text-[11px] text-muted-foreground">{sub}</div>
   </div>
 );
