@@ -785,6 +785,42 @@ const CreateCampaignDialog = ({
                 </Select>
               </div>
 
+              {selectedCabinet && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      Страница (от имени)
+                    </Label>
+                    {pagesAssets.isLoading && (
+                      <span className="text-[10px] text-muted-foreground">Загрузка…</span>
+                    )}
+                  </div>
+                  <Select value={effectivePageId} onValueChange={setPageId}>
+                    <SelectTrigger className="h-11 rounded-xl bg-background/60">
+                      <SelectValue placeholder={pagesAssets.isLoading ? "Загрузка…" : "Выберите страницу"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {/* Если дефолтная страница кабинета не вернулась через API — всё равно покажем её. */}
+                      {selectedCabinet.pageId &&
+                        !pagesAssets.data.some((p) => p.id === selectedCabinet.pageId) && (
+                          <SelectItem value={selectedCabinet.pageId}>
+                            {selectedCabinet.pageName || selectedCabinet.pageId} · из настроек
+                          </SelectItem>
+                        )}
+                      {pagesAssets.data.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                          {p.category ? ` · ${p.category}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {pagesAssets.error && (
+                    <div className="text-[11px] text-destructive">{pagesAssets.error}</div>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
                   Цель кампании
@@ -810,7 +846,11 @@ const CreateCampaignDialog = ({
 
               <GoalAssetsPicker
                 goal={goal}
-                cabinet={selectedCabinet}
+                cabinet={
+                  selectedCabinet
+                    ? { ...selectedCabinet, pageId: effectivePageId || selectedCabinet.pageId }
+                    : selectedCabinet
+                }
                 whatsappId={whatsappId}
                 setWhatsappId={setWhatsappId}
                 pixelId={pixelId}
@@ -820,6 +860,25 @@ const CreateCampaignDialog = ({
                 leadFormId={leadFormId}
                 setLeadFormId={setLeadFormId}
               />
+
+              {goal === "site-leads" && (
+                <div className="space-y-2">
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Ссылка на сайт
+                  </Label>
+                  <Input
+                    value={websiteUrl}
+                    onChange={(e) => setWebsiteUrl(e.target.value)}
+                    placeholder={selectedCabinet?.websiteUrl || "https://example.com/landing"}
+                    inputMode="url"
+                    className="h-11 rounded-xl bg-background/60"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Реклама запустится на эту ссылку с выбранным пикселем.
+                    Если оставить пустым — используется сайт из настроек кабинета.
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
