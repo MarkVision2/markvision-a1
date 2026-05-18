@@ -19,6 +19,24 @@ function json(body: unknown, status = 200) {
   });
 }
 
+function metaFallback(status: number, text: string) {
+  const isRateLimited = status === 403 && /Application request limit reached|"code"\s*:\s*4/i.test(text);
+  const isTransient = /"is_transient"\s*:\s*true/i.test(text);
+  const fallback = isRateLimited || isTransient || status >= 500;
+
+  if (fallback) {
+    return json({
+      ok: false,
+      fallback: true,
+      rate_limited: isRateLimited,
+      retry_after_seconds: isRateLimited ? 300 : 60,
+      error: isRateLimited ? "META_RATE_LIMIT" : "META_TEMPORARY_ERROR",
+    });
+  }
+
+  return json({ ok: false, error: `meta ${status}: ${text.slice(0, 200)}` }, status >= 400 && status < 500 ? 400 : 502);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -54,7 +72,7 @@ Deno.serve(async (req) => {
     );
     if (!r.ok) {
       const t = await r.text();
-      return json({ ok: false, error: `meta ${r.status}: ${t.slice(0, 200)}` }, 502);
+      return metaFallback(r.status, t);
     }
     const v = await r.json() as {
       source?: string;
