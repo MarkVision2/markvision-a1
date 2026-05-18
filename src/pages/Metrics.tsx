@@ -437,23 +437,23 @@ const Metrics = () => {
           orphanRevenue > 0 ? "border-warning/30 bg-warning/5" : "border-border/40 bg-background/40",
         )}>
           <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            Из CRM без привязки к кабинету
+            CRM без привязки к кабинету
           </div>
           <div className="mt-1.5 text-lg font-bold tabular-nums">{formatTenge(orphanRevenue)}</div>
           <div className="mt-0.5 text-[11px] text-muted-foreground">
-            {orphanSalesCount} оплат · сайт/WhatsApp без cabinet_id
+            {orphanSalesCount} оплат · НЕ учитываются в Итого
             {orphanRevenue > 0 && cabinetId === "all" && (
-              <span className="ml-1 text-warning">⚠ если это лишние — проверь CRM</span>
+              <div className="mt-1 text-warning">⚠ Привяжи лида к кабинету в CRM или внеси ручной факт — иначе данные потеряются</div>
             )}
           </div>
         </div>
         <div className="rounded-xl border border-success/30 bg-success/5 p-3">
           <div className="text-[10px] font-bold uppercase tracking-wider text-success">
-            Итого (видно везде)
+            Итого (источник правды)
           </div>
           <div className="mt-1.5 text-lg font-bold tabular-nums text-success">{formatTenge(factRevenue)}</div>
           <div className="mt-0.5 text-[11px] text-muted-foreground">
-            {factSales} оплат · совпадает с Дашбордом и Аналитикой
+            {factSales} оплат · CDI (авто из CRM + ручной факт)
           </div>
         </div>
       </div>
