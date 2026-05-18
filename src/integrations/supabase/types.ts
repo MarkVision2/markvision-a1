@@ -1656,6 +1656,7 @@ export type Database = {
           display_role: string | null
           id: string
           login: string | null
+          must_change_password: boolean
           name: string
           phone: string | null
           sip_extension: string | null
@@ -1667,6 +1668,7 @@ export type Database = {
           display_role?: string | null
           id: string
           login?: string | null
+          must_change_password?: boolean
           name?: string
           phone?: string | null
           sip_extension?: string | null
@@ -1678,6 +1680,7 @@ export type Database = {
           display_role?: string | null
           id?: string
           login?: string | null
+          must_change_password?: boolean
           name?: string
           phone?: string | null
           sip_extension?: string | null
@@ -1948,14 +1951,17 @@ export type Database = {
       }
       team_member_modules: {
         Row: {
+          access_level: string
           module_key: string
           user_id: string
         }
         Insert: {
+          access_level?: string
           module_key: string
           user_id: string
         }
         Update: {
+          access_level?: string
           module_key?: string
           user_id?: string
         }
@@ -2329,6 +2335,20 @@ export type Database = {
         }
         Relationships: []
       }
+      team_members_view: {
+        Row: {
+          created_at: string | null
+          display_role: string | null
+          email: string | null
+          id: string | null
+          login: string | null
+          modules: Json | null
+          must_change_password: boolean | null
+          name: string | null
+          role: Database["public"]["Enums"]["app_role"] | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
       _get_usd_kzt_rate: { Args: { p_date: string }; Returns: number }
@@ -2343,6 +2363,10 @@ export type Database = {
         }
         Returns: string
       }
+      can_write_module: {
+        Args: { _module_key: string; _user_id: string }
+        Returns: boolean
+      }
       ensure_cdi_row: {
         Args: { _cabinet_id: string; _date: string }
         Returns: undefined
@@ -2356,6 +2380,10 @@ export type Database = {
         Args: { p_ad_id: string; p_since?: string; p_until?: string }
         Returns: Json
       }
+      has_module_access: {
+        Args: { _module_key: string; _user_id: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -2363,6 +2391,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_viewer: { Args: { _user_id: string }; Returns: boolean }
       meta_structure_sync: {
         Args: { p_cabinet_id?: string; p_since?: string; p_until?: string }
         Returns: Json
@@ -2379,7 +2408,13 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "manager" | "director" | "marketer" | "viewer"
+      app_role:
+        | "admin"
+        | "manager"
+        | "director"
+        | "marketer"
+        | "viewer"
+        | "staff"
       communication_channel:
         | "whatsapp"
         | "telegram"
@@ -2521,7 +2556,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "manager", "director", "marketer", "viewer"],
+      app_role: ["admin", "manager", "director", "marketer", "viewer", "staff"],
       communication_channel: [
         "whatsapp",
         "telegram",
