@@ -103,10 +103,11 @@ async function fetchMetaForRange(
 ): Promise<{
   spend: number; impressions: number; clicks: number; leads: number;
   cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number;
+  cabinetDiagnosticRevenue: number;
   daily: { date: string; spend: number; leads: number; revenue: number }[];
 }> {
   if (externalIds.length === 0) {
-    return { spend: 0, impressions: 0, clicks: 0, leads: 0, cabinetSales: 0, cabinetRevenue: 0, cabinetDiagnostics: 0, daily: [] };
+    return { spend: 0, impressions: 0, clicks: 0, leads: 0, cabinetSales: 0, cabinetRevenue: 0, cabinetDiagnostics: 0, cabinetDiagnosticRevenue: 0, daily: [] };
   }
   const ids = externalIds.map(normalizeActId);
   const since = ymd(range.from);
