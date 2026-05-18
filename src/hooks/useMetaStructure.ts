@@ -219,6 +219,15 @@ export interface MetaCampaignRow {
   ctr: number;
   cpl: number;
   romi: number;
+  /** Сквозные CRM-метрики, посчитанные по объявлениям этой кампании. */
+  crmLeads: number;
+  crmQualified: number;
+  crmSales: number;
+  crmRevenue: number;
+  crmRomi: number;
+  crmProfit: number;
+  crmAvgCheck: number;
+  crmCps: number;
 }
 
 interface RawCampaign {
