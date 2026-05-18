@@ -349,31 +349,20 @@ const Metrics = () => {
 
   return (
     <main className="container max-w-[1500px] py-8 animate-fade-in-up">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-4">
-          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-success/10 text-success">
-            <CalendarDays className="h-6 w-6" />
-          </span>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
-              Таблица показателей
-            </h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {filledDays} дней с данными из {daysInMonth}
-            </p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
+    <PageContainer>
+      <PageHeader
+        icon={CalendarDays}
+        title="Таблица показателей"
+        description={`${filledDays} дней с данными из ${daysInMonth}`}
+        meta={
           <div className="hidden min-w-[180px] flex-col gap-1 sm:flex">
             <Progress value={monthProgress} className="h-2" />
             <span className="text-right text-[11px] font-medium text-success">
               {monthProgress}% месяца
             </span>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       {/* Summary cards */}
       <div className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-5">
