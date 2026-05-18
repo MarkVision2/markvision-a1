@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { ArrowDownRight, ArrowUpRight, Image as ImageIcon, Layers, Loader2, RefreshCw, Search, Video } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Info, Loader2, RefreshCw, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPicker";
+import { CreativePreview } from "@/components/creatives/CreativePreview";
+import { CreativeDetailDrawer } from "@/components/creatives/CreativeDetailDrawer";
 import { useMetaCreatives, type MetaCreativeRow } from "@/hooks/useMetaStructure";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
@@ -12,42 +13,24 @@ const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 const pct = (n: number) => `${(Math.round(n * 10) / 10).toLocaleString("ru-RU")}%`;
 
-type SortKey = "crmRevenue" | "crmRomi" | "crmSales" | "crmLeads" | "spend" | "name";
+type SortKey = "crmRevenue" | "crmRomi" | "crmSales" | "crmLeads" | "leads" | "spend" | "ctr" | "cpl" | "name";
+type StatusFilter = "all" | "active" | "paused";
+type TypeFilter = "all" | "video" | "image" | "carousel";
 
 const SORT_LABELS: Record<SortKey, string> = {
-  crmRevenue: "Выручка",
-  crmRomi: "ROMI",
+  crmRevenue: "Выручка CRM",
+  crmRomi: "ROMI CRM",
   crmSales: "Продажи",
-  crmLeads: "Лиды",
+  crmLeads: "Лиды CRM",
+  leads: "Лиды Meta",
   spend: "Расход",
+  ctr: "CTR",
+  cpl: "CPL",
   name: "Имя",
 };
 
 const STAGE_COLORS = ["bg-primary", "bg-accent", "bg-warning", "bg-success"] as const;
 
-function CreativeThumb({ row }: { row: MetaCreativeRow }) {
-  const src = (() => {
-    if (row.imageUrl) return row.imageUrl;
-    return row.thumbnailUrl?.replace(/p\d{2,4}x\d{2,4}/g, "p240x240") ?? null;
-  })();
-  const Icon = row.creativeType === "video" ? Video : row.creativeType === "carousel" ? Layers : ImageIcon;
-  return (
-    <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg bg-secondary/40 ring-1 ring-border/40">
-      {src ? (
-        <img src={src} alt="" className="h-full w-full object-cover" loading="lazy" referrerPolicy="no-referrer" />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center">
-          <Icon className="h-5 w-5 text-muted-foreground/50" />
-        </div>
-      )}
-      <span className="absolute right-0.5 top-0.5 grid h-4 w-4 place-items-center rounded bg-background/80 backdrop-blur">
-        <Icon className="h-2.5 w-2.5" />
-      </span>
-    </div>
-  );
-}
-
-/** Мини-воронка: 4 столбца с относительной высотой и подписью значения. */
 function MiniFunnel({ stages }: { stages: { label: string; value: number; display: string }[] }) {
   const max = Math.max(1, ...stages.map((s) => s.value));
   return (
@@ -76,33 +59,51 @@ const CreativeFunnel = () => {
   const [range, setRange] = useState<ReportPeriodRange>(() => currentMonthRange());
   const [sortKey, setSortKey] = useState<SortKey>("crmRevenue");
   const [search, setSearch] = useState("");
-  const [onlyWithLeads, setOnlyWithLeads] = useState(true);
+  const [status, setStatus] = useState<StatusFilter>("all");
+  const [type, setType] = useState<TypeFilter>("all");
+  const [hasSpend, setHasSpend] = useState(false);
+  const [hasLeads, setHasLeads] = useState(false);
+  const [hasSales, setHasSales] = useState(false);
+  const [drawerRow, setDrawerRow] = useState<MetaCreativeRow | null>(null);
 
   const { rows, loading } = useMetaCreatives(range);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     let r = rows;
-    if (onlyWithLeads) r = r.filter((x) => x.crmLeads > 0 || x.leads > 0);
+    if (status === "active") r = r.filter((x) => x.effectiveStatus === "ACTIVE");
+    if (status === "paused") r = r.filter((x) => x.effectiveStatus && x.effectiveStatus !== "ACTIVE");
+    if (type !== "all") r = r.filter((x) => x.creativeType === type);
+    if (hasSpend) r = r.filter((x) => x.spend > 0);
+    if (hasLeads) r = r.filter((x) => x.crmLeads > 0 || x.leads > 0);
+    if (hasSales) r = r.filter((x) => x.crmSales > 0);
     if (q) r = r.filter((x) => x.name.toLowerCase().includes(q) || x.adId.includes(q));
     const sorted = [...r];
     sorted.sort((a, b) => {
       if (sortKey === "name") return a.name.localeCompare(b.name);
-      return ((b as any)[sortKey] ?? 0) - ((a as any)[sortKey] ?? 0);
+      if (sortKey === "cpl") {
+        const av = a.crmCpl > 0 ? a.crmCpl : a.cpl;
+        const bv = b.crmCpl > 0 ? b.crmCpl : b.cpl;
+        if (av === 0) return 1;
+        if (bv === 0) return -1;
+        return av - bv;
+      }
+      return ((b as unknown as Record<string, number>)[sortKey] ?? 0) - ((a as unknown as Record<string, number>)[sortKey] ?? 0);
     });
     return sorted;
-  }, [rows, sortKey, search, onlyWithLeads]);
+  }, [rows, sortKey, search, status, type, hasSpend, hasLeads, hasSales]);
 
   const totals = useMemo(() => {
     return filtered.reduce(
       (acc, r) => ({
         spend: acc.spend + r.spend,
+        metaLeads: acc.metaLeads + r.leads,
         crmLeads: acc.crmLeads + r.crmLeads,
         crmQualified: acc.crmQualified + r.crmQualified,
         crmSales: acc.crmSales + r.crmSales,
         crmRevenue: acc.crmRevenue + r.crmRevenue,
       }),
-      { spend: 0, crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 },
+      { spend: 0, metaLeads: 0, crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 },
     );
   }, [filtered]);
 
@@ -114,14 +115,15 @@ const CreativeFunnel = () => {
     return `${f} — ${t}`;
   }, [range]);
 
+  const attributionRate = totals.metaLeads > 0 ? (totals.crmLeads / totals.metaLeads) * 100 : 0;
+
   return (
     <main className="container max-w-7xl py-8 animate-fade-in-up">
-      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Воронка по креативам</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Лид → Квалификация → Продажа → Выручка по каждому креативу за период · {rangeLabel}
+            Лид Meta → Лид CRM → Квалификация → Продажа → Выручка по каждому креативу · {rangeLabel}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -139,18 +141,19 @@ const CreativeFunnel = () => {
         </div>
       </div>
 
-      {/* Aggregate KPI strip */}
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      {/* KPI strip */}
+      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
         {[
           { label: "Расход", value: fmtTenge(totals.spend) },
+          { label: "Лиды Meta", value: fmtNum(totals.metaLeads) },
           { label: "Лиды CRM", value: fmtNum(totals.crmLeads) },
           { label: "Квалиф.", value: fmtNum(totals.crmQualified) },
           { label: "Продажи", value: fmtNum(totals.crmSales) },
           { label: "Выручка", value: fmtTenge(totals.crmRevenue) },
           {
             label: "ROMI",
-            value: `${totalsRomi >= 0 ? "+" : ""}${Math.round(totalsRomi)}%`,
-            cls: totalsRomi >= 0 ? "text-success" : "text-destructive",
+            value: totals.spend > 0 ? `${totalsRomi >= 0 ? "+" : ""}${Math.round(totalsRomi)}%` : "—",
+            cls: totals.spend > 0 ? (totalsRomi >= 0 ? "text-success" : "text-destructive") : "",
           },
         ].map((k) => (
           <div key={k.label} className="rounded-2xl border border-border/60 bg-card/60 p-3">
@@ -160,9 +163,22 @@ const CreativeFunnel = () => {
         ))}
       </div>
 
+      {totals.metaLeads > 0 && attributionRate < 100 && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/5 p-3 text-xs">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+          <div>
+            <span className="font-semibold">Привязка лидов: {pct(attributionRate)}.</span>
+            {" "}Meta видит {fmtNum(totals.metaLeads)} лидов, в CRM привязано к креативам {fmtNum(totals.crmLeads)}.
+            Чтобы поднять до 100%, в Meta-шаблоне URL добавьте
+            {" "}<code className="rounded bg-secondary/60 px-1">utm_content=&#123;&#123;ad.id&#125;&#125;</code>.
+            WhatsApp-лиды привязываются автоматически через CTWA referral.
+          </div>
+        </div>
+      )}
+
       {/* Toolbar */}
       <div className="mt-6 flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[220px]">
+        <div className="relative min-w-[220px] flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
@@ -171,17 +187,44 @@ const CreativeFunnel = () => {
             className="h-10 rounded-xl border-border/60 pl-9"
           />
         </div>
-        <label className="flex items-center gap-2 rounded-xl border border-border/60 bg-card/60 px-3 h-10 text-xs cursor-pointer">
-          <input
-            type="checkbox"
-            checked={onlyWithLeads}
-            onChange={(e) => setOnlyWithLeads(e.target.checked)}
-            className="accent-primary"
-          />
-          Только с лидами
-        </label>
+        <select
+          value={status}
+          onChange={(e) => setStatus(e.target.value as StatusFilter)}
+          className="h-10 rounded-xl border border-border/60 bg-background px-2 text-xs font-medium"
+        >
+          <option value="all">Все статусы</option>
+          <option value="active">Только активные</option>
+          <option value="paused">На паузе / архив</option>
+        </select>
+        <select
+          value={type}
+          onChange={(e) => setType(e.target.value as TypeFilter)}
+          className="h-10 rounded-xl border border-border/60 bg-background px-2 text-xs font-medium"
+        >
+          <option value="all">Все типы</option>
+          <option value="video">Видео</option>
+          <option value="image">Картинка</option>
+          <option value="carousel">Карусель</option>
+        </select>
+        {[
+          { label: "Есть расход", v: hasSpend, set: setHasSpend },
+          { label: "Есть лиды", v: hasLeads, set: setHasLeads },
+          { label: "Есть продажи", v: hasSales, set: setHasSales },
+        ].map((f) => (
+          <button
+            key={f.label}
+            type="button"
+            onClick={() => f.set(!f.v)}
+            className={cn(
+              "h-10 rounded-xl border px-3 text-xs font-medium transition",
+              f.v ? "border-primary/60 bg-primary/10 text-primary" : "border-border/60 bg-background hover:bg-secondary/40",
+            )}
+          >
+            {f.label}
+          </button>
+        ))}
         <div className="flex items-center gap-1 text-xs">
-          <span className="text-muted-foreground">Сортировка:</span>
+          <span className="text-muted-foreground">Сорт.:</span>
           <select
             value={sortKey}
             onChange={(e) => setSortKey(e.target.value as SortKey)}
@@ -194,15 +237,20 @@ const CreativeFunnel = () => {
         </div>
       </div>
 
+      <div className="mt-2 text-[11px] text-muted-foreground">
+        Показано {filtered.length} из {rows.length} креативов
+      </div>
+
       {/* Table */}
-      <div className="mt-4 overflow-hidden rounded-2xl border border-border/60 bg-card/60">
+      <div className="mt-3 overflow-hidden rounded-2xl border border-border/60 bg-card/60">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-secondary/30 text-[10px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <th className="px-4 py-3 text-left font-semibold">Креатив</th>
                 <th className="px-4 py-3 text-left font-semibold">Воронка</th>
-                <th className="px-4 py-3 text-right font-semibold">CR лид→продажа</th>
+                <th className="px-4 py-3 text-right font-semibold">Лиды Meta</th>
+                <th className="px-4 py-3 text-right font-semibold">CR лид→прод.</th>
                 <th className="px-4 py-3 text-right font-semibold">Сред. чек</th>
                 <th className="px-4 py-3 text-right font-semibold">Расход</th>
                 <th className="px-4 py-3 text-right font-semibold">Выручка</th>
@@ -212,8 +260,8 @@ const CreativeFunnel = () => {
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-12 text-center text-sm text-muted-foreground">
-                    {loading ? "Загружаем креативы…" : "Нет креативов с лидами за выбранный период."}
+                  <td colSpan={8} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                    {loading ? "Загружаем креативы…" : "Под фильтр ничего не попало. Снимите фильтры или расширьте период."}
                   </td>
                 </tr>
               )}
@@ -222,12 +270,16 @@ const CreativeFunnel = () => {
                 const romiPositive = row.crmRomi >= 0;
                 const RomiIcon = romiPositive ? ArrowUpRight : ArrowDownRight;
                 return (
-                  <tr key={row.id} className="border-t border-border/30 hover:bg-secondary/20">
+                  <tr
+                    key={row.id}
+                    className="cursor-pointer border-t border-border/30 transition hover:bg-secondary/20"
+                    onClick={() => setDrawerRow(row)}
+                  >
                     <td className="px-4 py-3">
-                      <Link to={`/ads?tab=creatives&ad=${row.adId}`} className="flex items-center gap-3 group">
-                        <CreativeThumb row={row} />
+                      <div className="flex items-center gap-3">
+                        <CreativePreview row={row} compact className="h-14 w-14 ring-1 ring-border/40" />
                         <div className="min-w-0">
-                          <div className="line-clamp-1 text-sm font-semibold group-hover:text-primary" title={row.name}>
+                          <div className="line-clamp-1 text-sm font-semibold" title={row.name}>
                             {row.name || "Без названия"}
                           </div>
                           <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
@@ -242,7 +294,7 @@ const CreativeFunnel = () => {
                             )}
                           </div>
                         </div>
-                      </Link>
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <MiniFunnel
@@ -254,6 +306,7 @@ const CreativeFunnel = () => {
                         ]}
                       />
                     </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{fmtNum(row.leads)}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{cr > 0 ? pct(cr) : "—"}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{row.crmAvgCheck > 0 ? fmtTenge(row.crmAvgCheck) : "—"}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{row.spend > 0 ? fmtTenge(row.spend) : "—"}</td>
@@ -278,9 +331,17 @@ const CreativeFunnel = () => {
       </div>
 
       <p className="mt-4 text-[11px] text-muted-foreground">
-        Атрибуция: WhatsApp — через Meta CTWA referral; сайт — через UTM-шаблон с <code className="rounded bg-secondary/60 px-1">utm_content=&#123;&#123;ad.id&#125;&#125;</code>.
-        Клик по креативу открывает его карточку в разделе «Управление рекламой».
+        Атрибуция: WhatsApp — через Meta CTWA referral; сайт — через UTM-шаблон с
+        {" "}<code className="rounded bg-secondary/60 px-1">utm_content=&#123;&#123;ad.id&#125;&#125;</code>.
+        Клик по строке откроет полную карточку креатива с воронкой и списком лидов.
       </p>
+
+      <CreativeDetailDrawer
+        row={drawerRow}
+        range={range}
+        open={!!drawerRow}
+        onOpenChange={(o) => !o && setDrawerRow(null)}
+      />
     </main>
   );
 };
