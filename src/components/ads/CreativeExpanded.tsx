@@ -2,11 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { Copy, Eye, Loader2, MessageCircle, MousePointerClick, Play, RefreshCw, ShoppingBag, Target, TrendingUp, Users, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
 import { useCreativeFunnel } from "@/hooks/useCreativeFunnel";
 import { bestCreativeImage } from "@/lib/metaThumb";
+import { refreshMetaCreative } from "@/lib/metaCreativeRefresh";
 
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
@@ -42,12 +42,9 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
   const refreshVideo = async (silent = false) => {
     setRefreshing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("meta-creative-refresh", {
-        body: { ad_id: row.adId },
-      });
-      if (error) throw error;
-      const url = (data as { video_url?: string })?.video_url;
-      if (!url) throw new Error("Не удалось получить ссылку на видео");
+      const data = await refreshMetaCreative(row.adId);
+      const url = data.video_url;
+      if (!url) throw new Error(data.rate_limited ? "Meta временно ограничила обновление превью" : "Не удалось получить ссылку на видео");
       setVideoUrl(url);
       setVideoError(false);
       if (!silent) toast.success("Превью видео обновлено");
