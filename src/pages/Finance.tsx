@@ -23,6 +23,8 @@ import { PeriodPicker, monthRange } from "@/components/dashboard/PeriodPicker";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import AgencyAnalytics from "@/components/finance/AgencyAnalytics";
 import MonthlyDynamics from "@/components/finance/MonthlyDynamics";
+import { PageContainer } from "@/components/layout/PageContainer";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 const MONTHS_RU = [
   "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
