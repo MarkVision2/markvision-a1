@@ -284,7 +284,7 @@ const Dashboard = () => {
           Стоимость заявки: <span className="font-semibold text-foreground">{totals && totals.cpl > 0 ? fmtTenge(totals.cpl) : "—"}</span>
         </div>
       </div>
-    </main>
+    </PageContainer>
   );
 };
 
