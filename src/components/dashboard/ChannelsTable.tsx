@@ -65,7 +65,7 @@ export function ChannelsTable({ channels, totalSpend, totalLeads }: Props) {
     <div className="space-y-3">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {enriched.map((c) => {
-          const meta = PROVIDER_META[c.provider] ?? PROVIDER_META.crm;
+          const meta = PROVIDER_META[c.provider] ?? PROVIDER_META.other;
           const Icon = meta.icon;
           const isOrganic = c.provider === "instagram_organic";
           const romiPositive = c.romi >= 0;
