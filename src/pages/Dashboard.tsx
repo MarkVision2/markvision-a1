@@ -26,6 +26,9 @@ import { useMetaCampaigns, useMetaCreatives } from "@/hooks/useMetaStructure";
 import { QualityBlock, QualityFunnel } from "@/components/crm/QualityBlock";
 import { deltaPct, type ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
+import { PageContainer } from "@/components/layout/PageContainer";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { LayoutGrid } from "lucide-react";
 
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}\u00A0₸`;
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
