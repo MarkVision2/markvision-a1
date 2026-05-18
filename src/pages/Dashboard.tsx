@@ -109,7 +109,6 @@ const Dashboard = () => {
   }, [range]);
 
   return (
-    <main className="container max-w-7xl py-8 animate-fade-in-up">
     <PageContainer>
       <PageHeader
         icon={LayoutGrid}
