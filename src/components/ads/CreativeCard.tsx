@@ -84,7 +84,7 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
   const showCrm = metricsView === "crm";
   const metaLeadCount = isWhatsApp ? (row.messages || row.leads) : row.leads;
   const leadValue = row.crmLeads > 0 ? row.crmLeads : metaLeadCount;
-  const leadLabel = row.crmLeads > 0 ? "Лиды CRM" : "Лиды Meta";
+  const leadLabel = "Лиды";
   const hasCrmRevenue = row.crmRevenue > 0;
   const romiPositive = hasCrmRevenue && row.crmRomi >= 0;
   const romiClass =
