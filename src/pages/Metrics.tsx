@@ -348,7 +348,7 @@ const Metrics = () => {
   };
 
   return (
-    <main className="container max-w-[1500px] py-8 animate-fade-in-up">
+    <PageContainer-stub py-8 animate-fade-in-up">
     <PageContainer>
       <PageHeader
         icon={CalendarDays}
