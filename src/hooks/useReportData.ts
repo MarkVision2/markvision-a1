@@ -207,19 +207,20 @@ function aggregateCrm(
 
 function computeTotals(
   meta: { spend: number; impressions: number; clicks: number; leads: number;
-          cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number },
+          cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number;
+          cabinetDiagnosticRevenue: number },
   crm: { leads: LeadLite[]; orphanLeads: LeadLite[]; orphanVisits: LeadLite[]; orphanSales: LeadLite[]; orphanRevenue: number },
 ): ReportTotals {
-  // Чтобы не задвоить заявки: FB-лиды из CDI + только orphan CRM-лиды
-  // (те, что без cabinet_id — органика, сайт, WhatsApp). Лиды с cabinet_id
-  // уже учтены через CDI.
-  const totalLeads = meta.leads + crm.orphanLeads.length;
-  // CPL = расход / только платные лиды (которые этот расход и сгенерировал).
-  // Раньше делили на totalLeads — и orphan-лиды занижали CPL, искажая marketing-метрику.
+  // ИСТОЧНИК ПРАВДЫ — Таблица показателей (cabinet_daily_insights).
+  // Цифры на Dashboard / Аналитике / Отчётах должны 1:1 совпадать с Metrics.
+  // Orphan-CRM (лиды без cabinet_id) выводится отдельным предупреждением и НЕ
+  // суммируется в totals — иначе появлялась "лишняя" выручка / диагностики.
+  const totalLeads = meta.leads;
   const cpl = meta.leads > 0 ? meta.spend / meta.leads : 0;
-  const visits = meta.cabinetDiagnostics + crm.orphanVisits.length;
-  const sales = meta.cabinetSales + crm.orphanSales.length;
-  const revenue = meta.cabinetRevenue + crm.orphanRevenue;
+  const visits = meta.cabinetDiagnostics;
+  const sales = meta.cabinetSales;
+  // Выручка = продажи + оплаты диагностик (всё из таблицы показателей).
+  const revenue = meta.cabinetRevenue + meta.cabinetDiagnosticRevenue;
   const cpv = visits > 0 ? meta.spend / visits : 0;
   const cac = sales > 0 ? meta.spend / sales : 0;
   const ctr = meta.impressions > 0 ? (meta.clicks / meta.impressions) * 100 : 0;
