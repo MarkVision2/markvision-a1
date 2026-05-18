@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-export type AssetKind = "whatsapp" | "pixels" | "pixel_events" | "lead_forms";
+export type AssetKind = "whatsapp" | "pixels" | "pixel_events" | "lead_forms" | "pages";
 
 export interface WhatsAppItem {
   id: string;
@@ -23,12 +23,19 @@ export interface LeadFormItem {
   status: string;
   leads_count: number;
 }
+export interface PageItem {
+  id: string;
+  name: string;
+  category?: string;
+  picture?: string;
+}
 
 type ItemMap = {
   whatsapp: WhatsAppItem;
   pixels: PixelItem;
   pixel_events: PixelEventItem;
   lead_forms: LeadFormItem;
+  pages: PageItem;
 };
 
 interface Params {
