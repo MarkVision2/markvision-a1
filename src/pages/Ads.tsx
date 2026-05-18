@@ -107,64 +107,54 @@ const Ads = () => {
 
   return (
     <main className="container max-w-6xl py-6 animate-fade-in-up">
-      {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-success/15 text-success ring-1 ring-success/30">
-            <Megaphone className="h-5 w-5" />
-          </span>
-          <div className="leading-tight">
-            <h1 className="text-xl font-bold tracking-tight sm:text-2xl">
-              Управление рекламой
-            </h1>
-            <p className="text-xs text-muted-foreground">
-              {cabinets.length === 0
-                ? "Нет подключённых кабинетов"
-                : (
-                  <>
-                    {cabinets.length} {cabinets.length === 1 ? "кабинет" : cabinets.length < 5 ? "кабинета" : "кабинетов"}
-                    {" · "}
-                    <span className="text-success">{active} активных</span>
-                  </>
-                )}
-            </p>
-          </div>
-        </div>
+      <PageHeader
+        icon={Megaphone}
+        title="Управление рекламой"
+        description={
+          cabinets.length === 0
+            ? "Нет подключённых кабинетов"
+            : (
+              <>
+                {cabinets.length} {cabinets.length === 1 ? "кабинет" : cabinets.length < 5 ? "кабинета" : "кабинетов"}
+                {" · "}
+                <span className="text-success">{active} активных</span>
+              </>
+            )
+        }
+        actions={
+          <>
+            <PeriodPicker range={period} onChange={setPeriod} />
 
-        <div className="flex flex-wrap items-center gap-2">
-          <PeriodPicker range={period} onChange={setPeriod} />
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 rounded-xl border-border/60"
+              aria-label="Обновить"
+              onClick={handleRefresh}
+              title="Обновить данные"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
 
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-9"
-            aria-label="Обновить"
-            onClick={handleRefresh}
-            title="Обновить данные"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-          </Button>
+            <Button
+              onClick={() => setAddOpen(true)}
+              variant="outline"
+              className="h-10 gap-2 rounded-xl border-border/60"
+            >
+              <Plus className="h-4 w-4" />
+              Кабинет
+            </Button>
 
-          <Button
-            onClick={() => setAddOpen(true)}
-            variant="outline"
-            size="sm"
-            className="h-9"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            Кабинет
-          </Button>
-
-          <Button
-            onClick={() => setCampaignOpen(true)}
-            size="sm"
-            className="h-9 bg-success text-white hover:bg-success/90"
-          >
-            <Rocket className="h-3.5 w-3.5" />
-            Создать кампанию
-          </Button>
-        </div>
-      </div>
+            <Button
+              onClick={() => setCampaignOpen(true)}
+              className="h-10 gap-2 rounded-xl bg-success text-white hover:bg-success/90"
+            >
+              <Rocket className="h-4 w-4" />
+              Создать кампанию
+            </Button>
+          </>
+        }
+      />
 
       {/* Aggregate KPIs — only when multiple cabinets (otherwise the row itself shows the same numbers) */}
       {showAggregate && (
