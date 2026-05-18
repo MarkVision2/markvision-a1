@@ -14,7 +14,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
         <AppSidebar />
-        <SidebarInset className="flex flex-1 flex-col bg-background">
+        <SidebarInset className="flex min-w-0 flex-1 flex-col bg-background">
           <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-border/60 bg-background/70 px-3 backdrop-blur-xl sm:px-6">
             <div className="relative mx-auto w-full max-w-2xl">
               <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
@@ -36,7 +36,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
               <Bell className="h-4 w-4" />
             </button>
           </header>
-          <main className="flex-1">{children}</main>
+          <main className="min-w-0 flex-1 overflow-x-hidden">{children}</main>
         </SidebarInset>
       </div>
     </SidebarProvider>
