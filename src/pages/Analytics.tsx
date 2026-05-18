@@ -338,43 +338,35 @@ const Analytics = () => {
   const funnelBase = Math.max(impressions, clicks, leadCount, diagnosticsCount, salesCount, 1);
 
   return (
-    <main className="container max-w-7xl py-8 animate-fade-in-up">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-4">
-          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-success/10 text-success">
-            <Zap className="h-6 w-6" />
-          </span>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Сквозная аналитика</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              UTM-атрибуция · эффективность каналов · полная воронка
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <PeriodPicker range={period} onChange={setPeriod} />
-          <button
-            onClick={() => { refresh(); refetch(); }}
-            className="grid h-12 w-12 place-items-center rounded-2xl border border-border/60 bg-card/60 hover:bg-secondary"
-            aria-label="Обновить"
-          >
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-          </button>
-          <Select value={cabinetId} onValueChange={setCabinetId}>
-            <SelectTrigger className="h-12 min-w-[200px] rounded-2xl border-border/60 bg-card/60">
-              <SelectValue placeholder="Все кабинеты" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Все кабинеты</SelectItem>
-              {cabinets.map((c) => (
-                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        icon={Zap}
+        title="Сквозная аналитика"
+        description="UTM-атрибуция · эффективность каналов · полная воронка"
+        actions={
+          <>
+            <PeriodPicker range={period} onChange={setPeriod} />
+            <button
+              onClick={() => { refresh(); refetch(); }}
+              className="grid h-10 w-10 place-items-center rounded-xl border border-border/60 bg-card/60 hover:bg-secondary"
+              aria-label="Обновить"
+            >
+              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            </button>
+            <Select value={cabinetId} onValueChange={setCabinetId}>
+              <SelectTrigger className="h-10 min-w-[200px] rounded-xl border-border/60 bg-card/60">
+                <SelectValue placeholder="Все кабинеты" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все кабинеты</SelectItem>
+                {cabinets.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        }
+      />
 
       {/* KPI grid */}
       <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-4">
