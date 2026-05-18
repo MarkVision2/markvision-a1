@@ -543,7 +543,7 @@ const Metrics = () => {
       {/* Table */}
       <div className="mt-6 overflow-hidden rounded-2xl border border-border/60 bg-card/40">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1040px] border-collapse text-sm">
+          <table className="w-full min-w-[1180px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-border/60 bg-card/60">
                 <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -551,7 +551,8 @@ const Metrics = () => {
                 </th>
                 {[
                   "Расходы", "Лиды", "CPL",
-                  "Диагностики", "Оплаты", "Выручка",
+                  "Диагност.", "Опл. диагн. ₸",
+                  "Продажи", "Выр. продаж ₸", "Итого ₸",
                 ].map((h) => (
                   <th
                     key={h}
