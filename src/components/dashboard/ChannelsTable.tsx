@@ -1,10 +1,10 @@
-import { AlertTriangle, Camera, Facebook, Megaphone, Globe, TrendingDown, TrendingUp, Wallet, Users, ShoppingBag } from "lucide-react";
+import { AlertTriangle, Camera, ClipboardList, Globe, MessageCircle, TrendingDown, TrendingUp, Wallet, Users, ShoppingBag } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 
-export type ChannelProvider = "meta" | "google" | "instagram_organic" | "crm";
+export type ChannelProvider = "whatsapp" | "site" | "lead_form" | "instagram_organic" | "other";
 
 interface ChannelRow {
   key: string;
@@ -23,10 +23,11 @@ interface Props {
 }
 
 const PROVIDER_META: Record<ChannelProvider, { icon: typeof Camera; cls: string; bg: string; ring: string; label: string }> = {
-  meta: { icon: Facebook, cls: "text-primary", bg: "bg-primary/10", ring: "ring-primary/20", label: "Meta Ads" },
-  google: { icon: Megaphone, cls: "text-warning", bg: "bg-warning/10", ring: "ring-warning/20", label: "Google Ads" },
+  whatsapp: { icon: MessageCircle, cls: "text-success", bg: "bg-success/10", ring: "ring-success/20", label: "WhatsApp · Meta Ads" },
+  site: { icon: Globe, cls: "text-primary", bg: "bg-primary/10", ring: "ring-primary/20", label: "Сайт / лендинг" },
+  lead_form: { icon: ClipboardList, cls: "text-warning", bg: "bg-warning/10", ring: "ring-warning/20", label: "Лид-формы Meta" },
   instagram_organic: { icon: Camera, cls: "text-pink-500", bg: "bg-pink-500/10", ring: "ring-pink-500/20", label: "Instagram organic" },
-  crm: { icon: Globe, cls: "text-muted-foreground", bg: "bg-muted/30", ring: "ring-muted/30", label: "CRM / прочее" },
+  other: { icon: Globe, cls: "text-muted-foreground", bg: "bg-muted/30", ring: "ring-muted/30", label: "Прочее / CRM" },
 };
 
 export function ChannelsTable({ channels, totalSpend, totalLeads }: Props) {
