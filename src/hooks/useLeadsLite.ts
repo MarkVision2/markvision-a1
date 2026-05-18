@@ -46,9 +46,7 @@ export function useLeadsLite() {
     let leadsQuery = supabase
       .from("leads")
       .select(
-        // score_label достаём явно, чтобы маппинг в LeadLite получал реальное значение,
-        // а не подставлял undefined из отсутствующей колонки.
-        "id,source,channel,referrer,utm,cabinet_id,stage_id,amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,score_label,reject_reason,rejected_at",
+        "id,source,channel,referrer,utm,cabinet_id,stage_id,amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,reject_reason,rejected_at",
       )
       // Личные заявки исключаем из аналитики/дашборда/отчётов.
       .eq("is_personal", false)
