@@ -24,6 +24,7 @@ import { DEFAULT_META_UTM_TEMPLATE } from "@/lib/utmDefaults";
 import type { AdCabinet } from "@/types/ads";
 import { saveCampaign } from "@/hooks/useCabinetsStore";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { useMetaPageAssets } from "@/hooks/useMetaPageAssets";
 import GoalAssetsPicker from "./GoalAssetsPicker";
 import { cropImageFile, computeSourceRect, type Fit } from "@/lib/cropMedia";
 
