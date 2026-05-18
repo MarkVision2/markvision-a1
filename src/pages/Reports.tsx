@@ -55,19 +55,26 @@ export default function Reports() {
   }
 
   return (
-    <main className="container max-w-7xl py-8 animate-fade-in-up">
-      {/* Top bar */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-        <div className="text-2xl font-bold tracking-tight whitespace-nowrap">
-          AI Отчётность
-        </div>
-        <div className="flex flex-1 items-center gap-3">
-          <AiChatBar data={data} rangeLabel={rangeLabel} />
-          <button className="grid h-12 w-12 place-items-center rounded-2xl border border-border/60 bg-card/40 hover:bg-secondary/50">
+    <PageContainer>
+      <PageHeader
+        icon={FileBarChart2}
+        title="AI Отчётность"
+        description={rangeLabel}
+        actions={
+          <button
+            className="grid h-10 w-10 place-items-center rounded-xl border border-border/60 bg-card/40 hover:bg-secondary/50"
+            aria-label="Уведомления"
+          >
             <Bell className="h-4 w-4" />
           </button>
-        </div>
+        }
+      />
+
+      <div className="mt-4">
+        <AiChatBar data={data} rangeLabel={rangeLabel} />
       </div>
+
+
 
       {/* Controls */}
       <div className="mt-6 flex flex-wrap items-center gap-3 rounded-2xl border border-border/60 bg-card/30 p-3">
