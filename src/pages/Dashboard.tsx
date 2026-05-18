@@ -110,35 +110,37 @@ const Dashboard = () => {
 
   return (
     <main className="container max-w-7xl py-8 animate-fade-in-up">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Дашборд</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{rangeLabel}</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <PeriodPicker range={range} onChange={setRange} />
-          <Button
-            variant="outline"
-            className="h-10 gap-2 rounded-xl border-border/60"
-            onClick={handleSyncMetaStructure}
-            disabled={syncing}
-            title="Синхронизировать кампании и креативы Meta с серверов Facebook"
-          >
-            {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            Синхронизировать Meta
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-10 w-10 rounded-xl border-border/60"
-            aria-label="Обновить"
-            onClick={() => setRange({ ...range })}
-            disabled={loading}
-          >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          </Button>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        icon={LayoutGrid}
+        title="Дашборд"
+        description={rangeLabel}
+        actions={
+          <>
+            <PeriodPicker range={range} onChange={setRange} />
+            <Button
+              variant="outline"
+              className="h-10 gap-2 rounded-xl border-border/60"
+              onClick={handleSyncMetaStructure}
+              disabled={syncing}
+              title="Синхронизировать кампании и креативы Meta с серверов Facebook"
+            >
+              {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              Синхронизировать Meta
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 rounded-xl border-border/60"
+              aria-label="Обновить"
+              onClick={() => setRange({ ...range })}
+              disabled={loading}
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            </Button>
+          </>
+        }
+      />
 
       {error && (
         <div className="mt-6 flex items-start gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
