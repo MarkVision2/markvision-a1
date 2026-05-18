@@ -207,7 +207,9 @@ const Metrics = () => {
   // Orphan показываем отдельным предупреждением — пользователь решает,
   // привязать лид к кабинету или ввести ручной факт.
   const factDiagnostics = totals?.diagnostics ?? 0;
+  const factDiagnosticRevenue = totals?.diagnosticRevenue ?? 0;
   const factSales = totals?.sales ?? 0;
+  const factSalesRevenue = totals?.salesRevenue ?? 0;
   const factRevenue = totals?.crmRevenue ?? 0;
   const factLeads = totals?.leads ?? 0;
   const factCac = factSales > 0 ? (totals?.spend ?? 0) / factSales : 0;
@@ -295,6 +297,7 @@ const Metrics = () => {
       manual_diagnostics?: number;
       manual_sales?: number;
       manual_revenue?: number;
+      manual_diagnostic_revenue?: number;
     },
   ) => {
     if (!manualCabinet?.externalId) {
@@ -541,7 +544,7 @@ const Metrics = () => {
       {/* Table */}
       <div className="mt-6 overflow-hidden rounded-2xl border border-border/60 bg-card/40">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1040px] border-collapse text-sm">
+          <table className="w-full min-w-[1180px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-border/60 bg-card/60">
                 <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -549,7 +552,8 @@ const Metrics = () => {
                 </th>
                 {[
                   "Расходы", "Лиды", "CPL",
-                  "Диагностики", "Оплаты", "Выручка",
+                  "Диагност.", "Опл. диагн. ₸",
+                  "Продажи", "Выр. продаж ₸", "Итого ₸",
                 ].map((h) => (
                   <th
                     key={h}
@@ -577,7 +581,9 @@ const Metrics = () => {
                 <Cell>{plan ? formatNumber(plan.leads) : <Dash />}</Cell>
                 <Cell>{plan ? formatNumber(plan.cpl) : <Dash />}</Cell>
                 <Cell>{plan ? formatNumber(plan.visits) : <Dash />}</Cell>
+                <Cell><Dash /></Cell>
                 <Cell>{plan ? formatNumber(plan.sales) : <Dash />}</Cell>
+                <Cell><Dash /></Cell>
                 <Cell>{plan ? formatNumber(plan.revenue) : <Dash />}</Cell>
               </tr>
 
@@ -615,11 +621,21 @@ const Metrics = () => {
                 </Cell>
                 <Cell>
                   <span className="font-bold">
+                    {factDiagnosticRevenue > 0 ? formatNumber(factDiagnosticRevenue) : <Dash />}
+                  </span>
+                </Cell>
+                <Cell>
+                  <span className="font-bold">
                     {factSales > 0 ? formatNumber(factSales) : <Dash />}
                   </span>
                 </Cell>
                 <Cell>
                   <span className="font-bold">
+                    {factSalesRevenue > 0 ? formatNumber(factSalesRevenue) : <Dash />}
+                  </span>
+                </Cell>
+                <Cell>
+                  <span className="font-bold text-success">
                     {factRevenue > 0 ? formatNumber(factRevenue) : <Dash />}
                   </span>
                 </Cell>
@@ -646,7 +662,9 @@ const Metrics = () => {
                     pct(factLeads, plan?.leads ?? 0),
                     null,
                     pct(factDiagnostics, plan?.visits ?? 0),
+                    null,
                     pct(factSales, plan?.sales ?? 0),
+                    null,
                     pct(factRevenue, plan?.revenue ?? 0),
                   ];
                   return cells.map((v, i) => (
@@ -701,7 +719,22 @@ const Metrics = () => {
                     </Cell>
                     <Cell>
                       <ManualFactCell
-                        title="Оплаты"
+                        title="Опл. диагностик"
+                        icon={DollarSign}
+                        isoDate={iso}
+                        value={d?.diagnosticRevenue ?? 0}
+                        crm={d?.crmDiagnosticRevenue ?? 0}
+                        manual={d?.manualDiagnosticRevenue ?? 0}
+                        autoLabel="CRM"
+                        disabled={!manualCabinet}
+                        format={formatNumber}
+                        allowDecimal
+                        onSave={(next) => upsertManualFact(iso, { manual_diagnostic_revenue: next })}
+                      />
+                    </Cell>
+                    <Cell>
+                      <ManualFactCell
+                        title="Продажи"
                         icon={Wallet}
                         isoDate={iso}
                         value={d?.sales ?? 0}
@@ -714,18 +747,23 @@ const Metrics = () => {
                     </Cell>
                     <Cell>
                       <ManualFactCell
-                        title="Сумма оплат"
+                        title="Выр. продаж"
                         icon={DollarSign}
                         isoDate={iso}
-                        value={dayRevenue}
-                        crm={d?.crmRevenueOnly ?? 0}
-                        manual={d?.manualRevenue ?? 0}
+                        value={d?.salesRevenue ?? 0}
+                        crm={d?.crmSalesRevenueOnly ?? 0}
+                        manual={d?.manualSalesRevenue ?? 0}
                         autoLabel="CRM"
                         disabled={!manualCabinet}
                         format={formatNumber}
                         allowDecimal
                         onSave={(next) => upsertManualFact(iso, { manual_revenue: next })}
                       />
+                    </Cell>
+                    <Cell>
+                      <span className="font-semibold tabular-nums text-success">
+                        {dayRevenue > 0 ? formatNumber(dayRevenue) : <Dash />}
+                      </span>
                     </Cell>
                   </tr>
                 );
