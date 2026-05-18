@@ -727,7 +727,8 @@ const CreateCampaignDialog = ({
     if (goal === "site-leads") {
       if (pixelId) rows.push({ label: "Пиксель", value: pixelId });
       if (pixelEvent) rows.push({ label: "Событие", value: pixelEvent });
-      if (cab?.websiteUrl) rows.push({ label: "Сайт", value: cab.websiteUrl });
+      const site = websiteUrl.trim() || cab?.websiteUrl;
+      if (site) rows.push({ label: "Сайт", value: site });
     } else if (goal === "whatsapp") {
       if (whatsappId) rows.push({ label: "WhatsApp", value: whatsappId });
     } else if (goal === "meta-form") {
