@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Calculator,
-  ChevronLeft,
-  ChevronRight,
   DollarSign,
   LineChart,
   Save,
@@ -23,11 +21,7 @@ import { cn } from "@/lib/utils";
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import AgencyAnalytics from "@/components/finance/AgencyAnalytics";
 import MonthlyDynamics from "@/components/finance/MonthlyDynamics";
-
-const MONTHS_RU = [
-  "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
-  "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
-];
+import { MonthSwitcher, monthKeyLabel } from "@/components/ui/month-switcher";
 
 const fmt = (n: number) => {
   if (!isFinite(n) || isNaN(n)) return "—";
@@ -186,9 +180,7 @@ const Finance = () => {
   const romi = calc.budget > 0 ? ((calc.revenue - calc.budget) / calc.budget) * 100 : 0;
   const margin = calc.revenue > 0 ? (profit / calc.revenue) * 100 : 0;
 
-  const shiftMonth = (delta: number) =>
-    setMonthCursor((p) => new Date(p.getFullYear(), p.getMonth() + delta, 1));
-  const monthLabel = `${MONTHS_RU[monthCursor.getMonth()]} ${monthCursor.getFullYear()}`;
+  const monthLabel = monthKeyLabel(monthCursor);
 
   const handleSave = () => {
     savePlan(monthKey(monthCursor), {
@@ -397,30 +389,14 @@ const Finance = () => {
             </p>
 
             <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="flex items-center gap-1 rounded-xl border border-border/60 bg-card/60 px-2 py-1">
-                <button
-                  onClick={() => shiftMonth(-1)}
-                  className="grid h-8 w-8 place-items-center rounded-lg hover:bg-secondary"
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </button>
-                <span className="px-2 text-xs font-semibold capitalize tabular-nums">
-                  {monthLabel}
-                </span>
-                <button
-                  onClick={() => shiftMonth(1)}
-                  className="grid h-8 w-8 place-items-center rounded-lg hover:bg-secondary"
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </button>
-              </div>
+              <MonthSwitcher value={monthCursor} onChange={setMonthCursor} size="md" />
 
               <Button
                 onClick={handleSave}
                 className="h-10 flex-1 gap-2 rounded-xl bg-success text-success-foreground hover:bg-success/90"
               >
                 <Save className="h-4 w-4" />
-                Сохранить план на {MONTHS_RU[monthCursor.getMonth()]}
+                Сохранить план на {monthLabel}
               </Button>
             </div>
           </div>

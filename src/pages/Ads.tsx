@@ -1,8 +1,6 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
-  ChevronLeft,
-  ChevronRight,
   Film,
   LayoutGrid,
   Megaphone,
@@ -23,26 +21,12 @@ import CabinetRow from "@/components/ads/CabinetRow";
 import { AdsCreativesPanel } from "@/components/ads/AdsCreativesPanel";
 import { CampaignGoalsBreakdown } from "@/components/dashboard/CampaignGoalsBreakdown";
 import { useMetaCampaigns } from "@/hooks/useMetaStructure";
-import { getPresetRange } from "@/hooks/useDashboardData";
+import { MonthSwitcher, monthRange } from "@/components/ui/month-switcher";
+import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
-
-const MONTHS_RU = [
-  "Январь",
-  "Февраль",
-  "Март",
-  "Апрель",
-  "Май",
-  "Июнь",
-  "Июль",
-  "Август",
-  "Сентябрь",
-  "Октябрь",
-  "Ноябрь",
-  "Декабрь",
-];
 
 const SEARCH_THRESHOLD = 3;
 
@@ -70,8 +54,7 @@ const StatChip = ({
   </div>
 );
 
-function CampaignsTabContent() {
-  const [range] = useState(() => getPresetRange("30d"));
+function CampaignsTabContent({ range }: { range: ReportPeriodRange }) {
   const { rows } = useMetaCampaigns(range);
   return <CampaignGoalsBreakdown rows={rows} />;
 }
@@ -90,12 +73,7 @@ const Ads = () => {
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
 
-  const shiftMonth = (delta: number) =>
-    setMonthCursor(
-      (prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1),
-    );
-
-  const monthLabel = `${MONTHS_RU[monthCursor.getMonth()]} ${monthCursor.getFullYear()}`;
+  const range = useMemo(() => monthRange(monthCursor), [monthCursor]);
 
   const toggleExpanded = (id: string) =>
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
@@ -155,25 +133,7 @@ const Ads = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <div className="flex h-9 items-center gap-0.5 rounded-lg border border-border/60 bg-card/60 px-1">
-            <button
-              onClick={() => shiftMonth(-1)}
-              className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-              aria-label="Предыдущий месяц"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="px-2 text-xs font-medium capitalize tabular-nums">
-              {monthLabel}
-            </span>
-            <button
-              onClick={() => shiftMonth(1)}
-              className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground"
-              aria-label="Следующий месяц"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
+          <MonthSwitcher value={monthCursor} onChange={setMonthCursor} size="sm" />
 
           <Button
             variant="outline"
@@ -298,11 +258,11 @@ const Ads = () => {
         </TabsContent>
 
         <TabsContent value="creatives" className="mt-5">
-          <AdsCreativesPanel />
+          <AdsCreativesPanel range={range} />
         </TabsContent>
 
         <TabsContent value="campaigns" className="mt-5">
-          <CampaignsTabContent />
+          <CampaignsTabContent range={range} />
         </TabsContent>
       </Tabs>
 
@@ -315,10 +275,8 @@ const Ads = () => {
             toast.success("Кабинет добавлен");
             if (newId && (c.adAccountId || c.externalId)) {
               toast.message("Подтягиваем статистику из Meta…");
-              const today = new Date();
-              const since = new Date(today.getFullYear(), today.getMonth(), 1)
-                .toISOString().slice(0, 10);
-              const until = today.toISOString().slice(0, 10);
+              const since = `${range.from.getFullYear()}-${String(range.from.getMonth() + 1).padStart(2, "0")}-01`;
+              const until = `${range.to.getFullYear()}-${String(range.to.getMonth() + 1).padStart(2, "0")}-${String(range.to.getDate()).padStart(2, "0")}`;
               supabase.functions.invoke("meta-daily-sync", {
                 body: { cabinet_id: newId, since, until },
               }).then(({ data, error }) => {

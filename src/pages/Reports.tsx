@@ -1,7 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { Bell, Download, Loader2 } from "lucide-react";
 import { format } from "date-fns";
-import { ru } from "date-fns/locale";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,16 +16,14 @@ import { DateRangeButton } from "@/components/reports/DateRangeButton";
 import { MarketingPage } from "@/components/reports/MarketingPage";
 import { CreativesPage } from "@/components/reports/CreativesPage";
 import { UnitEconomicsPage } from "@/components/reports/UnitEconomicsPage";
-
-function defaultRange() {
-  const to = new Date();
-  const from = new Date();
-  from.setDate(from.getDate() - 6);
-  return { from, to };
-}
+import { monthRange, monthRangeLabel } from "@/components/ui/month-switcher";
 
 export default function Reports() {
-  const [range, setRange] = useState(defaultRange);
+  const [monthCursor, setMonthCursor] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const range = useMemo(() => monthRange(monthCursor), [monthCursor]);
   const [cabinetId, setCabinetId] = useState("all");
   const { cabinets } = usePersonalCabinets();
   const [compare, setCompare] = useState(true);
@@ -36,10 +33,7 @@ export default function Reports() {
 
   const { data, loading, error } = useReportData(cabinetId, range, compare);
 
-  const rangeLabel = useMemo(
-    () => `${format(range.from, "d MMM", { locale: ru })} – ${format(range.to, "d MMM yyyy", { locale: ru })}`,
-    [range],
-  );
+  const rangeLabel = useMemo(() => monthRangeLabel(monthCursor), [monthCursor]);
 
   async function onExport() {
     if (!printRef.current) return;
@@ -87,7 +81,7 @@ export default function Reports() {
           </SelectContent>
         </Select>
 
-        <DateRangeButton range={range} onChange={setRange} />
+        <DateRangeButton range={range} onChange={(nextRange) => setMonthCursor(nextRange.from)} />
 
         <div className="flex h-12 items-center gap-3 rounded-2xl border border-border/60 bg-card/40 px-4">
           <Switch checked={compare} onCheckedChange={setCompare} />

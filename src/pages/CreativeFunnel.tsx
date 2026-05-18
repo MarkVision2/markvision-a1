@@ -3,10 +3,8 @@ import { Link } from "react-router-dom";
 import { ArrowDownRight, ArrowUpRight, Image as ImageIcon, Layers, Loader2, RefreshCw, Search, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PeriodPicker } from "@/components/dashboard/PeriodPicker";
+import { MonthSwitcher, monthRange, monthRangeLabel } from "@/components/ui/month-switcher";
 import { useMetaCreatives, type MetaCreativeRow } from "@/hooks/useMetaStructure";
-import { getPresetRange, type PeriodPreset } from "@/hooks/useDashboardData";
-import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
@@ -74,8 +72,11 @@ function MiniFunnel({ stages }: { stages: { label: string; value: number; displa
 }
 
 const CreativeFunnel = () => {
-  const [preset, setPreset] = useState<PeriodPreset>("30d");
-  const [range, setRange] = useState<ReportPeriodRange>(() => getPresetRange("30d"));
+  const [monthCursor, setMonthCursor] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const range = useMemo(() => monthRange(monthCursor), [monthCursor]);
   const [sortKey, setSortKey] = useState<SortKey>("crmRevenue");
   const [search, setSearch] = useState("");
   const [onlyWithLeads, setOnlyWithLeads] = useState(true);
@@ -110,11 +111,7 @@ const CreativeFunnel = () => {
 
   const totalsRomi = totals.spend > 0 ? ((totals.crmRevenue - totals.spend) / totals.spend) * 100 : 0;
 
-  const rangeLabel = useMemo(() => {
-    const f = range.from.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-    const t = range.to.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-    return `${f} — ${t}`;
-  }, [range]);
+  const rangeLabel = useMemo(() => monthRangeLabel(monthCursor), [monthCursor]);
 
   return (
     <main className="container max-w-7xl py-8 animate-fade-in-up">
@@ -127,17 +124,13 @@ const CreativeFunnel = () => {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <PeriodPicker
-            preset={preset}
-            range={range}
-            onChange={(p, r) => { setPreset(p); setRange(r); }}
-          />
+          <MonthSwitcher value={monthCursor} onChange={setMonthCursor} size="lg" />
           <Button
             variant="outline"
             size="icon"
             className="h-10 w-10 rounded-xl border-border/60"
             aria-label="Обновить"
-            onClick={() => setRange({ ...range })}
+            onClick={() => setMonthCursor((p) => new Date(p.getFullYear(), p.getMonth(), 1))}
             disabled={loading}
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}

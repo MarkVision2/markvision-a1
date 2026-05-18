@@ -3,8 +3,6 @@ import {
   AlertCircle,
   BarChart3,
   CalendarDays,
-  ChevronLeft,
-  ChevronRight,
   ClipboardCheck,
   DollarSign,
   Download,
@@ -32,15 +30,11 @@ import { Progress } from "@/components/ui/progress";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useMultiMetaInsights, type DailyInsightRow } from "@/hooks/useMetaInsights";
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
+import { MonthSwitcher, monthKeyLabel, monthParam as formatMonthParam } from "@/components/ui/month-switcher";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { AdCabinet } from "@/types/ads";
-
-const MONTHS_RU = [
-  "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
-  "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
-];
 
 const WEEKDAYS_RU = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
 
@@ -116,13 +110,8 @@ const Metrics = () => {
   const { cabinets } = usePersonalCabinets();
   const [resyncing, setResyncing] = useState(false);
 
-  const shiftMonth = (delta: number) =>
-    setMonthCursor(
-      (prev) => new Date(prev.getFullYear(), prev.getMonth() + delta, 1),
-    );
-
-  const monthLabel = `${MONTHS_RU[monthCursor.getMonth()]} ${monthCursor.getFullYear()}`;
-  const monthParam = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}`;
+  const monthLabel = monthKeyLabel(monthCursor);
+  const monthParam = formatMonthParam(monthCursor);
 
   const allActIds = useMemo(
     () => cabinets.map((c) => c.externalId).filter(Boolean),
@@ -423,25 +412,7 @@ const Metrics = () => {
       {/* Controls */}
       <div className="mt-6 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-1 rounded-2xl border border-border/60 bg-card/60 px-2 py-1.5">
-            <button
-              onClick={() => shiftMonth(-1)}
-              className="grid h-9 w-9 place-items-center rounded-xl hover:bg-secondary"
-              aria-label="Предыдущий месяц"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </button>
-            <span className="px-3 text-sm font-semibold capitalize tabular-nums">
-              {monthLabel}
-            </span>
-            <button
-              onClick={() => shiftMonth(1)}
-              className="grid h-9 w-9 place-items-center rounded-xl hover:bg-secondary"
-              aria-label="Следующий месяц"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </button>
-          </div>
+          <MonthSwitcher value={monthCursor} onChange={setMonthCursor} size="lg" />
 
           <Select value={cabinetId} onValueChange={setCabinetId}>
             <SelectTrigger className="h-12 min-w-[220px] rounded-2xl border-border/60 bg-card/60">

@@ -6,7 +6,7 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { PeriodPicker } from "@/components/dashboard/PeriodPicker";
+import { MonthSwitcher, monthRange, monthRangeLabel } from "@/components/ui/month-switcher";
 import { MoneyKpiCard } from "@/components/dashboard/MoneyKpiCard";
 import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
 import { EnhancedFunnel } from "@/components/dashboard/EnhancedFunnel";
@@ -18,13 +18,13 @@ import { CrmFlowPanel } from "@/components/dashboard/CrmFlowPanel";
 import { InstagramOrganicFunnel } from "@/components/dashboard/InstagramOrganicFunnel";
 import { RevenueSpendChart } from "@/components/dashboard/RevenueSpendChart";
 import { UnitEconomicsCard } from "@/components/dashboard/UnitEconomicsCard";
-import { getPresetRange, useDashboardData, type PeriodPreset } from "@/hooks/useDashboardData";
+import { useDashboardData } from "@/hooks/useDashboardData";
 import { useCodewordStats } from "@/hooks/useInstagramOrganic";
 import { useCrmFlow } from "@/hooks/useCrmFlow";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
 import { useMetaCampaigns, useMetaCreatives } from "@/hooks/useMetaStructure";
 import { QualityBlock, QualityFunnel } from "@/components/crm/QualityBlock";
-import { deltaPct, type ReportPeriodRange } from "@/hooks/useReportData";
+import { deltaPct } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
 
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}\u00A0₸`;
@@ -44,8 +44,11 @@ function ymdLocal(d: Date) {
 }
 
 const Dashboard = () => {
-  const [preset, setPreset] = useState<PeriodPreset>("30d");
-  const [range, setRange] = useState<ReportPeriodRange>(() => getPresetRange("30d"));
+  const [monthCursor, setMonthCursor] = useState(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const range = useMemo(() => monthRange(monthCursor), [monthCursor]);
   const [comparing] = useState(true);
   const [syncing, setSyncing] = useState(false);
 
@@ -67,8 +70,7 @@ const Dashboard = () => {
       if (failed.length > 0) {
         toast.error(`Ошибка по ${failed.length} кабинет(ам): ${failed[0].cabinet}`);
       }
-      // Триггерим перезагрузку данных тем же приёмом, что и кнопка «Обновить».
-      setRange({ ...range });
+      setMonthCursor((p) => new Date(p.getFullYear(), p.getMonth(), 1));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось синхронизировать Meta");
     } finally {
@@ -93,11 +95,7 @@ const Dashboard = () => {
   const profit = totals ? totals.revenue - totals.spend : 0;
   const prevProfit = prev ? prev.revenue - prev.spend : undefined;
 
-  const rangeLabel = useMemo(() => {
-    const f = range.from.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-    const t = range.to.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-    return `${f} – ${t}`;
-  }, [range]);
+  const rangeLabel = useMemo(() => monthRangeLabel(monthCursor), [monthCursor]);
 
   return (
     <main className="container max-w-7xl py-8 animate-fade-in-up">
@@ -107,14 +105,7 @@ const Dashboard = () => {
           <p className="mt-1 text-sm text-muted-foreground">{rangeLabel}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <PeriodPicker
-            preset={preset}
-            range={range}
-            onChange={(p, r) => {
-              setPreset(p);
-              setRange(r);
-            }}
-          />
+          <MonthSwitcher value={monthCursor} onChange={setMonthCursor} size="lg" />
           <Button
             variant="outline"
             className="h-10 gap-2 rounded-xl border-border/60"
@@ -130,7 +121,7 @@ const Dashboard = () => {
             size="icon"
             className="h-10 w-10 rounded-xl border-border/60"
             aria-label="Обновить"
-            onClick={() => setRange({ ...range })}
+            onClick={() => setMonthCursor((p) => new Date(p.getFullYear(), p.getMonth(), 1))}
             disabled={loading}
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
