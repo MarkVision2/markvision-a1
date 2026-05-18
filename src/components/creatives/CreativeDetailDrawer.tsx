@@ -67,6 +67,7 @@ export function CreativeDetailDrawer({
   isWhatsApp,
 }: Props) {
   const { data, loading } = useCreativeFunnel(open && row ? row.adId : null, range);
+  const [textExpanded, setTextExpanded] = useState(false);
 
   const stages = useMemo(() => {
     if (!data?.stages) return [];
