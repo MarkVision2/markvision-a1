@@ -24,6 +24,7 @@ import { DEFAULT_META_UTM_TEMPLATE } from "@/lib/utmDefaults";
 import type { AdCabinet } from "@/types/ads";
 import { saveCampaign } from "@/hooks/useCabinetsStore";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { useMetaPageAssets } from "@/hooks/useMetaPageAssets";
 import GoalAssetsPicker from "./GoalAssetsPicker";
 import { cropImageFile, computeSourceRect, type Fit } from "@/lib/cropMedia";
 
@@ -355,8 +356,38 @@ const CreateCampaignDialog = ({
   const [pixelId, setPixelId] = useState("");
   const [pixelEvent, setPixelEvent] = useState("Lead");
   const [leadFormId, setLeadFormId] = useState("");
+  const [pageId, setPageId] = useState<string>("");
+  const [websiteUrl, setWebsiteUrl] = useState<string>("");
 
   const selectedCabinet = cabinets.find((c) => c.id === cabinetId);
+
+  // Подгружаем список FB-страниц для выбранного рекламного кабинета —
+  // менеджер может запустить рекламу от любой доступной странице, а не
+  // только от той, что прописана в настройках клиента.
+  const pagesAssets = useMetaPageAssets({
+    kind: "pages",
+    actId: selectedCabinet?.adAccountId,
+    enabled: !!selectedCabinet?.adAccountId,
+  });
+
+  // При смене кабинета сбрасываем выбранную страницу на дефолтную из настроек кабинета.
+  useEffect(() => {
+    setPageId(selectedCabinet?.pageId ?? "");
+    setWebsiteUrl(selectedCabinet?.websiteUrl ?? "");
+  }, [cabinetId, selectedCabinet?.pageId, selectedCabinet?.websiteUrl]);
+
+  // Если в списке доступных страниц нет текущей — но дефолт из настроек уже задан,
+  // оставляем; иначе автоматически выбираем первую из списка.
+  useEffect(() => {
+    if (pageId) return;
+    if (pagesAssets.data.length > 0) setPageId(pagesAssets.data[0].id);
+  }, [pagesAssets.data, pageId]);
+
+  // «Эффективная» страница — то, что реально уйдёт в запуск.
+  const effectivePageId = pageId || selectedCabinet?.pageId || "";
+  const effectivePageName =
+    pagesAssets.data.find((p) => p.id === effectivePageId)?.name ??
+    selectedCabinet?.pageName ?? "";
 
   const [submitting, setSubmitting] = useState(false);
   const [successOpen, setSuccessOpen] = useState(false);
@@ -494,15 +525,21 @@ const CreateCampaignDialog = ({
         project_id: projectId || null,
         client_name: cab.name,
         ad_account_id: cab.adAccountId ?? "",
-        page_id: cab.pageId ?? "",
-        page_name: cab.pageName ?? "",
+        page_id: effectivePageId || cab.pageId || "",
+        page_name: effectivePageName || cab.pageName || "",
         instagram_actor_id: cab.instagramId ?? "",
         instagram_user_id: cab.instagramId ?? "",
         fb_token: cab.accessToken ?? "",
         fb_pixel_id: goal === "site-leads" ? pixelId : (cab.pixelId ?? ""),
         pixel_event: goal === "site-leads" ? pixelEvent : (cab.pixelEvent ?? "Lead"),
-        website_url: cab.websiteUrl ?? "",
-        landing_url: cab.landingUrl ?? "",
+        // Если для цели «Лиды с сайта» пользователь ввёл свой URL — отправляем его,
+        // иначе используем дефолтный сайт/лендинг из настроек кабинета.
+        website_url: (goal === "site-leads" && websiteUrl.trim())
+          ? websiteUrl.trim()
+          : (cab.websiteUrl ?? ""),
+        landing_url: (goal === "site-leads" && websiteUrl.trim())
+          ? websiteUrl.trim()
+          : (cab.landingUrl ?? ""),
         utm_template: cab.utmTemplate?.trim() || DEFAULT_META_UTM_TEMPLATE,
         whatsapp_number: goal === "whatsapp" ? whatsappId : (cab.whatsappNumber ?? ""),
         telegram_group_id: cab.telegramGroupId ?? "",
@@ -545,16 +582,20 @@ const CreateCampaignDialog = ({
         id: cab.id,
         name: cab.name,
         adAccountId: cab.adAccountId,
-        pageId: cab.pageId,
+        pageId: effectivePageId || cab.pageId,
+        pageName: effectivePageName || cab.pageName,
         instagramId: cab.instagramId,
       } : { id: cabinetId },
       goal,
       budget: Number(budget) || 0,
       currency: cab?.currency ?? "USD",
       text,
+      pageId: effectivePageId || cab?.pageId || undefined,
+      pageName: effectivePageName || cab?.pageName || undefined,
       whatsappNumber: goal === "whatsapp" ? whatsappId : undefined,
       pixelId: goal === "site-leads" ? pixelId : undefined,
       pixelEvent: goal === "site-leads" ? pixelEvent : undefined,
+      websiteUrl: goal === "site-leads" ? (websiteUrl.trim() || cab?.websiteUrl || undefined) : undefined,
       leadFormId: goal === "meta-form" ? leadFormId : undefined,
       creatives: {
         feed: bakedFeed
@@ -686,7 +727,8 @@ const CreateCampaignDialog = ({
     if (goal === "site-leads") {
       if (pixelId) rows.push({ label: "Пиксель", value: pixelId });
       if (pixelEvent) rows.push({ label: "Событие", value: pixelEvent });
-      if (cab?.websiteUrl) rows.push({ label: "Сайт", value: cab.websiteUrl });
+      const site = websiteUrl.trim() || cab?.websiteUrl;
+      if (site) rows.push({ label: "Сайт", value: site });
     } else if (goal === "whatsapp") {
       if (whatsappId) rows.push({ label: "WhatsApp", value: whatsappId });
     } else if (goal === "meta-form") {
@@ -744,6 +786,42 @@ const CreateCampaignDialog = ({
                 </Select>
               </div>
 
+              {selectedCabinet && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                      Страница (от имени)
+                    </Label>
+                    {pagesAssets.isLoading && (
+                      <span className="text-[10px] text-muted-foreground">Загрузка…</span>
+                    )}
+                  </div>
+                  <Select value={effectivePageId} onValueChange={setPageId}>
+                    <SelectTrigger className="h-11 rounded-xl bg-background/60">
+                      <SelectValue placeholder={pagesAssets.isLoading ? "Загрузка…" : "Выберите страницу"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {/* Если дефолтная страница кабинета не вернулась через API — всё равно покажем её. */}
+                      {selectedCabinet.pageId &&
+                        !pagesAssets.data.some((p) => p.id === selectedCabinet.pageId) && (
+                          <SelectItem value={selectedCabinet.pageId}>
+                            {selectedCabinet.pageName || selectedCabinet.pageId} · из настроек
+                          </SelectItem>
+                        )}
+                      {pagesAssets.data.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.name}
+                          {p.category ? ` · ${p.category}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {pagesAssets.error && (
+                    <div className="text-[11px] text-destructive">{pagesAssets.error}</div>
+                  )}
+                </div>
+              )}
+
               <div className="space-y-2">
                 <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
                   Цель кампании
@@ -769,7 +847,11 @@ const CreateCampaignDialog = ({
 
               <GoalAssetsPicker
                 goal={goal}
-                cabinet={selectedCabinet}
+                cabinet={
+                  selectedCabinet
+                    ? { ...selectedCabinet, pageId: effectivePageId || selectedCabinet.pageId }
+                    : selectedCabinet
+                }
                 whatsappId={whatsappId}
                 setWhatsappId={setWhatsappId}
                 pixelId={pixelId}
@@ -779,6 +861,25 @@ const CreateCampaignDialog = ({
                 leadFormId={leadFormId}
                 setLeadFormId={setLeadFormId}
               />
+
+              {goal === "site-leads" && (
+                <div className="space-y-2">
+                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    Ссылка на сайт
+                  </Label>
+                  <Input
+                    value={websiteUrl}
+                    onChange={(e) => setWebsiteUrl(e.target.value)}
+                    placeholder={selectedCabinet?.websiteUrl || "https://example.com/landing"}
+                    inputMode="url"
+                    className="h-11 rounded-xl bg-background/60"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    Реклама запустится на эту ссылку с выбранным пикселем.
+                    Если оставить пустым — используется сайт из настроек кабинета.
+                  </p>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">

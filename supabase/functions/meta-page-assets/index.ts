@@ -251,6 +251,42 @@ Deno.serve(async (req) => {
       return jsonResponse({ items: phones });
     }
 
+    // ============ PAGES ============
+    // Returns Facebook Pages that can be used as the "from" page for ads on this ad account.
+    if (kind === "pages") {
+      if (!actId) return jsonResponse({ error: "actId is required" }, 400);
+      const seen = new Set<string>();
+      const items: Array<{ id: string; name: string; category?: string; picture?: string }> = [];
+      const push = (p: any) => {
+        const id = String(p?.id ?? "");
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        items.push({
+          id,
+          name: p?.name ?? id,
+          category: p?.category ?? undefined,
+          picture: p?.picture?.data?.url ?? undefined,
+        });
+      };
+      // 1) Pages promotable from this ad account
+      const r1 = await metaGet(
+        `/${normalizeActId(actId)}/promote_pages?fields=id,name,category,picture{url}&limit=200`,
+        META_ACCESS_TOKEN,
+      );
+      if (r1.ok && Array.isArray(r1.body?.data)) r1.body.data.forEach(push);
+      // 2) Fallback: pages owned by the business
+      if (items.length === 0) {
+        const r2 = await metaGet(
+          `/${normalizeActId(actId)}?fields=business{owned_pages{id,name,category,picture{url}},client_pages{id,name,category,picture{url}}}`,
+          META_ACCESS_TOKEN,
+        );
+        const owned = r2.body?.business?.owned_pages?.data ?? [];
+        const client = r2.body?.business?.client_pages?.data ?? [];
+        [...owned, ...client].forEach(push);
+      }
+      return jsonResponse({ items });
+    }
+
     // ============ PIXELS ============
     if (kind === "pixels") {
       if (!actId) return jsonResponse({ error: "actId is required" }, 400);
