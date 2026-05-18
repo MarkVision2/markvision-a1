@@ -200,12 +200,16 @@ const Metrics = () => {
   const orphanSalesCount = orphanPaid.length;
   const orphanRevenue = orphanPaid.reduce((s, l) => s + (l.amount || 0), 0);
 
-  // Факт = CDI (override-aware) + orphan CRM. Та же формула, что в useReportData,
-  // поэтому цифры в Metrics, Dashboard, Analytics, Reports совпадают.
-  const factDiagnostics = (totals?.diagnostics ?? 0) + orphanDiagnostics;
-  const factSales = (totals?.sales ?? 0) + orphanSalesCount;
-  const factRevenue = (totals?.crmRevenue ?? 0) + orphanRevenue;
-  const factLeads = (totals?.leads ?? 0) + orphanThisMonth.length;
+  // Факт = только CDI (авто-синк CRM + ручной override по кабинетам).
+  // Orphan CRM (лиды без cabinet_id) НЕ прибавляем к итогам, иначе при
+  // ручном вводе того же лида в кабинет получалось задвоение
+  // (пример: 2 ручные продажи × 400k = 800k, а сверху ещё 400k из CRM).
+  // Orphan показываем отдельным предупреждением — пользователь решает,
+  // привязать лид к кабинету или ввести ручной факт.
+  const factDiagnostics = totals?.diagnostics ?? 0;
+  const factSales = totals?.sales ?? 0;
+  const factRevenue = totals?.crmRevenue ?? 0;
+  const factLeads = totals?.leads ?? 0;
   const factCac = factSales > 0 ? (totals?.spend ?? 0) / factSales : 0;
   const factCpd = factDiagnostics > 0 ? (totals?.spend ?? 0) / factDiagnostics : 0;
   const crLeadDiagnostics =
