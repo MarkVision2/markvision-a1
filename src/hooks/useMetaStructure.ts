@@ -269,7 +269,7 @@ export function useMetaCampaigns(range: Range) {
     let cancelled = false;
     setLoading(true);
     void (async () => {
-      const [campsRes, dailyRes] = await Promise.all([
+      const [campsRes, dailyRes, creativesRes, crmRes] = await Promise.all([
         supabase
           .from("meta_campaigns")
           .select("id, campaign_id, cabinet_id, name, objective, destination_type, effective_status, daily_budget")
@@ -281,11 +281,40 @@ export function useMetaCampaigns(range: Range) {
           .eq("project_id", projectId)
           .gte("date", since)
           .lte("date", until),
+        // Маппинг ad_id → campaign_id, чтобы агрегировать CRM на уровень кампании.
+        supabase
+          .from("meta_creatives")
+          .select("ad_id, campaign_id")
+          .eq("project_id", projectId)
+          .limit(2000),
+        // Сквозные CRM-метрики по объявлениям (view ещё нет в сгенерированных типах).
+        (supabase as unknown as { from: (t: string) => any })
+          .from("meta_creative_crm_daily")
+          .select("ad_id, crm_leads, crm_qualified, crm_sales, crm_revenue")
+          .eq("project_id", projectId)
+          .gte("date", since)
+          .lte("date", until),
       ]);
       if (cancelled) return;
 
       const camps = (campsRes.data ?? []) as RawCampaign[];
       const daily = (dailyRes.data ?? []) as RawCampaignDaily[];
+      const creativeMap = new Map<string, string>(); // ad_id → campaign_id
+      for (const c of (creativesRes.data ?? []) as Array<{ ad_id: string; campaign_id: string | null }>) {
+        if (c.campaign_id) creativeMap.set(c.ad_id, c.campaign_id);
+      }
+      const crmAgg = new Map<string, { crmLeads: number; crmQualified: number; crmSales: number; crmRevenue: number }>();
+      for (const c of (crmRes.data ?? []) as Array<{ ad_id: string; crm_leads: number | string; crm_qualified: number | string; crm_sales: number | string; crm_revenue: number | string }>) {
+        const campaignId = creativeMap.get(c.ad_id);
+        if (!campaignId) continue;
+        const cur = crmAgg.get(campaignId) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 };
+        cur.crmLeads += Number(c.crm_leads) || 0;
+        cur.crmQualified += Number(c.crm_qualified) || 0;
+        cur.crmSales += Number(c.crm_sales) || 0;
+        cur.crmRevenue += Number(c.crm_revenue) || 0;
+        crmAgg.set(campaignId, cur);
+      }
+
       const agg = new Map<string, {
         spend: number; impressions: number; clicks: number;
         leads: number; messages: number; purchases: number; revenue: number;
@@ -304,9 +333,14 @@ export function useMetaCampaigns(range: Range) {
 
       const out: MetaCampaignRow[] = camps.map((c) => {
         const a = agg.get(c.campaign_id) ?? { spend: 0, impressions: 0, clicks: 0, leads: 0, messages: 0, purchases: 0, revenue: 0 };
+        const cr = crmAgg.get(c.campaign_id) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 };
         const ctr = a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0;
         const cpl = a.leads > 0 ? a.spend / a.leads : 0;
         const romi = a.spend > 0 ? ((a.revenue - a.spend) / a.spend) * 100 : 0;
+        const crmRomi = a.spend > 0 ? ((cr.crmRevenue - a.spend) / a.spend) * 100 : 0;
+        const crmProfit = cr.crmRevenue - a.spend;
+        const crmAvgCheck = cr.crmSales > 0 ? cr.crmRevenue / cr.crmSales : 0;
+        const crmCps = cr.crmSales > 0 ? a.spend / cr.crmSales : 0;
         return {
           id: c.id,
           campaignId: c.campaign_id,
@@ -318,6 +352,8 @@ export function useMetaCampaigns(range: Range) {
           dailyBudget: c.daily_budget != null ? Number(c.daily_budget) : null,
           ...a,
           ctr, cpl, romi,
+          ...cr,
+          crmRomi, crmProfit, crmAvgCheck, crmCps,
         };
       });
       out.sort((a, b) => b.spend - a.spend);
