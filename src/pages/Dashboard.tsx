@@ -82,10 +82,17 @@ const Dashboard = () => {
   const { rows: metaCreatives } = useMetaCreatives(range);
   const { rows: metaCampaigns } = useMetaCampaigns(range);
   const { leads: liteLeads } = useLeadsLite();
-  const periodLeads = useMemo(() => liteLeads.filter((l) => {
-    const t = new Date(l.createdAt).getTime();
-    return t >= range.from.getTime() && t <= range.to.getTime();
-  }), [liteLeads, range]);
+  const periodLeads = useMemo(() => {
+    const fromTs = range.from.getTime();
+    // toTs = начало следующего дня после range.to, чтобы захватить весь последний день
+    // включительно (а не только лиды, созданные ровно в 00:00). Та же half-open
+    // конвенция, что в useReportData.aggregateCrm.
+    const toTs = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate() + 1).getTime();
+    return liteLeads.filter((l) => {
+      const t = new Date(l.createdAt).getTime();
+      return t >= fromTs && t < toTs;
+    });
+  }, [liteLeads, range]);
 
   const totals = data?.totals;
   const prev = data?.prev;

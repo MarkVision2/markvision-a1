@@ -8,6 +8,7 @@ import {
   type QualityCounts,
   type QualityCategory,
 } from "@/lib/quality";
+import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
 
 export interface QualityLeadLike {
   aiScore?: number | null;
@@ -155,8 +156,14 @@ export function QualityBlock({ leads, weeks = 8, title = "Качество ли�
 export function QualityFunnel({ leads }: { leads: readonly QualityLeadLike[] }) {
   const stage = (l: QualityLeadLike) => l.stageId ?? l.stageKey ?? "";
   const totalLeads = leads.length;
-  const scheduled = leads.filter((l) => ["scheduled", "diagnosed", "paid", "completed"].includes(stage(l))).length;
-  const paid = leads.filter((l) => ["paid", "completed"].includes(stage(l))).length;
+  // Через общий helper — поддерживает все языковые варианты paid-стадии и leads.paid boolean.
+  // Раньше было захардкожено ["paid", "completed"] — в проектах с переименованной стадией
+  // воронка показывала 0 оплат, при этом Dashboard.totals.revenue считал правильно → расхождение.
+  const scheduled = leads.filter((l) => {
+    const s = stage(l);
+    return s === "scheduled" || isLeadVisit({ stageKey: s });
+  }).length;
+  const paid = leads.filter((l) => isLeadPaid({ stageKey: stage(l) })).length;
 
   const pctScheduled = totalLeads > 0 ? Math.round((scheduled / totalLeads) * 100) : 0;
   const pctPaid = scheduled > 0 ? Math.round((paid / scheduled) * 100) : 0;

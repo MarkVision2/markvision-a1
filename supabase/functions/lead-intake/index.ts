@@ -265,9 +265,12 @@ Deno.serve(async (req) => {
 
   // Normalize source synonyms so all rows in DB use canonical keys.
   const SOURCE_ALIASES: Record<string, string> = {
-    wa: "whatsapp", ig: "instagram", fb: "facebook", meta: "facebook", tg: "telegram",
-    tilda: "site", web: "site", website: "site",
-    google: "google", googleads: "google", adwords: "google", gads: "google",
+    wa: "whatsapp", whatsapp: "whatsapp", whats: "whatsapp", waapi: "whatsapp", greenapi: "whatsapp",
+    ig: "instagram", insta: "instagram",
+    fb: "facebook", meta: "facebook", facebook_ads: "facebook", fb_ads: "facebook",
+    tg: "telegram", telegram: "telegram",
+    tilda: "site", web: "site", website: "site", landing: "site", form: "site",
+    google: "google", googleads: "google", adwords: "google", gads: "google", google_ads: "google",
     yandex: "yandex", ya: "yandex",
     tt: "tiktok", tiktok: "tiktok", tiktokads: "tiktok",
     yt: "youtube", youtube: "youtube",
@@ -275,12 +278,14 @@ Deno.serve(async (req) => {
     cpc: "ads", advert: "ads",
     leadform: "lead_form", call: "phone",
   };
-  // Detect source from referrer host if no explicit source/utm_source
+  // Detect source from referrer host if no explicit source/utm_source.
+  // Покрывает ещё WhatsApp Web, мобильные приложения, t.me-ссылки и др.
   function detectFromReferrer(ref: string | null | undefined): string | null {
     if (!ref) return null;
     const r = ref.toLowerCase();
-    if (/facebook\.com|fb\.com/.test(r)) return "facebook";
-    if (/instagram\.com/.test(r)) return "instagram";
+    if (/(?:^|\.)wa\.me|whatsapp\.com|api\.whatsapp/.test(r)) return "whatsapp";
+    if (/facebook\.com|fb\.com|fb\.me/.test(r)) return "facebook";
+    if (/instagram\.com|instagr\.am/.test(r)) return "instagram";
     if (/google\./.test(r)) return "google";
     if (/tiktok\.com/.test(r)) return "tiktok";
     if (/youtube\.com|youtu\.be/.test(r)) return "youtube";
@@ -289,10 +294,14 @@ Deno.serve(async (req) => {
     if (/t\.me|telegram\./.test(r)) return "telegram";
     return null;
   }
+  // Если канал явно whatsapp/telegram/phone — это важнее, чем неявный source.
+  // Решает кейс: лид с сайта по клику на WhatsApp-кнопку должен быть source=whatsapp,
+  // а не site, потому что менеджер дальше пишет ему в WhatsApp.
   const rawSource =
     (v.source && v.source.trim()) ||
     (v.utm_source && v.utm_source.trim()) ||
     detectFromReferrer(v.referrer) ||
+    (v.channel && v.channel.trim() !== "web" ? v.channel.trim() : null) ||
     "site";
   const source = SOURCE_ALIASES[rawSource.toLowerCase()] ?? rawSource.toLowerCase();
   // channel is a DB enum: whatsapp | telegram | instagram | phone | web

@@ -31,6 +31,8 @@ import { PeriodPicker, monthRange } from "@/components/dashboard/PeriodPicker";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useMultiMetaInsights, type DailyInsightRow } from "@/hooks/useMetaInsights";
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
+import { useLeadsLite } from "@/hooks/useLeadsLite";
+import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -175,13 +177,39 @@ const Metrics = () => {
 
   const filledDays = data?.daily.length ?? 0;
   const monthProgress = Math.round((filledDays / daysInMonth) * 100);
-  const factDiagnostics = totals?.diagnostics ?? 0;
-  const factSales = totals?.sales ?? 0;
-  const factRevenue = totals?.crmRevenue || totals?.revenue || 0;
+
+  // Orphan CRM-лиды этого месяца (без cabinet_id) — заявки с сайта/WhatsApp,
+  // которые не относятся ни к одному рекламному кабинету. Чтобы факты Metrics
+  // совпадали с Dashboard/Analytics, прибавляем их к CDI-суммам.
+  const { leads: allLeads } = useLeadsLite();
+  const monthStartTs = monthCursor.getTime();
+  const monthEndTs = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 1).getTime();
+  const orphanThisMonth = useMemo(
+    () => allLeads.filter((l) => {
+      if (l.cabinetId) return false;
+      // Если выбран конкретный кабинет — orphan-лиды не показываем,
+      // т.к. они не относятся ни к какому кабинету.
+      if (cabinetId !== "all") return false;
+      const t = new Date(l.createdAt).getTime();
+      return t >= monthStartTs && t < monthEndTs;
+    }),
+    [allLeads, cabinetId, monthStartTs, monthEndTs],
+  );
+  const orphanDiagnostics = orphanThisMonth.filter(isLeadVisit).length;
+  const orphanPaid = orphanThisMonth.filter(isLeadPaid);
+  const orphanSalesCount = orphanPaid.length;
+  const orphanRevenue = orphanPaid.reduce((s, l) => s + (l.amount || 0), 0);
+
+  // Факт = CDI (override-aware) + orphan CRM. Та же формула, что в useReportData,
+  // поэтому цифры в Metrics, Dashboard, Analytics, Reports совпадают.
+  const factDiagnostics = (totals?.diagnostics ?? 0) + orphanDiagnostics;
+  const factSales = (totals?.sales ?? 0) + orphanSalesCount;
+  const factRevenue = (totals?.crmRevenue ?? 0) + orphanRevenue;
+  const factLeads = (totals?.leads ?? 0) + orphanThisMonth.length;
   const factCac = factSales > 0 ? (totals?.spend ?? 0) / factSales : 0;
   const factCpd = factDiagnostics > 0 ? (totals?.spend ?? 0) / factDiagnostics : 0;
   const crLeadDiagnostics =
-    totals && totals.leads > 0 ? (factDiagnostics / totals.leads) * 100 : 0;
+    factLeads > 0 ? (factDiagnostics / factLeads) * 100 : 0;
   const crDiagnosticsSale =
     factDiagnostics > 0 ? (factSales / factDiagnostics) * 100 : 0;
 
@@ -206,7 +234,7 @@ const Metrics = () => {
         cpl ? Math.round(cpl) : "",
         d?.diagnostics ?? 0,
         d?.sales ?? 0,
-        d?.crmRevenue || d?.revenue || 0,
+        d?.crmRevenue ?? 0,
         d?.impressions ?? 0,
         d?.clicks ?? 0,
         ctr ? ctr.toFixed(2) : "",
@@ -388,6 +416,44 @@ const Metrics = () => {
         />
       </div>
 
+      {/* Диагностика источников выручки: чтобы было видно, из чего складывается factRevenue.
+          Помогает понять, если сумма не сходится с CRM (например, в orphan лежат старые/тестовые лиды). */}
+      <div className="mt-6 grid gap-3 rounded-2xl border border-border/60 bg-card/40 p-4 sm:grid-cols-3">
+        <div className="rounded-xl border border-border/40 bg-background/40 p-3">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Из рекламных кабинетов (CDI)
+          </div>
+          <div className="mt-1.5 text-lg font-bold tabular-nums">{formatTenge(totals?.crmRevenue ?? 0)}</div>
+          <div className="mt-0.5 text-[11px] text-muted-foreground">
+            {totals?.sales ?? 0} оплат · авто-синк из CRM + ручной факт
+          </div>
+        </div>
+        <div className={cn(
+          "rounded-xl border p-3",
+          orphanRevenue > 0 ? "border-warning/30 bg-warning/5" : "border-border/40 bg-background/40",
+        )}>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            Из CRM без привязки к кабинету
+          </div>
+          <div className="mt-1.5 text-lg font-bold tabular-nums">{formatTenge(orphanRevenue)}</div>
+          <div className="mt-0.5 text-[11px] text-muted-foreground">
+            {orphanSalesCount} оплат · сайт/WhatsApp без cabinet_id
+            {orphanRevenue > 0 && cabinetId === "all" && (
+              <span className="ml-1 text-warning">⚠ если это лишние — проверь CRM</span>
+            )}
+          </div>
+        </div>
+        <div className="rounded-xl border border-success/30 bg-success/5 p-3">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-success">
+            Итого (видно везде)
+          </div>
+          <div className="mt-1.5 text-lg font-bold tabular-nums text-success">{formatTenge(factRevenue)}</div>
+          <div className="mt-0.5 text-[11px] text-muted-foreground">
+            {factSales} оплат · совпадает с Дашбордом и Аналитикой
+          </div>
+        </div>
+      </div>
+
       <div className="mt-6 rounded-2xl border border-success/20 bg-success/5 p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-3">
@@ -397,7 +463,7 @@ const Metrics = () => {
             <div>
               <div className="text-sm font-semibold">Единый ручной факт</div>
               <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
-                Редактируй диагностики, оплаты и сумму прямо в дневных строках. Эти значения складываются с CRM и сразу попадают в сквозную аналитику, рекламный кабинет и сводку этой таблицы.
+                Редактируй диагностики, оплаты и сумму прямо в дневных строках. Ручное значение ПЕРЕЗАПИСЫВАЕТ авто-данные из CRM за этот день (если поле пустое — берётся факт из CRM). Так цифры в отчётах всегда совпадают с реальностью.
               </p>
             </div>
           </div>
@@ -530,7 +596,7 @@ const Metrics = () => {
                 </Cell>
                 <Cell>
                   <span className="font-bold text-success">
-                    {totals ? formatNumber(totals.leads) : <Dash />}
+                    {factLeads > 0 ? formatNumber(factLeads) : <Dash />}
                   </span>
                 </Cell>
                 <Cell>
@@ -571,7 +637,6 @@ const Metrics = () => {
                   const pct = (fact: number, p: number) =>
                     plan && p > 0 ? `${Math.round((fact / p) * 100)}%` : null;
                   const factSpend = totals?.spend ?? 0;
-                  const factLeads = totals?.leads ?? 0;
                   const cells = [
                     pct(factSpend, plan?.spend ?? 0),
                     pct(factLeads, plan?.leads ?? 0),
@@ -592,7 +657,9 @@ const Metrics = () => {
               {monthDays.map(({ day, iso, weekday }) => {
                 const d = dailyMap.get(iso);
                 const cpl = d && d.leads > 0 ? d.spend / d.leads : 0;
-                const dayRevenue = d ? d.crmRevenue || d.revenue : 0;
+                // d.crmRevenue теперь уже override-aware (manual если задан, иначе CRM).
+                // FB pixel revenue (d.revenue) больше не используем — это атрибуционный сигнал, а не реальные деньги.
+                const dayRevenue = d?.crmRevenue ?? 0;
                 const hasData = !!d && (
                   d.spend > 0 ||
                   d.leads > 0 ||
@@ -621,6 +688,7 @@ const Metrics = () => {
                         icon={Eye}
                         isoDate={iso}
                         value={d?.diagnostics ?? 0}
+                        crm={d?.crmDiagnostics ?? 0}
                         manual={d?.manualDiagnostics ?? 0}
                         autoLabel="CRM"
                         disabled={!manualCabinet}
@@ -633,6 +701,7 @@ const Metrics = () => {
                         icon={Wallet}
                         isoDate={iso}
                         value={d?.sales ?? 0}
+                        crm={d?.crmSales ?? 0}
                         manual={d?.manualSales ?? 0}
                         autoLabel="CRM"
                         disabled={!manualCabinet}
@@ -645,6 +714,7 @@ const Metrics = () => {
                         icon={DollarSign}
                         isoDate={iso}
                         value={dayRevenue}
+                        crm={d?.crmRevenueOnly ?? 0}
                         manual={d?.manualRevenue ?? 0}
                         autoLabel="CRM"
                         disabled={!manualCabinet}
@@ -680,6 +750,7 @@ const ManualFactCell = ({
   icon: Icon,
   isoDate,
   value,
+  crm,
   manual,
   autoLabel,
   onSave,
@@ -690,7 +761,10 @@ const ManualFactCell = ({
   title: string;
   icon: React.ElementType;
   isoDate: string;
+  /** Итоговое значение, которое реально показывается (override-aware). */
   value: number;
+  /** Чистое CRM значение, БЕЗ применения override. Нужно, чтобы попап показал "Из CRM: N" корректно. */
+  crm: number;
   manual: number;
   autoLabel: string;
   onSave: (newManual: number) => Promise<void>;
@@ -701,7 +775,9 @@ const ManualFactCell = ({
   const [open, setOpen] = useState(false);
   const [val, setVal] = useState(String(manual || ""));
   const [saving, setSaving] = useState(false);
-  const auto = Math.max(0, value - manual);
+  // В попапе всегда показываем настоящее CRM-значение (а не "value - manual",
+  // которое после override-семантики равно 0 как только пользователь ввёл manual).
+  const auto = Math.max(0, crm);
   const hasValue = value > 0;
 
   const handleSave = async () => {
@@ -762,10 +838,13 @@ const ManualFactCell = ({
               <div className="mt-1 text-sm font-bold tabular-nums text-success">{format(manual)}</div>
             </div>
             <div className="rounded-xl border border-border/60 bg-card/60 p-2">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Итого</div>
+              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Показано</div>
               <div className="mt-1 text-sm font-bold tabular-nums">{format(value)}</div>
             </div>
           </div>
+          <p className="text-[11px] leading-4 text-muted-foreground">
+            Если задано «Вручную» — оно перезаписывает значение из CRM. Чтобы вернуться к авто-данным, очисти поле (0).
+          </p>
 
           <div className="space-y-2">
             <label className="text-xs font-medium text-muted-foreground">

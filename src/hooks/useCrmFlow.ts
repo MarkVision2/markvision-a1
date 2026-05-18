@@ -3,6 +3,19 @@ import { supabase } from "@/integrations/supabase/client";
 import { useLeadsLite, type LeadLite } from "./useLeadsLite";
 import { useProjectsStore } from "./useProjectsStore";
 import { useRealtimeTable } from "./useRealtimeTable";
+import { isLeadPaid } from "@/lib/leadStageFlags";
+
+// "Закрытая" стадия — paid или rejected. Лиды в таких стадиях считаются обработанными:
+// они не попадают в активные / SLA / распределение по стадиям.
+function isClosedLead(l: LeadLite): boolean {
+  if (isLeadPaid(l)) return true;
+  const k = (l.stageKey ?? "").toLowerCase().trim();
+  return k === "rejected" || k === "refused" || k === "lost" || k === "отказ" || k === "потерян";
+}
+function isRejectedLead(l: LeadLite): boolean {
+  const k = (l.stageKey ?? "").toLowerCase().trim();
+  return k === "rejected" || k === "refused" || k === "lost" || k === "отказ" || k === "потерян";
+}
 
 interface Range { from: Date; to: Date }
 
@@ -124,7 +137,7 @@ export function useCrmFlow(range: Range) {
     let cancelled = false;
     void (async () => {
       const activeLeadIds = liteLeads
-        .filter((l) => l.stageKey !== "paid" && l.stageKey !== "rejected")
+        .filter((l) => !isClosedLead(l))
         .map((l) => l.id);
       if (activeLeadIds.length === 0) {
         setStageEnteredAt(new Map());
@@ -177,7 +190,7 @@ export function useCrmFlow(range: Range) {
 
     const now = Date.now();
     const awaiting = inRangeLeads.filter((l) =>
-      !l.firstResponseAt && l.stageKey !== "paid" && l.stageKey !== "rejected",
+      !l.firstResponseAt && !isClosedLead(l),
     );
     const awaitingOver15 = awaiting.filter(
       (l) => (now - new Date(l.createdAt).getTime()) / 60000 > 15,
@@ -204,7 +217,7 @@ export function useCrmFlow(range: Range) {
     const now = Date.now();
     for (const l of liteLeads) {
       // Терминальные стадии не показываем (paid, rejected) — для распределения.
-      if (l.stageKey === "paid" || l.stageKey === "rejected") continue;
+      if (isClosedLead(l)) continue;
       let stage: StageInfo | undefined;
       if (l.stageId) stage = stageById.get(l.stageId);
       if (!stage) stage = stageByKey.get(l.stageKey);
@@ -243,7 +256,7 @@ export function useCrmFlow(range: Range) {
     const fromTs = range.from.getTime();
     const toTs = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate() + 1).getTime();
     const rejected = liteLeads.filter((l) => {
-      if (l.stageKey !== "rejected") return false;
+      if (!isRejectedLead(l)) return false;
       // По дате отказа, если есть; иначе по созданию.
       const t = new Date(l.rejectedAt ?? l.createdAt).getTime();
       return t >= fromTs && t < toTs;
@@ -272,7 +285,7 @@ export function useCrmFlow(range: Range) {
   }, [liteLeads, range.from, range.to, reasons]);
 
   const activeLeadsTotal = useMemo(
-    () => liteLeads.filter((l) => l.stageKey !== "paid" && l.stageKey !== "rejected").length,
+    () => liteLeads.filter((l) => !isClosedLead(l)).length,
     [liteLeads],
   );
 

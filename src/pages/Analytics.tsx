@@ -22,6 +22,7 @@ import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useMultiMetaInsights } from "@/hooks/useMetaInsights";
 import { useLeadsLite, type LeadLite } from "@/hooks/useLeadsLite";
 import { CHANNELS, resolveChannel, type ChannelKey } from "@/lib/channelAttribution";
+import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
 import { ChannelCard, type ChannelStat } from "@/components/analytics/ChannelCard";
 import { UtmTable, type UtmRow } from "@/components/analytics/UtmTable";
 import { TrendChart, type TrendPoint } from "@/components/analytics/TrendChart";
@@ -183,23 +184,37 @@ const Analytics = () => {
     return monthLeads.filter((l) => l.cabinetId === cabinetId);
   }, [monthLeads, cabinetId]);
 
-  const sales = filteredLeads.filter((l) => l.stageKey === "paid");
-  const visits = filteredLeads.filter((l) => l.stageKey === "visit" || l.stageKey === "paid");
-  const leadCount = data?.totals.leads || filteredLeads.length;
-  const diagnosticsCount = data?.totals.diagnostics || visits.length;
-  const salesCount = data?.totals.sales || sales.length;
-  const revenue = data?.totals.crmRevenue || sales.reduce((sum, l) => sum + (l.amount || 0), 0);
+  // ЕДИНАЯ ФОРМУЛА (та же, что в useReportData/Dashboard):
+  //   total = Meta-side (CDI) + CRM orphan (лиды без cabinet_id).
+  // Лиды с cabinet_id уже учтены через CDI.crm_sales / crm_revenue, поэтому
+  // повторно их не считаем — иначе на Analytics получим разные цифры с Dashboard.
+  const orphanLeads = filteredLeads.filter((l) => !l.cabinetId);
+  const orphanSales = orphanLeads.filter((l) => isLeadPaid(l));
+  const orphanVisits = orphanLeads.filter(isLeadVisit);
+  const orphanRevenue = orphanSales.reduce((sum, l) => sum + (l.amount || 0), 0);
 
-  const prevSales = prevLeads.filter((l) => l.stageKey === "paid");
-  const prevRevenue = prevData?.totals.crmRevenue || prevSales.reduce((s, l) => s + (l.amount || 0), 0);
+  const adsLeads = data?.totals.leads ?? 0;
+  const cabinetSales = data?.totals.sales ?? 0;
+  const cabinetDiagnostics = data?.totals.diagnostics ?? 0;
+  const cabinetRevenue = data?.totals.crmRevenue ?? 0;
+
+  const leadCount = adsLeads + orphanLeads.length;
+  const diagnosticsCount = cabinetDiagnostics + orphanVisits.length;
+  const salesCount = cabinetSales + orphanSales.length;
+  const revenue = cabinetRevenue + orphanRevenue;
+
+  const prevOrphan = prevLeads.filter((l) => !l.cabinetId);
+  const prevOrphanSales = prevOrphan.filter((l) => isLeadPaid(l));
+  const prevOrphanRevenue = prevOrphanSales.reduce((s, l) => s + (l.amount || 0), 0);
+  const prevRevenue = (prevData?.totals.crmRevenue ?? 0) + prevOrphanRevenue;
 
   const spend = data?.totals.spend ?? 0;
   const prevSpend = prevData?.totals.spend ?? 0;
-  const adsLeads = data?.totals.leads ?? 0;
   const impressions = data?.totals.impressions ?? 0;
   const clicks = data?.totals.clicks ?? 0;
-  const prevTotalLeads = prevData?.totals.leads || prevLeads.length;
-  const cpl = leadCount > 0 && spend > 0 ? spend / leadCount : 0;
+  const prevTotalLeads = (prevData?.totals.leads ?? 0) + prevOrphan.length;
+  // CPL по marketing-конвенции: расход / только платные лиды. Те же цифры в Reports/Metrics.
+  const cpl = adsLeads > 0 ? spend / adsLeads : 0;
   const romi = spend > 0 ? ((revenue - spend) / spend) * 100 : null;
   const avgCheck = salesCount > 0 ? revenue / salesCount : 0;
   const conversion = leadCount > 0 ? (salesCount / leadCount) * 100 : 0;
@@ -207,27 +222,37 @@ const Analytics = () => {
   const crLeadVisit = leadCount > 0 ? (diagnosticsCount / leadCount) * 100 : 0;
   const crVisitSale = diagnosticsCount > 0 ? (salesCount / diagnosticsCount) * 100 : 0;
 
-  // Per-channel attribution
+  // Per-channel attribution.
+  // ВАЖНО: атрибуцию делаем по тем же правилам, что и Dashboard.channels,
+  // чтобы суммы по каналам совпадали между Sequential analytics и Dashboard.
+  // Лиды с cabinet_id (Meta/Google) считаем через CDI-totals (adsLeads/cabinetSales/cabinetRevenue),
+  // CRM-orphan лиды распределяем по их source. Раньше суммировали все CRM-лиды
+  // в каналы (включая facebook-ads) + накладывали поверх Meta spend через Math.max —
+  // получали "facebook" с задвоенными лидами.
   const channels = useMemo<ChannelStat[]>(() => {
     const map = new Map<ChannelKey, ChannelStat>();
-    for (const l of filteredLeads) {
+    // 1) CRM orphan лиды → разбивка по их source (whatsapp, instagram, direct, и т.д.)
+    for (const l of orphanLeads) {
       const meta = resolveChannel(l as LeadLite);
       const cur = map.get(meta.key) ?? { meta, spend: 0, leads: 0, sales: 0, revenue: 0 };
       cur.leads += 1;
-      if (l.stageKey === "paid") {
+      if (isLeadPaid(l)) {
         cur.sales += 1;
         cur.revenue += l.amount || 0;
       }
       map.set(meta.key, cur);
     }
-    // Attribute Meta ad spend to facebook bucket (extend later for google/tiktok)
-    if (spend > 0) {
+    // 2) Meta/FB-кабинет: spend, ads-leads, cabinet-attributed sales/revenue из CDI.
+    //    Никакого Math.max — мы строго суммируем cabinet-сторону, чтобы не задвоить.
+    if (spend > 0 || adsLeads > 0 || cabinetSales > 0 || cabinetRevenue > 0) {
       const fb = map.get("facebook") ?? { meta: CHANNELS.facebook, spend: 0, leads: 0, sales: 0, revenue: 0 };
       fb.spend += spend;
-      fb.leads = Math.max(fb.leads, adsLeads);
+      fb.leads += adsLeads;
+      fb.sales += cabinetSales;
+      fb.revenue += cabinetRevenue;
       map.set("facebook", fb);
     }
-    // Always show core 4 channels even if empty so user sees structure
+    // 3) Заглушки для основных каналов
     for (const k of ["facebook", "google", "tiktok", "instagram"] as ChannelKey[]) {
       if (!map.has(k)) {
         map.set(k, { meta: CHANNELS[k], spend: 0, leads: 0, sales: 0, revenue: 0 });
@@ -237,7 +262,7 @@ const Analytics = () => {
       const order: ChannelKey[] = ["facebook", "instagram", "google", "tiktok", "youtube", "yandex", "vk", "telegram", "whatsapp", "direct", "referral", "other"];
       return order.indexOf(a.meta.key) - order.indexOf(b.meta.key);
     });
-  }, [filteredLeads, spend, adsLeads]);
+  }, [orphanLeads, spend, adsLeads, cabinetSales, cabinetRevenue]);
 
   // UTM campaigns table + AI quality aggregates
   const utmRows = useMemo<UtmRow[]>(() => {
@@ -255,7 +280,7 @@ const Analytics = () => {
         _scoreSum: 0, _scoreCount: 0,
       };
       cur.leads += 1;
-      if (l.stageKey === "paid") {
+      if (isLeadPaid(l)) {
         cur.sales += 1;
         cur.revenue += l.amount || 0;
         cur.paidCount = (cur.paidCount ?? 0) + 1;
@@ -291,7 +316,7 @@ const Analytics = () => {
       const d = new Date(l.createdAt).toISOString().slice(0, 10);
       const cur = leadsByDate.get(d) ?? { leads: 0, sales: 0 };
       cur.leads += 1;
-      if (l.stageKey === "paid") cur.sales += 1;
+      if (isLeadPaid(l)) cur.sales += 1;
       leadsByDate.set(d, cur);
     }
     for (let i = 1; i <= days; i++) {
@@ -354,7 +379,7 @@ const Analytics = () => {
         <KpiCard icon={DollarSign} label="Расход" value={spend > 0 ? fmtMoney(spend) : "—"} sub="за период" delta={pctDelta(spend, prevSpend)} />
         <KpiCard icon={Users} label="Лиды" value={fmtNumber(leadCount)} sub={adsLeads ? `${adsLeads} из рекламы` : `${filteredLeads.length} в CRM`} delta={pctDelta(leadCount, prevTotalLeads)} />
         <KpiCard icon={Target} label="CPL" value={cpl > 0 ? fmtMoney(cpl) : "—"} sub="стоимость лида" emphasized />
-        <KpiCard icon={ShoppingBag} label="Продажи" value={fmtNumber(salesCount)} sub={salesCount > 0 ? fmtPct(conversion) + " конверсия" : "нет продаж"} delta={pctDelta(salesCount, prevData?.totals.sales || prevSales.length)} />
+        <KpiCard icon={ShoppingBag} label="Продажи" value={fmtNumber(salesCount)} sub={salesCount > 0 ? fmtPct(conversion) + " конверсия" : "нет продаж"} delta={pctDelta(salesCount, (prevData?.totals.sales ?? 0) + prevOrphanSales.length)} />
         <KpiCard icon={TrendingUp} label="Выручка" value={revenue > 0 ? fmtMoney(revenue) : "—"} sub={salesCount > 0 ? `${salesCount} продаж` : "нет данных"} delta={pctDelta(revenue, prevRevenue)} />
         <KpiCard icon={GitBranch} label="ROMI" value={romi !== null ? <span className={romi >= 0 ? "text-success" : "text-destructive"}>{romi >= 0 ? "+" : ""}{Math.round(romi)}%</span> : "—"} sub={spend > 0 ? "возврат инвестиций" : "нет расходов"} emphasized />
         <KpiCard icon={Target} label="Средний чек" value={avgCheck > 0 ? fmtMoney(avgCheck) : "—"} sub={salesCount > 0 ? `по ${salesCount} продажам` : "нет продаж"} />

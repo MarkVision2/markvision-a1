@@ -443,10 +443,13 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                   const dayCpl =
                     row && row.leads > 0 ? row.spend / row.leads : 0;
                   const diag = row?.diagnostics ?? 0;
+                  const crmDiag = row?.crmDiagnostics ?? 0;
                   const manualDiag = row?.manualDiagnostics ?? 0;
                   const sales = row?.sales ?? 0;
+                  const crmSalesOnly = row?.crmSales ?? 0;
                   const manualSales = row?.manualSales ?? 0;
                   const crmRev = row?.crmRevenue ?? 0;
+                  const crmRevenueOnly = row?.crmRevenueOnly ?? 0;
                   const manualRev = row?.manualRevenue ?? 0;
                   return (
                     <tr
@@ -482,6 +485,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                         <DiagnosticsCell
                           isoDate={d.iso}
                           diagnostics={diag}
+                          crm={crmDiag}
                           manual={manualDiag}
                           onSave={(v) => handleManualDiagnostics(d.iso, v)}
                         />
@@ -491,7 +495,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                           value={sales}
                           manual={manualSales}
                           autoLabel="Из CRM"
-                          fromAuto={Math.max(0, sales - manualSales)}
+                          fromAuto={crmSalesOnly}
                           render={(v) => (v ? formatNumber(v) : "—")}
                           onSave={(v) => handleManualSales(d.iso, v)}
                           title="Продажи вручную"
@@ -502,7 +506,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                           value={crmRev}
                           manual={manualRev}
                           autoLabel="Из CRM"
-                          fromAuto={Math.max(0, crmRev - manualRev)}
+                          fromAuto={crmRevenueOnly}
                           render={(v) => (v ? formatMoney(v, currency) : "—")}
                           onSave={(v) => handleManualRevenue(d.iso, v)}
                           title="Сумма вручную"
@@ -528,11 +532,15 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
 const DiagnosticsCell = ({
   isoDate,
   diagnostics,
+  crm,
   manual,
   onSave,
 }: {
   isoDate: string;
+  /** Итоговое значение (override-aware). */
   diagnostics: number;
+  /** Чистое CRM значение, чтобы в попапе можно было увидеть авто-факт даже если поверх стоит manual. */
+  crm: number;
   manual: number;
   onSave: (newManual: number) => Promise<void>;
 }) => {
@@ -570,7 +578,7 @@ const DiagnosticsCell = ({
         <div className="space-y-2">
           <div className="text-xs font-medium">Диагностики вручную</div>
           <div className="text-[11px] text-muted-foreground">
-            Из CRM: {Math.max(0, diagnostics - manual)} · Вручную: {manual}
+            Из CRM: {crm} · Вручную: {manual} · Показано: {diagnostics}
           </div>
           <Input
             type="number"

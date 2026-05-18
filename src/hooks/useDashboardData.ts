@@ -4,6 +4,7 @@ import { useLeadsLite } from "./useLeadsLite";
 import { useInstagramOrganic } from "./useInstagramOrganic";
 import { buildAlerts } from "@/lib/dashboardAlerts";
 import { normalizeSource } from "@/lib/leadSource";
+import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "./useProjectsStore";
 import { useRealtimeTable } from "./useRealtimeTable";
@@ -99,10 +100,13 @@ export function useDashboardData(
         };
         cur.spend += Number((r as { spend?: number }).spend ?? 0);
         cur.leads += Number((r as { leads?: number }).leads ?? 0);
-        cur.sales += Number((r as { crm_sales?: number }).crm_sales ?? 0) + Number((r as { manual_sales?: number }).manual_sales ?? 0);
-        cur.revenue +=
-          Number((r as { crm_revenue?: number }).crm_revenue ?? 0) +
-          Number((r as { manual_revenue?: number }).manual_revenue ?? 0);
+        // Override-семантика: ручные значения перезаписывают CRM, не суммируются.
+        const crmS = Number((r as { crm_sales?: number }).crm_sales ?? 0);
+        const manS = Number((r as { manual_sales?: number }).manual_sales ?? 0);
+        cur.sales += manS > 0 ? manS : crmS;
+        const crmR = Number((r as { crm_revenue?: number }).crm_revenue ?? 0);
+        const manR = Number((r as { manual_revenue?: number }).manual_revenue ?? 0);
+        cur.revenue += manR > 0 ? manR : crmR;
         acc.set(provider, cur);
       }
       setProviderAgg(Array.from(acc.values()));
@@ -118,9 +122,13 @@ export function useDashboardData(
     });
     const total = inRange.length;
     const reached = inRange.filter((l) => l.stageKey !== "new" && l.stageKey !== "no_answer").length;
-    const scheduled = inRange.filter((l) => ["scheduled", "visit", "paid"].includes(l.stageKey)).length;
-    const visited = inRange.filter((l) => ["visit", "paid"].includes(l.stageKey)).length;
-    const paid = inRange.filter((l) => l.stageKey === "paid").length;
+    // Используем helpers вместо хардкода ключей стадий: isLeadVisit ловит и "visit"/"diagnosed",
+    // и paid (он сам внутри проверяет isLeadPaid). Так что:
+    //   scheduled — все, кто либо записан, либо был на визите, либо оплатил
+    //   visited   — те, кто на визите или оплатил
+    const scheduled = inRange.filter((l) => l.stageKey === "scheduled" || isLeadVisit(l)).length;
+    const visited = inRange.filter(isLeadVisit).length;
+    const paid = inRange.filter(isLeadPaid).length;
     return { total, reached, scheduled, visited, paid };
   }, [leads, fromTs, toTs]);
 
@@ -157,16 +165,22 @@ export function useDashboardData(
     }
 
     // Instagram organic — отдельный канал. Заявки приходят из событий lead.
+    // Лид считаем только если он БЕЗ cabinet_id — иначе он уже учтён через CDI Meta/Google
+    // (например, в Meta-кампании через Instagram) и попал бы в две строки ChannelsTable одновременно.
     if (igFunnel.leads > 0 || igFunnel.codewordDms > 0) {
       const igRevenue = igEvents
         .filter((e) => e.eventType === "lead" && e.leadId)
         .reduce((sum, e) => {
           const lead = leads.find((l) => l.id === e.leadId);
-          return sum + (lead?.stageKey === "paid" ? lead.amount || 0 : 0);
+          if (!lead || lead.cabinetId) return sum;
+          return sum + (isLeadPaid(lead) ? lead.amount || 0 : 0);
         }, 0);
       const igSales = igEvents
         .filter((e) => e.eventType === "lead" && e.leadId)
-        .filter((e) => leads.find((l) => l.id === e.leadId)?.stageKey === "paid")
+        .filter((e) => {
+          const lead = leads.find((l) => l.id === e.leadId);
+          return lead && !lead.cabinetId && isLeadPaid(lead);
+        })
         .length;
       rows.push({
         key: "instagram_organic",
@@ -196,7 +210,7 @@ export function useDashboardData(
           spend: 0, leads: 0, sales: 0, revenue: 0,
         };
         cur.leads += 1;
-        if (l.stageKey === "paid") {
+        if (isLeadPaid(l)) {
           cur.sales += 1;
           cur.revenue += l.amount || 0;
         }
@@ -205,14 +219,16 @@ export function useDashboardData(
       for (const v of map.values()) rows.push(v);
     }
 
-    // Fallback: если у нас вообще пусто, но есть totals из ReportData — показываем одну строку Meta.
-    if (rows.length === 0 && data?.totals && data.totals.totalLeads > 0) {
+    // Fallback: если у нас пусто (провайдер не записал в CDI provider-колонку), но в Meta totals есть
+    // лиды — показываем одну Meta-строку строго с ads-метриками. Раньше тут было `totalLeads`,
+    // что включало orphan CRM-лиды в Meta-строку и искажало CPL.
+    if (rows.length === 0 && data?.totals && data.totals.adsLeads > 0) {
       rows.push({
         key: "meta",
         name: PROVIDER_LABELS.meta,
         provider: "meta",
         spend: data.totals.spend,
-        leads: data.totals.totalLeads,
+        leads: data.totals.adsLeads,
         sales: data.totals.sales,
         revenue: data.totals.revenue,
       });
@@ -235,11 +251,16 @@ export function useDashboardData(
       revByDay.set(d.date, (revByDay.get(d.date) ?? 0) + (d.revenue ?? 0));
     }
     // CRM-лиды без cabinet_id — добавляем их выручку отдельно (чтобы не задвоить CDI).
+    // isLeadPaid вместо хардкода "paid" — иначе график занижался при custom-стадиях
+    // и расходился с totals.revenue в верхних KPI Dashboard.
+    // Группируем по дню ОПЛАТЫ (paidAt), а не по созданию лида — иначе выручка ложится
+    // не на тот день, в который реально пришли деньги.
     for (const l of leads) {
-      if (l.stageKey !== "paid" || l.cabinetId) continue;
-      const t = new Date(l.createdAt).getTime();
+      if (!isLeadPaid(l) || l.cabinetId) continue;
+      const dateForBucket = l.paidAt ?? l.createdAt;
+      const t = new Date(dateForBucket).getTime();
       if (t < fromTs || t >= toTs) continue;
-      const k = dayKey(l.createdAt);
+      const k = dayKey(dateForBucket);
       revByDay.set(k, (revByDay.get(k) ?? 0) + (l.amount || 0));
     }
     const out: { date: string; spend: number; revenue: number; leads: number; cpl: number }[] = [];

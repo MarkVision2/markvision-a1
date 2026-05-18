@@ -3,7 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useLeadsLite, type LeadLite } from "@/hooks/useLeadsLite";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { normalizeSource } from "@/lib/leadSource";
+import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
 
 export interface ReportPeriodRange {
   from: Date;
@@ -97,6 +99,7 @@ function normalizeActId(id: string) {
 async function fetchMetaForRange(
   externalIds: string[],
   range: ReportPeriodRange,
+  projectId?: string | null,
 ): Promise<{
   spend: number; impressions: number; clicks: number; leads: number;
   cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number;
@@ -109,12 +112,16 @@ async function fetchMetaForRange(
   const since = ymd(range.from);
   const until = ymd(range.to);
 
-  const { data, error } = await supabase
+  let q = supabase
     .from("cabinet_daily_insights")
     .select("date, spend, impressions, clicks, leads, crm_sales, manual_sales, crm_revenue, manual_revenue, crm_diagnostics, manual_diagnostics")
     .in("external_id", ids)
     .gte("date", since)
     .lte("date", until);
+  // Изолируем по проекту, чтобы цифры совпадали с useDashboardData / useMonthlyAggregates,
+  // которые тоже фильтруют по project_id.
+  if (projectId) q = q.eq("project_id", projectId);
+  const { data, error } = await q;
   if (error) throw new Error(error.message);
 
   const dailyAgg = new Map<string, { spend: number; leads: number; revenue: number }>();
@@ -126,9 +133,17 @@ async function fetchMetaForRange(
     const impressions = Number(row.impressions) || 0;
     const clicks = Number(row.clicks) || 0;
     const leads = Number(row.leads) || 0;
-    const sales = (Number(row.crm_sales) || 0) + (Number(row.manual_sales) || 0);
-    const revenue = (Number(row.crm_revenue) || 0) + (Number(row.manual_revenue) || 0);
-    const diag = (Number(row.crm_diagnostics) || 0) + (Number(row.manual_diagnostics) || 0);
+    // Override-семантика: manual_* перезаписывает crm_* (а не суммируется).
+    // Раньше складывали → задвоение, когда оба источника содержат одну и ту же продажу.
+    const crmSales = Number(row.crm_sales) || 0;
+    const manSales = Number(row.manual_sales) || 0;
+    const sales = manSales > 0 ? manSales : crmSales;
+    const crmRev = Number(row.crm_revenue) || 0;
+    const manRev = Number(row.manual_revenue) || 0;
+    const revenue = manRev > 0 ? manRev : crmRev;
+    const crmDiag = Number(row.crm_diagnostics) || 0;
+    const manDiag = Number(row.manual_diagnostics) || 0;
+    const diag = manDiag > 0 ? manDiag : crmDiag;
     totSpend += spend; totImp += impressions; totClicks += clicks; totLeads += leads;
     totSales += sales; totRevenue += revenue; totDiag += diag;
     const cur = dailyAgg.get(row.date) ?? { spend: 0, leads: 0, revenue: 0 };
@@ -152,20 +167,34 @@ async function fetchMetaForRange(
   };
 }
 
-function aggregateCrm(leads: LeadLite[], range: ReportPeriodRange) {
+function aggregateCrm(
+  leads: LeadLite[],
+  range: ReportPeriodRange,
+  cabinetSelector: "all" | string,
+) {
   const fromTs = range.from.getTime();
   const toTs = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate() + 1).getTime();
   const inRange = leads.filter((l) => {
     const t = new Date(l.createdAt).getTime();
     return t >= fromTs && t < toTs;
   });
-  // Только лиды БЕЗ cabinet_id — данные кабинетов берём из CDI, чтобы не дублировать.
-  const orphan = inRange.filter((l) => !l.cabinetId);
-  const orphanVisits = orphan.filter((l) => l.stageKey === "visit" || l.stageKey === "paid");
-  const orphanSales = orphan.filter((l) => l.stageKey === "paid");
+  // Orphan = только лиды БЕЗ cabinet_id (данные кабинетов берём из CDI, чтобы не дублировать).
+  // Когда пользователь выбрал КОНКРЕТНЫЙ кабинет — orphan-лиды ему не нужны (они не относятся
+  // ни к какому кабинету). Так Dashboard/Reports с фильтром по кабинету дают те же цифры,
+  // что Metrics/Analytics с тем же фильтром.
+  const orphanLeads = cabinetSelector === "all"
+    ? inRange.filter((l) => !l.cabinetId)
+    : [];
+  // isLeadPaid / isLeadVisit смотрят на колонку `leads.paid` (выставляется CRM
+  // при переводе в терминальную оплаченную стадию) и поддерживают разные
+  // языковые варианты ключа стадии. Раньше было захардкожено "paid" —
+  // у проектов с переименованной стадией orphan-выручка просто не считалась.
+  const orphanVisits = orphanLeads.filter(isLeadVisit);
+  const orphanSales = orphanLeads.filter(isLeadPaid);
   const orphanRevenue = orphanSales.reduce((s, l) => s + (l.amount || 0), 0);
   return {
     leads: inRange,
+    orphanLeads,
     orphanVisits,
     orphanSales,
     orphanRevenue,
@@ -175,10 +204,15 @@ function aggregateCrm(leads: LeadLite[], range: ReportPeriodRange) {
 function computeTotals(
   meta: { spend: number; impressions: number; clicks: number; leads: number;
           cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number },
-  crm: { leads: LeadLite[]; orphanVisits: LeadLite[]; orphanSales: LeadLite[]; orphanRevenue: number },
+  crm: { leads: LeadLite[]; orphanLeads: LeadLite[]; orphanVisits: LeadLite[]; orphanSales: LeadLite[]; orphanRevenue: number },
 ): ReportTotals {
-  const totalLeads = meta.leads + crm.leads.length;
-  const cpl = totalLeads > 0 ? meta.spend / totalLeads : 0;
+  // Чтобы не задвоить заявки: FB-лиды из CDI + только orphan CRM-лиды
+  // (те, что без cabinet_id — органика, сайт, WhatsApp). Лиды с cabinet_id
+  // уже учтены через CDI.
+  const totalLeads = meta.leads + crm.orphanLeads.length;
+  // CPL = расход / только платные лиды (которые этот расход и сгенерировал).
+  // Раньше делили на totalLeads — и orphan-лиды занижали CPL, искажая marketing-метрику.
+  const cpl = meta.leads > 0 ? meta.spend / meta.leads : 0;
   const visits = meta.cabinetDiagnostics + crm.orphanVisits.length;
   const sales = meta.cabinetSales + crm.orphanSales.length;
   const revenue = meta.cabinetRevenue + crm.orphanRevenue;
@@ -234,6 +268,7 @@ export function useReportData(
   const { leads } = useLeadsLite();
   // Только Личные кабинеты активного проекта попадают в аналитику.
   const { cabinets } = usePersonalCabinets();
+  const { activeId: projectId } = useProjectsStore();
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -252,8 +287,9 @@ export function useReportData(
     setError(null);
     (async () => {
       try {
-        const meta = await fetchMetaForRange(cabinetIds, range);
-        const crm = aggregateCrm(leads, range);
+        const cabinetSelector: "all" | string = cabinetId === "all" ? "all" : cabinetId;
+        const meta = await fetchMetaForRange(cabinetIds, range, projectId);
+        const crm = aggregateCrm(leads, range, cabinetSelector);
         const totals = computeTotals(meta, crm);
         const scoring = computeScoring(crm.leads);
         const channels = computeChannels(crm.leads);
@@ -262,8 +298,8 @@ export function useReportData(
         let prev: ReportTotals | undefined;
         if (compare) {
           const prevRange = shiftRange(range);
-          const prevMeta = await fetchMetaForRange(cabinetIds, prevRange);
-          const prevCrm = aggregateCrm(leads, prevRange);
+          const prevMeta = await fetchMetaForRange(cabinetIds, prevRange, projectId);
+          const prevCrm = aggregateCrm(leads, prevRange, cabinetSelector);
           prev = computeTotals(prevMeta, prevCrm);
         }
 
@@ -282,7 +318,7 @@ export function useReportData(
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cabinetIds.join(","), range.from.getTime(), range.to.getTime(), compare, leads.length, tick]);
+  }, [cabinetIds.join(","), range.from.getTime(), range.to.getTime(), compare, leads.length, tick, projectId]);
 
   return { data, loading, error };
 }

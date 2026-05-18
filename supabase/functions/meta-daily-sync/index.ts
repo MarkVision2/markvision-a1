@@ -178,16 +178,40 @@ Deno.serve(async (req) => {
     }
     if (since > until) [since, until] = [until, since];
 
-    let cabQuery = admin.from("ad_cabinets").select("id, external_id, project_id");
+    let cabQuery = admin.from("ad_cabinets").select("id, external_id, project_id, name");
     if (qpCabinetId) cabQuery = cabQuery.eq("id", qpCabinetId);
     const { data: cabinets, error: cabErr } = await cabQuery;
     if (cabErr) throw cabErr;
 
     const results: Array<Record<string, unknown>> = [];
 
+    // Простой retry для транзитных ошибок Meta API: 3 попытки с экспоненциальным backoff.
+    // Это закрывает основную причину "не всегда синхронизируется" — сеть/rate-limit.
+    async function fetchWithRetry(url: string, attempts = 3): Promise<Response> {
+      let lastErr: unknown = null;
+      for (let i = 0; i < attempts; i++) {
+        try {
+          const r = await fetch(url);
+          // Retry на 429 (rate limit) и 5xx (transient server errors). 4xx (кроме 429) — клиентская ошибка, не ретраим.
+          if (r.ok || (r.status >= 400 && r.status < 500 && r.status !== 429)) return r;
+          lastErr = new Error(`HTTP ${r.status}`);
+        } catch (e) {
+          lastErr = e;
+        }
+        if (i < attempts - 1) await new Promise((res) => setTimeout(res, 500 * Math.pow(2, i)));
+      }
+      throw lastErr ?? new Error("fetch failed after retries");
+    }
+
     for (const cab of cabinets ?? []) {
       const ext = (cab.external_id ?? "").trim();
-      if (!ext) continue;
+      const cabName = (cab as { name?: string }).name ?? ext;
+      if (!ext) {
+        // Раньше тихо пропускали — теперь явно логируем, чтобы было видно неконфигурированные кабинеты.
+        results.push({ cabinet_id: cab.id, cabinet: cabName, ok: false, error: "external_id (ad_account_id) не задан" });
+        console.warn(`[meta-daily-sync] cabinet=${cab.id} skipped: external_id empty`);
+        continue;
+      }
       const actId = normalizeActId(ext);
 
       const fields = ["date_start", "spend", "impressions", "clicks", "actions", "action_values"].join(",");
@@ -201,11 +225,13 @@ Deno.serve(async (req) => {
         `?fields=currency&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`;
 
       try {
-        const [iRes, aRes] = await Promise.all([fetch(apiUrl), fetch(accountUrl)]);
+        const [iRes, aRes] = await Promise.all([fetchWithRetry(apiUrl), fetchWithRetry(accountUrl)]);
         const iJson = await iRes.json();
         const aJson = await aRes.json().catch(() => ({}));
         if (!iRes.ok) {
-          results.push({ cabinet: ext, ok: false, error: iJson?.error?.message ?? "meta error" });
+          const errMsg = iJson?.error?.message ?? `HTTP ${iRes.status}`;
+          results.push({ cabinet_id: cab.id, cabinet: cabName, ok: false, error: errMsg, code: iJson?.error?.code });
+          console.error(`[meta-daily-sync] cabinet=${ext} meta error: ${errMsg}`);
           continue;
         }
         const accountCurrency: string = aJson?.currency ?? "USD";
@@ -261,12 +287,13 @@ Deno.serve(async (req) => {
             .from("cabinet_daily_insights")
             .upsert(rows, { onConflict: "external_id,date" });
           if (upErr) {
-            results.push({ cabinet: ext, ok: false, error: upErr.message });
+            results.push({ cabinet_id: cab.id, cabinet: cabName, ok: false, error: upErr.message });
+            console.error(`[meta-daily-sync] cabinet=${ext} upsert error: ${upErr.message}`);
             continue;
           }
         }
         results.push({
-          cabinet: ext, ok: true,
+          cabinet_id: cab.id, cabinet: cabName, ok: true,
           since, until, days: rows.length,
           spend: totalSpend, leads: totalLeads, clicks: totalClicks, revenue: totalRevenue,
         });
@@ -276,8 +303,40 @@ Deno.serve(async (req) => {
           `leads=${totalLeads} clicks=${totalClicks} revenue=${totalRevenue.toFixed(2)}`,
         );
       } catch (e) {
-        results.push({ cabinet: ext, ok: false, error: (e as Error).message });
+        results.push({ cabinet_id: cab.id, cabinet: cabName, ok: false, error: (e as Error).message });
+        console.error(`[meta-daily-sync] cabinet=${ext} fatal:`, e);
       }
+    }
+
+    // Сводный summary в лог, чтобы было видно в supabase logs какие кабинеты упали.
+    const okCount = results.filter((r) => r.ok).length;
+    const failCount = results.length - okCount;
+    console.log(`[meta-daily-sync] summary: ${okCount} ok, ${failCount} failed, range ${since}..${until}`);
+
+    // Журналируем каждый прогон в ad_sync_runs (один INSERT на кабинет), чтобы UI
+    // мог показать last_sync_status / последние ошибки без копания в edge logs.
+    if (results.length > 0) {
+      const logRows = results.map((r) => ({
+        provider: "meta",
+        cabinet_id: (r as { cabinet_id?: string }).cabinet_id ?? null,
+        external_id: typeof (r as { cabinet?: string }).cabinet === "string"
+          ? (r as { cabinet?: string }).cabinet
+          : null,
+        since,
+        until,
+        ok: !!(r as { ok?: boolean }).ok,
+        days: Number((r as { days?: number }).days ?? 0),
+        spend: Number((r as { spend?: number }).spend ?? 0),
+        leads: Number((r as { leads?: number }).leads ?? 0),
+        clicks: Number((r as { clicks?: number }).clicks ?? 0),
+        revenue: Number((r as { revenue?: number }).revenue ?? 0),
+        error: (r as { error?: string }).error ?? null,
+        error_code: (r as { code?: string | number }).code != null ? String((r as { code?: string | number }).code) : null,
+        triggered_by: isCron ? "cron" : "manual",
+      }));
+      // best-effort: если таблицы ещё нет — не валим всю синхронизацию.
+      const { error: logErr } = await admin.from("ad_sync_runs").insert(logRows);
+      if (logErr) console.warn(`[meta-daily-sync] ad_sync_runs insert failed: ${logErr.message}`);
     }
 
     return new Response(JSON.stringify({ since, until, count: results.length, results }), {

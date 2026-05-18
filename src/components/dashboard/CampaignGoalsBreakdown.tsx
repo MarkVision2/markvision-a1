@@ -115,7 +115,12 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
     : g.impressions;
   const costPerResult = successValue > 0 ? g.spend / successValue : 0;
   const ctr = g.impressions > 0 ? (g.clicks / g.impressions) * 100 : 0;
-  const romi = g.spend > 0 ? ((g.revenue - g.spend) / g.spend) * 100 : 0;
+  // Внимание: g.revenue здесь — FB pixel revenue из meta_campaign_daily, а не CRM-выручка.
+  // На уровне кампаний CRM-атрибуции пока нет (есть только для креативов через meta_creative_crm_daily),
+  // поэтому этот ROMI может отличаться от ROMI в Dashboard.MoneyKpiCards (где revenue — CRM).
+  // Показываем его только когда FB pixel вернул > 0 — иначе скрываем, чтобы не путать "0%" с "нет данных".
+  const hasPixelRevenue = g.revenue > 0 && g.spend > 0;
+  const romi = hasPixelRevenue ? ((g.revenue - g.spend) / g.spend) * 100 : 0;
 
   const sorted = [...g.campaigns].sort((a, b) => b.spend - a.spend);
   const visible = expanded ? sorted : sorted.slice(0, 3);
@@ -199,9 +204,9 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
           <KpiCell label="Цена рез." amount={costParts?.amount ?? "—"} unit={costParts?.unit} />
           <KpiCell label="CTR" amount={ctr > 0 ? `${ctr.toFixed(2)}%` : "—"} />
           <KpiCell
-            label="ROMI"
-            amount={g.spend > 0 ? `${romi >= 0 ? "+" : ""}${Math.round(romi)}%` : "—"}
-            tone={g.spend === 0 ? undefined : romi >= 0 ? "success" : "destructive"}
+            label="ROMI · FB Pixel"
+            amount={hasPixelRevenue ? `${romi >= 0 ? "+" : ""}${Math.round(romi)}%` : "—"}
+            tone={!hasPixelRevenue ? undefined : romi >= 0 ? "success" : "destructive"}
           />
         </div>
       </div>
@@ -295,8 +300,9 @@ function CampaignRow({
   const costPer = success > 0 ? c.spend / success : 0;
   const isActive = c.effectiveStatus === "ACTIVE";
   const sharePct = Math.max(2, Math.round((c.spend / maxSpend) * 100));
-  const romi = c.spend > 0 ? ((c.revenue - c.spend) / c.spend) * 100 : 0;
   const hasRomi = c.revenue > 0 && c.spend > 0;
+  // FB pixel revenue (см. комментарий в GoalCard) — здесь это знак атрибуции событий, не реальная выручка.
+  const romi = hasRomi ? ((c.revenue - c.spend) / c.spend) * 100 : 0;
 
   return (
     <li
@@ -346,7 +352,7 @@ function CampaignRow({
           <Chip label="Цена" value={costPer > 0 ? fmtTenge(costPer) : "—"} />
           {hasRomi && (
             <Chip
-              label="ROMI"
+              label="ROMI · pixel"
               value={`${romi >= 0 ? "+" : ""}${Math.round(romi)}%`}
               accent={romi >= 0 ? "success" : "destructive"}
               icon={romi >= 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}
