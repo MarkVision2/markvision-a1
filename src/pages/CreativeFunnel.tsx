@@ -3,9 +3,8 @@ import { Link } from "react-router-dom";
 import { ArrowDownRight, ArrowUpRight, Image as ImageIcon, Layers, Loader2, RefreshCw, Search, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PeriodPicker } from "@/components/dashboard/PeriodPicker";
+import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPicker";
 import { useMetaCreatives, type MetaCreativeRow } from "@/hooks/useMetaStructure";
-import { getPresetRange, type PeriodPreset } from "@/hooks/useDashboardData";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
 
@@ -74,8 +73,7 @@ function MiniFunnel({ stages }: { stages: { label: string; value: number; displa
 }
 
 const CreativeFunnel = () => {
-  const [preset, setPreset] = useState<PeriodPreset>("30d");
-  const [range, setRange] = useState<ReportPeriodRange>(() => getPresetRange("30d"));
+  const [range, setRange] = useState<ReportPeriodRange>(() => currentMonthRange());
   const [sortKey, setSortKey] = useState<SortKey>("crmRevenue");
   const [search, setSearch] = useState("");
   const [onlyWithLeads, setOnlyWithLeads] = useState(true);
@@ -127,11 +125,7 @@ const CreativeFunnel = () => {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <PeriodPicker
-            preset={preset}
-            range={range}
-            onChange={(p, r) => { setPreset(p); setRange(r); }}
-          />
+          <PeriodPicker range={range} onChange={setRange} />
           <Button
             variant="outline"
             size="icon"
