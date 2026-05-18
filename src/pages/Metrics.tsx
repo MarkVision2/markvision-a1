@@ -207,7 +207,9 @@ const Metrics = () => {
   // Orphan показываем отдельным предупреждением — пользователь решает,
   // привязать лид к кабинету или ввести ручной факт.
   const factDiagnostics = totals?.diagnostics ?? 0;
+  const factDiagnosticRevenue = totals?.diagnosticRevenue ?? 0;
   const factSales = totals?.sales ?? 0;
+  const factSalesRevenue = totals?.salesRevenue ?? 0;
   const factRevenue = totals?.crmRevenue ?? 0;
   const factLeads = totals?.leads ?? 0;
   const factCac = factSales > 0 ? (totals?.spend ?? 0) / factSales : 0;
