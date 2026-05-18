@@ -478,7 +478,7 @@ const Analytics = () => {
           <UtmTable rows={utmRows} />
         </div>
       </section>
-    </main>
+    </PageContainer>
   );
 };
 
