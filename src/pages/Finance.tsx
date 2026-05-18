@@ -23,6 +23,8 @@ import { PeriodPicker, monthRange } from "@/components/dashboard/PeriodPicker";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import AgencyAnalytics from "@/components/finance/AgencyAnalytics";
 import MonthlyDynamics from "@/components/finance/MonthlyDynamics";
+import { PageContainer } from "@/components/layout/PageContainer";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 const MONTHS_RU = [
   "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
@@ -204,18 +206,12 @@ const Finance = () => {
   };
 
   return (
-    <main className="container max-w-[1600px] py-6 animate-fade-in-up">
-      <div className="flex items-center gap-3">
-        <span className="grid h-10 w-10 place-items-center rounded-xl bg-success/15 text-success ring-1 ring-success/30">
-          <Wallet className="h-5 w-5" />
-        </span>
-        <div className="leading-tight">
-          <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Финансы</h1>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Юнит-экономика, агентская аналитика и динамика
-          </p>
-        </div>
-      </div>
+    <PageContainer wide>
+      <PageHeader
+        icon={Wallet}
+        title="Финансы"
+        description="Юнит-экономика, агентская аналитика и динамика"
+      />
 
       <div className="mt-5 inline-flex flex-wrap rounded-xl border border-border/60 bg-card/60 p-1">
         {([
@@ -406,7 +402,7 @@ const Finance = () => {
           </div>
         </>
       )}
-    </main>
+    </PageContainer>
   );
 };
 

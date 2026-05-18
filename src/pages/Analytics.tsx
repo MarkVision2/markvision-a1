@@ -29,6 +29,8 @@ import { TrendChart, type TrendPoint } from "@/components/analytics/TrendChart";
 import { PeriodPicker, monthRange } from "@/components/dashboard/PeriodPicker";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
+import { PageContainer } from "@/components/layout/PageContainer";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 const MONTHS_RU = [
   "Янв", "Фев", "Мар", "Апр", "Май", "Июн",
@@ -57,8 +59,8 @@ const KpiCard = ({ icon: Icon, label, value, sub, delta, emphasized }: KpiCardPr
   >
     <div className="flex items-center justify-between gap-2">
       <div className="flex items-center gap-2">
-        <span className="grid h-8 w-8 place-items-center rounded-xl bg-success/10 text-success">
-          <Icon className="h-4 w-4" />
+        <span className="grid h-9 w-9 place-items-center rounded-xl bg-success/10 text-success">
+          <Icon className="h-5 w-5" />
         </span>
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {label}
@@ -76,7 +78,7 @@ const KpiCard = ({ icon: Icon, label, value, sub, delta, emphasized }: KpiCardPr
         </span>
       )}
     </div>
-    <div className="mt-4 text-2xl font-bold tabular-nums">{value}</div>
+    <div className="mt-4 text-3xl font-bold tabular-nums">{value}</div>
     <div className="mt-1 text-[11px] text-muted-foreground">{sub}</div>
   </div>
 );
@@ -336,43 +338,35 @@ const Analytics = () => {
   const funnelBase = Math.max(impressions, clicks, leadCount, diagnosticsCount, salesCount, 1);
 
   return (
-    <main className="container max-w-7xl py-8 animate-fade-in-up">
-      {/* Header */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-4">
-          <span className="grid h-12 w-12 place-items-center rounded-2xl bg-success/10 text-success">
-            <Zap className="h-6 w-6" />
-          </span>
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Сквозная аналитика</h1>
-            <p className="mt-1 text-sm text-muted-foreground">
-              UTM-атрибуция · эффективность каналов · полная воронка
-            </p>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <PeriodPicker range={period} onChange={setPeriod} />
-          <button
-            onClick={() => { refresh(); refetch(); }}
-            className="grid h-12 w-12 place-items-center rounded-2xl border border-border/60 bg-card/60 hover:bg-secondary"
-            aria-label="Обновить"
-          >
-            <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-          </button>
-          <Select value={cabinetId} onValueChange={setCabinetId}>
-            <SelectTrigger className="h-12 min-w-[200px] rounded-2xl border-border/60 bg-card/60">
-              <SelectValue placeholder="Все кабинеты" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Все кабинеты</SelectItem>
-              {cabinets.map((c) => (
-                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        icon={Zap}
+        title="Сквозная аналитика"
+        description="UTM-атрибуция · эффективность каналов · полная воронка"
+        actions={
+          <>
+            <PeriodPicker range={period} onChange={setPeriod} />
+            <button
+              onClick={() => { refresh(); refetch(); }}
+              className="grid h-10 w-10 place-items-center rounded-xl border border-border/60 bg-card/60 hover:bg-secondary"
+              aria-label="Обновить"
+            >
+              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            </button>
+            <Select value={cabinetId} onValueChange={setCabinetId}>
+              <SelectTrigger className="h-10 min-w-[200px] rounded-xl border-border/60 bg-card/60">
+                <SelectValue placeholder="Все кабинеты" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все кабинеты</SelectItem>
+                {cabinets.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </>
+        }
+      />
 
       {/* KPI grid */}
       <div className="mt-8 grid grid-cols-2 gap-4 md:grid-cols-4 xl:grid-cols-4">
@@ -484,7 +478,7 @@ const Analytics = () => {
           <UtmTable rows={utmRows} />
         </div>
       </section>
-    </main>
+    </PageContainer>
   );
 };
 

@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
-import { ArrowDownRight, ArrowUpRight, Info, Loader2, RefreshCw, Search } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Filter, Info, Loader2, RefreshCw, Search } from "lucide-react";
+import { PageContainer } from "@/components/layout/PageContainer";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPicker";
@@ -118,28 +120,27 @@ const CreativeFunnel = () => {
   const attributionRate = totals.metaLeads > 0 ? (totals.crmLeads / totals.metaLeads) * 100 : 0;
 
   return (
-    <main className="container max-w-7xl py-8 animate-fade-in-up">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Воронка по креативам</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Лид Meta → Лид CRM → Квалификация → Продажа → Выручка по каждому креативу · {rangeLabel}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <PeriodPicker range={range} onChange={setRange} />
-          <Button
-            variant="outline"
-            size="icon"
-            className="h-10 w-10 rounded-xl border-border/60"
-            aria-label="Обновить"
-            onClick={() => setRange({ ...range })}
-            disabled={loading}
-          >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          </Button>
-        </div>
-      </div>
+    <PageContainer>
+      <PageHeader
+        icon={Filter}
+        title="Воронка по креативам"
+        description={`Лид Meta → Лид CRM → Квалификация → Продажа → Выручка по каждому креативу · ${rangeLabel}`}
+        actions={
+          <>
+            <PeriodPicker range={range} onChange={setRange} />
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 rounded-xl border-border/60"
+              aria-label="Обновить"
+              onClick={() => setRange({ ...range })}
+              disabled={loading}
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+            </Button>
+          </>
+        }
+      />
 
       {/* KPI strip */}
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
@@ -342,7 +343,7 @@ const CreativeFunnel = () => {
         open={!!drawerRow}
         onOpenChange={(o) => !o && setDrawerRow(null)}
       />
-    </main>
+    </PageContainer>
   );
 };
 
