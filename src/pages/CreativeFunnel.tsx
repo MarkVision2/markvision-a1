@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
-import { ArrowDownRight, ArrowUpRight, Info, Loader2, RefreshCw, Search } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Filter, Info, Loader2, RefreshCw, Search } from "lucide-react";
+import { PageContainer } from "@/components/layout/PageContainer";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPicker";
