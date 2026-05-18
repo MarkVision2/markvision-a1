@@ -53,23 +53,23 @@ interface KpiCardProps {
 const KpiCard = ({ icon: Icon, label, value, sub, delta, emphasized }: KpiCardProps) => (
   <div
     className={cn(
-      "rounded-2xl border border-border/60 bg-card/60 p-5 transition-colors",
+      "rounded-2xl border border-border/60 bg-card/60 p-3.5 transition-colors",
       emphasized && "border-success/40 bg-success/5",
     )}
   >
     <div className="flex items-center justify-between gap-2">
-      <div className="flex items-center gap-2">
-        <span className="grid h-9 w-9 place-items-center rounded-xl bg-success/10 text-success">
-          <Icon className="h-5 w-5" />
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-success/10 text-success">
+          <Icon className="h-3.5 w-3.5" />
         </span>
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {label}
         </span>
       </div>
       {delta !== null && delta !== undefined && Math.abs(delta) > 0.5 && (
         <span
           className={cn(
-            "rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+            "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold",
             delta >= 0 ? "bg-success/15 text-success" : "bg-destructive/15 text-destructive",
           )}
         >
@@ -78,7 +78,7 @@ const KpiCard = ({ icon: Icon, label, value, sub, delta, emphasized }: KpiCardPr
         </span>
       )}
     </div>
-    <div className="mt-4 text-3xl font-bold tabular-nums">{value}</div>
+    <div className="mt-2.5 text-xl font-bold tabular-nums leading-tight">{value}</div>
     <div className="mt-1 text-[11px] text-muted-foreground">{sub}</div>
   </div>
 );
