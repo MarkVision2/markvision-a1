@@ -231,51 +231,30 @@ export function AdsCreativesPanel() {
         </div>
       )}
 
-      {/* Grid with inline expansion */}
+      {/* Grid */}
       {filtered.length > 0 && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {filtered.map(({ row, campaign, isWhatsApp, goalLabel }) => (
-            <FragmentCard
+          {filtered.map(({ row, isWhatsApp }) => (
+            <CreativeCard
               key={row.id}
               row={row}
-              campaign={campaign}
               isWhatsApp={isWhatsApp}
-              goalLabel={goalLabel}
-              isOpen={openId === row.id}
-              range={range}
-              onToggle={() => setOpenId((cur) => (cur === row.id ? null : row.id))}
+              active={openId === row.id}
+              onOpen={() => setOpenId(row.id)}
             />
           ))}
         </div>
       )}
-    </div>
-  );
-}
 
-function FragmentCard({
-  row, campaign, isWhatsApp, goalLabel, isOpen, range, onToggle,
-}: {
-  row: MetaCreativeRow;
-  campaign?: MetaCampaignRow;
-  isWhatsApp: boolean;
-  goalLabel: string | null;
-  isOpen: boolean;
-  range: ReportPeriodRange;
-  onToggle: () => void;
-}) {
-  return (
-    <>
-      <CreativeCard row={row} isWhatsApp={isWhatsApp} active={isOpen} onOpen={onToggle} />
-      {isOpen && (
-        <CreativeExpanded
-          row={row}
-          campaignName={campaign?.name ?? null}
-          goalLabel={goalLabel}
-          isWhatsApp={isWhatsApp}
-          range={range}
-          onClose={onToggle}
-        />
-      )}
-    </>
+      {/* Drawer for selected creative */}
+      <CreativeDetailDrawer
+        row={openCreative?.row ?? null}
+        range={range}
+        open={!!openId}
+        onOpenChange={(v) => { if (!v) setOpenId(null); }}
+        campaignName={openCreative?.campaign?.name ?? null}
+        isWhatsApp={openCreative?.isWhatsApp ?? false}
+      />
+    </div>
   );
 }
