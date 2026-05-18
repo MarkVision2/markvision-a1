@@ -17,11 +17,22 @@ export interface DailyInsightRow {
   /** Чистое CRM значение, без manual override (для отображения «Из CRM: N» в попапах). */
   crmDiagnostics: number;
   manualDiagnostics: number;
+  /** Override: оплаты за диагностику ₸. */
+  diagnosticRevenue: number;
+  crmDiagnosticRevenue: number;
+  manualDiagnosticRevenue: number;
   /** Override-результат: manual если задан, иначе crm. */
   sales: number;
   crmSales: number;
   manualSales: number;
-  /** Override-результат: manual если задан, иначе crm. Единственный источник правды для денег. */
+  /** Override-результат: только выручка ПРОДАЖ (без диагностик). */
+  salesRevenue: number;
+  crmSalesRevenueOnly: number;
+  manualSalesRevenue: number;
+  /**
+   * ИТОГОВАЯ выручка дня = salesRevenue + diagnosticRevenue.
+   * Это «выручка факт» — единый источник правды.
+   */
   crmRevenue: number;
   crmRevenueOnly: number;
   manualRevenue: number;
@@ -42,8 +53,10 @@ export interface InsightTotals {
   ctr: number;
   romi: number;
   diagnostics: number;
+  diagnosticRevenue: number;
   sales: number;
-  /** Override-aware CRM revenue. Это «выручка факт» в Metrics/Analytics/Dashboard. */
+  salesRevenue: number;
+  /** Override-aware: продажи + оплаты диагностик. Это «выручка факт» в Metrics/Analytics/Dashboard. */
   crmRevenue: number;
 }
 
@@ -56,7 +69,7 @@ export interface InsightsData {
 const EMPTY_TOTALS: InsightTotals = {
   spend: 0, impressions: 0, clicks: 0, leads: 0, pixelRevenue: 0, revenue: 0,
   cpl: 0, cpm: 0, cpc: 0, ctr: 0, romi: 0,
-  diagnostics: 0, sales: 0, crmRevenue: 0,
+  diagnostics: 0, diagnosticRevenue: 0, sales: 0, salesRevenue: 0, crmRevenue: 0,
 };
 
 function normalizeActId(id: string) {
