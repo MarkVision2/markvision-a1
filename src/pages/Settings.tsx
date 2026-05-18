@@ -24,6 +24,9 @@ import { InboundTokensSettings } from "@/components/settings/InboundTokensSettin
 import { ClientDashTokensSettings } from "@/components/settings/ClientDashTokensSettings";
 import { InstagramOrganicSettings } from "@/components/settings/InstagramOrganicSettings";
 import { SiteIntakeCard } from "@/pages/SettingsConnection";
+import { PageContainer } from "@/components/layout/PageContainer";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { Settings as SettingsIcon } from "lucide-react";
 import {
   MODULES,
   ROLE_LABELS,
