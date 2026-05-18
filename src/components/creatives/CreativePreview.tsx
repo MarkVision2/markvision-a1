@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
-import { Image as ImageIcon, Layers, Play, Video } from "lucide-react";
+import { Image as ImageIcon, Layers, Loader2, Play, Video } from "lucide-react";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { bestCreativeImage } from "@/lib/metaThumb";
 import { enqueuePosterCapture } from "@/lib/videoPosterCapture";
 import { refreshMetaCreative } from "@/lib/metaCreativeRefresh";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 const requestedPosters = new Set<string>();
 
