@@ -120,7 +120,7 @@ const CreativeFunnel = () => {
   const attributionRate = totals.metaLeads > 0 ? (totals.crmLeads / totals.metaLeads) * 100 : 0;
 
   return (
-    <main className="container max-w-7xl py-8 animate-fade-in-up">
+    <PageContainer>
     <PageContainer>
       <PageHeader
         icon={Filter}
@@ -344,7 +344,7 @@ const CreativeFunnel = () => {
         open={!!drawerRow}
         onOpenChange={(o) => !o && setDrawerRow(null)}
       />
-    </main>
+    </PageContainer>
   );
 };
 
