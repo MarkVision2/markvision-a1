@@ -1,5 +1,7 @@
 import { useMemo, useRef, useState } from "react";
-import { Bell, Download, Loader2 } from "lucide-react";
+import { Bell, Download, FileBarChart2, Loader2 } from "lucide-react";
+import { PageContainer } from "@/components/layout/PageContainer";
+import { PageHeader } from "@/components/layout/PageHeader";
 import { format } from "date-fns";
 import { ru } from "date-fns/locale";
 import { toast } from "sonner";
