@@ -200,12 +200,16 @@ const Metrics = () => {
   const orphanSalesCount = orphanPaid.length;
   const orphanRevenue = orphanPaid.reduce((s, l) => s + (l.amount || 0), 0);
 
-  // Факт = CDI (override-aware) + orphan CRM. Та же формула, что в useReportData,
-  // поэтому цифры в Metrics, Dashboard, Analytics, Reports совпадают.
-  const factDiagnostics = (totals?.diagnostics ?? 0) + orphanDiagnostics;
-  const factSales = (totals?.sales ?? 0) + orphanSalesCount;
-  const factRevenue = (totals?.crmRevenue ?? 0) + orphanRevenue;
-  const factLeads = (totals?.leads ?? 0) + orphanThisMonth.length;
+  // Факт = только CDI (авто-синк CRM + ручной override по кабинетам).
+  // Orphan CRM (лиды без cabinet_id) НЕ прибавляем к итогам, иначе при
+  // ручном вводе того же лида в кабинет получалось задвоение
+  // (пример: 2 ручные продажи × 400k = 800k, а сверху ещё 400k из CRM).
+  // Orphan показываем отдельным предупреждением — пользователь решает,
+  // привязать лид к кабинету или ввести ручной факт.
+  const factDiagnostics = totals?.diagnostics ?? 0;
+  const factSales = totals?.sales ?? 0;
+  const factRevenue = totals?.crmRevenue ?? 0;
+  const factLeads = totals?.leads ?? 0;
   const factCac = factSales > 0 ? (totals?.spend ?? 0) / factSales : 0;
   const factCpd = factDiagnostics > 0 ? (totals?.spend ?? 0) / factDiagnostics : 0;
   const crLeadDiagnostics =
@@ -433,23 +437,23 @@ const Metrics = () => {
           orphanRevenue > 0 ? "border-warning/30 bg-warning/5" : "border-border/40 bg-background/40",
         )}>
           <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            Из CRM без привязки к кабинету
+            CRM без привязки к кабинету
           </div>
           <div className="mt-1.5 text-lg font-bold tabular-nums">{formatTenge(orphanRevenue)}</div>
           <div className="mt-0.5 text-[11px] text-muted-foreground">
-            {orphanSalesCount} оплат · сайт/WhatsApp без cabinet_id
+            {orphanSalesCount} оплат · НЕ учитываются в Итого
             {orphanRevenue > 0 && cabinetId === "all" && (
-              <span className="ml-1 text-warning">⚠ если это лишние — проверь CRM</span>
+              <div className="mt-1 text-warning">⚠ Привяжи лида к кабинету в CRM или внеси ручной факт — иначе данные потеряются</div>
             )}
           </div>
         </div>
         <div className="rounded-xl border border-success/30 bg-success/5 p-3">
           <div className="text-[10px] font-bold uppercase tracking-wider text-success">
-            Итого (видно везде)
+            Итого (источник правды)
           </div>
           <div className="mt-1.5 text-lg font-bold tabular-nums text-success">{formatTenge(factRevenue)}</div>
           <div className="mt-0.5 text-[11px] text-muted-foreground">
-            {factSales} оплат · совпадает с Дашбордом и Аналитикой
+            {factSales} оплат · CDI (авто из CRM + ручной факт)
           </div>
         </div>
       </div>
