@@ -4,7 +4,7 @@ import { useLeadsLite } from "./useLeadsLite";
 import { useInstagramOrganic } from "./useInstagramOrganic";
 import { buildAlerts } from "@/lib/dashboardAlerts";
 import { normalizeSource } from "@/lib/leadSource";
-import { isLeadPaid } from "@/lib/leadStageFlags";
+import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "./useProjectsStore";
 import { useRealtimeTable } from "./useRealtimeTable";
@@ -169,9 +169,13 @@ export function useDashboardData(
     });
     const total = inRange.length;
     const reached = inRange.filter((l) => l.stageKey !== "new" && l.stageKey !== "no_answer").length;
-    const scheduled = inRange.filter((l) => ["scheduled", "visit", "paid"].includes(l.stageKey)).length;
-    const visited = inRange.filter((l) => ["visit", "paid"].includes(l.stageKey)).length;
-    const paid = inRange.filter((l) => isLeadPaid(l)).length;
+    // Используем helpers вместо хардкода ключей стадий: isLeadVisit ловит и "visit"/"diagnosed",
+    // и paid (он сам внутри проверяет isLeadPaid). Так что:
+    //   scheduled — все, кто либо записан, либо был на визите, либо оплатил
+    //   visited   — те, кто на визите или оплатил
+    const scheduled = inRange.filter((l) => l.stageKey === "scheduled" || isLeadVisit(l)).length;
+    const visited = inRange.filter(isLeadVisit).length;
+    const paid = inRange.filter(isLeadPaid).length;
     return { total, reached, scheduled, visited, paid };
   }, [leads, fromTs, toTs]);
 
@@ -208,18 +212,21 @@ export function useDashboardData(
     }
 
     // Instagram organic — отдельный канал. Заявки приходят из событий lead.
+    // Лид считаем только если он БЕЗ cabinet_id — иначе он уже учтён через CDI Meta/Google
+    // (например, в Meta-кампании через Instagram) и попал бы в две строки ChannelsTable одновременно.
     if (igFunnel.leads > 0 || igFunnel.codewordDms > 0) {
       const igRevenue = igEvents
         .filter((e) => e.eventType === "lead" && e.leadId)
         .reduce((sum, e) => {
           const lead = leads.find((l) => l.id === e.leadId);
-          return sum + (lead && isLeadPaid(lead) ? lead.amount || 0 : 0);
+          if (!lead || lead.cabinetId) return sum;
+          return sum + (isLeadPaid(lead) ? lead.amount || 0 : 0);
         }, 0);
       const igSales = igEvents
         .filter((e) => e.eventType === "lead" && e.leadId)
         .filter((e) => {
           const lead = leads.find((l) => l.id === e.leadId);
-          return lead ? isLeadPaid(lead) : false;
+          return lead && !lead.cabinetId && isLeadPaid(lead);
         })
         .length;
       rows.push({
@@ -291,11 +298,16 @@ export function useDashboardData(
       revByDay.set(d.date, (revByDay.get(d.date) ?? 0) + (d.revenue ?? 0));
     }
     // CRM-лиды без cabinet_id — добавляем их выручку отдельно (чтобы не задвоить CDI).
+    // isLeadPaid вместо хардкода "paid" — иначе график занижался при custom-стадиях
+    // и расходился с totals.revenue в верхних KPI Dashboard.
+    // Группируем по дню ОПЛАТЫ (paidAt), а не по созданию лида — иначе выручка ложится
+    // не на тот день, в который реально пришли деньги.
     for (const l of leads) {
-      if (l.stageKey !== "paid" || l.cabinetId) continue;
-      const t = new Date(l.createdAt).getTime();
+      if (!isLeadPaid(l) || l.cabinetId) continue;
+      const dateForBucket = l.paidAt ?? l.createdAt;
+      const t = new Date(dateForBucket).getTime();
       if (t < fromTs || t >= toTs) continue;
-      const k = dayKey(l.createdAt);
+      const k = dayKey(dateForBucket);
       revByDay.set(k, (revByDay.get(k) ?? 0) + (l.amount || 0));
     }
     const out: { date: string; spend: number; revenue: number; leads: number; cpl: number }[] = [];

@@ -1,15 +1,15 @@
 // Единая утилита расчёта качества лида.
 // Скор 0–100. Категория зависит от скора и стадии воронки.
+import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
 
 export type QualityCategory = "hot" | "warm" | "cold" | "paid" | "unknown";
 
-const PAID_STAGES = new Set(["paid", "completed"]);
-const HOT_STAGES = new Set(["scheduled", "diagnosed"]);
-
 export function classifyQuality(score: number | null | undefined, stageId?: string | null): QualityCategory {
   const s = Number(score ?? 0);
-  if (stageId && PAID_STAGES.has(stageId)) return "paid";
-  if (stageId && HOT_STAGES.has(stageId)) return "hot";
+  // Используем единые helpers вместо локальных сетов стадий — иначе при custom-стадии
+  // (например "completed" / "оплачено") лид классифицировался бы как warm/cold вместо paid.
+  if (stageId && isLeadPaid({ stageKey: stageId })) return "paid";
+  if (stageId && isLeadVisit({ stageKey: stageId })) return "hot";
   if (s >= 75) return "hot";
   if (s >= 50) return "warm";
   if (s > 0) return "cold";

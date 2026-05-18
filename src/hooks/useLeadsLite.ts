@@ -46,12 +46,17 @@ export function useLeadsLite() {
     let leadsQuery = supabase
       .from("leads")
       .select(
-        "id,source,channel,referrer,utm,cabinet_id,stage_id,amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,reject_reason,rejected_at",
+        // score_label достаём явно, чтобы маппинг в LeadLite получал реальное значение,
+        // а не подставлял undefined из отсутствующей колонки.
+        "id,source,channel,referrer,utm,cabinet_id,stage_id,amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,score_label,reject_reason,rejected_at",
       )
       // Личные заявки исключаем из аналитики/дашборда/отчётов.
       .eq("is_personal", false)
       .order("created_at", { ascending: false })
-      .limit(2000);
+      // Лимит увеличен до 10000: orphanRevenue/leadCount считаются на клиенте,
+      // и обрезанный набор лидов давал заниженные суммы на Dashboard/Analytics
+      // у проектов с большой историей.
+      .limit(10000);
     if (activeId) {
       leadsQuery = leadsQuery.or(`project_id.eq.${activeId},project_id.is.null`);
     }

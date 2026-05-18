@@ -2,11 +2,26 @@ import { useMemo } from "react";
 import type { Lead, LeadStage, RejectReason } from "@/types/crm";
 import { REJECT_REASONS } from "@/types/crm";
 import type { TeamMember } from "@/hooks/useTeamStore";
+import { isLeadPaid } from "@/lib/leadStageFlags";
 
 /** Stage IDs that mean the lead has been touched (manager reacted). */
 const REACHED_STAGES = new Set(["in_progress", "invoice", "scheduled", "visit", "paid"]);
 const SCHEDULED_STAGES = new Set(["scheduled", "visit", "paid"]);
 const VISITED_STAGES = new Set(["visit", "paid"]);
+
+// Lead из useCrmStore не имеет stageKey — у него stageId это уже ключ стадии (см. typings).
+// Адаптер чтобы единообразно использовать isLeadPaid по проекту с custom-стадиями.
+const isPaidLead = (l: Lead): boolean =>
+  isLeadPaid({
+    paid: (l as { paid?: boolean }).paid,
+    paidAt: (l as { paidAt?: string | null }).paidAt ?? null,
+    stageKey: l.stageId,
+    amount: l.amount,
+  });
+const isRejectedLead = (l: Lead): boolean => {
+  const k = (l.stageId ?? "").toLowerCase().trim();
+  return k === "rejected" || k === "refused" || k === "lost" || k === "отказ" || k === "потерян";
+};
 
 function minutesSince(iso: string, ref: number = Date.now()): number {
   return Math.max(0, Math.floor((ref - new Date(iso).getTime()) / 60000));
@@ -120,8 +135,8 @@ export function useCrmAnalytics(
 
     const reached = leads.filter((l) => REACHED_STAGES.has(l.stageId)).length;
     const scheduled = leads.filter((l) => SCHEDULED_STAGES.has(l.stageId)).length;
-    const paid = leads.filter((l) => l.stageId === "paid").length;
-    const rejected = leads.filter((l) => l.stageId === "rejected").length;
+    const paid = leads.filter(isPaidLead).length;
+    const rejected = leads.filter(isRejectedLead).length;
 
     const responded = leads.filter((l) => l.firstResponseAt);
     const avgResponseMin =
@@ -134,7 +149,7 @@ export function useCrmAnalytics(
     // Reject reasons
     const reasonCounts = new Map<RejectReason, { count: number; lost: number }>();
     for (const l of leads) {
-      if (l.stageId !== "rejected") continue;
+      if (!isRejectedLead(l)) continue;
       const r = l.rejectReason ?? "other";
       const cur = reasonCounts.get(r) ?? { count: 0, lost: 0 };
       cur.count += 1;
@@ -227,7 +242,7 @@ export function useCrmAnalytics(
         const own = leads.filter((l) => l.assigneeId === member.id);
         const responded = own.filter((l) => l.firstResponseAt);
         const under5 = responded.filter((l) => leadSlaMinutes(l) < 5).length;
-        const paidOwn = own.filter((l) => l.stageId === "paid");
+        const paidOwn = own.filter(isPaidLead);
         return {
           member,
           assigned: own.length,
@@ -241,11 +256,11 @@ export function useCrmAnalytics(
 
     // Forecast = sum(amount * score/100) for active leads
     const forecast = leads
-      .filter((l) => l.stageId !== "paid" && l.stageId !== "rejected")
+      .filter((l) => !isPaidLead(l) && !isRejectedLead(l))
       .reduce((s, l) => s + expectedRevenue(l), 0);
 
     const actual = leads
-      .filter((l) => l.stageId === "paid" && isThisMonth(l.lastActivityAt))
+      .filter((l) => isPaidLead(l) && isThisMonth(l.lastActivityAt))
       .reduce((s, l) => s + (l.amount || 0), 0);
 
     return { kpi, slaAlerts, stageMetrics, managerStats, rejectStats, forecast, actual };

@@ -167,15 +167,24 @@ async function fetchMetaForRange(
   };
 }
 
-function aggregateCrm(leads: LeadLite[], range: ReportPeriodRange) {
+function aggregateCrm(
+  leads: LeadLite[],
+  range: ReportPeriodRange,
+  cabinetSelector: "all" | string,
+) {
   const fromTs = range.from.getTime();
   const toTs = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate() + 1).getTime();
   const inRange = leads.filter((l) => {
     const t = new Date(l.createdAt).getTime();
     return t >= fromTs && t < toTs;
   });
-  // Только лиды БЕЗ cabinet_id — данные кабинетов берём из CDI, чтобы не дублировать.
-  const orphanLeads = inRange.filter((l) => !l.cabinetId);
+  // Orphan = только лиды БЕЗ cabinet_id (данные кабинетов берём из CDI, чтобы не дублировать).
+  // Когда пользователь выбрал КОНКРЕТНЫЙ кабинет — orphan-лиды ему не нужны (они не относятся
+  // ни к какому кабинету). Так Dashboard/Reports с фильтром по кабинету дают те же цифры,
+  // что Metrics/Analytics с тем же фильтром.
+  const orphanLeads = cabinetSelector === "all"
+    ? inRange.filter((l) => !l.cabinetId)
+    : [];
   // isLeadPaid / isLeadVisit смотрят на колонку `leads.paid` (выставляется CRM
   // при переводе в терминальную оплаченную стадию) и поддерживают разные
   // языковые варианты ключа стадии. Раньше было захардкожено "paid" —
@@ -278,8 +287,9 @@ export function useReportData(
     setError(null);
     (async () => {
       try {
+        const cabinetSelector: "all" | string = cabinetId === "all" ? "all" : cabinetId;
         const meta = await fetchMetaForRange(cabinetIds, range, projectId);
-        const crm = aggregateCrm(leads, range);
+        const crm = aggregateCrm(leads, range, cabinetSelector);
         const totals = computeTotals(meta, crm);
         const scoring = computeScoring(crm.leads);
         const channels = computeChannels(crm.leads);
@@ -289,7 +299,7 @@ export function useReportData(
         if (compare) {
           const prevRange = shiftRange(range);
           const prevMeta = await fetchMetaForRange(cabinetIds, prevRange, projectId);
-          const prevCrm = aggregateCrm(leads, prevRange);
+          const prevCrm = aggregateCrm(leads, prevRange, cabinetSelector);
           prev = computeTotals(prevMeta, prevCrm);
         }
 
