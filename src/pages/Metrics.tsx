@@ -38,6 +38,8 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { AdCabinet } from "@/types/ads";
+import { PageContainer } from "@/components/layout/PageContainer";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 const MONTHS_GEN_RU = [
   "январь", "февраль", "март", "апрель", "май", "июнь",
