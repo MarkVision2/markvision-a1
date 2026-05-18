@@ -106,7 +106,7 @@ const Ads = () => {
   const totalSales = cabinets.reduce((s, c) => s + (c.sales || 0), 0);
 
   return (
-    <main className="container max-w-6xl py-6 animate-fade-in-up">
+    <PageContainer>
       <PageHeader
         icon={Megaphone}
         title="Управление рекламой"
@@ -296,7 +296,7 @@ const Ads = () => {
         onOpenChange={setCampaignOpen}
         cabinets={cabinets}
       />
-    </main>
+    </PageContainer>
   );
 };
 
