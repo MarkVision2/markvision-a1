@@ -124,7 +124,7 @@ export function LeadDetailSheet({
 
                 <div className="mt-3">
                   <TabsContent value="deal" className="m-0 data-[state=inactive]:hidden">
-                    <LeadDealTab lead={lead} onUpdate={(p) => onUpdate(lead.id, p)} />
+                    <LeadDealTab lead={lead} stages={stages} onUpdate={(p) => onUpdate(lead.id, p)} onChangeStage={handleChangeStage} />
                   </TabsContent>
                   <TabsContent value="tasks" className="m-0 data-[state=inactive]:hidden">
                     <LeadTasksTab
