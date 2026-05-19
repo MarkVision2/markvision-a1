@@ -4,7 +4,7 @@ import { ArrowRight, Eye, Image as ImageIcon, Layers, MousePointerClick, Play, T
 import { cn } from "@/lib/utils";
 import { bestCreativeImage } from "@/lib/metaThumb";
 import { enqueuePosterCapture } from "@/lib/videoPosterCapture";
-import { supabase } from "@/integrations/supabase/client";
+import { refreshMetaCreative } from "@/lib/metaCreativeRefresh";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
@@ -46,10 +46,7 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
 
   const refreshVideoPreview = async () => {
     if (!row.adId) return;
-    const { data } = await supabase.functions.invoke<{ ok: boolean; video_url?: string; thumbnail_url?: string }>(
-      "meta-creative-refresh",
-      { body: { ad_id: row.adId } },
-    );
+    const data = await refreshMetaCreative(row.adId);
     if (data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
     if (data?.ok && data.video_url) setPreviewVideoUrl(data.video_url);
   };
@@ -69,10 +66,7 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
     void (async () => {
       let videoUrl = row.videoUrl;
       if (!videoUrl) {
-        const { data } = await supabase.functions.invoke<{ ok: boolean; video_url?: string; thumbnail_url?: string }>(
-          "meta-creative-refresh",
-          { body: { ad_id: row.adId } },
-        );
+        const data = await refreshMetaCreative(row.adId);
         if (!cancelled && data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
         videoUrl = data?.ok ? data.video_url ?? null : null;
       }

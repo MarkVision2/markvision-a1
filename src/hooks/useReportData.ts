@@ -103,10 +103,11 @@ async function fetchMetaForRange(
 ): Promise<{
   spend: number; impressions: number; clicks: number; leads: number;
   cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number;
+  cabinetDiagnosticRevenue: number;
   daily: { date: string; spend: number; leads: number; revenue: number }[];
 }> {
   if (externalIds.length === 0) {
-    return { spend: 0, impressions: 0, clicks: 0, leads: 0, cabinetSales: 0, cabinetRevenue: 0, cabinetDiagnostics: 0, daily: [] };
+    return { spend: 0, impressions: 0, clicks: 0, leads: 0, cabinetSales: 0, cabinetRevenue: 0, cabinetDiagnostics: 0, cabinetDiagnosticRevenue: 0, daily: [] };
   }
   const ids = externalIds.map(normalizeActId);
   const since = ymd(range.from);
@@ -114,7 +115,7 @@ async function fetchMetaForRange(
 
   let q = supabase
     .from("cabinet_daily_insights")
-    .select("date, spend, impressions, clicks, leads, crm_sales, manual_sales, crm_revenue, manual_revenue, crm_diagnostics, manual_diagnostics")
+    .select("date, spend, impressions, clicks, leads, crm_sales, manual_sales, crm_revenue, manual_revenue, crm_diagnostics, manual_diagnostics, crm_diagnostic_revenue, manual_diagnostic_revenue")
     .in("external_id", ids)
     .gte("date", since)
     .lte("date", until);
@@ -126,7 +127,7 @@ async function fetchMetaForRange(
 
   const dailyAgg = new Map<string, { spend: number; leads: number; revenue: number }>();
   let totSpend = 0, totImp = 0, totClicks = 0, totLeads = 0;
-  let totSales = 0, totRevenue = 0, totDiag = 0;
+  let totSales = 0, totRevenue = 0, totDiag = 0, totDiagRev = 0;
 
   for (const row of data ?? []) {
     const spend = Number(row.spend) || 0;
@@ -144,12 +145,15 @@ async function fetchMetaForRange(
     const crmDiag = Number(row.crm_diagnostics) || 0;
     const manDiag = Number(row.manual_diagnostics) || 0;
     const diag = manDiag > 0 ? manDiag : crmDiag;
+    const crmDiagRev = Number((row as { crm_diagnostic_revenue?: number }).crm_diagnostic_revenue) || 0;
+    const manDiagRev = Number((row as { manual_diagnostic_revenue?: number }).manual_diagnostic_revenue) || 0;
+    const diagRev = manDiagRev > 0 ? manDiagRev : crmDiagRev;
     totSpend += spend; totImp += impressions; totClicks += clicks; totLeads += leads;
-    totSales += sales; totRevenue += revenue; totDiag += diag;
+    totSales += sales; totRevenue += revenue; totDiag += diag; totDiagRev += diagRev;
     const cur = dailyAgg.get(row.date) ?? { spend: 0, leads: 0, revenue: 0 };
     cur.spend += spend;
     cur.leads += leads;
-    cur.revenue += revenue;
+    cur.revenue += revenue + diagRev;
     dailyAgg.set(row.date, cur);
   }
 
@@ -161,6 +165,7 @@ async function fetchMetaForRange(
     cabinetSales: totSales,
     cabinetRevenue: totRevenue,
     cabinetDiagnostics: totDiag,
+    cabinetDiagnosticRevenue: totDiagRev,
     daily: Array.from(dailyAgg.entries())
       .map(([date, v]) => ({ date, ...v }))
       .sort((a, b) => a.date.localeCompare(b.date)),
@@ -203,19 +208,20 @@ function aggregateCrm(
 
 function computeTotals(
   meta: { spend: number; impressions: number; clicks: number; leads: number;
-          cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number },
+          cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number;
+          cabinetDiagnosticRevenue: number },
   crm: { leads: LeadLite[]; orphanLeads: LeadLite[]; orphanVisits: LeadLite[]; orphanSales: LeadLite[]; orphanRevenue: number },
 ): ReportTotals {
-  // Чтобы не задвоить заявки: FB-лиды из CDI + только orphan CRM-лиды
-  // (те, что без cabinet_id — органика, сайт, WhatsApp). Лиды с cabinet_id
-  // уже учтены через CDI.
-  const totalLeads = meta.leads + crm.orphanLeads.length;
-  // CPL = расход / только платные лиды (которые этот расход и сгенерировал).
-  // Раньше делили на totalLeads — и orphan-лиды занижали CPL, искажая marketing-метрику.
+  // ИСТОЧНИК ПРАВДЫ — Таблица показателей (cabinet_daily_insights).
+  // Цифры на Dashboard / Аналитике / Отчётах должны 1:1 совпадать с Metrics.
+  // Orphan-CRM (лиды без cabinet_id) выводится отдельным предупреждением и НЕ
+  // суммируется в totals — иначе появлялась "лишняя" выручка / диагностики.
+  const totalLeads = meta.leads;
   const cpl = meta.leads > 0 ? meta.spend / meta.leads : 0;
-  const visits = meta.cabinetDiagnostics + crm.orphanVisits.length;
-  const sales = meta.cabinetSales + crm.orphanSales.length;
-  const revenue = meta.cabinetRevenue + crm.orphanRevenue;
+  const visits = meta.cabinetDiagnostics;
+  const sales = meta.cabinetSales;
+  // Выручка = продажи + оплаты диагностик (всё из таблицы показателей).
+  const revenue = meta.cabinetRevenue + meta.cabinetDiagnosticRevenue;
   const cpv = visits > 0 ? meta.spend / visits : 0;
   const cac = sales > 0 ? meta.spend / sales : 0;
   const ctr = meta.impressions > 0 ? (meta.clicks / meta.impressions) * 100 : 0;

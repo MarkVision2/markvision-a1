@@ -11,6 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useCrmStore } from "@/hooks/useCrmStore";
 import type { Lead, LeadEvent } from "@/types/crm";
+import { PageContainer } from "@/components/layout/PageContainer";
+import { PageHeader } from "@/components/layout/PageHeader";
 
 type Status = "success" | "error" | "answered" | "missed";
 type Provider = "tel" | "sip" | "sipuni" | "manual";
@@ -157,22 +159,21 @@ const CallsHistory = () => {
   };
 
   return (
-    <div className="mx-auto w-full max-w-7xl space-y-5 px-4 py-6 sm:px-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">История звонков</h1>
-          <p className="text-sm text-muted-foreground">
-            Все попытки набора и сохранённые итоги звонков по лидам.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <KpiPill label="Всего" value={stats.total} tone="text-foreground" />
-          <KpiPill label="Успех" value={stats.ok} tone="text-success" />
-          <KpiPill label="Ошибки" value={stats.err} tone="text-destructive" />
-        </div>
-      </header>
+    <PageContainer>
+      <PageHeader
+        icon={PhoneCall}
+        title="История звонков"
+        description="Все попытки набора и сохранённые итоги звонков по лидам."
+        actions={
+          <div className="flex flex-wrap gap-2">
+            <KpiPill label="Всего" value={stats.total} tone="text-foreground" />
+            <KpiPill label="Успех" value={stats.ok} tone="text-success" />
+            <KpiPill label="Ошибки" value={stats.err} tone="text-destructive" />
+          </div>
+        }
+      />
 
-      <Card className="space-y-3 p-4">
+      <Card className="mt-6 space-y-3 p-4">
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[220px] flex-1">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -301,7 +302,7 @@ const CallsHistory = () => {
           </ul>
         )}
       </Card>
-    </div>
+    </PageContainer>
   );
 };
 

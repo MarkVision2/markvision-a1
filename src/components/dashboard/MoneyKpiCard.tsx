@@ -25,19 +25,19 @@ export function MoneyKpiCard({
   return (
     <div
       className={cn(
-        "rounded-2xl border bg-card/60 p-5 transition-colors",
+        "rounded-2xl border bg-card/60 p-3.5 transition-colors",
         emphasize ? "border-primary/40 shadow-glow" : "border-border/60",
       )}
     >
       <div className="flex items-center gap-2 text-muted-foreground">
-        <span className="grid h-8 w-8 place-items-center rounded-xl bg-secondary/60">
-          <Icon className="h-4 w-4" />
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-secondary/60">
+          <Icon className="h-3.5 w-3.5" />
         </span>
-        <span className="text-xs font-semibold leading-4 text-muted-foreground">
+        <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
           {label}
         </span>
       </div>
-      <div className="mt-3 text-xl font-bold tabular-nums whitespace-nowrap sm:text-2xl">{value}</div>
+      <div className="mt-2.5 text-lg font-bold tabular-nums whitespace-nowrap leading-tight sm:text-xl">{value}</div>
       <div className="mt-2 flex items-center gap-2 text-[11px]">
         {comparing && hasDelta ? (
           noChange ? (

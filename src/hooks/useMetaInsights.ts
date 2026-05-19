@@ -17,11 +17,22 @@ export interface DailyInsightRow {
   /** Чистое CRM значение, без manual override (для отображения «Из CRM: N» в попапах). */
   crmDiagnostics: number;
   manualDiagnostics: number;
+  /** Override: оплаты за диагностику ₸. */
+  diagnosticRevenue: number;
+  crmDiagnosticRevenue: number;
+  manualDiagnosticRevenue: number;
   /** Override-результат: manual если задан, иначе crm. */
   sales: number;
   crmSales: number;
   manualSales: number;
-  /** Override-результат: manual если задан, иначе crm. Единственный источник правды для денег. */
+  /** Override-результат: только выручка ПРОДАЖ (без диагностик). */
+  salesRevenue: number;
+  crmSalesRevenueOnly: number;
+  manualSalesRevenue: number;
+  /**
+   * ИТОГОВАЯ выручка дня = salesRevenue + diagnosticRevenue (override-aware).
+   * Это «выручка факт» — единый источник правды для денег.
+   */
   crmRevenue: number;
   crmRevenueOnly: number;
   manualRevenue: number;
@@ -42,8 +53,10 @@ export interface InsightTotals {
   ctr: number;
   romi: number;
   diagnostics: number;
+  diagnosticRevenue: number;
   sales: number;
-  /** Override-aware CRM revenue. Это «выручка факт» в Metrics/Analytics/Dashboard. */
+  salesRevenue: number;
+  /** Override-aware: продажи + оплаты диагностик. Это «выручка факт» в Metrics/Analytics/Dashboard. */
   crmRevenue: number;
 }
 
@@ -56,7 +69,7 @@ export interface InsightsData {
 const EMPTY_TOTALS: InsightTotals = {
   spend: 0, impressions: 0, clicks: 0, leads: 0, pixelRevenue: 0, revenue: 0,
   cpl: 0, cpm: 0, cpc: 0, ctr: 0, romi: 0,
-  diagnostics: 0, sales: 0, crmRevenue: 0,
+  diagnostics: 0, diagnosticRevenue: 0, sales: 0, salesRevenue: 0, crmRevenue: 0,
 };
 
 function normalizeActId(id: string) {
@@ -91,6 +104,8 @@ interface CdiRow {
   manual_sales?: number;
   crm_revenue?: number | string;
   manual_revenue?: number | string;
+  crm_diagnostic_revenue?: number | string;
+  manual_diagnostic_revenue?: number | string;
 }
 
 function aggregate(rows: CdiRow[]): InsightsData {
@@ -113,9 +128,15 @@ function aggregate(rows: CdiRow[]): InsightsData {
     const crmSales = Number(r.crm_sales) || 0;
     const manSales = Number(r.manual_sales) || 0;
     const sales = manSales > 0 ? manSales : crmSales;
-    const crmRevenueRaw = Number(r.crm_revenue) || 0;
-    const manRevenue = Number(r.manual_revenue) || 0;
-    const totalRevenue = manRevenue > 0 ? manRevenue : crmRevenueRaw;
+    const crmSalesRev = Number(r.crm_revenue) || 0;
+    const manSalesRev = Number(r.manual_revenue) || 0;
+    const salesRevenue = manSalesRev > 0 ? manSalesRev : crmSalesRev;
+    const crmDiagRev = Number(r.crm_diagnostic_revenue) || 0;
+    const manDiagRev = Number(r.manual_diagnostic_revenue) || 0;
+    const diagnosticRevenue = manDiagRev > 0 ? manDiagRev : crmDiagRev;
+    // Итоговая «выручка факт» = продажи + оплаты диагностик. Override-семантика
+    // применяется внутри каждой составляющей, потом суммируется.
+    const totalRevenue = salesRevenue + diagnosticRevenue;
     totals.spend += spend;
     totals.impressions += impressions;
     totals.clicks += clicks;
@@ -123,7 +144,9 @@ function aggregate(rows: CdiRow[]): InsightsData {
     totals.pixelRevenue += pixelRevenue;
     totals.revenue += pixelRevenue;
     totals.diagnostics += diagnostics;
+    totals.diagnosticRevenue += diagnosticRevenue;
     totals.sales += sales;
+    totals.salesRevenue += salesRevenue;
     totals.crmRevenue += totalRevenue;
     const cur = dailyMap.get(r.date);
     if (cur) {
@@ -136,19 +159,29 @@ function aggregate(rows: CdiRow[]): InsightsData {
       cur.diagnostics += diagnostics;
       cur.crmDiagnostics += crmDiag;
       cur.manualDiagnostics += manDiag;
+      cur.diagnosticRevenue += diagnosticRevenue;
+      cur.crmDiagnosticRevenue += crmDiagRev;
+      cur.manualDiagnosticRevenue += manDiagRev;
       cur.sales += sales;
       cur.crmSales += crmSales;
       cur.manualSales += manSales;
+      cur.salesRevenue += salesRevenue;
+      cur.crmSalesRevenueOnly += crmSalesRev;
+      cur.manualSalesRevenue += manSalesRev;
       cur.crmRevenue += totalRevenue;
-      cur.crmRevenueOnly += crmRevenueRaw;
-      cur.manualRevenue += manRevenue;
+      cur.crmRevenueOnly += crmSalesRev + crmDiagRev;
+      cur.manualRevenue += manSalesRev + manDiagRev;
     } else {
       dailyMap.set(r.date, {
         date: r.date, spend, impressions, clicks, leads,
         pixelRevenue, revenue: pixelRevenue,
         diagnostics, crmDiagnostics: crmDiag, manualDiagnostics: manDiag,
+        diagnosticRevenue, crmDiagnosticRevenue: crmDiagRev, manualDiagnosticRevenue: manDiagRev,
         sales, crmSales, manualSales: manSales,
-        crmRevenue: totalRevenue, crmRevenueOnly: crmRevenueRaw, manualRevenue: manRevenue,
+        salesRevenue, crmSalesRevenueOnly: crmSalesRev, manualSalesRevenue: manSalesRev,
+        crmRevenue: totalRevenue,
+        crmRevenueOnly: crmSalesRev + crmDiagRev,
+        manualRevenue: manSalesRev + manDiagRev,
       });
     }
   }
@@ -175,7 +208,7 @@ async function fetchInsights(
   const ids = actIds.map(normalizeActId);
   let q = supabase
     .from("cabinet_daily_insights")
-    .select("date, spend, impressions, clicks, leads, revenue, currency, crm_diagnostics, manual_diagnostics, crm_sales, manual_sales, crm_revenue, manual_revenue")
+    .select("date, spend, impressions, clicks, leads, revenue, currency, crm_diagnostics, manual_diagnostics, crm_sales, manual_sales, crm_revenue, manual_revenue, crm_diagnostic_revenue, manual_diagnostic_revenue")
     .in("external_id", ids)
     .gte("date", range.since)
     .lte("date", range.until)

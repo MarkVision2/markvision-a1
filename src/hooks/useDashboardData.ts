@@ -132,41 +132,62 @@ export function useDashboardData(
     return { total, reached, scheduled, visited, paid };
   }, [leads, fromTs, toTs]);
 
-  // Каналы для дашборда. Логика:
-  //   1) Берём фактические данные по платформам из cabinet_daily_insights
-  //      (provider = meta|google) — это даёт реальный spend, leads, выручку.
-  //   2) Добавляем Instagram organic из instagram_organic_events.
-  //   3) Если в CRM есть лиды с источниками, которых нет в (1)+(2)
-  //      (например прямой звонок, рекомендация) — добавляем их отдельными строками.
+  // Каналы для дашборда. Группируем по ТОЧКЕ ВХОДА заявки (куда пришёл лид),
+  // а не по провайдеру рекламы — потому что Meta Ads, Facebook и Instagram
+  // ведут трафик в одни и те же 3 источника: WhatsApp, Сайт, Лид-формы.
+  // Иначе одни и те же заявки считаются дважды (CDI Meta + CRM whatsapp).
+  // Расход Meta+Google распределяется между бакетами по доле заявок.
   const channels = useMemo(() => {
     const inRange = leads.filter((l) => dayKeyInRange(new Date(l.createdAt), fromTs, toTs));
 
+    type BucketKey = "whatsapp" | "site" | "lead_form" | "instagram_organic" | "other";
     interface ChannelRow {
       key: string;
       name: string;
-      provider: ProviderKey | "crm";
+      provider: BucketKey;
       spend: number;
       leads: number;
       sales: number;
       revenue: number;
     }
-    const rows: ChannelRow[] = [];
 
-    for (const agg of providerAgg) {
-      rows.push({
-        key: agg.provider,
-        name: agg.label,
-        provider: agg.provider,
-        spend: agg.spend,
-        leads: agg.leads,
-        sales: agg.sales,
-        revenue: agg.revenue,
-      });
+    const BUCKET_LABELS: Record<BucketKey, string> = {
+      whatsapp: "WhatsApp",
+      site: "Сайт",
+      lead_form: "Лид-формы",
+      instagram_organic: "Instagram organic",
+      other: "Прочее",
+    };
+
+    const classify = (l: typeof inRange[number]): BucketKey => {
+      const src = (l.source ?? "").toLowerCase();
+      const ch = (l.channel ?? "").toLowerCase();
+      const refr = (l.referrer ?? "").toLowerCase();
+      // Lead-форма Meta — обычно source/channel = lead_form / leadgen / fb_form
+      if (/lead.?form|leadgen|fb_form|fb-form/.test(src) || /lead.?form|leadgen/.test(ch)) return "lead_form";
+      if (/whatsapp|^wa$|wa\.me/.test(src) || /whatsapp|^wa$/.test(ch) || /wa\.me|whatsapp/.test(refr)) return "whatsapp";
+      if (/site|web|landing|^lp$|tilda|wordpress/.test(src) || /site|web|form/.test(ch)) return "site";
+      return "other";
+    };
+
+    const buckets = new Map<BucketKey, ChannelRow>();
+    for (const l of inRange) {
+      const k = classify(l);
+      const cur = buckets.get(k) ?? {
+        key: k, name: BUCKET_LABELS[k], provider: k,
+        spend: 0, leads: 0, sales: 0, revenue: 0,
+      };
+      cur.leads += 1;
+      if (isLeadPaid(l)) {
+        cur.sales += 1;
+        cur.revenue += l.amount || 0;
+      }
+      buckets.set(k, cur);
     }
 
     // Instagram organic — отдельный канал. Заявки приходят из событий lead.
     // Лид считаем только если он БЕЗ cabinet_id — иначе он уже учтён через CDI Meta/Google
-    // (например, в Meta-кампании через Instagram) и попал бы в две строки ChannelsTable одновременно.
+    // (например, в Meta-кампании через Instagram) и попал бы в две строки одновременно.
     if (igFunnel.leads > 0 || igFunnel.codewordDms > 0) {
       const igRevenue = igEvents
         .filter((e) => e.eventType === "lead" && e.leadId)
@@ -180,11 +201,10 @@ export function useDashboardData(
         .filter((e) => {
           const lead = leads.find((l) => l.id === e.leadId);
           return lead && !lead.cabinetId && isLeadPaid(lead);
-        })
-        .length;
-      rows.push({
+        }).length;
+      buckets.set("instagram_organic", {
         key: "instagram_organic",
-        name: PROVIDER_LABELS.instagram_organic,
+        name: BUCKET_LABELS.instagram_organic,
         provider: "instagram_organic",
         spend: 0,
         leads: igFunnel.leads,
@@ -193,51 +213,32 @@ export function useDashboardData(
       });
     }
 
-    // Если ни одна платформа не выдала данных, но в CRM есть лиды
-    // с маркированным источником — показываем их разбивку.
-    const knownKeys = new Set(rows.map((r) => r.key));
-    if (rows.length === 0 || inRange.length > 0) {
-      const map = new Map<string, ChannelRow>();
-      for (const l of inRange) {
-        const meta = normalizeSource(l.source);
-        // Лиды Meta Ads и Google Ads уже учтены через providerAgg — не дублируем.
-        if (meta.key === "meta" && knownKeys.has("meta")) continue;
-        if (meta.key === "google" && knownKeys.has("google")) continue;
-        if ((meta.key === "instagram" || meta.key === "instagram_organic") && knownKeys.has("instagram_organic")) continue;
-        const k = meta.key === "unknown" && meta.raw ? meta.raw : meta.key;
-        const cur = map.get(k) ?? {
-          key: k, name: meta.label, provider: "crm" as const,
-          spend: 0, leads: 0, sales: 0, revenue: 0,
-        };
-        cur.leads += 1;
-        if (isLeadPaid(l)) {
-          cur.sales += 1;
-          cur.revenue += l.amount || 0;
-        }
-        map.set(k, cur);
+    // Расход всех платных каналов (Meta + Google) из CDI — распределяем
+    // пропорционально доле заявок по платным бакетам (WA / Site / LeadForm).
+    const paidSpend = providerAgg
+      .filter((a) => a.provider !== "instagram_organic")
+      .reduce((s, a) => s + a.spend, 0);
+
+    const paidBucketKeys: BucketKey[] = ["whatsapp", "site", "lead_form"];
+    const paidLeadsTotal = paidBucketKeys.reduce(
+      (s, k) => s + (buckets.get(k)?.leads ?? 0), 0,
+    );
+
+    if (paidSpend > 0 && paidLeadsTotal > 0) {
+      for (const k of paidBucketKeys) {
+        const b = buckets.get(k);
+        if (!b) continue;
+        b.spend = (b.leads / paidLeadsTotal) * paidSpend;
       }
-      for (const v of map.values()) rows.push(v);
     }
 
-    // Fallback: если у нас пусто (провайдер не записал в CDI provider-колонку), но в Meta totals есть
-    // лиды — показываем одну Meta-строку строго с ads-метриками. Раньше тут было `totalLeads`,
-    // что включало orphan CRM-лиды в Meta-строку и искажало CPL.
-    if (rows.length === 0 && data?.totals && data.totals.adsLeads > 0) {
-      rows.push({
-        key: "meta",
-        name: PROVIDER_LABELS.meta,
-        provider: "meta",
-        spend: data.totals.spend,
-        leads: data.totals.adsLeads,
-        sales: data.totals.sales,
-        revenue: data.totals.revenue,
-      });
-    }
-
+    const rows = Array.from(buckets.values());
     return rows
       .filter((r) => r.leads > 0 || r.spend > 0)
       .sort((a, b) => b.leads - a.leads);
-  }, [providerAgg, igFunnel, igEvents, leads, fromTs, toTs, data?.totals]);
+  }, [providerAgg, igFunnel, igEvents, leads, fromTs, toTs]);
+
+
 
   // Daily timeseries: spend (from meta) + revenue (from CRM paid leads)
   const timeseries = useMemo(() => {

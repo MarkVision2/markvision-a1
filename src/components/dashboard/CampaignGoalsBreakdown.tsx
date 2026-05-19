@@ -1,10 +1,16 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, FileText, Globe, Heart, Megaphone, MessageCircle, ShoppingBag, Target, TrendingDown, TrendingUp, Users, Video } from "lucide-react";
+import { ChevronDown, Coins, FileText, Globe, Heart, Megaphone, MessageCircle, ShoppingBag, Target, TrendingDown, TrendingUp, Users, Video, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { classifyGoal, type GoalKey, type MetaCampaignRow } from "@/hooks/useMetaStructure";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
+const fmtTengeCompact = (n: number) => {
+  const abs = Math.abs(n);
+  if (abs >= 1_000_000) return `${(n / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M ₸`;
+  if (abs >= 10_000) return `${Math.round(n / 1000)}k ₸`;
+  return fmtTenge(n);
+};
 const splitTenge = (n: number) => ({ amount: Math.round(n).toLocaleString("ru-RU"), unit: "₸" });
 
 interface GoalBucket {
@@ -19,6 +25,9 @@ interface GoalBucket {
   messages: number;
   purchases: number;
   revenue: number;
+  crmSales: number;
+  crmRevenue: number;
+  crmLeads: number;
 }
 
 const GOAL_ICONS: Record<GoalKey, typeof Target> = {
@@ -71,6 +80,7 @@ export function CampaignGoalsBreakdown({ rows }: Props) {
         successMetric: goal.successMetric,
         campaigns: [] as MetaCampaignRow[],
         spend: 0, impressions: 0, clicks: 0, leads: 0, messages: 0, purchases: 0, revenue: 0,
+        crmSales: 0, crmRevenue: 0, crmLeads: 0,
       };
       cur.campaigns.push(r);
       cur.spend += r.spend;
@@ -80,6 +90,9 @@ export function CampaignGoalsBreakdown({ rows }: Props) {
       cur.messages += r.messages;
       cur.purchases += r.purchases;
       cur.revenue += r.revenue;
+      cur.crmSales += r.crmSales;
+      cur.crmRevenue += r.crmRevenue;
+      cur.crmLeads += r.crmLeads;
       map.set(goal.key, cur);
     }
     return Array.from(map.values()).sort((a, b) => b.spend - a.spend);
@@ -115,12 +128,14 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
     : g.impressions;
   const costPerResult = successValue > 0 ? g.spend / successValue : 0;
   const ctr = g.impressions > 0 ? (g.clicks / g.impressions) * 100 : 0;
-  // Внимание: g.revenue здесь — FB pixel revenue из meta_campaign_daily, а не CRM-выручка.
-  // На уровне кампаний CRM-атрибуции пока нет (есть только для креативов через meta_creative_crm_daily),
-  // поэтому этот ROMI может отличаться от ROMI в Dashboard.MoneyKpiCards (где revenue — CRM).
-  // Показываем его только когда FB pixel вернул > 0 — иначе скрываем, чтобы не путать "0%" с "нет данных".
-  const hasPixelRevenue = g.revenue > 0 && g.spend > 0;
-  const romi = hasPixelRevenue ? ((g.revenue - g.spend) / g.spend) * 100 : 0;
+  // ROMI считаем по CRM-выручке (реальные оплаченные сделки, привязанные к ad_id креатива),
+  // потому что revenue из meta_campaign_daily — это FB pixel revenue, которого у большинства проектов нет.
+  const hasCrm = g.crmRevenue > 0 && g.spend > 0;
+  const crmRomi = hasCrm ? ((g.crmRevenue - g.spend) / g.spend) * 100 : 0;
+  const crmProfit = g.crmRevenue - g.spend;
+  // Фоллбэк на pixel revenue, если CRM пока пуста, но pixel что-то прислал.
+  const hasPixel = !hasCrm && g.revenue > 0 && g.spend > 0;
+  const pixelRomi = hasPixel ? ((g.revenue - g.spend) / g.spend) * 100 : 0;
 
   const sorted = [...g.campaigns].sort((a, b) => b.spend - a.spend);
   const visible = expanded ? sorted : sorted.slice(0, 3);
@@ -159,7 +174,7 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
       )}
 
       {/* HEADER */}
-      <div className="relative flex flex-wrap items-center gap-x-6 gap-y-5 px-5 py-5 pl-6 sm:px-6 sm:pl-7">
+      <div className="relative flex flex-wrap items-start gap-x-6 gap-y-5 px-5 py-5 pl-6 sm:px-6 sm:pl-7">
         {/* Title block */}
         <div className="flex min-w-0 flex-1 items-center gap-4">
           <span
@@ -185,7 +200,7 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
                     <span className={cn("absolute inset-0 animate-ping rounded-full opacity-70", accent.dot)} />
                     <span className={cn("relative h-1.5 w-1.5 rounded-full", accent.dot)} />
                   </span>
-                  {activeCount} активных
+                  {activeCount}/{g.campaigns.length} активных
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-muted/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -194,6 +209,39 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
                 </span>
               )}
             </div>
+            {/* PROFIT / ROMI line */}
+            {hasCrm ? (
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[12.5px] font-bold tabular-nums",
+                    crmProfit >= 0
+                      ? "border-success/30 bg-success/10 text-success"
+                      : "border-destructive/30 bg-destructive/10 text-destructive",
+                  )}
+                >
+                  {crmProfit >= 0 ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+                  {crmProfit >= 0 ? "+" : ""}{fmtTengeCompact(crmProfit)}
+                  <span className="text-[10px] font-semibold uppercase tracking-wider opacity-70">прибыль · CRM</span>
+                </span>
+                <span className="text-[11px] text-muted-foreground tabular-nums">
+                  <Coins className="mr-1 inline h-3 w-3" />
+                  Выручка <span className="font-semibold text-foreground/90">{fmtTengeCompact(g.crmRevenue)}</span> · {fmtNum(g.crmSales)} продаж
+                </span>
+              </div>
+            ) : hasPixel ? (
+              <div className="mt-2 text-[11px] text-muted-foreground">
+                <span className="font-semibold text-foreground/80">Pixel-выручка:</span> {fmtTengeCompact(g.revenue)} ·{" "}
+                <span className={cn("font-bold tabular-nums", pixelRomi >= 0 ? "text-success" : "text-destructive")}>
+                  ROMI {pixelRomi >= 0 ? "+" : ""}{Math.round(pixelRomi)}%
+                </span>
+                <span className="ml-1 opacity-60">(pixel · CRM-связки пока нет)</span>
+              </div>
+            ) : g.spend > 0 ? (
+              <div className="mt-2 text-[11px] text-muted-foreground">
+                Реальная выручка появится здесь, когда лиды этой цели начнут переходить в оплаты в CRM.
+              </div>
+            ) : null}
           </div>
         </div>
 
@@ -204,9 +252,10 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
           <KpiCell label="Цена рез." amount={costParts?.amount ?? "—"} unit={costParts?.unit} />
           <KpiCell label="CTR" amount={ctr > 0 ? `${ctr.toFixed(2)}%` : "—"} />
           <KpiCell
-            label="ROMI · FB Pixel"
-            amount={hasPixelRevenue ? `${romi >= 0 ? "+" : ""}${Math.round(romi)}%` : "—"}
-            tone={!hasPixelRevenue ? undefined : romi >= 0 ? "success" : "destructive"}
+            label="ROMI · CRM"
+            amount={hasCrm ? `${crmRomi >= 0 ? "+" : ""}${Math.round(crmRomi)}%` : "—"}
+            tone={!hasCrm ? undefined : crmRomi >= 0 ? "success" : "destructive"}
+            sub={hasCrm ? `${fmtNum(g.crmSales)} продаж` : "нет данных"}
           />
         </div>
       </div>
@@ -247,20 +296,22 @@ function KpiCell({
   unit,
   tone,
   highlight,
+  sub,
 }: {
   label: string;
   amount: string;
   unit?: string;
   tone?: "success" | "destructive";
   highlight?: boolean;
+  sub?: string;
 }) {
   return (
     <div
       className={cn(
-        "flex min-w-[78px] flex-col items-start gap-1.5 rounded-xl border border-border/40 bg-background/40 px-3 py-2 backdrop-blur-sm transition-colors",
+        "flex min-w-[88px] flex-col items-start gap-1 rounded-xl border border-border/40 bg-background/40 px-3 py-2 backdrop-blur-sm transition-colors",
         highlight && "border-primary/25 bg-primary/[0.06]",
-        tone === "destructive" && "border-destructive/25 bg-destructive/[0.05]",
-        tone === "success" && "border-success/25 bg-success/[0.05]",
+        tone === "destructive" && "border-destructive/30 bg-destructive/[0.06]",
+        tone === "success" && "border-success/30 bg-success/[0.06]",
       )}
     >
       <div className="text-[9px] font-bold uppercase tracking-[0.16em] text-muted-foreground/70">{label}</div>
@@ -275,6 +326,9 @@ function KpiCell({
         {amount}
         {unit && <span className="ml-0.5 text-[12px] font-medium opacity-70">{unit}</span>}
       </div>
+      {sub && (
+        <div className="text-[9.5px] font-medium uppercase tracking-wider text-muted-foreground/60">{sub}</div>
+      )}
     </div>
   );
 }
@@ -300,9 +354,7 @@ function CampaignRow({
   const costPer = success > 0 ? c.spend / success : 0;
   const isActive = c.effectiveStatus === "ACTIVE";
   const sharePct = Math.max(2, Math.round((c.spend / maxSpend) * 100));
-  const hasRomi = c.revenue > 0 && c.spend > 0;
-  // FB pixel revenue (см. комментарий в GoalCard) — здесь это знак атрибуции событий, не реальная выручка.
-  const romi = hasRomi ? ((c.revenue - c.spend) / c.spend) * 100 : 0;
+  const hasCrm = c.crmRevenue > 0 && c.spend > 0;
 
   return (
     <li
@@ -343,6 +395,15 @@ function CampaignRow({
             <span className="tabular-nums">{fmtNum(c.impressions)} показов</span>
             <span className="h-1 w-1 rounded-full bg-border" />
             <span className="tabular-nums">CTR <span className="text-foreground/80">{c.ctr > 0 ? `${c.ctr.toFixed(2)}%` : "—"}</span></span>
+            {hasCrm && (
+              <>
+                <span className="h-1 w-1 rounded-full bg-border" />
+                <span className="tabular-nums">
+                  <Wallet className="mr-0.5 inline h-2.5 w-2.5" />
+                  {fmtNum(c.crmSales)} продаж · {fmtTengeCompact(c.crmRevenue)}
+                </span>
+              </>
+            )}
           </div>
         </div>
         {/* metric chips */}
@@ -350,12 +411,12 @@ function CampaignRow({
           <Chip label="Расход" value={c.spend > 0 ? fmtTenge(c.spend) : "—"} />
           <Chip label={successLabelOf(successMetric)} value={fmtNum(success)} accent="primary" />
           <Chip label="Цена" value={costPer > 0 ? fmtTenge(costPer) : "—"} />
-          {hasRomi && (
+          {hasCrm && (
             <Chip
-              label="ROMI · pixel"
-              value={`${romi >= 0 ? "+" : ""}${Math.round(romi)}%`}
-              accent={romi >= 0 ? "success" : "destructive"}
-              icon={romi >= 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}
+              label="ROMI · CRM"
+              value={`${c.crmRomi >= 0 ? "+" : ""}${Math.round(c.crmRomi)}%`}
+              accent={c.crmRomi >= 0 ? "success" : "destructive"}
+              icon={c.crmRomi >= 0 ? <TrendingUp className="h-2.5 w-2.5" /> : <TrendingDown className="h-2.5 w-2.5" />}
             />
           )}
         </div>
