@@ -160,7 +160,10 @@ Deno.serve(async (req) => {
   const { error } = await admin
     .from("cabinet_daily_insights")
     .upsert(upserts, { onConflict: "external_id,date" });
-  if (error) return json({ ok: false, error: error.message }, 500);
+  if (error) {
+    console.error("[google-ads-intake] upsert failed", error);
+    return json({ ok: false, error: "Internal server error" }, 500);
+  }
 
   return json({ ok: true, cabinet_id: cabinet.id, rows: upserts.length });
 });

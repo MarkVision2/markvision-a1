@@ -443,7 +443,7 @@ Deno.serve(async (req) => {
 
     if (error || !created) {
       console.error("createLead error", error);
-      return json({ error: error?.message ?? "Insert failed" }, 500);
+      return json({ error: "Internal server error" }, 500);
     }
 
     if (note) {
@@ -462,6 +462,6 @@ Deno.serve(async (req) => {
     return json({ ok: true, leadId: created.id });
   } catch (e) {
     console.error("intake error", e);
-    return json({ error: (e as Error).message }, 500);
+    return json({ error: "Internal server error" }, 500);
   }
 });
