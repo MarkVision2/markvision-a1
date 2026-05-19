@@ -291,6 +291,13 @@ export default function ProjectIntegrationWizard() {
       });
       if (error) throw error;
       const ok = (data as any)?.ok;
+      if (ok && projectId) {
+        // Persist webhook URL so health-check sees it
+        await supabase
+          .from("whatsapp_config" as any)
+          .update({ webhook_url: WEBHOOK_URL })
+          .eq("project_id", projectId);
+      }
       setWaWebhook({
         status: ok ? "ok" : "fail",
         message: ok ? `Webhook прописан: ${WEBHOOK_URL}` : JSON.stringify((data as any)?.response ?? data),
