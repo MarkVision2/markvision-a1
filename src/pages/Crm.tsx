@@ -446,6 +446,7 @@ const Crm = () => {
           const current = leads.find((l) => l.id === id);
           setPayFor({ leadId: id, prevStageId: current?.stageId });
         }}
+        onRequestDiagnostic={(id) => setDiagFor({ leadId: id, stageId: "scheduled" })}
         busySlots={busySlots}
       />
 
