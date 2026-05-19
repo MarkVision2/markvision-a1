@@ -1,69 +1,88 @@
-## Что не так сейчас
+## Контекст (что уже есть)
 
-Прошёл по всем 22 страницам и нашёл системные расхождения:
+Проверил репо — половина инфраструктуры уже на месте:
 
-**Шрифты**
-- В `index.html` вообще не подключён шрифт — браузер рисует системным (на Mac San Francisco, на Windows Segoe UI → выглядит по-разному).
-- В `index.css` нет `font-family` для body.
+- ✅ Edge functions: `meta-validate-cabinet`, `greenapi-webhook`, `meta-creative-upsert`, `capi-outbox-worker`, `meta-daily-sync`, `meta-structure-sync`, `lead-intake`
+- ✅ Миграция `20260519100000_capi_outbox_and_attribution.sql` → таблицы `crm_stage_map`, `capi_outbox`, триггеры стадий
+- ✅ Таблицы `ad_cabinets` (с токенами), `projects`, `meta_creatives`, `finance_plans`, `pipelines`, `pipeline_stages`
+- ✅ Страница `SettingsConnection.tsx` (933 строки) — но только под WhatsApp/GreenAPI бинд
+- ✅ Хук `useCabinetsStore.ts`
+- ✅ Доки `docs/SETUP-CHECKLIST.md`, `docs/attribution-pipeline.md`
 
-**Заголовки страниц (H1)** — 4 разных размера на одном уровне навигации:
-- `text-3xl sm:text-4xl` → Дашборд, Метрики, Аналитика, Воронка, Подключение, Placeholder
-- `text-2xl` → Настройки, Звонки, Отчёты
-- `text-xl sm:text-2xl` → Финансы, Ads, ClientDashboard
-- `text-4xl sm:text-5xl` → CreateStep1/2/3 (мастер — допустимо)
+**Чего нет:**
+- Нет единого 8-шагового визарда «Добавить проект»
+- Нет edge function `greenapi-setup` (автонастройка webhook через GreenAPI /setSettings)
+- Нет таблицы `ad_sync_runs` (для Health Check «когда был последний sync»)
+- Нет панели Health Check (6 индикаторов)
+- Нет тест-прогона (создать лида → прокатить по стадиям → проверить CAPI)
+- `CreativeFunnel` не расширен до полной воронки с ROMI
 
-**Контейнеры страниц** — у каждой свой max-width:
-- `max-w-[1500px]` Метрики, `max-w-[1600px]` Финансы, `max-w-7xl` Дашборд/Аналитика/Воронка/Отчёты, `max-w-6xl` Ads, `max-w-3xl` Placeholder, плюс страницы вообще без `container` (Settings, Crm, SettingsConnection).
-- Паддинги: `py-6` / `py-8` вперемешку.
+## Подход — режем на 3 фазы, чтобы ничего не сломать
 
-**Иконка-контейнеры в шапке страницы** — `h-9/h-10/h-12/h-14`, `rounded-lg/xl/2xl`, `bg-success/10` vs `bg-success/15`, ring есть/нет. Каждая страница на свой лад.
+### Фаза 1 — Визард + сохранение (этот PR)
 
-**Lucide-иконки** внутри — в основном `h-4 w-4` (246), но 113 раз `h-3 w-3`, 38 раз `h-5 w-5`, плюс случайные h-6/7/8. Внутри одной карточки часто разные размеры.
+Один новый файл `src/pages/NewProjectWizard.tsx` + route `/projects/new`. 8 шагов в одном `<Card>` со stepper:
 
-**Радиусы** — `rounded-md/lg/xl/2xl` рассыпаны без правила.
+1. **Идентификация** → `projects` (name, domain, city, currency, timezone). Создаёт row сразу, чтобы `project_id` был доступен на следующих шагах
+2. **Meta Ads API** → `ad_cabinets` (ad_account_id auto-normalize в `act_XXX`, access_token, pixel_id, pixel_event, capi_test_event_code). Кнопка «Проверить токен» → вызов `meta-validate-cabinet`, показ имени аккаунта/валюты
+3. **Facebook Page + Instagram** → `ad_cabinets.page_id`, `page_name`, `instagram_id`. Кнопка «Подтянуть данные страницы» через `meta-page-assets`
+4. **GreenAPI** → `whatsapp_config` (id_instance, api_token). Кнопка «Проверить подключение» (getStateInstance через `greenapi-proxy`). Кнопка «Настроить webhook автоматически» → новая edge function `greenapi-setup` (вызывает `/setSettings` с нашим webhook URL и включает incoming/outgoing/state webhooks)
+5. **Лендинг и трекинг** → `ad_cabinets.landing_url`, `telegram_group_id`. Авто-генерация UTM template (с copy-кнопкой) + intake URL `https://szfgdruhlebfvcmlvxdk.supabase.co/functions/v1/lead-intake/t/<projects.intake_token>`
+6. **CRM Pipeline mapping** → список стадий проекта + selector CAPI-события (None/Schedule/Diagnostic/Purchase). Сохраняет в `crm_stage_map` с `project_id`
+7. **Финансовый план** (опционально) → `finance_plans` строка на текущий месяц
+8. **Тест-прогон** → кнопка «Запустить тест»: создаёт `leads` row с `is_personal=true`, прокатывает через стадии (Schedule → Diagnostic → Purchase через `deals`), ждёт 30 сек, проверяет `capi_outbox.status='sent'`, удаляет тестовый лид. 4 чек-листа с зелёными/красными галочками
 
-## Что делаю
+Маскировка токенов после сохранения (`••••••••XYZ`).
 
-### 1. Глобальная типографика (один раз, тянет всё)
-- В `index.html` добавляю preconnect + `Inter` (400/500/600/700/800) и `JetBrains Mono` (для tabular цифр).
-- В `index.css` ставлю `body { font-family: Inter, ui-sans-serif, system-ui... }`, `.tabular-nums { font-variant-numeric: tabular-nums; }`.
-- В `tailwind.config.ts` расширяю `fontFamily: { sans: ['Inter', ...], mono: ['JetBrains Mono', ...] }`.
+### Фаза 2 — Бэкенд-автоматизация (следующий PR)
 
-### 2. Единый компонент шапки страницы `PageHeader`
-Новый файл `src/components/layout/PageHeader.tsx` — иконка-плашка `h-11 w-11 rounded-2xl bg-success/10 text-success`, H1 `text-2xl sm:text-3xl font-bold tracking-tight`, подзаголовок `text-sm text-muted-foreground`, слот справа для контролов. Заменяю руками собранные шапки во всех 12 страницах списка (Dashboard, Metrics, Analytics, Finance, Reports, Ads, Crm, Calls, Settings, SettingsConnection, CreativeFunnel, Placeholder, ClientDashboard, SalesAI).
+- Триггер на `INSERT INTO ad_cabinets`:
+  - `ensure_project_pipeline` (уже есть)
+  - Авто-вызов `meta-structure-sync` для нового кабинета (через `pg_net`)
+  - Создание `finance_plans` row на текущий месяц
+- Новая edge function `greenapi-setup` (Фаза 1 уже её зовёт, реализация во Фазе 2 если кнопка отдельная)
+- Таблица `ad_sync_runs (cabinet_id, kind, ok, error, created_at)` для трекинга последнего sync
 
-### 3. Единая обёртка `PageContainer`
-`src/components/layout/PageContainer.tsx` — `mx-auto w-full max-w-[1400px] px-4 sm:px-6 lg:px-8 py-6 sm:py-8 animate-fade-in-up`. Применяю на всех страницах вместо `container max-w-...`. Финансы остаются `max-w-[1600px]` через проп `wide`.
+### Фаза 3 — Health Check + CreativeFunnel ROMI
 
-### 4. Стандарт иконок
-Правило (правлю по страницам):
-- Иконки в кнопках/инпутах/строках таблиц: `h-4 w-4`.
-- Иконки в карточках-плашках (h-10/h-11): `h-5 w-5`.
-- Иконки в крупных hero-плашках (h-14): `h-6 w-6`.
-- Декоративные точки/индикаторы статуса: `h-2 w-2`.
-Прохожу страницы и привожу к правилу; внутри одной строки/карточки — один размер.
+- Компонент `<CabinetHealthCheck cabinetId>` на странице кабинета: 6 индикаторов (Meta API, Pixel, WhatsApp, CAPI worker, Creative sync, CRM events) через batch RPC `cabinet_health_check(uuid)`
+- `CreativeFunnel`: добавить колонки Diagnostics/Sales/Revenue/ROMI (`crmRevenue / spend * 100`), fallback на pixel revenue
+- (Опц.) Админская страница `/admin/pipeline-status` с pending/sent/failed CAPI
 
-### 5. Радиусы
-Канон:
-- Карточки и панели: `rounded-2xl`.
-- Кнопки, инпуты, чипы: `rounded-xl`.
-- Маленькие бейджи, аватары-плашки иконок: `rounded-lg` или `rounded-full`.
-Привожу несовпадения внутри Metrics/Dashboard/Analytics/Reports/Ads/Crm/Settings.
+## Что меняется в Фазе 1 (этот PR)
 
-### 6. KPI-карточки чисел
-Везде число `text-3xl font-bold tabular-nums`, лейбл `text-xs uppercase tracking-wider text-muted-foreground`. Сейчас в Analytics `text-2xl`, в Metrics `text-3xl md:text-[2rem]`, в SalesAI `text-2xl` — выравниваю.
+### Новые файлы
+- `src/pages/NewProjectWizard.tsx` — мастер с 8 шагами (~500 строк, разбит на компоненты по шагам)
+- `src/components/wizard/StepIndicator.tsx`, `WizardStep*.tsx` (8 компонентов, по файлу на шаг)
+- `src/hooks/useWizardState.ts` — общий стейт визарда (через `useReducer`)
+- `supabase/functions/greenapi-setup/index.ts` — POST `{instanceId, apiToken, webhookUrl}` → вызов GreenAPI `/setSettings`
 
-### 7. Проверка по странице
-По каждой странице из списка пробегаю шапку → контейнер → KPI → таблицы/списки → кнопки. Финальный чек — скриншот превью на `/dashboard`, `/metrics`, `/analytics`, `/finance`, `/reports`, `/ads`, `/crm`, `/settings` через browser-screenshot, ищу остаточные расхождения.
+### Миграции
+- `crm_stage_map` уже есть → ничего не добавляем
+- Уточнение: убедиться что `whatsapp_config.webhook_url` поле есть; если нет — добавить
+- Никаких миграций для Health Check на этом этапе
 
-## Что НЕ трогаю
-- Логику данных, хуки, supabase — только presentation.
-- CreateStep1/2/3 (онбординг-мастер с большой типографикой — намеренно другой).
-- Цвета токенов в `:root` (palette уже единая).
+### Изменения
+- `src/App.tsx` (или роутер) — добавить route `/projects/new`
+- Кнопка «Добавить проект» в `ProjectSwitcher` / на дашборде → ведёт на `/projects/new`
 
-## Технический раздел
-Файлы новые: `src/components/layout/PageHeader.tsx`, `src/components/layout/PageContainer.tsx`.
-Файлы правлю: `index.html`, `src/index.css`, `tailwind.config.ts`, плюс 14 страниц в `src/pages/` и несколько общих компонентов (`MoneyKpiCard`, `KpiCard`, `SummaryCard` в Metrics) для согласования размеров.
+### Что НЕ трогаем
+- Dashboard / Metrics / Analytics — цифры согласованы (PR #45), не редизайним
+- n8n воркфлоу — отдельно
+- Существующий `SettingsConnection.tsx` — оставляем как «расширенные настройки», визард — отдельный поток для нового проекта
+- Существующие таблицы и RLS-политики
 
-## Результат
-Один шрифт на всё приложение. Одна высота шапки страницы. Один максимум ширины. Иконки трёх размеров по правилу. Радиусы по правилу. KPI-числа одного размера. Любая страница «как из одной коробки».
+## Что нужно от вас (после Фазы 1)
+
+- Подтвердить webhook URL `https://szfgdruhlebfvcmlvxdk.supabase.co/functions/v1/greenapi-webhook` — но **этот project ref не совпадает** с текущим (`mekwfbqmsqiborjdrjxc`). Уточните пожалуйста: это другой проект (на котором будет жить webhook)? Или опечатка и нужно использовать наш `mekwfbqmsqiborjdrjxc`?
+
+## DoD Фазы 1
+
+- [ ] Менеджер может пройти 8 шагов в `/projects/new` и создать проект+кабинет
+- [ ] Кнопка «Проверить Meta токен» работает
+- [ ] Кнопка «Проверить GreenAPI» работает  
+- [ ] Кнопка «Настроить GreenAPI webhook» вызывает `greenapi-setup` и возвращает OK
+- [ ] CRM stage mapping сохраняется в `crm_stage_map`
+- [ ] Тест-прогон создаёт лида и показывает 4 галочки
+- [ ] Токены маскируются после сохранения
+- [ ] Существующие страницы не сломаны
