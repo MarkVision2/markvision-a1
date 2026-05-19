@@ -76,22 +76,24 @@ const SummaryCard = ({
   }[accent];
 
   return (
-    <div className="min-h-[168px] rounded-2xl border border-border/60 bg-card/60 p-5 transition-colors hover:border-success/30 hover:bg-card/80">
-      <div className="flex items-start justify-between gap-3">
-        <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl border", tone)}>
-          <Icon className="h-4 w-4" />
-        </span>
-        <span className={cn("rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wider", tone)}>
+    <div className="rounded-2xl border border-border/60 bg-card/60 p-3.5 transition-colors hover:border-success/30 hover:bg-card/80">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-lg border", tone)}>
+            <Icon className="h-3.5 w-3.5" />
+          </span>
+          <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {label}
+          </span>
+        </div>
+        <span className={cn("rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider", tone)}>
           {badge}
         </span>
       </div>
-      <div className="mt-5 min-h-[42px] text-[15px] font-bold leading-5 text-foreground">
-        {label}
-      </div>
-      <div className="mt-4 text-3xl font-bold leading-none tabular-nums text-foreground md:text-[2rem]">
+      <div className="mt-2.5 text-lg font-bold tabular-nums leading-tight sm:text-xl">
         {value}
       </div>
-      <div className="mt-3 text-xs leading-4 text-muted-foreground">
+      <div className="mt-1.5 text-[10px] leading-4 text-muted-foreground">
         {formula}
       </div>
     </div>
