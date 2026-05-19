@@ -81,6 +81,7 @@ const App = () => (
               <Route path="/create/step-1" element={<RequireAuth><AppLayout><CreateStep1 /></AppLayout></RequireAuth>} />
               <Route path="/create/step-2" element={<RequireAuth><AppLayout><CreateStep2 /></AppLayout></RequireAuth>} />
               <Route path="/create/step-3" element={<RequireAuth><AppLayout><CreateStep3 /></AppLayout></RequireAuth>} />
+              <Route path="/projects/new" element={<RequireAuth><AppLayout><ProjectIntegrationWizard /></AppLayout></RequireAuth>} />
               <Route path="/projects/:id/strategy" element={<RequireAuth><AppLayout><ProjectStrategy /></AppLayout></RequireAuth>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
