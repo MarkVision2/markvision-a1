@@ -288,6 +288,13 @@ export type Database = {
             referencedRelation: "ad_cabinets"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "ad_campaigns_cabinet_id_fkey"
+            columns: ["cabinet_id"]
+            isOneToOne: false
+            referencedRelation: "ad_cabinets_safe"
+            referencedColumns: ["id"]
+          },
         ]
       }
       ad_sync_runs: {
@@ -336,6 +343,13 @@ export type Database = {
             columns: ["cabinet_id"]
             isOneToOne: false
             referencedRelation: "ad_cabinets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ad_sync_runs_cabinet_id_fkey"
+            columns: ["cabinet_id"]
+            isOneToOne: false
+            referencedRelation: "ad_cabinets_safe"
             referencedColumns: ["id"]
           },
           {
@@ -1292,6 +1306,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "meta_campaign_daily_cabinet_id_fkey"
+            columns: ["cabinet_id"]
+            isOneToOne: false
+            referencedRelation: "ad_cabinets_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "meta_campaign_daily_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
@@ -1369,6 +1390,13 @@ export type Database = {
             columns: ["cabinet_id"]
             isOneToOne: false
             referencedRelation: "ad_cabinets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_campaigns_cabinet_id_fkey"
+            columns: ["cabinet_id"]
+            isOneToOne: false
+            referencedRelation: "ad_cabinets_safe"
             referencedColumns: ["id"]
           },
           {
@@ -1452,6 +1480,13 @@ export type Database = {
             columns: ["cabinet_id"]
             isOneToOne: false
             referencedRelation: "ad_cabinets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_creative_daily_cabinet_id_fkey"
+            columns: ["cabinet_id"]
+            isOneToOne: false
+            referencedRelation: "ad_cabinets_safe"
             referencedColumns: ["id"]
           },
           {
@@ -1550,6 +1585,13 @@ export type Database = {
             columns: ["cabinet_id"]
             isOneToOne: false
             referencedRelation: "ad_cabinets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_creatives_cabinet_id_fkey"
+            columns: ["cabinet_id"]
+            isOneToOne: false
+            referencedRelation: "ad_cabinets_safe"
             referencedColumns: ["id"]
           },
           {
@@ -2177,6 +2219,181 @@ export type Database = {
       }
     }
     Views: {
+      ad_cabinets_safe: {
+        Row: {
+          auto_launch_enabled: boolean | null
+          brief: string | null
+          campaign_objective: string | null
+          city: string | null
+          created_at: string | null
+          created_by: string | null
+          creative_cta: string | null
+          creative_description: string | null
+          creative_headline: string | null
+          creative_media_urls: string[] | null
+          creative_primary_text: string | null
+          currency: string | null
+          daily_budget: number | null
+          days_of_week: number[] | null
+          end_time: string | null
+          external_id: string | null
+          id: string | null
+          instagram_id: string | null
+          landing_url: string | null
+          launch_hour: number | null
+          lead_cost: number | null
+          lead_form_id: string | null
+          leads: number | null
+          name: string | null
+          online: boolean | null
+          optimization_goal: string | null
+          page_name: string | null
+          pixel_event: string | null
+          project_id: string | null
+          provider: string | null
+          revenue: number | null
+          sales: number | null
+          spend: number | null
+          start_time: string | null
+          target_age_max: number | null
+          target_age_min: number | null
+          target_exclusions: Json | null
+          target_gender: string | null
+          target_geo: string[] | null
+          target_interests: Json | null
+          target_languages: string[] | null
+          telegram_group_id: string | null
+          timezone: string | null
+          type: string | null
+          updated_at: string | null
+          utm_template: string | null
+          website_url: string | null
+          whatsapp_number: string | null
+        }
+        Insert: {
+          auto_launch_enabled?: boolean | null
+          brief?: string | null
+          campaign_objective?: string | null
+          city?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          creative_cta?: string | null
+          creative_description?: string | null
+          creative_headline?: string | null
+          creative_media_urls?: string[] | null
+          creative_primary_text?: string | null
+          currency?: string | null
+          daily_budget?: number | null
+          days_of_week?: number[] | null
+          end_time?: string | null
+          external_id?: string | null
+          id?: string | null
+          instagram_id?: string | null
+          landing_url?: string | null
+          launch_hour?: number | null
+          lead_cost?: number | null
+          lead_form_id?: string | null
+          leads?: number | null
+          name?: string | null
+          online?: boolean | null
+          optimization_goal?: string | null
+          page_name?: string | null
+          pixel_event?: string | null
+          project_id?: string | null
+          provider?: string | null
+          revenue?: number | null
+          sales?: number | null
+          spend?: number | null
+          start_time?: string | null
+          target_age_max?: number | null
+          target_age_min?: number | null
+          target_exclusions?: Json | null
+          target_gender?: string | null
+          target_geo?: string[] | null
+          target_interests?: Json | null
+          target_languages?: string[] | null
+          telegram_group_id?: string | null
+          timezone?: string | null
+          type?: string | null
+          updated_at?: string | null
+          utm_template?: string | null
+          website_url?: string | null
+          whatsapp_number?: string | null
+        }
+        Update: {
+          auto_launch_enabled?: boolean | null
+          brief?: string | null
+          campaign_objective?: string | null
+          city?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          creative_cta?: string | null
+          creative_description?: string | null
+          creative_headline?: string | null
+          creative_media_urls?: string[] | null
+          creative_primary_text?: string | null
+          currency?: string | null
+          daily_budget?: number | null
+          days_of_week?: number[] | null
+          end_time?: string | null
+          external_id?: string | null
+          id?: string | null
+          instagram_id?: string | null
+          landing_url?: string | null
+          launch_hour?: number | null
+          lead_cost?: number | null
+          lead_form_id?: string | null
+          leads?: number | null
+          name?: string | null
+          online?: boolean | null
+          optimization_goal?: string | null
+          page_name?: string | null
+          pixel_event?: string | null
+          project_id?: string | null
+          provider?: string | null
+          revenue?: number | null
+          sales?: number | null
+          spend?: number | null
+          start_time?: string | null
+          target_age_max?: number | null
+          target_age_min?: number | null
+          target_exclusions?: Json | null
+          target_gender?: string | null
+          target_geo?: string[] | null
+          target_interests?: Json | null
+          target_languages?: string[] | null
+          telegram_group_id?: string | null
+          timezone?: string | null
+          type?: string | null
+          updated_at?: string | null
+          utm_template?: string | null
+          website_url?: string | null
+          whatsapp_number?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ad_cabinets_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "ad_cabinets_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ad_cabinets_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       inbound_tokens: {
         Row: {
           client_id: string | null
@@ -2298,6 +2515,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "meta_campaigns_cabinet_id_fkey"
+            columns: ["cabinet_id"]
+            isOneToOne: false
+            referencedRelation: "ad_cabinets_safe"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "meta_campaigns_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
@@ -2366,6 +2590,13 @@ export type Database = {
             columns: ["cabinet_id"]
             isOneToOne: false
             referencedRelation: "ad_cabinets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_creatives_cabinet_id_fkey"
+            columns: ["cabinet_id"]
+            isOneToOne: false
+            referencedRelation: "ad_cabinets_safe"
             referencedColumns: ["id"]
           },
           {
