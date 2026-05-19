@@ -17,6 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { cn } from "@/lib/utils";
+import { HealthCheckPanel } from "@/components/onboarding/HealthCheckPanel";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const WEBHOOK_URL = `${SUPABASE_URL}/functions/v1/greenapi-webhook`;
@@ -290,6 +291,13 @@ export default function ProjectIntegrationWizard() {
       });
       if (error) throw error;
       const ok = (data as any)?.ok;
+      if (ok && projectId) {
+        // Persist webhook URL so health-check sees it
+        await supabase
+          .from("whatsapp_config" as any)
+          .update({ webhook_url: WEBHOOK_URL })
+          .eq("project_id", projectId);
+      }
       setWaWebhook({
         status: ok ? "ok" : "fail",
         message: ok ? `Webhook прописан: ${WEBHOOK_URL}` : JSON.stringify((data as any)?.response ?? data),
@@ -853,6 +861,8 @@ export default function ProjectIntegrationWizard() {
                   </Alert>
                 )}
               </div>
+
+              {cabinetId && <HealthCheckPanel cabinetId={cabinetId} className="mt-2" />}
             </>
           )}
         </CardContent>
