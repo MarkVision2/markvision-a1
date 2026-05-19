@@ -39,6 +39,8 @@ interface Props {
   onRequestReject: (id: string) => void;
   /** Перевод сделки в этап «Оплачен» — обязательно через диалог суммы. */
   onRequestPay: (id: string) => void;
+  /** Перевод в «Запись на диагностику» — диалог стоимости диагностики (можно 0). */
+  onRequestDiagnostic?: (id: string) => void;
   /** Other leads' booked visits (ISO timestamps) — used by visit popover. */
   busySlots?: { iso: string; leadName?: string }[];
 }
