@@ -77,14 +77,22 @@ export function ProjectSwitcher({ collapsed }: Props) {
               );
             })}
           </div>
-          <div className="mt-2 border-t border-border/60 pt-2">
+          <div className="mt-2 space-y-1 border-t border-border/60 pt-2">
             <button
               type="button"
               onClick={() => { setCreateOpen(true); setOpen(false); }}
               className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-success hover:bg-success/10"
             >
               <Plus className="h-4 w-4" />
-              Добавить проект
+              Добавить проект (AI-бриф)
+            </button>
+            <button
+              type="button"
+              onClick={() => { setOpen(false); navigate("/projects/new"); }}
+              className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-primary hover:bg-primary/10"
+            >
+              <Settings2 className="h-4 w-4" />
+              Новый проект: полная настройка
             </button>
           </div>
         </PopoverContent>
