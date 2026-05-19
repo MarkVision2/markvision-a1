@@ -479,6 +479,24 @@ const Crm = () => {
         }}
       />
 
+      <DiagnosticAmountDialog
+        open={!!diagFor}
+        defaultAmount={diagFor ? leads.find((l) => l.id === diagFor.leadId)?.diagnosticAmount : undefined}
+        onOpenChange={(v) => { if (!v) setDiagFor(null); }}
+        onCancel={() => setDiagFor(null)}
+        onConfirm={(amount) => {
+          if (!diagFor) return;
+          void updateLead(diagFor.leadId, { diagnosticAmount: amount });
+          toast.success(
+            amount > 0
+              ? `Диагностика на $${amount} зафиксирована`
+              : "Бесплатная диагностика зафиксирована",
+          );
+          setDiagFor(null);
+        }}
+      />
+
+
       <ConnectWhatsAppDialog
         open={waOpen}
         onOpenChange={setWaOpen}
