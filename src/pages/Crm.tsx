@@ -168,6 +168,13 @@ const Crm = () => {
       setPayFor({ leadId, prevStageId: current?.stageId });
       return;
     }
+    if (stageId === "scheduled") {
+      // Запись на диагностику — двигаем этап (триггер посчитает +1) и
+      // сразу спрашиваем сумму, чтобы посчитать выручку за диагностику.
+      moveLead(leadId, stageId);
+      setDiagFor({ leadId, stageId });
+      return;
+    }
     moveLead(leadId, stageId);
   }, [leads, moveLead]);
 
