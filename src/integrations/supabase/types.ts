@@ -2119,6 +2119,7 @@ export type Database = {
           project_id: string | null
           updated_at: string
           user_id: string
+          webhook_url: string | null
         }
         Insert: {
           ads_only?: boolean
@@ -2133,6 +2134,7 @@ export type Database = {
           project_id?: string | null
           updated_at?: string
           user_id: string
+          webhook_url?: string | null
         }
         Update: {
           ads_only?: boolean
@@ -2147,6 +2149,7 @@ export type Database = {
           project_id?: string | null
           updated_at?: string
           user_id?: string
+          webhook_url?: string | null
         }
         Relationships: [
           {
