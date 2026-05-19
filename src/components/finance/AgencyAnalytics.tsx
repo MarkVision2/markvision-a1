@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { toast } from "@/hooks/use-toast";
 import {
   useAgencyClients,
   SERVICE_CATALOG,
