@@ -30,8 +30,8 @@ export interface DailyInsightRow {
   crmSalesRevenueOnly: number;
   manualSalesRevenue: number;
   /**
-   * ИТОГОВАЯ выручка дня = salesRevenue + diagnosticRevenue.
-   * Это «выручка факт» — единый источник правды.
+   * ИТОГОВАЯ выручка дня = salesRevenue + diagnosticRevenue (override-aware).
+   * Это «выручка факт» — единый источник правды для денег.
    */
   crmRevenue: number;
   crmRevenueOnly: number;
@@ -119,6 +119,9 @@ function aggregate(rows: CdiRow[]): InsightsData {
     const impressions = Number(r.impressions) || 0;
     const clicks = Number(r.clicks) || 0;
     const leads = Number(r.leads) || 0;
+    // Override-семантика: ручные значения ПЕРЕЗАПИСЫВАЮТ CRM, а не суммируются с ним.
+    // Раньше складывали (crm + manual) — это приводило к задвоению, когда менеджер вводил
+    // 400к manual поверх 800к из CRM и получал 1.2М вместо 800к. См. жалобу пользователя.
     const crmDiag = Number(r.crm_diagnostics) || 0;
     const manDiag = Number(r.manual_diagnostics) || 0;
     const diagnostics = manDiag > 0 ? manDiag : crmDiag;
@@ -131,6 +134,8 @@ function aggregate(rows: CdiRow[]): InsightsData {
     const crmDiagRev = Number(r.crm_diagnostic_revenue) || 0;
     const manDiagRev = Number(r.manual_diagnostic_revenue) || 0;
     const diagnosticRevenue = manDiagRev > 0 ? manDiagRev : crmDiagRev;
+    // Итоговая «выручка факт» = продажи + оплаты диагностик. Override-семантика
+    // применяется внутри каждой составляющей, потом суммируется.
     const totalRevenue = salesRevenue + diagnosticRevenue;
     totals.spend += spend;
     totals.impressions += impressions;
@@ -184,6 +189,8 @@ function aggregate(rows: CdiRow[]): InsightsData {
   totals.cpm = totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0;
   totals.cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
   totals.ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+  // ROMI считается строго по реальной выручке (CRM/manual), без FB pixel fallback.
+  // Это даёт ту же ROMI на Dashboard/Reports/Analytics/Metrics для одного периода.
   totals.romi = totals.spend > 0 ? ((totals.crmRevenue - totals.spend) / totals.spend) * 100 : 0;
   const daily = Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date));
   return { currency, totals, daily };
@@ -206,6 +213,8 @@ async function fetchInsights(
     .gte("date", range.since)
     .lte("date", range.until)
     .order("date", { ascending: true });
+  // Изоляция проекта: если несколько проектов делили один external_id (миграция кабинета и т.п.),
+  // чужие строки в выборку не попадут.
   if (projectId) q = q.eq("project_id", projectId);
   const { data, error } = await q;
   if (error) throw new Error(error.message);

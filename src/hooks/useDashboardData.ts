@@ -185,8 +185,9 @@ export function useDashboardData(
       buckets.set(k, cur);
     }
 
-    // Instagram organic — отдельный канал, считаем только лиды без cabinet_id,
-    // чтобы не задвоить с реклaмными.
+    // Instagram organic — отдельный канал. Заявки приходят из событий lead.
+    // Лид считаем только если он БЕЗ cabinet_id — иначе он уже учтён через CDI Meta/Google
+    // (например, в Meta-кампании через Instagram) и попал бы в две строки одновременно.
     if (igFunnel.leads > 0 || igFunnel.codewordDms > 0) {
       const igRevenue = igEvents
         .filter((e) => e.eventType === "lead" && e.leadId)

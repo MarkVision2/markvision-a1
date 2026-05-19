@@ -135,6 +135,7 @@ async function fetchMetaForRange(
     const clicks = Number(row.clicks) || 0;
     const leads = Number(row.leads) || 0;
     // Override-семантика: manual_* перезаписывает crm_* (а не суммируется).
+    // Раньше складывали → задвоение, когда оба источника содержат одну и ту же продажу.
     const crmSales = Number(row.crm_sales) || 0;
     const manSales = Number(row.manual_sales) || 0;
     const sales = manSales > 0 ? manSales : crmSales;

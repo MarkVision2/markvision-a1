@@ -128,8 +128,7 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
     : g.impressions;
   const costPerResult = successValue > 0 ? g.spend / successValue : 0;
   const ctr = g.impressions > 0 ? (g.clicks / g.impressions) * 100 : 0;
-
-  // ВАЖНО: ROMI считаем по CRM-выручке (реальные оплаченные сделки, привязанные к ad_id креатива),
+  // ROMI считаем по CRM-выручке (реальные оплаченные сделки, привязанные к ad_id креатива),
   // потому что revenue из meta_campaign_daily — это FB pixel revenue, которого у большинства проектов нет.
   const hasCrm = g.crmRevenue > 0 && g.spend > 0;
   const crmRomi = hasCrm ? ((g.crmRevenue - g.spend) / g.spend) * 100 : 0;
