@@ -90,7 +90,7 @@ export function useDestinationSplit(
     (async () => {
       // 1) cabinets in scope, with website_url
       let cabQ = supabase
-        .from("ad_cabinets")
+        .from("ad_cabinets_safe" as any)
         .select("id, name, website_url")
         .eq("provider", "meta");
       if (projectId) cabQ = cabQ.eq("project_id", projectId);
