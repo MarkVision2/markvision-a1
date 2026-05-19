@@ -173,6 +173,7 @@ function leadRowToFrontIndexed(
     paid: r.paid,
     paymentMethod: (r.payment_method as PaymentMethod) ?? undefined,
     paidAt: r.paid_at ?? undefined,
+    diagnosticAmount: Number((r as unknown as { diagnostic_amount?: number }).diagnostic_amount ?? 0),
     stageHistory: hist.map((h) => ({
       stageId: idToKey.get(h.to_stage_id) ?? "new",
       at: h.changed_at,
