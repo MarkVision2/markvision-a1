@@ -17,6 +17,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { cn } from "@/lib/utils";
+import { HealthCheckPanel } from "@/components/onboarding/HealthCheckPanel";
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
 const WEBHOOK_URL = `${SUPABASE_URL}/functions/v1/greenapi-webhook`;
