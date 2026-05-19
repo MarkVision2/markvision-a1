@@ -90,6 +90,7 @@ const Crm = () => {
   const [filters, setFilters] = useState<CrmFilterState>({ search: "", source: null, assigneeId: null });
   const [rejectFor, setRejectFor] = useState<{ leadId: string; prevStageId?: string; viaDrag: boolean } | null>(null);
   const [payFor, setPayFor] = useState<{ leadId: string; prevStageId?: string } | null>(null);
+  const [diagFor, setDiagFor] = useState<{ leadId: string; stageId: string } | null>(null);
 
   useEffect(() => {
     const id = searchParams.get("lead");
