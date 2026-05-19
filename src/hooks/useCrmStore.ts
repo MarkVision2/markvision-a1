@@ -173,6 +173,7 @@ function leadRowToFrontIndexed(
     paid: r.paid,
     paymentMethod: (r.payment_method as PaymentMethod) ?? undefined,
     paidAt: r.paid_at ?? undefined,
+    diagnosticAmount: Number((r as unknown as { diagnostic_amount?: number }).diagnostic_amount ?? 0),
     stageHistory: hist.map((h) => ({
       stageId: idToKey.get(h.to_stage_id) ?? "new",
       at: h.changed_at,
@@ -491,6 +492,7 @@ export function useCrmStore() {
     if (patch.email !== undefined) dbPatch.email = patch.email ?? null;
     if (patch.source !== undefined) dbPatch.source = patch.source;
     if (patch.amount !== undefined) dbPatch.amount = patch.amount;
+    if (patch.diagnosticAmount !== undefined) (dbPatch as unknown as { diagnostic_amount?: number }).diagnostic_amount = patch.diagnosticAmount;
     if (patch.aiScore !== undefined) dbPatch.ai_score = patch.aiScore;
     if (patch.note !== undefined) dbPatch.note = patch.note ?? null;
     if (patch.service !== undefined) dbPatch.service = patch.service ?? null;

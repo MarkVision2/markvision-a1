@@ -39,6 +39,8 @@ interface Props {
   onRequestReject: (id: string) => void;
   /** Перевод сделки в этап «Оплачен» — обязательно через диалог суммы. */
   onRequestPay: (id: string) => void;
+  /** Перевод в «Запись на диагностику» — диалог стоимости диагностики (можно 0). */
+  onRequestDiagnostic?: (id: string) => void;
   /** Other leads' booked visits (ISO timestamps) — used by visit popover. */
   busySlots?: { iso: string; leadName?: string }[];
 }
@@ -46,7 +48,7 @@ interface Props {
 export function LeadDetailSheet({
   lead, stages, members, chats, whatsapp, open, onOpenChange,
   onUpdate, onDelete, onMarkPersonal, onTogglePin, onAssign, onSendMessage,
-  onMarkCall, onLogCallAttempt, onMarkPaid, onSetVisit, onAddTask, onToggleTask, onRemoveTask, onRequestReject, onRequestPay,
+  onMarkCall, onLogCallAttempt, onMarkPaid, onSetVisit, onAddTask, onToggleTask, onRemoveTask, onRequestReject, onRequestPay, onRequestDiagnostic,
   busySlots,
 }: Props) {
   const [tab, setTab] = useState("deal");
@@ -88,6 +90,10 @@ export function LeadDetailSheet({
                       // Этап «Оплачен» нельзя выставлять без суммы — ждём диалог.
                       // markPaid внутри обработчика подтверждения сам переведёт stage и создаст deal.
                       onRequestPay(lead.id);
+                      return;
+                    }
+                    if (sid === "scheduled" && onRequestDiagnostic) {
+                      onRequestDiagnostic(lead.id);
                       return;
                     }
                     onUpdate(lead.id, { stageId: sid });

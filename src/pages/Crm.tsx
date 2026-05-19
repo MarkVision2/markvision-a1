@@ -28,6 +28,7 @@ import { SlaAlerts } from "@/components/crm/SlaAlerts";
 import { CrmFilters, type CrmFilterState } from "@/components/crm/CrmFilters";
 import { RejectReasonDialog } from "@/components/crm/RejectReasonDialog";
 import { PaymentAmountDialog } from "@/components/crm/PaymentAmountDialog";
+import { DiagnosticAmountDialog } from "@/components/crm/DiagnosticAmountDialog";
 import { ManagersView } from "@/components/crm/ManagersView";
 import { AnalyticsView } from "@/components/crm/AnalyticsView";
 import { AutomationsSettings } from "@/components/crm/AutomationsSettings";
@@ -89,6 +90,7 @@ const Crm = () => {
   const [filters, setFilters] = useState<CrmFilterState>({ search: "", source: null, assigneeId: null });
   const [rejectFor, setRejectFor] = useState<{ leadId: string; prevStageId?: string; viaDrag: boolean } | null>(null);
   const [payFor, setPayFor] = useState<{ leadId: string; prevStageId?: string } | null>(null);
+  const [diagFor, setDiagFor] = useState<{ leadId: string; stageId: string } | null>(null);
 
   useEffect(() => {
     const id = searchParams.get("lead");
@@ -164,6 +166,12 @@ const Crm = () => {
       // markPaid внутри подтверждения переведёт его сам.
       const current = leads.find((l) => l.id === leadId);
       setPayFor({ leadId, prevStageId: current?.stageId });
+      return;
+    }
+    if (stageId === "scheduled") {
+      // Запись на диагностику: сначала спрашиваем сумму, чтобы триггер
+      // учёл и +1 диагностику, и выручку за неё.
+      setDiagFor({ leadId, stageId });
       return;
     }
     moveLead(leadId, stageId);
@@ -438,6 +446,7 @@ const Crm = () => {
           const current = leads.find((l) => l.id === id);
           setPayFor({ leadId: id, prevStageId: current?.stageId });
         }}
+        onRequestDiagnostic={(id) => setDiagFor({ leadId: id, stageId: "scheduled" })}
         busySlots={busySlots}
       />
 
@@ -469,6 +478,25 @@ const Crm = () => {
           setPayFor(null);
         }}
       />
+
+      <DiagnosticAmountDialog
+        open={!!diagFor}
+        defaultAmount={diagFor ? leads.find((l) => l.id === diagFor.leadId)?.diagnosticAmount : undefined}
+        onOpenChange={(v) => { if (!v) setDiagFor(null); }}
+        onCancel={() => setDiagFor(null)}
+        onConfirm={async (amount) => {
+          if (!diagFor) return;
+          await updateLead(diagFor.leadId, { diagnosticAmount: amount });
+          await moveLead(diagFor.leadId, diagFor.stageId);
+          toast.success(
+            amount > 0
+              ? `Диагностика на $${amount} зафиксирована`
+              : "Бесплатная диагностика зафиксирована",
+          );
+          setDiagFor(null);
+        }}
+      />
+
 
       <ConnectWhatsAppDialog
         open={waOpen}

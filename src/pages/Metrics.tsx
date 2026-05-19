@@ -76,22 +76,24 @@ const SummaryCard = ({
   }[accent];
 
   return (
-    <div className="min-h-[168px] rounded-2xl border border-border/60 bg-card/60 p-5 transition-colors hover:border-success/30 hover:bg-card/80">
-      <div className="flex items-start justify-between gap-3">
-        <span className={cn("grid h-10 w-10 shrink-0 place-items-center rounded-xl border", tone)}>
-          <Icon className="h-4 w-4" />
-        </span>
-        <span className={cn("rounded-full border px-2 py-1 text-[10px] font-bold uppercase tracking-wider", tone)}>
+    <div className="rounded-2xl border border-border/60 bg-card/60 p-3.5 transition-colors hover:border-success/30 hover:bg-card/80">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-lg border", tone)}>
+            <Icon className="h-3.5 w-3.5" />
+          </span>
+          <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {label}
+          </span>
+        </div>
+        <span className={cn("rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider", tone)}>
           {badge}
         </span>
       </div>
-      <div className="mt-5 min-h-[42px] text-[15px] font-bold leading-5 text-foreground">
-        {label}
-      </div>
-      <div className="mt-4 text-3xl font-bold leading-none tabular-nums text-foreground md:text-[2rem]">
+      <div className="mt-2.5 text-lg font-bold tabular-nums leading-tight sm:text-xl">
         {value}
       </div>
-      <div className="mt-3 text-xs leading-4 text-muted-foreground">
+      <div className="mt-1.5 text-[10px] leading-4 text-muted-foreground">
         {formula}
       </div>
     </div>
@@ -101,7 +103,7 @@ const SummaryCard = ({
 const Cell = ({ children, mono = true }: { children: React.ReactNode; mono?: boolean }) => (
   <td
     className={cn(
-      "px-3 py-3 text-right text-sm",
+      "px-2 py-2 text-right text-xs",
       mono && "tabular-nums",
     )}
   >
@@ -533,31 +535,41 @@ const Metrics = () => {
 
       {/* Table */}
       <div className="mt-6 overflow-hidden rounded-2xl border border-border/60 bg-card/40">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1180px] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-border/60 bg-card/60">
-                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Дата
+        <table className="w-full table-fixed border-collapse text-xs">
+          <colgroup>
+            <col className="w-[78px]" />
+            <col />
+            <col />
+            <col />
+            <col />
+            <col />
+            <col />
+            <col />
+            <col />
+          </colgroup>
+          <thead>
+            <tr className="border-b border-border/60 bg-card/60">
+              <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Дата
+              </th>
+              {[
+                "Расходы", "Лиды", "CPL",
+                "Диагностики", "Опл. диагн. ₸",
+                "Продажи", "Выр. продаж ₸", "Итого ₸",
+              ].map((h) => (
+                <th
+                  key={h}
+                  className="px-2 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                >
+                  {h}
                 </th>
-                {[
-                  "Расходы", "Лиды", "CPL",
-                  "Диагност.", "Опл. диагн. ₸",
-                  "Продажи", "Выр. продаж ₸", "Итого ₸",
-                ].map((h) => (
-                  <th
-                    key={h}
-                    className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
+              ))}
+            </tr>
+          </thead>
             <tbody>
               {/* Plan row */}
               <tr className="border-b border-border/60">
-                <td className="px-4 py-3">
+                <td className="px-2 py-2">
                   <div className="flex items-center gap-2">
                     <span className="grid h-7 w-7 place-items-center rounded-lg bg-success/10 text-success">
                       <Target className="h-3.5 w-3.5" />
@@ -579,7 +591,7 @@ const Metrics = () => {
 
               {/* Fact row */}
               <tr className="border-b border-border/60 bg-card/30">
-                <td className="px-4 py-3">
+                <td className="px-2 py-2">
                   <div className="flex items-center gap-2">
                     <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
                       <BarChart3 className="h-3.5 w-3.5" />
@@ -633,7 +645,7 @@ const Metrics = () => {
 
               {/* % completion row */}
               <tr className="border-b border-border/60">
-                <td className="px-4 py-3">
+                <td className="px-2 py-2">
                   <div className="flex items-center gap-2">
                     <span className="grid h-7 w-7 place-items-center rounded-lg bg-warning/15 text-warning">
                       <TrendingUp className="h-3.5 w-3.5" />
@@ -685,11 +697,11 @@ const Metrics = () => {
                     key={iso}
                     className="border-b border-border/30 transition-colors hover:bg-card/40"
                   >
-                    <td className="px-4 py-3 text-sm">
+                    <td className="px-2 py-2 text-xs">
                       <span className="font-medium tabular-nums">
                         {String(day).padStart(2, "0")}
                       </span>
-                      <span className="ml-2 text-muted-foreground">{weekday}</span>
+                      <span className="ml-1 text-muted-foreground">{weekday}</span>
                     </td>
                     <Cell>{hasData ? formatNumber(d!.spend) : <Dash />}</Cell>
                     <Cell>{hasData && d!.leads > 0 ? formatNumber(d!.leads) : <Dash />}</Cell>
@@ -758,9 +770,8 @@ const Metrics = () => {
                   </tr>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+          </tbody>
+        </table>
 
         {loading && (
           <div className="flex items-center justify-center gap-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">
@@ -826,7 +837,7 @@ const ManualFactCell = ({
 
   if (disabled) {
     return (
-      <span className="inline-flex min-w-[86px] justify-end text-muted-foreground/50">
+      <span className="inline-flex min-w-0 w-full justify-end text-muted-foreground/50">
         {hasValue ? format(value) : "—"}
       </span>
     );
@@ -838,7 +849,7 @@ const ManualFactCell = ({
         <button
           type="button"
           className={cn(
-            "group inline-flex min-w-[86px] items-center justify-end gap-1.5 rounded-lg border border-transparent px-2 py-1 text-right transition-colors hover:border-success/30 hover:bg-success/10",
+            "group inline-flex min-w-0 w-full items-center justify-end gap-1.5 rounded-lg border border-transparent px-2 py-1 text-right transition-colors hover:border-success/30 hover:bg-success/10",
             !hasValue && "text-muted-foreground",
             manual > 0 && "border-success/20 bg-success/5 text-success",
           )}
