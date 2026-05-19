@@ -2440,6 +2440,7 @@ export type Database = {
         }
         Returns: string
       }
+      cabinet_health_check: { Args: { p_cabinet_id: string }; Returns: Json }
       can_write_module: {
         Args: { _module_key: string; _user_id: string }
         Returns: boolean
