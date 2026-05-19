@@ -439,6 +439,41 @@ export default function ProjectIntegrationWizard() {
   async function runTest() {
     if (!projectId || !cabinetId) return;
     setTestResults({ create: { status: "loading" } });
+
+    // Create run record in ad_sync_runs (best-effort)
+    let runId: string | null = null;
+    try {
+      const { data: run } = await supabase
+        .from("ad_sync_runs" as any)
+        .insert({
+          cabinet_id: cabinetId,
+          project_id: projectId,
+          kind: "wizard_test",
+          status: "running",
+          triggered_by: "wizard",
+          created_by: user?.id ?? null,
+          payload: { source: "onboarding-wizard" },
+        })
+        .select("id")
+        .single();
+      runId = (run as any)?.id ?? null;
+    } catch { /* ad_sync_runs may not exist on older envs */ }
+
+    const finalizeRun = async (status: "success" | "error", patch: Record<string, unknown>) => {
+      if (!runId) return;
+      try {
+        await supabase
+          .from("ad_sync_runs" as any)
+          .update({
+            status,
+            finished_at: new Date().toISOString(),
+            payload: patch,
+            ...(status === "error" ? { error: String(patch.error ?? "test failed") } : {}),
+          })
+          .eq("id", runId);
+      } catch { /* ignore */ }
+    };
+
     try {
       // 1. Get default stage
       const { data: pipeline } = await supabase
@@ -473,14 +508,17 @@ export default function ProjectIntegrationWizard() {
       setTestResults((r) => ({ ...r, stages: { status: "ok", message: "Стадии пройдены" }, capi: { status: "loading" } }));
 
       // 3. Check capi_outbox (graceful if table missing)
+      let capiCount = 0;
+      let capiOk = false;
       try {
         const { data: outbox } = await supabase
           .from("capi_outbox" as any).select("status").eq("lead_id", lead.id);
-        const count = outbox?.length ?? 0;
+        capiCount = outbox?.length ?? 0;
+        capiOk = capiCount > 0;
         setTestResults((r) => ({
           ...r,
-          capi: count > 0
-            ? { status: "ok", message: `${count} событий в очереди CAPI` }
+          capi: capiOk
+            ? { status: "ok", message: `${capiCount} событий в очереди CAPI` }
             : { status: "fail", message: "Нет событий в capi_outbox (миграция CAPI не применена?)" },
         }));
       } catch {
@@ -491,8 +529,17 @@ export default function ProjectIntegrationWizard() {
       setTestResults((r) => ({ ...r, cleanup: { status: "loading" } }));
       await supabase.from("leads").delete().eq("id", lead.id);
       setTestResults((r) => ({ ...r, cleanup: { status: "ok", message: "Тестовый лид удалён" } }));
+
+      await finalizeRun("success", {
+        lead_id: lead.id,
+        stages_walked: (allStages ?? []).length,
+        capi_events: capiCount,
+        capi_ok: capiOk,
+      });
     } catch (e: any) {
-      setTestResults((r) => ({ ...r, error: { status: "fail", message: e?.message ?? String(e) } }));
+      const msg = e?.message ?? String(e);
+      setTestResults((r) => ({ ...r, error: { status: "fail", message: msg } }));
+      await finalizeRun("error", { error: msg });
     }
   }
 
