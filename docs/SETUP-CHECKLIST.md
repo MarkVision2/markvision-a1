@@ -12,18 +12,20 @@
 
 ## ✅ Шаг 1. Сгенерированные ключи
 
-Я уже сгенерировал. Это случайные строки, нужны только нам — Meta их не видит.
+Реальные значения ключей сгенерированы и переданы тебе в чате (или сгенерируй заново через `openssl rand -hex 32`). В этот публичный документ значения не кладём — это сами по себе bearer secrets.
 
 ```
-CREATIVE_UPSERT_KEY=4ad2778efeebe48a80e92d6e230582c5ecdb9a4547e4162cd072fdb276fffa4e
-CAPI_WORKER_KEY=bcd900e81e76292ee17470353030277cd95a3e8754cdb9b99bb88c8861f30327
+CREATIVE_UPSERT_KEY=<64-hex-chars, см. чат>
+CAPI_WORKER_KEY=<64-hex-chars, см. чат>
 ```
 
 **Что с ними сделать:**
 
 1. Supabase Dashboard → Project Settings → Edge Functions → Secrets
-2. Add new secret → `CREATIVE_UPSERT_KEY` = `4ad2778efeebe48a80e92d6e230582c5ecdb9a4547e4162cd072fdb276fffa4e`
-3. Add new secret → `CAPI_WORKER_KEY` = `bcd900e81e76292ee17470353030277cd95a3e8754cdb9b99bb88c8861f30327`
+2. Add new secret → `CREATIVE_UPSERT_KEY` = `<значение из чата>`
+3. Add new secret → `CAPI_WORKER_KEY` = `<значение из чата>`
+
+⚠ Тот же `CREATIVE_UPSERT_KEY` должен стоять в узле `Save Ad Creative` в n8n workflow `AI-targetolog1` (header `x-creative-key`). Тот же `CAPI_WORKER_KEY` — в pg_cron job (header `x-cron-key`).
 
 **Опциональные fallback-секреты** (если кабинет не настроен в `ad_cabinets`):
 4. `META_ACCESS_TOKEN` = твой системный токен Meta для проекта MarkVision
@@ -71,7 +73,7 @@ SELECT cron.schedule(
     url := 'https://mekwfbqmsqiborjdrjxc.supabase.co/functions/v1/capi-outbox-worker',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
-      'x-cron-key', 'bcd900e81e76292ee17470353030277cd95a3e8754cdb9b99bb88c8861f30327'
+      'x-cron-key', '<CAPI_WORKER_KEY значение из чата>'
     ),
     body := jsonb_build_object('batch_size', 50)
   );
@@ -107,7 +109,7 @@ URL:     https://mekwfbqmsqiborjdrjxc.supabase.co/functions/v1/meta-creative-ups
 
 Headers:
   Content-Type:      application/json
-  x-creative-key:    4ad2778efeebe48a80e92d6e230582c5ecdb9a4547e4162cd072fdb276fffa4e
+  x-creative-key:    <CREATIVE_UPSERT_KEY значение из чата>
 
 Body (JSON):
 {
