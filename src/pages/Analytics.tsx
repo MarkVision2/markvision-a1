@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/select";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useMultiMetaInsights } from "@/hooks/useMetaInsights";
+import { useDestinationSplit } from "@/hooks/useDestinationSplit";
 import { useLeadsLite, type LeadLite } from "@/hooks/useLeadsLite";
 import { CHANNELS, resolveChannel, type ChannelKey } from "@/lib/channelAttribution";
 import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
@@ -156,6 +157,13 @@ const Analytics = () => {
 
   const { data, loading, error, refresh } = useMultiMetaInsights(actIds, monthParam, actIds.length > 0);
   const { data: prevData } = useMultiMetaInsights(actIds, prevParam, actIds.length > 0);
+
+  // Split-by-destination метрики (сайт vs WhatsApp) — берём напрямую из meta_campaign_daily.
+  const cabinetIdsForSplit = useMemo(() => {
+    if (cabinetId === "all") return cabinets.map((c) => c.id);
+    return [cabinetId];
+  }, [cabinetId, cabinets]);
+  const { data: splitData } = useDestinationSplit(cabinetIdsForSplit, monthParam, cabinetIdsForSplit.length > 0);
 
   const { leads, loading: leadsLoading, refetch } = useLeadsLite();
 
@@ -412,18 +420,61 @@ const Analytics = () => {
               <p className="mt-1 text-xs text-muted-foreground">От охвата до реальных продаж · {monthLabel}</p>
             </div>
             <div className="flex items-center gap-2">
-              {clicks > 0 && (
-                <span className="rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-success">
-                  Конверсия сайта: {((leadCount / clicks) * 100).toFixed(1)}%
-                </span>
-              )}
               <span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-success">Live</span>
             </div>
           </div>
+
+          {/* Split-by-destination конверсии: сайт (по каждому URL) и WhatsApp отдельно */}
+          {(splitData.sites.length > 0 || splitData.whatsapp.clicks > 0) && (
+            <div className="mt-4 grid gap-2 sm:grid-cols-2">
+              <div className="rounded-xl border border-success/20 bg-success/5 p-3">
+                <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-success">
+                  <span>Сайт · клик → лид</span>
+                  {splitData.siteTotals.clicks > 0 && (
+                    <span className="text-xs font-bold tabular-nums">{fmtPct(splitData.siteTotals.cr)}</span>
+                  )}
+                </div>
+                {splitData.sites.length > 0 ? (
+                  <div className="mt-2 space-y-1.5">
+                    {splitData.sites.map((s) => (
+                      <div key={s.url} className="flex items-center justify-between gap-2 text-xs">
+                        <span className="truncate font-medium" title={s.url}>{s.label}</span>
+                        <span className="shrink-0 tabular-nums text-muted-foreground">
+                          {fmtNumber(s.leads)}/{fmtNumber(s.clicks)} ·{" "}
+                          <span className="font-bold text-success">{fmtPct(s.cr)}</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-2 text-xs text-muted-foreground">Нет сайтовых кампаний</div>
+                )}
+              </div>
+              <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-primary">
+                  <span>WhatsApp · клик → диалог</span>
+                  {splitData.whatsapp.clicks > 0 && (
+                    <span className="text-xs font-bold tabular-nums">{fmtPct(splitData.whatsapp.cr)}</span>
+                  )}
+                </div>
+                {splitData.whatsapp.clicks > 0 ? (
+                  <div className="mt-2 flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">Диалогов / кликов</span>
+                    <span className="tabular-nums">
+                      {fmtNumber(splitData.whatsapp.messages)}/{fmtNumber(splitData.whatsapp.clicks)}
+                    </span>
+                  </div>
+                ) : (
+                  <div className="mt-2 text-xs text-muted-foreground">Нет WhatsApp-кампаний</div>
+                )}
+              </div>
+            </div>
+          )}
+
           <div className="mt-6 space-y-5">
             <FunnelRow label="Показы" value={impressions} base={funnelBase} color="bg-gradient-to-r from-success to-success/60" />
             <FunnelRow label="Клики" transition="CTR" value={clicks} base={funnelBase} prevValue={impressions} color="bg-gradient-to-r from-success/80 to-success/40" />
-            <FunnelRow label="Лиды" transition="Конверсия сайта" value={leadCount} base={funnelBase} prevValue={clicks || impressions} color="bg-gradient-to-r from-success/60 to-success/30" />
+            <FunnelRow label="Лиды" transition="всего" value={leadCount} base={funnelBase} prevValue={clicks || impressions} color="bg-gradient-to-r from-success/60 to-success/30" />
             <FunnelRow label="Диагностики" transition="Дошли" value={diagnosticsCount} base={funnelBase} prevValue={leadCount} color="bg-gradient-to-r from-primary/70 to-primary/30" />
             <FunnelRow label="Продажи" transition="Закрыли" value={salesCount} base={funnelBase} prevValue={diagnosticsCount} color="bg-gradient-to-r from-warning/70 to-warning/30" />
           </div>

@@ -58,7 +58,8 @@ const BodySchema = z.object({
 });
 
 async function resolveProjectId(req: Request, projectId: string | null, token: string | null) {
-  if (projectId) return projectId;
+  // SECURITY: always require a valid intake token. Project_id alone is not enough —
+  // any team member could otherwise inject fabricated stats into any project.
   const headerToken = req.headers.get("x-intake-token") || token || null;
   if (!headerToken) return null;
   const { data } = await admin
@@ -66,7 +67,11 @@ async function resolveProjectId(req: Request, projectId: string | null, token: s
     .select("project_id")
     .eq("token", headerToken)
     .maybeSingle();
-  return (data as { project_id?: string } | null)?.project_id ?? null;
+  const resolved = (data as { project_id?: string } | null)?.project_id ?? null;
+  if (!resolved) return null;
+  // Optional: if caller also passed project_id, it must match the token's project.
+  if (projectId && projectId !== resolved) return null;
+  return resolved;
 }
 
 async function ensureCabinet(

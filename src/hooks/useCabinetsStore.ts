@@ -132,9 +132,12 @@ export function useCabinetsStore() {
   const [cabinets, setCabinets] = useState<AdCabinet[]>(() => []);
 
   const refetch = useCallback(async () => {
-    let q = supabase.from("ad_cabinets").select("*").order("created_at", { ascending: false });
+    // Read from safe view — credentials (access_token, app_id, business_id,
+    // page_id, pixel_id) are intentionally excluded. Admins fetch full row
+    // separately when opening the edit form via the base table (covered by
+    // ad_cabinets_write_admin ALL policy).
+    let q = supabase.from("ad_cabinets_safe" as any).select("*").order("created_at", { ascending: false });
     if (projectId) {
-      // Show project-scoped cabinets + legacy rows without project_id
       q = q.or(`project_id.eq.${projectId},project_id.is.null`);
     }
     const { data } = await q;

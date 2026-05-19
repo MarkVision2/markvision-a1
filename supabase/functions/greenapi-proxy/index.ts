@@ -56,26 +56,42 @@ async function getUserId(req: Request): Promise<string | null> {
   }
 }
 
-/** Resolve credentials. Priority: explicit project_id → user's active project → env. */
+/** Resolve credentials. Requires authenticated user; verifies project membership. */
 async function resolveCreds(
   req: Request,
   bodyProjectId: string | null,
 ): Promise<Creds | { error: string; status: number }> {
-  let projectId = bodyProjectId;
+  // SECURITY: always require a valid JWT — no anonymous access regardless of body.
+  const userId = await getUserId(req);
+  if (!userId) {
+    return { error: "Unauthorized", status: 401 };
+  }
 
+  let projectId = bodyProjectId;
   if (!projectId) {
-    const userId = await getUserId(req);
-    if (userId) {
-      const { data } = await admin
-        .from("user_active_project")
-        .select("project_id")
-        .eq("user_id", userId)
-        .maybeSingle();
-      projectId = data?.project_id ?? null;
-    }
+    const { data } = await admin
+      .from("user_active_project")
+      .select("project_id")
+      .eq("user_id", userId)
+      .maybeSingle();
+    projectId = data?.project_id ?? null;
   }
 
   if (projectId) {
+    // Verify ownership/membership of the project before exposing credentials.
+    const { data: proj } = await admin
+      .from("projects")
+      .select("id, created_by")
+      .eq("id", projectId)
+      .maybeSingle();
+    const { data: isAdmin } = await admin.rpc("has_role" as any, {
+      _user_id: userId, _role: "admin",
+    });
+    const allowed = !!proj && (proj.created_by === userId || isAdmin === true);
+    if (!allowed) {
+      return { error: "Forbidden", status: 403 };
+    }
+
     const { data: row } = await admin
       .from("whatsapp_config")
       .select("id, project_id, id_instance, api_token, api_url")
@@ -85,8 +101,6 @@ async function resolveCreds(
     if (row?.id_instance) {
       const apiToken = (row.api_token ?? "").trim();
       if (!apiToken) {
-        // Allow env-token fallback only when the bound id_instance matches
-        // ENV_ID — otherwise we'd be sending the wrong token to the wrong instance.
         if (ENV_TOKEN && row.id_instance === ENV_ID) {
           return {
             source: "db",
@@ -114,7 +128,11 @@ async function resolveCreds(
     }
   }
 
-  if (ENV_ID && ENV_TOKEN) {
+  // ENV fallback only for admins (legacy single-tenant ops).
+  const { data: isAdmin } = await admin.rpc("has_role" as any, {
+    _user_id: userId, _role: "admin",
+  });
+  if (isAdmin === true && ENV_ID && ENV_TOKEN) {
     return {
       source: "env",
       rowId: null,

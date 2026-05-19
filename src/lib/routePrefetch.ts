@@ -21,6 +21,7 @@ export const routeImports = {
   SettingsConnection: () => import("@/pages/SettingsConnection"),
   ProjectStrategy: () => import("@/pages/ProjectStrategy"),
   ClientDashboard: () => import("@/pages/ClientDashboard"),
+  ProjectIntegrationWizard: () => import("@/pages/ProjectIntegrationWizard"),
 };
 
 const prefetched = new Set<string>();
