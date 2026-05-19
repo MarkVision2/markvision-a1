@@ -48,7 +48,7 @@ interface Props {
 export function LeadDetailSheet({
   lead, stages, members, chats, whatsapp, open, onOpenChange,
   onUpdate, onDelete, onMarkPersonal, onTogglePin, onAssign, onSendMessage,
-  onMarkCall, onLogCallAttempt, onMarkPaid, onSetVisit, onAddTask, onToggleTask, onRemoveTask, onRequestReject, onRequestPay,
+  onMarkCall, onLogCallAttempt, onMarkPaid, onSetVisit, onAddTask, onToggleTask, onRemoveTask, onRequestReject, onRequestPay, onRequestDiagnostic,
   busySlots,
 }: Props) {
   const [tab, setTab] = useState("deal");
