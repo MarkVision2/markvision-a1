@@ -697,11 +697,11 @@ const Metrics = () => {
                     key={iso}
                     className="border-b border-border/30 transition-colors hover:bg-card/40"
                   >
-                    <td className="px-4 py-3 text-sm">
+                    <td className="px-2 py-2 text-xs">
                       <span className="font-medium tabular-nums">
                         {String(day).padStart(2, "0")}
                       </span>
-                      <span className="ml-2 text-muted-foreground">{weekday}</span>
+                      <span className="ml-1 text-muted-foreground">{weekday}</span>
                     </td>
                     <Cell>{hasData ? formatNumber(d!.spend) : <Dash />}</Cell>
                     <Cell>{hasData && d!.leads > 0 ? formatNumber(d!.leads) : <Dash />}</Cell>
