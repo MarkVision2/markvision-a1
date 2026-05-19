@@ -92,6 +92,10 @@ export function LeadDetailSheet({
                       onRequestPay(lead.id);
                       return;
                     }
+                    if (sid === "scheduled" && onRequestDiagnostic) {
+                      onRequestDiagnostic(lead.id);
+                      return;
+                    }
                     onUpdate(lead.id, { stageId: sid });
                   }}
                 />
