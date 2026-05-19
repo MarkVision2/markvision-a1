@@ -157,7 +157,7 @@ Deno.serve(async (req) => {
 
   if (error) {
     console.error("[instagram-organic-intake] insert failed", error);
-    return json({ ok: false, error: error.message }, 500);
+    return json({ ok: false, error: "Internal server error" }, 500);
   }
 
   return json({
