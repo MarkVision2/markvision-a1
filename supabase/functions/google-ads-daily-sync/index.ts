@@ -113,6 +113,37 @@ async function runGaql(
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  // SECURITY: require either the shared cron secret OR an admin JWT.
+  const cronSecret = Deno.env.get("CAPI_WORKER_KEY") || Deno.env.get("N8N_CALLBACK_SECRET");
+  const providedSecret = req.headers.get("x-cron-secret");
+  let authorized = false;
+  if (cronSecret && providedSecret && providedSecret === cronSecret) {
+    authorized = true;
+  } else {
+    const authHeader = req.headers.get("Authorization") || "";
+    if (authHeader.startsWith("Bearer ")) {
+      try {
+        const authedClient = createClient(
+          Deno.env.get("SUPABASE_URL")!,
+          Deno.env.get("SUPABASE_ANON_KEY")!,
+          { global: { headers: { Authorization: authHeader } } },
+        );
+        const token = authHeader.replace("Bearer ", "");
+        const { data: claims } = await authedClient.auth.getClaims(token);
+        const uid = claims?.claims?.sub;
+        if (uid) {
+          const { data: roleRow } = await authedClient
+            .from("user_roles").select("role").eq("user_id", uid).eq("role", "admin").maybeSingle();
+          if (roleRow) authorized = true;
+        }
+      } catch (_e) { /* deny */ }
+    }
+  }
+  if (!authorized) {
+    return json({ ok: false, error: "unauthorized" }, 401);
+  }
+
+
   const developerToken = Deno.env.get("GOOGLE_ADS_DEVELOPER_TOKEN");
   const refreshToken = Deno.env.get("GOOGLE_ADS_OAUTH_REFRESH_TOKEN");
   if (!developerToken || !refreshToken) {
