@@ -535,27 +535,37 @@ const Metrics = () => {
 
       {/* Table */}
       <div className="mt-6 overflow-hidden rounded-2xl border border-border/60 bg-card/40">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[1180px] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-border/60 bg-card/60">
-                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Дата
+        <table className="w-full table-fixed border-collapse text-xs">
+          <colgroup>
+            <col className="w-[78px]" />
+            <col />
+            <col />
+            <col />
+            <col />
+            <col />
+            <col />
+            <col />
+            <col />
+          </colgroup>
+          <thead>
+            <tr className="border-b border-border/60 bg-card/60">
+              <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                Дата
+              </th>
+              {[
+                "Расходы", "Лиды", "CPL",
+                "Диагностики", "Опл. диагн. ₸",
+                "Продажи", "Выр. продаж ₸", "Итого ₸",
+              ].map((h) => (
+                <th
+                  key={h}
+                  className="px-2 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+                >
+                  {h}
                 </th>
-                {[
-                  "Расходы", "Лиды", "CPL",
-                  "Диагност.", "Опл. диагн. ₸",
-                  "Продажи", "Выр. продаж ₸", "Итого ₸",
-                ].map((h) => (
-                  <th
-                    key={h}
-                    className="px-3 py-3 text-right text-[11px] font-semibold uppercase tracking-wider text-muted-foreground"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
+              ))}
+            </tr>
+          </thead>
             <tbody>
               {/* Plan row */}
               <tr className="border-b border-border/60">
