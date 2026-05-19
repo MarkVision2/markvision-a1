@@ -58,6 +58,24 @@ export function LeadDetailSheet({
   const stageTitle = stages.find((s) => s.id === lead.stageId)?.title;
   const leadChats = chats.filter((c) => c.leadId === lead.id);
 
+  const handleChangeStage = (sid: string) => {
+    if (sid === lead.stageId) return;
+    if (sid === "rejected") {
+      onRequestReject(lead.id);
+      onUpdate(lead.id, { stageId: sid });
+      return;
+    }
+    if (sid === "paid") {
+      onRequestPay(lead.id);
+      return;
+    }
+    if (sid === "scheduled" && onRequestDiagnostic) {
+      onRequestDiagnostic(lead.id);
+      return;
+    }
+    onUpdate(lead.id, { stageId: sid });
+  };
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
