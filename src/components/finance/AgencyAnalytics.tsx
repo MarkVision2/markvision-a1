@@ -525,8 +525,17 @@ const NewClientDialog = ({ open, onOpenChange, onAdd }: NewClientDialogProps) =>
     if (def && costs[id] === undefined) setCosts((x) => ({ ...x, [id]: def.cost }));
   };
 
-  const handleSubmit = () => {
-    if (!name.trim() || picked.length === 0) return;
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!name.trim()) {
+      toast({ title: "Укажите имя клиента", variant: "destructive" });
+      return;
+    }
+    if (picked.length === 0) {
+      toast({ title: "Выберите хотя бы одну услугу", variant: "destructive" });
+      return;
+    }
     const services = picked.map((id) => {
       const def = SERVICE_CATALOG.find((s) => s.id === id)!;
       return {
@@ -536,14 +545,25 @@ const NewClientDialog = ({ open, onOpenChange, onAdd }: NewClientDialogProps) =>
         cost: costs[id] ?? def.cost,
       };
     });
-    onAdd({
-      name: name.trim(),
-      services,
-      payDate: payDate || undefined,
-      status: "waiting",
-    });
-    reset();
-    onOpenChange(false);
+    setSubmitting(true);
+    try {
+      await Promise.resolve(
+        onAdd({
+          name: name.trim(),
+          services,
+          payDate: payDate || undefined,
+          status: "waiting",
+        }),
+      );
+      toast({ title: "Клиент добавлен" });
+      reset();
+      onOpenChange(false);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Не удалось добавить клиента";
+      toast({ title: "Ошибка", description: msg, variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
