@@ -29,14 +29,19 @@ Deno.serve(async (req) => {
 
   try {
     const expected = Deno.env.get("N8N_CALLBACK_SECRET");
-    if (expected) {
-      const got = req.headers.get("x-callback-secret");
-      if (got !== expected) {
-        return new Response(JSON.stringify({ error: "Unauthorized" }), {
-          status: 401,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
+    if (!expected) {
+      // SECURITY: refuse to accept callbacks when the shared secret is not configured.
+      return new Response(JSON.stringify({ error: "Server misconfigured: N8N_CALLBACK_SECRET not set" }), {
+        status: 503,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+    const got = req.headers.get("x-callback-secret");
+    if (got !== expected) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
     const body = (await req.json()) as Record<string, unknown>;
