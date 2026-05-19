@@ -106,6 +106,8 @@ export type Lead = {
   paid?: boolean;
   paymentMethod?: PaymentMethod;
   paidAt?: string;
+  /** Цена диагностики, фиксируется при переходе в этап «Запись на диагностику». 0 = бесплатно. */
+  diagnosticAmount?: number;
   tasks?: LeadTask[];
   events?: LeadEvent[];
   /**
