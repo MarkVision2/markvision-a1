@@ -483,9 +483,10 @@ const Crm = () => {
         defaultAmount={diagFor ? leads.find((l) => l.id === diagFor.leadId)?.diagnosticAmount : undefined}
         onOpenChange={(v) => { if (!v) setDiagFor(null); }}
         onCancel={() => setDiagFor(null)}
-        onConfirm={(amount) => {
+        onConfirm={async (amount) => {
           if (!diagFor) return;
-          void updateLead(diagFor.leadId, { diagnosticAmount: amount });
+          await updateLead(diagFor.leadId, { diagnosticAmount: amount });
+          await moveLead(diagFor.leadId, diagFor.stageId);
           toast.success(
             amount > 0
               ? `Диагностика на $${amount} зафиксирована`
