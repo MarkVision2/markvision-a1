@@ -95,12 +95,13 @@ export function useDestinationSplit(
         .eq("provider", "meta");
       if (projectId) cabQ = cabQ.eq("project_id", projectId);
       if (cabinetIds && cabinetIds.length > 0) cabQ = cabQ.in("id", cabinetIds);
-      const { data: cabs } = await cabQ;
+      const { data: cabsRaw } = await cabQ;
+      const cabs = (cabsRaw ?? []) as Array<{ id: string; name: string | null; website_url: string | null }>;
       const cabMeta = new Map<string, { url: string; name: string }>();
-      for (const c of cabs ?? []) {
-        cabMeta.set(c.id as string, {
-          url: ((c as { website_url?: string | null }).website_url ?? "") as string,
-          name: (c.name as string) ?? "",
+      for (const c of cabs) {
+        cabMeta.set(c.id, {
+          url: c.website_url ?? "",
+          name: c.name ?? "",
         });
       }
       if (cabMeta.size === 0) {
