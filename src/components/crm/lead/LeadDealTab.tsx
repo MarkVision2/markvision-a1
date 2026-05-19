@@ -1,11 +1,13 @@
-import { Calendar, Megaphone, CreditCard, Wallet } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Calendar, Megaphone, CreditCard, Wallet, ArrowRightCircle, Layers } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import type { Lead, PaymentMethod } from "@/types/crm";
+import type { Lead, LeadStage, PaymentMethod } from "@/types/crm";
 
 const SOURCE_PRESETS: { id: string; label: string }[] = [
   { id: "meta", label: "Meta" },
@@ -32,15 +34,53 @@ function toLocalInputValue(iso?: string) {
 
 interface Props {
   lead: Lead;
+  stages?: LeadStage[];
   onUpdate: (patch: Partial<Lead>) => void;
+  onChangeStage?: (stageId: string) => void;
 }
 
-export function LeadDealTab({ lead, onUpdate }: Props) {
+export function LeadDealTab({ lead, stages, onUpdate, onChangeStage }: Props) {
   const sourceKey = (lead.source ?? "").toLowerCase();
   const activePreset = PRESET_IDS.has(sourceKey) ? sourceKey : null;
 
+  const [pendingStage, setPendingStage] = useState<string>(lead.stageId);
+  useEffect(() => { setPendingStage(lead.stageId); }, [lead.stageId, lead.id]);
+
   return (
     <div className="space-y-3">
+      {/* Этап сделки */}
+      {stages && stages.length > 0 && onChangeStage && (
+        <div className="rounded-xl border border-border/60 bg-card/40 p-3">
+          <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">
+            <Layers className="h-3.5 w-3.5 text-primary" /> Этап сделки
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            <Select value={pendingStage} onValueChange={setPendingStage}>
+              <SelectTrigger className="flex-1"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {stages.map((s) => (
+                  <SelectItem key={s.id} value={s.id}>{s.title}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => onChangeStage(pendingStage)}
+              disabled={pendingStage === lead.stageId}
+              className="gap-1"
+            >
+              <ArrowRightCircle className="h-4 w-4" />
+              Перенести
+            </Button>
+          </div>
+          <div className="mt-1.5 text-[10px] text-muted-foreground">
+            Текущий: <span className="font-semibold text-foreground/80">{stages.find((s) => s.id === lead.stageId)?.title ?? lead.stageId}</span>
+          </div>
+        </div>
+      )}
+
+
       {/* Сумма сделки */}
       <div className="rounded-xl border border-border/60 bg-card/40 p-3">
         <div className="flex items-center gap-2 text-[11px] uppercase tracking-wider text-muted-foreground">

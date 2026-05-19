@@ -58,6 +58,24 @@ export function LeadDetailSheet({
   const stageTitle = stages.find((s) => s.id === lead.stageId)?.title;
   const leadChats = chats.filter((c) => c.leadId === lead.id);
 
+  const handleChangeStage = (sid: string) => {
+    if (sid === lead.stageId) return;
+    if (sid === "rejected") {
+      onRequestReject(lead.id);
+      onUpdate(lead.id, { stageId: sid });
+      return;
+    }
+    if (sid === "paid") {
+      onRequestPay(lead.id);
+      return;
+    }
+    if (sid === "scheduled" && onRequestDiagnostic) {
+      onRequestDiagnostic(lead.id);
+      return;
+    }
+    onUpdate(lead.id, { stageId: sid });
+  };
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
@@ -80,24 +98,7 @@ export function LeadDetailSheet({
                   onUpdate={(patch) => onUpdate(lead.id, patch)}
                   onTogglePin={() => onTogglePin(lead.id)}
                   onAssign={(aid) => onAssign(lead.id, aid)}
-                  onChangeStage={(sid) => {
-                    if (sid === "rejected") {
-                      onRequestReject(lead.id);
-                      onUpdate(lead.id, { stageId: sid });
-                      return;
-                    }
-                    if (sid === "paid") {
-                      // Этап «Оплачен» нельзя выставлять без суммы — ждём диалог.
-                      // markPaid внутри обработчика подтверждения сам переведёт stage и создаст deal.
-                      onRequestPay(lead.id);
-                      return;
-                    }
-                    if (sid === "scheduled" && onRequestDiagnostic) {
-                      onRequestDiagnostic(lead.id);
-                      return;
-                    }
-                    onUpdate(lead.id, { stageId: sid });
-                  }}
+                  onChangeStage={handleChangeStage}
                 />
               </div>
 
@@ -123,7 +124,7 @@ export function LeadDetailSheet({
 
                 <div className="mt-3">
                   <TabsContent value="deal" className="m-0 data-[state=inactive]:hidden">
-                    <LeadDealTab lead={lead} onUpdate={(p) => onUpdate(lead.id, p)} />
+                    <LeadDealTab lead={lead} stages={stages} onUpdate={(p) => onUpdate(lead.id, p)} onChangeStage={handleChangeStage} />
                   </TabsContent>
                   <TabsContent value="tasks" className="m-0 data-[state=inactive]:hidden">
                     <LeadTasksTab
