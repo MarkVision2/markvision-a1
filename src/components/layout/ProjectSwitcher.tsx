@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Check, ChevronsUpDown, Plus, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Check, ChevronsUpDown, Plus, Settings2, Trash2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { cn } from "@/lib/utils";
