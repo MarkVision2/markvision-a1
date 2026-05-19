@@ -98,24 +98,7 @@ export function LeadDetailSheet({
                   onUpdate={(patch) => onUpdate(lead.id, patch)}
                   onTogglePin={() => onTogglePin(lead.id)}
                   onAssign={(aid) => onAssign(lead.id, aid)}
-                  onChangeStage={(sid) => {
-                    if (sid === "rejected") {
-                      onRequestReject(lead.id);
-                      onUpdate(lead.id, { stageId: sid });
-                      return;
-                    }
-                    if (sid === "paid") {
-                      // Этап «Оплачен» нельзя выставлять без суммы — ждём диалог.
-                      // markPaid внутри обработчика подтверждения сам переведёт stage и создаст deal.
-                      onRequestPay(lead.id);
-                      return;
-                    }
-                    if (sid === "scheduled" && onRequestDiagnostic) {
-                      onRequestDiagnostic(lead.id);
-                      return;
-                    }
-                    onUpdate(lead.id, { stageId: sid });
-                  }}
+                  onChangeStage={handleChangeStage}
                 />
               </div>
 
