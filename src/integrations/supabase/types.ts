@@ -1081,6 +1081,7 @@ export type Database = {
           click_id: string | null
           created_at: string
           created_by: string | null
+          diagnostic_amount: number
           email: string | null
           first_response_at: string | null
           first_touch_at: string | null
@@ -1126,6 +1127,7 @@ export type Database = {
           click_id?: string | null
           created_at?: string
           created_by?: string | null
+          diagnostic_amount?: number
           email?: string | null
           first_response_at?: string | null
           first_touch_at?: string | null
@@ -1171,6 +1173,7 @@ export type Database = {
           click_id?: string | null
           created_at?: string
           created_by?: string | null
+          diagnostic_amount?: number
           email?: string | null
           first_response_at?: string | null
           first_touch_at?: string | null
