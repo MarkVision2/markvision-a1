@@ -504,7 +504,7 @@ const FilterChip = ({ active, onClick, label, count, icon: Icon, tone }: FilterC
 interface NewClientDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  onAdd: (c: Omit<AgencyClient, "id" | "createdAt">) => void;
+  onAdd: (c: Omit<AgencyClient, "id" | "createdAt">) => void | Promise<void>;
 }
 
 const NewClientDialog = ({ open, onOpenChange, onAdd }: NewClientDialogProps) => {
