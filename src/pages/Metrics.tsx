@@ -837,7 +837,7 @@ const ManualFactCell = ({
 
   if (disabled) {
     return (
-      <span className="inline-flex min-w-[86px] justify-end text-muted-foreground/50">
+      <span className="inline-flex min-w-0 w-full justify-end text-muted-foreground/50">
         {hasValue ? format(value) : "—"}
       </span>
     );
@@ -849,7 +849,7 @@ const ManualFactCell = ({
         <button
           type="button"
           className={cn(
-            "group inline-flex min-w-[86px] items-center justify-end gap-1.5 rounded-lg border border-transparent px-2 py-1 text-right transition-colors hover:border-success/30 hover:bg-success/10",
+            "group inline-flex min-w-0 w-full items-center justify-end gap-1.5 rounded-lg border border-transparent px-2 py-1 text-right transition-colors hover:border-success/30 hover:bg-success/10",
             !hasValue && "text-muted-foreground",
             manual > 0 && "border-success/20 bg-success/5 text-success",
           )}
