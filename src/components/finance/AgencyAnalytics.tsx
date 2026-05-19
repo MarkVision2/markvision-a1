@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { toast } from "@/hooks/use-toast";
 import {
   useAgencyClients,
   SERVICE_CATALOG,
@@ -503,7 +504,7 @@ const FilterChip = ({ active, onClick, label, count, icon: Icon, tone }: FilterC
 interface NewClientDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
-  onAdd: (c: Omit<AgencyClient, "id" | "createdAt">) => void;
+  onAdd: (c: Omit<AgencyClient, "id" | "createdAt">) => void | Promise<void>;
 }
 
 const NewClientDialog = ({ open, onOpenChange, onAdd }: NewClientDialogProps) => {
@@ -524,8 +525,17 @@ const NewClientDialog = ({ open, onOpenChange, onAdd }: NewClientDialogProps) =>
     if (def && costs[id] === undefined) setCosts((x) => ({ ...x, [id]: def.cost }));
   };
 
-  const handleSubmit = () => {
-    if (!name.trim() || picked.length === 0) return;
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!name.trim()) {
+      toast({ title: "Укажите имя клиента", variant: "destructive" });
+      return;
+    }
+    if (picked.length === 0) {
+      toast({ title: "Выберите хотя бы одну услугу", variant: "destructive" });
+      return;
+    }
     const services = picked.map((id) => {
       const def = SERVICE_CATALOG.find((s) => s.id === id)!;
       return {
@@ -535,14 +545,25 @@ const NewClientDialog = ({ open, onOpenChange, onAdd }: NewClientDialogProps) =>
         cost: costs[id] ?? def.cost,
       };
     });
-    onAdd({
-      name: name.trim(),
-      services,
-      payDate: payDate || undefined,
-      status: "waiting",
-    });
-    reset();
-    onOpenChange(false);
+    setSubmitting(true);
+    try {
+      await Promise.resolve(
+        onAdd({
+          name: name.trim(),
+          services,
+          payDate: payDate || undefined,
+          status: "waiting",
+        }),
+      );
+      toast({ title: "Клиент добавлен" });
+      reset();
+      onOpenChange(false);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Не удалось добавить клиента";
+      toast({ title: "Ошибка", description: msg, variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -643,13 +664,18 @@ const NewClientDialog = ({ open, onOpenChange, onAdd }: NewClientDialogProps) =>
             />
           </div>
 
+          {(!name.trim() || picked.length === 0) && (
+            <p className="text-xs text-muted-foreground">
+              {!name.trim() ? "Укажите имя клиента" : "Выберите хотя бы одну услугу из списка выше"}
+            </p>
+          )}
           <Button
             onClick={handleSubmit}
-            disabled={!name.trim() || picked.length === 0}
+            disabled={!name.trim() || picked.length === 0 || submitting}
             className="h-12 w-full gap-2 rounded-xl bg-success text-success-foreground hover:bg-success/90"
           >
             <Plus className="h-4 w-4" />
-            Добавить клиента
+            {submitting ? "Добавляем…" : "Добавить клиента"}
           </Button>
         </div>
       </DialogContent>
