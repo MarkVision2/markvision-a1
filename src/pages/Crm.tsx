@@ -28,6 +28,7 @@ import { SlaAlerts } from "@/components/crm/SlaAlerts";
 import { CrmFilters, type CrmFilterState } from "@/components/crm/CrmFilters";
 import { RejectReasonDialog } from "@/components/crm/RejectReasonDialog";
 import { PaymentAmountDialog } from "@/components/crm/PaymentAmountDialog";
+import { DiagnosticAmountDialog } from "@/components/crm/DiagnosticAmountDialog";
 import { ManagersView } from "@/components/crm/ManagersView";
 import { AnalyticsView } from "@/components/crm/AnalyticsView";
 import { AutomationsSettings } from "@/components/crm/AutomationsSettings";
