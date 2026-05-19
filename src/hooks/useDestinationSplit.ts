@@ -96,7 +96,7 @@ export function useDestinationSplit(
       if (projectId) cabQ = cabQ.eq("project_id", projectId);
       if (cabinetIds && cabinetIds.length > 0) cabQ = cabQ.in("id", cabinetIds);
       const { data: cabsRaw } = await cabQ;
-      const cabs = (cabsRaw ?? []) as Array<{ id: string; name: string | null; website_url: string | null }>;
+      const cabs = ((cabsRaw ?? []) as unknown) as Array<{ id: string; name: string | null; website_url: string | null }>;
       const cabMeta = new Map<string, { url: string; name: string }>();
       for (const c of cabs) {
         cabMeta.set(c.id, {
