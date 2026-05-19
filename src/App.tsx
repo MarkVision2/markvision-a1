@@ -31,6 +31,7 @@ const SettingsConnection = lazy(routeImports.SettingsConnection);
 const ResetPassword = lazy(routeImports.ResetPassword);
 const ProjectStrategy = lazy(routeImports.ProjectStrategy);
 const ClientDashboard = lazy(routeImports.ClientDashboard);
+const ProjectIntegrationWizard = lazy(routeImports.ProjectIntegrationWizard);
 
 const queryClient = new QueryClient({
   defaultOptions: {
