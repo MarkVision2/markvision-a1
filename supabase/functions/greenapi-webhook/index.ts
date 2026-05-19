@@ -156,14 +156,15 @@ function parseCtwa(messageData: Record<string, unknown> | undefined, body: Recor
   return out;
 }
 
-async function enrichFromCreative(adId: string): Promise<{ campaign_id: string | null; cabinet_id: string | null; project_id: string | null }> {
+async function enrichFromCreative(adId: string): Promise<{ campaign_id: string | null; adset_id: string | null; cabinet_id: string | null; project_id: string | null }> {
   const { data } = await admin
     .from("meta_creatives")
-    .select("campaign_id, cabinet_id, project_id")
+    .select("campaign_id, adset_id, cabinet_id, project_id")
     .eq("ad_id", adId)
     .maybeSingle();
   return {
     campaign_id: data?.campaign_id ?? null,
+    adset_id: (data as { adset_id?: string | null } | null)?.adset_id ?? null,
     cabinet_id: data?.cabinet_id ?? null,
     project_id: data?.project_id ?? null,
   };
@@ -177,6 +178,23 @@ async function findOrCreateLead(
 ): Promise<string | null> {
   const d = digits(phone);
   if (!d) return null;
+
+  // Если CTWA-атрибуция пришла прямо в первом сообщении — сохраняем её в wa_clicks,
+  // чтобы потом матчить с пикселем сайта. Делаем перед поиском лида, чтобы запись была
+  // даже если лид уже существует.
+  if (attribution?.click_id) {
+    await admin.from("wa_clicks").upsert({
+      click_id: attribution.click_id,
+      utm_source: "meta",
+      utm_medium: "ctwa",
+      utm_campaign: attribution.meta_campaign_id ?? null,
+      utm_content: attribution.meta_ad_id ?? null,
+      utm_term: attribution.meta_adset_id ?? null,
+      matched: true,
+      matched_at: new Date().toISOString(),
+      matched_phone: `+${d}`,
+    }, { onConflict: "click_id" });
+  }
 
   let q = admin
     .from("leads")
@@ -221,11 +239,41 @@ async function findOrCreateLead(
   let resolvedProject = projectId;
   let cabinetId: string | null = null;
   let metaCampaignId = attribution?.meta_campaign_id ?? null;
+  let metaAdsetId = attribution?.meta_adset_id ?? null;
   if (attribution?.meta_ad_id) {
     const enriched = await enrichFromCreative(attribution.meta_ad_id);
     if (!resolvedProject && enriched.project_id) resolvedProject = enriched.project_id;
     if (!cabinetId && enriched.cabinet_id) cabinetId = enriched.cabinet_id;
     if (!metaCampaignId && enriched.campaign_id) metaCampaignId = enriched.campaign_id;
+  }
+
+  // Fallback атрибуции по wa_clicks: если CTWA-referral не пришёл (например,
+  // лид написал не первым сообщением, а после кнопки на сайте → пиксель уже
+  // зафиксировал клик → wa_clicks имеет запись с этим click_id или phone),
+  // подтягиваем ad_id оттуда.
+  if (!attribution?.meta_ad_id) {
+    const { data: waClick } = await admin
+      .from("wa_clicks")
+      .select("utm_content, utm_term, utm_campaign, click_id, fbclid")
+      .or(`matched_phone.eq.+${d},matched_phone.eq.${d}`)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (waClick) {
+      const w = waClick as { utm_content?: string | null; utm_term?: string | null; utm_campaign?: string | null; click_id?: string | null; fbclid?: string | null };
+      if (!attribution) attribution = { meta_ad_id: null, meta_adset_id: null, meta_campaign_id: null, click_id: null, headline: null };
+      if (!attribution.meta_ad_id && w.utm_content) attribution.meta_ad_id = w.utm_content;
+      if (!attribution.meta_adset_id && w.utm_term) attribution.meta_adset_id = w.utm_term;
+      if (!attribution.meta_campaign_id && w.utm_campaign) attribution.meta_campaign_id = w.utm_campaign;
+      if (!attribution.click_id && (w.click_id || w.fbclid)) attribution.click_id = w.click_id || w.fbclid || null;
+      if (attribution.meta_ad_id) {
+        const enriched = await enrichFromCreative(attribution.meta_ad_id);
+        if (!resolvedProject && enriched.project_id) resolvedProject = enriched.project_id;
+        if (!cabinetId && enriched.cabinet_id) cabinetId = enriched.cabinet_id;
+        if (!metaCampaignId && enriched.campaign_id) metaCampaignId = enriched.campaign_id;
+        if (!metaAdsetId && enriched.adset_id) metaAdsetId = enriched.adset_id;
+      }
+    }
   }
 
   const def = await getDefaultStage(resolvedProject);
@@ -245,7 +293,7 @@ async function findOrCreateLead(
       pipeline_id: def.pipeline_id,
       stage_id: def.stage_id,
       meta_ad_id: attribution?.meta_ad_id ?? null,
-      meta_adset_id: attribution?.meta_adset_id ?? null,
+      meta_adset_id: metaAdsetId,
       meta_campaign_id: metaCampaignId,
       click_id: attribution?.click_id ?? null,
     })
