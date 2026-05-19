@@ -1,11 +1,13 @@
-import { Calendar, Megaphone, CreditCard, Wallet } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Calendar, Megaphone, CreditCard, Wallet, ArrowRightCircle, Layers } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import type { Lead, PaymentMethod } from "@/types/crm";
+import type { Lead, LeadStage, PaymentMethod } from "@/types/crm";
 
 const SOURCE_PRESETS: { id: string; label: string }[] = [
   { id: "meta", label: "Meta" },
