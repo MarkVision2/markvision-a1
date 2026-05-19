@@ -664,13 +664,18 @@ const NewClientDialog = ({ open, onOpenChange, onAdd }: NewClientDialogProps) =>
             />
           </div>
 
+          {(!name.trim() || picked.length === 0) && (
+            <p className="text-xs text-muted-foreground">
+              {!name.trim() ? "Укажите имя клиента" : "Выберите хотя бы одну услугу из списка выше"}
+            </p>
+          )}
           <Button
             onClick={handleSubmit}
-            disabled={!name.trim() || picked.length === 0}
+            disabled={!name.trim() || picked.length === 0 || submitting}
             className="h-12 w-full gap-2 rounded-xl bg-success text-success-foreground hover:bg-success/90"
           >
             <Plus className="h-4 w-4" />
-            Добавить клиента
+            {submitting ? "Добавляем…" : "Добавить клиента"}
           </Button>
         </div>
       </DialogContent>
