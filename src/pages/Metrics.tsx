@@ -770,9 +770,8 @@ const Metrics = () => {
                   </tr>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+          </tbody>
+        </table>
 
         {loading && (
           <div className="flex items-center justify-center gap-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">
