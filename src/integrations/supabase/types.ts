@@ -2221,6 +2221,7 @@ export type Database = {
     Views: {
       ad_cabinets_safe: {
         Row: {
+          ad_account_id: string | null
           auto_launch_enabled: boolean | null
           brief: string | null
           campaign_objective: string | null
@@ -2247,8 +2248,10 @@ export type Database = {
           name: string | null
           online: boolean | null
           optimization_goal: string | null
+          page_id: string | null
           page_name: string | null
           pixel_event: string | null
+          pixel_id: string | null
           project_id: string | null
           provider: string | null
           revenue: number | null
@@ -2271,6 +2274,7 @@ export type Database = {
           whatsapp_number: string | null
         }
         Insert: {
+          ad_account_id?: string | null
           auto_launch_enabled?: boolean | null
           brief?: string | null
           campaign_objective?: string | null
@@ -2297,8 +2301,10 @@ export type Database = {
           name?: string | null
           online?: boolean | null
           optimization_goal?: string | null
+          page_id?: string | null
           page_name?: string | null
           pixel_event?: string | null
+          pixel_id?: string | null
           project_id?: string | null
           provider?: string | null
           revenue?: number | null
@@ -2321,6 +2327,7 @@ export type Database = {
           whatsapp_number?: string | null
         }
         Update: {
+          ad_account_id?: string | null
           auto_launch_enabled?: boolean | null
           brief?: string | null
           campaign_objective?: string | null
@@ -2347,8 +2354,10 @@ export type Database = {
           name?: string | null
           online?: boolean | null
           optimization_goal?: string | null
+          page_id?: string | null
           page_name?: string | null
           pixel_event?: string | null
+          pixel_id?: string | null
           project_id?: string | null
           provider?: string | null
           revenue?: number | null
