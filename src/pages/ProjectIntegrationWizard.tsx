@@ -854,6 +854,8 @@ export default function ProjectIntegrationWizard() {
                   </Alert>
                 )}
               </div>
+
+              {cabinetId && <HealthCheckPanel cabinetId={cabinetId} className="mt-2" />}
             </>
           )}
         </CardContent>
