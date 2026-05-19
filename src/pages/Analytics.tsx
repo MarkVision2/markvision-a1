@@ -158,6 +158,13 @@ const Analytics = () => {
   const { data, loading, error, refresh } = useMultiMetaInsights(actIds, monthParam, actIds.length > 0);
   const { data: prevData } = useMultiMetaInsights(actIds, prevParam, actIds.length > 0);
 
+  // Split-by-destination метрики (сайт vs WhatsApp) — берём напрямую из meta_campaign_daily.
+  const cabinetIdsForSplit = useMemo(() => {
+    if (cabinetId === "all") return cabinets.map((c) => c.id);
+    return [cabinetId];
+  }, [cabinetId, cabinets]);
+  const { data: splitData } = useDestinationSplit(cabinetIdsForSplit, monthParam, cabinetIdsForSplit.length > 0);
+
   const { leads, loading: leadsLoading, refetch } = useLeadsLite();
 
   // Filter leads by month
