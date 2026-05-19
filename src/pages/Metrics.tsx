@@ -103,7 +103,7 @@ const SummaryCard = ({
 const Cell = ({ children, mono = true }: { children: React.ReactNode; mono?: boolean }) => (
   <td
     className={cn(
-      "px-3 py-3 text-right text-sm",
+      "px-2 py-2 text-right text-xs",
       mono && "tabular-nums",
     )}
   >
