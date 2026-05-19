@@ -569,7 +569,7 @@ const Metrics = () => {
             <tbody>
               {/* Plan row */}
               <tr className="border-b border-border/60">
-                <td className="px-4 py-3">
+                <td className="px-2 py-2">
                   <div className="flex items-center gap-2">
                     <span className="grid h-7 w-7 place-items-center rounded-lg bg-success/10 text-success">
                       <Target className="h-3.5 w-3.5" />
@@ -591,7 +591,7 @@ const Metrics = () => {
 
               {/* Fact row */}
               <tr className="border-b border-border/60 bg-card/30">
-                <td className="px-4 py-3">
+                <td className="px-2 py-2">
                   <div className="flex items-center gap-2">
                     <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
                       <BarChart3 className="h-3.5 w-3.5" />
@@ -645,7 +645,7 @@ const Metrics = () => {
 
               {/* % completion row */}
               <tr className="border-b border-border/60">
-                <td className="px-4 py-3">
+                <td className="px-2 py-2">
                   <div className="flex items-center gap-2">
                     <span className="grid h-7 w-7 place-items-center rounded-lg bg-warning/15 text-warning">
                       <TrendingUp className="h-3.5 w-3.5" />
