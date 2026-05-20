@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { classifyGoal } from "@/hooks/useMetaStructure";
 import { mergeChannelsWithMetaCampaignGoals, type DashboardChannel } from "@/lib/dashboardChannels";
+import { calculateQualityFunnel } from "@/lib/qualityFunnel";
 import { formatHours, formatDuration } from "@/hooks/useCrmFlow";
 import { normalizeSource } from "@/lib/leadSource";
 
@@ -223,5 +224,32 @@ describe("mergeChannelsWithMetaCampaignGoals", () => {
     expect(merged.some((c) => c.key === "meta")).toBe(false);
     expect(merged.map((c) => c.key).sort()).toEqual(["site", "whatsapp"]);
     expect(merged.reduce((sum, c) => sum + c.leads, 0)).toBe(77);
+  });
+});
+
+describe("calculateQualityFunnel", () => {
+  it("считает диагностику по флагу этапа, а оплату по leads.paid", () => {
+    const funnel = calculateQualityFunnel([
+      { stageKey: "new", paid: false },
+      { stageKey: "custom_diag", stageTitle: "Записан на диагностику", stageIsDiagnostic: true, paid: false },
+      { stageKey: "custom_paid", stageTitle: "Оплатил", paid: true, paidAt: "2026-05-20T05:00:00Z" },
+    ]);
+
+    expect(funnel.totalLeads).toBe(3);
+    expect(funnel.scheduled).toBe(2);
+    expect(funnel.paid).toBe(1);
+    expect(funnel.pctScheduled).toBe(67);
+    expect(funnel.pctPaid).toBe(50);
+  });
+
+  it("не падает в ноль, если этапы называются человеческими словами без стандартного key", () => {
+    const funnel = calculateQualityFunnel([
+      { stageId: "abc", stageTitle: "Пришёл на диагностику" },
+      { stageId: "def", stageTitle: "Оплачен" },
+      { stageId: "ghi", stageTitle: "Без ответа" },
+    ]);
+
+    expect(funnel.scheduled).toBe(2);
+    expect(funnel.paid).toBe(1);
   });
 });

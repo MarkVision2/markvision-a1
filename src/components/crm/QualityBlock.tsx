@@ -8,11 +8,17 @@ import {
   type QualityCounts,
   type QualityCategory,
 } from "@/lib/quality";
+import { calculateQualityFunnel } from "@/lib/qualityFunnel";
 
 export interface QualityLeadLike {
   aiScore?: number | null;
   stageId?: string | null;
   stageKey?: string | null;
+  stageTitle?: string | null;
+  stageIsDiagnostic?: boolean | null;
+  isDiagnostic?: boolean | null;
+  paid?: boolean | null;
+  paidAt?: string | null;
   createdAt?: string | null;
 }
 
@@ -148,19 +154,8 @@ export function QualityBlock({ leads, weeks = 8, title = "Качество ли�
   );
 }
 
-/**
- * Воронка: Новые → Записан → Оплатил.
- * Считает по `stageId`. Если стадия пустая — лид не входит.
- */
 export function QualityFunnel({ leads }: { leads: readonly QualityLeadLike[] }) {
-  const stage = (l: QualityLeadLike) => l.stageId ?? l.stageKey ?? "";
-  const totalLeads = leads.length;
-  const scheduled = leads.filter((l) => ["scheduled", "diagnosed", "paid", "completed"].includes(stage(l))).length;
-  const paid = leads.filter((l) => ["paid", "completed"].includes(stage(l))).length;
-
-  const pctScheduled = totalLeads > 0 ? Math.round((scheduled / totalLeads) * 100) : 0;
-  const pctPaid = scheduled > 0 ? Math.round((paid / scheduled) * 100) : 0;
-  const pctPaidOfAll = totalLeads > 0 ? Math.round((paid / totalLeads) * 100) : 0;
+  const { totalLeads, scheduled, paid, pctScheduled, pctPaid, pctPaidOfAll } = calculateQualityFunnel(leads);
 
   const stages = [
     { name: "Все лиды", value: totalLeads, color: "#94a3b8", cr: null as number | null },

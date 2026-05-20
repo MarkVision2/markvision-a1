@@ -35,6 +35,8 @@ export interface LeadLite {
   rejectReason: string | null;
   rejectedAt: string | null;
   stageId: string | null;
+  stageTitle: string | null;
+  stageIsDiagnostic: boolean;
 }
 
 export function useLeadsLite() {
@@ -56,33 +58,44 @@ export function useLeadsLite() {
       leadsQuery = leadsQuery.or(`project_id.eq.${activeId},project_id.is.null`);
     }
     const [stagesRes, leadsRes] = await Promise.all([
-      supabase.from("pipeline_stages").select("id,key"),
+      supabase.from("pipeline_stages").select("id,key,title,is_diagnostic"),
       leadsQuery,
     ]);
-    const idToKey = new Map<string, string>();
-    for (const s of stagesRes.data ?? []) idToKey.set(s.id, s.key);
+    const stageById = new Map<string, { key: string; title: string | null; isDiagnostic: boolean }>();
+    for (const s of stagesRes.data ?? []) {
+      stageById.set(s.id, {
+        key: s.key,
+        title: (s as { title?: string | null }).title ?? null,
+        isDiagnostic: Boolean((s as { is_diagnostic?: boolean | null }).is_diagnostic),
+      });
+    }
 
-    const list: LeadLite[] = (leadsRes.data ?? []).map((r) => ({
-      id: r.id as string,
-      source: (r.source as string) ?? "",
-      channel: (r.channel as string | null) ?? null,
-      referrer: (r.referrer as string | null) ?? null,
-      utm: (r.utm as LeadLiteUtm | null) ?? null,
-      cabinetId: (r.cabinet_id as string | null) ?? null,
-      stageKey: idToKey.get(r.stage_id as string) ?? "new",
-      amount: Number(r.amount ?? 0),
-      createdAt: r.created_at as string,
-      paidAt: (r.paid_at as string | null) ?? null,
-      lastActivityAt: r.last_activity_at as string,
-      firstResponseAt: (r.first_response_at as string | null) ?? null,
-      assigneeId: (r.assigned_to as string | null) ?? null,
-      paid: Boolean(r.paid),
-      aiScore: Number((r as { ai_score?: number | null }).ai_score ?? 0),
-      scoreLabel: ((r as { score_label?: string | null }).score_label ?? null) as string | null,
-      rejectReason: ((r as { reject_reason?: string | null }).reject_reason ?? null) as string | null,
-      rejectedAt: ((r as { rejected_at?: string | null }).rejected_at ?? null) as string | null,
-      stageId: (r.stage_id as string | null) ?? null,
-    }));
+    const list: LeadLite[] = (leadsRes.data ?? []).map((r) => {
+      const stage = r.stage_id ? stageById.get(r.stage_id as string) : undefined;
+      return {
+        id: r.id as string,
+        source: (r.source as string) ?? "",
+        channel: (r.channel as string | null) ?? null,
+        referrer: (r.referrer as string | null) ?? null,
+        utm: (r.utm as LeadLiteUtm | null) ?? null,
+        cabinetId: (r.cabinet_id as string | null) ?? null,
+        stageKey: stage?.key ?? "new",
+        amount: Number(r.amount ?? 0),
+        createdAt: r.created_at as string,
+        paidAt: (r.paid_at as string | null) ?? null,
+        lastActivityAt: r.last_activity_at as string,
+        firstResponseAt: (r.first_response_at as string | null) ?? null,
+        assigneeId: (r.assigned_to as string | null) ?? null,
+        paid: Boolean(r.paid),
+        aiScore: Number((r as { ai_score?: number | null }).ai_score ?? 0),
+        scoreLabel: ((r as { score_label?: string | null }).score_label ?? null) as string | null,
+        rejectReason: ((r as { reject_reason?: string | null }).reject_reason ?? null) as string | null,
+        rejectedAt: ((r as { rejected_at?: string | null }).rejected_at ?? null) as string | null,
+        stageId: (r.stage_id as string | null) ?? null,
+        stageTitle: stage?.title ?? null,
+        stageIsDiagnostic: stage?.isDiagnostic ?? false,
+      };
+    });
     setLeads(list);
     setLoading(false);
   }, [activeId]);

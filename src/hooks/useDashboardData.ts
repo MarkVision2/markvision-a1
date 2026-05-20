@@ -171,9 +171,9 @@ export function useDashboardData(
     });
     const total = inRange.length;
     const reached = inRange.filter((l) => l.stageKey !== "new" && l.stageKey !== "no_answer").length;
-    const scheduled = inRange.filter((l) => ["scheduled", "visit", "paid"].includes(l.stageKey)).length;
-    const visited = inRange.filter((l) => ["visit", "paid"].includes(l.stageKey)).length;
-    const paid = inRange.filter((l) => l.stageKey === "paid").length;
+    const scheduled = inRange.filter((l) => l.stageIsDiagnostic || ["scheduled", "visit", "invoice", "paid"].includes(l.stageKey) || l.paid).length;
+    const visited = inRange.filter((l) => ["visit", "paid"].includes(l.stageKey) || l.paid).length;
+    const paid = inRange.filter((l) => l.paid || l.stageKey === "paid").length;
     return { total, reached, scheduled, visited, paid };
   }, [leads, fromTs, toTs]);
 
@@ -206,11 +206,14 @@ export function useDashboardData(
         .filter((e) => e.eventType === "lead" && e.leadId)
         .reduce((sum, e) => {
           const lead = leads.find((l) => l.id === e.leadId);
-          return sum + (lead?.stageKey === "paid" ? lead.amount || 0 : 0);
+          return sum + (lead?.paid || lead?.stageKey === "paid" ? lead.amount || 0 : 0);
         }, 0);
       const igSales = igEvents
         .filter((e) => e.eventType === "lead" && e.leadId)
-        .filter((e) => leads.find((l) => l.id === e.leadId)?.stageKey === "paid")
+        .filter((e) => {
+          const lead = leads.find((l) => l.id === e.leadId);
+          return lead?.paid || lead?.stageKey === "paid";
+        })
         .length;
       rows.push({
         key: "instagram_organic",
@@ -240,7 +243,7 @@ export function useDashboardData(
           spend: 0, leads: 0, sales: 0, revenue: 0,
         };
         cur.leads += 1;
-        if (l.stageKey === "paid") {
+        if (l.paid || l.stageKey === "paid") {
           cur.sales += 1;
           cur.revenue += l.amount || 0;
         }
@@ -280,7 +283,7 @@ export function useDashboardData(
     }
     // CRM-лиды без cabinet_id — добавляем их выручку отдельно (чтобы не задвоить CDI).
     for (const l of leads) {
-      if (l.stageKey !== "paid" || l.cabinetId) continue;
+      if ((!l.paid && l.stageKey !== "paid") || l.cabinetId) continue;
       const t = new Date(l.createdAt).getTime();
       if (t < fromTs || t >= toTs) continue;
       const k = dayKey(l.createdAt);
