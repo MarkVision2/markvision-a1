@@ -83,6 +83,12 @@ function aggregate(rows: CdiRow[]): InsightsData {
   const dailyMap = new Map<string, DailyInsightRow>();
   const totals = { ...EMPTY_TOTALS };
   let currency = "USD";
+  let totalCrmDiagnostics = 0;
+  let totalManualDiagnostics = 0;
+  let totalCrmSales = 0;
+  let totalManualSales = 0;
+  let totalCrmRevenue = 0;
+  let totalManualRevenue = 0;
   for (const r of rows) {
     currency = r.currency || currency;
     const spend = Number(r.spend) || 0;
@@ -104,9 +110,12 @@ function aggregate(rows: CdiRow[]): InsightsData {
     totals.clicks += clicks;
     totals.leads += leads;
     totals.revenue += revenue;
-    totals.diagnostics += diagnostics;
-    totals.sales += sales;
-    totals.crmRevenue += totalRevenue;
+    totalCrmDiagnostics += crmDiag;
+    totalManualDiagnostics += manDiag;
+    totalCrmSales += crmSales;
+    totalManualSales += manSales;
+    totalCrmRevenue += crmRevenue;
+    totalManualRevenue += manRevenue;
     const cur = dailyMap.get(r.date);
     if (cur) {
       cur.spend += spend;
@@ -129,6 +138,9 @@ function aggregate(rows: CdiRow[]): InsightsData {
       });
     }
   }
+  totals.diagnostics = factValue(totalCrmDiagnostics, totalManualDiagnostics);
+  totals.sales = factValue(totalCrmSales, totalManualSales);
+  totals.crmRevenue = factValue(totalCrmRevenue, totalManualRevenue);
   totals.cpl = totals.leads > 0 ? totals.spend / totals.leads : 0;
   totals.cpm = totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0;
   totals.cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;

@@ -101,10 +101,16 @@ async function fetchMetaForRange(
 ): Promise<{
   spend: number; impressions: number; clicks: number; leads: number;
   cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number;
+  hasManualSales: boolean; hasManualRevenue: boolean; hasManualDiagnostics: boolean;
   daily: { date: string; spend: number; leads: number; revenue: number }[];
 }> {
   if (externalIds.length === 0) {
-    return { spend: 0, impressions: 0, clicks: 0, leads: 0, cabinetSales: 0, cabinetRevenue: 0, cabinetDiagnostics: 0, daily: [] };
+    return {
+      spend: 0, impressions: 0, clicks: 0, leads: 0,
+      cabinetSales: 0, cabinetRevenue: 0, cabinetDiagnostics: 0,
+      hasManualSales: false, hasManualRevenue: false, hasManualDiagnostics: false,
+      daily: [],
+    };
   }
   const ids = externalIds.map(normalizeActId);
   const since = ymd(range.from);
@@ -112,31 +118,74 @@ async function fetchMetaForRange(
 
   const { data, error } = await supabase
     .from("cabinet_daily_insights")
-    .select("date, spend, impressions, clicks, leads, crm_sales, manual_sales, crm_revenue, manual_revenue, crm_diagnostics, manual_diagnostics")
+    .select("date, external_id, cabinet_id, spend, impressions, clicks, leads, crm_sales, manual_sales, crm_revenue, manual_revenue, crm_diagnostics, manual_diagnostics")
     .in("external_id", ids)
     .gte("date", since)
     .lte("date", until);
   if (error) throw new Error(error.message);
 
   const dailyAgg = new Map<string, { spend: number; leads: number; revenue: number }>();
+  const cabinetFacts = new Map<string, {
+    crmSales: number; manualSales: number;
+    crmRevenue: number; manualRevenue: number;
+    crmDiagnostics: number; manualDiagnostics: number;
+  }>();
   let totSpend = 0, totImp = 0, totClicks = 0, totLeads = 0;
-  let totSales = 0, totRevenue = 0, totDiag = 0;
 
-  for (const row of data ?? []) {
+  const rows = data ?? [];
+  for (const row of rows) {
     const spend = Number(row.spend) || 0;
     const impressions = Number(row.impressions) || 0;
     const clicks = Number(row.clicks) || 0;
     const leads = Number(row.leads) || 0;
-    const sales = factValue(row.crm_sales, row.manual_sales);
-    const revenue = factValue(row.crm_revenue, row.manual_revenue);
-    const diag = factValue(row.crm_diagnostics, row.manual_diagnostics);
+    const crmSales = Number(row.crm_sales) || 0;
+    const manualSales = Number(row.manual_sales) || 0;
+    const crmRevenue = Number(row.crm_revenue) || 0;
+    const manualRevenue = Number(row.manual_revenue) || 0;
+    const crmDiagnostics = Number(row.crm_diagnostics) || 0;
+    const manualDiagnostics = Number(row.manual_diagnostics) || 0;
     totSpend += spend; totImp += impressions; totClicks += clicks; totLeads += leads;
-    totSales += sales; totRevenue += revenue; totDiag += diag;
+    const cabinetKey = row.external_id || row.cabinet_id || "__unknown__";
+    const facts = cabinetFacts.get(cabinetKey) ?? {
+      crmSales: 0, manualSales: 0,
+      crmRevenue: 0, manualRevenue: 0,
+      crmDiagnostics: 0, manualDiagnostics: 0,
+    };
+    facts.crmSales += crmSales;
+    facts.manualSales += manualSales;
+    facts.crmRevenue += crmRevenue;
+    facts.manualRevenue += manualRevenue;
+    facts.crmDiagnostics += crmDiagnostics;
+    facts.manualDiagnostics += manualDiagnostics;
+    cabinetFacts.set(cabinetKey, facts);
+  }
+
+  for (const row of rows) {
+    const cabinetKey = row.external_id || row.cabinet_id || "__unknown__";
+    const facts = cabinetFacts.get(cabinetKey);
+    const revenue = facts?.manualRevenue && facts.manualRevenue > 0
+      ? Number(row.manual_revenue) || 0
+      : Number(row.crm_revenue) || 0;
     const cur = dailyAgg.get(row.date) ?? { spend: 0, leads: 0, revenue: 0 };
-    cur.spend += spend;
-    cur.leads += leads;
+    cur.spend += Number(row.spend) || 0;
+    cur.leads += Number(row.leads) || 0;
     cur.revenue += revenue;
     dailyAgg.set(row.date, cur);
+  }
+
+  let cabinetSales = 0;
+  let cabinetRevenue = 0;
+  let cabinetDiagnostics = 0;
+  let hasManualSales = false;
+  let hasManualRevenue = false;
+  let hasManualDiagnostics = false;
+  for (const facts of cabinetFacts.values()) {
+    hasManualSales ||= facts.manualSales > 0;
+    hasManualRevenue ||= facts.manualRevenue > 0;
+    hasManualDiagnostics ||= facts.manualDiagnostics > 0;
+    cabinetSales += factValue(facts.crmSales, facts.manualSales);
+    cabinetRevenue += factValue(facts.crmRevenue, facts.manualRevenue);
+    cabinetDiagnostics += factValue(facts.crmDiagnostics, facts.manualDiagnostics);
   }
 
   return {
@@ -144,9 +193,12 @@ async function fetchMetaForRange(
     impressions: totImp,
     clicks: totClicks,
     leads: totLeads,
-    cabinetSales: totSales,
-    cabinetRevenue: totRevenue,
-    cabinetDiagnostics: totDiag,
+    cabinetSales,
+    cabinetRevenue,
+    cabinetDiagnostics,
+    hasManualSales,
+    hasManualRevenue,
+    hasManualDiagnostics,
     daily: Array.from(dailyAgg.entries())
       .map(([date, v]) => ({ date, ...v }))
       .sort((a, b) => a.date.localeCompare(b.date)),
@@ -182,14 +234,15 @@ function aggregateCrm(leads: LeadLite[], range: ReportPeriodRange) {
 
 function computeTotals(
   meta: { spend: number; impressions: number; clicks: number; leads: number;
-          cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number },
+          cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number;
+          hasManualSales: boolean; hasManualRevenue: boolean; hasManualDiagnostics: boolean },
   crm: { leads: LeadLite[]; orphanVisits: LeadLite[]; orphanSales: LeadLite[]; orphanRevenue: number },
 ): ReportTotals {
   const totalLeads = meta.leads + crm.leads.length;
   const cpl = totalLeads > 0 ? meta.spend / totalLeads : 0;
-  const visits = meta.cabinetDiagnostics + crm.orphanVisits.length;
-  const sales = meta.cabinetSales + crm.orphanSales.length;
-  const revenue = meta.cabinetRevenue + crm.orphanRevenue;
+  const visits = meta.cabinetDiagnostics + (meta.hasManualDiagnostics ? 0 : crm.orphanVisits.length);
+  const sales = meta.cabinetSales + (meta.hasManualSales ? 0 : crm.orphanSales.length);
+  const revenue = meta.cabinetRevenue + (meta.hasManualRevenue ? 0 : crm.orphanRevenue);
   const cpv = visits > 0 ? meta.spend / visits : 0;
   const cac = sales > 0 ? meta.spend / sales : 0;
   const ctr = meta.impressions > 0 ? (meta.clicks / meta.impressions) * 100 : 0;

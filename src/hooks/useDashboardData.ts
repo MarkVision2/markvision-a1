@@ -73,6 +73,17 @@ interface ProviderAgg {
   sales: number;
 }
 
+interface ProviderFactBucket {
+  provider: ProviderKey;
+  label: string;
+  spend: number;
+  leads: number;
+  crmSales: number;
+  manualSales: number;
+  crmRevenue: number;
+  manualRevenue: number;
+}
+
 const PROVIDER_LABELS: Record<ProviderKey, string> = {
   meta: "Meta Ads",
   google: "Google Ads",
@@ -143,27 +154,32 @@ export function useDashboardData(
         if (!cancelled) setProviderAgg([]);
         return;
       }
-      const acc = new Map<ProviderKey, ProviderAgg>();
+      const acc = new Map<ProviderKey, ProviderFactBucket>();
       for (const r of rows ?? []) {
         const provider = ((r as { provider?: string }).provider ?? "meta") as ProviderKey;
         const cur = acc.get(provider) ?? {
           provider,
           label: PROVIDER_LABELS[provider] ?? provider,
-          spend: 0, leads: 0, revenue: 0, sales: 0,
+          spend: 0, leads: 0,
+          crmSales: 0, manualSales: 0,
+          crmRevenue: 0, manualRevenue: 0,
         };
         cur.spend += Number((r as { spend?: number }).spend ?? 0);
         cur.leads += Number((r as { leads?: number }).leads ?? 0);
-        cur.sales += factValue(
-          (r as { crm_sales?: number }).crm_sales,
-          (r as { manual_sales?: number }).manual_sales,
-        );
-        cur.revenue += factValue(
-          (r as { crm_revenue?: number }).crm_revenue,
-          (r as { manual_revenue?: number }).manual_revenue,
-        );
+        cur.crmSales += Number((r as { crm_sales?: number }).crm_sales ?? 0);
+        cur.manualSales += Number((r as { manual_sales?: number }).manual_sales ?? 0);
+        cur.crmRevenue += Number((r as { crm_revenue?: number }).crm_revenue ?? 0);
+        cur.manualRevenue += Number((r as { manual_revenue?: number }).manual_revenue ?? 0);
         acc.set(provider, cur);
       }
-      setProviderAgg(Array.from(acc.values()));
+      setProviderAgg(Array.from(acc.values()).map((bucket) => ({
+        provider: bucket.provider,
+        label: bucket.label,
+        spend: bucket.spend,
+        leads: bucket.leads,
+        sales: factValue(bucket.crmSales, bucket.manualSales),
+        revenue: factValue(bucket.crmRevenue, bucket.manualRevenue),
+      })));
     })();
     return () => { cancelled = true; };
   }, [projectId, sinceYmd, untilYmd, pTick]);
@@ -301,13 +317,18 @@ export function useDashboardData(
       leadsByDay.set(d.date, (leadsByDay.get(d.date) ?? 0) + d.leads);
       revByDay.set(d.date, (revByDay.get(d.date) ?? 0) + (d.revenue ?? 0));
     }
-    // CRM-лиды без cabinet_id — добавляем их выручку отдельно (чтобы не задвоить CDI).
-    for (const l of leads) {
-      if ((!l.paid && l.stageKey !== "paid") || l.cabinetId) continue;
-      const t = new Date(l.createdAt).getTime();
-      if (t < fromTs || t >= toTs) continue;
-      const k = dayKey(l.createdAt);
-      revByDay.set(k, (revByDay.get(k) ?? 0) + (l.amount || 0));
+    const metaRevenue = data.monthlyMeta.reduce((sum, d) => sum + (d.revenue ?? 0), 0);
+    const shouldAddOrphanRevenue = data.totals.revenue > metaRevenue + 0.5;
+    if (shouldAddOrphanRevenue) {
+      // CRM-лиды без cabinet_id — добавляем только если итог отчёта тоже включает их.
+      for (const l of leads) {
+        if ((!l.paid && l.stageKey !== "paid") || l.cabinetId) continue;
+        const paymentDate = l.paidAt || l.createdAt;
+        const t = new Date(paymentDate).getTime();
+        if (t < fromTs || t >= toTs) continue;
+        const k = dayKey(paymentDate);
+        revByDay.set(k, (revByDay.get(k) ?? 0) + (l.amount || 0));
+      }
     }
     const out: { date: string; spend: number; revenue: number; leads: number; cpl: number }[] = [];
     const cur = new Date(range.from);
