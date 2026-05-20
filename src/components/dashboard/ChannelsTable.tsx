@@ -1,23 +1,14 @@
-import { AlertTriangle, Camera, Facebook, Megaphone, Globe, TrendingDown, TrendingUp, Wallet, Users, ShoppingBag } from "lucide-react";
+import { AlertTriangle, Camera, Facebook, FileText, Globe, Megaphone, MessageCircle, TrendingDown, TrendingUp, Wallet, Users, ShoppingBag } from "lucide-react";
+import type { DashboardChannel, DashboardChannelProvider } from "@/lib/dashboardChannels";
 import { cn } from "@/lib/utils";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 
-export type ChannelProvider = "meta" | "google" | "instagram_organic" | "crm";
-
-interface ChannelRow {
-  key: string;
-  name: string;
-  provider: ChannelProvider;
-  spend: number;
-  leads: number;
-  sales: number;
-  revenue: number;
-}
+export type ChannelProvider = DashboardChannelProvider;
 
 interface Props {
-  channels: ChannelRow[];
+  channels: DashboardChannel[];
   totalSpend: number;
   totalLeads: number;
 }
@@ -27,6 +18,10 @@ const PROVIDER_META: Record<ChannelProvider, { icon: typeof Camera; cls: string;
   google: { icon: Megaphone, cls: "text-warning", bg: "bg-warning/10", ring: "ring-warning/20", label: "Google Ads" },
   instagram_organic: { icon: Camera, cls: "text-pink-500", bg: "bg-pink-500/10", ring: "ring-pink-500/20", label: "Instagram organic" },
   crm: { icon: Globe, cls: "text-muted-foreground", bg: "bg-muted/30", ring: "ring-muted/30", label: "CRM / прочее" },
+  site: { icon: Globe, cls: "text-primary", bg: "bg-primary/10", ring: "ring-primary/20", label: "Сайт / лендинг" },
+  whatsapp: { icon: MessageCircle, cls: "text-success", bg: "bg-success/10", ring: "ring-success/20", label: "WhatsApp / Meta Ads" },
+  lead_form: { icon: FileText, cls: "text-primary", bg: "bg-primary/10", ring: "ring-primary/20", label: "Лид-форма Meta" },
+  messages: { icon: MessageCircle, cls: "text-success", bg: "bg-success/10", ring: "ring-success/20", label: "Direct / Messenger" },
 };
 
 export function ChannelsTable({ channels, totalSpend, totalLeads }: Props) {

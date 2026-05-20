@@ -25,6 +25,7 @@ import { useLeadsLite } from "@/hooks/useLeadsLite";
 import { useMetaCampaigns, useMetaCreatives } from "@/hooks/useMetaStructure";
 import { QualityBlock, QualityFunnel } from "@/components/crm/QualityBlock";
 import { deltaPct } from "@/hooks/useReportData";
+import { mergeChannelsWithMetaCampaignGoals } from "@/lib/dashboardChannels";
 import { cn } from "@/lib/utils";
 
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}\u00A0₸`;
@@ -84,6 +85,10 @@ const Dashboard = () => {
   const crmFlow = useCrmFlow(range);
   const { rows: metaCreatives } = useMetaCreatives(range);
   const { rows: metaCampaigns } = useMetaCampaigns(range);
+  const sourceChannels = useMemo(
+    () => mergeChannelsWithMetaCampaignGoals(channels, metaCampaigns),
+    [channels, metaCampaigns],
+  );
   const { leads: liteLeads } = useLeadsLite();
   const periodLeads = useMemo(() => liteLeads.filter((l) => {
     const t = new Date(l.createdAt).getTime();
@@ -208,9 +213,12 @@ const Dashboard = () => {
       {/* Block 4 — Channels */}
       <SectionTitle>Источники заявок</SectionTitle>
       <ChannelsTable
-        channels={channels}
+        channels={sourceChannels}
         totalSpend={totals?.spend ?? 0}
-        totalLeads={totals?.totalLeads ?? 0}
+        totalLeads={Math.max(
+          totals?.totalLeads ?? 0,
+          sourceChannels.reduce((sum, channel) => sum + channel.leads, 0),
+        )}
       />
 
       {/* Block 4.1 — Instagram organic funnel (код-слова → DM → клик → заявка) */}

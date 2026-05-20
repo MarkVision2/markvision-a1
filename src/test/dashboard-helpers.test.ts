@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { classifyGoal } from "@/hooks/useMetaStructure";
+import { mergeChannelsWithMetaCampaignGoals, type DashboardChannel } from "@/lib/dashboardChannels";
 import { formatHours, formatDuration } from "@/hooks/useCrmFlow";
 import { normalizeSource } from "@/lib/leadSource";
 
@@ -171,5 +172,56 @@ describe("normalizeSource — multi-provider lead source keys", () => {
     const m = normalizeSource("partner_x");
     expect(m.key).toBe("unknown");
     expect(m.label).toBe("partner_x");
+  });
+});
+
+describe("mergeChannelsWithMetaCampaignGoals", () => {
+  const campaign = (patch: Partial<Parameters<typeof mergeChannelsWithMetaCampaignGoals>[1][number]>) => ({
+    id: patch.id ?? "row",
+    campaignId: patch.campaignId ?? "cmp",
+    cabinetId: null,
+    name: patch.name ?? "campaign",
+    objective: patch.objective ?? "OUTCOME_LEADS",
+    destinationType: patch.destinationType ?? "WEBSITE",
+    effectiveStatus: "ACTIVE",
+    dailyBudget: null,
+    spend: patch.spend ?? 0,
+    impressions: patch.impressions ?? 0,
+    clicks: patch.clicks ?? 0,
+    leads: patch.leads ?? 0,
+    messages: patch.messages ?? 0,
+    purchases: patch.purchases ?? 0,
+    revenue: patch.revenue ?? 0,
+    ctr: 0,
+    cpl: 0,
+    romi: 0,
+  });
+
+  it("не даёт сайту занижаться, если по Meta-цели лидов больше, чем в дневном агрегате", () => {
+    const channels: DashboardChannel[] = [
+      { key: "site", name: "Сайт", provider: "site", spend: 12_563, leads: 2, sales: 0, revenue: 0 },
+      { key: "whatsapp", name: "WhatsApp", provider: "whatsapp", spend: 119_345, leads: 19, sales: 1, revenue: 400_000 },
+    ];
+    const merged = mergeChannelsWithMetaCampaignGoals(channels, [
+      campaign({ campaignId: "site", objective: "OUTCOME_LEADS", destinationType: "WEBSITE", spend: 97_278, leads: 49 }),
+      campaign({ campaignId: "wa", objective: "OUTCOME_ENGAGEMENT", destinationType: "WHATSAPP", spend: 34_677, messages: 28 }),
+    ]);
+
+    expect(merged.find((c) => c.key === "site")).toMatchObject({ leads: 49, spend: 97_278 });
+    expect(merged.find((c) => c.key === "whatsapp")).toMatchObject({ leads: 28, spend: 119_345, sales: 1, revenue: 400_000 });
+  });
+
+  it("разбивает общий Meta Ads на понятные источники, чтобы не было дубля", () => {
+    const channels: DashboardChannel[] = [
+      { key: "meta", name: "Meta Ads", provider: "meta", spend: 131_955, leads: 77, sales: 0, revenue: 0 },
+    ];
+    const merged = mergeChannelsWithMetaCampaignGoals(channels, [
+      campaign({ campaignId: "site", objective: "OUTCOME_LEADS", destinationType: "WEBSITE", spend: 97_278, leads: 49 }),
+      campaign({ campaignId: "wa", objective: "OUTCOME_ENGAGEMENT", destinationType: "WHATSAPP", spend: 34_677, messages: 28 }),
+    ]);
+
+    expect(merged.some((c) => c.key === "meta")).toBe(false);
+    expect(merged.map((c) => c.key).sort()).toEqual(["site", "whatsapp"]);
+    expect(merged.reduce((sum, c) => sum + c.leads, 0)).toBe(77);
   });
 });

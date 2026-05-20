@@ -3,6 +3,7 @@ import { useReportData, type ReportPeriodRange } from "./useReportData";
 import { useLeadsLite } from "./useLeadsLite";
 import { useInstagramOrganic } from "./useInstagramOrganic";
 import { buildAlerts } from "@/lib/dashboardAlerts";
+import type { DashboardChannel, DashboardChannelProvider } from "@/lib/dashboardChannels";
 import { normalizeSource } from "@/lib/leadSource";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "./useProjectsStore";
@@ -60,7 +61,7 @@ function dayKey(d: Date | string) {
   return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
 }
 
-type ProviderKey = "meta" | "google" | "instagram_organic";
+type ProviderKey = DashboardChannelProvider;
 
 interface ProviderAgg {
   provider: ProviderKey;
@@ -75,6 +76,11 @@ const PROVIDER_LABELS: Record<ProviderKey, string> = {
   meta: "Meta Ads",
   google: "Google Ads",
   instagram_organic: "Instagram (organic)",
+  crm: "CRM / прочее",
+  site: "Сайт",
+  whatsapp: "WhatsApp",
+  lead_form: "Лид-форма Meta",
+  messages: "Direct / Messenger",
 };
 
 function dayKeyInRange(date: Date, fromTs: number, toTs: number): boolean {
@@ -180,16 +186,7 @@ export function useDashboardData(
   const channels = useMemo(() => {
     const inRange = leads.filter((l) => dayKeyInRange(new Date(l.createdAt), fromTs, toTs));
 
-    interface ChannelRow {
-      key: string;
-      name: string;
-      provider: ProviderKey | "crm";
-      spend: number;
-      leads: number;
-      sales: number;
-      revenue: number;
-    }
-    const rows: ChannelRow[] = [];
+    const rows: DashboardChannel[] = [];
 
     for (const agg of providerAgg) {
       rows.push({
@@ -230,7 +227,7 @@ export function useDashboardData(
     // с маркированным источником — показываем их разбивку.
     const knownKeys = new Set(rows.map((r) => r.key));
     if (rows.length === 0 || inRange.length > 0) {
-      const map = new Map<string, ChannelRow>();
+      const map = new Map<string, DashboardChannel>();
       for (const l of inRange) {
         const meta = normalizeSource(l.source);
         // Лиды Meta Ads и Google Ads уже учтены через providerAgg — не дублируем.
@@ -239,7 +236,7 @@ export function useDashboardData(
         if ((meta.key === "instagram" || meta.key === "instagram_organic") && knownKeys.has("instagram_organic")) continue;
         const k = meta.key === "unknown" && meta.raw ? meta.raw : meta.key;
         const cur = map.get(k) ?? {
-          key: k, name: meta.label, provider: "crm" as const,
+          key: k, name: meta.label, provider: "crm",
           spend: 0, leads: 0, sales: 0, revenue: 0,
         };
         cur.leads += 1;
