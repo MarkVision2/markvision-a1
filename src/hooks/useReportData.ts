@@ -4,6 +4,7 @@ import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useLeadsLite, type LeadLite } from "@/hooks/useLeadsLite";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { normalizeSource } from "@/lib/leadSource";
+import { factValue } from "@/lib/insightFacts";
 
 export interface ReportPeriodRange {
   from: Date;
@@ -126,9 +127,9 @@ async function fetchMetaForRange(
     const impressions = Number(row.impressions) || 0;
     const clicks = Number(row.clicks) || 0;
     const leads = Number(row.leads) || 0;
-    const sales = (Number(row.crm_sales) || 0) + (Number(row.manual_sales) || 0);
-    const revenue = (Number(row.crm_revenue) || 0) + (Number(row.manual_revenue) || 0);
-    const diag = (Number(row.crm_diagnostics) || 0) + (Number(row.manual_diagnostics) || 0);
+    const sales = factValue(row.crm_sales, row.manual_sales);
+    const revenue = factValue(row.crm_revenue, row.manual_revenue);
+    const diag = factValue(row.crm_diagnostics, row.manual_diagnostics);
     totSpend += spend; totImp += impressions; totClicks += clicks; totLeads += leads;
     totSales += sales; totRevenue += revenue; totDiag += diag;
     const cur = dailyAgg.get(row.date) ?? { spend: 0, leads: 0, revenue: 0 };
@@ -155,6 +156,11 @@ async function fetchMetaForRange(
 function aggregateCrm(leads: LeadLite[], range: ReportPeriodRange) {
   const fromTs = range.from.getTime();
   const toTs = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate() + 1).getTime();
+  const isInRange = (value: string | null | undefined) => {
+    if (!value) return false;
+    const t = new Date(value).getTime();
+    return t >= fromTs && t < toTs;
+  };
   const inRange = leads.filter((l) => {
     const t = new Date(l.createdAt).getTime();
     return t >= fromTs && t < toTs;
@@ -162,7 +168,9 @@ function aggregateCrm(leads: LeadLite[], range: ReportPeriodRange) {
   // Только лиды БЕЗ cabinet_id — данные кабинетов берём из CDI, чтобы не дублировать.
   const orphan = inRange.filter((l) => !l.cabinetId);
   const orphanVisits = orphan.filter((l) => l.stageKey === "visit" || l.stageKey === "paid");
-  const orphanSales = orphan.filter((l) => l.stageKey === "paid");
+  const orphanSales = leads
+    .filter((l) => !l.cabinetId && (l.paid || l.stageKey === "paid"))
+    .filter((l) => (l.paidAt ? isInRange(l.paidAt) : isInRange(l.createdAt)));
   const orphanRevenue = orphanSales.reduce((s, l) => s + (l.amount || 0), 0);
   return {
     leads: inRange,

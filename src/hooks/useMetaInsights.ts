@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { factValue } from "@/lib/insightFacts";
 
 export interface DailyInsightRow {
   date: string;
@@ -91,13 +92,13 @@ function aggregate(rows: CdiRow[]): InsightsData {
     const leads = Number(r.leads) || 0;
     const crmDiag = Number(r.crm_diagnostics) || 0;
     const manDiag = Number(r.manual_diagnostics) || 0;
-    const diagnostics = crmDiag + manDiag;
+    const diagnostics = factValue(crmDiag, manDiag);
     const crmSales = Number(r.crm_sales) || 0;
     const manSales = Number(r.manual_sales) || 0;
-    const sales = crmSales + manSales;
+    const sales = factValue(crmSales, manSales);
     const crmRevenue = Number(r.crm_revenue) || 0;
     const manRevenue = Number(r.manual_revenue) || 0;
-    const totalRevenue = crmRevenue + manRevenue;
+    const totalRevenue = factValue(crmRevenue, manRevenue);
     totals.spend += spend;
     totals.impressions += impressions;
     totals.clicks += clicks;

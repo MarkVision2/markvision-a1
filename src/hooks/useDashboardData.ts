@@ -5,6 +5,7 @@ import { useInstagramOrganic } from "./useInstagramOrganic";
 import { buildAlerts } from "@/lib/dashboardAlerts";
 import type { DashboardChannel, DashboardChannelProvider } from "@/lib/dashboardChannels";
 import { normalizeSource } from "@/lib/leadSource";
+import { factValue } from "@/lib/insightFacts";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "./useProjectsStore";
 import { useRealtimeTable } from "./useRealtimeTable";
@@ -152,10 +153,14 @@ export function useDashboardData(
         };
         cur.spend += Number((r as { spend?: number }).spend ?? 0);
         cur.leads += Number((r as { leads?: number }).leads ?? 0);
-        cur.sales += Number((r as { crm_sales?: number }).crm_sales ?? 0) + Number((r as { manual_sales?: number }).manual_sales ?? 0);
-        cur.revenue +=
-          Number((r as { crm_revenue?: number }).crm_revenue ?? 0) +
-          Number((r as { manual_revenue?: number }).manual_revenue ?? 0);
+        cur.sales += factValue(
+          (r as { crm_sales?: number }).crm_sales,
+          (r as { manual_sales?: number }).manual_sales,
+        );
+        cur.revenue += factValue(
+          (r as { crm_revenue?: number }).crm_revenue,
+          (r as { manual_revenue?: number }).manual_revenue,
+        );
         acc.set(provider, cur);
       }
       setProviderAgg(Array.from(acc.values()));
@@ -231,23 +236,38 @@ export function useDashboardData(
     const knownKeys = new Set(rows.map((r) => r.key));
     if (rows.length === 0 || inRange.length > 0) {
       const map = new Map<string, DashboardChannel>();
-      for (const l of inRange) {
+      const putLead = (l: typeof inRange[number]) => {
         const meta = normalizeSource(l.source);
         // Лиды Meta Ads и Google Ads уже учтены через providerAgg — не дублируем.
-        if (meta.key === "meta" && knownKeys.has("meta")) continue;
-        if (meta.key === "google" && knownKeys.has("google")) continue;
-        if ((meta.key === "instagram" || meta.key === "instagram_organic") && knownKeys.has("instagram_organic")) continue;
+        if (meta.key === "meta" && knownKeys.has("meta")) return null;
+        if (meta.key === "google" && knownKeys.has("google")) return null;
+        if ((meta.key === "instagram" || meta.key === "instagram_organic") && knownKeys.has("instagram_organic")) return null;
         const k = meta.key === "unknown" && meta.raw ? meta.raw : meta.key;
         const cur = map.get(k) ?? {
           key: k, name: meta.label, provider: "crm",
           spend: 0, leads: 0, sales: 0, revenue: 0,
         };
+        map.set(k, cur);
+        return cur;
+      };
+      for (const l of inRange) {
+        const cur = putLead(l);
+        if (!cur) continue;
         cur.leads += 1;
-        if (l.paid || l.stageKey === "paid") {
+        const paidAt = l.paidAt ? new Date(l.paidAt).getTime() : null;
+        if ((l.paid || l.stageKey === "paid") && paidAt === null) {
           cur.sales += 1;
           cur.revenue += l.amount || 0;
         }
-        map.set(k, cur);
+      }
+      for (const l of leads) {
+        if (!l.paidAt || (!l.paid && l.stageKey !== "paid")) continue;
+        const paidAt = new Date(l.paidAt).getTime();
+        if (paidAt < fromTs || paidAt >= toTs) continue;
+        const cur = putLead(l);
+        if (!cur) continue;
+        cur.sales += 1;
+        cur.revenue += l.amount || 0;
       }
       for (const v of map.values()) rows.push(v);
     }
