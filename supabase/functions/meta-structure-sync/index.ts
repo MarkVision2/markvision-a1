@@ -19,11 +19,21 @@ const META_API_VERSION = "v21.0";
 const LEAD_ACTIONS = [
   "lead",
   "leadgen.other",
+  "onsite_conversion.lead",
   "onsite_conversion.lead_grouped",
+  "onsite_conversion.leadgen_grouped",
   "offsite_conversion.fb_pixel_lead",
   "onsite_web_lead",
+  "complete_registration",
 ];
-const MESSAGING_ACTIONS = ["onsite_conversion.messaging_conversation_started_7d"];
+const MESSAGING_ACTIONS = [
+  "onsite_conversion.messaging_conversation_started_7d",
+  "onsite_conversion.messaging_first_reply",
+  "onsite_conversion.messaging_user_depth_2_message_send",
+  "onsite_conversion.messaging_user_depth_3_message_send",
+  "onsite_conversion.messaging_user_depth_5_message_send",
+  "onsite_conversion.whatsapp_conversation_started_7d",
+];
 const PURCHASE_ACTIONS = ["purchase", "offsite_conversion.fb_pixel_purchase", "omni_purchase"];
 
 function json(body: unknown, status = 200) {
@@ -46,6 +56,19 @@ function maxAction(
   }
   return max;
 }
+function maxActionWhere(
+  actions: Array<{ action_type: string; value: string }> | undefined,
+  match: (actionType: string) => boolean,
+) {
+  if (!actions) return 0;
+  let max = 0;
+  for (const a of actions) {
+    if (!match(a.action_type)) continue;
+    const v = Number(a.value || 0);
+    if (v > max) max = v;
+  }
+  return max;
+}
 function sumActions(
   actions: Array<{ action_type: string; value: string }> | undefined,
   types: string[],
@@ -54,6 +77,30 @@ function sumActions(
   return actions
     .filter((a) => types.includes(a.action_type))
     .reduce((s, a) => s + Number(a.value || 0), 0);
+}
+function sumActionsWhere(
+  actions: Array<{ action_type: string; value: string }> | undefined,
+  match: (actionType: string) => boolean,
+) {
+  if (!actions) return 0;
+  return actions
+    .filter((a) => match(a.action_type))
+    .reduce((s, a) => s + Number(a.value || 0), 0);
+}
+
+function isLeadAction(actionType: string) {
+  const t = actionType.toLowerCase();
+  return LEAD_ACTIONS.includes(t) || /(^|[._-])(lead|leadgen)($|[._-])/.test(t) || t.includes("fb_pixel_lead");
+}
+
+function isMessagingAction(actionType: string) {
+  const t = actionType.toLowerCase();
+  return MESSAGING_ACTIONS.includes(t) || t.includes("messaging") || t.includes("whatsapp") || t.includes("conversation_started");
+}
+
+function isPurchaseAction(actionType: string) {
+  const t = actionType.toLowerCase();
+  return PURCHASE_ACTIONS.includes(t) || t.includes("purchase");
 }
 
 function normalizeActId(id: string) {
@@ -215,10 +262,10 @@ function processInsightRow(
   const clicks = Number(row?.clicks ?? 0);
   const actions = row?.actions as Array<{ action_type: string; value: string }> | undefined;
   const actionValues = row?.action_values as Array<{ action_type: string; value: string }> | undefined;
-  const formLeads = maxAction(actions, LEAD_ACTIONS);
-  const messages = maxAction(actions, MESSAGING_ACTIONS);
-  const purchases = maxAction(actions, PURCHASE_ACTIONS);
-  let revenue = sumActions(actionValues, PURCHASE_ACTIONS);
+  const formLeads = Math.max(maxAction(actions, LEAD_ACTIONS), maxActionWhere(actions, isLeadAction));
+  const messages = Math.max(maxAction(actions, MESSAGING_ACTIONS), maxActionWhere(actions, isMessagingAction));
+  const purchases = Math.max(maxAction(actions, PURCHASE_ACTIONS), maxActionWhere(actions, isPurchaseAction));
+  let revenue = Math.max(sumActions(actionValues, PURCHASE_ACTIONS), sumActionsWhere(actionValues, isPurchaseAction));
   let currency = accountCurrency;
   if (accountCurrency !== "KZT") {
     const rate = rates.get(date);

@@ -85,6 +85,10 @@ const Dashboard = () => {
   const crmFlow = useCrmFlow(range);
   const { rows: metaCreatives } = useMetaCreatives(range);
   const { rows: metaCampaigns } = useMetaCampaigns(range);
+  const hasCreativeCrmRevenue = useMemo(
+    () => metaCreatives.some((creative) => (creative.crmRevenue ?? 0) > 0),
+    [metaCreatives],
+  );
   const sourceChannels = useMemo(
     () => mergeChannelsWithMetaCampaignGoals(channels, metaCampaigns),
     [channels, metaCampaigns],
@@ -234,7 +238,7 @@ const Dashboard = () => {
       <CampaignGoalsBreakdown rows={metaCampaigns} />
 
       {/* Block 4.3 — Топ-6 креативов Meta по выручке CRM */}
-      <SectionTitle>Топ креативов по выручке CRM</SectionTitle>
+      <SectionTitle>{hasCreativeCrmRevenue ? "Топ креативов по выручке CRM" : "Топ креативов по заявкам Meta"}</SectionTitle>
       <CreativesGrid rows={metaCreatives} topMode viewAllHref="/ads?tab=creatives" />
 
       {/* Block 6 — CRM funnel + SLA / stage distribution / reject reasons */}

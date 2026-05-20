@@ -11,6 +11,23 @@ const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 const requestedDashboardPosters = new Set<string>();
 
+const STATUS_LABELS: Record<string, string> = {
+  ACTIVE: "Активно",
+  PAUSED: "Пауза",
+  CAMPAIGN_PAUSED: "Кампания на паузе",
+  ADSET_PAUSED: "Группа на паузе",
+  DISAPPROVED: "Отклонено",
+  ARCHIVED: "Архив",
+  DELETED: "Удалено",
+};
+
+const CREATIVE_TYPE_LABELS: Record<string, string> = {
+  image: "Изображение",
+  video: "Видео",
+  carousel: "Карусель",
+  dynamic: "Динамика",
+};
+
 type SortKey = "crmRevenue" | "crmRomi" | "spend" | "ctr" | "cpl" | "leads" | "romi";
 
 const SORT_LABELS: Record<SortKey, string> = {
@@ -128,7 +145,7 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
       )}
       <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-background/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider backdrop-blur">
         {isVideo ? <Video className="h-3 w-3" /> : isCarousel ? <Layers className="h-3 w-3" /> : <ImageIcon className="h-3 w-3" />}
-        {row.creativeType}
+        {CREATIVE_TYPE_LABELS[row.creativeType] ?? row.creativeType}
       </span>
       {isVideo && (
         <span className="absolute inset-0 grid place-items-center">
@@ -139,7 +156,7 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
       )}
       {row.effectiveStatus && row.effectiveStatus !== "ACTIVE" && (
         <span className="absolute right-2 top-2 rounded-md bg-warning/80 px-1.5 py-0.5 text-[10px] font-bold uppercase text-warning-foreground">
-          {row.effectiveStatus}
+          {STATUS_LABELS[row.effectiveStatus] ?? row.effectiveStatus}
         </span>
       )}
     </div>
@@ -148,6 +165,7 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
 
 const sortValue = (r: MetaCreativeRow, key: SortKey): number => {
   if (key === "cpl") return r.cpl > 0 ? -r.cpl : Number.NEGATIVE_INFINITY;
+  if (key === "leads") return Math.max(r.leads ?? 0, r.messages ?? 0);
   return (r as any)[key] ?? 0;
 };
 
@@ -159,12 +177,18 @@ export function CreativesGrid({
 }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>(topMode ? "crmRevenue" : "spend");
   const [showAll, setShowAll] = useState(false);
+  const hasAnyCrmRevenue = useMemo(() => rows.some((r) => (r.crmRevenue ?? 0) > 0), [rows]);
+  const effectiveSortKey: SortKey = topMode && !hasAnyCrmRevenue ? "leads" : sortKey;
 
   const sorted = useMemo(() => {
     const copy = [...rows];
-    copy.sort((a, b) => sortValue(b, sortKey) - sortValue(a, sortKey));
+    copy.sort((a, b) => {
+      const primary = sortValue(b, effectiveSortKey) - sortValue(a, effectiveSortKey);
+      if (primary !== 0) return primary;
+      return (b.spend ?? 0) - (a.spend ?? 0);
+    });
     return copy;
-  }, [rows, sortKey]);
+  }, [rows, effectiveSortKey]);
 
   const limit = topMode ? 6 : initialLimit;
   const visible = topMode || !showAll ? sorted.slice(0, limit) : sorted;
@@ -183,7 +207,12 @@ export function CreativesGrid({
       <div className="flex items-center justify-between gap-3">
         <div className="text-xs text-muted-foreground">
           {topMode ? (
-            <>Топ-{Math.min(limit, sorted.length)} креативов <span className="text-foreground/70">по выручке CRM</span> · всего {rows.length}</>
+            <>
+              Топ-{Math.min(limit, sorted.length)} креативов{" "}
+              <span className="text-foreground/70">{hasAnyCrmRevenue ? "по выручке CRM" : "по заявкам Meta"}</span>
+              {" "}· всего {rows.length}
+              {!hasAnyCrmRevenue && <span className="ml-1 text-muted-foreground/80">· CRM-продаж пока нет</span>}
+            </>
           ) : (
             <>Всего креативов: <span className="font-semibold text-foreground">{rows.length}</span></>
           )}
@@ -217,8 +246,8 @@ export function CreativesGrid({
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-6">
         {visible.map((row) => {
           const hasCrmRevenue = (row.crmRevenue ?? 0) > 0;
-          const leadValue = (row.crmLeads ?? 0) > 0 ? row.crmLeads : row.leads;
-          const leadLabel = (row.crmLeads ?? 0) > 0 ? "Лиды CRM" : "Лиды Meta";
+          const metaResultValue = Math.max(row.leads ?? 0, row.messages ?? 0);
+          const metaResultLabel = (row.messages ?? 0) > 0 ? "Сообщения Meta" : "Заявки Meta";
           const romiVal = hasCrmRevenue ? row.crmRomi : 0;
           const romiPositive = romiVal >= 0;
           const RomiIcon = romiPositive ? TrendingUp : TrendingDown;
@@ -244,8 +273,8 @@ export function CreativesGrid({
                     <div className="font-bold tabular-nums">{hasCrmRevenue ? fmtTenge(row.crmRevenue) : "нет продаж"}</div>
                   </div>
                   <div>
-                    <div className="text-muted-foreground">{leadLabel}</div>
-                    <div className="font-bold tabular-nums">{fmtNum(leadValue)}</div>
+                    <div className="text-muted-foreground">{metaResultLabel}</div>
+                    <div className="font-bold tabular-nums">{fmtNum(metaResultValue)}</div>
                   </div>
                   <div>
                     <div className="text-muted-foreground">Продажи</div>
@@ -259,6 +288,11 @@ export function CreativesGrid({
                   )}>
                     <RomiIcon className="h-3 w-3" />
                     ROMI CRM {romiPositive ? "+" : ""}{Math.round(romiVal)}%
+                  </div>
+                )}
+                {(row.crmLeads ?? 0) > 0 && (
+                  <div className="mt-2 text-[10px] text-muted-foreground">
+                    В CRM привязано к этому креативу: <span className="font-semibold text-foreground">{fmtNum(row.crmLeads)}</span>
                   </div>
                 )}
                 <div className="mt-2 flex items-center gap-3 text-[10px] text-muted-foreground">
