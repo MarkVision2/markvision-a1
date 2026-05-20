@@ -5,7 +5,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
 import { MonthSwitcher, monthRange, monthRangeLabel } from "@/components/ui/month-switcher";
 import { MoneyKpiCard } from "@/components/dashboard/MoneyKpiCard";
 import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
@@ -26,6 +25,7 @@ import { useMetaCampaigns, useMetaCreatives } from "@/hooks/useMetaStructure";
 import { QualityBlock, QualityFunnel } from "@/components/crm/QualityBlock";
 import { deltaPct } from "@/hooks/useReportData";
 import { mergeChannelsWithMetaCampaignGoals } from "@/lib/dashboardChannels";
+import { syncMetaStructure } from "@/lib/metaStructureSync";
 import { cn } from "@/lib/utils";
 
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}\u00A0₸`;
@@ -56,11 +56,8 @@ const Dashboard = () => {
   const handleSyncMetaStructure = async () => {
     setSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("meta-structure-sync", {
-        body: { since: ymdLocal(range.from), until: ymdLocal(range.to) },
-      });
-      if (error) throw new Error(error.message);
-      const results = (data as { results?: Array<{ ok: boolean; cabinet: string; campaigns?: number; creatives?: number }> } | null)?.results ?? [];
+      const data = await syncMetaStructure({ since: ymdLocal(range.from), until: ymdLocal(range.to) });
+      const results = data.results ?? [];
       const ok = results.filter((r) => r.ok);
       const failed = results.filter((r) => !r.ok);
       if (ok.length > 0) {

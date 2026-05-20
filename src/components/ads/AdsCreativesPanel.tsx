@@ -3,7 +3,6 @@ import { Download, Filter, Loader2, Search, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { supabase } from "@/integrations/supabase/client";
 import { CreativeCard } from "./CreativeCard";
 import { CreativeExpanded } from "./CreativeExpanded";
 import {
@@ -16,6 +15,7 @@ import {
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { monthRange } from "@/components/ui/month-switcher";
+import { syncMetaStructure } from "@/lib/metaStructureSync";
 
 type StatusFilter = "active" | "active_or_spent" | "all";
 type TypeFilter = "all" | "video" | "image" | "carousel";
@@ -107,11 +107,11 @@ export function AdsCreativesPanel({ range = monthRange(new Date()) }: { range?: 
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const { error } = await supabase.functions.invoke("meta-structure-sync", {
-        body: { since: ymd(range.from), until: ymd(range.to) },
-      });
-      if (error) throw new Error(error.message);
-      toast.success("Синхронизация запущена. Новые данные подтянутся через несколько секунд.");
+      const data = await syncMetaStructure({ since: ymd(range.from), until: ymd(range.to) });
+      const ok = data.results?.filter((r) => r.ok) ?? [];
+      const campaigns = ok.reduce((sum, row) => sum + (row.campaigns ?? 0), 0);
+      const creatives = ok.reduce((sum, row) => sum + (row.creatives ?? 0), 0);
+      toast.success(`Meta обновлена: ${campaigns} кампаний, ${creatives} креативов`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось синхронизировать");
     } finally {
