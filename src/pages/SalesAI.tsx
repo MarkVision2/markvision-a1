@@ -451,11 +451,13 @@ const SalesAI = () => {
             </>
           )}
 
-          {tab === "calls" && <AiRopCallsAnalysis leads={leads} />}
+          {tab === "calls" && <AiRopCallsAnalysis leads={leads} projectId={activeId ?? null} />}
 
           {tab === "chats" && <AiRopChatsAnalysis leads={leads} projectId={activeId ?? null} />}
 
-          {tab === "managers" && <AiRopManagersAnalysis stats={analytics.managerStats} />}
+          {tab === "managers" && (
+            <AiRopManagersAnalysis stats={analytics.managerStats} projectId={activeId ?? null} />
+          )}
 
           {tab === "trainer" && <AiRopTrainer />}
 
