@@ -1,16 +1,20 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowDownRight, ArrowUpRight, Image as ImageIcon, Layers, Loader2, RefreshCw, Search, Video } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Download, Image as ImageIcon, Layers, Loader2, RefreshCw, Search, Video } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MonthSwitcher, monthRange, monthRangeLabel } from "@/components/ui/month-switcher";
 import { useMetaCreatives, type MetaCreativeRow } from "@/hooks/useMetaStructure";
+import { useCabinetsStore } from "@/hooks/useCabinetsStore";
+import { syncMetaStructure } from "@/lib/metaStructureSync";
 import { bestCreativeImage } from "@/lib/metaThumb";
 import { cn } from "@/lib/utils";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 const pct = (n: number) => `${(Math.round(n * 10) / 10).toLocaleString("ru-RU")}%`;
+const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 type SortKey = "crmRevenue" | "crmRomi" | "crmSales" | "crmLeads" | "spend" | "name";
 
@@ -118,9 +122,53 @@ const CreativeFunnel = () => {
   const range = useMemo(() => monthRange(monthCursor), [monthCursor]);
   const [sortKey, setSortKey] = useState<SortKey>("crmRevenue");
   const [search, setSearch] = useState("");
-  const [onlyWithLeads, setOnlyWithLeads] = useState(true);
+  const [onlyWithLeads, setOnlyWithLeads] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const autoSyncKeys = useRef(new Set<string>());
 
-  const { rows, loading } = useMetaCreatives(range);
+  const { rows, loading, refresh } = useMetaCreatives(range);
+  const { cabinets } = useCabinetsStore();
+  const metaCabinets = useMemo(
+    () => cabinets.filter((cabinet) => (cabinet.provider ?? "meta") === "meta" && cabinet.externalId),
+    [cabinets],
+  );
+
+  const runSync = async (silent = false) => {
+    if (metaCabinets.length === 0) {
+      if (!silent) toast.error("Сначала добавьте Meta-кабинет в разделе управления рекламой");
+      return;
+    }
+    setSyncing(true);
+    try {
+      const results = await Promise.all(
+        metaCabinets.map((cabinet) =>
+          syncMetaStructure({
+            since: ymd(range.from),
+            until: ymd(range.to),
+            cabinetId: cabinet.id,
+          }),
+        ),
+      );
+      const ok = results.flatMap((item) => item.results ?? []).filter((item) => item.ok);
+      const campaigns = ok.reduce((sum, item) => sum + (item.campaigns ?? 0), 0);
+      const creatives = ok.reduce((sum, item) => sum + (item.creatives ?? 0), 0);
+      refresh();
+      if (!silent) toast.success(`Креативы обновлены: ${campaigns} кампаний, ${creatives} креативов`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось получить креативы из Meta");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    if (loading || syncing || rows.length > 0 || metaCabinets.length === 0) return;
+    const key = `${ymd(range.from)}:${ymd(range.to)}:${metaCabinets.map((cabinet) => cabinet.id).join(",")}`;
+    if (autoSyncKeys.current.has(key)) return;
+    autoSyncKeys.current.add(key);
+    void runSync(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, rows.length, metaCabinets, range.from, range.to, syncing]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -166,10 +214,20 @@ const CreativeFunnel = () => {
           <MonthSwitcher value={monthCursor} onChange={setMonthCursor} size="lg" />
           <Button
             variant="outline"
+            className="h-10 rounded-xl border-border/60 gap-2"
+            onClick={() => runSync(false)}
+            disabled={loading || syncing || metaCabinets.length === 0}
+            title="Получить кампании, креативы и статистику из Meta"
+          >
+            {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            <span className="hidden sm:inline">{syncing ? "Синхронизация…" : "Получить данные"}</span>
+          </Button>
+          <Button
+            variant="outline"
             size="icon"
             className="h-10 w-10 rounded-xl border-border/60"
             aria-label="Обновить"
-            onClick={() => setMonthCursor((p) => new Date(p.getFullYear(), p.getMonth(), 1))}
+            onClick={refresh}
             disabled={loading}
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -234,7 +292,21 @@ const CreativeFunnel = () => {
 
       {filtered.length === 0 ? (
         <div className="mt-4 rounded-2xl border border-dashed border-border/60 bg-card/40 px-4 py-12 text-center text-sm text-muted-foreground">
-          {loading ? "Загружаем креативы…" : "Нет креативов с лидами за выбранный месяц."}
+          {loading
+            ? "Загружаем креативы…"
+            : metaCabinets.length === 0
+              ? "Нет подключенных Meta-кабинетов для синхронизации."
+              : onlyWithLeads
+                ? "Нет креативов с заявками за выбранный месяц. Отключите фильтр или получите данные из Meta."
+                : "Креативы пока не загружены. Нажмите «Получить данные», чтобы синхронизировать Meta."}
+          {!loading && !onlyWithLeads && metaCabinets.length > 0 && (
+            <div className="mt-3">
+              <Button variant="outline" onClick={() => runSync(false)} disabled={syncing} className="gap-2">
+                {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                Получить данные из Meta
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="mt-4 grid gap-3 xl:grid-cols-2">

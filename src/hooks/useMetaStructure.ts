@@ -156,6 +156,7 @@ export function useMetaCreatives(range: Range) {
 
   const since = useMemo(() => ymd(range.from), [range.from]);
   const until = useMemo(() => ymd(range.to), [range.to]);
+  const refresh = () => setTick((t) => t + 1);
 
   useEffect(() => {
     if (!projectId) {
@@ -318,7 +319,7 @@ export function useMetaCreatives(range: Range) {
     return () => { cancelled = true; };
   }, [projectId, since, until, tick]);
 
-  return { rows, loading };
+  return { rows, loading, refresh };
 }
 
 // ---------------- Campaigns ----------------

@@ -33,7 +33,7 @@ async function readResponseMessage(response: Response) {
   }
 }
 
-export async function syncMetaStructure(params: { since: string; until: string }) {
+export async function syncMetaStructure(params: { since: string; until: string; cabinetId?: string }) {
   if (!SUPABASE_URL || !SUPABASE_KEY) {
     throw new Error("Supabase не настроен: нет URL или publishable key");
   }
@@ -50,7 +50,11 @@ export async function syncMetaStructure(params: { since: string; until: string }
         "content-type": "application/json",
         "x-client-info": "markvision-meta-sync",
       },
-      body: JSON.stringify(params),
+      body: JSON.stringify({
+        since: params.since,
+        until: params.until,
+        ...(params.cabinetId ? { cabinet_id: params.cabinetId } : {}),
+      }),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "браузер заблокировал запрос";

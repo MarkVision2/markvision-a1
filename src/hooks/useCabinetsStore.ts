@@ -7,7 +7,12 @@ import {
   syncCabinetToClientConfig,
   deleteCabinetFromClientConfig,
 } from "@/lib/cabinetSync";
+import { syncMetaStructure } from "@/lib/metaStructureSync";
 import type { AdCabinet } from "@/types/ads";
+
+function ymd(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
 
 const toCabinet = (r: any): AdCabinet => ({
   id: r.id,
@@ -165,6 +170,12 @@ export function useCabinetsStore() {
     // временный slug, реальный id выдаёт DB.
     if (data) {
       await syncCabinetToClientConfig(toCabinet(data));
+      const now = new Date();
+      const since = ymd(new Date(now.getFullYear(), now.getMonth(), 1));
+      const until = ymd(now);
+      void syncMetaStructure({ since, until, cabinetId: data.id as string }).catch((e) => {
+        console.warn("[meta-structure-sync] initial cabinet sync failed", e);
+      });
     }
     await refetch();
     return (data?.id as string) ?? null;
