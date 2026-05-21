@@ -8,6 +8,7 @@
 // Trigger: cron OR ad-hoc POST with {since, until, cabinet_id?}.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { requireUser, userHasRole } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
