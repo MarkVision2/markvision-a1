@@ -661,12 +661,15 @@ async function syncCollection<T extends Identifiable>(opts: {
  */
 export async function hydrateAiRopStorage(projectId: string | null, userId: string | null): Promise<void> {
   const seq = ++hydrateSeq;
-  // При смене проекта (включая выход в null) сбрасываем кэш и LS-зеркало, иначе
-  // компоненты до завершения гидратации показывают данные предыдущего проекта.
+  // Сбрасываем кэш и LS-зеркало при смене проекта ИЛИ юзера (включая выход в
+  // null = logout). Иначе после logout/login следующий юзер на пол-секунды видит
+  // настройки/скрипты/сессии предыдущего, пока идёт гидратация.
   const projectChanged = currentProjectId !== projectId;
+  const userChanged = currentUserId !== userId;
+  const shouldReset = projectChanged || userChanged;
   currentProjectId = projectId;
   currentUserId = userId;
-  if (projectChanged) {
+  if (shouldReset) {
     memCache.delete("settings");
     memCache.delete("scripts");
     memCache.delete("content-ideas");
@@ -686,6 +689,8 @@ export async function hydrateAiRopStorage(projectId: string | null, userId: stri
     emit("content-ideas");
     emit("trainer-sessions");
   }
+  // shouldReset защищает от устаревших данных. Реальная подгрузка из БД ниже —
+  // только если есть и проект, и юзер (без auth не пройдёт RLS).
   if (!projectId) return;
   // seq используется внутри хелперов ниже через isCurrentHydration() —
   // чтобы поздний ответ медленной гидратации не затёр результаты новой.
