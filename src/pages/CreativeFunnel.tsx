@@ -23,19 +23,6 @@ type SortDir = "asc" | "desc";
 type StatusFilter = "all" | "active" | "paused";
 type TypeFilter = "all" | "video" | "image" | "carousel";
 
-const SORT_LABELS: Record<SortKey, string> = {
-  crmRevenue: "Выручка",
-  crmRomi: "ROMI",
-  crmSales: "Продажи",
-  crmLeads: "Лиды CRM",
-  leads: "Лиды Meta",
-  spend: "Расход",
-  ctr: "CTR",
-  cpl: "CPL",
-  name: "Имя",
-};
-
-const STAGE_COLORS = ["bg-primary", "bg-accent", "bg-warning", "bg-success"] as const;
 
 function SortableTh({
   label, sortKey, current, dir, onSort, align = "right",
