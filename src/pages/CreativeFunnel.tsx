@@ -70,8 +70,53 @@ const CreativeFunnel = () => {
   const [hasLeads, setHasLeads] = useState(false);
   const [hasSales, setHasSales] = useState(false);
   const [drawerRow, setDrawerRow] = useState<MetaCreativeRow | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [orphanLeads, setOrphanLeads] = useState(0);
+  const { activeId: projectId } = useProjectsStore();
 
   const { rows, loading } = useMetaCreatives(range);
+
+  // Лиды без привязки к креативу — для строки "Без креатива" и баннера
+  useEffect(() => {
+    if (!projectId) { setOrphanLeads(0); return; }
+    const since = `${range.from.getFullYear()}-${String(range.from.getMonth()+1).padStart(2,"0")}-${String(range.from.getDate()).padStart(2,"0")}`;
+    const until = `${range.to.getFullYear()}-${String(range.to.getMonth()+1).padStart(2,"0")}-${String(range.to.getDate()).padStart(2,"0")} 23:59:59`;
+    let cancelled = false;
+    void (async () => {
+      const { count } = await supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .eq("project_id", projectId)
+        .eq("is_personal", false)
+        .is("meta_ad_id", null)
+        .gte("created_at", since)
+        .lte("created_at", until);
+      if (!cancelled) setOrphanLeads(count ?? 0);
+    })();
+    return () => { cancelled = true; };
+  }, [projectId, range.from, range.to, backfilling]);
+
+  const runBackfill = async () => {
+    if (!projectId) return;
+    setBackfilling(true);
+    const since = `${range.from.getFullYear()}-${String(range.from.getMonth()+1).padStart(2,"0")}-${String(range.from.getDate()).padStart(2,"0")}`;
+    const { data, error } = await (supabase as unknown as { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: { attributed?: number } | null; error: unknown }> })
+      .rpc("backfill_lead_attribution", { p_project_id: projectId, p_since: since });
+    setBackfilling(false);
+    if (error) {
+      console.error(error);
+      toast.error("Не удалось привязать лиды");
+      return;
+    }
+    const n = data?.attributed ?? 0;
+    if (n > 0) {
+      toast.success(`Привязано лидов: ${n}`);
+      setRange({ ...range });
+    } else {
+      toast.message("Новых привязок не найдено", { description: "Лиды без меток нельзя привязать к креативу" });
+    }
+  };
+
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
