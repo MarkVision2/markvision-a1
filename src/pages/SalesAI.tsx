@@ -453,7 +453,7 @@ const SalesAI = () => {
 
           {tab === "calls" && <AiRopCallsAnalysis leads={leads} />}
 
-          {tab === "chats" && <AiRopChatsAnalysis leads={leads} />}
+          {tab === "chats" && <AiRopChatsAnalysis leads={leads} projectId={activeId ?? null} />}
 
           {tab === "managers" && <AiRopManagersAnalysis stats={analytics.managerStats} />}
 
