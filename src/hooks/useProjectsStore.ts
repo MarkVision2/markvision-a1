@@ -18,6 +18,15 @@ function makeInitials(name: string) {
   return letters.toUpperCase() || "PR";
 }
 
+function makeIntakeToken() {
+  if (typeof crypto !== "undefined" && "getRandomValues" in crypto) {
+    const bytes = new Uint8Array(12);
+    crypto.getRandomValues(bytes);
+    return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "x");
+  }
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 12)}`.slice(0, 16);
+}
+
 type Row = {
   id: string;
   name: string;
@@ -106,6 +115,7 @@ export function useProjectsStore() {
         domain: domain?.trim() || null,
         initials: makeInitials(safeName),
         created_by: user.id,
+        intake_token: makeIntakeToken(),
       };
       const { data, error } = await supabase
         .from("projects")
@@ -148,12 +158,14 @@ export function useProjectsStore() {
 
   const rotateIntakeToken = useCallback(
     async (projectId: string) => {
-      const { data, error } = await supabase.rpc("rotate_project_intake_token", {
-        p_project_id: projectId,
-      });
+      const nextToken = makeIntakeToken();
+      const { error } = await supabase
+        .from("projects")
+        .update({ intake_token: nextToken })
+        .eq("id", projectId);
       if (error) throw error;
       await refetch();
-      return data as unknown as string;
+      return nextToken;
     },
     [refetch],
   );

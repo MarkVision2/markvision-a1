@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2, Check, ChevronLeft, ChevronRight, Sparkles, ExternalLink, SlidersHorizontal, Plus } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -326,6 +326,9 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
             {step === 4 && "Рекламный кабинет"}
             {step === 5 && "Стратегия Marketing OS"}
           </DialogTitle>
+          <DialogDescription>
+            Создайте проект быстро по названию или заполните полную настройку с брифом и рекламным кабинетом.
+          </DialogDescription>
         </DialogHeader>
 
         {/* Progress */}
