@@ -250,28 +250,8 @@ const CreativeFunnel = () => {
         ))}
       </div>
 
-      {totals.metaLeads > 0 && attributionRate < 100 && (
-        <div className="mt-3 flex flex-wrap items-start gap-3 rounded-xl border border-warning/40 bg-warning/5 p-3 text-xs">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-          <div className="flex-1 min-w-[280px]">
-            <span className="font-semibold">Привязка лидов: {pct(attributionRate)}.</span>
-            {" "}Meta видит {fmtNum(totals.metaLeads)} лидов, в CRM привязано к креативам {fmtNum(totals.crmLeads)}.
-            Чтобы поднять до 100%, в Meta-шаблоне URL добавьте
-            {" "}<code className="rounded bg-secondary/60 px-1">utm_content=&#123;&#123;ad.id&#125;&#125;</code>.
-            WhatsApp-лиды привязываются автоматически через CTWA referral.
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 gap-1.5 border-warning/40"
-            onClick={runBackfill}
-            disabled={backfilling || !projectId}
-          >
-            {backfilling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
-            Привязать существующие лиды
-          </Button>
-        </div>
-      )}
+
+
 
 
       {/* Toolbar */}
