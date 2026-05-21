@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import type { TablesUpdate, TablesInsert } from "@/integrations/supabase/types";
@@ -202,6 +202,13 @@ export function useCrmStore() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [chats, setChats] = useState<ChatMessage[]>([]);
   const [pipelineId, setPipelineId] = useState<string | null>(null);
+  const projectIdRef = useRef(projectId);
+
+  useEffect(() => {
+    projectIdRef.current = projectId;
+    setLeads([]);
+    setChats([]);
+  }, [projectId]);
 
   // bidirectional maps stage key <-> uuid
   const [stageIdMap, setStageIdMap] = useState<{ keyToId: Map<string, string>; idToKey: Map<string, string> }>(() => ({
@@ -265,6 +272,7 @@ export function useCrmStore() {
         .order("changed_at", { ascending: false })
         .limit(1000),
     ]);
+    if (projectIdRef.current !== projectId) return;
 
     const events = (evRes.data ?? []) as EventRow[];
     const tasks = (tasksRes.data ?? []) as TaskRow[];
