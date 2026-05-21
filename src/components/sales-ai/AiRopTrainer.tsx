@@ -22,6 +22,7 @@ import {
   getTrainerSessions,
   newId,
   saveTrainerSessions,
+  subscribeAiRop,
   TRAINER_SCENARIOS,
   type TrainerMessage,
   type TrainerScenario,
