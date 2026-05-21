@@ -431,9 +431,21 @@ Deno.serve(async (req) => {
       const phone = chatIdToPhone(senderData?.chatId ?? senderData?.sender);
       const name = senderData?.senderName?.trim() || "";
       if (!phone) return json({ ok: true, skipped: "no phone" });
-      const attribution = parseCtwa(messageData, body);
-      const leadId = await findOrCreateLead(phone, name, projectId, attribution);
+      let attribution: CtwaAttribution | null = parseCtwa(messageData, body);
+      if (!attribution?.meta_ad_id) {
+        const fallback = await attributionFromPhone(phone, projectId);
+        if (fallback) attribution = fallback;
+      }
+      if (!attribution?.meta_ad_id) {
+        // First-touch debug snapshot: log shape once so we can extend parseCtwa later.
+        console.log("ctwa_no_attribution", JSON.stringify({ phone, projectId, messageData }).slice(0, 4000));
+      }
+      const leadId = await findOrCreateLead(phone, name, projectId, attribution ?? undefined);
       if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
+      const text = extractText(messageData);
+      await insertCommunication({ leadId, direction: "in", text, externalId: idMessage });
+      return json({ ok: true, leadId, projectId, attribution });
+    }
       const text = extractText(messageData);
       await insertCommunication({ leadId, direction: "in", text, externalId: idMessage });
       return json({ ok: true, leadId, projectId, attribution });
