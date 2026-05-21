@@ -37,6 +37,49 @@ function metaFallback(status: number, text: string) {
   return json({ ok: false, error: `meta ${status}: ${text.slice(0, 200)}` }, status >= 400 && status < 500 ? 400 : 502);
 }
 
+function extractVideoId(creative: Record<string, unknown> | null | undefined): string | null {
+  if (!creative) return null;
+  const direct = creative.video_id;
+  if (typeof direct === "string" && direct.trim()) return direct.trim();
+
+  const story = creative.object_story_spec as Record<string, unknown> | undefined;
+  const storyVideo = story?.video_data as Record<string, unknown> | undefined;
+  const storyVideoId = storyVideo?.video_id;
+  if (typeof storyVideoId === "string" && storyVideoId.trim()) return storyVideoId.trim();
+
+  const assetFeed = creative.asset_feed_spec as Record<string, unknown> | undefined;
+  const videos = assetFeed?.videos as Array<Record<string, unknown>> | undefined;
+  const assetVideoId = videos?.map((v) => v.video_id).find((v) => typeof v === "string" && v.trim());
+  return typeof assetVideoId === "string" ? assetVideoId.trim() : null;
+}
+
+function extractThumb(creative: Record<string, unknown> | null | undefined): string | null {
+  if (!creative) return null;
+  const direct = creative.thumbnail_url ?? creative.image_url;
+  if (typeof direct === "string" && direct.trim()) return direct;
+
+  const story = creative.object_story_spec as Record<string, unknown> | undefined;
+  const storyVideo = story?.video_data as Record<string, unknown> | undefined;
+  const videoImage = storyVideo?.image_url;
+  if (typeof videoImage === "string" && videoImage.trim()) return videoImage;
+
+  const linkData = story?.link_data as Record<string, unknown> | undefined;
+  const picture = linkData?.picture;
+  if (typeof picture === "string" && picture.trim()) return picture;
+  return null;
+}
+
+async function resolveVideoFromAd(adId: string, token: string) {
+  const fields = "creative{thumbnail_url,image_url,video_id,object_story_spec,asset_feed_spec}";
+  const r = await fetch(
+    `https://graph.facebook.com/${META_API_VERSION}/${adId}?fields=${fields}&access_token=${encodeURIComponent(token)}`,
+  );
+  if (!r.ok) return { ok: false as const, response: r, text: await r.text() };
+  const ad = await r.json() as { creative?: Record<string, unknown> };
+  const creative = ad.creative;
+  return { ok: true as const, videoId: extractVideoId(creative), thumbnail: extractThumb(creative) };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -63,8 +106,26 @@ Deno.serve(async (req) => {
     .maybeSingle();
   if (rowErr) return json({ ok: false, error: rowErr.message }, 500);
   if (!row) return json({ ok: false, error: "not found" }, 404);
-  const videoId = (row as { video_id?: string }).video_id;
-  if (!videoId) return json({ ok: false, reason: "not_video", thumbnail_url: (row as { thumbnail_url?: string }).thumbnail_url ?? null }, 200);
+  let videoId = ((row as { video_id?: string | null }).video_id ?? "").trim();
+  let resolvedThumb: string | null = null;
+
+  if (!videoId) {
+    const resolved = await resolveVideoFromAd(adId, META_ACCESS_TOKEN);
+    if (!resolved.ok) return metaFallback(resolved.response.status, resolved.text);
+    videoId = resolved.videoId ?? "";
+    resolvedThumb = resolved.thumbnail;
+    if (videoId || resolvedThumb) {
+      const patch: Record<string, unknown> = { last_synced_at: new Date().toISOString() };
+      if (videoId) patch.video_id = videoId;
+      if (resolvedThumb) patch.thumbnail_url = resolvedThumb;
+      const { error: patchErr } = await admin.from("meta_creatives").update(patch).eq("ad_id", adId);
+      if (patchErr) return json({ ok: false, error: patchErr.message }, 500);
+    }
+  }
+
+  if (!videoId) {
+    return json({ ok: false, reason: "not_video", thumbnail_url: resolvedThumb ?? (row as { thumbnail_url?: string }).thumbnail_url ?? null }, 200);
+  }
 
   try {
     const r = await fetch(
@@ -92,6 +153,7 @@ Deno.serve(async (req) => {
         ?? null;
     }
     if (!bestThumb && v.picture) bestThumb = v.picture;
+    if (!bestThumb && resolvedThumb) bestThumb = resolvedThumb;
 
     if (!v.source) {
       if (bestThumb) {
