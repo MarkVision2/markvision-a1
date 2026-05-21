@@ -27,12 +27,8 @@ import { SiteIntakeCard } from "@/pages/SettingsConnection";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Settings as SettingsIcon } from "lucide-react";
-import {
-  MODULES,
-  ROLE_LABELS,
-  TeamMember,
-  useTeamStore,
-} from "@/hooks/useTeamStore";
+import { MODULES, ROLE_LABELS, TeamMember, useTeamStore } from "@/hooks/useTeamStore";
+import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
 const ROLE_COLOR: Record<string, string> = {
@@ -45,6 +41,7 @@ const ROLE_COLOR: Record<string, string> = {
 
 export default function Settings() {
   const { members, removeMember } = useTeamStore();
+  const { user: currentUser } = useAuth();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<TeamMember | null>(null);
   const [query, setQuery] = useState("");
@@ -66,6 +63,13 @@ export default function Settings() {
 
   const confirmDelete = () => {
     if (!confirmDel) return;
+    // Защита от самоудаления — иначе админ-одиночка может лишить себя
+    // доступа в один клик, и придётся восстанавливать через сервис-роль.
+    if (currentUser?.id && confirmDel.id === currentUser.id) {
+      toast.error("Нельзя удалить самого себя. Попросите другого админа.");
+      setConfirmDel(null);
+      return;
+    }
     removeMember(confirmDel.id);
     toast.success(`Сотрудник «${confirmDel.name}» удалён`);
     setConfirmDel(null);
@@ -187,9 +191,11 @@ export default function Settings() {
                   <button onClick={() => handleEdit(m)} className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground" aria-label="Редактировать">
                     <Edit2 className="h-4 w-4" />
                   </button>
-                  <button onClick={() => setConfirmDel(m)} className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Удалить">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
+                  {m.id !== currentUser?.id && (
+                    <button onClick={() => setConfirmDel(m)} className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Удалить">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}

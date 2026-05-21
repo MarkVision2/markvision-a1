@@ -487,14 +487,20 @@ export function WhatsappProjectBindCard() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const activeProjectId = active?.id;
   const refresh = useCallback(async () => {
     setLoading(true);
-    const { data } = await supabase
+    // Фильтруем по текущему проекту прямо в запросе. Раньше тянули все
+    // строки и отбирали в памяти — RLS прикрывает, но это лишний трафик
+    // и потенциальная утечка, если RLS политика когда-то ослабнет.
+    let q = supabase
       .from("whatsapp_config")
       .select("id, project_id, id_instance, api_token, api_url, phone, connected, ads_only");
+    if (activeProjectId) q = q.eq("project_id", activeProjectId);
+    const { data } = await q;
     setRows((data ?? []) as WaBindRow[]);
     setLoading(false);
-  }, []);
+  }, [activeProjectId]);
 
   useEffect(() => { void refresh(); }, [refresh]);
 
