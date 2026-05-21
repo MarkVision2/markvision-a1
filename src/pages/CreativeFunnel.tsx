@@ -235,10 +235,10 @@ const CreativeFunnel = () => {
         {[
           { label: "Расход", value: fmtTenge(totals.spend) },
           { label: "Лиды Meta", value: fmtNum(totals.metaLeads) },
-          { label: "Лиды CRM", value: fmtNum(totals.crmLeads) },
-          { label: "Квалиф.", value: fmtNum(totals.crmQualified) },
-          { label: "Продажи", value: fmtNum(totals.crmSales) },
-          { label: "Выручка", value: fmtTenge(totals.crmRevenue) },
+          { label: "Лиды CRM", value: fmtNum(crmTotals.leads) },
+          { label: "Диагностики", value: fmtNum(crmTotals.diagnostics) },
+          { label: "Продажи", value: fmtNum(crmTotals.sales) },
+          { label: "Выручка", value: fmtTenge(crmRevenueTotal) },
           {
             label: "ROMI",
             value: totals.spend > 0 ? `${totalsRomi >= 0 ? "+" : ""}${Math.round(totalsRomi)}%` : "—",
