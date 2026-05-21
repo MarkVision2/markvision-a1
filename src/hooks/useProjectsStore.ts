@@ -3,6 +3,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 
+const ACTIVE_PROJECT_CHANGED_EVENT = "markvision:active-project-changed";
+let activeProjectIdSnapshot = "";
+const activeProjectSubscribers = new Set<(id: string) => void>();
+let optimisticActiveProjectId: string | null = null;
+let optimisticActiveProjectUntil = 0;
+
 export type Project = {
   id: string;
   name: string;
@@ -36,10 +42,20 @@ const toProject = (r: Row): Project => ({
   intakeToken: r.intake_token ?? undefined,
 });
 
+function setActiveProjectEverywhere(id: string, optimistic = false) {
+  activeProjectIdSnapshot = id;
+  if (optimistic) {
+    optimisticActiveProjectId = id;
+    optimisticActiveProjectUntil = Date.now() + 3_000;
+  }
+  activeProjectSubscribers.forEach((cb) => cb(id));
+  window.dispatchEvent(new CustomEvent(ACTIVE_PROJECT_CHANGED_EVENT, { detail: { id } }));
+}
+
 export function useProjectsStore() {
   const { user } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
-  const [activeId, setActiveId] = useState<string>("");
+  const [activeId, setActiveId] = useState<string>(activeProjectIdSnapshot);
 
   const refetch = useCallback(async () => {
     const { data } = await supabase.from("projects").select("*").order("created_at");
@@ -53,18 +69,37 @@ export function useProjectsStore() {
         .eq("user_id", user.id)
         .maybeSingle();
       if (ap?.project_id && list.find((p) => p.id === ap.project_id)) {
-        setActiveId(ap.project_id);
+        const nextId = optimisticActiveProjectId && Date.now() < optimisticActiveProjectUntil
+          ? optimisticActiveProjectId
+          : ap.project_id;
+        setActiveProjectEverywhere(nextId);
       } else if (list[0]) {
-        setActiveId(list[0].id);
+        const nextId = optimisticActiveProjectId && Date.now() < optimisticActiveProjectUntil
+          ? optimisticActiveProjectId
+          : list[0].id;
+        setActiveProjectEverywhere(nextId);
       }
     } else if (list[0]) {
-      setActiveId(list[0].id);
+      setActiveProjectEverywhere(list[0].id);
     }
   }, [user?.id]);
 
   useEffect(() => {
     void refetch();
   }, [refetch]);
+
+  useEffect(() => {
+    activeProjectSubscribers.add(setActiveId);
+    const onActiveProjectChanged = (event: Event) => {
+      const id = (event as CustomEvent<{ id?: string }>).detail?.id;
+      if (id) setActiveId(id);
+    };
+    window.addEventListener(ACTIVE_PROJECT_CHANGED_EVENT, onActiveProjectChanged);
+    return () => {
+      activeProjectSubscribers.delete(setActiveId);
+      window.removeEventListener(ACTIVE_PROJECT_CHANGED_EVENT, onActiveProjectChanged);
+    };
+  }, []);
 
   useRealtimeTable("projects", refetch);
   useRealtimeTable("user_active_project", refetch, !!user?.id);
@@ -101,12 +136,13 @@ export function useProjectsStore() {
 
   const setActive = useCallback(
     async (id: string) => {
+      setActiveProjectEverywhere(id, true);
       if (!user?.id) {
-        setActiveId(id);
         return;
       }
       await supabase.from("user_active_project").upsert({ user_id: user.id, project_id: id });
-      setActiveId(id);
+      optimisticActiveProjectId = null;
+      optimisticActiveProjectUntil = 0;
     },
     [user?.id],
   );
