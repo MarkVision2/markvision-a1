@@ -262,7 +262,7 @@ const CreativeFunnel = () => {
     return `${f} — ${t}`;
   }, [range]);
 
-  const attributionRate = totals.metaLeads > 0 ? (totals.crmLeads / totals.metaLeads) * 100 : 0;
+  
 
   return (
     <PageContainer>
