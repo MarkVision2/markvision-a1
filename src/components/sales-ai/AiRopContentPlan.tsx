@@ -49,7 +49,7 @@ const STATUS_META: Record<ContentIdea["status"], { label: string; color: string 
   rejected: { label: "Отклонено", color: "text-destructive" },
 };
 
-export function AiRopContentPlan() {
+export function AiRopContentPlan({ projectId }: { projectId?: string | null } = {}) {
   const { toast } = useToast();
   const { leads } = useCrmStore();
   const [ideas, setIdeas] = useState<ContentIdea[]>(getContentIdeas);
@@ -76,17 +76,7 @@ export function AiRopContentPlan() {
   const generate = async () => {
     setGenerating(true);
     try {
-      const objections = leads
-        .filter((l) => l.rejectReason)
-        .map((l) => l.rejectReason)
-        .join(", ");
-      const sources = Array.from(new Set(leads.map((l) => l.source).filter(Boolean))).join(", ");
-
-      const newIdea = await generateIdea({
-        rejectReasons: objections || "нет данных",
-        sources: sources || "нет данных",
-        existingTitles: ideas.map((i) => i.title),
-      });
+      const newIdea = await generateIdea(projectId ?? null);
       persist([newIdea, ...ideas]);
       toast({ title: "ИИ предложил новую идею", description: newIdea.title });
     } catch (e) {
@@ -98,6 +88,7 @@ export function AiRopContentPlan() {
     } finally {
       setGenerating(false);
     }
+
   };
 
   const onDelete = (id: string) => persist(ideas.filter((i) => i.id !== id));
