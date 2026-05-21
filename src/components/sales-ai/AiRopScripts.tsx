@@ -19,6 +19,7 @@ import {
   newId,
   saveScripts,
   SCRIPT_CATEGORIES,
+  subscribeAiRop,
   type RopScript,
   type ScriptCategory,
 } from "@/lib/aiRopStorage";
