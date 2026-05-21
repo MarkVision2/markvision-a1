@@ -1,6 +1,6 @@
 # ТЗ: запуск рекламной кампании из сайта → n8n (workflow «AI‑targetolog Макс 1»)
 
-**Endpoint:** `POST https://n8n.zapoinov.com/webhook/81756f29-aa03-41c1-a55e-fb3855ac985b`
+**Endpoint:** `POST https://n8n.zapoinov.com/webhook/ai-target-launch`
 
 **Content‑Type:** `application/json` (НЕ multipart/form-data — медиа передаётся URL‑ами, не файлами)
 
