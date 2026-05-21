@@ -13,6 +13,7 @@ import {
   DEFAULT_ROP_SETTINGS,
   getRopSettings,
   saveRopSettings,
+  subscribeAiRop,
   type RopSettings,
 } from "@/lib/aiRopStorage";
 import { useToast } from "@/hooks/use-toast";
