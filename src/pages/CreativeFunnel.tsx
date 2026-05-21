@@ -15,7 +15,7 @@ import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
-const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
+const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")}\u00a0₸`;
 const pct = (n: number) => `${(Math.round(n * 10) / 10).toLocaleString("ru-RU")}%`;
 
 type SortKey = "crmRevenue" | "crmRomi" | "crmSales" | "crmLeads" | "leads" | "spend" | "ctr" | "cpl" | "name";
