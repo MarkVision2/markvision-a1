@@ -350,16 +350,40 @@ const CreativeFunnel = () => {
       <div className="mt-3 overflow-hidden rounded-2xl border border-border/60 bg-card/60">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
-            <thead className="bg-secondary/30 text-[10px] uppercase tracking-wider text-muted-foreground">
+            <thead className="bg-secondary/40 text-[10px] uppercase tracking-wider text-muted-foreground">
               <tr>
-                <th className="px-4 py-3 text-left font-semibold">Креатив</th>
-                <th className="px-4 py-3 text-left font-semibold">Воронка</th>
-                <th className="px-4 py-3 text-right font-semibold">Лиды Meta</th>
-                <th className="px-4 py-3 text-right font-semibold">CR лид→прод.</th>
-                <th className="px-4 py-3 text-right font-semibold">Сред. чек</th>
-                <th className="px-4 py-3 text-right font-semibold">Расход</th>
-                <th className="px-4 py-3 text-right font-semibold">Выручка</th>
-                <th className="px-4 py-3 text-right font-semibold">ROMI</th>
+                <SortableTh label="Креатив" sortKey="name" current={sortKey} dir={sortDir} onSort={(k) => {
+                  if (sortKey === k) setSortDir(sortDir === "asc" ? "desc" : "asc");
+                  else { setSortKey(k); setSortDir("asc"); }
+                }} align="left" />
+                <SortableTh label="Лиды Meta" sortKey="leads" current={sortKey} dir={sortDir} onSort={(k) => {
+                  if (sortKey === k) setSortDir(sortDir === "asc" ? "desc" : "asc");
+                  else { setSortKey(k); setSortDir("desc"); }
+                }} />
+                <SortableTh label="Лиды CRM" sortKey="crmLeads" current={sortKey} dir={sortDir} onSort={(k) => {
+                  if (sortKey === k) setSortDir(sortDir === "asc" ? "desc" : "asc");
+                  else { setSortKey(k); setSortDir("desc"); }
+                }} />
+                <SortableTh label="Продажи" sortKey="crmSales" current={sortKey} dir={sortDir} onSort={(k) => {
+                  if (sortKey === k) setSortDir(sortDir === "asc" ? "desc" : "asc");
+                  else { setSortKey(k); setSortDir("desc"); }
+                }} />
+                <SortableTh label="Расход" sortKey="spend" current={sortKey} dir={sortDir} onSort={(k) => {
+                  if (sortKey === k) setSortDir(sortDir === "asc" ? "desc" : "asc");
+                  else { setSortKey(k); setSortDir("desc"); }
+                }} />
+                <SortableTh label="CPL" sortKey="cpl" current={sortKey} dir={sortDir} onSort={(k) => {
+                  if (sortKey === k) setSortDir(sortDir === "asc" ? "desc" : "asc");
+                  else { setSortKey(k); setSortDir("asc"); }
+                }} />
+                <SortableTh label="Выручка" sortKey="crmRevenue" current={sortKey} dir={sortDir} onSort={(k) => {
+                  if (sortKey === k) setSortDir(sortDir === "asc" ? "desc" : "asc");
+                  else { setSortKey(k); setSortDir("desc"); }
+                }} />
+                <SortableTh label="ROMI" sortKey="crmRomi" current={sortKey} dir={sortDir} onSort={(k) => {
+                  if (sortKey === k) setSortDir(sortDir === "asc" ? "desc" : "asc");
+                  else { setSortKey(k); setSortDir("desc"); }
+                }} />
               </tr>
             </thead>
             <tbody>
@@ -367,19 +391,19 @@ const CreativeFunnel = () => {
                 <tr className="border-t border-border/30 bg-warning/5">
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <div className="grid h-14 w-14 place-items-center rounded-md bg-warning/10 ring-1 ring-warning/30">
+                      <div className="grid h-12 w-12 place-items-center rounded-md bg-warning/10 ring-1 ring-warning/30">
                         <Info className="h-5 w-5 text-warning" />
                       </div>
-                      <div>
+                      <div className="min-w-0">
                         <div className="text-sm font-semibold">Без креатива</div>
-                        <div className="mt-0.5 text-[10px] text-muted-foreground">
-                          Лиды без меток ad.id — нажмите «Привязать существующие лиды», чтобы попробовать связать по телефону.
+                        <div className="mt-0.5 line-clamp-1 text-[10px] text-muted-foreground">
+                          Лиды без меток ad.id — нажмите «Привязать существующие лиды».
                         </div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-[11px] text-muted-foreground">—</td>
                   <td className="px-4 py-3 text-right tabular-nums font-semibold">{fmtNum(orphanLeads)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</td>
                   <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</td>
                   <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</td>
                   <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</td>
@@ -395,9 +419,9 @@ const CreativeFunnel = () => {
                 </tr>
               )}
               {filtered.map((row) => {
-                const cr = row.crmLeads > 0 ? (row.crmSales / row.crmLeads) * 100 : 0;
                 const romiPositive = row.crmRomi >= 0;
                 const RomiIcon = romiPositive ? ArrowUpRight : ArrowDownRight;
+                const cplValue = row.crmCpl > 0 ? row.crmCpl : row.cpl;
                 return (
                   <tr
                     key={row.id}
@@ -406,8 +430,8 @@ const CreativeFunnel = () => {
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <CreativePreview row={row} compact className="h-14 w-14 ring-1 ring-border/40" />
-                        <div className="min-w-0">
+                        <CreativePreview row={row} compact className="h-12 w-12 ring-1 ring-border/40" />
+                        <div className="min-w-0 max-w-[280px]">
                           <div className="line-clamp-1 text-sm font-semibold" title={row.name}>
                             {row.name || "Без названия"}
                           </div>
@@ -425,21 +449,16 @@ const CreativeFunnel = () => {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
-                      <MiniFunnel
-                        stages={[
-                          { label: "Лид", value: row.crmLeads, display: fmtNum(row.crmLeads) },
-                          { label: "Квал.", value: row.crmQualified, display: fmtNum(row.crmQualified) },
-                          { label: "Прод.", value: row.crmSales, display: fmtNum(row.crmSales) },
-                          { label: "₸", value: row.crmRevenue, display: row.crmRevenue > 0 ? `${Math.round(row.crmRevenue / 1000)}k` : "0" },
-                        ]}
-                      />
+                    <td className="px-4 py-3 text-right tabular-nums font-semibold">{fmtNum(row.leads)}</td>
+                    <td className={cn("px-4 py-3 text-right tabular-nums font-semibold", row.crmLeads > 0 ? "text-primary" : "text-muted-foreground")}>
+                      {fmtNum(row.crmLeads)}
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">{fmtNum(row.leads)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{cr > 0 ? pct(cr) : "—"}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{row.crmAvgCheck > 0 ? fmtTenge(row.crmAvgCheck) : "—"}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{row.spend > 0 ? fmtTenge(row.spend) : "—"}</td>
-                    <td className="px-4 py-3 text-right font-semibold tabular-nums">{row.crmRevenue > 0 ? fmtTenge(row.crmRevenue) : "—"}</td>
+                    <td className={cn("px-4 py-3 text-right tabular-nums", row.crmSales > 0 ? "font-semibold text-success" : "text-muted-foreground")}>
+                      {fmtNum(row.crmSales)}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">{row.spend > 0 ? fmtTenge(row.spend) : <span className="text-muted-foreground">0 ₸</span>}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{cplValue > 0 ? fmtTenge(cplValue) : <span className="text-muted-foreground">—</span>}</td>
+                    <td className="px-4 py-3 text-right font-semibold tabular-nums">{row.crmRevenue > 0 ? fmtTenge(row.crmRevenue) : <span className="font-normal text-muted-foreground">0 ₸</span>}</td>
                     <td className="px-4 py-3 text-right">
                       {row.spend > 0 ? (
                         <span className={cn(
@@ -449,7 +468,7 @@ const CreativeFunnel = () => {
                           <RomiIcon className="h-3 w-3" />
                           {romiPositive ? "+" : ""}{Math.round(row.crmRomi)}%
                         </span>
-                      ) : "—"}
+                      ) : <span className="text-muted-foreground">—</span>}
                     </td>
                   </tr>
                 );
