@@ -98,10 +98,9 @@ export function CreativePreview({ row, compact = false, playable = false, classN
     e.stopPropagation();
     // Открываем модалку сразу — пользователь должен увидеть отклик на клик.
     setPlayerOpen(true);
-    if (previewVideoUrl) return;
     setLoadingFullVideo(true);
     // Форсируем — игнорируем кеш/cooldown, потому что это явный клик пользователя.
-    await refreshVideoPreview(true).catch(() => null);
+    await refreshVideoPreview(true).catch(() => previewVideoUrl);
     setLoadingFullVideo(false);
   };
 
@@ -191,6 +190,12 @@ export function CreativePreview({ row, compact = false, playable = false, classN
                 autoPlay
                 playsInline
                 className="aspect-[9/16] h-auto max-h-[85vh] w-full bg-black"
+                onError={async () => {
+                  setPreviewVideoUrl(null);
+                  setLoadingFullVideo(true);
+                  await refreshVideoPreview(true).catch(() => null);
+                  setLoadingFullVideo(false);
+                }}
               />
             ) : loadingFullVideo ? (
               <div className="grid aspect-[9/16] place-items-center bg-black text-sm text-white/70">
