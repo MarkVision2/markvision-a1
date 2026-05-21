@@ -49,7 +49,6 @@ const STATUS_META: Record<ContentIdea["status"], { label: string; color: string 
 
 export function AiRopContentPlan({ projectId }: { projectId?: string | null } = {}) {
   const { toast } = useToast();
-  const { leads } = useCrmStore();
   const [ideas, setIdeas] = useState<ContentIdea[]>(getContentIdeas);
   const [filterStatus, setFilterStatus] = useState<ContentIdea["status"] | "all">("all");
   const [generating, setGenerating] = useState(false);
