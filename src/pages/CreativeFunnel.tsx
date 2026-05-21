@@ -334,18 +334,6 @@ const CreativeFunnel = () => {
             {f.label}
           </button>
         ))}
-        <div className="flex items-center gap-1 text-xs">
-          <span className="text-muted-foreground">Сорт.:</span>
-          <select
-            value={sortKey}
-            onChange={(e) => setSortKey(e.target.value as SortKey)}
-            className="h-10 rounded-xl border border-border/60 bg-background px-2 text-xs font-medium"
-          >
-            {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
-              <option key={k} value={k}>{SORT_LABELS[k]}</option>
-            ))}
-          </select>
-        </div>
       </div>
 
       <div className="mt-2 text-[11px] text-muted-foreground">
