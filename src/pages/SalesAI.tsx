@@ -1,16 +1,19 @@
-import { useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowRight,
   BadgeCheck,
+  BookOpen,
   Bot,
   CheckCircle2,
   Clock,
+  GraduationCap,
   Headphones,
-  History,
+  Lightbulb,
   MessageSquare,
   Phone,
+  Settings as SettingsIcon,
   Sparkles,
   Target,
   TrendingDown,
@@ -23,15 +26,35 @@ import { useCrmStore } from "@/hooks/useCrmStore";
 import { useTeamStore } from "@/hooks/useTeamStore";
 import { useCrmAnalytics, leadSlaMinutes, slaTone } from "@/hooks/useCrmAnalytics";
 import type { Lead } from "@/types/crm";
+import { AiRopSettings } from "@/components/sales-ai/AiRopSettings";
+import { AiRopTrainer } from "@/components/sales-ai/AiRopTrainer";
+import { AiRopScripts } from "@/components/sales-ai/AiRopScripts";
+import { AiRopContentPlan } from "@/components/sales-ai/AiRopContentPlan";
+import { AiRopCallsAnalysis } from "@/components/sales-ai/AiRopCallsAnalysis";
+import { AiRopChatsAnalysis } from "@/components/sales-ai/AiRopChatsAnalysis";
+import { AiRopManagersAnalysis } from "@/components/sales-ai/AiRopManagersAnalysis";
 
-type TabId = "overview" | "calls" | "chats" | "managers" | "insights";
+type TabId =
+  | "overview"
+  | "calls"
+  | "chats"
+  | "managers"
+  | "trainer"
+  | "scripts"
+  | "content"
+  | "insights"
+  | "settings";
 
 const TABS: { id: TabId; label: string; icon: typeof Phone }[] = [
   { id: "overview", label: "Обзор", icon: Sparkles },
   { id: "calls", label: "Звонки", icon: Phone },
   { id: "chats", label: "Чаты", icon: MessageSquare },
   { id: "managers", label: "Менеджеры", icon: Users },
+  { id: "trainer", label: "Тренажёр", icon: GraduationCap },
+  { id: "scripts", label: "Скрипты", icon: BookOpen },
+  { id: "content", label: "Контент-план", icon: Lightbulb },
   { id: "insights", label: "Инсайты ИИ", icon: Bot },
+  { id: "settings", label: "Настройки", icon: SettingsIcon },
 ];
 
 function fmtMinutes(min: number) {
@@ -118,29 +141,33 @@ const SectionCard = ({
   </div>
 );
 
-const ComingSoonStub = ({ message }: { message: string }) => (
-  <div className="grid place-items-center rounded-xl border border-dashed border-border/60 bg-secondary/20 p-6 text-center">
-    <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/10 text-primary">
-      <Bot className="h-5 w-5" />
-    </div>
-    <div className="mt-2 text-sm font-semibold">Скоро в проде</div>
-    <div className="mt-0.5 max-w-md text-[11px] text-muted-foreground">{message}</div>
-  </div>
-);
-
 const SalesAI = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { leads, stages } = useCrmStore();
   const { members } = useTeamStore();
   const analytics = useCrmAnalytics(leads, stages, members);
-  const [tab, setTab] = useState<TabId>("overview");
 
-  // Derive what we can right now from existing data.
-  const callsTotal = useMemo(
-    () => leads.reduce((sum, l) => sum + (l.events?.filter((e) => e.type === "call_made").length ?? 0), 0),
-    [leads],
-  );
-  const missedCalls = 0; // hooked up once call-attempt analytics is built
+  const initialTab = (searchParams.get("tab") as TabId) || "overview";
+  const validTab = TABS.find((t) => t.id === initialTab) ? initialTab : "overview";
+  const [tab, setTab] = useState<TabId>(validTab);
+
+  useEffect(() => {
+    const qp = searchParams.get("tab") as TabId | null;
+    if (qp && qp !== tab && TABS.find((t) => t.id === qp)) {
+      setTab(qp);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
+  const switchTab = (id: TabId) => {
+    setTab(id);
+    const next = new URLSearchParams(searchParams);
+    if (id === "overview") next.delete("tab");
+    else next.set("tab", id);
+    setSearchParams(next, { replace: true });
+  };
+
   const respondedLeads = leads.filter((l) => l.firstResponseAt).length;
   const totalLeads = leads.length;
   const reachedPct = totalLeads ? (respondedLeads / totalLeads) * 100 : 0;
@@ -237,7 +264,7 @@ const SalesAI = () => {
             return (
               <button
                 key={t.id}
-                onClick={() => setTab(t.id)}
+                onClick={() => switchTab(t.id)}
                 className={cn(
                   "inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
                   active
@@ -415,51 +442,19 @@ const SalesAI = () => {
             </>
           )}
 
-          {tab === "calls" && (
-            <>
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                <StatTile label="Всего звонков" value={String(callsTotal)} icon={Phone} />
-                <StatTile label="Отвечено" value="—" icon={CheckCircle2} tone="success" />
-                <StatTile label="Не дозвон" value={String(missedCalls)} icon={AlertTriangle} tone="warning" />
-                <StatTile label="Сред. длительность" value="—" icon={Clock} />
-              </div>
-              <SectionCard
-                title="История звонков и транскрипты"
-                hint="Доступно после подключения телефонии (SIP / Sipuni)"
-                icon={History}
-                action={
-                  <button
-                    onClick={() => navigate("/settings/connection")}
-                    className="inline-flex items-center gap-1 rounded-lg border border-border/60 px-2 py-1 text-[11px] font-semibold text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-                  >
-                    Подключить <ArrowRight className="h-3 w-3" />
-                  </button>
-                }
-              >
-                <ComingSoonStub message="Запись разговоров, автоматический транскрипт (Whisper), скоринг по чек-листу скриптов, выделение возражений и точек роста." />
-              </SectionCard>
-            </>
-          )}
+          {tab === "calls" && <AiRopCallsAnalysis leads={leads} />}
 
-          {tab === "chats" && (
-            <SectionCard
-              title="Аналитика чатов и переписок"
-              hint="WhatsApp · Telegram · Instagram"
-              icon={MessageSquare}
-            >
-              <ComingSoonStub message="ИИ проверяет переписки на тон, скорость ответа, эмпатию, отработку возражений и предлагает менеджеру следующее сообщение по сценарию." />
-            </SectionCard>
-          )}
+          {tab === "chats" && <AiRopChatsAnalysis leads={leads} />}
 
-          {tab === "managers" && (
-            <SectionCard
-              title="Контроль менеджеров"
-              hint="Поминутный KPI, дисциплина SLA, оценки разговоров"
-              icon={Users}
-            >
-              <ComingSoonStub message="Авто-оценка каждого менеджера: сколько лидов взято, средний ответ, % дозвона, средний чек, средний скоринг разговоров, штрафы за просрочки SLA." />
-            </SectionCard>
-          )}
+          {tab === "managers" && <AiRopManagersAnalysis stats={analytics.managerStats} />}
+
+          {tab === "trainer" && <AiRopTrainer />}
+
+          {tab === "scripts" && <AiRopScripts />}
+
+          {tab === "content" && <AiRopContentPlan />}
+
+          {tab === "settings" && <AiRopSettings />}
 
           {tab === "insights" && (
             <SectionCard
