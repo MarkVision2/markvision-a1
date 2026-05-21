@@ -33,6 +33,9 @@ import { AiRopContentPlan } from "@/components/sales-ai/AiRopContentPlan";
 import { AiRopCallsAnalysis } from "@/components/sales-ai/AiRopCallsAnalysis";
 import { AiRopChatsAnalysis } from "@/components/sales-ai/AiRopChatsAnalysis";
 import { AiRopManagersAnalysis } from "@/components/sales-ai/AiRopManagersAnalysis";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { useAuth } from "@/hooks/useAuth";
+import { hydrateAiRopStorage } from "@/lib/aiRopStorage";
 
 type TabId =
   | "overview"
