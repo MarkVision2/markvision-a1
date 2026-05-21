@@ -318,7 +318,31 @@ const CreativeFunnel = () => {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 && (
+              {orphanLeads > 0 && (
+                <tr className="border-t border-border/30 bg-warning/5">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-14 w-14 place-items-center rounded-md bg-warning/10 ring-1 ring-warning/30">
+                        <Info className="h-5 w-5 text-warning" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold">Без креатива</div>
+                        <div className="mt-0.5 text-[10px] text-muted-foreground">
+                          Лиды без меток ad.id — нажмите «Привязать существующие лиды», чтобы попробовать связать по телефону.
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-[11px] text-muted-foreground">—</td>
+                  <td className="px-4 py-3 text-right tabular-nums font-semibold">{fmtNum(orphanLeads)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</td>
+                </tr>
+              )}
+              {filtered.length === 0 && orphanLeads === 0 && (
                 <tr>
                   <td colSpan={8} className="px-4 py-12 text-center text-sm text-muted-foreground">
                     {loading ? "Загружаем креативы…" : "Под фильтр ничего не попало. Снимите фильтры или расширьте период."}
