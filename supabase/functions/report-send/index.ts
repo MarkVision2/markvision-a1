@@ -41,6 +41,14 @@ Deno.serve(async (req) => {
     const sub = Array.isArray(rows) ? rows[0] : null;
     if (!sub) throw new Error("Подписка не найдена");
 
+    // Ownership check — prevent IDOR: only the owner or an admin can trigger send.
+    const isAdmin = await userHasRole(auth.userId, "admin");
+    if (sub.created_by !== auth.userId && !isAdmin) {
+      return new Response(JSON.stringify({ ok: false, error: "Forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const text = test
       ? `🧪 *Тестовое сообщение*\nПодписка «${sub.name}» подключена. Отчёты будут приходить в ${String(sub.send_hour).padStart(2, "0")}:00.`
       : `📊 *Отчёт «${sub.name}»*\nПериод: ${sub.period}\n\nОткройте полный отчёт в приложении.`;
