@@ -446,10 +446,6 @@ Deno.serve(async (req) => {
       await insertCommunication({ leadId, direction: "in", text, externalId: idMessage });
       return json({ ok: true, leadId, projectId, attribution });
     }
-      const text = extractText(messageData);
-      await insertCommunication({ leadId, direction: "in", text, externalId: idMessage });
-      return json({ ok: true, leadId, projectId, attribution });
-    }
 
     if (
       type === "outgoingMessageReceived" ||
