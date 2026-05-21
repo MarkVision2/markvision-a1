@@ -19,12 +19,13 @@ const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 const pct = (n: number) => `${(Math.round(n * 10) / 10).toLocaleString("ru-RU")}%`;
 
 type SortKey = "crmRevenue" | "crmRomi" | "crmSales" | "crmLeads" | "leads" | "spend" | "ctr" | "cpl" | "name";
+type SortDir = "asc" | "desc";
 type StatusFilter = "all" | "active" | "paused";
 type TypeFilter = "all" | "video" | "image" | "carousel";
 
 const SORT_LABELS: Record<SortKey, string> = {
-  crmRevenue: "Выручка CRM",
-  crmRomi: "ROMI CRM",
+  crmRevenue: "Выручка",
+  crmRomi: "ROMI",
   crmSales: "Продажи",
   crmLeads: "Лиды CRM",
   leads: "Лиды Meta",
