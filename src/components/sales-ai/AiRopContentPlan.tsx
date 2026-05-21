@@ -19,14 +19,12 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import {
   getContentIdeas,
-  getRopSettings,
   newId,
   saveContentIdeas,
   subscribeAiRop,
   type ContentIdea,
 } from "@/lib/aiRopStorage";
 import { useToast } from "@/hooks/use-toast";
-import { useCrmStore } from "@/hooks/useCrmStore";
 
 const FORMAT_META: Record<ContentIdea["format"], { label: string; icon: typeof Film; color: string }> = {
   reels: { label: "Reels", icon: Film, color: "text-pink-400" },
