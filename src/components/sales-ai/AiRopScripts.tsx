@@ -32,6 +32,12 @@ export function AiRopScripts() {
   const [editing, setEditing] = useState<RopScript | null>(null);
   const [generating, setGenerating] = useState(false);
 
+  useEffect(() => {
+    setScripts(getScripts());
+    return subscribeAiRop("scripts", () => setScripts(getScripts()));
+  }, []);
+
+
   const filtered = useMemo(() => {
     if (filter === "all") return scripts;
     return scripts.filter((s) => s.category === filter);
