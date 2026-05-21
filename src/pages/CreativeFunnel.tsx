@@ -168,19 +168,22 @@ const CreativeFunnel = () => {
     if (hasSales) r = r.filter((x) => x.crmSales > 0);
     if (q) r = r.filter((x) => x.name.toLowerCase().includes(q) || x.adId.includes(q));
     const sorted = [...r];
+    const dir = sortDir === "asc" ? 1 : -1;
     sorted.sort((a, b) => {
-      if (sortKey === "name") return a.name.localeCompare(b.name);
+      if (sortKey === "name") return a.name.localeCompare(b.name) * dir;
       if (sortKey === "cpl") {
         const av = a.crmCpl > 0 ? a.crmCpl : a.cpl;
         const bv = b.crmCpl > 0 ? b.crmCpl : b.cpl;
         if (av === 0) return 1;
         if (bv === 0) return -1;
-        return av - bv;
+        return (av - bv) * dir;
       }
-      return ((b as unknown as Record<string, number>)[sortKey] ?? 0) - ((a as unknown as Record<string, number>)[sortKey] ?? 0);
+      const va = (a as unknown as Record<string, number>)[sortKey] ?? 0;
+      const vb = (b as unknown as Record<string, number>)[sortKey] ?? 0;
+      return (vb - va) * dir;
     });
     return sorted;
-  }, [rows, sortKey, search, status, type, hasSpend, hasLeads, hasSales]);
+  }, [rows, sortKey, sortDir, search, status, type, hasSpend, hasLeads, hasSales]);
 
   const totals = useMemo(() => {
     return filtered.reduce(
