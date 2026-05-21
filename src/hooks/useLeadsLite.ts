@@ -24,6 +24,7 @@ export interface LeadLite {
   cabinetId: string | null;
   stageKey: string; // resolved key (e.g. "new"), not stage uuid
   amount: number;
+  diagnosticAmount: number;
   createdAt: string;
   paidAt: string | null;
   lastActivityAt: string;
@@ -47,7 +48,7 @@ export function useLeadsLite() {
       .from("leads")
       .select(
         // score_label убран из запроса — колонки нет в схеме leads.
-        "id,source,channel,referrer,utm,cabinet_id,stage_id,amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,reject_reason,rejected_at",
+        "id,source,channel,referrer,utm,cabinet_id,stage_id,amount,diagnostic_amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,reject_reason,rejected_at",
       )
       // Личные заявки исключаем из аналитики/дашборда/отчётов.
       .eq("is_personal", false)
@@ -75,6 +76,7 @@ export function useLeadsLite() {
       cabinetId: (r.cabinet_id as string | null) ?? null,
       stageKey: idToKey.get(r.stage_id as string) ?? "new",
       amount: Number(r.amount ?? 0),
+      diagnosticAmount: Number((r as { diagnostic_amount?: number | null }).diagnostic_amount ?? 0),
       createdAt: r.created_at as string,
       paidAt: (r.paid_at as string | null) ?? null,
       lastActivityAt: r.last_activity_at as string,

@@ -129,9 +129,33 @@ Deno.serve(async (req) => {
 
   try {
     // Allow internal cron call via shared secret OR require admin user JWT.
-    const cronKey = Deno.env.get("META_SYNC_CRON_KEY");
-    const provided = req.headers.get("x-cron-key");
-    const isCron = !!cronKey && provided === cronKey;
+    // Поддерживаем оба варианта аутентификации:
+    //   1) META_SYNC_CRON_KEY + x-cron-key — для отдельного ключа функции.
+    //   2) automation_settings.cron_secret + x-automation-key — единый ключ для
+    //      всех cron-задач (тот же, что использует crm-automations). Это решает
+    //      401 при срабатывании cron meta-daily-sync-daily, когда отдельный
+    //      env-secret не задан.
+    const adminPre = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    let isCron = false;
+    const envCronKey = Deno.env.get("META_SYNC_CRON_KEY");
+    const envCronHeader = req.headers.get("x-cron-key");
+    if (envCronKey && envCronHeader === envCronKey) {
+      isCron = true;
+    } else {
+      const automationKey = req.headers.get("x-automation-key");
+      if (automationKey) {
+        const { data: settings } = await adminPre
+          .from("automation_settings")
+          .select("cron_secret")
+          .eq("id", true)
+          .maybeSingle();
+        const dbSecret = (settings as { cron_secret?: string | null } | null)?.cron_secret ?? null;
+        if (dbSecret && automationKey === dbSecret) isCron = true;
+      }
+    }
     if (!isCron) {
       const auth = await requireUser(req);
       if (!auth.ok) return auth.response;
@@ -148,10 +172,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const admin = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
+    const admin = adminPre;
 
     // Read params: date | since/until | cabinet_id (from query OR JSON body).
     const url = new URL(req.url);

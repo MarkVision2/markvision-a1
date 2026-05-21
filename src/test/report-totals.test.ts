@@ -11,6 +11,7 @@ const mkLead = (over: Partial<LeadLite> = {}): LeadLite => ({
   cabinetId: over.cabinetId ?? null,
   stageKey: over.stageKey ?? "new",
   amount: over.amount ?? 0,
+  diagnosticAmount: over.diagnosticAmount ?? 0,
   createdAt: over.createdAt ?? "2026-05-10T12:00:00Z",
   paidAt: over.paidAt ?? null,
   lastActivityAt: over.lastActivityAt ?? "2026-05-10T12:00:00Z",
