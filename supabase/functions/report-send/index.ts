@@ -1,4 +1,4 @@
-import { requireUser } from "../_lib/auth.ts";
+import { requireUser, userHasRole } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -40,6 +40,14 @@ Deno.serve(async (req) => {
     const rows = await subResp.json();
     const sub = Array.isArray(rows) ? rows[0] : null;
     if (!sub) throw new Error("Подписка не найдена");
+
+    // Ownership check — prevent IDOR: only the owner or an admin can trigger send.
+    const isAdmin = await userHasRole(auth.userId, "admin");
+    if (sub.created_by !== auth.userId && !isAdmin) {
+      return new Response(JSON.stringify({ ok: false, error: "Forbidden" }), {
+        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const text = test
       ? `🧪 *Тестовое сообщение*\nПодписка «${sub.name}» подключена. Отчёты будут приходить в ${String(sub.send_hour).padStart(2, "0")}:00.`

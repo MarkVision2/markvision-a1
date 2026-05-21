@@ -8,6 +8,7 @@
 // Trigger: cron OR ad-hoc POST with {since, until, cabinet_id?}.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { requireUser, userHasRole } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -243,6 +244,18 @@ function processInsightRow(
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  // Auth: allow internal cron via shared secret, otherwise require admin JWT.
+  const cronKey = Deno.env.get("META_SYNC_CRON_KEY");
+  const provided = req.headers.get("x-cron-key");
+  const isCron = !!cronKey && provided === cronKey;
+  if (!isCron) {
+    const auth = await requireUser(req);
+    if (!auth.ok) return auth.response;
+    if (!(await userHasRole(auth.userId, "admin"))) {
+      return json({ ok: false, error: "Forbidden" }, 403);
+    }
+  }
 
   const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN");
   if (!META_ACCESS_TOKEN) {
