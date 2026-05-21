@@ -36,8 +36,17 @@ function json(body: unknown, status = 200) {
 }
 
 async function isAuthorized(req: Request): Promise<boolean> {
-  // Внутренний вызов (cron / другие edge-функции).
+  // Внутренний вызов (другие edge-функции).
   if (req.headers.get("x-internal-key") === SERVICE_KEY) return true;
+  // Cron-вызов: сравниваем заголовок с automation_settings.cron_secret.
+  const cronSecret = req.headers.get("x-cron-secret");
+  if (cronSecret) {
+    const { data } = await admin
+      .from("automation_settings")
+      .select("cron_secret")
+      .maybeSingle();
+    if (data?.cron_secret && data.cron_secret === cronSecret) return true;
+  }
   // Пользовательский JWT — должен быть валиден.
   const auth = req.headers.get("Authorization") ?? "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : auth;
