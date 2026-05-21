@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Image as ImageIcon, Layers, Loader2, Play, Video } from "lucide-react";
-import { toast } from "sonner";
+
 import { cn } from "@/lib/utils";
 import { bestCreativeImage } from "@/lib/metaThumb";
 import { enqueuePosterCapture } from "@/lib/videoPosterCapture";
@@ -49,9 +49,9 @@ export function CreativePreview({ row, compact = false, playable = false, classN
     size: compact ? 240 : 960,
   });
 
-  const refreshVideoPreview = async () => {
+  const refreshVideoPreview = async (force = false) => {
     if (!row.adId) return null;
-    const data = await refreshMetaCreative(row.adId);
+    const data = await refreshMetaCreative(row.adId, force ? { force: true } : undefined);
     if (data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
     if (data?.ok && data.video_url) {
       setPreviewVideoUrl(data.video_url);
@@ -96,19 +96,14 @@ export function CreativePreview({ row, compact = false, playable = false, classN
 
   const handlePlayClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (previewVideoUrl) {
-      setPlayerOpen(true);
-      return;
-    }
+    // Открываем модалку сразу — пользователь должен увидеть отклик на клик.
+    setPlayerOpen(true);
     setLoadingFullVideo(true);
-    const url = await refreshVideoPreview().catch(() => null);
+    // Форсируем — игнорируем кеш/cooldown, потому что это явный клик пользователя.
+    await refreshVideoPreview(true).catch(() => previewVideoUrl);
     setLoadingFullVideo(false);
-    if (url) {
-      setPlayerOpen(true);
-    } else {
-      toast.error("Не удалось получить видео из Meta");
-    }
   };
+
 
   return (
     <div className={cn("relative overflow-hidden rounded-xl bg-background", className)}>
@@ -195,15 +190,52 @@ export function CreativePreview({ row, compact = false, playable = false, classN
                 autoPlay
                 playsInline
                 className="aspect-[9/16] h-auto max-h-[85vh] w-full bg-black"
+                onError={async () => {
+                  setPreviewVideoUrl(null);
+                  setLoadingFullVideo(true);
+                  await refreshVideoPreview(true).catch(() => null);
+                  setLoadingFullVideo(false);
+                }}
               />
-            ) : (
+            ) : loadingFullVideo ? (
               <div className="grid aspect-[9/16] place-items-center bg-black text-sm text-white/70">
-                Видео недоступно
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
+            ) : (
+              <div
+                className="relative aspect-[9/16] w-full bg-cover bg-center"
+                style={{ backgroundImage: src ? `url(${src})` : undefined, backgroundColor: "#000" }}
+              >
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/55 p-6 text-center text-sm text-white">
+                  <p>Ссылка на видео из Meta истекла.</p>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setLoadingFullVideo(true);
+                        await refreshVideoPreview(true).catch(() => null);
+                        setLoadingFullVideo(false);
+                      }}
+                      className="rounded-md bg-white/15 px-3 py-1.5 text-xs font-semibold backdrop-blur hover:bg-white/25"
+                    >
+                      Попробовать снова
+                    </button>
+                    <a
+                      href={`https://www.facebook.com/ads/library/?id=${row.adId}`}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+                    >
+                      Открыть в Facebook Ads Library
+                    </a>
+                  </div>
+                </div>
               </div>
             )}
           </DialogContent>
         </Dialog>
       )}
+
     </div>
   );
 }

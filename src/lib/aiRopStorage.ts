@@ -26,6 +26,11 @@ const listeners = new Map<CacheKey, Set<() => void>>();
 
 let currentProjectId: string | null = null;
 let currentUserId: string | null = null;
+let hydrateSeq = 0;
+
+function isCurrentHydration(seq: number, projectId: string | null, userId: string | null): boolean {
+  return seq === hydrateSeq && currentProjectId === projectId && currentUserId === userId;
+}
 
 function read<T>(key: CacheKey, fallback: T): T {
   if (memCache.has(key)) return memCache.get(key) as T;
@@ -655,6 +660,7 @@ async function syncCollection<T extends Identifiable>(opts: {
  * - trainer-sessions: личные сессии пользователя в рамках проекта.
  */
 export async function hydrateAiRopStorage(projectId: string | null, userId: string | null): Promise<void> {
+  const seq = ++hydrateSeq;
   // При смене проекта (включая выход в null) сбрасываем кэш и LS-зеркало, иначе
   // компоненты до завершения гидратации показывают данные предыдущего проекта.
   const projectChanged = currentProjectId !== projectId;
@@ -681,6 +687,9 @@ export async function hydrateAiRopStorage(projectId: string | null, userId: stri
     emit("trainer-sessions");
   }
   if (!projectId) return;
+  // seq используется внутри хелперов ниже через isCurrentHydration() —
+  // чтобы поздний ответ медленной гидратации не затёр результаты новой.
+  void seq;
 
   // 1. Settings
   try {
@@ -690,6 +699,7 @@ export async function hydrateAiRopStorage(projectId: string | null, userId: stri
       .eq("project_id", projectId)
       .maybeSingle();
     if (error) throw error;
+    if (!isCurrentHydration(seq, projectId, userId)) return;
     if (data) {
       writeLocal("settings", rowToSettings(data as Record<string, unknown>));
     } else {
@@ -710,6 +720,7 @@ export async function hydrateAiRopStorage(projectId: string | null, userId: stri
       .eq("project_id", projectId)
       .order("created_at", { ascending: true });
     if (error) throw error;
+    if (!isCurrentHydration(seq, projectId, userId)) return;
     const rows = (data ?? []) as Record<string, unknown>[];
     if (rows.length) {
       writeLocal("scripts", rows.map(rowToScript));
@@ -738,6 +749,7 @@ export async function hydrateAiRopStorage(projectId: string | null, userId: stri
       .eq("project_id", projectId)
       .order("created_at", { ascending: true });
     if (error) throw error;
+    if (!isCurrentHydration(seq, projectId, userId)) return;
     const rows = (data ?? []) as Record<string, unknown>[];
     if (rows.length) {
       writeLocal("content-ideas", rows.map(rowToIdea));
@@ -767,6 +779,7 @@ export async function hydrateAiRopStorage(projectId: string | null, userId: stri
         .eq("user_id", userId)
         .order("started_at", { ascending: false });
       if (error) throw error;
+      if (!isCurrentHydration(seq, projectId, userId)) return;
       const rows = (data ?? []) as Record<string, unknown>[];
       writeLocal("trainer-sessions", rows.map(rowToTrainerSession));
       emit("trainer-sessions");
