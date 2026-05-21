@@ -1,8 +1,7 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
-  ArrowRight,
   CheckCircle2,
   Clock,
   Heart,
@@ -14,50 +13,123 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Lead } from "@/types/crm";
+import { supabase } from "@/integrations/supabase/client";
 
 interface Props {
   leads: Lead[];
+  projectId: string | null;
 }
 
-export function AiRopChatsAnalysis({ leads }: Props) {
+interface ChatAnalysisRow {
+  id: string;
+  lead_id: string | null;
+  channel: string | null;
+  message_count: number | null;
+  first_response_min: number | null;
+  avg_response_min: number | null;
+  overall_score: number | null;
+  topics: string[] | null;
+  objections: string[] | null;
+  strengths: string[] | null;
+  weaknesses: string[] | null;
+  flag_price_without_qualification: boolean | null;
+  flag_no_closing: boolean | null;
+  flag_ghosted_by_manager: boolean | null;
+  processed_at: string;
+}
+
+export function AiRopChatsAnalysis({ leads, projectId }: Props) {
   const navigate = useNavigate();
+  const [rows, setRows] = useState<ChatAnalysisRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!projectId) {
+      setRows([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    (async () => {
+      const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
+      const { data, error } = await supabase
+        .from("ai_rop_chat_analyses")
+        .select(
+          "id, lead_id, channel, message_count, first_response_min, avg_response_min, overall_score, topics, objections, strengths, weaknesses, flag_price_without_qualification, flag_no_closing, flag_ghosted_by_manager, processed_at",
+        )
+        .eq("project_id", projectId)
+        .gte("processed_at", since)
+        .order("processed_at", { ascending: false })
+        .limit(500);
+      if (cancelled) return;
+      if (error) {
+        console.error("[AiRopChatsAnalysis] load error", error);
+        setRows([]);
+      } else {
+        setRows((data ?? []) as ChatAnalysisRow[]);
+      }
+      setLoading(false);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId]);
 
   const stats = useMemo(() => {
-    const withChat = leads.filter((l) => l.channel === "whatsapp" || l.channel === "telegram" || l.channel === "instagram");
-    const responded = leads.filter((l) => l.firstResponseAt);
-    const avgResponseMin =
-      responded.length === 0
-        ? 0
-        : Math.round(
-            responded.reduce((sum, l) => {
-              const diff = Math.max(
-                0,
-                (new Date(l.firstResponseAt!).getTime() - new Date(l.createdAt).getTime()) / 60000,
-              );
-              return sum + diff;
-            }, 0) / responded.length,
-          );
-    return {
-      totalChats: withChat.length,
-      responded: responded.length,
-      avgResponseMin,
-      ghosted: leads.filter((l) => !l.firstResponseAt && l.stageId === "new").length,
-    };
+    const total = rows.length;
+    const scored = rows.filter((r) => typeof r.overall_score === "number");
+    const avgScore = scored.length
+      ? Math.round(scored.reduce((s, r) => s + (r.overall_score ?? 0), 0) / scored.length)
+      : 0;
+    const respMins = rows
+      .map((r) => r.first_response_min)
+      .filter((v): v is number => typeof v === "number" && v >= 0);
+    const avgResponseMin = respMins.length
+      ? Math.round(respMins.reduce((s, v) => s + v, 0) / respMins.length)
+      : 0;
+    const ghosted = rows.filter((r) => r.flag_ghosted_by_manager).length;
+    const noClosing = rows.filter((r) => r.flag_no_closing).length;
+    const priceWithoutQual = rows.filter((r) => r.flag_price_without_qualification).length;
+    return { total, avgScore, avgResponseMin, ghosted, noClosing, priceWithoutQual };
+  }, [rows]);
+
+  const topTopics = useMemo(() => {
+    const counter = new Map<string, number>();
+    for (const r of rows) {
+      for (const t of r.topics ?? []) {
+        const key = (t ?? "").trim();
+        if (!key) continue;
+        counter.set(key, (counter.get(key) ?? 0) + 1);
+      }
+    }
+    const arr = Array.from(counter.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+    const max = arr[0]?.count ?? 1;
+    return arr.map((t) => ({ ...t, share: Math.round((t.count / max) * 100) }));
+  }, [rows]);
+
+  const recent = rows.slice(0, 3);
+  const leadById = useMemo(() => {
+    const map = new Map<string, Lead>();
+    for (const l of leads) map.set(l.id, l);
+    return map;
   }, [leads]);
 
   return (
     <div className="space-y-4">
       {/* KPI */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Tile label="Чатов в работе" value={String(stats.totalChats)} icon={MessageSquare} />
+        <Tile label="Чатов разобрано" value={String(stats.total)} icon={MessageSquare} />
         <Tile
-          label="Отвечено"
-          value={String(stats.responded)}
+          label="Сред. оценка"
+          value={stats.total ? `${stats.avgScore}/100` : "—"}
           icon={CheckCircle2}
-          tone="success"
+          tone={stats.avgScore >= 70 ? "success" : stats.avgScore >= 50 ? "warning" : "destructive"}
         />
         <Tile
-          label="Без ответа"
+          label="Менеджер слил"
           value={String(stats.ghosted)}
           icon={AlertTriangle}
           tone="destructive"
@@ -78,7 +150,7 @@ export function AiRopChatsAnalysis({ leads }: Props) {
           <div className="flex-1">
             <h3 className="text-sm font-bold">Что ИИ-РОП проверяет в чатах</h3>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Через GreenAPI РОП получает все переписки WhatsApp в реальном времени
+              РОП получает все переписки в реальном времени через интеграции
               и для каждого диалога считает:
             </p>
             <div className="mt-2 grid grid-cols-1 gap-1.5 md:grid-cols-2">
@@ -93,16 +165,66 @@ export function AiRopChatsAnalysis({ leads }: Props) {
         </div>
       </div>
 
-      {/* Демо разбора чата */}
+      {/* Флаги */}
+      {stats.total > 0 && (
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+          <FlagTile
+            label="Прайс без квалификации"
+            count={stats.priceWithoutQual}
+            total={stats.total}
+          />
+          <FlagTile label="Не закрыл на след. шаг" count={stats.noClosing} total={stats.total} />
+          <FlagTile
+            label="Менеджер бросил диалог"
+            count={stats.ghosted}
+            total={stats.total}
+          />
+        </div>
+      )}
+
+      {/* Последние разборы */}
       <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
         <div className="mb-3 flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" />
-          <h3 className="text-sm font-bold">Пример разбора переписки</h3>
-          <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-primary">
-            демо
-          </span>
+          <h3 className="text-sm font-bold">Последние разборы переписок</h3>
+          {loading && <span className="text-[10px] text-muted-foreground">загрузка…</span>}
         </div>
-        <DemoChatReport />
+        {recent.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border/60 bg-secondary/20 p-6 text-center text-xs text-muted-foreground">
+            Пока нет разобранных чатов. РОП анализирует новые переписки автоматически.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {recent.map((r) => {
+              const lead = r.lead_id ? leadById.get(r.lead_id) : null;
+              const score = r.overall_score ?? 0;
+              const tone =
+                score >= 70 ? "text-success" : score >= 50 ? "text-warning" : "text-destructive";
+              return (
+                <div
+                  key={r.id}
+                  className="flex items-center gap-3 rounded-xl border border-border/40 bg-background/40 p-3"
+                >
+                  <MessageSquare className="h-7 w-7 shrink-0 text-success" />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-sm font-semibold">
+                      {lead?.name ?? "Без имени"} · {r.channel ?? "chat"}
+                    </div>
+                    <div className="truncate text-[10px] text-muted-foreground">
+                      {r.message_count ?? 0} сообщ.{" "}
+                      {r.first_response_min != null && `· ответ ${r.first_response_min} мин `}
+                      {r.topics && r.topics.length > 0 && `· ${r.topics.slice(0, 2).join(", ")}`}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={cn("text-xl font-bold tabular-nums", tone)}>{score}</div>
+                    <div className="text-[10px] text-muted-foreground">/100</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Топ тем разговоров */}
@@ -110,31 +232,37 @@ export function AiRopChatsAnalysis({ leads }: Props) {
         <div className="mb-3 flex items-center gap-2">
           <Heart className="h-4 w-4 text-pink-400" />
           <h3 className="text-sm font-bold">Топ тем и возражений из чатов</h3>
-          <span className="text-[10px] text-muted-foreground">за последние 30 дней</span>
+          <span className="text-[10px] text-muted-foreground">за 30 дней</span>
         </div>
-        <div className="space-y-2">
-          {TOP_TOPICS.map((t, i) => (
-            <div key={i} className="rounded-lg border border-border/40 bg-background/40 p-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold">{t.label}</span>
-                <span className="text-[10px] tabular-nums text-muted-foreground">
-                  {t.count} раз · {t.share}%
-                </span>
-              </div>
-              <div className="mt-1 flex items-center gap-2">
-                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary/60">
-                  <div className="h-full bg-primary" style={{ width: `${t.share}%` }} />
+        {topTopics.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-border/60 bg-secondary/20 p-4 text-center text-xs text-muted-foreground">
+            Темы появятся, как только РОП обработает первые чаты.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {topTopics.map((t, i) => (
+              <div key={i} className="rounded-lg border border-border/40 bg-background/40 p-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-semibold">{t.label}</span>
+                  <span className="text-[10px] tabular-nums text-muted-foreground">
+                    {t.count} раз
+                  </span>
                 </div>
-                <button
-                  onClick={() => navigate("/sales-ai?tab=content")}
-                  className="shrink-0 text-[10px] font-semibold text-primary hover:underline"
-                >
-                  → контент
-                </button>
+                <div className="mt-1 flex items-center gap-2">
+                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-secondary/60">
+                    <div className="h-full bg-primary" style={{ width: `${t.share}%` }} />
+                  </div>
+                  <button
+                    onClick={() => navigate("/sales-ai?tab=content")}
+                    className="shrink-0 text-[10px] font-semibold text-primary hover:underline"
+                  >
+                    → контент
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
         <div className="mt-3 rounded-xl border border-dashed border-border/60 bg-secondary/20 p-2 text-[11px] text-muted-foreground">
           💡 РОП собирает темы из реальных чатов и автоматически предлагает идеи контент-плана.
         </div>
@@ -152,14 +280,6 @@ const CHECKLIST = [
   "Отправляет ли прайс без квалификации",
   "Пишет ли follow-up при молчании",
   "Не теряет ли лида в чате",
-];
-
-const TOP_TOPICS = [
-  { label: "Сколько стоит имплантация?", count: 24, share: 80 },
-  { label: "Что входит в диагностику?", count: 18, share: 60 },
-  { label: "Срок лечения и сроки реабилитации", count: 12, share: 40 },
-  { label: "Есть ли рассрочка?", count: 9, share: 30 },
-  { label: "Какие материалы используете?", count: 6, share: 20 },
 ];
 
 function Tile({
@@ -194,100 +314,27 @@ function Tile({
   );
 }
 
-function DemoChatReport() {
-  const messages = [
-    { from: "lead", text: "Здравствуйте! Сколько стоит имплант?", at: "14:02" },
-    {
-      from: "manager",
-      text: "Здравствуйте! Имплант под ключ — 250 000 ₸",
-      at: "14:18",
-      flag: "Сразу прайс без квалификации",
-    },
-    { from: "lead", text: "Это дорого. У других дешевле", at: "14:25" },
-    { from: "manager", text: "А сколько вы видели?", at: "14:31", flag: "Хорошо: уточнил" },
-    { from: "lead", text: "180 000 в Аруна-Дент", at: "14:35" },
-    {
-      from: "manager",
-      text: "У нас входит еще КТ и план лечения. Хотите запишемся на диагностику?",
-      at: "14:42",
-      good: true,
-    },
-  ];
-  const score = 55;
+function FlagTile({ label, count, total }: { label: string; count: number; total: number }) {
+  const pct = total ? Math.round((count / total) * 100) : 0;
+  const tone =
+    pct >= 30 ? "destructive" : pct >= 15 ? "warning" : "success";
+  const Icon = tone === "success" ? TrendingUp : TrendingDown;
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-3 rounded-xl border border-border/40 bg-background/40 p-3">
-        <MessageSquare className="h-8 w-8 text-success" />
-        <div className="flex-1">
-          <div className="text-sm font-semibold">Айдар • WhatsApp</div>
-          <div className="text-[10px] text-muted-foreground">
-            6 сообщений · ответ на 16 мин (норма 5 мин)
-          </div>
-        </div>
-        <div className="text-right">
-          <div className="text-2xl font-bold tabular-nums text-warning">{score}/100</div>
-          <div className="text-[10px] text-muted-foreground">оценка</div>
-        </div>
+    <div className="rounded-2xl border border-border/60 bg-card/60 p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold text-muted-foreground">{label}</span>
+        <Icon
+          className={cn(
+            "h-3.5 w-3.5",
+            tone === "destructive" && "text-destructive",
+            tone === "warning" && "text-warning",
+            tone === "success" && "text-success",
+          )}
+        />
       </div>
-
-      <div className="space-y-1.5">
-        {messages.map((m, i) => (
-          <div
-            key={i}
-            className={cn("flex gap-2", m.from === "manager" ? "flex-row-reverse" : "flex-row")}
-          >
-            <div
-              className={cn(
-                "max-w-[80%] rounded-2xl px-3 py-1.5 text-xs",
-                m.from === "manager"
-                  ? "bg-primary/15"
-                  : "border border-border/60 bg-background/40",
-              )}
-            >
-              <div>{m.text}</div>
-              <div className="mt-0.5 flex items-center gap-1 text-[9px] text-muted-foreground">
-                {m.at}
-                {m.flag && (
-                  <span
-                    className={cn(
-                      "rounded-md px-1 py-0.5 font-bold",
-                      m.good
-                        ? "bg-success/20 text-success"
-                        : "bg-warning/20 text-warning",
-                    )}
-                  >
-                    {m.flag}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-        <div className="rounded-xl border border-warning/40 bg-warning/10 p-3">
-          <div className="flex items-center gap-2 text-xs font-bold text-warning">
-            <TrendingDown className="h-3.5 w-3.5" />
-            Слабые места
-          </div>
-          <ul className="mt-1 space-y-1 text-[11px] text-muted-foreground">
-            <li>• Прайс без квалификации в первом ответе</li>
-            <li>• Ответ через 16 минут — выше нормы</li>
-            <li>• Не уточнил, какой именно зуб нужно восстановить</li>
-          </ul>
-        </div>
-        <div className="rounded-xl border border-success/40 bg-success/10 p-3">
-          <div className="flex items-center gap-2 text-xs font-bold text-success">
-            <TrendingUp className="h-3.5 w-3.5" />
-            Сильные места
-          </div>
-          <ul className="mt-1 space-y-1 text-[11px] text-muted-foreground">
-            <li>• Уточнил сравнение с конкурентом</li>
-            <li>• Обосновал ценность диагностики</li>
-            <li>• Закрыл на следующий шаг — визит</li>
-          </ul>
-        </div>
+      <div className="mt-1 flex items-baseline gap-1.5">
+        <span className="text-2xl font-bold tabular-nums">{count}</span>
+        <span className="text-[10px] text-muted-foreground">из {total} · {pct}%</span>
       </div>
     </div>
   );
