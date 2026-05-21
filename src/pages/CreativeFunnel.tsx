@@ -97,6 +97,42 @@ const CreativeFunnel = () => {
     return () => { cancelled = true; };
   }, [projectId, range.from, range.to, backfilling]);
 
+  // Сводные CRM-показатели по проекту за период (диагностики/продажи/выручка)
+  useEffect(() => {
+    if (!projectId) { setCrmTotals({ leads: 0, diagnostics: 0, sales: 0, revenue: 0 }); return; }
+    const since = `${range.from.getFullYear()}-${String(range.from.getMonth()+1).padStart(2,"0")}-${String(range.from.getDate()).padStart(2,"0")}`;
+    const until = `${range.to.getFullYear()}-${String(range.to.getMonth()+1).padStart(2,"0")}-${String(range.to.getDate()).padStart(2,"0")} 23:59:59`;
+    let cancelled = false;
+    void (async () => {
+      const { data: stages } = await supabase
+        .from("pipeline_stages")
+        .select("id, is_diagnostic")
+        .eq("is_diagnostic", true);
+      const diagStageIds = new Set((stages ?? []).map((s) => s.id as string));
+      const { data: leads } = await supabase
+        .from("leads")
+        .select("id, paid, amount, diagnostic_amount, stage_id, created_at")
+        .eq("project_id", projectId)
+        .eq("is_personal", false)
+        .gte("created_at", since)
+        .lte("created_at", until);
+      if (cancelled) return;
+      let diagnostics = 0, sales = 0, revenue = 0;
+      const arr = leads ?? [];
+      for (const l of arr) {
+        const atDiag = diagStageIds.has(l.stage_id as string);
+        const paid = !!l.paid;
+        if (paid) { sales += 1; revenue += Number(l.amount) || 0; }
+        if (atDiag || paid) diagnostics += 1;
+        if (!paid && atDiag) revenue += Number(l.amount) || 0;
+        revenue += Number(l.diagnostic_amount) || 0;
+      }
+      setCrmTotals({ leads: arr.length, diagnostics, sales, revenue });
+    })();
+    return () => { cancelled = true; };
+  }, [projectId, range.from, range.to, backfilling]);
+
+
   const runBackfill = async () => {
     if (!projectId) return;
     setBackfilling(true);
