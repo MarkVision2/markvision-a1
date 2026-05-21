@@ -25,7 +25,7 @@ import {
 } from "@/lib/aiRopStorage";
 import { useToast } from "@/hooks/use-toast";
 
-export function AiRopScripts() {
+export function AiRopScripts({ projectId }: { projectId?: string | null } = {}) {
   const { toast } = useToast();
   const [scripts, setScripts] = useState<RopScript[]>(getScripts);
   const [filter, setFilter] = useState<ScriptCategory | "all">("all");
@@ -36,6 +36,7 @@ export function AiRopScripts() {
     setScripts(getScripts());
     return subscribeAiRop("scripts", () => setScripts(getScripts()));
   }, []);
+
 
 
   const filtered = useMemo(() => {
