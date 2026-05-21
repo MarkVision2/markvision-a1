@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
-import { ArrowDownRight, ArrowUpRight, Filter, Info, Loader2, RefreshCw, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowDownRight, ArrowUpRight, Filter, Info, Link2, Loader2, RefreshCw, Search } from "lucide-react";
+import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,8 @@ import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPi
 import { CreativePreview } from "@/components/creatives/CreativePreview";
 import { CreativeDetailDrawer } from "@/components/creatives/CreativeDetailDrawer";
 import { useMetaCreatives, type MetaCreativeRow } from "@/hooks/useMetaStructure";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { supabase } from "@/integrations/supabase/client";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
 
