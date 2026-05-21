@@ -186,6 +186,59 @@ describe("Фильтрация продаж по paid_at (а не createdAt) —
   });
 });
 
+describe("CDI отстаёт от CRM — CRM становится источником правды", () => {
+  it("CRM имеет 3 продажи (2 cab + 1 orphan), но CDI триггер пропустил одну (только 1)", () => {
+    // Реальный сценарий пользователя: 3 продажи в CRM, 2 в Funnel.
+    // Триггер CDI не сработал у одной — например, cabinet_id присвоен после оплаты.
+    const cabPaid1 = mk({ cabinetId: "cab-1", paid: true, amount: 100_000, paidAt: "2026-05-10T10:00:00Z" });
+    const cabPaid2 = mk({ cabinetId: "cab-1", paid: true, amount: 200_000, paidAt: "2026-05-12T10:00:00Z" });
+    const cabPaid3 = mk({ cabinetId: "cab-2", paid: true, amount: 150_000, paidAt: "2026-05-15T10:00:00Z" });
+    const crm = aggregateCrm([cabPaid1, cabPaid2, cabPaid3], range, "all");
+    // CDI показывает только 1 (триггер пропустил 2)
+    const meta = { ...emptyMeta, spend: 300_000, cabinetSales: 1, cabinetRevenue: 100_000 };
+    const totals = computeTotals(meta, crm);
+
+    expect(totals.sales).toBe(3); // CRM = 3, max(1+0, 3) = 3
+    expect(totals.revenue).toBe(450_000); // CRM revenue = 100+200+150
+  });
+
+  it("3 диагностики в CRM, но CDI показывает только 1 — берём CRM", () => {
+    const scheduled1 = mk({ cabinetId: "cab-1", stageKey: "scheduled", lastActivityAt: "2026-05-10T10:00:00Z" });
+    const scheduled2 = mk({ cabinetId: "cab-1", stageKey: "visit", lastActivityAt: "2026-05-12T10:00:00Z" });
+    const scheduledOrphan = mk({ cabinetId: null, stageKey: "scheduled", lastActivityAt: "2026-05-15T10:00:00Z" });
+    const crm = aggregateCrm([scheduled1, scheduled2, scheduledOrphan], range, "all");
+    const meta = { ...emptyMeta, spend: 200_000, cabinetDiagnostics: 1 };
+    const totals = computeTotals(meta, crm);
+
+    expect(totals.visits).toBe(3); // CRM = 3, max(1+1, 3) = 3
+  });
+
+  it("manual_sales в CDI больше, чем CRM (offline-продажи) — берём CDI+orphan", () => {
+    // Бизнес ввёл +5 оффлайн-продаж через manual_sales в Metrics.
+    // CRM при этом имеет только 1 paid лид.
+    const cabPaid = mk({ cabinetId: "cab-1", paid: true, amount: 100_000 });
+    const crm = aggregateCrm([cabPaid], range, "all");
+    // CDI: manual_sales override превратил это в 5 (1 CRM + 4 offline)
+    const meta = { ...emptyMeta, spend: 200_000, cabinetSales: 5, cabinetRevenue: 500_000 };
+    const totals = computeTotals(meta, crm);
+
+    expect(totals.sales).toBe(5); // CDI+orphan = 5+0 = 5, CRM = 1, max = 5
+    expect(totals.revenue).toBe(500_000); // CDI revenue
+  });
+
+  it("стандартный случай: CDI и CRM согласованы (нет потерь)", () => {
+    const cab1 = mk({ cabinetId: "cab-1", paid: true, amount: 100_000 });
+    const cab2 = mk({ cabinetId: "cab-1", paid: true, amount: 200_000 });
+    const orphan = mk({ cabinetId: null, paid: true, amount: 50_000 });
+    const crm = aggregateCrm([cab1, cab2, orphan], range, "all");
+    const meta = { ...emptyMeta, cabinetSales: 2, cabinetRevenue: 300_000 }; // CDI знает про 2 cab
+
+    const totals = computeTotals(meta, crm);
+    expect(totals.sales).toBe(3); // CDI(2) + orphan(1) = 3 = CRM total — без расхождений
+    expect(totals.revenue).toBe(350_000); // 300k cab + 50k orphan
+  });
+});
+
 describe("Изоляция данных при выборе конкретного кабинета", () => {
   it("orphan не показываются для конкретного кабинета", () => {
     const orphan = mk({ paid: true, amount: 200_000, cabinetId: null });

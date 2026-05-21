@@ -179,34 +179,57 @@ export function aggregateCrm(
 ) {
   const fromTs = range.from.getTime();
   const toTs = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate() + 1).getTime();
+  const matchCabinet = (l: LeadLite) =>
+    cabinetSelector === "all" || l.cabinetId === cabinetSelector;
+
   const inRange = leads.filter((l) => {
+    if (!matchCabinet(l)) return false;
     const t = new Date(l.createdAt).getTime();
     return t >= fromTs && t < toTs;
   });
-  // Лиды, оплаченные В ЭТОМ периоде, даже если созданы раньше. CDI считает продажи по paid_at,
-  // поэтому orphan-логика тоже должна смотреть на paid_at — иначе теряем лиды, созданные в
-  // прошлом месяце и оплаченные в этом.
+  // Продажи — по paid_at (как CDI). Лид создан в апреле, оплачен в мае — попадает в май.
   const paidInRange = leads.filter((l) => {
     if (!isLeadPaid(l)) return false;
+    if (!matchCabinet(l)) return false;
     const paidAt = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
     const t = new Date(paidAt).getTime();
     return t >= fromTs && t < toTs;
   });
-  // Orphan = только лиды БЕЗ cabinet_id (данные кабинетов берём из CDI, чтобы не дублировать).
-  // Когда пользователь выбрал КОНКРЕТНЫЙ кабинет — orphan-лиды ему не нужны.
+  // Диагностики — по lastActivityAt (когда лид перешёл в диаг-этап).
+  const visitedInRange = leads.filter((l) => {
+    if (!isLeadVisit(l)) return false;
+    if (!matchCabinet(l)) return false;
+    const ref = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
+    const t = new Date(ref).getTime();
+    return t >= fromTs && t < toTs;
+  });
+  // Полные CRM-метрики (источник правды): включают ВСЕ лиды — и с cabinet_id, и без.
+  // Эти числа = «как считает CRM», поэтому Funnel/Dashboard/Reports/Metrics показывают
+  // одно и то же. Даже если CDI-триггер пропустил продажу, CRM покажет её всё равно.
+  const crmSalesCount = paidInRange.length;
+  const crmRevenue = paidInRange.reduce((s, l) => s + (l.amount || 0), 0);
+  const crmVisitsCount = visitedInRange.length;
+  const crmDiagnosticRevenue = visitedInRange.reduce((s, l) => s + (l.diagnosticAmount || 0), 0);
+
+  // Orphan — для legacy совместимости (используется в некоторых старых местах).
   const orphanLeads = cabinetSelector === "all"
     ? inRange.filter((l) => !l.cabinetId)
     : [];
-  // orphanVisits/orphanSales считаются от ВСЕХ paid-в-периоде, не только тех, что созданы в нём.
-  // Цифры стыкуются с CDI (которая тоже фильтрует sales по paid_at).
-  const orphanPaidInRange = cabinetSelector === "all"
+  const orphanVisits = cabinetSelector === "all"
+    ? visitedInRange.filter((l) => !l.cabinetId)
+    : [];
+  const orphanSales = cabinetSelector === "all"
     ? paidInRange.filter((l) => !l.cabinetId)
     : [];
-  const orphanVisits = orphanLeads.filter(isLeadVisit);
-  const orphanSales = orphanPaidInRange;
   const orphanRevenue = orphanSales.reduce((s, l) => s + (l.amount || 0), 0);
   return {
     leads: inRange,
+    // Новые поля: полная CRM-картина
+    crmSalesCount,
+    crmRevenue,
+    crmVisitsCount,
+    crmDiagnosticRevenue,
+    // Legacy: orphan-only (для совместимости)
     orphanLeads,
     orphanVisits,
     orphanSales,
@@ -218,22 +241,35 @@ export function computeTotals(
   meta: { spend: number; impressions: number; clicks: number; leads: number;
           cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number;
           cabinetDiagnosticRevenue: number },
-  crm: { leads: LeadLite[]; orphanLeads: LeadLite[]; orphanVisits: LeadLite[]; orphanSales: LeadLite[]; orphanRevenue: number },
+  crm: {
+    leads: LeadLite[];
+    crmSalesCount: number; crmRevenue: number;
+    crmVisitsCount: number; crmDiagnosticRevenue: number;
+    orphanLeads: LeadLite[]; orphanVisits: LeadLite[]; orphanSales: LeadLite[]; orphanRevenue: number;
+  },
 ): ReportTotals {
-  // ЕДИНЫЙ ИСТОЧНИК ПРАВДЫ для всех страниц: CDI (кабинеты) + orphan CRM (лиды без cabinet_id).
-  // Раньше Dashboard/Reports исключали orphan, а Analytics/CRM их считали — поэтому одна
-  // и та же продажа выглядела как «3 в CRM, 2 в Reports». Orphan не может задвоиться
-  // с CDI, потому что у него нет cabinet_id (manual_sales всегда привязан к кабинету).
+  // ЕДИНЫЙ ИСТОЧНИК ПРАВДЫ — берём MAX из двух подходов:
+  //   1) CDI + orphan: trust CDI для кабинетов + добавить orphan из CRM
+  //      (для случая, когда CDI имеет manual_sales поверх CRM-цифр)
+  //   2) CRM total: всё прямо из leads (для случая, когда CDI-триггер пропустил)
+  // Так Funnel/Dashboard/Reports/Metrics показывают РЕАЛЬНОЕ число даже если CDI отстаёт.
+  const orphanLeadsCount = crm.orphanLeads.length;
   const orphanSalesCount = crm.orphanSales.length;
   const orphanVisitsCount = crm.orphanVisits.length;
-  const orphanLeadsCount = crm.orphanLeads.length;
 
   const totalLeads = meta.leads + orphanLeadsCount;
   const cpl = totalLeads > 0 ? meta.spend / totalLeads : 0;
-  const visits = meta.cabinetDiagnostics + orphanVisitsCount;
-  const sales = meta.cabinetSales + orphanSalesCount;
-  // Выручка = продажи + оплаты диагностик (из CDI) + оплаты orphan-лидов (из CRM).
-  const revenue = meta.cabinetRevenue + meta.cabinetDiagnosticRevenue + crm.orphanRevenue;
+
+  const visitsCdiPlusOrphan = meta.cabinetDiagnostics + orphanVisitsCount;
+  const visits = Math.max(visitsCdiPlusOrphan, crm.crmVisitsCount);
+
+  const salesCdiPlusOrphan = meta.cabinetSales + orphanSalesCount;
+  const sales = Math.max(salesCdiPlusOrphan, crm.crmSalesCount);
+
+  // Выручка: max(CDI+orphan, CRM total).
+  const cdiPlusOrphanRevenue = meta.cabinetRevenue + meta.cabinetDiagnosticRevenue + crm.orphanRevenue;
+  const crmTotalRevenue = crm.crmRevenue + crm.crmDiagnosticRevenue;
+  const revenue = Math.max(cdiPlusOrphanRevenue, crmTotalRevenue);
   const cpv = visits > 0 ? meta.spend / visits : 0;
   const cac = sales > 0 ? meta.spend / sales : 0;
   const ctr = meta.impressions > 0 ? (meta.clicks / meta.impressions) * 100 : 0;
