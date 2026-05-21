@@ -33,6 +33,9 @@ import { AiRopContentPlan } from "@/components/sales-ai/AiRopContentPlan";
 import { AiRopCallsAnalysis } from "@/components/sales-ai/AiRopCallsAnalysis";
 import { AiRopChatsAnalysis } from "@/components/sales-ai/AiRopChatsAnalysis";
 import { AiRopManagersAnalysis } from "@/components/sales-ai/AiRopManagersAnalysis";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { useAuth } from "@/hooks/useAuth";
+import { hydrateAiRopStorage } from "@/lib/aiRopStorage";
 
 type TabId =
   | "overview"
@@ -147,6 +150,12 @@ const SalesAI = () => {
   const { leads, stages } = useCrmStore();
   const { members } = useTeamStore();
   const analytics = useCrmAnalytics(leads, stages, members);
+  const { activeId } = useProjectsStore();
+  const { user } = useAuth();
+
+  useEffect(() => {
+    void hydrateAiRopStorage(activeId ?? null, user?.id ?? null);
+  }, [activeId, user?.id]);
 
   const initialTab = (searchParams.get("tab") as TabId) || "overview";
   const validTab = TABS.find((t) => t.id === initialTab) ? initialTab : "overview";

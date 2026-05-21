@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Calendar,
   Check,
@@ -22,6 +22,7 @@ import {
   getRopSettings,
   newId,
   saveContentIdeas,
+  subscribeAiRop,
   type ContentIdea,
 } from "@/lib/aiRopStorage";
 import { useToast } from "@/hooks/use-toast";
@@ -55,6 +56,12 @@ export function AiRopContentPlan() {
   const [filterStatus, setFilterStatus] = useState<ContentIdea["status"] | "all">("all");
   const [generating, setGenerating] = useState(false);
   const [editing, setEditing] = useState<ContentIdea | null>(null);
+
+  useEffect(() => {
+    setIdeas(getContentIdeas());
+    return subscribeAiRop("content-ideas", () => setIdeas(getContentIdeas()));
+  }, []);
+
 
   const persist = (next: ContentIdea[]) => {
     setIdeas(next);

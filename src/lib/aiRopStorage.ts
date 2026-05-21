@@ -1,24 +1,51 @@
 /**
- * Локальное хранилище конфигурации и пользовательского контента AI РОПа.
- * До того как Lovable сделает миграции под Supabase, всё живёт в localStorage
- * с ключом `mv:ai-rop:<key>`. После миграции достаточно подменить здесь
- * реализацию `get`/`set` на supabase-вызовы — публичный API не меняется.
+ * Хранилище конфигурации и пользовательского контента AI РОПа.
+ *
+ * ШАГ 2: данные теперь живут в Supabase (таблицы ai_rop_*). Чтобы не ломать UI,
+ * публичный API остался синхронным: getX()/saveX() работают через in-memory cache
+ * (с зеркалом в localStorage для мгновенного первого рендера). Реальная
+ * синхронизация с базой:
+ *   - hydrateAiRopStorage(projectId, userId) → подтягивает всё из Supabase в кэш.
+ *   - saveX(...) → пишет в кэш + LS, и параллельно (fire-and-forget) делает
+ *     upsert/delete в Supabase.
+ *   - subscribeAiRop(key, cb) → подписка на изменения кэша (после hydrate
+ *     или после внешнего сохранения).
+ *
+ * Никакие компоненты не обязаны менять get/save сигнатуры — достаточно один раз
+ * вызвать hydrateAiRopStorage на маунте страницы и подписаться через subscribeAiRop.
  */
+
+import { supabase } from "@/integrations/supabase/client";
 
 const PREFIX = "mv:ai-rop:";
 
-function read<T>(key: string, fallback: T): T {
+type CacheKey = "settings" | "scripts" | "content-ideas" | "trainer-sessions";
+
+const memCache = new Map<CacheKey, unknown>();
+const listeners = new Map<CacheKey, Set<() => void>>();
+
+let currentProjectId: string | null = null;
+let currentUserId: string | null = null;
+
+function read<T>(key: CacheKey, fallback: T): T {
+  if (memCache.has(key)) return memCache.get(key) as T;
   if (typeof window === "undefined") return fallback;
   try {
     const raw = window.localStorage.getItem(PREFIX + key);
-    if (!raw) return fallback;
-    return JSON.parse(raw) as T;
+    if (!raw) {
+      memCache.set(key, fallback);
+      return fallback;
+    }
+    const parsed = JSON.parse(raw) as T;
+    memCache.set(key, parsed);
+    return parsed;
   } catch {
     return fallback;
   }
 }
 
-function write<T>(key: string, value: T): void {
+function writeLocal<T>(key: CacheKey, value: T): void {
+  memCache.set(key, value);
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(PREFIX + key, JSON.stringify(value));
@@ -27,28 +54,56 @@ function write<T>(key: string, value: T): void {
   }
 }
 
+function emit(key: CacheKey) {
+  const subs = listeners.get(key);
+  if (!subs) return;
+  subs.forEach((cb) => {
+    try { cb(); } catch { /* swallow */ }
+  });
+}
+
+export function subscribeAiRop(key: CacheKey, cb: () => void): () => void {
+  let set = listeners.get(key);
+  if (!set) {
+    set = new Set();
+    listeners.set(key, set);
+  }
+  set.add(cb);
+  return () => { set?.delete(cb); };
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function ensureUuid(id: string | undefined | null): string {
+  if (id && UUID_RE.test(id)) return id;
+  try {
+    return (crypto as Crypto).randomUUID();
+  } catch {
+    // fallback (RFC4122-ish)
+    return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === "x" ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
+  }
+}
+
 // ─── Настройки РОПа ─────────────────────────────────────────────────────────
 
 export type RopSettings = {
-  /** Системный промпт — описывает роль ИИ-РОПа, его задачи, стиль. */
   systemPrompt: string;
-  /** Что именно отслеживать (чек-лист). */
   watchList: string[];
-  /** SLA-пороги для алертов. */
   sla: {
-    firstResponseMin: number;     // норма ответа на лид
-    callbackHours: number;        // время на перезвон
-    chatIdleHours: number;        // молчание в чате
+    firstResponseMin: number;
+    callbackHours: number;
+    chatIdleHours: number;
   };
-  /** KPI-цели по менеджерам. */
   kpi: {
     minConversionPct: number;
     minDialPct: number;
     maxRejectPct: number;
   };
-  /** Тон голоса для всех ответов и оценок. */
   tone: "strict" | "neutral" | "supportive";
-  /** Автодействия: что РОП делает сам. */
   autoActions: {
     suggestScripts: boolean;
     flagMissedSLA: boolean;
@@ -93,12 +148,66 @@ export const DEFAULT_ROP_SETTINGS: RopSettings = {
   },
 };
 
+function rowToSettings(r: Record<string, unknown>): RopSettings {
+  return {
+    systemPrompt: (r.system_prompt as string) ?? DEFAULT_ROP_SETTINGS.systemPrompt,
+    watchList: (r.watch_list as string[]) ?? DEFAULT_ROP_SETTINGS.watchList,
+    sla: {
+      firstResponseMin: Number(r.sla_first_response_min ?? DEFAULT_ROP_SETTINGS.sla.firstResponseMin),
+      callbackHours: Number(r.sla_callback_hours ?? DEFAULT_ROP_SETTINGS.sla.callbackHours),
+      chatIdleHours: Number(r.sla_chat_idle_hours ?? DEFAULT_ROP_SETTINGS.sla.chatIdleHours),
+    },
+    kpi: {
+      minConversionPct: Number(r.kpi_min_conversion_pct ?? DEFAULT_ROP_SETTINGS.kpi.minConversionPct),
+      minDialPct: Number(r.kpi_min_dial_pct ?? DEFAULT_ROP_SETTINGS.kpi.minDialPct),
+      maxRejectPct: Number(r.kpi_max_reject_pct ?? DEFAULT_ROP_SETTINGS.kpi.maxRejectPct),
+    },
+    tone: ((r.tone as RopSettings["tone"]) ?? "neutral"),
+    autoActions: {
+      suggestScripts: Boolean(r.auto_suggest_scripts ?? true),
+      flagMissedSLA: Boolean(r.auto_flag_sla ?? true),
+      generateContentIdeas: Boolean(r.auto_generate_content ?? true),
+      scoreCalls: Boolean(r.auto_score_calls ?? true),
+      scoreChats: Boolean(r.auto_score_chats ?? true),
+    },
+  };
+}
+
+function settingsToRow(s: RopSettings, projectId: string | null, userId: string | null) {
+  return {
+    project_id: projectId,
+    user_id: userId,
+    system_prompt: s.systemPrompt,
+    watch_list: s.watchList,
+    sla_first_response_min: s.sla.firstResponseMin,
+    sla_callback_hours: s.sla.callbackHours,
+    sla_chat_idle_hours: s.sla.chatIdleHours,
+    kpi_min_conversion_pct: s.kpi.minConversionPct,
+    kpi_min_dial_pct: s.kpi.minDialPct,
+    kpi_max_reject_pct: s.kpi.maxRejectPct,
+    tone: s.tone,
+    auto_suggest_scripts: s.autoActions.suggestScripts,
+    auto_flag_sla: s.autoActions.flagMissedSLA,
+    auto_generate_content: s.autoActions.generateContentIdeas,
+    auto_score_calls: s.autoActions.scoreCalls,
+    auto_score_chats: s.autoActions.scoreChats,
+  };
+}
+
 export function getRopSettings(): RopSettings {
-  return { ...DEFAULT_ROP_SETTINGS, ...read<Partial<RopSettings>>("settings", {}) };
+  return { ...DEFAULT_ROP_SETTINGS, ...read<Partial<RopSettings>>("settings", {} as Partial<RopSettings>) } as RopSettings;
 }
 
 export function saveRopSettings(s: RopSettings): void {
-  write("settings", s);
+  writeLocal("settings", s);
+  emit("settings");
+  if (!currentProjectId) return;
+  void supabase
+    .from("ai_rop_settings")
+    .upsert(settingsToRow(s, currentProjectId, currentUserId), { onConflict: "project_id" })
+    .then(({ error }) => {
+      if (error) console.warn("[aiRop] saveRopSettings failed:", error.message);
+    });
 }
 
 // ─── Скрипты ────────────────────────────────────────────────────────────────
@@ -130,23 +239,12 @@ export type RopScript = {
   title: string;
   body: string;
   tags: string[];
-  /** Источник: автогенерация по реальным разговорам или ручной ввод. */
   source: "manual" | "ai";
-  /** Сколько раз скрипт реально использовался менеджерами. */
   usageCount: number;
-  /** Средняя оценка применения (0-100), считается ИИ-РОПом. */
   effectiveness: number | null;
   createdAt: string;
   updatedAt: string;
 };
-
-export function getScripts(): RopScript[] {
-  return read<RopScript[]>("scripts", DEFAULT_SCRIPTS);
-}
-
-export function saveScripts(list: RopScript[]): void {
-  write("scripts", list);
-}
 
 const now = () => new Date().toISOString();
 
@@ -210,29 +308,70 @@ export const DEFAULT_SCRIPTS: RopScript[] = [
   },
 ];
 
+function rowToScript(r: Record<string, unknown>): RopScript {
+  return {
+    id: r.id as string,
+    category: r.category as ScriptCategory,
+    title: (r.title as string) ?? "",
+    body: (r.body as string) ?? "",
+    tags: (r.tags as string[]) ?? [],
+    source: (r.source as "manual" | "ai") ?? "manual",
+    usageCount: Number(r.usage_count ?? 0),
+    effectiveness: r.effectiveness == null ? null : Number(r.effectiveness),
+    createdAt: (r.created_at as string) ?? now(),
+    updatedAt: (r.updated_at as string) ?? now(),
+  };
+}
+
+function scriptToRow(s: RopScript, projectId: string | null, userId: string | null) {
+  return {
+    id: s.id,
+    project_id: projectId,
+    category: s.category,
+    title: s.title,
+    body: s.body,
+    tags: s.tags ?? [],
+    source: s.source,
+    usage_count: s.usageCount ?? 0,
+    effectiveness: s.effectiveness,
+    created_by: userId,
+  };
+}
+
+export function getScripts(): RopScript[] {
+  return read<RopScript[]>("scripts", DEFAULT_SCRIPTS);
+}
+
+export function saveScripts(list: RopScript[]): void {
+  // Гарантируем UUID-идентификаторы перед отправкой в БД
+  const normalized = list.map((s) => (UUID_RE.test(s.id) ? s : { ...s, id: ensureUuid(s.id) }));
+  const prev = (memCache.get("scripts") as RopScript[] | undefined) ?? [];
+  writeLocal("scripts", normalized);
+  emit("scripts");
+  if (!currentProjectId) return;
+  void syncCollection({
+    table: "ai_rop_scripts",
+    prev,
+    next: normalized,
+    toRow: (s) => scriptToRow(s, currentProjectId, currentUserId),
+  });
+}
+
 // ─── Контент-план ───────────────────────────────────────────────────────────
 
 export type ContentIdea = {
   id: string;
   title: string;
   format: "reels" | "post" | "story" | "article" | "video";
-  hook: string;             // зацепляющая фраза
-  body: string;             // тело/тезисы
-  basedOn: string;          // на основе чего (фрагмент чата/звонка)
-  audience: string;         // целевая аудитория
-  cta: string;              // призыв к действию
+  hook: string;
+  body: string;
+  basedOn: string;
+  audience: string;
+  cta: string;
   priority: "high" | "mid" | "low";
   status: "idea" | "in_progress" | "published" | "rejected";
   createdAt: string;
 };
-
-export function getContentIdeas(): ContentIdea[] {
-  return read<ContentIdea[]>("content-ideas", DEFAULT_CONTENT_IDEAS);
-}
-
-export function saveContentIdeas(list: ContentIdea[]): void {
-  write("content-ideas", list);
-}
 
 export const DEFAULT_CONTENT_IDEAS: ContentIdea[] = [
   {
@@ -268,6 +407,57 @@ export const DEFAULT_CONTENT_IDEAS: ContentIdea[] = [
   },
 ];
 
+function rowToIdea(r: Record<string, unknown>): ContentIdea {
+  return {
+    id: r.id as string,
+    title: (r.title as string) ?? "",
+    format: r.format as ContentIdea["format"],
+    hook: (r.hook as string) ?? "",
+    body: (r.body as string) ?? "",
+    basedOn: (r.based_on as string) ?? "",
+    audience: (r.audience as string) ?? "",
+    cta: (r.cta as string) ?? "",
+    priority: (r.priority as ContentIdea["priority"]) ?? "mid",
+    status: (r.status as ContentIdea["status"]) ?? "idea",
+    createdAt: (r.created_at as string) ?? now(),
+  };
+}
+
+function ideaToRow(i: ContentIdea, projectId: string | null, userId: string | null) {
+  return {
+    id: i.id,
+    project_id: projectId,
+    title: i.title,
+    format: i.format,
+    priority: i.priority,
+    status: i.status,
+    hook: i.hook || null,
+    body: i.body || null,
+    audience: i.audience || null,
+    cta: i.cta || null,
+    based_on: i.basedOn || null,
+    created_by: userId,
+  };
+}
+
+export function getContentIdeas(): ContentIdea[] {
+  return read<ContentIdea[]>("content-ideas", DEFAULT_CONTENT_IDEAS);
+}
+
+export function saveContentIdeas(list: ContentIdea[]): void {
+  const normalized = list.map((i) => (UUID_RE.test(i.id) ? i : { ...i, id: ensureUuid(i.id) }));
+  const prev = (memCache.get("content-ideas") as ContentIdea[] | undefined) ?? [];
+  writeLocal("content-ideas", normalized);
+  emit("content-ideas");
+  if (!currentProjectId) return;
+  void syncCollection({
+    table: "ai_rop_content_ideas",
+    prev,
+    next: normalized,
+    toRow: (i) => ideaToRow(i, currentProjectId, currentUserId),
+  });
+}
+
 // ─── Тренажёр: сценарии ─────────────────────────────────────────────────────
 
 export type TrainerScenario = {
@@ -275,9 +465,7 @@ export type TrainerScenario = {
   role: "patient" | "lead";
   title: string;
   difficulty: "easy" | "medium" | "hard";
-  /** Контекст для ИИ: кого он играет, какие возражения у пациента, какова цель администратора. */
   context: string;
-  /** Цели администратора — по ним ИИ оценивает разговор. */
   goals: string[];
   channel: "phone" | "whatsapp" | "instagram";
 };
@@ -361,22 +549,208 @@ export type TrainerSession = {
   scenarioId: string;
   scenarioTitle: string;
   messages: TrainerMessage[];
-  score: number | null;          // 0-100, проставляется по завершении
-  feedback: string | null;        // итоговый разбор ИИ
+  score: number | null;
+  feedback: string | null;
   startedAt: string;
   finishedAt: string | null;
 };
+
+function rowToTrainerSession(r: Record<string, unknown>): TrainerSession {
+  return {
+    id: r.id as string,
+    scenarioId: (r.scenario_id as string) ?? "",
+    scenarioTitle: (r.scenario_title as string) ?? "",
+    messages: (r.messages as TrainerMessage[]) ?? [],
+    score: r.score == null ? null : Number(r.score),
+    feedback: (r.feedback as string) ?? null,
+    startedAt: (r.started_at as string) ?? now(),
+    finishedAt: (r.finished_at as string) ?? null,
+  };
+}
+
+function trainerSessionToRow(s: TrainerSession, projectId: string | null, userId: string | null) {
+  const scenario = TRAINER_SCENARIOS.find((sc) => sc.id === s.scenarioId);
+  return {
+    id: s.id,
+    project_id: projectId,
+    user_id: userId,
+    scenario_id: s.scenarioId,
+    scenario_title: s.scenarioTitle,
+    scenario_role: scenario?.role ?? "patient",
+    scenario_channel: scenario?.channel ?? "phone",
+    difficulty: scenario?.difficulty ?? "easy",
+    messages: s.messages,
+    score: s.score,
+    feedback: s.feedback,
+    started_at: s.startedAt,
+    finished_at: s.finishedAt,
+  };
+}
 
 export function getTrainerSessions(): TrainerSession[] {
   return read<TrainerSession[]>("trainer-sessions", []);
 }
 
 export function saveTrainerSessions(list: TrainerSession[]): void {
-  write("trainer-sessions", list);
+  const normalized = list.map((s) => (UUID_RE.test(s.id) ? s : { ...s, id: ensureUuid(s.id) }));
+  const prev = (memCache.get("trainer-sessions") as TrainerSession[] | undefined) ?? [];
+  writeLocal("trainer-sessions", normalized);
+  emit("trainer-sessions");
+  if (!currentUserId) return;
+  void syncCollection({
+    table: "ai_rop_trainer_sessions",
+    prev,
+    next: normalized,
+    toRow: (s) => trainerSessionToRow(s, currentProjectId, currentUserId),
+  });
 }
 
 // ─── Утилиты ────────────────────────────────────────────────────────────────
 
 export function newId(prefix = "id"): string {
-  return `${prefix}-${Math.random().toString(36).slice(2, 8)}-${Date.now().toString(36)}`;
+  // Возвращаем валидный UUID, чтобы запись могла уехать в БД без переименования
+  return ensureUuid(`${prefix}-bootstrap`);
+}
+
+// ─── Sync helpers ───────────────────────────────────────────────────────────
+
+type Identifiable = { id: string };
+
+async function syncCollection<T extends Identifiable>(opts: {
+  table: "ai_rop_scripts" | "ai_rop_content_ideas" | "ai_rop_trainer_sessions";
+  prev: T[];
+  next: T[];
+  toRow: (item: T) => Record<string, unknown>;
+}) {
+  const { table, prev, next, toRow } = opts;
+  try {
+    const nextIds = new Set(next.map((n) => n.id));
+    const removed = prev.filter((p) => !nextIds.has(p.id)).map((p) => p.id);
+    if (removed.length) {
+      const { error } = await supabase.from(table).delete().in("id", removed);
+      if (error) console.warn(`[aiRop] delete from ${table} failed:`, error.message);
+    }
+    if (next.length) {
+      const rows = next.map(toRow);
+      const { error } = await supabase.from(table).upsert(rows as never, { onConflict: "id" });
+      if (error) console.warn(`[aiRop] upsert into ${table} failed:`, error.message);
+    }
+  } catch (e) {
+    console.warn(`[aiRop] sync ${table} threw:`, e);
+  }
+}
+
+// ─── Hydration ──────────────────────────────────────────────────────────────
+
+/**
+ * Загружает все данные AI РОПа из Supabase в in-memory cache. Вызывается
+ * один раз при маунте страницы /sales-ai (или при смене активного проекта).
+ *
+ * - settings: одна строка на проект; если нет — сидим дефолтами (без записи в БД).
+ * - scripts / content-ideas: если в БД пусто и в LS пусто → сидим дефолтами и
+ *   пушим в БД, чтобы команда увидела стартовый набор.
+ * - trainer-sessions: личные сессии пользователя в рамках проекта.
+ */
+export async function hydrateAiRopStorage(projectId: string | null, userId: string | null): Promise<void> {
+  currentProjectId = projectId;
+  currentUserId = userId;
+  if (!projectId) return;
+
+  // 1. Settings
+  try {
+    const { data, error } = await supabase
+      .from("ai_rop_settings")
+      .select("*")
+      .eq("project_id", projectId)
+      .maybeSingle();
+    if (error) throw error;
+    if (data) {
+      writeLocal("settings", rowToSettings(data as Record<string, unknown>));
+    } else {
+      // нет настроек в БД — оставляем то, что в LS (или дефолт)
+      const fallback = getRopSettings();
+      writeLocal("settings", fallback);
+    }
+    emit("settings");
+  } catch (e) {
+    console.warn("[aiRop] hydrate settings failed:", e);
+  }
+
+  // 2. Scripts
+  try {
+    const { data, error } = await supabase
+      .from("ai_rop_scripts")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    const rows = (data ?? []) as Record<string, unknown>[];
+    if (rows.length) {
+      writeLocal("scripts", rows.map(rowToScript));
+      emit("scripts");
+    } else {
+      // Сидим дефолтами с валидными UUID
+      const seeded = DEFAULT_SCRIPTS.map((s) => ({ ...s, id: ensureUuid(s.id) }));
+      writeLocal("scripts", seeded);
+      emit("scripts");
+      void syncCollection({
+        table: "ai_rop_scripts",
+        prev: [],
+        next: seeded,
+        toRow: (s) => scriptToRow(s, projectId, userId),
+      });
+    }
+  } catch (e) {
+    console.warn("[aiRop] hydrate scripts failed:", e);
+  }
+
+  // 3. Content ideas
+  try {
+    const { data, error } = await supabase
+      .from("ai_rop_content_ideas")
+      .select("*")
+      .eq("project_id", projectId)
+      .order("created_at", { ascending: true });
+    if (error) throw error;
+    const rows = (data ?? []) as Record<string, unknown>[];
+    if (rows.length) {
+      writeLocal("content-ideas", rows.map(rowToIdea));
+      emit("content-ideas");
+    } else {
+      const seeded = DEFAULT_CONTENT_IDEAS.map((i) => ({ ...i, id: ensureUuid(i.id) }));
+      writeLocal("content-ideas", seeded);
+      emit("content-ideas");
+      void syncCollection({
+        table: "ai_rop_content_ideas",
+        prev: [],
+        next: seeded,
+        toRow: (i) => ideaToRow(i, projectId, userId),
+      });
+    }
+  } catch (e) {
+    console.warn("[aiRop] hydrate content-ideas failed:", e);
+  }
+
+  // 4. Trainer sessions (only current user)
+  if (userId) {
+    try {
+      const { data, error } = await supabase
+        .from("ai_rop_trainer_sessions")
+        .select("*")
+        .eq("project_id", projectId)
+        .eq("user_id", userId)
+        .order("started_at", { ascending: false });
+      if (error) throw error;
+      const rows = (data ?? []) as Record<string, unknown>[];
+      writeLocal("trainer-sessions", rows.map(rowToTrainerSession));
+      emit("trainer-sessions");
+    } catch (e) {
+      console.warn("[aiRop] hydrate trainer-sessions failed:", e);
+    }
+  }
+}
+
+/** Текущий проект, в контексте которого идут сохранения. */
+export function getAiRopProjectId(): string | null {
+  return currentProjectId;
 }

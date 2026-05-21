@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
-import { ArrowDownRight, ArrowUpRight, Filter, Info, Loader2, RefreshCw, Search } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ArrowDownRight, ArrowUpRight, Filter, Info, Link2, Loader2, RefreshCw, Search } from "lucide-react";
+import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,8 @@ import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPi
 import { CreativePreview } from "@/components/creatives/CreativePreview";
 import { CreativeDetailDrawer } from "@/components/creatives/CreativeDetailDrawer";
 import { useMetaCreatives, type MetaCreativeRow } from "@/hooks/useMetaStructure";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { supabase } from "@/integrations/supabase/client";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
 
@@ -67,8 +70,90 @@ const CreativeFunnel = () => {
   const [hasLeads, setHasLeads] = useState(false);
   const [hasSales, setHasSales] = useState(false);
   const [drawerRow, setDrawerRow] = useState<MetaCreativeRow | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [orphanLeads, setOrphanLeads] = useState(0);
+  const [crmTotals, setCrmTotals] = useState({ leads: 0, diagnostics: 0, sales: 0, revenue: 0 });
+  const { activeId: projectId } = useProjectsStore();
 
   const { rows, loading } = useMetaCreatives(range);
+
+  // Лиды без привязки к креативу — для строки "Без креатива" и баннера
+  useEffect(() => {
+    if (!projectId) { setOrphanLeads(0); return; }
+    const since = `${range.from.getFullYear()}-${String(range.from.getMonth()+1).padStart(2,"0")}-${String(range.from.getDate()).padStart(2,"0")}`;
+    const until = `${range.to.getFullYear()}-${String(range.to.getMonth()+1).padStart(2,"0")}-${String(range.to.getDate()).padStart(2,"0")} 23:59:59`;
+    let cancelled = false;
+    void (async () => {
+      const { count } = await supabase
+        .from("leads")
+        .select("id", { count: "exact", head: true })
+        .eq("project_id", projectId)
+        .eq("is_personal", false)
+        .is("meta_ad_id", null)
+        .gte("created_at", since)
+        .lte("created_at", until);
+      if (!cancelled) setOrphanLeads(count ?? 0);
+    })();
+    return () => { cancelled = true; };
+  }, [projectId, range.from, range.to, backfilling]);
+
+  // Сводные CRM-показатели по проекту за период (диагностики/продажи/выручка)
+  useEffect(() => {
+    if (!projectId) { setCrmTotals({ leads: 0, diagnostics: 0, sales: 0, revenue: 0 }); return; }
+    const since = `${range.from.getFullYear()}-${String(range.from.getMonth()+1).padStart(2,"0")}-${String(range.from.getDate()).padStart(2,"0")}`;
+    const until = `${range.to.getFullYear()}-${String(range.to.getMonth()+1).padStart(2,"0")}-${String(range.to.getDate()).padStart(2,"0")} 23:59:59`;
+    let cancelled = false;
+    void (async () => {
+      const { data: stages } = await supabase
+        .from("pipeline_stages")
+        .select("id, is_diagnostic")
+        .eq("is_diagnostic", true);
+      const diagStageIds = new Set((stages ?? []).map((s) => s.id as string));
+      const { data: leads } = await supabase
+        .from("leads")
+        .select("id, paid, amount, diagnostic_amount, stage_id, created_at")
+        .eq("project_id", projectId)
+        .eq("is_personal", false)
+        .gte("created_at", since)
+        .lte("created_at", until);
+      if (cancelled) return;
+      let diagnostics = 0, sales = 0, revenue = 0;
+      const arr = leads ?? [];
+      for (const l of arr) {
+        const atDiag = diagStageIds.has(l.stage_id as string);
+        const paid = !!l.paid;
+        if (paid) { sales += 1; revenue += Number(l.amount) || 0; }
+        if (atDiag || paid) diagnostics += 1;
+        if (!paid && atDiag) revenue += Number(l.amount) || 0;
+        revenue += Number(l.diagnostic_amount) || 0;
+      }
+      setCrmTotals({ leads: arr.length, diagnostics, sales, revenue });
+    })();
+    return () => { cancelled = true; };
+  }, [projectId, range.from, range.to, backfilling]);
+
+
+  const runBackfill = async () => {
+    if (!projectId) return;
+    setBackfilling(true);
+    const since = `${range.from.getFullYear()}-${String(range.from.getMonth()+1).padStart(2,"0")}-${String(range.from.getDate()).padStart(2,"0")}`;
+    const { data, error } = await (supabase as unknown as { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: { attributed?: number } | null; error: unknown }> })
+      .rpc("backfill_lead_attribution", { p_project_id: projectId, p_since: since });
+    setBackfilling(false);
+    if (error) {
+      console.error(error);
+      toast.error("Не удалось привязать лиды");
+      return;
+    }
+    const n = data?.attributed ?? 0;
+    if (n > 0) {
+      toast.success(`Привязано лидов: ${n}`);
+      setRange({ ...range });
+    } else {
+      toast.message("Новых привязок не найдено", { description: "Лиды без меток нельзя привязать к креативу" });
+    }
+  };
+
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -109,7 +194,10 @@ const CreativeFunnel = () => {
     );
   }, [filtered]);
 
-  const totalsRomi = totals.spend > 0 ? ((totals.crmRevenue - totals.spend) / totals.spend) * 100 : 0;
+  // Используем фактические CRM-показатели по проекту (а не только привязанные к креативам),
+  // чтобы цифры в KPI-полоске сходились с реальной CRM
+  const crmRevenueTotal = crmTotals.revenue;
+  const totalsRomi = totals.spend > 0 ? ((crmRevenueTotal - totals.spend) / totals.spend) * 100 : 0;
 
   const rangeLabel = useMemo(() => {
     const f = range.from.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
@@ -147,10 +235,10 @@ const CreativeFunnel = () => {
         {[
           { label: "Расход", value: fmtTenge(totals.spend) },
           { label: "Лиды Meta", value: fmtNum(totals.metaLeads) },
-          { label: "Лиды CRM", value: fmtNum(totals.crmLeads) },
-          { label: "Квалиф.", value: fmtNum(totals.crmQualified) },
-          { label: "Продажи", value: fmtNum(totals.crmSales) },
-          { label: "Выручка", value: fmtTenge(totals.crmRevenue) },
+          { label: "Лиды CRM", value: fmtNum(crmTotals.leads) },
+          { label: "Диагностики", value: fmtNum(crmTotals.diagnostics) },
+          { label: "Продажи", value: fmtNum(crmTotals.sales) },
+          { label: "Выручка", value: fmtTenge(crmRevenueTotal) },
           {
             label: "ROMI",
             value: totals.spend > 0 ? `${totalsRomi >= 0 ? "+" : ""}${Math.round(totalsRomi)}%` : "—",
@@ -165,17 +253,28 @@ const CreativeFunnel = () => {
       </div>
 
       {totals.metaLeads > 0 && attributionRate < 100 && (
-        <div className="mt-3 flex items-start gap-2 rounded-xl border border-warning/40 bg-warning/5 p-3 text-xs">
+        <div className="mt-3 flex flex-wrap items-start gap-3 rounded-xl border border-warning/40 bg-warning/5 p-3 text-xs">
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-          <div>
+          <div className="flex-1 min-w-[280px]">
             <span className="font-semibold">Привязка лидов: {pct(attributionRate)}.</span>
             {" "}Meta видит {fmtNum(totals.metaLeads)} лидов, в CRM привязано к креативам {fmtNum(totals.crmLeads)}.
             Чтобы поднять до 100%, в Meta-шаблоне URL добавьте
             {" "}<code className="rounded bg-secondary/60 px-1">utm_content=&#123;&#123;ad.id&#125;&#125;</code>.
             WhatsApp-лиды привязываются автоматически через CTWA referral.
           </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-8 gap-1.5 border-warning/40"
+            onClick={runBackfill}
+            disabled={backfilling || !projectId}
+          >
+            {backfilling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+            Привязать существующие лиды
+          </Button>
         </div>
       )}
+
 
       {/* Toolbar */}
       <div className="mt-6 flex flex-wrap items-center gap-2">
@@ -259,7 +358,31 @@ const CreativeFunnel = () => {
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 && (
+              {orphanLeads > 0 && (
+                <tr className="border-t border-border/30 bg-warning/5">
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-14 w-14 place-items-center rounded-md bg-warning/10 ring-1 ring-warning/30">
+                        <Info className="h-5 w-5 text-warning" />
+                      </div>
+                      <div>
+                        <div className="text-sm font-semibold">Без креатива</div>
+                        <div className="mt-0.5 text-[10px] text-muted-foreground">
+                          Лиды без меток ad.id — нажмите «Привязать существующие лиды», чтобы попробовать связать по телефону.
+                        </div>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-[11px] text-muted-foreground">—</td>
+                  <td className="px-4 py-3 text-right tabular-nums font-semibold">{fmtNum(orphanLeads)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</td>
+                  <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</td>
+                </tr>
+              )}
+              {filtered.length === 0 && orphanLeads === 0 && (
                 <tr>
                   <td colSpan={8} className="px-4 py-12 text-center text-sm text-muted-foreground">
                     {loading ? "Загружаем креативы…" : "Под фильтр ничего не попало. Снимите фильтры или расширьте период."}

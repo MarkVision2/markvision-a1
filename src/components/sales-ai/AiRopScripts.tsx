@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
   Check,
@@ -19,6 +19,7 @@ import {
   newId,
   saveScripts,
   SCRIPT_CATEGORIES,
+  subscribeAiRop,
   type RopScript,
   type ScriptCategory,
 } from "@/lib/aiRopStorage";
@@ -30,6 +31,12 @@ export function AiRopScripts() {
   const [filter, setFilter] = useState<ScriptCategory | "all">("all");
   const [editing, setEditing] = useState<RopScript | null>(null);
   const [generating, setGenerating] = useState(false);
+
+  useEffect(() => {
+    setScripts(getScripts());
+    return subscribeAiRop("scripts", () => setScripts(getScripts()));
+  }, []);
+
 
   const filtered = useMemo(() => {
     if (filter === "all") return scripts;
