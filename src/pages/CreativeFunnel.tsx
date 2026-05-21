@@ -499,6 +499,62 @@ const CreativeFunnel = () => {
         </div>
       </div>
 
+      {totalPages > 1 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-[11px] text-muted-foreground">
+            Стр. {safePage} из {totalPages} · показано {paged.length} из {filtered.length}
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-lg"
+              onClick={() => setPage(Math.max(1, safePage - 1))}
+              disabled={safePage <= 1}
+            >
+              ←
+            </Button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter((p) => p === 1 || p === totalPages || Math.abs(p - safePage) <= 2)
+              .reduce<(number | "...")[]>((acc, p) => {
+                const last = acc[acc.length - 1];
+                if (last !== "..." && typeof last === "number" && p - last > 1) acc.push("...");
+                acc.push(p);
+                return acc;
+              }, [])
+              .map((p, i) =>
+                p === "..." ? (
+                  <span key={`gap-${i}`} className="px-1 text-xs text-muted-foreground">…</span>
+                ) : (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPage(p)}
+                    className={cn(
+                      "h-8 min-w-[32px] rounded-lg border px-2 text-xs font-medium tabular-nums transition",
+                      p === safePage
+                        ? "border-primary/60 bg-primary/10 text-primary"
+                        : "border-border/60 bg-background hover:bg-secondary/40",
+                    )}
+                  >
+                    {p}
+                  </button>
+                ),
+              )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-lg"
+              onClick={() => setPage(Math.min(totalPages, safePage + 1))}
+              disabled={safePage >= totalPages}
+            >
+              →
+            </Button>
+          </div>
+        </div>
+      )}
+
+
       <p className="mt-4 text-[11px] text-muted-foreground">
         Атрибуция: WhatsApp — через Meta CTWA referral; сайт — через UTM-шаблон с
         {" "}<code className="rounded bg-secondary/60 px-1">utm_content=&#123;&#123;ad.id&#125;&#125;</code>.
