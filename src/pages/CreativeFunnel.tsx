@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpDown, ArrowUpRight, Filter, Info, Link2, Loader2, RefreshCw, Search } from "lucide-react";
+import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpDown, ArrowUpRight, Filter, Info, Loader2, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")}\u00a0₸`;
-const pct = (n: number) => `${(Math.round(n * 10) / 10).toLocaleString("ru-RU")}%`;
+
 
 type SortKey = "crmRevenue" | "crmRomi" | "crmSales" | "crmLeads" | "leads" | "spend" | "ctr" | "cpl" | "name";
 type SortDir = "asc" | "desc";
@@ -65,6 +65,9 @@ const CreativeFunnel = () => {
   const [hasLeads, setHasLeads] = useState(false);
   const [hasSales, setHasSales] = useState(false);
   const [drawerRow, setDrawerRow] = useState<MetaCreativeRow | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
+
   const [backfilling, setBackfilling] = useState(false);
   const [orphanLeads, setOrphanLeads] = useState(0);
   const [crmTotals, setCrmTotals] = useState({ leads: 0, diagnostics: 0, sales: 0, revenue: 0 });
@@ -160,7 +163,53 @@ const CreativeFunnel = () => {
     if (hasLeads) r = r.filter((x) => x.crmLeads > 0 || x.leads > 0);
     if (hasSales) r = r.filter((x) => x.crmSales > 0);
     if (q) r = r.filter((x) => x.name.toLowerCase().includes(q) || x.adId.includes(q));
-    const sorted = [...r];
+
+    // Дедупликация: одинаковая медиа (видео/картинка) — это один креатив,
+    // даже если откручен в нескольких кампаниях. Складываем метрики.
+    const dedupKey = (x: MetaCreativeRow) =>
+      x.videoId
+      || x.videoUrl
+      || x.imageUrl
+      || x.thumbnailUrl
+      || x.posterUrl
+      || `name:${x.creativeType}:${x.name}`;
+    const groups = new Map<string, MetaCreativeRow>();
+    for (const row of r) {
+      const key = dedupKey(row);
+      const existing = groups.get(key);
+      if (!existing) {
+        groups.set(key, { ...row });
+        continue;
+      }
+      existing.spend += row.spend;
+      existing.impressions += row.impressions;
+      existing.clicks += row.clicks;
+      existing.leads += row.leads;
+      existing.messages += row.messages;
+      existing.purchases += row.purchases;
+      existing.revenue += row.revenue;
+      existing.crmLeads += row.crmLeads;
+      existing.crmQualified += row.crmQualified;
+      existing.crmSales += row.crmSales;
+      existing.crmRevenue += row.crmRevenue;
+      // Если ACTIVE есть хоть в одной кампании — считаем активным
+      if (row.effectiveStatus === "ACTIVE") existing.effectiveStatus = "ACTIVE";
+    }
+    const merged = Array.from(groups.values()).map((x) => {
+      const ctr = x.impressions > 0 ? (x.clicks / x.impressions) * 100 : 0;
+      const cpl = x.leads > 0 ? x.spend / x.leads : 0;
+      const cpc = x.clicks > 0 ? x.spend / x.clicks : 0;
+      const cpm = x.impressions > 0 ? (x.spend / x.impressions) * 1000 : 0;
+      const romi = x.spend > 0 ? ((x.revenue - x.spend) / x.spend) * 100 : 0;
+      const crmCpl = x.crmLeads > 0 ? x.spend / x.crmLeads : 0;
+      const crmCps = x.crmSales > 0 ? x.spend / x.crmSales : 0;
+      const crmAvgCheck = x.crmSales > 0 ? x.crmRevenue / x.crmSales : 0;
+      const crmRomi = x.spend > 0 ? ((x.crmRevenue - x.spend) / x.spend) * 100 : 0;
+      const crmProfit = x.crmRevenue - x.spend;
+      return { ...x, ctr, cpl, cpc, cpm, romi, crmCpl, crmCps, crmAvgCheck, crmRomi, crmProfit };
+    });
+
+    const sorted = merged;
     const dir = sortDir === "asc" ? 1 : -1;
     sorted.sort((a, b) => {
       if (sortKey === "name") return a.name.localeCompare(b.name) * dir;
@@ -178,7 +227,17 @@ const CreativeFunnel = () => {
     return sorted;
   }, [rows, sortKey, sortDir, search, status, type, hasSpend, hasLeads, hasSales]);
 
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paged = useMemo(
+    () => filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [filtered, safePage],
+  );
+  useEffect(() => { setPage(1); }, [search, status, type, hasSpend, hasLeads, hasSales, range.from, range.to]);
+
   const totals = useMemo(() => {
+
     return filtered.reduce(
       (acc, r) => ({
         spend: acc.spend + r.spend,
@@ -203,7 +262,7 @@ const CreativeFunnel = () => {
     return `${f} — ${t}`;
   }, [range]);
 
-  const attributionRate = totals.metaLeads > 0 ? (totals.crmLeads / totals.metaLeads) * 100 : 0;
+  
 
   return (
     <PageContainer>
@@ -250,28 +309,8 @@ const CreativeFunnel = () => {
         ))}
       </div>
 
-      {totals.metaLeads > 0 && attributionRate < 100 && (
-        <div className="mt-3 flex flex-wrap items-start gap-3 rounded-xl border border-warning/40 bg-warning/5 p-3 text-xs">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
-          <div className="flex-1 min-w-[280px]">
-            <span className="font-semibold">Привязка лидов: {pct(attributionRate)}.</span>
-            {" "}Meta видит {fmtNum(totals.metaLeads)} лидов, в CRM привязано к креативам {fmtNum(totals.crmLeads)}.
-            Чтобы поднять до 100%, в Meta-шаблоне URL добавьте
-            {" "}<code className="rounded bg-secondary/60 px-1">utm_content=&#123;&#123;ad.id&#125;&#125;</code>.
-            WhatsApp-лиды привязываются автоматически через CTWA referral.
-          </div>
-          <Button
-            size="sm"
-            variant="outline"
-            className="h-8 gap-1.5 border-warning/40"
-            onClick={runBackfill}
-            disabled={backfilling || !projectId}
-          >
-            {backfilling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
-            Привязать существующие лиды
-          </Button>
-        </div>
-      )}
+
+
 
 
       {/* Toolbar */}
@@ -324,8 +363,9 @@ const CreativeFunnel = () => {
       </div>
 
       <div className="mt-2 text-[11px] text-muted-foreground">
-        Показано {filtered.length} из {rows.length} креативов
+        Показано {filtered.length} из {rows.length} креативов (после объединения дублей)
       </div>
+
 
       {/* Table */}
       <div className="mt-3 overflow-hidden rounded-2xl border border-border/60 bg-card/60">
@@ -399,7 +439,7 @@ const CreativeFunnel = () => {
                   </td>
                 </tr>
               )}
-              {filtered.map((row) => {
+              {paged.map((row) => {
                 const romiPositive = row.crmRomi >= 0;
                 const RomiIcon = romiPositive ? ArrowUpRight : ArrowDownRight;
                 const cplValue = row.crmCpl > 0 ? row.crmCpl : row.cpl;
@@ -458,6 +498,62 @@ const CreativeFunnel = () => {
           </table>
         </div>
       </div>
+
+      {totalPages > 1 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="text-[11px] text-muted-foreground">
+            Стр. {safePage} из {totalPages} · показано {paged.length} из {filtered.length}
+          </div>
+          <div className="flex items-center gap-1">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-lg"
+              onClick={() => setPage(Math.max(1, safePage - 1))}
+              disabled={safePage <= 1}
+            >
+              ←
+            </Button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1)
+              .filter((p) => p === 1 || p === totalPages || Math.abs(p - safePage) <= 2)
+              .reduce<(number | "...")[]>((acc, p) => {
+                const last = acc[acc.length - 1];
+                if (last !== "..." && typeof last === "number" && p - last > 1) acc.push("...");
+                acc.push(p);
+                return acc;
+              }, [])
+              .map((p, i) =>
+                p === "..." ? (
+                  <span key={`gap-${i}`} className="px-1 text-xs text-muted-foreground">…</span>
+                ) : (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => setPage(p)}
+                    className={cn(
+                      "h-8 min-w-[32px] rounded-lg border px-2 text-xs font-medium tabular-nums transition",
+                      p === safePage
+                        ? "border-primary/60 bg-primary/10 text-primary"
+                        : "border-border/60 bg-background hover:bg-secondary/40",
+                    )}
+                  >
+                    {p}
+                  </button>
+                ),
+              )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 rounded-lg"
+              onClick={() => setPage(Math.min(totalPages, safePage + 1))}
+              disabled={safePage >= totalPages}
+            >
+              →
+            </Button>
+          </div>
+        </div>
+      )}
+
 
       <p className="mt-4 text-[11px] text-muted-foreground">
         Атрибуция: WhatsApp — через Meta CTWA referral; сайт — через UTM-шаблон с
