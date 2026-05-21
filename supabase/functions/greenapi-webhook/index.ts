@@ -499,7 +499,7 @@ Deno.serve(async (req) => {
       });
       // Fire-and-forget: попросим AI-РОПа переоценить переписку.
       // Не блокируем ответ Green API.
-      triggerChatAnalysis(leadId);
+      triggerChatAnalysis(leadId, "out");
       return json({ ok: true, leadId, projectId });
     }
 
