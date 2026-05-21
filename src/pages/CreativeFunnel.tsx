@@ -63,7 +63,8 @@ function MiniFunnel({ stages }: { stages: { label: string; value: number; displa
 
 const CreativeFunnel = () => {
   const [range, setRange] = useState<ReportPeriodRange>(() => currentMonthRange());
-  const [sortKey, setSortKey] = useState<SortKey>("crmRevenue");
+  const [sortKey, setSortKey] = useState<SortKey>("leads");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [type, setType] = useState<TypeFilter>("all");
