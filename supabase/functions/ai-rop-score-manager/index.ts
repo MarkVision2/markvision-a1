@@ -250,11 +250,25 @@ Deno.serve(async (req) => {
     if (!auth.ok) return json({ error: "unauthorized" }, 401);
 
     const body = await req.json().catch(() => ({}));
-    const projectId = String(body.project_id ?? "");
+    const projectIdParam = body.project_id ? String(body.project_id) : "";
     const managerId = body.manager_id ? String(body.manager_id) : null;
     const periodDays = Math.max(1, Math.min(180, Number(body.period_days ?? 30)));
     const generateReport = body.generate_report !== false;
-    if (!projectId) return json({ error: "project_id required" }, 400);
+
+    // Resolve projects: либо один по project_id, либо все с включёнными настройками (cron)
+    let projectIds: string[] = [];
+    if (projectIdParam) {
+      projectIds = [projectIdParam];
+    } else {
+      const { data: pr } = await admin
+        .from("ai_rop_settings")
+        .select("project_id")
+        .not("project_id", "is", null);
+      projectIds = Array.from(
+        new Set(((pr ?? []) as Array<{ project_id: string }>).map((r) => r.project_id)),
+      );
+    }
+    if (projectIds.length === 0) return json({ ok: true, results: [] });
 
     const periodEnd = new Date().toISOString();
     const periodStart = new Date(Date.now() - periodDays * 86400000).toISOString();
