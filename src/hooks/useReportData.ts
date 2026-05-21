@@ -172,7 +172,7 @@ async function fetchMetaForRange(
   };
 }
 
-function aggregateCrm(
+export function aggregateCrm(
   leads: LeadLite[],
   range: ReportPeriodRange,
   cabinetSelector: "all" | string,
@@ -206,22 +206,26 @@ function aggregateCrm(
   };
 }
 
-function computeTotals(
+export function computeTotals(
   meta: { spend: number; impressions: number; clicks: number; leads: number;
           cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number;
           cabinetDiagnosticRevenue: number },
   crm: { leads: LeadLite[]; orphanLeads: LeadLite[]; orphanVisits: LeadLite[]; orphanSales: LeadLite[]; orphanRevenue: number },
 ): ReportTotals {
-  // ИСТОЧНИК ПРАВДЫ — Таблица показателей (cabinet_daily_insights).
-  // Цифры на Dashboard / Аналитике / Отчётах должны 1:1 совпадать с Metrics.
-  // Orphan-CRM (лиды без cabinet_id) выводится отдельным предупреждением и НЕ
-  // суммируется в totals — иначе появлялась "лишняя" выручка / диагностики.
-  const totalLeads = meta.leads;
-  const cpl = meta.leads > 0 ? meta.spend / meta.leads : 0;
-  const visits = meta.cabinetDiagnostics;
-  const sales = meta.cabinetSales;
-  // Выручка = продажи + оплаты диагностик (всё из таблицы показателей).
-  const revenue = meta.cabinetRevenue + meta.cabinetDiagnosticRevenue;
+  // ЕДИНЫЙ ИСТОЧНИК ПРАВДЫ для всех страниц: CDI (кабинеты) + orphan CRM (лиды без cabinet_id).
+  // Раньше Dashboard/Reports исключали orphan, а Analytics/CRM их считали — поэтому одна
+  // и та же продажа выглядела как «3 в CRM, 2 в Reports». Orphan не может задвоиться
+  // с CDI, потому что у него нет cabinet_id (manual_sales всегда привязан к кабинету).
+  const orphanSalesCount = crm.orphanSales.length;
+  const orphanVisitsCount = crm.orphanVisits.length;
+  const orphanLeadsCount = crm.orphanLeads.length;
+
+  const totalLeads = meta.leads + orphanLeadsCount;
+  const cpl = totalLeads > 0 ? meta.spend / totalLeads : 0;
+  const visits = meta.cabinetDiagnostics + orphanVisitsCount;
+  const sales = meta.cabinetSales + orphanSalesCount;
+  // Выручка = продажи + оплаты диагностик (из CDI) + оплаты orphan-лидов (из CRM).
+  const revenue = meta.cabinetRevenue + meta.cabinetDiagnosticRevenue + crm.orphanRevenue;
   const cpv = visits > 0 ? meta.spend / visits : 0;
   const cac = sales > 0 ? meta.spend / sales : 0;
   const ctr = meta.impressions > 0 ? (meta.clicks / meta.impressions) * 100 : 0;

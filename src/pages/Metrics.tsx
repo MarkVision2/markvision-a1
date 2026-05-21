@@ -158,11 +158,6 @@ const Metrics = () => {
   const plan = getPlan(monthKey(monthCursor));
 
   const totals = data?.totals;
-  const dailyMap = useMemo(() => {
-    const m = new Map<string, DailyInsightRow>();
-    for (const d of data?.daily ?? []) m.set(d.date, d);
-    return m;
-  }, [data]);
 
   // Days in selected month
   const daysInMonth = new Date(
@@ -204,18 +199,65 @@ const Metrics = () => {
   const orphanSalesCount = orphanPaid.length;
   const orphanRevenue = orphanPaid.reduce((s, l) => s + (l.amount || 0), 0);
 
-  // Факт = только CDI (авто-синк CRM + ручной override по кабинетам).
-  // Orphan CRM (лиды без cabinet_id) НЕ прибавляем к итогам, иначе при
-  // ручном вводе того же лида в кабинет получалось задвоение
-  // (пример: 2 ручные продажи × 400k = 800k, а сверху ещё 400k из CRM).
-  // Orphan показываем отдельным предупреждением — пользователь решает,
-  // привязать лид к кабинету или ввести ручной факт.
-  const factDiagnostics = totals?.diagnostics ?? 0;
+  // Распределяем orphan-показатели по дням (по дате оплаты или создания лида),
+  // чтобы Daily-строки в таблице суммировались точно в Fact-строку.
+  // Без этого пользователь видит «расхождение»: сумма колонки ≠ итог.
+  const dailyMap = useMemo(() => {
+    const m = new Map<string, DailyInsightRow>();
+    for (const d of data?.daily ?? []) m.set(d.date, { ...d });
+
+    const emptyDay = (date: string): DailyInsightRow => ({
+      date,
+      spend: 0, impressions: 0, clicks: 0, leads: 0,
+      pixelRevenue: 0, revenue: 0,
+      diagnostics: 0, crmDiagnostics: 0, manualDiagnostics: 0,
+      diagnosticRevenue: 0, crmDiagnosticRevenue: 0, manualDiagnosticRevenue: 0,
+      sales: 0, crmSales: 0, manualSales: 0,
+      salesRevenue: 0, crmSalesRevenueOnly: 0, manualSalesRevenue: 0,
+      crmRevenue: 0, crmRevenueOnly: 0, manualRevenue: 0,
+    });
+
+    const dayKey = (iso: string) => iso.slice(0, 10);
+
+    for (const l of orphanThisMonth) {
+      const created = dayKey(l.createdAt);
+      const cur = m.get(created) ?? emptyDay(created);
+      cur.leads += 1;
+      m.set(created, cur);
+    }
+    for (const l of orphanThisMonth.filter(isLeadVisit)) {
+      const key = dayKey(l.paidAt ?? l.createdAt);
+      const cur = m.get(key) ?? emptyDay(key);
+      cur.diagnostics += 1;
+      cur.crmDiagnostics += 1;
+      m.set(key, cur);
+    }
+    for (const l of orphanPaid) {
+      const key = dayKey(l.paidAt ?? l.createdAt);
+      const cur = m.get(key) ?? emptyDay(key);
+      const amt = l.amount || 0;
+      cur.sales += 1;
+      cur.crmSales += 1;
+      cur.salesRevenue += amt;
+      cur.crmSalesRevenueOnly += amt;
+      cur.crmRevenue += amt;
+      cur.crmRevenueOnly += amt;
+      m.set(key, cur);
+    }
+    return m;
+  }, [data, orphanThisMonth, orphanPaid]);
+
+  // ЕДИНЫЙ ИСТОЧНИК ПРАВДЫ: CDI (кабинеты) + orphan CRM (лиды без cabinet_id).
+  // Раньше orphan исключали, чтобы избежать задвоения с manual_sales — но manual
+  // привязан к конкретному кабинету+дате, а orphan лиды имеют cabinet_id=NULL, поэтому
+  // они никогда не пересекаются. Включаем orphan в итоги, иначе цифры на Metrics
+  // отличаются от CRM/Analytics/Dashboard (одна и та же продажа выглядит как «3/2/2»).
+  const factDiagnostics = (totals?.diagnostics ?? 0) + orphanDiagnostics;
   const factDiagnosticRevenue = totals?.diagnosticRevenue ?? 0;
-  const factSales = totals?.sales ?? 0;
-  const factSalesRevenue = totals?.salesRevenue ?? 0;
-  const factRevenue = totals?.crmRevenue ?? 0;
-  const factLeads = totals?.leads ?? 0;
+  const factSales = (totals?.sales ?? 0) + orphanSalesCount;
+  const factSalesRevenue = (totals?.salesRevenue ?? 0) + orphanRevenue;
+  const factRevenue = (totals?.crmRevenue ?? 0) + orphanRevenue;
+  const factLeads = (totals?.leads ?? 0) + orphanThisMonth.length;
   const factCac = factSales > 0 ? (totals?.spend ?? 0) / factSales : 0;
   const factCpd = factDiagnostics > 0 ? (totals?.spend ?? 0) / factDiagnostics : 0;
   const crLeadDiagnostics =
@@ -436,9 +478,9 @@ const Metrics = () => {
           </div>
           <div className="mt-1.5 text-lg font-bold tabular-nums">{formatTenge(orphanRevenue)}</div>
           <div className="mt-0.5 text-[11px] text-muted-foreground">
-            {orphanSalesCount} оплат · НЕ учитываются в Итого
+            {orphanSalesCount} оплат · учтены в Итого
             {orphanRevenue > 0 && cabinetId === "all" && (
-              <div className="mt-1 text-warning">⚠ Привяжи лида к кабинету в CRM или внеси ручной факт — иначе данные потеряются</div>
+              <div className="mt-1 text-warning">⚠ Привяжи лида к кабинету в CRM, чтобы атрибутировать продажу к источнику рекламы</div>
             )}
           </div>
         </div>
@@ -448,7 +490,7 @@ const Metrics = () => {
           </div>
           <div className="mt-1.5 text-lg font-bold tabular-nums text-success">{formatTenge(factRevenue)}</div>
           <div className="mt-0.5 text-[11px] text-muted-foreground">
-            {factSales} оплат · CDI (авто из CRM + ручной факт)
+            {factSales} оплат · CDI + orphan CRM (1:1 с Dashboard и Analytics)
           </div>
         </div>
       </div>
