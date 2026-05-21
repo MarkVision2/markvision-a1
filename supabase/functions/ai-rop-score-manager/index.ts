@@ -287,19 +287,25 @@ Deno.serve(async (req) => {
     if (managerIds.length === 0) return json({ ok: true, results: [] });
 
     const results: unknown[] = [];
-    for (const mid of managerIds) {
-      try {
-        const r = await scoreOne({
-          projectId,
-          managerId: mid,
-          periodStart,
-          periodEnd,
-          generateReport,
-        });
-        results.push(r);
-      } catch (e) {
-        console.error("[ai-rop-score-manager] failed for", mid, e);
-        results.push({ manager_id: mid, error: e instanceof Error ? e.message : String(e) });
+    for (const pid of projectIds) {
+      for (const mid of managerIds) {
+        try {
+          const r = await scoreOne({
+            projectId: pid,
+            managerId: mid,
+            periodStart,
+            periodEnd,
+            generateReport,
+          });
+          results.push({ project_id: pid, ...r });
+        } catch (e) {
+          console.error("[ai-rop-score-manager] failed", pid, mid, e);
+          results.push({
+            project_id: pid,
+            manager_id: mid,
+            error: e instanceof Error ? e.message : String(e),
+          });
+        }
       }
     }
     return json({ ok: true, results });
