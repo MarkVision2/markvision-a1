@@ -72,7 +72,7 @@ export function AiRopScripts({ projectId }: { projectId?: string | null } = {}) 
   const onGenerateNew = async () => {
     setGenerating(true);
     try {
-      const newScript = await generateScript(scripts);
+      const newScript = await generateScript(scripts, projectId ?? null);
       persist([newScript, ...scripts]);
       toast({
         title: "ИИ создал новый скрипт",
@@ -88,6 +88,7 @@ export function AiRopScripts({ projectId }: { projectId?: string | null } = {}) 
       setGenerating(false);
     }
   };
+
 
   const newScript = () => {
     setEditing({
