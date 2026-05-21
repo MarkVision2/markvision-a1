@@ -194,7 +194,10 @@ const CreativeFunnel = () => {
     );
   }, [filtered]);
 
-  const totalsRomi = totals.spend > 0 ? ((totals.crmRevenue - totals.spend) / totals.spend) * 100 : 0;
+  // Используем фактические CRM-показатели по проекту (а не только привязанные к креативам),
+  // чтобы цифры в KPI-полоске сходились с реальной CRM
+  const crmRevenueTotal = crmTotals.revenue;
+  const totalsRomi = totals.spend > 0 ? ((crmRevenueTotal - totals.spend) / totals.spend) * 100 : 0;
 
   const rangeLabel = useMemo(() => {
     const f = range.from.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
