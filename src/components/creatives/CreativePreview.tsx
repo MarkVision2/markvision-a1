@@ -49,9 +49,9 @@ export function CreativePreview({ row, compact = false, playable = false, classN
     size: compact ? 240 : 960,
   });
 
-  const refreshVideoPreview = async () => {
+  const refreshVideoPreview = async (force = false) => {
     if (!row.adId) return null;
-    const data = await refreshMetaCreative(row.adId);
+    const data = await refreshMetaCreative(row.adId, force ? { force: true } : undefined);
     if (data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
     if (data?.ok && data.video_url) {
       setPreviewVideoUrl(data.video_url);
@@ -96,19 +96,15 @@ export function CreativePreview({ row, compact = false, playable = false, classN
 
   const handlePlayClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (previewVideoUrl) {
-      setPlayerOpen(true);
-      return;
-    }
+    // Открываем модалку сразу — пользователь должен увидеть отклик на клик.
+    setPlayerOpen(true);
+    if (previewVideoUrl) return;
     setLoadingFullVideo(true);
-    const url = await refreshVideoPreview().catch(() => null);
+    // Форсируем — игнорируем кеш/cooldown, потому что это явный клик пользователя.
+    await refreshVideoPreview(true).catch(() => null);
     setLoadingFullVideo(false);
-    if (url) {
-      setPlayerOpen(true);
-    } else {
-      toast.error("Не удалось получить видео из Meta");
-    }
   };
+
 
   return (
     <div className={cn("relative overflow-hidden rounded-xl bg-background", className)}>
