@@ -465,8 +465,12 @@ Deno.serve(async (req) => {
         isAuto: type === "outgoingAPIMessageReceived",
         externalId: idMessage,
       });
+      // Fire-and-forget: попросим AI-РОПа переоценить переписку.
+      // Не блокируем ответ Green API.
+      triggerChatAnalysis(leadId);
       return json({ ok: true, leadId, projectId });
     }
+
 
     if (type === "stateInstanceChanged") {
       // Push the live state into the bound row so the UI status badge
