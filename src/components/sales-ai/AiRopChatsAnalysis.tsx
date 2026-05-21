@@ -1,11 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   AlertTriangle,
   CheckCircle2,
   Clock,
   Heart,
+  Loader2,
   MessageSquare,
+  Play,
   Search,
   Sparkles,
   TrendingDown,
@@ -14,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { Lead } from "@/types/crm";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 interface Props {
   leads: Lead[];
@@ -40,9 +43,17 @@ interface ChatAnalysisRow {
 
 export function AiRopChatsAnalysis({ leads, projectId }: Props) {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [rows, setRows] = useState<ChatAnalysisRow[]>([]);
   const [loading, setLoading] = useState(false);
+  // Backfill: сколько лидов проекта имеют ≥2 сообщения и НЕ разобраны.
+  const [pendingIds, setPendingIds] = useState<string[]>([]);
+  const [backfillRunning, setBackfillRunning] = useState(false);
+  const [backfillProgress, setBackfillProgress] = useState({ done: 0, total: 0 });
+  // refresh counter — поднимаем чтобы переподтянуть rows после backfill
+  const [refreshTick, setRefreshTick] = useState(0);
 
+  // Подгрузка готовых разборов
   useEffect(() => {
     if (!projectId) {
       setRows([]);
@@ -73,7 +84,106 @@ export function AiRopChatsAnalysis({ leads, projectId }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [projectId]);
+  }, [projectId, refreshTick]);
+
+  // Считаем лиды-кандидаты для backfill: те, у кого в communications ≥2 сообщения
+  // и которых ещё нет в ai_rop_chat_analyses. Делаем «вручную» — Supabase RLS
+  // и анти-JOIN'ы через PostgREST требуют отдельных запросов.
+  useEffect(() => {
+    if (!projectId) {
+      setPendingIds([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      // 1. Все lead_id текущего проекта (только из CRM таблицы leads).
+      const { data: leadsData, error: leadsErr } = await supabase
+        .from("leads")
+        .select("id")
+        .eq("project_id", projectId)
+        .limit(2000);
+      if (cancelled || leadsErr || !leadsData) return;
+      const allLeadIds = leadsData.map((l) => (l as { id: string }).id);
+      if (allLeadIds.length === 0) {
+        setPendingIds([]);
+        return;
+      }
+      // 2. У кого есть хотя бы 2 communications? Берём lead_id, считаем в памяти.
+      const { data: comms, error: cErr } = await supabase
+        .from("communications")
+        .select("lead_id")
+        .in("lead_id", allLeadIds)
+        .limit(20000);
+      if (cancelled || cErr || !comms) return;
+      const cnt = new Map<string, number>();
+      for (const c of comms as Array<{ lead_id: string }>) {
+        cnt.set(c.lead_id, (cnt.get(c.lead_id) ?? 0) + 1);
+      }
+      const eligible = allLeadIds.filter((id) => (cnt.get(id) ?? 0) >= 2);
+      if (eligible.length === 0) {
+        setPendingIds([]);
+        return;
+      }
+      // 3. Какие из них уже разобраны?
+      const { data: already, error: aErr } = await supabase
+        .from("ai_rop_chat_analyses")
+        .select("lead_id")
+        .in("lead_id", eligible);
+      if (cancelled || aErr) return;
+      const done = new Set(
+        (already ?? []).map((r) => (r as { lead_id: string }).lead_id),
+      );
+      const pending = eligible.filter((id) => !done.has(id));
+      if (!cancelled) setPendingIds(pending);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, refreshTick]);
+
+  // Backfill — последовательно (с малой параллельностью) вызываем analyze-chat.
+  // На клиенте без service-role используем обычный invoke, который сам прокинет JWT.
+  const runBackfill = useCallback(async () => {
+    if (!projectId || pendingIds.length === 0 || backfillRunning) return;
+    // Не больше 100 за раз — иначе долго и можно упереться в лимиты Lovable AI.
+    const batch = pendingIds.slice(0, 100);
+    setBackfillRunning(true);
+    setBackfillProgress({ done: 0, total: batch.length });
+    let okCount = 0;
+    let failCount = 0;
+    // Параллельность 3 — баланс между скоростью и не-перегрузкой LLM.
+    const CONCURRENCY = 3;
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < batch.length) {
+        const idx = cursor++;
+        const leadId = batch[idx];
+        try {
+          const { error } = await supabase.functions.invoke("ai-rop-analyze-chat", {
+            body: { lead_id: leadId },
+          });
+          if (error) {
+            failCount++;
+            console.warn("[backfill] invoke failed", leadId, error.message);
+          } else {
+            okCount++;
+          }
+        } catch (e) {
+          failCount++;
+          console.warn("[backfill] threw", leadId, e);
+        }
+        setBackfillProgress({ done: idx + 1, total: batch.length });
+      }
+    };
+    await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+    setBackfillRunning(false);
+    toast({
+      title: "Анализ чатов запущен",
+      description: `Готово ${okCount}, ошибок ${failCount} из ${batch.length}. Обновляем статистику…`,
+    });
+    // Небольшая пауза — функции пишут в БД асинхронно, дадим успеть.
+    setTimeout(() => setRefreshTick((t) => t + 1), 1500);
+  }, [projectId, pendingIds, backfillRunning, toast]);
 
   const stats = useMemo(() => {
     const total = rows.length;
@@ -140,6 +250,77 @@ export function AiRopChatsAnalysis({ leads, projectId }: Props) {
           icon={Clock}
         />
       </div>
+
+      {/* Backfill — анализ старых чатов */}
+      {projectId && pendingIds.length > 0 && (
+        <div className="rounded-2xl border border-warning/40 bg-warning/10 p-4">
+          <div className="flex items-start gap-3">
+            <span className="grid h-9 w-9 place-items-center rounded-xl bg-warning/20 text-warning ring-1 ring-warning/40">
+              <Sparkles className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-sm font-bold">
+                {pendingIds.length} чатов ждут анализа
+              </h3>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Автоанализ работает только когда менеджер отправляет новое сообщение
+                через WhatsApp. Старые лиды и переписки без ответа админа РОП не видит.
+                Запустите ручной прогон, чтобы наполнить статистику.
+              </p>
+              {backfillRunning && (
+                <div className="mt-2">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span>
+                      Анализирую… {backfillProgress.done} из {backfillProgress.total}
+                    </span>
+                    <span className="text-muted-foreground">
+                      ~{Math.max(1, Math.round((backfillProgress.total - backfillProgress.done) * 4))}
+                      с осталось
+                    </span>
+                  </div>
+                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-secondary/60">
+                    <div
+                      className="h-full bg-primary transition-all"
+                      style={{
+                        width: `${
+                          backfillProgress.total
+                            ? (backfillProgress.done / backfillProgress.total) * 100
+                            : 0
+                        }%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={runBackfill}
+              disabled={backfillRunning || pendingIds.length === 0}
+              className={cn(
+                "inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-semibold",
+                backfillRunning
+                  ? "bg-secondary/60 text-muted-foreground"
+                  : "bg-warning text-warning-foreground hover:bg-warning/90",
+              )}
+            >
+              {backfillRunning ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Play className="h-3.5 w-3.5" />
+              )}
+              {backfillRunning
+                ? `${backfillProgress.done}/${backfillProgress.total}`
+                : `Прогнать ${Math.min(100, pendingIds.length)} чатов`}
+            </button>
+          </div>
+          {pendingIds.length > 100 && !backfillRunning && (
+            <p className="mt-2 text-[10px] text-muted-foreground">
+              За один прогон обрабатывается до 100 чатов, чтобы не упереться в лимиты ИИ.
+              После завершения нажмите ещё раз для следующей партии.
+            </p>
+          )}
+        </div>
+      )}
 
       {/* Что анализирует */}
       <div className="rounded-2xl border border-primary/30 bg-primary/5 p-4">

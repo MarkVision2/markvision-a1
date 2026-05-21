@@ -49,8 +49,26 @@ type WhisperSegment = {
   speaker?: string;
 };
 
+// Хелпер: fetch с таймаутом. Edge-функции Supabase убиваются по wall-clock
+// лимиту (~60-150с в зависимости от плана) — без явного timeout висящий
+// upstream-запрос съест весь бюджет функции.
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs: number,
+): Promise<Response> {
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
 async function downloadAudio(url: string): Promise<{ blob: Blob; filename: string }> {
-  const r = await fetch(url, { redirect: "follow" });
+  // Sipuni обычно отдаёт запись быстро. 30с с запасом на лёгкую перегрузку.
+  const r = await fetchWithTimeout(url, { redirect: "follow" }, 30_000);
   if (!r.ok) throw new Error(`download ${r.status}`);
   const len = Number(r.headers.get("content-length") ?? 0);
   if (len && len > MAX_AUDIO_BYTES) throw new Error(`audio too large: ${len}`);
@@ -74,11 +92,16 @@ async function transcribe(audio: Blob, filename: string) {
   fd.append("response_format", "verbose_json");
   fd.append("language", "ru");
 
-  const resp = await fetch(`${LOVABLE_BASE}/audio/transcriptions`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${LOVABLE_API_KEY}` },
-    body: fd,
-  });
+  // Whisper для 5-минутного звонка ~10с, для 30-минутного — до минуты. 90с с запасом.
+  const resp = await fetchWithTimeout(
+    `${LOVABLE_BASE}/audio/transcriptions`,
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}` },
+      body: fd,
+    },
+    90_000,
+  );
   if (!resp.ok) {
     const t = await resp.text();
     throw new Error(`whisper HTTP ${resp.status}: ${t.slice(0, 400)}`);
@@ -179,21 +202,27 @@ ${transcript}`;
 
 async function callLLM(system: string, user: string) {
   if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
-  const resp = await fetch(`${LOVABLE_BASE}/chat/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
+  // Gemini обычно укладывается в 5-15с. 60с с запасом на лёгкие лаги/ретраи
+  // на стороне gateway. Без timeout висящий запрос убьёт весь бюджет функции.
+  const resp = await fetchWithTimeout(
+    `${LOVABLE_BASE}/chat/completions`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${LOVABLE_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: LLM_MODEL,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        response_format: { type: "json_object" },
+      }),
     },
-    body: JSON.stringify({
-      model: LLM_MODEL,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      response_format: { type: "json_object" },
-    }),
-  });
+    60_000,
+  );
   if (!resp.ok) {
     const t = await resp.text();
     throw new Error(`LLM HTTP ${resp.status}: ${t.slice(0, 400)}`);

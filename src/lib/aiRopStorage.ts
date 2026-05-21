@@ -54,8 +54,11 @@ function writeLocal<T>(key: CacheKey, value: T): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(PREFIX + key, JSON.stringify(value));
-  } catch {
-    /* quota */
+  } catch (e) {
+    // QuotaExceededError / SecurityError. Не критично — данные останутся в БД
+    // и в memCache; на следующем заходе подтянутся через гидратацию.
+    // Логируем, чтобы поймать неожиданные кейсы.
+    console.warn("[aiRop] localStorage write failed:", key, e);
   }
 }
 
@@ -658,9 +661,40 @@ async function syncCollection<T extends Identifiable>(opts: {
  */
 export async function hydrateAiRopStorage(projectId: string | null, userId: string | null): Promise<void> {
   const seq = ++hydrateSeq;
+  // Сбрасываем кэш и LS-зеркало при смене проекта ИЛИ юзера (включая выход в
+  // null = logout). Иначе после logout/login следующий юзер на пол-секунды видит
+  // настройки/скрипты/сессии предыдущего, пока идёт гидратация.
+  const projectChanged = currentProjectId !== projectId;
+  const userChanged = currentUserId !== userId;
+  const shouldReset = projectChanged || userChanged;
   currentProjectId = projectId;
   currentUserId = userId;
+  if (shouldReset) {
+    memCache.delete("settings");
+    memCache.delete("scripts");
+    memCache.delete("content-ideas");
+    memCache.delete("trainer-sessions");
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(PREFIX + "settings");
+        window.localStorage.removeItem(PREFIX + "scripts");
+        window.localStorage.removeItem(PREFIX + "content-ideas");
+        window.localStorage.removeItem(PREFIX + "trainer-sessions");
+      } catch {
+        /* ignore */
+      }
+    }
+    emit("settings");
+    emit("scripts");
+    emit("content-ideas");
+    emit("trainer-sessions");
+  }
+  // shouldReset защищает от устаревших данных. Реальная подгрузка из БД ниже —
+  // только если есть и проект, и юзер (без auth не пройдёт RLS).
   if (!projectId) return;
+  // seq используется внутри хелперов ниже через isCurrentHydration() —
+  // чтобы поздний ответ медленной гидратации не затёр результаты новой.
+  void seq;
 
   // 1. Settings
   try {

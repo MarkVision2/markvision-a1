@@ -304,7 +304,14 @@ function CallDetailModal({
           </div>
           <div className="flex items-center gap-3">
             <div className="text-right">
-              <div className={cn("text-3xl font-bold tabular-nums", `text-${tone}`)}>
+              <div
+                className={cn(
+                  "text-3xl font-bold tabular-nums",
+                  tone === "success" && "text-success",
+                  tone === "warning" && "text-warning",
+                  tone === "destructive" && "text-destructive",
+                )}
+              >
                 {score}
               </div>
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
