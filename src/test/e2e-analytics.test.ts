@@ -132,6 +132,59 @@ describe("Сквозная воронка: рекламный кабинет →
   });
 });
 
+describe("Фильтрация продаж по paid_at (а не createdAt) — sync с CDI", () => {
+  it("лид создан в апреле, оплачен в мае: попадает в майские продажи", () => {
+    const lead = mk({
+      createdAt: "2026-04-15T12:00:00Z",
+      paidAt: "2026-05-10T12:00:00Z",
+      paid: true,
+      amount: 300_000,
+    });
+    const crm = aggregateCrm([lead], range, "all");
+    const meta = { ...emptyMeta, spend: 100_000 };
+    const totals = computeTotals(meta, crm);
+
+    expect(totals.sales).toBe(1);
+    expect(totals.revenue).toBe(300_000);
+    expect(totals.cac).toBe(100_000);
+  });
+
+  it("лид создан в мае, оплачен в июне: НЕ в майские продажи", () => {
+    const lead = mk({
+      createdAt: "2026-05-15T12:00:00Z",
+      paidAt: "2026-06-10T12:00:00Z",
+      lastActivityAt: "2026-06-10T12:00:00Z",
+      paid: true,
+      amount: 300_000,
+    });
+    const crm = aggregateCrm([lead], range, "all");
+    const meta = { ...emptyMeta, spend: 100_000 };
+    const totals = computeTotals(meta, crm);
+
+    expect(totals.sales).toBe(0); // оплачен в июне → майских продаж нет
+    expect(totals.crmLeads).toBe(1); // но как лид мая учитывается
+  });
+
+  it("несколько лидов: 1 создан раньше + оплачен в периоде, 1 свежий", () => {
+    const oldPaidNow = mk({
+      createdAt: "2026-04-01T10:00:00Z",
+      paidAt: "2026-05-20T10:00:00Z",
+      paid: true,
+      amount: 200_000,
+    });
+    const freshPaid = mk({
+      createdAt: "2026-05-10T10:00:00Z",
+      paidAt: "2026-05-15T10:00:00Z",
+      paid: true,
+      amount: 100_000,
+    });
+    const crm = aggregateCrm([oldPaidNow, freshPaid], range, "all");
+
+    expect(crm.orphanSales.length).toBe(2);
+    expect(crm.orphanRevenue).toBe(300_000);
+  });
+});
+
 describe("Изоляция данных при выборе конкретного кабинета", () => {
   it("orphan не показываются для конкретного кабинета", () => {
     const orphan = mk({ paid: true, amount: 200_000, cabinetId: null });

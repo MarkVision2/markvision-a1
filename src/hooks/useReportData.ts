@@ -183,19 +183,27 @@ export function aggregateCrm(
     const t = new Date(l.createdAt).getTime();
     return t >= fromTs && t < toTs;
   });
+  // Лиды, оплаченные В ЭТОМ периоде, даже если созданы раньше. CDI считает продажи по paid_at,
+  // поэтому orphan-логика тоже должна смотреть на paid_at — иначе теряем лиды, созданные в
+  // прошлом месяце и оплаченные в этом.
+  const paidInRange = leads.filter((l) => {
+    if (!isLeadPaid(l)) return false;
+    const paidAt = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
+    const t = new Date(paidAt).getTime();
+    return t >= fromTs && t < toTs;
+  });
   // Orphan = только лиды БЕЗ cabinet_id (данные кабинетов берём из CDI, чтобы не дублировать).
-  // Когда пользователь выбрал КОНКРЕТНЫЙ кабинет — orphan-лиды ему не нужны (они не относятся
-  // ни к какому кабинету). Так Dashboard/Reports с фильтром по кабинету дают те же цифры,
-  // что Metrics/Analytics с тем же фильтром.
+  // Когда пользователь выбрал КОНКРЕТНЫЙ кабинет — orphan-лиды ему не нужны.
   const orphanLeads = cabinetSelector === "all"
     ? inRange.filter((l) => !l.cabinetId)
     : [];
-  // isLeadPaid / isLeadVisit смотрят на колонку `leads.paid` (выставляется CRM
-  // при переводе в терминальную оплаченную стадию) и поддерживают разные
-  // языковые варианты ключа стадии. Раньше было захардкожено "paid" —
-  // у проектов с переименованной стадией orphan-выручка просто не считалась.
+  // orphanVisits/orphanSales считаются от ВСЕХ paid-в-периоде, не только тех, что созданы в нём.
+  // Цифры стыкуются с CDI (которая тоже фильтрует sales по paid_at).
+  const orphanPaidInRange = cabinetSelector === "all"
+    ? paidInRange.filter((l) => !l.cabinetId)
+    : [];
   const orphanVisits = orphanLeads.filter(isLeadVisit);
-  const orphanSales = orphanLeads.filter(isLeadPaid);
+  const orphanSales = orphanPaidInRange;
   const orphanRevenue = orphanSales.reduce((s, l) => s + (l.amount || 0), 0);
   return {
     leads: inRange,

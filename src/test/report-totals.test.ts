@@ -135,8 +135,27 @@ describe("aggregateCrm — orphan детектирование", () => {
     expect(crm.orphanLeads.length).toBe(0);
   });
 
-  it("лиды вне диапазона периода не считаются", () => {
-    const lead = mkLead({ createdAt: "2026-04-15T12:00:00Z", paid: true, amount: 100_000 });
+  it("лид создан раньше периода, но оплачен в периоде — учитывается (как CDI)", () => {
+    // CDI считает продажи по paid_at — старая логика по createdAt теряла такие продажи.
+    const lead = mkLead({
+      createdAt: "2026-04-15T12:00:00Z",
+      paidAt: "2026-05-10T12:00:00Z",
+      paid: true,
+      amount: 100_000,
+    });
+    const crm = aggregateCrm([lead], range, "all");
+    expect(crm.orphanSales.length).toBe(1);
+    expect(crm.orphanRevenue).toBe(100_000);
+  });
+
+  it("лид создан и оплачен ДО периода — не учитывается", () => {
+    const lead = mkLead({
+      createdAt: "2026-04-15T12:00:00Z",
+      paidAt: "2026-04-20T12:00:00Z",
+      lastActivityAt: "2026-04-20T12:00:00Z",
+      paid: true,
+      amount: 100_000,
+    });
     const crm = aggregateCrm([lead], range, "all");
     expect(crm.orphanSales.length).toBe(0);
   });
