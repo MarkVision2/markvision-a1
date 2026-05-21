@@ -32,6 +32,7 @@ export function AiRopSettings() {
 
   useEffect(() => {
     setS(getRopSettings());
+    return subscribeAiRop("settings", () => setS(getRopSettings()));
   }, []);
 
   const patch = <K extends keyof RopSettings>(key: K, value: RopSettings[K]) => {
