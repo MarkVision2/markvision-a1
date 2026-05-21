@@ -354,8 +354,9 @@ const CreativeFunnel = () => {
       </div>
 
       <div className="mt-2 text-[11px] text-muted-foreground">
-        Показано {filtered.length} из {rows.length} креативов
+        Показано {filtered.length} из {rows.length} креативов (после объединения дублей)
       </div>
+
 
       {/* Table */}
       <div className="mt-3 overflow-hidden rounded-2xl border border-border/60 bg-card/60">
