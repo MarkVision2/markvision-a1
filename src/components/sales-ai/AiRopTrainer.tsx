@@ -22,6 +22,7 @@ import {
   getTrainerSessions,
   newId,
   saveTrainerSessions,
+  subscribeAiRop,
   TRAINER_SCENARIOS,
   type TrainerMessage,
   type TrainerScenario,
@@ -53,6 +54,11 @@ export function AiRopTrainer() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [active?.messages.length]);
+
+  useEffect(() => {
+    setSessions(getTrainerSessions());
+    return subscribeAiRop("trainer-sessions", () => setSessions(getTrainerSessions()));
+  }, []);
 
   const persist = (next: TrainerSession[]) => {
     setSessions(next);
