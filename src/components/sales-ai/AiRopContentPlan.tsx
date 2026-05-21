@@ -22,6 +22,7 @@ import {
   getRopSettings,
   newId,
   saveContentIdeas,
+  subscribeAiRop,
   type ContentIdea,
 } from "@/lib/aiRopStorage";
 import { useToast } from "@/hooks/use-toast";
