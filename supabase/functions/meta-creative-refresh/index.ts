@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
   if (rowErr) return json({ ok: false, error: rowErr.message }, 500);
   if (!row) return json({ ok: false, error: "not found" }, 404);
   const videoId = (row as { video_id?: string }).video_id;
-  if (!videoId) return json({ ok: false, error: "not a video creative" }, 400);
+  if (!videoId) return json({ ok: false, reason: "not_video", thumbnail_url: (row as { thumbnail_url?: string }).thumbnail_url ?? null }, 200);
 
   try {
     const r = await fetch(
