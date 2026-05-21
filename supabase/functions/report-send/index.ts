@@ -1,4 +1,4 @@
-import { requireUser } from "../_lib/auth.ts";
+import { requireUser, userHasRole } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
