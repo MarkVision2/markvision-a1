@@ -540,3 +540,219 @@ LLM-инференс. Whisper и TTS — отдельно. Это уровень
 
 Для очень больших клиентов стоит добавить дешёвую модель (`gemini-2.5-flash-lite`)
 для скоринга чатов и оставить полную модель только для звонков и менеджеров.
+
+---
+
+## 10. Phase 2 — расширения после MVP
+
+Разделы ниже **не обязательны** для первого релиза, но окупаются быстро.
+Делать после того, как пп. 1-7 раздела 7 (Порядок выкатки) стабилизированы.
+
+### 10.1 Уведомления о критичных нарушениях
+
+**Что:** РОП пушит владельцу клиники, когда находит критичную проблему —
+в Telegram, email или in-app.
+
+**Триггеры:**
+- `ai_rop_chat_analyses.flag_ghosted_by_manager = true` (менеджер пропал
+  из чата на >SLA)
+- `leadSlaMinutes(lead) > 30` И стадия = `new` или `no_answer` (горящий лид без ответа)
+- `ai_rop_call_analyses.overall_score < 30` (катастрофически плохой звонок)
+- `ai_rop_manager_scores.overall_score` упал на 20+ пунктов за неделю
+
+**Миграция:**
+```sql
+create type notification_kind as enum (
+  'sla_breach','manager_ghosted','bad_call','manager_score_drop',
+  'hot_lead','script_suggested','content_idea_generated'
+);
+create type notification_channel as enum ('inapp','telegram','email');
+
+create table public.ai_rop_notifications (
+  id uuid primary key default gen_random_uuid(),
+  project_id uuid references public.projects(id) on delete cascade,
+  recipient_id uuid references auth.users(id) on delete cascade,
+  kind notification_kind not null,
+  channel notification_channel not null,
+  title text not null,
+  body text not null,
+  payload jsonb,           -- {lead_id, manager_id, score, ...}
+  link text,               -- /sales-ai?tab=managers&id=... — куда переходить
+  read_at timestamptz,
+  delivered_at timestamptz,
+  created_at timestamptz not null default now()
+);
+create index on public.ai_rop_notifications(recipient_id, read_at, created_at desc);
+alter table public.ai_rop_notifications enable row level security;
+```
+
+**Edge function `ai-rop-notify-on-violation`:**
+- Триггерится из `ai-rop-analyze-call` / `ai-rop-analyze-chat` после оценки.
+- Проверяет правила выше.
+- Кладёт строку в `ai_rop_notifications`.
+- Если `channel = 'telegram'` — дёргает Telegram Bot API.
+- Если `channel = 'email'` — через Resend / SendGrid.
+
+**Настройки получателя** (расширить `ai_rop_settings`):
+```sql
+alter table public.ai_rop_settings add column notification_channels notification_channel[] default '{inapp}';
+alter table public.ai_rop_settings add column telegram_chat_id text;
+alter table public.ai_rop_settings add column notification_quiet_hours int4range; -- [22,8)
+```
+
+**UI:**
+- В шапке `SalesAI.tsx` рядом с «23 лидов в работе» добавить колокольчик
+  с количеством непрочитанных.
+- В `AiRopSettings.tsx` — секция «Уведомления»: выбор каналов, ввод Telegram
+  chat_id, тихие часы.
+
+### 10.2 Daily Digest владельцу клиники
+
+**Что:** утренний дайджест в 9:00 по локальному времени проекта —
+короткий отчёт «вчера/за ночь» с топ-проблемами и идеями.
+
+**Edge function `ai-rop-daily-digest`** (Supabase cron `0 9 * * *` по TZ проекта):
+1. Для каждого проекта:
+   - Считает вчерашние KPI (лиды, оплаты, средний ответ, SLA-нарушения).
+   - Берёт топ-3 худших звонка (по `overall_score`).
+   - Берёт топ-3 ghosted-чата.
+   - Берёт менеджера дня (лучший по `manager_scores`) и менеджера-аутсайдера.
+   - Берёт идеи контента, сгенерированные за ночь.
+2. Просит LLM сжать в 5-6 предложений с эмодзи (для Telegram).
+3. Отправляет в каналы из `ai_rop_settings.notification_channels`.
+
+**Шаблон сообщения** (пример):
+```
+📊 Утро. Вчера в клинике:
+✅ 18 новых лидов, 3 оплаты (~$1 200)
+⏱ SLA: 5 нарушений (норма ≤2)
+🥇 Топ дня: Айгуль — конверсия 22%
+⚠️ Внимание: Бекзат — 2 ghosted чата, средний балл 41/100
+💡 ИИ предложил 2 идеи контента (Reels про сроки лечения)
+👉 Открыть дашборд: https://app.markvision.kz/sales-ai
+```
+
+### 10.3 Лидерборд тренажёра (геймификация)
+
+**Что:** мотивация админов тренироваться — публичный рейтинг + бейджи.
+
+**Миграция:**
+```sql
+create table public.ai_rop_trainer_achievements (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade,
+  project_id uuid references public.projects(id) on delete cascade,
+  badge_id text not null,        -- 'price_master','100_sessions','perfect_week',...
+  badge_title text not null,
+  badge_icon text not null,
+  earned_at timestamptz not null default now(),
+  unique(user_id, badge_id)
+);
+```
+
+**Логика бейджей** (edge function `ai-rop-award-badges`, триггер — после
+завершения сессии тренажёра):
+- `first_session` — за первую тренировку
+- `10_sessions` / `50_sessions` / `100_sessions` — за количество
+- `price_master` — 5 сессий с категорией «возражение дорого» с баллом ≥80
+- `perfect_score` — 100/100 в любом сценарии
+- `streak_7` — тренировался 7 дней подряд
+- `top_of_month` — топ-1 по среднему баллу за месяц
+
+**UI:**
+- На вкладке Тренажёр — секция «Лидерборд проекта» (топ-10 за месяц).
+- В профиле админа — стенка бейджей.
+- Селектор «Бросить вызов» — рядом с админом-аутсайдером кнопка
+  «Я делаю лучше» (запускает сценарий, по которому он провалился).
+
+### 10.4 Peer Review (сравнение менеджеров)
+
+**Что:** РОП показывает, какие приёмы топ-менеджера отсутствуют у отстающего.
+Не унижает, а конкретно рекомендует — «вот фраза, попробуй».
+
+**Edge function `ai-rop-peer-compare`:**
+1. Берёт двух менеджеров: эталон (top-1 по `overall_score`) и таргет
+   (выбранный пользователем или худший).
+2. Достаёт по 20 разговоров каждого с одинаковыми возражениями.
+3. Скармливает LLM в промпт: «Найди 3-5 фраз/приёмов, которые регулярно
+   использует эталон, но НЕ использует таргет. По каждому дай: цитату из
+   диалога эталона + объяснение, почему это работает + готовый шаблон для
+   таргета».
+4. Возвращает структурированный JSON.
+
+**UI:**
+- В карточке менеджера `AiRopManagersAnalysis` — кнопка «Сравнить с топом».
+- Модалка с разбором: «Что есть у Айгуль, чего нет у Бекзата».
+- Кнопка «Добавить как скрипт» по каждому приёму.
+
+### 10.5 PDF-отчёты по менеджеру
+
+**Что:** еженедельный PDF на каждого менеджера для встреч 1-on-1 владельца
+с админом.
+
+**Edge function `ai-rop-export-manager-pdf`:**
+- Принимает `{ manager_id, period_start, period_end }`.
+- Использует библиотеку `jspdf` (уже в bundle, видно по билду — `jspdf.es.min`)
+  или server-side через Puppeteer.
+- Структура отчёта:
+  1. Шапка: ФИО, период, фото
+  2. Интегральный балл и динамика (mini-чарт)
+  3. KPI: лиды, оплаты, конверсия, SLA
+  4. Топ-3 успешных звонка с цитатами
+  5. Топ-3 проблемных звонка с разбором главных ошибок
+  6. Рекомендации ИИ
+  7. План обучения на следующую неделю (от LLM)
+- Возвращает URL на Supabase Storage.
+
+**UI:**
+- В `AiRopManagersAnalysis` — кнопка «Отчёт PDF» рядом с «Глубокий анализ».
+- В `Daily Digest` — ссылки на PDF каждого менеджера за неделю
+  (по понедельникам).
+
+### 10.6 Auto-suggest reply для админа в реальном времени
+
+**Что:** когда админ пишет в WhatsApp/Telegram, РОП в фоне готовит черновик
+ответа и подсвечивает в `ChatsView`.
+
+**Поток:**
+1. Когда лид присылает сообщение — `greenapi-webhook` сохраняет его.
+2. Триггер дёргает `ai-rop-suggest-reply` с контекстом: последние 10 сообщений,
+   стадия лида, активные скрипты, KPI-цели.
+3. LLM возвращает 2-3 варианта ответа (формальный, дружелюбный, продающий).
+4. Сохраняется в `ai_rop_reply_suggestions` (TTL 1 час).
+5. В `ChatsView.tsx` (уже есть `AiSuggestButton`) — подменить на чтение
+   готовых вариантов вместо on-demand генерации (быстрее, дешевле).
+
+**Миграция:**
+```sql
+create table public.ai_rop_reply_suggestions (
+  id uuid primary key default gen_random_uuid(),
+  lead_id uuid references public.leads(id) on delete cascade,
+  variants jsonb not null,  -- [{tone:'formal', text:'...'}, ...]
+  context_message_id uuid references public.communications(id),
+  expires_at timestamptz not null default (now() + interval '1 hour'),
+  used_variant_idx int,     -- какой вариант менеджер реально отправил
+  created_at timestamptz not null default now()
+);
+create index on public.ai_rop_reply_suggestions(lead_id, expires_at);
+```
+
+`used_variant_idx` важно: по нему потом можно учить модель и считать
+эффективность вариантов.
+
+---
+
+## 11. Приоритезация Phase 2
+
+Если ресурсы ограничены, делать в таком порядке:
+
+| Приоритет | Раздел | Почему |
+|---|---|---|
+| **P0** | 10.1 Уведомления | Без них вся аналитика «в стол» — никто не успеет среагировать |
+| **P0** | 10.2 Daily Digest | Главный канал доставки value владельцу клиники |
+| **P1** | 10.6 Auto-suggest reply | Самый видимый win для админов — экономит секунды на каждом ответе |
+| **P1** | 10.5 PDF-отчёты | Удобный инструмент для 1-on-1, продаёт ценность тарифа |
+| **P2** | 10.3 Лидерборд | Геймификация — мощно, но требует критической массы пользователей |
+| **P2** | 10.4 Peer Review | Очень сильно, но требует хороших данных по обоим менеджерам |
+
+P0 — закладывать в архитектуру сразу. P1-P2 — по фидбеку первых клиентов.
