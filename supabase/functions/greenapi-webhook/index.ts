@@ -473,6 +473,9 @@ Deno.serve(async (req) => {
       if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
       const text = extractText(messageData);
       await insertCommunication({ leadId, direction: "in", text, externalId: idMessage });
+      // Триггерим анализ и при входящем — с длинным дебаунсом, чтобы лиды
+      // без ответа менеджера тоже попадали в ai_rop_chat_analyses.
+      triggerChatAnalysis(leadId, "in");
       return json({ ok: true, leadId, projectId, attribution });
     }
 
