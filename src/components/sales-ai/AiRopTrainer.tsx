@@ -55,6 +55,11 @@ export function AiRopTrainer() {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [active?.messages.length]);
 
+  useEffect(() => {
+    setSessions(getTrainerSessions());
+    return subscribeAiRop("trainer-sessions", () => setSessions(getTrainerSessions()));
+  }, []);
+
   const persist = (next: TrainerSession[]) => {
     setSessions(next);
     saveTrainerSessions(next);
