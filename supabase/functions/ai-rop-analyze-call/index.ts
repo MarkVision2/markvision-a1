@@ -231,6 +231,19 @@ async function maybeCreateScriptDraft(opts: {
   const mainMistake: string = String(parsed?.main_mistake ?? "").trim();
   const topObjection = objections.find((o) => typeof o === "string" && o.trim()) ?? "Возражение клиента";
 
+  // Маппинг текста возражения в подвид из enum ai_script_category.
+  // Значения "objection" в enum нет — только objection_price / objection_no_time / objection_thinking.
+  const lower = topObjection.toLowerCase();
+  const category: "objection_price" | "objection_no_time" | "objection_thinking" | "custom" =
+    /дорог|цен|стоит|стоим|деньг|бюджет/.test(lower)
+      ? "objection_price"
+      : /врем|занят|некогда|потом|поздн/.test(lower)
+        ? "objection_no_time"
+        : /подум|думаю|посовет|реш|сомнев/.test(lower)
+          ? "objection_thinking"
+          : "custom";
+  const categoryTag = category.startsWith("objection_") ? category.slice("objection_".length) : "objection";
+
   const body = [
     `Сценарий отработки возражения: "${topObjection}".`,
     mainMistake ? `Главная ошибка в звонке: ${mainMistake}` : "",
@@ -247,9 +260,9 @@ async function maybeCreateScriptDraft(opts: {
     project_id: projectId,
     title: `AI: отработка возражения «${topObjection.slice(0, 60)}»`,
     body,
-    category: "objection",
+    category,
     source: "ai",
-    tags: ["ai-draft", "objection"],
+    tags: ["ai-draft", categoryTag],
     created_by: managerId,
   };
 
