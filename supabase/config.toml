@@ -11,3 +11,6 @@ verify_jwt = false
 
 [functions.sipuni-cdr-webhook]
 verify_jwt = false
+
+[functions.ai-rop-score-manager]
+verify_jwt = false
