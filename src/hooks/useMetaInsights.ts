@@ -145,7 +145,7 @@ function aggregate(rows: CdiRow[]): InsightsData {
   totals.cpm = totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0;
   totals.cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
   totals.ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
-  const effectiveRevenue = totals.crmRevenue || totals.revenue;
+  const effectiveRevenue = totals.crmRevenue;
   totals.romi = totals.spend > 0 ? ((effectiveRevenue - totals.spend) / totals.spend) * 100 : 0;
   const daily = Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date));
   return { currency, totals, daily };

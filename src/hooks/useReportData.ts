@@ -102,6 +102,7 @@ async function fetchMetaForRange(
   spend: number; impressions: number; clicks: number; leads: number;
   cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number;
   hasManualSales: boolean; hasManualRevenue: boolean; hasManualDiagnostics: boolean;
+  hasInsightRows: boolean;
   daily: { date: string; spend: number; leads: number; revenue: number }[];
 }> {
   if (externalIds.length === 0) {
@@ -109,6 +110,7 @@ async function fetchMetaForRange(
       spend: 0, impressions: 0, clicks: 0, leads: 0,
       cabinetSales: 0, cabinetRevenue: 0, cabinetDiagnostics: 0,
       hasManualSales: false, hasManualRevenue: false, hasManualDiagnostics: false,
+      hasInsightRows: false,
       daily: [],
     };
   }
@@ -199,6 +201,7 @@ async function fetchMetaForRange(
     hasManualSales,
     hasManualRevenue,
     hasManualDiagnostics,
+    hasInsightRows: rows.length > 0,
     daily: Array.from(dailyAgg.entries())
       .map(([date, v]) => ({ date, ...v }))
       .sort((a, b) => a.date.localeCompare(b.date)),
@@ -226,6 +229,7 @@ function aggregateCrm(leads: LeadLite[], range: ReportPeriodRange) {
   const orphanRevenue = orphanSales.reduce((s, l) => s + (l.amount || 0), 0);
   return {
     leads: inRange,
+    orphanLeads: orphan,
     orphanVisits,
     orphanSales,
     orphanRevenue,
@@ -235,14 +239,16 @@ function aggregateCrm(leads: LeadLite[], range: ReportPeriodRange) {
 function computeTotals(
   meta: { spend: number; impressions: number; clicks: number; leads: number;
           cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number;
-          hasManualSales: boolean; hasManualRevenue: boolean; hasManualDiagnostics: boolean },
-  crm: { leads: LeadLite[]; orphanVisits: LeadLite[]; orphanSales: LeadLite[]; orphanRevenue: number },
+          hasManualSales: boolean; hasManualRevenue: boolean; hasManualDiagnostics: boolean;
+          hasInsightRows?: boolean },
+  crm: { leads: LeadLite[]; orphanLeads: LeadLite[]; orphanVisits: LeadLite[]; orphanSales: LeadLite[]; orphanRevenue: number },
 ): ReportTotals {
-  const totalLeads = meta.leads + crm.leads.length;
+  const useCrmFallback = !meta.hasInsightRows;
+  const totalLeads = meta.leads + (useCrmFallback ? crm.leads.length : crm.orphanLeads.length);
   const cpl = totalLeads > 0 ? meta.spend / totalLeads : 0;
-  const visits = meta.cabinetDiagnostics + (meta.hasManualDiagnostics ? 0 : crm.orphanVisits.length);
-  const sales = meta.cabinetSales + (meta.hasManualSales ? 0 : crm.orphanSales.length);
-  const revenue = meta.cabinetRevenue + (meta.hasManualRevenue ? 0 : crm.orphanRevenue);
+  const visits = meta.cabinetDiagnostics + (useCrmFallback && !meta.hasManualDiagnostics ? crm.orphanVisits.length : 0);
+  const sales = meta.cabinetSales + (useCrmFallback && !meta.hasManualSales ? crm.orphanSales.length : 0);
+  const revenue = meta.cabinetRevenue + (useCrmFallback && !meta.hasManualRevenue ? crm.orphanRevenue : 0);
   const cpv = visits > 0 ? meta.spend / visits : 0;
   const cac = sales > 0 ? meta.spend / sales : 0;
   const ctr = meta.impressions > 0 ? (meta.clicks / meta.impressions) * 100 : 0;

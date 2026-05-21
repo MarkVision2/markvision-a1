@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { fetchPendingAdvances, markAdvanceDone } from "@/integrations/clientConfig/client";
 import { markAutoMoved } from "@/lib/autoMoveTracker";
+import { syncLeadCrmFactsToInsights } from "@/lib/crmInsightSync";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type {
@@ -484,6 +485,7 @@ export function useCrmStore() {
   }, [pipelineId, stageUuid, user?.id, projectId]);
 
   const updateLead = useCallback(async (id: string, patch: Partial<Lead>) => {
+    const previousLead = leads.find((l) => l.id === id);
     const dbPatch: TablesUpdate<"leads"> = {};
     if (patch.name !== undefined) dbPatch.name = patch.name;
     if (patch.phone !== undefined) dbPatch.phone = patch.phone;
@@ -516,7 +518,19 @@ export function useCrmStore() {
     // Optimistic update — patch locally before/around the network call.
     patchLeadLocal(id, (l) => ({ ...l, ...patch, lastActivityAt: new Date().toISOString() }));
     await supabase.from("leads").update(dbPatch).eq("id", id);
-  }, [stageUuid, patchLeadLocal, leads]);
+    const shouldSyncFacts =
+      patch.amount !== undefined ||
+      patch.paid !== undefined ||
+      patch.paidAt !== undefined ||
+      patch.stageId !== undefined;
+    if (shouldSyncFacts) {
+      await syncLeadCrmFactsToInsights({
+        previousLead,
+        lead: previousLead ? { ...previousLead, ...patch } : undefined,
+        projectId,
+      }).catch((e) => console.warn("crm insight sync failed", e));
+    }
+  }, [stageUuid, patchLeadLocal, leads, projectId]);
 
   const removeLead = useCallback(async (id: string) => {
     // Optimistic removal — drop locally first so UI feels instant.
@@ -541,15 +555,40 @@ export function useCrmStore() {
   const moveLead = useCallback(async (leadId: string, stageKey: string) => {
     const sid = stageUuid(stageKey);
     if (!sid) return;
-    patchLeadLocal(leadId, (l) => ({ ...l, stageId: stageKey, lastActivityAt: new Date().toISOString() }));
-    await supabase.from("leads").update({ stage_id: sid }).eq("id", leadId);
+    const lead = leads.find((l) => l.id === leadId);
+    const nowIso = new Date().toISOString();
+    const isPaidStage = stageKey === "paid";
+    const paidAt = isPaidStage ? (lead?.paidAt ?? nowIso) : lead?.paidAt;
+    const dbPatch: TablesUpdate<"leads"> = { stage_id: sid };
+    if (isPaidStage) {
+      dbPatch.paid = true;
+      dbPatch.paid_at = paidAt ?? nowIso;
+    }
+    patchLeadLocal(leadId, (l) => ({
+      ...l,
+      stageId: stageKey,
+      paid: isPaidStage ? true : l.paid,
+      paidAt: isPaidStage ? (paidAt ?? nowIso) : l.paidAt,
+      lastActivityAt: nowIso,
+    }));
+    await supabase.from("leads").update(dbPatch).eq("id", leadId);
+
+    await syncLeadCrmFactsToInsights({
+      previousLead: lead,
+      lead: lead ? {
+        ...lead,
+        stageId: stageKey,
+        paid: isPaidStage ? true : lead.paid,
+        paidAt: isPaidStage ? (paidAt ?? nowIso) : lead.paidAt,
+      } : undefined,
+      projectId,
+    }).catch((e) => console.warn("crm insight sync failed", e));
 
     // Параллельно дёргаем CAPI на нового Supabase — он сам решит, слать ли Schedule/Purchase в Meta.
     try {
       const NEW_URL = (import.meta.env.VITE_CLIENT_SUPABASE_URL as string | undefined) || "";
       const NEW_KEY = (import.meta.env.VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY as string | undefined) || "";
       if (!NEW_URL || !NEW_KEY) return;
-      const lead = leads.find((l) => l.id === leadId);
       void fetch(`${NEW_URL}/functions/v1/crm-stage-capi`, {
         method: "POST",
         headers: {
@@ -574,7 +613,7 @@ export function useCrmStore() {
         keepalive: true,
       }).catch(() => { /* fire-and-forget */ });
     } catch { /* silent */ }
-  }, [stageUuid, leads]);
+  }, [stageUuid, leads, patchLeadLocal, projectId]);
 
   // ---------- chats ----------
   const sendMessage = useCallback(async (
@@ -739,7 +778,19 @@ export function useCrmStore() {
       paid_at: new Date().toISOString(),
       created_by: user?.id ?? null,
     });
-  }, [stageUuid, leads, user?.id]);
+    await syncLeadCrmFactsToInsights({
+      previousLead: lead,
+      lead: lead ? {
+        ...lead,
+        paid: true,
+        paymentMethod: method,
+        paidAt: nowIso,
+        amount: finalAmount,
+        stageId: paidStageId ? "paid" : lead.stageId,
+      } : undefined,
+      projectId,
+    }).catch((e) => console.warn("crm insight sync failed", e));
+  }, [stageUuid, leads, user?.id, projectId]);
 
   const setVisit = useCallback(async (leadId: string, dateIso: string, moveToScheduled = true) => {
     const lead = leads.find((l) => l.id === leadId);
@@ -756,13 +807,22 @@ export function useCrmStore() {
       lastActivityAt: new Date().toISOString(),
     }));
     await supabase.from("leads").update(update).eq("id", leadId);
+    await syncLeadCrmFactsToInsights({
+      previousLead: lead,
+      lead: lead ? {
+        ...lead,
+        nextVisitAt: dateIso,
+        stageId: nextStageKey ?? lead.stageId,
+      } : undefined,
+      projectId,
+    }).catch((e) => console.warn("crm insight sync failed", e));
     await supabase.from("events").insert({
       lead_id: leadId,
       event_type: "visit_scheduled",
       payload: { at: dateIso },
       actor_id: user?.id ?? null,
     });
-  }, [leads, stageUuid, user?.id]);
+  }, [leads, stageUuid, user?.id, projectId]);
 
   const addTask = useCallback(async (leadId: string, title: string, dueAt: string) => {
     const { data } = await supabase.from("tasks").insert({

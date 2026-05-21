@@ -177,20 +177,20 @@ const Analytics = () => {
 
   const sales = filteredLeads.filter((l) => l.stageKey === "paid");
   const visits = filteredLeads.filter((l) => l.stageKey === "visit" || l.stageKey === "paid");
-  const leadCount = data?.totals.leads || filteredLeads.length;
-  const diagnosticsCount = data?.totals.diagnostics || visits.length;
-  const salesCount = data?.totals.sales || sales.length;
-  const revenue = data?.totals.crmRevenue || sales.reduce((sum, l) => sum + (l.amount || 0), 0);
+  const leadCount = data?.totals.leads ?? filteredLeads.length;
+  const diagnosticsCount = data?.totals.diagnostics ?? visits.length;
+  const salesCount = data?.totals.sales ?? sales.length;
+  const revenue = data?.totals.crmRevenue ?? sales.reduce((sum, l) => sum + (l.amount || 0), 0);
 
   const prevSales = prevLeads.filter((l) => l.stageKey === "paid");
-  const prevRevenue = prevData?.totals.crmRevenue || prevSales.reduce((s, l) => s + (l.amount || 0), 0);
+  const prevRevenue = prevData?.totals.crmRevenue ?? prevSales.reduce((s, l) => s + (l.amount || 0), 0);
 
   const spend = data?.totals.spend ?? 0;
   const prevSpend = prevData?.totals.spend ?? 0;
   const adsLeads = data?.totals.leads ?? 0;
   const impressions = data?.totals.impressions ?? 0;
   const clicks = data?.totals.clicks ?? 0;
-  const prevTotalLeads = prevData?.totals.leads || prevLeads.length;
+  const prevTotalLeads = prevData?.totals.leads ?? prevLeads.length;
   const cpl = leadCount > 0 && spend > 0 ? spend / leadCount : 0;
   const romi = spend > 0 ? ((revenue - spend) / spend) * 100 : null;
   const avgCheck = salesCount > 0 ? revenue / salesCount : 0;
@@ -346,7 +346,7 @@ const Analytics = () => {
         <KpiCard icon={DollarSign} label="Расход" value={spend > 0 ? fmtMoney(spend) : "—"} sub="за период" delta={pctDelta(spend, prevSpend)} />
         <KpiCard icon={Users} label="Лиды" value={fmtNumber(leadCount)} sub={adsLeads ? `${adsLeads} из рекламы` : `${filteredLeads.length} в CRM`} delta={pctDelta(leadCount, prevTotalLeads)} />
         <KpiCard icon={Target} label="CPL" value={cpl > 0 ? fmtMoney(cpl) : "—"} sub="стоимость лида" emphasized />
-        <KpiCard icon={ShoppingBag} label="Продажи" value={fmtNumber(salesCount)} sub={salesCount > 0 ? fmtPct(conversion) + " конверсия" : "нет продаж"} delta={pctDelta(salesCount, prevData?.totals.sales || prevSales.length)} />
+        <KpiCard icon={ShoppingBag} label="Продажи" value={fmtNumber(salesCount)} sub={salesCount > 0 ? fmtPct(conversion) + " конверсия" : "нет продаж"} delta={pctDelta(salesCount, prevData?.totals.sales ?? prevSales.length)} />
         <KpiCard icon={TrendingUp} label="Выручка" value={revenue > 0 ? fmtMoney(revenue) : "—"} sub={salesCount > 0 ? `${salesCount} продаж` : "нет данных"} delta={pctDelta(revenue, prevRevenue)} />
         <KpiCard icon={GitBranch} label="ROMI" value={romi !== null ? <span className={romi >= 0 ? "text-success" : "text-destructive"}>{romi >= 0 ? "+" : ""}{Math.round(romi)}%</span> : "—"} sub={spend > 0 ? "возврат инвестиций" : "нет расходов"} emphasized />
         <KpiCard icon={Target} label="Средний чек" value={avgCheck > 0 ? fmtMoney(avgCheck) : "—"} sub={salesCount > 0 ? `по ${salesCount} продажам` : "нет продаж"} />

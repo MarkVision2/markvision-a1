@@ -174,7 +174,7 @@ const Metrics = () => {
   const monthProgress = Math.round((filledDays / daysInMonth) * 100);
   const factDiagnostics = totals?.diagnostics ?? 0;
   const factSales = totals?.sales ?? 0;
-  const factRevenue = totals?.crmRevenue || totals?.revenue || 0;
+  const factRevenue = totals?.crmRevenue ?? 0;
   const factCac = factSales > 0 ? (totals?.spend ?? 0) / factSales : 0;
   const factCpd = factDiagnostics > 0 ? (totals?.spend ?? 0) / factDiagnostics : 0;
   const crLeadDiagnostics =
@@ -203,7 +203,7 @@ const Metrics = () => {
         cpl ? Math.round(cpl) : "",
         d?.diagnostics ?? 0,
         d?.sales ?? 0,
-        d?.crmRevenue || d?.revenue || 0,
+        d?.crmRevenue ?? 0,
         d?.impressions ?? 0,
         d?.clicks ?? 0,
         ctr ? ctr.toFixed(2) : "",
@@ -589,7 +589,7 @@ const Metrics = () => {
               {monthDays.map(({ day, iso, weekday }) => {
                 const d = dailyMap.get(iso);
                 const cpl = d && d.leads > 0 ? d.spend / d.leads : 0;
-                const dayRevenue = d ? d.crmRevenue || d.revenue : 0;
+                const dayRevenue = d ? d.crmRevenue : 0;
                 const hasData = !!d && (
                   d.spend > 0 ||
                   d.leads > 0 ||

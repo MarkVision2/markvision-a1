@@ -247,9 +247,11 @@ export function useDashboardData(
       });
     }
 
-    // Если ни одна платформа не выдала данных, но в CRM есть лиды
-    // с маркированным источником — показываем их разбивку.
+    // Если в CRM есть источники, которых нет в CDI, показываем их как заявки.
+    // Деньги и оплаты берём только из cabinet_daily_insights: иначе один и тот же
+    // оплаченный лид легко прибавляется поверх ручного факта из таблицы показателей.
     const knownKeys = new Set(rows.map((r) => r.key));
+    const useDirectCrmMoney = providerAgg.length === 0;
     if (rows.length === 0 || inRange.length > 0) {
       const map = new Map<string, DashboardChannel>();
       const putLead = (l: typeof inRange[number]) => {
@@ -271,7 +273,7 @@ export function useDashboardData(
         if (!cur) continue;
         cur.leads += 1;
         const paidAt = l.paidAt ? new Date(l.paidAt).getTime() : null;
-        if ((l.paid || l.stageKey === "paid") && paidAt === null) {
+        if (useDirectCrmMoney && (l.paid || l.stageKey === "paid") && paidAt === null) {
           cur.sales += 1;
           cur.revenue += l.amount || 0;
         }
@@ -282,8 +284,10 @@ export function useDashboardData(
         if (paidAt < fromTs || paidAt >= toTs) continue;
         const cur = putLead(l);
         if (!cur) continue;
-        cur.sales += 1;
-        cur.revenue += l.amount || 0;
+        if (useDirectCrmMoney) {
+          cur.sales += 1;
+          cur.revenue += l.amount || 0;
+        }
       }
       for (const v of map.values()) rows.push(v);
     }
@@ -316,19 +320,6 @@ export function useDashboardData(
       spendByDay.set(d.date, (spendByDay.get(d.date) ?? 0) + d.spend);
       leadsByDay.set(d.date, (leadsByDay.get(d.date) ?? 0) + d.leads);
       revByDay.set(d.date, (revByDay.get(d.date) ?? 0) + (d.revenue ?? 0));
-    }
-    const metaRevenue = data.monthlyMeta.reduce((sum, d) => sum + (d.revenue ?? 0), 0);
-    const shouldAddOrphanRevenue = data.totals.revenue > metaRevenue + 0.5;
-    if (shouldAddOrphanRevenue) {
-      // CRM-лиды без cabinet_id — добавляем только если итог отчёта тоже включает их.
-      for (const l of leads) {
-        if ((!l.paid && l.stageKey !== "paid") || l.cabinetId) continue;
-        const paymentDate = l.paidAt || l.createdAt;
-        const t = new Date(paymentDate).getTime();
-        if (t < fromTs || t >= toTs) continue;
-        const k = dayKey(paymentDate);
-        revByDay.set(k, (revByDay.get(k) ?? 0) + (l.amount || 0));
-      }
     }
     const out: { date: string; spend: number; revenue: number; leads: number; cpl: number }[] = [];
     const cur = new Date(range.from);
