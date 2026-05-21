@@ -228,7 +228,16 @@ const CreativeFunnel = () => {
   }, [rows, sortKey, sortDir, search, status, type, hasSpend, hasLeads, hasSales]);
 
 
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages);
+  const paged = useMemo(
+    () => filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
+    [filtered, safePage],
+  );
+  useEffect(() => { setPage(1); }, [search, status, type, hasSpend, hasLeads, hasSales, range.from, range.to]);
+
   const totals = useMemo(() => {
+
     return filtered.reduce(
       (acc, r) => ({
         spend: acc.spend + r.spend,
