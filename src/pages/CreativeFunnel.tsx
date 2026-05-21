@@ -37,27 +37,33 @@ const SORT_LABELS: Record<SortKey, string> = {
 
 const STAGE_COLORS = ["bg-primary", "bg-accent", "bg-warning", "bg-success"] as const;
 
-function MiniFunnel({ stages }: { stages: { label: string; value: number; display: string }[] }) {
-  const max = Math.max(1, ...stages.map((s) => s.value));
+function SortableTh({
+  label, sortKey, current, dir, onSort, align = "right",
+}: {
+  label: string;
+  sortKey: SortKey;
+  current: SortKey;
+  dir: SortDir;
+  onSort: (k: SortKey) => void;
+  align?: "left" | "right";
+}) {
+  const active = current === sortKey;
+  const Icon = !active ? ArrowUpDown : dir === "asc" ? ArrowUp : ArrowDown;
   return (
-    <div className="flex items-end gap-1.5">
-      {stages.map((s, i) => {
-        const h = Math.max(8, Math.round((s.value / max) * 40));
-        return (
-          <div key={s.label} className="flex w-12 flex-col items-center gap-1">
-            <div className="text-[10px] font-bold tabular-nums leading-none">{s.display}</div>
-            <div className="flex h-10 w-full items-end">
-              <div
-                className={cn("w-full rounded-sm transition-all", STAGE_COLORS[i] ?? "bg-primary", s.value === 0 && "opacity-30")}
-                style={{ height: `${h}px` }}
-                title={`${s.label}: ${s.display}`}
-              />
-            </div>
-            <div className="text-[9px] uppercase tracking-wider text-muted-foreground">{s.label}</div>
-          </div>
-        );
-      })}
-    </div>
+    <th className={cn("px-4 py-3 font-semibold select-none", align === "right" ? "text-right" : "text-left")}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={cn(
+          "inline-flex items-center gap-1 transition hover:text-foreground",
+          align === "right" && "flex-row-reverse",
+          active && "text-primary",
+        )}
+      >
+        <span>{label}</span>
+        <Icon className={cn("h-3 w-3", active ? "opacity-100" : "opacity-40")} />
+      </button>
+    </th>
   );
 }
 
