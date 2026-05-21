@@ -461,9 +461,9 @@ const SalesAI = () => {
 
           {tab === "trainer" && <AiRopTrainer />}
 
-          {tab === "scripts" && <AiRopScripts />}
+          {tab === "scripts" && <AiRopScripts projectId={activeId ?? null} />}
 
-          {tab === "content" && <AiRopContentPlan />}
+          {tab === "content" && <AiRopContentPlan projectId={activeId ?? null} />}
 
           {tab === "settings" && <AiRopSettings />}
 

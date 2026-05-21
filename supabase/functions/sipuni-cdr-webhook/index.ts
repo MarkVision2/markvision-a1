@@ -3,10 +3,11 @@
 // Регистрируется в Sipuni: Интеграции → Уведомления → URL для CDR.
 //
 // 1. Сверяет секрет (env SIPUNI_WEBHOOK_SECRET — query ?secret= или header x-sipuni-secret).
-// 2. Парсит JSON или application/x-www-form-urlencoded.
-// 3. Находит лид по нормализованному телефону (последний по created_at).
-// 4. Пишет communication type=call с recording_url/duration (триггер сам обновит lead.last_*).
-// 5. Если есть recording_url, лид найден и duration > 15 сек — fire-and-forget зовёт
+// 2. Парсит JSON / x-www-form-urlencoded / multipart / raw key=value.
+// 3. ВСЕГДА пишет строку в sipuni_cdr_log (полный аудит входящих CDR).
+// 4. Находит лид по нормализованному телефону (последний по created_at).
+// 5. Пишет communication type=call с recording_url/duration (триггер сам обновит lead.last_*).
+// 6. Если есть recording_url, лид найден и duration > 15 сек — fire-and-forget зовёт
 //    ai-rop-analyze-call (x-internal-key = SERVICE_ROLE_KEY).
 //
 // verify_jwt = false (см. config.toml). Sipuni не шлёт JWT.
@@ -54,12 +55,10 @@ async function parseBody(req: Request): Promise<Record<string, unknown>> {
     for (const [k, v] of fd.entries()) out[k] = typeof v === "string" ? v : v.name;
     return out;
   }
-  // Fallback — попробуем JSON, иначе пусто
   const text = await req.text();
   try {
     return text ? JSON.parse(text) : {};
   } catch {
-    // Иногда CDR приходит "key=value&key2=value2" без правильного content-type
     const out: Record<string, unknown> = {};
     for (const pair of text.split("&")) {
       const [k, v] = pair.split("=");
@@ -73,7 +72,6 @@ function pickPhone(body: Record<string, unknown>): {
   phone: string;
   direction: "in" | "out" | null;
 } {
-  // Sipuni поля часто: type/direction (in|out), caller, called, dst, src, number
   const dirRaw = String(body.type ?? body.direction ?? "").toLowerCase();
   let direction: "in" | "out" | null = null;
   if (dirRaw === "in" || dirRaw === "incoming" || dirRaw === "0") direction = "in";
@@ -108,7 +106,6 @@ function pickDuration(body: Record<string, unknown>): number | null {
 function pickStartedAt(body: Record<string, unknown>): string {
   const raw = body.started_at ?? body.started ?? body.start_time ?? body.time ?? body.timestamp;
   if (!raw) return new Date().toISOString();
-  // Sipuni timestamp может быть Unix (sec) или ISO
   if (typeof raw === "number" || /^\d+$/.test(String(raw))) {
     const n = Number(raw);
     const ms = n < 1e12 ? n * 1000 : n;
@@ -120,7 +117,6 @@ function pickStartedAt(body: Record<string, unknown>): string {
 
 async function findLeadByPhone(phone: string) {
   if (!phone || phone.length < 6) return null;
-  // ILIKE по последним 9-10 цифрам, чтобы матчить разные форматы (+7, 8, без)
   const tail = phone.slice(-10);
   const { data } = await admin
     .from("leads")
@@ -129,6 +125,23 @@ async function findLeadByPhone(phone: string) {
     .order("created_at", { ascending: false })
     .limit(1);
   return data?.[0] ?? null;
+}
+
+async function logCdr(row: {
+  raw_payload: unknown;
+  phone_normalized: string | null;
+  recording_url: string | null;
+  duration_sec: number | null;
+  started_at: string | null;
+  processing_status: "lead_found" | "lead_not_found" | "parse_error";
+  lead_id_resolved: string | null;
+  error_text: string | null;
+}) {
+  try {
+    await admin.from("sipuni_cdr_log").insert(row);
+  } catch (e) {
+    console.error("[sipuni-cdr] cdr_log insert failed", e);
+  }
 }
 
 async function triggerAnalyzeCall(payload: {
@@ -158,10 +171,10 @@ async function triggerAnalyzeCall(payload: {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
-
-  // Sipuni обычно POST. Допустим GET для пинга/healthcheck.
   if (req.method === "GET") return json({ ok: true, service: "sipuni-cdr-webhook" });
   if (req.method !== "POST") return json({ error: "method not allowed" }, 405);
+
+  let rawPayload: Record<string, unknown> = {};
 
   try {
     // 1. Secret check
@@ -179,20 +192,40 @@ Deno.serve(async (req) => {
       );
     }
 
-    const body = await parseBody(req);
-    console.log("[sipuni-cdr] payload keys:", Object.keys(body));
+    rawPayload = await parseBody(req);
+    console.log("[sipuni-cdr] payload keys:", Object.keys(rawPayload));
 
-    const { phone, direction } = pickPhone(body);
-    const recording = pickRecording(body);
-    const duration = pickDuration(body);
-    const startedAt = pickStartedAt(body);
+    const { phone, direction } = pickPhone(rawPayload);
+    const recording = pickRecording(rawPayload);
+    const duration = pickDuration(rawPayload);
+    const startedAt = pickStartedAt(rawPayload);
 
     if (!phone) {
+      await logCdr({
+        raw_payload: rawPayload,
+        phone_normalized: null,
+        recording_url: recording || null,
+        duration_sec: duration,
+        started_at: startedAt,
+        processing_status: "parse_error",
+        lead_id_resolved: null,
+        error_text: "no phone in payload",
+      });
       return json({ ok: true, skipped: "no phone in payload" });
     }
 
     const lead = await findLeadByPhone(phone);
     if (!lead) {
+      await logCdr({
+        raw_payload: rawPayload,
+        phone_normalized: phone,
+        recording_url: recording || null,
+        duration_sec: duration,
+        started_at: startedAt,
+        processing_status: "lead_not_found",
+        lead_id_resolved: null,
+        error_text: null,
+      });
       return json({ ok: true, skipped: "lead not found", phone });
     }
 
@@ -210,7 +243,7 @@ Deno.serve(async (req) => {
       channel: "phone",
       direction: direction ?? "in",
       content: commContent || null,
-      external_id: body.id ? String(body.id) : null,
+      external_id: rawPayload.id ? String(rawPayload.id) : null,
       created_at: startedAt,
       is_draft: false,
       is_auto: false,
@@ -220,11 +253,22 @@ Deno.serve(async (req) => {
       console.error("[sipuni-cdr] communication insert error", commErr);
     }
 
-    // 3. Триггерим разбор, если есть запись и звонок осмысленной длины
+    // 3. Audit log
+    await logCdr({
+      raw_payload: rawPayload,
+      phone_normalized: phone,
+      recording_url: recording || null,
+      duration_sec: duration,
+      started_at: startedAt,
+      processing_status: "lead_found",
+      lead_id_resolved: lead.id,
+      error_text: commErr ? `comm_insert: ${commErr.message}` : null,
+    });
+
+    // 4. Триггерим разбор, если есть запись и звонок осмысленной длины
     let analysisTriggered = false;
     if (recording && (duration ?? 0) >= MIN_DURATION_FOR_ANALYSIS) {
       analysisTriggered = true;
-      // fire-and-forget
       triggerAnalyzeCall({
         lead_id: lead.id,
         recording_url: recording,
@@ -244,6 +288,16 @@ Deno.serve(async (req) => {
     });
   } catch (e) {
     console.error("[sipuni-cdr] error", e);
+    await logCdr({
+      raw_payload: rawPayload,
+      phone_normalized: null,
+      recording_url: null,
+      duration_sec: null,
+      started_at: null,
+      processing_status: "parse_error",
+      lead_id_resolved: null,
+      error_text: e instanceof Error ? e.message : "unknown",
+    });
     return json({ error: e instanceof Error ? e.message : "unknown" }, 500);
   }
 });
