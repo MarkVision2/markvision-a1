@@ -262,24 +262,27 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
 
       {/* CAMPAIGNS */}
       {visible.length > 0 && (
-        <div className="relative border-t border-border/40 bg-background/40 px-3 pb-3 pt-3 pl-6 sm:px-4 sm:pl-7">
-          <div className="mb-2.5 flex items-center justify-between px-1">
-            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
-              <span className="h-px w-5 bg-border" />
+        <div className="relative border-t border-border/40 bg-gradient-to-b from-background/55 to-background/15 px-4 pb-4 pt-4 pl-7 sm:px-5 sm:pl-8">
+          <div className="mb-3 flex items-center justify-between px-0.5">
+            <div className="flex items-center gap-2.5 text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground/70">
+              <span className={cn("h-1.5 w-1.5 rounded-full opacity-70", accent.dot)} />
               Кампании · по расходу
+              <span className="rounded-md border border-border/40 bg-secondary/40 px-1.5 py-0.5 text-[9px] tabular-nums text-muted-foreground/90">
+                {sorted.length}
+              </span>
             </div>
             {hasMore && (
               <button
                 type="button"
                 onClick={() => setExpanded((v) => !v)}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground transition hover:bg-secondary/60 hover:text-foreground"
+                className="inline-flex items-center gap-1 rounded-lg border border-border/40 bg-card/60 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-foreground"
               >
                 {expanded ? "Свернуть" : `Ещё ${sorted.length - 3}`}
                 <ChevronDown className={cn("h-3 w-3 transition", expanded && "rotate-180")} />
               </button>
             )}
           </div>
-          <ul className="space-y-1.5">
+          <ul className="space-y-2">
             {visible.map((c) => (
               <CampaignRow key={c.id} campaign={c} maxSpend={maxSpend} successMetric={g.successMetric} dotClass={accent.dot} ringClass={accent.ring} />
             ))}
