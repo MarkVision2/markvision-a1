@@ -184,7 +184,14 @@ export function AiRopManagersAnalysis({ stats, projectId }: Props) {
                   </div>
                 </div>
                 <div className="text-right">
-                  <div className={cn("text-2xl font-bold tabular-nums", `text-${tone}`)}>
+                  <div
+                    className={cn(
+                      "text-2xl font-bold tabular-nums",
+                      tone === "success" && "text-success",
+                      tone === "warning" && "text-warning",
+                      tone === "destructive" && "text-destructive",
+                    )}
+                  >
                     {aiScore}
                   </div>
                   <div className="text-[10px] uppercase tracking-wider text-muted-foreground">

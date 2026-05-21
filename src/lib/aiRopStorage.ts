@@ -49,8 +49,11 @@ function writeLocal<T>(key: CacheKey, value: T): void {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(PREFIX + key, JSON.stringify(value));
-  } catch {
-    /* quota */
+  } catch (e) {
+    // QuotaExceededError / SecurityError. Не критично — данные останутся в БД
+    // и в memCache; на следующем заходе подтянутся через гидратацию.
+    // Логируем, чтобы поймать неожиданные кейсы.
+    console.warn("[aiRop] localStorage write failed:", key, e);
   }
 }
 
@@ -652,8 +655,31 @@ async function syncCollection<T extends Identifiable>(opts: {
  * - trainer-sessions: личные сессии пользователя в рамках проекта.
  */
 export async function hydrateAiRopStorage(projectId: string | null, userId: string | null): Promise<void> {
+  // При смене проекта (включая выход в null) сбрасываем кэш и LS-зеркало, иначе
+  // компоненты до завершения гидратации показывают данные предыдущего проекта.
+  const projectChanged = currentProjectId !== projectId;
   currentProjectId = projectId;
   currentUserId = userId;
+  if (projectChanged) {
+    memCache.delete("settings");
+    memCache.delete("scripts");
+    memCache.delete("content-ideas");
+    memCache.delete("trainer-sessions");
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem(PREFIX + "settings");
+        window.localStorage.removeItem(PREFIX + "scripts");
+        window.localStorage.removeItem(PREFIX + "content-ideas");
+        window.localStorage.removeItem(PREFIX + "trainer-sessions");
+      } catch {
+        /* ignore */
+      }
+    }
+    emit("settings");
+    emit("scripts");
+    emit("content-ideas");
+    emit("trainer-sessions");
+  }
   if (!projectId) return;
 
   // 1. Settings

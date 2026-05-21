@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Bot,
   Check,
@@ -29,10 +29,19 @@ export function AiRopSettings() {
   const [s, setS] = useState<RopSettings>(getRopSettings);
   const [dirty, setDirty] = useState(false);
   const [newWatchItem, setNewWatchItem] = useState("");
+  // Используем ref на dirty, чтобы подписка ниже видела актуальное значение
+  // без переподписки на каждое нажатие клавиши.
+  const dirtyRef = useRef(dirty);
+  dirtyRef.current = dirty;
 
   useEffect(() => {
     setS(getRopSettings());
-    return subscribeAiRop("settings", () => setS(getRopSettings()));
+    return subscribeAiRop("settings", () => {
+      // Если пользователь редактирует и не сохранил — не затираем его правки
+      // при внешних обновлениях (гидратация, смена проекта, фоновый sync).
+      if (dirtyRef.current) return;
+      setS(getRopSettings());
+    });
   }, []);
 
   const patch = <K extends keyof RopSettings>(key: K, value: RopSettings[K]) => {

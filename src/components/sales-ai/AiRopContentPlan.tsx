@@ -71,9 +71,17 @@ export function AiRopContentPlan({ projectId }: { projectId?: string | null } = 
   }, [ideas, filterStatus]);
 
   const generate = async () => {
+    if (!projectId) {
+      toast({
+        title: "Нет активного проекта",
+        description: "Выберите проект, чтобы РОП мог сохранить идею в его контент-план.",
+        variant: "destructive",
+      });
+      return;
+    }
     setGenerating(true);
     try {
-      const newIdea = await generateIdea(projectId ?? null);
+      const newIdea = await generateIdea(projectId);
       persist([newIdea, ...ideas]);
       toast({ title: "ИИ предложил новую идею", description: newIdea.title });
     } catch (e) {
@@ -85,7 +93,6 @@ export function AiRopContentPlan({ projectId }: { projectId?: string | null } = 
     } finally {
       setGenerating(false);
     }
-
   };
 
   const onDelete = (id: string) => persist(ideas.filter((i) => i.id !== id));
@@ -151,10 +158,11 @@ export function AiRopContentPlan({ projectId }: { projectId?: string | null } = 
       <div className="flex flex-wrap items-center gap-2">
         <button
           onClick={generate}
-          disabled={generating}
+          disabled={generating || !projectId}
+          title={!projectId ? "Сначала выберите проект" : undefined}
           className={cn(
             "inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold",
-            generating
+            generating || !projectId
               ? "bg-secondary/60 text-muted-foreground"
               : "bg-primary text-primary-foreground hover:bg-primary/90",
           )}

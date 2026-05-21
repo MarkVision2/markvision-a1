@@ -177,19 +177,23 @@ Deno.serve(async (req) => {
   let rawPayload: Record<string, unknown> = {};
 
   try {
-    // 1. Secret check
+    // 1. Secret check — обязателен. Ранее при пустом SIPUNI_WEBHOOK_SECRET
+    // webhook принимал любые запросы (это позволяло кому угодно создавать
+    // фейковые звонки и триггерить дорогой analyze-call). Теперь без секрета
+    // отдаём 503 и просим админа его задать.
+    if (!SIPUNI_SECRET) {
+      console.error("[sipuni-cdr] SIPUNI_WEBHOOK_SECRET is not configured");
+      return json(
+        { error: "webhook secret is not configured on server" },
+        503,
+      );
+    }
     const url = new URL(req.url);
     const qSecret = url.searchParams.get("secret") ?? "";
     const hSecret = req.headers.get("x-sipuni-secret") ?? "";
-    if (SIPUNI_SECRET) {
-      if (qSecret !== SIPUNI_SECRET && hSecret !== SIPUNI_SECRET) {
-        console.warn("[sipuni-cdr] bad secret");
-        return json({ error: "forbidden" }, 403);
-      }
-    } else {
-      console.warn(
-        "[sipuni-cdr] SIPUNI_WEBHOOK_SECRET not set — webhook is open. Set it in project secrets!",
-      );
+    if (qSecret !== SIPUNI_SECRET && hSecret !== SIPUNI_SECRET) {
+      console.warn("[sipuni-cdr] bad secret");
+      return json({ error: "forbidden" }, 403);
     }
 
     rawPayload = await parseBody(req);

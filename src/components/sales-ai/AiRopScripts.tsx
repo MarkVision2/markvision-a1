@@ -69,9 +69,17 @@ export function AiRopScripts({ projectId }: { projectId?: string | null } = {}) 
   };
 
   const onGenerateNew = async () => {
+    if (!projectId) {
+      toast({
+        title: "Нет активного проекта",
+        description: "Выберите проект, чтобы РОП мог сохранить скрипт в его библиотеку.",
+        variant: "destructive",
+      });
+      return;
+    }
     setGenerating(true);
     try {
-      const newScript = await generateScript(scripts, projectId ?? null);
+      const newScript = await generateScript(scripts, projectId);
       persist([newScript, ...scripts]);
       toast({
         title: "ИИ создал новый скрипт",
@@ -119,10 +127,11 @@ export function AiRopScripts({ projectId }: { projectId?: string | null } = {}) 
         </div>
         <button
           onClick={onGenerateNew}
-          disabled={generating}
+          disabled={generating || !projectId}
+          title={!projectId ? "Сначала выберите проект" : undefined}
           className={cn(
             "inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold",
-            generating
+            generating || !projectId
               ? "bg-secondary/60 text-muted-foreground"
               : "bg-primary/15 text-primary hover:bg-primary/25",
           )}

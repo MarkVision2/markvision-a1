@@ -470,9 +470,25 @@ function ResultBanner({
       )}
     >
       <div className="flex items-center gap-2">
-        <Award className={cn("h-5 w-5", `text-${tone}`)} />
+        <Award
+          className={cn(
+            "h-5 w-5",
+            tone === "success" && "text-success",
+            tone === "warning" && "text-warning",
+            tone === "destructive" && "text-destructive",
+          )}
+        />
         <div className="text-lg font-bold tabular-nums">
-          Оценка: <span className={`text-${tone}`}>{score}/100</span>
+          Оценка:{" "}
+          <span
+            className={cn(
+              tone === "success" && "text-success",
+              tone === "warning" && "text-warning",
+              tone === "destructive" && "text-destructive",
+            )}
+          >
+            {score}/100
+          </span>
         </div>
       </div>
       <p className="mt-2 whitespace-pre-wrap text-xs text-muted-foreground">{feedback}</p>
