@@ -72,6 +72,7 @@ const CreativeFunnel = () => {
   const [drawerRow, setDrawerRow] = useState<MetaCreativeRow | null>(null);
   const [backfilling, setBackfilling] = useState(false);
   const [orphanLeads, setOrphanLeads] = useState(0);
+  const [crmTotals, setCrmTotals] = useState({ leads: 0, diagnostics: 0, sales: 0, revenue: 0 });
   const { activeId: projectId } = useProjectsStore();
 
   const { rows, loading } = useMetaCreatives(range);
