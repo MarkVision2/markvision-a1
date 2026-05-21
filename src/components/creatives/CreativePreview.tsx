@@ -192,14 +192,45 @@ export function CreativePreview({ row, compact = false, playable = false, classN
                 playsInline
                 className="aspect-[9/16] h-auto max-h-[85vh] w-full bg-black"
               />
-            ) : (
+            ) : loadingFullVideo ? (
               <div className="grid aspect-[9/16] place-items-center bg-black text-sm text-white/70">
-                Видео недоступно
+                <Loader2 className="h-8 w-8 animate-spin" />
+              </div>
+            ) : (
+              <div
+                className="relative aspect-[9/16] w-full bg-cover bg-center"
+                style={{ backgroundImage: src ? `url(${src})` : undefined, backgroundColor: "#000" }}
+              >
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/55 p-6 text-center text-sm text-white">
+                  <p>Ссылка на видео из Meta истекла.</p>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setLoadingFullVideo(true);
+                        await refreshVideoPreview(true).catch(() => null);
+                        setLoadingFullVideo(false);
+                      }}
+                      className="rounded-md bg-white/15 px-3 py-1.5 text-xs font-semibold backdrop-blur hover:bg-white/25"
+                    >
+                      Попробовать снова
+                    </button>
+                    <a
+                      href={`https://www.facebook.com/ads/library/?id=${row.adId}`}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
+                    >
+                      Открыть в Facebook Ads Library
+                    </a>
+                  </div>
+                </div>
               </div>
             )}
           </DialogContent>
         </Dialog>
       )}
+
     </div>
   );
 }
