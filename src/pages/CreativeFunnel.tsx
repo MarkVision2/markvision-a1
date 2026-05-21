@@ -430,7 +430,7 @@ const CreativeFunnel = () => {
                   </td>
                 </tr>
               )}
-              {filtered.map((row) => {
+              {paged.map((row) => {
                 const romiPositive = row.crmRomi >= 0;
                 const RomiIcon = romiPositive ? ArrowUpRight : ArrowDownRight;
                 const cplValue = row.crmCpl > 0 ? row.crmCpl : row.cpl;
