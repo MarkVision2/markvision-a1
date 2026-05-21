@@ -14,3 +14,9 @@ verify_jwt = false
 
 [functions.ai-rop-score-manager]
 verify_jwt = false
+
+[functions.ai-rop-generate-script]
+verify_jwt = false
+
+[functions.ai-rop-generate-content]
+verify_jwt = false

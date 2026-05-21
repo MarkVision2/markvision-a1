@@ -19,14 +19,12 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import {
   getContentIdeas,
-  getRopSettings,
   newId,
   saveContentIdeas,
   subscribeAiRop,
   type ContentIdea,
 } from "@/lib/aiRopStorage";
 import { useToast } from "@/hooks/use-toast";
-import { useCrmStore } from "@/hooks/useCrmStore";
 
 const FORMAT_META: Record<ContentIdea["format"], { label: string; icon: typeof Film; color: string }> = {
   reels: { label: "Reels", icon: Film, color: "text-pink-400" },
@@ -49,9 +47,8 @@ const STATUS_META: Record<ContentIdea["status"], { label: string; color: string 
   rejected: { label: "Отклонено", color: "text-destructive" },
 };
 
-export function AiRopContentPlan() {
+export function AiRopContentPlan({ projectId }: { projectId?: string | null } = {}) {
   const { toast } = useToast();
-  const { leads } = useCrmStore();
   const [ideas, setIdeas] = useState<ContentIdea[]>(getContentIdeas);
   const [filterStatus, setFilterStatus] = useState<ContentIdea["status"] | "all">("all");
   const [generating, setGenerating] = useState(false);
@@ -76,17 +73,7 @@ export function AiRopContentPlan() {
   const generate = async () => {
     setGenerating(true);
     try {
-      const objections = leads
-        .filter((l) => l.rejectReason)
-        .map((l) => l.rejectReason)
-        .join(", ");
-      const sources = Array.from(new Set(leads.map((l) => l.source).filter(Boolean))).join(", ");
-
-      const newIdea = await generateIdea({
-        rejectReasons: objections || "нет данных",
-        sources: sources || "нет данных",
-        existingTitles: ideas.map((i) => i.title),
-      });
+      const newIdea = await generateIdea(projectId ?? null);
       persist([newIdea, ...ideas]);
       toast({ title: "ИИ предложил новую идею", description: newIdea.title });
     } catch (e) {
@@ -98,6 +85,7 @@ export function AiRopContentPlan() {
     } finally {
       setGenerating(false);
     }
+
   };
 
   const onDelete = (id: string) => persist(ideas.filter((i) => i.id !== id));
@@ -477,70 +465,47 @@ function Stat({ label, value, color }: { label: string; value: number; color?: s
   );
 }
 
-async function generateIdea(ctx: {
-  rejectReasons: string;
-  sources: string;
-  existingTitles: string[];
-}): Promise<ContentIdea> {
-  const settings = getRopSettings();
-  const prompt =
-    `${settings.systemPrompt}\n\n` +
-    `Сгенерируй идею контента для соцсетей частной клиники, опираясь на реальные данные:\n` +
-    `- Возражения клиентов: ${ctx.rejectReasons}\n` +
-    `- Источники лидов: ${ctx.sources}\n` +
-    `- Уже есть темы: ${ctx.existingTitles.slice(0, 10).join(" | ") || "нет"}\n\n` +
-    `Дай ответ строго в формате:\n` +
-    `FORMAT: <reels | post | story | article | video>\n` +
-    `PRIORITY: <high | mid | low>\n` +
-    `TITLE: <заголовок>\n` +
-    `HOOK: <зацепляющая фраза в одну строку>\n` +
-    `BODY: <тезисы и идея, 2-4 предложения>\n` +
-    `AUDIENCE: <целевая аудитория>\n` +
-    `CTA: <призыв к действию>\n` +
-    `BASED_ON: <на основе какого инсайта>`;
-
-  const { data, error } = await supabase.functions.invoke("report-ai-chat", {
-    body: {
-      mode: "question",
-      question: prompt,
-      rangeLabel: "контент-план",
-      totals: null,
-      prev: null,
-      scoring: null,
-      channels: [],
-    },
+async function generateIdea(projectId: string | null): Promise<ContentIdea> {
+  const { data, error } = await supabase.functions.invoke("ai-rop-generate-content", {
+    body: { project_id: projectId ?? undefined },
   });
   if (error) throw error;
-  const raw = (data as { text?: string })?.text ?? "";
+  const row = (data ?? {}) as {
+    ok?: boolean;
+    reason?: string;
+    id?: string;
+    title?: string;
+    format?: ContentIdea["format"];
+    priority?: ContentIdea["priority"];
+    hook?: string;
+    body?: string;
+    audience?: string;
+    cta?: string;
+    based_on?: string;
+    created_at?: string;
+  };
+  if (row.ok === false) {
+    throw new Error(`Недостаточно данных для генерации: ${row.reason ?? "unknown"}`);
+  }
 
-  const pick = (key: string): string =>
-    raw.match(new RegExp(`${key}:\\s*([^\\n]+)`, "i"))?.[1]?.trim() ?? "";
-
-  const fmtRaw = pick("FORMAT").toLowerCase();
-  const format: ContentIdea["format"] = (
-    ["reels", "post", "story", "article", "video"] as ContentIdea["format"][]
-  ).includes(fmtRaw as ContentIdea["format"])
-    ? (fmtRaw as ContentIdea["format"])
-    : "reels";
-
-  const prRaw = pick("PRIORITY").toLowerCase();
+  const allowedFormats = ["reels", "post", "story", "article", "video"] as const;
+  const format: ContentIdea["format"] =
+    row.format && (allowedFormats as readonly string[]).includes(row.format) ? row.format : "reels";
   const priority: ContentIdea["priority"] =
-    prRaw === "high" ? "high" : prRaw === "low" ? "low" : "mid";
+    row.priority === "high" ? "high" : row.priority === "low" ? "low" : "mid";
 
   return {
-    id: newId("ci"),
-    title: pick("TITLE") || "Идея от ИИ",
+    id: row.id || newId("ci"),
+    title: row.title || "Идея от ИИ",
     format,
     priority,
-    hook: pick("HOOK"),
-    body:
-      raw
-        .match(/BODY:\s*([\s\S]+?)(?:\nAUDIENCE:|$)/i)?.[1]
-        ?.trim() ?? "",
-    audience: pick("AUDIENCE"),
-    cta: pick("CTA"),
-    basedOn: pick("BASED_ON") || "Анализ ИИ",
+    hook: row.hook ?? "",
+    body: row.body ?? "",
+    audience: row.audience ?? "",
+    cta: row.cta ?? "",
+    basedOn: row.based_on || "Анализ ИИ",
     status: "idea",
-    createdAt: new Date().toISOString(),
+    createdAt: row.created_at || new Date().toISOString(),
   };
 }
+

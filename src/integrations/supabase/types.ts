@@ -2655,6 +2655,53 @@ export type Database = {
           },
         ]
       }
+      sipuni_cdr_log: {
+        Row: {
+          created_at: string
+          duration_sec: number | null
+          error_text: string | null
+          id: string
+          lead_id_resolved: string | null
+          phone_normalized: string | null
+          processing_status: string
+          raw_payload: Json | null
+          recording_url: string | null
+          started_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          duration_sec?: number | null
+          error_text?: string | null
+          id?: string
+          lead_id_resolved?: string | null
+          phone_normalized?: string | null
+          processing_status: string
+          raw_payload?: Json | null
+          recording_url?: string | null
+          started_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          duration_sec?: number | null
+          error_text?: string | null
+          id?: string
+          lead_id_resolved?: string | null
+          phone_normalized?: string | null
+          processing_status?: string
+          raw_payload?: Json | null
+          recording_url?: string | null
+          started_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sipuni_cdr_log_lead_id_resolved_fkey"
+            columns: ["lead_id_resolved"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           assigned_to: string | null

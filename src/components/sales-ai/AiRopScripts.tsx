@@ -14,7 +14,6 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import {
-  getRopSettings,
   getScripts,
   newId,
   saveScripts,
@@ -25,7 +24,7 @@ import {
 } from "@/lib/aiRopStorage";
 import { useToast } from "@/hooks/use-toast";
 
-export function AiRopScripts() {
+export function AiRopScripts({ projectId }: { projectId?: string | null } = {}) {
   const { toast } = useToast();
   const [scripts, setScripts] = useState<RopScript[]>(getScripts);
   const [filter, setFilter] = useState<ScriptCategory | "all">("all");
@@ -36,6 +35,7 @@ export function AiRopScripts() {
     setScripts(getScripts());
     return subscribeAiRop("scripts", () => setScripts(getScripts()));
   }, []);
+
 
 
   const filtered = useMemo(() => {
@@ -71,7 +71,7 @@ export function AiRopScripts() {
   const onGenerateNew = async () => {
     setGenerating(true);
     try {
-      const newScript = await generateScript(scripts);
+      const newScript = await generateScript(scripts, projectId ?? null);
       persist([newScript, ...scripts]);
       toast({
         title: "ИИ создал новый скрипт",
@@ -87,6 +87,7 @@ export function AiRopScripts() {
       setGenerating(false);
     }
   };
+
 
   const newScript = () => {
     setEditing({
@@ -429,54 +430,43 @@ function CategoryChip({
   );
 }
 
-async function generateScript(existing: RopScript[]): Promise<RopScript> {
-  const settings = getRopSettings();
-  const existingTitles = existing.map((s) => `- ${s.title}`).join("\n");
-
-  const prompt =
-    `${settings.systemPrompt}\n\n` +
-    `Сгенерируй НОВЫЙ скрипт продаж для администратора клиники. ` +
-    `Учитывай, что уже есть такие скрипты:\n${existingTitles}\n\n` +
-    `Выбери категорию, которой не хватает, и дай ответ строго в формате:\n` +
-    `CATEGORY: <одна из: greeting, objection_price, objection_no_time, objection_thinking, closing, follow_up, missed_call, custom>\n` +
-    `TITLE: <короткое название скрипта>\n` +
-    `BODY: <текст скрипта, 3-5 предложений, используй {имя}, {клиника}, {слот_1} как переменные>\n` +
-    `TAGS: <через запятую, 2-3 тега>`;
-
-  const { data, error } = await supabase.functions.invoke("report-ai-chat", {
-    body: {
-      mode: "question",
-      question: prompt,
-      rangeLabel: "генерация скрипта",
-      totals: null,
-      prev: null,
-      scoring: null,
-      channels: [],
-    },
+async function generateScript(
+  existing: RopScript[],
+  projectId: string | null,
+): Promise<RopScript> {
+  const { data, error } = await supabase.functions.invoke("ai-rop-generate-script", {
+    body: { project_id: projectId ?? undefined },
   });
   if (error) throw error;
-  const raw = (data as { text?: string })?.text ?? "";
-
-  const cat = raw.match(/CATEGORY:\s*(\w+)/i)?.[1] as ScriptCategory | undefined;
-  const title = raw.match(/TITLE:\s*(.+)/i)?.[1]?.trim() ?? "Новый скрипт от ИИ";
-  const body = raw.match(/BODY:\s*([\s\S]+?)(?:\nTAGS:|$)/i)?.[1]?.trim() ?? raw;
-  const tags =
-    raw
-      .match(/TAGS:\s*(.+)/i)?.[1]
-      ?.split(",")
-      .map((t) => t.trim().replace(/^#/, ""))
-      .filter(Boolean) ?? [];
-
+  const row = (data ?? {}) as {
+    ok?: boolean;
+    reason?: string;
+    id?: string;
+    category?: ScriptCategory;
+    title?: string;
+    body?: string;
+    tags?: string[];
+    source?: string;
+    created_at?: string;
+    updated_at?: string;
+  };
+  if (row.ok === false) {
+    throw new Error(`Недостаточно данных для генерации: ${row.reason ?? "unknown"}`);
+  }
   return {
-    id: newId("scr"),
-    category: cat && SCRIPT_CATEGORIES.find((c) => c.id === cat) ? cat : "custom",
-    title,
-    body,
-    tags,
+    id: row.id || newId("scr"),
+    category:
+      row.category && SCRIPT_CATEGORIES.find((c) => c.id === row.category)
+        ? row.category
+        : "custom",
+    title: row.title || "Новый скрипт от ИИ",
+    body: row.body || "",
+    tags: row.tags ?? [],
     source: "ai",
     usageCount: 0,
     effectiveness: null,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
+    createdAt: row.created_at || new Date().toISOString(),
+    updatedAt: row.updated_at || new Date().toISOString(),
   };
 }
+
