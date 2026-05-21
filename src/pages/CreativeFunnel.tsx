@@ -65,6 +65,9 @@ const CreativeFunnel = () => {
   const [hasLeads, setHasLeads] = useState(false);
   const [hasSales, setHasSales] = useState(false);
   const [drawerRow, setDrawerRow] = useState<MetaCreativeRow | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 10;
+
   const [backfilling, setBackfilling] = useState(false);
   const [orphanLeads, setOrphanLeads] = useState(0);
   const [crmTotals, setCrmTotals] = useState({ leads: 0, diagnostics: 0, sales: 0, revenue: 0 });
