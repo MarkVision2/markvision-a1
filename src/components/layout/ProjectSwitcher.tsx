@@ -82,7 +82,7 @@ export function ProjectSwitcher({ collapsed }: Props) {
               className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-success hover:bg-success/10"
             >
               <Plus className="h-4 w-4" />
-              Добавить проект
+              Новый проект
             </button>
           </div>
         </PopoverContent>

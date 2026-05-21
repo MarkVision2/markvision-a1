@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Loader2, Check, ChevronLeft, ChevronRight, Sparkles, ExternalLink } from "lucide-react";
+import { Loader2, Check, ChevronLeft, ChevronRight, Sparkles, ExternalLink, SlidersHorizontal, Plus } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -56,6 +56,7 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
 
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
+  const [fullSetup, setFullSetup] = useState(false);
 
   // Step 1 — basics
   const [name, setName] = useState("");
@@ -105,7 +106,7 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
   const [aiError, setAiError] = useState<string | null>(null);
 
   const reset = () => {
-    setStep(1); setBusy(false);
+    setStep(1); setBusy(false); setFullSetup(false);
     setName(""); setDomain(""); setCity("");
     setNiche(""); setProduct(""); setAudience(""); setUsp(""); setGeo("");
     setTone("дружелюбный, экспертный"); setMonthlyBudget("");
@@ -125,6 +126,26 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
 
   const toggleChannel = (c: string) => {
     setChannels((prev) => prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]);
+  };
+
+  const quickCreate = async () => {
+    if (!name.trim()) {
+      toast.error("Введите название проекта");
+      return;
+    }
+    setBusy(true);
+    try {
+      const project = await addProject(name);
+      await setActive(project.id);
+      toast.success(`Проект «${project.name}» создан`);
+      close();
+    } catch (e: unknown) {
+      console.error(e);
+      const msg = e instanceof Error ? e.message : "Не удалось создать проект";
+      toast.error("Не удалось создать проект", { description: msg });
+    } finally {
+      setBusy(false);
+    }
   };
 
   const finalize = async (skipCab: boolean) => {
@@ -295,7 +316,7 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
         else close();
       }}
     >
-      <DialogContent className="max-w-3xl">
+      <DialogContent className={cn("max-w-lg", fullSetup && "max-w-3xl")}>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-success" />
@@ -308,6 +329,7 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
         </DialogHeader>
 
         {/* Progress */}
+        {fullSetup && (
         <div className="flex items-center gap-2 pb-2">
           {Array.from({ length: TOTAL_STEPS }).map((_, i) => (
             <div
@@ -319,23 +341,67 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
             />
           ))}
         </div>
+        )}
 
         {step === 1 && (
-          <div className="space-y-3">
-            <div className="space-y-1.5">
-              <Label>Название проекта *</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Стоматология AURA" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label>Сайт / лендинг</Label>
-                <Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="https://aura.kz" />
+          <div className="space-y-4">
+            <div className="rounded-xl border border-success/25 bg-success/10 p-4">
+              <div className="mb-3 flex items-start gap-3">
+                <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-success/15 text-success">
+                  <Plus className="h-5 w-5" />
+                </span>
+                <div>
+                  <div className="text-sm font-semibold">Быстрое создание проекта</div>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Достаточно названия. Рекламный кабинет, сайт, бриф и стратегию можно заполнить позже в настройках проекта.
+                  </p>
+                </div>
               </div>
               <div className="space-y-1.5">
-                <Label>Город</Label>
-                <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Алматы" />
+                <Label>Название проекта *</Label>
+                <Input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !fullSetup) void quickCreate();
+                  }}
+                  placeholder="Например: Мир без границ"
+                  autoFocus
+                />
               </div>
             </div>
+
+            {!fullSetup ? (
+              <button
+                type="button"
+                onClick={() => setFullSetup(true)}
+                className="flex w-full items-center justify-between rounded-xl border border-border/70 bg-card/50 p-4 text-left transition-colors hover:bg-card"
+              >
+                <span className="flex items-center gap-3">
+                  <span className="grid h-10 w-10 place-items-center rounded-lg bg-secondary text-muted-foreground">
+                    <SlidersHorizontal className="h-5 w-5" />
+                  </span>
+                  <span>
+                    <span className="block text-sm font-semibold">Полная настройка</span>
+                    <span className="block text-sm text-muted-foreground">
+                      Бриф, рынок, кабинет и AI-стратегия сразу при создании.
+                    </span>
+                  </span>
+                </span>
+                <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              </button>
+            ) : (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Сайт / лендинг</Label>
+                  <Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="https://aura.kz" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Город</Label>
+                  <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Алматы" />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -641,9 +707,16 @@ export function ProjectOnboardingDialog({ open, onOpenChange }: Props) {
               </Button>
             )}
             {step === 1 && (
-              <Button onClick={() => { if (!name.trim()) { toast.error("Введите название проекта"); return; } setStep(2); }}>
-                Далее <ChevronRight className="ml-1 h-4 w-4" />
-              </Button>
+              fullSetup ? (
+                <Button onClick={() => { if (!name.trim()) { toast.error("Введите название проекта"); return; } setStep(2); }}>
+                  Далее <ChevronRight className="ml-1 h-4 w-4" />
+                </Button>
+              ) : (
+                <Button onClick={() => void quickCreate()} disabled={busy}>
+                  {busy ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : null}
+                  Создать проект
+                </Button>
+              )
             )}
             {step === 2 && <Button onClick={() => setStep(3)}>Далее <ChevronRight className="ml-1 h-4 w-4" /></Button>}
             {step === 3 && <Button onClick={() => setStep(4)}>Далее <ChevronRight className="ml-1 h-4 w-4" /></Button>}

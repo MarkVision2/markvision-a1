@@ -27,6 +27,8 @@ type Row = {
   intake_token?: string | null;
 };
 
+const PROJECT_SELECT = "id,name,domain,initials,is_primary,created_by,created_at,updated_at";
+
 const toProject = (r: Row): Project => ({
   id: r.id,
   name: r.name,
@@ -42,8 +44,29 @@ export function useProjectsStore() {
   const [activeId, setActiveId] = useState<string>("");
 
   const refetch = useCallback(async () => {
-    const { data } = await supabase.from("projects").select("*").order("created_at");
+    const { data, error } = await supabase
+      .from("projects")
+      .select(PROJECT_SELECT)
+      .order("created_at");
+    if (error) {
+      console.error("[projects] refetch failed", error);
+      setProjects([]);
+      return;
+    }
     const list = (data ?? []).map((r) => toProject(r as Row));
+    const { data: tokenRows } = await supabase
+      .from("projects")
+      .select("id,intake_token")
+      .in("id", list.map((p) => p.id));
+    const tokens = new Map(
+      (tokenRows ?? []).map((r) => [
+        (r as { id: string }).id,
+        (r as { intake_token?: string | null }).intake_token ?? undefined,
+      ]),
+    );
+    for (const project of list) {
+      project.intakeToken = tokens.get(project.id);
+    }
     setProjects(list);
 
     if (user?.id) {
@@ -71,21 +94,33 @@ export function useProjectsStore() {
 
   const addProject = useCallback(
     async (name: string, domain?: string) => {
-      const payload = {
-        name: name.trim(),
-        domain: domain?.trim() || null,
-        initials: makeInitials(name),
-        created_by: user?.id ?? null,
-      };
-      const { data, error } = await supabase.from("projects").insert(payload).select().single();
-      if (error || !data) throw error;
-      const project = toProject(data as Row);
-      if (user?.id) {
-        await supabase
-          .from("user_active_project")
-          .upsert({ user_id: user.id, project_id: project.id });
+      if (!user?.id) {
+        throw new Error("Нужно войти в аккаунт, чтобы создать проект");
       }
+      const safeName = name.trim();
+      if (!safeName) {
+        throw new Error("Введите название проекта");
+      }
+      const payload = {
+        name: safeName,
+        domain: domain?.trim() || null,
+        initials: makeInitials(safeName),
+        created_by: user.id,
+      };
+      const { data, error } = await supabase
+        .from("projects")
+        .insert(payload)
+        .select(PROJECT_SELECT)
+        .single();
+      if (error) throw error;
+      if (!data) throw new Error("Supabase не вернул созданный проект");
+      const project = toProject(data as Row);
+      const { error: activeErr } = await supabase
+        .from("user_active_project")
+        .upsert({ user_id: user.id, project_id: project.id });
+      if (activeErr) console.warn("[projects] active project upsert failed", activeErr);
       await refetch();
+      setActiveId(project.id);
       return project;
     },
     [user?.id, refetch],
