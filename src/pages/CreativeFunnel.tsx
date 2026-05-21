@@ -15,7 +15,7 @@ import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
-const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
+const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")}\u00a0₸`;
 const pct = (n: number) => `${(Math.round(n * 10) / 10).toLocaleString("ru-RU")}%`;
 
 type SortKey = "crmRevenue" | "crmRomi" | "crmSales" | "crmLeads" | "leads" | "spend" | "ctr" | "cpl" | "name";
@@ -245,7 +245,7 @@ const CreativeFunnel = () => {
         ].map((k) => (
           <div key={k.label} className="rounded-2xl border border-border/60 bg-card/60 p-3">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{k.label}</div>
-            <div className={cn("mt-1 text-lg font-bold tabular-nums", k.cls)}>{k.value}</div>
+            <div className={cn("mt-1 whitespace-nowrap text-lg font-bold tabular-nums", k.cls)}>{k.value}</div>
           </div>
         ))}
       </div>
