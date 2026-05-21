@@ -21,6 +21,29 @@ const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+// Дебаунс на triggerChatAnalysis: один лид → один вызов в 30 сек.
+const _aiRopDebounce = new Map<string, number>();
+function triggerChatAnalysis(leadId: string) {
+  try {
+    const now = Date.now();
+    const last = _aiRopDebounce.get(leadId) ?? 0;
+    if (now - last < 30_000) return;
+    _aiRopDebounce.set(leadId, now);
+    // Fire-and-forget POST в ai-rop-analyze-chat
+    fetch(`${SUPABASE_URL}/functions/v1/ai-rop-analyze-chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-internal-key": SERVICE_ROLE,
+      },
+      body: JSON.stringify({ lead_id: leadId }),
+    }).catch((e) => console.warn("ai-rop-analyze-chat trigger failed:", e));
+  } catch (e) {
+    console.warn("triggerChatAnalysis threw:", e);
+  }
+}
+
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
