@@ -57,6 +57,12 @@ export function AiRopContentPlan() {
   const [generating, setGenerating] = useState(false);
   const [editing, setEditing] = useState<ContentIdea | null>(null);
 
+  useEffect(() => {
+    setIdeas(getContentIdeas());
+    return subscribeAiRop("content-ideas", () => setIdeas(getContentIdeas()));
+  }, []);
+
+
   const persist = (next: ContentIdea[]) => {
     setIdeas(next);
     saveContentIdeas(next);
