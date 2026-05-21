@@ -440,6 +440,601 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_rop_call_analyses: {
+        Row: {
+          ai_model: string | null
+          call_at: string
+          call_recording_url: string | null
+          criteria: Json | null
+          duration_sec: number | null
+          id: string
+          lead_id: string | null
+          main_mistake: string | null
+          manager_id: string | null
+          objections: string[] | null
+          overall_score: number | null
+          processed_at: string
+          project_id: string | null
+          recommended_script_id: string | null
+          strengths: string[] | null
+          topics: string[] | null
+          transcript: string | null
+          transcript_segments: Json | null
+          weaknesses: string[] | null
+        }
+        Insert: {
+          ai_model?: string | null
+          call_at: string
+          call_recording_url?: string | null
+          criteria?: Json | null
+          duration_sec?: number | null
+          id?: string
+          lead_id?: string | null
+          main_mistake?: string | null
+          manager_id?: string | null
+          objections?: string[] | null
+          overall_score?: number | null
+          processed_at?: string
+          project_id?: string | null
+          recommended_script_id?: string | null
+          strengths?: string[] | null
+          topics?: string[] | null
+          transcript?: string | null
+          transcript_segments?: Json | null
+          weaknesses?: string[] | null
+        }
+        Update: {
+          ai_model?: string | null
+          call_at?: string
+          call_recording_url?: string | null
+          criteria?: Json | null
+          duration_sec?: number | null
+          id?: string
+          lead_id?: string | null
+          main_mistake?: string | null
+          manager_id?: string | null
+          objections?: string[] | null
+          overall_score?: number | null
+          processed_at?: string
+          project_id?: string | null
+          recommended_script_id?: string | null
+          strengths?: string[] | null
+          topics?: string[] | null
+          transcript?: string | null
+          transcript_segments?: Json | null
+          weaknesses?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_rop_call_analyses_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_rop_call_analyses_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "ai_rop_call_analyses_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_rop_call_analyses_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_rop_call_analyses_recommended_script_id_fkey"
+            columns: ["recommended_script_id"]
+            isOneToOne: false
+            referencedRelation: "ai_rop_scripts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_rop_chat_analyses: {
+        Row: {
+          ai_model: string | null
+          avg_response_min: number | null
+          channel: string | null
+          criteria: Json | null
+          first_response_min: number | null
+          flag_ghosted_by_manager: boolean | null
+          flag_no_closing: boolean | null
+          flag_price_without_qualification: boolean | null
+          id: string
+          lead_id: string | null
+          manager_id: string | null
+          message_count: number | null
+          objections: string[] | null
+          overall_score: number | null
+          processed_at: string
+          project_id: string | null
+          strengths: string[] | null
+          topics: string[] | null
+          weaknesses: string[] | null
+        }
+        Insert: {
+          ai_model?: string | null
+          avg_response_min?: number | null
+          channel?: string | null
+          criteria?: Json | null
+          first_response_min?: number | null
+          flag_ghosted_by_manager?: boolean | null
+          flag_no_closing?: boolean | null
+          flag_price_without_qualification?: boolean | null
+          id?: string
+          lead_id?: string | null
+          manager_id?: string | null
+          message_count?: number | null
+          objections?: string[] | null
+          overall_score?: number | null
+          processed_at?: string
+          project_id?: string | null
+          strengths?: string[] | null
+          topics?: string[] | null
+          weaknesses?: string[] | null
+        }
+        Update: {
+          ai_model?: string | null
+          avg_response_min?: number | null
+          channel?: string | null
+          criteria?: Json | null
+          first_response_min?: number | null
+          flag_ghosted_by_manager?: boolean | null
+          flag_no_closing?: boolean | null
+          flag_price_without_qualification?: boolean | null
+          id?: string
+          lead_id?: string | null
+          manager_id?: string | null
+          message_count?: number | null
+          objections?: string[] | null
+          overall_score?: number | null
+          processed_at?: string
+          project_id?: string | null
+          strengths?: string[] | null
+          topics?: string[] | null
+          weaknesses?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_rop_chat_analyses_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: true
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_rop_chat_analyses_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "ai_rop_chat_analyses_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_rop_chat_analyses_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_rop_content_ideas: {
+        Row: {
+          audience: string | null
+          based_on: string | null
+          body: string | null
+          created_at: string
+          created_by: string | null
+          cta: string | null
+          format: Database["public"]["Enums"]["content_format"]
+          hook: string | null
+          id: string
+          priority: Database["public"]["Enums"]["content_priority"]
+          project_id: string | null
+          source_lead_ids: string[] | null
+          status: Database["public"]["Enums"]["content_status"]
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          audience?: string | null
+          based_on?: string | null
+          body?: string | null
+          created_at?: string
+          created_by?: string | null
+          cta?: string | null
+          format: Database["public"]["Enums"]["content_format"]
+          hook?: string | null
+          id?: string
+          priority?: Database["public"]["Enums"]["content_priority"]
+          project_id?: string | null
+          source_lead_ids?: string[] | null
+          status?: Database["public"]["Enums"]["content_status"]
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          audience?: string | null
+          based_on?: string | null
+          body?: string | null
+          created_at?: string
+          created_by?: string | null
+          cta?: string | null
+          format?: Database["public"]["Enums"]["content_format"]
+          hook?: string | null
+          id?: string
+          priority?: Database["public"]["Enums"]["content_priority"]
+          project_id?: string | null
+          source_lead_ids?: string[] | null
+          status?: Database["public"]["Enums"]["content_status"]
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_rop_content_ideas_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "ai_rop_content_ideas_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_rop_content_ideas_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_rop_manager_scores: {
+        Row: {
+          ai_recommendations: string[] | null
+          ai_report: string | null
+          calls_avg_score: number | null
+          calls_total: number | null
+          chats_avg_score: number | null
+          chats_total: number | null
+          conversion_score: number | null
+          dial_score: number | null
+          empathy_score: number | null
+          generated_at: string
+          id: string
+          leads_assigned: number | null
+          leads_paid: number | null
+          manager_id: string | null
+          overall_score: number | null
+          period_end: string
+          period_start: string
+          project_id: string | null
+          scripts_score: number | null
+          sla_score: number | null
+        }
+        Insert: {
+          ai_recommendations?: string[] | null
+          ai_report?: string | null
+          calls_avg_score?: number | null
+          calls_total?: number | null
+          chats_avg_score?: number | null
+          chats_total?: number | null
+          conversion_score?: number | null
+          dial_score?: number | null
+          empathy_score?: number | null
+          generated_at?: string
+          id?: string
+          leads_assigned?: number | null
+          leads_paid?: number | null
+          manager_id?: string | null
+          overall_score?: number | null
+          period_end: string
+          period_start: string
+          project_id?: string | null
+          scripts_score?: number | null
+          sla_score?: number | null
+        }
+        Update: {
+          ai_recommendations?: string[] | null
+          ai_report?: string | null
+          calls_avg_score?: number | null
+          calls_total?: number | null
+          chats_avg_score?: number | null
+          chats_total?: number | null
+          conversion_score?: number | null
+          dial_score?: number | null
+          empathy_score?: number | null
+          generated_at?: string
+          id?: string
+          leads_assigned?: number | null
+          leads_paid?: number | null
+          manager_id?: string | null
+          overall_score?: number | null
+          period_end?: string
+          period_start?: string
+          project_id?: string | null
+          scripts_score?: number | null
+          sla_score?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_rop_manager_scores_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "ai_rop_manager_scores_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_rop_manager_scores_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_rop_scripts: {
+        Row: {
+          body: string
+          category: Database["public"]["Enums"]["ai_script_category"]
+          created_at: string
+          created_by: string | null
+          effectiveness: number | null
+          id: string
+          project_id: string | null
+          source: Database["public"]["Enums"]["ai_script_source"]
+          tags: string[]
+          title: string
+          updated_at: string
+          usage_count: number
+        }
+        Insert: {
+          body: string
+          category: Database["public"]["Enums"]["ai_script_category"]
+          created_at?: string
+          created_by?: string | null
+          effectiveness?: number | null
+          id?: string
+          project_id?: string | null
+          source?: Database["public"]["Enums"]["ai_script_source"]
+          tags?: string[]
+          title: string
+          updated_at?: string
+          usage_count?: number
+        }
+        Update: {
+          body?: string
+          category?: Database["public"]["Enums"]["ai_script_category"]
+          created_at?: string
+          created_by?: string | null
+          effectiveness?: number | null
+          id?: string
+          project_id?: string | null
+          source?: Database["public"]["Enums"]["ai_script_source"]
+          tags?: string[]
+          title?: string
+          updated_at?: string
+          usage_count?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_rop_scripts_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "ai_rop_scripts_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_rop_scripts_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_rop_settings: {
+        Row: {
+          auto_flag_sla: boolean
+          auto_generate_content: boolean
+          auto_score_calls: boolean
+          auto_score_chats: boolean
+          auto_suggest_scripts: boolean
+          created_at: string
+          id: string
+          kpi_max_reject_pct: number
+          kpi_min_conversion_pct: number
+          kpi_min_dial_pct: number
+          project_id: string | null
+          sla_callback_hours: number
+          sla_chat_idle_hours: number
+          sla_first_response_min: number
+          system_prompt: string
+          tone: string
+          updated_at: string
+          user_id: string | null
+          watch_list: string[]
+        }
+        Insert: {
+          auto_flag_sla?: boolean
+          auto_generate_content?: boolean
+          auto_score_calls?: boolean
+          auto_score_chats?: boolean
+          auto_suggest_scripts?: boolean
+          created_at?: string
+          id?: string
+          kpi_max_reject_pct?: number
+          kpi_min_conversion_pct?: number
+          kpi_min_dial_pct?: number
+          project_id?: string | null
+          sla_callback_hours?: number
+          sla_chat_idle_hours?: number
+          sla_first_response_min?: number
+          system_prompt: string
+          tone?: string
+          updated_at?: string
+          user_id?: string | null
+          watch_list?: string[]
+        }
+        Update: {
+          auto_flag_sla?: boolean
+          auto_generate_content?: boolean
+          auto_score_calls?: boolean
+          auto_score_chats?: boolean
+          auto_suggest_scripts?: boolean
+          created_at?: string
+          id?: string
+          kpi_max_reject_pct?: number
+          kpi_min_conversion_pct?: number
+          kpi_min_dial_pct?: number
+          project_id?: string | null
+          sla_callback_hours?: number
+          sla_chat_idle_hours?: number
+          sla_first_response_min?: number
+          system_prompt?: string
+          tone?: string
+          updated_at?: string
+          user_id?: string | null
+          watch_list?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_rop_settings_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "ai_rop_settings_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_rop_settings_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_rop_trainer_sessions: {
+        Row: {
+          difficulty: string
+          feedback: string | null
+          finished_at: string | null
+          id: string
+          improvements: string[] | null
+          messages: Json
+          project_id: string | null
+          scenario_channel: Database["public"]["Enums"]["trainer_channel"]
+          scenario_id: string
+          scenario_role: Database["public"]["Enums"]["trainer_role"]
+          scenario_title: string
+          score: number | null
+          started_at: string
+          user_id: string | null
+          voice_recording_url: string | null
+        }
+        Insert: {
+          difficulty: string
+          feedback?: string | null
+          finished_at?: string | null
+          id?: string
+          improvements?: string[] | null
+          messages?: Json
+          project_id?: string | null
+          scenario_channel: Database["public"]["Enums"]["trainer_channel"]
+          scenario_id: string
+          scenario_role: Database["public"]["Enums"]["trainer_role"]
+          scenario_title: string
+          score?: number | null
+          started_at?: string
+          user_id?: string | null
+          voice_recording_url?: string | null
+        }
+        Update: {
+          difficulty?: string
+          feedback?: string | null
+          finished_at?: string | null
+          id?: string
+          improvements?: string[] | null
+          messages?: Json
+          project_id?: string | null
+          scenario_channel?: Database["public"]["Enums"]["trainer_channel"]
+          scenario_id?: string
+          scenario_role?: Database["public"]["Enums"]["trainer_role"]
+          scenario_title?: string
+          score?: number | null
+          started_at?: string
+          user_id?: string | null
+          voice_recording_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_rop_trainer_sessions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "ai_rop_trainer_sessions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_rop_trainer_sessions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       automation_runs: {
         Row: {
           bucket_at: string
@@ -2830,6 +3425,16 @@ export type Database = {
       }
     }
     Enums: {
+      ai_script_category:
+        | "greeting"
+        | "objection_price"
+        | "objection_no_time"
+        | "objection_thinking"
+        | "closing"
+        | "follow_up"
+        | "missed_call"
+        | "custom"
+      ai_script_source: "manual" | "ai"
       app_role:
         | "admin"
         | "manager"
@@ -2846,11 +3451,16 @@ export type Database = {
         | "email"
       communication_direction: "in" | "out"
       communication_type: "call" | "message" | "note"
+      content_format: "reels" | "post" | "story" | "article" | "video"
+      content_priority: "high" | "mid" | "low"
+      content_status: "idea" | "in_progress" | "published" | "rejected"
       deal_status: "pending" | "paid" | "cancelled"
       lead_channel: "whatsapp" | "telegram" | "instagram" | "phone" | "web"
       payment_method: "cash" | "card" | "kaspi" | "transfer"
       task_status: "pending" | "done" | "overdue" | "cancelled"
       task_type: "call" | "followup" | "visit" | "other" | "revival"
+      trainer_channel: "phone" | "whatsapp" | "instagram"
+      trainer_role: "patient" | "lead"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2978,6 +3588,17 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      ai_script_category: [
+        "greeting",
+        "objection_price",
+        "objection_no_time",
+        "objection_thinking",
+        "closing",
+        "follow_up",
+        "missed_call",
+        "custom",
+      ],
+      ai_script_source: ["manual", "ai"],
       app_role: ["admin", "manager", "director", "marketer", "viewer", "staff"],
       communication_channel: [
         "whatsapp",
@@ -2989,11 +3610,16 @@ export const Constants = {
       ],
       communication_direction: ["in", "out"],
       communication_type: ["call", "message", "note"],
+      content_format: ["reels", "post", "story", "article", "video"],
+      content_priority: ["high", "mid", "low"],
+      content_status: ["idea", "in_progress", "published", "rejected"],
       deal_status: ["pending", "paid", "cancelled"],
       lead_channel: ["whatsapp", "telegram", "instagram", "phone", "web"],
       payment_method: ["cash", "card", "kaspi", "transfer"],
       task_status: ["pending", "done", "overdue", "cancelled"],
       task_type: ["call", "followup", "visit", "other", "revival"],
+      trainer_channel: ["phone", "whatsapp", "instagram"],
+      trainer_role: ["patient", "lead"],
     },
   },
 } as const
