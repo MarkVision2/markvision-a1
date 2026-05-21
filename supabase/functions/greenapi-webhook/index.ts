@@ -140,6 +140,31 @@ function parseCtwa(messageData: Record<string, unknown> | undefined, body: Recor
   if (refExt) candidates.push(refExt);
   const refCtx = ctx?.referral as Record<string, unknown> | undefined;
   if (refCtx) candidates.push(refCtx);
+  // WhatsApp Cloud API canonical CTWA payload: contextInfo.externalAdReply
+  const earCtx = (ctx?.externalAdReply ?? ctx?.external_ad_reply) as Record<string, unknown> | undefined;
+  if (earCtx) candidates.push(earCtx);
+  const earExt = (ext?.externalAdReply ?? ext?.external_ad_reply) as Record<string, unknown> | undefined;
+  if (earExt) candidates.push(earExt);
+  const earTop = (messageData.externalAdReply ?? messageData.external_ad_reply) as Record<string, unknown> | undefined;
+  if (earTop) candidates.push(earTop);
+  const quoted = (messageData.quotedMessage ?? messageData.quoted_message) as Record<string, unknown> | undefined;
+  if (quoted) {
+    const qctx = (quoted.contextInfo ?? quoted.context_info) as Record<string, unknown> | undefined;
+    if (qctx) {
+      candidates.push(qctx);
+      const qear = (qctx.externalAdReply ?? qctx.external_ad_reply) as Record<string, unknown> | undefined;
+      if (qear) candidates.push(qear);
+    }
+  }
+
+  const tryExtractAdFromUrl = (u: unknown): string | null => {
+    if (!u || typeof u !== "string") return null;
+    const m1 = u.match(/[?&](?:ad_id|adId|content)=([0-9]{6,})/);
+    if (m1) return m1[1];
+    const m2 = u.match(/fb\.me\/([0-9]{6,})/);
+    if (m2) return m2[1];
+    return null;
+  };
 
   for (const c of candidates) {
     const sourceId = c.sourceId ?? c.source_id ?? c.adId ?? c.ad_id;
@@ -152,8 +177,45 @@ function parseCtwa(messageData: Record<string, unknown> | undefined, body: Recor
     if (adset && !out.meta_adset_id) out.meta_adset_id = String(adset);
     const headline = c.headline ?? c.title;
     if (headline && !out.headline) out.headline = String(headline);
+    if (!out.meta_ad_id) {
+      const fromUrl = tryExtractAdFromUrl(c.sourceUrl ?? c.source_url ?? c.url);
+      if (fromUrl) out.meta_ad_id = fromUrl;
+    }
   }
   return out;
+}
+
+// Sticky attribution: try previous CTWA-attributed lead from the same phone,
+// then a wa_clicks row matched to this phone. Used when current message has no referral.
+async function attributionFromPhone(phone: string, projectId: string | null): Promise<CtwaAttribution | null> {
+  const d = digits(phone);
+  if (!d) return null;
+  let q = admin
+    .from("phone_attribution")
+    .select("meta_ad_id, meta_adset_id, meta_campaign_id, click_id, captured_at")
+    .eq("phone", d)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  if (projectId) q = q.eq("project_id", projectId);
+  const { data } = await q;
+  const row = (data ?? [])[0] as { meta_ad_id: string | null; meta_adset_id: string | null; meta_campaign_id: string | null; click_id: string | null; captured_at: string } | undefined;
+  if (row?.meta_ad_id) {
+    const ageMs = Date.now() - new Date(row.captured_at).getTime();
+    if (ageMs <= 30 * 24 * 3600 * 1000) {
+      return { meta_ad_id: row.meta_ad_id, meta_adset_id: row.meta_adset_id, meta_campaign_id: row.meta_campaign_id, click_id: row.click_id, headline: null };
+    }
+  }
+  const { data: wc } = await admin
+    .from("wa_clicks")
+    .select("utm_content, utm_term, utm_campaign, click_id")
+    .or(`matched_phone.eq.+${d},matched_phone.eq.${d}`)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const w = (wc ?? [])[0] as { utm_content: string | null; utm_term: string | null; utm_campaign: string | null; click_id: string | null } | undefined;
+  if (w?.utm_content && /^[0-9]{6,}$/.test(w.utm_content)) {
+    return { meta_ad_id: w.utm_content, meta_adset_id: w.utm_term, meta_campaign_id: w.utm_campaign, click_id: w.click_id, headline: null };
+  }
+  return null;
 }
 
 async function enrichFromCreative(adId: string): Promise<{ campaign_id: string | null; adset_id: string | null; cabinet_id: string | null; project_id: string | null }> {
@@ -369,8 +431,16 @@ Deno.serve(async (req) => {
       const phone = chatIdToPhone(senderData?.chatId ?? senderData?.sender);
       const name = senderData?.senderName?.trim() || "";
       if (!phone) return json({ ok: true, skipped: "no phone" });
-      const attribution = parseCtwa(messageData, body);
-      const leadId = await findOrCreateLead(phone, name, projectId, attribution);
+      let attribution: CtwaAttribution | null = parseCtwa(messageData, body);
+      if (!attribution?.meta_ad_id) {
+        const fallback = await attributionFromPhone(phone, projectId);
+        if (fallback) attribution = fallback;
+      }
+      if (!attribution?.meta_ad_id) {
+        // First-touch debug snapshot: log shape once so we can extend parseCtwa later.
+        console.log("ctwa_no_attribution", JSON.stringify({ phone, projectId, messageData }).slice(0, 4000));
+      }
+      const leadId = await findOrCreateLead(phone, name, projectId, attribution ?? undefined);
       if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
       const text = extractText(messageData);
       await insertCommunication({ leadId, direction: "in", text, externalId: idMessage });
