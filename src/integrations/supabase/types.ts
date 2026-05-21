@@ -1672,6 +1672,48 @@ export type Database = {
           },
         ]
       }
+      phone_attribution: {
+        Row: {
+          cabinet_id: string | null
+          captured_at: string
+          click_id: string | null
+          id: string
+          meta_ad_id: string | null
+          meta_adset_id: string | null
+          meta_campaign_id: string | null
+          phone: string
+          project_id: string | null
+          source: string | null
+          updated_at: string
+        }
+        Insert: {
+          cabinet_id?: string | null
+          captured_at?: string
+          click_id?: string | null
+          id?: string
+          meta_ad_id?: string | null
+          meta_adset_id?: string | null
+          meta_campaign_id?: string | null
+          phone: string
+          project_id?: string | null
+          source?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cabinet_id?: string | null
+          captured_at?: string
+          click_id?: string | null
+          id?: string
+          meta_ad_id?: string | null
+          meta_adset_id?: string | null
+          meta_campaign_id?: string | null
+          phone?: string
+          project_id?: string | null
+          source?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       pipeline_stages: {
         Row: {
           color: string
@@ -2150,6 +2192,57 @@ export type Database = {
         }
         Relationships: []
       }
+      wa_clicks: {
+        Row: {
+          click_id: string
+          created_at: string
+          ctwa_clid: string | null
+          fbclid: string | null
+          landing_url: string | null
+          matched: boolean
+          matched_at: string | null
+          matched_phone: string | null
+          project_id: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+        }
+        Insert: {
+          click_id: string
+          created_at?: string
+          ctwa_clid?: string | null
+          fbclid?: string | null
+          landing_url?: string | null
+          matched?: boolean
+          matched_at?: string | null
+          matched_phone?: string | null
+          project_id?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+        }
+        Update: {
+          click_id?: string
+          created_at?: string
+          ctwa_clid?: string | null
+          fbclid?: string | null
+          landing_url?: string | null
+          matched?: boolean
+          matched_at?: string | null
+          matched_phone?: string | null
+          project_id?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+        }
+        Relationships: []
+      }
       whatsapp_config: {
         Row: {
           ads_only: boolean
@@ -2559,6 +2652,7 @@ export type Database = {
       meta_creative_crm_daily: {
         Row: {
           ad_id: string | null
+          cabinet_id: string | null
           crm_leads: number | null
           crm_qualified: number | null
           crm_revenue: number | null
@@ -2677,6 +2771,10 @@ export type Database = {
       _get_usd_kzt_rate: { Args: { p_date: string }; Returns: number }
       _meta_get: { Args: { p_url: string }; Returns: Json }
       _normalize_act_id: { Args: { p_id: string }; Returns: string }
+      backfill_lead_attribution: {
+        Args: { p_project_id: string; p_since?: string }
+        Returns: Json
+      }
       bind_whatsapp_to_project: {
         Args: {
           p_api_token?: string

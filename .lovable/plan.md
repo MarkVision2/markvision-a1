@@ -1,88 +1,62 @@
-## Контекст (что уже есть)
+## Что не так сейчас
 
-Проверил репо — половина инфраструктуры уже на месте:
+Я посмотрел данные напрямую в БД и код вебхука. Картина такая:
 
-- ✅ Edge functions: `meta-validate-cabinet`, `greenapi-webhook`, `meta-creative-upsert`, `capi-outbox-worker`, `meta-daily-sync`, `meta-structure-sync`, `lead-intake`
-- ✅ Миграция `20260519100000_capi_outbox_and_attribution.sql` → таблицы `crm_stage_map`, `capi_outbox`, триггеры стадий
-- ✅ Таблицы `ad_cabinets` (с токенами), `projects`, `meta_creatives`, `finance_plans`, `pipelines`, `pipeline_stages`
-- ✅ Страница `SettingsConnection.tsx` (933 строки) — но только под WhatsApp/GreenAPI бинд
-- ✅ Хук `useCabinetsStore.ts`
-- ✅ Доки `docs/SETUP-CHECKLIST.md`, `docs/attribution-pipeline.md`
+- За 60 дней в CRM пришло **49 лидов**: 39 через WhatsApp без атрибуции, 8 через Meta с `meta_ad_id`, 2 с сайта. Meta показывает **45 лидов на креативы**.
+- Воронка по креативам считается из view `meta_creative_crm_daily`, который смотрит **только** на `leads.meta_ad_id`. Поэтому 38 из 39 WhatsApp-лидов **не попадают ни в один креатив** → почти везде "0 лидов".
+- В вебхуке `greenapi-webhook` есть код, который дёргает таблицу `wa_clicks` для fallback-атрибуции через клик на сайте. **Эта таблица не существует в БД** — поэтому fallback просто молча падает в `null`.
+- Парсер CTWA в вебхуке смотрит в `extendedTextMessageData`, `contextInfo`, `referralData`, но не учитывает реальное поле WhatsApp Cloud API — `messageData.contextInfo.externalAdReply` (id поста + `sourceUrl=fb.me/...`), которое Green API прокидывает по-другому, и не учитывает `senderData`.
+- Когда CTWA-referral приходит во **второе** сообщение от того же телефона, мы его теряем: лид уже создан, и `meta_ad_id` остаётся пустым, потому что мы апдейтим только если `existing.meta_ad_id` пуст **и** в текущем сообщении есть атрибуция.
+- Сама страница не показывает строку "Лиды без креатива" — пользователь видит 0 у всех и думает, что аналитика сломана. Также нет колонки "Сообщения Meta", хотя для WhatsApp-целей именно она — основной показатель.
 
-**Чего нет:**
-- Нет единого 8-шагового визарда «Добавить проект»
-- Нет edge function `greenapi-setup` (автонастройка webhook через GreenAPI /setSettings)
-- Нет таблицы `ad_sync_runs` (для Health Check «когда был последний sync»)
-- Нет панели Health Check (6 индикаторов)
-- Нет тест-прогона (создать лида → прокатить по стадиям → проверить CAPI)
-- `CreativeFunnel` не расширен до полной воронки с ROMI
+## Что сделаю
 
-## Подход — режем на 3 фазы, чтобы ничего не сломать
+### 1. Достроить и починить атрибуцию (бэкенд)
 
-### Фаза 1 — Визард + сохранение (этот PR)
+**Миграция:**
+- Создаю таблицу `wa_clicks` (click_id PK, project_id, utm_source/medium/campaign/content/term, fbclid, ctwa_clid, landing_url, matched, matched_phone, matched_at, created_at) с RLS (project-scoped) и индексом по `matched_phone`, `click_id`, `fbclid`.
+- Создаю таблицу `phone_attribution` (phone, project_id, meta_ad_id, meta_adset_id, meta_campaign_id, click_id, source, captured_at) — атрибуция «прилипает» к телефону на 30 дней. Уникальный ключ (phone, project_id).
+- RPC `backfill_lead_attribution(p_project_id, p_since)` — пробегается по `leads` без `meta_ad_id` и подтягивает из `wa_clicks` (по phone) и из `phone_attribution`. Возвращает счётчик заматченных.
+- Триггер на `leads` AFTER UPDATE OF meta_ad_id: пишет/обновляет `phone_attribution`, чтобы будущие лиды с того же номера наследовали креатив.
 
-Один новый файл `src/pages/NewProjectWizard.tsx` + route `/projects/new`. 8 шагов в одном `<Card>` со stepper:
+**Вебхук `greenapi-webhook`:**
+- Расширяю `parseCtwa`: добавляю поиск в `senderData`, `messageData.contextInfo.externalAdReply` (поля `sourceId`, `sourceUrl`, `ctwaClid`, `title`, `body`), `messageData.quotedMessage.contextInfo`, парсинг `sourceUrl=https://fb.me/<...>` чтобы вытащить ad id даже из ссылки.
+- Логирую сырой `messageData` в `console.log` при первом сообщении от номера (один раз) — чтобы видеть реальную форму payload от Green API в будущих кейсах.
+- Перед созданием/поиском лида: смотрю в `phone_attribution` по нормализованному номеру. Если есть запись младше 30 дней — использую её, даже если в текущем сообщении CTWA нет.
+- После того как CTWA пришло — апдейчу лид, даже если у него уже есть `meta_ad_id` (бывает, что Green API сначала отдаёт «протухший» id, потом точный).
 
-1. **Идентификация** → `projects` (name, domain, city, currency, timezone). Создаёт row сразу, чтобы `project_id` был доступен на следующих шагах
-2. **Meta Ads API** → `ad_cabinets` (ad_account_id auto-normalize в `act_XXX`, access_token, pixel_id, pixel_event, capi_test_event_code). Кнопка «Проверить токен» → вызов `meta-validate-cabinet`, показ имени аккаунта/валюты
-3. **Facebook Page + Instagram** → `ad_cabinets.page_id`, `page_name`, `instagram_id`. Кнопка «Подтянуть данные страницы» через `meta-page-assets`
-4. **GreenAPI** → `whatsapp_config` (id_instance, api_token). Кнопка «Проверить подключение» (getStateInstance через `greenapi-proxy`). Кнопка «Настроить webhook автоматически» → новая edge function `greenapi-setup` (вызывает `/setSettings` с нашим webhook URL и включает incoming/outgoing/state webhooks)
-5. **Лендинг и трекинг** → `ad_cabinets.landing_url`, `telegram_group_id`. Авто-генерация UTM template (с copy-кнопкой) + intake URL `https://szfgdruhlebfvcmlvxdk.supabase.co/functions/v1/lead-intake/t/<projects.intake_token>`
-6. **CRM Pipeline mapping** → список стадий проекта + selector CAPI-события (None/Schedule/Diagnostic/Purchase). Сохраняет в `crm_stage_map` с `project_id`
-7. **Финансовый план** (опционально) → `finance_plans` строка на текущий месяц
-8. **Тест-прогон** → кнопка «Запустить тест»: создаёт `leads` row с `is_personal=true`, прокатывает через стадии (Schedule → Diagnostic → Purchase через `deals`), ждёт 30 сек, проверяет `capi_outbox.status='sent'`, удаляет тестовый лид. 4 чек-листа с зелёными/красными галочками
+**Edge-функция `lead-intake` (сайт):**
+- Если в payload есть `fbclid`/`utm_content`/`click_id`, делаю upsert в `wa_clicks` (matched=false). Когда тот же телефон позже придёт через WhatsApp — fallback в вебхуке его подхватит.
 
-Маскировка токенов после сохранения (`••••••••XYZ`).
+### 2. View `meta_creative_crm_daily`
 
-### Фаза 2 — Бэкенд-автоматизация (следующий PR)
+- Беру атрибуцию не только из `leads.meta_ad_id`, но и из cовместного запроса с `phone_attribution` (для лидов без прямого ad_id, у которых телефон есть в attribution-таблице). Один UNION ALL, чтобы не ломать override-логику `manual_revenue`.
+- В выборку добавляю поле `crm_messages` — пока равно `crm_leads` (количество созданных лидов = количество первых сообщений), но семантика чистая для будущего.
 
-- Триггер на `INSERT INTO ad_cabinets`:
-  - `ensure_project_pipeline` (уже есть)
-  - Авто-вызов `meta-structure-sync` для нового кабинета (через `pg_net`)
-  - Создание `finance_plans` row на текущий месяц
-- Новая edge function `greenapi-setup` (Фаза 1 уже её зовёт, реализация во Фазе 2 если кнопка отдельная)
-- Таблица `ad_sync_runs (cabinet_id, kind, ok, error, created_at)` для трекинга последнего sync
+### 3. Страница «Воронка по креативам» (фронт)
 
-### Фаза 3 — Health Check + CreativeFunnel ROMI
+Дизайн не трогаю, чиню функциональность:
+- Показываю баннер привязки (он уже есть) и добавляю **синюю кнопку "Привязать существующие лиды"** — дёргает RPC `backfill_lead_attribution`, показывает toast "привязано N лидов", дёргает refetch.
+- Добавляю псевдо-строку "Без креатива" в начало таблицы: `45 − attributed` лидов Meta, лиды/квал/продажи/выручка по неатрибутированным WhatsApp-лидам того же проекта/периода. Кликом открывается drawer со списком.
+- Заменяю колонку «Лиды Meta» на пару значений `Лиды Meta · Сообщения` — для WhatsApp-целей именно messages показывает работу креатива.
+- Сортировка по умолчанию: `crmRevenue desc, crmLeads desc, spend desc` — чтобы креативы без расхода уходили вниз, и не было визуального впечатления, что «работают только нулевые».
+- Фильтр «Только активные» оставляю, но дефолт меняю на «все» — иначе скрываем 60 креативов из 69.
+- В drawer `CreativeDetailDrawer` добавляю секцию «Источники лидов» (Meta CTWA / WhatsApp прямой / сайт) и таблицу последних 20 лидов с phone, stage, amount, created_at.
 
-- Компонент `<CabinetHealthCheck cabinetId>` на странице кабинета: 6 индикаторов (Meta API, Pixel, WhatsApp, CAPI worker, Creative sync, CRM events) через batch RPC `cabinet_health_check(uuid)`
-- `CreativeFunnel`: добавить колонки Diagnostics/Sales/Revenue/ROMI (`crmRevenue / spend * 100`), fallback на pixel revenue
-- (Опц.) Админская страница `/admin/pipeline-status` с pending/sent/failed CAPI
+### 4. Документация в UI
 
-## Что меняется в Фазе 1 (этот PR)
+Под таблицей расширяю подсказку: что нужно сделать пользователю, чтобы атрибуция выросла до ~100% (UTM-шаблон в Meta, CTWA-кнопка на сайте, не использовать общий QR на витрине без `?ad_id=`).
 
-### Новые файлы
-- `src/pages/NewProjectWizard.tsx` — мастер с 8 шагами (~500 строк, разбит на компоненты по шагам)
-- `src/components/wizard/StepIndicator.tsx`, `WizardStep*.tsx` (8 компонентов, по файлу на шаг)
-- `src/hooks/useWizardState.ts` — общий стейт визарда (через `useReducer`)
-- `supabase/functions/greenapi-setup/index.ts` — POST `{instanceId, apiToken, webhookUrl}` → вызов GreenAPI `/setSettings`
+## Что НЕ меняю
 
-### Миграции
-- `crm_stage_map` уже есть → ничего не добавляем
-- Уточнение: убедиться что `whatsapp_config.webhook_url` поле есть; если нет — добавить
-- Никаких миграций для Health Check на этом этапе
+- Дизайн страницы, цвета, шапку, типы карточек.
+- Логику CRM, диалоги, оплату — это отдельные истории.
+- Триггеры расчёта выручки (`on_deal_paid_attribution`) — они работают корректно, просто им нечего считать без `meta_ad_id`.
 
-### Изменения
-- `src/App.tsx` (или роутер) — добавить route `/projects/new`
-- Кнопка «Добавить проект» в `ProjectSwitcher` / на дашборде → ведёт на `/projects/new`
+## Технические детали
 
-### Что НЕ трогаем
-- Dashboard / Metrics / Analytics — цифры согласованы (PR #45), не редизайним
-- n8n воркфлоу — отдельно
-- Существующий `SettingsConnection.tsx` — оставляем как «расширенные настройки», визард — отдельный поток для нового проекта
-- Существующие таблицы и RLS-политики
-
-## Что нужно от вас (после Фазы 1)
-
-- Подтвердить webhook URL `https://szfgdruhlebfvcmlvxdk.supabase.co/functions/v1/greenapi-webhook` — но **этот project ref не совпадает** с текущим (`mekwfbqmsqiborjdrjxc`). Уточните пожалуйста: это другой проект (на котором будет жить webhook)? Или опечатка и нужно использовать наш `mekwfbqmsqiborjdrjxc`?
-
-## DoD Фазы 1
-
-- [ ] Менеджер может пройти 8 шагов в `/projects/new` и создать проект+кабинет
-- [ ] Кнопка «Проверить Meta токен» работает
-- [ ] Кнопка «Проверить GreenAPI» работает  
-- [ ] Кнопка «Настроить GreenAPI webhook» вызывает `greenapi-setup` и возвращает OK
-- [ ] CRM stage mapping сохраняется в `crm_stage_map`
-- [ ] Тест-прогон создаёт лида и показывает 4 галочки
-- [ ] Токены маскируются после сохранения
-- [ ] Существующие страницы не сломаны
+- Миграция идемпотентна (`CREATE TABLE IF NOT EXISTS`, `DROP VIEW IF EXISTS … CREATE VIEW …`).
+- RLS на новые таблицы: `SELECT/INSERT/UPDATE` через `user_can_access_project(auth.uid(), project_id)`; service role обходит RLS.
+- `phone_attribution` нормализует phone через существующую `normalize_phone(text)`.
+- Backfill RPC `SECURITY DEFINER`, `SET search_path = public`, проверяет `has_role(auth.uid(), 'admin'|'manager')` или `user_can_access_project` для проекта.
+- Все запросы к view остаются прежние — фронт `useMetaCreatives` уже их использует.
