@@ -150,6 +150,12 @@ const SalesAI = () => {
   const { leads, stages } = useCrmStore();
   const { members } = useTeamStore();
   const analytics = useCrmAnalytics(leads, stages, members);
+  const { activeId } = useProjectsStore();
+  const { user } = useAuth();
+
+  useEffect(() => {
+    void hydrateAiRopStorage(activeId ?? null, user?.id ?? null);
+  }, [activeId, user?.id]);
 
   const initialTab = (searchParams.get("tab") as TabId) || "overview";
   const validTab = TABS.find((t) => t.id === initialTab) ? initialTab : "overview";
