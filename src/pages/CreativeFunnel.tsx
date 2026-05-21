@@ -160,7 +160,53 @@ const CreativeFunnel = () => {
     if (hasLeads) r = r.filter((x) => x.crmLeads > 0 || x.leads > 0);
     if (hasSales) r = r.filter((x) => x.crmSales > 0);
     if (q) r = r.filter((x) => x.name.toLowerCase().includes(q) || x.adId.includes(q));
-    const sorted = [...r];
+
+    // Дедупликация: одинаковая медиа (видео/картинка) — это один креатив,
+    // даже если откручен в нескольких кампаниях. Складываем метрики.
+    const dedupKey = (x: MetaCreativeRow) =>
+      x.videoId
+      || x.videoUrl
+      || x.imageUrl
+      || x.thumbnailUrl
+      || x.posterUrl
+      || `name:${x.creativeType}:${x.name}`;
+    const groups = new Map<string, MetaCreativeRow>();
+    for (const row of r) {
+      const key = dedupKey(row);
+      const existing = groups.get(key);
+      if (!existing) {
+        groups.set(key, { ...row });
+        continue;
+      }
+      existing.spend += row.spend;
+      existing.impressions += row.impressions;
+      existing.clicks += row.clicks;
+      existing.leads += row.leads;
+      existing.messages += row.messages;
+      existing.purchases += row.purchases;
+      existing.revenue += row.revenue;
+      existing.crmLeads += row.crmLeads;
+      existing.crmQualified += row.crmQualified;
+      existing.crmSales += row.crmSales;
+      existing.crmRevenue += row.crmRevenue;
+      // Если ACTIVE есть хоть в одной кампании — считаем активным
+      if (row.effectiveStatus === "ACTIVE") existing.effectiveStatus = "ACTIVE";
+    }
+    const merged = Array.from(groups.values()).map((x) => {
+      const ctr = x.impressions > 0 ? (x.clicks / x.impressions) * 100 : 0;
+      const cpl = x.leads > 0 ? x.spend / x.leads : 0;
+      const cpc = x.clicks > 0 ? x.spend / x.clicks : 0;
+      const cpm = x.impressions > 0 ? (x.spend / x.impressions) * 1000 : 0;
+      const romi = x.spend > 0 ? ((x.revenue - x.spend) / x.spend) * 100 : 0;
+      const crmCpl = x.crmLeads > 0 ? x.spend / x.crmLeads : 0;
+      const crmCps = x.crmSales > 0 ? x.spend / x.crmSales : 0;
+      const crmAvgCheck = x.crmSales > 0 ? x.crmRevenue / x.crmSales : 0;
+      const crmRomi = x.spend > 0 ? ((x.crmRevenue - x.spend) / x.spend) * 100 : 0;
+      const crmProfit = x.crmRevenue - x.spend;
+      return { ...x, ctr, cpl, cpc, cpm, romi, crmCpl, crmCps, crmAvgCheck, crmRomi, crmProfit };
+    });
+
+    const sorted = merged;
     const dir = sortDir === "asc" ? 1 : -1;
     sorted.sort((a, b) => {
       if (sortKey === "name") return a.name.localeCompare(b.name) * dir;
@@ -177,6 +223,7 @@ const CreativeFunnel = () => {
     });
     return sorted;
   }, [rows, sortKey, sortDir, search, status, type, hasSpend, hasLeads, hasSales]);
+
 
   const totals = useMemo(() => {
     return filtered.reduce(
