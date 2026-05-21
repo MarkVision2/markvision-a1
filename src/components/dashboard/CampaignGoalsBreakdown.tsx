@@ -262,24 +262,27 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
 
       {/* CAMPAIGNS */}
       {visible.length > 0 && (
-        <div className="relative border-t border-border/40 bg-background/40 px-3 pb-3 pt-3 pl-6 sm:px-4 sm:pl-7">
-          <div className="mb-2.5 flex items-center justify-between px-1">
-            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/60">
-              <span className="h-px w-5 bg-border" />
+        <div className="relative border-t border-border/40 bg-gradient-to-b from-background/55 to-background/15 px-4 pb-4 pt-4 pl-7 sm:px-5 sm:pl-8">
+          <div className="mb-3 flex items-center justify-between px-0.5">
+            <div className="flex items-center gap-2.5 text-[10px] font-bold uppercase tracking-[0.22em] text-muted-foreground/70">
+              <span className={cn("h-1.5 w-1.5 rounded-full opacity-70", accent.dot)} />
               Кампании · по расходу
+              <span className="rounded-md border border-border/40 bg-secondary/40 px-1.5 py-0.5 text-[9px] tabular-nums text-muted-foreground/90">
+                {sorted.length}
+              </span>
             </div>
             {hasMore && (
               <button
                 type="button"
                 onClick={() => setExpanded((v) => !v)}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground transition hover:bg-secondary/60 hover:text-foreground"
+                className="inline-flex items-center gap-1 rounded-lg border border-border/40 bg-card/60 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground transition hover:border-border hover:bg-secondary hover:text-foreground"
               >
                 {expanded ? "Свернуть" : `Ещё ${sorted.length - 3}`}
                 <ChevronDown className={cn("h-3 w-3 transition", expanded && "rotate-180")} />
               </button>
             )}
           </div>
-          <ul className="space-y-1.5">
+          <ul className="space-y-2">
             {visible.map((c) => (
               <CampaignRow key={c.id} campaign={c} maxSpend={maxSpend} successMetric={g.successMetric} dotClass={accent.dot} ringClass={accent.ring} />
             ))}
@@ -359,53 +362,77 @@ function CampaignRow({
   return (
     <li
       className={cn(
-        "group/row relative overflow-hidden rounded-xl border px-3 py-2.5 transition-all",
+        "group/row relative overflow-hidden rounded-2xl border backdrop-blur-sm transition-all duration-200",
         isActive
-          ? "border-success/15 bg-success/[0.04] hover:border-success/25 hover:bg-success/[0.07]"
-          : "border-border/40 bg-card/30 hover:border-border/70 hover:bg-card/60",
+          ? "border-success/20 bg-gradient-to-r from-success/[0.06] via-card/40 to-card/20 hover:border-success/35 hover:from-success/[0.10] hover:shadow-[0_8px_24px_-12px_hsl(var(--success)/0.25)]"
+          : "border-border/40 bg-gradient-to-r from-card/40 to-card/10 hover:border-border/70 hover:from-card/60",
       )}
     >
-      {/* bg progress bar (share of spend) */}
+      {/* spend share progress bar */}
       <span
-        className={cn("pointer-events-none absolute inset-y-0 left-0 opacity-[0.05] transition group-hover/row:opacity-[0.10]", dotClass)}
+        className={cn(
+          "pointer-events-none absolute inset-y-0 left-0 opacity-[0.07] transition-opacity duration-300 group-hover/row:opacity-[0.14]",
+          dotClass,
+        )}
         style={{ width: `${sharePct}%` }}
         aria-hidden
       />
-      <div className="relative flex items-center gap-3">
+      {/* shimmer line at the bottom showing spend share */}
+      <span
+        className={cn("pointer-events-none absolute bottom-0 left-0 h-[2px] opacity-60 transition-opacity group-hover/row:opacity-100", dotClass)}
+        style={{ width: `${sharePct}%` }}
+        aria-hidden
+      />
+
+      <div className="relative flex items-center gap-3.5 px-4 py-3 sm:px-5">
         {/* status dot */}
         <span
           className={cn(
-            "h-2 w-2 shrink-0 rounded-full",
-            isActive ? cn(dotClass, "shadow-[0_0_8px] " + ringClass) : "bg-muted-foreground/25",
+            "relative h-2.5 w-2.5 shrink-0 rounded-full",
+            isActive ? dotClass : "bg-muted-foreground/25",
           )}
           title={isActive ? "Активна" : c.effectiveStatus ?? "Неактивна"}
-        />
-        {/* name */}
+        >
+          {isActive && (
+            <span className={cn("absolute inset-0 animate-ping rounded-full opacity-60", dotClass)} />
+          )}
+        </span>
+
+        {/* name + meta */}
         <div className="min-w-0 flex-1">
           <div
             className={cn(
-              "truncate text-[13px] font-medium leading-tight tracking-tight transition-colors",
+              "truncate text-[13.5px] font-semibold leading-tight tracking-tight transition-colors",
               isActive ? "text-foreground" : "text-muted-foreground group-hover/row:text-foreground",
             )}
             title={c.name || c.campaignId}
           >
             {c.name || c.campaignId}
           </div>
-          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10.5px] text-muted-foreground/80">
-            <span className="tabular-nums">{fmtNum(c.impressions)} показов</span>
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[10.5px] text-muted-foreground/85">
+            <span className="tabular-nums">
+              <span className="text-foreground/70 font-semibold">{fmtNum(c.impressions)}</span> показов
+            </span>
             <span className="h-1 w-1 rounded-full bg-border" />
-            <span className="tabular-nums">CTR <span className="text-foreground/80">{c.ctr > 0 ? `${c.ctr.toFixed(2)}%` : "—"}</span></span>
+            <span className="tabular-nums">
+              CTR <span className="text-foreground/80 font-semibold">{c.ctr > 0 ? `${c.ctr.toFixed(2)}%` : "—"}</span>
+            </span>
+            <span className="h-1 w-1 rounded-full bg-border" />
+            <span className="tabular-nums opacity-75">
+              {Math.round((c.spend / maxSpend) * 100)}% от расхода
+            </span>
             {hasCrm && (
               <>
                 <span className="h-1 w-1 rounded-full bg-border" />
-                <span className="tabular-nums">
-                  <Wallet className="mr-0.5 inline h-2.5 w-2.5" />
-                  {fmtNum(c.crmSales)} продаж · {fmtTengeCompact(c.crmRevenue)}
+                <span className="inline-flex items-center gap-1 rounded-md border border-success/25 bg-success/10 px-1.5 py-0.5 text-[10px] font-bold tabular-nums text-success">
+                  <Wallet className="h-2.5 w-2.5" />
+                  {fmtNum(c.crmSales)} × {fmtTengeCompact(c.crmRevenue)}
                 </span>
               </>
             )}
           </div>
         </div>
+
         {/* metric chips */}
         <div className="hidden items-center gap-1.5 sm:flex">
           <Chip label="Расход" value={c.spend > 0 ? fmtTenge(c.spend) : "—"} />
@@ -420,8 +447,9 @@ function CampaignRow({
             />
           )}
         </div>
+
         {/* mobile compact value */}
-        <div className="sm:hidden text-right">
+        <div className="text-right sm:hidden">
           <div className="text-xs font-bold tabular-nums">{c.spend > 0 ? fmtTenge(c.spend) : "—"}</div>
           <div className="text-[10px] text-muted-foreground tabular-nums">
             {fmtNum(success)} · {costPer > 0 ? fmtTenge(costPer) : "—"}
