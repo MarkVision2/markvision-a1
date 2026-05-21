@@ -21,14 +21,20 @@ const admin = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-// Дебаунс на triggerChatAnalysis: один лид → один вызов в 30 сек.
-const _aiRopDebounce = new Map<string, number>();
-function triggerChatAnalysis(leadId: string) {
+// Дебаунс на triggerChatAnalysis: разные окна для входящих и исходящих.
+// - "out" (ответил менеджер): 30 сек — переоцениваем переписку быстро.
+// - "in"  (только клиент написал): 5 мин — даём шанс менеджеру ответить,
+//   чтобы лид с 1+ входящим всё равно попал в статистику (с флагом
+//   flag_ghosted_by_manager, если ответа так и не было).
+const _aiRopDebounce = new Map<string, number>(); // key = `${dir}:${leadId}`
+function triggerChatAnalysis(leadId: string, dir: "in" | "out" = "out") {
   try {
     const now = Date.now();
-    const last = _aiRopDebounce.get(leadId) ?? 0;
-    if (now - last < 30_000) return;
-    _aiRopDebounce.set(leadId, now);
+    const windowMs = dir === "in" ? 5 * 60_000 : 30_000;
+    const key = `${dir}:${leadId}`;
+    const last = _aiRopDebounce.get(key) ?? 0;
+    if (now - last < windowMs) return;
+    _aiRopDebounce.set(key, now);
     // Fire-and-forget POST в ai-rop-analyze-chat
     fetch(`${SUPABASE_URL}/functions/v1/ai-rop-analyze-chat`, {
       method: "POST",
