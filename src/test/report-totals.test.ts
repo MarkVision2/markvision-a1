@@ -32,84 +32,89 @@ const emptyMeta = {
   cabinetSales: 0, cabinetRevenue: 0, cabinetDiagnostics: 0, cabinetDiagnosticRevenue: 0,
 };
 
-describe("computeTotals — единая формула продаж и CAC", () => {
-  it("сценарий пользователя: 2 продажи в CDI + 1 orphan = 3 в Итого (а не 2)", () => {
-    const orphanLead = mkLead({ paid: true, amount: 400_000, cabinetId: null });
-    const crm = aggregateCrm([orphanLead], range, "all");
-    const meta = { ...emptyMeta, spend: 300_000, cabinetSales: 2, cabinetRevenue: 800_000 };
+describe("computeTotals — CRM как источник правды (не CDI)", () => {
+  it("3 продажи в CRM: 400k+800k+500k = 1.7M, CDI инфлирован — игнорим", () => {
+    // Сценарий пользователя: CDI протух (3.4М ₸), но в CRM реально 1.7М.
+    // Раньше брали max → инфлированный CDI побеждал. Теперь CRM — правда.
+    const s1 = mkLead({ cabinetId: "cab-1", paid: true, amount: 400_000, paidAt: "2026-05-10T10:00:00Z" });
+    const s2 = mkLead({ cabinetId: "cab-1", paid: true, amount: 800_000, paidAt: "2026-05-12T10:00:00Z" });
+    const s3 = mkLead({ cabinetId: null, paid: true, amount: 500_000, paidAt: "2026-05-15T10:00:00Z" });
+    const crm = aggregateCrm([s1, s2, s3], range, "all");
+    const meta = { ...emptyMeta, spend: 300_000, cabinetSales: 99, cabinetRevenue: 9_999_999 };
     const totals = computeTotals(meta, crm);
 
     expect(totals.sales).toBe(3);
-    expect(totals.revenue).toBe(1_200_000);
+    expect(totals.revenue).toBe(1_700_000);
+    expect(totals.cac).toBe(100_000); // 300k / 3
   });
 
-  it("CAC считается от общих продаж (CDI + orphan), а не только CDI", () => {
-    const orphanLead = mkLead({ paid: true, amount: 100_000 });
-    const crm = aggregateCrm([orphanLead], range, "all");
-    const meta = { ...emptyMeta, spend: 300_000, cabinetSales: 2 };
-    const totals = computeTotals(meta, crm);
-
-    expect(totals.cac).toBe(100_000); // 300k / 3, а не 150k (300k / 2)
-  });
-
-  it("если orphan нет — итоги совпадают с CDI", () => {
+  it("если CRM пуст — продажи 0 (даже если CDI хочет что-то показать)", () => {
     const crm = aggregateCrm([], range, "all");
     const meta = { ...emptyMeta, spend: 100_000, cabinetSales: 5, cabinetRevenue: 500_000 };
     const totals = computeTotals(meta, crm);
 
-    expect(totals.sales).toBe(5);
-    expect(totals.revenue).toBe(500_000);
-    expect(totals.cac).toBe(20_000);
+    expect(totals.sales).toBe(0);
+    expect(totals.revenue).toBe(0);
+    expect(totals.cac).toBe(0);
   });
 
-  it("orphan revenue добавляется к diagnostic revenue в общую выручку", () => {
-    const orphan = mkLead({ paid: true, amount: 50_000 });
-    const crm = aggregateCrm([orphan], range, "all");
-    const meta = { ...emptyMeta, cabinetRevenue: 200_000, cabinetDiagnosticRevenue: 30_000 };
+  it("выручка = sales amount + diagnostic_amount (всё из CRM)", () => {
+    const paidWithDiag = mkLead({
+      cabinetId: "cab-1", paid: true, amount: 500_000, diagnosticAmount: 5_000,
+      paidAt: "2026-05-10T10:00:00Z",
+    });
+    const crm = aggregateCrm([paidWithDiag], range, "all");
+    const meta = { ...emptyMeta, cabinetRevenue: 9_999_999, cabinetDiagnosticRevenue: 9_999_999 };
     const totals = computeTotals(meta, crm);
 
-    expect(totals.revenue).toBe(280_000); // 200k + 30k + 50k
+    expect(totals.revenue).toBe(505_000); // 500k + 5k diagnostic
   });
 
-  it("AOV = revenue / sales учитывает orphan", () => {
-    const orphan = mkLead({ paid: true, amount: 100_000 });
-    const crm = aggregateCrm([orphan], range, "all");
-    const meta = { ...emptyMeta, cabinetSales: 1, cabinetRevenue: 200_000 };
-    const totals = computeTotals(meta, crm);
+  it("AOV = выручка / продажи", () => {
+    const s1 = mkLead({ cabinetId: "cab-1", paid: true, amount: 200_000 });
+    const s2 = mkLead({ cabinetId: null, paid: true, amount: 100_000 });
+    const crm = aggregateCrm([s1, s2], range, "all");
+    const totals = computeTotals({ ...emptyMeta }, crm);
 
     expect(totals.sales).toBe(2);
     expect(totals.revenue).toBe(300_000);
     expect(totals.aov).toBe(150_000);
   });
 
-  it("ROMI считается на полную выручку с orphan", () => {
-    const orphan = mkLead({ paid: true, amount: 400_000 });
-    const crm = aggregateCrm([orphan], range, "all");
-    const meta = { ...emptyMeta, spend: 500_000, cabinetRevenue: 600_000 };
+  it("ROMI на CRM-выручке: (1М - 500k) / 500k = 100%", () => {
+    const s1 = mkLead({ cabinetId: "cab-1", paid: true, amount: 600_000 });
+    const s2 = mkLead({ cabinetId: null, paid: true, amount: 400_000 });
+    const crm = aggregateCrm([s1, s2], range, "all");
+    const meta = { ...emptyMeta, spend: 500_000 };
     const totals = computeTotals(meta, crm);
 
-    expect(totals.romi).toBe(100); // (1_000_000 - 500_000) / 500_000 * 100
+    expect(totals.romi).toBe(100);
   });
 
-  it("когда выбран конкретный кабинет — orphan не учитываются", () => {
-    const orphan = mkLead({ paid: true, amount: 400_000 });
-    const crm = aggregateCrm([orphan], range, "cab-123");
-    const meta = { ...emptyMeta, spend: 300_000, cabinetSales: 2 };
+  it("при выборе конкретного кабинета — только лиды этого кабинета", () => {
+    const cab1 = mkLead({ cabinetId: "cab-1", paid: true, amount: 300_000 });
+    const cab2 = mkLead({ cabinetId: "cab-2", paid: true, amount: 500_000 });
+    const orphan = mkLead({ cabinetId: null, paid: true, amount: 400_000 });
+    const crm = aggregateCrm([cab1, cab2, orphan], range, "cab-1");
+    const totals = computeTotals({ ...emptyMeta, spend: 100_000 }, crm);
+
+    expect(totals.sales).toBe(1);
+    expect(totals.revenue).toBe(300_000);
+  });
+
+  it("visits = все лиды в диаг-стадии (CRM), не из CDI", () => {
+    const d1 = mkLead({ cabinetId: "cab-1", stageKey: "scheduled" });
+    const d2 = mkLead({ cabinetId: "cab-1", stageKey: "visit" });
+    const d3 = mkLead({ cabinetId: null, stageKey: "scheduled" });
+    const d4 = mkLead({ cabinetId: "cab-2", paid: true, amount: 100_000 });
+    const crm = aggregateCrm([d1, d2, d3, d4], range, "all");
+    const meta = { ...emptyMeta, cabinetDiagnostics: 999 }; // CDI протух — игнор
     const totals = computeTotals(meta, crm);
 
-    expect(totals.sales).toBe(2); // orphan не относится к этому кабинету
+    expect(totals.visits).toBe(4); // все 4 — диаг (paid тоже visit)
   });
 
-  it("visits включают orphan-диагностики", () => {
-    const orphanDiag = mkLead({ stageKey: "visit", amount: 0 });
-    const crm = aggregateCrm([orphanDiag], range, "all");
-    const meta = { ...emptyMeta, cabinetDiagnostics: 3 };
-    const totals = computeTotals(meta, crm);
-
-    expect(totals.visits).toBe(4);
-  });
-
-  it("totalLeads включают orphan-лиды (даже без оплаты)", () => {
+  it("totalLeads = Meta-лиды (CDI) + orphan CRM (без cabinet_id)", () => {
     const orphan1 = mkLead({ paid: false });
     const orphan2 = mkLead({ paid: true, amount: 100_000 });
     const crm = aggregateCrm([orphan1, orphan2], range, "all");
