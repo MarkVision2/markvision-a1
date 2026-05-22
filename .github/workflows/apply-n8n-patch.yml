@@ -1,0 +1,37 @@
+name: Apply n8n patch
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_key:
+        description: 'n8n API key (pass here if no repo secret set)'
+        required: false
+        type: string
+  push:
+    branches: [claude/n8n-whatsapp-greeting-vOLG7]
+    paths:
+      - '.github/workflows/apply-n8n-patch.yml'
+      - 'scripts/patch-n8n-whatsapp-greeting.mjs'
+
+permissions:
+  contents: read
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Apply patch
+        env:
+          N8N_API_KEY: ${{ inputs.api_key || secrets.N8N_API_KEY }}
+          N8N_BASE_URL: https://n8n.zapoinov.com
+          N8N_WORKFLOW_ID: LncxAleDlMPOb3hP
+        run: |
+          if [ -z "$N8N_API_KEY" ]; then
+            echo "::error::N8N_API_KEY is empty. Add a repo secret named N8N_API_KEY, or run workflow_dispatch and paste the key as input."
+            exit 1
+          fi
+          node scripts/patch-n8n-whatsapp-greeting.mjs
