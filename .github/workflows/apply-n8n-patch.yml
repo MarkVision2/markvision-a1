@@ -1,38 +1,32 @@
-name: Apply n8n patch
+name: Set WhatsApp templates in client_configs
 
 on:
   workflow_dispatch:
     inputs:
-      api_key:
-        description: 'n8n API key (pass here if no repo secret set)'
+      target_id:
+        description: 'Force client_configs row id (optional)'
         required: false
         type: string
   push:
     branches: [claude/n8n-whatsapp-greeting-vOLG7]
     paths:
       - '.github/workflows/apply-n8n-patch.yml'
-      - 'scripts/patch-n8n-whatsapp-greeting.mjs'
+      - 'scripts/set-whatsapp-templates.mjs'
 
 permissions:
   contents: read
 
 jobs:
-  patch:
+  apply:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Apply patch
+      - name: Set templates
         env:
-          # ROTATE-AFTER-RUN: токен зашит для однопроходной автоматики, удаляется следующим коммитом
-          N8N_API_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YzNhZTVmYi1hNzY2LTQ1MmItOTBkMC1mNDAyNWRmMDhlY2YiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiNTgxMWJlZWUtNmFlOC00NTI4LTk4ZjctYTY5OWU4ZGIwNzI1IiwiaWF0IjoxNzczOTg3NTg2fQ.UQMcClosmvPPtgFfk2wf0gLBixkzA6TvIVY4gGqGrQY
-          N8N_BASE_URL: https://n8n.zapoinov.com
-          N8N_WORKFLOW_ID: LncxAleDlMPOb3hP
-        run: |
-          if [ -z "$N8N_API_KEY" ]; then
-            echo "::error::N8N_API_KEY is empty. Add a repo secret named N8N_API_KEY, or run workflow_dispatch and paste the key as input."
-            exit 1
-          fi
-          node scripts/patch-n8n-whatsapp-greeting.mjs
+          # ROTATE-AFTER-RUN: service_role key from n8n's hardcoded value, removed in next commit
+          SUPABASE_SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN6ZmdkcnVobGViZnZjbWx2eGRrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTczMTEwOSwiZXhwIjoyMDkxMzA3MTA5fQ.Nw4Pj9uqpycYCksiG2ZJEWiHBHR_o1ryzuEH8OwDq1c
+          TARGET_CLIENT_ID: ${{ inputs.target_id }}
+        run: node scripts/set-whatsapp-templates.mjs
