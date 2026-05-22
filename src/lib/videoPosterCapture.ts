@@ -71,20 +71,23 @@ function captureFrame(videoUrl: string): Promise<Blob | null> {
       v.removeAttribute("src");
       try { v.load(); } catch { /* */ }
     };
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const fail = () => {
       if (done) return;
       done = true;
+      if (timeoutId) clearTimeout(timeoutId);
       cleanup();
       resolve(null);
     };
     const success = (blob: Blob | null) => {
       if (done) return;
       done = true;
+      if (timeoutId) clearTimeout(timeoutId);
       cleanup();
       resolve(blob);
     };
     v.addEventListener("error", fail, { once: true });
-    setTimeout(fail, 15_000); // hard timeout
+    timeoutId = setTimeout(fail, 15_000); // hard timeout
 
     v.addEventListener("loadedmetadata", () => {
       // Перематываем чуть-чуть, чтобы получить осмысленный кадр

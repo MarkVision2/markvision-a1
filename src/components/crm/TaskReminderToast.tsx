@@ -20,28 +20,37 @@ interface Reminder {
   dueAt: string;
 }
 
-function readDismissed(): Set<string> {
+// Храним dismissed как Record<id, timestamp> — таймстемп нужен,
+// чтобы автоматически удалять записи старше 30 дней. Раньше при
+// каждом сохранении ВСЕ таймстемпы перезаписывались на now, поэтому
+// очистка не срабатывала и localStorage рос бесконечно.
+function readDismissedRaw(): Record<string, number> {
   try {
     const raw = localStorage.getItem(DISMISSED_KEY);
-    if (!raw) return new Set();
+    if (!raw) return {};
     const parsed = JSON.parse(raw) as Record<string, number>;
-    // Чистим записи старше 30 дней — чтобы localStorage не разрастался.
     const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
-    const fresh = new Set<string>();
+    const fresh: Record<string, number> = {};
     for (const [k, ts] of Object.entries(parsed)) {
-      if (typeof ts === "number" && ts > cutoff) fresh.add(k);
+      if (typeof ts === "number" && ts > cutoff) fresh[k] = ts;
     }
     return fresh;
   } catch {
-    return new Set();
+    return {};
   }
+}
+
+function readDismissed(): Set<string> {
+  return new Set(Object.keys(readDismissedRaw()));
 }
 
 function persistDismissed(set: Set<string>) {
   try {
+    const prev = readDismissedRaw();
     const obj: Record<string, number> = {};
     const now = Date.now();
-    for (const k of set) obj[k] = now;
+    // Сохраняем оригинальный timestamp, чтобы 30-дневная очистка работала.
+    for (const k of set) obj[k] = prev[k] ?? now;
     localStorage.setItem(DISMISSED_KEY, JSON.stringify(obj));
   } catch {
     /* noop */
