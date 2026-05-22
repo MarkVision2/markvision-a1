@@ -58,38 +58,39 @@ if (!Array.isArray(list)) {
 }
 console.log(`    total rows: ${list.length}`);
 console.log(`    available columns: ${list[0] ? Object.keys(list[0]).join(', ') : '(none — table empty)'}`);
+// PK column is cabinet_id and name column is plain "name"
 list.forEach((r, i) => {
-  console.log(`    [${i}] id=${r.id} name="${r.client_name || ''}" city="${r.city || r.client_city || ''}" ad_account=${r.ad_account_id || ''} brief="${(r.brief || '').slice(0, 50)}"`);
+  console.log(`    [${i}] cabinet_id=${r.cabinet_id} name="${r.name || ''}" city="${r.city || ''}" ad_account=${r.ad_account_id || ''} brief="${(r.brief || '').slice(0, 50).replace(/\n/g, ' ')}"`);
 });
 
 const NAME_RE = /марк\s*вижн|markvision|mark\s*vision|марквижн/i;
 let target = null;
 if (FORCE_ID) {
-  target = list.find(r => r.id === FORCE_ID);
-  if (!target) { console.error(`TARGET_CLIENT_ID=${FORCE_ID} not found`); process.exit(1); }
+  target = list.find(r => r.cabinet_id === FORCE_ID);
+  if (!target) { console.error(`TARGET_CLIENT_ID=${FORCE_ID} not found among cabinet_id values`); process.exit(1); }
 } else {
   const candidates = list.filter(r =>
-    NAME_RE.test(r.client_name || '') || NAME_RE.test(r.brief || '')
+    NAME_RE.test(r.name || '') || NAME_RE.test(r.brief || '')
   );
   if (candidates.length === 0) {
-    console.error('No MarkVision row found by name/brief regex. Set TARGET_CLIENT_ID env to pick one of the rows above.');
+    console.error('No MarkVision row found by name/brief regex. Set TARGET_CLIENT_ID env to pick one of the rows above (use cabinet_id value).');
     process.exit(1);
   }
   if (candidates.length > 1) {
     console.error(`Multiple candidates (${candidates.length}). Set TARGET_CLIENT_ID env to disambiguate.`);
-    candidates.forEach(c => console.error(`  - id=${c.id} name="${c.client_name}"`));
+    candidates.forEach(c => console.error(`  - cabinet_id=${c.cabinet_id} name="${c.name}"`));
     process.exit(1);
   }
   target = candidates[0];
 }
 
-console.log(`    selected target: id=${target.id} name="${target.client_name}"`);
+console.log(`    selected target: cabinet_id=${target.cabinet_id} name="${target.name}"`);
 
 // 3. update
 console.log('[3/3] Updating row…');
 if (DRY) { console.log('DRY_RUN=1 — skipping PATCH'); process.exit(0); }
 
-const patch = await fetch(`${URL}/rest/v1/client_configs?id=eq.${target.id}`, {
+const patch = await fetch(`${URL}/rest/v1/client_configs?cabinet_id=eq.${target.cabinet_id}`, {
   method: 'PATCH',
   headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=representation' },
   body: JSON.stringify({
