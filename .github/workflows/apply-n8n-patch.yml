@@ -1,17 +1,23 @@
 name: Set WhatsApp templates in client_configs
 
+# Updates wa_welcome_message_template / wa_customer_greeting_template
+# in the n8n production Supabase for the MarkVision client_configs row.
+#
+# Trigger: manual only. To re-run, add repo secret SUPABASE_SERVICE_KEY
+# (service_role JWT for szfgdruhlebfvcmlvxdk) and click "Run workflow".
+
 on:
   workflow_dispatch:
     inputs:
       target_id:
-        description: 'Force client_configs row id (optional)'
+        description: 'Force client_configs cabinet_id (optional, uses regex match otherwise)'
         required: false
         type: string
-  push:
-    branches: [claude/n8n-whatsapp-greeting-vOLG7]
-    paths:
-      - '.github/workflows/apply-n8n-patch.yml'
-      - 'scripts/set-whatsapp-templates.mjs'
+      dry_run:
+        description: 'List rows without writing'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -21,36 +27,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: true
-          token: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-      - name: Set templates (capture log)
-        id: run
-        continue-on-error: true
+      - name: Set templates
         env:
-          SUPABASE_SERVICE_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InN6ZmdkcnVobGViZnZjbWx2eGRrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTczMTEwOSwiZXhwIjoyMDkxMzA3MTA5fQ.Nw4Pj9uqpycYCksiG2ZJEWiHBHR_o1ryzuEH8OwDq1c
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           TARGET_CLIENT_ID: ${{ inputs.target_id }}
+          DRY_RUN: ${{ inputs.dry_run && '1' || '' }}
         run: |
+          if [ -z "$SUPABASE_SERVICE_KEY" ]; then
+            echo "::error::SUPABASE_SERVICE_KEY secret is not set. Add it in repo Settings → Secrets → Actions."
+            exit 1
+          fi
           mkdir -p .github/ci-state
-          {
-            echo "=== run at $(date -u) on $GITHUB_SHA ==="
-            node scripts/set-whatsapp-templates.mjs 2>&1
-            echo "EXIT=$?"
-          } | tee .github/ci-state/last-run.log
-      - name: Commit log back (always)
+          { echo "=== run at $(date -u) on $GITHUB_SHA ==="; node scripts/set-whatsapp-templates.mjs 2>&1; echo "EXIT=$?"; } | tee .github/ci-state/last-run.log
+      - name: Commit log
         if: always()
         run: |
-          echo "=== git status ===" ; git status --short
-          echo "=== file present? ===" ; ls -la .github/ci-state/ || true
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -f .github/ci-state/last-run.log || true
-          git diff --cached --quiet && { echo "no changes to commit"; exit 0; }
+          git diff --cached --quiet && { echo "no changes"; exit 0; }
           git commit -m "ci: log [skip ci]"
-          git push origin HEAD:${{ github.ref_name }} 2>&1 || {
-            echo "push failed, trying with explicit token URL"
-            git push "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:${{ github.ref_name }}
-          }
+          git push origin HEAD:${{ github.ref_name }}
