@@ -148,7 +148,7 @@ const Dashboard = () => {
 
       {/* Block 1 — Money */}
       <SectionTitle accent="bg-success">Деньги</SectionTitle>
-      <div className="grid grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(178px,1fr))] gap-3">
         <MoneyKpiCard
           icon={DollarSign}
           label="Выручка"

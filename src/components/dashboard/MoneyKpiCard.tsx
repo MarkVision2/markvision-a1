@@ -25,25 +25,25 @@ export function MoneyKpiCard({
   return (
     <div
       className={cn(
-        "flex min-h-[156px] flex-col rounded-2xl border bg-card/60 p-5 transition-colors",
+        "flex min-h-[118px] flex-col rounded-xl border bg-card/60 p-4 transition-colors",
         emphasize ? "border-primary/40 shadow-glow" : "border-border/60",
       )}
     >
-      <div className="flex min-w-0 items-start gap-3 text-muted-foreground">
-        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-secondary/60">
-          <Icon className="h-4 w-4" />
+      <div className="flex min-w-0 items-start gap-2.5 text-muted-foreground">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-secondary/60">
+          <Icon className="h-3.5 w-3.5" />
         </span>
         <span
-          className="min-w-0 flex-1 overflow-hidden text-[11px] font-bold uppercase leading-4 tracking-[0.08em] text-muted-foreground [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+          className="min-w-0 flex-1 overflow-hidden text-[10px] font-bold uppercase leading-3 tracking-[0.08em] text-muted-foreground [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
           title={label}
         >
           {label}
         </span>
       </div>
-      <div className="mt-5 min-w-0 text-2xl font-bold tabular-nums leading-none tracking-normal sm:text-[28px]">
+      <div className="mt-4 min-w-0 break-words text-[23px] font-bold tabular-nums leading-none tracking-normal">
         {value}
       </div>
-      <div className="mt-auto flex min-h-5 items-center gap-2 pt-4 text-[11px]">
+      <div className="mt-auto flex min-h-4 items-center gap-2 pt-3 text-[10px]">
         {comparing && hasDelta ? (
           noChange ? (
             <span className="flex items-center gap-1 text-muted-foreground">
