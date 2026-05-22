@@ -99,6 +99,21 @@ const patch = await fetch(`${URL}/rest/v1/client_configs?cabinet_id=eq.${target.
   }),
 });
 const body = await patch.text();
-console.log(`    status=${patch.status} body=${body.slice(0, 400)}`);
-if (!patch.ok) { console.error('PATCH failed'); process.exit(1); }
-console.log('OK — WhatsApp templates set for MarkVision.');
+console.log(`    PATCH status=${patch.status}`);
+if (!patch.ok) { console.error(`PATCH failed: ${body.slice(0, 600)}`); process.exit(1); }
+
+// Verify by re-fetching just the template fields
+const verify = await fetch(
+  `${URL}/rest/v1/client_configs?cabinet_id=eq.${target.cabinet_id}&select=cabinet_id,name,wa_welcome_message_template,wa_customer_greeting_template`,
+  { headers }
+).then(r => r.json());
+const got = Array.isArray(verify) && verify[0];
+console.log(`[VERIFY] cabinet_id=${got?.cabinet_id}`);
+console.log(`[VERIFY] name=${got?.name}`);
+console.log(`[VERIFY] wa_welcome_message_template = "${got?.wa_welcome_message_template}"`);
+console.log(`[VERIFY] wa_customer_greeting_template = "${got?.wa_customer_greeting_template}"`);
+if (got?.wa_welcome_message_template !== WELCOME || got?.wa_customer_greeting_template !== GREETING) {
+  console.error('Verification mismatch!');
+  process.exit(1);
+}
+console.log('OK — WhatsApp templates set & verified for MarkVision.');
