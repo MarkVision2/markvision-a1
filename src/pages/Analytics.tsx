@@ -19,13 +19,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
-import { useMultiMetaInsights } from "@/hooks/useMetaInsights";
 import { useLeadsLite, type LeadLite } from "@/hooks/useLeadsLite";
+import { useReportData } from "@/hooks/useReportData";
 import { CHANNELS, resolveChannel, type ChannelKey } from "@/lib/channelAttribution";
 import { ChannelCard, type ChannelStat } from "@/components/analytics/ChannelCard";
 import { UtmTable, type UtmRow } from "@/components/analytics/UtmTable";
 import { TrendChart, type TrendPoint } from "@/components/analytics/TrendChart";
-import { MonthSwitcher, monthParam as formatMonthParam, monthRangeLabel } from "@/components/ui/month-switcher";
+import { MonthSwitcher, monthRangeLabel } from "@/components/ui/month-switcher";
 import { cn } from "@/lib/utils";
 
 const fmtMoney = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
@@ -120,6 +120,13 @@ function pctDelta(cur: number, prev: number): number | null {
   return ((cur - prev) / prev) * 100;
 }
 
+function isPaidLeadInRange(lead: LeadLite, fromTs: number, toTs: number) {
+  if (!lead.paid && lead.stageKey !== "paid") return false;
+  const date = lead.paidAt ?? lead.createdAt;
+  const t = new Date(date).getTime();
+  return t >= fromTs && t < toTs;
+}
+
 const Analytics = () => {
   const [monthCursor, setMonthCursor] = useState(() => {
     const d = new Date();
@@ -128,9 +135,7 @@ const Analytics = () => {
   const [cabinetId, setCabinetId] = useState<string>("all");
   const { cabinets } = usePersonalCabinets();
 
-  const monthParam = formatMonthParam(monthCursor);
   const prevCursor = new Date(monthCursor.getFullYear(), monthCursor.getMonth() - 1, 1);
-  const prevParam = formatMonthParam(prevCursor);
   const monthLabel = monthRangeLabel(monthCursor);
 
   const allActIds = useMemo(
@@ -143,9 +148,6 @@ const Analytics = () => {
     return cab?.externalId ? [cab.externalId] : [];
   }, [cabinetId, allActIds, cabinets]);
 
-  const { data, loading, error, refresh } = useMultiMetaInsights(actIds, monthParam, actIds.length > 0);
-  const { data: prevData } = useMultiMetaInsights(actIds, prevParam, actIds.length > 0);
-
   const { leads, loading: leadsLoading, refetch } = useLeadsLite();
 
   // Filter leads by month
@@ -153,6 +155,15 @@ const Analytics = () => {
   const monthEnd = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 1).getTime();
   const prevStart = prevCursor.getTime();
   const prevEnd = monthStart;
+  const reportRange = useMemo(
+    () => ({
+      from: new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1),
+      to: new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0),
+    }),
+    [monthCursor],
+  );
+
+  const { data, loading, error } = useReportData(cabinetId, reportRange, true);
 
   const monthLeads = useMemo(
     () => leads.filter((l) => {
@@ -175,25 +186,25 @@ const Analytics = () => {
     return monthLeads.filter((l) => l.cabinetId === cabinetId);
   }, [monthLeads, cabinetId]);
 
-  const sales = filteredLeads.filter((l) => l.stageKey === "paid");
   const visits = filteredLeads.filter((l) => l.stageKey === "visit" || l.stageKey === "paid");
-  const leadCount = data?.totals.leads ?? filteredLeads.length;
-  const diagnosticsCount = data?.totals.diagnostics ?? visits.length;
-  const salesCount = data?.totals.sales ?? sales.length;
-  const revenue = data?.totals.crmRevenue ?? sales.reduce((sum, l) => sum + (l.amount || 0), 0);
+  const paidLeads = filteredLeads.filter((l) => isPaidLeadInRange(l, monthStart, monthEnd));
+  const leadCount = data?.totals.totalLeads ?? filteredLeads.length;
+  const diagnosticsCount = data?.totals.visits ?? visits.length;
+  const salesCount = data?.totals.sales ?? paidLeads.length;
+  const revenue = data?.totals.revenue ?? paidLeads.reduce((sum, l) => sum + (l.amount || 0), 0);
 
-  const prevSales = prevLeads.filter((l) => l.stageKey === "paid");
-  const prevRevenue = prevData?.totals.crmRevenue ?? prevSales.reduce((s, l) => s + (l.amount || 0), 0);
+  const prevPaidLeads = prevLeads.filter((l) => isPaidLeadInRange(l, prevStart, prevEnd));
+  const prevRevenue = data?.prev?.revenue ?? prevPaidLeads.reduce((s, l) => s + (l.amount || 0), 0);
 
   const spend = data?.totals.spend ?? 0;
-  const prevSpend = prevData?.totals.spend ?? 0;
-  const adsLeads = data?.totals.leads ?? 0;
+  const prevSpend = data?.prev?.spend ?? 0;
+  const adsLeads = data?.totals.adsLeads ?? 0;
   const impressions = data?.totals.impressions ?? 0;
   const clicks = data?.totals.clicks ?? 0;
-  const prevTotalLeads = prevData?.totals.leads ?? prevLeads.length;
-  const cpl = leadCount > 0 && spend > 0 ? spend / leadCount : 0;
-  const romi = spend > 0 ? ((revenue - spend) / spend) * 100 : null;
-  const avgCheck = salesCount > 0 ? revenue / salesCount : 0;
+  const prevTotalLeads = data?.prev?.totalLeads ?? prevLeads.length;
+  const cpl = data?.totals.cpl ?? (leadCount > 0 && spend > 0 ? spend / leadCount : 0);
+  const romi = data?.totals.romi ?? (spend > 0 ? ((revenue - spend) / spend) * 100 : null);
+  const avgCheck = data?.totals.aov ?? (salesCount > 0 ? revenue / salesCount : 0);
   const conversion = leadCount > 0 ? (salesCount / leadCount) * 100 : 0;
 
   const crLeadVisit = leadCount > 0 ? (diagnosticsCount / leadCount) * 100 : 0;
@@ -206,7 +217,7 @@ const Analytics = () => {
       const meta = resolveChannel(l as LeadLite);
       const cur = map.get(meta.key) ?? { meta, spend: 0, leads: 0, sales: 0, revenue: 0 };
       cur.leads += 1;
-      if (l.stageKey === "paid") {
+      if (isPaidLeadInRange(l, monthStart, monthEnd)) {
         cur.sales += 1;
         cur.revenue += l.amount || 0;
       }
@@ -217,6 +228,8 @@ const Analytics = () => {
       const fb = map.get("facebook") ?? { meta: CHANNELS.facebook, spend: 0, leads: 0, sales: 0, revenue: 0 };
       fb.spend += spend;
       fb.leads = Math.max(fb.leads, adsLeads);
+      fb.sales = salesCount;
+      fb.revenue = revenue;
       map.set("facebook", fb);
     }
     // Always show core 4 channels even if empty so user sees structure
@@ -229,7 +242,7 @@ const Analytics = () => {
       const order: ChannelKey[] = ["facebook", "instagram", "google", "tiktok", "youtube", "yandex", "vk", "telegram", "whatsapp", "direct", "referral", "other"];
       return order.indexOf(a.meta.key) - order.indexOf(b.meta.key);
     });
-  }, [filteredLeads, spend, adsLeads]);
+  }, [filteredLeads, spend, adsLeads, salesCount, revenue, monthStart, monthEnd]);
 
   // UTM campaigns table + AI quality aggregates
   const utmRows = useMemo<UtmRow[]>(() => {
@@ -247,7 +260,7 @@ const Analytics = () => {
         _scoreSum: 0, _scoreCount: 0,
       };
       cur.leads += 1;
-      if (l.stageKey === "paid") {
+      if (isPaidLeadInRange(l, monthStart, monthEnd)) {
         cur.sales += 1;
         cur.revenue += l.amount || 0;
         cur.paidCount = (cur.paidCount ?? 0) + 1;
@@ -268,14 +281,14 @@ const Analytics = () => {
         avgScore: _scoreCount > 0 ? _scoreSum / _scoreCount : 0,
       }))
       .sort((a, b) => b.revenue - a.revenue || (b.avgScore ?? 0) - (a.avgScore ?? 0) || b.leads - a.leads);
-  }, [filteredLeads]);
+  }, [filteredLeads, monthStart, monthEnd]);
 
   // Trend data: per day
   const trend = useMemo<TrendPoint[]>(() => {
     const days = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0).getDate();
     const points: TrendPoint[] = [];
     const dailyMap = new Map<string, { spend: number }>();
-    for (const d of data?.daily ?? []) {
+    for (const d of data?.monthlyMeta ?? []) {
       dailyMap.set(d.date, { spend: d.spend });
     }
     const leadsByDate = new Map<string, { leads: number; sales: number }>();
@@ -283,7 +296,7 @@ const Analytics = () => {
       const d = new Date(l.createdAt).toISOString().slice(0, 10);
       const cur = leadsByDate.get(d) ?? { leads: 0, sales: 0 };
       cur.leads += 1;
-      if (l.stageKey === "paid") cur.sales += 1;
+      if (isPaidLeadInRange(l, monthStart, monthEnd)) cur.sales += 1;
       leadsByDate.set(d, cur);
     }
     for (let i = 1; i <= days; i++) {
@@ -296,10 +309,10 @@ const Analytics = () => {
       });
     }
     return points;
-  }, [data, filteredLeads, monthCursor]);
+  }, [data, filteredLeads, monthCursor, monthStart, monthEnd]);
 
   const hasLinkedData = actIds.length > 0;
-  const hasMonthData = !!data?.daily.length || filteredLeads.length > 0;
+  const hasMonthData = !!data?.monthlyMeta.length || filteredLeads.length > 0;
   const funnelBase = Math.max(impressions, clicks, leadCount, diagnosticsCount, salesCount, 1);
 
   return (
@@ -321,7 +334,7 @@ const Analytics = () => {
         <div className="flex flex-wrap items-center gap-2">
           <MonthSwitcher value={monthCursor} onChange={setMonthCursor} size="lg" />
           <button
-            onClick={() => { refresh(); refetch(); }}
+            onClick={() => { refetch(); }}
             className="grid h-12 w-12 place-items-center rounded-2xl border border-border/60 bg-card/60 hover:bg-secondary"
             aria-label="Обновить"
           >
@@ -346,7 +359,7 @@ const Analytics = () => {
         <KpiCard icon={DollarSign} label="Расход" value={spend > 0 ? fmtMoney(spend) : "—"} sub="за период" delta={pctDelta(spend, prevSpend)} />
         <KpiCard icon={Users} label="Лиды" value={fmtNumber(leadCount)} sub={adsLeads ? `${adsLeads} из рекламы` : `${filteredLeads.length} в CRM`} delta={pctDelta(leadCount, prevTotalLeads)} />
         <KpiCard icon={Target} label="CPL" value={cpl > 0 ? fmtMoney(cpl) : "—"} sub="стоимость лида" emphasized />
-        <KpiCard icon={ShoppingBag} label="Продажи" value={fmtNumber(salesCount)} sub={salesCount > 0 ? fmtPct(conversion) + " конверсия" : "нет продаж"} delta={pctDelta(salesCount, prevData?.totals.sales ?? prevSales.length)} />
+        <KpiCard icon={ShoppingBag} label="Продажи" value={fmtNumber(salesCount)} sub={salesCount > 0 ? fmtPct(conversion) + " конверсия" : "нет продаж"} delta={pctDelta(salesCount, data?.prev?.sales ?? prevPaidLeads.length)} />
         <KpiCard icon={TrendingUp} label="Выручка" value={revenue > 0 ? fmtMoney(revenue) : "—"} sub={salesCount > 0 ? `${salesCount} продаж` : "нет данных"} delta={pctDelta(revenue, prevRevenue)} />
         <KpiCard icon={GitBranch} label="ROMI" value={romi !== null ? <span className={romi >= 0 ? "text-success" : "text-destructive"}>{romi >= 0 ? "+" : ""}{Math.round(romi)}%</span> : "—"} sub={spend > 0 ? "возврат инвестиций" : "нет расходов"} emphasized />
         <KpiCard icon={Target} label="Средний чек" value={avgCheck > 0 ? fmtMoney(avgCheck) : "—"} sub={salesCount > 0 ? `по ${salesCount} продажам` : "нет продаж"} />
