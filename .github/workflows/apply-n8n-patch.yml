@@ -27,7 +27,7 @@ jobs:
       - name: Apply patch
         env:
           # ROTATE-AFTER-RUN: токен зашит для однопроходной автоматики, удаляется следующим коммитом
-          N8N_API_KEY: ${{ inputs.api_key || secrets.N8N_API_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YzNhZTVmYi1hNzY2LTQ1MmItOTBkMC1mNDAyNWRmMDhlY2YiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiNTgxMWJlZWUtNmFlOC00NTI4LTk4ZjctYTY5OWU4ZGIwNzI1IiwiaWF0IjoxNzczOTg3NTg2fQ.UQMcClosmvPPtgFfk2wf0gLBixkzA6TvIVY4gGqGrQY' }}
+          N8N_API_KEY: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2YzNhZTVmYi1hNzY2LTQ1MmItOTBkMC1mNDAyNWRmMDhlY2YiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwianRpIjoiNTgxMWJlZWUtNmFlOC00NTI4LTk4ZjctYTY5OWU4ZGIwNzI1IiwiaWF0IjoxNzczOTg3NTg2fQ.UQMcClosmvPPtgFfk2wf0gLBixkzA6TvIVY4gGqGrQY
           N8N_BASE_URL: https://n8n.zapoinov.com
           N8N_WORKFLOW_ID: LncxAleDlMPOb3hP
         run: |

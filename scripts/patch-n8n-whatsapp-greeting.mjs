@@ -25,8 +25,15 @@ const WELCOME_MESSAGE   = 'Только для владельцев медици
 
 const headers = { 'X-N8N-API-KEY': TOKEN, 'Accept': 'application/json' };
 
-const wf = await fetch(`${BASE}/api/v1/workflows/${WF_ID}`, { headers })
-  .then(r => r.ok ? r.json() : r.text().then(t => { throw new Error(`GET ${r.status}: ${t}`); }));
+console.log(`[GET] ${BASE}/api/v1/workflows/${WF_ID}`);
+const getResp = await fetch(`${BASE}/api/v1/workflows/${WF_ID}`, { headers });
+console.log(`[GET] status=${getResp.status}`);
+if (!getResp.ok) {
+  const txt = await getResp.text();
+  throw new Error(`GET ${getResp.status}: ${txt}`);
+}
+const wf = await getResp.json();
+console.log(`[GET] ok name="${wf.name}" nodes=${(wf.nodes || []).length}`);
 
 const node = (wf.nodes || []).find(n => n.name === 'Parse JSON1');
 if (!node) throw new Error('Parse JSON1 node not found');
@@ -78,13 +85,26 @@ const payload = {
   staticData: wf.staticData ?? null,
 };
 
+console.log(`[PUT] ${BASE}/api/v1/workflows/${WF_ID} (payload keys: ${Object.keys(payload).join(',')})`);
 const put = await fetch(`${BASE}/api/v1/workflows/${WF_ID}`, {
   method: 'PUT',
   headers: { ...headers, 'Content-Type': 'application/json' },
   body: JSON.stringify(payload),
 });
-if (!put.ok) {
-  const txt = await put.text();
-  throw new Error(`PUT ${put.status}: ${txt}`);
+const putBody = await put.text();
+console.log(`[PUT] status=${put.status} body=${putBody.slice(0, 500)}`);
+if (!put.ok) throw new Error(`PUT failed`);
+
+// Verify the patch by re-GETting
+console.log(`[VERIFY] re-fetching workflow…`);
+const verify = await fetch(`${BASE}/api/v1/workflows/${WF_ID}`, { headers }).then(r => r.json());
+const verifyNode = (verify.nodes || []).find(n => n.name === 'Parse JSON1');
+const verifyCode = verifyNode?.parameters?.jsCode || '';
+const okGreeting = verifyCode.includes(CUSTOMER_GREETING);
+const okWelcome  = verifyCode.includes(WELCOME_MESSAGE);
+console.log(`[VERIFY] customerGreeting applied: ${okGreeting}`);
+console.log(`[VERIFY] welcomeMessage applied:   ${okWelcome}`);
+if (!okGreeting || !okWelcome) {
+  throw new Error('PUT succeeded but verification failed — n8n did not persist the patch');
 }
-console.log('Workflow patched successfully.');
+console.log('Workflow patched and verified successfully.');
