@@ -4,6 +4,7 @@ import {
   SidebarProvider,
 } from "@/components/ui/sidebar";
 import AppSidebar from "./AppSidebar";
+import { TaskReminderToast } from "@/components/crm/TaskReminderToast";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -39,6 +40,9 @@ const AppLayout = ({ children }: AppLayoutProps) => {
           <main className="min-w-0 flex-1 overflow-x-hidden">{children}</main>
         </SidebarInset>
       </div>
+      {/* Глобальный тостер напоминаний о задачах — единственный источник правды,
+          dismissed-состояние трекается в localStorage, чтобы не всплывало повторно. */}
+      <TaskReminderToast />
     </SidebarProvider>
   );
 };
