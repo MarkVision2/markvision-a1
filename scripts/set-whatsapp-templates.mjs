@@ -44,16 +44,22 @@ if (!hasWelcomeCol || !hasGreetingCol) {
   process.exit(1);
 }
 
-// 2. find MarkVision row
+// 2. find MarkVision row — fetch * to be schema-agnostic
 console.log('[2/3] Listing client_configs…');
-const list = await fetch(
-  `${URL}/rest/v1/client_configs?select=id,client_name,city,brief,ad_account_id,wa_welcome_message_template,wa_customer_greeting_template`,
-  { headers }
-).then(r => r.json());
-
+const listResp = await fetch(`${URL}/rest/v1/client_configs?select=*`, { headers });
+if (!listResp.ok) {
+  console.error(`List failed: ${listResp.status} ${await listResp.text()}`);
+  process.exit(1);
+}
+const list = await listResp.json();
+if (!Array.isArray(list)) {
+  console.error('Expected array, got:', JSON.stringify(list).slice(0, 400));
+  process.exit(1);
+}
 console.log(`    total rows: ${list.length}`);
+console.log(`    available columns: ${list[0] ? Object.keys(list[0]).join(', ') : '(none — table empty)'}`);
 list.forEach((r, i) => {
-  console.log(`    [${i}] id=${r.id} client_name="${r.client_name || ''}" city="${r.city || ''}" ad_account=${r.ad_account_id || ''}`);
+  console.log(`    [${i}] id=${r.id} name="${r.client_name || ''}" city="${r.city || r.client_city || ''}" ad_account=${r.ad_account_id || ''} brief="${(r.brief || '').slice(0, 50)}"`);
 });
 
 const NAME_RE = /марк\s*вижн|markvision|mark\s*vision|марквижн/i;
