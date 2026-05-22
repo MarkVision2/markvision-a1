@@ -37,12 +37,14 @@ export function LeadAttribution({ lead }: { lead: Lead }) {
     setLoading(true);
     (async () => {
       let creative: CreativeInfo | null = null;
+      let creativeCampaignId: string | null = null;
       if (adId) {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("meta_creatives")
           .select("ad_id,name,thumbnail_url,image_url,poster_url,creative_type,effective_status,campaign_id")
           .eq("ad_id", adId)
           .maybeSingle();
+        if (error) console.warn("[LeadAttribution] meta_creatives fetch failed", error);
         if (data) {
           creative = {
             adId: data.ad_id,
@@ -53,16 +55,17 @@ export function LeadAttribution({ lead }: { lead: Lead }) {
             creativeType: data.creative_type,
             effectiveStatus: data.effective_status,
           };
+          creativeCampaignId = data.campaign_id ?? null;
         }
       }
-      const cId = creative?.adId ? null : null;
-      const campId = (creative as any)?.campaign_id ?? campaignId;
+      const campId = creativeCampaignId ?? campaignId;
       if (campId) {
-        const { data: camp } = await supabase
+        const { data: camp, error: campError } = await supabase
           .from("meta_campaigns")
           .select("name")
           .eq("campaign_id", campId)
           .maybeSingle();
+        if (campError) console.warn("[LeadAttribution] meta_campaigns fetch failed", campError);
         if (camp && creative) creative.campaignName = camp.name;
         else if (camp && !creative) {
           creative = {

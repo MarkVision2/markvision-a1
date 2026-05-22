@@ -256,7 +256,9 @@ export function useMetaInsights(
         "postgres_changes",
         { event: "*", schema: "public", table: "cabinet_daily_insights", filter: `external_id=eq.${norm}` },
         () => {
-          fetchInsights([actId], month, projectId).then((d) => { if (!cancelled) setData(d); }).catch(() => {});
+          fetchInsights([actId], month, projectId)
+            .then((d) => { if (!cancelled) setData(d); })
+            .catch((e) => { if (!cancelled) console.warn("[useMetaInsights] realtime refetch failed", e); });
         },
       )
       .subscribe();

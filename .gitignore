@@ -23,4 +23,19 @@ dist-ssr
 *.sln
 *.sw?
 supabase/.temp/
-.claude/
+
+# Claude Code: keep skills and hooks committed, ignore local settings
+.claude/*
+!.claude/skills/
+!.claude/hooks/
+!.claude/settings.json
+.claude/skills/*/node_modules/
+.claude/skills/*/.temp-execution-*.js
+.claude/skills/*/package-lock.json
+
+# Playwright artifacts
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+

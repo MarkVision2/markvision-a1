@@ -161,7 +161,7 @@ const Ads = () => {
         <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <StatChip
             label="Расход за месяц"
-            value={`${Math.round(totalSpend).toLocaleString("ru-RU").replace(/\s/g, " ")} ₸`}
+            value={`${Math.round(totalSpend).toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}\u00A0₸`}
             accent="bg-warning/15 text-warning"
             icon={Wallet}
           />

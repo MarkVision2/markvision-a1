@@ -25,7 +25,11 @@ export function useAutoSave<T>({ value, onSave, delay = 800, enabled = true, isE
   const lastSavedRef = useRef<T>(value);
   const firstRunRef = useRef(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onSaveRef = useRef(onSave);
   const eq = isEqual ?? ((a: T, b: T) => JSON.stringify(a) === JSON.stringify(b));
+
+  // Keep latest onSave callback without retriggering the debounce effect on every parent render.
+  useEffect(() => { onSaveRef.current = onSave; }, [onSave]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -42,7 +46,7 @@ export function useAutoSave<T>({ value, onSave, delay = 800, enabled = true, isE
     timerRef.current = setTimeout(async () => {
       setStatus("saving");
       try {
-        await onSave(value);
+        await onSaveRef.current(value);
         lastSavedRef.current = value;
         setError(null);
         setStatus("saved");

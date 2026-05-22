@@ -21,5 +21,27 @@ export default defineConfig(({ mode }) => ({
   },
   build: {
     chunkSizeWarningLimit: 600,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("react-router-dom") || id.includes("/react-router/")) return "router";
+          if (id.includes("@tanstack/")) return "query";
+          if (id.includes("@supabase/") || id.includes("@lovable.dev/cloud-auth-js")) return "supabase";
+          if (id.includes("/recharts/") || id.includes("/d3-")) return "charts";
+          if (id.includes("/lucide-react/")) return "icons";
+          if (id.includes("/@radix-ui/")) return "radix";
+          if (id.includes("/react-hook-form/") || id.includes("/zod/") || id.includes("@hookform/")) return "forms";
+          if (
+            id.includes("/react/") ||
+            id.includes("/react-dom/") ||
+            id.includes("/scheduler/") ||
+            id.includes("/react/jsx-runtime") ||
+            id.includes("/react/jsx-dev-runtime")
+          ) return "react";
+          return undefined;
+        },
+      },
+    },
   },
 }));

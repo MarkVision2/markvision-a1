@@ -615,8 +615,12 @@ export function useCrmStore() {
           },
         }),
         keepalive: true,
-      }).catch(() => { /* fire-and-forget */ });
-    } catch { /* silent */ }
+      }).catch((err) => {
+        console.warn("[useCrmStore.moveLead] CAPI sync failed (fire-and-forget)", err);
+      });
+    } catch (err) {
+      console.warn("[useCrmStore.moveLead] CAPI sync threw", err);
+    }
   }, [stageUuid, leads]);
 
   // ---------- chats ----------

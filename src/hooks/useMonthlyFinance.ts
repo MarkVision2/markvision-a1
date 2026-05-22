@@ -19,7 +19,11 @@ export function useMonthlyFinance() {
 
   const refetch = useCallback(async () => {
     const q = supabase.from("monthly_finance").select("*");
-    const { data } = active?.id ? await q.eq("project_id", active.id) : await q;
+    const { data, error } = active?.id ? await q.eq("project_id", active.id) : await q;
+    if (error) {
+      console.warn("[useMonthlyFinance] select failed", error);
+      return;
+    }
     const next: Store = {};
     (data ?? []).forEach((r: any) => {
       next[r.month_key] = { revenue: Number(r.revenue ?? 0), spend: Number(r.spend ?? 0) };
@@ -33,12 +37,16 @@ export function useMonthlyFinance() {
   const setEntry = useCallback(async (key: string, entry: Partial<MonthlyEntry>) => {
     const prev = store[key] ?? { revenue: 0, spend: 0 };
     const merged = { ...prev, ...entry };
-    await supabase.from("monthly_finance").upsert({
+    const { error } = await supabase.from("monthly_finance").upsert({
       project_id: active?.id ?? null,
       month_key: key,
       revenue: merged.revenue,
       spend: merged.spend,
     }, { onConflict: "project_id,month_key" });
+    if (error) {
+      console.error("[useMonthlyFinance] upsert failed", error);
+      throw error;
+    }
     await refetch();
   }, [active?.id, store, refetch]);
 

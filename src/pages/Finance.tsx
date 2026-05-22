@@ -37,7 +37,7 @@ const fmt = (n: number) => {
 };
 const fmtT = (n: number) => {
   if (!isFinite(n) || isNaN(n)) return "—";
-  return `${fmt(n)} ₸`;
+  return `${fmt(n)}\u00A0₸`;
 };
 
 type Tab = "decomp" | "agency" | "dynamics";
