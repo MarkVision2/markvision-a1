@@ -29,6 +29,18 @@ export default defineConfig(({ mode }) => ({
           if (id.includes("@tanstack/")) return "query";
           if (id.includes("@supabase/") || id.includes("@lovable.dev/cloud-auth-js")) return "supabase";
           if (id.includes("/recharts/") || id.includes("/d3-")) return "charts";
+          if (
+            id.includes("/react-markdown/") ||
+            id.includes("/remark-") ||
+            id.includes("/rehype-") ||
+            id.includes("/micromark") ||
+            id.includes("/mdast-") ||
+            id.includes("/unist-") ||
+            id.includes("/hast-util-") ||
+            id.includes("/unified/") ||
+            id.includes("/vfile/") ||
+            id.includes("/decode-named-character-reference/")
+          ) return "markdown";
           if (id.includes("/lucide-react/")) return "icons";
           if (id.includes("/@radix-ui/")) return "radix";
           if (id.includes("/react-hook-form/") || id.includes("/zod/") || id.includes("@hookform/")) return "forms";
