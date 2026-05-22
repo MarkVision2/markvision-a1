@@ -75,11 +75,17 @@ const CreativeFunnel = () => {
 
   const { rows, loading } = useMetaCreatives(range);
 
+  // Половинно-открытый интервал [since, untilExclusive). Раньше использовали
+  // lte("created_at", "...23:59:59") — это могло отсечь записи с
+  // микросекундами в последнюю секунду суток.
+  const ymd = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const sinceYmd = ymd(range.from);
+  const untilExclusive = ymd(new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate() + 1));
+
   // Лиды без привязки к креативу — для строки "Без креатива" и баннера
   useEffect(() => {
     if (!projectId) { setOrphanLeads(0); return; }
-    const since = `${range.from.getFullYear()}-${String(range.from.getMonth()+1).padStart(2,"0")}-${String(range.from.getDate()).padStart(2,"0")}`;
-    const until = `${range.to.getFullYear()}-${String(range.to.getMonth()+1).padStart(2,"0")}-${String(range.to.getDate()).padStart(2,"0")} 23:59:59`;
     let cancelled = false;
     void (async () => {
       const { count } = await supabase
@@ -88,18 +94,16 @@ const CreativeFunnel = () => {
         .eq("project_id", projectId)
         .eq("is_personal", false)
         .is("meta_ad_id", null)
-        .gte("created_at", since)
-        .lte("created_at", until);
+        .gte("created_at", sinceYmd)
+        .lt("created_at", untilExclusive);
       if (!cancelled) setOrphanLeads(count ?? 0);
     })();
     return () => { cancelled = true; };
-  }, [projectId, range.from, range.to, backfilling]);
+  }, [projectId, sinceYmd, untilExclusive, backfilling]);
 
   // Сводные CRM-показатели по проекту за период (диагностики/продажи/выручка)
   useEffect(() => {
     if (!projectId) { setCrmTotals({ leads: 0, diagnostics: 0, sales: 0, revenue: 0 }); return; }
-    const since = `${range.from.getFullYear()}-${String(range.from.getMonth()+1).padStart(2,"0")}-${String(range.from.getDate()).padStart(2,"0")}`;
-    const until = `${range.to.getFullYear()}-${String(range.to.getMonth()+1).padStart(2,"0")}-${String(range.to.getDate()).padStart(2,"0")} 23:59:59`;
     let cancelled = false;
     void (async () => {
       const { data: stages } = await supabase
@@ -112,8 +116,8 @@ const CreativeFunnel = () => {
         .select("id, paid, amount, diagnostic_amount, stage_id, created_at")
         .eq("project_id", projectId)
         .eq("is_personal", false)
-        .gte("created_at", since)
-        .lte("created_at", until);
+        .gte("created_at", sinceYmd)
+        .lt("created_at", untilExclusive);
       if (cancelled) return;
       let diagnostics = 0, sales = 0, revenue = 0;
       const arr = leads ?? [];
@@ -128,7 +132,7 @@ const CreativeFunnel = () => {
       setCrmTotals({ leads: arr.length, diagnostics, sales, revenue });
     })();
     return () => { cancelled = true; };
-  }, [projectId, range.from, range.to, backfilling]);
+  }, [projectId, sinceYmd, untilExclusive, backfilling]);
 
 
   const runBackfill = async () => {

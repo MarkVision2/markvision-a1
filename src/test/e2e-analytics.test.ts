@@ -260,3 +260,44 @@ describe("Изоляция данных при выборе конкретног
     expect(totals.cac).toBe(100_000);
   });
 });
+
+describe("Регрессия: orphan, оплаченный в периоде, но созданный раньше — попадает в продажи", () => {
+  // Раньше Analytics/Metrics фильтровали orphan по createdAt, поэтому такой лид
+  // показывал нулевую выручку при том, что Dashboard через useReportData
+  // (по paid_at) корректно показывал её. Цифры между страницами не сходились.
+  it("orphan создан в апреле, оплачен в мае → майские продажи = 1, выручка = amount", () => {
+    const lead = mk({
+      cabinetId: null,
+      source: "whatsapp",
+      createdAt: "2026-04-20T10:00:00Z",
+      paidAt: "2026-05-15T10:00:00Z",
+      lastActivityAt: "2026-05-15T10:00:00Z",
+      paid: true,
+      amount: 250_000,
+    });
+    const crm = aggregateCrm([lead], range, "all");
+    const totals = computeTotals({ ...emptyMeta }, crm);
+
+    expect(crm.orphanSales.length).toBe(1);
+    expect(crm.orphanRevenue).toBe(250_000);
+    expect(totals.sales).toBe(1);
+    expect(totals.revenue).toBe(250_000);
+  });
+
+  it("orphan создан в мае, оплачен в июне → май: лид=1, продажи=0", () => {
+    const lead = mk({
+      cabinetId: null,
+      createdAt: "2026-05-20T10:00:00Z",
+      paidAt: "2026-06-05T10:00:00Z",
+      lastActivityAt: "2026-06-05T10:00:00Z",
+      paid: true,
+      amount: 250_000,
+    });
+    const crm = aggregateCrm([lead], range, "all");
+    const totals = computeTotals({ ...emptyMeta }, crm);
+
+    expect(crm.orphanLeads.length).toBe(1); // как лид мая учитывается
+    expect(crm.orphanSales.length).toBe(0); // но не как продажа мая
+    expect(totals.sales).toBe(0);
+  });
+});

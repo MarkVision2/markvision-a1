@@ -180,6 +180,9 @@ const Metrics = () => {
   // Orphan CRM-лиды этого месяца (без cabinet_id) — заявки с сайта/WhatsApp,
   // которые не относятся ни к одному рекламному кабинету. Чтобы факты Metrics
   // совпадали с Dashboard/Analytics, прибавляем их к CDI-суммам.
+  // ЕДИНАЯ СЕМАНТИКА ДАТ (как в useReportData / Analytics):
+  //   leads (для счёта) — по createdAt в периоде
+  //   sales/diagnostics/revenue — по ДАТЕ СОБЫТИЯ (paid_at / lastActivityAt)
   const { leads: allLeads } = useLeadsLite();
   const monthStartTs = monthCursor.getTime();
   const monthEndTs = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 1).getTime();
@@ -194,8 +197,27 @@ const Metrics = () => {
     }),
     [allLeads, cabinetId, monthStartTs, monthEndTs],
   );
-  const orphanDiagnostics = orphanThisMonth.filter(isLeadVisit).length;
-  const orphanPaid = orphanThisMonth.filter(isLeadPaid);
+  const orphanVisitsInRange = useMemo(() => {
+    if (cabinetId !== "all") return [];
+    return allLeads.filter((l) => {
+      if (l.cabinetId) return false;
+      if (!isLeadVisit(l)) return false;
+      const ref = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
+      const t = new Date(ref).getTime();
+      return t >= monthStartTs && t < monthEndTs;
+    });
+  }, [allLeads, cabinetId, monthStartTs, monthEndTs]);
+  const orphanPaid = useMemo(() => {
+    if (cabinetId !== "all") return [];
+    return allLeads.filter((l) => {
+      if (l.cabinetId) return false;
+      if (!isLeadPaid(l)) return false;
+      const ref = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
+      const t = new Date(ref).getTime();
+      return t >= monthStartTs && t < monthEndTs;
+    });
+  }, [allLeads, cabinetId, monthStartTs, monthEndTs]);
+  const orphanDiagnostics = orphanVisitsInRange.length;
   const orphanSalesCount = orphanPaid.length;
   const orphanRevenue = orphanPaid.reduce((s, l) => s + (l.amount || 0), 0);
 
@@ -219,21 +241,26 @@ const Metrics = () => {
 
     const dayKey = (iso: string) => iso.slice(0, 10);
 
+    // Leads по дню создания
     for (const l of orphanThisMonth) {
       const created = dayKey(l.createdAt);
       const cur = m.get(created) ?? emptyDay(created);
       cur.leads += 1;
       m.set(created, cur);
     }
-    for (const l of orphanThisMonth.filter(isLeadVisit)) {
-      const key = dayKey(l.paidAt ?? l.createdAt);
+    // Диагностики — по дате события (paid_at / lastActivityAt). Раньше брали
+    // orphanThisMonth.filter(isLeadVisit) — это были лиды СОЗДАННЫЕ в месяце,
+    // а не диагностированные в нём. Цифра не совпадала с Dashboard/Reports.
+    for (const l of orphanVisitsInRange) {
+      const key = dayKey(l.paidAt ?? l.lastActivityAt ?? l.createdAt);
       const cur = m.get(key) ?? emptyDay(key);
       cur.diagnostics += 1;
       cur.crmDiagnostics += 1;
       m.set(key, cur);
     }
+    // Продажи — по paid_at
     for (const l of orphanPaid) {
-      const key = dayKey(l.paidAt ?? l.createdAt);
+      const key = dayKey(l.paidAt ?? l.lastActivityAt ?? l.createdAt);
       const cur = m.get(key) ?? emptyDay(key);
       const amt = l.amount || 0;
       cur.sales += 1;
@@ -245,7 +272,7 @@ const Metrics = () => {
       m.set(key, cur);
     }
     return m;
-  }, [data, orphanThisMonth, orphanPaid]);
+  }, [data, orphanThisMonth, orphanVisitsInRange, orphanPaid]);
 
   // ЕДИНЫЙ ИСТОЧНИК ПРАВДЫ: CDI (кабинеты) + orphan CRM (лиды без cabinet_id).
   // Раньше orphan исключали, чтобы избежать задвоения с manual_sales — но manual
