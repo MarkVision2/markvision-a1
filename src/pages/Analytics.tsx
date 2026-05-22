@@ -201,9 +201,34 @@ const Analytics = () => {
   //   total = Meta-side (CDI) + CRM orphan (лиды без cabinet_id).
   // Лиды с cabinet_id уже учтены через CDI.crm_sales / crm_revenue, поэтому
   // повторно их не считаем — иначе на Analytics получим разные цифры с Dashboard.
+  //
+  // orphanLeads (счёт лидов) — по createdAt в периоде.
+  // orphanSales/Visits (продажи/диагностики) — по ДАТЕ СОБЫТИЯ (paid_at /
+  // lastActivityAt), как в useReportData. Раньше фильтровали по createdAt — лид,
+  // созданный в апреле и оплаченный в мае, давал выручку в апреле, а
+  // Dashboard корректно показывал в мае. Цифры расходились между страницами.
   const orphanLeads = filteredLeads.filter((l) => !l.cabinetId);
-  const orphanSales = orphanLeads.filter((l) => isLeadPaid(l));
-  const orphanVisits = orphanLeads.filter(isLeadVisit);
+  const orphanSales = useMemo(() => {
+    // В режиме конкретного кабинета — orphan нерелевантен (всё через CDI).
+    if (cabinetId !== "all") return [];
+    return leads.filter((l) => {
+      if (l.cabinetId) return false;
+      if (!isLeadPaid(l)) return false;
+      const paidAt = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
+      const t = new Date(paidAt).getTime();
+      return t >= monthStart && t < monthEnd;
+    });
+  }, [leads, monthStart, monthEnd, cabinetId]);
+  const orphanVisits = useMemo(() => {
+    if (cabinetId !== "all") return [];
+    return leads.filter((l) => {
+      if (l.cabinetId) return false;
+      if (!isLeadVisit(l)) return false;
+      const ref = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
+      const t = new Date(ref).getTime();
+      return t >= monthStart && t < monthEnd;
+    });
+  }, [leads, monthStart, monthEnd, cabinetId]);
   const orphanRevenue = orphanSales.reduce((sum, l) => sum + (l.amount || 0), 0);
 
   const adsLeads = data?.totals.leads ?? 0;
@@ -217,7 +242,17 @@ const Analytics = () => {
   const revenue = cabinetRevenue + orphanRevenue;
 
   const prevOrphan = prevLeads.filter((l) => !l.cabinetId);
-  const prevOrphanSales = prevOrphan.filter((l) => isLeadPaid(l));
+  // prevOrphanSales — по paid_at, как orphanSales выше; нужно для корректной дельты revenue.
+  const prevOrphanSales = useMemo(() => {
+    if (cabinetId !== "all") return [];
+    return leads.filter((l) => {
+      if (l.cabinetId) return false;
+      if (!isLeadPaid(l)) return false;
+      const paidAt = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
+      const t = new Date(paidAt).getTime();
+      return t >= prevStart && t < prevEnd;
+    });
+  }, [leads, prevStart, prevEnd, cabinetId]);
   const prevOrphanRevenue = prevOrphanSales.reduce((s, l) => s + (l.amount || 0), 0);
   const prevRevenue = (prevData?.totals.crmRevenue ?? 0) + prevOrphanRevenue;
 
@@ -245,14 +280,19 @@ const Analytics = () => {
   const channels = useMemo<ChannelStat[]>(() => {
     const map = new Map<ChannelKey, ChannelStat>();
     // 1) CRM orphan лиды → разбивка по их source (whatsapp, instagram, direct, и т.д.)
+    // ВАЖНО: leads считаем по createdAt (когда лид пришёл в канал),
+    // а sales/revenue — по paid_at (когда лид оплатил), как в Dashboard/Reports.
     for (const l of orphanLeads) {
       const meta = resolveChannel(l as LeadLite);
       const cur = map.get(meta.key) ?? { meta, spend: 0, leads: 0, sales: 0, revenue: 0 };
       cur.leads += 1;
-      if (isLeadPaid(l)) {
-        cur.sales += 1;
-        cur.revenue += l.amount || 0;
-      }
+      map.set(meta.key, cur);
+    }
+    for (const l of orphanSales) {
+      const meta = resolveChannel(l as LeadLite);
+      const cur = map.get(meta.key) ?? { meta, spend: 0, leads: 0, sales: 0, revenue: 0 };
+      cur.sales += 1;
+      cur.revenue += l.amount || 0;
       map.set(meta.key, cur);
     }
     // 2) Meta/FB-кабинет: spend, ads-leads, cabinet-attributed sales/revenue из CDI.
@@ -275,7 +315,7 @@ const Analytics = () => {
       const order: ChannelKey[] = ["facebook", "instagram", "google", "tiktok", "youtube", "yandex", "vk", "telegram", "whatsapp", "direct", "referral", "other"];
       return order.indexOf(a.meta.key) - order.indexOf(b.meta.key);
     });
-  }, [orphanLeads, spend, adsLeads, cabinetSales, cabinetRevenue]);
+  }, [orphanLeads, orphanSales, spend, adsLeads, cabinetSales, cabinetRevenue]);
 
   // UTM campaigns table + AI quality aggregates
   const utmRows = useMemo<UtmRow[]>(() => {

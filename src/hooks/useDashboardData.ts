@@ -114,9 +114,11 @@ export function useDashboardData(
     return () => { cancelled = true; };
   }, [projectId, sinceYmd, untilYmd, pTick]);
 
-  // CRM funnel: total/reached считаем по createdAt (когда лид пришёл),
-  // visited/paid — по дате события (paid_at / last_activity_at), чтобы сходилось
-  // с CDI и top-KPI Funnel (там тоже sales по paid_at).
+  // CRM funnel: total/reached считаем по createdAt (когда лид пришёл).
+  // scheduled/visited/paid — по дате СОБЫТИЯ (paid_at / last_activity_at), как
+  // и в верхних KPI. Раньше scheduled фильтровался по createdAt + `isLeadVisit`,
+  // из-за чего лид, оплаченный в мае, но созданный в апреле, в мае давал
+  // visited=1/paid=1 при scheduled=0 (нарушение монотонности воронки) и наоборот.
   const crmFunnel = useMemo(() => {
     const inRange = leads.filter((l) => {
       const t = new Date(l.createdAt).getTime();
@@ -130,15 +132,23 @@ export function useDashboardData(
     });
     const visitedInRange = leads.filter((l) => {
       if (!isLeadVisit(l)) return false;
-      const refDate = isLeadPaid(l)
-        ? (l.paidAt ?? l.lastActivityAt ?? l.createdAt)
-        : (l.lastActivityAt ?? l.createdAt);
+      const refDate = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
+      const t = new Date(refDate).getTime();
+      return t >= fromTs && t < toTs;
+    });
+    // "Записались": лид достиг хотя бы scheduled-стадии. По дате последней активности
+    // (или paid_at, если уже оплачен) — чтобы цифра не падала ниже visited/paid.
+    const scheduledInRange = leads.filter((l) => {
+      const isScheduled =
+        (l.stageKey ?? "").toLowerCase() === "scheduled" || isLeadVisit(l);
+      if (!isScheduled) return false;
+      const refDate = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
       const t = new Date(refDate).getTime();
       return t >= fromTs && t < toTs;
     });
     const total = inRange.length;
     const reached = inRange.filter((l) => l.stageKey !== "new" && l.stageKey !== "no_answer").length;
-    const scheduled = inRange.filter((l) => l.stageKey === "scheduled" || isLeadVisit(l)).length;
+    const scheduled = scheduledInRange.length;
     const visited = visitedInRange.length;
     const paid = paidInRange.length;
     return { total, reached, scheduled, visited, paid };
