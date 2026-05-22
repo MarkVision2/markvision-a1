@@ -225,6 +225,19 @@ describe("mergeChannelsWithMetaCampaignGoals", () => {
     expect(merged.map((c) => c.key).sort()).toEqual(["site", "whatsapp"]);
     expect(merged.reduce((sum, c) => sum + c.leads, 0)).toBe(77);
   });
+
+  it("не теряет CRM-заявки Meta, если целей Meta меньше, чем фактических лидов", () => {
+    const channels: DashboardChannel[] = [
+      { key: "meta", name: "Meta Ads", provider: "meta", spend: 140_000, leads: 110, sales: 3, revenue: 1_700_000 },
+    ];
+    const merged = mergeChannelsWithMetaCampaignGoals(channels, [
+      campaign({ campaignId: "site", objective: "OUTCOME_LEADS", destinationType: "WEBSITE", spend: 10_000, leads: 2 }),
+      campaign({ campaignId: "wa", objective: "OUTCOME_ENGAGEMENT", destinationType: "WHATSAPP", spend: 130_000, messages: 24 }),
+    ]);
+
+    expect(merged.reduce((sum, c) => sum + c.leads, 0)).toBe(110);
+    expect(merged.find((c) => c.key === "meta_unattributed")).toMatchObject({ leads: 84, sales: 3, revenue: 1_700_000 });
+  });
 });
 
 describe("calculateQualityFunnel", () => {

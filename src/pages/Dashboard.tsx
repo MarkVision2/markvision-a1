@@ -93,7 +93,8 @@ const Dashboard = () => {
   const { leads: liteLeads } = useLeadsLite();
   const periodLeads = useMemo(() => liteLeads.filter((l) => {
     const t = new Date(l.createdAt).getTime();
-    return t >= range.from.getTime() && t <= range.to.getTime();
+    const toTs = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate() + 1).getTime();
+    return t >= range.from.getTime() && t < toTs;
   }), [liteLeads, range]);
 
   const totals = data?.totals;

@@ -87,9 +87,25 @@ export function mergeChannelsWithMetaCampaignGoals(
 
   const replaceGenericMeta = shouldReplaceGenericMeta(channels, campaignSources);
   const byKey = new Map<string, DashboardChannel>();
+  let genericMetaToPreserve: DashboardChannel | null = null;
 
   for (const channel of channels) {
-    if (replaceGenericMeta && (channel.key === "meta" || channel.key === "facebook")) continue;
+    if (replaceGenericMeta && (channel.key === "meta" || channel.key === "facebook")) {
+      const campaignLeads = Array.from(campaignSources.values()).reduce((sum, c) => sum + c.leads, 0);
+      const campaignSpend = Array.from(campaignSources.values()).reduce((sum, c) => sum + c.spend, 0);
+      const extraLeads = Math.max(0, channel.leads - campaignLeads);
+      const extraSpend = Math.max(0, channel.spend - campaignSpend);
+      if (extraLeads > 0 || extraSpend > 0 || channel.sales > 0 || channel.revenue > 0) {
+        genericMetaToPreserve = {
+          ...channel,
+          key: "meta_unattributed",
+          name: "Meta Ads без точного источника",
+          leads: extraLeads,
+          spend: extraSpend,
+        };
+      }
+      continue;
+    }
     byKey.set(channel.key, { ...channel });
   }
 
@@ -110,6 +126,10 @@ export function mergeChannelsWithMetaCampaignGoals(
       sales: Math.max(current.sales, source.sales),
       revenue: Math.max(current.revenue, source.revenue),
     });
+  }
+
+  if (genericMetaToPreserve && (genericMetaToPreserve.leads > 0 || genericMetaToPreserve.spend > 0 || genericMetaToPreserve.sales > 0 || genericMetaToPreserve.revenue > 0)) {
+    byKey.set(genericMetaToPreserve.key, genericMetaToPreserve);
   }
 
   return Array.from(byKey.values())

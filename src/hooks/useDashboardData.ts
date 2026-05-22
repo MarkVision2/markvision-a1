@@ -84,6 +84,47 @@ interface ProviderFactBucket {
   manualRevenue: number;
 }
 
+function dashboardSourceForLead(lead: {
+  source?: string | null;
+  channel?: string | null;
+  utm?: { source?: string | null; medium?: string | null; campaign?: string | null } | null;
+}): Pick<DashboardChannel, "key" | "name" | "provider"> {
+  const source = (lead.source ?? "").trim().toLowerCase();
+  const channel = (lead.channel ?? "").trim().toLowerCase();
+  const utm = lead.utm ?? {};
+  const utmSource = (utm.source ?? "").trim().toLowerCase();
+  const utmMedium = (utm.medium ?? "").trim().toLowerCase();
+  const utmCampaign = (utm.campaign ?? "").trim().toLowerCase();
+  const all = [source, channel, utmSource, utmMedium, utmCampaign].filter(Boolean).join(" ");
+
+  if (channel === "whatsapp" || /\b(wa|whatsapp)\b/.test(all)) {
+    return { key: "whatsapp", name: "WhatsApp", provider: "whatsapp" };
+  }
+  if (channel === "web" || ["site", "web", "website", "tilda"].includes(source)) {
+    return { key: "site", name: "Сайт", provider: "site" };
+  }
+  if (/\b(lead_form|leadform|instant_form|form)\b/.test(all)) {
+    return { key: "lead_form", name: "Лид-форма Meta", provider: "lead_form" };
+  }
+  if (/\b(messenger|direct)\b/.test(all)) {
+    return { key: "messages", name: "Direct / Messenger", provider: "messages" };
+  }
+  if (/\b(google|googleads|adwords|gads)\b/.test(all)) {
+    return { key: "google", name: PROVIDER_LABELS.google, provider: "google" };
+  }
+  if (/\b(meta|facebook|fb|instagram|insta|ig)\b/.test(all)) {
+    return { key: "meta", name: PROVIDER_LABELS.meta, provider: "meta" };
+  }
+
+  const meta = normalizeSource(lead.source);
+  const key = meta.key === "unknown" && meta.raw ? meta.raw : meta.key;
+  return {
+    key,
+    name: meta.label,
+    provider: meta.key === "google" ? "google" : "crm",
+  };
+}
+
 const PROVIDER_LABELS: Record<ProviderKey, string> = {
   meta: "Meta Ads",
   google: "Google Ads",
@@ -207,19 +248,53 @@ export function useDashboardData(
   const channels = useMemo(() => {
     const inRange = leads.filter((l) => dayKeyInRange(new Date(l.createdAt), fromTs, toTs));
 
-    const rows: DashboardChannel[] = [];
+    const map = new Map<string, DashboardChannel>();
+    const ensure = (lead: typeof leads[number]) => {
+      const meta = dashboardSourceForLead(lead);
+      const cur = map.get(meta.key) ?? {
+        key: meta.key,
+        name: meta.name,
+        provider: meta.provider,
+        spend: 0,
+        leads: 0,
+        sales: 0,
+        revenue: 0,
+      };
+      map.set(meta.key, cur);
+      return cur;
+    };
+
+    for (const lead of inRange) {
+      ensure(lead).leads += 1;
+    }
+
+    for (const lead of leads) {
+      if (!lead.paid && lead.stageKey !== "paid") continue;
+      const paidAt = lead.paidAt ? new Date(lead.paidAt).getTime() : new Date(lead.createdAt).getTime();
+      if (paidAt < fromTs || paidAt >= toTs) continue;
+      const cur = ensure(lead);
+      cur.sales += 1;
+      cur.revenue += lead.amount || 0;
+    }
 
     for (const agg of providerAgg) {
-      rows.push({
+      const cur = map.get(agg.provider) ?? {
         key: agg.provider,
         name: agg.label,
         provider: agg.provider,
-        spend: agg.spend,
-        leads: agg.leads,
-        sales: agg.sales,
-        revenue: agg.revenue,
-      });
+        spend: 0,
+        leads: 0,
+        sales: 0,
+        revenue: 0,
+      };
+      cur.spend += agg.spend;
+      if (cur.leads === 0) cur.leads = agg.leads;
+      if (cur.sales === 0) cur.sales = agg.sales;
+      if (cur.revenue === 0) cur.revenue = agg.revenue;
+      map.set(cur.key, cur);
     }
+
+    const rows: DashboardChannel[] = Array.from(map.values());
 
     // Instagram organic — отдельный канал. Заявки приходят из событий lead.
     if (igFunnel.leads > 0 || igFunnel.codewordDms > 0) {
@@ -245,51 +320,6 @@ export function useDashboardData(
         sales: igSales,
         revenue: igRevenue,
       });
-    }
-
-    // Если в CRM есть источники, которых нет в CDI, показываем их как заявки.
-    // Деньги и оплаты берём только из cabinet_daily_insights: иначе один и тот же
-    // оплаченный лид легко прибавляется поверх ручного факта из таблицы показателей.
-    const knownKeys = new Set(rows.map((r) => r.key));
-    const useDirectCrmMoney = providerAgg.length === 0;
-    if (rows.length === 0 || inRange.length > 0) {
-      const map = new Map<string, DashboardChannel>();
-      const putLead = (l: typeof inRange[number]) => {
-        const meta = normalizeSource(l.source);
-        // Лиды Meta Ads и Google Ads уже учтены через providerAgg — не дублируем.
-        if (meta.key === "meta" && knownKeys.has("meta")) return null;
-        if (meta.key === "google" && knownKeys.has("google")) return null;
-        if ((meta.key === "instagram" || meta.key === "instagram_organic") && knownKeys.has("instagram_organic")) return null;
-        const k = meta.key === "unknown" && meta.raw ? meta.raw : meta.key;
-        const cur = map.get(k) ?? {
-          key: k, name: meta.label, provider: "crm",
-          spend: 0, leads: 0, sales: 0, revenue: 0,
-        };
-        map.set(k, cur);
-        return cur;
-      };
-      for (const l of inRange) {
-        const cur = putLead(l);
-        if (!cur) continue;
-        cur.leads += 1;
-        const paidAt = l.paidAt ? new Date(l.paidAt).getTime() : null;
-        if (useDirectCrmMoney && (l.paid || l.stageKey === "paid") && paidAt === null) {
-          cur.sales += 1;
-          cur.revenue += l.amount || 0;
-        }
-      }
-      for (const l of leads) {
-        if (!l.paidAt || (!l.paid && l.stageKey !== "paid")) continue;
-        const paidAt = new Date(l.paidAt).getTime();
-        if (paidAt < fromTs || paidAt >= toTs) continue;
-        const cur = putLead(l);
-        if (!cur) continue;
-        if (useDirectCrmMoney) {
-          cur.sales += 1;
-          cur.revenue += l.amount || 0;
-        }
-      }
-      for (const v of map.values()) rows.push(v);
     }
 
     // Fallback: если у нас вообще пусто, но есть totals из ReportData — показываем одну строку Meta.
