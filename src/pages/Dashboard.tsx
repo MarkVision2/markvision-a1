@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import {
   AlertCircle, BarChart3, DollarSign, Download, Loader2, RefreshCw, Repeat, ShoppingCart,
   Target, TrendingUp, Users, Wallet,
@@ -16,7 +16,9 @@ import { CreativesGrid } from "@/components/dashboard/CreativesGrid";
 import { CrmFunnel } from "@/components/dashboard/CrmFunnel";
 import { CrmFlowPanel } from "@/components/dashboard/CrmFlowPanel";
 import { InstagramOrganicFunnel } from "@/components/dashboard/InstagramOrganicFunnel";
-import { RevenueSpendChart } from "@/components/dashboard/RevenueSpendChart";
+const RevenueSpendChart = lazy(() =>
+  import("@/components/dashboard/RevenueSpendChart").then((m) => ({ default: m.RevenueSpendChart })),
+);
 import { UnitEconomicsCard } from "@/components/dashboard/UnitEconomicsCard";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import { useCodewordStats } from "@/hooks/useInstagramOrganic";
@@ -263,7 +265,9 @@ const Dashboard = () => {
 
       {/* Block 7 — Charts */}
       <SectionTitle>Динамика</SectionTitle>
-      <RevenueSpendChart data={timeseries} />
+      <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-muted/30" />}>
+        <RevenueSpendChart data={timeseries} />
+      </Suspense>
 
       {/* Block 8 — Unit economics */}
       <SectionTitle accent="bg-primary">Окупаемость и стоимость результата</SectionTitle>

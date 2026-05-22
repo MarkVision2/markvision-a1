@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import {
   Calculator,
   DollarSign,
@@ -22,7 +22,7 @@ import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import { PeriodPicker, monthRange } from "@/components/dashboard/PeriodPicker";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import AgencyAnalytics from "@/components/finance/AgencyAnalytics";
-import MonthlyDynamics from "@/components/finance/MonthlyDynamics";
+const MonthlyDynamics = lazy(() => import("@/components/finance/MonthlyDynamics"));
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 
@@ -236,7 +236,11 @@ const Finance = () => {
       </div>
 
       {tab === "agency" && <AgencyAnalytics />}
-      {tab === "dynamics" && <MonthlyDynamics />}
+      {tab === "dynamics" && (
+        <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-muted/30" />}>
+          <MonthlyDynamics />
+        </Suspense>
+      )}
 
       {tab === "decomp" && (
         <>

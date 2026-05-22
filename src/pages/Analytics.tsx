@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useMemo, useState } from "react";
 import {
   AlertCircle,
   DollarSign,
@@ -26,7 +26,10 @@ import { CHANNELS, resolveChannel, type ChannelKey } from "@/lib/channelAttribut
 import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
 import { ChannelCard, type ChannelStat } from "@/components/analytics/ChannelCard";
 import { UtmTable, type UtmRow } from "@/components/analytics/UtmTable";
-import { TrendChart, type TrendPoint } from "@/components/analytics/TrendChart";
+import type { TrendPoint } from "@/components/analytics/TrendChart";
+const TrendChart = lazy(() =>
+  import("@/components/analytics/TrendChart").then((m) => ({ default: m.TrendChart })),
+);
 import { PeriodPicker, monthRange } from "@/components/dashboard/PeriodPicker";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
@@ -493,7 +496,9 @@ const Analytics = () => {
             </div>
           </div>
           <div className="mt-4">
-            <TrendChart data={trend} />
+            <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-muted/30" />}>
+              <TrendChart data={trend} />
+            </Suspense>
           </div>
         </div>
       </div>
