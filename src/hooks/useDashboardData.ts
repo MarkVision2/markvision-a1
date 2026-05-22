@@ -114,21 +114,33 @@ export function useDashboardData(
     return () => { cancelled = true; };
   }, [projectId, sinceYmd, untilYmd, pTick]);
 
-  // CRM funnel for clinic
+  // CRM funnel: total/reached считаем по createdAt (когда лид пришёл),
+  // visited/paid — по дате события (paid_at / last_activity_at), чтобы сходилось
+  // с CDI и top-KPI Funnel (там тоже sales по paid_at).
   const crmFunnel = useMemo(() => {
     const inRange = leads.filter((l) => {
       const t = new Date(l.createdAt).getTime();
       return t >= fromTs && t < toTs;
     });
+    const paidInRange = leads.filter((l) => {
+      if (!isLeadPaid(l)) return false;
+      const paidAt = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
+      const t = new Date(paidAt).getTime();
+      return t >= fromTs && t < toTs;
+    });
+    const visitedInRange = leads.filter((l) => {
+      if (!isLeadVisit(l)) return false;
+      const refDate = isLeadPaid(l)
+        ? (l.paidAt ?? l.lastActivityAt ?? l.createdAt)
+        : (l.lastActivityAt ?? l.createdAt);
+      const t = new Date(refDate).getTime();
+      return t >= fromTs && t < toTs;
+    });
     const total = inRange.length;
     const reached = inRange.filter((l) => l.stageKey !== "new" && l.stageKey !== "no_answer").length;
-    // Используем helpers вместо хардкода ключей стадий: isLeadVisit ловит и "visit"/"diagnosed",
-    // и paid (он сам внутри проверяет isLeadPaid). Так что:
-    //   scheduled — все, кто либо записан, либо был на визите, либо оплатил
-    //   visited   — те, кто на визите или оплатил
     const scheduled = inRange.filter((l) => l.stageKey === "scheduled" || isLeadVisit(l)).length;
-    const visited = inRange.filter(isLeadVisit).length;
-    const paid = inRange.filter(isLeadPaid).length;
+    const visited = visitedInRange.length;
+    const paid = paidInRange.length;
     return { total, reached, scheduled, visited, paid };
   }, [leads, fromTs, toTs]);
 
@@ -139,6 +151,15 @@ export function useDashboardData(
   // Расход Meta+Google распределяется между бакетами по доле заявок.
   const channels = useMemo(() => {
     const inRange = leads.filter((l) => dayKeyInRange(new Date(l.createdAt), fromTs, toTs));
+    // Продажи считаем по paid_at — лид, созданный в апреле и оплаченный в мае,
+    // должен попадать в майские продажи (так же, как CDI). Раньше использовали
+    // createdAt → в каналах было 0 продаж, а в Funnel 2 (потому что CDI берёт paid_at).
+    const paidInRange = leads.filter((l) => {
+      if (!isLeadPaid(l)) return false;
+      const paidAt = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
+      const t = new Date(paidAt).getTime();
+      return t >= fromTs && t < toTs;
+    });
 
     type BucketKey = "whatsapp" | "site" | "lead_form" | "instagram_organic" | "other";
     interface ChannelRow {
@@ -163,14 +184,22 @@ export function useDashboardData(
       const src = (l.source ?? "").toLowerCase();
       const ch = (l.channel ?? "").toLowerCase();
       const refr = (l.referrer ?? "").toLowerCase();
+      const landing = (l.utm?.source ?? "").toLowerCase();
       // Lead-форма Meta — обычно source/channel = lead_form / leadgen / fb_form
       if (/lead.?form|leadgen|fb_form|fb-form/.test(src) || /lead.?form|leadgen/.test(ch)) return "lead_form";
       if (/whatsapp|^wa$|wa\.me/.test(src) || /whatsapp|^wa$/.test(ch) || /wa\.me|whatsapp/.test(refr)) return "whatsapp";
       if (/site|web|landing|^lp$|tilda|wordpress/.test(src) || /site|web|form/.test(ch)) return "site";
+      // Meta/Facebook без явного канала: распознаём по utm_source / referrer (сайт vs WA)
+      if (/meta|facebook|fb_ads|^fb$/.test(src)) {
+        if (/whatsapp|^wa$|wa\.me/.test(refr) || /whatsapp/.test(landing)) return "whatsapp";
+        if (/site|web|landing|tilda|wordpress/.test(landing) || refr.startsWith("http")) return "site";
+        return "site"; // дефолт для Meta — сайт
+      }
       return "other";
     };
 
     const buckets = new Map<BucketKey, ChannelRow>();
+    // 1) Лиды считаем по createdAt
     for (const l of inRange) {
       const k = classify(l);
       const cur = buckets.get(k) ?? {
@@ -178,10 +207,17 @@ export function useDashboardData(
         spend: 0, leads: 0, sales: 0, revenue: 0,
       };
       cur.leads += 1;
-      if (isLeadPaid(l)) {
-        cur.sales += 1;
-        cur.revenue += l.amount || 0;
-      }
+      buckets.set(k, cur);
+    }
+    // 2) Продажи считаем по paid_at — независимо от того, когда лид создан
+    for (const l of paidInRange) {
+      const k = classify(l);
+      const cur = buckets.get(k) ?? {
+        key: k, name: BUCKET_LABELS[k], provider: k,
+        spend: 0, leads: 0, sales: 0, revenue: 0,
+      };
+      cur.sales += 1;
+      cur.revenue += l.amount || 0;
       buckets.set(k, cur);
     }
 
@@ -189,19 +225,19 @@ export function useDashboardData(
     // Лид считаем только если он БЕЗ cabinet_id — иначе он уже учтён через CDI Meta/Google
     // (например, в Meta-кампании через Instagram) и попал бы в две строки одновременно.
     if (igFunnel.leads > 0 || igFunnel.codewordDms > 0) {
-      const igRevenue = igEvents
+      // Sales/Revenue: фильтр по paid_at для согласованности с CDI и channels выше.
+      const igPaidLeads = igEvents
         .filter((e) => e.eventType === "lead" && e.leadId)
-        .reduce((sum, e) => {
-          const lead = leads.find((l) => l.id === e.leadId);
-          if (!lead || lead.cabinetId) return sum;
-          return sum + (isLeadPaid(lead) ? lead.amount || 0 : 0);
-        }, 0);
-      const igSales = igEvents
-        .filter((e) => e.eventType === "lead" && e.leadId)
-        .filter((e) => {
-          const lead = leads.find((l) => l.id === e.leadId);
-          return lead && !lead.cabinetId && isLeadPaid(lead);
-        }).length;
+        .map((e) => leads.find((l) => l.id === e.leadId))
+        .filter((l): l is typeof leads[number] => {
+          if (!l || l.cabinetId) return false;
+          if (!isLeadPaid(l)) return false;
+          const paidAt = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
+          const t = new Date(paidAt).getTime();
+          return t >= fromTs && t < toTs;
+        });
+      const igRevenue = igPaidLeads.reduce((s, l) => s + (l.amount || 0), 0);
+      const igSales = igPaidLeads.length;
       buckets.set("instagram_organic", {
         key: "instagram_organic",
         name: BUCKET_LABELS.instagram_organic,

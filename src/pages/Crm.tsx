@@ -486,8 +486,10 @@ const Crm = () => {
         onCancel={() => setDiagFor(null)}
         onConfirm={async (amount) => {
           if (!diagFor) return;
-          await updateLead(diagFor.leadId, { diagnosticAmount: amount });
-          await moveLead(diagFor.leadId, diagFor.stageId);
+          // Атомарно: сумма + переход в этап одним апдейтом. Триггер
+          // on_lead_stage_change_attribution прочитает diagnostic_amount уже из
+          // обновлённой строки — без гонки между двумя апдейтами.
+          await updateLead(diagFor.leadId, { diagnosticAmount: amount, stageId: diagFor.stageId });
           toast.success(
             amount > 0
               ? `Диагностика на $${amount} зафиксирована`
