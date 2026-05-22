@@ -15,7 +15,8 @@ export interface UtmRow {
   paidCount?: number;
 }
 
-const fmtMoney = (n: number) => `$${Math.round(n).toLocaleString("ru-RU")}`;
+const fmtMoney = (n: number) =>
+  `${Math.round(n).toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}\u00A0₸`;
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 
 export const UtmTable = ({ rows }: { rows: UtmRow[] }) => {

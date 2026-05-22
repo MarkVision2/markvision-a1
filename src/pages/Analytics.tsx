@@ -23,7 +23,7 @@ import { useMultiMetaInsights } from "@/hooks/useMetaInsights";
 import { useDestinationSplit } from "@/hooks/useDestinationSplit";
 import { useLeadsLite, type LeadLite } from "@/hooks/useLeadsLite";
 import { CHANNELS, resolveChannel, type ChannelKey } from "@/lib/channelAttribution";
-import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
+import { isLeadPaid } from "@/lib/leadStageFlags";
 import { ChannelCard, type ChannelStat } from "@/components/analytics/ChannelCard";
 import { UtmTable, type UtmRow } from "@/components/analytics/UtmTable";
 import type { TrendPoint } from "@/components/analytics/TrendChart";
@@ -31,7 +31,7 @@ const TrendChart = lazy(() =>
   import("@/components/analytics/TrendChart").then((m) => ({ default: m.TrendChart })),
 );
 import { PeriodPicker, monthRange } from "@/components/dashboard/PeriodPicker";
-import type { ReportPeriodRange } from "@/hooks/useReportData";
+import { useReportData, type ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -140,8 +140,6 @@ const Analytics = () => {
   const { cabinets } = usePersonalCabinets();
 
   const monthParam = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}`;
-  const prevCursor = new Date(monthCursor.getFullYear(), monthCursor.getMonth() - 1, 1);
-  const prevParam = `${prevCursor.getFullYear()}-${String(prevCursor.getMonth() + 1).padStart(2, "0")}`;
   const monthLabel = `1 ${MONTHS_RU[monthCursor.getMonth()]}. – ${new Date(
     monthCursor.getFullYear(),
     monthCursor.getMonth() + 1,
@@ -159,7 +157,12 @@ const Analytics = () => {
   }, [cabinetId, allActIds, cabinets]);
 
   const { data, loading, error, refresh } = useMultiMetaInsights(actIds, monthParam, actIds.length > 0);
-  const { data: prevData } = useMultiMetaInsights(actIds, prevParam, actIds.length > 0);
+
+  // Единый источник правды для KPI — тот же, что у Dashboard / Reports / Metrics.
+  // Это убирает расхождение «100 vs 107 vs 115» между страницами.
+  const { data: reportData } = useReportData(cabinetId, period, true);
+  const reportTotals = reportData?.totals;
+  const reportPrevTotals = reportData?.prev;
 
   // Split-by-destination метрики (сайт vs WhatsApp) — берём напрямую из meta_campaign_daily.
   const cabinetIdsForSplit = useMemo(() => {
@@ -173,8 +176,6 @@ const Analytics = () => {
   // Filter leads by month
   const monthStart = monthCursor.getTime();
   const monthEnd = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 1).getTime();
-  const prevStart = prevCursor.getTime();
-  const prevEnd = monthStart;
 
   const monthLeads = useMemo(
     () => leads.filter((l) => {
@@ -183,161 +184,150 @@ const Analytics = () => {
     }),
     [leads, monthStart, monthEnd],
   );
-  const prevLeads = useMemo(
-    () => leads.filter((l) => {
-      const t = new Date(l.createdAt).getTime();
-      return t >= prevStart && t < prevEnd;
-    }),
-    [leads, prevStart, prevEnd],
-  );
-
-  // Optional cabinet filter on leads
+  // Optional cabinet filter on leads (используется для UTM-таблицы и каналов)
   const filteredLeads = useMemo(() => {
     if (cabinetId === "all") return monthLeads;
     return monthLeads.filter((l) => l.cabinetId === cabinetId);
   }, [monthLeads, cabinetId]);
 
-  // ЕДИНАЯ ФОРМУЛА (та же, что в useReportData/Dashboard):
-  //   total = Meta-side (CDI) + CRM orphan (лиды без cabinet_id).
-  // Лиды с cabinet_id уже учтены через CDI.crm_sales / crm_revenue, поэтому
-  // повторно их не считаем — иначе на Analytics получим разные цифры с Dashboard.
-  //
-  // orphanLeads (счёт лидов) — по createdAt в периоде.
-  // orphanSales/Visits (продажи/диагностики) — по ДАТЕ СОБЫТИЯ (paid_at /
-  // lastActivityAt), как в useReportData. Раньше фильтровали по createdAt — лид,
-  // созданный в апреле и оплаченный в мае, давал выручку в апреле, а
-  // Dashboard корректно показывал в мае. Цифры расходились между страницами.
-  const orphanLeads = filteredLeads.filter((l) => !l.cabinetId);
-  const orphanSales = useMemo(() => {
-    // В режиме конкретного кабинета — orphan нерелевантен (всё через CDI).
-    if (cabinetId !== "all") return [];
-    return leads.filter((l) => {
-      if (l.cabinetId) return false;
-      if (!isLeadPaid(l)) return false;
-      const paidAt = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
-      const t = new Date(paidAt).getTime();
-      return t >= monthStart && t < monthEnd;
-    });
-  }, [leads, monthStart, monthEnd, cabinetId]);
-  const orphanVisits = useMemo(() => {
-    if (cabinetId !== "all") return [];
-    return leads.filter((l) => {
-      if (l.cabinetId) return false;
-      if (!isLeadVisit(l)) return false;
-      const ref = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
-      const t = new Date(ref).getTime();
-      return t >= monthStart && t < monthEnd;
-    });
-  }, [leads, monthStart, monthEnd, cabinetId]);
-  const orphanRevenue = orphanSales.reduce((sum, l) => sum + (l.amount || 0), 0);
-
-  const adsLeads = data?.totals.leads ?? 0;
-  const cabinetSales = data?.totals.sales ?? 0;
-  const cabinetDiagnostics = data?.totals.diagnostics ?? 0;
-  const cabinetRevenue = data?.totals.crmRevenue ?? 0;
-
-  const leadCount = adsLeads + orphanLeads.length;
-  const diagnosticsCount = cabinetDiagnostics + orphanVisits.length;
-  const salesCount = cabinetSales + orphanSales.length;
-  const revenue = cabinetRevenue + orphanRevenue;
-
-  const prevOrphan = prevLeads.filter((l) => !l.cabinetId);
-  // prevOrphanSales — по paid_at, как orphanSales выше; нужно для корректной дельты revenue.
-  const prevOrphanSales = useMemo(() => {
-    if (cabinetId !== "all") return [];
-    return leads.filter((l) => {
-      if (l.cabinetId) return false;
-      if (!isLeadPaid(l)) return false;
-      const paidAt = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
-      const t = new Date(paidAt).getTime();
-      return t >= prevStart && t < prevEnd;
-    });
-  }, [leads, prevStart, prevEnd, cabinetId]);
-  const prevOrphanRevenue = prevOrphanSales.reduce((s, l) => s + (l.amount || 0), 0);
-  const prevRevenue = (prevData?.totals.crmRevenue ?? 0) + prevOrphanRevenue;
-
-  const spend = data?.totals.spend ?? 0;
-  const prevSpend = prevData?.totals.spend ?? 0;
-  const impressions = data?.totals.impressions ?? 0;
-  const clicks = data?.totals.clicks ?? 0;
-  const prevTotalLeads = (prevData?.totals.leads ?? 0) + prevOrphan.length;
-  // CPL по marketing-конвенции: расход / только платные лиды. Те же цифры в Reports/Metrics.
-  const cpl = adsLeads > 0 ? spend / adsLeads : 0;
-  const romi = spend > 0 ? ((revenue - spend) / spend) * 100 : null;
-  const avgCheck = salesCount > 0 ? revenue / salesCount : 0;
+  // ВСЕ KPI — из useReportData, чтобы цифры на Analytics совпадали с Dashboard /
+  // Reports / Metrics. Раньше Analytics считал leadCount/salesCount/revenue по
+  // своей формуле (adsLeads + orphanByCreatedAt), из-за чего на одинаковом
+  // периоде показывалось разное число лидов (например 107 на Dashboard и 115 здесь).
+  const adsLeads = reportTotals?.adsLeads ?? 0;
+  const leadCount = reportTotals?.totalLeads ?? 0;
+  const diagnosticsCount = reportTotals?.visits ?? 0;
+  const salesCount = reportTotals?.sales ?? 0;
+  const revenue = reportTotals?.revenue ?? 0;
+  const spend = reportTotals?.spend ?? 0;
+  const impressions = reportTotals?.impressions ?? 0;
+  const clicks = reportTotals?.clicks ?? 0;
+  const cpl = reportTotals?.cpl ?? 0;
+  const romi = reportTotals && reportTotals.spend > 0 ? reportTotals.romi : null;
+  const avgCheck = reportTotals?.aov ?? 0;
   const conversion = leadCount > 0 ? (salesCount / leadCount) * 100 : 0;
-
   const crLeadVisit = leadCount > 0 ? (diagnosticsCount / leadCount) * 100 : 0;
   const crVisitSale = diagnosticsCount > 0 ? (salesCount / diagnosticsCount) * 100 : 0;
 
+  const prevTotalLeads = reportPrevTotals?.totalLeads ?? 0;
+  const prevSpend = reportPrevTotals?.spend ?? 0;
+  const prevRevenue = reportPrevTotals?.revenue ?? 0;
+  const prevSales = reportPrevTotals?.sales ?? 0;
+
   // Per-channel attribution.
-  // ВАЖНО: атрибуцию делаем по тем же правилам, что и Dashboard.channels,
-  // чтобы суммы по каналам совпадали между Sequential analytics и Dashboard.
-  // Лиды с cabinet_id (Meta/Google) считаем через CDI-totals (adsLeads/cabinetSales/cabinetRevenue),
-  // CRM-orphan лиды распределяем по их source. Раньше суммировали все CRM-лиды
-  // в каналы (включая facebook-ads) + накладывали поверх Meta spend через Math.max —
-  // получали "facebook" с задвоенными лидами.
+  // ВЫСОКОУРОВНЕВЫЕ КАНАЛЫ ТРАФИКА: WhatsApp · Сайт · Instagram · Google Ads · TikTok Ads.
+  // Раньше показывали «Facebook Ads» как канал, но это провайдер рекламы (как Google),
+  // а не точка входа лида. Реальные каналы трафика, куда приходит лид, — это
+  // WhatsApp / Сайт / Instagram / лид-формы.
+  //
+  // Правила атрибуции (та же логика, что и в Dashboard.useDashboardData.classify):
+  //   • lead.source / channel / referrer / utm.source классифицируется в один из бакетов.
+  //   • Лид с cabinet_id попадает в бакет на основании destination (whatsapp/site),
+  //     не задваиваясь с CRM-orphan.
+  //   • Расход CDI распределяется пропорционально доле лидов по платным бакетам.
   const channels = useMemo<ChannelStat[]>(() => {
-    const map = new Map<ChannelKey, ChannelStat>();
-    // 1) CRM orphan лиды → разбивка по их source (whatsapp, instagram, direct, и т.д.)
-    // ВАЖНО: leads считаем по createdAt (когда лид пришёл в канал),
-    // а sales/revenue — по paid_at (когда лид оплатил), как в Dashboard/Reports.
-    for (const l of orphanLeads) {
-      const meta = resolveChannel(l as LeadLite);
-      const cur = map.get(meta.key) ?? { meta, spend: 0, leads: 0, sales: 0, revenue: 0 };
-      cur.leads += 1;
-      map.set(meta.key, cur);
+    type ChannelBucket = "whatsapp" | "site" | "instagram" | "google" | "tiktok";
+
+    const BUCKET_META: Record<ChannelBucket, ChannelStat["meta"]> = {
+      whatsapp: CHANNELS.whatsapp,
+      site: { ...CHANNELS.direct, label: "Сайт" },
+      instagram: CHANNELS.instagram,
+      google: CHANNELS.google,
+      tiktok: CHANNELS.tiktok,
+    };
+
+    const classify = (l: { source?: string | null; channel?: string | null; referrer?: string | null; utm?: { source?: string | null } | null }): ChannelBucket => {
+      const src = (l.source ?? "").toLowerCase();
+      const ch = (l.channel ?? "").toLowerCase();
+      const refr = (l.referrer ?? "").toLowerCase();
+      const landing = (l.utm?.source ?? "").toLowerCase();
+      if (/whatsapp|^wa$|wa\.me/.test(src) || /whatsapp|^wa$/.test(ch) || /wa\.me|whatsapp/.test(refr)) return "whatsapp";
+      if (/tiktok|tt_ads|^tt$/.test(src) || /tiktok/.test(landing)) return "tiktok";
+      if (/google|googleads|gads|gsearch/.test(src) || /google/.test(landing)) return "google";
+      if (/instagram|^ig$|insta/.test(src) || /instagram/.test(landing) || /instagram\.com/.test(refr)) return "instagram";
+      if (/site|web|landing|tilda|wordpress/.test(src) || /site|web/.test(landing)) return "site";
+      // Meta/Facebook без явного канала — раскидываем на whatsapp/site через destination,
+      // не оставляем как «Facebook Ads», т.к. это провайдер, не канал трафика.
+      if (/meta|facebook|fb_ads|^fb$/.test(src)) {
+        if (/whatsapp|wa\.me/.test(refr) || /whatsapp/.test(landing)) return "whatsapp";
+        return "site";
+      }
+      return "site";
+    };
+
+    const map = new Map<ChannelBucket, ChannelStat>();
+    const ensure = (k: ChannelBucket) => {
+      let cur = map.get(k);
+      if (!cur) {
+        cur = { meta: BUCKET_META[k], spend: 0, leads: 0, sales: 0, revenue: 0 };
+        map.set(k, cur);
+      }
+      return cur;
+    };
+
+    // Заглушки в порядке, как просил пользователь
+    for (const k of ["whatsapp", "site", "instagram", "google", "tiktok"] as ChannelBucket[]) ensure(k);
+
+    // 1) Все лиды в периоде раскладываем по каналу (по createdAt)
+    for (const l of filteredLeads) {
+      ensure(classify(l as LeadLite)).leads += 1;
     }
-    for (const l of orphanSales) {
-      const meta = resolveChannel(l as LeadLite);
-      const cur = map.get(meta.key) ?? { meta, spend: 0, leads: 0, sales: 0, revenue: 0 };
-      cur.sales += 1;
-      cur.revenue += l.amount || 0;
-      map.set(meta.key, cur);
+    // 2) Все продажи в периоде раскладываем по каналу (по paid_at — единый источник)
+    for (const l of leads) {
+      if (!isLeadPaid(l)) continue;
+      // Только активный кабинет (если выбран) — иначе все продажи
+      if (cabinetId !== "all" && l.cabinetId !== cabinetId) continue;
+      const paidAt = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
+      const t = new Date(paidAt).getTime();
+      if (t < monthStart || t >= monthEnd) continue;
+      const bucket = ensure(classify(l as LeadLite));
+      bucket.sales += 1;
+      bucket.revenue += l.amount || 0;
     }
-    // 2) Meta/FB-кабинет: spend, ads-leads, cabinet-attributed sales/revenue из CDI.
-    //    Никакого Math.max — мы строго суммируем cabinet-сторону, чтобы не задвоить.
-    if (spend > 0 || adsLeads > 0 || cabinetSales > 0 || cabinetRevenue > 0) {
-      const fb = map.get("facebook") ?? { meta: CHANNELS.facebook, spend: 0, leads: 0, sales: 0, revenue: 0 };
-      fb.spend += spend;
-      fb.leads += adsLeads;
-      fb.sales += cabinetSales;
-      fb.revenue += cabinetRevenue;
-      map.set("facebook", fb);
-    }
-    // 3) Заглушки для основных каналов
-    for (const k of ["facebook", "google", "tiktok", "instagram"] as ChannelKey[]) {
-      if (!map.has(k)) {
-        map.set(k, { meta: CHANNELS[k], spend: 0, leads: 0, sales: 0, revenue: 0 });
+    // 3) Расход CDI распределяем по платным бакетам пропорционально доле лидов
+    const paidBucketKeys: ChannelBucket[] = ["whatsapp", "site"];
+    const paidLeadsTotal = paidBucketKeys.reduce((s, k) => s + (map.get(k)?.leads ?? 0), 0);
+    if (spend > 0 && paidLeadsTotal > 0) {
+      for (const k of paidBucketKeys) {
+        const b = map.get(k);
+        if (b) b.spend = (b.leads / paidLeadsTotal) * spend;
       }
     }
-    return Array.from(map.values()).sort((a, b) => {
-      const order: ChannelKey[] = ["facebook", "instagram", "google", "tiktok", "youtube", "yandex", "vk", "telegram", "whatsapp", "direct", "referral", "other"];
-      return order.indexOf(a.meta.key) - order.indexOf(b.meta.key);
-    });
-  }, [orphanLeads, orphanSales, spend, adsLeads, cabinetSales, cabinetRevenue]);
 
-  // UTM campaigns table + AI quality aggregates
+    return ["whatsapp", "site", "instagram", "google", "tiktok"]
+      .map((k) => map.get(k as ChannelBucket)!)
+      .filter(Boolean);
+  }, [filteredLeads, leads, monthStart, monthEnd, spend, cabinetId]);
+
+  // UTM campaigns table + AI quality aggregates.
+  // ЕДИНАЯ СЕМАНТИКА: leads — по createdAt в периоде, sales/revenue — по paid_at.
+  // Раньше sales/revenue считались по createdAt — лид, оплаченный в следующем
+  // месяце, не давал выручку, поэтому таблица казалась пустой при ненулевом
+  // KPI «Продажи» сверху.
   const utmRows = useMemo<UtmRow[]>(() => {
     const map = new Map<string, UtmRow & { _scoreSum: number; _scoreCount: number }>();
+    const ensure = (utm: { source?: string | null; campaign?: string | null; medium?: string | null }) => {
+      const key = `${utm.source ?? ""}|${utm.campaign ?? ""}|${utm.medium ?? ""}`;
+      let cur = map.get(key);
+      if (!cur) {
+        cur = {
+          source: utm.source ?? "",
+          campaign: utm.campaign ?? "",
+          medium: utm.medium ?? "",
+          leads: 0, sales: 0, revenue: 0,
+          avgScore: 0, hotCount: 0, paidCount: 0,
+          _scoreSum: 0, _scoreCount: 0,
+        };
+        map.set(key, cur);
+      }
+      return cur;
+    };
+    // Лиды периода (createdAt + cabinet filter)
     for (const l of filteredLeads) {
       const u = l.utm ?? {};
       if (!u.source && !u.campaign && !u.medium) continue;
-      const key = `${u.source ?? ""}|${u.campaign ?? ""}|${u.medium ?? ""}`;
-      const cur = map.get(key) ?? {
-        source: u.source ?? "",
-        campaign: u.campaign ?? "",
-        medium: u.medium ?? "",
-        leads: 0, sales: 0, revenue: 0,
-        avgScore: 0, hotCount: 0, paidCount: 0,
-        _scoreSum: 0, _scoreCount: 0,
-      };
+      const cur = ensure(u);
       cur.leads += 1;
-      if (isLeadPaid(l)) {
-        cur.sales += 1;
-        cur.revenue += l.amount || 0;
-        cur.paidCount = (cur.paidCount ?? 0) + 1;
-      }
       const score = Number((l as { aiScore?: number }).aiScore ?? 0);
       if (score > 0) {
         cur._scoreSum += score;
@@ -346,7 +336,21 @@ const Analytics = () => {
           cur.hotCount = (cur.hotCount ?? 0) + 1;
         }
       }
-      map.set(key, cur);
+    }
+    // Продажи периода (paid_at + cabinet filter) — могут включать лида,
+    // созданного в предыдущем месяце, но оплатившего в текущем.
+    for (const l of leads) {
+      if (!isLeadPaid(l)) continue;
+      if (cabinetId !== "all" && l.cabinetId !== cabinetId) continue;
+      const paidAt = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
+      const t = new Date(paidAt).getTime();
+      if (t < monthStart || t >= monthEnd) continue;
+      const u = l.utm ?? {};
+      if (!u.source && !u.campaign && !u.medium) continue;
+      const cur = ensure(u);
+      cur.sales += 1;
+      cur.revenue += l.amount || 0;
+      cur.paidCount = (cur.paidCount ?? 0) + 1;
     }
     return Array.from(map.values())
       .map(({ _scoreSum, _scoreCount, ...r }) => ({
@@ -354,7 +358,7 @@ const Analytics = () => {
         avgScore: _scoreCount > 0 ? _scoreSum / _scoreCount : 0,
       }))
       .sort((a, b) => b.revenue - a.revenue || (b.avgScore ?? 0) - (a.avgScore ?? 0) || b.leads - a.leads);
-  }, [filteredLeads]);
+  }, [filteredLeads, leads, monthStart, monthEnd, cabinetId]);
 
   // Trend data: per day
   const trend = useMemo<TrendPoint[]>(() => {
@@ -424,7 +428,7 @@ const Analytics = () => {
         <KpiCard icon={DollarSign} label="Расход" value={spend > 0 ? fmtMoney(spend) : "—"} sub="за период" delta={pctDelta(spend, prevSpend)} />
         <KpiCard icon={Users} label="Лиды" value={fmtNumber(leadCount)} sub={adsLeads ? `${adsLeads} из рекламы` : `${filteredLeads.length} в CRM`} delta={pctDelta(leadCount, prevTotalLeads)} />
         <KpiCard icon={Target} label="CPL" value={cpl > 0 ? fmtMoney(cpl) : "—"} sub="стоимость лида" emphasized />
-        <KpiCard icon={ShoppingBag} label="Продажи" value={fmtNumber(salesCount)} sub={salesCount > 0 ? fmtPct(conversion) + " конверсия" : "нет продаж"} delta={pctDelta(salesCount, (prevData?.totals.sales ?? 0) + prevOrphanSales.length)} />
+        <KpiCard icon={ShoppingBag} label="Продажи" value={fmtNumber(salesCount)} sub={salesCount > 0 ? fmtPct(conversion) + " конверсия" : "нет продаж"} delta={pctDelta(salesCount, prevSales)} />
         <KpiCard icon={TrendingUp} label="Выручка" value={revenue > 0 ? fmtMoney(revenue) : "—"} sub={salesCount > 0 ? `${salesCount} продаж` : "нет данных"} delta={pctDelta(revenue, prevRevenue)} />
         <KpiCard icon={GitBranch} label="ROMI" value={romi !== null ? <span className={romi >= 0 ? "text-success" : "text-destructive"}>{romi >= 0 ? "+" : ""}{Math.round(romi)}%</span> : "—"} sub={spend > 0 ? "возврат инвестиций" : "нет расходов"} emphasized />
         <KpiCard icon={Target} label="Средний чек" value={avgCheck > 0 ? fmtMoney(avgCheck) : "—"} sub={salesCount > 0 ? `по ${salesCount} продажам` : "нет продаж"} />
@@ -566,7 +570,17 @@ const Analytics = () => {
           <div>
             <h2 className="text-lg font-bold tracking-tight">UTM-кампании</h2>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Срез по utm_source / utm_campaign / utm_medium из лидов CRM
+              Срез по utm_source / utm_campaign / utm_medium из лидов CRM.
+              Лиды — по дате создания в периоде, продажи — по дате оплаты.
+              {(() => {
+                const noUtm = filteredLeads.filter((l) => {
+                  const u = l.utm ?? {};
+                  return !u.source && !u.campaign && !u.medium;
+                }).length;
+                return noUtm > 0
+                  ? ` Лидов без UTM-меток: ${noUtm} (не попадают в таблицу).`
+                  : "";
+              })()}
             </p>
           </div>
         </div>
