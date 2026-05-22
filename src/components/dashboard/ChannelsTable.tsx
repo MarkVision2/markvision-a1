@@ -1,10 +1,10 @@
-import { AlertTriangle, Camera, ClipboardList, Globe, MessageCircle, TrendingDown, TrendingUp, Wallet, Users, ShoppingBag } from "lucide-react";
+import { AlertTriangle, Camera, Globe, MessageCircle, Music2, Search, TrendingDown, TrendingUp, Wallet, Users, ShoppingBag } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 
-export type ChannelProvider = "whatsapp" | "site" | "lead_form" | "instagram_organic" | "other";
+export type ChannelProvider = "whatsapp" | "site" | "instagram" | "google" | "tiktok";
 
 interface ChannelRow {
   key: string;
@@ -23,11 +23,11 @@ interface Props {
 }
 
 const PROVIDER_META: Record<ChannelProvider, { icon: typeof Camera; cls: string; bg: string; ring: string; label: string }> = {
-  whatsapp: { icon: MessageCircle, cls: "text-success", bg: "bg-success/10", ring: "ring-success/20", label: "WhatsApp · Meta Ads" },
+  whatsapp: { icon: MessageCircle, cls: "text-success", bg: "bg-success/10", ring: "ring-success/20", label: "WhatsApp" },
   site: { icon: Globe, cls: "text-primary", bg: "bg-primary/10", ring: "ring-primary/20", label: "Сайт / лендинг" },
-  lead_form: { icon: ClipboardList, cls: "text-warning", bg: "bg-warning/10", ring: "ring-warning/20", label: "Лид-формы Meta" },
-  instagram_organic: { icon: Camera, cls: "text-pink-500", bg: "bg-pink-500/10", ring: "ring-pink-500/20", label: "Instagram organic" },
-  other: { icon: Globe, cls: "text-muted-foreground", bg: "bg-muted/30", ring: "ring-muted/30", label: "Прочее / CRM" },
+  instagram: { icon: Camera, cls: "text-pink-500", bg: "bg-pink-500/10", ring: "ring-pink-500/20", label: "Instagram" },
+  google: { icon: Search, cls: "text-warning", bg: "bg-warning/10", ring: "ring-warning/20", label: "Google Ads" },
+  tiktok: { icon: Music2, cls: "text-foreground", bg: "bg-secondary/60", ring: "ring-border/40", label: "TikTok Ads" },
 };
 
 export function ChannelsTable({ channels, totalSpend, totalLeads }: Props) {
@@ -65,9 +65,10 @@ export function ChannelsTable({ channels, totalSpend, totalLeads }: Props) {
     <div className="space-y-3">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {enriched.map((c) => {
-          const meta = PROVIDER_META[c.provider] ?? PROVIDER_META.other;
+          const meta = PROVIDER_META[c.provider] ?? PROVIDER_META.site;
           const Icon = meta.icon;
-          const isOrganic = c.provider === "instagram_organic";
+          // Только Instagram-канал может быть полностью органическим (нет CDI-расхода).
+          const isOrganic = c.provider === "instagram" && c.spend === 0;
           const romiPositive = c.romi >= 0;
           const RomiIcon = romiPositive ? TrendingUp : TrendingDown;
           const bad = c.displaySpend > 0 && c.romi < 0;
