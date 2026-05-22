@@ -1,16 +1,14 @@
-=== run at Fri May 22 17:08:31 UTC 2026 on 6fcd7747295e7526ede7ea4e70e6265cd90d66f0 ===
+=== run at Fri May 22 17:10:24 UTC 2026 on ab13fdf279ce7fe223b442cca34bc7b9fd0e1349 ===
 [1/3] Checking schema of client_configs…
     columns total=23, wa_welcome_message_template=true, wa_customer_greeting_template=true
 [2/3] Listing client_configs…
     total rows: 3
     available columns: cabinet_id, name, type, daily_budget, city, ad_account_id, page_id, page_name, instagram_id, access_token, telegram_group_id, whatsapp_number, pixel_id, pixel_event, website_url, brief, created_at, clinic_lat, clinic_lng, default_radius_km, clinic_address, wa_welcome_message_template, wa_customer_greeting_template
-    [0] id=undefined name="" city="Алма-Ата" ad_account=act_987225436848235 brief="# Мир без границ
-
-Коррекционный центр для детей с "
-    [1] id=undefined name="" city="Павлодар" ad_account=act_1205600091457168 brief=""
-    [2] id=undefined name="" city="Павлодар, Алма-Ата, Астана" ad_account=act_1253891246841934 brief="MarkVision Medical
-Коммерческий отдел под ключ для"
-    selected target: id=undefined name="undefined"
+    [0] cabinet_id=13825a8f-d620-45dd-8fe4-abee1f9d224d name="Мир без границ" city="Алма-Ата" ad_account=act_987225436848235 brief="# Мир без границ  Коррекционный центр для детей с "
+    [1] cabinet_id=5eb3bdde-2a17-4b1c-8edb-eb1600783376 name="АВТОСЕРВИС | АВТОДОМ ПАВЛОДАР" city="Павлодар" ad_account=act_1205600091457168 brief=""
+    [2] cabinet_id=a5f3bccf-c31c-411b-b77f-12dd3c3a36f1 name="MARKVISION AI" city="Павлодар, Алма-Ата, Астана" ad_account=act_1253891246841934 brief="MarkVision Medical Коммерческий отдел под ключ для"
+    selected target: cabinet_id=a5f3bccf-c31c-411b-b77f-12dd3c3a36f1 name="MARKVISION AI"
 [3/3] Updating row…
-    status=400 body={"code":"42703","details":null,"hint":null,"message":"column client_configs.id does not exist"}
-PATCH failed
+    status=200 body=[{"cabinet_id":"a5f3bccf-c31c-411b-b77f-12dd3c3a36f1","name":"MARKVISION AI","type":"Личный","daily_budget":500,"city":"Павлодар, Алма-Ата, Астана","ad_account_id":"act_1253891246841934","page_id":"997313993471858","page_name":"MarkVision AI","instagram_id":null,"access_token":"EAANaVrGsWLYBQx2zJZCYxaz16KSfXDHFwIZA5xuZACh8fXnWD1gHcu4YryOs5lCcydaQ0f0D0EhDteeIZBMpD99QBy2a5BEB6JULlKi81zgQIjqnXo46dixF
+OK — WhatsApp templates set for MarkVision.
+EXIT=0
