@@ -25,20 +25,25 @@ export function MoneyKpiCard({
   return (
     <div
       className={cn(
-        "rounded-2xl border bg-card/60 p-5 transition-colors",
+        "flex min-h-[156px] flex-col rounded-2xl border bg-card/60 p-5 transition-colors",
         emphasize ? "border-primary/40 shadow-glow" : "border-border/60",
       )}
     >
-      <div className="flex items-center gap-2 text-muted-foreground">
-        <span className="grid h-8 w-8 place-items-center rounded-xl bg-secondary/60">
+      <div className="flex min-w-0 items-start gap-3 text-muted-foreground">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-secondary/60">
           <Icon className="h-4 w-4" />
         </span>
-        <span className="text-xs font-semibold leading-4 text-muted-foreground">
+        <span
+          className="min-w-0 flex-1 overflow-hidden text-[11px] font-bold uppercase leading-4 tracking-[0.08em] text-muted-foreground [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2]"
+          title={label}
+        >
           {label}
         </span>
       </div>
-      <div className="mt-3 text-xl font-bold tabular-nums whitespace-nowrap sm:text-2xl">{value}</div>
-      <div className="mt-2 flex items-center gap-2 text-[11px]">
+      <div className="mt-5 min-w-0 text-2xl font-bold tabular-nums leading-none tracking-normal sm:text-[28px]">
+        {value}
+      </div>
+      <div className="mt-auto flex min-h-5 items-center gap-2 pt-4 text-[11px]">
         {comparing && hasDelta ? (
           noChange ? (
             <span className="flex items-center gap-1 text-muted-foreground">
