@@ -31,95 +31,93 @@ const emptyMeta = {
   cabinetSales: 0, cabinetRevenue: 0, cabinetDiagnostics: 0, cabinetDiagnosticRevenue: 0,
 };
 
-describe("Сквозная воронка: рекламный кабинет → CRM → таблица показателей", () => {
-  it("воронка из 5 лидов с 3 диагностиками и 1 продажей считается верно", () => {
-    // 5 заявок с meta_ad_id (учитываются через CDI)
+describe("Сквозная воронка: реклама → CRM (источник правды) → таблица показателей", () => {
+  it("воронка из 5 лидов с 3 диагностиками и 1 продажей: считаем из CRM", () => {
+    // 5 лидов из Meta, 3 в scheduled, 1 paid с amount 150k и diag 5k.
+    const l1 = mk({ cabinetId: "cab-1", stageKey: "scheduled" });
+    const l2 = mk({ cabinetId: "cab-1", stageKey: "scheduled" });
+    const l3 = mk({ cabinetId: "cab-1", stageKey: "scheduled" });
+    const l4 = mk({ cabinetId: "cab-1", paid: true, amount: 150_000, diagnosticAmount: 5_000,
+                    paidAt: "2026-05-10T10:00:00Z" });
+    const l5 = mk({ cabinetId: "cab-1", stageKey: "new" });
     const meta = { ...emptyMeta,
       spend: 200_000, impressions: 50_000, clicks: 1_500, leads: 5,
-      cabinetDiagnostics: 3, cabinetDiagnosticRevenue: 15_000,
-      cabinetSales: 1, cabinetRevenue: 150_000,
+      cabinetDiagnostics: 999, cabinetSales: 999, cabinetRevenue: 999_999,
     };
-    const crm = aggregateCrm([], range, "all");
+    const crm = aggregateCrm([l1, l2, l3, l4, l5], range, "all");
     const totals = computeTotals(meta, crm);
 
     expect(totals.adsLeads).toBe(5);
     expect(totals.totalLeads).toBe(5);
-    expect(totals.visits).toBe(3); // диагностики
+    expect(totals.visits).toBe(4); // 3 scheduled + 1 paid (paid тоже visit)
     expect(totals.sales).toBe(1);
-    expect(totals.revenue).toBe(165_000); // 15k диаг + 150k продажа
-    expect(totals.cpl).toBe(40_000); // 200k / 5
-    expect(totals.cpv).toBeCloseTo(66666.67, 1); // 200k / 3 (стоимость диагностики)
-    expect(totals.cac).toBe(200_000); // 200k / 1
-    expect(totals.aov).toBe(165_000);
-    expect(totals.romi).toBeLessThan(0); // расход больше выручки
+    expect(totals.revenue).toBe(155_000); // 150k + 5k diagnostic
+    expect(totals.cpl).toBe(40_000);
+    expect(totals.cac).toBe(200_000);
   });
 
-  it("orphan заявка через WhatsApp с оплатой включается в итоги", () => {
+  it("orphan WhatsApp + cab-paid: оба считаются", () => {
     const orphanWhatsApp = mk({
-      source: "whatsapp",
-      cabinetId: null,
-      paid: true,
-      amount: 100_000,
+      source: "whatsapp", cabinetId: null, paid: true, amount: 100_000,
       createdAt: "2026-05-15T10:00:00Z",
     });
+    const cabSale = mk({ cabinetId: "cab-1", paid: true, amount: 50_000 });
     const meta = { ...emptyMeta, spend: 50_000, leads: 2, cabinetSales: 1, cabinetRevenue: 50_000 };
-    const crm = aggregateCrm([orphanWhatsApp], range, "all");
+    const crm = aggregateCrm([orphanWhatsApp, cabSale], range, "all");
     const totals = computeTotals(meta, crm);
 
-    expect(totals.sales).toBe(2); // 1 из CDI + 1 orphan
-    expect(totals.revenue).toBe(150_000); // 50k + 100k
-    expect(totals.cac).toBe(25_000); // 50k / 2
-    expect(totals.totalLeads).toBe(3); // 2 ads + 1 orphan
+    expect(totals.sales).toBe(2);
+    expect(totals.revenue).toBe(150_000);
+    expect(totals.cac).toBe(25_000);
+    expect(totals.totalLeads).toBe(3); // 2 Meta + 1 orphan
   });
 
-  it("CR воронки: лид → диагностика → продажа", () => {
-    const meta = { ...emptyMeta,
-      leads: 10, cabinetDiagnostics: 5, cabinetSales: 2, cabinetRevenue: 200_000,
-    };
-    const crm = aggregateCrm([], range, "all");
+  it("CR воронки: лид → диагностика → продажа (из CRM)", () => {
+    const leads_ = [
+      ...Array(5).fill(0).map(() => mk({ cabinetId: "cab-1", stageKey: "new" })),
+      ...Array(3).fill(0).map(() => mk({ cabinetId: "cab-1", stageKey: "scheduled" })),
+      ...Array(2).fill(0).map(() => mk({ cabinetId: "cab-1", paid: true, amount: 100_000 })),
+    ];
+    const meta = { ...emptyMeta, leads: 10 };
+    const crm = aggregateCrm(leads_, range, "all");
     const totals = computeTotals(meta, crm);
 
-    const crLeadDiag = totals.totalLeads > 0 ? (totals.visits / totals.totalLeads) * 100 : 0;
-    const crDiagSale = totals.visits > 0 ? (totals.sales / totals.visits) * 100 : 0;
-    const crLeadSale = totals.totalLeads > 0 ? (totals.sales / totals.totalLeads) * 100 : 0;
-
-    expect(crLeadDiag).toBe(50); // 5/10
-    expect(crDiagSale).toBe(40); // 2/5
-    expect(crLeadSale).toBe(20); // 2/10
+    expect(totals.visits).toBe(5);
+    expect(totals.sales).toBe(2);
   });
 
-  it("стоимость лида / диагностики / клиента считаются на одних и тех же продажах", () => {
-    // Paid orphan автоматически = +1 visit (isLeadVisit: paid → true)
+  it("стоимость лида / диагностики / клиента — на одинаковых продажах", () => {
+    const d1 = mk({ cabinetId: "cab-1", stageKey: "scheduled" });
+    const d2 = mk({ cabinetId: "cab-1", stageKey: "scheduled" });
+    const cabPaid = mk({ cabinetId: "cab-1", paid: true, amount: 100_000 });
     const orphan = mk({ paid: true, amount: 100_000 });
-    const meta = { ...emptyMeta,
-      spend: 600_000, leads: 6, cabinetDiagnostics: 2, cabinetSales: 1,
-    };
-    const crm = aggregateCrm([orphan], range, "all");
+    const meta = { ...emptyMeta, spend: 600_000, leads: 6 };
+    const crm = aggregateCrm([d1, d2, cabPaid, orphan], range, "all");
     const totals = computeTotals(meta, crm);
 
-    expect(totals.totalLeads).toBe(7); // 6 + 1 orphan
-    expect(totals.cpl).toBeCloseTo(600_000 / 7, 1);
-    expect(totals.visits).toBe(3); // 2 CDI + 1 orphan-visit (paid → visit)
-    expect(totals.cpv).toBe(200_000); // 600k / 3 диагностики
-    expect(totals.cac).toBe(300_000); // 600k / 2 продажи (1 CDI + 1 orphan)
+    expect(totals.totalLeads).toBe(7);
+    expect(totals.visits).toBe(4); // 2 scheduled + 2 paid
+    expect(totals.sales).toBe(2);
+    expect(totals.cpv).toBe(150_000); // 600k / 4
+    expect(totals.cac).toBe(300_000); // 600k / 2
   });
 
-  it("плательщик включён только один раз даже если paid=true и в paid stage", () => {
+  it("плательщик считается один раз", () => {
     const lead = mk({ paid: true, stageKey: "paid", amount: 50_000 });
     const crm = aggregateCrm([lead], range, "all");
+    const totals = computeTotals({ ...emptyMeta }, crm);
 
-    expect(crm.orphanSales.length).toBe(1); // только 1 раз
-    expect(crm.orphanRevenue).toBe(50_000);
+    expect(totals.sales).toBe(1);
+    expect(totals.revenue).toBe(50_000);
   });
 
-  it("ROMI правильно считается с выручкой включая orphan", () => {
+  it("ROMI на CRM выручке", () => {
+    const cab = mk({ cabinetId: "cab-1", paid: true, amount: 300_000 });
     const orphan = mk({ paid: true, amount: 500_000 });
-    const crm = aggregateCrm([orphan], range, "all");
-    const meta = { ...emptyMeta, spend: 400_000, cabinetSales: 1, cabinetRevenue: 300_000 };
+    const crm = aggregateCrm([cab, orphan], range, "all");
+    const meta = { ...emptyMeta, spend: 400_000 };
     const totals = computeTotals(meta, crm);
 
-    // выручка = 300k + 500k = 800k
-    // ROMI = (800k - 400k) / 400k * 100 = 100%
     expect(totals.romi).toBe(100);
   });
 
@@ -213,17 +211,16 @@ describe("CDI отстаёт от CRM — CRM становится источн�
     expect(totals.visits).toBe(3); // CRM = 3, max(1+1, 3) = 3
   });
 
-  it("manual_sales в CDI больше, чем CRM (offline-продажи) — берём CDI+orphan", () => {
-    // Бизнес ввёл +5 оффлайн-продаж через manual_sales в Metrics.
-    // CRM при этом имеет только 1 paid лид.
+  it("CDI инфлирован (старые триггеры дублировали) — игнорируем", () => {
+    // Реальный кейс: CDI показывал 3.4М ₸ при реальных 1.3М в CRM.
+    // Раньше брался max — инфлированный CDI побеждал. Теперь CRM = правда.
     const cabPaid = mk({ cabinetId: "cab-1", paid: true, amount: 100_000 });
     const crm = aggregateCrm([cabPaid], range, "all");
-    // CDI: manual_sales override превратил это в 5 (1 CRM + 4 offline)
     const meta = { ...emptyMeta, spend: 200_000, cabinetSales: 5, cabinetRevenue: 500_000 };
     const totals = computeTotals(meta, crm);
 
-    expect(totals.sales).toBe(5); // CDI+orphan = 5+0 = 5, CRM = 1, max = 5
-    expect(totals.revenue).toBe(500_000); // CDI revenue
+    expect(totals.sales).toBe(1); // CRM = 1
+    expect(totals.revenue).toBe(100_000); // CRM = 100k
   });
 
   it("стандартный случай: CDI и CRM согласованы (нет потерь)", () => {
@@ -251,13 +248,14 @@ describe("Изоляция данных при выборе конкретног
     expect(crmCab.orphanLeads.length).toBe(0);
   });
 
-  it("при выборе кабинета итоги = только CDI выбранного кабинета", () => {
+  it("при выборе кабинета итоги = только CRM-лиды выбранного кабинета", () => {
     const orphan = mk({ paid: true, amount: 200_000 });
-    const crm = aggregateCrm([orphan], range, "cab-1");
+    const cabLead = mk({ cabinetId: "cab-1", paid: true, amount: 50_000 });
+    const crm = aggregateCrm([orphan, cabLead], range, "cab-1");
     const meta = { ...emptyMeta, spend: 100_000, cabinetSales: 1, cabinetRevenue: 50_000 };
     const totals = computeTotals(meta, crm);
 
-    expect(totals.sales).toBe(1);
+    expect(totals.sales).toBe(1); // только cab-1
     expect(totals.revenue).toBe(50_000);
     expect(totals.cac).toBe(100_000);
   });

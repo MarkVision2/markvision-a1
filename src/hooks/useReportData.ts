@@ -248,28 +248,24 @@ export function computeTotals(
     orphanLeads: LeadLite[]; orphanVisits: LeadLite[]; orphanSales: LeadLite[]; orphanRevenue: number;
   },
 ): ReportTotals {
-  // ЕДИНЫЙ ИСТОЧНИК ПРАВДЫ — берём MAX из двух подходов:
-  //   1) CDI + orphan: trust CDI для кабинетов + добавить orphan из CRM
-  //      (для случая, когда CDI имеет manual_sales поверх CRM-цифр)
-  //   2) CRM total: всё прямо из leads (для случая, когда CDI-триггер пропустил)
-  // Так Funnel/Dashboard/Reports/Metrics показывают РЕАЛЬНОЕ число даже если CDI отстаёт.
+  // CRM — АБСОЛЮТНЫЙ источник правды для продаж/диагностик/выручки.
+  // Раньше брали Math.max(CDI+orphan, CRM-total) — но если CDI протух (старые
+  // триггеры дублировались, или manual_revenue висел от прошлых тестов), max
+  // брал инфлированное число из CDI. Пользователь видел 3.4М ₸ вместо реальных
+  // 1.3М в CRM. Доверяем CRM, потому что:
+  //   • CRM = реальные карточки клиентов (то что менеджер видит и трогает)
+  //   • CDI заполняется триггерами, которые могут пропустить или продублировать
+  //   • Reconcile может почистить CDI, но это разовая операция, drift вернётся
+  // CDI оставляем ТОЛЬКО для рекламных метрик (расход/клики/показы/Meta-лиды).
   const orphanLeadsCount = crm.orphanLeads.length;
-  const orphanSalesCount = crm.orphanSales.length;
-  const orphanVisitsCount = crm.orphanVisits.length;
 
   const totalLeads = meta.leads + orphanLeadsCount;
   const cpl = totalLeads > 0 ? meta.spend / totalLeads : 0;
 
-  const visitsCdiPlusOrphan = meta.cabinetDiagnostics + orphanVisitsCount;
-  const visits = Math.max(visitsCdiPlusOrphan, crm.crmVisitsCount);
-
-  const salesCdiPlusOrphan = meta.cabinetSales + orphanSalesCount;
-  const sales = Math.max(salesCdiPlusOrphan, crm.crmSalesCount);
-
-  // Выручка: max(CDI+orphan, CRM total).
-  const cdiPlusOrphanRevenue = meta.cabinetRevenue + meta.cabinetDiagnosticRevenue + crm.orphanRevenue;
-  const crmTotalRevenue = crm.crmRevenue + crm.crmDiagnosticRevenue;
-  const revenue = Math.max(cdiPlusOrphanRevenue, crmTotalRevenue);
+  // sales/visits/revenue — ТОЛЬКО из CRM.
+  const visits = crm.crmVisitsCount;
+  const sales = crm.crmSalesCount;
+  const revenue = crm.crmRevenue + crm.crmDiagnosticRevenue;
   const cpv = visits > 0 ? meta.spend / visits : 0;
   const cac = sales > 0 ? meta.spend / sales : 0;
   const ctr = meta.impressions > 0 ? (meta.clicks / meta.impressions) * 100 : 0;
