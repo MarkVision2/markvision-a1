@@ -1,0 +1,83 @@
+{
+  "name": "Claude n8n API Proxy",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "claude-n8n-api-proxy",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "wh-001",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, 0],
+      "webhookId": "claude-n8n-api-proxy"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize the incoming proxy request.\n// Expected body: { method, path, body?, query? }\nconst b = $input.first().json.body || {};\nconst method = (b.method || 'GET').toUpperCase();\nconst path = b.path || '/workflows';\nlet url = 'https://n8n.zapoinov.com/api/v1' + (path.startsWith('/') ? path : '/' + path);\nif (b.query && typeof b.query === 'object') {\n  const qs = Object.entries(b.query)\n    .filter(([, v]) => v !== undefined && v !== null)\n    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)\n    .join('&');\n  if (qs) url += (url.includes('?') ? '&' : '?') + qs;\n}\nreturn [{ json: { method, url, body: b.body ?? null } }];"
+      },
+      "id": "norm-001",
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [224, 0]
+    },
+    {
+      "parameters": {
+        "method": "={{ $json.method }}",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-N8N-API-KEY",
+              "value": "__N8N_API_KEY__"
+            },
+            { "name": "accept", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.body || {}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "autodetect"
+            }
+          }
+        }
+      },
+      "id": "http-001",
+      "name": "Call n8n API",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [448, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pass through n8n API response in a stable shape.\nconst r = $input.first().json;\nreturn [{ json: {\n  status: r.statusCode ?? r.status ?? 200,\n  headers: r.headers ?? {},\n  body: r.body ?? r\n} }];"
+      },
+      "id": "out-001",
+      "name": "Shape Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [672, 0]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Normalize", "type": "main", "index": 0 }]] },
+    "Normalize": { "main": [[{ "node": "Call n8n API", "type": "main", "index": 0 }]] },
+    "Call n8n API": { "main": [[{ "node": "Shape Response", "type": "main", "index": 0 }]] }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": true
+  },
+  "pinData": {},
+  "meta": {}
+}

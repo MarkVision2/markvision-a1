@@ -10,8 +10,40 @@ description: Полное управление n8n через REST API — CRUD 
 ## Предусловия
 
 1. **API key** хранится в `.claude/n8n.env` (gitignore'd) как `N8N_API_KEY` + `N8N_BASE_URL`.
-2. **Network allowlist** окружения должен разрешать домен n8n (например `n8n.zapoinov.com`). Если получаешь `HTTP 403 Host not in allowlist` — попроси пользователя добавить домен в Settings → Environment → Network в Claude Code на web.
+2. **Один из двух способов сетевого доступа:**
+   - **A. Network allowlist (быстрее)**: домен `n8n.zapoinov.com` добавлен в `Custom` allowlist окружения через UI Claude Code (Settings → Environment → Network access → Custom → Allowed domains). После этого работает прямой `curl`.
+   - **B. Proxy workflow в n8n (обходной)**: в n8n импортирован `proxy-workflow.template.json` (см. ниже) с API ключом, и его ID положен в `.claude/n8n.env` как `N8N_PROXY_WORKFLOW_ID`. После этого работают команды с префиксом `proxy-` ниже.
 3. `curl` и `jq` доступны в окружении.
+
+## Способ B: Proxy через MCP execute_workflow
+
+Если allowlist недоступен — импортируй `proxy-workflow.template.json` в n8n (Workflows → Import from File), подставь N8N_API_KEY вместо `__N8N_API_KEY__`, активируй workflow, запиши его ID в `.claude/n8n.env`:
+
+```
+export N8N_PROXY_WORKFLOW_ID="<новый id>"
+```
+
+После этого любой CRUD к n8n API делается через MCP-tool `mcp__*__execute_workflow` с типом `webhook`:
+
+```jsonc
+// Пример: создать workflow
+{
+  "workflowId": "<N8N_PROXY_WORKFLOW_ID>",
+  "inputs": {
+    "type": "webhook",
+    "webhookData": {
+      "method": "POST",
+      "body": {
+        "method": "POST",
+        "path": "/workflows",
+        "body": { "name": "...", "nodes": [...], "connections": {}, "settings": {"executionOrder":"v1"} }
+      }
+    }
+  }
+}
+```
+
+Ответ приходит в виде `{ status, headers, body }` от n8n API.
 
 ## Использование
 
