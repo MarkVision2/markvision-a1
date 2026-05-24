@@ -10,6 +10,8 @@ import { CreativePreview } from "@/components/creatives/CreativePreview";
 import { CreativeDetailDrawer } from "@/components/creatives/CreativeDetailDrawer";
 import { useMetaCreatives, type MetaCreativeRow } from "@/hooks/useMetaStructure";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { useLeadsLite } from "@/hooks/useLeadsLite";
+import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
 import { supabase } from "@/integrations/supabase/client";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
@@ -101,38 +103,49 @@ const CreativeFunnel = () => {
     return () => { cancelled = true; };
   }, [projectId, sinceYmd, untilExclusive, backfilling]);
 
-  // Сводные CRM-показатели по проекту за период (диагностики/продажи/выручка)
+  // Сводные CRM-показатели по проекту за период (диагностики/продажи/выручка).
+  // ЕДИНАЯ СЕМАНТИКА с Dashboard / Analytics / Reports / Metrics:
+  //   leads — по createdAt (когда лид пришёл)
+  //   sales — по paid_at (когда оплатил)
+  //   diagnostics — по дате события (paid_at / lastActivityAt)
+  //   revenue — продажи.amount + диагностики.diagnostic_amount
+  // Раньше всё фильтровалось по created_at — лид, оплаченный в следующем
+  // месяце, не попадал в продажи, и сумма расходилась с Dashboard.
+  const { leads: allLeads } = useLeadsLite();
   useEffect(() => {
     if (!projectId) { setCrmTotals({ leads: 0, diagnostics: 0, sales: 0, revenue: 0 }); return; }
-    let cancelled = false;
-    void (async () => {
-      const { data: stages } = await supabase
-        .from("pipeline_stages")
-        .select("id, is_diagnostic")
-        .eq("is_diagnostic", true);
-      const diagStageIds = new Set((stages ?? []).map((s) => s.id as string));
-      const { data: leads } = await supabase
-        .from("leads")
-        .select("id, paid, amount, diagnostic_amount, stage_id, created_at")
-        .eq("project_id", projectId)
-        .eq("is_personal", false)
-        .gte("created_at", sinceYmd)
-        .lt("created_at", untilExclusive);
-      if (cancelled) return;
-      let diagnostics = 0, sales = 0, revenue = 0;
-      const arr = leads ?? [];
-      for (const l of arr) {
-        const atDiag = diagStageIds.has(l.stage_id as string);
-        const paid = !!l.paid;
-        if (paid) { sales += 1; revenue += Number(l.amount) || 0; }
-        if (atDiag || paid) diagnostics += 1;
-        if (!paid && atDiag) revenue += Number(l.amount) || 0;
-        revenue += Number(l.diagnostic_amount) || 0;
+    const sinceTs = range.from.getTime();
+    const untilTs = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate() + 1).getTime();
+    let leadsCount = 0;
+    let diagnostics = 0;
+    let sales = 0;
+    let revenue = 0;
+    for (const l of allLeads) {
+      const createdTs = new Date(l.createdAt).getTime();
+      if (createdTs >= sinceTs && createdTs < untilTs) leadsCount += 1;
+
+      if (isLeadPaid(l)) {
+        const paidAt = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
+        const t = new Date(paidAt).getTime();
+        if (t >= sinceTs && t < untilTs) {
+          sales += 1;
+          revenue += Number(l.amount) || 0;
+          // Диагностика автоматически включает paid-лидов.
+          diagnostics += 1;
+          revenue += Number(l.diagnosticAmount) || 0;
+        }
+      } else if (isLeadVisit(l)) {
+        // Лид прошёл диагностику, но ещё не оплатил.
+        const ref = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
+        const t = new Date(ref).getTime();
+        if (t >= sinceTs && t < untilTs) {
+          diagnostics += 1;
+          revenue += Number(l.diagnosticAmount) || 0;
+        }
       }
-      setCrmTotals({ leads: arr.length, diagnostics, sales, revenue });
-    })();
-    return () => { cancelled = true; };
-  }, [projectId, sinceYmd, untilExclusive, backfilling]);
+    }
+    setCrmTotals({ leads: leadsCount, diagnostics, sales, revenue });
+  }, [projectId, allLeads, range, backfilling]);
 
 
   const runBackfill = async () => {
