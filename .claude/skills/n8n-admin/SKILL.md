@@ -15,35 +15,54 @@ description: Полное управление n8n через REST API — CRUD 
    - **B. Proxy workflow в n8n (обходной)**: в n8n импортирован `proxy-workflow.template.json` (см. ниже) с API ключом, и его ID положен в `.claude/n8n.env` как `N8N_PROXY_WORKFLOW_ID`. После этого работают команды с префиксом `proxy-` ниже.
 3. `curl` и `jq` доступны в окружении.
 
-## Способ B: Proxy через MCP execute_workflow
+## Способ B: Proxy через MCP execute_workflow (активен)
 
-Если allowlist недоступен — импортируй `proxy-workflow.template.json` в n8n (Workflows → Import from File), подставь N8N_API_KEY вместо `__N8N_API_KEY__`, активируй workflow, запиши его ID в `.claude/n8n.env`:
+Импортирован workflow «Claude n8n API Proxy» в n8n. Его ID записан в `.claude/n8n.env` как `N8N_PROXY_WORKFLOW_ID`.
 
-```
-export N8N_PROXY_WORKFLOW_ID="<новый id>"
-```
+**Текущий рабочий ID**: `uj5DcNatRXYqNkoO` (проверено: ответ 200, см. executionId 40124).
 
-После этого любой CRUD к n8n API делается через MCP-tool `mcp__*__execute_workflow` с типом `webhook`:
+Любой CRUD к n8n API делается через MCP-tool `mcp__*__execute_workflow` (`mcp__3e0c15f0-c6b2-46a6-aa32-bed2394a57a3__execute_workflow` в этом окружении):
 
 ```jsonc
-// Пример: создать workflow
+// Универсальный шаблон
 {
-  "workflowId": "<N8N_PROXY_WORKFLOW_ID>",
+  "workflowId": "uj5DcNatRXYqNkoO",
   "inputs": {
     "type": "webhook",
     "webhookData": {
       "method": "POST",
       "body": {
-        "method": "POST",
-        "path": "/workflows",
-        "body": { "name": "...", "nodes": [...], "connections": {}, "settings": {"executionOrder":"v1"} }
+        "method": "GET | POST | PUT | PATCH | DELETE",
+        "path": "/workflows | /workflows/{id} | /executions | /credentials/... | ...",
+        "query": { "limit": "5" },     // опционально
+        "body":  { ... }                // опционально, для POST/PUT/PATCH
       }
     }
   }
 }
 ```
 
-Ответ приходит в виде `{ status, headers, body }` от n8n API.
+Ответ приходит в `runData["Shape Response"][0].data.main[0][0].json` как `{ status, headers, body }`, где `body` — это распарсенный JSON от n8n API.
+
+### Готовые рецепты
+
+| Задача | `body` для proxy |
+| --- | --- |
+| Список workflows | `{"method":"GET","path":"/workflows","query":{"limit":"50"}}` |
+| Получить workflow | `{"method":"GET","path":"/workflows/<id>"}` |
+| Обновить workflow | `{"method":"PUT","path":"/workflows/<id>","body":{...без id/active/createdAt/updatedAt/versionId/triggerCount/tags/meta/scopes/shared/isArchived/parentFolderId/staticData/pinData}}` |
+| Создать workflow | `{"method":"POST","path":"/workflows","body":{name, nodes, connections, settings}}` |
+| Удалить workflow | `{"method":"DELETE","path":"/workflows/<id>"}` |
+| Активировать | `{"method":"POST","path":"/workflows/<id>/activate"}` |
+| Деактивировать | `{"method":"POST","path":"/workflows/<id>/deactivate"}` |
+| Список executions | `{"method":"GET","path":"/executions","query":{"workflowId":"<id>","limit":"20"}}` |
+| Детали execution | `{"method":"GET","path":"/executions/<id>","query":{"includeData":"true"}}` |
+| Список credentials schema | `{"method":"GET","path":"/credentials/schema/<typeName>"}` |
+| Список тегов | `{"method":"GET","path":"/tags"}` |
+| Список проектов | `{"method":"GET","path":"/projects"}` |
+| Список переменных | `{"method":"GET","path":"/variables"}` |
+
+После `PUT /workflows/<id>` n8n не пересоздаёт активные триггеры автоматически — отдельно вызови `POST /workflows/<id>/activate`.
 
 ## Использование
 
