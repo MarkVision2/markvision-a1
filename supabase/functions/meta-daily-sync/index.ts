@@ -128,23 +128,32 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
-    // Allow internal cron call via shared secret OR require admin user JWT.
-    // Поддерживаем оба варианта аутентификации:
-    //   1) META_SYNC_CRON_KEY + x-cron-key — для отдельного ключа функции.
-    //   2) automation_settings.cron_secret + x-automation-key — единый ключ для
-    //      всех cron-задач (тот же, что использует crm-automations). Это решает
-    //      401 при срабатывании cron meta-daily-sync-daily, когда отдельный
-    //      env-secret не задан.
+    // Принимаем три варианта cron-аутентификации (любой проходит — isCron=true):
+    //   1) env META_SYNC_CRON_KEY + заголовок x-cron-key — отдельный ключ функции.
+    //   2) automation_settings.cron_secret + x-automation-key — единый ключ
+    //      cron-задач (тот же, что использует crm-automations).
+    //   3) env SUPABASE_SERVICE_ROLE_KEY + Authorization: Bearer <key> —
+    //      надёжный fallback на случай, если cron_secret в БД разъехался
+    //      с тем, что шлёт cron-job. Service-role-ключ известен только
+    //      Edge runtime, наружу не утекает.
+    // Все три проверяются последовательно (без else-if), чтобы один невалидный
+    // вариант не блокировал другой валидный — раньше тут был баг: при заданном
+    // META_SYNC_CRON_KEY проверка x-automation-key пропускалась.
     const adminPre = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
     let isCron = false;
+    let authMethod: string | null = null;
+
     const envCronKey = Deno.env.get("META_SYNC_CRON_KEY");
     const envCronHeader = req.headers.get("x-cron-key");
     if (envCronKey && envCronHeader === envCronKey) {
       isCron = true;
-    } else {
+      authMethod = "env-cron-key";
+    }
+
+    if (!isCron) {
       const automationKey = req.headers.get("x-automation-key");
       if (automationKey) {
         const { data: settings } = await adminPre
@@ -153,10 +162,32 @@ Deno.serve(async (req) => {
           .eq("id", true)
           .maybeSingle();
         const dbSecret = (settings as { cron_secret?: string | null } | null)?.cron_secret ?? null;
-        if (dbSecret && automationKey === dbSecret) isCron = true;
+        if (dbSecret && automationKey === dbSecret) {
+          isCron = true;
+          authMethod = "automation-key";
+        }
       }
     }
+
     if (!isCron) {
+      const authHeader = req.headers.get("authorization") ?? req.headers.get("Authorization");
+      if (authHeader?.startsWith("Bearer ")) {
+        const token = authHeader.slice(7).trim();
+        const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+        if (serviceKey && token === serviceKey) {
+          isCron = true;
+          authMethod = "service-role";
+        }
+      }
+    }
+
+    if (!isCron) {
+      console.warn(
+        `[meta-daily-sync] cron auth missed: x-cron-key=${!!envCronHeader} ` +
+        `x-automation-key=${!!req.headers.get("x-automation-key")} ` +
+        `bearer=${!!(req.headers.get("authorization") ?? req.headers.get("Authorization"))} ` +
+        `— falling back to user JWT`,
+      );
       const auth = await requireUser(req);
       if (!auth.ok) return auth.response;
       if (!(await userHasRole(auth.userId, "admin"))) {
@@ -164,7 +195,9 @@ Deno.serve(async (req) => {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
+      authMethod = "user-admin";
     }
+    console.log(`[meta-daily-sync] auth method: ${authMethod}`);
     const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN");
     if (!META_ACCESS_TOKEN) {
       return new Response(JSON.stringify({ error: "META_ACCESS_TOKEN missing" }), {
