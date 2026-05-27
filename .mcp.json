@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "n8n": {
+      "command": "bash",
+      "args": [
+        "-c",
+        "[ -f .env.local ] && set -a && . ./.env.local && set +a; export MCP_MODE=stdio LOG_LEVEL=warn DISABLE_CONSOLE_OUTPUT=true; exec npx -y n8n-mcp"
+      ]
+    }
+  }
+}
