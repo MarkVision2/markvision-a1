@@ -25,31 +25,33 @@ n8n  ─── Whisper (для голоса) ─── OpenAI (классифи�
 - ✅ RLS политики (каждый видит только своё)
 - ✅ Триггер автосоздания 7 дефолтных категорий расходов при регистрации
 - ✅ RPC `get_user_by_chat_id` для лукапа пользователя из n8n
-- ✅ Готовы 2 n8n workflow в JSON для импорта
+- ✅ **Оба workflow уже залиты в твой n8n через Claude n8n API Proxy:**
+  - `Personal Assistant — Telegram Bot` (id: `NJqcFNk0BCk0M3aE`) → https://n8n.zapoinov.com/workflow/NJqcFNk0BCk0M3aE
+  - `Personal Assistant — Daily Digest` (id: `fAb7MfusCGltflTV`) → https://n8n.zapoinov.com/workflow/fAb7MfusCGltflTV
 - ✅ Готов промпт для Lovable
+
+JSON-файлы в `n8n/` остаются как «source of truth» — если что-то сломается, можно перезалить.
 
 ## Что делать тебе (по шагам)
 
-### 1. Импорт n8n workflow
+### 1. Привязать credentials в обоих workflow
 
-Открой n8n → Workflows → New → ⋮ → **Import from File**:
+Открой каждый workflow (ссылки выше). В n8n нужно:
 
-- `personal-assistant/n8n/01-assistant-bot.json` — основной бот (Telegram → задачи/расходы)
-- `personal-assistant/n8n/02-daily-digest.json` — утренние/вечерние уведомления
-
-При импорте n8n спросит подключить credentials:
-
-| Что | Где взять |
-|-----|-----------|
-| **Telegram (Bot Token)** | Создай бота через `@BotFather` → `/newbot` → токен → в n8n: Credentials → New → Telegram |
-| **OpenAI API** | https://platform.openai.com/api-keys |
-| **Google Calendar OAuth2** | Google Cloud Console → OAuth client → редирект n8n callback |
+| Узел | Что подключить | Где взять |
+|------|----------------|-----------|
+| `Telegram Trigger`, `Reject`, `TG: Get Voice File`, `Reply: Task Saved`, `Reply: Expense Saved`, `Reply: Other`, `Send Telegram` | Telegram Bot Token | `@BotFather` → `/newbot` → токен → в n8n: Credentials → New → Telegram |
+| `Whisper Transcribe`, `Classify Intent`, `Parse Task`, `Parse Expense` | OpenAI API key | https://platform.openai.com/api-keys |
+| `Google Calendar: Create Event` | Google Calendar OAuth2 | Google Cloud Console → OAuth client → редирект n8n callback |
 
 В каждом workflow есть нода **`Env + Chat`** (или `Env`) — открой её и в поле `SUPABASE_SERVICE_ROLE_KEY` вставь значение из Supabase Dashboard → Settings → API → `service_role` key.
 
 После — нажми **Activate** в обоих workflow.
 
 ### 2. Lovable фронт
+
+> Замечание про MCP-интеграцию n8n:
+> у тебя уже работает workflow `Claude n8n API Proxy` (id `uj5DcNatRXYqNkoO`, `availableInMCP: true`) — через него Claude может читать и **редактировать** workflow на твоём n8n. Эти оба workflow создавались именно через этот канал, без ручного импорта.
 
 Прочитай `personal-assistant/lovable/PROMPT.md` — там готовый промпт. Скопируй в lovable.dev, новый проект, на этапе Supabase используй `SUPABASE_CREDENTIALS.md`.
 
