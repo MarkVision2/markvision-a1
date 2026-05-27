@@ -1,0 +1,20 @@
+# Локальные секреты (никогда не коммитить)
+.env.local
+*.local
+
+# Логи
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Temp
+node_modules/
+.cache/
+dist/
+build/
