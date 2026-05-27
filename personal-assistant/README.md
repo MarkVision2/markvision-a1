@@ -1,100 +1,401 @@
-# Personal Assistant — Telegram + n8n + Supabase + Lovable
+# Personal Assistant — полное руководство
 
-Личный ассистент: ставишь задачи и фиксируешь расходы голосом или текстом в Telegram, всё попадает в Google Calendar / Supabase, фронт на Lovable показывает дашборд.
+Личный ассистент: Telegram-бот (голос+текст) → n8n → Google Calendar + Supabase → Lovable-фронт. Финансы (расходы/доходы/кредиты/цели), задачи, todo-список, напоминания, ежедневные/еженедельные отчёты.
+
+---
 
 ## Архитектура
 
 ```
-Telegram (текст или голос)
-     │
-     ▼
-n8n  ─── Whisper (для голоса) ─── OpenAI (классификация + парсинг)
-     │
-     ├─► Google Calendar (для задач) ───► Supabase tasks (зеркало)
-     │
-     └─► Supabase expenses (для расходов)
-                                   │
-                                   ▼
-                          Lovable frontend (дашборд)
+Telegram (текст/voice)
+        │
+        ▼
+n8n: Personal Assistant ────────── Google Calendar (события)
+   classify → route → handle      │
+        │                          ▼
+        ▼                       Supabase
+  Reply: подтверждение           ├── tasks
+                                 ├── expenses, expense_categories
+                                 ├── incomes, income_categories
+                                 ├── debts, debt_payments
+                                 ├── goals, goal_contributions
+                                 ├── telegram_users
+                                 └── monthly_balance, debts_summary (views)
+                                          │
+                                          ▼
+                              n8n: Scheduler v2 ── ежедневные/раз в час триггеры
+                                          │
+                                          ▼
+                              Telegram ← дайджесты + напоминания
+                              
+                              Lovable dashboard ← читает Supabase в реалтайме
 ```
 
-## Что уже сделано автоматически
+### Активные n8n workflow
 
-- ✅ Supabase-проект `personal-assistant` создан (id: `zcsxzgigtsdoebtginfy`, region: `eu-central-1`)
-- ✅ Схема БД накатана: `telegram_users`, `tasks`, `expenses`, `expense_categories`, `goals`
-- ✅ RLS политики (каждый видит только своё)
-- ✅ Триггер автосоздания 7 дефолтных категорий расходов при регистрации
-- ✅ RPC `get_user_by_chat_id` для лукапа пользователя из n8n
-- ✅ **Оба workflow уже залиты в твой n8n через Claude n8n API Proxy:**
-  - `Personal Assistant — Telegram Bot` (id: `NJqcFNk0BCk0M3aE`) → https://n8n.zapoinov.com/workflow/NJqcFNk0BCk0M3aE
-  - `Personal Assistant — Daily Digest` (id: `fAb7MfusCGltflTV`) → https://n8n.zapoinov.com/workflow/fAb7MfusCGltflTV
-- ✅ Готов промпт для Lovable
+| Workflow | ID | Триггеры | Что делает |
+|----------|-----|----------|------------|
+| `Personal Assistant` | `NJqcFNk0BCk0M3aE` | Telegram message | Принимает все команды от пользователя |
+| `Personal Assistant — Scheduler v2` | `xY2vKMScdSm8r0Su` | cron `*/5 * * * *`, `0 8 * * *`, `0 20 * * *` | Напоминания + утро + вечер |
+| `Claude n8n API Proxy` | `uj5DcNatRXYqNkoO` | Webhook | Внутренний прокси для управления через MCP |
+| `Supabase Proxy` | `LYfJ5iscq6zsSNY3` | Webhook | Внутренний прокси для диагностики БД |
 
-JSON-файлы в `n8n/` остаются как «source of truth» — если что-то сломается, можно перезалить.
+Timezone везде: `Asia/Almaty` (UTC+05:00).
 
-## Что делать тебе (по шагам)
+---
 
-### 1. Привязать credentials в обоих workflow
+## Что бот понимает в Telegram
 
-Открой каждый workflow (ссылки выше). В n8n нужно:
+Пишешь текстом или голосом — бот классифицирует через `Classify Intent` (GPT-4o-mini) и направляет в нужную ветку.
 
-| Узел | Что подключить | Где взять |
-|------|----------------|-----------|
-| `Telegram Trigger`, `Reject`, `TG: Get Voice File`, `Reply: Task Saved`, `Reply: Expense Saved`, `Reply: Other`, `Send Telegram` | Telegram Bot Token | `@BotFather` → `/newbot` → токен → в n8n: Credentials → New → Telegram |
-| `Whisper Transcribe`, `Classify Intent`, `Parse Task`, `Parse Expense` | OpenAI API key | https://platform.openai.com/api-keys |
-| `Google Calendar: Create Event` | Google Calendar OAuth2 | Google Cloud Console → OAuth client → редирект n8n callback |
+### 📅 Задачи и встречи
 
-В каждом workflow есть нода **`Env + Chat`** (или `Env`) — открой её и в поле `SUPABASE_SERVICE_ROLE_KEY` вставь значение из Supabase Dashboard → Settings → API → `service_role` key.
+| Что пишешь | Что происходит |
+|-----------|----------------|
+| `завтра в 15 встреча с врачом` | Создаётся событие в Google Calendar + запись в `tasks` + popup-напоминание за час в календаре |
+| `через час созвон с командой` | То же, время = сейчас + 1 час, длительность 30 мин |
+| `в пятницу 19:30 ужин в Магадане` | Ближайшая пятница, длительность 60 мин |
+| `29 числа в 12 приём у стоматолога` | Конкретная дата текущего месяца, длительность 60 мин |
 
-После — нажми **Activate** в обоих workflow.
+После создания: за **1 час до** наступления приходит «⏰ Через час: ...» от Scheduler v2.
 
-### 2. Lovable фронт
+### 📌 Todo (задачи без точного времени)
 
-> Замечание про MCP-интеграцию n8n:
-> у тебя уже работает workflow `Claude n8n API Proxy` (id `uj5DcNatRXYqNkoO`, `availableInMCP: true`) — через него Claude может читать и **редактировать** workflow на твоём n8n. Эти оба workflow создавались именно через этот канал, без ручного импорта.
+| Что пишешь | Что происходит |
+|-----------|----------------|
+| `не забыть купить молоко` | INSERT в `tasks` с `is_todo=true`, `due_date=сегодня`. В Calendar НЕ идёт |
+| `подготовить презентацию к завтрашней встрече` | `due_date=завтра`, попадёт в утренний/вечерний дайджест |
+| `составить отчёт до пятницы` | `due_date=пятница` |
 
-Прочитай `personal-assistant/lovable/PROMPT.md` — там готовый промпт. Скопируй в lovable.dev, новый проект, на этапе Supabase используй `SUPABASE_CREDENTIALS.md`.
+### 🗑 Отмена задач
 
-### 3. Привязать свой Telegram
+| Что пишешь | Что происходит |
+|-----------|----------------|
+| `отмени встречу с врачом` | AI находит подходящую задачу → DELETE из Calendar + UPDATE `status='cancelled'` |
+| `удали задачу на завтра` | То же |
+| `убери встречу 15:00` | По времени матчит |
 
-1. Включи в Supabase → Authentication → Providers → Email
-2. Зарегистрируйся в Lovable-приложении (вылетит email/пароль)
-3. Узнай свой `chat_id`: напиши боту `/start` → лог в n8n покажет твой chat_id. Или используй бот `@userinfobot`
-4. В фронте на странице Settings вставь свой `chat_id` — создастся строка в `telegram_users`
-5. Теперь бот тебя «знает» и принимает сообщения
+### 💸 Расходы
 
-### 4. Тест
+| Что пишешь | Что происходит |
+|-----------|----------------|
+| `потратил 1500 на обед` | INSERT в `expenses`, категория `food`, валюта RUB, бот отвечает суммой за сегодня |
+| `купил кофе за 5 долларов` | Категория `food`, currency `USD` |
+| `такси 600` | Категория `transport`, valuta RUB |
 
-В Telegram пиши боту:
+Категории расходов сами сидируются при регистрации: `food`, `transport`, `entertainment`, `household`, `clothing`, `health`, `other`.
 
-> Завтра в 10 утра встреча с врачом на час
+### 💰 Доходы (NEW)
 
-— должна появиться задача в Google Calendar + строка в `tasks`. Бот ответит «✅ Записал задачу...».
+| Что пишешь | Что происходит |
+|-----------|----------------|
+| `поступила оплата от Иван 50000` | INSERT в `incomes`, `client_name='Иван'`, category `client` |
+| `получил зарплату 200к` | category `salary` |
+| `подарили 5000` | category `gift` |
+| `вернули 2000` | category `refund` |
 
-> Потратил 1500 на обед в кафе
+Категории доходов сидируются: `client`, `salary`, `gift`, `refund`, `other`.
 
-— должна появиться строка в `expenses` с категорией «Еда». Бот ответит суммой за сегодня.
+### 🏦 Кредиты (NEW)
 
-Голосовое сообщение работает так же — Whisper расшифровывает.
+#### Создать новый кредит:
+| Что пишешь | Что происходит |
+|-----------|----------------|
+| `новый кредит на машину 1.8 млн на 5 лет под 15%` | INSERT в `debts` с `kind=loan`, `monthly_payment` авто-рассчитан, `end_date=сейчас+5 лет` |
+| `оформил ипотеку 8 млн` | `kind=loan`, `name=Ипотека` |
+| `взял рассрочку на телефон 60000` | `kind=installment` |
 
-## Файлы
+#### Внести платёж:
+| Что пишешь | Что происходит |
+|-----------|----------------|
+| `внёс по ипотеке 30к` | AI находит долг с `name~ипотека` → INSERT в `debt_payments` → триггер БД уменьшает `current_balance` |
+| `заплатил 15000 по кредиту на машину` | Аналогично |
+| `погасил кредит 50000` | Если задолженность ≤ 50к — `is_closed=true` автоматически |
+
+### 🎯 Цели (NEW)
+
+#### Создать цель:
+| Что пишешь | Что происходит |
+|-----------|----------------|
+| `цель квартира 5 миллионов к декабрю 2027` | INSERT в `goals`, `kind=asset_purchase`, `target_date=2027-12-01` |
+| `хочу накопить миллион` | `kind=savings` |
+| `новая цель машина 2 млн` | `kind=asset_purchase` |
+
+#### Пополнить цель:
+| Что пишешь | Что происходит |
+|-----------|----------------|
+| `положил 100 тысяч на квартиру` | AI находит цель → INSERT в `goal_contributions` → триггер обновляет `current_amount` |
+| `отложил 50000 на машину` | Аналогично |
+| `накопил 10к на отпуск` | Аналогично |
+
+---
+
+## ⏰ Автоматические уведомления (Scheduler v2)
+
+### Каждые 5 минут — проверка ближайших встреч
+Скрипт ищет задачи где `starts_at` через 55–65 минут и `reminded_at IS NULL`. Если находит — отправляет «⏰ Через час: <название>» и ставит `reminded_at=NOW()` чтобы не задвоить.
+
+### 08:00 Astana — утренний дайджест
+```
+☀️ Юрий, доброе утро.
+Сегодня — 28 мая, четверг.
+
+📅 События и встречи (3 задачи):
+
+09:00 — Утренняя пробежка
+   ⏱ 60 мин
+
+11:30 — Созвон с командой
+   ⏱ 30 мин · _ежнедельный синк_
+
+15:00 — Встреча с врачом
+   ⏱ 60 мин
+
+📌 Нужно сделать (2):
+
+• Подготовить презентацию
+• Купить молоко
+
+💸 Вчера потрачено: 2450 ₽
+   • Еда: 850 ₽
+   • Транспорт: 600 ₽
+   • Развлечения: 1000 ₽
+
+Хорошего дня 🚀
+```
+
+### 20:00 Astana — план на завтра
+```
+🌙 Юрий, добрый вечер.
+Отправляю план на завтра — 29 мая, пятница.
+
+📅 События и встречи (...):
+[список с временем, длительностью, описанием]
+
+📌 Нужно сделать (...):
+[список todo с дедлайном завтра]
+
+Спокойной ночи 🌙
+```
+
+---
+
+## 🖥 Lovable фронтенд
+
+Отдельный проект в Lovable, подключён к Supabase. Отображает все данные в красивом UI с realtime-обновлением.
+
+Страницы (по ТЗ в `personal-assistant/lovable/PROMPT-finance.md`):
+- 🏠 Главная — cashflow за 12 мес, KPI, последние транзакции, активные цели
+- 💸 Расходы — графики, категории, лимиты, история
+- 💰 Доходы — по клиентам, динамика
+- 🎯 Цели — карточки с прогрессом, история пополнений
+- 🏦 Кредиты — список с остатками, история платежей
+- 📅 Задачи — календарь/список, чекбоксы выполнения
+- ⚙️ Настройки — Telegram chat_id, категории, лимиты
+
+---
+
+## 📊 Supabase
+
+### Подключение
+
+| Что | Где |
+|-----|-----|
+| Dashboard | https://supabase.com/dashboard/project/lsgwjiwzaillykuqegxb |
+| API URL | `https://lsgwjiwzaillykuqegxb.supabase.co` |
+| Region | eu-central-1 |
+| Anon key (для фронта) | `eyJhbGc...4PgqAW...` (в `personal-assistant/lovable/SUPABASE_CREDENTIALS.md`) |
+| Service role (для n8n) | в `.env.local`, никогда не светить публично |
+
+### Таблицы (12 шт)
 
 ```
-personal-assistant/
-├── README.md                                 ← этот файл
-├── n8n/
-│   ├── 01-assistant-bot.json                 ← главный бот
-│   └── 02-daily-digest.json                  ← 08:00 + 21:00 уведомления
-├── sql/
-│   └── init_assistant_schema.sql             ← копия миграции (уже применена)
-└── lovable/
-    ├── PROMPT.md                             ← промпт для Lovable
-    └── SUPABASE_CREDENTIALS.md               ← URL + anon key
+auth.users           — пользователи (Supabase Auth)
+telegram_users       — связь chat_id ↔ user_id
+tasks                — события и todo
+expense_categories   — категории расходов
+expenses             — расходы
+income_categories    — категории доходов
+incomes              — доходы (с client_name)
+debts                — кредиты
+debt_payments        — платежи по кредитам (триггер обновляет current_balance)
+goals                — цели
+goal_contributions   — пополнения целей (триггер обновляет current_amount)
+
+VIEW monthly_balance — доходы/расходы по месяцам
+VIEW debts_summary   — сводка активных кредитов
 ```
 
-## Расширить дальше
+### Колонки `tasks`
+```
+id UUID PK
+user_id UUID FK → auth.users
+title TEXT NOT NULL
+description TEXT
+starts_at TIMESTAMPTZ (nullable; null для todo)
+ends_at TIMESTAMPTZ
+duration_minutes INT
+google_event_id TEXT (если событие в Calendar)
+status TEXT ('pending'|'done'|'cancelled')
+raw_text TEXT (что пользователь продиктовал)
+source TEXT ('telegram'|'manual')
+due_date DATE (для is_todo=true)
+reminded_at TIMESTAMPTZ (когда отправлено напоминание за час)
+is_todo BOOLEAN (true = задача без точного времени)
+created_at, updated_at
+```
 
-- **Цели** — в фронте уже есть страница «Цели», логика начисления вручную через UI. Можно добавить триггер в БД: при INSERT в expenses обновлять `current_amount` целей с этим `category_id`.
-- **Категории динамически** — добавь в Settings UI создание/редактирование, дефолты уже посеяны.
-- **Доход/баланс** — добавь таблицу `incomes` + `accounts` если нужен полноценный бюджет.
-- **Аналитика** — Lovable умеет рисовать дашборды; промпт описывает только базу.
+### Колонки `debts`
+```
+id, user_id
+name TEXT (Ипотека, Кредит на машину)
+kind ('loan'|'credit_card'|'installment'|'personal'|'other')
+initial_amount NUMERIC (изначальная сумма)
+current_balance NUMERIC (сколько осталось — триггер обновляет)
+currency TEXT
+interest_rate NUMERIC (% годовых)
+monthly_payment NUMERIC (обязательный месячный платёж)
+start_date, end_date DATE
+is_closed BOOLEAN (триггер ставит true когда balance=0)
+closed_at TIMESTAMPTZ
+description, created_at, updated_at
+```
+
+### Колонки `incomes`
+```
+id, user_id
+amount NUMERIC, currency TEXT
+category_id → income_categories
+client_name TEXT (кто заплатил — для фриланса)
+description, raw_text, source
+received_at, created_at
+```
+
+### Колонки `goals`
+```
+id, user_id
+name TEXT
+kind ('savings'|'spending_limit'|'asset_purchase'|'debt_payoff')
+target_amount, current_amount NUMERIC (триггер обновляет)
+currency TEXT
+category_id → expense_categories (для spending_limit)
+target_date DATE
+icon, color, description
+is_archived BOOLEAN
+created_at, updated_at
+```
+
+---
+
+## 🔑 Безопасность
+
+- **service_role** ключ — только в n8n и в `.env.local`. Никогда не отдавать на фронт или в публичный код.
+- **anon / publishable** — безопасен в фронте, RLS защитит данные.
+- **RLS** включён на всех таблицах: `auth.uid() = user_id`. n8n обходит RLS через service_role.
+- **Telegram bot token** — хранится только в n8n credentials.
+- **Whitelist в `telegram_users`** — бот принимает сообщения только от привязанных chat_id. Остальным отвечает «Доступ запрещён».
+
+---
+
+## 🧪 Как тестировать
+
+### 1. Тест задачи с напоминанием
+1. Напиши в группу: `через 65 минут встреча с командой`
+2. Сразу: «✅ Записал событие...»
+3. Через ~5 минут (когда задача попадёт в окно 55–65 мин): «⏰ Через час: Встреча с командой»
+4. В Google Calendar — событие на нужное время
+
+### 2. Тест todo
+1. `подготовить отчёт к завтра`
+2. «📌 Добавил в список»
+3. Утром в 08:00 — попадёт в утренний дайджест в блок «📌 Нужно сделать»
+
+### 3. Тест расхода
+1. `потратил 800 на обед`
+2. «💸 Записал расход: 800 RUB — Еда. Сегодня всего: 800 RUB»
+
+### 4. Тест дохода (NEW)
+1. `получил оплату от Газпрома 250000`
+2. «💰 Доход записан: +250000 RUB. 📂 Клиент. 👤 Газпром»
+
+### 5. Тест нового кредита (NEW)
+1. `новый кредит на машину 1.8 миллиона на 5 лет под 15%`
+2. «🏦 Создал кредит: Кредит на машину. 💵 1800000 RUB. 📅 ~42700/мес»
+
+### 6. Тест платежа по кредиту (NEW)
+Сначала должен быть активный кредит.
+1. `внёс 30 тысяч по кредиту на машину`
+2. «🏦 Платёж по кредиту: Кредит на машину. Внёс: −30000 RUB. Остаток: ~1770000 RUB»
+
+### 7. Тест новой цели (NEW)
+1. `цель квартира 5 миллионов к декабрю 2027`
+2. «🎯 Создал цель: Квартира. Цель: 5000000 RUB. 📅 до 2027-12-01»
+
+### 8. Тест пополнения цели (NEW)
+1. `положил 100 тысяч на квартиру`
+2. «🎯 Пополнил цель: Квартира. +100000 RUB. Прогресс: ~100000 / 5000000 RUB»
+
+### 9. Тест отмены
+1. `отмени встречу с командой`
+2. «🗑 Отменил задачу: Встреча с командой»
+
+---
+
+## 🛠 Поддерживаемая инфраструктура
+
+### Файлы в репо `markvision-a1/personal-assistant/`
+
+```
+README.md                        — этот файл (главная инструкция)
+n8n/
+  01-assistant-bot.json          — оригинальный JSON для импорта (history)
+  02-daily-digest.json           — оригинальный scheduler JSON
+sql/
+  init_assistant_schema.sql      — базовая схема (tasks, expenses, etc.)
+  02_finance_schema.sql          — финансовая схема (incomes, debts, etc.)
+  03_tasks_extensions.sql        — добавление is_todo, due_date, reminded_at
+lovable/
+  PROMPT.md                      — первая версия промпта (задачи+расходы)
+  PROMPT-finance.md              — финальный промпт с финансами
+  SUPABASE_CREDENTIALS.md        — куда подключать Lovable
+```
+
+### Файлы за пределами репо (не коммитим)
+
+```
+.env.local                       — N8N_API_KEY, SUPABASE_ACCESS_TOKEN, service_role
+                                   (gitignored через *.local)
+```
+
+---
+
+## ⏳ Что ещё в планах
+
+### 🟡 Высокий приоритет — улучшения UX
+- **Закрытие задач голосом** — «сделал презентацию» → AI находит todo → `status='done'`
+- **Перенос задачи** — «перенеси встречу с врачом на пятницу 11:00» → UPDATE + GCal patch
+- **Статус-запросы** — «сколько я потратил сегодня», «что осталось по ипотеке», «прогресс по квартире» → бот отвечает цифрой
+- **Еженедельный отчёт** — воскресенье 19:00, сводка за неделю
+- **Уведомления о платеже** — за 3 дня до `debts.monthly_payment` → «не забудь внести по ипотеке N руб»
+
+### 🟢 Cool-фичи (low priority)
+- **OCR чеков** — фото чека → Vision модель → расход
+- **Повторяющиеся задачи** — «каждый понедельник в 10 планёрка»
+- **Алерты по аномалиям** — «ты сегодня уже потратил 5000 на еду, обычно 1500»
+- **Подключение банка** — Tinkoff/Сбер webhook → автоматический expense
+- **Multi-user** — пригласить партнёра, общий бюджет (RLS уже готов)
+
+### Архитектурный долг
+- Main bot вырос до 63 нод. Дальнейшие фичи лучше делать через **n8n AI Agent** с tools — будет на порядок компактнее. Это рефактор на ~1 день.
+
+---
+
+## 📞 Контакты сущностей
+
+| Что | Где |
+|-----|-----|
+| n8n инстанс | https://n8n.zapoinov.com |
+| Supabase Dashboard | https://supabase.com/dashboard/project/lsgwjiwzaillykuqegxb |
+| Telegram bot | `@<bot username>` (пишет в группу chat_id `-5262660394`) |
+| Lovable app | (URL после деплоя из Lovable) |
+| GitHub repo | `markvision2/markvision-a1` ветка `claude/telegram-n8n-task-assistant-cDlMh` |
