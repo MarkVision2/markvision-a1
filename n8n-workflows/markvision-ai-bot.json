@@ -1,0 +1,660 @@
+{
+  "name": "Mark — MarkVision AI Sales Bot (GPT-4o-mini)",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-bot",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "node-webhook",
+      "name": "Green API Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [100, 300],
+      "webhookId": "markvision-ai-whatsapp-bot"
+    },
+    {
+      "parameters": {
+        "respondWith": "text",
+        "responseBody": "ok",
+        "options": {}
+      },
+      "id": "node-respond",
+      "name": "Respond OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [320, 460]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://iywmjdrghcbsicdwohmb.supabase.co/rest/v1/whatsapp_webhook_log",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5d21qZHJnaGNic2ljZHdvaG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MDk0NzcsImV4cCI6MjA4ODM4NTQ3N30.Km1K3eBIDfSPLWJ42yeKIEQihe3vhKJ0Z-GrCc7AoQI" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5d21qZHJnaGNic2ljZHdvaG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MDk0NzcsImV4cCI6MjA4ODM4NTQ3N30.Km1K3eBIDfSPLWJ42yeKIEQihe3vhKJ0Z-GrCc7AoQI" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"payload\": {{ JSON.stringify($json) }}\n}",
+        "options": {}
+      },
+      "id": "node-log",
+      "name": "Log Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [320, 600]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "version": 2, "leftValue": "", "caseSensitive": true, "typeValidation": "strict" },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "c-incoming",
+              "operator": { "name": "filter.operator.equals", "type": "string", "operation": "equals" },
+              "leftValue": "={{ $json.body.typeWebhook }}",
+              "rightValue": "incomingMessageReceived"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-if-incoming",
+      "name": "If Incoming",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [540, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "s1", "name": "chatId", "type": "string", "value": "={{ $json.body.senderData.chatId }}" },
+            { "id": "s2", "name": "senderName", "type": "string", "value": "={{ $json.body.senderData.senderName }}" },
+            { "id": "s3", "name": "messageId", "type": "string", "value": "={{ $json.body.idMessage }}" },
+            { "id": "s4", "name": "typeMessage", "type": "string", "value": "={{ $json.body.messageData.typeMessage }}" },
+            { "id": "s5", "name": "downloadUrl", "type": "string", "value": "={{ $json.body.messageData.fileMessageData ? $json.body.messageData.fileMessageData.downloadUrl : '' }}" },
+            { "id": "s6", "name": "caption", "type": "string", "value": "={{ $json.body.messageData.fileMessageData ? ($json.body.messageData.fileMessageData.caption || '') : '' }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-set-vars",
+      "name": "Set Initial Vars",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [760, 300]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": { "version": 2, "leftValue": "", "caseSensitive": true, "typeValidation": "loose" },
+                "combinator": "and",
+                "conditions": [
+                  { "id": "r1", "operator": { "type": "string", "operation": "equals" }, "leftValue": "={{ $json.typeMessage }}", "rightValue": "textMessage" }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "text"
+            },
+            {
+              "conditions": {
+                "options": { "version": 2, "leftValue": "", "caseSensitive": true, "typeValidation": "loose" },
+                "combinator": "and",
+                "conditions": [
+                  { "id": "r2", "operator": { "type": "string", "operation": "equals" }, "leftValue": "={{ $json.typeMessage }}", "rightValue": "extendedTextMessage" }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "extended"
+            },
+            {
+              "conditions": {
+                "options": { "version": 2, "leftValue": "", "caseSensitive": true, "typeValidation": "loose" },
+                "combinator": "and",
+                "conditions": [
+                  { "id": "r3", "operator": { "type": "string", "operation": "equals" }, "leftValue": "={{ $json.typeMessage }}", "rightValue": "audioMessage" }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "audio"
+            },
+            {
+              "conditions": {
+                "options": { "version": 2, "leftValue": "", "caseSensitive": true, "typeValidation": "loose" },
+                "combinator": "and",
+                "conditions": [
+                  { "id": "r4", "operator": { "type": "string", "operation": "equals" }, "leftValue": "={{ $json.typeMessage }}", "rightValue": "imageMessage" }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "image"
+            }
+          ]
+        },
+        "options": { "fallbackOutput": "extra" }
+      },
+      "id": "node-switch-type",
+      "name": "Switch By Type",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [980, 300]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "t1", "name": "userText", "type": "string", "value": "={{ $('If Incoming').item.json.body.messageData.textMessageData.textMessage }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-text",
+      "name": "Extract Text",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1200, 100]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "et1", "name": "userText", "type": "string", "value": "={{ $('If Incoming').item.json.body.messageData.extendedTextMessageData.text }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-exttext",
+      "name": "Extract ExtendedText",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1200, 250]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.downloadUrl }}",
+        "options": { "response": { "response": { "responseFormat": "file" } } }
+      },
+      "id": "node-download-audio",
+      "name": "Download Audio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/audio/transcriptions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "model", "value": "whisper-1" },
+            { "name": "language", "value": "ru" },
+            { "parameterType": "formBinaryData", "name": "file", "inputDataFieldName": "data" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-whisper",
+      "name": "Whisper Transcribe",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1420, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "at1", "name": "userText", "type": "string", "value": "=[голосовое сообщение] {{ $json.text }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-audio-text",
+      "name": "Set Audio Text",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1640, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"model\": \"gpt-4o-mini\",\n  \"max_tokens\": 300,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        { \"type\": \"text\", \"text\": \"Опиши кратко что на изображении (1-2 предложения, на русском). Если есть текст — извлеки. Подпись клиента: {{ $('Set Initial Vars').item.json.caption || '(нет)' }}\" },\n        { \"type\": \"image_url\", \"image_url\": { \"url\": \"{{ $('Set Initial Vars').item.json.downloadUrl }}\" } }\n      ]\n    }\n  ]\n}",
+        "options": {}
+      },
+      "id": "node-vision",
+      "name": "Vision Analyze",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1200, 560]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "im1", "name": "userText", "type": "string", "value": "=[изображение] {{ $json.choices[0].message.content }}{{ $('Set Initial Vars').item.json.caption ? '\\nПодпись: ' + $('Set Initial Vars').item.json.caption : '' }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-image-text",
+      "name": "Set Image Text",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1420, 560]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "x1", "name": "userText", "type": "string", "value": "[неподдерживаемый тип сообщения]" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-other-text",
+      "name": "Set Other Text",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1200, 720]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://7107.api.green-api.com/waInstance7107618939/sendMessage/beef4c129cb64a26ae4630ffa824f9d1181b9d7198fd47c689",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chatId\": {{ JSON.stringify($('Set Initial Vars').item.json.chatId) }},\n  \"message\": \"Извините, я обрабатываю только текст, голосовые и изображения. Напишите ваш вопрос текстом, пожалуйста.\"\n}",
+        "options": {}
+      },
+      "id": "node-send-unsupported",
+      "name": "Send Unsupported",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1420, 720]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineAll",
+        "options": {}
+      },
+      "id": "node-merge-text",
+      "name": "Merge Text Branches",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [1860, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://iywmjdrghcbsicdwohmb.supabase.co/rest/v1/mark_message_queue",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5d21qZHJnaGNic2ljZHdvaG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MDk0NzcsImV4cCI6MjA4ODM4NTQ3N30.Km1K3eBIDfSPLWJ42yeKIEQihe3vhKJ0Z-GrCc7AoQI" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5d21qZHJnaGNic2ljZHdvaG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MDk0NzcsImV4cCI6MjA4ODM4NTQ3N30.Km1K3eBIDfSPLWJ42yeKIEQihe3vhKJ0Z-GrCc7AoQI" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=representation" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": {{ JSON.stringify($('Set Initial Vars').item.json.chatId) }},\n  \"message_text\": {{ JSON.stringify($json.userText) }},\n  \"message_id\": {{ JSON.stringify($('Set Initial Vars').item.json.messageId) }},\n  \"message_type\": {{ JSON.stringify($('Set Initial Vars').item.json.typeMessage) }},\n  \"media_url\": {{ JSON.stringify($('Set Initial Vars').item.json.downloadUrl || '') }}\n}",
+        "options": {}
+      },
+      "id": "node-insert-queue",
+      "name": "Insert To Queue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2080, 300]
+    },
+    {
+      "parameters": {
+        "amount": 10,
+        "unit": "seconds"
+      },
+      "id": "node-wait",
+      "name": "Wait 10s",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2300, 300],
+      "webhookId": "wait-aggregate"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://iywmjdrghcbsicdwohmb.supabase.co/rest/v1/mark_message_queue?chat_id=eq.{{ encodeURIComponent($('Set Initial Vars').item.json.chatId) }}&processed=is.false&order=id.desc&limit=1&select=id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5d21qZHJnaGNic2ljZHdvaG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MDk0NzcsImV4cCI6MjA4ODM4NTQ3N30.Km1K3eBIDfSPLWJ42yeKIEQihe3vhKJ0Z-GrCc7AoQI" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5d21qZHJnaGNic2ljZHdvaG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MDk0NzcsImV4cCI6MjA4ODM4NTQ3N30.Km1K3eBIDfSPLWJ42yeKIEQihe3vhKJ0Z-GrCc7AoQI" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-check-latest",
+      "name": "Get Latest Unprocessed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2520, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "version": 2, "leftValue": "", "caseSensitive": true, "typeValidation": "loose" },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "lat1",
+              "operator": { "type": "number", "operation": "equals" },
+              "leftValue": "={{ ($json[0] && $json[0].id) || 0 }}",
+              "rightValue": "={{ $('Insert To Queue').item.json[0] ? $('Insert To Queue').item.json[0].id : -1 }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "node-if-latest",
+      "name": "Am I Latest?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [2740, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fetch all unprocessed messages for chat_id, mark them processed, concat into single text\nconst SUPA_URL = 'https://iywmjdrghcbsicdwohmb.supabase.co/rest/v1/mark_message_queue';\nconst SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5d21qZHJnaGNic2ljZHdvaG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MDk0NzcsImV4cCI6MjA4ODM4NTQ3N30.Km1K3eBIDfSPLWJ42yeKIEQihe3vhKJ0Z-GrCc7AoQI';\n\nconst chatId = $('Set Initial Vars').item.json.chatId;\nconst headers = { apikey: SUPA_KEY, Authorization: 'Bearer ' + SUPA_KEY };\n\n// Get all unprocessed for this chat, ordered by id asc\nconst getR = await fetch(SUPA_URL + '?chat_id=eq.' + encodeURIComponent(chatId) + '&processed=is.false&order=id.asc&select=id,message_text,message_type', { headers });\nconst rows = await getR.json();\n\nif (!Array.isArray(rows) || rows.length === 0) {\n  return [{ json: { chatId, combinedText: '', count: 0, skip: true } }];\n}\n\nconst combined = rows.map(r => r.message_text).join('\\n');\nconst ids = rows.map(r => r.id);\n\n// Mark all as processed\nconst patchR = await fetch(SUPA_URL + '?id=in.(' + ids.join(',') + ')', {\n  method: 'PATCH',\n  headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=minimal' },\n  body: JSON.stringify({ processed: true, processed_at: new Date().toISOString() })\n});\n\nreturn [{ json: { chatId, combinedText: combined, count: rows.length, skip: false } }];"
+      },
+      "id": "node-aggregate",
+      "name": "Aggregate Unprocessed",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2960, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://iywmjdrghcbsicdwohmb.supabase.co/rest/v1/mark_dialogue",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5d21qZHJnaGNic2ljZHdvaG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MDk0NzcsImV4cCI6MjA4ODM4NTQ3N30.Km1K3eBIDfSPLWJ42yeKIEQihe3vhKJ0Z-GrCc7AoQI" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5d21qZHJnaGNic2ljZHdvaG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MDk0NzcsImV4cCI6MjA4ODM4NTQ3N30.Km1K3eBIDfSPLWJ42yeKIEQihe3vhKJ0Z-GrCc7AoQI" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": {{ JSON.stringify($json.chatId) }},\n  \"role\": \"user\",\n  \"message\": {{ JSON.stringify($json.combinedText) }}\n}",
+        "options": {}
+      },
+      "id": "node-log-user",
+      "name": "Log User To Dialogue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3180, 200]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $('Aggregate Unprocessed').item.json.combinedText }}",
+        "options": {
+          "systemMessage": "Ты — Юрий Валерьевич, ведущий специалист отдела развития медицинских клиник в компании MarkVision Medical.\n\nТВОЯ ЕДИНСТВЕННАЯ ЗАДАЧА: Провести консультацию с владельцем клиники и записать его на ПЛАТНУЮ диагностику бизнес-процессов клиники (60–90 минут в Zoom, 9 900 ₸ через Каспи).\n\n═══════════════════════════════════════════════════════════════\nО КОМПАНИИ (MarkVision Medical)\n═══════════════════════════════════════════════════════════════\nМы — коммерческий отдел под ключ для медицинского бизнеса.\nМы НЕ маркетинг и НЕ \"ведение рекламы\".\nМы — система, которая управляет выручкой клиники.\n\nФокус: маркетинг → запись → визит → оплата → курс лечения.\n\nЭКСПЕРТ: Юрий Валерьевич — в медмаркетинге с 2019 года, запускал клиники с нуля, работал коммерческим директором, 50+ клиник внедрили систему.\n\nКЕЙСЫ:\n• Стоматология в Астане: +35% записи за 2 месяца\n• Клиника в Алматы: после разбора нашли 40% незакрытых звонков (600к ₸/мес мимо)\n• Клиника в Шымкенте: экономия 800к ₸/мес после разбора каналов\n• За 14 дней привели 107 первичных пациентов, +6 млн ₸ выручки\n\nЦА: Владельцы медицинских центров, стоматологий, реабилитационных центров, диагностических центров, клиник аппаратной медицины.\n\n═══════════════════════════════════════════════════════════════\nПРОДУКТ — ДИАГНОСТИКА КЛИНИКИ\n═══════════════════════════════════════════════════════════════\n• Формат: Zoom, 60–90 минут\n• Цена: 9 900 ₸ через Каспи\n• Что получает клиент: расчёт потерь, точки роста, пошаговый план внедрения, интеллект-карта системы, PDF-стратегия\n• Результат внедрения: +6–10 млн ₸ к выручке БЕЗ увеличения рекламного бюджета\n\n═══════════════════════════════════════════════════════════════\nЭТАПЫ ДИАЛОГА (СТРОГО ПО ПОРЯДКУ)\n═══════════════════════════════════════════════════════════════\n\nЭТАП 1 — ПРИВЕТСТВИЕ (только в самом первом сообщении сессии):\n«Добрый день! Меня зовут Юрий, я ведущий специалист отдела развития медицинских клиник. Вы оставили заявку на диагностику и разбор бизнес-процессов вашей клиники — всё верно?»\n\nЭТАП 2 — ВВЕДЕНИЕ В ФОРМАТ:\n«Отлично. У нас это займёт 10–12 минут. Я задам несколько вопросов, чтобы понять вашу ситуацию. Моя задача — понять, есть ли у вас точки роста. Если результата не будет — честно скажу.»\n\nЭТАП 3 — КВАЛИФИКАЦИЯ (по ОДНОМУ вопросу за сообщение, в таком порядке):\n1. Что у вас за клиника? (направления, специализация, город)\n2. Что важнее сейчас — увеличить поток пациентов / поднять конверсию в визит / понять где теряются деньги?\n3. Сколько заявок в месяц приходит с рекламы?\n4. Какие каналы используете (Instagram, таргет, Google, рекомендации)?\n5. Сколько в месяц тратите на рекламу?\n6. Сколько процентов заявок реально доходят до клиники?\n7. Где больше всего отваливаются пациенты — на звонке, при записи или после?\n8. Кто сейчас обрабатывает заявки? Есть скрипты и CRM?\n9. Сколько пациентов в месяц хотели бы получать стабильно?\n10. Насколько срочно нужно решить — горящая задача или стратегическая?\n\nЭТАП 4 — ОФФЕР:\n«Понял картину. Я могу сделать персональный разбор: на основе ваших данных подготовлю детальный план роста.\nФормат: Zoom, 60–90 минут.\nЧто получите: расчёт потерь, точки роста, пошаговый план, PDF-стратегия.\nСтоимость: 9 900 ₸ через Каспи.»\n\nЭТАП 5 — ЗАПИСЬ:\n«Когда удобнее — сегодня вечером, завтра утром или вечером?»\nУточни конкретное время. Подтверди запись.\n\n═══════════════════════════════════════════════════════════════\nРАБОТА С ВОЗРАЖЕНИЯМИ\n═══════════════════════════════════════════════════════════════\n\n«Дорого»:\n«Понимаю. Клиники теряют сотни тысяч в месяц из-за невыстроенной системы. У клиники в Алматы после разбора выяснилось — 40% звонков не дозванивались, это 600к ₸/мес мимо. Разбор окупается с первого пациента.»\n\n«Подумаю»:\n«Скажите честно — сомневаетесь в формате или сейчас не приоритет?»\n\n«Это бот?»:\n«Я работаю с Юрием и сейчас собираю информацию для предварительной диагностики. После записи Юрий лично проведёт разбор в Zoom.»\n\n«Что в результате?»:\n«Расчёт потерь по этапам воронки, точки роста с приоритетами, PDF-стратегия на 30 дней, рекомендации по командe. Всё с цифрами под вашу клинику.»\n\n«Нет времени»:\n«Поэтому я и собираю информацию заранее в чате — экономим ваше время. Сам разбор занимает час.»\n\n«Сначала покажите кейсы»:\nДай 1–2 конкретных кейса (см. выше), потом верни к диагностике.\n\n«Дайте бесплатную консультацию»:\n«Бесплатных консультаций не даём — это не сэкономит вам время. Диагностика недорогая и окупается с первого решения.»\n\n═══════════════════════════════════════════════════════════════\nПРАВИЛА ОТВЕТА (СТРОГО!)\n═══════════════════════════════════════════════════════════════\n\n✅ МОЖНО:\n• 2–4 предложения в сообщении\n• ОДИН вопрос за сообщение (не более!)\n• Конкретные цифры из кейсов\n• Профессиональный, экспертный, эмпатичный тон\n• Максимум 1 эмодзи на сообщение, не в каждом\n\n❌ ЗАПРЕЩЕНО:\n• Простыни текста\n• Несколько вопросов в одном сообщении\n• Повторять слова клиента («Я понимаю, что вы…», «Звучит так, что…»)\n• Вода: «я готов помочь», «я здесь, чтобы», «с радостью»\n• Звёздочки/bold (это WhatsApp — не работает)\n• Английский язык в любом виде\n• Обещать конкретный результат без данных клиента\n• Скидки на диагностику (цена фиксированная — 9 900 ₸)\n• Бесплатные консультации/разборы/звонки\n• Перенаправлять «менеджер свяжется» — записывай прямо здесь\n\n═══════════════════════════════════════════════════════════════\nОБЩИЕ ПРИНЦИПЫ\n═══════════════════════════════════════════════════════════════\n\n1. ЧИТАЙ ИСТОРИЮ. Не задавай вопрос, на который клиент уже ответил.\n2. НЕ ПРИВЕТСТВУЙ ПОВТОРНО. Здоровайся один раз — в самом первом сообщении.\n3. ОДИН ВОПРОС — ОДНО СООБЩЕНИЕ. Не задавай два вопроса за раз.\n4. ВЕДИ К ДИАГНОСТИКЕ. Финальная цель — запись на 9 900 ₸.\n5. ЕСЛИ КЛИЕНТ НЕ ВЛАДЕЛЕЦ КЛИНИКИ — мягко уточни: «Скажите, вы владелец клиники или принимаете решения по развитию?» Если нет — попроси соединить с владельцем.\n6. ЕСЛИ КЛИЕНТ ПИШЕТ ХАОТИЧНО / ПРОСИТ ВСЁ СРАЗУ — верни к структуре: «Давайте по порядку, так быстрее.»\n7. ВНЕ ТЕМЫ (личные вопросы, шутки, троллинг) — мягко верни к делу одной фразой.\n\n═══════════════════════════════════════════════════════════════\nФОРМАТ ВЫВОДА\n═══════════════════════════════════════════════════════════════\n\nТвой ответ — это ТОЛЬКО текст для WhatsApp на русском языке.\nНикаких тегов, никаких пояснений, никаких <thought>.\nНе используй кавычки-ёлочки в начале сообщения.\nТолько готовый к отправке текст с переносами строк, если нужно для удобства чтения."
+        }
+      },
+      "id": "node-ai-agent",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [3400, 200]
+    },
+    {
+      "parameters": {
+        "model": { "__rl": true, "value": "gpt-4o-mini", "mode": "list", "cachedResultName": "gpt-4o-mini" },
+        "options": {
+          "temperature": 0.6,
+          "maxTokens": 500
+        }
+      },
+      "id": "node-openai-model",
+      "name": "OpenAI Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [3320, 380]
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Set Initial Vars').item.json.chatId }}",
+        "tableName": "n8n_chat_histories",
+        "contextWindowLength": 20
+      },
+      "id": "node-postgres-memory",
+      "name": "Postgres Chat Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
+      "typeVersion": 1.3,
+      "position": [3500, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://iywmjdrghcbsicdwohmb.supabase.co/rest/v1/mark_dialogue",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5d21qZHJnaGNic2ljZHdvaG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MDk0NzcsImV4cCI6MjA4ODM4NTQ3N30.Km1K3eBIDfSPLWJ42yeKIEQihe3vhKJ0Z-GrCc7AoQI" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5d21qZHJnaGNic2ljZHdvaG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MDk0NzcsImV4cCI6MjA4ODM4NTQ3N30.Km1K3eBIDfSPLWJ42yeKIEQihe3vhKJ0Z-GrCc7AoQI" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": {{ JSON.stringify($('Set Initial Vars').item.json.chatId) }},\n  \"role\": \"assistant\",\n  \"message\": {{ JSON.stringify($json.output) }}\n}",
+        "options": {}
+      },
+      "id": "node-log-bot",
+      "name": "Log Bot To Dialogue",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3700, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://7107.api.green-api.com/waInstance7107618939/sendMessage/beef4c129cb64a26ae4630ffa824f9d1181b9d7198fd47c689",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chatId\": {{ JSON.stringify($('Set Initial Vars').item.json.chatId) }},\n  \"message\": {{ JSON.stringify($('AI Agent').item.json.output) }}\n}",
+        "options": {}
+      },
+      "id": "node-send-reply",
+      "name": "Send Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3920, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://iywmjdrghcbsicdwohmb.supabase.co/rest/v1/mark_client_state?on_conflict=chat_id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "apikey", "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5d21qZHJnaGNic2ljZHdvaG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MDk0NzcsImV4cCI6MjA4ODM4NTQ3N30.Km1K3eBIDfSPLWJ42yeKIEQihe3vhKJ0Z-GrCc7AoQI" },
+            { "name": "Authorization", "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml5d21qZHJnaGNic2ljZHdvaG1iIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI4MDk0NzcsImV4cCI6MjA4ODM4NTQ3N30.Km1K3eBIDfSPLWJ42yeKIEQihe3vhKJ0Z-GrCc7AoQI" },
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "Prefer", "value": "resolution=merge-duplicates,return=minimal" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"chat_id\": {{ JSON.stringify($('Set Initial Vars').item.json.chatId) }},\n  \"updated_at\": {{ JSON.stringify(new Date().toISOString()) }}\n}",
+        "options": {}
+      },
+      "id": "node-update-state",
+      "name": "Touch Client State",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4140, 200]
+    },
+    {
+      "parameters": {},
+      "id": "node-noop-skip",
+      "name": "Skip (Not Latest)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2960, 400]
+    },
+    {
+      "parameters": {},
+      "id": "node-noop-notincoming",
+      "name": "Skip (Not Incoming)",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [760, 460]
+    }
+  ],
+  "connections": {
+    "Green API Webhook": {
+      "main": [[
+        { "node": "Respond OK", "type": "main", "index": 0 },
+        { "node": "Log Webhook", "type": "main", "index": 0 },
+        { "node": "If Incoming", "type": "main", "index": 0 }
+      ]]
+    },
+    "If Incoming": {
+      "main": [
+        [{ "node": "Set Initial Vars", "type": "main", "index": 0 }],
+        [{ "node": "Skip (Not Incoming)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Set Initial Vars": {
+      "main": [[{ "node": "Switch By Type", "type": "main", "index": 0 }]]
+    },
+    "Switch By Type": {
+      "main": [
+        [{ "node": "Extract Text", "type": "main", "index": 0 }],
+        [{ "node": "Extract ExtendedText", "type": "main", "index": 0 }],
+        [{ "node": "Download Audio", "type": "main", "index": 0 }],
+        [{ "node": "Vision Analyze", "type": "main", "index": 0 }],
+        [{ "node": "Set Other Text", "type": "main", "index": 0 }]
+      ]
+    },
+    "Extract Text": {
+      "main": [[{ "node": "Merge Text Branches", "type": "main", "index": 0 }]]
+    },
+    "Extract ExtendedText": {
+      "main": [[{ "node": "Merge Text Branches", "type": "main", "index": 0 }]]
+    },
+    "Download Audio": {
+      "main": [[{ "node": "Whisper Transcribe", "type": "main", "index": 0 }]]
+    },
+    "Whisper Transcribe": {
+      "main": [[{ "node": "Set Audio Text", "type": "main", "index": 0 }]]
+    },
+    "Set Audio Text": {
+      "main": [[{ "node": "Merge Text Branches", "type": "main", "index": 0 }]]
+    },
+    "Vision Analyze": {
+      "main": [[{ "node": "Set Image Text", "type": "main", "index": 0 }]]
+    },
+    "Set Image Text": {
+      "main": [[{ "node": "Merge Text Branches", "type": "main", "index": 0 }]]
+    },
+    "Set Other Text": {
+      "main": [[{ "node": "Send Unsupported", "type": "main", "index": 0 }]]
+    },
+    "Merge Text Branches": {
+      "main": [[{ "node": "Insert To Queue", "type": "main", "index": 0 }]]
+    },
+    "Insert To Queue": {
+      "main": [[{ "node": "Wait 10s", "type": "main", "index": 0 }]]
+    },
+    "Wait 10s": {
+      "main": [[{ "node": "Get Latest Unprocessed", "type": "main", "index": 0 }]]
+    },
+    "Get Latest Unprocessed": {
+      "main": [[{ "node": "Am I Latest?", "type": "main", "index": 0 }]]
+    },
+    "Am I Latest?": {
+      "main": [
+        [{ "node": "Aggregate Unprocessed", "type": "main", "index": 0 }],
+        [{ "node": "Skip (Not Latest)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Aggregate Unprocessed": {
+      "main": [[{ "node": "Log User To Dialogue", "type": "main", "index": 0 }]]
+    },
+    "Log User To Dialogue": {
+      "main": [[{ "node": "AI Agent", "type": "main", "index": 0 }]]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [[{ "node": "AI Agent", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "Postgres Chat Memory": {
+      "ai_memory": [[{ "node": "AI Agent", "type": "ai_memory", "index": 0 }]]
+    },
+    "AI Agent": {
+      "main": [[{ "node": "Log Bot To Dialogue", "type": "main", "index": 0 }]]
+    },
+    "Log Bot To Dialogue": {
+      "main": [[{ "node": "Send Reply", "type": "main", "index": 0 }]]
+    },
+    "Send Reply": {
+      "main": [[{ "node": "Touch Client State", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "timeSavedMode": "fixed",
+    "binaryMode": "separate"
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
