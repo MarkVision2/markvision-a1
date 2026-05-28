@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Session-start hook for Claude Code on the web.
-# Goal: make sure the project, the Playwright tooling and the playwright-skill
-# are ready to use the moment a new container spins up.
+# Goal: make sure the project, the Playwright tooling/skill and the video
+# pipeline (FFmpeg) are ready to use the moment a new container spins up.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
@@ -29,6 +29,18 @@ if command -v npx >/dev/null 2>&1; then
     log "ensuring chromium is installed (skip if network is restricted)"
     npx playwright install chromium >/dev/null 2>&1 || \
       log "chromium install skipped (network policy may block cdn.playwright.dev)"
+  fi
+fi
+
+# 4. Ensure FFmpeg is available for the video-pipeline skills; non-fatal if blocked.
+if ! command -v ffmpeg >/dev/null 2>&1; then
+  log "installing ffmpeg (skip if network/apt is restricted)"
+  if command -v apt-get >/dev/null 2>&1; then
+    (apt-get install -y ffmpeg >/dev/null 2>&1 || sudo apt-get install -y ffmpeg >/dev/null 2>&1) \
+      && log "ffmpeg installed" \
+      || log "ffmpeg install skipped (apt unavailable or network restricted)"
+  else
+    log "ffmpeg not found and apt-get unavailable; skipping"
   fi
 fi
 
