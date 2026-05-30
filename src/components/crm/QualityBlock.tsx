@@ -138,7 +138,7 @@ export function QualityBlock({ leads, weeks = 8, title = "Качество ли�
                       )}
                     </div>
                   </div>
-                  <div className="text-[9px] text-muted-foreground">{week.split("-W")[1]}</div>
+                  <div className="text-[9px] text-muted-foreground">{week.split("-W")[1] ?? week}</div>
                 </div>
               );
             })}

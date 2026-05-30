@@ -102,13 +102,13 @@ export default function ClientDashboard() {
           <KpiCard
             label="Записаны на диагностику"
             value={t.scheduled.toString()}
-            sub={`CR ${Math.round(t.conversion_scheduled * 100)}% от лидов`}
+            sub={`CR ${Math.round((t.conversion_scheduled ?? 0) * 100)}% от лидов`}
             tone="hot"
           />
           <KpiCard
             label="Оплатили"
             value={t.paid.toString()}
-            sub={`CR ${Math.round(t.conversion_paid * 100)}% от записанных`}
+            sub={`CR ${Math.round((t.conversion_paid ?? 0) * 100)}% от записанных`}
             tone="paid"
           />
           <KpiCard
@@ -117,7 +117,7 @@ export default function ClientDashboard() {
               ? `${Math.round(t.purchase_value).toLocaleString("ru-RU")} ${data.client?.currency || "$"}`
               : "—"
             }
-            sub={`Конв. в продажу: ${Math.round(t.conversion_total_to_paid * 100)}%`}
+            sub={`Конв. в продажу: ${Math.round((t.conversion_total_to_paid ?? 0) * 100)}%`}
             tone="paid"
           />
         </section>
@@ -187,7 +187,7 @@ export default function ClientDashboard() {
                         ))}
                       </div>
                     </div>
-                    <div className="text-[9px] text-muted-foreground">{week.split("-W")[1]}</div>
+                    <div className="text-[9px] text-muted-foreground">{week.split("-W")[1] ?? week}</div>
                   </div>
                 );
               })}

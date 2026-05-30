@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   PhoneCall, PhoneOutgoing, PhoneIncoming, PhoneMissed, ExternalLink, Search,
@@ -143,7 +143,7 @@ const CallsHistory = () => {
 
   const [visibleCount, setVisibleCount] = useState(200);
   // Reset pagination when filters change
-  useMemo(() => { setVisibleCount(200); }, [search, provider, status, leadFilter]);
+  useEffect(() => { setVisibleCount(200); }, [search, provider, status, leadFilter]);
   const visible = filtered.slice(0, visibleCount);
   const hasMore = filtered.length > visible.length;
 

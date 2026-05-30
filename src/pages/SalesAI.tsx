@@ -334,9 +334,9 @@ const SalesAI = () => {
                   icon={Sparkles}
                 >
                   <div className="space-y-2">
-                    {insights.map((it, idx) => (
+                    {insights.map((it) => (
                       <div
-                        key={idx}
+                        key={it.title}
                         className={cn(
                           "rounded-xl border p-3 text-xs",
                           it.tone === "destructive" && "border-destructive/40 bg-destructive/10",
@@ -474,9 +474,9 @@ const SalesAI = () => {
               icon={Sparkles}
             >
               <div className="space-y-2">
-                {insights.map((it, idx) => (
+                {insights.map((it) => (
                   <div
-                    key={idx}
+                    key={it.title}
                     className={cn(
                       "rounded-xl border p-3 text-sm",
                       it.tone === "destructive" && "border-destructive/40 bg-destructive/10",

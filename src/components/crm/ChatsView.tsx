@@ -301,7 +301,7 @@ export function ChatsView({
               <div className="flex flex-col gap-2 border-t border-border/60 px-3 py-2">
                 <div className="flex flex-wrap items-center gap-1.5">
                   {quickReplies.map((q, i) => (
-                    <span key={i} className="group inline-flex items-center gap-1 rounded-full border border-border/60 bg-secondary/60 pl-2.5 pr-1 py-0.5 text-[11px]">
+                    <span key={`${q}-${i}`} className="group inline-flex items-center gap-1 rounded-full border border-border/60 bg-secondary/60 pl-2.5 pr-1 py-0.5 text-[11px]">
                       <button onClick={() => setDraft(q)} className="max-w-[180px] truncate text-left">
                         {q}
                       </button>
