@@ -12,20 +12,21 @@ src/                          — фронтенд MarkVision (Vite SPA)
 supabase/                     — миграции и edge functions (deploy через CI)
 tests/                        — unit + e2e (vitest + playwright)
 scripts/                      — служебные скрипты
-markvision-finance-export/    — снапшот *отдельного* продукта MarkVision Finance
-                                (Telegram-бот → n8n → Supabase).
-                                Целевой репозиторий: markvision-ai/markvision-finance
 .github/workflows/            — CI (typecheck + tests + lint),
                                 Supabase auto-deploy
 ```
 
+> **Personal Finance Hub** — отдельный продукт, живёт в своём репозитории
+> (Lovable.dev → подключён к собственному GitHub-репо). Этот репозиторий
+> к нему отношения не имеет. БД у Finance Hub своя
+> (`lsgwjiwzaillykuqegxb`), n8n workflows крутятся на `n8n.zapoinov.com`.
+
 ## Supabase-проекты
 
-| Назначение | URL/Ref | Используется в |
-|------------|---------|----------------|
+| Назначение | Ref | Используется в |
+|------------|-----|----------------|
 | Основная БД MarkVision | `mekwfbqmsqiborjdrjxc` | `src/integrations/supabase/client.ts` |
 | Клиентский портал | `szfgdruhlebfvcmlvxdk` | `src/integrations/clientConfig/client.ts` |
-| MarkVision Finance (бот) | `lsgwjiwzaillykuqegxb` | `markvision-finance-export/` + n8n |
 
 ## Запуск локально
 
