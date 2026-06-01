@@ -10,6 +10,7 @@ import type { Lead, LeadStage, LeadChannel } from "@/types/crm";
 import type { TeamMember } from "@/hooks/useTeamStore";
 import { InlineEdit } from "./InlineEdit";
 import { LeadAttribution } from "./LeadAttribution";
+import { LeadOrganicSource } from "./LeadOrganicSource";
 
 interface Props {
   lead: Lead;
@@ -131,6 +132,9 @@ export function LeadHeader({
 
       {/* Откуда пришёл лид (конкретный креатив Meta) */}
       <LeadAttribution lead={lead} />
+
+      {/* Источник из органического контента (Reel + код-слово) */}
+      <LeadOrganicSource lead={lead} />
 
       {/* Атрибуция и UTM */}
       <UtmStrip lead={lead} />

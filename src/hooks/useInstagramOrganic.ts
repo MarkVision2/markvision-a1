@@ -32,6 +32,7 @@ export interface CodewordStat {
   reelUrl: string | null;
   thumbnailUrl: string | null;
   targetUrl: string | null;
+  igAccountId: string | null;
   active: boolean;
   codewordDms: number;
   uniqueUsers: number;
@@ -153,7 +154,7 @@ export function useCodewordStats() {
       const { data, error } = await supabase
         .from("instagram_codeword_stats")
         .select(
-          "codeword_id, codeword, short_id, reel_url, thumbnail_url, target_url, active, codeword_dms, unique_users, link_clicks, leads, sales, revenue, last_event_at",
+          "codeword_id, codeword, short_id, reel_url, thumbnail_url, target_url, ig_account_id, active, codeword_dms, unique_users, link_clicks, leads, sales, revenue, last_event_at",
         )
         .eq("project_id", projectId);
       if (cancelled) return;
@@ -168,6 +169,7 @@ export function useCodewordStats() {
             reelUrl: (r.reel_url as string | null) ?? null,
             thumbnailUrl: (r.thumbnail_url as string | null) ?? null,
             targetUrl: (r.target_url as string | null) ?? null,
+            igAccountId: (r.ig_account_id as string | null) ?? null,
             active: !!r.active,
             codewordDms: Number(r.codeword_dms ?? 0),
             uniqueUsers: Number(r.unique_users ?? 0),
@@ -198,6 +200,7 @@ export interface InstagramCodeword {
   caption: string | null;
   publishedAt: string | null;
   targetUrl: string | null;
+  igAccountId: string | null;
   active: boolean;
 }
 
@@ -235,6 +238,7 @@ export function useInstagramCodewords() {
           caption: (r.caption as string | null) ?? null,
           publishedAt: (r.published_at as string | null) ?? null,
           targetUrl: (r.target_url as string | null) ?? null,
+          igAccountId: (r.ig_account_id as string | null) ?? null,
           active: !!r.active,
         })),
       );
@@ -254,6 +258,7 @@ export function useInstagramCodewords() {
       caption: input.caption,
       published_at: input.publishedAt,
       target_url: input.targetUrl,
+      ig_account_id: input.igAccountId,
       active: input.active,
     });
     if (error) throw error;
@@ -268,6 +273,7 @@ export function useInstagramCodewords() {
     if (patch.caption !== undefined) payload.caption = patch.caption;
     if (patch.publishedAt !== undefined) payload.published_at = patch.publishedAt;
     if (patch.targetUrl !== undefined) payload.target_url = patch.targetUrl;
+    if (patch.igAccountId !== undefined) payload.ig_account_id = patch.igAccountId;
     if (patch.active !== undefined) payload.active = patch.active;
     const { error } = await supabase.from("instagram_codewords").update(payload as never).eq("id", id);
     if (error) throw error;

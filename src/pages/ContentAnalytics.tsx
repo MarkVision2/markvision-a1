@@ -38,6 +38,13 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPicker";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
@@ -49,6 +56,7 @@ import {
   type CodewordStat,
   type InstagramOrganicEvent,
 } from "@/hooks/useInstagramOrganic";
+import { useInstagramAccounts, type InstagramAccount } from "@/hooks/useInstagramAccounts";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { cn } from "@/lib/utils";
 
@@ -99,16 +107,19 @@ const KpiCard = ({ icon: Icon, label, value, hint, tone = "default" }: KpiCardPr
 );
 
 interface AddCodewordDialogProps {
+  accounts: InstagramAccount[];
+  defaultAccountId: string | null;
   onAdd: (input: {
     codeword: string;
     reelUrl: string | null;
     targetUrl: string | null;
     thumbnailUrl: string | null;
     caption: string | null;
+    igAccountId: string | null;
   }) => Promise<void>;
 }
 
-const AddCodewordDialog = ({ onAdd }: AddCodewordDialogProps) => {
+const AddCodewordDialog = ({ accounts, defaultAccountId, onAdd }: AddCodewordDialogProps) => {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [codeword, setCodeword] = useState("");
@@ -116,9 +127,11 @@ const AddCodewordDialog = ({ onAdd }: AddCodewordDialogProps) => {
   const [targetUrl, setTargetUrl] = useState("");
   const [thumbnailUrl, setThumbnailUrl] = useState("");
   const [caption, setCaption] = useState("");
+  const [accountId, setAccountId] = useState<string>(defaultAccountId ?? "none");
 
   const reset = () => {
     setCodeword(""); setReelUrl(""); setTargetUrl(""); setThumbnailUrl(""); setCaption("");
+    setAccountId(defaultAccountId ?? "none");
   };
 
   const submit = async () => {
@@ -135,6 +148,7 @@ const AddCodewordDialog = ({ onAdd }: AddCodewordDialogProps) => {
         targetUrl: targetUrl.trim() || null,
         thumbnailUrl: thumbnailUrl.trim() || null,
         caption: caption.trim() || null,
+        igAccountId: accountId === "none" ? null : accountId,
       });
       toast.success(`Код-слово «${word}» добавлено`);
       reset();
@@ -164,6 +178,21 @@ const AddCodewordDialog = ({ onAdd }: AddCodewordDialogProps) => {
             <Input value={codeword} onChange={(e) => setCodeword(e.target.value)} placeholder="smile" autoFocus />
             <p className="text-[11px] text-muted-foreground">Регистр не важен — приведём к нижнему.</p>
           </div>
+          {accounts.length > 0 && (
+            <div className="space-y-1.5">
+              <Label>Instagram аккаунт</Label>
+              <Select value={accountId} onValueChange={setAccountId}>
+                <SelectTrigger><SelectValue placeholder="Не привязан" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Не привязан (общий для проекта)</SelectItem>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>@{a.handle}{a.displayName ? ` · ${a.displayName}` : ""}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">Привязка нужна, чтобы фильтровать аналитику по аккаунту.</p>
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label>Ссылка на Reel</Label>
             <Input value={reelUrl} onChange={(e) => setReelUrl(e.target.value)} placeholder="https://instagram.com/reel/..." />
@@ -403,11 +432,34 @@ const ContentAnalytics = () => {
   const [sortKey, setSortKey] = useState<SortKey>("revenue");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [drawer, setDrawer] = useState<CodewordStat | null>(null);
+  const [accountFilter, setAccountFilter] = useState<string>("all");
 
   const { activeId: projectId } = useProjectsStore();
-  const { events, funnel, loading: eventsLoading } = useInstagramOrganic(range);
-  const { stats, loading: statsLoading } = useCodewordStats();
+  const { events, funnel: eventsFunnel, loading: eventsLoading } = useInstagramOrganic(range);
+  const { stats: rawStats, loading: statsLoading } = useCodewordStats();
+  const { items: accounts } = useInstagramAccounts();
   const { add, update, remove } = useInstagramCodewords();
+
+  const stats = useMemo(() => {
+    if (accountFilter === "all") return rawStats;
+    if (accountFilter === "unbound") return rawStats.filter((s) => !s.igAccountId);
+    return rawStats.filter((s) => s.igAccountId === accountFilter);
+  }, [rawStats, accountFilter]);
+
+  const filteredEvents = useMemo(() => {
+    if (accountFilter === "all") return events;
+    const allowed = new Set(stats.map((s) => s.codewordId));
+    return events.filter((e) => (e.codewordId ? allowed.has(e.codewordId) : false));
+  }, [events, stats, accountFilter]);
+
+  const funnel = useMemo(() => {
+    if (accountFilter === "all") return eventsFunnel;
+    const dms = filteredEvents.filter((e) => e.eventType === "codeword_dm");
+    const clicks = filteredEvents.filter((e) => e.eventType === "link_click");
+    const leads = filteredEvents.filter((e) => e.eventType === "lead");
+    const uniqueUsers = new Set(dms.map((e) => e.username || e.contact || e.id)).size;
+    return { codewordDms: dms.length, uniqueUsers, linkClicks: clicks.length, leads: leads.length };
+  }, [eventsFunnel, filteredEvents, accountFilter]);
 
   const totals = useMemo(() => {
     const sales = stats.reduce((s, x) => s + x.sales, 0);
@@ -421,7 +473,7 @@ const ContentAnalytics = () => {
     };
   }, [funnel, stats]);
 
-  const trend = useMemo(() => buildTrend(events, range), [events, range]);
+  const trend = useMemo(() => buildTrend(filteredEvents, range), [filteredEvents, range]);
 
   const sortedStats = useMemo(() => {
     const arr = [...stats];
@@ -443,7 +495,7 @@ const ContentAnalytics = () => {
     else { setSortKey(k); setSortDir("desc"); }
   };
 
-  const handleAdd = async (input: { codeword: string; reelUrl: string | null; targetUrl: string | null; thumbnailUrl: string | null; caption: string | null }) => {
+  const handleAdd = async (input: { codeword: string; reelUrl: string | null; targetUrl: string | null; thumbnailUrl: string | null; caption: string | null; igAccountId: string | null }) => {
     await add({
       codeword: input.codeword,
       reelId: null,
@@ -452,6 +504,7 @@ const ContentAnalytics = () => {
       caption: input.caption,
       publishedAt: null,
       targetUrl: input.targetUrl,
+      igAccountId: input.igAccountId ?? (accountFilter !== "all" && accountFilter !== "unbound" ? accountFilter : null),
       active: true,
     });
   };
@@ -487,9 +540,25 @@ const ContentAnalytics = () => {
         title="Контент-аналитика"
         description="Сквозная воронка органического контента: код-слово под Reels → DM → клик по ссылке → лид в CRM → продажа."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {accounts.length > 0 && (
+              <Select value={accountFilter} onValueChange={setAccountFilter}>
+                <SelectTrigger className="h-9 w-[200px]"><SelectValue placeholder="Все аккаунты" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все аккаунты</SelectItem>
+                  {accounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>@{a.handle}</SelectItem>
+                  ))}
+                  <SelectItem value="unbound">Без привязки</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
             <PeriodPicker range={range} onChange={setRange} />
-            <AddCodewordDialog onAdd={handleAdd} />
+            <AddCodewordDialog
+              accounts={accounts}
+              defaultAccountId={accountFilter !== "all" && accountFilter !== "unbound" ? accountFilter : null}
+              onAdd={handleAdd}
+            />
           </div>
         }
       />
