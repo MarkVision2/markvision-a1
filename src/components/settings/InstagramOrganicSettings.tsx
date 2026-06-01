@@ -17,9 +17,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useInstagramCodewords, type InstagramCodeword } from "@/hooks/useInstagramOrganic";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { IG_ORGANIC_INTAKE_URL, igOrganicBotLink } from "@/lib/igOrganicLinks";
 
-const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? "";
-const INTAKE_ENDPOINT = `${SUPABASE_URL}/functions/v1/instagram-organic-intake`;
 
 interface DraftCodeword {
   codeword: string;
@@ -93,7 +92,7 @@ export function InstagramOrganicSettings() {
   };
 
   const copyEndpoint = () => {
-    void navigator.clipboard.writeText(INTAKE_ENDPOINT);
+    void navigator.clipboard.writeText(IG_ORGANIC_INTAKE_URL);
     toast.success("URL скопирован");
   };
 
@@ -263,7 +262,7 @@ export function InstagramOrganicSettings() {
           Настройте автоматизацию: при получении DM с код-словом — отправлять POST на этот URL. То же самое для клика по ссылке и появления заявки.
         </p>
         <div className="mb-4 flex items-center gap-2">
-          <Input value={INTAKE_ENDPOINT} readOnly className="font-mono text-xs" />
+          <Input value={IG_ORGANIC_INTAKE_URL} readOnly className="font-mono text-xs" />
           <Button variant="outline" size="icon" onClick={copyEndpoint} aria-label="Скопировать">
             <Copy className="h-4 w-4" />
           </Button>

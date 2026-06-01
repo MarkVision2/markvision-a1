@@ -70,11 +70,11 @@ async function resolveProjectId(req: Request, body: IntakePayload): Promise<stri
   const headerToken = req.headers.get("x-intake-token") || body.token || null;
   if (!headerToken) return null;
   const { data } = await admin
-    .from("project_intake_tokens")
-    .select("project_id")
-    .eq("token", headerToken)
+    .from("projects")
+    .select("id")
+    .eq("intake_token", headerToken)
     .maybeSingle();
-  const tokenProject = (data as { project_id?: string } | null)?.project_id ?? null;
+  const tokenProject = (data as { id?: string } | null)?.id ?? null;
   if (!tokenProject) return null;
   // If body also provides project_id, it must match the token's project.
   if (body.project_id && body.project_id !== tokenProject) return null;
@@ -85,11 +85,11 @@ async function resolveCodeword(projectId: string, codeword: string | null) {
   if (!codeword) return null;
   const { data } = await admin
     .from("instagram_codewords")
-    .select("id, reel_id, reel_url, target_url")
+    .select("id, reel_id, reel_url, target_url, short_id")
     .eq("project_id", projectId)
     .eq("codeword", codeword)
     .maybeSingle();
-  return data as { id: string; reel_id: string | null; reel_url: string | null; target_url: string | null } | null;
+  return data as { id: string; reel_id: string | null; reel_url: string | null; target_url: string | null; short_id: string | null } | null;
 }
 
 async function parseBody(req: Request): Promise<Record<string, unknown>> {
@@ -160,10 +160,14 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "Internal server error" }, 500);
   }
 
+  const base = SUPABASE_URL.replace(/\/$/, "");
+  const shortId = (codewordRow as { short_id?: string } | null)?.short_id ?? null;
   return json({
     ok: true,
     event_id: (data as { id: string }).id,
     codeword_id: codewordRow?.id ?? null,
     target_url: codewordRow?.target_url ?? null,
+    short_id: shortId,
+    redirect_url: shortId ? `${base}/functions/v1/ig-organic-redirect?c=${encodeURIComponent(shortId)}` : null,
   });
 });
