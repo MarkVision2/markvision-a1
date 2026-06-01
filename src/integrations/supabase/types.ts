@@ -2504,6 +2504,55 @@ export type Database = {
         }
         Relationships: []
       }
+      project_members: {
+        Row: {
+          created_at: string
+          id: string
+          project_id: string
+          role: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          project_id: string
+          role?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          project_id?: string
+          role?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "project_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           created_at: string
@@ -2899,6 +2948,7 @@ export type Database = {
           project_id: string | null
           updated_at: string
           user_id: string
+          webhook_token: string | null
           webhook_url: string | null
         }
         Insert: {
@@ -2914,6 +2964,7 @@ export type Database = {
           project_id?: string | null
           updated_at?: string
           user_id: string
+          webhook_token?: string | null
           webhook_url?: string | null
         }
         Update: {
@@ -2929,6 +2980,7 @@ export type Database = {
           project_id?: string | null
           updated_at?: string
           user_id?: string
+          webhook_token?: string | null
           webhook_url?: string | null
         }
         Relationships: [
