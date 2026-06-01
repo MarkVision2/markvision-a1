@@ -173,7 +173,7 @@ export function CreativePreview({ row, compact = false, playable = false, classN
         )
       )}
       {!compact && row.effectiveStatus && row.effectiveStatus !== "ACTIVE" && (
-        <span className="absolute right-2 top-2 rounded-md bg-warning/80 px-1.5 py-0.5 text-[10px] font-bold uppercase text-warning-foreground">
+        <span className="absolute right-2 top-2 z-10 rounded-md bg-warning/80 px-1.5 py-0.5 text-[10px] font-bold uppercase text-warning-foreground shadow-sm">
           {row.effectiveStatus}
         </span>
       )}

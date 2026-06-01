@@ -136,7 +136,7 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
         {/* Status chip */}
         <span
           className={cn(
-            "absolute left-2 top-2 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase backdrop-blur",
+            "absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase shadow-sm backdrop-blur",
             isActive ? "bg-success/85 text-success-foreground" : "bg-muted/85 text-muted-foreground",
           )}
         >

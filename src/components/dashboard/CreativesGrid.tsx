@@ -100,16 +100,27 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
             void refreshVideoPreview();
           }}
         />
-      ) : src ? (
+      ) : src && !mediaError ? (
         <img
           src={src}
-          alt={row.name}
+          alt=""
           className={cn(
             "h-full w-full transition duration-300 group-hover:scale-[1.01]",
             isVideo ? "object-cover" : "object-cover",
           )}
           loading="lazy"
           referrerPolicy="no-referrer"
+          onError={() => {
+            setMediaError(true);
+            if (row.adId) {
+              void refreshMetaCreative(row.adId).then((data) => {
+                if (data?.thumbnail_url) {
+                  setRefreshedThumb(data.thumbnail_url);
+                  setMediaError(false);
+                }
+              });
+            }
+          }}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
