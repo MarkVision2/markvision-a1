@@ -3141,6 +3141,24 @@ export type Database = {
           },
         ]
       }
+      crm_stats_health: {
+        Row: {
+          cabinet_id: string | null
+          cdi_crm_revenue: number | null
+          cdi_crm_sales: number | null
+          cdi_manual_revenue: number | null
+          cdi_manual_sales: number | null
+          crm_paid_amount: number | null
+          crm_paid_leads: number | null
+          date: string | null
+          has_manual_override: boolean | null
+          is_orphan: boolean | null
+          project_id: string | null
+          revenue_delta: number | null
+          sales_delta: number | null
+        }
+        Relationships: []
+      }
       inbound_tokens: {
         Row: {
           client_id: string | null
@@ -3295,6 +3313,8 @@ export type Database = {
         Row: {
           ad_id: string | null
           cabinet_id: string | null
+          crm_diagnostic_revenue: number | null
+          crm_diagnostics: number | null
           crm_leads: number | null
           crm_qualified: number | null
           crm_revenue: number | null
@@ -3461,6 +3481,10 @@ export type Database = {
         Returns: Json
       }
       normalize_phone: { Args: { p: string }; Returns: string }
+      reconcile_cdi_for_project: {
+        Args: { p_project_id: string; p_since?: string }
+        Returns: Json
+      }
       resolve_intake_project: { Args: { p_token: string }; Returns: string }
       rotate_project_intake_token: {
         Args: { p_project_id: string }
