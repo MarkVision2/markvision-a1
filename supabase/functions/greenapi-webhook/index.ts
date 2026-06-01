@@ -456,11 +456,22 @@ Deno.serve(async (req) => {
 
   const instanceData = body.instanceData as { idInstance?: number } | undefined;
   const type = body.typeWebhook as string | undefined;
-  // Resolve project from the Green API instance id. The same webhook URL
-  // serves every project's instance — we route based on which one pinged us.
-  // No env-based filter: multi-instance routing relies entirely on the
-  // whatsapp_config.id_instance binding.
-  const projectId = await projectFromInstance(instanceData?.idInstance);
+  // Anti-spoof: Green API can append a configurable token to the webhook URL
+  // (?token=...) or send it in the body as `webhookUrlToken`. We compare it to
+  // the token stored per-instance in whatsapp_config.webhook_token (or to the
+  // global GREENAPI_WEBHOOK_TOKEN env). If the instance has a token configured
+  // and the presented one doesn't match — reject. Otherwise (no token set) we
+  // stay backwards-compatible and accept the call.
+  const url = new URL(req.url);
+  const presentedToken =
+    url.searchParams.get("token") ??
+    (typeof body.webhookUrlToken === "string" ? (body.webhookUrlToken as string) : null);
+  const resolved = await projectFromInstance(instanceData?.idInstance, presentedToken);
+  if (!resolved.ok) {
+    console.warn("greenapi-webhook: invalid webhook token", { idInstance: instanceData?.idInstance });
+    return json({ error: "invalid webhook token" }, 401);
+  }
+  const projectId = resolved.projectId;
 
   try {
     const idMessage = (body.idMessage as string | undefined) ?? null;
