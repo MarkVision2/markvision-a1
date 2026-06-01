@@ -134,15 +134,28 @@ async function getDefaultStage(
   return tryPipe(d4?.id);
 }
 
-// Resolve which project a webhook belongs to via whatsapp_config.id_instance.
-async function projectFromInstance(idInstance: number | string | null | undefined): Promise<string | null> {
-  if (!idInstance) return null;
+// Resolve which project a webhook belongs to via whatsapp_config.id_instance,
+// and verify the per-instance webhook_token if one is configured.
+// Returns { projectId, ok }. ok=false → reject (token mismatch / spoof attempt).
+async function projectFromInstance(
+  idInstance: number | string | null | undefined,
+  presentedToken: string | null,
+): Promise<{ projectId: string | null; ok: boolean }> {
+  if (!idInstance) return { projectId: null, ok: true };
   const { data } = await admin
     .from("whatsapp_config")
-    .select("project_id")
+    .select("project_id, webhook_token")
     .eq("id_instance", String(idInstance))
     .maybeSingle();
-  return data?.project_id ?? null;
+  if (!data) return { projectId: null, ok: true };
+  const expected = (data as { webhook_token?: string | null }).webhook_token ?? null;
+  // Global fallback: if no per-row token but GREENAPI_WEBHOOK_TOKEN env is set, require it.
+  const envToken = Deno.env.get("GREENAPI_WEBHOOK_TOKEN") ?? null;
+  const required = expected || envToken;
+  if (required && required !== presentedToken) {
+    return { projectId: data.project_id ?? null, ok: false };
+  }
+  return { projectId: data.project_id ?? null, ok: true };
 }
 
 // Best-effort parser of Meta CTWA (Click-To-WhatsApp) referral payload.
