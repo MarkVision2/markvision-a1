@@ -55,7 +55,12 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
     setPreviewVideoUrl(row.videoUrl);
     setRefreshedThumb(null);
     setCapturedPoster(null);
+    setMediaError(false);
   }, [row.id, row.videoUrl]);
+
+  useEffect(() => {
+    setMediaError(false);
+  }, [src]);
 
   useEffect(() => {
     if (!isVideo || !row.adId || row.posterUrl || capturedPoster) return;
@@ -100,27 +105,16 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
             void refreshVideoPreview();
           }}
         />
-      ) : src && !mediaError ? (
+      ) : src ? (
         <img
           src={src}
-          alt=""
+          alt={row.name}
           className={cn(
             "h-full w-full transition duration-300 group-hover:scale-[1.01]",
             isVideo ? "object-cover" : "object-cover",
           )}
           loading="lazy"
           referrerPolicy="no-referrer"
-          onError={() => {
-            setMediaError(true);
-            if (row.adId) {
-              void refreshMetaCreative(row.adId).then((data) => {
-                if (data?.thumbnail_url) {
-                  setRefreshedThumb(data.thumbnail_url);
-                  setMediaError(false);
-                }
-              });
-            }
-          }}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center">

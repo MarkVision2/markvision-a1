@@ -122,14 +122,19 @@ export function CreativePreview({ row, compact = false, playable = false, classN
             void refreshVideoPreview();
           }}
         />
-      ) : src ? (
+      ) : src && !mediaError ? (
         <img
           src={src}
-          alt={row.name ?? ""}
+          alt=""
           className="h-full w-full object-cover"
           loading="lazy"
           referrerPolicy="no-referrer"
-          onError={() => void refreshVideoPreview()}
+          onError={() => {
+            setMediaError(true);
+            void refreshVideoPreview().then((url) => {
+              if (url) setMediaError(false);
+            });
+          }}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
@@ -173,7 +178,7 @@ export function CreativePreview({ row, compact = false, playable = false, classN
         )
       )}
       {!compact && row.effectiveStatus && row.effectiveStatus !== "ACTIVE" && (
-        <span className="absolute right-2 top-2 z-10 rounded-md bg-warning/80 px-1.5 py-0.5 text-[10px] font-bold uppercase text-warning-foreground shadow-sm">
+        <span className="absolute right-2 top-2 rounded-md bg-warning/80 px-1.5 py-0.5 text-[10px] font-bold uppercase text-warning-foreground">
           {row.effectiveStatus}
         </span>
       )}
