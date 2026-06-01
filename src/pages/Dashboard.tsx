@@ -84,8 +84,7 @@ const Dashboard = () => {
     useDashboardData("all", range, comparing);
   const { stats: codewordStats } = useCodewordStats();
   const crmFlow = useCrmFlow(range);
-  const { rows: metaCreatives } = useMetaCreatives(range);
-  const { rows: metaCampaigns } = useMetaCampaigns(range);
+  const { creatives: metaCreatives, campaigns: metaCampaigns } = useMetaDashboard(range);
   const { leads: liteLeads } = useLeadsLite();
   const periodLeads = useMemo(() => {
     const fromTs = range.from.getTime();
