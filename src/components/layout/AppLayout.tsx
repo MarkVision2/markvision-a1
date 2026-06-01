@@ -1,9 +1,11 @@
-import { Bell, Sparkles } from "lucide-react";
+import { Bell } from "lucide-react";
 import {
   SidebarInset,
   SidebarProvider,
+  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import AppSidebar from "./AppSidebar";
+import { MobileBottomNav } from "./MobileBottomNav";
 import { TaskReminderToast } from "@/components/crm/TaskReminderToast";
 
 interface AppLayoutProps {
@@ -13,35 +15,37 @@ interface AppLayoutProps {
 const AppLayout = ({ children }: AppLayoutProps) => {
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full">
+      <div className="flex min-h-svh w-full">
         <AppSidebar />
         <SidebarInset className="flex min-w-0 flex-1 flex-col bg-background">
-          <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-border/60 bg-background/70 px-3 backdrop-blur-xl sm:px-6">
-            <div className="relative mx-auto w-full max-w-2xl">
-              <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
-              <input
-                placeholder="Спросите ИИ… (скоро)"
-                disabled
-                title="AI-поиск появится в следующих обновлениях"
-                className="h-10 w-full cursor-not-allowed rounded-full border border-border/60 bg-secondary/30 pl-10 pr-14 text-sm outline-none placeholder:text-muted-foreground/60"
-              />
-              <span className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md border border-border bg-background px-2 py-0.5 text-[10px] font-mono text-muted-foreground">
-                ⌘K
-              </span>
+          <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-2 border-b border-border/60 bg-background/70 px-3 pt-[env(safe-area-inset-top)] backdrop-blur-xl sm:gap-3 sm:px-6">
+            <SidebarTrigger className="h-10 w-10 shrink-0 md:hidden" />
+            <div className="hidden min-w-0 flex-1 sm:block">
+              <div className="relative mx-auto w-full max-w-2xl">
+                <input
+                  placeholder="Спросите ИИ… (скоро)"
+                  disabled
+                  title="AI-поиск появится в следующих обновлениях"
+                  className="h-10 w-full cursor-not-allowed rounded-full border border-border/60 bg-secondary/30 px-4 text-sm outline-none placeholder:text-muted-foreground/60"
+                />
+              </div>
             </div>
-            <button
-              type="button"
-              aria-label="Уведомления"
-              className="grid h-9 w-9 place-items-center rounded-full hover:bg-secondary"
-            >
-              <Bell className="h-4 w-4" />
-            </button>
+            <div className="ml-auto flex items-center gap-1 sm:ml-0">
+              <button
+                type="button"
+                aria-label="Уведомления"
+                className="grid h-10 w-10 place-items-center rounded-full hover:bg-secondary"
+              >
+                <Bell className="h-4 w-4" />
+              </button>
+            </div>
           </header>
-          <main className="min-w-0 flex-1 overflow-x-hidden">{children}</main>
+          <main className="min-w-0 flex-1 overflow-x-hidden pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
+            {children}
+          </main>
         </SidebarInset>
       </div>
-      {/* Глобальный тостер напоминаний о задачах — единственный источник правды,
-          dismissed-состояние трекается в localStorage, чтобы не всплывало повторно. */}
+      <MobileBottomNav />
       <TaskReminderToast />
     </SidebarProvider>
   );

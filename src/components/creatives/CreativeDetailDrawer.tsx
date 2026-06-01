@@ -155,7 +155,7 @@ export function CreativeDetailDrawer({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto p-0 sm:max-w-[860px]">
+      <SheetContent side="right" className="h-[100dvh] w-full overflow-y-auto p-0 pb-[env(safe-area-inset-bottom)] sm:max-h-screen sm:max-w-[860px]">
         <SheetHeader className="sr-only">
           <SheetTitle>{row.name || "Креатив"}</SheetTitle>
         </SheetHeader>
@@ -340,7 +340,7 @@ export function CreativeDetailDrawer({
                 return (
                   <div
                     key={s.stage_id}
-                    className="grid grid-cols-[130px_1fr_56px_56px] items-center gap-2 text-xs"
+                    className="grid grid-cols-[minmax(72px,1fr)_2fr_auto] items-center gap-2 text-xs sm:grid-cols-[130px_1fr_56px_56px]"
                   >
                     <div className="truncate text-muted-foreground" title={s.title}>
                       {s.title}
@@ -361,7 +361,7 @@ export function CreativeDetailDrawer({
                       />
                     </div>
                     <div className="text-right font-bold tabular-nums">{fmtNum(s.count)}</div>
-                    <div className="text-right text-[10px] text-muted-foreground tabular-nums">
+                    <div className="hidden text-right text-[10px] text-muted-foreground tabular-nums sm:block">
                       {s.fromPrev != null && !s.isFirst ? fmtPct(s.fromPrev) : ""}
                     </div>
                   </div>

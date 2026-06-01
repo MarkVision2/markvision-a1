@@ -140,4 +140,15 @@
   .shadow-elevated {
     box-shadow: var(--shadow-elevated);
   }
+  .min-h-svh {
+    min-height: 100svh;
+    min-height: 100dvh;
+  }
+  .h-svh {
+    height: 100svh;
+    height: 100dvh;
+  }
+  .touch-pan-x {
+    touch-action: pan-x;
+  }
 }

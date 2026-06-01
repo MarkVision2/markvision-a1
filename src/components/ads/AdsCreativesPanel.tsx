@@ -191,8 +191,8 @@ export function AdsCreativesPanel() {
           </select>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="relative">
+        <div className={cn("flex items-center gap-2", !filtersOpen && "hidden md:flex")}>
+          <div className="relative min-w-0 flex-1 md:flex-none">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={query}
@@ -236,7 +236,7 @@ export function AdsCreativesPanel() {
 
       {/* Grid */}
       {filtered.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
           {filtered.map(({ row, isWhatsApp }) => (
             <CreativeCard
               key={row.id}

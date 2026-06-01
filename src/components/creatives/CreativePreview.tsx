@@ -122,14 +122,19 @@ export function CreativePreview({ row, compact = false, playable = false, classN
             void refreshVideoPreview();
           }}
         />
-      ) : src ? (
+      ) : src && !mediaError ? (
         <img
           src={src}
-          alt={row.name ?? ""}
+          alt=""
           className="h-full w-full object-cover"
           loading="lazy"
           referrerPolicy="no-referrer"
-          onError={() => void refreshVideoPreview()}
+          onError={() => {
+            setMediaError(true);
+            void refreshVideoPreview().then((url) => {
+              if (url) setMediaError(false);
+            });
+          }}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
@@ -180,7 +185,7 @@ export function CreativePreview({ row, compact = false, playable = false, classN
 
       {playable && isVideo && (
         <Dialog open={playerOpen} onOpenChange={setPlayerOpen}>
-          <DialogContent className="max-w-[min(420px,95vw)] border-0 bg-black p-0 sm:max-w-[420px]">
+          <DialogContent className="max-h-[100dvh] max-w-[100vw] border-0 bg-black p-0 sm:max-w-[min(420px,95vw)]">
             <DialogTitle className="sr-only">{row.name ?? "Видео из Meta"}</DialogTitle>
             {previewVideoUrl ? (
               <video
@@ -189,7 +194,7 @@ export function CreativePreview({ row, compact = false, playable = false, classN
                 controls
                 autoPlay
                 playsInline
-                className="aspect-[9/16] h-auto max-h-[85vh] w-full bg-black"
+                className="aspect-[9/16] h-auto max-h-[92dvh] w-full bg-black"
                 onError={async () => {
                   setPreviewVideoUrl(null);
                   setLoadingFullVideo(true);

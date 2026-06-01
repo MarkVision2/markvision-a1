@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
+  ArrowLeft,
   MessageCircle,
   Search,
   Send,
@@ -38,6 +40,7 @@ export function ChatsView({
   const [search, setSearch] = useState("");
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const isMobile = useIsMobile();
   const { items: quickReplies, add: addReply, remove: removeReply } = useQuickReplies();
 
   const stageFilters = [{ id: "all", title: "Все" }, ...stages];
@@ -142,7 +145,7 @@ export function ChatsView({
       {/* layout */}
       <div className="grid grid-cols-1 md:grid-cols-[300px_1fr]">
         {/* list */}
-        <div className="border-b border-border/60 md:border-b-0 md:border-r">
+        <div className={cn("border-b border-border/60 md:border-b-0 md:border-r", isMobile && activeLeadId && "hidden")}>
           <div className="p-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -210,10 +213,15 @@ export function ChatsView({
         </div>
 
         {/* chat */}
-        <div className="flex min-h-[520px] flex-col">
+        <div className={cn("flex min-h-[min(520px,65dvh)] flex-col md:min-h-[520px]", isMobile && !activeLeadId && "hidden")}>
           {activeLead ? (
             <>
               <div className="flex items-center gap-3 border-b border-border/60 px-4 py-3">
+                {isMobile && (
+                  <button type="button" onClick={() => setActiveLeadId(null)} className="grid h-10 w-10 shrink-0 place-items-center rounded-full hover:bg-secondary" aria-label="Назад к списку">
+                    <ArrowLeft className="h-5 w-5" />
+                  </button>
+                )}
                 <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary/15 text-primary">
                   {activeLead.name.slice(0, 1).toUpperCase()}
                 </span>

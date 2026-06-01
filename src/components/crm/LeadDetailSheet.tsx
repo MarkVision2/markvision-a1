@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { cn } from "@/lib/utils";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
@@ -51,6 +53,7 @@ export function LeadDetailSheet({
   onMarkCall, onLogCallAttempt, onMarkPaid, onSetVisit, onAddTask, onToggleTask, onRemoveTask, onRequestReject, onRequestPay, onRequestDiagnostic,
   busySlots,
 }: Props) {
+  const isMobile = useIsMobile();
   const [tab, setTab] = useState("deal");
 
   if (!lead) return null;
@@ -80,7 +83,7 @@ export function LeadDetailSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex w-screen max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
+        className="flex h-[100dvh] w-screen max-w-none flex-col gap-0 overflow-hidden p-0 pb-[env(safe-area-inset-bottom)] sm:max-w-none"
       >
         <SheetHeader className="sr-only">
           <SheetTitle>{lead.name}</SheetTitle>
@@ -115,11 +118,14 @@ export function LeadDetailSheet({
               </div>
 
               <Tabs value={tab} onValueChange={setTab} className="flex flex-col px-5 pt-3 pb-4">
-                <TabsList className="grid w-full grid-cols-4">
-                  <TabsTrigger value="deal" className="gap-1 text-xs"><ShoppingCart className="h-3.5 w-3.5" />Сделка</TabsTrigger>
-                  <TabsTrigger value="tasks" className="gap-1 text-xs"><ListChecks className="h-3.5 w-3.5" />Задачи</TabsTrigger>
-                  <TabsTrigger value="profile" className="gap-1 text-xs"><User className="h-3.5 w-3.5" />Профиль</TabsTrigger>
-                  <TabsTrigger value="log" className="gap-1 text-xs"><History className="h-3.5 w-3.5" />Лог</TabsTrigger>
+                <TabsList className={cn("grid w-full", isMobile ? "grid-cols-5" : "grid-cols-4")}>
+                  <TabsTrigger value="deal" className="gap-1 px-1 text-[10px] sm:text-xs"><ShoppingCart className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Сделка</span></TabsTrigger>
+                  <TabsTrigger value="tasks" className="gap-1 px-1 text-[10px] sm:text-xs"><ListChecks className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Задачи</span></TabsTrigger>
+                  <TabsTrigger value="profile" className="gap-1 px-1 text-[10px] sm:text-xs"><User className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Профиль</span></TabsTrigger>
+                  <TabsTrigger value="log" className="gap-1 px-1 text-[10px] sm:text-xs"><History className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Лог</span></TabsTrigger>
+                  {isMobile && (
+                    <TabsTrigger value="chat" className="gap-1 px-1 text-[10px] sm:text-xs"><MessageSquare className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Чат</span></TabsTrigger>
+                  )}
                 </TabsList>
 
                 <div className="mt-3">
@@ -140,6 +146,17 @@ export function LeadDetailSheet({
                   <TabsContent value="log" className="m-0 data-[state=inactive]:hidden">
                     <LeadLogTab lead={lead} stages={stages} />
                   </TabsContent>
+                  {isMobile && (
+                    <TabsContent value="chat" className="m-0 min-h-[50dvh] data-[state=inactive]:hidden">
+                      <LeadChatPanel
+                        lead={lead}
+                        chats={leadChats}
+                        whatsappConnected={whatsapp.connected}
+                        stageTitle={stageTitle}
+                        onSend={(txt) => onSendMessage(lead.id, txt)}
+                      />
+                    </TabsContent>
+                  )}
                 </div>
               </Tabs>
             </div>
@@ -179,8 +196,7 @@ export function LeadDetailSheet({
             </div>
           </div>
 
-          {/* RIGHT: persistent chat */}
-          <div className="flex min-h-0 flex-col bg-muted/20">
+          <div className="hidden min-h-0 flex-col bg-muted/20 lg:flex">
             <div className="flex items-center gap-2 border-b border-border/60 px-5 py-3">
               <MessageSquare className="h-4 w-4 text-muted-foreground" />
               <span className="text-sm font-medium">Чат с клиентом</span>
