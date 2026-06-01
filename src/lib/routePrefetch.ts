@@ -15,6 +15,7 @@ export const routeImports = {
   SalesAI: () => import("@/pages/SalesAI"),
   Analytics: () => import("@/pages/Analytics"),
   CreativeFunnel: () => import("@/pages/CreativeFunnel"),
+  ContentAnalytics: () => import("@/pages/ContentAnalytics"),
   Finance: () => import("@/pages/Finance"),
   Reports: () => import("@/pages/Reports"),
   Settings: () => import("@/pages/Settings"),
@@ -54,6 +55,9 @@ export function prefetchRoute(path: string) {
       break;
     case "/analytics":
       loaders.push(routeImports.Analytics);
+      break;
+    case "/analytics/content":
+      loaders.push(routeImports.ContentAnalytics);
       break;
     case "/finance":
       loaders.push(routeImports.Finance);

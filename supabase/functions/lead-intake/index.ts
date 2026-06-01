@@ -62,6 +62,12 @@ const Schema = z.object({
   ad_id: z.string().trim().max(40).optional().nullable(),
   adset_id: z.string().trim().max(40).optional().nullable(),
   campaign_id: z.string().trim().max(40).optional().nullable(),
+  // Сквозная аналитика «органический контент → лид»: код-слово,
+  // под которое пришёл лид. Может прилететь явно (hidden-поле формы),
+  // через ?cw=... в landing_url, либо через utm_campaign (его задаёт
+  // ig-organic-redirect при 302).
+  codeword: z.string().trim().max(80).optional().nullable(),
+  cw: z.string().trim().max(80).optional().nullable(),
 });
 
 async function parseBody(req: Request): Promise<Record<string, unknown>> {
@@ -459,9 +465,78 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Сквозная аналитика органического контента: если форма / лендинг
+    // принесли код-слово (явно или через utm_campaign из ig-organic-redirect),
+    // фиксируем событие 'lead' в воронке code-word → клик → лид → продажа.
+    await attributeOrganicCodeword(created.id, projectId, v, landingUrl);
+
     return json({ ok: true, leadId: created.id });
   } catch (e) {
     console.error("intake error", e);
     return json({ error: "Internal server error" }, 500);
   }
 });
+
+// Извлекаем код-слово из любого доступного места и пишем событие 'lead'
+// в instagram_organic_events. Не валит лид-интейк на ошибке — это бонусная
+// атрибуция.
+async function attributeOrganicCodeword(
+  leadId: string,
+  projectId: string | null,
+  v: { codeword?: string | null; cw?: string | null; utm_campaign?: string | null; referrer?: string | null },
+  landingUrl: string | null,
+) {
+  if (!projectId) return;
+  try {
+    const cwFromUrl = extractCodewordFromUrl(landingUrl) || extractCodewordFromUrl(v.referrer ?? null);
+    const codeword = normalizeCw(v.codeword || v.cw || cwFromUrl || v.utm_campaign);
+    if (!codeword) return;
+
+    const { data: row } = await admin
+      .from("instagram_codewords")
+      .select("id, reel_id, reel_url")
+      .eq("project_id", projectId)
+      .eq("codeword", codeword)
+      .maybeSingle();
+    if (!row) return;
+
+    const occurredAt = new Date();
+    const dateKey = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Almaty",
+      year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(occurredAt);
+
+    await admin.from("instagram_organic_events").insert({
+      project_id: projectId,
+      codeword_id: row.id,
+      codeword,
+      reel_id: row.reel_id,
+      reel_url: row.reel_url,
+      event_type: "lead",
+      username: null,
+      contact: null,
+      lead_id: leadId,
+      date: dateKey,
+      occurred_at: occurredAt.toISOString(),
+      payload: { via: "lead-intake", landing_url: landingUrl ?? null },
+    });
+  } catch (e) {
+    console.error("[lead-intake] codeword attribution failed", e);
+  }
+}
+
+function extractCodewordFromUrl(rawUrl: string | null): string | null {
+  if (!rawUrl) return null;
+  try {
+    const u = new URL(rawUrl);
+    return u.searchParams.get("cw") || u.searchParams.get("codeword");
+  } catch {
+    return null;
+  }
+}
+
+function normalizeCw(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const t = String(raw).trim().toLowerCase();
+  return t || null;
+}
