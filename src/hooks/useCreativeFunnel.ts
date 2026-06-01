@@ -17,17 +17,30 @@ export interface FunnelLead {
   phone: string;
   created_at: string;
   stage_id: string;
+  stage_title: string | null;
+  stage_key: string | null;
+  is_terminal: boolean | null;
+  is_diagnostic: boolean | null;
   paid: boolean;
+  paid_at: string | null;
   amount: number;
+  diagnostic_amount: number | null;
+  source: string | null;
+  channel: string | null;
 }
 
 export interface CreativeFunnel {
   ok: boolean;
   ad_id: string;
   pipeline_id: string | null;
+  campaign_name: string | null;
+  destination_type: string | null;
+  objective: string | null;
   stages: FunnelStage[];
   recent_leads: FunnelLead[];
   total_leads: number;
+  diagnostics: number;
+  diagnostic_revenue: number;
   paid_count: number;
   revenue: number;
 }
