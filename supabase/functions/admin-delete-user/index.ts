@@ -11,7 +11,17 @@ Deno.serve(async (req) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+    // Lovable Cloud reserves the SUPABASE_ prefix for its own managed secrets,
+    // so the service-role key is exposed under a custom name (set in Lovable
+    // Cloud → Secrets as ADMIN_SERVICE_ROLE_KEY).
+    const serviceKey = Deno.env.get('ADMIN_SERVICE_ROLE_KEY')
+      ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    if (!serviceKey) {
+      return new Response(
+        JSON.stringify({ error: 'Server misconfigured: ADMIN_SERVICE_ROLE_KEY secret not set' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
 
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
