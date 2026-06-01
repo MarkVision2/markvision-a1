@@ -24,4 +24,12 @@ run 'test ! -f src/test/example.test.ts'
 run 'test -f src/test/leads-lite-query.test.ts'
 run 'rg -q "name: \"404\"" tests/e2e/smoke.spec.ts'
 
+
+run "test -f supabase/functions/ig-organic-redirect/index.ts"
+run "test -f src/pages/ContentAnalytics.tsx"
+run 'rg -q "const ContentAnalytics = lazy" src/App.tsx'
+run 'rg -q "useCodewordLeads" src/hooks/useInstagramOrganic.ts'
+run 'rg -q "recordInstagramOrganicLead" supabase/functions/lead-intake/index.ts'
+run 'rg -q "cw: z.string" supabase/functions/lead-intake/index.ts'
+
 echo "Full site audit plan: all checks passed"

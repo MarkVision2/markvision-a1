@@ -24,17 +24,10 @@ import {
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { ContentTrendChart } from "@/pages/content-analytics/ContentTrendChart";
 import { cn } from "@/lib/utils";
-
-const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? "";
-const REDIRECT_BASE = `${SUPABASE_URL}/functions/v1/ig-organic-redirect`;
+import { igOrganicBotLink } from "@/lib/igOrganicLinks";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
-
-function shortLink(shortId: string, username = "@user") {
-  const u = encodeURIComponent(username.replace(/^@/, ""));
-  return `${REDIRECT_BASE}?c=${encodeURIComponent(shortId)}&u=${u}`;
-}
 
 export default function ContentAnalytics() {
   const [range, setRange] = useState<ReportPeriodRange>(() => currentMonthRange());
@@ -101,7 +94,7 @@ export default function ContentAnalytics() {
       toast.error("short_id появится после применения миграции в Supabase");
       return;
     }
-    void navigator.clipboard.writeText(shortLink(shortId));
+    void navigator.clipboard.writeText(igOrganicBotLink(shortId));
     toast.success(`Ссылка для бота (${codeword}) скопирована`);
   };
 

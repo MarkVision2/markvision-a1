@@ -62,6 +62,9 @@ const Schema = z.object({
   ad_id: z.string().trim().max(40).optional().nullable(),
   adset_id: z.string().trim().max(40).optional().nullable(),
   campaign_id: z.string().trim().max(40).optional().nullable(),
+  cw: z.string().trim().max(80).optional().nullable(),
+  codeword: z.string().trim().max(80).optional().nullable(),
+  ig_user: z.string().trim().max(120).optional().nullable(),
 });
 
 async function parseBody(req: Request): Promise<Record<string, unknown>> {
@@ -201,6 +204,50 @@ function extractToken(req: Request): string | null {
   }
 }
 
+
+function normalizeCodeword(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const t = raw.trim().toLowerCase();
+  return t || null;
+}
+
+async function recordInstagramOrganicLead(
+  projectId: string,
+  codeword: string,
+  leadId: string,
+  username: string | null,
+): Promise<void> {
+  const { data: cw } = await admin
+    .from("instagram_codewords")
+    .select("id, reel_id, reel_url")
+    .eq("project_id", projectId)
+    .eq("codeword", codeword)
+    .maybeSingle();
+
+  const occurredAt = new Date();
+  const dateKey = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Almaty",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(occurredAt);
+
+  const { error } = await admin.from("instagram_organic_events").insert({
+    project_id: projectId,
+    codeword_id: cw?.id ?? null,
+    codeword,
+    reel_id: cw?.reel_id ?? null,
+    reel_url: cw?.reel_url ?? null,
+    event_type: "lead",
+    username,
+    lead_id: leadId,
+    date: dateKey,
+    occurred_at: occurredAt.toISOString(),
+    payload: { via: "lead-intake" },
+  });
+  if (error) console.error("[lead-intake] instagram organic lead event", error);
+}
+
 async function projectFromToken(token: string): Promise<string | null> {
   const { data } = await admin
     .from("projects")
@@ -300,7 +347,7 @@ Deno.serve(async (req) => {
   const organicCodeword =
     normalizeCodeword(v.cw) ||
     normalizeCodeword(v.codeword) ||
-    normalizeCodeword(v.utm_campaign);
+    (v.utm_source?.toLowerCase() === "instagram" ? normalizeCodeword(v.utm_campaign) : null);
 
   const rawSource =
     (organicCodeword ? "instagram" : null) ||
@@ -465,6 +512,11 @@ Deno.serve(async (req) => {
         is_draft: false,
         is_auto: false,
       });
+    }
+
+    if (projectId && organicCodeword) {
+      const igUser = v.ig_user?.trim() || (typeof raw.ig_user === "string" ? raw.ig_user.trim() : null) || null;
+      await recordInstagramOrganicLead(projectId, organicCodeword, created.id, igUser);
     }
 
     return json({ ok: true, leadId: created.id });
