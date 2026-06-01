@@ -24,7 +24,7 @@ import { useDashboardData } from "@/hooks/useDashboardData";
 import { useCodewordStats } from "@/hooks/useInstagramOrganic";
 import { useCrmFlow } from "@/hooks/useCrmFlow";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
-import { useMetaCampaigns, useMetaCreatives } from "@/hooks/useMetaStructure";
+import { useMetaDashboard } from "@/hooks/useMetaDashboard";
 import { QualityBlock, QualityFunnel } from "@/components/crm/QualityBlock";
 import { deltaPct, type ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
@@ -84,7 +84,8 @@ const Dashboard = () => {
     useDashboardData("all", range, comparing);
   const { stats: codewordStats } = useCodewordStats();
   const crmFlow = useCrmFlow(range);
-  const { creatives: metaCreatives, campaigns: metaCampaigns } = useMetaDashboard(range);
+  const { rows: metaCreatives } = useMetaCreatives(range);
+  const { rows: metaCampaigns } = useMetaCampaigns(range);
   const { leads: liteLeads } = useLeadsLite();
   const periodLeads = useMemo(() => {
     const fromTs = range.from.getTime();
