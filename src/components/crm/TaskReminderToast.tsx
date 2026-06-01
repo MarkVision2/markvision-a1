@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { AlertTriangle, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useCrmStore } from "@/hooks/useCrmStore";
+import { useTaskReminders } from "@/hooks/useTaskReminders";
 
 const DISMISSED_KEY = "crm.task.dismissed.v1";
 // Скрываем «просроченное» напоминание через этот срок после dueAt — иначе оно висит
@@ -68,7 +68,7 @@ function persistDismissed(set: Set<string>) {
  */
 export function TaskReminderToast() {
   const navigate = useNavigate();
-  const { leads, toggleTask } = useCrmStore();
+  const { items: taskItems, toggleTask } = useTaskReminders();
   const [now, setNow] = useState(() => Date.now());
   const [dismissed, setDismissed] = useState<Set<string>>(() => readDismissed());
   const persistRef = useRef(dismissed);
@@ -84,27 +84,17 @@ export function TaskReminderToast() {
     const out: Reminder[] = [];
     const cutoffAhead = now + SHOW_AHEAD_MIN * 60_000;
     const cutoffStale = now - STALE_AFTER_HOURS * 3600_000;
-    for (const l of leads) {
-      for (const t of l.tasks ?? []) {
-        if (t.doneAt) continue;
-        const dueTs = new Date(t.dueAt).getTime();
-        if (Number.isNaN(dueTs)) continue;
-        if (dueTs > cutoffAhead) continue; // ещё не настал
-        if (dueTs < cutoffStale) continue; // слишком давно — не докучаем
-        if (dismissed.has(t.id)) continue;
-        out.push({
-          taskId: t.id,
-          leadId: l.id,
-          leadName: l.name,
-          leadPhone: l.phone,
-          title: t.title,
-          dueAt: t.dueAt,
-        });
-      }
+    for (const t of taskItems) {
+      const dueTs = new Date(t.dueAt).getTime();
+      if (Number.isNaN(dueTs)) continue;
+      if (dueTs > cutoffAhead) continue;
+      if (dueTs < cutoffStale) continue;
+      if (dismissed.has(t.taskId)) continue;
+      out.push(t);
     }
     // Старые просрочки выше — чтобы первой висела самая критичная.
     return out.sort((a, b) => a.dueAt.localeCompare(b.dueAt));
-  }, [leads, now, dismissed]);
+  }, [taskItems, now, dismissed]);
 
   const current = due[0];
   if (!current) return null;

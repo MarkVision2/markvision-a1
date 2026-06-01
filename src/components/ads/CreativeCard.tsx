@@ -5,7 +5,6 @@ import { bestCreativeImage } from "@/lib/metaThumb";
 import { enqueuePosterCapture } from "@/lib/videoPosterCapture";
 import { refreshMetaCreative } from "@/lib/metaCreativeRefresh";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
-import { useIsMobile } from "@/hooks/use-mobile";
 
 // Глобальный набор уже запрошенных ad_id, чтобы не спамить рефреш постеров
 const refreshedPosters = new Set<string>();
@@ -23,7 +22,6 @@ interface Props {
 }
 
 export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "crm" }: Props) {
-  const isMobile = useIsMobile();
   const isVideo = row.creativeType === "video";
   const isCarousel = row.creativeType === "carousel";
 
@@ -31,7 +29,6 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
   const [capturedPoster, setCapturedPoster] = useState<string | null>(null);
   const [refreshedThumb, setRefreshedThumb] = useState<string | null>(null);
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(row.videoUrl);
-  const [mediaError, setMediaError] = useState(false);
   const src = bestCreativeImage({
     posterUrl: capturedPoster ?? row.posterUrl,
     thumbnailUrl: refreshedThumb ?? row.thumbnailUrl,
@@ -39,7 +36,6 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
     size: 1080,
   });
   const isActive = (row.effectiveStatus ?? "").toUpperCase() === "ACTIVE";
-  const showPoster = Boolean(src) && !mediaError;
 
   const refreshVideoPreview = async () => {
     if (!row.adId) return;
@@ -52,30 +48,12 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
     setPreviewVideoUrl(row.videoUrl);
     setRefreshedThumb(null);
     setCapturedPoster(null);
-    setMediaError(false);
   }, [row.id, row.videoUrl]);
-
-  useEffect(() => {
-    setMediaError(false);
-  }, [src]);
-
-  const handleImageError = () => {
-    setMediaError(true);
-    if (!row.adId) return;
-    void refreshMetaCreative(row.adId).then((data) => {
-      if (data?.thumbnail_url) {
-        setRefreshedThumb(data.thumbnail_url);
-        setMediaError(false);
-      }
-    });
-  };
-
-  const playInlineVideo = isVideo && previewVideoUrl && !isMobile;
 
   // Для видео без HQ-постера: 1) гарантируем свежие video_url/thumbnail_url, 2) захватываем кадр
   const needsPoster = isVideo && !row.posterUrl;
   useEffect(() => {
-    if (isMobile || !needsPoster || !row.adId) return;
+    if (!needsPoster || !row.adId) return;
     if (refreshedPosters.has(row.adId)) return;
     refreshedPosters.add(row.adId);
 
@@ -116,21 +94,24 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
     <button
       type="button"
       onClick={onOpen}
-      title={row.name || undefined}
       className={cn(
         "group flex flex-col overflow-hidden rounded-2xl border bg-card/60 text-left transition hover:border-primary/40 hover:shadow-lg",
         active ? "border-primary/60 ring-1 ring-primary/40" : "border-border/60",
       )}
     >
       {/* Poster 9:16 — без blur-слоёв: видео/кадр должны быть читаемыми */}
-      <div className="relative aspect-[9/16] w-full overflow-hidden bg-background">
-        {playInlineVideo ? (
+      <div
+        className="relative aspect-[9/16] w-full overflow-hidden bg-background"
+        onMouseEnter={() => setPlayVideo(true)}
+        onMouseLeave={() => setPlayVideo(false)}
+      >
+        {isVideo && previewVideoUrl ? (
           <video
+            ref={videoRef}
             src={previewVideoUrl}
             poster={src ?? undefined}
             muted
             playsInline
-            autoPlay
             loop
             preload="metadata"
             className="h-full w-full bg-background object-cover transition group-hover:scale-[1.01]"
@@ -139,17 +120,16 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
               void refreshVideoPreview();
             }}
           />
-        ) : showPoster ? (
+        ) : src ? (
           <img
-            src={src!}
-            alt=""
+            src={src}
+            alt={row.name}
             className={cn(
               "h-full w-full transition group-hover:scale-[1.01]",
               isVideo ? "object-cover" : "object-contain",
             )}
             loading="lazy"
             referrerPolicy="no-referrer"
-            onError={handleImageError}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
@@ -160,7 +140,7 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
         {/* Status chip */}
         <span
           className={cn(
-            "absolute left-2 top-2 z-10 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase shadow-sm backdrop-blur",
+            "absolute left-2 top-2 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase backdrop-blur",
             isActive ? "bg-success/85 text-success-foreground" : "bg-muted/85 text-muted-foreground",
           )}
         >
@@ -171,7 +151,7 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
         {showCrm && row.spend > 0 && hasCrmRevenue && (
           <span
             className={cn(
-              "absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-bold shadow-sm backdrop-blur",
+              "absolute right-2 top-2 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-bold backdrop-blur",
               row.crmRomi >= 100
                 ? "bg-success/90 text-success-foreground"
                 : row.crmRomi >= 0
@@ -187,28 +167,27 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
         )}
 
         {isWhatsApp && !showCrm && (
-          <span className="absolute right-2 top-2 z-10 inline-flex items-center gap-1 rounded-md bg-success/85 px-1.5 py-0.5 text-[10px] font-bold text-success-foreground shadow-sm backdrop-blur">
+          <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md bg-success/85 px-1.5 py-0.5 text-[10px] font-bold text-success-foreground backdrop-blur">
             <MessageCircle className="h-3 w-3" /> WhatsApp
           </span>
         )}
 
         {/* Type icon */}
-        <span className="absolute bottom-2 left-2 z-10 inline-flex items-center gap-1 rounded-md bg-background/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider shadow-sm backdrop-blur">
+        <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-md bg-background/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider backdrop-blur">
           {isVideo ? <Video className="h-3 w-3" /> : isCarousel ? <Layers className="h-3 w-3" /> : <ImageIcon className="h-3 w-3" />}
           {row.creativeType}
         </span>
 
         {isWhatsApp && showCrm && (
-          <span className="absolute bottom-2 right-2 z-10 inline-flex items-center gap-1 rounded-md bg-success/85 px-1.5 py-0.5 text-[10px] font-bold text-success-foreground shadow-sm backdrop-blur">
+          <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-md bg-success/85 px-1.5 py-0.5 text-[10px] font-bold text-success-foreground backdrop-blur">
             <MessageCircle className="h-3 w-3" /> WA
           </span>
         )}
 
+        {/* Compact play indicator (corner, не перекрывает контент) */}
         {isVideo && (
-          <span className="pointer-events-none absolute inset-0 z-[5] grid place-items-center bg-black/15">
-            <span className="grid h-11 w-11 place-items-center rounded-full bg-background/90 shadow-md backdrop-blur sm:h-7 sm:w-7">
-              <Play className="h-5 w-5 fill-current sm:h-3 sm:w-3" />
-            </span>
+          <span className="absolute right-2 bottom-2 grid h-7 w-7 place-items-center rounded-full bg-background/85 backdrop-blur transition group-hover:scale-110 group-hover:bg-primary group-hover:text-primary-foreground">
+            <Play className="h-3 w-3 fill-current" />
           </span>
         )}
       </div>

@@ -54,6 +54,8 @@ export function AdsCreativesPanel() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [cabinetFilter, setCabinetFilter] = useState<string>("all");
+  const [visibleCount, setVisibleCount] = useState(48);
+  const PAGE_SIZE = 48;
 
   const { rows: creatives, loading } = useMetaCreatives(range);
   const { rows: campaigns } = useMetaCampaigns(range);
@@ -96,6 +98,15 @@ export function AdsCreativesPanel() {
         return ((b.row[sort] as number) ?? 0) - ((a.row[sort] as number) ?? 0);
       });
   }, [creatives, campaignById, typeF, status, goalF, query, sort, cabinetFilter]);
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [query, typeF, status, goalF, sort, cabinetFilter, range.from, range.to]);
+
+  const visible = useMemo(
+    () => filtered.slice(0, visibleCount),
+    [filtered, visibleCount],
+  );
 
   const activeCount = creatives.filter((c) => (c.effectiveStatus ?? "").toUpperCase() === "ACTIVE").length;
   const openCreative = useMemo(
@@ -237,7 +248,7 @@ export function AdsCreativesPanel() {
       {/* Grid */}
       {filtered.length > 0 && (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {filtered.map(({ row, isWhatsApp }) => (
+          {visible.map(({ row, isWhatsApp }) => (
             <CreativeCard
               key={row.id}
               row={row}
@@ -246,6 +257,19 @@ export function AdsCreativesPanel() {
               onOpen={() => setOpenId(row.id)}
             />
           ))}
+        </div>
+      )}
+
+      {filtered.length > visible.length && (
+        <div className="flex justify-center pt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="rounded-xl"
+            onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
+          >
+            Показать ещё ({filtered.length - visible.length})
+          </Button>
         </div>
       )}
 

@@ -18,8 +18,8 @@ import type { Lead } from "@/types/crm";
 import { useTeamStore } from "@/hooks/useTeamStore";
 import { useCrmAnalytics } from "@/hooks/useCrmAnalytics";
 import { StageColumn } from "@/components/crm/StageColumn";
-import { ChatsView } from "@/components/crm/ChatsView";
-import { ClientsView } from "@/components/crm/ClientsView";
+const ChatsView = lazy(() => import("@/components/crm/ChatsView").then((m) => ({ default: m.ChatsView })));
+const ClientsView = lazy(() => import("@/components/crm/ClientsView").then((m) => ({ default: m.ClientsView })));
 import { NewLeadDialog } from "@/components/crm/NewLeadDialog";
 import { LeadDetailSheet } from "@/components/crm/LeadDetailSheet";
 import { ConnectWhatsAppDialog } from "@/components/crm/ConnectWhatsAppDialog";
@@ -193,7 +193,7 @@ const Crm = () => {
   };
 
   return (
-    <main className="flex h-[calc(100dvh-3.5rem)] min-h-0 flex-col animate-fade-in-up">
+    <main className="flex h-[calc(100vh-3.5rem)] min-h-0 flex-col animate-fade-in-up">
       {/* Compact header */}
       <header className="border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur sm:px-6">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-3">
@@ -215,7 +215,7 @@ const Crm = () => {
                 onClick={() => setWaOpen(true)}
                 variant="outline"
                 size="sm"
-                className="inline-flex"
+                className="hidden sm:inline-flex"
               >
                 <MessageCircle className="h-3.5 w-3.5" />
                 WhatsApp

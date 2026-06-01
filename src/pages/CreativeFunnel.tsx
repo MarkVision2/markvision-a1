@@ -58,7 +58,7 @@ function SortableTh({
 
 const CreativeFunnel = () => {
   const [range, setRange] = useState<ReportPeriodRange>(() => currentMonthRange());
-  const [sortKey, setSortKey] = useState<SortKey>("leads");
+  const [sortKey, setSortKey] = useState<SortKey>("crmRevenue");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
@@ -329,6 +329,24 @@ const CreativeFunnel = () => {
 
 
 
+
+      {orphanLeads > 0 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-warning/40 bg-warning/5 px-4 py-3">
+          <div className="text-sm">
+            <span className="font-semibold">{orphanLeads} лидов</span>
+            <span className="text-muted-foreground"> без привязки к креативу за период</span>
+          </div>
+          <Button
+            size="sm"
+            className="rounded-xl"
+            disabled={backfilling}
+            onClick={() => void runBackfill()}
+          >
+            {backfilling ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Привязать существующие лиды
+          </Button>
+        </div>
+      )}
 
       {/* Toolbar */}
       <div className="mt-6 flex flex-wrap items-center gap-2">

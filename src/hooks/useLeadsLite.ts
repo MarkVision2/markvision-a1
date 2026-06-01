@@ -1,8 +1,8 @@
 // Lightweight leads hook for Analytics / Dashboard / Reports.
 // Loads ONLY columns needed for KPI/charts — no communications, no events,
-// no history. This avoids the heavy useCrmStore (5 tables × N rows + 6 realtime
-// subscriptions) on pages that just need aggregate numbers.
-import { useCallback, useEffect, useState } from "react";
+// no history. Cached via React Query so multiple hooks share one fetch + realtime.
+import { useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -22,7 +22,7 @@ export interface LeadLite {
   referrer: string | null;
   utm: LeadLiteUtm | null;
   cabinetId: string | null;
-  stageKey: string; // resolved key (e.g. "new"), not stage uuid
+  stageKey: string;
   amount: number;
   diagnosticAmount: number;
   createdAt: string;
@@ -38,67 +38,65 @@ export interface LeadLite {
   stageId: string | null;
 }
 
+export const LEADS_LITE_QUERY_KEY = "leads-lite";
+
+async function fetchLeadsLite(activeId: string | null): Promise<LeadLite[]> {
+  let leadsQuery = supabase
+    .from("leads")
+    .select(
+      "id,source,channel,referrer,utm,cabinet_id,stage_id,amount,diagnostic_amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,reject_reason,rejected_at",
+    )
+    .eq("is_personal", false)
+    .order("created_at", { ascending: false })
+    .limit(10000);
+  if (activeId) {
+    leadsQuery = leadsQuery.or(`project_id.eq.${activeId},project_id.is.null`);
+  }
+  const [stagesRes, leadsRes] = await Promise.all([
+    supabase.from("pipeline_stages").select("id,key"),
+    leadsQuery,
+  ]);
+  const idToKey = new Map<string, string>();
+  for (const s of stagesRes.data ?? []) idToKey.set(s.id, s.key);
+
+  return (leadsRes.data ?? []).map((r) => ({
+    id: r.id as string,
+    source: (r.source as string) ?? "",
+    channel: (r.channel as string | null) ?? null,
+    referrer: (r.referrer as string | null) ?? null,
+    utm: (r.utm as LeadLiteUtm | null) ?? null,
+    cabinetId: (r.cabinet_id as string | null) ?? null,
+    stageKey: idToKey.get(r.stage_id as string) ?? "new",
+    amount: Number(r.amount ?? 0),
+    diagnosticAmount: Number((r as { diagnostic_amount?: number | null }).diagnostic_amount ?? 0),
+    createdAt: r.created_at as string,
+    paidAt: (r.paid_at as string | null) ?? null,
+    lastActivityAt: r.last_activity_at as string,
+    firstResponseAt: (r.first_response_at as string | null) ?? null,
+    assigneeId: (r.assigned_to as string | null) ?? null,
+    paid: Boolean(r.paid),
+    aiScore: Number((r as { ai_score?: number | null }).ai_score ?? 0),
+    scoreLabel: ((r as { score_label?: string | null }).score_label ?? null) as string | null,
+    rejectReason: ((r as { reject_reason?: string | null }).reject_reason ?? null) as string | null,
+    rejectedAt: ((r as { rejected_at?: string | null }).rejected_at ?? null) as string | null,
+    stageId: (r.stage_id as string | null) ?? null,
+  }));
+}
+
 export function useLeadsLite() {
   const { activeId } = useProjectsStore();
-  const [leads, setLeads] = useState<LeadLite[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
   const refetch = useCallback(async () => {
-    let leadsQuery = supabase
-      .from("leads")
-      .select(
-        // score_label убран из запроса — колонки нет в схеме leads.
-        "id,source,channel,referrer,utm,cabinet_id,stage_id,amount,diagnostic_amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,reject_reason,rejected_at",
-      )
-      // Личные заявки исключаем из аналитики/дашборда/отчётов.
-      .eq("is_personal", false)
-      .order("created_at", { ascending: false })
-      // Лимит увеличен до 10000: orphanRevenue/leadCount считаются на клиенте,
-      // и обрезанный набор лидов давал заниженные суммы на Dashboard/Analytics
-      // у проектов с большой историей.
-      .limit(10000);
-    if (activeId) {
-      leadsQuery = leadsQuery.or(`project_id.eq.${activeId},project_id.is.null`);
-    }
-    const [stagesRes, leadsRes] = await Promise.all([
-      supabase.from("pipeline_stages").select("id,key"),
-      leadsQuery,
-    ]);
-    const idToKey = new Map<string, string>();
-    for (const s of stagesRes.data ?? []) idToKey.set(s.id, s.key);
+    await queryClient.invalidateQueries({ queryKey: [LEADS_LITE_QUERY_KEY, activeId] });
+  }, [queryClient, activeId]);
 
-    const list: LeadLite[] = (leadsRes.data ?? []).map((r) => ({
-      id: r.id as string,
-      source: (r.source as string) ?? "",
-      channel: (r.channel as string | null) ?? null,
-      referrer: (r.referrer as string | null) ?? null,
-      utm: (r.utm as LeadLiteUtm | null) ?? null,
-      cabinetId: (r.cabinet_id as string | null) ?? null,
-      stageKey: idToKey.get(r.stage_id as string) ?? "new",
-      amount: Number(r.amount ?? 0),
-      diagnosticAmount: Number((r as { diagnostic_amount?: number | null }).diagnostic_amount ?? 0),
-      createdAt: r.created_at as string,
-      paidAt: (r.paid_at as string | null) ?? null,
-      lastActivityAt: r.last_activity_at as string,
-      firstResponseAt: (r.first_response_at as string | null) ?? null,
-      assigneeId: (r.assigned_to as string | null) ?? null,
-      paid: Boolean(r.paid),
-      aiScore: Number((r as { ai_score?: number | null }).ai_score ?? 0),
-      scoreLabel: ((r as { score_label?: string | null }).score_label ?? null) as string | null,
-      rejectReason: ((r as { reject_reason?: string | null }).reject_reason ?? null) as string | null,
-      rejectedAt: ((r as { rejected_at?: string | null }).rejected_at ?? null) as string | null,
-      stageId: (r.stage_id as string | null) ?? null,
-    }));
-    setLeads(list);
-    setLoading(false);
-  }, [activeId]);
-
-  useEffect(() => {
-    void refetch();
-  }, [refetch]);
-
-  // Single debounced realtime subscription on the leads table only.
   useRealtimeTable("leads", refetch, true, 600);
+
+  const { data: leads = [], isLoading: loading } = useQuery({
+    queryKey: [LEADS_LITE_QUERY_KEY, activeId],
+    queryFn: () => fetchLeadsLite(activeId),
+  });
 
   return { leads, loading, refetch };
 }

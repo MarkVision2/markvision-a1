@@ -178,6 +178,8 @@ function parseCtwa(messageData: Record<string, unknown> | undefined, body: Recor
   if (ctx) candidates.push(ctx);
   const refTop = body.referralData as Record<string, unknown> | undefined;
   if (refTop) candidates.push(refTop);
+  const sender = body.senderData as Record<string, unknown> | undefined;
+  if (sender) candidates.push(sender);
   const refExt = ext?.referral as Record<string, unknown> | undefined;
   if (refExt) candidates.push(refExt);
   const refCtx = ctx?.referral as Record<string, unknown> | undefined;
@@ -309,12 +311,12 @@ async function findOrCreateLead(
   const { data: existing } = await q;
   if (existing && existing.length > 0) {
     const row = existing[0] as { id: string; meta_ad_id: string | null };
-    if (attribution?.meta_ad_id && !row.meta_ad_id) {
+    if (attribution?.meta_ad_id) {
       await admin.from("leads").update({
         meta_ad_id: attribution.meta_ad_id,
         meta_adset_id: attribution.meta_adset_id,
         meta_campaign_id: attribution.meta_campaign_id,
-        click_id: attribution.click_id,
+        click_id: attribution.click_id ?? null,
       }).eq("id", row.id);
     }
     return row.id;
@@ -329,12 +331,12 @@ async function findOrCreateLead(
   const { data: recent } = await scan;
   const match = (recent ?? []).find((l) => digits(l.phone) === d) as { id: string; meta_ad_id: string | null } | undefined;
   if (match) {
-    if (attribution?.meta_ad_id && !match.meta_ad_id) {
+    if (attribution?.meta_ad_id) {
       await admin.from("leads").update({
         meta_ad_id: attribution.meta_ad_id,
         meta_adset_id: attribution.meta_adset_id,
         meta_campaign_id: attribution.meta_campaign_id,
-        click_id: attribution.click_id,
+        click_id: attribution.click_id ?? null,
       }).eq("id", match.id);
     }
     return match.id;

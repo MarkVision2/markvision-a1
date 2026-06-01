@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Eye, Image as ImageIcon, Layers, MousePointerClick, Play, TrendingDown, TrendingUp, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -33,6 +33,15 @@ interface Props {
 
 function CreativePreview({ row }: { row: MetaCreativeRow }) {
   const isVideo = row.creativeType === "video";
+  const [playVideo, setPlayVideo] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (playVideo) void el.play().catch(() => {});
+    else el.pause();
+  }, [playVideo]);
   const isCarousel = row.creativeType === "carousel";
   const [capturedPoster, setCapturedPoster] = useState<string | null>(null);
   const [refreshedThumb, setRefreshedThumb] = useState<string | null>(null);
@@ -89,14 +98,18 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
   }, [capturedPoster, isVideo, row.adId, row.posterUrl, row.videoUrl]);
 
   return (
-    <div className="relative aspect-[4/5] w-full overflow-hidden rounded-xl bg-background">
+    <div
+      className="relative aspect-[4/5] w-full overflow-hidden rounded-xl bg-background"
+      onMouseEnter={() => setPlayVideo(true)}
+      onMouseLeave={() => setPlayVideo(false)}
+    >
       {isVideo && previewVideoUrl ? (
         <video
+          ref={videoRef}
           src={previewVideoUrl}
           poster={src ?? undefined}
           muted
           playsInline
-          autoPlay
           loop
           preload="metadata"
           className="h-full w-full bg-background object-cover transition duration-300 group-hover:scale-[1.01]"

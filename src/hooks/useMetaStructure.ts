@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "./useProjectsStore";
 import { useRealtimeTable } from "./useRealtimeTable";
+import { useMetaDashboard } from "./useMetaDashboard";
 
 interface Range { from: Date; to: Date }
 
@@ -83,119 +84,8 @@ interface RawDailyAgg {
 }
 
 export function useMetaCreatives(range: Range) {
-  const { activeId: projectId } = useProjectsStore();
-  const [rows, setRows] = useState<MetaCreativeRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [tick, setTick] = useState(0);
-
-  useRealtimeTable("meta_creative_daily", () => setTick((t) => t + 1), true, 2000);
-  useRealtimeTable("meta_creatives", () => setTick((t) => t + 1), true, 1000);
-
-  const since = useMemo(() => ymd(range.from), [range.from]);
-  const until = useMemo(() => ymd(range.to), [range.to]);
-
-  useEffect(() => {
-    if (!projectId) {
-      setRows([]);
-      return;
-    }
-    let cancelled = false;
-    setLoading(true);
-    void (async () => {
-      const [creativesRes, dailyRes, crmRes] = await Promise.all([
-        supabase
-          .from("meta_creatives")
-          .select("id, ad_id, campaign_id, cabinet_id, name, creative_type, thumbnail_url, image_url, poster_url, video_url, video_id, primary_text, headline, cta, destination_url, effective_status")
-          .eq("project_id", projectId)
-          .limit(500),
-        supabase
-          .from("meta_creative_daily")
-          .select("ad_id, spend, impressions, clicks, leads, messages, purchases, revenue")
-          .eq("project_id", projectId)
-          .gte("date", since)
-          .lte("date", until),
-        // Сквозные CRM-метрики из view (нет в сгенерированных типах — используем any-каст)
-        (supabase as unknown as { from: (t: string) => any })
-          .from("meta_creative_crm_daily")
-          .select("ad_id, crm_leads, crm_qualified, crm_sales, crm_revenue")
-          .eq("project_id", projectId)
-          .gte("date", since)
-          .lte("date", until),
-      ]);
-      if (cancelled) return;
-
-      const creatives = (creativesRes.data ?? []) as RawCreative[];
-      const daily = (dailyRes.data ?? []) as RawDailyAgg[];
-      const crm = (crmRes.data ?? []) as Array<{ ad_id: string; crm_leads: number | string; crm_qualified: number | string; crm_sales: number | string; crm_revenue: number | string }>;
-      const agg = new Map<string, {
-        spend: number; impressions: number; clicks: number;
-        leads: number; messages: number; purchases: number; revenue: number;
-      }>();
-      for (const d of daily) {
-        const cur = agg.get(d.ad_id) ?? { spend: 0, impressions: 0, clicks: 0, leads: 0, messages: 0, purchases: 0, revenue: 0 };
-        cur.spend += Number(d.spend) || 0;
-        cur.impressions += Number(d.impressions) || 0;
-        cur.clicks += Number(d.clicks) || 0;
-        cur.leads += Number(d.leads) || 0;
-        cur.messages += Number(d.messages) || 0;
-        cur.purchases += Number(d.purchases) || 0;
-        cur.revenue += Number(d.revenue) || 0;
-        agg.set(d.ad_id, cur);
-      }
-      const crmAgg = new Map<string, { crmLeads: number; crmQualified: number; crmSales: number; crmRevenue: number }>();
-      for (const c of crm) {
-        const cur = crmAgg.get(c.ad_id) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 };
-        cur.crmLeads += Number(c.crm_leads) || 0;
-        cur.crmQualified += Number(c.crm_qualified) || 0;
-        cur.crmSales += Number(c.crm_sales) || 0;
-        cur.crmRevenue += Number(c.crm_revenue) || 0;
-        crmAgg.set(c.ad_id, cur);
-      }
-
-      const out: MetaCreativeRow[] = creatives.map((c) => {
-        const a = agg.get(c.ad_id) ?? { spend: 0, impressions: 0, clicks: 0, leads: 0, messages: 0, purchases: 0, revenue: 0 };
-        const cr = crmAgg.get(c.ad_id) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 };
-        const ctr = a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0;
-        const cpl = a.leads > 0 ? a.spend / a.leads : 0;
-        const cpc = a.clicks > 0 ? a.spend / a.clicks : 0;
-        const cpm = a.impressions > 0 ? (a.spend / a.impressions) * 1000 : 0;
-        const romi = a.spend > 0 ? ((a.revenue - a.spend) / a.spend) * 100 : 0;
-        const crmCpl = cr.crmLeads > 0 ? a.spend / cr.crmLeads : 0;
-        const crmCps = cr.crmSales > 0 ? a.spend / cr.crmSales : 0;
-        const crmAvgCheck = cr.crmSales > 0 ? cr.crmRevenue / cr.crmSales : 0;
-        const crmRomi = a.spend > 0 ? ((cr.crmRevenue - a.spend) / a.spend) * 100 : 0;
-        const crmProfit = cr.crmRevenue - a.spend;
-        return {
-          id: c.id,
-          adId: c.ad_id,
-          campaignId: c.campaign_id,
-          cabinetId: c.cabinet_id,
-          name: c.name ?? "",
-          creativeType: (c.creative_type ?? "image") as MetaCreativeRow["creativeType"],
-          thumbnailUrl: c.thumbnail_url,
-          imageUrl: c.image_url,
-          posterUrl: c.poster_url,
-          videoUrl: c.video_url,
-          videoId: c.video_id,
-          primaryText: c.primary_text,
-          headline: c.headline,
-          cta: c.cta,
-          destinationUrl: c.destination_url,
-          effectiveStatus: c.effective_status,
-          ...a,
-          ctr, cpl, cpc, cpm, romi,
-          ...cr,
-          crmCpl, crmCps, crmAvgCheck, crmRomi, crmProfit,
-        };
-      });
-      out.sort((a, b) => b.spend - a.spend);
-      setRows(out);
-      setLoading(false);
-    })();
-    return () => { cancelled = true; };
-  }, [projectId, since, until, tick]);
-
-  return { rows, loading };
+  const { creatives, loading } = useMetaDashboard(range);
+  return { rows: creatives, loading };
 }
 
 // ---------------- Campaigns ----------------
@@ -253,117 +143,8 @@ interface RawCampaignDaily {
 }
 
 export function useMetaCampaigns(range: Range) {
-  const { activeId: projectId } = useProjectsStore();
-  const [rows, setRows] = useState<MetaCampaignRow[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [tick, setTick] = useState(0);
-
-  useRealtimeTable("meta_campaigns", () => setTick((t) => t + 1), true, 1000);
-  useRealtimeTable("meta_campaign_daily", () => setTick((t) => t + 1), true, 2000);
-
-  const since = useMemo(() => ymd(range.from), [range.from]);
-  const until = useMemo(() => ymd(range.to), [range.to]);
-
-  useEffect(() => {
-    if (!projectId) { setRows([]); return; }
-    let cancelled = false;
-    setLoading(true);
-    void (async () => {
-      const [campsRes, dailyRes, creativesRes, crmRes] = await Promise.all([
-        supabase
-          .from("meta_campaigns")
-          .select("id, campaign_id, cabinet_id, name, objective, destination_type, effective_status, daily_budget")
-          .eq("project_id", projectId)
-          .limit(500),
-        supabase
-          .from("meta_campaign_daily")
-          .select("campaign_id, spend, impressions, clicks, leads, messages, purchases, revenue")
-          .eq("project_id", projectId)
-          .gte("date", since)
-          .lte("date", until),
-        // Маппинг ad_id → campaign_id, чтобы агрегировать CRM на уровень кампании.
-        supabase
-          .from("meta_creatives")
-          .select("ad_id, campaign_id")
-          .eq("project_id", projectId)
-          .limit(2000),
-        // Сквозные CRM-метрики по объявлениям (view ещё нет в сгенерированных типах).
-        (supabase as unknown as { from: (t: string) => any })
-          .from("meta_creative_crm_daily")
-          .select("ad_id, crm_leads, crm_qualified, crm_sales, crm_revenue")
-          .eq("project_id", projectId)
-          .gte("date", since)
-          .lte("date", until),
-      ]);
-      if (cancelled) return;
-
-      const camps = (campsRes.data ?? []) as RawCampaign[];
-      const daily = (dailyRes.data ?? []) as RawCampaignDaily[];
-      const creativeMap = new Map<string, string>(); // ad_id → campaign_id
-      for (const c of (creativesRes.data ?? []) as Array<{ ad_id: string; campaign_id: string | null }>) {
-        if (c.campaign_id) creativeMap.set(c.ad_id, c.campaign_id);
-      }
-      const crmAgg = new Map<string, { crmLeads: number; crmQualified: number; crmSales: number; crmRevenue: number }>();
-      for (const c of (crmRes.data ?? []) as Array<{ ad_id: string; crm_leads: number | string; crm_qualified: number | string; crm_sales: number | string; crm_revenue: number | string }>) {
-        const campaignId = creativeMap.get(c.ad_id);
-        if (!campaignId) continue;
-        const cur = crmAgg.get(campaignId) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 };
-        cur.crmLeads += Number(c.crm_leads) || 0;
-        cur.crmQualified += Number(c.crm_qualified) || 0;
-        cur.crmSales += Number(c.crm_sales) || 0;
-        cur.crmRevenue += Number(c.crm_revenue) || 0;
-        crmAgg.set(campaignId, cur);
-      }
-
-      const agg = new Map<string, {
-        spend: number; impressions: number; clicks: number;
-        leads: number; messages: number; purchases: number; revenue: number;
-      }>();
-      for (const d of daily) {
-        const cur = agg.get(d.campaign_id) ?? { spend: 0, impressions: 0, clicks: 0, leads: 0, messages: 0, purchases: 0, revenue: 0 };
-        cur.spend += Number(d.spend) || 0;
-        cur.impressions += Number(d.impressions) || 0;
-        cur.clicks += Number(d.clicks) || 0;
-        cur.leads += Number(d.leads) || 0;
-        cur.messages += Number(d.messages) || 0;
-        cur.purchases += Number(d.purchases) || 0;
-        cur.revenue += Number(d.revenue) || 0;
-        agg.set(d.campaign_id, cur);
-      }
-
-      const out: MetaCampaignRow[] = camps.map((c) => {
-        const a = agg.get(c.campaign_id) ?? { spend: 0, impressions: 0, clicks: 0, leads: 0, messages: 0, purchases: 0, revenue: 0 };
-        const cr = crmAgg.get(c.campaign_id) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 };
-        const ctr = a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0;
-        const cpl = a.leads > 0 ? a.spend / a.leads : 0;
-        const romi = a.spend > 0 ? ((a.revenue - a.spend) / a.spend) * 100 : 0;
-        const crmRomi = a.spend > 0 ? ((cr.crmRevenue - a.spend) / a.spend) * 100 : 0;
-        const crmProfit = cr.crmRevenue - a.spend;
-        const crmAvgCheck = cr.crmSales > 0 ? cr.crmRevenue / cr.crmSales : 0;
-        const crmCps = cr.crmSales > 0 ? a.spend / cr.crmSales : 0;
-        return {
-          id: c.id,
-          campaignId: c.campaign_id,
-          cabinetId: c.cabinet_id,
-          name: c.name ?? "",
-          objective: c.objective,
-          destinationType: c.destination_type,
-          effectiveStatus: c.effective_status,
-          dailyBudget: c.daily_budget != null ? Number(c.daily_budget) : null,
-          ...a,
-          ctr, cpl, romi,
-          ...cr,
-          crmRomi, crmProfit, crmAvgCheck, crmCps,
-        };
-      });
-      out.sort((a, b) => b.spend - a.spend);
-      setRows(out);
-      setLoading(false);
-    })();
-    return () => { cancelled = true; };
-  }, [projectId, since, until, tick]);
-
-  return { rows, loading };
+  const { campaigns, loading } = useMetaDashboard(range);
+  return { rows: campaigns, loading };
 }
 
 // ---------------- Goal labeling helpers ----------------

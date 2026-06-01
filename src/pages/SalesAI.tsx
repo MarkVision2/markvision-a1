@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
@@ -26,13 +26,13 @@ import { useCrmStore } from "@/hooks/useCrmStore";
 import { useTeamStore } from "@/hooks/useTeamStore";
 import { useCrmAnalytics, leadSlaMinutes, slaTone } from "@/hooks/useCrmAnalytics";
 import type { Lead } from "@/types/crm";
+const AiRopCallsAnalysis = lazy(() => import("@/components/sales-ai/AiRopCallsAnalysis").then((m) => ({ default: m.AiRopCallsAnalysis })));
+const AiRopChatsAnalysis = lazy(() => import("@/components/sales-ai/AiRopChatsAnalysis").then((m) => ({ default: m.AiRopChatsAnalysis })));
+const AiRopManagersAnalysis = lazy(() => import("@/components/sales-ai/AiRopManagersAnalysis").then((m) => ({ default: m.AiRopManagersAnalysis })));
+const AiRopTrainer = lazy(() => import("@/components/sales-ai/AiRopTrainer").then((m) => ({ default: m.AiRopTrainer })));
+const AiRopScripts = lazy(() => import("@/components/sales-ai/AiRopScripts").then((m) => ({ default: m.AiRopScripts })));
+const AiRopContentPlan = lazy(() => import("@/components/sales-ai/AiRopContentPlan").then((m) => ({ default: m.AiRopContentPlan })));
 import { AiRopSettings } from "@/components/sales-ai/AiRopSettings";
-import { AiRopTrainer } from "@/components/sales-ai/AiRopTrainer";
-import { AiRopScripts } from "@/components/sales-ai/AiRopScripts";
-import { AiRopContentPlan } from "@/components/sales-ai/AiRopContentPlan";
-import { AiRopCallsAnalysis } from "@/components/sales-ai/AiRopCallsAnalysis";
-import { AiRopChatsAnalysis } from "@/components/sales-ai/AiRopChatsAnalysis";
-import { AiRopManagersAnalysis } from "@/components/sales-ai/AiRopManagersAnalysis";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { useAuth } from "@/hooks/useAuth";
 import { hydrateAiRopStorage } from "@/lib/aiRopStorage";
@@ -451,19 +451,41 @@ const SalesAI = () => {
             </>
           )}
 
-          {tab === "calls" && <AiRopCallsAnalysis leads={leads} projectId={activeId ?? null} />}
-
-          {tab === "chats" && <AiRopChatsAnalysis leads={leads} projectId={activeId ?? null} />}
-
-          {tab === "managers" && (
-            <AiRopManagersAnalysis stats={analytics.managerStats} projectId={activeId ?? null} />
+          {tab === "calls" && (
+            <Suspense fallback={<div className="py-12 text-center text-sm text-muted-foreground">Загрузка…</div>}>
+              <AiRopCallsAnalysis leads={leads} projectId={activeId ?? null} />
+            </Suspense>
           )}
 
-          {tab === "trainer" && <AiRopTrainer />}
+          {tab === "chats" && (
+            <Suspense fallback={<div className="py-12 text-center text-sm text-muted-foreground">Загрузка…</div>}>
+              <AiRopChatsAnalysis leads={leads} projectId={activeId ?? null} />
+            </Suspense>
+          )}
 
-          {tab === "scripts" && <AiRopScripts projectId={activeId ?? null} />}
+          {tab === "managers" && (
+            <Suspense fallback={<div className="py-12 text-center text-sm text-muted-foreground">Загрузка…</div>}>
+              <AiRopManagersAnalysis stats={analytics.managerStats} projectId={activeId ?? null} />
+            </Suspense>
+          )}
 
-          {tab === "content" && <AiRopContentPlan projectId={activeId ?? null} />}
+          {tab === "trainer" && (
+            <Suspense fallback={<div className="py-12 text-center text-sm text-muted-foreground">Загрузка…</div>}>
+              <AiRopTrainer />
+            </Suspense>
+          )}
+
+          {tab === "scripts" && (
+            <Suspense fallback={<div className="py-12 text-center text-sm text-muted-foreground">Загрузка…</div>}>
+              <AiRopScripts projectId={activeId ?? null} />
+            </Suspense>
+          )}
+
+          {tab === "content" && (
+            <Suspense fallback={<div className="py-12 text-center text-sm text-muted-foreground">Загрузка…</div>}>
+              <AiRopContentPlan projectId={activeId ?? null} />
+            </Suspense>
+          )}
 
           {tab === "settings" && <AiRopSettings />}
 

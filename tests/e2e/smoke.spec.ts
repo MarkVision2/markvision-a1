@@ -19,8 +19,8 @@ test.describe("Smoke", () => {
 
   test("страница 404 показывает NotFound", async ({ page }) => {
     await page.goto("/this-route-does-not-exist-xyz");
-    await page.waitForURL((url) => url.pathname === "/login" || url.pathname === "/this-route-does-not-exist-xyz");
-    await expect(page.locator("body")).not.toHaveText("");
+    await expect(page.getByRole("heading", { name: "404" })).toBeVisible({ timeout: 10_000 });
+    await expect(page.getByText("Oops! Page not found")).toBeVisible();
   });
 
   test("главная без сессии редиректит на /login", async ({ page }) => {

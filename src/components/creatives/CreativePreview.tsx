@@ -113,7 +113,7 @@ export function CreativePreview({ row, compact = false, playable = false, classN
           poster={src ?? undefined}
           muted
           playsInline
-          autoPlay
+         
           loop
           preload="metadata"
           className="h-full w-full bg-background object-cover"
@@ -192,7 +192,7 @@ export function CreativePreview({ row, compact = false, playable = false, classN
                 src={previewVideoUrl}
                 poster={src ?? undefined}
                 controls
-                autoPlay
+               
                 playsInline
                 className="aspect-[9/16] h-auto max-h-[92dvh] w-full bg-black"
                 onError={async () => {

@@ -43,6 +43,19 @@ export function ChatsView({
   const isMobile = useIsMobile();
   const { items: quickReplies, add: addReply, remove: removeReply } = useQuickReplies();
 
+  const chatsByLeadId = useMemo(() => {
+    const m = new Map<string, ChatMessage[]>();
+    for (const c of chats) {
+      const arr = m.get(c.leadId) ?? [];
+      arr.push(c);
+      m.set(c.leadId, arr);
+    }
+    for (const arr of m.values()) {
+      arr.sort((a, b) => a.at.localeCompare(b.at));
+    }
+    return m;
+  }, [chats]);
+
   const stageFilters = [{ id: "all", title: "Все" }, ...stages];
 
   const filteredLeads = useMemo(() => {
@@ -58,9 +71,7 @@ export function ChatsView({
   }, [leads, activeStageId, search]);
 
   const activeLead = leads.find((l) => l.id === activeLeadId) ?? null;
-  const activeChats = chats
-    .filter((c) => c.leadId === activeLeadId)
-    .sort((a, b) => a.at.localeCompare(b.at));
+  const activeChats = activeLeadId ? (chatsByLeadId.get(activeLeadId) ?? []) : [];
   const stageTitle = stages.find((s) => s.id === activeLead?.stageId)?.title;
 
   const handleSend = () => {
@@ -167,9 +178,8 @@ export function ChatsView({
                 const stage = stages.find((s) => s.id === lead.stageId);
                 const colors = stageColorClasses(stage?.color ?? "primary");
                 const Icon = stage ? getStageIcon(stage) : MessageCircle;
-                const last = chats
-                  .filter((c) => c.leadId === lead.id)
-                  .slice(-1)[0];
+                const leadChats = chatsByLeadId.get(lead.id);
+                const last = leadChats?.[leadChats.length - 1];
                 const active = activeLeadId === lead.id;
                 return (
                   <button
