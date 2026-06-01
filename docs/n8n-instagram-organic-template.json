@@ -1,0 +1,158 @@
+{
+  "name": "Instagram Organic — DM watcher → MarkVision intake",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "minutes", "minutesInterval": 1 }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule (1 min)",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [100, 200]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.IG_PROVIDER_DM_LIST_URL }}",
+        "method": "GET",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "since", "value": "={{ $now.minus({ minutes: 5 }).toISO() }}" }
+          ]
+        }
+      },
+      "id": "fetch-dms",
+      "name": "Fetch IG DMs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [320, 200],
+      "credentials": {
+        "httpHeaderAuth": { "id": "REPLACE_ME", "name": "IG Provider Auth Header" }
+      }
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "messages",
+        "options": {}
+      },
+      "id": "split",
+      "name": "Split out messages",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [540, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Извлекаем код-слово из текста сообщения. Сравниваем с активными\n// code-words проекта (можно подгрузить из MarkVision через REST или\n// просто захардкодить список регулярок).\nconst text = ($input.item.json.text || '').toLowerCase().trim();\nconst CODEWORDS = ($env.IG_CODEWORDS || 'smile,promo').split(',').map(s => s.trim().toLowerCase());\nconst match = CODEWORDS.find(cw => text.split(/[^a-zа-я0-9_]+/).includes(cw));\n\nreturn {\n  json: {\n    ...$input.item.json,\n    matched_codeword: match || null,\n  }\n};"
+      },
+      "id": "match-codeword",
+      "name": "Match codeword",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [760, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": false, "typeValidation": "loose" },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.matched_codeword }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty" }
+            }
+          ]
+        }
+      },
+      "id": "if-matched",
+      "name": "If codeword matched",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [980, 200]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.MARKVISION_SUPABASE_URL }}/functions/v1/instagram-organic-intake",
+        "method": "POST",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  token: $env.MARKVISION_INTAKE_TOKEN,\n  event_type: 'codeword_dm',\n  ig_handle: $env.IG_HANDLE,\n  codeword: $json.matched_codeword,\n  username: $json.from && $json.from.username ? '@' + $json.from.username : null,\n  contact: $json.from && $json.from.phone ? $json.from.phone : null,\n  reel_url: $json.story && $json.story.permalink ? $json.story.permalink : null,\n  reel_id: $json.story && $json.story.id ? $json.story.id : null,\n  external_event_id: $json.id,\n  occurred_at: $json.created_time,\n  payload: { raw_text: $json.text }\n}) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        }
+      },
+      "id": "send-codeword-event",
+      "name": "POST → MarkVision intake",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1220, 100]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.IG_PROVIDER_DM_REPLY_URL }}",
+        "method": "POST",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  recipient_username: $json.from && $json.from.username ? $json.from.username : null,\n  text: 'Лови ссылку: ' + $env.MARKVISION_SUPABASE_URL + '/functions/v1/ig-organic-redirect?c=' + ($env.SHORT_ID_PREFIX || '') + ($json.matched_codeword || '') + '&u=' + encodeURIComponent($json.from && $json.from.username ? $json.from.username : 'anon')\n}) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        }
+      },
+      "id": "reply-dm",
+      "name": "Reply DM with short link",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1220, 280],
+      "credentials": {
+        "httpHeaderAuth": { "id": "REPLACE_ME", "name": "IG Provider Auth Header" }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule (1 min)": { "main": [[{ "node": "Fetch IG DMs", "type": "main", "index": 0 }]] },
+    "Fetch IG DMs":      { "main": [[{ "node": "Split out messages", "type": "main", "index": 0 }]] },
+    "Split out messages":{ "main": [[{ "node": "Match codeword", "type": "main", "index": 0 }]] },
+    "Match codeword":    { "main": [[{ "node": "If codeword matched", "type": "main", "index": 0 }]] },
+    "If codeword matched": {
+      "main": [
+        [
+          { "node": "POST → MarkVision intake", "type": "main", "index": 0 },
+          { "node": "Reply DM with short link", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "_help": {
+    "what": "Шаблон n8n workflow для МПС-аналитики органического Instagram. Раз в минуту опрашивает провайдер (ManyChat / SaleBot / IG Cloud API), вытаскивает DM с кодовыми словами, отправляет событие в MarkVision intake и отвечает зрителю короткой ссылкой.",
+    "env_vars": {
+      "MARKVISION_SUPABASE_URL": "https://<project>.functions.supabase.co",
+      "MARKVISION_INTAKE_TOKEN": "Settings → Подключения → Project Token",
+      "IG_PROVIDER_DM_LIST_URL": "URL вашего IG-бота для получения списка DM (ManyChat/SaleBot/Cloud API)",
+      "IG_PROVIDER_DM_REPLY_URL": "URL для отправки ответного DM",
+      "IG_HANDLE": "your_brand_handle (без @)",
+      "IG_CODEWORDS": "smile,promo,discount (CSV активных код-слов)"
+    },
+    "next_steps": [
+      "1. Импортируйте workflow в n8n.",
+      "2. Замените credentials 'IG Provider Auth Header' на токен вашего бота.",
+      "3. Задайте env-переменные.",
+      "4. Активируйте workflow.",
+      "5. В MarkVision Settings → Instagram добавьте аккаунт @<IG_HANDLE> — статус автоматически перейдёт в 'Подключён' после первого DM."
+    ]
+  }
+}

@@ -28,12 +28,18 @@ export interface InstagramOrganicFunnelData {
 export interface CodewordStat {
   codewordId: string;
   codeword: string;
+  shortId: string | null;
   reelUrl: string | null;
   thumbnailUrl: string | null;
+  targetUrl: string | null;
+  igAccountId: string | null;
   active: boolean;
   codewordDms: number;
+  uniqueUsers: number;
   linkClicks: number;
   leads: number;
+  sales: number;
+  revenue: number;
   lastEventAt: string | null;
 }
 
@@ -147,7 +153,9 @@ export function useCodewordStats() {
     void (async () => {
       const { data, error } = await supabase
         .from("instagram_codeword_stats")
-        .select("codeword_id, codeword, reel_url, thumbnail_url, active, codeword_dms, link_clicks, leads, last_event_at")
+        .select(
+          "codeword_id, codeword, short_id, reel_url, thumbnail_url, target_url, ig_account_id, active, codeword_dms, unique_users, link_clicks, leads, sales, revenue, last_event_at",
+        )
         .eq("project_id", projectId);
       if (cancelled) return;
       if (error) {
@@ -157,12 +165,18 @@ export function useCodewordStats() {
           (data ?? []).map((r: Record<string, unknown>) => ({
             codewordId: String(r.codeword_id),
             codeword: String(r.codeword ?? ""),
+            shortId: (r.short_id as string | null) ?? null,
             reelUrl: (r.reel_url as string | null) ?? null,
             thumbnailUrl: (r.thumbnail_url as string | null) ?? null,
+            targetUrl: (r.target_url as string | null) ?? null,
+            igAccountId: (r.ig_account_id as string | null) ?? null,
             active: !!r.active,
             codewordDms: Number(r.codeword_dms ?? 0),
+            uniqueUsers: Number(r.unique_users ?? 0),
             linkClicks: Number(r.link_clicks ?? 0),
             leads: Number(r.leads ?? 0),
+            sales: Number(r.sales ?? 0),
+            revenue: Number(r.revenue ?? 0),
             lastEventAt: (r.last_event_at as string | null) ?? null,
           })),
         );
@@ -179,12 +193,14 @@ export interface InstagramCodeword {
   id: string;
   projectId: string;
   codeword: string;
+  shortId: string | null;
   reelId: string | null;
   reelUrl: string | null;
   thumbnailUrl: string | null;
   caption: string | null;
   publishedAt: string | null;
   targetUrl: string | null;
+  igAccountId: string | null;
   active: boolean;
 }
 
@@ -215,12 +231,14 @@ export function useInstagramCodewords() {
           id: String(r.id),
           projectId: String(r.project_id),
           codeword: String(r.codeword ?? ""),
+          shortId: (r.short_id as string | null) ?? null,
           reelId: (r.reel_id as string | null) ?? null,
           reelUrl: (r.reel_url as string | null) ?? null,
           thumbnailUrl: (r.thumbnail_url as string | null) ?? null,
           caption: (r.caption as string | null) ?? null,
           publishedAt: (r.published_at as string | null) ?? null,
           targetUrl: (r.target_url as string | null) ?? null,
+          igAccountId: (r.ig_account_id as string | null) ?? null,
           active: !!r.active,
         })),
       );
@@ -240,6 +258,7 @@ export function useInstagramCodewords() {
       caption: input.caption,
       published_at: input.publishedAt,
       target_url: input.targetUrl,
+      ig_account_id: input.igAccountId,
       active: input.active,
     });
     if (error) throw error;
@@ -254,6 +273,7 @@ export function useInstagramCodewords() {
     if (patch.caption !== undefined) payload.caption = patch.caption;
     if (patch.publishedAt !== undefined) payload.published_at = patch.publishedAt;
     if (patch.targetUrl !== undefined) payload.target_url = patch.targetUrl;
+    if (patch.igAccountId !== undefined) payload.ig_account_id = patch.igAccountId;
     if (patch.active !== undefined) payload.active = patch.active;
     const { error } = await supabase.from("instagram_codewords").update(payload as never).eq("id", id);
     if (error) throw error;
@@ -265,4 +285,73 @@ export function useInstagramCodewords() {
   };
 
   return { items, loading, add, update, remove };
+}
+
+export interface CodewordLead {
+  leadId: string;
+  name: string;
+  phone: string | null;
+  amount: number;
+  paid: boolean;
+  paidAt: string | null;
+  createdAt: string;
+  source: string | null;
+  stageId: string | null;
+}
+
+// Все лиды, пришедшие по конкретному код-слову. Источник — события
+// instagram_organic_events.lead_id, потом join с leads. Используется в
+// дровере «лиды по код-слову» на странице контент-аналитики.
+export function useCodewordLeads(codewordId: string | null) {
+  const [leads, setLeads] = useState<CodewordLead[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!codewordId) {
+      setLeads([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    void (async () => {
+      const { data: ev } = await supabase
+        .from("instagram_organic_events")
+        .select("lead_id")
+        .eq("codeword_id", codewordId)
+        .eq("event_type", "lead")
+        .not("lead_id", "is", null);
+      if (cancelled) return;
+      const ids = Array.from(
+        new Set((ev ?? []).map((r) => (r as { lead_id: string | null }).lead_id).filter(Boolean) as string[]),
+      );
+      if (!ids.length) {
+        setLeads([]);
+        setLoading(false);
+        return;
+      }
+      const { data: rows } = await supabase
+        .from("leads")
+        .select("id, name, phone, amount, paid, paid_at, created_at, source, stage_id")
+        .in("id", ids)
+        .order("created_at", { ascending: false });
+      if (cancelled) return;
+      setLeads(
+        (rows ?? []).map((r: Record<string, unknown>) => ({
+          leadId: String(r.id),
+          name: String(r.name ?? ""),
+          phone: (r.phone as string | null) ?? null,
+          amount: Number(r.amount ?? 0),
+          paid: !!r.paid,
+          paidAt: (r.paid_at as string | null) ?? null,
+          createdAt: String(r.created_at),
+          source: (r.source as string | null) ?? null,
+          stageId: (r.stage_id as string | null) ?? null,
+        })),
+      );
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [codewordId]);
+
+  return { leads, loading };
 }

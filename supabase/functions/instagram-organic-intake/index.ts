@@ -53,6 +53,13 @@ const Schema = z.object({
   lead_id: z.string().uuid().optional().nullable(),
   occurred_at: z.string().datetime().optional().nullable(),
   payload: z.record(z.unknown()).optional().nullable(),
+  // Идемпотентность: внешний id события (ig message_id, n8n execution id…).
+  // Повторный POST с тем же external_event_id вернёт 200 без дубля строки.
+  external_event_id: z.string().trim().max(160).optional().nullable(),
+  // К какому IG-аккаунту привязать событие. Можно явно прокинуть UUID
+  // (ig_account_id) или handle (@username) — резолвим по handle на проекте.
+  ig_account_id: z.string().uuid().optional().nullable(),
+  ig_handle: z.string().trim().max(80).optional().nullable(),
 });
 
 type IntakePayload = z.infer<typeof Schema>;
@@ -85,11 +92,39 @@ async function resolveCodeword(projectId: string, codeword: string | null) {
   if (!codeword) return null;
   const { data } = await admin
     .from("instagram_codewords")
-    .select("id, reel_id, reel_url, target_url")
+    .select("id, reel_id, reel_url, target_url, ig_account_id")
     .eq("project_id", projectId)
     .eq("codeword", codeword)
     .maybeSingle();
-  return data as { id: string; reel_id: string | null; reel_url: string | null; target_url: string | null } | null;
+  return data as { id: string; reel_id: string | null; reel_url: string | null; target_url: string | null; ig_account_id: string | null } | null;
+}
+
+async function resolveIgAccount(
+  projectId: string,
+  accountId: string | null | undefined,
+  handle: string | null | undefined,
+): Promise<string | null> {
+  if (accountId) {
+    const { data } = await admin
+      .from("project_instagram_accounts")
+      .select("id")
+      .eq("id", accountId)
+      .eq("project_id", projectId)
+      .maybeSingle();
+    if (data) return (data as { id: string }).id;
+  }
+  if (handle) {
+    const normalized = handle.trim().replace(/^@/, "").toLowerCase();
+    if (!normalized) return null;
+    const { data } = await admin
+      .from("project_instagram_accounts")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("handle", normalized)
+      .maybeSingle();
+    if (data) return (data as { id: string }).id;
+  }
+  return null;
 }
 
 async function parseBody(req: Request): Promise<Record<string, unknown>> {
@@ -127,6 +162,30 @@ Deno.serve(async (req) => {
   if (!projectId) return json({ ok: false, error: "project_not_resolved" }, 401);
 
   const codewordRow = await resolveCodeword(projectId, codeword);
+  const igAccountId =
+    (await resolveIgAccount(projectId, body.ig_account_id ?? null, body.ig_handle ?? null))
+    ?? codewordRow?.ig_account_id
+    ?? null;
+
+  // Идемпотентность: если такой external_event_id уже видели — возвращаем
+  // старый event_id и не дублируем.
+  if (body.external_event_id) {
+    const { data: existing } = await admin
+      .from("instagram_organic_events")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("external_event_id", body.external_event_id)
+      .maybeSingle();
+    if (existing) {
+      return json({
+        ok: true,
+        deduped: true,
+        event_id: (existing as { id: string }).id,
+        codeword_id: codewordRow?.id ?? null,
+        target_url: codewordRow?.target_url ?? null,
+      });
+    }
+  }
 
   const occurredAt = body.occurred_at ? new Date(body.occurred_at) : new Date();
   const dateKey = new Intl.DateTimeFormat("en-CA", {
@@ -144,6 +203,8 @@ Deno.serve(async (req) => {
     username: body.username ?? null,
     contact: body.contact ?? null,
     lead_id: body.lead_id ?? null,
+    ig_account_id: igAccountId,
+    external_event_id: body.external_event_id ?? null,
     date: dateKey,
     occurred_at: occurredAt.toISOString(),
     payload: body.payload ?? {},
@@ -156,6 +217,25 @@ Deno.serve(async (req) => {
     .single();
 
   if (error) {
+    // 23505 — UNIQUE violation, означает гонку на тот же external_event_id.
+    // Достаём существующее событие и возвращаем его, чтобы клиент получил 200.
+    if ((error as { code?: string }).code === "23505" && body.external_event_id) {
+      const { data: existing } = await admin
+        .from("instagram_organic_events")
+        .select("id")
+        .eq("project_id", projectId)
+        .eq("external_event_id", body.external_event_id)
+        .maybeSingle();
+      if (existing) {
+        return json({
+          ok: true,
+          deduped: true,
+          event_id: (existing as { id: string }).id,
+          codeword_id: codewordRow?.id ?? null,
+          target_url: codewordRow?.target_url ?? null,
+        });
+      }
+    }
     console.error("[instagram-organic-intake] insert failed", error);
     return json({ ok: false, error: "Internal server error" }, 500);
   }

@@ -23,6 +23,7 @@ import { LossReasonsSettings } from "@/components/settings/LossReasonsSettings";
 import { InboundTokensSettings } from "@/components/settings/InboundTokensSettings";
 import { ClientDashTokensSettings } from "@/components/settings/ClientDashTokensSettings";
 import { InstagramOrganicSettings } from "@/components/settings/InstagramOrganicSettings";
+import { InstagramAccountsSettings } from "@/components/settings/InstagramAccountsSettings";
 import { SiteIntakeCard } from "@/pages/SettingsConnection";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -89,7 +90,7 @@ export default function Settings() {
           <TabsTrigger value="whatsapp" className="gap-2"><MessageCircle className="h-3.5 w-3.5" /> WhatsApp</TabsTrigger>
           <TabsTrigger value="site" className="gap-2"><Globe className="h-3.5 w-3.5" /> Сайт</TabsTrigger>
           <TabsTrigger value="inbound" className="gap-2"><Link2 className="h-3.5 w-3.5" /> Лендинги</TabsTrigger>
-          <TabsTrigger value="ig-organic" className="gap-2"><Camera className="h-3.5 w-3.5" /> Instagram organic</TabsTrigger>
+          <TabsTrigger value="ig-organic" className="gap-2"><Camera className="h-3.5 w-3.5" /> Instagram</TabsTrigger>
           <TabsTrigger value="clientview" className="gap-2"><Eye className="h-3.5 w-3.5" /> Доступ клиента</TabsTrigger>
         </TabsList>
 
@@ -250,7 +251,8 @@ export default function Settings() {
           </div>
         </TabsContent>
 
-        <TabsContent value="ig-organic" className="mt-0">
+        <TabsContent value="ig-organic" className="mt-0 space-y-5">
+          <InstagramAccountsSettings />
           <InstagramOrganicSettings />
         </TabsContent>
 

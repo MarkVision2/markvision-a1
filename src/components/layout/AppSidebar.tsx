@@ -11,6 +11,7 @@ import {
   PhoneCall,
   Sparkles,
   Filter,
+  Hash,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -57,6 +58,7 @@ const sales: NavItem[] = [
 const analytics: NavItem[] = [
   { title: "Сквозная аналитика", url: "/analytics", icon: GitBranch },
   { title: "Воронка по креативам", url: "/analytics/creatives", icon: Filter },
+  { title: "Контент-аналитика", url: "/analytics/content", icon: Hash },
   { title: "Таблица показателей", url: "/metrics", icon: TableProperties },
   { title: "Финансы", url: "/finance", icon: Wallet },
   { title: "Отчётность", url: "/reports", icon: FileBarChart2 },
