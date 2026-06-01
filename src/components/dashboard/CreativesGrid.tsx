@@ -46,6 +46,7 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
   const [capturedPoster, setCapturedPoster] = useState<string | null>(null);
   const [refreshedThumb, setRefreshedThumb] = useState<string | null>(null);
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(row.videoUrl);
+  const [mediaError, setMediaError] = useState(false);
   const src = bestCreativeImage({
     posterUrl: capturedPoster ?? row.posterUrl,
     thumbnailUrl: refreshedThumb ?? row.thumbnailUrl,
@@ -113,16 +114,17 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
             void refreshVideoPreview();
           }}
         />
-      ) : src ? (
+      ) : src && !mediaError ? (
         <img
           src={src}
-          alt={row.name}
+          alt=""
           className={cn(
             "h-full w-full transition duration-300 group-hover:scale-[1.01]",
             isVideo ? "object-cover" : "object-cover",
           )}
           loading="lazy"
           referrerPolicy="no-referrer"
+          onError={() => setMediaError(true)}
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center">
