@@ -20,6 +20,11 @@ import { useProjectsStore } from "@/hooks/useProjectsStore";
 
 const SUPABASE_URL = (import.meta.env.VITE_SUPABASE_URL as string | undefined) ?? "";
 const INTAKE_ENDPOINT = `${SUPABASE_URL}/functions/v1/instagram-organic-intake`;
+const REDIRECT_BASE = `${SUPABASE_URL}/functions/v1/ig-organic-redirect`;
+
+function botShortLink(shortId: string, username = "user") {
+  return `${REDIRECT_BASE}?c=${encodeURIComponent(shortId)}&u=${encodeURIComponent(username)}`;
+}
 
 interface DraftCodeword {
   codeword: string;

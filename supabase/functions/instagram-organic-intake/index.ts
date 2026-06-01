@@ -70,11 +70,11 @@ async function resolveProjectId(req: Request, body: IntakePayload): Promise<stri
   const headerToken = req.headers.get("x-intake-token") || body.token || null;
   if (!headerToken) return null;
   const { data } = await admin
-    .from("project_intake_tokens")
-    .select("project_id")
-    .eq("token", headerToken)
+    .from("projects")
+    .select("id")
+    .eq("intake_token", headerToken)
     .maybeSingle();
-  const tokenProject = (data as { project_id?: string } | null)?.project_id ?? null;
+  const tokenProject = (data as { id?: string } | null)?.id ?? null;
   if (!tokenProject) return null;
   // If body also provides project_id, it must match the token's project.
   if (body.project_id && body.project_id !== tokenProject) return null;

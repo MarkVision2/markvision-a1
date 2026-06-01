@@ -55,6 +55,12 @@ export function prefetchRoute(path: string) {
     case "/analytics":
       loaders.push(routeImports.Analytics);
       break;
+    case "/analytics/content":
+      loaders.push(routeImports.ContentAnalytics);
+      break;
+    case "/analytics/creatives":
+      loaders.push(routeImports.CreativeFunnel);
+      break;
     case "/finance":
       loaders.push(routeImports.Finance);
       break;

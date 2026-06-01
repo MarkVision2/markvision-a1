@@ -297,7 +297,13 @@ Deno.serve(async (req) => {
   // Если канал явно whatsapp/telegram/phone — это важнее, чем неявный source.
   // Решает кейс: лид с сайта по клику на WhatsApp-кнопку должен быть source=whatsapp,
   // а не site, потому что менеджер дальше пишет ему в WhatsApp.
+  const organicCodeword =
+    normalizeCodeword(v.cw) ||
+    normalizeCodeword(v.codeword) ||
+    normalizeCodeword(v.utm_campaign);
+
   const rawSource =
+    (organicCodeword ? "instagram" : null) ||
     (v.source && v.source.trim()) ||
     (v.utm_source && v.utm_source.trim()) ||
     detectFromReferrer(v.referrer) ||
@@ -305,7 +311,9 @@ Deno.serve(async (req) => {
     "site";
   const source = SOURCE_ALIASES[rawSource.toLowerCase()] ?? rawSource.toLowerCase();
   // channel is a DB enum: whatsapp | telegram | instagram | phone | web
-  const channelInput = (v.channel && v.channel.trim()) || "web";
+  const channelInput = organicCodeword
+    ? "instagram"
+    : (v.channel && v.channel.trim()) || "web";
   const ALLOWED_CHANNELS = new Set(["whatsapp", "telegram", "instagram", "phone", "web"]);
   const channel = ALLOWED_CHANNELS.has(channelInput) ? channelInput : "web";
   const note = [v.message, v.note].filter(Boolean).join("\n").trim() || null;

@@ -157,12 +157,16 @@ export function useCodewordStats() {
           (data ?? []).map((r: Record<string, unknown>) => ({
             codewordId: String(r.codeword_id),
             codeword: String(r.codeword ?? ""),
+            shortId: (r.short_id as string | null) ?? null,
             reelUrl: (r.reel_url as string | null) ?? null,
             thumbnailUrl: (r.thumbnail_url as string | null) ?? null,
             active: !!r.active,
             codewordDms: Number(r.codeword_dms ?? 0),
+            uniqueUsers: Number(r.unique_users ?? 0),
             linkClicks: Number(r.link_clicks ?? 0),
             leads: Number(r.leads ?? 0),
+            sales: Number(r.sales ?? 0),
+            revenue: Number(r.revenue ?? 0),
             lastEventAt: (r.last_event_at as string | null) ?? null,
           })),
         );
