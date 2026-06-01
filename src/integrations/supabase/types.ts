@@ -2504,6 +2504,55 @@ export type Database = {
         }
         Relationships: []
       }
+      project_members: {
+        Row: {
+          created_at: string
+          id: string
+          project_id: string
+          role: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          project_id: string
+          role?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          project_id?: string
+          role?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "project_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       projects: {
         Row: {
           created_at: string
@@ -2899,6 +2948,7 @@ export type Database = {
           project_id: string | null
           updated_at: string
           user_id: string
+          webhook_token: string | null
           webhook_url: string | null
         }
         Insert: {
@@ -2914,6 +2964,7 @@ export type Database = {
           project_id?: string | null
           updated_at?: string
           user_id: string
+          webhook_token?: string | null
           webhook_url?: string | null
         }
         Update: {
@@ -2929,6 +2980,7 @@ export type Database = {
           project_id?: string | null
           updated_at?: string
           user_id?: string
+          webhook_token?: string | null
           webhook_url?: string | null
         }
         Relationships: [
@@ -3141,6 +3193,24 @@ export type Database = {
           },
         ]
       }
+      crm_stats_health: {
+        Row: {
+          cabinet_id: string | null
+          cdi_crm_revenue: number | null
+          cdi_crm_sales: number | null
+          cdi_manual_revenue: number | null
+          cdi_manual_sales: number | null
+          crm_paid_amount: number | null
+          crm_paid_leads: number | null
+          date: string | null
+          has_manual_override: boolean | null
+          is_orphan: boolean | null
+          project_id: string | null
+          revenue_delta: number | null
+          sales_delta: number | null
+        }
+        Relationships: []
+      }
       inbound_tokens: {
         Row: {
           client_id: string | null
@@ -3295,6 +3365,8 @@ export type Database = {
         Row: {
           ad_id: string | null
           cabinet_id: string | null
+          crm_diagnostic_revenue: number | null
+          crm_diagnostics: number | null
           crm_leads: number | null
           crm_qualified: number | null
           crm_revenue: number | null
@@ -3461,6 +3533,10 @@ export type Database = {
         Returns: Json
       }
       normalize_phone: { Args: { p: string }; Returns: string }
+      reconcile_cdi_for_project: {
+        Args: { p_project_id: string; p_since?: string }
+        Returns: Json
+      }
       resolve_intake_project: { Args: { p_token: string }; Returns: string }
       rotate_project_intake_token: {
         Args: { p_project_id: string }

@@ -134,15 +134,28 @@ async function getDefaultStage(
   return tryPipe(d4?.id);
 }
 
-// Resolve which project a webhook belongs to via whatsapp_config.id_instance.
-async function projectFromInstance(idInstance: number | string | null | undefined): Promise<string | null> {
-  if (!idInstance) return null;
+// Resolve which project a webhook belongs to via whatsapp_config.id_instance,
+// and verify the per-instance webhook_token if one is configured.
+// Returns { projectId, ok }. ok=false → reject (token mismatch / spoof attempt).
+async function projectFromInstance(
+  idInstance: number | string | null | undefined,
+  presentedToken: string | null,
+): Promise<{ projectId: string | null; ok: boolean }> {
+  if (!idInstance) return { projectId: null, ok: true };
   const { data } = await admin
     .from("whatsapp_config")
-    .select("project_id")
+    .select("project_id, webhook_token")
     .eq("id_instance", String(idInstance))
     .maybeSingle();
-  return data?.project_id ?? null;
+  if (!data) return { projectId: null, ok: true };
+  const expected = (data as { webhook_token?: string | null }).webhook_token ?? null;
+  // Global fallback: if no per-row token but GREENAPI_WEBHOOK_TOKEN env is set, require it.
+  const envToken = Deno.env.get("GREENAPI_WEBHOOK_TOKEN") ?? null;
+  const required = expected || envToken;
+  if (required && required !== presentedToken) {
+    return { projectId: data.project_id ?? null, ok: false };
+  }
+  return { projectId: data.project_id ?? null, ok: true };
 }
 
 // Best-effort parser of Meta CTWA (Click-To-WhatsApp) referral payload.
@@ -443,11 +456,22 @@ Deno.serve(async (req) => {
 
   const instanceData = body.instanceData as { idInstance?: number } | undefined;
   const type = body.typeWebhook as string | undefined;
-  // Resolve project from the Green API instance id. The same webhook URL
-  // serves every project's instance — we route based on which one pinged us.
-  // No env-based filter: multi-instance routing relies entirely on the
-  // whatsapp_config.id_instance binding.
-  const projectId = await projectFromInstance(instanceData?.idInstance);
+  // Anti-spoof: Green API can append a configurable token to the webhook URL
+  // (?token=...) or send it in the body as `webhookUrlToken`. We compare it to
+  // the token stored per-instance in whatsapp_config.webhook_token (or to the
+  // global GREENAPI_WEBHOOK_TOKEN env). If the instance has a token configured
+  // and the presented one doesn't match — reject. Otherwise (no token set) we
+  // stay backwards-compatible and accept the call.
+  const url = new URL(req.url);
+  const presentedToken =
+    url.searchParams.get("token") ??
+    (typeof body.webhookUrlToken === "string" ? (body.webhookUrlToken as string) : null);
+  const resolved = await projectFromInstance(instanceData?.idInstance, presentedToken);
+  if (!resolved.ok) {
+    console.warn("greenapi-webhook: invalid webhook token", { idInstance: instanceData?.idInstance });
+    return json({ error: "invalid webhook token" }, 401);
+  }
+  const projectId = resolved.projectId;
 
   try {
     const idMessage = (body.idMessage as string | undefined) ?? null;
