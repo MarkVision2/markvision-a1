@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { Camera, Copy, ExternalLink, Hash, Loader2, Plus } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Camera, Copy, ExternalLink, Hash, Instagram, Loader2, Plus } from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -32,6 +32,12 @@ const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 
 export default function ContentAnalytics() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const activeTab = searchParams.get("tab") === "instagram" ? "instagram" : "codewords";
+  const setActiveTab = (tab: string) => {
+    setSearchParams(tab === "instagram" ? { tab: "instagram" } : {}, { replace: true });
+  };
+
   const [range, setRange] = useState<ReportPeriodRange>(() => currentMonthRange());
   const { events, funnel, loading, error } = useInstagramOrganic(range);
   const { stats, loading: statsLoading } = useCodewordStats();
@@ -107,22 +113,30 @@ export default function ContentAnalytics() {
       <PageHeader
         icon={Hash}
         title="Контент-аналитика"
-        description="Органическая воронка Instagram Reels: код-слово в DM → клик → заявка → продажа в CRM."
+        description="Код-слова в DM и статистика Instagram Business: охват, Reels, аудитория и продажи в CRM."
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <PeriodPicker range={range} onChange={setRange} />
-            <Button className="gap-2" onClick={() => setDialogOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Добавить код-слово
-            </Button>
+            {activeTab === "codewords" && (
+              <Button className="gap-2" onClick={() => setDialogOpen(true)}>
+                <Plus className="h-4 w-4" />
+                Добавить код-слово
+              </Button>
+            )}
           </div>
         }
       />
 
-      <Tabs defaultValue="codewords" className="w-full">
-        <TabsList className="mb-4">
-          <TabsTrigger value="codewords">Код-слова</TabsTrigger>
-          <TabsTrigger value="instagram">Instagram аналитика</TabsTrigger>
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="mb-6 grid h-11 w-full max-w-lg grid-cols-2">
+          <TabsTrigger value="codewords" className="gap-2">
+            <Hash className="h-4 w-4" />
+            Код-слова
+          </TabsTrigger>
+          <TabsTrigger value="instagram" className="gap-2">
+            <Instagram className="h-4 w-4" />
+            Instagram аналитика
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="codewords">
@@ -243,8 +257,8 @@ export default function ContentAnalytics() {
 
         </TabsContent>
 
-        <TabsContent value="instagram" className="mt-0">
-          <InstagramAnalyticsPanel />
+        <TabsContent value="instagram" className="mt-0 focus-visible:outline-none">
+          <InstagramAnalyticsPanel range={range} />
         </TabsContent>
       </Tabs>
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 
 export interface IgMediaRow {
@@ -46,6 +47,10 @@ export function useInstagramAnalytics(range: ReportPeriodRange) {
   const [daily, setDaily] = useState<IgDailyRow[]>([]);
   const [demographics, setDemographics] = useState<IgDemographic[]>([]);
   const [loading, setLoading] = useState(false);
+  const [tick, setTick] = useState(0);
+
+  useRealtimeTable("instagram_media", () => setTick((n) => n + 1), !!projectId, 1200);
+  useRealtimeTable("instagram_account_daily", () => setTick((n) => n + 1), !!projectId, 1200);
 
   useEffect(() => {
     if (!projectId) {
@@ -108,7 +113,7 @@ export function useInstagramAnalytics(range: ReportPeriodRange) {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [projectId, range.from, range.to]);
+  }, [projectId, range.from, range.to, tick]);
 
   const totals = useMemo(() => {
     const t = { posts: media.length, reach: 0, impressions: 0, likes: 0, comments: 0, shares: 0, saved: 0, plays: 0, websiteClicks: 0, profileViews: 0 };

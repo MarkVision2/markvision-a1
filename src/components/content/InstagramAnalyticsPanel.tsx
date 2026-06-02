@@ -8,6 +8,7 @@ import {
 import { useInstagramAnalytics } from "@/hooks/useInstagramAnalytics";
 import { useInstagramAccount } from "@/hooks/useInstagramAccount";
 import { useCodewordStats } from "@/hooks/useInstagramOrganic";
+import { InstagramAccountConnect } from "@/components/settings/InstagramAccountConnect";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
 
@@ -37,7 +38,7 @@ interface Props {
 }
 
 export function InstagramAnalyticsPanel({ range }: Props) {
-  const { account } = useInstagramAccount();
+  const { account, sync } = useInstagramAccount();
   const { totals, media, daily, demographics, followersDelta, loading } = useInstagramAnalytics(range);
   const { stats: codewordStats } = useCodewordStats();
   const [filter, setFilter] = useState<"ALL" | "FEED" | "REELS" | "STORY">("ALL");
@@ -63,20 +64,11 @@ export function InstagramAnalyticsPanel({ range }: Props) {
 
   if (!account) {
     return (
-      <div className="rounded-3xl border border-dashed border-border/60 bg-card/40 p-12 text-center">
-        <Instagram className="h-12 w-12 text-pink-500 mx-auto mb-4 opacity-60" />
-        <h3 className="text-lg font-bold mb-2">Instagram не подключён</h3>
-        <p className="text-sm text-muted-foreground max-w-md mx-auto">
-          Перейдите в <b>Настройки → Instagram органик</b> и подключите Business аккаунт, чтобы видеть аналитику постов, Reels и аудитории.
-        </p>
-      </div>
-    );
-  }
-
-  if (loading && media.length === 0) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="space-y-4">
+        <div className="rounded-2xl border border-pink-500/30 bg-pink-500/5 px-4 py-3 text-sm text-muted-foreground">
+          Подключите Instagram Business через ваш Meta-токен (отдельный пароль не нужен). После синхронизации здесь появятся охват, лайки, Reels и демография.
+        </div>
+        <InstagramAccountConnect />
       </div>
     );
   }
@@ -103,6 +95,43 @@ export function InstagramAnalyticsPanel({ range }: Props) {
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-border/60 bg-card/60 p-4">
+        {account.profilePictureUrl ? (
+          <img src={account.profilePictureUrl} alt="" className="h-12 w-12 rounded-full object-cover ring-2 ring-pink-500/40" />
+        ) : (
+          <span className="grid h-12 w-12 place-items-center rounded-full bg-pink-500/15">
+            <Instagram className="h-6 w-6 text-pink-500" />
+          </span>
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold">@{account.username ?? account.name ?? "instagram"}</div>
+          <div className="text-xs text-muted-foreground">
+            {fmtNum(account.followersCount)} подписчиков
+            {account.lastSyncAt && (
+              <> · синхр. {new Date(account.lastSyncAt).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</>
+            )}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => void sync()}
+          className="rounded-lg border border-border/60 px-3 py-1.5 text-xs font-semibold hover:bg-secondary/60"
+        >
+          Обновить
+        </button>
+      </div>
+      {account.lastError && (
+        <div className="rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+          {account.lastError} — переподключите аккаунт в настройках.
+        </div>
+      )}
+
+      {loading && media.length === 0 ? (
+        <div className="flex items-center justify-center py-16 rounded-2xl border border-border/60 bg-card/40">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : (
+        <>
       {/* KPI cards */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         <KpiCard icon={Instagram} label="Публикаций" value={fmtNum(totals.posts)} accent="text-pink-500" />
@@ -306,6 +335,8 @@ export function InstagramAnalyticsPanel({ range }: Props) {
             </div>
           )}
         </div>
+      )}
+        </>
       )}
     </div>
   );
