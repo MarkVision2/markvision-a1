@@ -28,12 +28,16 @@ export interface InstagramOrganicFunnelData {
 export interface CodewordStat {
   codewordId: string;
   codeword: string;
+  shortId: string | null;
   reelUrl: string | null;
   thumbnailUrl: string | null;
   active: boolean;
   codewordDms: number;
+  uniqueUsers?: number;
   linkClicks: number;
   leads: number;
+  sales: number;
+  revenue: number;
   lastEventAt: string | null;
 }
 
@@ -183,6 +187,7 @@ export interface InstagramCodeword {
   id: string;
   projectId: string;
   codeword: string;
+  shortId?: string | null;
   reelId: string | null;
   reelUrl: string | null;
   thumbnailUrl: string | null;

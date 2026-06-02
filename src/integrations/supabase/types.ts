@@ -3243,11 +3243,7 @@ export type Database = {
           link_clicks: number | null
           project_id: string | null
           reel_url: string | null
-          revenue: number | null
-          sales: number | null
-          short_id: string | null
           thumbnail_url: string | null
-          unique_users: number | null
         }
         Relationships: [
           {
