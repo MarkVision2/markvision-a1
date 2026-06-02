@@ -42,6 +42,7 @@ export function CreativePreview({ row, compact = false, playable = false, classN
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(row.videoUrl);
   const [playerOpen, setPlayerOpen] = useState(false);
   const [loadingFullVideo, setLoadingFullVideo] = useState(false);
+  const [mediaError, setMediaError] = useState(false);
   const src = bestCreativeImage({
     posterUrl: capturedPoster ?? row.posterUrl,
     thumbnailUrl: refreshedThumb ?? row.thumbnailUrl,
