@@ -70,9 +70,8 @@ async function fetchMetaDashboard(
   since: string,
   until: string,
 ): Promise<{ creatives: MetaCreativeRow[]; campaigns: MetaCampaignRow[] }> {
-  const crmTable = (supabase as unknown as { from: (t: string) => ReturnType<typeof supabase.from> }).from(
-    "meta_creative_crm_daily",
-  );
+  const crmTable = (supabase as any).from("meta_creative_crm_daily");
+
 
   const [creativesRes, dailyRes, crmRes, campsRes, campDailyRes] = await Promise.all([
     supabase
@@ -108,7 +107,7 @@ async function fetchMetaDashboard(
 
   const creatives = (creativesRes.data ?? []) as RawCreative[];
   const daily = (dailyRes.data ?? []) as RawDailyAgg[];
-  const crm = (crmRes.data ?? []) as Array<{
+  const crm = ((crmRes.data ?? []) as unknown) as Array<{
     ad_id: string;
     crm_leads: number | string;
     crm_qualified: number | string;

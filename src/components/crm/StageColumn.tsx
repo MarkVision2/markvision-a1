@@ -63,17 +63,8 @@ function StageColumnImpl({
     return new Date(b.lastActivityAt).getTime() - new Date(a.lastActivityAt).getTime();
   });
 
-  const listRef = useRef<HTMLDivElement>(null);
-  const useVirtual = sortedLeads.length > 30;
-  const virtualizer = useVirtualizer({
-    count: sortedLeads.length,
-    getScrollElement: () => listRef.current,
-    estimateSize: () => 112,
-    overscan: 4,
-    enabled: useVirtual,
-  });
-
   const total = leads.reduce((s, l) => s + (l.amount || 0), 0);
+
 
   const commitRename = () => {
     const next = draftTitle.trim();
