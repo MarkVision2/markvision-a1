@@ -187,6 +187,7 @@ export interface InstagramCodeword {
   id: string;
   projectId: string;
   codeword: string;
+  shortId?: string | null;
   reelId: string | null;
   reelUrl: string | null;
   thumbnailUrl: string | null;
