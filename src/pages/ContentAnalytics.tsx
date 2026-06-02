@@ -119,6 +119,13 @@ export default function ContentAnalytics() {
         }
       />
 
+      <Tabs defaultValue="codewords" className="w-full">
+        <TabsList className="mb-4">
+          <TabsTrigger value="codewords">Код-слова</TabsTrigger>
+          <TabsTrigger value="instagram">Instagram аналитика</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="codewords">
       {error && (
         <div className="mb-4 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
