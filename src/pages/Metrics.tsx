@@ -810,7 +810,7 @@ const Metrics = () => {
                         isoDate={iso}
                         value={d?.sales ?? 0}
                         crm={d?.crmSales ?? 0}
-                        manual={d?.manualSales ?? 0}
+                        manual={d?.manualSales ?? null}
                         autoLabel="CRM"
                         disabled={!manualCabinet}
                         onSave={(next) => upsertManualFact(iso, { manual_sales: next })}

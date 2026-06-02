@@ -159,8 +159,11 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
 
   const upsertManual = async (
     isoDate: string,
-    patch: Record<string, number>,
+    patch: Record<string, number | null>,
   ) => {
+    const cleanPatch = Object.fromEntries(
+      Object.entries(patch).map(([k, v]) => [k, manualValueForSave(v)]),
+    );
     try {
       const { data: existing } = await supabase
         .from("cabinet_daily_insights")

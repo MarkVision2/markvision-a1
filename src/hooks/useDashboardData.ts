@@ -102,11 +102,9 @@ export function useDashboardData(
         cur.leads += Number((r as { leads?: number }).leads ?? 0);
         // Override-семантика: ручные значения перезаписывают CRM, не суммируются.
         const crmS = Number((r as { crm_sales?: number }).crm_sales ?? 0);
-        const manS = Number((r as { manual_sales?: number }).manual_sales ?? 0);
-        cur.sales += manS > 0 ? manS : crmS;
+        cur.sales += crmS;
         const crmR = Number((r as { crm_revenue?: number }).crm_revenue ?? 0);
-        const manR = Number((r as { manual_revenue?: number }).manual_revenue ?? 0);
-        cur.revenue += manR > 0 ? manR : crmR;
+        cur.revenue += crmR;
         acc.set(provider, cur);
       }
       setProviderAgg(Array.from(acc.values()));
