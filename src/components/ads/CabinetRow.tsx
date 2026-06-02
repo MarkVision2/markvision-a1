@@ -159,11 +159,8 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
 
   const upsertManual = async (
     isoDate: string,
-    patch: Record<string, number | null>,
+    patch: Record<string, number>,
   ) => {
-    const cleanPatch = Object.fromEntries(
-      Object.entries(patch).map(([k, v]) => [k, manualValueForSave(v)]),
-    );
     try {
       const { data: existing } = await supabase
         .from("cabinet_daily_insights")
@@ -174,7 +171,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
       if (existing?.id) {
         const { error } = await (supabase as any)
           .from("cabinet_daily_insights")
-          .update(patch)
+          .update(cleanPatch)
           .eq("id", existing.id);
         if (error) throw error;
       } else {
@@ -185,7 +182,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
             external_id: cabinet.externalId,
             project_id: (cabinet as { projectId?: string }).projectId ?? null,
             date: isoDate,
-            ...patch,
+            ...cleanPatch,
           });
         if (error) throw error;
       }
@@ -196,11 +193,11 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
     }
   };
 
-  const handleManualDiagnostics = (isoDate: string, v: number) =>
+  const handleManualDiagnostics = (isoDate: string, v: number | null) =>
     upsertManual(isoDate, { manual_diagnostics: v });
-  const handleManualSales = (isoDate: string, v: number) =>
+  const handleManualSales = (isoDate: string, v: number | null) =>
     upsertManual(isoDate, { manual_sales: v });
-  const handleManualRevenue = (isoDate: string, v: number) =>
+  const handleManualRevenue = (isoDate: string, v: number | null) =>
     upsertManual(isoDate, { manual_revenue: v });
 
   return (
