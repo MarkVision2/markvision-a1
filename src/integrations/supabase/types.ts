@@ -1450,6 +1450,108 @@ export type Database = {
         }
         Relationships: []
       }
+      instagram_account_daily: {
+        Row: {
+          date: string
+          followers: number | null
+          id: string
+          ig_user_id: string
+          impressions: number | null
+          new_followers: number | null
+          profile_views: number | null
+          project_id: string
+          reach: number | null
+          synced_at: string
+          website_clicks: number | null
+        }
+        Insert: {
+          date: string
+          followers?: number | null
+          id?: string
+          ig_user_id: string
+          impressions?: number | null
+          new_followers?: number | null
+          profile_views?: number | null
+          project_id: string
+          reach?: number | null
+          synced_at?: string
+          website_clicks?: number | null
+        }
+        Update: {
+          date?: string
+          followers?: number | null
+          id?: string
+          ig_user_id?: string
+          impressions?: number | null
+          new_followers?: number | null
+          profile_views?: number | null
+          project_id?: string
+          reach?: number | null
+          synced_at?: string
+          website_clicks?: number | null
+        }
+        Relationships: []
+      }
+      instagram_accounts: {
+        Row: {
+          active: boolean
+          created_at: string
+          followers_count: number | null
+          follows_count: number | null
+          id: string
+          ig_user_id: string
+          last_error: string | null
+          last_sync_at: string | null
+          media_count: number | null
+          name: string | null
+          page_access_token: string
+          page_id: string
+          page_name: string | null
+          profile_picture_url: string | null
+          project_id: string
+          updated_at: string
+          username: string | null
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          followers_count?: number | null
+          follows_count?: number | null
+          id?: string
+          ig_user_id: string
+          last_error?: string | null
+          last_sync_at?: string | null
+          media_count?: number | null
+          name?: string | null
+          page_access_token: string
+          page_id: string
+          page_name?: string | null
+          profile_picture_url?: string | null
+          project_id: string
+          updated_at?: string
+          username?: string | null
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          followers_count?: number | null
+          follows_count?: number | null
+          id?: string
+          ig_user_id?: string
+          last_error?: string | null
+          last_sync_at?: string | null
+          media_count?: number | null
+          name?: string | null
+          page_access_token?: string
+          page_id?: string
+          page_name?: string | null
+          profile_picture_url?: string | null
+          project_id?: string
+          updated_at?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
       instagram_codewords: {
         Row: {
           active: boolean
@@ -1519,6 +1621,111 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      instagram_demographics: {
+        Row: {
+          dimension: string
+          id: string
+          ig_user_id: string
+          key: string
+          project_id: string
+          snapshot_at: string
+          value: number
+        }
+        Insert: {
+          dimension: string
+          id?: string
+          ig_user_id: string
+          key: string
+          project_id: string
+          snapshot_at?: string
+          value?: number
+        }
+        Update: {
+          dimension?: string
+          id?: string
+          ig_user_id?: string
+          key?: string
+          project_id?: string
+          snapshot_at?: string
+          value?: number
+        }
+        Relationships: []
+      }
+      instagram_media: {
+        Row: {
+          caption: string | null
+          comments_count: number | null
+          created_at: string
+          id: string
+          ig_user_id: string
+          impressions: number | null
+          last_synced_at: string
+          like_count: number | null
+          media_id: string
+          media_product_type: string | null
+          media_type: string | null
+          media_url: string | null
+          permalink: string | null
+          plays: number | null
+          project_id: string
+          reach: number | null
+          saved_count: number | null
+          shares_count: number | null
+          thumbnail_url: string | null
+          timestamp: string | null
+          total_interactions: number | null
+          video_views: number | null
+        }
+        Insert: {
+          caption?: string | null
+          comments_count?: number | null
+          created_at?: string
+          id?: string
+          ig_user_id: string
+          impressions?: number | null
+          last_synced_at?: string
+          like_count?: number | null
+          media_id: string
+          media_product_type?: string | null
+          media_type?: string | null
+          media_url?: string | null
+          permalink?: string | null
+          plays?: number | null
+          project_id: string
+          reach?: number | null
+          saved_count?: number | null
+          shares_count?: number | null
+          thumbnail_url?: string | null
+          timestamp?: string | null
+          total_interactions?: number | null
+          video_views?: number | null
+        }
+        Update: {
+          caption?: string | null
+          comments_count?: number | null
+          created_at?: string
+          id?: string
+          ig_user_id?: string
+          impressions?: number | null
+          last_synced_at?: string
+          like_count?: number | null
+          media_id?: string
+          media_product_type?: string | null
+          media_type?: string | null
+          media_url?: string | null
+          permalink?: string | null
+          plays?: number | null
+          project_id?: string
+          reach?: number | null
+          saved_count?: number | null
+          shares_count?: number | null
+          thumbnail_url?: string | null
+          timestamp?: string | null
+          total_interactions?: number | null
+          video_views?: number | null
+        }
+        Relationships: []
       }
       instagram_organic_events: {
         Row: {
