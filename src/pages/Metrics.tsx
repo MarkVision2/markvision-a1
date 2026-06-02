@@ -810,7 +810,7 @@ const Metrics = () => {
                         isoDate={iso}
                         value={d?.sales ?? 0}
                         crm={d?.crmSales ?? 0}
-                        manual={d?.manualSales ?? null}
+                        manual={d?.manualSales ?? 0}
                         autoLabel="CRM"
                         disabled={!manualCabinet}
                         onSave={(next) => upsertManualFact(iso, { manual_sales: next })}
@@ -852,6 +852,9 @@ const Metrics = () => {
 
       <p className="mt-4 text-xs text-muted-foreground">
         Данные подгружаются из подключенных личных рекламных кабинетов: расходы и лиды из Meta, диагностики, оплаты и выручка из CRM плюс ручной факт из этой таблицы.
+        <br />
+        Важно: диагностики и оплаты считаются по датам событий в CRM (переход/визит и <span className="font-semibold">paid_at</span> соответственно).
+        Поэтому лид может находиться в «диагностиках» прямо сейчас, но относиться к выбранному месяцу по моменту события.
       </p>
     </PageContainer>
   );

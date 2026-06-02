@@ -140,6 +140,11 @@ export function EnhancedFunnel({ totals, periodLabel }: Props) {
           );
         })}
       </div>
+
+      <p className="mt-3 text-[11px] leading-4 text-muted-foreground">
+        Воронка считается по датам событий в CRM: «Диагностики» — по визиту/переходу, «Оплаты» — по <span className="font-semibold">paid_at</span>.
+        Поэтому лид может быть в нужной колонке прямо сейчас, но всё равно учитывается в том месяце, когда произошло событие.
+      </p>
     </div>
   );
 }
