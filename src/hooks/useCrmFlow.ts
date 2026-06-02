@@ -90,8 +90,9 @@ function ymd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function useCrmFlow(range: Range) {
-  const { leads: liteLeads } = useLeadsLite();
+export function useCrmFlow(range: Range, leadsOverride?: LeadLite[]) {
+  const { leads: fetchedLeads } = useLeadsLite();
+  const liteLeads = leadsOverride ?? fetchedLeads;
   const { activeId: projectId } = useProjectsStore();
   const [stages, setStages] = useState<StageInfo[]>([]);
   const [reasons, setReasons] = useState<LossReasonInfo[]>([]);
