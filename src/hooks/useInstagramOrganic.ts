@@ -28,12 +28,16 @@ export interface InstagramOrganicFunnelData {
 export interface CodewordStat {
   codewordId: string;
   codeword: string;
+  shortId: string | null;
   reelUrl: string | null;
   thumbnailUrl: string | null;
   active: boolean;
   codewordDms: number;
+  uniqueUsers?: number;
   linkClicks: number;
   leads: number;
+  sales: number;
+  revenue: number;
   lastEventAt: string | null;
 }
 
@@ -157,12 +161,16 @@ export function useCodewordStats() {
           (data ?? []).map((r: Record<string, unknown>) => ({
             codewordId: String(r.codeword_id),
             codeword: String(r.codeword ?? ""),
+            shortId: (r.short_id as string | null) ?? null,
             reelUrl: (r.reel_url as string | null) ?? null,
             thumbnailUrl: (r.thumbnail_url as string | null) ?? null,
             active: !!r.active,
             codewordDms: Number(r.codeword_dms ?? 0),
+            uniqueUsers: Number(r.unique_users ?? 0),
             linkClicks: Number(r.link_clicks ?? 0),
             leads: Number(r.leads ?? 0),
+            sales: Number(r.sales ?? 0),
+            revenue: Number(r.revenue ?? 0),
             lastEventAt: (r.last_event_at as string | null) ?? null,
           })),
         );
@@ -179,6 +187,7 @@ export interface InstagramCodeword {
   id: string;
   projectId: string;
   codeword: string;
+  shortId?: string | null;
   reelId: string | null;
   reelUrl: string | null;
   thumbnailUrl: string | null;
@@ -265,4 +274,62 @@ export function useInstagramCodewords() {
   };
 
   return { items, loading, add, update, remove };
+}
+
+export interface CodewordLeadRow {
+  leadId: string;
+  name: string;
+  phone: string;
+  paid: boolean;
+  amount: number;
+  occurredAt: string;
+}
+
+export function useCodewordLeads(codewordId: string | null) {
+  const [rows, setRows] = useState<CodewordLeadRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!codewordId) {
+      setRows([]);
+      return;
+    }
+    let cancelled = false;
+    setLoading(true);
+    void (async () => {
+      const { data, error } = await supabase
+        .from("instagram_organic_events")
+        .select("lead_id, occurred_at, leads:lead_id (id, name, phone, paid, amount)")
+        .eq("codeword_id", codewordId)
+        .eq("event_type", "lead")
+        .not("lead_id", "is", null)
+        .order("occurred_at", { ascending: false })
+        .limit(100);
+      if (cancelled) return;
+      if (error) {
+        setRows([]);
+      } else {
+        setRows(
+          (data ?? [])
+            .map((r: Record<string, unknown>) => {
+              const lead = r.leads as Record<string, unknown> | null;
+              if (!lead?.id) return null;
+              return {
+                leadId: String(lead.id),
+                name: String(lead.name ?? ""),
+                phone: String(lead.phone ?? ""),
+                paid: !!lead.paid,
+                amount: Number(lead.amount ?? 0),
+                occurredAt: String(r.occurred_at ?? ""),
+              };
+            })
+            .filter((x): x is CodewordLeadRow => x !== null),
+        );
+      }
+      setLoading(false);
+    })();
+    return () => { cancelled = true; };
+  }, [codewordId]);
+
+  return { rows, loading };
 }

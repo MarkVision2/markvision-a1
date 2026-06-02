@@ -1,4 +1,5 @@
-import { memo, useState, type DragEvent } from "react";
+import { memo, useRef, useState, type DragEvent } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   AlertTriangle, ChevronDown, ChevronLeft, ChevronRight,
   Clock, MoreVertical, Pencil, TrendingUp, Trash2, Wallet,
@@ -54,7 +55,6 @@ function StageColumnImpl({
   const colors = stageColorClasses(stage.color);
   const isAlertColumn = stage.id === "no_answer";
 
-  // Sort: pinned first, then for no_answer by SLA (oldest first), else by lastActivity desc
   const sortedLeads = [...leads].sort((a, b) => {
     if (!!b.pinned !== !!a.pinned) return (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0);
     if (isAlertColumn) {
@@ -197,7 +197,7 @@ function StageColumnImpl({
       )}
 
       {!collapsed && (
-        <div className="mt-3 flex flex-1 flex-col gap-2 overflow-y-auto pr-1">
+        <div ref={listRef} className="mt-3 flex flex-1 flex-col overflow-y-auto pr-1">
           {sortedLeads.length === 0 ? (
             <div className="grid flex-1 place-items-center rounded-xl border border-dashed border-border/60 bg-secondary/20 p-6 text-center text-xs text-muted-foreground">
               <div>
@@ -206,19 +206,30 @@ function StageColumnImpl({
               </div>
             </div>
           ) : (
-            sortedLeads.map((lead) => {
-              const assignee = members.find((m) => m.id === lead.assigneeId);
-              return (
-                <LeadCard
-                  key={lead.id}
-                  lead={lead}
-                  assigneeName={assignee?.name}
-                  highlightSla={isAlertColumn}
-                  onClick={() => onOpenLead(lead)}
-                  onTogglePin={onTogglePin}
-                />
-              );
-            })
+            <div
+              className="relative w-full"
+              style={{ height: virtualizer.getTotalSize() }}
+            >
+              {virtualizer.getVirtualItems().map((row) => {
+                const lead = sortedLeads[row.index];
+                const assignee = members.find((m) => m.id === lead.assigneeId);
+                return (
+                  <div
+                    key={lead.id}
+                    className="absolute left-0 top-0 w-full pb-2"
+                    style={{ transform: `translateY(${row.start}px)` }}
+                  >
+                    <LeadCard
+                      lead={lead}
+                      assigneeName={assignee?.name}
+                      highlightSla={isAlertColumn}
+                      onClick={() => onOpenLead(lead)}
+                      onTogglePin={onTogglePin}
+                    />
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       )}

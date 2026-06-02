@@ -202,7 +202,7 @@ export function AdsCreativesPanel() {
           </select>
         </div>
 
-        <div className={cn("flex items-center gap-2", !filtersOpen && "hidden md:flex")}>
+        <div className="flex items-center gap-2">
           <div className="relative min-w-0 flex-1 md:flex-none">
             <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
