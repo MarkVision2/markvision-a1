@@ -241,6 +241,13 @@ export default function ContentAnalytics() {
         )}
       </div>
 
+        </TabsContent>
+
+        <TabsContent value="instagram" className="mt-0">
+          <InstagramAnalyticsPanel />
+        </TabsContent>
+      </Tabs>
+
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg">
           <DialogHeader>

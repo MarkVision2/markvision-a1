@@ -83,9 +83,9 @@ const Dashboard = () => {
   const { data, loading, error, alerts, crmFunnel, channels, timeseries, instagramFunnel } =
     useDashboardData("all", range, comparing);
   const { stats: codewordStats } = useCodewordStats();
-  const crmFlow = useCrmFlow(range);
-  const { creatives: metaCreatives, campaigns: metaCampaigns } = useMetaDashboard(range);
   const { leads: liteLeads } = useLeadsLite();
+  const crmFlow = useCrmFlow(range, liteLeads);
+  const { creatives: metaCreatives, campaigns: metaCampaigns } = useMetaDashboard(range);
   const periodLeads = useMemo(() => {
     const fromTs = range.from.getTime();
     // toTs = начало следующего дня после range.to, чтобы захватить весь последний день
