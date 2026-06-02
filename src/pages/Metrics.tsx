@@ -33,7 +33,8 @@ import { useMultiMetaInsights, type DailyInsightRow } from "@/hooks/useMetaInsig
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
 import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
-import type { ReportPeriodRange } from "@/hooks/useReportData";
+import { useReportData, type ReportPeriodRange } from "@/hooks/useReportData";
+import { isManualOverrideActive, manualValueForSave } from "@/lib/cdiManualOverride";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -156,6 +157,8 @@ const Metrics = () => {
 
   const { getPlan } = useFinancePlans();
   const plan = getPlan(monthKey(monthCursor));
+  const { data: reportData } = useReportData(cabinetId, period, false);
+  const reportTotals = reportData?.totals;
 
   const totals = data?.totals;
 
@@ -232,11 +235,11 @@ const Metrics = () => {
       date,
       spend: 0, impressions: 0, clicks: 0, leads: 0,
       pixelRevenue: 0, revenue: 0,
-      diagnostics: 0, crmDiagnostics: 0, manualDiagnostics: 0,
-      diagnosticRevenue: 0, crmDiagnosticRevenue: 0, manualDiagnosticRevenue: 0,
-      sales: 0, crmSales: 0, manualSales: 0,
-      salesRevenue: 0, crmSalesRevenueOnly: 0, manualSalesRevenue: 0,
-      crmRevenue: 0, crmRevenueOnly: 0, manualRevenue: 0,
+      diagnostics: 0, crmDiagnostics: 0, manualDiagnostics: null,
+      diagnosticRevenue: 0, crmDiagnosticRevenue: 0, manualDiagnosticRevenue: null,
+      sales: 0, crmSales: 0, manualSales: null,
+      salesRevenue: 0, crmSalesRevenueOnly: 0, manualSalesRevenue: null,
+      crmRevenue: 0, crmRevenueOnly: 0, manualRevenue: null,
     });
 
     const dayKey = (iso: string) => iso.slice(0, 10);
@@ -274,19 +277,17 @@ const Metrics = () => {
     return m;
   }, [data, orphanThisMonth, orphanVisitsInRange, orphanPaid]);
 
-  // ЕДИНЫЙ ИСТОЧНИК ПРАВДЫ: CDI (кабинеты) + orphan CRM (лиды без cabinet_id).
-  // Раньше orphan исключали, чтобы избежать задвоения с manual_sales — но manual
-  // привязан к конкретному кабинету+дате, а orphan лиды имеют cabinet_id=NULL, поэтому
-  // они никогда не пересекаются. Включаем orphan в итоги, иначе цифры на Metrics
-  // отличаются от CRM/Analytics/Dashboard (одна и та же продажа выглядит как «3/2/2»).
-  const factDiagnostics = (totals?.diagnostics ?? 0) + orphanDiagnostics;
-  const factDiagnosticRevenue = totals?.diagnosticRevenue ?? 0;
-  const factSales = (totals?.sales ?? 0) + orphanSalesCount;
-  const factSalesRevenue = (totals?.salesRevenue ?? 0) + orphanRevenue;
-  const factRevenue = (totals?.crmRevenue ?? 0) + orphanRevenue;
-  const factLeads = (totals?.leads ?? 0) + orphanThisMonth.length;
-  const factCac = factSales > 0 ? (totals?.spend ?? 0) / factSales : 0;
-  const factCpd = factDiagnostics > 0 ? (totals?.spend ?? 0) / factDiagnostics : 0;
+  // Строка «Факт» = CRM-итоги периода (как Dashboard/Analytics).
+  // Ручные правки остаются локально в дневных строках таблицы.
+  const factDiagnostics = reportTotals?.visits ?? 0;
+  const factDiagnosticRevenue = reportTotals?.diagnosticRevenue ?? 0;
+  const factSales = reportTotals?.sales ?? 0;
+  const factSalesRevenue = reportTotals?.salesRevenue ?? 0;
+  const factRevenue = reportTotals?.revenue ?? 0;
+  const factLeads = reportTotals?.totalLeads ?? 0;
+  const factSpend = reportTotals?.spend ?? totals?.spend ?? 0;
+  const factCac = factSales > 0 ? factSpend / factSales : 0;
+  const factCpd = factDiagnostics > 0 ? factSpend / factDiagnostics : 0;
   const crLeadDiagnostics =
     factLeads > 0 ? (factDiagnostics / factLeads) * 100 : 0;
   const crDiagnosticsSale =
@@ -367,10 +368,10 @@ const Metrics = () => {
   const upsertManualFact = async (
     isoDate: string,
     patch: {
-      manual_diagnostics?: number;
-      manual_sales?: number;
-      manual_revenue?: number;
-      manual_diagnostic_revenue?: number;
+      manual_diagnostics?: number | null;
+      manual_sales?: number | null;
+      manual_revenue?: number | null;
+      manual_diagnostic_revenue?: number | null;
     },
   ) => {
     if (!manualCabinet?.externalId) {
@@ -379,7 +380,7 @@ const Metrics = () => {
     }
 
     const cleanPatch = Object.fromEntries(
-      Object.entries(patch).map(([key, value]) => [key, Math.max(0, Number(value) || 0)]),
+      Object.entries(patch).map(([key, value]) => [key, manualValueForSave(value)]),
     );
 
     try {
@@ -491,9 +492,9 @@ const Metrics = () => {
           <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
             Из рекламных кабинетов (CDI)
           </div>
-          <div className="mt-1.5 text-lg font-bold tabular-nums">{formatTenge(totals?.crmRevenue ?? 0)}</div>
+          <div className="mt-1.5 text-lg font-bold tabular-nums">{formatTenge(reportTotals?.salesRevenue ?? 0)}</div>
           <div className="mt-0.5 text-[11px] text-muted-foreground">
-            {totals?.sales ?? 0} оплат · авто-синк из CRM + ручной факт
+            {reportTotals?.sales ?? 0} оплат · CRM по кабинетам (без ручных правок)
           </div>
         </div>
         <div className={cn(
@@ -517,7 +518,7 @@ const Metrics = () => {
           </div>
           <div className="mt-1.5 text-lg font-bold tabular-nums text-success">{formatTenge(factRevenue)}</div>
           <div className="mt-0.5 text-[11px] text-muted-foreground">
-            {factSales} оплат · CDI + orphan CRM (1:1 с Dashboard и Analytics)
+            {factSales} оплат · CRM (1:1 с Dashboard и Analytics)
           </div>
         </div>
       </div>
@@ -531,7 +532,8 @@ const Metrics = () => {
             <div>
               <div className="text-sm font-semibold">Единый ручной факт</div>
               <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
-                Редактируй диагностики, оплаты и сумму прямо в дневных строках. Ручное значение ПЕРЕЗАПИСЫВАЕТ авто-данные из CRM за этот день (если поле пустое — берётся факт из CRM). Так цифры в отчётах всегда совпадают с реальностью.
+                Правки применяются только к выбранному дню и кабинету в таблице ниже.
+                Строка «Факт» и дашборд считаются по CRM за выбранный период.
               </p>
             </div>
           </div>
@@ -782,7 +784,7 @@ const Metrics = () => {
                         isoDate={iso}
                         value={d?.diagnostics ?? 0}
                         crm={d?.crmDiagnostics ?? 0}
-                        manual={d?.manualDiagnostics ?? 0}
+                        manual={d?.manualDiagnostics ?? null}
                         autoLabel="CRM"
                         disabled={!manualCabinet}
                         onSave={(next) => upsertManualFact(iso, { manual_diagnostics: next })}
@@ -795,7 +797,7 @@ const Metrics = () => {
                         isoDate={iso}
                         value={d?.diagnosticRevenue ?? 0}
                         crm={d?.crmDiagnosticRevenue ?? 0}
-                        manual={d?.manualDiagnosticRevenue ?? 0}
+                        manual={d?.manualDiagnosticRevenue ?? null}
                         autoLabel="CRM"
                         disabled={!manualCabinet}
                         format={formatNumber}
@@ -810,7 +812,7 @@ const Metrics = () => {
                         isoDate={iso}
                         value={d?.sales ?? 0}
                         crm={d?.crmSales ?? 0}
-                        manual={d?.manualSales ?? 0}
+                        manual={d?.manualSales ?? null}
                         autoLabel="CRM"
                         disabled={!manualCabinet}
                         onSave={(next) => upsertManualFact(iso, { manual_sales: next })}
@@ -823,7 +825,7 @@ const Metrics = () => {
                         isoDate={iso}
                         value={d?.salesRevenue ?? 0}
                         crm={d?.crmSalesRevenueOnly ?? 0}
-                        manual={d?.manualSalesRevenue ?? 0}
+                        manual={d?.manualSalesRevenue ?? null}
                         autoLabel="CRM"
                         disabled={!manualCabinet}
                         format={formatNumber}
@@ -852,6 +854,8 @@ const Metrics = () => {
 
       <p className="mt-4 text-xs text-muted-foreground">
         Данные подгружаются из подключенных личных рекламных кабинетов: расходы и лиды из Meta, диагностики, оплаты и выручка из CRM плюс ручной факт из этой таблицы.
+        <br />
+        Важно: диагностики и оплаты считаются по датам событий в CRM (визит/переход и paid_at). Лид может быть в колонке прямо сейчас, но относиться к месяцу события.
       </p>
     </PageContainer>
   );
@@ -877,15 +881,15 @@ const ManualFactCell = ({
   value: number;
   /** Чистое CRM значение, БЕЗ применения override. Нужно, чтобы попап показал "Из CRM: N" корректно. */
   crm: number;
-  manual: number;
+  manual: number | null;
   autoLabel: string;
-  onSave: (newManual: number) => Promise<void>;
+  onSave: (newManual: number | null) => Promise<void>;
   disabled?: boolean;
   format?: (n: number) => string;
   allowDecimal?: boolean;
 }) => {
   const [open, setOpen] = useState(false);
-  const [val, setVal] = useState(String(manual || ""));
+  const [val, setVal] = useState(isManualOverrideActive(manual) ? String(manual) : "");
   const [saving, setSaving] = useState(false);
   // В попапе всегда показываем настоящее CRM-значение (а не "value - manual",
   // которое после override-семантики равно 0 как только пользователь ввёл manual).
@@ -893,11 +897,22 @@ const ManualFactCell = ({
   const hasValue = value > 0;
 
   const handleSave = async () => {
-    const raw = Number(val) || 0;
-    const next = allowDecimal ? Math.max(0, raw) : Math.max(0, Math.floor(raw));
+    const parsed = manualValueForSave(val);
+    const next = parsed === null ? null : (allowDecimal ? parsed : Math.floor(parsed));
     setSaving(true);
     try {
       await onSave(next);
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleClear = async () => {
+    setSaving(true);
+    try {
+      await onSave(null);
+      setVal("");
       setOpen(false);
     } finally {
       setSaving(false);
@@ -913,14 +928,20 @@ const ManualFactCell = ({
   }
 
   return (
-    <Popover open={open} onOpenChange={(next) => { setOpen(next); if (next) setVal(manual ? String(manual) : ""); }}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) setVal(isManualOverrideActive(manual) ? String(manual) : "");
+      }}
+    >
       <PopoverTrigger asChild>
         <button
           type="button"
           className={cn(
             "group inline-flex min-w-0 w-full items-center justify-end gap-1.5 rounded-lg border border-transparent px-2 py-1 text-right transition-colors hover:border-success/30 hover:bg-success/10",
             !hasValue && "text-muted-foreground",
-            manual > 0 && "border-success/20 bg-success/5 text-success",
+            isManualOverrideActive(manual) && "border-success/20 bg-success/5 text-success",
           )}
           title={`${title}: ${isoDate}`}
         >
@@ -947,7 +968,7 @@ const ManualFactCell = ({
             </div>
             <div className="rounded-xl border border-success/25 bg-success/10 p-2">
               <div className="text-[10px] uppercase tracking-wider text-success">Вручную</div>
-              <div className="mt-1 text-sm font-bold tabular-nums text-success">{format(manual)}</div>
+              <div className="mt-1 text-sm font-bold tabular-nums text-success">{format(manual ?? 0)}</div>
             </div>
             <div className="rounded-xl border border-border/60 bg-card/60 p-2">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Показано</div>
@@ -955,7 +976,8 @@ const ManualFactCell = ({
             </div>
           </div>
           <p className="text-[11px] leading-4 text-muted-foreground">
-            Если задано «Вручную» — оно перезаписывает значение из CRM. Чтобы вернуться к авто-данным, очисти поле (0).
+            Правка действует только на этот день. Дашборд и строка «Факт» берутся из CRM.
+            «Сбросить» возвращает авто-значение из CRM, а ввод 0 фиксирует ноль за выбранный день.
           </p>
 
           <div className="space-y-2">
@@ -974,6 +996,9 @@ const ManualFactCell = ({
           </div>
 
           <div className="flex justify-end gap-2">
+            <Button size="sm" variant="ghost" onClick={handleClear} disabled={saving || !isManualOverrideActive(manual)}>
+              Сбросить
+            </Button>
             <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
               Отмена
             </Button>

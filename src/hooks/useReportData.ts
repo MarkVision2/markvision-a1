@@ -22,6 +22,8 @@ export interface ReportTotals {
   visits: number;
   sales: number;
   revenue: number;
+  salesRevenue: number;
+  diagnosticRevenue: number;
   cpl: number;
   cpv: number; // cost per visit
   cac: number; // customer acquisition cost
@@ -64,7 +66,7 @@ export interface ReportData {
 
 const EMPTY_TOTALS: ReportTotals = {
   spend: 0, impressions: 0, clicks: 0, adsLeads: 0, crmLeads: 0,
-  totalLeads: 0, visits: 0, sales: 0, revenue: 0,
+  totalLeads: 0, visits: 0, sales: 0, revenue: 0, salesRevenue: 0, diagnosticRevenue: 0,
   cpl: 0, cpv: 0, cac: 0, ctr: 0, romi: 0, aov: 0,
 };
 
@@ -137,17 +139,13 @@ async function fetchMetaForRange(
     // Override-семантика: manual_* перезаписывает crm_* (а не суммируется).
     // Раньше складывали → задвоение, когда оба источника содержат одну и ту же продажу.
     const crmSales = Number(row.crm_sales) || 0;
-    const manSales = Number(row.manual_sales) || 0;
-    const sales = manSales > 0 ? manSales : crmSales;
+    const sales = crmSales;
     const crmRev = Number(row.crm_revenue) || 0;
-    const manRev = Number(row.manual_revenue) || 0;
-    const revenue = manRev > 0 ? manRev : crmRev;
+    const revenue = crmRev;
     const crmDiag = Number(row.crm_diagnostics) || 0;
-    const manDiag = Number(row.manual_diagnostics) || 0;
-    const diag = manDiag > 0 ? manDiag : crmDiag;
+    const diag = crmDiag;
     const crmDiagRev = Number((row as { crm_diagnostic_revenue?: number }).crm_diagnostic_revenue) || 0;
-    const manDiagRev = Number((row as { manual_diagnostic_revenue?: number }).manual_diagnostic_revenue) || 0;
-    const diagRev = manDiagRev > 0 ? manDiagRev : crmDiagRev;
+    const diagRev = crmDiagRev;
     totSpend += spend; totImp += impressions; totClicks += clicks; totLeads += leads;
     totSales += sales; totRevenue += revenue; totDiag += diag; totDiagRev += diagRev;
     const cur = dailyAgg.get(row.date) ?? { spend: 0, leads: 0, revenue: 0 };
@@ -265,7 +263,9 @@ export function computeTotals(
   // sales/visits/revenue — ТОЛЬКО из CRM.
   const visits = crm.crmVisitsCount;
   const sales = crm.crmSalesCount;
-  const revenue = crm.crmRevenue + crm.crmDiagnosticRevenue;
+  const salesRevenue = crm.crmRevenue;
+  const diagnosticRevenue = crm.crmDiagnosticRevenue;
+  const revenue = salesRevenue + diagnosticRevenue;
   const cpv = visits > 0 ? meta.spend / visits : 0;
   const cac = sales > 0 ? meta.spend / sales : 0;
   const ctr = meta.impressions > 0 ? (meta.clicks / meta.impressions) * 100 : 0;
@@ -281,6 +281,8 @@ export function computeTotals(
     visits,
     sales,
     revenue,
+    salesRevenue,
+    diagnosticRevenue,
     cpl, cpv, cac, ctr, romi, aov,
   };
 }
