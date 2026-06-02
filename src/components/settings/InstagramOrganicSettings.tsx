@@ -18,6 +18,7 @@ import {
 import { useInstagramCodewords, type InstagramCodeword } from "@/hooks/useInstagramOrganic";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { IG_ORGANIC_INTAKE_URL, igOrganicBotLink } from "@/lib/igOrganicLinks";
+import { InstagramAccountConnect } from "@/components/settings/InstagramAccountConnect";
 
 
 interface DraftCodeword {
