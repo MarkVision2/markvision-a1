@@ -64,12 +64,7 @@ function CreativePreview({ row }: { row: MetaCreativeRow }) {
     setPreviewVideoUrl(row.videoUrl);
     setRefreshedThumb(null);
     setCapturedPoster(null);
-    setMediaError(false);
   }, [row.id, row.videoUrl]);
-
-  useEffect(() => {
-    setMediaError(false);
-  }, [src]);
 
   useEffect(() => {
     if (!isVideo || !row.adId || row.posterUrl || capturedPoster) return;

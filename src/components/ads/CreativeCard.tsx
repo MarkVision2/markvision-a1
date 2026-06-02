@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Image as ImageIcon, Layers, MessageCircle, Play, TrendingDown, TrendingUp, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { bestCreativeImage } from "@/lib/metaThumb";
@@ -28,6 +28,14 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
   // Локальный override постера, если мы только что захватили его из видео
   const [capturedPoster, setCapturedPoster] = useState<string | null>(null);
   const [refreshedThumb, setRefreshedThumb] = useState<string | null>(null);
+  const [playVideo, setPlayVideo] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (playVideo) void el.play().catch(() => {});
+    else el.pause();
+  }, [playVideo]);
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(row.videoUrl);
   const src = bestCreativeImage({
     posterUrl: capturedPoster ?? row.posterUrl,
