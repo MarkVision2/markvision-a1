@@ -6,6 +6,8 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPicker";
 import { InstagramOrganicFunnel } from "@/components/dashboard/InstagramOrganicFunnel";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { InstagramAnalyticsPanel } from "@/components/content/InstagramAnalyticsPanel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -117,6 +119,13 @@ export default function ContentAnalytics() {
         }
       />
 
+      <Tabs defaultValue="codewords" className="w-full">
+        <TabsList className="mb-4">
+          <TabsTrigger value="codewords">Код-слова</TabsTrigger>
+          <TabsTrigger value="instagram">Instagram аналитика</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="codewords">
       {error && (
         <div className="mb-4 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}

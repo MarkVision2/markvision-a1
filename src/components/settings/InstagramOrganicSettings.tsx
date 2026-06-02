@@ -18,6 +18,7 @@ import {
 import { useInstagramCodewords, type InstagramCodeword } from "@/hooks/useInstagramOrganic";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { IG_ORGANIC_INTAKE_URL, igOrganicBotLink } from "@/lib/igOrganicLinks";
+import { InstagramAccountConnect } from "@/components/settings/InstagramAccountConnect";
 
 
 interface DraftCodeword {
@@ -111,6 +112,7 @@ export function InstagramOrganicSettings() {
 
   return (
     <div className="space-y-6">
+      <InstagramAccountConnect />
       <div className="rounded-2xl border border-border bg-card p-6">
         <div className="mb-4 flex items-start gap-4">
           <span className="grid h-12 w-12 place-items-center rounded-xl bg-pink-500/15 text-pink-500">
