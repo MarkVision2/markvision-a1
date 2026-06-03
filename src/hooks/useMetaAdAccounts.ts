@@ -13,13 +13,6 @@ export interface AvailableMetaAdAccount {
   business_name: string | null;
 }
 
-function normalizeActId(id: string): string {
-  const t = id.trim();
-  if (/^act_\d+$/i.test(t)) return `act_${t.replace(/^act_/i, "")}`;
-  if (/^\d+$/.test(t)) return `act_${t}`;
-  return t;
-}
-
 type ListBody = {
   exclude_act_ids: string[];
   access_token?: string;
@@ -85,13 +78,12 @@ export function useMetaAdAccounts() {
 
   const listAvailable = useCallback(
     async (
-      excludeActIds: string[] = [],
       accessToken?: string,
     ): Promise<{ accounts: AvailableMetaAdAccount[]; error?: string }> => {
       setListing(true);
       try {
         const body: ListBody = {
-          exclude_act_ids: excludeActIds.map(normalizeActId),
+          exclude_act_ids: [],
           access_token: accessToken?.trim() || undefined,
         };
 

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
+  CheckCircle2,
   ChevronRight,
   Facebook,
   Loader2,
@@ -10,6 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { cn } from "@/lib/utils";
 import {
   useMetaAdAccounts,
   type AvailableMetaAdAccount,
@@ -26,6 +28,84 @@ const STATUS_RU: Record<string, string> = {
   closed: "Закрыт",
   unknown: "Неизвестно",
 };
+
+function normalizeActId(id: string): string {
+  const t = id.trim();
+  if (/^act_\d+$/i.test(t)) return `act_${t.replace(/^act_/i, "")}`;
+  if (/^\d+$/.test(t)) return `act_${t}`;
+  return t;
+}
+
+function AccountRow({
+  acc,
+  disabled,
+  badge,
+  onSelect,
+}: {
+  acc: AvailableMetaAdAccount;
+  disabled?: boolean;
+  badge?: string;
+  onSelect?: () => void;
+}) {
+  const inner = (
+    <>
+      <span
+        className={cn(
+          "grid h-11 w-11 shrink-0 place-items-center rounded-xl",
+          disabled ? "bg-muted text-muted-foreground" : "bg-primary/15 text-primary",
+        )}
+      >
+        <Facebook className="h-5 w-5" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <div className="truncate font-semibold">{acc.name}</div>
+          {badge && (
+            <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              {badge}
+            </span>
+          )}
+        </div>
+        <div className="truncate text-xs text-muted-foreground">
+          {acc.id}
+          {acc.business_name ? ` · ${acc.business_name}` : ""}
+        </div>
+        <div className="mt-0.5 text-[11px] text-muted-foreground">
+          {acc.currency}
+          {" · "}
+          {STATUS_RU[acc.status_label] ?? acc.status_label}
+          {acc.timezone_name ? ` · ${acc.timezone_name}` : ""}
+        </div>
+      </div>
+      {disabled ? (
+        <CheckCircle2 className="h-5 w-5 shrink-0 text-muted-foreground" />
+      ) : (
+        <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+      )}
+    </>
+  );
+
+  if (disabled) {
+    return (
+      <div
+        className="flex w-full items-center gap-3 rounded-xl border border-border/60 bg-muted/20 p-4 text-left opacity-80"
+        aria-disabled
+      >
+        {inner}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className="flex w-full items-center gap-3 rounded-xl border border-border/60 p-4 text-left transition hover:border-success/50 hover:bg-success/5"
+    >
+      {inner}
+    </button>
+  );
+}
 
 interface Props {
   active: boolean;
@@ -45,18 +125,30 @@ export function AddCabinetPickStep({
   onManual,
 }: Props) {
   const { listAvailable, listing } = useMetaAdAccounts();
-  const [available, setAvailable] = useState<AvailableMetaAdAccount[]>([]);
+  const [allAccounts, setAllAccounts] = useState<AvailableMetaAdAccount[]>([]);
   const [listError, setListError] = useState<string | null>(null);
+
+  const existingSet = useMemo(
+    () => new Set(existingActIds.map(normalizeActId).filter(Boolean)),
+    [existingActIds],
+  );
+
+  const { newAccounts, linkedAccounts } = useMemo(() => {
+    const linked: AvailableMetaAdAccount[] = [];
+    const fresh: AvailableMetaAdAccount[] = [];
+    for (const acc of allAccounts) {
+      if (existingSet.has(normalizeActId(acc.id))) linked.push(acc);
+      else fresh.push(acc);
+    }
+    return { newAccounts: fresh, linkedAccounts: linked };
+  }, [allAccounts, existingSet]);
 
   const load = useCallback(async () => {
     setListError(null);
-    const { accounts, error } = await listAvailable(
-      existingActIds,
-      accessToken.trim() || undefined,
-    );
-    setAvailable(accounts);
+    const { accounts, error } = await listAvailable(accessToken.trim() || undefined);
+    setAllAccounts(accounts);
     if (error) setListError(error);
-  }, [listAvailable, existingActIds, accessToken]);
+  }, [listAvailable, accessToken]);
 
   useEffect(() => {
     if (active) void load();
@@ -84,7 +176,7 @@ export function AddCabinetPickStep({
             <div className="mt-2 text-[11px] opacity-80">
               Проверьте Meta-токен в Настройках → Автоматизация (или введите ниже).
               Нужны права ads_read и business_management. Если ошибка «Edge Function» —
-              задеплойте функции meta-validate-cabinet и meta-list-ad-accounts на Supabase.
+              задеплойте функции meta-daily-sync, meta-validate-cabinet и meta-list-ad-accounts на Supabase.
             </div>
           </div>
         </div>
@@ -95,13 +187,13 @@ export function AddCabinetPickStep({
     );
   }
 
-  if (available.length === 0) {
+  if (allAccounts.length === 0) {
     return (
       <div className="space-y-4 py-8 text-center">
         <Megaphone className="mx-auto h-10 w-10 text-muted-foreground/50" />
         <p className="text-sm text-muted-foreground">
-          Не нашли новых рекламных кабинетов для этого токена.
-          {existingActIds.length > 0 ? " Возможно, все уже добавлены в проект." : ""}
+          Meta не вернула рекламных кабинетов для этого токена.
+          Проверьте права ads_read и business_management или укажите другой Access Token ниже.
         </p>
         <Button variant="outline" onClick={onManual}>
           Ввести ID кабинета вручную
@@ -110,53 +202,83 @@ export function AddCabinetPickStep({
     );
   }
 
+  if (newAccounts.length === 0) {
+    return (
+      <div className="space-y-4">
+        <p className="text-center text-sm text-muted-foreground">
+          Все кабинеты с этого токена уже добавлены в проект ({linkedAccounts.length}).
+          Выберите другой токен или добавьте кабинет по ID вручную.
+        </p>
+        <div className="space-y-2">
+          {linkedAccounts.map((acc) => (
+            <AccountRow key={acc.id} acc={acc} disabled badge="Уже в проекте" />
+          ))}
+        </div>
+        <Button variant="outline" className="w-full" onClick={onManual}>
+          Ввести ID кабинета вручную
+        </Button>
+        <TokenRefreshBlock
+          accessToken={accessToken}
+          onAccessTokenChange={onAccessTokenChange}
+          onRefresh={() => void load()}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       <div className="space-y-2">
-        {available.map((acc) => (
-          <button
-            key={acc.id}
-            type="button"
-            onClick={() => onSelect(acc)}
-            className="flex w-full items-center gap-3 rounded-xl border border-border/60 p-4 text-left transition hover:border-success/50 hover:bg-success/5"
-          >
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/15 text-primary">
-              <Facebook className="h-5 w-5" />
-            </span>
-            <div className="min-w-0 flex-1">
-              <div className="truncate font-semibold">{acc.name}</div>
-              <div className="truncate text-xs text-muted-foreground">
-                {acc.id}
-                {acc.business_name ? ` · ${acc.business_name}` : ""}
-              </div>
-              <div className="mt-0.5 text-[11px] text-muted-foreground">
-                {acc.currency}
-                {" · "}
-                {STATUS_RU[acc.status_label] ?? acc.status_label}
-                {acc.timezone_name ? ` · ${acc.timezone_name}` : ""}
-              </div>
-            </div>
-            <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
-          </button>
+        {newAccounts.map((acc) => (
+          <AccountRow key={acc.id} acc={acc} onSelect={() => onSelect(acc)} />
         ))}
       </div>
 
-      <div className="rounded-xl border border-border/60 bg-background/40 p-3 space-y-2">
-        <Label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
-          <Shield className="h-3.5 w-3.5" />
-          Свой Access Token (опционально)
-        </Label>
-        <Input
-          type="password"
-          value={accessToken}
-          onChange={(e) => onAccessTokenChange(e.target.value)}
-          placeholder="EAA…"
-          className="h-11 rounded-xl bg-background/60"
-        />
-        <Button type="button" variant="ghost" size="sm" className="w-full" onClick={() => void load()}>
-          Обновить список
-        </Button>
-      </div>
+      {linkedAccounts.length > 0 && (
+        <div className="space-y-2 border-t border-border/60 pt-4">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+            Уже в проекте
+          </p>
+          {linkedAccounts.map((acc) => (
+            <AccountRow key={acc.id} acc={acc} disabled badge="Добавлен" />
+          ))}
+        </div>
+      )}
+
+      <TokenRefreshBlock
+        accessToken={accessToken}
+        onAccessTokenChange={onAccessTokenChange}
+        onRefresh={() => void load()}
+      />
+    </div>
+  );
+}
+
+function TokenRefreshBlock({
+  accessToken,
+  onAccessTokenChange,
+  onRefresh,
+}: {
+  accessToken: string;
+  onAccessTokenChange: (v: string) => void;
+  onRefresh: () => void;
+}) {
+  return (
+    <div className="space-y-2 rounded-xl border border-border/60 bg-background/40 p-3">
+      <Label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+        <Shield className="h-3.5 w-3.5" />
+        Свой Access Token (опционально)
+      </Label>
+      <Input
+        type="password"
+        value={accessToken}
+        onChange={(e) => onAccessTokenChange(e.target.value)}
+        placeholder="EAA…"
+        className="h-11 rounded-xl bg-background/60"
+      />
+      <Button type="button" variant="ghost" size="sm" className="w-full" onClick={onRefresh}>
+        Обновить список
+      </Button>
     </div>
   );
 }
