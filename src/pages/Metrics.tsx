@@ -889,7 +889,8 @@ const ManualFactCell = ({
   crm: number;
   manual: number;
   autoLabel: string;
-  onSave: (newManual: number) => Promise<void>;
+  /** newManual=null → сбросить override (вернуться к CRM). Число (включая 0) — явный override. */
+  onSave: (newManual: number | null) => Promise<void>;
   disabled?: boolean;
   format?: (n: number) => string;
   allowDecimal?: boolean;
@@ -901,13 +902,41 @@ const ManualFactCell = ({
   // которое после override-семантики равно 0 как только пользователь ввёл manual).
   const auto = Math.max(0, crm);
   const hasValue = value > 0;
+  // Override активен, если итоговое значение отличается от CRM (включая explicit 0).
+  const hasOverride = value !== crm;
 
   const handleSave = async () => {
-    const raw = Number(val) || 0;
-    const next = allowDecimal ? Math.max(0, raw) : Math.max(0, Math.floor(raw));
+    const trimmed = val.trim();
+    if (trimmed === "") {
+      // Пустое поле = сброс override → берём из CRM.
+      setSaving(true);
+      try {
+        await onSave(null);
+        setOpen(false);
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+    const raw = Number(trimmed);
+    if (!Number.isFinite(raw) || raw < 0) {
+      toast.error("Введи неотрицательное число");
+      return;
+    }
+    const next = allowDecimal ? raw : Math.floor(raw);
     setSaving(true);
     try {
       await onSave(next);
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReset = async () => {
+    setSaving(true);
+    try {
+      await onSave(null);
       setOpen(false);
     } finally {
       setSaving(false);
@@ -923,14 +952,14 @@ const ManualFactCell = ({
   }
 
   return (
-    <Popover open={open} onOpenChange={(next) => { setOpen(next); if (next) setVal(manual ? String(manual) : ""); }}>
+    <Popover open={open} onOpenChange={(next) => { setOpen(next); if (next) setVal(hasOverride ? String(manual) : ""); }}>
       <PopoverTrigger asChild>
         <button
           type="button"
           className={cn(
             "group inline-flex min-w-0 w-full items-center justify-end gap-1.5 rounded-lg border border-transparent px-2 py-1 text-right transition-colors hover:border-success/30 hover:bg-success/10",
             !hasValue && "text-muted-foreground",
-            manual > 0 && "border-success/20 bg-success/5 text-success",
+            hasOverride && "border-success/20 bg-success/5 text-success",
           )}
           title={`${title}: ${isoDate}`}
         >
@@ -955,9 +984,14 @@ const ManualFactCell = ({
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{autoLabel}</div>
               <div className="mt-1 text-sm font-bold tabular-nums">{format(auto)}</div>
             </div>
-            <div className="rounded-xl border border-success/25 bg-success/10 p-2">
-              <div className="text-[10px] uppercase tracking-wider text-success">Вручную</div>
-              <div className="mt-1 text-sm font-bold tabular-nums text-success">{format(manual)}</div>
+            <div className={cn(
+              "rounded-xl border p-2",
+              hasOverride ? "border-success/25 bg-success/10" : "border-border/60 bg-card/60 opacity-60",
+            )}>
+              <div className={cn("text-[10px] uppercase tracking-wider", hasOverride ? "text-success" : "text-muted-foreground")}>Вручную</div>
+              <div className={cn("mt-1 text-sm font-bold tabular-nums", hasOverride && "text-success")}>
+                {hasOverride ? format(manual) : "—"}
+              </div>
             </div>
             <div className="rounded-xl border border-border/60 bg-card/60 p-2">
               <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Показано</div>
@@ -965,7 +999,7 @@ const ManualFactCell = ({
             </div>
           </div>
           <p className="text-[11px] leading-4 text-muted-foreground">
-            Если задано «Вручную» — оно перезаписывает значение из CRM. Чтобы вернуться к авто-данным, очисти поле (0).
+            Ручное значение (даже <b>0</b>) перезаписывает CRM. Чтобы вернуться к авто-данным CRM — нажми «Сбросить» или оставь поле пустым.
           </p>
 
           <div className="space-y-2">
@@ -978,19 +1012,26 @@ const ManualFactCell = ({
               step={allowDecimal ? "0.01" : "1"}
               value={val}
               onChange={(e) => setVal(e.target.value)}
-              placeholder="0"
+              placeholder="Пусто = из CRM"
               className="h-11 rounded-xl text-right text-base font-semibold tabular-nums"
             />
           </div>
 
-          <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
-              Отмена
-            </Button>
-            <Button size="sm" className="gap-2" onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              Сохранить
-            </Button>
+          <div className="flex items-center justify-between gap-2">
+            {hasOverride ? (
+              <Button size="sm" variant="ghost" onClick={handleReset} disabled={saving} className="text-destructive hover:text-destructive">
+                Сбросить
+              </Button>
+            ) : <span />}
+            <div className="flex gap-2">
+              <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
+                Отмена
+              </Button>
+              <Button size="sm" className="gap-2" onClick={handleSave} disabled={saving}>
+                {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                Сохранить
+              </Button>
+            </div>
           </div>
         </div>
       </PopoverContent>
