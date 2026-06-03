@@ -54,7 +54,7 @@ export function ProjectSwitcher({ collapsed }: Props) {
                     onClick={() => { setActive(p.id); setOpen(false); }}
                     className={cn(
                       "flex flex-1 items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-secondary",
-                      isActive && "bg-secondary"
+                      isActive && "bg-secondary",
                     )}
                   >
                     <span className="grid h-7 w-7 place-items-center rounded-md bg-success/20 text-xs font-bold text-success">
@@ -84,7 +84,7 @@ export function ProjectSwitcher({ collapsed }: Props) {
               className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-success hover:bg-success/10"
             >
               <Plus className="h-4 w-4" />
-              Добавить проект (AI-бриф)
+              Быстрое создание
             </button>
             <button
               type="button"
@@ -98,7 +98,7 @@ export function ProjectSwitcher({ collapsed }: Props) {
         </PopoverContent>
       </Popover>
 
-      <ProjectOnboardingDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <QuickCreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} />
     </>
   );
 }
