@@ -1,9 +1,7 @@
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import {
   AUTH_CORS_HEADERS,
   createUserClient,
-  requireCabinetAccess,
-  requireMetaAdAccountAccess,
-  requireUser,
 } from "../_lib/auth.ts";
 
 const corsHeaders = AUTH_CORS_HEADERS;
@@ -97,11 +95,7 @@ Deno.serve(async (req) => {
         status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
+    const supabase = createUserClient(authHeader);
     const token = authHeader.replace("Bearer ", "");
     const { data: claims, error: claimsErr } = await supabase.auth.getClaims(token);
     if (claimsErr || !claims?.claims) {

@@ -6,8 +6,11 @@ import {
   Facebook,
   Loader2,
   Megaphone,
+  Save,
   Shield,
 } from "lucide-react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -180,7 +183,7 @@ export function AddCabinetPickStep({
             <div className="mt-2 text-[11px] opacity-80">
               Проверьте Meta-токен в Настройках → Автоматизация (или введите ниже).
               Нужны права ads_read и business_management. Если ошибка «Edge Function» —
-              задеплойте функции meta-daily-sync, meta-validate-cabinet и meta-list-ad-accounts на Supabase.
+              задеплойте функции meta-list-ad-accounts и meta-daily-sync на Supabase.
             </div>
           </div>
         </div>
@@ -284,11 +287,32 @@ function TokenRefreshBlock({
   onAccessTokenChange: (v: string) => void;
   onRefresh: () => void;
 }) {
+  const [saving, setSaving] = useState(false);
+
+  const saveToken = async () => {
+    const t = accessToken.trim();
+    if (!t) {
+      toast.error("Сначала вставьте токен");
+      return;
+    }
+    setSaving(true);
+    const { error } = await (supabase.from("automation_settings" as never) as never)
+      .update({ meta_access_token: t })
+      .eq("id", true);
+    setSaving(false);
+    if (error) {
+      toast.error("Не сохранено: " + error.message);
+      return;
+    }
+    toast.success("Токен сохранён в Настройки → Автоматизация");
+    onRefresh();
+  };
+
   return (
     <div className="space-y-2 rounded-xl border border-border/60 bg-background/40 p-3">
       <Label className="flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">
         <Shield className="h-3.5 w-3.5" />
-        Свой Access Token (опционально)
+        Свой Access Token
       </Label>
       <Input
         type="password"
@@ -297,9 +321,26 @@ function TokenRefreshBlock({
         placeholder="EAA…"
         className="h-11 rounded-xl bg-background/60"
       />
-      <Button type="button" variant="ghost" size="sm" className="w-full" onClick={onRefresh}>
-        Обновить список
-      </Button>
+      <div className="flex gap-2">
+        <Button type="button" variant="ghost" size="sm" className="flex-1" onClick={onRefresh}>
+          Обновить список
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="flex-1 gap-1"
+          onClick={saveToken}
+          disabled={saving || !accessToken.trim()}
+        >
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+          Сохранить в настройки
+        </Button>
+      </div>
+      <p className="text-[10px] leading-snug text-muted-foreground">
+        После сохранения список будет загружаться автоматически без повторного ввода.
+        Требуются права <b>ads_read</b> и <b>business_management</b>.
+      </p>
     </div>
   );
 }

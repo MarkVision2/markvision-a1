@@ -57,7 +57,7 @@ async function parseFunctionError(error: FunctionsHttpError): Promise<string> {
 }
 
 async function invokeListAdAccounts(
-  functionName: "meta-daily-sync" | "meta-validate-cabinet" | "meta-list-ad-accounts",
+  functionName: "meta-daily-sync" | "meta-list-ad-accounts",
   body: ListBody,
 ): Promise<{
   accounts: AvailableMetaAdAccount[];
@@ -116,7 +116,6 @@ export function useMetaAdAccounts() {
 
         const fns = [
           "meta-list-ad-accounts",
-          "meta-validate-cabinet",
           "meta-daily-sync",
         ] as const;
 

@@ -194,10 +194,6 @@ Deno.serve(async (req) => {
     //      всех cron-задач (тот же, что использует crm-automations). Это решает
     //      401 при срабатывании cron meta-daily-sync-daily, когда отдельный
     //      env-secret не задан.
-    const adminPre = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-    );
     let isCron = false;
     const envCronKey = Deno.env.get("META_SYNC_CRON_KEY");
     const envCronHeader = req.headers.get("x-cron-key");
@@ -234,9 +230,8 @@ Deno.serve(async (req) => {
     const admin = adminPre;
 
     // Read params: date | since/until | cabinet_id (from query OR JSON body).
+    // `body` уже распарсен выше (строка 151), здесь только новые поля.
     const url = new URL(req.url);
-    let body: Record<string, unknown> = {};
-    if (req.method === "POST") body = await req.json().catch(() => ({}));
     const qpDate = url.searchParams.get("date") ?? (body.date as string | undefined) ?? null;
     const qpSince = url.searchParams.get("since") ?? (body.since as string | undefined) ?? null;
     const qpUntil = url.searchParams.get("until") ?? (body.until as string | undefined) ?? null;
