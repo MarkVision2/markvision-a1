@@ -29,6 +29,11 @@ export interface PageItem {
   category?: string;
   picture?: string;
 }
+export interface InstagramItem {
+  id: string;
+  username?: string;
+  name?: string;
+}
 
 type ItemMap = {
   whatsapp: WhatsAppItem;
@@ -36,6 +41,7 @@ type ItemMap = {
   pixel_events: PixelEventItem;
   lead_forms: LeadFormItem;
   pages: PageItem;
+  instagram: InstagramItem;
 };
 
 interface Params {
