@@ -1,7 +1,7 @@
 {
-  "git_sha": "7520193",
-  "git_sha_full": "75201939881ca3285e9ed7c880083c82d9cde3c7",
-  "updated_at": "2026-06-03T15:58:15Z",
-  "label": "feat(projects): быстрое создание — только название проекта",
+  "git_sha": "549bd1c",
+  "git_sha_full": "549bd1cbfb3c031b162e5765f29114dfb22502fc",
+  "updated_at": "2026-06-03T16:00:40Z",
+  "label": "fix(meta): диагностика пустого списка кабинетов + Business Manager fallback",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
