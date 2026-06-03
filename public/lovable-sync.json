@@ -1,7 +1,7 @@
 {
-  "git_sha": "480d6ac",
-  "git_sha_full": "480d6acb0123064ca0cef10d5fea61d352973d79",
-  "updated_at": "2026-06-03T16:05:48Z",
-  "label": "fix: import PublishUpdateBanner in AppLayout (ReferenceError)",
+  "git_sha": "c572ae3",
+  "git_sha_full": "c572ae39e6a1bf4c611787ed5fab1b0c93c0f6bb",
+  "updated_at": "2026-06-03T16:09:37Z",
+  "label": "fix: импорт QuickCreateProjectDialog — чёрный экран в preview",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
