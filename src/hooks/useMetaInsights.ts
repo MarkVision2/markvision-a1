@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
-import { isManualOverrideActive, resolveCdiMetric } from "@/lib/cdiManualOverride";
 
 export interface DailyInsightRow {
   date: string;
@@ -17,21 +16,26 @@ export interface DailyInsightRow {
   diagnostics: number;
   /** Чистое CRM значение, без manual override (для отображения «Из CRM: N» в попапах). */
   crmDiagnostics: number;
-  /** NULL = нет ручной правки. */
-  manualDiagnostics: number | null;
+  manualDiagnostics: number;
+  /** Override: оплаты за диагностику ₸. */
   diagnosticRevenue: number;
   crmDiagnosticRevenue: number;
-  manualDiagnosticRevenue: number | null;
+  manualDiagnosticRevenue: number;
+  /** Override-результат: manual если задан, иначе crm. */
   sales: number;
   crmSales: number;
-  manualSales: number | null;
+  manualSales: number;
+  /** Override-результат: только выручка ПРОДАЖ (без диагностик). */
   salesRevenue: number;
   crmSalesRevenueOnly: number;
-  manualSalesRevenue: number | null;
-  /** Итоговая выручка дня = salesRevenue + diagnosticRevenue (override-aware). */
+  manualSalesRevenue: number;
+  /**
+   * ИТОГОВАЯ выручка дня = salesRevenue + diagnosticRevenue (override-aware).
+   * Это «выручка факт» — единый источник правды для денег.
+   */
   crmRevenue: number;
   crmRevenueOnly: number;
-  manualRevenue: number | null;
+  manualRevenue: number;
 }
 
 export interface InsightTotals {
@@ -39,7 +43,9 @@ export interface InsightTotals {
   impressions: number;
   clicks: number;
   leads: number;
+  /** FB pixel revenue. Не используется в KPI выручки. */
   pixelRevenue: number;
+  /** @deprecated alias на pixelRevenue. */
   revenue: number;
   cpl: number;
   cpm: number;
@@ -50,6 +56,7 @@ export interface InsightTotals {
   diagnosticRevenue: number;
   sales: number;
   salesRevenue: number;
+  /** Override-aware: продажи + оплаты диагностик. Это «выручка факт» в Metrics/Analytics/Dashboard. */
   crmRevenue: number;
 }
 
@@ -92,22 +99,13 @@ interface CdiRow {
   revenue: number | string;
   currency: string;
   crm_diagnostics?: number;
-  manual_diagnostics?: number | null;
+  manual_diagnostics?: number;
   crm_sales?: number;
-  manual_sales?: number | null;
+  manual_sales?: number;
   crm_revenue?: number | string;
-  manual_revenue?: number | string | null;
+  manual_revenue?: number | string;
   crm_diagnostic_revenue?: number | string;
-  manual_diagnostic_revenue?: number | string | null;
-}
-
-function addManualSum(cur: number | null, raw: number | null | undefined): number | null {
-  if (!isManualOverrideActive(raw)) return cur;
-  return (cur ?? 0) + Number(raw);
-}
-
-function manualOnly(raw: number | null | undefined): number | null {
-  return isManualOverrideActive(raw) ? Number(raw) : null;
+  manual_diagnostic_revenue?: number | string;
 }
 
 function aggregate(rows: CdiRow[]): InsightsData {
@@ -121,25 +119,35 @@ function aggregate(rows: CdiRow[]): InsightsData {
     const impressions = Number(r.impressions) || 0;
     const clicks = Number(r.clicks) || 0;
     const leads = Number(r.leads) || 0;
-
+    // Override-семантика: ручные значения ПЕРЕЗАПИСЫВАЮТ CRM, а не суммируются с ним.
+    // Раньше складывали (crm + manual) — это приводило к задвоению, когда менеджер вводил
+    // 400к manual поверх 800к из CRM и получал 1.2М вместо 800к. См. жалобу пользователя.
     const crmDiag = Number(r.crm_diagnostics) || 0;
-    const manDiag = r.manual_diagnostics;
-    const diagnostics = resolveCdiMetric(manDiag, crmDiag);
-
+    const diagnostics = resolveCdiMetric(r.manual_diagnostics, crmDiag);
     const crmSales = Number(r.crm_sales) || 0;
-    const manSales = r.manual_sales;
-    const sales = resolveCdiMetric(manSales, crmSales);
-
+    const sales = resolveCdiMetric(r.manual_sales, crmSales);
     const crmSalesRev = Number(r.crm_revenue) || 0;
-    const manSalesRev = r.manual_revenue;
-    const salesRevenue = resolveCdiMetric(manSalesRev, crmSalesRev);
-
+    const salesRevenue = resolveCdiMetric(r.manual_revenue, crmSalesRev);
     const crmDiagRev = Number(r.crm_diagnostic_revenue) || 0;
-    const manDiagRev = r.manual_diagnostic_revenue;
-    const diagnosticRevenue = resolveCdiMetric(manDiagRev, crmDiagRev);
-
+    const diagnosticRevenue = resolveCdiMetric(
+      r.manual_diagnostic_revenue,
+      crmDiagRev,
+    );
+    const manDiag = isManualOverrideActive(r.manual_diagnostics)
+      ? Math.max(0, Number(r.manual_diagnostics) || 0)
+      : 0;
+    const manSales = isManualOverrideActive(r.manual_sales)
+      ? Math.max(0, Number(r.manual_sales) || 0)
+      : 0;
+    const manSalesRev = isManualOverrideActive(r.manual_revenue)
+      ? Math.max(0, Number(r.manual_revenue) || 0)
+      : 0;
+    const manDiagRev = isManualOverrideActive(r.manual_diagnostic_revenue)
+      ? Math.max(0, Number(r.manual_diagnostic_revenue) || 0)
+      : 0;
+    // Итоговая «выручка факт» = продажи + оплаты диагностик. Override-семантика
+    // применяется внутри каждой составляющей, потом суммируется.
     const totalRevenue = salesRevenue + diagnosticRevenue;
-
     totals.spend += spend;
     totals.impressions += impressions;
     totals.clicks += clicks;
@@ -151,7 +159,6 @@ function aggregate(rows: CdiRow[]): InsightsData {
     totals.sales += sales;
     totals.salesRevenue += salesRevenue;
     totals.crmRevenue += totalRevenue;
-
     const cur = dailyMap.get(r.date);
     if (cur) {
       cur.spend += spend;
@@ -162,38 +169,30 @@ function aggregate(rows: CdiRow[]): InsightsData {
       cur.revenue += pixelRevenue;
       cur.diagnostics += diagnostics;
       cur.crmDiagnostics += crmDiag;
-      cur.manualDiagnostics = addManualSum(cur.manualDiagnostics, manDiag);
+      cur.manualDiagnostics += manDiag;
       cur.diagnosticRevenue += diagnosticRevenue;
       cur.crmDiagnosticRevenue += crmDiagRev;
-      cur.manualDiagnosticRevenue = addManualSum(cur.manualDiagnosticRevenue, manDiagRev);
+      cur.manualDiagnosticRevenue += manDiagRev;
       cur.sales += sales;
       cur.crmSales += crmSales;
-      cur.manualSales = addManualSum(cur.manualSales, manSales);
+      cur.manualSales += manSales;
       cur.salesRevenue += salesRevenue;
       cur.crmSalesRevenueOnly += crmSalesRev;
-      cur.manualSalesRevenue = addManualSum(cur.manualSalesRevenue, manSalesRev);
+      cur.manualSalesRevenue += manSalesRev;
       cur.crmRevenue += totalRevenue;
       cur.crmRevenueOnly += crmSalesRev + crmDiagRev;
-      cur.manualRevenue = addManualSum(addManualSum(cur.manualRevenue, manSalesRev), manDiagRev);
+      cur.manualRevenue += manSalesRev + manDiagRev;
     } else {
       dailyMap.set(r.date, {
         date: r.date, spend, impressions, clicks, leads,
         pixelRevenue, revenue: pixelRevenue,
-        diagnostics, crmDiagnostics: crmDiag,
-        manualDiagnostics: manualOnly(manDiag),
-        diagnosticRevenue, crmDiagnosticRevenue: crmDiagRev,
-        manualDiagnosticRevenue: manualOnly(manDiagRev),
-        sales, crmSales, manualSales: manualOnly(manSales),
-        salesRevenue, crmSalesRevenueOnly: crmSalesRev,
-        manualSalesRevenue: manualOnly(manSalesRev),
+        diagnostics, crmDiagnostics: crmDiag, manualDiagnostics: manDiag,
+        diagnosticRevenue, crmDiagnosticRevenue: crmDiagRev, manualDiagnosticRevenue: manDiagRev,
+        sales, crmSales, manualSales: manSales,
+        salesRevenue, crmSalesRevenueOnly: crmSalesRev, manualSalesRevenue: manSalesRev,
         crmRevenue: totalRevenue,
         crmRevenueOnly: crmSalesRev + crmDiagRev,
-        manualRevenue: (() => {
-          const hasS = isManualOverrideActive(manSalesRev);
-          const hasD = isManualOverrideActive(manDiagRev);
-          if (!hasS && !hasD) return null;
-          return (hasS ? Number(manSalesRev) : 0) + (hasD ? Number(manDiagRev) : 0);
-        })(),
+        manualRevenue: manSalesRev + manDiagRev,
       });
     }
   }
@@ -201,6 +200,8 @@ function aggregate(rows: CdiRow[]): InsightsData {
   totals.cpm = totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0;
   totals.cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
   totals.ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+  // ROMI считается строго по реальной выручке (CRM/manual), без FB pixel fallback.
+  // Это даёт ту же ROMI на Dashboard/Reports/Analytics/Metrics для одного периода.
   totals.romi = totals.spend > 0 ? ((totals.crmRevenue - totals.spend) / totals.spend) * 100 : 0;
   const daily = Array.from(dailyMap.values()).sort((a, b) => a.date.localeCompare(b.date));
   return { currency, totals, daily };
@@ -223,6 +224,8 @@ async function fetchInsights(
     .gte("date", range.since)
     .lte("date", range.until)
     .order("date", { ascending: true });
+  // Изоляция проекта: если несколько проектов делили один external_id (миграция кабинета и т.п.),
+  // чужие строки в выборку не попадут.
   if (projectId) q = q.eq("project_id", projectId);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
@@ -256,6 +259,7 @@ export function useMetaInsights(
         setData({ currency: "USD", totals: EMPTY_TOTALS, daily: [] });
       })
       .finally(() => { if (!cancelled) setLoading(false); });
+    // Realtime: subscribe to changes in cabinet_daily_insights for this external_id
     const norm = normalizeActId(actId);
     const channel = supabase
       .channel(`cdi-${norm}`)

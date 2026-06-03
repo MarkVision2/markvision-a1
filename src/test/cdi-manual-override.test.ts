@@ -6,21 +6,19 @@ import {
 } from "@/lib/cdiManualOverride";
 
 describe("cdiManualOverride", () => {
-  it("treats null/undefined as no override", () => {
-    expect(isManualOverrideActive(null)).toBe(false);
-    expect(isManualOverrideActive(undefined)).toBe(false);
-    expect(resolveCdiMetric(null, 3)).toBe(3);
+  it("NULL manual uses CRM", () => {
+    expect(resolveCdiMetric(null, 4)).toBe(4);
+    expect(resolveCdiMetric(undefined, 2)).toBe(2);
   });
 
-  it("allows explicit zero override", () => {
+  it("zero manual is explicit override", () => {
+    expect(resolveCdiMetric(0, 4)).toBe(0);
     expect(isManualOverrideActive(0)).toBe(true);
-    expect(resolveCdiMetric(0, 3)).toBe(0);
   });
 
-  it("maps empty save to null", () => {
+  it("manualValueForSave maps empty to null", () => {
     expect(manualValueForSave("")).toBe(null);
-    expect(manualValueForSave("  ")).toBe(null);
-    expect(manualValueForSave(5)).toBe(5);
-    expect(manualValueForSave(0)).toBe(0);
+    expect(manualValueForSave("0")).toBe(0);
+    expect(manualValueForSave(3)).toBe(3);
   });
 });

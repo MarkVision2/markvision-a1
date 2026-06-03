@@ -19,7 +19,9 @@ export function resolveCdiMetric(
 }
 
 /** Значение для сохранения из UI: пусто / «сброс» → NULL (авто из CRM). */
-export function manualValueForSave(raw: string | number | null | undefined): number | null {
+export function manualValueForSave(
+  raw: string | number | null | undefined,
+): number | null {
   if (raw === null || raw === undefined) return null;
   const s = String(raw).trim();
   if (s === "") return null;
