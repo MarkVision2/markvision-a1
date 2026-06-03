@@ -9,6 +9,7 @@
 // Auth: JWT пользователя ИЛИ x-internal-key = SUPABASE_SERVICE_ROLE_KEY.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { requireLeadAccess, validateRecordingUrl } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

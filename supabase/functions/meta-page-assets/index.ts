@@ -80,6 +80,20 @@ Deno.serve(async (req) => {
 
     if (!kind) return jsonResponse({ error: "kind is required" }, 400);
 
+    if (actId) {
+      const actAccess = await requireMetaAdAccountAccess(auth.authHeader, actId);
+      if (!actAccess.ok) return jsonResponse({ error: "Forbidden" }, 403);
+    } else if (pageId) {
+      const client = createUserClient(auth.authHeader);
+      const { data: cab } = await client
+        .from("ad_cabinets")
+        .select("id")
+        .eq("page_id", pageId)
+        .limit(1)
+        .maybeSingle();
+      if (!cab) return jsonResponse({ error: "Forbidden" }, 403);
+    }
+
     // ============ WHATSAPP ============
     if (kind === "whatsapp") {
       if (!pageId && !actId) {
@@ -336,42 +350,6 @@ Deno.serve(async (req) => {
       const fallback = FALLBACK_PIXEL_EVENTS.filter((n) => !recentNames.has(n))
         .map((name) => ({ name, count: 0 }));
       return jsonResponse({ items: [...sortedRecent, ...fallback] });
-    }
-
-    // ============ INSTAGRAM (per Facebook Page) ============
-    if (kind === "instagram") {
-      if (!pageId) return jsonResponse({ error: "pageId is required" }, 400);
-      const pageTokenResp = await metaGet(
-        `/${pageId}?fields=access_token,name`,
-        META_ACCESS_TOKEN,
-      );
-      const tryToken = pageTokenResp.body?.access_token ?? META_ACCESS_TOKEN;
-      const igResp = await metaGet(
-        `/${pageId}?fields=instagram_business_account{id,username,name,profile_picture_url,followers_count}`,
-        tryToken,
-      );
-      if (!igResp.ok) {
-        return jsonResponse(
-          {
-            error: "Meta API error",
-            status: igResp.status,
-            details: igResp.body?.error,
-            items: [],
-          },
-          502,
-        );
-      }
-      const ig = igResp.body?.instagram_business_account;
-      const items = ig?.id
-        ? [{
-          id: String(ig.id),
-          username: ig.username ?? null,
-          name: ig.name ?? pageTokenResp.body?.name ?? null,
-          picture: ig.profile_picture_url ?? null,
-          followers_count: Number(ig.followers_count ?? 0),
-        }]
-        : [];
-      return jsonResponse({ items });
     }
 
     // ============ LEAD FORMS ============

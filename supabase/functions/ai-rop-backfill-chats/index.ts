@@ -153,6 +153,14 @@ Deno.serve(async (req) => {
     return json({ error: "project_id is required" }, 400);
   }
 
+  const isPrivileged =
+    req.headers.get("x-internal-key") === SERVICE_KEY || !!req.headers.get("x-cron-secret");
+  const authHeader = req.headers.get("Authorization");
+  if (!isPrivileged && authHeader) {
+    const access = await requireProjectAccess(authHeader, projectId);
+    if (!access.ok) return access.response;
+  }
+
   try {
     const eligible = await listEligibleLeadIds(projectId);
     if (!eligible.length) return json({ ok: true, eligible: 0, queued: 0 });

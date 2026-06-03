@@ -89,11 +89,6 @@ Deno.serve(async (req) => {
   const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN");
   if (!META_ACCESS_TOKEN) return json({ ok: false, error: "META_ACCESS_TOKEN missing" }, 500);
 
-  let body: { ad_id?: string } = {};
-  try { body = await req.json(); } catch { /* */ }
-  const adId = (body.ad_id ?? "").toString().trim();
-  if (!/^\d+$/.test(adId)) return json({ ok: false, error: "ad_id required" }, 400);
-
   const admin = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
