@@ -1,7 +1,7 @@
 {
-  "git_sha": "be86a73",
-  "git_sha_full": "be86a73174d024da0dc21b975a83bf6c8e7e7bcc",
-  "updated_at": "2026-06-03T18:41:21Z",
-  "label": "chore: script deploy meta-list-ad-accounts, meta-daily-sync, meta-validate-cabinet",
+  "git_sha": "d665760",
+  "git_sha_full": "d665760cbaa0776100b4a247b9202fb6409dd359",
+  "updated_at": "2026-06-03T18:42:50Z",
+  "label": "ci: deploy Meta edge functions workflow",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
