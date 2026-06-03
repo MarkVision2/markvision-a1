@@ -11,6 +11,7 @@ import {
   ShoppingCart,
   Target,
   Wallet,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -137,26 +138,12 @@ const Ads = () => {
             </Button>
 
             <Button
-              onClick={() => {
-                setAddInitialStep("pick");
-                setAddOpen(true);
-              }}
-              className="h-10 gap-2 rounded-xl border border-primary/40 bg-primary/15 text-primary hover:bg-primary/25"
-            >
-              <Zap className="h-4 w-4" />
-              Быстро из Meta
-            </Button>
-
-            <Button
-              onClick={() => {
-                setAddInitialStep("configure");
-                setAddOpen(true);
-              }}
+              onClick={() => setAddOpen(true)}
               variant="outline"
               className="h-10 gap-2 rounded-xl border-border/60"
             >
               <Plus className="h-4 w-4" />
-              Вручную
+              Кабинет
             </Button>
 
             <Button
