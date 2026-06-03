@@ -6,6 +6,7 @@ import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { normalizeSource } from "@/lib/leadSource";
 import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
+import { isManualOverrideActive, resolveCdiMetric } from "@/lib/cdiManualOverride";
 
 export interface ReportPeriodRange {
   from: Date;

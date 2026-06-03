@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { isManualOverrideActive, resolveCdiMetric } from "@/lib/cdiManualOverride";
 
 export interface DailyInsightRow {
   date: string;
