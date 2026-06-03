@@ -100,13 +100,13 @@ export function useDashboardData(
         };
         cur.spend += Number((r as { spend?: number }).spend ?? 0);
         cur.leads += Number((r as { leads?: number }).leads ?? 0);
-        // Override-семантика: ручные значения перезаписывают CRM, не суммируются.
+        // Override-семантика: ручные значения перезаписывают CRM (NULL = «не задано»).
         const crmS = Number((r as { crm_sales?: number }).crm_sales ?? 0);
-        const manS = Number((r as { manual_sales?: number }).manual_sales ?? 0);
-        cur.sales += manS > 0 ? manS : crmS;
+        const manS = (r as { manual_sales?: number | null }).manual_sales;
+        cur.sales += manS !== null && manS !== undefined ? Number(manS) || 0 : crmS;
         const crmR = Number((r as { crm_revenue?: number }).crm_revenue ?? 0);
-        const manR = Number((r as { manual_revenue?: number }).manual_revenue ?? 0);
-        cur.revenue += manR > 0 ? manR : crmR;
+        const manR = (r as { manual_revenue?: number | null }).manual_revenue;
+        cur.revenue += manR !== null && manR !== undefined ? Number(manR) || 0 : crmR;
         acc.set(provider, cur);
       }
       setProviderAgg(Array.from(acc.values()));
