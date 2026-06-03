@@ -1,7 +1,7 @@
 {
-  "git_sha": "pending",
-  "git_sha_full": "pending",
-  "updated_at": "2026-06-03T16:30:00Z",
-  "label": "fix: создание проекта без intake_token в select",
-  "publish_hint": "Lovable → Settings → Git → Pull main → Publish → Update → Ctrl+Shift+R"
+  "git_sha": "9d48382",
+  "git_sha_full": "9d48382c1f5388f5d9b01a228407842ebd00b16e",
+  "updated_at": "2026-06-03T16:26:30Z",
+  "label": "fix: создание проекта — select без intake_token, быстрое создание",
+  "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
