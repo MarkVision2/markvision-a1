@@ -372,10 +372,10 @@ const Metrics = () => {
   const upsertManualFact = async (
     isoDate: string,
     patch: {
-      manual_diagnostics?: number;
-      manual_sales?: number;
-      manual_revenue?: number;
-      manual_diagnostic_revenue?: number;
+      manual_diagnostics?: number | null;
+      manual_sales?: number | null;
+      manual_revenue?: number | null;
+      manual_diagnostic_revenue?: number | null;
     },
   ) => {
     if (!manualCabinet?.externalId) {
@@ -383,8 +383,12 @@ const Metrics = () => {
       return;
     }
 
+    // NULL = «сбросить override», число (включая 0) — explicit override.
     const cleanPatch = Object.fromEntries(
-      Object.entries(patch).map(([key, value]) => [key, Math.max(0, Number(value) || 0)]),
+      Object.entries(patch).map(([key, value]) => [
+        key,
+        value === null || value === undefined ? null : Math.max(0, Number(value) || 0),
+      ]),
     );
 
     try {
@@ -417,7 +421,8 @@ const Metrics = () => {
       }
 
       refresh();
-      toast.success("Ручной факт сохранен");
+      const wasReset = Object.values(cleanPatch).every((v) => v === null);
+      toast.success(wasReset ? "Ручное значение сброшено — берётся из CRM" : "Ручной факт сохранён");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось сохранить факт");
     }
