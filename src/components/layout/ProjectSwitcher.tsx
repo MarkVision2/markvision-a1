@@ -98,7 +98,7 @@ export function ProjectSwitcher({ collapsed }: Props) {
         </PopoverContent>
       </Popover>
 
-      <ProjectOnboardingDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <QuickCreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} />
     </>
   );
 }
