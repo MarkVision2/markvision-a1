@@ -1,7 +1,7 @@
 {
-  "git_sha": "de9ea98",
-  "git_sha_full": "de9ea98e5c10b8f76f227b820b0ba4ba33763b92",
+  "git_sha": "2f68fcf",
+  "git_sha_full": "2f68fcfacf9d8bdf3ce161d4a1a4fed2d70e0604",
   "updated_at": "2026-06-03T17:27:52Z",
-  "label": "fix: убрать QuickCreateProjectDialog — локальный ProjectQuickCreatePanel",
-  "publish_hint": "Lovable → Settings → Git → Pull main → Discard local → Publish → Update → Ctrl+Shift+R"
+  "label": "chore: lovable sync stamp de9ea98",
+  "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
