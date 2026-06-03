@@ -11,7 +11,6 @@ import {
   ShoppingCart,
   Target,
   Wallet,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -259,6 +258,10 @@ const Ads = () => {
       <AddCabinetDialog
         open={addOpen}
         onOpenChange={setAddOpen}
+        initialStep={addInitialStep}
+        existingActIds={cabinets
+          .map((c) => c.adAccountId || c.externalId || "")
+          .filter(Boolean)}
         onCreate={async (c) => {
           try {
             const newId = await addCabinet(c);
