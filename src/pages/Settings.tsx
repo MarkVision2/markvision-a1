@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Camera, Edit2, Eye, Globe, GitBranch, Link2, MessageCircle, Phone, Plus, Rocket, Search, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -44,7 +44,19 @@ const ROLE_COLOR: Record<string, string> = {
   viewer: "bg-muted text-muted-foreground border-border",
 };
 
+const SETTINGS_TABS = [
+  "publish", "team", "profile", "pipelines", "loss",
+  "telephony", "whatsapp", "site", "inbound", "ig-organic", "clientview",
+] as const;
+
+type SettingsTab = (typeof SETTINGS_TABS)[number];
+
 export default function Settings() {
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const defaultTab: SettingsTab = SETTINGS_TABS.includes(tabParam as SettingsTab)
+    ? (tabParam as SettingsTab)
+    : "publish";
   const { members, removeMember } = useTeamStore();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<TeamMember | null>(null);
@@ -80,7 +92,7 @@ export default function Settings() {
         description="Команда, воронки, телефония и личный профиль"
       />
 
-      <Tabs defaultValue="publish" className="mt-6 w-full">
+      <Tabs defaultValue={defaultTab} key={defaultTab} className="mt-6 w-full">
         <TabsList className="mb-5 flex h-auto w-full flex-wrap justify-start gap-1 bg-card/40 p-1">
           <TabsTrigger value="publish" className="gap-2"><Rocket className="h-3.5 w-3.5" /> Обновления</TabsTrigger>
           <TabsTrigger value="team" className="gap-2"><Users2 className="h-3.5 w-3.5" /> Команда</TabsTrigger>

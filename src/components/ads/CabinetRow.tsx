@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import type { AdCabinet } from "@/types/ads";
 import { useMetaInsights } from "@/hooks/useMetaInsights";
 import { supabase } from "@/integrations/supabase/client";
+import { manualValueForSave } from "@/lib/cdiManualOverride";
 import {
   DropdownMenu,
   DropdownMenuContent,

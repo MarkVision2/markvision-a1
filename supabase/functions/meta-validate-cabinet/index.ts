@@ -114,6 +114,44 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json().catch(() => ({}));
+
+    if (body.list_ad_accounts === true) {
+      const excludeRaw: string[] = Array.isArray(body.exclude_act_ids)
+        ? body.exclude_act_ids
+        : [];
+      const exclude = excludeRaw.map((x) => normalizeActIdList(String(x)));
+
+      const admin = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      );
+      let listToken: string | null =
+        typeof body.access_token === "string" ? body.access_token.trim() : null;
+      if (!listToken) {
+        const { data: settings } = await admin
+          .from("automation_settings")
+          .select("meta_access_token")
+          .eq("id", true)
+          .maybeSingle();
+        listToken = settings?.meta_access_token ?? Deno.env.get("META_ACCESS_TOKEN") ?? null;
+      }
+      if (!listToken) {
+        return new Response(JSON.stringify({
+          error: "Meta access token не настроен. Укажите токен в Настройках → Автоматизация.",
+          accounts: [],
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const rows = await fetchAllMetaAdAccounts(listToken);
+      const accounts = mapAdAccounts(rows, exclude);
+      return new Response(JSON.stringify({ ok: true, accounts }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     const cabinetId: string | undefined = body.cabinetId;
     let adAccountId: string = body.adAccountId || "";
     let pageId: string = body.pageId || "";
