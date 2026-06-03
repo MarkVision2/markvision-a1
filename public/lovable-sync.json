@@ -1,7 +1,7 @@
 {
-  "git_sha": "da14392",
-  "git_sha_full": "da143922cea685a028b571f742f0ea323044ad18",
-  "updated_at": "2026-06-03T15:55:40Z",
-  "label": "feat: баннер Publish, list_ad в meta-validate, CabinetRow NULL save",
+  "git_sha": "64d25bd",
+  "git_sha_full": "64d25bded5ec9026a3aecdac0ee5f2777746f543",
+  "updated_at": "2026-06-03T15:56:18Z",
+  "label": "fix: показать PublishUpdateBanner и cleanPatch в CabinetRow",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
