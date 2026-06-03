@@ -1,7 +1,7 @@
 {
-  "git_sha": "1076095",
-  "git_sha_full": "1076095b13f0d1a1699f2ee0cefb155cb2cbf237",
-  "updated_at": "2026-06-03T15:56:43Z",
-  "label": "fix: import manualValueForSave in CabinetRow",
+  "git_sha": "7520193",
+  "git_sha_full": "75201939881ca3285e9ed7c880083c82d9cde3c7",
+  "updated_at": "2026-06-03T15:58:15Z",
+  "label": "feat(projects): быстрое создание — только название проекта",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
