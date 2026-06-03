@@ -1,7 +1,7 @@
 {
-  "git_sha": "1a53b0e",
-  "git_sha_full": "1a53b0e6c262c0540887e31d5dcc637e236b3973",
-  "updated_at": "2026-06-03T16:44:41Z",
-  "label": "fix: QuickCreateProjectDialog в одном файле с ProjectSwitcher",
-  "publish_hint": "Lovable → Publish (справа вверху) → Update"
+  "git_sha": "pending",
+  "git_sha_full": "pending",
+  "updated_at": "2026-06-03T18:00:00Z",
+  "label": "fix: убрать QuickCreateProjectDialog — локальный ProjectQuickCreatePanel",
+  "publish_hint": "Lovable → Settings → Git → Pull main → Discard local → Publish → Update → Ctrl+Shift+R"
 }

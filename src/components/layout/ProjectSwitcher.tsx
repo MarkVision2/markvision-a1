@@ -10,8 +10,8 @@ import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-/** В этом же файле — Lovable не сможет сломать пару import/JSX отдельными правками. */
-export function QuickCreateProjectDialog({
+/** Локальный диалог — не экспортируем, чтобы Lovable не ломал import/JSX отдельными правками. */
+function ProjectQuickCreatePanel({
   open,
   onOpenChange,
 }: {
@@ -175,7 +175,7 @@ export function ProjectSwitcher({ collapsed }: Props) {
         </PopoverContent>
       </Popover>
 
-      <QuickCreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <ProjectQuickCreatePanel open={createOpen} onOpenChange={setCreateOpen} />
     </>
   );
 }
