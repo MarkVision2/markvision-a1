@@ -1,0 +1,48 @@
+# Деплой только Meta edge functions (без db push).
+# Секреты: SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF (= mekwfbqmsqiborjdrjxc)
+name: Deploy Meta edge functions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/meta-list-ad-accounts/**"
+      - "supabase/functions/meta-daily-sync/**"
+      - "supabase/functions/meta-validate-cabinet/**"
+      - "supabase/functions/_lib/meta_list_ad_accounts.ts"
+      - "supabase/functions/_lib/auth.ts"
+      - ".github/workflows/deploy-meta-edge-functions.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-meta-edge-functions
+  cancel-in-progress: false
+
+env:
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Verify secrets
+        run: |
+          set -e
+          test -n "$SUPABASE_ACCESS_TOKEN" || (echo "::error::SUPABASE_ACCESS_TOKEN missing"; exit 1)
+          test -n "$SUPABASE_PROJECT_REF" || (echo "::error::SUPABASE_PROJECT_REF missing"; exit 1)
+
+      - name: Deploy meta-list-ad-accounts, meta-daily-sync, meta-validate-cabinet
+        run: |
+          set -e
+          for fn in meta-list-ad-accounts meta-daily-sync meta-validate-cabinet; do
+            echo "::group::Deploy $fn"
+            supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"
+            echo "::endgroup::"
+          done
