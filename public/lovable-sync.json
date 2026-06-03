@@ -1,7 +1,7 @@
 {
-  "git_sha": "64d25bd",
-  "git_sha_full": "64d25bded5ec9026a3aecdac0ee5f2777746f543",
-  "updated_at": "2026-06-03T15:56:18Z",
-  "label": "fix: показать PublishUpdateBanner и cleanPatch в CabinetRow",
+  "git_sha": "1076095",
+  "git_sha_full": "1076095b13f0d1a1699f2ee0cefb155cb2cbf237",
+  "updated_at": "2026-06-03T15:56:43Z",
+  "label": "fix: import manualValueForSave in CabinetRow",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
