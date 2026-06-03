@@ -251,7 +251,10 @@ const Ads = () => {
               </p>
               {cabinets.length === 0 && (
                 <Button
-                  onClick={() => setAddOpen(true)}
+                  onClick={() => {
+                    setAddInitialStep("pick");
+                    setAddOpen(true);
+                  }}
                   className="mt-5 h-11 rounded-xl bg-success text-white hover:bg-success/90"
                 >
                   <Plus className="h-4 w-4" />
@@ -272,6 +275,7 @@ const Ads = () => {
       </Tabs>
 
       <AddCabinetDialog
+        key={addOpen ? addInitialStep : "closed"}
         open={addOpen}
         onOpenChange={setAddOpen}
         initialStep={addInitialStep}
