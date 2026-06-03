@@ -11,6 +11,7 @@ import {
   ShoppingCart,
   Target,
   Wallet,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -68,6 +69,7 @@ const Ads = () => {
   const tab = searchParams.get("tab") ?? "cabinets";
   const [query, setQuery] = useState("");
   const [addOpen, setAddOpen] = useState(false);
+  const [addInitialStep, setAddInitialStep] = useState<"pick" | "configure">("pick");
   const [campaignOpen, setCampaignOpen] = useState(false);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [refreshKey, setRefreshKey] = useState(0);
@@ -137,12 +139,26 @@ const Ads = () => {
             </Button>
 
             <Button
-              onClick={() => setAddOpen(true)}
+              onClick={() => {
+                setAddInitialStep("pick");
+                setAddOpen(true);
+              }}
+              className="h-10 gap-2 rounded-xl border border-primary/40 bg-primary/15 text-primary hover:bg-primary/25"
+            >
+              <Zap className="h-4 w-4" />
+              Быстро из Meta
+            </Button>
+
+            <Button
+              onClick={() => {
+                setAddInitialStep("configure");
+                setAddOpen(true);
+              }}
               variant="outline"
               className="h-10 gap-2 rounded-xl border-border/60"
             >
               <Plus className="h-4 w-4" />
-              Кабинет
+              Вручную
             </Button>
 
             <Button
