@@ -197,11 +197,16 @@ const Metrics = () => {
     }),
     [allLeads, cabinetId, monthStartTs, monthEndTs],
   );
+  // СТРОГАЯ диагностика для orphan-лидов: только лиды, реально находящиеся в стадии
+  // "scheduled" (Запись на диагностику) или "visit" (Диагностика). НЕ используем
+  // isLeadVisit (он считает paid и diagnostic_amount>0 — это давало завышенные цифры,
+  // когда менеджеру казалось, что в раздел попадают лиды, которых он туда не переводил).
   const orphanVisitsInRange = useMemo(() => {
     if (cabinetId !== "all") return [];
     return allLeads.filter((l) => {
       if (l.cabinetId) return false;
-      if (!isLeadVisit(l)) return false;
+      const k = (l.stageKey ?? "").toLowerCase().trim();
+      if (k !== "scheduled" && k !== "visit") return false;
       const ref = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
       const t = new Date(ref).getTime();
       return t >= monthStartTs && t < monthEndTs;
