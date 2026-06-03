@@ -1,7 +1,7 @@
 {
-  "git_sha": "8a5944e",
-  "git_sha_full": "8a5944e83a6cdaf34c049e570d4e442db3c2428a",
-  "updated_at": "2026-06-03T09:01:56Z",
-  "label": "fix(settings): вкладка Обновления с кнопкой в Lovable Publish",
+  "git_sha": "da14392",
+  "git_sha_full": "da143922cea685a028b571f742f0ea323044ad18",
+  "updated_at": "2026-06-03T15:55:40Z",
+  "label": "feat: баннер Publish, list_ad в meta-validate, CabinetRow NULL save",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
