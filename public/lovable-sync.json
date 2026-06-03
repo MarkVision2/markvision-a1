@@ -1,7 +1,7 @@
 {
-  "git_sha": "5ce967f",
-  "git_sha_full": "5ce967f8d7d97250fbaad02db60ce7af910527fd",
-  "updated_at": "2026-06-03T16:43:07Z",
-  "label": "fix: согласовать import и JSX QuickCreateProjectDialog (ReferenceError)",
+  "git_sha": "1a53b0e",
+  "git_sha_full": "1a53b0e6c262c0540887e31d5dcc637e236b3973",
+  "updated_at": "2026-06-03T16:44:41Z",
+  "label": "fix: QuickCreateProjectDialog в одном файле с ProjectSwitcher",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
