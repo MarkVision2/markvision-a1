@@ -13,12 +13,20 @@ export interface AvailableMetaAdAccount {
   business_name: string | null;
 }
 
+export type MetaListDiagnostics = {
+  meta_hint?: string;
+  token_identity?: { id: string; name: string };
+  sources?: string[];
+  raw_count?: number;
+  used_function?: string;
+};
+
 type ListBody = {
   exclude_act_ids: string[];
   access_token?: string;
 };
 
-function shouldFallbackToValidateCabinet(err?: string | null): boolean {
+function shouldFallbackToNextFunction(err?: string | null): boolean {
   if (!err) return false;
   const msg = err.toLowerCase();
   return (
@@ -28,6 +36,8 @@ function shouldFallbackToValidateCabinet(err?: string | null): boolean {
     || msg.includes("404")
     || msg.includes("not found")
     || msg.includes("function not found")
+    || msg.includes("forbidden")
+    || msg.includes("unauthorized")
   );
 }
 
@@ -49,7 +59,11 @@ async function parseFunctionError(error: FunctionsHttpError): Promise<string> {
 async function invokeListAdAccounts(
   functionName: "meta-daily-sync" | "meta-validate-cabinet" | "meta-list-ad-accounts",
   body: ListBody,
-): Promise<{ accounts: AvailableMetaAdAccount[]; error?: string }> {
+): Promise<{
+  accounts: AvailableMetaAdAccount[];
+  error?: string;
+  diagnostics?: MetaListDiagnostics;
+}> {
   const payload =
     functionName === "meta-list-ad-accounts"
       ? body
@@ -67,9 +81,18 @@ async function invokeListAdAccounts(
     return { accounts: [], error: error.message };
   }
 
+  const diagnostics: MetaListDiagnostics = {
+    meta_hint: data?.meta_hint ? String(data.meta_hint) : undefined,
+    token_identity: data?.token_identity as MetaListDiagnostics["token_identity"],
+    sources: Array.isArray(data?.sources) ? (data.sources as string[]) : undefined,
+    raw_count: typeof data?.raw_count === "number" ? data.raw_count : undefined,
+    used_function: functionName,
+  };
+
   return {
     accounts: (data?.accounts ?? []) as AvailableMetaAdAccount[],
     error: data?.error ? String(data.error) : undefined,
+    diagnostics,
   };
 }
 
@@ -79,7 +102,11 @@ export function useMetaAdAccounts() {
   const listAvailable = useCallback(
     async (
       accessToken?: string,
-    ): Promise<{ accounts: AvailableMetaAdAccount[]; error?: string }> => {
+    ): Promise<{
+      accounts: AvailableMetaAdAccount[];
+      error?: string;
+      diagnostics?: MetaListDiagnostics;
+    }> => {
       setListing(true);
       try {
         const body: ListBody = {
@@ -88,19 +115,23 @@ export function useMetaAdAccounts() {
         };
 
         const fns = [
-          "meta-daily-sync",
-          "meta-validate-cabinet",
           "meta-list-ad-accounts",
+          "meta-validate-cabinet",
+          "meta-daily-sync",
         ] as const;
 
-        let result: { accounts: AvailableMetaAdAccount[]; error?: string } = {
+        let result: {
+          accounts: AvailableMetaAdAccount[];
+          error?: string;
+          diagnostics?: MetaListDiagnostics;
+        } = {
           accounts: [],
           error: "Не удалось вызвать Edge Function",
         };
 
         for (const fn of fns) {
           result = await invokeListAdAccounts(fn, body);
-          if (!shouldFallbackToValidateCabinet(result.error)) break;
+          if (!shouldFallbackToNextFunction(result.error)) break;
         }
 
         return result;

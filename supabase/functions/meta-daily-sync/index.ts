@@ -172,9 +172,16 @@ Deno.serve(async (req) => {
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      const rows = await fetchAllMetaAdAccounts(token);
-      const accounts = mapAdAccounts(rows, exclude);
-      return new Response(JSON.stringify({ ok: true, accounts }), {
+      const fetched = await fetchAllMetaAdAccounts(token);
+      const accounts = mapAdAccounts(fetched.rows, exclude);
+      return new Response(JSON.stringify({
+        ok: true,
+        accounts,
+        meta_hint: fetched.meta_hint,
+        token_identity: fetched.token_identity,
+        sources: fetched.sources,
+        raw_count: fetched.rows.length,
+      }), {
         status: 200,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });

@@ -73,9 +73,16 @@ Deno.serve(async (req) => {
       }, 400);
     }
 
-    const rows = await fetchAllMetaAdAccounts(token);
-    const accounts = mapAdAccounts(rows, exclude);
-    return jsonResponse({ ok: true, accounts });
+    const fetched = await fetchAllMetaAdAccounts(token);
+    const accounts = mapAdAccounts(fetched.rows, exclude);
+    return jsonResponse({
+      ok: true,
+      accounts,
+      meta_hint: fetched.meta_hint,
+      token_identity: fetched.token_identity,
+      sources: fetched.sources,
+      raw_count: fetched.rows.length,
+    });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
     return jsonResponse({ error: msg, accounts: [] }, 500);
