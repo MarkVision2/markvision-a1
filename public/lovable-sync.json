@@ -1,7 +1,7 @@
 {
-  "git_sha": "79b76a4",
-  "git_sha_full": "79b76a47b3f4bffee2da82e16626c4b23601f50a",
-  "updated_at": "2026-06-03T18:21:19Z",
-  "label": "fix(ads): «Быстро из Meta» — список кабинетов корректно загружается",
+  "git_sha": "be86a73",
+  "git_sha_full": "be86a73174d024da0dc21b975a83bf6c8e7e7bcc",
+  "updated_at": "2026-06-03T18:41:21Z",
+  "label": "chore: script deploy meta-list-ad-accounts, meta-daily-sync, meta-validate-cabinet",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
