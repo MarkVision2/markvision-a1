@@ -1,7 +1,7 @@
 {
-  "git_sha": "549bd1c",
-  "git_sha_full": "549bd1cbfb3c031b162e5765f29114dfb22502fc",
-  "updated_at": "2026-06-03T16:00:40Z",
-  "label": "fix(meta): диагностика пустого списка кабинетов + Business Manager fallback",
+  "git_sha": "480d6ac",
+  "git_sha_full": "480d6acb0123064ca0cef10d5fea61d352973d79",
+  "updated_at": "2026-06-03T16:05:48Z",
+  "label": "fix: import PublishUpdateBanner in AppLayout (ReferenceError)",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
