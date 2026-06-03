@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { FunctionsHttpError, FunctionsRelayError } from "@supabase/supabase-js";
 
 export interface AvailableMetaAdAccount {
   id: string;
@@ -19,6 +20,64 @@ function normalizeActId(id: string): string {
   return t;
 }
 
+type ListBody = {
+  exclude_act_ids: string[];
+  access_token?: string;
+};
+
+function isFunctionUnreachable(err: { message?: string; name?: string } | null): boolean {
+  if (!err) return false;
+  const msg = (err.message ?? "").toLowerCase();
+  return (
+    err.name === "FunctionsFetchError"
+    || msg.includes("failed to send a request to the edge function")
+    || msg.includes("failed to fetch")
+    || msg.includes("network")
+  );
+}
+
+async function parseFunctionError(error: FunctionsHttpError): Promise<string> {
+  try {
+    const ctx = error.context as Response | undefined;
+    if (ctx && typeof ctx.json === "function") {
+      const body = await ctx.json();
+      if (body && typeof body === "object" && "error" in body) {
+        return String((body as { error: unknown }).error);
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  return error.message;
+}
+
+async function invokeListAdAccounts(
+  functionName: "meta-list-ad-accounts" | "meta-validate-cabinet",
+  body: ListBody,
+): Promise<{ accounts: AvailableMetaAdAccount[]; error?: string }> {
+  const payload =
+    functionName === "meta-list-ad-accounts"
+      ? body
+      : { list_ad_accounts: true, ...body };
+
+  const { data, error } = await supabase.functions.invoke(functionName, { body: payload });
+
+  if (error) {
+    if (error instanceof FunctionsHttpError) {
+      return { accounts: [], error: await parseFunctionError(error) };
+    }
+    if (error instanceof FunctionsRelayError) {
+      return { accounts: [], error: error.message };
+    }
+    return { accounts: [], error: error.message };
+  }
+
+  return {
+    accounts: (data?.accounts ?? []) as AvailableMetaAdAccount[],
+    error: data?.error ? String(data.error) : undefined,
+  };
+}
+
 export function useMetaAdAccounts() {
   const [listing, setListing] = useState(false);
 
@@ -29,22 +88,18 @@ export function useMetaAdAccounts() {
     ): Promise<{ accounts: AvailableMetaAdAccount[]; error?: string }> => {
       setListing(true);
       try {
-        const { data, error } = await supabase.functions.invoke(
-          "meta-list-ad-accounts",
-          {
-            body: {
-              exclude_act_ids: excludeActIds.map(normalizeActId),
-              access_token: accessToken?.trim() || undefined,
-            },
-          },
-        );
-        if (error) {
-          return { accounts: [], error: error.message };
-        }
-        return {
-          accounts: (data?.accounts ?? []) as AvailableMetaAdAccount[],
-          error: data?.error,
+        const body: ListBody = {
+          exclude_act_ids: excludeActIds.map(normalizeActId),
+          access_token: accessToken?.trim() || undefined,
         };
+
+        let result = await invokeListAdAccounts("meta-list-ad-accounts", body);
+
+        if (isFunctionUnreachable({ message: result.error })) {
+          result = await invokeListAdAccounts("meta-validate-cabinet", body);
+        }
+
+        return result;
       } finally {
         setListing(false);
       }

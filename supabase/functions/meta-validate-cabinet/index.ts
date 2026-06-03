@@ -1,4 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import {
+  fetchAllMetaAdAccounts,
+  mapAdAccounts,
+  normalizeActId as normalizeActIdList,
+} from "../_lib/meta_list_ad_accounts.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",

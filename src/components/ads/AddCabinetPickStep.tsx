@@ -82,7 +82,9 @@ export function AddCabinetPickStep({
             <div className="font-semibold">Не удалось получить список</div>
             <div className="mt-1">{listError}</div>
             <div className="mt-2 text-[11px] opacity-80">
-              Проверьте META_ACCESS_TOKEN и права: ads_read, business_management.
+              Проверьте Meta-токен в Настройках → Автоматизация (или введите ниже).
+              Нужны права ads_read и business_management. Если ошибка «Edge Function» —
+              задеплойте функции meta-validate-cabinet и meta-list-ad-accounts на Supabase.
             </div>
           </div>
         </div>
