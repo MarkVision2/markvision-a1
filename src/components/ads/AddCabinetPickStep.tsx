@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import {
   useMetaAdAccounts,
   type AvailableMetaAdAccount,
+  type MetaListDiagnostics,
 } from "@/hooks/useMetaAdAccounts";
 
 const STATUS_RU: Record<string, string> = {
@@ -127,6 +128,7 @@ export function AddCabinetPickStep({
   const { listAvailable, listing } = useMetaAdAccounts();
   const [allAccounts, setAllAccounts] = useState<AvailableMetaAdAccount[]>([]);
   const [listError, setListError] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<MetaListDiagnostics | null>(null);
 
   const existingSet = useMemo(
     () => new Set(existingActIds.map(normalizeActId).filter(Boolean)),
@@ -145,8 +147,10 @@ export function AddCabinetPickStep({
 
   const load = useCallback(async () => {
     setListError(null);
-    const { accounts, error } = await listAvailable(accessToken.trim() || undefined);
+    setDiagnostics(null);
+    const { accounts, error, diagnostics: diag } = await listAvailable(accessToken.trim() || undefined);
     setAllAccounts(accounts);
+    setDiagnostics(diag ?? null);
     if (error) setListError(error);
   }, [listAvailable, accessToken]);
 
@@ -189,13 +193,30 @@ export function AddCabinetPickStep({
 
   if (allAccounts.length === 0) {
     return (
-      <div className="space-y-4 py-8 text-center">
-        <Megaphone className="mx-auto h-10 w-10 text-muted-foreground/50" />
-        <p className="text-sm text-muted-foreground">
-          Meta не вернула рекламных кабинетов для этого токена.
-          Проверьте права ads_read и business_management или укажите другой Access Token ниже.
-        </p>
-        <Button variant="outline" onClick={onManual}>
+      <div className="space-y-4">
+        <div className="py-4 text-center">
+          <Megaphone className="mx-auto h-10 w-10 text-muted-foreground/50" />
+          <p className="mt-3 text-sm text-muted-foreground">
+            {diagnostics?.meta_hint ??
+              "Meta не вернула рекламных кабинетов. Укажите Access Token ниже или ID вручную."}
+          </p>
+          {diagnostics?.token_identity && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Токен: {diagnostics.token_identity.name} ({diagnostics.token_identity.id})
+            </p>
+          )}
+          {diagnostics?.sources && diagnostics.sources.length > 0 && (
+            <p className="mt-1 font-mono text-[10px] text-muted-foreground/80">
+              Запросы: {diagnostics.sources.join(", ")}
+            </p>
+          )}
+        </div>
+        <TokenRefreshBlock
+          accessToken={accessToken}
+          onAccessTokenChange={onAccessTokenChange}
+          onRefresh={() => void load()}
+        />
+        <Button variant="outline" className="w-full" onClick={onManual}>
           Ввести ID кабинета вручную
         </Button>
       </div>
