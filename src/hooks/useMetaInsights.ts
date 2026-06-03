@@ -98,15 +98,23 @@ interface CdiRow {
   leads: number;
   revenue: number | string;
   currency: string;
-  crm_diagnostics?: number;
-  manual_diagnostics?: number;
-  crm_sales?: number;
-  manual_sales?: number;
-  crm_revenue?: number | string;
-  manual_revenue?: number | string;
-  crm_diagnostic_revenue?: number | string;
-  manual_diagnostic_revenue?: number | string;
+  crm_diagnostics?: number | null;
+  manual_diagnostics?: number | null;
+  crm_sales?: number | null;
+  manual_sales?: number | null;
+  crm_revenue?: number | string | null;
+  manual_revenue?: number | string | null;
+  crm_diagnostic_revenue?: number | string | null;
+  manual_diagnostic_revenue?: number | string | null;
 }
+
+// Override-семантика по NULL: если manual_* установлен (даже 0) — он перезаписывает
+// CRM. Если NULL/undefined — берётся CRM. Раньше было `> 0`, и невозможно было
+// явно поставить «по факту 0» (получался автоматический возврат к CRM).
+const overrideNum = (manual: number | string | null | undefined, crm: number | string | null | undefined): number => {
+  if (manual !== null && manual !== undefined && manual !== "") return Number(manual) || 0;
+  return Number(crm) || 0;
+};
 
 function aggregate(rows: CdiRow[]): InsightsData {
   const dailyMap = new Map<string, DailyInsightRow>();
