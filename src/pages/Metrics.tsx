@@ -32,7 +32,7 @@ import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useMultiMetaInsights, type DailyInsightRow } from "@/hooks/useMetaInsights";
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
-import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
+import { isLeadPaid } from "@/lib/leadStageFlags";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
