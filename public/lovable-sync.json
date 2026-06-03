@@ -1,7 +1,7 @@
 {
-  "git_sha": "c572ae3",
-  "git_sha_full": "c572ae39e6a1bf4c611787ed5fab1b0c93c0f6bb",
-  "updated_at": "2026-06-03T16:09:37Z",
-  "label": "fix: импорт QuickCreateProjectDialog — чёрный экран в preview",
+  "git_sha": "c1a8f14",
+  "git_sha_full": "c1a8f14b3c91554b0b3582e41c0b5bdc58af8f4e",
+  "updated_at": "2026-06-03T16:11:30Z",
+  "label": "fix: согласовать QuickCreateProjectDialog import и JSX в ProjectSwitcher",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
