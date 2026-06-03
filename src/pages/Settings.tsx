@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Camera, Edit2, Eye, Globe, GitBranch, Link2, MessageCircle, Phone, Plus, Search, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
+import { Camera, Edit2, Eye, Globe, GitBranch, Link2, MessageCircle, Phone, Plus, Rocket, Search, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -80,8 +80,9 @@ export default function Settings() {
         description="Команда, воронки, телефония и личный профиль"
       />
 
-      <Tabs defaultValue="team" className="mt-6 w-full">
+      <Tabs defaultValue="publish" className="mt-6 w-full">
         <TabsList className="mb-5 flex h-auto w-full flex-wrap justify-start gap-1 bg-card/40 p-1">
+          <TabsTrigger value="publish" className="gap-2"><Rocket className="h-3.5 w-3.5" /> Обновления</TabsTrigger>
           <TabsTrigger value="team" className="gap-2"><Users2 className="h-3.5 w-3.5" /> Команда</TabsTrigger>
           <TabsTrigger value="profile" className="gap-2"><UserCircle2 className="h-3.5 w-3.5" /> Профиль</TabsTrigger>
           <TabsTrigger value="pipelines" className="gap-2"><GitBranch className="h-3.5 w-3.5" /> Воронки</TabsTrigger>
@@ -93,6 +94,10 @@ export default function Settings() {
           <TabsTrigger value="ig-organic" className="gap-2"><Camera className="h-3.5 w-3.5" /> Instagram organic</TabsTrigger>
           <TabsTrigger value="clientview" className="gap-2"><Eye className="h-3.5 w-3.5" /> Доступ клиента</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="publish" className="mt-0">
+          <LovablePublishGuide />
+        </TabsContent>
 
         <TabsContent value="team" className="mt-0">
       <section className="rounded-2xl border border-border/60 bg-card/40 p-5">
