@@ -128,20 +128,23 @@ function aggregate(rows: CdiRow[]): InsightsData {
     const clicks = Number(r.clicks) || 0;
     const leads = Number(r.leads) || 0;
     // Override-семантика: ручные значения ПЕРЕЗАПИСЫВАЮТ CRM, а не суммируются с ним.
-    // Раньше складывали (crm + manual) — это приводило к задвоению, когда менеджер вводил
-    // 400к manual поверх 800к из CRM и получал 1.2М вместо 800к. См. жалобу пользователя.
+    // NULL = «не задано» → fallback на CRM. Число (включая 0) = explicit override.
     const crmDiag = Number(r.crm_diagnostics) || 0;
-    const manDiag = Number(r.manual_diagnostics) || 0;
-    const diagnostics = manDiag > 0 ? manDiag : crmDiag;
+    const manDiagRaw = r.manual_diagnostics;
+    const manDiag = manDiagRaw !== null && manDiagRaw !== undefined ? Number(manDiagRaw) || 0 : 0;
+    const diagnostics = overrideNum(manDiagRaw, crmDiag);
     const crmSales = Number(r.crm_sales) || 0;
-    const manSales = Number(r.manual_sales) || 0;
-    const sales = manSales > 0 ? manSales : crmSales;
+    const manSalesRaw = r.manual_sales;
+    const manSales = manSalesRaw !== null && manSalesRaw !== undefined ? Number(manSalesRaw) || 0 : 0;
+    const sales = overrideNum(manSalesRaw, crmSales);
     const crmSalesRev = Number(r.crm_revenue) || 0;
-    const manSalesRev = Number(r.manual_revenue) || 0;
-    const salesRevenue = manSalesRev > 0 ? manSalesRev : crmSalesRev;
+    const manSalesRevRaw = r.manual_revenue;
+    const manSalesRev = manSalesRevRaw !== null && manSalesRevRaw !== undefined ? Number(manSalesRevRaw) || 0 : 0;
+    const salesRevenue = overrideNum(manSalesRevRaw, crmSalesRev);
     const crmDiagRev = Number(r.crm_diagnostic_revenue) || 0;
-    const manDiagRev = Number(r.manual_diagnostic_revenue) || 0;
-    const diagnosticRevenue = manDiagRev > 0 ? manDiagRev : crmDiagRev;
+    const manDiagRevRaw = r.manual_diagnostic_revenue;
+    const manDiagRev = manDiagRevRaw !== null && manDiagRevRaw !== undefined ? Number(manDiagRevRaw) || 0 : 0;
+    const diagnosticRevenue = overrideNum(manDiagRevRaw, crmDiagRev);
     // Итоговая «выручка факт» = продажи + оплаты диагностик. Override-семантика
     // применяется внутри каждой составляющей, потом суммируется.
     const totalRevenue = salesRevenue + diagnosticRevenue;
