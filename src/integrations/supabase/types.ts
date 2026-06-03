@@ -1143,10 +1143,10 @@ export type Database = {
           id: string
           impressions: number
           leads: number
-          manual_diagnostic_revenue: number
-          manual_diagnostics: number
-          manual_revenue: number
-          manual_sales: number
+          manual_diagnostic_revenue: number | null
+          manual_diagnostics: number | null
+          manual_revenue: number | null
+          manual_sales: number | null
           project_id: string | null
           provider: string
           revenue: number
@@ -1170,10 +1170,10 @@ export type Database = {
           id?: string
           impressions?: number
           leads?: number
-          manual_diagnostic_revenue?: number
-          manual_diagnostics?: number
-          manual_revenue?: number
-          manual_sales?: number
+          manual_diagnostic_revenue?: number | null
+          manual_diagnostics?: number | null
+          manual_revenue?: number | null
+          manual_sales?: number | null
           project_id?: string | null
           provider?: string
           revenue?: number
@@ -1197,10 +1197,10 @@ export type Database = {
           id?: string
           impressions?: number
           leads?: number
-          manual_diagnostic_revenue?: number
-          manual_diagnostics?: number
-          manual_revenue?: number
-          manual_sales?: number
+          manual_diagnostic_revenue?: number | null
+          manual_diagnostics?: number | null
+          manual_revenue?: number | null
+          manual_sales?: number | null
           project_id?: string | null
           provider?: string
           revenue?: number
