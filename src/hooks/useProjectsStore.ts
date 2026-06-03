@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
+import type { PostgrestError } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
+import { PROJECTS_LIST_COLUMNS } from "@/lib/projectColumns";
 
 const ACTIVE_PROJECT_CHANGED_EVENT = "markvision:active-project-changed";
 let activeProjectIdSnapshot = "";
@@ -42,6 +44,27 @@ const toProject = (r: Row): Project => ({
   intakeToken: r.intake_token ?? undefined,
 });
 
+function describeProjectDbError(error: PostgrestError | null, needsAuth: boolean): string {
+  if (needsAuth) return "Войдите в аккаунт, чтобы создать проект";
+  if (!error) return "Не удалось создать проект";
+  const msg = error.message ?? "";
+  const code = error.code ?? "";
+  if (code === "PGRST205" || /Could not find the table/i.test(msg)) {
+    return "Таблица projects не найдена в Supabase — примените миграции на mekwfbqmsqiborjdrjxc.";
+  }
+  if (
+    code === "42501" ||
+    /row-level security/i.test(msg) ||
+    /permission denied/i.test(msg)
+  ) {
+    return "Нет прав на проект. Войдите заново.";
+  }
+  if (/intake_token/i.test(msg)) {
+    return "Обновите приложение из GitHub (исправление select projects).";
+  }
+  return msg || "Не удалось создать проект";
+}
+
 function setActiveProjectEverywhere(id: string, optimistic = false) {
   activeProjectIdSnapshot = id;
   if (optimistic) {
@@ -53,12 +76,19 @@ function setActiveProjectEverywhere(id: string, optimistic = false) {
 }
 
 export function useProjectsStore() {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeId, setActiveId] = useState<string>(activeProjectIdSnapshot);
 
   const refetch = useCallback(async () => {
-    const { data } = await supabase.from("projects").select("*").order("created_at");
+    const { data, error } = await supabase
+      .from("projects")
+      .select(PROJECTS_LIST_COLUMNS)
+      .order("created_at");
+    if (error) {
+      console.warn("[projects] refetch:", error.code, error.message);
+      return;
+    }
     const list = (data ?? []).map((r) => toProject(r as Row));
     setProjects(list);
 
@@ -106,32 +136,43 @@ export function useProjectsStore() {
 
   const addProject = useCallback(
     async (name: string, domain?: string) => {
-      if (!user?.id) {
-        throw new Error("Войдите в аккаунт, чтобы создать проект");
+      const uid = session?.user?.id ?? user?.id;
+      if (!uid) {
+        throw new Error(describeProjectDbError(null, true));
       }
+
       const payload = {
         name: name.trim(),
         domain: domain?.trim() || null,
         initials: makeInitials(name),
-        created_by: user.id,
+        created_by: uid,
       };
-      const { data, error } = await supabase.from("projects").insert(payload).select().single();
+      const { data, error } = await supabase
+        .from("projects")
+        .insert(payload)
+        .select(PROJECTS_LIST_COLUMNS)
+        .single();
+
       if (error || !data) {
-        throw error ?? new Error("Не удалось создать проект");
+        throw new Error(describeProjectDbError(error, false));
       }
+
       const project = toProject(data as Row);
+
       await supabase.from("project_members").upsert(
-        { project_id: project.id, user_id: user.id, role: "owner" },
+        { project_id: project.id, user_id: uid, role: "owner" },
         { onConflict: "project_id,user_id" },
       );
+
       await supabase
         .from("user_active_project")
-        .upsert({ user_id: user.id, project_id: project.id });
+        .upsert({ user_id: uid, project_id: project.id });
+
       setActiveProjectEverywhere(project.id, true);
       await refetch();
       return project;
     },
-    [user?.id, refetch],
+    [user?.id, session?.user?.id, refetch],
   );
 
   const removeProject = useCallback(
@@ -145,9 +186,7 @@ export function useProjectsStore() {
   const setActive = useCallback(
     async (id: string) => {
       setActiveProjectEverywhere(id, true);
-      if (!user?.id) {
-        return;
-      }
+      if (!user?.id) return;
       await supabase.from("user_active_project").upsert({ user_id: user.id, project_id: id });
       optimisticActiveProjectId = null;
       optimisticActiveProjectUntil = 0;

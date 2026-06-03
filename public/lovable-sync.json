@@ -1,7 +1,7 @@
 {
-  "git_sha": "c1a8f14",
-  "git_sha_full": "c1a8f14b3c91554b0b3582e41c0b5bdc58af8f4e",
-  "updated_at": "2026-06-03T16:11:30Z",
-  "label": "fix: согласовать QuickCreateProjectDialog import и JSX в ProjectSwitcher",
-  "publish_hint": "Lovable → Publish (справа вверху) → Update"
+  "git_sha": "pending",
+  "git_sha_full": "pending",
+  "updated_at": "2026-06-03T16:30:00Z",
+  "label": "fix: создание проекта без intake_token в select",
+  "publish_hint": "Lovable → Settings → Git → Pull main → Publish → Update → Ctrl+Shift+R"
 }

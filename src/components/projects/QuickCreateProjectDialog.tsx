@@ -1,13 +1,6 @@
 import { useState } from "react";
-import { Loader2, Plus } from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -16,7 +9,7 @@ import { toast } from "sonner";
 
 interface Props {
   open: boolean;
-  onOpenChange: (open: boolean) => void;
+  onOpenChange: (v: boolean) => void;
 }
 
 export function QuickCreateProjectDialog({ open, onOpenChange }: Props) {
@@ -24,17 +17,12 @@ export function QuickCreateProjectDialog({ open, onOpenChange }: Props) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const reset = () => {
-    setName("");
-    setBusy(false);
-  };
-
   const close = () => {
     onOpenChange(false);
-    setTimeout(reset, 200);
+    setTimeout(() => setName(""), 200);
   };
 
-  const handleCreate = async () => {
+  const create = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
       toast.error("Введите название проекта");
@@ -46,62 +34,45 @@ export function QuickCreateProjectDialog({ open, onOpenChange }: Props) {
       await setActive(project.id);
       toast.success(`Проект «${project.name}» создан`);
       close();
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Не удалось создать проект";
-      toast.error(msg);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Не удалось создать проект");
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => (v ? onOpenChange(true) : close())}>
-      <DialogContent className="max-w-md border-border/60 bg-card">
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (busy) return;
+        if (v) onOpenChange(true);
+        else close();
+      }}
+    >
+      <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Plus className="h-5 w-5 text-success" />
-            Быстрое создание
-          </DialogTitle>
-          <DialogDescription className="text-sm text-muted-foreground">
-            Укажите только название. Рекламный кабинет, WhatsApp и бриф можно добавить
-            позже в разделах «Управление рекламой» и «Настройки».
-          </DialogDescription>
+          <DialogTitle>Быстрое создание</DialogTitle>
         </DialogHeader>
-
-        <div className="space-y-2 py-2">
-          <Label htmlFor="quick-project-name">Название проекта</Label>
-          <Input
-            id="quick-project-name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Напр: Автосервис Павлодар"
-            className="h-11 rounded-xl"
-            autoFocus
-            disabled={busy}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void handleCreate();
-            }}
-          />
-        </div>
-
-        <DialogFooter className="gap-2 sm:gap-0">
-          <Button type="button" variant="outline" onClick={close} disabled={busy}>
-            Отмена
-          </Button>
-          <Button
-            type="button"
-            className="bg-success text-white hover:bg-success/90"
-            onClick={() => void handleCreate()}
-            disabled={busy || !name.trim()}
-          >
-            {busy ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Plus className="h-4 w-4" />
-            )}
+        <div className="space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="quick-project-name">Название проекта</Label>
+            <Input
+              id="quick-project-name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Например, Стоматология AURA"
+              disabled={busy}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void create();
+              }}
+            />
+          </div>
+          <Button className="w-full" onClick={() => void create()} disabled={busy}>
+            {busy ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
             Создать
           </Button>
-        </DialogFooter>
+        </div>
       </DialogContent>
     </Dialog>
   );
