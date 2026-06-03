@@ -5,8 +5,6 @@ import {
 } from "@/components/ui/sidebar";
 import AppSidebar from "./AppSidebar";
 import { TaskReminderToast } from "@/components/crm/TaskReminderToast";
-import { PublishUpdateBanner } from "@/components/layout/PublishUpdateBanner";
-
 interface AppLayoutProps {
   children: React.ReactNode;
 }

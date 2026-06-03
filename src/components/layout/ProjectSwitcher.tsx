@@ -4,7 +4,7 @@ import { Check, ChevronsUpDown, Plus, Settings2, Trash2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { cn } from "@/lib/utils";
-import { ProjectOnboardingDialog } from "@/components/projects/ProjectOnboardingDialog";
+import { QuickCreateProjectDialog } from "@/components/projects/QuickCreateProjectDialog";
 
 interface Props {
   collapsed: boolean;
@@ -98,7 +98,7 @@ export function ProjectSwitcher({ collapsed }: Props) {
         </PopoverContent>
       </Popover>
 
-      <QuickCreateProjectDialog open={createOpen} onOpenChange={setCreateOpen} />
+      <ProjectOnboardingDialog open={createOpen} onOpenChange={setCreateOpen} />
     </>
   );
 }
