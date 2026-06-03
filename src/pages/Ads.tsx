@@ -258,6 +258,9 @@ const Ads = () => {
       <AddCabinetDialog
         open={addOpen}
         onOpenChange={setAddOpen}
+        existingActIds={cabinets
+          .map((c) => c.adAccountId || c.externalId || "")
+          .filter(Boolean)}
         onCreate={async (c) => {
           try {
             const newId = await addCabinet(c);

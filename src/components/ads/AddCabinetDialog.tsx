@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
+  ArrowLeft,
   CheckCircle2,
   Crosshair,
   Facebook,
@@ -25,19 +26,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { DEFAULT_META_UTM_TEMPLATE } from "@/lib/utmDefaults";
 import type { AdCabinet } from "@/types/ads";
+import type { AvailableMetaAdAccount } from "@/hooks/useMetaAdAccounts";
+import { useMetaPageAssets } from "@/hooks/useMetaPageAssets";
+import { AddCabinetPickStep } from "@/components/ads/AddCabinetPickStep";
 
 interface AddCabinetDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreate: (cabinet: AdCabinet) => void;
+  existingActIds?: string[];
 }
 
 type CheckItem = { ok: boolean; label: string; detail?: string };
+type Step = "pick" | "configure";
 
-/** Унифицированный label секции — как в CreateCampaignDialog. */
 const FieldLabel = ({
   children,
   icon: Icon,
@@ -66,46 +78,107 @@ const SectionTitle = ({
   </div>
 );
 
-const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProps) => {
-  // Основное
+const AddCabinetDialog = ({
+  open,
+  onOpenChange,
+  onCreate,
+  existingActIds = [],
+}: AddCabinetDialogProps) => {
+  const [step, setStep] = useState<Step>("pick");
+  const [selectedMeta, setSelectedMeta] = useState<AvailableMetaAdAccount | null>(null);
+  const [currency, setCurrency] = useState("KZT");
+
   const [name, setName] = useState("");
   const [type, setType] = useState<"Личный" | "Агентский">("Личный");
   const [dailyBudget, setDailyBudget] = useState("50000");
   const [city, setCity] = useState("");
-
-  // Meta
   const [adAccountId, setAdAccountId] = useState("");
   const [pageId, setPageId] = useState("");
   const [pageName, setPageName] = useState("");
   const [instagramId, setInstagramId] = useState("");
   const [accessToken, setAccessToken] = useState("");
-
-  // Трекинг и связь
   const [telegramGroupId, setTelegramGroupId] = useState("");
   const [whatsappNumber, setWhatsappNumber] = useState("");
   const [pixelId, setPixelId] = useState("");
   const [pixelEvent, setPixelEvent] = useState("Lead");
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [utmTemplate, setUtmTemplate] = useState(DEFAULT_META_UTM_TEMPLATE);
-
-  // Заметки
   const [brief, setBrief] = useState("");
-
-  // Validation state
   const [validating, setValidating] = useState(false);
   const [checks, setChecks] = useState<CheckItem[] | null>(null);
 
-  const reset = () => {
-    setName(""); setType("Личный"); setDailyBudget("50000"); setCity("");
-    setAdAccountId(""); setPageId(""); setPageName(""); setInstagramId("");
-    setTelegramGroupId(""); setWhatsappNumber(""); setPixelId(""); setPixelEvent("Lead"); setWebsiteUrl("");
+  const pagesAssets = useMetaPageAssets({
+    kind: "pages",
+    actId: adAccountId,
+    enabled: step === "configure" && !!adAccountId,
+  });
+  const pixelsAssets = useMetaPageAssets({
+    kind: "pixels",
+    actId: adAccountId,
+    enabled: step === "configure" && !!adAccountId,
+  });
+  const igAssets = useMetaPageAssets({
+    kind: "instagram",
+    pageId: pageId || undefined,
+    enabled: step === "configure" && !!pageId,
+  });
+
+  const reset = useCallback(() => {
+    setStep("pick");
+    setSelectedMeta(null);
+    setCurrency("KZT");
+    setName("");
+    setType("Личный");
+    setDailyBudget("50000");
+    setCity("");
+    setAdAccountId("");
+    setPageId("");
+    setPageName("");
+    setInstagramId("");
+    setAccessToken("");
+    setTelegramGroupId("");
+    setWhatsappNumber("");
+    setPixelId("");
+    setPixelEvent("Lead");
+    setWebsiteUrl("");
     setUtmTemplate(DEFAULT_META_UTM_TEMPLATE);
-    setBrief(""); setAccessToken(""); setChecks(null); setValidating(false);
+    setBrief("");
+    setChecks(null);
+    setValidating(false);
+  }, []);
+
+  const applyMetaAccount = (acc: AvailableMetaAdAccount) => {
+    setSelectedMeta(acc);
+    setAdAccountId(acc.id);
+    setName(acc.name);
+    setCurrency(acc.currency || "KZT");
+    setPageId("");
+    setPageName("");
+    setInstagramId("");
+    setStep("configure");
   };
+
+  useEffect(() => {
+    if (open) reset();
+  }, [open, reset]);
+
+  useEffect(() => {
+    if (step !== "configure" || pageId) return;
+    if (pagesAssets.data.length > 0) {
+      setPageId(pagesAssets.data[0].id);
+      setPageName(pagesAssets.data[0].name);
+    }
+  }, [step, pagesAssets.data, pageId]);
+
+  useEffect(() => {
+    if (!pageId) return;
+    const p = pagesAssets.data.find((x) => x.id === pageId);
+    if (p) setPageName(p.name);
+  }, [pageId, pagesAssets.data]);
 
   const runValidation = async () => {
     if (!adAccountId.trim()) {
-      toast.error("Укажите ID кабинета (Ad Account)");
+      toast.error("Укажите ID кабинета");
       return;
     }
     setValidating(true);
@@ -121,8 +194,7 @@ const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProp
         },
       });
       if (error) throw error;
-      const items: CheckItem[] = data?.checks ?? [];
-      setChecks(items);
+      setChecks(data?.checks ?? []);
       if (data?.ok) toast.success("Все данные кабинета проверены");
       else toast.error("Есть ошибки в данных кабинета");
     } catch (e) {
@@ -132,15 +204,19 @@ const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProp
     }
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     if (!name.trim()) {
       toast.error("Укажите название кабинета");
       return;
     }
-    const cabinet: AdCabinet = {
+    if (!adAccountId.trim()) {
+      toast.error("Выберите кабинет Meta");
+      return;
+    }
+    onCreate({
       id: crypto.randomUUID(),
       name: name.toUpperCase(),
-      externalId: adAccountId || `ACT_${Math.floor(Math.random() * 1e16)}`,
+      externalId: adAccountId,
       online: true,
       type,
       spend: 0,
@@ -150,8 +226,8 @@ const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProp
       revenue: 0,
       city: city || undefined,
       dailyBudget: Number(dailyBudget) || 0,
-      currency: "KZT",
-      adAccountId: adAccountId || undefined,
+      currency: currency || "KZT",
+      adAccountId,
       pageId: pageId || undefined,
       pageName: pageName || undefined,
       instagramId: instagramId || undefined,
@@ -163,12 +239,7 @@ const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProp
       utmTemplate: utmTemplate.trim() || DEFAULT_META_UTM_TEMPLATE,
       brief: brief || undefined,
       accessToken: accessToken || undefined,
-    };
-
-    // Sync в client_configs выполняется внутри useCabinetsStore.addCabinet
-    // (он же дёргает src/lib/cabinetSync.ts → syncCabinetToClientConfig).
-    // Здесь только передаём данные наверх — никакой прямой записи в client_configs.
-    onCreate(cabinet);
+    });
     onOpenChange(false);
     reset();
   };
@@ -176,303 +247,219 @@ const AddCabinetDialog = ({ open, onOpenChange, onCreate }: AddCabinetDialogProp
   const inputCls = "h-11 rounded-xl bg-background/60";
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        onOpenChange(v);
+        if (!v) reset();
+      }}
+    >
       <DialogContent className="max-h-[92vh] w-[96vw] max-w-5xl overflow-hidden border-border/60 bg-card p-0">
         <div className="flex max-h-[92vh] flex-col">
-          {/* Sticky header */}
           <DialogHeader className="border-b border-border/60 px-6 py-4">
             <DialogTitle className="flex items-center gap-2 text-xl">
               <Crosshair className="h-5 w-5 text-success" />
-              Добавить кабинет
+              {step === "pick" ? "Добавить кабинет" : "Настройка кабинета"}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Подключите рекламный кабинет — статистика подтянется автоматически
+              {step === "pick"
+                ? "Список кабинетов Meta по вашему токену — как при подключении Instagram"
+                : "Страницу и Instagram можно выбрать сейчас или при запуске рекламы"}
             </DialogDescription>
           </DialogHeader>
 
-          {/* Two-column scrollable body */}
-          <div className="grid flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            {/* LEFT: основное + Meta */}
-            <div className="space-y-6 overflow-y-auto border-border/60 px-6 py-5 lg:border-r">
-              <section>
-                <SectionTitle accent="bg-success">Основное</SectionTitle>
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <FieldLabel>Название кабинета *</FieldLabel>
-                    <Input
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="Напр: Авто Сервис Павлодар"
-                      className={inputCls}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <FieldLabel>Дневной бюджет</FieldLabel>
-                      <div className="relative">
-                        <Input
-                          value={dailyBudget}
-                          onChange={(e) => setDailyBudget(e.target.value)}
-                          inputMode="numeric"
-                          placeholder="50000"
-                          className={cn(inputCls, "pr-10")}
-                        />
-                        <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                          ₸
-                        </span>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      <FieldLabel>Город</FieldLabel>
-                      <Input
-                        value={city}
-                        onChange={(e) => setCity(e.target.value)}
-                        placeholder="Алматы"
-                        className={inputCls}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <FieldLabel>Тип кабинета</FieldLabel>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(["Личный", "Агентский"] as const).map((t) => (
-                        <button
-                          key={t}
-                          type="button"
-                          onClick={() => setType(t)}
-                          className={cn(
-                            "flex items-center justify-center gap-2 rounded-xl border bg-background/60 px-3 py-2.5 text-xs font-medium transition-colors",
-                            type === t
-                              ? "border-success text-foreground shadow-[inset_0_0_0_1px_hsl(var(--success))]"
-                              : "border-border/60 text-muted-foreground hover:text-foreground",
-                          )}
-                        >
-                          <span
-                            className={cn(
-                              "grid h-4 w-4 place-items-center rounded-full border",
-                              type === t ? "border-success" : "border-muted-foreground/40",
-                            )}
-                          >
-                            {type === t && <span className="h-2 w-2 rounded-full bg-success" />}
-                          </span>
-                          {t}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-[11px] leading-relaxed text-muted-foreground">
-                      <span className="font-semibold text-foreground">Личный</span> — статистика во всех разделах проекта.{" "}
-                      <span className="font-semibold text-foreground">Агентский</span> — только в списке кабинетов.
-                    </p>
-                  </div>
-                </div>
-              </section>
-
-              <section>
-                <SectionTitle accent="bg-primary">
-                  <span className="flex items-center gap-1.5">
-                    <Facebook className="h-3.5 w-3.5" /> Интеграция Meta
-                  </span>
-                </SectionTitle>
-
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <FieldLabel icon={Shield}>ID кабинета</FieldLabel>
-                      <Input
-                        value={adAccountId}
-                        onChange={(e) => setAdAccountId(e.target.value)}
-                        placeholder="act_…"
-                        className={inputCls}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <FieldLabel icon={Link2}>ID страницы</FieldLabel>
-                      <Input
-                        value={pageId}
-                        onChange={(e) => setPageId(e.target.value)}
-                        className={inputCls}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <FieldLabel icon={Globe}>Название страницы</FieldLabel>
-                      <Input
-                        value={pageName}
-                        onChange={(e) => setPageName(e.target.value)}
-                        className={inputCls}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <FieldLabel icon={MessageSquare}>Instagram ID</FieldLabel>
-                      <Input
-                        value={instagramId}
-                        onChange={(e) => setInstagramId(e.target.value)}
-                        className={inputCls}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <FieldLabel icon={Shield}>Access Token (опционально)</FieldLabel>
-                    <Input
-                      type="password"
-                      value={accessToken}
-                      onChange={(e) => setAccessToken(e.target.value)}
-                      placeholder="EAA…"
-                      className={inputCls}
-                    />
-                    <p className="text-[11px] text-muted-foreground">
-                      Если не указан — используется системный токен Meta.
-                    </p>
-                  </div>
-
-                  <div className="flex items-start gap-2 rounded-xl border border-primary/30 bg-primary/10 p-3 text-xs text-primary">
-                    <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>
-                      Данные Meta будут синхронизироваться автоматически каждую ночь.
-                    </span>
-                  </div>
-
+          {step === "pick" ? (
+            <>
+              <div className="flex-1 overflow-y-auto px-6 py-5">
+                <AddCabinetPickStep
+                  active={open}
+                  existingActIds={existingActIds}
+                  accessToken={accessToken}
+                  onAccessTokenChange={setAccessToken}
+                  onSelect={applyMetaAccount}
+                  onManual={() => setStep("configure")}
+                />
+              </div>
+              <div className="border-t border-border/60 px-6 py-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full rounded-xl"
+                  onClick={() => setStep("configure")}
+                >
+                  Ввести ID вручную
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="grid flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-2">
+                <div className="space-y-5 overflow-y-auto border-border/60 px-6 py-5 lg:border-r">
                   <Button
                     type="button"
-                    variant="outline"
-                    onClick={runValidation}
-                    disabled={validating || !adAccountId.trim()}
-                    className="h-10 w-full rounded-xl"
+                    variant="ghost"
+                    size="sm"
+                    className="-ml-2 gap-1"
+                    onClick={() => setStep("pick")}
                   >
-                    {validating ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="h-4 w-4" />
-                    )}
-                    Проверить данные кабинета
+                    <ArrowLeft className="h-4 w-4" />
+                    Выбрать другой кабинет
                   </Button>
 
-                  {checks && (
-                    <div className="space-y-1.5 rounded-xl border border-border/60 bg-background/40 p-3">
-                      {checks.map((c, i) => (
-                        <div key={i} className="flex items-start gap-2 text-xs">
-                          {c.ok ? (
-                            <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-success" />
-                          ) : (
-                            <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-destructive" />
-                          )}
-                          <div className="min-w-0 flex-1">
-                            <span className="font-medium">{c.label}</span>
-                            {c.detail && (
-                              <span className="text-muted-foreground"> — {c.detail}</span>
-                            )}
-                          </div>
+                  <section>
+                    <SectionTitle accent="bg-success">Основное</SectionTitle>
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <FieldLabel>Название *</FieldLabel>
+                        <Input value={name} onChange={(e) => setName(e.target.value)} className={inputCls} />
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <FieldLabel>Бюджет / день</FieldLabel>
+                          <Input value={dailyBudget} onChange={(e) => setDailyBudget(e.target.value)} className={inputCls} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <FieldLabel>Город</FieldLabel>
+                          <Input value={city} onChange={(e) => setCity(e.target.value)} className={inputCls} />
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section>
+                    <SectionTitle accent="bg-primary">
+                      <span className="flex items-center gap-1.5">
+                        <Facebook className="h-3.5 w-3.5" /> Meta
+                      </span>
+                    </SectionTitle>
+                    <div className="space-y-3">
+                      <div className="space-y-1.5">
+                        <FieldLabel icon={Shield}>Ad Account</FieldLabel>
+                        <Input
+                          value={adAccountId}
+                          onChange={(e) => setAdAccountId(e.target.value)}
+                          className={inputCls}
+                          readOnly={!!selectedMeta}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <FieldLabel icon={Link2}>Страница</FieldLabel>
+                        <Select
+                          value={pageId || "__none__"}
+                          onValueChange={(v) => {
+                            if (v === "__none__") {
+                              setPageId("");
+                              setPageName("");
+                              setInstagramId("");
+                              return;
+                            }
+                            setPageId(v);
+                            setInstagramId("");
+                          }}
+                        >
+                          <SelectTrigger className={inputCls}>
+                            <SelectValue placeholder={pagesAssets.isLoading ? "Загрузка…" : "Не выбрано"} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Не выбирать сейчас</SelectItem>
+                            {pagesAssets.data.map((p) => (
+                              <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {pageId && (
+                        <div className="space-y-1.5">
+                          <FieldLabel icon={MessageSquare}>Instagram</FieldLabel>
+                          {igAssets.data.length > 0 ? (
+                            <Select
+                              value={instagramId || "__none__"}
+                              onValueChange={(v) => setInstagramId(v === "__none__" ? "" : v)}
+                            >
+                              <SelectTrigger className={inputCls}>
+                                <SelectValue placeholder="Не выбрано" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="__none__">Не выбирать</SelectItem>
+                                {igAssets.data.map((ig) => (
+                                  <SelectItem key={ig.id} value={ig.id}>
+                                    @{ig.username ?? ig.id}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : null}
+                          <Input
+                            value={instagramId}
+                            onChange={(e) => setInstagramId(e.target.value)}
+                            placeholder="ID вручную"
+                            className={inputCls}
+                          />
+                        </div>
+                      )}
+                      <div className="space-y-1.5">
+                        <FieldLabel icon={Crosshair}>Pixel</FieldLabel>
+                        <Select
+                          value={pixelId || "__none__"}
+                          onValueChange={(v) => setPixelId(v === "__none__" ? "" : v)}
+                        >
+                          <SelectTrigger className={inputCls}>
+                            <SelectValue placeholder="Не выбрано" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="__none__">Не выбирать</SelectItem>
+                            {pixelsAssets.data.map((px) => (
+                              <SelectItem key={px.id} value={px.id}>{px.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full rounded-xl"
+                        onClick={runValidation}
+                        disabled={validating || !adAccountId}
+                      >
+                        {validating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                        Проверить
+                      </Button>
+                      {checks?.map((c, i) => (
+                        <div key={i} className="flex gap-2 text-xs">
+                          {c.ok ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <XCircle className="h-3.5 w-3.5 text-destructive" />}
+                          <span>{c.label}{c.detail ? ` — ${c.detail}` : ""}</span>
                         </div>
                       ))}
                     </div>
-                  )}
+                  </section>
                 </div>
-              </section>
-            </div>
 
-            {/* RIGHT: трекинг + бриф */}
-            <div className="space-y-6 overflow-y-auto px-6 py-5">
-              <section>
-                <SectionTitle accent="bg-warning">
-                  <span className="flex items-center gap-1.5">
-                    <Link2 className="h-3.5 w-3.5" /> Трекинг и связь
-                  </span>
-                </SectionTitle>
-
-                <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <FieldLabel icon={Send}>Telegram Group ID</FieldLabel>
-                      <Input
-                        value={telegramGroupId}
-                        onChange={(e) => setTelegramGroupId(e.target.value)}
-                        className={inputCls}
-                      />
+                <div className="space-y-5 overflow-y-auto px-6 py-5">
+                  <section>
+                    <SectionTitle accent="bg-warning">Трекинг</SectionTitle>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Input value={telegramGroupId} onChange={(e) => setTelegramGroupId(e.target.value)} placeholder="Telegram" className={inputCls} />
+                      <Input value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} placeholder="WhatsApp" className={inputCls} />
+                      <Input value={pixelEvent} onChange={(e) => setPixelEvent(e.target.value)} placeholder="Событие" className={inputCls} />
+                      <Input value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} placeholder="URL" className={inputCls} />
                     </div>
-                    <div className="space-y-1.5">
-                      <FieldLabel icon={MessageSquare}>WhatsApp</FieldLabel>
-                      <Input
-                        value={whatsappNumber}
-                        onChange={(e) => setWhatsappNumber(e.target.value)}
-                        placeholder="+7…"
-                        className={inputCls}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <FieldLabel icon={Crosshair}>Pixel ID</FieldLabel>
-                      <Input
-                        value={pixelId}
-                        onChange={(e) => setPixelId(e.target.value)}
-                        className={inputCls}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <FieldLabel>Событие пикселя</FieldLabel>
-                      <Input
-                        value={pixelEvent}
-                        onChange={(e) => setPixelEvent(e.target.value)}
-                        placeholder="Lead"
-                        className={inputCls}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <FieldLabel icon={Globe}>URL сайта</FieldLabel>
-                    <Input
-                      value={websiteUrl}
-                      onChange={(e) => setWebsiteUrl(e.target.value)}
-                      placeholder="https://"
-                      className={inputCls}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <FieldLabel icon={Link2}>UTM-шаблон (Meta URL parameters)</FieldLabel>
-                    <Textarea
-                      value={utmTemplate}
-                      onChange={(e) => setUtmTemplate(e.target.value)}
-                      rows={2}
-                      placeholder={DEFAULT_META_UTM_TEMPLATE}
-                      className="rounded-xl bg-background/60 font-mono text-xs"
-                    />
-                    <p className="flex items-start gap-1.5 text-[11px] leading-snug text-muted-foreground">
-                      <Info className="mt-0.5 h-3 w-3 shrink-0" />
-                      <span>
-                        Подставится в поле <b>URL parameters</b> каждой кампании Meta.
-                        <b className="text-foreground"> utm_content=&#123;&#123;ad.id&#125;&#125;</b> обязателен —
-                        по нему сквозная аналитика связывает лиды с конкретным креативом.
-                      </span>
-                    </p>
+                    <Textarea value={utmTemplate} onChange={(e) => setUtmTemplate(e.target.value)} rows={2} className="mt-3 rounded-xl font-mono text-xs" />
+                  </section>
+                  <Textarea value={brief} onChange={(e) => setBrief(e.target.value)} rows={5} placeholder="Заметки" className="rounded-xl" />
+                  <div className="flex gap-2 rounded-xl border border-primary/30 bg-primary/10 p-3 text-xs text-primary">
+                    <Info className="h-3.5 w-3.5 shrink-0" />
+                    При запуске кампании страницу можно сменить в мастере — как сейчас.
                   </div>
                 </div>
-              </section>
-
-              <section>
-                <SectionTitle accent="bg-muted-foreground">Заметки / бриф</SectionTitle>
-                <Textarea
-                  value={brief}
-                  onChange={(e) => setBrief(e.target.value)}
-                  rows={8}
-                  placeholder="Дополнительная информация о клиенте, продукте, особенностях…"
-                  className="rounded-xl bg-background/60"
-                />
-              </section>
-            </div>
-          </div>
-
-          {/* Sticky footer */}
-          <div className="border-t border-border/60 bg-background/40 px-6 py-4">
-            <Button
-              onClick={handleSubmit}
-              className="h-12 w-full rounded-xl bg-success text-white hover:bg-success/90"
-            >
-              <Crosshair className="h-4 w-4" />
-              Создать кабинет
-            </Button>
-          </div>
+              </div>
+              <div className="border-t border-border/60 px-6 py-4">
+                <Button onClick={handleSubmit} className="h-12 w-full rounded-xl bg-success text-white">
+                  <Crosshair className="h-4 w-4" />
+                  Подключить кабинет
+                </Button>
+              </div>
+            </>
+          )}
         </div>
       </DialogContent>
     </Dialog>

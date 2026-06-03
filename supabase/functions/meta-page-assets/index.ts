@@ -338,6 +338,42 @@ Deno.serve(async (req) => {
       return jsonResponse({ items: [...sortedRecent, ...fallback] });
     }
 
+    // ============ INSTAGRAM (per Facebook Page) ============
+    if (kind === "instagram") {
+      if (!pageId) return jsonResponse({ error: "pageId is required" }, 400);
+      const pageTokenResp = await metaGet(
+        `/${pageId}?fields=access_token,name`,
+        META_ACCESS_TOKEN,
+      );
+      const tryToken = pageTokenResp.body?.access_token ?? META_ACCESS_TOKEN;
+      const igResp = await metaGet(
+        `/${pageId}?fields=instagram_business_account{id,username,name,profile_picture_url,followers_count}`,
+        tryToken,
+      );
+      if (!igResp.ok) {
+        return jsonResponse(
+          {
+            error: "Meta API error",
+            status: igResp.status,
+            details: igResp.body?.error,
+            items: [],
+          },
+          502,
+        );
+      }
+      const ig = igResp.body?.instagram_business_account;
+      const items = ig?.id
+        ? [{
+          id: String(ig.id),
+          username: ig.username ?? null,
+          name: ig.name ?? pageTokenResp.body?.name ?? null,
+          picture: ig.profile_picture_url ?? null,
+          followers_count: Number(ig.followers_count ?? 0),
+        }]
+        : [];
+      return jsonResponse({ items });
+    }
+
     // ============ LEAD FORMS ============
     if (kind === "lead_forms") {
       if (!pageId) return jsonResponse({ error: "pageId is required" }, 400);
