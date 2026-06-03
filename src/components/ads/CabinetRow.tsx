@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import type { AdCabinet } from "@/types/ads";
 import { useMetaInsights } from "@/hooks/useMetaInsights";
 import { supabase } from "@/integrations/supabase/client";
+import { manualValueForSave } from "@/lib/cdiManualOverride";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -159,11 +160,8 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
 
   const upsertManual = async (
     isoDate: string,
-    patch: Record<string, number | null | undefined>,
+    patch: Record<string, number>,
   ) => {
-    const cleanPatch = Object.fromEntries(
-      Object.entries(patch).map(([k, v]) => [k, manualValueForSave(v)]),
-    );
     try {
       const { data: existing } = await supabase
         .from("cabinet_daily_insights")
@@ -174,7 +172,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
       if (existing?.id) {
         const { error } = await (supabase as any)
           .from("cabinet_daily_insights")
-          .update(cleanPatch)
+          .update(patch)
           .eq("id", existing.id);
         if (error) throw error;
       } else {
@@ -185,7 +183,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
             external_id: cabinet.externalId,
             project_id: (cabinet as { projectId?: string }).projectId ?? null,
             date: isoDate,
-            ...cleanPatch,
+            ...patch,
           });
         if (error) throw error;
       }
