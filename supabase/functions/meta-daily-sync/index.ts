@@ -124,10 +124,62 @@ async function getRatesForDates(
   return map;
 }
 
+async function resolveMetaToken(
+  admin: ReturnType<typeof createClient>,
+  bodyToken: string | null | undefined,
+): Promise<string | null> {
+  if (bodyToken?.trim()) return bodyToken.trim();
+  const { data: settings } = await admin
+    .from("automation_settings")
+    .select("meta_access_token")
+    .eq("id", true)
+    .maybeSingle();
+  return (settings as { meta_access_token?: string | null } | null)?.meta_access_token
+    ?? Deno.env.get("META_ACCESS_TOKEN")
+    ?? null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    const adminPre = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    let body: Record<string, unknown> = {};
+    if (req.method === "POST") body = await req.json().catch(() => ({}));
+
+    if (body.list_ad_accounts === true) {
+      const auth = await requireUser(req);
+      if (!auth.ok) return auth.response;
+
+      const excludeRaw: string[] = Array.isArray(body.exclude_act_ids)
+        ? body.exclude_act_ids
+        : [];
+      const exclude = excludeRaw.map((x) => normalizeActIdList(String(x)));
+      const token = await resolveMetaToken(
+        adminPre,
+        typeof body.access_token === "string" ? body.access_token : null,
+      );
+      if (!token) {
+        return new Response(JSON.stringify({
+          error: "Meta access token не настроен. Укажите токен в Настройках → Автоматизация.",
+          accounts: [],
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+      const rows = await fetchAllMetaAdAccounts(token);
+      const accounts = mapAdAccounts(rows, exclude);
+      return new Response(JSON.stringify({ ok: true, accounts }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     // Allow internal cron call via shared secret OR require admin user JWT.
     // Поддерживаем оба варианта аутентификации:
     //   1) META_SYNC_CRON_KEY + x-cron-key — для отдельного ключа функции.

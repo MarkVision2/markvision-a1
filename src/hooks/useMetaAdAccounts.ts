@@ -25,14 +25,16 @@ type ListBody = {
   access_token?: string;
 };
 
-function isFunctionUnreachable(err: { message?: string; name?: string } | null): boolean {
+function shouldFallbackToValidateCabinet(err?: string | null): boolean {
   if (!err) return false;
-  const msg = (err.message ?? "").toLowerCase();
+  const msg = err.toLowerCase();
   return (
-    err.name === "FunctionsFetchError"
-    || msg.includes("failed to send a request to the edge function")
+    msg.includes("failed to send a request to the edge function")
     || msg.includes("failed to fetch")
-    || msg.includes("network")
+    || msg.includes("functionsfetcherror")
+    || msg.includes("404")
+    || msg.includes("not found")
+    || msg.includes("function not found")
   );
 }
 
@@ -52,7 +54,7 @@ async function parseFunctionError(error: FunctionsHttpError): Promise<string> {
 }
 
 async function invokeListAdAccounts(
-  functionName: "meta-list-ad-accounts" | "meta-validate-cabinet",
+  functionName: "meta-daily-sync" | "meta-validate-cabinet" | "meta-list-ad-accounts",
   body: ListBody,
 ): Promise<{ accounts: AvailableMetaAdAccount[]; error?: string }> {
   const payload =
@@ -93,10 +95,20 @@ export function useMetaAdAccounts() {
           access_token: accessToken?.trim() || undefined,
         };
 
-        let result = await invokeListAdAccounts("meta-list-ad-accounts", body);
+        const fns = [
+          "meta-daily-sync",
+          "meta-validate-cabinet",
+          "meta-list-ad-accounts",
+        ] as const;
 
-        if (isFunctionUnreachable({ message: result.error })) {
-          result = await invokeListAdAccounts("meta-validate-cabinet", body);
+        let result: { accounts: AvailableMetaAdAccount[]; error?: string } = {
+          accounts: [],
+          error: "Не удалось вызвать Edge Function",
+        };
+
+        for (const fn of fns) {
+          result = await invokeListAdAccounts(fn, body);
+          if (!shouldFallbackToValidateCabinet(result.error)) break;
         }
 
         return result;
