@@ -251,6 +251,12 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const projectIdParam = body.project_id ? String(body.project_id) : "";
+    const isInternal = (req.headers.get("x-internal-key") ?? "") === SERVICE_KEY;
+    if (!isInternal && projectIdParam) {
+      const authHeader = req.headers.get("Authorization") ?? "";
+      const access = await requireProjectAccess(authHeader, projectIdParam);
+      if (!access.ok) return access.response;
+    }
     const managerId = body.manager_id ? String(body.manager_id) : null;
     const periodDays = Math.max(1, Math.min(180, Number(body.period_days ?? 30)));
     const generateReport = body.generate_report !== false;

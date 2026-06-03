@@ -205,8 +205,8 @@ Deno.serve(async (req) => {
     if (!isInternal) {
       const auth = req.headers.get("Authorization") ?? "";
       if (!auth.startsWith("Bearer ")) return json({ error: "unauthorized" }, 401);
-      const { data: u } = await admin.auth.getUser(auth.slice(7));
-      if (!u?.user) return json({ error: "unauthorized" }, 401);
+      const leadAccess = await requireLeadAccess(auth, leadId);
+      if (!leadAccess.ok) return leadAccess.response;
     }
 
     // Lead
