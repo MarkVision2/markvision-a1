@@ -1,7 +1,7 @@
 {
-  "git_sha": "181fb48",
-  "git_sha_full": "181fb4841c7daae86bdc85a36983744a3c3d03df",
-  "updated_at": "2026-06-03T16:29:00Z",
-  "label": "merge: полный релиз — проекты, security RLS, edge functions",
+  "git_sha": "5ce967f",
+  "git_sha_full": "5ce967f8d7d97250fbaad02db60ce7af910527fd",
+  "updated_at": "2026-06-03T16:43:07Z",
+  "label": "fix: согласовать import и JSX QuickCreateProjectDialog (ReferenceError)",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
