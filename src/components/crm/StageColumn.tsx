@@ -1,13 +1,24 @@
 import { memo, useRef, useState, type DragEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
-  AlertTriangle, ChevronDown, ChevronLeft, ChevronRight,
-  Clock, MoreVertical, Pencil, TrendingUp, Trash2, Wallet,
+  AlertTriangle,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  MoreVertical,
+  Pencil,
+  TrendingUp,
+  Trash2,
+  Wallet,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { LeadCard } from "./LeadCard";
@@ -16,6 +27,9 @@ import { leadSlaMinutes } from "@/hooks/useCrmAnalytics";
 import type { StageMetrics } from "@/hooks/useCrmAnalytics";
 import type { Lead, LeadStage } from "@/types/crm";
 import type { TeamMember } from "@/hooks/useTeamStore";
+
+/** Ниже этого порога — обычный flex-список (без absolute), карточки не наезжают друг на друга. */
+const VIRTUALIZE_MIN = 35;
 
 interface StageColumnProps {
   stage: LeadStage;
@@ -42,9 +56,19 @@ function fmtMin(m: number | null) {
 }
 
 function StageColumnImpl({
-  stage, leads, metrics, members,
-  isFirst, isLast, canDelete,
-  onRename, onMove, onDelete, onDropLead, onOpenLead, onTogglePin,
+  stage,
+  leads,
+  metrics,
+  members,
+  isFirst,
+  isLast,
+  canDelete,
+  onRename,
+  onMove,
+  onDelete,
+  onDropLead,
+  onOpenLead,
+  onTogglePin,
 }: StageColumnProps) {
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(stage.title);
@@ -64,13 +88,16 @@ function StageColumnImpl({
   });
 
   const total = leads.reduce((s, l) => s + (l.amount || 0), 0);
+  const useVirtualList = sortedLeads.length >= VIRTUALIZE_MIN;
 
   const listRef = useRef<HTMLDivElement>(null);
   const virtualizer = useVirtualizer({
     count: sortedLeads.length,
     getScrollElement: () => listRef.current,
-    estimateSize: () => 128,
-    overscan: 6,
+    estimateSize: () => 200,
+    gap: 10,
+    overscan: 4,
+    enabled: useVirtualList,
   });
 
   const commitRename = () => {
@@ -86,18 +113,35 @@ function StageColumnImpl({
     if (leadId) onDropLead(leadId, stage.id);
   };
 
+  const renderLeadCard = (lead: Lead) => {
+    const assignee = members.find((m) => m.id === lead.assigneeId);
+    return (
+      <LeadCard
+        key={lead.id}
+        lead={lead}
+        assigneeName={assignee?.name}
+        highlightSla={isAlertColumn}
+        onClick={() => onOpenLead(lead)}
+        onTogglePin={onTogglePin}
+      />
+    );
+  };
+
   return (
     <div
-      onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragOver(true);
+      }}
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
       className={cn(
-        "flex h-full w-[300px] shrink-0 flex-col rounded-2xl border bg-card/40 p-3 transition-colors",
+        "flex h-full min-h-[280px] w-[300px] shrink-0 flex-col rounded-2xl border bg-card/40 p-3 transition-colors",
         isAlertColumn ? "border-destructive/40 bg-destructive/5" : "border-border/60",
         dragOver && "border-primary/60 bg-primary/5",
       )}
     >
-      <div className="flex items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
         <span
           className={cn(
             "grid h-7 w-7 place-items-center rounded-lg ring-1",
@@ -111,19 +155,26 @@ function StageColumnImpl({
 
         {editing ? (
           <Input
-            autoFocus value={draftTitle}
+            autoFocus
+            value={draftTitle}
             onChange={(e) => setDraftTitle(e.target.value)}
             onBlur={commitRename}
             onKeyDown={(e) => {
               if (e.key === "Enter") commitRename();
-              if (e.key === "Escape") { setDraftTitle(stage.title); setEditing(false); }
+              if (e.key === "Escape") {
+                setDraftTitle(stage.title);
+                setEditing(false);
+              }
             }}
             className="h-7 flex-1 px-2 text-sm"
           />
         ) : (
           <button
             type="button"
-            onDoubleClick={() => { setDraftTitle(stage.title); setEditing(true); }}
+            onDoubleClick={() => {
+              setDraftTitle(stage.title);
+              setEditing(true);
+            }}
             className="flex flex-1 items-center gap-2 text-left text-sm font-semibold"
             title="Двойной клик — переименовать"
           >
@@ -153,7 +204,12 @@ function StageColumnImpl({
             <MoreVertical className="h-4 w-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
-            <DropdownMenuItem onClick={() => { setDraftTitle(stage.title); setEditing(true); }}>
+            <DropdownMenuItem
+              onClick={() => {
+                setDraftTitle(stage.title);
+                setEditing(true);
+              }}
+            >
               <Pencil className="h-3.5 w-3.5" />
               Переименовать
             </DropdownMenuItem>
@@ -176,7 +232,7 @@ function StageColumnImpl({
       </div>
 
       {!collapsed && (
-        <div className="mt-2 grid grid-cols-2 gap-1.5 rounded-lg bg-secondary/20 p-2 text-[10px]">
+        <div className="mt-2 shrink-0 grid grid-cols-2 gap-1.5 rounded-lg bg-secondary/20 p-2 text-[10px]">
           <div className="flex items-center gap-1 text-muted-foreground">
             <Wallet className="h-3 w-3" />
             <span>{(metrics?.potential ?? total).toLocaleString("ru-RU")} $</span>
@@ -184,7 +240,8 @@ function StageColumnImpl({
           <div className="flex items-center justify-end gap-1 text-muted-foreground">
             <TrendingUp className="h-3 w-3" />
             <span>
-              CR: {metrics?.conversionFromPrev !== null && metrics?.conversionFromPrev !== undefined
+              CR:{" "}
+              {metrics?.conversionFromPrev !== null && metrics?.conversionFromPrev !== undefined
                 ? `${metrics.conversionFromPrev.toFixed(0)}%`
                 : "—"}
             </span>
@@ -197,38 +254,40 @@ function StageColumnImpl({
       )}
 
       {!collapsed && (
-        <div ref={listRef} className="mt-3 flex flex-1 flex-col overflow-y-auto pr-1">
+        <div
+          ref={listRef}
+          className="mt-3 min-h-0 flex-1 overflow-y-auto overflow-x-hidden pr-1"
+        >
           {sortedLeads.length === 0 ? (
-            <div className="grid flex-1 place-items-center rounded-xl border border-dashed border-border/60 bg-secondary/20 p-6 text-center text-xs text-muted-foreground">
+            <div className="grid min-h-[120px] flex-1 place-items-center rounded-xl border border-dashed border-border/60 bg-secondary/20 p-6 text-center text-xs text-muted-foreground">
               <div>
                 <Icon className={cn("mx-auto mb-2 h-5 w-5 opacity-60", colors.text)} />
                 Перетащите карточку
               </div>
             </div>
-          ) : (
+          ) : useVirtualList ? (
             <div
               className="relative w-full"
               style={{ height: virtualizer.getTotalSize() }}
             >
               {virtualizer.getVirtualItems().map((row) => {
                 const lead = sortedLeads[row.index];
-                const assignee = members.find((m) => m.id === lead.assigneeId);
                 return (
                   <div
                     key={lead.id}
-                    className="absolute left-0 top-0 w-full pb-2"
+                    data-index={row.index}
+                    ref={virtualizer.measureElement}
+                    className="absolute left-0 top-0 w-full"
                     style={{ transform: `translateY(${row.start}px)` }}
                   >
-                    <LeadCard
-                      lead={lead}
-                      assigneeName={assignee?.name}
-                      highlightSla={isAlertColumn}
-                      onClick={() => onOpenLead(lead)}
-                      onTogglePin={onTogglePin}
-                    />
+                    {renderLeadCard(lead)}
                   </div>
                 );
               })}
+            </div>
+          ) : (
+            <div className="flex flex-col gap-2.5">
+              {sortedLeads.map((lead) => renderLeadCard(lead))}
             </div>
           )}
         </div>

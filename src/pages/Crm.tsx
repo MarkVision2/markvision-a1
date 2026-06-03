@@ -1,4 +1,4 @@
-import { lazy, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Plus,
@@ -18,8 +18,8 @@ import type { Lead } from "@/types/crm";
 import { useTeamStore } from "@/hooks/useTeamStore";
 import { useCrmAnalytics } from "@/hooks/useCrmAnalytics";
 import { StageColumn } from "@/components/crm/StageColumn";
-const ChatsView = lazy(() => import("@/components/crm/ChatsView").then((m) => ({ default: m.ChatsView })));
-const ClientsView = lazy(() => import("@/components/crm/ClientsView").then((m) => ({ default: m.ClientsView })));
+import { ChatsView } from "@/components/crm/ChatsView";
+import { ClientsView } from "@/components/crm/ClientsView";
 import { NewLeadDialog } from "@/components/crm/NewLeadDialog";
 import { LeadDetailSheet } from "@/components/crm/LeadDetailSheet";
 import { ConnectWhatsAppDialog } from "@/components/crm/ConnectWhatsAppDialog";
@@ -284,7 +284,7 @@ const Crm = () => {
                   <div
                     key={stage.id}
                     ref={stage.id === "no_answer" ? noAnswerRef : undefined}
-                    className="contents"
+                    className="flex h-full shrink-0"
                   >
                     <StageColumn
                       stage={stage}

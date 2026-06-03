@@ -55,7 +55,7 @@ function LeadCardImpl({ lead, assigneeName, highlightSla, onClick, onTogglePin }
       onDragStart={handleDragStart}
       onClick={onClick}
       className={cn(
-        "group relative cursor-grab rounded-xl border bg-card/80 p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-elevated active:cursor-grabbing",
+        "group relative w-full shrink-0 cursor-grab rounded-xl border bg-card/80 p-3 pb-9 text-left transition-shadow hover:shadow-md active:cursor-grabbing",
         lead.pinned ? "border-primary/40 ring-1 ring-primary/20" : "border-border/60 hover:border-primary/50",
         showSlaTimer && tone === "bad" && "ring-1 ring-destructive/40",
       )}
