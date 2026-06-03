@@ -4,7 +4,7 @@ import { Check, ChevronsUpDown, Plus, Settings2, Trash2 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { cn } from "@/lib/utils";
-import { QuickCreateProjectDialog } from "@/components/projects/QuickCreateProjectDialog";
+import { ProjectOnboardingDialog } from "@/components/projects/ProjectOnboardingDialog";
 
 interface Props {
   collapsed: boolean;
@@ -54,7 +54,7 @@ export function ProjectSwitcher({ collapsed }: Props) {
                     onClick={() => { setActive(p.id); setOpen(false); }}
                     className={cn(
                       "flex flex-1 items-center gap-2 rounded-md px-2 py-2 text-left text-sm hover:bg-secondary",
-                      isActive && "bg-secondary",
+                      isActive && "bg-secondary"
                     )}
                   >
                     <span className="grid h-7 w-7 place-items-center rounded-md bg-success/20 text-xs font-bold text-success">
@@ -84,7 +84,7 @@ export function ProjectSwitcher({ collapsed }: Props) {
               className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-sm text-success hover:bg-success/10"
             >
               <Plus className="h-4 w-4" />
-              Быстрое создание
+              Добавить проект (AI-бриф)
             </button>
             <button
               type="button"
