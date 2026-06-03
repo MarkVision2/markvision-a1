@@ -106,20 +106,28 @@ export function useProjectsStore() {
 
   const addProject = useCallback(
     async (name: string, domain?: string) => {
+      if (!user?.id) {
+        throw new Error("Войдите в аккаунт, чтобы создать проект");
+      }
       const payload = {
         name: name.trim(),
         domain: domain?.trim() || null,
         initials: makeInitials(name),
-        created_by: user?.id ?? null,
+        created_by: user.id,
       };
       const { data, error } = await supabase.from("projects").insert(payload).select().single();
-      if (error || !data) throw error;
-      const project = toProject(data as Row);
-      if (user?.id) {
-        await supabase
-          .from("user_active_project")
-          .upsert({ user_id: user.id, project_id: project.id });
+      if (error || !data) {
+        throw error ?? new Error("Не удалось создать проект");
       }
+      const project = toProject(data as Row);
+      await supabase.from("project_members").upsert(
+        { project_id: project.id, user_id: user.id, role: "owner" },
+        { onConflict: "project_id,user_id" },
+      );
+      await supabase
+        .from("user_active_project")
+        .upsert({ user_id: user.id, project_id: project.id });
+      setActiveProjectEverywhere(project.id, true);
       await refetch();
       return project;
     },
