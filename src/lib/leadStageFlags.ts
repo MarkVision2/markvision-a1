@@ -45,3 +45,15 @@ export function isLeadVisit(l: LeadFlagsInput): boolean {
   const k = (l.stageKey ?? "").toLowerCase().trim();
   return VISIT_STAGE_KEYS.has(k);
 }
+
+/**
+ * Диагностика для отчётов / «Таблица показателей»: оплаченная продажа
+ * не считается визитом. Раньше isLeadVisit включал paid → завышало диагностики
+ * в начале месяца (например 4 оплаты = «4 диагностики» при факте 0 визитов).
+ */
+export function isLeadDiagnosticEvent(l: LeadFlagsInput): boolean {
+  if ((l.diagnosticAmount ?? 0) > 0) return true;
+  if (isLeadPaid(l)) return false;
+  const k = (l.stageKey ?? "").toLowerCase().trim();
+  return VISIT_STAGE_KEYS.has(k);
+}

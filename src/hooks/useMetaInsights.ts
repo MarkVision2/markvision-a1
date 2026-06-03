@@ -98,23 +98,15 @@ interface CdiRow {
   leads: number;
   revenue: number | string;
   currency: string;
-  crm_diagnostics?: number | null;
-  manual_diagnostics?: number | null;
-  crm_sales?: number | null;
-  manual_sales?: number | null;
-  crm_revenue?: number | string | null;
-  manual_revenue?: number | string | null;
-  crm_diagnostic_revenue?: number | string | null;
-  manual_diagnostic_revenue?: number | string | null;
+  crm_diagnostics?: number;
+  manual_diagnostics?: number;
+  crm_sales?: number;
+  manual_sales?: number;
+  crm_revenue?: number | string;
+  manual_revenue?: number | string;
+  crm_diagnostic_revenue?: number | string;
+  manual_diagnostic_revenue?: number | string;
 }
-
-// Override-семантика по NULL: если manual_* установлен (даже 0) — он перезаписывает
-// CRM. Если NULL/undefined — берётся CRM. Раньше было `> 0`, и невозможно было
-// явно поставить «по факту 0» (получался автоматический возврат к CRM).
-const overrideNum = (manual: number | string | null | undefined, crm: number | string | null | undefined): number => {
-  if (manual !== null && manual !== undefined && manual !== "") return Number(manual) || 0;
-  return Number(crm) || 0;
-};
 
 function aggregate(rows: CdiRow[]): InsightsData {
   const dailyMap = new Map<string, DailyInsightRow>();
@@ -128,23 +120,31 @@ function aggregate(rows: CdiRow[]): InsightsData {
     const clicks = Number(r.clicks) || 0;
     const leads = Number(r.leads) || 0;
     // Override-семантика: ручные значения ПЕРЕЗАПИСЫВАЮТ CRM, а не суммируются с ним.
-    // NULL = «не задано» → fallback на CRM. Число (включая 0) = explicit override.
+    // Раньше складывали (crm + manual) — это приводило к задвоению, когда менеджер вводил
+    // 400к manual поверх 800к из CRM и получал 1.2М вместо 800к. См. жалобу пользователя.
     const crmDiag = Number(r.crm_diagnostics) || 0;
-    const manDiagRaw = r.manual_diagnostics;
-    const manDiag = manDiagRaw !== null && manDiagRaw !== undefined ? Number(manDiagRaw) || 0 : 0;
-    const diagnostics = overrideNum(manDiagRaw, crmDiag);
+    const diagnostics = resolveCdiMetric(r.manual_diagnostics, crmDiag);
     const crmSales = Number(r.crm_sales) || 0;
-    const manSalesRaw = r.manual_sales;
-    const manSales = manSalesRaw !== null && manSalesRaw !== undefined ? Number(manSalesRaw) || 0 : 0;
-    const sales = overrideNum(manSalesRaw, crmSales);
+    const sales = resolveCdiMetric(r.manual_sales, crmSales);
     const crmSalesRev = Number(r.crm_revenue) || 0;
-    const manSalesRevRaw = r.manual_revenue;
-    const manSalesRev = manSalesRevRaw !== null && manSalesRevRaw !== undefined ? Number(manSalesRevRaw) || 0 : 0;
-    const salesRevenue = overrideNum(manSalesRevRaw, crmSalesRev);
+    const salesRevenue = resolveCdiMetric(r.manual_revenue, crmSalesRev);
     const crmDiagRev = Number(r.crm_diagnostic_revenue) || 0;
-    const manDiagRevRaw = r.manual_diagnostic_revenue;
-    const manDiagRev = manDiagRevRaw !== null && manDiagRevRaw !== undefined ? Number(manDiagRevRaw) || 0 : 0;
-    const diagnosticRevenue = overrideNum(manDiagRevRaw, crmDiagRev);
+    const diagnosticRevenue = resolveCdiMetric(
+      r.manual_diagnostic_revenue,
+      crmDiagRev,
+    );
+    const manDiag = isManualOverrideActive(r.manual_diagnostics)
+      ? Math.max(0, Number(r.manual_diagnostics) || 0)
+      : 0;
+    const manSales = isManualOverrideActive(r.manual_sales)
+      ? Math.max(0, Number(r.manual_sales) || 0)
+      : 0;
+    const manSalesRev = isManualOverrideActive(r.manual_revenue)
+      ? Math.max(0, Number(r.manual_revenue) || 0)
+      : 0;
+    const manDiagRev = isManualOverrideActive(r.manual_diagnostic_revenue)
+      ? Math.max(0, Number(r.manual_diagnostic_revenue) || 0)
+      : 0;
     // Итоговая «выручка факт» = продажи + оплаты диагностик. Override-семантика
     // применяется внутри каждой составляющей, потом суммируется.
     const totalRevenue = salesRevenue + diagnosticRevenue;

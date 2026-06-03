@@ -134,18 +134,19 @@ async function fetchMetaForRange(
     const impressions = Number(row.impressions) || 0;
     const clicks = Number(row.clicks) || 0;
     const leads = Number(row.leads) || 0;
-    // Override-семантика: manual_* перезаписывает crm_* (NULL = «не задано»,
-    // число — explicit override, даже 0).
-    const isSet = (v: unknown) => v !== null && v !== undefined && v !== "";
+    // Override-семантика: manual_* перезаписывает crm_* (а не суммируется).
+    // Раньше складывали → задвоение, когда оба источника содержат одну и ту же продажу.
     const crmSales = Number(row.crm_sales) || 0;
-    const sales = isSet(row.manual_sales) ? Number(row.manual_sales) || 0 : crmSales;
+    const sales = resolveCdiMetric(row.manual_sales, crmSales);
     const crmRev = Number(row.crm_revenue) || 0;
-    const revenue = isSet(row.manual_revenue) ? Number(row.manual_revenue) || 0 : crmRev;
+    const revenue = resolveCdiMetric(row.manual_revenue, crmRev);
     const crmDiag = Number(row.crm_diagnostics) || 0;
-    const diag = isSet(row.manual_diagnostics) ? Number(row.manual_diagnostics) || 0 : crmDiag;
+    const diag = resolveCdiMetric(row.manual_diagnostics, crmDiag);
     const crmDiagRev = Number((row as { crm_diagnostic_revenue?: number }).crm_diagnostic_revenue) || 0;
-    const manDiagRevRaw = (row as { manual_diagnostic_revenue?: number | null }).manual_diagnostic_revenue;
-    const diagRev = isSet(manDiagRevRaw) ? Number(manDiagRevRaw) || 0 : crmDiagRev;
+    const diagRev = resolveCdiMetric(
+      (row as { manual_diagnostic_revenue?: number | null }).manual_diagnostic_revenue,
+      crmDiagRev,
+    );
     totSpend += spend; totImp += impressions; totClicks += clicks; totLeads += leads;
     totSales += sales; totRevenue += revenue; totDiag += diag; totDiagRev += diagRev;
     const cur = dailyAgg.get(row.date) ?? { spend: 0, leads: 0, revenue: 0 };
