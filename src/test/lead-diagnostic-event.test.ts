@@ -17,7 +17,6 @@ describe("isLeadDiagnosticEvent", () => {
     expect(
       isLeadDiagnosticEvent({
         stageKey: "scheduled",
-        lastActivityAt: "2026-03-02",
       }),
     ).toBe(true);
   });

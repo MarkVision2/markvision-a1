@@ -296,7 +296,9 @@ function TokenRefreshBlock({
       return;
     }
     setSaving(true);
-    const { error } = await (supabase.from("automation_settings" as never) as never)
+    const { error } = await (supabase.from("automation_settings" as never) as unknown as {
+      update: (v: Record<string, unknown>) => { eq: (col: string, val: unknown) => Promise<{ error: { message: string } | null }> };
+    })
       .update({ meta_access_token: t })
       .eq("id", true);
     setSaving(false);

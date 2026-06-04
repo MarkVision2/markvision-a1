@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 
-export type AssetKind = "whatsapp" | "pixels" | "pixel_events" | "lead_forms" | "pages";
+export type AssetKind = "whatsapp" | "pixels" | "pixel_events" | "lead_forms" | "pages" | "instagram";
 
 export interface WhatsAppItem {
   id: string;
