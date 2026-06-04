@@ -2,6 +2,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import {
   AUTH_CORS_HEADERS,
   createUserClient,
+  requireCabinetAccess,
 } from "../_lib/auth.ts";
 
 const corsHeaders = AUTH_CORS_HEADERS;
@@ -113,6 +114,11 @@ Deno.serve(async (req) => {
     let cabinetToken: string | null = body.accessToken || null;
 
     if (cabinetId) {
+      // Tenant authorization: caller must have RLS access to this cabinet
+      // before we read its stored Meta credentials with service role.
+      const access = await requireCabinetAccess(authHeader, cabinetId);
+      if (!access.ok) return access.response;
+
       const admin = createClient(
         Deno.env.get("SUPABASE_URL")!,
         Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
