@@ -28,6 +28,9 @@ export interface PageItem {
   name: string;
   category?: string;
   picture?: string;
+  website?: string;
+  instagram_id?: string;
+  instagram_username?: string;
 }
 export interface InstagramItem {
   id: string;
