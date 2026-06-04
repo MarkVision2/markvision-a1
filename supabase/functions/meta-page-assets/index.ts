@@ -73,7 +73,12 @@ Deno.serve(async (req) => {
 
     // Tenant authorization: caller must have RLS access to a cabinet that
     // matches the requested ad account or page.
-    if (actId) {
+    // Exception: 'pages' and 'pixels' are discovery endpoints used during
+    // the "Quick add from Meta" flow BEFORE a cabinet row exists. They
+    // only expose metadata for accounts the shared META token can already
+    // see, so authenticated users may call them without an existing cabinet.
+    const isDiscovery = kind === "pages" || kind === "pixels";
+    if (actId && !isDiscovery) {
       const actAccess = await requireMetaAdAccountAccess(auth.authHeader, actId);
       if (!actAccess.ok) return actAccess.response;
     } else if (pageId) {
