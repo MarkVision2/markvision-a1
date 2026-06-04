@@ -277,7 +277,15 @@ Deno.serve(async (req) => {
     if (kind === "pages") {
       if (!actId) return jsonResponse({ error: "actId is required" }, 400);
       const seen = new Set<string>();
-      const items: Array<{ id: string; name: string; category?: string; picture?: string }> = [];
+      const items: Array<{
+        id: string;
+        name: string;
+        category?: string;
+        picture?: string;
+        website?: string;
+        instagram_id?: string;
+        instagram_username?: string;
+      }> = [];
       const push = (p: any) => {
         const id = String(p?.id ?? "");
         if (!id || seen.has(id)) return;
@@ -287,18 +295,23 @@ Deno.serve(async (req) => {
           name: p?.name ?? id,
           category: p?.category ?? undefined,
           picture: p?.picture?.data?.url ?? undefined,
+          website: p?.website ?? undefined,
+          instagram_id: p?.instagram_business_account?.id ?? undefined,
+          instagram_username: p?.instagram_business_account?.username ?? undefined,
         });
       };
+      const pageFields =
+        "id,name,category,picture{url},website,instagram_business_account{id,username}";
       // 1) Pages promotable from this ad account
       const r1 = await metaGet(
-        `/${normalizeActId(actId)}/promote_pages?fields=id,name,category,picture{url}&limit=200`,
+        `/${normalizeActId(actId)}/promote_pages?fields=${pageFields}&limit=200`,
         META_ACCESS_TOKEN,
       );
       if (r1.ok && Array.isArray(r1.body?.data)) r1.body.data.forEach(push);
       // 2) Fallback: pages owned by the business
       if (items.length === 0) {
         const r2 = await metaGet(
-          `/${normalizeActId(actId)}?fields=business{owned_pages{id,name,category,picture{url}},client_pages{id,name,category,picture{url}}}`,
+          `/${normalizeActId(actId)}?fields=business{owned_pages{${pageFields}},client_pages{${pageFields}}}`,
           META_ACCESS_TOKEN,
         );
         const owned = r2.body?.business?.owned_pages?.data ?? [];
