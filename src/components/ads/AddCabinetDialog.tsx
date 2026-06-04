@@ -167,18 +167,40 @@ const AddCabinetDialog = ({
   }, [open, initialStep, reset]);
 
   useEffect(() => {
-    if (step !== "configure" || pageId) return;
-    if (pagesAssets.data.length > 0) {
-      setPageId(pagesAssets.data[0].id);
-      setPageName(pagesAssets.data[0].name);
+    if (step !== "configure") return;
+    if (!pageId && pagesAssets.data.length > 0) {
+      const p = pagesAssets.data[0];
+      setPageId(p.id);
+      setPageName(p.name);
+      if (p.website) setWebsiteUrl((prev) => prev || p.website!);
+      if (p.instagram_id) setInstagramId((prev) => prev || p.instagram_id!);
     }
   }, [step, pagesAssets.data, pageId]);
 
   useEffect(() => {
     if (!pageId) return;
     const p = pagesAssets.data.find((x) => x.id === pageId);
-    if (p) setPageName(p.name);
+    if (!p) return;
+    setPageName(p.name);
+    if (p.website) setWebsiteUrl((prev) => prev || p.website!);
+    if (p.instagram_id) setInstagramId((prev) => prev || p.instagram_id!);
   }, [pageId, pagesAssets.data]);
+
+  // Auto-pick first Instagram from explicit IG list (if page didn't expose one)
+  useEffect(() => {
+    if (step !== "configure" || instagramId) return;
+    if (igAssets.data.length > 0) {
+      setInstagramId((igAssets.data[0] as { id: string }).id);
+    }
+  }, [step, igAssets.data, instagramId]);
+
+  // Auto-pick first pixel
+  useEffect(() => {
+    if (step !== "configure" || pixelId) return;
+    if (pixelsAssets.data.length > 0) {
+      setPixelId(pixelsAssets.data[0].id);
+    }
+  }, [step, pixelsAssets.data, pixelId]);
 
   const runValidation = async () => {
     if (!adAccountId.trim()) {
