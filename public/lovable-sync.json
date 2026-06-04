@@ -1,7 +1,7 @@
 {
-  "git_sha": "d665760",
-  "git_sha_full": "d665760cbaa0776100b4a247b9202fb6409dd359",
-  "updated_at": "2026-06-03T18:42:50Z",
-  "label": "ci: deploy Meta edge functions workflow",
+  "git_sha": "32b19b1",
+  "git_sha_full": "32b19b16ca8e7acd9104e92d970de3c659a1ddf4",
+  "updated_at": "2026-06-04T04:31:38Z",
+  "label": "Fixed security findings",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
