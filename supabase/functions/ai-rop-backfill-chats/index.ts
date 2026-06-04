@@ -157,8 +157,9 @@ Deno.serve(async (req) => {
 
   const isPrivileged =
     req.headers.get("x-internal-key") === SERVICE_KEY || !!req.headers.get("x-cron-secret");
-  const authHeader = req.headers.get("Authorization");
-  if (!isPrivileged && authHeader) {
+  if (!isPrivileged) {
+    const authHeader = req.headers.get("Authorization") ?? "";
+    if (!authHeader.startsWith("Bearer ")) return json({ error: "Unauthorized" }, 401);
     const access = await requireProjectAccess(authHeader, projectId);
     if (!access.ok) return access.response;
   }
