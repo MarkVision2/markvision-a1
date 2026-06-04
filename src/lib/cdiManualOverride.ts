@@ -3,13 +3,13 @@
  * число (включая 0) = явная корректировка только для этой даты и кабинета.
  */
 export function isManualOverrideActive(
-  manual: number | null | undefined,
+  manual: number | string | null | undefined,
 ): boolean {
   return manual !== null && manual !== undefined && !Number.isNaN(Number(manual));
 }
 
 export function resolveCdiMetric(
-  manual: number | null | undefined,
+  manual: number | string | null | undefined,
   crm: number,
 ): number {
   if (isManualOverrideActive(manual)) {

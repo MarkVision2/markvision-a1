@@ -386,8 +386,8 @@ const AddCabinetDialog = ({
                               <SelectContent>
                                 <SelectItem value="__none__">Не выбирать</SelectItem>
                                 {igAssets.data.map((ig) => (
-                                  <SelectItem key={ig.id} value={ig.id}>
-                                    @{ig.username ?? ig.id}
+                                  <SelectItem key={(ig as { id: string }).id} value={(ig as { id: string }).id}>
+                                    @{(ig as { username?: string; id: string }).username ?? (ig as { id: string }).id}
                                   </SelectItem>
                                 ))}
                               </SelectContent>

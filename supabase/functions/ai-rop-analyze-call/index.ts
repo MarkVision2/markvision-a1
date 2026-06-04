@@ -316,13 +316,17 @@ Deno.serve(async (req) => {
   try {
     const body = await req.json().catch(() => ({}));
     const leadId = String(body?.lead_id ?? "").trim();
-    const recordingUrl = String(body?.recording_url ?? "").trim();
+    const recordingUrlRaw = String(body?.recording_url ?? "").trim();
     const durationSec = body?.duration_sec != null ? Number(body.duration_sec) : null;
     const managerIdInput = body?.manager_id ? String(body.manager_id) : null;
     const callAtInput = body?.call_at ? String(body.call_at) : null;
 
     if (!leadId) return json({ error: "lead_id required" }, 400);
-    if (!recordingUrl) return json({ error: "recording_url required" }, 400);
+    if (!recordingUrlRaw) return json({ error: "recording_url required" }, 400);
+
+    // SSRF protection: only https + allowlisted hosts.
+    const recordingUrl = validateRecordingUrl(recordingUrlRaw);
+    if (!recordingUrl) return json({ error: "invalid recording_url" }, 400);
 
     // Auth
     const internalKey = req.headers.get("x-internal-key");
@@ -332,6 +336,9 @@ Deno.serve(async (req) => {
       if (!auth.startsWith("Bearer ")) return json({ error: "unauthorized" }, 401);
       const { data: u } = await admin.auth.getUser(auth.slice(7));
       if (!u?.user) return json({ error: "unauthorized" }, 401);
+      // Tenant authorization: caller must have RLS access to this lead's project.
+      const access = await requireLeadAccess(auth, leadId);
+      if (!access.ok) return access.response;
     }
 
     // Lead

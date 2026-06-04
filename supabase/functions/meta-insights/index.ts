@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { requireUser, requireMetaAdAccountAccess } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -141,6 +142,11 @@ Deno.serve(async (req) => {
     }
 
     const actId = normalizeActId(rawActId);
+
+    // Tenant authorization: caller must have RLS access to a cabinet that
+    // matches this Meta ad account id.
+    const acctAccess = await requireMetaAdAccountAccess(auth.authHeader, actId);
+    if (!acctAccess.ok) return acctAccess.response;
 
     const fields = [
       "date_start",

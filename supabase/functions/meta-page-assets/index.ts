@@ -1,4 +1,9 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import {
+  requireUser,
+  requireMetaAdAccountAccess,
+  createUserClient,
+} from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -50,22 +55,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return jsonResponse({ error: "Unauthorized" }, 401);
-    }
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ??
-        Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } },
-    );
-    const { data: claims, error: claimsErr } = await supabase.auth.getClaims(
-      authHeader.replace("Bearer ", ""),
-    );
-    if (claimsErr || !claims?.claims) {
-      return jsonResponse({ error: "Unauthorized" }, 401);
-    }
+    const auth = await requireUser(req);
+    if (!auth.ok) return auth.response;
 
     const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN");
     if (!META_ACCESS_TOKEN) {
@@ -80,15 +71,26 @@ Deno.serve(async (req) => {
 
     if (!kind) return jsonResponse({ error: "kind is required" }, 400);
 
+    // Tenant authorization: caller must have RLS access to a cabinet that
+    // matches the requested ad account or page.
     if (actId) {
       const actAccess = await requireMetaAdAccountAccess(auth.authHeader, actId);
-      if (!actAccess.ok) return jsonResponse({ error: "Forbidden" }, 403);
+      if (!actAccess.ok) return actAccess.response;
     } else if (pageId) {
       const client = createUserClient(auth.authHeader);
       const { data: cab } = await client
         .from("ad_cabinets")
         .select("id")
         .eq("page_id", pageId)
+        .limit(1)
+        .maybeSingle();
+      if (!cab) return jsonResponse({ error: "Forbidden" }, 403);
+    } else if (pixelId) {
+      const client = createUserClient(auth.authHeader);
+      const { data: cab } = await client
+        .from("ad_cabinets")
+        .select("id")
+        .eq("pixel_id", pixelId)
         .limit(1)
         .maybeSingle();
       if (!cab) return jsonResponse({ error: "Forbidden" }, 403);
