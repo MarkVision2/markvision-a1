@@ -10,6 +10,8 @@
 // Внутри — fan-out к ai-rop-analyze-chat (service-role).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { requireProjectAccess } from "../_lib/auth.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
