@@ -1,7 +1,7 @@
 {
-  "git_sha": "1b723bb",
-  "git_sha_full": "1b723bbbcdbc2f8322b71fb318283a664ec706cd",
-  "updated_at": "2026-06-04T04:48:34Z",
-  "label": "Разрешил discovery-финды",
+  "git_sha": "fb01251",
+  "git_sha_full": "fb01251bc37337d2444f864d8819ba92a8255eea",
+  "updated_at": "2026-06-04T04:53:36Z",
+  "label": "Подтянул метаданные Meta",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
