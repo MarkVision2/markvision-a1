@@ -1,7 +1,7 @@
 {
-  "git_sha": "32b19b1",
-  "git_sha_full": "32b19b16ca8e7acd9104e92d970de3c659a1ddf4",
-  "updated_at": "2026-06-04T04:31:38Z",
-  "label": "Fixed security findings",
+  "git_sha": "8530b3a",
+  "git_sha_full": "8530b3a34a4cbfa5c3a11f3f4352e467b2bee58d",
+  "updated_at": "2026-06-04T04:44:23Z",
+  "label": "Исправил ошибки в токене",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
