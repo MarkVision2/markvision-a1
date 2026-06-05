@@ -1,7 +1,7 @@
 {
-  "git_sha": "c80bffd",
-  "git_sha_full": "c80bffdaf8aa05ce78dc9500d0626c5ddfb5ab80",
-  "updated_at": "2026-06-05T07:44:23Z",
-  "label": "Исправил рекурсию в RLS",
+  "git_sha": "85e2de8",
+  "git_sha_full": "85e2de84219e171ff5452bd10a277b26663678d8",
+  "updated_at": "2026-06-05T07:59:48Z",
+  "label": "Исправил Meta sync и креативы",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
