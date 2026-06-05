@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { Download, Filter, Loader2, Search, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -56,10 +57,23 @@ export function AdsCreativesPanel() {
   const [cabinetFilter, setCabinetFilter] = useState<string>("all");
   const [visibleCount, setVisibleCount] = useState(48);
   const PAGE_SIZE = 48;
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusAdId = searchParams.get("ad");
 
   const { rows: creatives, loading } = useMetaCreatives(range);
   const { rows: campaigns } = useMetaCampaigns(range);
   const { cabinets } = useCabinetsStore();
+
+  // Deep-link: ?ad=<meta ad_id> opens the matching creative drawer once loaded.
+  useEffect(() => {
+    if (!focusAdId || creatives.length === 0) return;
+    const match = creatives.find((c) => c.adId === focusAdId);
+    if (match && openId !== match.id) {
+      setOpenId(match.id);
+      // Clear the param so re-opening the page doesn't trap user in the drawer.
+      setSearchParams((sp) => { sp.delete("ad"); return sp; }, { replace: true });
+    }
+  }, [focusAdId, creatives, openId, setSearchParams]);
 
   const campaignById = useMemo(() => {
     const m = new Map<string, MetaCampaignRow>();
