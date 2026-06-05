@@ -3734,6 +3734,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_project_member: {
+        Args: { _project_id: string; _user_id: string }
+        Returns: boolean
+      }
       is_viewer: { Args: { _user_id: string }; Returns: boolean }
       meta_structure_sync: {
         Args: { p_cabinet_id?: string; p_since?: string; p_until?: string }
