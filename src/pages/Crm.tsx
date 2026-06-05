@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Plus,
@@ -18,8 +18,8 @@ import type { Lead } from "@/types/crm";
 import { useTeamStore } from "@/hooks/useTeamStore";
 import { useCrmAnalytics } from "@/hooks/useCrmAnalytics";
 import { StageColumn } from "@/components/crm/StageColumn";
-import { ChatsView } from "@/components/crm/ChatsView";
-import { ClientsView } from "@/components/crm/ClientsView";
+const ChatsView = lazy(() => import("@/components/crm/ChatsView").then((m) => ({ default: m.ChatsView })));
+const ClientsView = lazy(() => import("@/components/crm/ClientsView").then((m) => ({ default: m.ClientsView })));
 import { NewLeadDialog } from "@/components/crm/NewLeadDialog";
 import { LeadDetailSheet } from "@/components/crm/LeadDetailSheet";
 import { ConnectWhatsAppDialog } from "@/components/crm/ConnectWhatsAppDialog";
@@ -29,9 +29,11 @@ import { CrmFilters, type CrmFilterState } from "@/components/crm/CrmFilters";
 import { RejectReasonDialog } from "@/components/crm/RejectReasonDialog";
 import { PaymentAmountDialog } from "@/components/crm/PaymentAmountDialog";
 import { DiagnosticAmountDialog } from "@/components/crm/DiagnosticAmountDialog";
-import { ManagersView } from "@/components/crm/ManagersView";
-import { AnalyticsView } from "@/components/crm/AnalyticsView";
-import { AutomationsSettings } from "@/components/crm/AutomationsSettings";
+const ManagersView = lazy(() => import("@/components/crm/ManagersView").then((m) => ({ default: m.ManagersView })));
+const AnalyticsView = lazy(() => import("@/components/crm/AnalyticsView").then((m) => ({ default: m.AnalyticsView })));
+const AutomationsSettings = lazy(() =>
+  import("@/components/crm/AutomationsSettings").then((m) => ({ default: m.AutomationsSettings })),
+);
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
@@ -341,38 +343,40 @@ const Crm = () => {
             </div>
           )}
 
-          {tab === "chats" && (
-            <ChatsView
-              leads={leads}
-              stages={stages}
-              chats={chats}
-              whatsapp={whatsapp}
-              onSend={sendMessage}
-              onConnectWhatsApp={() => setWaOpen(true)}
-            />
-          )}
+          <Suspense fallback={<div className="p-8 text-center text-sm text-muted-foreground">Загрузка…</div>}>
+            {tab === "chats" && (
+              <ChatsView
+                leads={leads}
+                stages={stages}
+                chats={chats}
+                whatsapp={whatsapp}
+                onSend={sendMessage}
+                onConnectWhatsApp={() => setWaOpen(true)}
+              />
+            )}
 
-          {tab === "clients" && (
-            <ClientsView
-              leads={leads}
-              stages={stages}
-              onOpenLead={(l) => setActiveLeadId(l.id)}
-            />
-          )}
+            {tab === "clients" && (
+              <ClientsView
+                leads={leads}
+                stages={stages}
+                onOpenLead={(l) => setActiveLeadId(l.id)}
+              />
+            )}
 
-          {tab === "managers" && <ManagersView stats={analytics.managerStats} />}
+            {tab === "managers" && <ManagersView stats={analytics.managerStats} />}
 
-          {tab === "analytics" && (
-            <AnalyticsView
-              stageMetrics={analytics.stageMetrics}
-              rejectStats={analytics.rejectStats}
-              forecast={analytics.forecast}
-              actual={analytics.actual}
-              leads={leads}
-            />
-          )}
+            {tab === "analytics" && (
+              <AnalyticsView
+                stageMetrics={analytics.stageMetrics}
+                rejectStats={analytics.rejectStats}
+                forecast={analytics.forecast}
+                actual={analytics.actual}
+                leads={leads}
+              />
+            )}
 
-          {tab === "automations" && <AutomationsSettings />}
+            {tab === "automations" && <AutomationsSettings />}
+          </Suspense>
         </div>
       </section>
 
