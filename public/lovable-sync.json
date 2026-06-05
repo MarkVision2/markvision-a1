@@ -1,7 +1,7 @@
 {
-  "git_sha": "fb01251",
-  "git_sha_full": "fb01251bc37337d2444f864d8819ba92a8255eea",
-  "updated_at": "2026-06-04T04:53:36Z",
-  "label": "Подтянул метаданные Meta",
+  "git_sha": "42c6f77",
+  "git_sha_full": "42c6f77002f7ec82551fbc9e5a905f6fd66bb442",
+  "updated_at": "2026-06-05T07:33:40Z",
+  "label": "Fixed 5 security issues",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
