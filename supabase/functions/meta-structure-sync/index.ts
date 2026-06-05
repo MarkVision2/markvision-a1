@@ -176,20 +176,51 @@ function inferCreativeType(creative: Record<string, unknown> | null | undefined)
   return "image";
 }
 
-async function fetchAllPages<T>(initialUrl: string): Promise<T[]> {
-  const out: T[] = [];
-  let next: string | null = initialUrl;
-  while (next) {
-    const r: Response = await fetch(next);
-    if (!r.ok) {
-      const text = await r.text();
-      throw new Error(`meta api ${r.status}: ${text.slice(0, 200)}`);
+function isMetaReduceError(text: string): boolean {
+  // Meta returns code 1 "Please reduce the amount of data you're asking for"
+  return /reduce the amount of data/i.test(text) || /"code"\s*:\s*1\b/.test(text);
+}
+
+async function fetchAllPagesSafe<T>(
+  buildUrl: (limit: number) => string,
+  initialLimit = 100,
+  minLimit = 10,
+): Promise<T[]> {
+  let limit = initialLimit;
+  while (true) {
+    try {
+      const out: T[] = [];
+      let next: string | null = buildUrl(limit);
+      while (next) {
+        const r: Response = await fetch(next);
+        if (!r.ok) {
+          const text = await r.text();
+          throw new Error(`meta api ${r.status}: ${text.slice(0, 300)}`);
+        }
+        const body = await r.json() as { data?: T[]; paging?: { next?: string } };
+        if (Array.isArray(body.data)) out.push(...body.data);
+        next = body.paging?.next ?? null;
+      }
+      return out;
+    } catch (e) {
+      const msg = (e as Error).message ?? "";
+      console.log(`[meta-structure-sync] fetch failed (limit=${limit}): ${msg.slice(0, 200)}`);
+      if (isMetaReduceError(msg) && limit > minLimit) {
+        limit = Math.max(minLimit, Math.floor(limit / 2));
+        console.log(`[meta-structure-sync] retrying with smaller limit=${limit}`);
+        continue;
+      }
+      throw e;
     }
-    const body = await r.json() as { data?: T[]; paging?: { next?: string } };
-    if (Array.isArray(body.data)) out.push(...body.data);
-    next = body.paging?.next ?? null;
   }
-  return out;
+}
+
+// Legacy compatibility wrapper used for fixed URLs that already include limit.
+async function fetchAllPages<T>(initialUrl: string): Promise<T[]> {
+  return await fetchAllPagesSafe<T>(
+    (limit) => initialUrl.replace(/([?&])limit=\d+/, `$1limit=${limit}`),
+    Number((initialUrl.match(/[?&]limit=(\d+)/) ?? [])[1] ?? 100),
+  );
 }
 
 interface ProcessedInsight {
@@ -415,14 +446,38 @@ Deno.serve(async (req) => {
 
       // ---- 4. Insights at campaign + ad level ----
       const insightFields = ["date_start", "spend", "impressions", "clicks", "actions", "action_values"].join(",");
-      const timeRange = encodeURIComponent(JSON.stringify({ since, until }));
 
-      const fetchInsights = async (level: "campaign" | "ad") => {
+      const fetchInsightsWindow = async (
+        level: "campaign" | "ad",
+        from: string,
+        to: string,
+      ): Promise<Record<string, unknown>[]> => {
         const idField = level === "campaign" ? "campaign_id" : "ad_id";
-        return await fetchAllPages<Record<string, unknown>>(
-          `https://graph.facebook.com/${META_API_VERSION}/${actId}/insights?fields=${insightFields},${idField}&time_range=${timeRange}&time_increment=1&level=${level}&limit=500&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`,
-        );
+        const tr = encodeURIComponent(JSON.stringify({ since: from, until: to }));
+        try {
+          return await fetchAllPagesSafe<Record<string, unknown>>(
+            (limit) => `https://graph.facebook.com/${META_API_VERSION}/${actId}/insights?fields=${insightFields},${idField}&time_range=${tr}&time_increment=1&level=${level}&limit=${limit}&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`,
+            200,
+            25,
+          );
+        } catch (e) {
+          // If Meta still complains about volume, split the window in half.
+          if (isMetaReduceError((e as Error).message) && from < to) {
+            const start = new Date(`${from}T00:00:00Z`).getTime();
+            const end = new Date(`${to}T00:00:00Z`).getTime();
+            const midTs = start + Math.floor((end - start) / 2);
+            const mid = new Date(midTs).toISOString().slice(0, 10);
+            const left = await fetchInsightsWindow(level, from, mid);
+            const right = await fetchInsightsWindow(level, addDaysYmd(mid, 1), to);
+            return [...left, ...right];
+          }
+          throw e;
+        }
       };
+
+      const fetchInsights = async (level: "campaign" | "ad") =>
+        await fetchInsightsWindow(level, since, until);
+
 
       const [campInsights, adInsights] = await Promise.all([
         fetchInsights("campaign"),
