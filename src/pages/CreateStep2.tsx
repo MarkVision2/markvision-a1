@@ -16,6 +16,7 @@ import {
 import Header from "@/components/factory/Header";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { persistWizardState } from "@/lib/contentFactoryBrief";
 
 type AspectId = "1:1" | "4:5" | "9:16" | "16:9" | "3:4" | "21:9";
 type LangId = "ru" | "kz" | "en";
@@ -218,11 +219,11 @@ const CreateStep2 = () => {
           </Button>
           <Button
             size="lg"
-            onClick={() =>
-              navigate("/create/step-3", {
-                state: { ...prevState, aspect, lang, variants },
-              })
-            }
+            onClick={() => {
+              const nextState = { ...prevState, aspect, lang, variants };
+              persistWizardState(nextState);
+              navigate("/create/step-3", { state: nextState });
+            }}
             className="h-14 rounded-2xl bg-gradient-primary text-base text-primary-foreground shadow-glow hover:opacity-90"
           >
             Продолжить

@@ -8,6 +8,7 @@ import DescriptionSource from "@/components/factory/sources/DescriptionSource";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, Link2, Image as ImageIcon, FileText } from "lucide-react";
 import { CONTENT_TYPES } from "@/data/contentTypes";
+import { persistWizardState } from "@/lib/contentFactoryBrief";
 
 interface LocationState {
   typeId?: string;
@@ -137,20 +138,20 @@ const CreateStep1 = () => {
           </Button>
           <Button
             disabled={!canContinue}
-            onClick={() =>
-              navigate("/create/step-2", {
-                state: {
-                  typeId: state.typeId,
-                  mode,
-                  linkUrl,
-                  description,
-                  productName,
-                  extraInstructions,
-                  photosCount: photos.length,
+            onClick={() => {
+              const nextState = {
+                typeId: state.typeId,
+                mode,
+                linkUrl,
+                description,
+                productName,
+                extraInstructions,
+                photosCount: photos.length,
                 photos,
-                },
-              })
-            }
+              };
+              persistWizardState(nextState);
+              navigate("/create/step-2", { state: nextState });
+            }}
             className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90 disabled:bg-secondary disabled:bg-none disabled:text-muted-foreground disabled:shadow-none"
           >
             Далее

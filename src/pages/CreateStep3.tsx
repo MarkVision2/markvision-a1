@@ -43,6 +43,16 @@ import {
 } from "@/lib/contentFactoryUpload";
 import { buildStyleBrief, type StyleId as BriefStyleId } from "@/data/styleBriefs";
 import {
+  buildBriefWithMarketing,
+  buildUserBriefText,
+  isBriefTooEmpty,
+  loadWizardState,
+  persistWizardState,
+  resolveProductDescription,
+  resolveProductName,
+  type WizardInputState,
+} from "@/lib/contentFactoryBrief";
+import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -353,10 +363,14 @@ const StylePreviewImage = ({ style, selected }: { style: StyleDef; selected: boo
 const CreateStep3 = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const prevState = (location.state ?? {}) as Record<string, unknown>;
+  const wizardState = loadWizardState((location.state ?? {}) as WizardInputState);
+
+  useEffect(() => {
+    persistWizardState((location.state ?? {}) as WizardInputState);
+  }, [location.state]);
 
   const contentType = CONTENT_TYPES.find(
-    (t) => t.id === (prevState.typeId as string | undefined),
+    (t) => t.id === wizardState.typeId,
   );
   const isNeuroPhoto = contentType?.category === "ai";
   const activeStyles = isNeuroPhoto ? NEURO_STYLES : STYLES;
@@ -524,29 +538,13 @@ const CreateStep3 = () => {
   };
 
   const buildBriefPrompt = async () => {
-    const mode = (prevState.mode as string | undefined) ?? null;
-    const linkUrl = (prevState.linkUrl as string | undefined) ?? "";
-    const description = (prevState.description as string | undefined) ?? "";
-    const productName = (prevState.productName as string | undefined) ?? "";
-    const extraInstructions =
-      (prevState.extraInstructions as string | undefined) ?? "";
-    const photos = (prevState.photos as File[] | undefined) ?? [];
+    const mode = wizardState.mode ?? null;
+    const linkUrl = wizardState.linkUrl ?? "";
+    const description = wizardState.description ?? "";
+    const productName = wizardState.productName ?? "";
+    const extraInstructions = wizardState.extraInstructions ?? "";
+    const photos = wizardState.photos ?? [];
 
-    const promptParts: string[] = [];
-    if (productName.trim()) promptParts.push(`Товар: ${productName.trim()}`);
-    if (mode === "link" && linkUrl.trim())
-      promptParts.push(`Ссылка на источник: ${linkUrl.trim()}`);
-    if (mode === "description" && description.trim())
-      promptParts.push(description.trim());
-    if (mode === "photo")
-      promptParts.push(
-        `Создать креативы на основе ${photos.length} загруженных фото (включая логотип, если он среди них). Используй визуал, цвета и фирменный стиль из приложенных изображений.`,
-      );
-    if (extraInstructions.trim())
-      promptParts.push(`Инструкции:\n${extraInstructions.trim()}`);
-
-    // Метаданные о фото — без base64. Сами файлы прикрепляются к FormData
-    // отдельно (поля photo_0, photo_1, ...), чтобы не раздувать JSON.
     const photoMeta = photos.map((f, idx) => ({
       index: idx,
       field: `photo_${idx}`,
@@ -556,7 +554,7 @@ const CreateStep3 = () => {
     }));
 
     return {
-      prompt: promptParts.join("\n\n"),
+      prompt: buildUserBriefText(wizardState),
       mode,
       linkUrl,
       description,
@@ -598,6 +596,12 @@ const CreateStep3 = () => {
       toast.error("Выберите минимум 1 стиль");
       return;
     }
+    if (isBriefTooEmpty(wizardState)) {
+      toast.error("ТЗ пустое", {
+        description: "Вернитесь на шаг 1: добавьте ссылку, описание или фото.",
+      });
+      return;
+    }
     setSubmitting(true);
     setResults(null);
     setStatus("sending");
@@ -612,16 +616,13 @@ const CreateStep3 = () => {
       const cta = CTAS.find((c) => c.id === ctaId)!;
       const tone = TONES.find((t) => t.id === toneId)!;
       const goal = GOALS.find((g) => g.id === goalId)!;
-      // Прокидываем стиль подачи, цель и CTA прямо в userBrief, чтобы AI-нода
-      // в n8n получила их как часть ТЗ, а не молча проигнорировала.
-      const briefPromptWithMeta = [
-        `Цель контента: ${goal.label} — ${goal.description}.`,
-        `Стиль подачи: ${tone.label} — ${tone.description}.`,
-        `Призыв к действию (CTA): "${cta.phrase}". Должен быть органично вписан в подпись/оверлей.`,
-        briefRaw.prompt,
-      ]
-        .filter(Boolean)
-        .join("\n\n");
+      const briefPromptWithMeta = buildBriefWithMarketing(wizardState, {
+        goalLabel: goal.label,
+        goalDescription: goal.description,
+        toneLabel: tone.label,
+        toneDescription: tone.description,
+        ctaPhrase: cta.phrase,
+      });
       const brief = { ...briefRaw, prompt: briefPromptWithMeta };
       const color = COLORS.find((c) => c.id === colorId);
 
@@ -680,7 +681,7 @@ const CreateStep3 = () => {
             "web-banner": "banner",
             "neuro-photo": "neuro-photo",
           };
-          const typeId = (contentType?.id ?? (prevState.typeId as string | undefined) ?? "") as string;
+          const typeId = (contentType?.id ?? wizardState.typeId ?? "") as string;
           const route = ROUTE_MAP[typeId] ?? "Fallback";
           const anglesPayload = isNeuroPhoto
             ? selectedAngles.map((aid) => {
@@ -692,9 +693,9 @@ const CreateStep3 = () => {
             styleId: styleDef.id as BriefStyleId,
             userBrief: brief.prompt,
             format: {
-              aspect: (prevState.aspect as string | undefined) ?? null,
-              lang: (prevState.lang as string | undefined) ?? null,
-              variants: (prevState.variants as number | undefined) ?? null,
+              aspect: wizardState.aspect ?? null,
+              lang: wizardState.lang ?? null,
+              variants: wizardState.variants ?? null,
             },
             color: color
               ? { id: color.id, label: color.label, swatch: color.swatch }
@@ -723,8 +724,8 @@ const CreateStep3 = () => {
           // в content_factory_results через realtime.
           const requestId = `${batchId}:${styleDef.id}`;
           const slidesCount =
-            typeof prevState.variants === "number" && prevState.variants > 0
-              ? (prevState.variants as number)
+            typeof wizardState.variants === "number" && wizardState.variants > 0
+              ? wizardState.variants
               : 1;
           // Niche / контекст — собираем из всех источников ТЗ.
           const nicheBits = [
@@ -747,16 +748,16 @@ const CreateStep3 = () => {
             // Сюда идёт finalTechnicalBrief — полная техзадача со стилевыми
             // инструкциями и пользовательским запросом, а не сырой текст.
             prompt: finalTechnicalBrief,
-            // имя продукта / описание — пустая строка ок, эти ноды толерантны
-            name: brief.productName || "",
-            description: brief.description || "",
+            // n8n-ноды иногда читают name/description вместо prompt — не оставляем пустыми
+            name: resolveProductName(wizardState, contentType?.title),
+            description: resolveProductDescription(wizardState, finalTechnicalBrief),
             // Публичные URL фото из Supabase Storage. n8n берёт первое как референс.
             image_urls: imageUrls,
             // стиль / цвет / язык / aspect — flat string, не объект
             style: styleDef.label,
             color: color?.label ?? "auto",
-            language: (prevState.lang as string | undefined) ?? "ru",
-            aspect: (prevState.aspect as string | undefined) ?? "1:1",
+            language: wizardState.lang ?? "ru",
+            aspect: wizardState.aspect ?? "1:1",
             slides: slidesCount,
             image_count: slidesCount,
             // niche / cta — содержательные сведения о продукте для fb-target.
@@ -804,11 +805,10 @@ const CreateStep3 = () => {
             // в плоский body.prompt пишется finalTechnicalBrief (см. flatForN8n),
             // потому что n8n-ноды читают body.prompt как готовое ТЗ для AI.
             user_raw_prompt: brief.prompt,
-            // КРИТИЧНО: плоские поля для n8n. Без этого body.content_type /
-            // body.prompt / body.style / body.image_urls / body.request_id
-            // и т.д. будут undefined, Switch1 уйдёт в Fallback, AI получит
-            // пустой ввод и сгенерит дефолтное (кейс «кофемашина вместо ТЗ»).
+            // КРИТИЧНО: плоские поля на корне webhook body ($json.prompt).
             ...flatForN8n,
+            // Часть нод Clony AI читает $json.body.* — дублируем контракт.
+            body: flatForN8n,
             contentType: contentType
               ? {
                   id: contentType.id,
@@ -817,7 +817,7 @@ const CreateStep3 = () => {
                   category: contentType.category,
                   tooltip: contentType.tooltip,
                 }
-              : { id: prevState.typeId ?? null },
+              : { id: wizardState.typeId ?? null },
             source_input: {
               mode: brief.mode,
               linkUrl: brief.mode === "link" ? brief.linkUrl || null : null,
@@ -835,9 +835,9 @@ const CreateStep3 = () => {
               extraInstructions: brief.extraInstructions || null,
             },
             format: {
-              aspect: prevState.aspect ?? null,
-              lang: prevState.lang ?? null,
-              variants: prevState.variants ?? null,
+              aspect: wizardState.aspect ?? null,
+              lang: wizardState.lang ?? null,
+              variants: wizardState.variants ?? null,
             },
             design: {
               style: selectedStyles,
@@ -958,6 +958,11 @@ const CreateStep3 = () => {
 
   const startNewDesign = () => {
     setTaskDialogOpen(false);
+    try {
+      sessionStorage.removeItem("mv:create-wizard:v1");
+    } catch {
+      /* ignore */
+    }
     navigate("/");
   };
 
@@ -1360,23 +1365,20 @@ const CreateStep3 = () => {
               const previewCta = CTAS.find((c) => c.id === ctaId)!;
               const previewTone = TONES.find((t) => t.id === toneId)!;
               const previewGoal = GOALS.find((g) => g.id === goalId)!;
-              const rawUserBrief =
-                ((prevState.description as string | undefined) ?? "") ||
-                ((prevState.linkUrl as string | undefined) ?? "") ||
-                ((prevState.productName as string | undefined) ?? "");
-              const userBriefWithMeta = [
-                `Цель контента: ${previewGoal.label} — ${previewGoal.description}.`,
-                `Стиль подачи: ${previewTone.label} — ${previewTone.description}.`,
-                `Призыв к действию (CTA): "${previewCta.phrase}". Должен быть органично вписан в подпись/оверлей.`,
-                rawUserBrief,
-              ].filter(Boolean).join("\n\n");
+              const userBriefWithMeta = buildBriefWithMarketing(wizardState, {
+                goalLabel: previewGoal.label,
+                goalDescription: previewGoal.description,
+                toneLabel: previewTone.label,
+                toneDescription: previewTone.description,
+                ctaPhrase: previewCta.phrase,
+              });
               const built = buildStyleBrief({
                 styleId: styleDef.id as BriefStyleId,
                 userBrief: userBriefWithMeta,
                 format: {
-                  aspect: (prevState.aspect as string | undefined) ?? null,
-                  lang: (prevState.lang as string | undefined) ?? null,
-                  variants: (prevState.variants as number | undefined) ?? null,
+                  aspect: wizardState.aspect ?? null,
+                  lang: wizardState.lang ?? null,
+                  variants: wizardState.variants ?? null,
                 },
                 color: color ? { id: color.id, label: color.label, swatch: color.swatch } : null,
                 angles: anglesPayload,
@@ -1719,8 +1721,8 @@ const CreateStep3 = () => {
                 <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-primary" />
                 {(() => {
                   const variantsPerStyle =
-                    typeof prevState.variants === "number" && prevState.variants > 0
-                      ? (prevState.variants as number)
+                    typeof wizardState.variants === "number" && wizardState.variants > 0
+                      ? wizardState.variants
                       : 1;
                   const total = selectedStyles.length * variantsPerStyle;
                   return variantsPerStyle > 1
