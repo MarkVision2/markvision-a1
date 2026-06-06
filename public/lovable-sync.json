@@ -1,7 +1,7 @@
 {
-  "git_sha": "ad4347f",
-  "git_sha_full": "ad4347f48f1836cce0924bbae7d5fe60f67ee6f3",
-  "updated_at": "2026-06-06T09:29:26Z",
-  "label": "chore: lovable sync stamp f1fe63d",
+  "git_sha": "709ba8e",
+  "git_sha_full": "709ba8e5a80ee4b5c973f2b77ff2ed8357f2d216",
+  "updated_at": "2026-06-06T09:44:39Z",
+  "label": "fix(content-factory): TZ payload for n8n",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
