@@ -1,7 +1,7 @@
 /**
- * Загрузка файлов бренд-шаблонов в main Supabase Storage (bucket content-factory).
+ * Загрузка файлов бренд-шаблонов в Clony Supabase Storage (bucket content-factory).
  */
-import { supabase } from "@/integrations/supabase/client";
+import { getContentFactoryDb } from "@/lib/contentFactoryDb";
 
 const BUCKET = "content-factory";
 
@@ -16,6 +16,12 @@ export async function uploadBrandAsset(
   templateId: string,
   kind: "logo" | "reference" | "brandbook",
 ): Promise<string | null> {
+  const sb = getContentFactoryDb();
+  if (!sb) {
+    console.warn("[content-factory] Clony Supabase не настроен — brand upload пропущен");
+    return null;
+  }
+
   const ext = (file.name.split(".").pop() || "bin").toLowerCase();
   const folder =
     kind === "logo"
@@ -26,7 +32,7 @@ export async function uploadBrandAsset(
       ? `${folder}/logo-${newId()}.${ext}`
       : `${folder}/${newId()}.${ext}`;
 
-  const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
+  const { error } = await sb.storage.from(BUCKET).upload(path, file, {
     contentType: file.type || "application/octet-stream",
     cacheControl: "3600",
     upsert: false,
@@ -35,7 +41,7 @@ export async function uploadBrandAsset(
     console.error("[content-factory] brand upload failed", file.name, error);
     return null;
   }
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
+  const { data } = sb.storage.from(BUCKET).getPublicUrl(path);
   return data.publicUrl;
 }
 

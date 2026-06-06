@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type { BrandColors, BrandFonts, BrandTemplate } from "@/lib/contentFactoryBrand";
+import { getContentFactoryDb } from "@/lib/contentFactoryDb";
 import {
   uploadBrandAsset,
   uploadBrandAssets,
@@ -51,15 +51,16 @@ export function useBrandTemplates() {
   const [templates, setTemplates] = useState<BrandTemplate[]>([]);
   const [loading, setLoading] = useState(false);
 
+  const sb = getContentFactoryDb();
+
   const load = useCallback(async () => {
-    if (!projectId) {
+    if (!projectId || !sb) {
       setTemplates([]);
       return;
     }
     setLoading(true);
-    const { data, error } = await (supabase.from("content_factory_brand_templates" as never) as ReturnType<
-      typeof supabase.from
-    >)
+    const { data, error } = await sb
+      .from("content_factory_brand_templates")
       .select("*")
       .eq("project_id", projectId)
       .order("is_default", { ascending: false })
@@ -70,7 +71,7 @@ export function useBrandTemplates() {
       return;
     }
     setTemplates((data ?? []).map((r) => rowToTemplate(r as Record<string, unknown>)));
-  }, [projectId]);
+  }, [projectId, sb]);
 
   useEffect(() => {
     void load();
@@ -78,7 +79,7 @@ export function useBrandTemplates() {
 
   const createTemplate = useCallback(
     async (input: BrandTemplateInput): Promise<BrandTemplate | null> => {
-      if (!projectId || !user?.id || !input.name.trim()) return null;
+      if (!projectId || !sb || !input.name.trim()) return null;
 
       const tempId = crypto.randomUUID();
       let logoUrl = input.logo_url ?? null;
@@ -98,20 +99,18 @@ export function useBrandTemplates() {
       const allBrandbookUrls = [...brandbookUrls, ...uploadedBooks];
 
       if (input.is_default) {
-        await (supabase.from("content_factory_brand_templates" as never) as ReturnType<
-          typeof supabase.from
-        >)
+        await sb
+          .from("content_factory_brand_templates")
           .update({ is_default: false })
           .eq("project_id", projectId);
       }
 
-      const { data, error } = await (supabase.from("content_factory_brand_templates" as never) as ReturnType<
-        typeof supabase.from
-      >)
+      const { data, error } = await sb
+        .from("content_factory_brand_templates")
         .insert({
           id: tempId,
           project_id: projectId,
-          created_by: user.id,
+          created_by: user?.id ?? null,
           name: input.name.trim(),
           description: input.description?.trim() || null,
           colors: input.colors ?? {},
@@ -132,20 +131,17 @@ export function useBrandTemplates() {
       await load();
       return created;
     },
-    [projectId, user?.id, load],
+    [projectId, sb, user?.id, load],
   );
 
   const deleteTemplate = useCallback(
     async (id: string) => {
-      const { error } = await (supabase.from("content_factory_brand_templates" as never) as ReturnType<
-        typeof supabase.from
-      >)
-        .delete()
-        .eq("id", id);
+      if (!sb) throw new Error("Clony Supabase не настроен");
+      const { error } = await sb.from("content_factory_brand_templates").delete().eq("id", id);
       if (error) throw new Error(error.message);
       setTemplates((prev) => prev.filter((t) => t.id !== id));
     },
-    [],
+    [sb],
   );
 
   const getById = useCallback(

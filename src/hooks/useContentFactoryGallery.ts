@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { clientConfigSupabase } from "@/integrations/clientConfig/client";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { getContentFactoryDb } from "@/lib/contentFactoryDb";
 import {
   cacheGalleryItem,
   findBatchItemMeta,
@@ -26,7 +25,6 @@ export interface GalleryItem {
   brand_template_id: string | null;
   metadata: Record<string, unknown>;
   created_at: string;
-  /** Откуда показана карточка: основная БД, results или локальный кэш */
   source?: "db" | "results" | "cache";
 }
 
@@ -42,6 +40,9 @@ export interface SaveGalleryInput {
   brandTemplateId?: string | null;
   metadata?: Record<string, unknown>;
 }
+
+const MIGRATION_HINT =
+  "Примените supabase/migrations_client_config/007_content_factory_gallery_brand.sql в проекте szfgdruhlebfvcmlvxdk (Clony)";
 
 function isTableMissingError(message: string, code?: string): boolean {
   return code === "PGRST205" || /Could not find the table/i.test(message);
@@ -112,11 +113,13 @@ export function useContentFactoryGallery() {
   const savedRequestIdsRef = useRef<Set<string>>(new Set());
   const saveItemRef = useRef<(input: SaveGalleryInput) => Promise<boolean>>(async () => false);
 
+  const sb = getContentFactoryDb();
+
   const fetchReadyFromResults = useCallback(
     async (requestIds: string[]): Promise<GalleryItem[]> => {
-      if (!clientConfigSupabase || !projectId || requestIds.length === 0) return [];
+      if (!sb || !projectId || requestIds.length === 0) return [];
 
-      const { data, error } = await clientConfigSupabase
+      const { data, error } = await sb
         .from("content_factory_results")
         .select("request_id, status, image_url, style_id, style_label, created_at, updated_at")
         .in("request_id", requestIds)
@@ -153,7 +156,7 @@ export function useContentFactoryGallery() {
       }
       return out;
     },
-    [projectId],
+    [sb, projectId],
   );
 
   const load = useCallback(async () => {
@@ -161,14 +164,19 @@ export function useContentFactoryGallery() {
       setItems([]);
       return;
     }
+    if (!sb) {
+      setLastError("VITE_CLIENT_SUPABASE_URL не настроен — галерея недоступна");
+      setItems(getCachedGalleryItems(projectId).map(cachedToGalleryItem));
+      return;
+    }
+
     setLoading(true);
     setLastError(null);
 
     let dbItems: GalleryItem[] = [];
     try {
-      const { data, error } = await (supabase.from("content_factory_gallery" as never) as ReturnType<
-        typeof supabase.from
-      >)
+      const { data, error } = await sb
+        .from("content_factory_gallery")
         .select(
           "id, project_id, request_id, session_id, type_id, type_title, style_id, style_label, image_url, prompt_snapshot, brand_template_id, metadata, created_at",
         )
@@ -179,9 +187,7 @@ export function useContentFactoryGallery() {
       if (error) {
         if (isTableMissingError(error.message, error.code)) {
           setNeedsMigration(true);
-          setLastError(
-            "Таблица галереи не найдена в Supabase — примените миграцию 20260606160000_content_factory_gallery_brand.sql",
-          );
+          setLastError(MIGRATION_HINT);
         } else {
           setLastError(error.message);
           console.warn("[gallery] load", error.message);
@@ -201,14 +207,11 @@ export function useContentFactoryGallery() {
 
     const pendingIds = getPendingRequestIds(projectId, savedIds);
     const resultItems = await fetchReadyFromResults(pendingIds);
-
     const cacheItems = getCachedGalleryItems(projectId).map(cachedToGalleryItem);
-
     const merged = mergeGalleryItems(dbItems, resultItems, cacheItems);
     setItems(merged);
     setLoading(false);
 
-    // Авто-backfill: готовые results → основная галерея (или локальный кэш)
     for (const item of resultItems) {
       if (!item.request_id || savedIds.has(item.request_id)) continue;
       const meta = findBatchItemMeta(projectId, item.request_id);
@@ -226,7 +229,7 @@ export function useContentFactoryGallery() {
         metadata: { source: "backfill" },
       });
     }
-  }, [projectId, fetchReadyFromResults]);
+  }, [projectId, sb, fetchReadyFromResults]);
 
   const saveItemInternal = useCallback(
     async (input: SaveGalleryInput): Promise<boolean> => {
@@ -254,14 +257,11 @@ export function useContentFactoryGallery() {
         return true;
       };
 
-      if (!user?.id) {
-        return cacheFallback();
-      }
+      if (!sb) return cacheFallback();
 
       try {
-        const { data: existing } = await (supabase.from("content_factory_gallery" as never) as ReturnType<
-          typeof supabase.from
-        >)
+        const { data: existing } = await sb
+          .from("content_factory_gallery")
           .select("id")
           .eq("project_id", projectId)
           .eq("request_id", input.requestId)
@@ -275,7 +275,7 @@ export function useContentFactoryGallery() {
 
         const baseRow = {
           project_id: projectId,
-          created_by: user.id,
+          created_by: user?.id ?? null,
           request_id: input.requestId,
           session_id: input.sessionId,
           type_id: input.typeId,
@@ -288,19 +288,18 @@ export function useContentFactoryGallery() {
           metadata: input.metadata ?? {},
         };
 
-        let { error } = await (supabase.from("content_factory_gallery" as never) as ReturnType<
-          typeof supabase.from
-        >).insert(baseRow);
+        let { error } = await sb.from("content_factory_gallery").insert(baseRow);
 
         if (error && input.brandTemplateId && /brand_template|foreign key/i.test(error.message)) {
-          ({ error } = await (supabase.from("content_factory_gallery" as never) as ReturnType<
-            typeof supabase.from
-          >).insert({ ...baseRow, brand_template_id: null }));
+          ({ error } = await sb
+            .from("content_factory_gallery")
+            .insert({ ...baseRow, brand_template_id: null }));
         }
 
         if (error) {
           if (isTableMissingError(error.message, error.code)) {
             setNeedsMigration(true);
+            setLastError(MIGRATION_HINT);
           }
           console.warn("[gallery] save", error.message);
           return cacheFallback();
@@ -315,7 +314,7 @@ export function useContentFactoryGallery() {
         return cacheFallback();
       }
     },
-    [projectId, user?.id, load],
+    [projectId, sb, user?.id, load],
   );
 
   saveItemRef.current = saveItemInternal;
@@ -324,20 +323,18 @@ export function useContentFactoryGallery() {
     void load();
   }, [load]);
 
-  // Пока есть незавершённые request_id — опрашиваем content_factory_results
   useEffect(() => {
-    if (!projectId || !clientConfigSupabase) return;
+    if (!projectId || !sb) return;
 
     const tick = () => {
-      const saved = savedRequestIdsRef.current;
-      const pending = getPendingRequestIds(projectId, saved);
+      const pending = getPendingRequestIds(projectId, savedRequestIdsRef.current);
       if (pending.length === 0) return;
       void load();
     };
 
     const interval = window.setInterval(tick, 12_000);
     return () => window.clearInterval(interval);
-  }, [projectId, load, items.length]);
+  }, [projectId, sb, load, items.length]);
 
   const removeItem = useCallback(
     async (id: string) => {
@@ -348,16 +345,14 @@ export function useContentFactoryGallery() {
         return;
       }
 
-      const { error } = await (supabase.from("content_factory_gallery" as never) as ReturnType<
-        typeof supabase.from
-      >)
-        .delete()
-        .eq("id", id);
+      if (!sb) throw new Error("Clony Supabase не настроен");
+
+      const { error } = await sb.from("content_factory_gallery").delete().eq("id", id);
       if (error) throw new Error(error.message);
       if (item?.request_id) markRequestSaved(projectId!, item.request_id);
       setItems((prev) => prev.filter((i) => i.id !== id));
     },
-    [items, projectId],
+    [items, projectId, sb],
   );
 
   return {
