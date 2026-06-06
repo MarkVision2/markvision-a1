@@ -65,6 +65,7 @@ import {
 } from "@/lib/contentFactoryLogo";
 import { useBrandTemplates } from "@/hooks/useBrandTemplates";
 import { useContentFactoryGallery } from "@/hooks/useContentFactoryGallery";
+import { registerGalleryBatch } from "@/lib/contentFactoryGalleryStore";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
   Collapsible,
@@ -750,6 +751,25 @@ const CreateStep3 = () => {
         promptsByRequestId: {},
       };
 
+      if (projectId) {
+        registerGalleryBatch({
+          batchId,
+          projectId,
+          typeId: galleryMetaRef.current.typeId,
+          typeTitle: galleryMetaRef.current.typeTitle,
+          brandTemplateId: galleryMetaRef.current.brandTemplateId,
+          createdAt: new Date().toISOString(),
+          items: selectedStyles.map((styleId) => {
+            const styleDef = activeStyles.find((s) => s.id === styleId)!;
+            return {
+              requestId: `${batchId}:${styleDef.id}`,
+              styleId: styleDef.id,
+              styleLabel: styleDef.label,
+            };
+          }),
+        });
+      }
+
       setStatusMessage(
         `Запускаем ${selectedStyles.length} ${selectedStyles.length === 1 ? "генерацию" : "генерации"}...`,
       );
@@ -1065,6 +1085,26 @@ const CreateStep3 = () => {
       const failCount = variants.length - okCount;
       const readyCount = variants.filter((v) => !v.error && v.imageUrl).length;
       setResults(variants);
+
+      const meta = galleryMetaRef.current;
+      if (meta && projectId) {
+        for (const v of variants) {
+          if (!v.imageUrl || !v.requestId) continue;
+          void saveGalleryItem({
+            requestId: v.requestId,
+            sessionId: meta.batchId,
+            typeId: meta.typeId,
+            typeTitle: meta.typeTitle,
+            styleId: v.styleId,
+            styleLabel: v.styleLabel,
+            imageUrl: v.imageUrl,
+            promptSnapshot: meta.promptsByRequestId[v.requestId],
+            brandTemplateId: meta.brandTemplateId,
+            metadata: { source: "batch-complete" },
+          });
+        }
+      }
+
       if (okCount === 0) {
         setStatus("error");
         setStatusMessage(
