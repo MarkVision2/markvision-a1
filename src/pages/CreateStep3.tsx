@@ -956,6 +956,11 @@ const CreateStep3 = () => {
     }
   };
 
+  const startNewDesign = () => {
+    setTaskDialogOpen(false);
+    navigate("/");
+  };
+
   return (
     <main className="min-h-screen">
       <Header onClose={() => navigate("/")} />
@@ -1726,23 +1731,32 @@ const CreateStep3 = () => {
             </div>
           )}
 
-          <DialogFooter className="sm:justify-center">
-            <Button
-              variant={status === "success" ? "default" : "outline"}
-              onClick={() => setTaskDialogOpen(false)}
-              disabled={submitting}
-              className="min-w-[140px]"
-            >
-              {submitting
-                ? "Отправляем…"
-                : status === "success"
-                  ? "Посмотреть результат"
-                  : status === "error"
-                    ? "Закрыть"
-                    : status === "queued"
-                      ? "Свернуть и ждать"
-                      : "Скрыть"}
-            </Button>
+          <DialogFooter className="flex-col gap-2 sm:flex-col sm:justify-center">
+            {status === "queued" ? (
+              <Button onClick={startNewDesign} className="min-w-[200px] gap-2">
+                <Plus className="h-4 w-4" />
+                Создать новый дизайн
+              </Button>
+            ) : status === "success" ? (
+              <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
+                <Button variant="outline" onClick={() => setTaskDialogOpen(false)} className="min-w-[160px]">
+                  Посмотреть результат
+                </Button>
+                <Button onClick={startNewDesign} className="min-w-[200px] gap-2">
+                  <Plus className="h-4 w-4" />
+                  Создать новый дизайн
+                </Button>
+              </div>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={() => setTaskDialogOpen(false)}
+                disabled={submitting}
+                className="min-w-[140px]"
+              >
+                {submitting ? "Отправляем…" : status === "error" ? "Закрыть" : "Скрыть"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
