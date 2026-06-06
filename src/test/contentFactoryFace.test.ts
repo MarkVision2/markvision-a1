@@ -16,7 +16,7 @@ describe("contentFactoryFace", () => {
     expect(r.enabled).toBe(true);
     expect(r.pipeline).toBe("neuro_face_banner");
     expect(r.task).toBe("neuro_photo_session");
-    expect(r.photosRole).toBe("face_reference");
+    expect(r.photosRole).toBe("face");
   });
 
   it("uses neuro_photo_session for neuro-photo type", () => {
