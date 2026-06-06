@@ -44,3 +44,6 @@ verify_jwt = true
 
 [functions.content-factory-proxy]
 verify_jwt = true
+
+[functions.content-factory-cleanup]
+verify_jwt = false
