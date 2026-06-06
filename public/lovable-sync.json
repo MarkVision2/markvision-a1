@@ -1,7 +1,7 @@
 {
-  "git_sha": "236143e",
-  "git_sha_full": "236143e3b4e5e9b9183bce1bce94794fdd0c63ad",
-  "updated_at": "2026-06-05T08:20:46Z",
-  "label": "perf(crm): lazy-load CRM tab views (audit P1)",
+  "git_sha": "46625e8",
+  "git_sha_full": "46625e8533f502d2d2cf404804cf6569ff1cf50b",
+  "updated_at": "2026-06-06T06:22:46Z",
+  "label": "Добавил CTA, стиль и цель",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
