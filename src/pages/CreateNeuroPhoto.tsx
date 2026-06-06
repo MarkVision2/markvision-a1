@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { getContentTypeFlow } from "@/data/contentTypeFlows";
 import type { AspectId } from "@/data/contentTypeFlows";
 import type { AngleId, NeuroStyleId } from "@/data/neuroStyles";
-import { clearWizardState, persistWizardState } from "@/lib/contentFactoryBrief";
+import { persistWizardState } from "@/lib/contentFactoryBrief";
 import { CONTENT_TYPES } from "@/data/contentTypes";
 import { toast } from "sonner";
 
@@ -57,7 +57,6 @@ const CreateNeuroPhoto = () => {
       overlayText: "",
     };
 
-    clearWizardState();
     persistWizardState(state);
     navigate("/create/step-3", { state });
   };

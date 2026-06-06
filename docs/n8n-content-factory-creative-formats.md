@@ -1,6 +1,6 @@
 # n8n: форматы креатива (creative_format)
 
-Воркфлоу: **Clony AI** — https://n8n.zapoinov.com/workflow/sWhNUAx8tFXU0O47  
+Воркфлоу: **Clony AI MarkVision** — https://n8n.zapoinov.com/workflow/dCQ20aXv6B9LRjDe  
 Webhook: `clony-yurii`
 
 Фронт (шаг 3) отправляет **реальные рекламные форматы**, а не абстрактные «стили».  

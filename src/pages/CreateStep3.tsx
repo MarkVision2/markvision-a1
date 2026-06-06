@@ -73,13 +73,18 @@ import {
 import {
   buildLogoWebhookFields,
   logoPromptBlock,
-  mergeImageUrls,
   peoplePhotosPromptBlock,
 } from "@/lib/contentFactoryLogo";
 import { useBrandTemplates } from "@/hooks/useBrandTemplates";
 import { useContentFactoryGallery } from "@/hooks/useContentFactoryGallery";
 import { registerGalleryBatch } from "@/lib/contentFactoryGalleryStore";
 import { buildContentFactoryRequestId } from "@/lib/contentFactoryRequestId";
+import {
+  assertNeuroPhotoPayload,
+  buildContentFactoryFormatFields,
+  buildContentFactoryImageUrls,
+  buildMarketingWebhookFields,
+} from "@/lib/contentFactoryPayload";
 import {
   isNeuroPhotoTypeId,
   resolveContentTypeRoute,
@@ -661,6 +666,13 @@ const CreateStep3 = () => {
       });
       return;
     }
+    if (isNeuroPhoto && !clientConfigSupabase) {
+      toast.error("Storage Clony не настроен", {
+        description:
+          "Задайте VITE_CLIENT_SUPABASE_URL и VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY в Lovable → Environment.",
+      });
+      return;
+    }
     setSubmitting(true);
     setResults(null);
     setStatus("sending");
@@ -744,16 +756,36 @@ const CreateStep3 = () => {
       const effectiveLogoUrl = isNeuroPhoto
         ? null
         : (logoUrl ?? brandTemplate?.logo_url ?? null);
-      const imageUrls = isNeuroPhoto
-        ? []
-        : mergeImageUrls({
-            logoUrl: effectiveLogoUrl,
-            peopleUrls: peoplePhotoUrls,
-            assetUrls: productPhotoUrls,
-            brandUrls: brandImageUrls(brandTemplate).filter(
-              (u) => u !== effectiveLogoUrl,
-            ),
-          });
+
+      if (isNeuroPhoto && peoplePhotoUrls.length === 0 && brief.peoplePhotos.length > 0) {
+        throw new Error(
+          "Селфи не загрузилось в Storage. Проверьте VITE_CLIENT_SUPABASE_URL в настройках Lovable.",
+        );
+      }
+
+      const batchTypeId = (effectiveTypeId ?? contentType?.id ?? "") as string;
+      const batchFacePipeline = resolveFacePipeline({
+        typeId: batchTypeId,
+        isNeuroPhotoType: isNeuroPhoto,
+        inputMode: brief.mode ?? (isNeuroPhoto ? "photo" : null),
+        peoplePhotosCount: brief.peoplePhotos.length,
+      });
+      const imageUrls = buildContentFactoryImageUrls({
+        isNeuroPhoto,
+        facePipeline: batchFacePipeline,
+        logoUrl: effectiveLogoUrl,
+        peoplePhotoUrls,
+        productPhotoUrls,
+        brandUrls: brandImageUrls(brandTemplate).filter((u) => u !== effectiveLogoUrl),
+      });
+
+      const marketingFields = buildMarketingWebhookFields({
+        step3: flow.step3,
+        isNeuroPhoto,
+        cta,
+        tone,
+        goal,
+      });
 
       galleryMetaRef.current = {
         batchId,
@@ -918,24 +950,14 @@ const CreateStep3 = () => {
           const linkValue =
             brief.mode === "link" && brief.linkUrl ? brief.linkUrl : undefined;
           const creativeFormat = !isNeuroPhoto ? resolveCreativeFormat(styleDef.id) : null;
-          const formatFields = isNeuroPhoto
-            ? {
-                style_id: styleDef.id,
-                n8n_pipeline:
-                  styleDef.id === "auto"
-                    ? "neuro_auto"
-                    : `neuro_${String(styleDef.id).replace("neuro_", "")}`,
-                style: styleDef.label,
-              }
-            : creativeFormat
+          const formatFields = buildContentFactoryFormatFields({
+            isNeuroPhoto,
+            styleId: styleDef.id,
+            styleLabel: styleDef.label,
+            creativeFormatFields: creativeFormat
               ? buildFormatWebhookFields(creativeFormat)
-              : {
-                  style_id: styleDef.id,
-                  creative_format: styleDef.id,
-                  creative_format_label: styleDef.label,
-                  n8n_pipeline: `neuro_${String(styleDef.id).replace("neuro_", "")}`,
-                  style: styleDef.label,
-                };
+              : null,
+          });
 
           const flatForN8n: Record<string, unknown> = {
             // routing ключ для Switch1 (читает body.content_type)
@@ -957,17 +979,7 @@ const CreateStep3 = () => {
             image_count: slidesCount,
             // niche / cta — содержательные сведения о продукте для fb-target.
             fb_niche: nicheBits,
-            // CTA / маркетинг — только для рекламных форматов (не нейрофото).
-            ctas: isNeuroPhoto ? "" : cta.phrase,
-            cta_id: isNeuroPhoto ? "" : cta.id,
-            cta_label: isNeuroPhoto ? "" : cta.label,
-            cta_phrase: isNeuroPhoto ? "" : cta.phrase,
-            tone: isNeuroPhoto ? "" : tone.id,
-            tone_label: isNeuroPhoto ? "" : tone.label,
-            tone_description: isNeuroPhoto ? "" : tone.description,
-            goal: isNeuroPhoto ? "" : goal.id,
-            goal_label: isNeuroPhoto ? "" : goal.label,
-            goal_description: isNeuroPhoto ? "" : goal.description,
+            ...marketingFields.flat,
             generation_pipeline: facePipeline.pipeline,
             username: "",
             platform: "web",
@@ -988,6 +1000,23 @@ const CreateStep3 = () => {
           if (linkValue) flatForN8n.link = linkValue;
           // audio_url намеренно НЕ выставляем — нет аудио в content-factory.
 
+          if (isNeuroPhoto) {
+            const check = assertNeuroPhotoPayload({
+              content_type: flatForN8n.content_type as string,
+              route,
+              task,
+              generation_pipeline: facePipeline.pipeline,
+              neuro_photo_session: Boolean(faceFields.neuro_photo_session),
+              face_reference_enabled: Boolean(faceFields.face_reference_enabled),
+              photos_role: String(faceFields.photos_role ?? ""),
+              people_photo_urls: peoplePhotoUrls,
+              primary_face_url: String(faceFields.primary_face_url ?? ""),
+              image_urls: imageUrls,
+            });
+            if (!check.ok) {
+              throw new Error(`Нейрофото: ${check.reason}`);
+            }
+          }
 
           const payload = {
             source: "lovable.content-factory",
@@ -1030,10 +1059,11 @@ const CreateStep3 = () => {
               photosCount:
                 brief.mode === "photo" ? brief.photos.length : 0,
               peoplePhotosCount:
-                brief.mode === "photo" ? brief.peoplePhotos.length : 0,
-              // Только метаданные. Файлы залиты в Storage, URL — в image_urls.
-              photos: brief.mode === "photo" ? brief.photoMeta : [],
-              peoplePhotos: brief.mode === "photo" ? brief.peoplePhotoMeta : [],
+                brief.mode === "photo" || isNeuroPhoto ? brief.peoplePhotos.length : 0,
+              photos:
+                brief.mode === "photo" || isNeuroPhoto ? brief.photoMeta : [],
+              peoplePhotos:
+                brief.mode === "photo" || isNeuroPhoto ? brief.peoplePhotoMeta : [],
               logo: brief.logoFile
                 ? {
                     name: brief.logoFile.name,
@@ -1078,11 +1108,7 @@ const CreateStep3 = () => {
                 swatch: color?.swatch ?? null,
               },
             },
-            marketing: {
-              cta: { id: cta.id, label: cta.label, phrase: cta.phrase, description: cta.description },
-              tone: { id: tone.id, label: tone.label, description: tone.description },
-              goal: { id: goal.id, label: goal.label, description: goal.description },
-            },
+            marketing: marketingFields.nested,
           };
 
 

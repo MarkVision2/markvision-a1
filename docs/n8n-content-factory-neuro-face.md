@@ -1,6 +1,6 @@
 # n8n: нейрофотосессия с лицом человека
 
-Воркфлоу: **Clony AI** — https://n8n.zapoinov.com/workflow/sWhNUAx8tFXU0O47
+Воркфлоу: **Clony AI MarkVision** — https://n8n.zapoinov.com/workflow/dCQ20aXv6B9LRjDe
 
 ## Когда срабатывает
 
@@ -23,7 +23,7 @@
 | `people_photo_urls` | string[] | Все URL референсов лица |
 | `output_content_type` | string | Формат баннера: `fb-target`, `banner`, `neuro-photo`… |
 | `output_format_label` | string | Человекочитаемое название формата |
-| `photos_role` | string | `face_reference` при нейролице |
+| `photos_role` | string | `face` при нейролице, `brand_assets` без лица |
 
 `content_type` / `route` — **формат выхода** (не менять).  
 `task` = `neuro_photo_session` — **как генерировать** (с лицом).
