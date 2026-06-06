@@ -1,39 +1,15 @@
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import {
-  ArrowLeft,
-  ArrowRight,
-  Maximize,
-  Square,
-  Smartphone,
-  Monitor,
-  FileText,
-  Film,
-  Globe,
-  Layers,
-  Check,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, Globe, Layers, Maximize, Check } from "lucide-react";
 import Header from "@/components/factory/Header";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { persistWizardState } from "@/lib/contentFactoryBrief";
+import { getContentTypeFlow, type AspectId } from "@/data/contentTypeFlows";
+import { AspectRatioPicker } from "@/components/factory/AspectRatioPicker";
+import { VariantCountPicker } from "@/components/factory/VariantCountPicker";
 
-type AspectId = "1:1" | "4:5" | "9:16" | "16:9" | "3:4" | "21:9";
 type LangId = "ru" | "kz" | "en";
-
-const ASPECTS: {
-  id: AspectId;
-  label: string;
-  sub: string;
-  icon: typeof Square;
-}[] = [
-  { id: "1:1", label: "1:1", sub: "Квадрат", icon: Square },
-  { id: "4:5", label: "4:5", sub: "Portrait", icon: Smartphone },
-  { id: "9:16", label: "9:16", sub: "Stories / Reels", icon: Smartphone },
-  { id: "16:9", label: "16:9", sub: "YouTube", icon: Monitor },
-  { id: "3:4", label: "3:4", sub: "Базовый", icon: FileText },
-  { id: "21:9", label: "21:9", sub: "Ultrawide", icon: Film },
-];
 
 const LANGS: { id: LangId; code: string; label: string }[] = [
   { id: "ru", code: "RU", label: "Русский" },
@@ -41,172 +17,123 @@ const LANGS: { id: LangId; code: string; label: string }[] = [
   { id: "en", code: "EN", label: "English" },
 ];
 
-const VARIANT_COUNTS = [1, 3, 5, 7, 10];
-
 const CreateStep2 = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const prevState = (location.state ?? {}) as Record<string, unknown>;
-  const [aspect, setAspect] = useState<AspectId>("4:5");
+  const typeId = typeof prevState.typeId === "string" ? prevState.typeId : undefined;
+  const flow = getContentTypeFlow(typeId);
+  const step2 = flow.step2;
+
+  const [aspect, setAspect] = useState<AspectId>(step2.defaultAspect);
   const [lang, setLang] = useState<LangId>("ru");
-  const [variants, setVariants] = useState<number>(7);
+  const [variants, setVariants] = useState<number>(step2.defaultVariants);
+
+  const variantUnit =
+    step2.variantsLabel.toLowerCase().includes("слайд")
+      ? "слайдов"
+      : step2.variantsLabel.toLowerCase().includes("фото")
+        ? "фото"
+        : "вариантов";
 
   return (
     <main className="min-h-screen">
       <Header onClose={() => navigate("/")} />
 
       <section className="container max-w-5xl pt-10 pb-16 sm:pt-14 animate-fade-in-up">
-        {/* Step badge */}
         <div className="inline-flex items-center rounded-xl border border-primary/40 bg-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-primary">
-          Шаг 2 из 3
+          Шаг 2 из {flow.totalSteps}
         </div>
 
-        {/* Title */}
         <h1 className="mt-6 text-4xl font-bold tracking-tight sm:text-5xl">
-          Настройки формата
+          {step2.label}
         </h1>
         <p className="mt-3 text-base text-muted-foreground sm:text-lg">
-          Настройки можно пропустить, если подходят базовые
+          {step2.subtitle || "Настройки можно пропустить, если подходят базовые"}
         </p>
 
-        {/* Aspect ratios */}
-        <div className="mt-10">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
-              <Maximize className="h-4 w-4" />
-            </span>
-            Соотношение сторон
+        {step2.showAspect && (
+          <div className="mt-10">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
+                <Maximize className="h-4 w-4" />
+              </span>
+              Соотношение сторон
+            </div>
+            <div className="mt-4">
+              <AspectRatioPicker
+                value={aspect}
+                onChange={setAspect}
+                allowed={step2.aspects}
+              />
+            </div>
           </div>
+        )}
 
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6">
-            {ASPECTS.map((a) => {
-              const Icon = a.icon;
-              const selected = aspect === a.id;
-              return (
-                <button
-                  key={a.id}
-                  type="button"
-                  onClick={() => setAspect(a.id)}
-                  aria-pressed={selected}
-                  className={cn(
-                    "group relative flex flex-col items-center justify-center gap-2 rounded-2xl border border-border bg-card px-4 py-6 text-center transition-all duration-300",
-                    "hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-elevated",
-                    selected && "border-primary bg-gradient-card-hover shadow-glow",
-                  )}
-                >
-                  {selected && (
-                    <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-primary text-primary-foreground">
-                      <Check className="h-3.5 w-3.5" />
-                    </span>
-                  )}
-                  <Icon
+        {step2.showLang && (
+          <div className="mt-10">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
+                <Globe className="h-4 w-4" />
+              </span>
+              Язык текста
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+              {LANGS.map((l) => {
+                const selected = lang === l.id;
+                return (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => setLang(l.id)}
+                    aria-pressed={selected}
                     className={cn(
-                      "h-8 w-8 text-primary/80 transition-colors",
-                      selected && "text-primary",
-                    )}
-                    strokeWidth={1.5}
-                  />
-                  <div className="mt-1 text-xl font-bold text-foreground">
-                    {a.label}
-                  </div>
-                  <div className="text-xs text-muted-foreground">{a.sub}</div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Language */}
-        <div className="mt-10">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
-              <Globe className="h-4 w-4" />
-            </span>
-            Язык текста
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
-            {LANGS.map((l) => {
-              const selected = lang === l.id;
-              return (
-                <button
-                  key={l.id}
-                  type="button"
-                  onClick={() => setLang(l.id)}
-                  aria-pressed={selected}
-                  className={cn(
-                    "group relative flex flex-col items-center justify-center gap-1 rounded-2xl border border-border bg-card px-6 py-7 text-center transition-all duration-300",
-                    "hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-elevated",
-                    selected && "border-primary bg-gradient-card-hover shadow-glow",
-                  )}
-                >
-                  {selected && (
-                    <span className="absolute right-3 top-3 grid h-6 w-6 place-items-center rounded-full bg-primary text-primary-foreground">
-                      <Check className="h-3.5 w-3.5" />
-                    </span>
-                  )}
-                  <div
-                    className={cn(
-                      "text-3xl font-bold tracking-wider text-primary/80",
-                      selected && "text-primary",
+                      "group relative flex flex-col items-center justify-center gap-1 rounded-2xl border border-border bg-card px-6 py-7 text-center transition-all duration-300",
+                      "hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-elevated",
+                      selected && "border-primary bg-gradient-card-hover shadow-glow",
                     )}
                   >
-                    {l.code}
-                  </div>
-                  <div className="text-sm text-muted-foreground">{l.label}</div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Variants */}
-        <div className="mt-10">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
-              <Layers className="h-4 w-4" />
-            </span>
-            Количество слайдов / Вариантов
-          </div>
-
-          <div className="mt-4 grid grid-cols-3 gap-3 sm:grid-cols-5 sm:gap-4">
-            {VARIANT_COUNTS.map((n) => {
-              const selected = variants === n;
-              return (
-                <button
-                  key={n}
-                  type="button"
-                  onClick={() => setVariants(n)}
-                  aria-pressed={selected}
-                  className={cn(
-                    "group relative flex flex-col items-center justify-center gap-1 rounded-2xl border border-border bg-card px-4 py-6 text-center transition-all duration-300",
-                    "hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-elevated",
-                    selected && "border-primary bg-gradient-card-hover shadow-glow",
-                  )}
-                >
-                  {selected && (
-                    <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-primary text-primary-foreground">
-                      <Check className="h-3.5 w-3.5" />
-                    </span>
-                  )}
-                  <div
-                    className={cn(
-                      "text-3xl font-bold text-primary/80",
-                      selected && "text-primary",
+                    {selected && (
+                      <span className="absolute right-3 top-3 grid h-6 w-6 place-items-center rounded-full bg-primary text-primary-foreground">
+                        <Check className="h-3.5 w-3.5" />
+                      </span>
                     )}
-                  >
-                    {n}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {n === 1 ? "1 вариант" : `${n} вариантов`}
-                  </div>
-                </button>
-              );
-            })}
+                    <div
+                      className={cn(
+                        "text-3xl font-bold tracking-wider text-primary/80",
+                        selected && "text-primary",
+                      )}
+                    >
+                      {l.code}
+                    </div>
+                    <div className="text-sm text-muted-foreground">{l.label}</div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Footer */}
+        {step2.showVariants && (
+          <div className="mt-10">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
+                <Layers className="h-4 w-4" />
+              </span>
+              {step2.variantsLabel}
+            </div>
+            <div className="mt-4">
+              <VariantCountPicker
+                value={variants}
+                onChange={setVariants}
+                counts={step2.variantCounts}
+                unitLabel={variantUnit}
+              />
+            </div>
+          </div>
+        )}
+
         <div className="mt-12 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Button
             variant="outline"

@@ -31,6 +31,7 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { CONTENT_TYPES } from "@/data/contentTypes";
+import { getContentTypeFlow } from "@/data/contentTypeFlows";
 import { postContentFactory } from "@/lib/contentFactory";
 import {
   uploadContentFactoryPhotos,
@@ -72,13 +73,22 @@ import {
 import {
   buildLogoWebhookFields,
   logoPromptBlock,
-  mergeImageUrls,
   peoplePhotosPromptBlock,
 } from "@/lib/contentFactoryLogo";
 import { useBrandTemplates } from "@/hooks/useBrandTemplates";
 import { useContentFactoryGallery } from "@/hooks/useContentFactoryGallery";
 import { registerGalleryBatch } from "@/lib/contentFactoryGalleryStore";
 import { buildContentFactoryRequestId } from "@/lib/contentFactoryRequestId";
+import {
+  assertNeuroPhotoPayload,
+  buildContentFactoryFormatFields,
+  buildContentFactoryImageUrls,
+  buildMarketingWebhookFields,
+} from "@/lib/contentFactoryPayload";
+import {
+  isNeuroPhotoTypeId,
+  resolveContentTypeRoute,
+} from "@/lib/contentFactoryRoutes";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
   Collapsible,
@@ -334,17 +344,55 @@ const CreateStep3 = () => {
     persistWizardState((location.state ?? {}) as WizardInputState);
   }, [location.state]);
 
-  const contentType = CONTENT_TYPES.find(
-    (t) => t.id === wizardState.typeId,
-  );
-  const isNeuroPhoto = contentType?.category === "ai";
+  const neuroAutoSubmit = wizardState.neuroAutoSubmit === true;
+  const effectiveTypeId =
+    wizardState.typeId ?? (neuroAutoSubmit ? "neuro-photo" : undefined);
+  const contentType = CONTENT_TYPES.find((t) => t.id === effectiveTypeId);
+  const isNeuroPhoto = isNeuroPhotoTypeId(effectiveTypeId);
+  const flow = getContentTypeFlow(effectiveTypeId);
+  const autoSubmitStarted = useRef(false);
+
+  /** File[] не сохраняются в sessionStorage — держим из location.state. */
+  const wizardFilesRef = useRef({
+    peoplePhotos: ((location.state ?? {}) as WizardInputState).peoplePhotos ?? [],
+    photos: ((location.state ?? {}) as WizardInputState).photos ?? [],
+    logoFile: ((location.state ?? {}) as WizardInputState).logoFile ?? null,
+  });
+
+  useEffect(() => {
+    const s = (location.state ?? {}) as WizardInputState;
+    if (s.peoplePhotos?.length) wizardFilesRef.current.peoplePhotos = s.peoplePhotos;
+    if (s.photos?.length) wizardFilesRef.current.photos = s.photos;
+    if (s.logoFile) wizardFilesRef.current.logoFile = s.logoFile;
+  }, [location.state]);
+
+  useEffect(() => {
+    if (!neuroAutoSubmit || autoSubmitStarted.current) return;
+    const selfies =
+      wizardFilesRef.current.peoplePhotos.length ||
+      (wizardState.peoplePhotos?.length ?? 0);
+    if (!isNeuroPhotoTypeId(effectiveTypeId) || selfies === 0) return;
+    autoSubmitStarted.current = true;
+    const t = window.setTimeout(() => void handleCreate(), 250);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [neuroAutoSubmit, effectiveTypeId, wizardState.peoplePhotos?.length]);
+
   const activeStyles = isNeuroPhoto ? NEURO_STYLES : STYLES;
   const defaultStyle: StyleId = isNeuroPhoto ? "neuro_business" : "ugc";
+  const initialStyles =
+    wizardState.selectedStyles?.length
+      ? (wizardState.selectedStyles as StyleId[])
+      : [defaultStyle];
+  const initialAngles =
+    wizardState.selectedAngles?.length
+      ? (wizardState.selectedAngles as AngleId[])
+      : isNeuroPhoto
+        ? ["front", "three_quarter"]
+        : [];
 
-  const [selectedStyles, setSelectedStyles] = useState<StyleId[]>([defaultStyle]);
-  const [selectedAngles, setSelectedAngles] = useState<AngleId[]>(
-    isNeuroPhoto ? ["front", "three_quarter"] : [],
-  );
+  const [selectedStyles, setSelectedStyles] = useState<StyleId[]>(initialStyles);
+  const [selectedAngles, setSelectedAngles] = useState<AngleId[]>(initialAngles);
   const [colorId, setColorId] = useState<ColorId>("auto");
   const [ctaId, setCtaId] = useState<CtaId>("learn_more");
   const [toneId, setToneId] = useState<ToneId>("selling");
@@ -518,14 +566,18 @@ const CreateStep3 = () => {
   };
 
   const buildBriefPrompt = async () => {
-    const mode = wizardState.mode ?? null;
+    const mode = wizardState.mode ?? (isNeuroPhoto ? "photo" : null);
     const linkUrl = wizardState.linkUrl ?? "";
     const description = wizardState.description ?? "";
     const productName = wizardState.productName ?? "";
     const extraInstructions = wizardState.extraInstructions ?? "";
-    const photos = wizardState.photos ?? [];
-    const peoplePhotos = wizardState.peoplePhotos ?? [];
-    const logoFile = wizardState.logoFile ?? null;
+    const photos = wizardFilesRef.current.photos.length
+      ? wizardFilesRef.current.photos
+      : (wizardState.photos ?? []);
+    const peoplePhotos = wizardFilesRef.current.peoplePhotos.length
+      ? wizardFilesRef.current.peoplePhotos
+      : (wizardState.peoplePhotos ?? []);
+    const logoFile = wizardFilesRef.current.logoFile ?? wizardState.logoFile ?? null;
 
     const photoMeta = photos.map((f, idx) => ({
       index: idx,
@@ -588,13 +640,18 @@ const CreateStep3 = () => {
       toast.error("Выберите минимум 1 стиль");
       return;
     }
-    if (isBriefTooEmpty(wizardState)) {
+    const selfieCount =
+      wizardFilesRef.current.peoplePhotos.length ||
+      (wizardState.peoplePhotos?.length ?? 0);
+
+    if (!isNeuroPhoto && isBriefTooEmpty(wizardState)) {
       toast.error("ТЗ пустое", {
         description: "Вернитесь на шаг 1: добавьте ссылку, описание или фото.",
       });
       return;
     }
     if (
+      !isNeuroPhoto &&
       normalizeCopyMode(wizardState.copyMode) === "custom" &&
       !(wizardState.overlayText ?? "").trim()
     ) {
@@ -603,13 +660,16 @@ const CreateStep3 = () => {
       });
       return;
     }
-    if (
-      isNeuroPhoto &&
-      wizardState.mode === "photo" &&
-      (wizardState.peoplePhotos?.length ?? 0) === 0
-    ) {
+    if (isNeuroPhoto && selfieCount === 0) {
       toast.error("Загрузите фото человека", {
-        description: "Для нейрофотосессии нужно селфи или портрет на шаге 1.",
+        description: "Для нейрофотосессии нужно селфи или портрет.",
+      });
+      return;
+    }
+    if (isNeuroPhoto && !clientConfigSupabase) {
+      toast.error("Storage Clony не настроен", {
+        description:
+          "Задайте VITE_CLIENT_SUPABASE_URL и VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY в Lovable → Environment.",
       });
       return;
     }
@@ -627,14 +687,16 @@ const CreateStep3 = () => {
       const cta = CTAS.find((c) => c.id === ctaId)!;
       const tone = TONES.find((t) => t.id === toneId)!;
       const goal = GOALS.find((g) => g.id === goalId)!;
-      const briefPromptWithMeta = buildBriefWithMarketing(wizardState, {
-        goalLabel: goal.label,
-        goalDescription: goal.description,
-        toneLabel: tone.label,
-        toneDescription: tone.description,
-        ctaPhrase: cta.phrase,
-      });
-      const brief = { ...briefRaw, prompt: briefPromptWithMeta };
+      const briefPromptWithMeta = isNeuroPhoto
+        ? buildUserBriefText(wizardState)
+        : buildBriefWithMarketing(wizardState, {
+            goalLabel: goal.label,
+            goalDescription: goal.description,
+            toneLabel: tone.label,
+            toneDescription: tone.description,
+            ctaPhrase: cta.phrase,
+          });
+      const brief = { ...briefRaw, prompt: briefPromptWithMeta, mode: briefRaw.mode ?? (isNeuroPhoto ? "photo" : briefRaw.mode) };
       const color = COLORS.find((c) => c.id === colorId);
 
 
@@ -669,7 +731,7 @@ const CreateStep3 = () => {
         }
       }
 
-      if (brief.mode === "photo" && brief.peoplePhotos.length > 0) {
+      if ((brief.mode === "photo" || isNeuroPhoto) && brief.peoplePhotos.length > 0) {
         uploadedPeople = await uploadContentFactoryPhotos(brief.peoplePhotos, batchId, "people");
         if (uploadedPeople.length < brief.peoplePhotos.length) {
           toast.warning(
@@ -691,19 +753,43 @@ const CreateStep3 = () => {
 
       const peoplePhotoUrls = uploadedPeople.map((a) => a.url);
       const productPhotoUrls = uploadedAssets.map((a) => a.url);
-      const effectiveLogoUrl = logoUrl ?? brandTemplate?.logo_url ?? null;
-      const imageUrls = mergeImageUrls({
+      const effectiveLogoUrl = isNeuroPhoto
+        ? null
+        : (logoUrl ?? brandTemplate?.logo_url ?? null);
+
+      if (isNeuroPhoto && peoplePhotoUrls.length === 0 && brief.peoplePhotos.length > 0) {
+        throw new Error(
+          "Селфи не загрузилось в Storage. Проверьте VITE_CLIENT_SUPABASE_URL в настройках Lovable.",
+        );
+      }
+
+      const batchTypeId = (effectiveTypeId ?? contentType?.id ?? "") as string;
+      const batchFacePipeline = resolveFacePipeline({
+        typeId: batchTypeId,
+        isNeuroPhotoType: isNeuroPhoto,
+        inputMode: brief.mode ?? (isNeuroPhoto ? "photo" : null),
+        peoplePhotosCount: brief.peoplePhotos.length,
+      });
+      const imageUrls = buildContentFactoryImageUrls({
+        isNeuroPhoto,
+        facePipeline: batchFacePipeline,
         logoUrl: effectiveLogoUrl,
-        peopleUrls: peoplePhotoUrls,
-        assetUrls: productPhotoUrls,
-        brandUrls: brandImageUrls(brandTemplate).filter(
-          (u) => u !== effectiveLogoUrl,
-        ),
+        peoplePhotoUrls,
+        productPhotoUrls,
+        brandUrls: brandImageUrls(brandTemplate).filter((u) => u !== effectiveLogoUrl),
+      });
+
+      const marketingFields = buildMarketingWebhookFields({
+        step3: flow.step3,
+        isNeuroPhoto,
+        cta,
+        tone,
+        goal,
       });
 
       galleryMetaRef.current = {
         batchId,
-        typeId: contentType?.id ?? wizardState.typeId ?? "",
+        typeId: effectiveTypeId ?? contentType?.id ?? "",
         typeTitle: contentType?.title ?? "",
         brandTemplateId: brandTemplate?.id ?? null,
         promptsByRequestId: {},
@@ -749,29 +835,15 @@ const CreateStep3 = () => {
             label: s.label,
             description: s.description,
           }));
-          const typeId = (contentType?.id ?? wizardState.typeId ?? "") as string;
+          const typeId = (effectiveTypeId ?? contentType?.id ?? "") as string;
           const facePipeline = resolveFacePipeline({
             typeId,
             isNeuroPhotoType: isNeuroPhoto,
-            inputMode: brief.mode,
+            inputMode: brief.mode ?? (isNeuroPhoto ? "photo" : null),
             peoplePhotosCount: brief.peoplePhotos.length,
           });
           const task = facePipeline.task;
-          // Routing-ключ для n8n Switch-ноды. ДОЛЖЕН совпадать с именами веток
-          // в воркфлоу: insta-carousel, fb-target, youtube, events, google ads,
-          // neuro-photo, reels-cover, instagram-stories, banner, marketplace, logo.
-          const ROUTE_MAP: Record<string, string> = {
-            "facebook-ads": "fb-target",
-            "google-ads": "google ads",
-            "marketplace": "marketplace",
-            "insta-carousel": "insta-carousel",
-            "reels-cover": "reels-cover",
-            "stories": "instagram-stories",
-            "youtube-thumb": "youtube",
-            "web-banner": "banner",
-            "neuro-photo": "neuro-photo",
-          };
-          const route = ROUTE_MAP[typeId] ?? "Fallback";
+          const route = resolveContentTypeRoute(typeId);
           const anglesPayload = isNeuroPhoto
             ? selectedAngles.map((aid) => {
                 const a = ANGLES.find((x) => x.id === aid)!;
@@ -801,7 +873,7 @@ const CreateStep3 = () => {
           let finalTechnicalBrief = userEdited
             ? (editedBriefs[styleDef.id] as string)
             : built.technicalBrief;
-          if (effectiveLogoUrl) {
+          if (!isNeuroPhoto && effectiveLogoUrl) {
             finalTechnicalBrief = `${finalTechnicalBrief}\n\n--- Логотип ---\n${logoPromptBlock(effectiveLogoUrl)}`;
           }
           if (facePipeline.enabled) {
@@ -810,15 +882,17 @@ const CreateStep3 = () => {
               facePipeline.pipeline,
               contentType?.title,
             )}`;
-          } else if (brief.mode === "photo" && brief.peoplePhotos.length > 0) {
+          } else if (!isNeuroPhoto && brief.mode === "photo" && brief.peoplePhotos.length > 0) {
             finalTechnicalBrief = `${finalTechnicalBrief}\n\n--- Фото людей ---\n${peoplePhotosPromptBlock(brief.peoplePhotos.length)}`;
           }
-          if (brandTemplate) {
+          if (!isNeuroPhoto && brandTemplate) {
             finalTechnicalBrief = `${finalTechnicalBrief}\n\n--- Бренд ---\n${brandPromptBlock(brandTemplate)}`;
           }
-          const copyMode = normalizeCopyMode(wizardState.copyMode);
-          const overlayText = (wizardState.overlayText ?? "").trim();
-          finalTechnicalBrief = `${finalTechnicalBrief}\n\n--- Текст на креативе ---\n${copyPromptBlock(copyMode, overlayText)}`;
+          const copyMode = isNeuroPhoto ? "auto" : normalizeCopyMode(wizardState.copyMode);
+          const overlayText = isNeuroPhoto ? "" : (wizardState.overlayText ?? "").trim();
+          if (!isNeuroPhoto) {
+            finalTechnicalBrief = `${finalTechnicalBrief}\n\n--- Текст на креативе ---\n${copyPromptBlock(copyMode, overlayText)}`;
+          }
 
           const requestId = buildContentFactoryRequestId(
             projectId ?? "",
@@ -829,16 +903,18 @@ const CreateStep3 = () => {
             galleryMetaRef.current.promptsByRequestId[requestId] = finalTechnicalBrief;
           }
 
-          const brandFields = buildBrandWebhookFields(brandTemplate);
-          const copyFields = buildCopyWebhookFields(
-            copyMode,
-            overlayText,
-            brief.extraInstructions,
-          );
-          const logoFields = buildLogoWebhookFields(
-            effectiveLogoUrl,
-            logoUrl ? "wizard_upload" : brandTemplate?.logo_url ? "brand_template" : "",
-          );
+          const brandFields = isNeuroPhoto
+            ? buildBrandWebhookFields(null)
+            : buildBrandWebhookFields(brandTemplate);
+          const copyFields = isNeuroPhoto
+            ? { copy_mode: "auto", overlay_text: "", overlay_text_required: false, use_exact_overlay_text: false, extra_instructions: brief.extraInstructions ?? "" }
+            : buildCopyWebhookFields(copyMode, overlayText, brief.extraInstructions);
+          const logoFields = isNeuroPhoto
+            ? buildLogoWebhookFields(null)
+            : buildLogoWebhookFields(
+                effectiveLogoUrl,
+                logoUrl ? "wizard_upload" : brandTemplate?.logo_url ? "brand_template" : "",
+              );
           const faceFields = buildFaceWebhookFields({
             resolution: facePipeline,
             peoplePhotoUrls,
@@ -852,7 +928,7 @@ const CreateStep3 = () => {
           // напрямую из $node["Webhook"].json.body. Если их переименовать
           // или вложить — AI начнёт галлюцинировать (см. кейс "часы вместо
           // мир без границ"). Менять имена этих полей только синхронно с
-          // workflow в https://n8n.zapoinov.com/workflow/sWhNUAx8tFXU0O47
+          // workflow в https://n8n.zapoinov.com/workflow/dCQ20aXv6B9LRjDe
           // Один request_id на стиль — фронт по нему ловит результат
           // в content_factory_results через realtime.
           const slidesCount =
@@ -874,15 +950,14 @@ const CreateStep3 = () => {
           const linkValue =
             brief.mode === "link" && brief.linkUrl ? brief.linkUrl : undefined;
           const creativeFormat = !isNeuroPhoto ? resolveCreativeFormat(styleDef.id) : null;
-          const formatFields = creativeFormat
-            ? buildFormatWebhookFields(creativeFormat)
-            : {
-                style_id: styleDef.id,
-                creative_format: styleDef.id,
-                creative_format_label: styleDef.label,
-                n8n_pipeline: `neuro_${styleDef.id.replace("neuro_", "")}`,
-                style: styleDef.label,
-              };
+          const formatFields = buildContentFactoryFormatFields({
+            isNeuroPhoto,
+            styleId: styleDef.id,
+            styleLabel: styleDef.label,
+            creativeFormatFields: creativeFormat
+              ? buildFormatWebhookFields(creativeFormat)
+              : null,
+          });
 
           const flatForN8n: Record<string, unknown> = {
             // routing ключ для Switch1 (читает body.content_type)
@@ -904,19 +979,8 @@ const CreateStep3 = () => {
             image_count: slidesCount,
             // niche / cta — содержательные сведения о продукте для fb-target.
             fb_niche: nicheBits,
-            // CTA: готовая фраза, которую n8n должен вписать в overlay/caption.
-            ctas: cta.phrase,
-            cta_id: cta.id,
-            cta_label: cta.label,
-            cta_phrase: cta.phrase,
-            // Тон/стиль подачи контента.
-            tone: tone.id,
-            tone_label: tone.label,
-            tone_description: tone.description,
-            // Маркетинговая цель — определяет акценты в копирайте.
-            goal: goal.id,
-            goal_label: goal.label,
-            goal_description: goal.description,
+            ...marketingFields.flat,
+            generation_pipeline: facePipeline.pipeline,
             username: "",
             platform: "web",
             // tracking
@@ -936,6 +1000,23 @@ const CreateStep3 = () => {
           if (linkValue) flatForN8n.link = linkValue;
           // audio_url намеренно НЕ выставляем — нет аудио в content-factory.
 
+          if (isNeuroPhoto) {
+            const check = assertNeuroPhotoPayload({
+              content_type: flatForN8n.content_type as string,
+              route,
+              task,
+              generation_pipeline: facePipeline.pipeline,
+              neuro_photo_session: Boolean(faceFields.neuro_photo_session),
+              face_reference_enabled: Boolean(faceFields.face_reference_enabled),
+              photos_role: String(faceFields.photos_role ?? ""),
+              people_photo_urls: peoplePhotoUrls,
+              primary_face_url: String(faceFields.primary_face_url ?? ""),
+              image_urls: imageUrls,
+            });
+            if (!check.ok) {
+              throw new Error(`Нейрофото: ${check.reason}`);
+            }
+          }
 
           const payload = {
             source: "lovable.content-factory",
@@ -978,10 +1059,11 @@ const CreateStep3 = () => {
               photosCount:
                 brief.mode === "photo" ? brief.photos.length : 0,
               peoplePhotosCount:
-                brief.mode === "photo" ? brief.peoplePhotos.length : 0,
-              // Только метаданные. Файлы залиты в Storage, URL — в image_urls.
-              photos: brief.mode === "photo" ? brief.photoMeta : [],
-              peoplePhotos: brief.mode === "photo" ? brief.peoplePhotoMeta : [],
+                brief.mode === "photo" || isNeuroPhoto ? brief.peoplePhotos.length : 0,
+              photos:
+                brief.mode === "photo" || isNeuroPhoto ? brief.photoMeta : [],
+              peoplePhotos:
+                brief.mode === "photo" || isNeuroPhoto ? brief.peoplePhotoMeta : [],
               logo: brief.logoFile
                 ? {
                     name: brief.logoFile.name,
@@ -1026,11 +1108,7 @@ const CreateStep3 = () => {
                 swatch: color?.swatch ?? null,
               },
             },
-            marketing: {
-              cta: { id: cta.id, label: cta.label, phrase: cta.phrase, description: cta.description },
-              tone: { id: tone.id, label: tone.label, description: tone.description },
-              goal: { id: goal.id, label: goal.label, description: goal.description },
-            },
+            marketing: marketingFields.nested,
           };
 
 
@@ -1168,21 +1246,29 @@ const CreateStep3 = () => {
     <main className="min-h-screen">
       <Header onClose={() => navigate("/")} />
 
+      {neuroAutoSubmit && (
+        <section className="container flex min-h-[40vh] max-w-lg flex-col items-center justify-center gap-4 py-16 text-center">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <h1 className="text-xl font-semibold">Генерируем нейрофотосессию…</h1>
+          <p className="text-sm text-muted-foreground">{statusMessage || "Подготавливаем данные"}</p>
+        </section>
+      )}
+
+      {!neuroAutoSubmit && (
       <section className="container max-w-5xl pt-10 pb-16 sm:pt-14 animate-fade-in-up">
         <div className="inline-flex items-center rounded-xl border border-primary/40 bg-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-primary">
-          Шаг 3 из 3
+          Шаг 3 из {flow.totalSteps}
         </div>
 
         <h1 className="mt-6 text-4xl font-bold tracking-tight sm:text-5xl">
-          {isNeuroPhoto ? "Стиль фотосессии" : "Формат креатива"}
+          {flow.step3.label}
         </h1>
         <p className="mt-3 text-base text-muted-foreground sm:text-lg">
-          {isNeuroPhoto
-            ? `Выберите от 1 до ${MAX_STYLES} стилей съёмки — сгенерируем по одному варианту для каждого`
-            : `Выберите реальные рекламные форматы — по одному креативу на каждый (до ${MAX_STYLES})`}
+          {flow.step3.subtitle}
         </p>
 
         {/* Format / style multi-select */}
+        {(flow.step3.showCreativeFormats || flow.step3.showNeuroStyles) && (
         <div className="mt-10">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm font-medium">
@@ -1265,9 +1351,10 @@ const CreateStep3 = () => {
             </div>
           )}
         </div>
+        )}
 
         {/* Angles — only for neuro photo */}
-        {isNeuroPhoto && (
+        {flow.step3.showAngles && (
           <div className="mt-10">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-sm font-medium">
@@ -1313,6 +1400,7 @@ const CreateStep3 = () => {
         )}
 
         {/* Goal */}
+        {flow.step3.showGoal && (
         <div className="mt-10">
           <div className="flex items-center gap-2 text-sm font-medium">
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
@@ -1357,8 +1445,10 @@ const CreateStep3 = () => {
             })}
           </div>
         </div>
+        )}
 
         {/* Tone */}
+        {flow.step3.showTone && (
         <div className="mt-10">
           <div className="flex items-center gap-2 text-sm font-medium">
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
@@ -1403,8 +1493,10 @@ const CreateStep3 = () => {
             })}
           </div>
         </div>
+        )}
 
         {/* CTA */}
+        {flow.step3.showCta && (
         <div className="mt-10">
           <div className="flex items-center gap-2 text-sm font-medium">
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
@@ -1443,8 +1535,10 @@ const CreateStep3 = () => {
             })}
           </div>
         </div>
+        )}
 
         {/* Color */}
+        {flow.step3.showColor && (
         <div className="mt-10">
 
           <div className="flex items-center gap-2 text-sm font-medium">
@@ -1500,6 +1594,7 @@ const CreateStep3 = () => {
             })}
           </div>
         </div>
+        )}
 
         {/* Footer */}
         <div className="mt-12 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1686,7 +1781,15 @@ const CreateStep3 = () => {
             })}
           </CollapsibleContent>
         </Collapsible>
+      </section>
+      )}
 
+      <section
+        className={cn(
+          "container max-w-5xl pb-16",
+          neuroAutoSubmit ? "pt-4" : "-mt-6",
+        )}
+      >
         {/* Status */}
         {status !== "idle" && (
           <div

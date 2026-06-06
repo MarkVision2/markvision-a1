@@ -15,7 +15,8 @@ export interface FacePipelineResolution {
   enabled: boolean;
   pipeline: GenerationPipeline;
   task: "neuro_photo_session" | "ad_creative";
-  photosRole: "face_reference" | "brand_assets";
+  /** n8n: "face" при референсе лица, иначе "brand_assets" */
+  photosRole: "face" | "brand_assets";
 }
 
 export function resolveFacePipeline(ctx: FacePipelineContext): FacePipelineResolution {
@@ -27,7 +28,7 @@ export function resolveFacePipeline(ctx: FacePipelineContext): FacePipelineResol
       enabled: true,
       pipeline: "neuro_photo_session",
       task: "neuro_photo_session",
-      photosRole: "face_reference",
+      photosRole: "face",
     };
   }
 
@@ -36,7 +37,7 @@ export function resolveFacePipeline(ctx: FacePipelineContext): FacePipelineResol
       enabled: true,
       pipeline: "neuro_photo_session",
       task: "neuro_photo_session",
-      photosRole: "face_reference",
+      photosRole: "face",
     };
   }
 
@@ -45,7 +46,7 @@ export function resolveFacePipeline(ctx: FacePipelineContext): FacePipelineResol
       enabled: true,
       pipeline: "neuro_face_banner",
       task: "neuro_photo_session",
-      photosRole: "face_reference",
+      photosRole: "face",
     };
   }
 

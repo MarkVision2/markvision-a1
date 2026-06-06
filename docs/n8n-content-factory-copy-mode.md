@@ -1,6 +1,6 @@
 # n8n: режим текста на креативе (copy_mode)
 
-Воркфлоу: **Clony AI** — https://n8n.zapoinov.com/workflow/sWhNUAx8tFXU0O47  
+Воркфлоу: **Clony AI MarkVision** — https://n8n.zapoinov.com/workflow/dCQ20aXv6B9LRjDe  
 Webhook: `clony-yurii`
 
 ## Новые поля в `body` (плоские, дубль в `body.*`)

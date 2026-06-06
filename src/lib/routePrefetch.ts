@@ -7,6 +7,7 @@ export const routeImports = {
   CreateStep1: () => import("@/pages/CreateStep1"),
   CreateStep2: () => import("@/pages/CreateStep2"),
   CreateStep3: () => import("@/pages/CreateStep3"),
+  CreateNeuroPhoto: () => import("@/pages/CreateNeuroPhoto"),
   Ads: () => import("@/pages/Ads"),
   Dashboard: () => import("@/pages/Dashboard"),
   Metrics: () => import("@/pages/Metrics"),
@@ -82,6 +83,9 @@ export function prefetchRoute(path: string) {
       break;
     case "/create/step-3":
       loaders.push(routeImports.CreateStep3);
+      break;
+    case "/create/neuro-photo":
+      loaders.push(routeImports.CreateNeuroPhoto);
       break;
     case "/projects/:id/strategy":
       loaders.push(routeImports.ProjectStrategy);
