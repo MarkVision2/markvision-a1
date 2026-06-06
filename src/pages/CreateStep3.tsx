@@ -367,6 +367,10 @@ const CreateStep3 = () => {
     isNeuroPhoto ? ["front", "three_quarter"] : [],
   );
   const [colorId, setColorId] = useState<ColorId>("auto");
+  const [ctaId, setCtaId] = useState<CtaId>("learn_more");
+  const [toneId, setToneId] = useState<ToneId>("selling");
+  const [goalId, setGoalId] = useState<GoalId>("conversions");
+
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<
     "idle" | "sending" | "queued" | "success" | "error"
