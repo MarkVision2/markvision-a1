@@ -608,8 +608,23 @@ const CreateStep3 = () => {
 
     let progressTimer: ReturnType<typeof setInterval> | null = null;
     try {
-      const brief = await buildBriefPrompt();
+      const briefRaw = await buildBriefPrompt();
+      const cta = CTAS.find((c) => c.id === ctaId)!;
+      const tone = TONES.find((t) => t.id === toneId)!;
+      const goal = GOALS.find((g) => g.id === goalId)!;
+      // Прокидываем стиль подачи, цель и CTA прямо в userBrief, чтобы AI-нода
+      // в n8n получила их как часть ТЗ, а не молча проигнорировала.
+      const briefPromptWithMeta = [
+        `Цель контента: ${goal.label} — ${goal.description}.`,
+        `Стиль подачи: ${tone.label} — ${tone.description}.`,
+        `Призыв к действию (CTA): "${cta.phrase}". Должен быть органично вписан в подпись/оверлей.`,
+        briefRaw.prompt,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      const brief = { ...briefRaw, prompt: briefPromptWithMeta };
       const color = COLORS.find((c) => c.id === colorId);
+
 
       // Одна партия = один batch_id. По нему аплоад фото и подписка на realtime.
       const batchId =
