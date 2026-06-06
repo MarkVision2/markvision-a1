@@ -1,11 +1,11 @@
-Замените 8 PNG-плейсхолдеров реальными примерами рекламных креативов:
-- ugc-people.png      — UGC с людьми (селфи, лицо на камеру)
-- ugc-product.png     — UGC только продукт
-- ugc-mixed.png       — UGC человек + крупный план
-- motion.png          — Motion / анимация (стоп-кадр)
-- studio.png          — Студийный, чистый фон
-- talking-head.png    — Эксперт говорит в камеру
-- before-after.png    — До-После, сравнение
-- typography.png      — Графический / типографика
+Превью форматов креатива (опционально — UI рисует CSS-арт, picsum не обязателен):
 
-Размер ~400x400 PNG. Пока картинок нет — UI автоматически подгружает заглушки с picsum.photos.
+- format-auto.png
+- format-testimonial.png   — отзыв, цитата, звёзды
+- format-ugc.png           — UGC селфи
+- format-before-after.png  — split ДО/ПОСЛЕ
+- format-product.png       — продукт hero
+- format-offer.png         — крупный оффер
+- format-expert.png        — эксперт в камеру
+
+Размер ~800×450 PNG. Без файлов UI показывает градиентные mockup-карточки.

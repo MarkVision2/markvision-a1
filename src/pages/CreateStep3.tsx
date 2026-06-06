@@ -11,13 +11,8 @@ import {
   CheckCircle2,
   Check,
   Users,
-  Package,
-  Layers,
   Sparkles,
   Camera,
-  Mic,
-  GitCompareArrows,
-  Type,
   Wand2,
   User,
   Briefcase,
@@ -41,7 +36,14 @@ import {
   uploadContentFactoryPhotos,
   type UploadedAsset,
 } from "@/lib/contentFactoryUpload";
+import { CreativeFormatPicker } from "@/components/factory/CreativeFormatPicker";
+import {
+  AUTO_FORMAT_ID,
+  CREATIVE_FORMATS,
+  type CreativeFormatId,
+} from "@/data/creativeFormats";
 import { buildStyleBrief, type StyleId as BriefStyleId } from "@/data/styleBriefs";
+import { buildFormatWebhookFields, resolveCreativeFormat } from "@/lib/contentFactoryFormat";
 import {
   buildBriefWithMarketing,
   buildUserBriefText,
@@ -92,17 +94,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 
-type StyleId =
-  | "auto"
-  | "ugc_people"
-  | "ugc_product"
-  | "ugc_mixed"
-  | "motion"
-  | "studio"
-  | "talking_head"
-  | "before_after"
-  | "typography"
-  // Neuro photo session styles
+type NeuroStyleId =
   | "neuro_business"
   | "neuro_lifestyle"
   | "neuro_studio"
@@ -110,6 +102,8 @@ type StyleId =
   | "neuro_fashion"
   | "neuro_sport"
   | "neuro_casual";
+
+type StyleId = CreativeFormatId | NeuroStyleId;
 
 interface StyleDef {
   id: StyleId;
@@ -121,81 +115,15 @@ interface StyleDef {
   isAuto?: boolean;
 }
 
-const STYLES: StyleDef[] = [
-  {
-    id: "auto",
-    label: "АВТО",
-    description: "ИИ сам подберёт лучший формат под ваше ТЗ",
-    icon: Wand2,
-    preview: "/style-previews/auto.png",
-    fallbackSeed: "auto-pick",
-    isAuto: true,
-  },
-  {
-    id: "ugc_people",
-    label: "UGC с людьми",
-    description: "Селфи-стиль, лицо на камеру, лайфстайл",
-    icon: Users,
-    preview: "/style-previews/ugc-people.png",
-    fallbackSeed: "ugc-people",
-  },
-  {
-    id: "ugc_product",
-    label: "UGC без людей",
-    description: "Только продукт: в руках, дома, в использовании",
-    icon: Package,
-    preview: "/style-previews/ugc-product.png",
-    fallbackSeed: "ugc-product",
-  },
-  {
-    id: "ugc_mixed",
-    label: "UGC смешанный",
-    description: "Человек + крупные планы продукта",
-    icon: Layers,
-    preview: "/style-previews/ugc-mixed.png",
-    fallbackSeed: "ugc-mixed",
-  },
-  {
-    id: "motion",
-    label: "Motion / Анимация",
-    description: "Анимированный креатив, кинетическая типографика",
-    icon: Sparkles,
-    preview: "/style-previews/motion.png",
-    fallbackSeed: "motion-anim",
-  },
-  {
-    id: "studio",
-    label: "Студийный",
-    description: "Чистый фон, постановочный свет",
-    icon: Camera,
-    preview: "/style-previews/studio.png",
-    fallbackSeed: "studio-shot",
-  },
-  {
-    id: "talking_head",
-    label: "Talking Head",
-    description: "Эксперт говорит в камеру",
-    icon: Mic,
-    preview: "/style-previews/talking-head.png",
-    fallbackSeed: "talking-head",
-  },
-  {
-    id: "before_after",
-    label: "До-После",
-    description: "Transformation, проблема→решение",
-    icon: GitCompareArrows,
-    preview: "/style-previews/before-after.png",
-    fallbackSeed: "before-after",
-  },
-  {
-    id: "typography",
-    label: "Графический",
-    description: "Жирный текст, цвет, цифры, цитаты",
-    icon: Type,
-    preview: "/style-previews/typography.png",
-    fallbackSeed: "typography",
-  },
-];
+const STYLES: StyleDef[] = CREATIVE_FORMATS.map((f) => ({
+  id: f.id,
+  label: f.label,
+  description: f.description,
+  icon: f.icon,
+  preview: `/style-previews/${f.previewSeed}.png`,
+  fallbackSeed: f.previewSeed,
+  isAuto: f.isAuto,
+}));
 
 // Стили для нейрофотосессии (category: "ai")
 const NEURO_STYLES: StyleDef[] = [
@@ -286,7 +214,7 @@ const ANGLES: { id: AngleId; label: string; description: string }[] = [
 ];
 
 const MAX_STYLES = 4;
-const AUTO_ID: StyleId = "auto";
+const AUTO_ID: StyleId = AUTO_FORMAT_ID;
 
 type ColorId =
   | "auto"
@@ -410,7 +338,7 @@ const CreateStep3 = () => {
   );
   const isNeuroPhoto = contentType?.category === "ai";
   const activeStyles = isNeuroPhoto ? NEURO_STYLES : STYLES;
-  const defaultStyle: StyleId = isNeuroPhoto ? "neuro_business" : "ugc_people";
+  const defaultStyle: StyleId = isNeuroPhoto ? "neuro_business" : "ugc";
 
   const [selectedStyles, setSelectedStyles] = useState<StyleId[]>([defaultStyle]);
   const [selectedAngles, setSelectedAngles] = useState<AngleId[]>(
@@ -936,6 +864,17 @@ const CreateStep3 = () => {
           // с "Invalid URL". Используем undefined чтобы ключ не попал в JSON.
           const linkValue =
             brief.mode === "link" && brief.linkUrl ? brief.linkUrl : undefined;
+          const creativeFormat = !isNeuroPhoto ? resolveCreativeFormat(styleDef.id) : null;
+          const formatFields = creativeFormat
+            ? buildFormatWebhookFields(creativeFormat)
+            : {
+                style_id: styleDef.id,
+                creative_format: styleDef.id,
+                creative_format_label: styleDef.label,
+                n8n_pipeline: `neuro_${styleDef.id.replace("neuro_", "")}`,
+                style: styleDef.label,
+              };
+
           const flatForN8n: Record<string, unknown> = {
             // routing ключ для Switch1 (читает body.content_type)
             content_type: route,
@@ -948,8 +887,7 @@ const CreateStep3 = () => {
             description: resolveProductDescription(wizardState, finalTechnicalBrief),
             // Публичные URL фото из Supabase Storage. n8n берёт первое как референс.
             image_urls: imageUrls,
-            // стиль / цвет / язык / aspect — flat string, не объект
-            style: styleDef.label,
+            ...formatFields,
             color: color?.label ?? "auto",
             language: wizardState.lang ?? "ru",
             aspect: wizardState.aspect ?? "1:1",
@@ -1227,22 +1165,22 @@ const CreateStep3 = () => {
         </div>
 
         <h1 className="mt-6 text-4xl font-bold tracking-tight sm:text-5xl">
-          {isNeuroPhoto ? "Стиль фотосессии" : "Стиль дизайна"}
+          {isNeuroPhoto ? "Стиль фотосессии" : "Формат креатива"}
         </h1>
         <p className="mt-3 text-base text-muted-foreground sm:text-lg">
           {isNeuroPhoto
             ? `Выберите от 1 до ${MAX_STYLES} стилей съёмки — сгенерируем по одному варианту для каждого`
-            : `Выберите от 1 до ${MAX_STYLES} форматов — сгенерируем по одному креативу для каждого`}
+            : `Выберите реальные рекламные форматы — по одному креативу на каждый (до ${MAX_STYLES})`}
         </p>
 
-        {/* Style multi-select */}
+        {/* Format / style multi-select */}
         <div className="mt-10">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm font-medium">
               <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
                 <Palette className="h-4 w-4" />
               </span>
-              {isNeuroPhoto ? "Стиль съёмки" : "Стиль креатива"}
+              {isNeuroPhoto ? "Стиль съёмки" : "Формат"}
             </div>
             <div className="text-xs text-muted-foreground">
               Выбрано:{" "}
@@ -1253,64 +1191,70 @@ const CreateStep3 = () => {
             </div>
           </div>
 
-          <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-            {activeStyles.map((s) => {
-              const Icon = s.icon;
-              const selected = selectedStyles.includes(s.id);
-              const order = selected ? selectedStyles.indexOf(s.id) + 1 : null;
-              return (
-                <button
-                  key={s.id}
-                  type="button"
-                  onClick={() => toggleStyle(s.id)}
-                  aria-pressed={selected}
-                  aria-label={`${s.label}: ${s.description}`}
-                  style={{ minHeight: 260 }}
-                  className={cn(
-                    "group relative flex w-full flex-col overflow-hidden rounded-2xl border bg-card text-left transition-all duration-300",
-                    "hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-elevated",
-                    selected
-                      ? "border-primary shadow-glow ring-2 ring-primary/60"
-                      : "border-border",
-                  )}
-                >
-                  {/* Preview — top 60% */}
-                  <div className="relative aspect-[5/3] w-full overflow-hidden bg-secondary/40">
-                    <StylePreviewImage style={s} selected={selected} />
-                    <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card/90 via-card/10 to-transparent" />
-                    {selected && order !== null && (
-                      <span className="absolute left-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-primary text-xs font-bold text-primary-foreground shadow-glow">
-                        {order}
-                      </span>
+          {isNeuroPhoto ? (
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+              {activeStyles.map((s) => {
+                const Icon = s.icon;
+                const selected = selectedStyles.includes(s.id);
+                const order = selected ? selectedStyles.indexOf(s.id) + 1 : null;
+                return (
+                  <button
+                    key={s.id}
+                    type="button"
+                    onClick={() => toggleStyle(s.id)}
+                    aria-pressed={selected}
+                    aria-label={`${s.label}: ${s.description}`}
+                    style={{ minHeight: 260 }}
+                    className={cn(
+                      "group relative flex w-full flex-col overflow-hidden rounded-2xl border bg-card text-left transition-all duration-300",
+                      "hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-elevated",
+                      selected
+                        ? "border-primary shadow-glow ring-2 ring-primary/60"
+                        : "border-border",
                     )}
-                    <span
-                      className={cn(
-                        "absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full border-2 transition-all",
-                        selected
-                          ? "border-primary bg-primary text-primary-foreground"
-                          : "border-white/70 bg-black/30 text-transparent backdrop-blur-sm",
+                  >
+                    <div className="relative aspect-[5/3] w-full overflow-hidden bg-secondary/40">
+                      <StylePreviewImage style={s} selected={selected} />
+                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card/90 via-card/10 to-transparent" />
+                      {selected && order !== null && (
+                        <span className="absolute left-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-primary text-xs font-bold text-primary-foreground shadow-glow">
+                          {order}
+                        </span>
                       )}
-                    >
-                      <Check className="h-4 w-4" />
-                    </span>
-                    <span className="absolute bottom-2 left-2 grid h-8 w-8 place-items-center rounded-lg bg-background/85 text-primary backdrop-blur">
-                      <Icon className="h-4 w-4" strokeWidth={2} />
-                    </span>
-                  </div>
-
-                  {/* Text — bottom 40% */}
-                  <div className="flex flex-1 flex-col justify-center gap-1 px-3 py-3">
-                    <div className="text-sm font-semibold leading-tight text-foreground">
-                      {s.label}
+                      <span
+                        className={cn(
+                          "absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full border-2 transition-all",
+                          selected
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-white/70 bg-black/30 text-transparent backdrop-blur-sm",
+                        )}
+                      >
+                        <Check className="h-4 w-4" />
+                      </span>
+                      <span className="absolute bottom-2 left-2 grid h-8 w-8 place-items-center rounded-lg bg-background/85 text-primary backdrop-blur">
+                        <Icon className="h-4 w-4" strokeWidth={2} />
+                      </span>
                     </div>
-                    <div className="text-xs leading-snug text-muted-foreground line-clamp-2">
-                      {s.description}
+                    <div className="flex flex-1 flex-col justify-center gap-1 px-3 py-3">
+                      <div className="text-sm font-semibold leading-tight text-foreground">
+                        {s.label}
+                      </div>
+                      <div className="text-xs leading-snug text-muted-foreground line-clamp-2">
+                        {s.description}
+                      </div>
                     </div>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="mt-4">
+              <CreativeFormatPicker
+                selected={selectedStyles as CreativeFormatId[]}
+                onToggle={(id) => toggleStyle(id)}
+              />
+            </div>
+          )}
         </div>
 
         {/* Angles — only for neuro photo */}
