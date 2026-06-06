@@ -863,7 +863,13 @@ const CreateStep3 = () => {
                 swatch: color?.swatch ?? null,
               },
             },
+            marketing: {
+              cta: { id: cta.id, label: cta.label, phrase: cta.phrase, description: cta.description },
+              tone: { id: tone.id, label: tone.label, description: tone.description },
+              goal: { id: goal.id, label: goal.label, description: goal.description },
+            },
           };
+
 
           // Шлём JSON. Фото уже залиты в Supabase Storage и присутствуют
           // в payload.image_urls. n8n при multipart клал бы всё в
