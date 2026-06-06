@@ -278,7 +278,49 @@ const COLORS: { id: ColorId; label: string; swatch: string }[] = [
   { id: "custom", label: "Custom", swatch: "custom" },
 ];
 
+type CtaId =
+  | "learn_more"
+  | "code_word"
+  | "share"
+  | "subscribe"
+  | "link_in_bio"
+  | "dm_us"
+  | "comment"
+  | "save";
+
+const CTAS: { id: CtaId; label: string; phrase: string; description: string }[] = [
+  { id: "learn_more", label: "Узнать подробнее", phrase: "Узнать подробнее →", description: "Переход на сайт / в директ" },
+  { id: "code_word", label: "Кодовое слово", phrase: 'Пишите кодовое слово "СТАРТ" в директ', description: "Запуск автоворонки в DM" },
+  { id: "share", label: "Поделитесь", phrase: "Поделитесь этим с другом, кому актуально", description: "Виральный охват" },
+  { id: "subscribe", label: "Подписывайтесь", phrase: "Подписывайтесь, чтобы не пропустить", description: "Рост подписчиков" },
+  { id: "link_in_bio", label: "Ссылка в шапке", phrase: "Смотрите/читайте — ссылка в шапке профиля", description: "Переход через bio" },
+  { id: "dm_us", label: "Напишите в директ", phrase: "Напишите в директ — расскажем подробнее", description: "Лиды в DM" },
+  { id: "comment", label: "Комментарий", phrase: 'Напишите "+" в комментариях', description: "Прогрев через комменты" },
+  { id: "save", label: "Сохраните", phrase: "Сохраните, чтобы не потерять", description: "Bookmark = алгоритмический буст" },
+];
+
+type ToneId = "selling" | "native" | "engaging" | "expert" | "ugc";
+
+const TONES: { id: ToneId; label: string; description: string; icon: typeof Megaphone }[] = [
+  { id: "selling", label: "Продающий", description: "Оффер, выгода, дедлайн, CTA на действие", icon: Megaphone },
+  { id: "native", label: "Нативный", description: "Как личная рекомендация, без рекламы", icon: User },
+  { id: "engaging", label: "Вовлекающий", description: "Вопросы, интрига, провокация на реакцию", icon: MessageCircle },
+  { id: "expert", label: "Экспертный", description: "Польза, факты, кейсы, доверие", icon: Sparkles },
+  { id: "ugc", label: "UGC / отзыв", description: "От первого лица, лайфстайл, искренне", icon: Users },
+];
+
+type GoalId = "traffic" | "conversions" | "engagement" | "awareness" | "leads";
+
+const GOALS: { id: GoalId; label: string; description: string; icon: typeof Target }[] = [
+  { id: "traffic", label: "Трафик", description: "На подписки / профиль", icon: Users },
+  { id: "conversions", label: "Конверсии", description: "Переход на сайт / покупка", icon: Target },
+  { id: "engagement", label: "Вовлечённость", description: "Лайки, комментарии, реакции", icon: MessageCircle },
+  { id: "awareness", label: "Охват", description: "Узнаваемость бренда", icon: Megaphone },
+  { id: "leads", label: "Лиды", description: "Заявки в директ / WhatsApp", icon: Send },
+];
+
 interface GeneratedVariant {
+
   styleId: StyleId;
   styleLabel: string;
   imageUrl: string | null;
