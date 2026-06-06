@@ -71,6 +71,10 @@ create policy "service_role full access"
   using (true)
   with check (true);
 
--- Включаем realtime publication, чтобы фронт получал INSERT/UPDATE по WS.
-alter publication supabase_realtime
-  add table public.content_factory_results;
+-- Включаем realtime publication (идемпотентно — повторный запуск не падает).
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.content_factory_results;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
