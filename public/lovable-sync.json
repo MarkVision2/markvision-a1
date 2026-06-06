@@ -1,7 +1,7 @@
 {
-  "git_sha": "e29908b",
-  "git_sha_full": "e29908b47087ba8f33ee00ace0dbefb3b98c5d55",
+  "git_sha": "304bc04",
+  "git_sha_full": "304bc04cccdc82a3004d68e27bf4180b213310b4",
   "updated_at": "2026-06-06T12:09:54Z",
-  "label": "feat(content-factory): логотип и фото людей в мастере",
+  "label": "chore: lovable sync stamp e29908b",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
