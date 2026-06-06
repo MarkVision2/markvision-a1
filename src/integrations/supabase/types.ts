@@ -3756,6 +3756,14 @@ export type Database = {
         Args: { p_project_id: string }
         Returns: string
       }
+      save_meta_access_token: {
+        Args: { p_token: string }
+        Returns: undefined
+      }
+      save_sipuni_token: {
+        Args: { p_token: string }
+        Returns: undefined
+      }
       user_can_access_project: {
         Args: { _project_id: string }
         Returns: boolean

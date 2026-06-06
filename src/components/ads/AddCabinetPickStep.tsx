@@ -296,11 +296,7 @@ function TokenRefreshBlock({
       return;
     }
     setSaving(true);
-    const { error } = await (supabase.from("automation_settings" as never) as unknown as {
-      update: (v: Record<string, unknown>) => { eq: (col: string, val: unknown) => Promise<{ error: { message: string } | null }> };
-    })
-      .update({ meta_access_token: t })
-      .eq("id", true);
+    const { error } = await supabase.rpc("save_meta_access_token", { p_token: t });
     setSaving(false);
     if (error) {
       toast.error("Не сохранено: " + error.message);

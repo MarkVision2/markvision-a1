@@ -4,7 +4,7 @@
 set -euo pipefail
 
 PROJECT_REF="${SUPABASE_PROJECT_REF:-mekwfbqmsqiborjdrjxc}"
-FUNCS=(meta-list-ad-accounts meta-daily-sync meta-validate-cabinet)
+FUNCS=(greenapi-setup meta-list-ad-accounts meta-daily-sync meta-validate-cabinet)
 
 if [[ -z "${SUPABASE_ACCESS_TOKEN:-}" ]]; then
   echo "ERROR: export SUPABASE_ACCESS_TOKEN=<Personal Access Token from supabase.com/dashboard/account/tokens>"

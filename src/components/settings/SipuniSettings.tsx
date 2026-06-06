@@ -77,8 +77,7 @@ export function SipuniSettings() {
   const saveToken = async () => {
     if (!isAdmin || !tokenInput.trim()) return;
     setSavingToken(true);
-    const { error } = await (supabase.from("automation_settings" as any) as any)
-      .update({ sipuni_token: tokenInput.trim() }).eq("id", true);
+    const { error } = await supabase.rpc("save_sipuni_token", { p_token: tokenInput.trim() });
     setSavingToken(false);
     if (error) toast.error("Не сохранено: " + error.message);
     else {
