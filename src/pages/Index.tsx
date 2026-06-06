@@ -7,6 +7,8 @@ import { ContentFactoryGallery } from "@/components/factory/ContentFactoryGaller
 import { BrandTemplatePanel } from "@/components/factory/BrandTemplatePanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { clearWizardState } from "@/lib/contentFactoryBrief";
+import { CONTENT_TYPES } from "@/data/contentTypes";
+import { getCreateRoute } from "@/data/contentTypeFlows";
 
 const Index = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -17,8 +19,10 @@ const Index = () => {
   const handleSelect = (id: string) => {
     setSelectedId(id);
     clearWizardState();
+    const type = CONTENT_TYPES.find((t) => t.id === id);
+    const route = getCreateRoute(type);
     window.setTimeout(() => {
-      navigate("/create/step-1", { state: { typeId: id } });
+      navigate(route, { state: { typeId: id } });
     }, 200);
   };
 

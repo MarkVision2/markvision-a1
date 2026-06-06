@@ -31,6 +31,7 @@ import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { CONTENT_TYPES } from "@/data/contentTypes";
+import { getContentTypeFlow } from "@/data/contentTypeFlows";
 import { postContentFactory } from "@/lib/contentFactory";
 import {
   uploadContentFactoryPhotos,
@@ -338,13 +339,33 @@ const CreateStep3 = () => {
     (t) => t.id === wizardState.typeId,
   );
   const isNeuroPhoto = contentType?.category === "ai";
+  const flow = getContentTypeFlow(wizardState.typeId);
+  const neuroAutoSubmit = wizardState.neuroAutoSubmit === true;
+  const autoSubmitStarted = useRef(false);
+
+  useEffect(() => {
+    if (!neuroAutoSubmit || autoSubmitStarted.current) return;
+    autoSubmitStarted.current = true;
+    const t = window.setTimeout(() => void handleCreate(), 120);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [neuroAutoSubmit]);
+
   const activeStyles = isNeuroPhoto ? NEURO_STYLES : STYLES;
   const defaultStyle: StyleId = isNeuroPhoto ? "neuro_business" : "ugc";
+  const initialStyles =
+    wizardState.selectedStyles?.length
+      ? (wizardState.selectedStyles as StyleId[])
+      : [defaultStyle];
+  const initialAngles =
+    wizardState.selectedAngles?.length
+      ? (wizardState.selectedAngles as AngleId[])
+      : isNeuroPhoto
+        ? ["front", "three_quarter"]
+        : [];
 
-  const [selectedStyles, setSelectedStyles] = useState<StyleId[]>([defaultStyle]);
-  const [selectedAngles, setSelectedAngles] = useState<AngleId[]>(
-    isNeuroPhoto ? ["front", "three_quarter"] : [],
-  );
+  const [selectedStyles, setSelectedStyles] = useState<StyleId[]>(initialStyles);
+  const [selectedAngles, setSelectedAngles] = useState<AngleId[]>(initialAngles);
   const [colorId, setColorId] = useState<ColorId>("auto");
   const [ctaId, setCtaId] = useState<CtaId>("learn_more");
   const [toneId, setToneId] = useState<ToneId>("selling");
@@ -1168,21 +1189,29 @@ const CreateStep3 = () => {
     <main className="min-h-screen">
       <Header onClose={() => navigate("/")} />
 
+      {neuroAutoSubmit && (
+        <section className="container flex min-h-[40vh] max-w-lg flex-col items-center justify-center gap-4 py-16 text-center">
+          <Loader2 className="h-10 w-10 animate-spin text-primary" />
+          <h1 className="text-xl font-semibold">Генерируем нейрофотосессию…</h1>
+          <p className="text-sm text-muted-foreground">{statusMessage || "Подготавливаем данные"}</p>
+        </section>
+      )}
+
+      {!neuroAutoSubmit && (
       <section className="container max-w-5xl pt-10 pb-16 sm:pt-14 animate-fade-in-up">
         <div className="inline-flex items-center rounded-xl border border-primary/40 bg-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-primary">
-          Шаг 3 из 3
+          Шаг 3 из {flow.totalSteps}
         </div>
 
         <h1 className="mt-6 text-4xl font-bold tracking-tight sm:text-5xl">
-          {isNeuroPhoto ? "Стиль фотосессии" : "Формат креатива"}
+          {flow.step3.label}
         </h1>
         <p className="mt-3 text-base text-muted-foreground sm:text-lg">
-          {isNeuroPhoto
-            ? `Выберите от 1 до ${MAX_STYLES} стилей съёмки — сгенерируем по одному варианту для каждого`
-            : `Выберите реальные рекламные форматы — по одному креативу на каждый (до ${MAX_STYLES})`}
+          {flow.step3.subtitle}
         </p>
 
         {/* Format / style multi-select */}
+        {(flow.step3.showCreativeFormats || flow.step3.showNeuroStyles) && (
         <div className="mt-10">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm font-medium">
@@ -1265,9 +1294,10 @@ const CreateStep3 = () => {
             </div>
           )}
         </div>
+        )}
 
         {/* Angles — only for neuro photo */}
-        {isNeuroPhoto && (
+        {flow.step3.showAngles && (
           <div className="mt-10">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-sm font-medium">
@@ -1313,6 +1343,7 @@ const CreateStep3 = () => {
         )}
 
         {/* Goal */}
+        {flow.step3.showGoal && (
         <div className="mt-10">
           <div className="flex items-center gap-2 text-sm font-medium">
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
@@ -1357,8 +1388,10 @@ const CreateStep3 = () => {
             })}
           </div>
         </div>
+        )}
 
         {/* Tone */}
+        {flow.step3.showTone && (
         <div className="mt-10">
           <div className="flex items-center gap-2 text-sm font-medium">
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
@@ -1403,8 +1436,10 @@ const CreateStep3 = () => {
             })}
           </div>
         </div>
+        )}
 
         {/* CTA */}
+        {flow.step3.showCta && (
         <div className="mt-10">
           <div className="flex items-center gap-2 text-sm font-medium">
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
@@ -1443,8 +1478,10 @@ const CreateStep3 = () => {
             })}
           </div>
         </div>
+        )}
 
         {/* Color */}
+        {flow.step3.showColor && (
         <div className="mt-10">
 
           <div className="flex items-center gap-2 text-sm font-medium">
@@ -1500,6 +1537,7 @@ const CreateStep3 = () => {
             })}
           </div>
         </div>
+        )}
 
         {/* Footer */}
         <div className="mt-12 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -1686,7 +1724,15 @@ const CreateStep3 = () => {
             })}
           </CollapsibleContent>
         </Collapsible>
+      </section>
+      )}
 
+      <section
+        className={cn(
+          "container max-w-5xl pb-16",
+          neuroAutoSubmit ? "pt-4" : "-mt-6",
+        )}
+      >
         {/* Status */}
         {status !== "idle" && (
           <div

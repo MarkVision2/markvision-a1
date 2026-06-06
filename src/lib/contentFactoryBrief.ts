@@ -33,6 +33,11 @@ export interface WizardInputState {
   lang?: string;
   variants?: number;
   brandTemplateId?: string | null;
+  /** Нейрофото: стили/ракурсы с одностраничного визарда */
+  selectedStyles?: string[];
+  selectedAngles?: string[];
+  /** Автозапуск генерации без показа шага 3 */
+  neuroAutoSubmit?: boolean;
 }
 
 export interface MarketingMeta {
