@@ -1,7 +1,7 @@
 {
-  "git_sha": "c3f642a",
-  "git_sha_full": "c3f642a9339b23f177bc371a9b98f19f76e7c12a",
-  "updated_at": "2026-06-06T07:03:08Z",
-  "label": "chore: lovable sync stamp 0375a53",
-  "publish_hint": "Lovable → Publish (справа вверху) → Update"
+  "git_sha": "aafbfcd",
+  "git_sha_full": "aafbfcdf93c2b5d59d2194549bb4aab9688bce83",
+  "updated_at": "2026-06-06T07:10:43Z",
+  "label": "fix(security): security scan — tokens, RLS, SSRF",
+  "publish_hint": "Lovable → Pull main → Publish. Supabase SQL Editor: применить 20260606120000_security_scan_fixes.sql + deploy greenapi-setup"
 }
