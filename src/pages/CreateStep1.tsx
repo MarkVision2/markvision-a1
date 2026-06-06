@@ -48,7 +48,8 @@ const CreateStep1 = () => {
   const state = (location.state ?? {}) as LocationState;
   const type = CONTENT_TYPES.find((t) => t.id === state.typeId);
 
-  const [mode, setMode] = useState<SourceMode>("link");
+  const isNeuroPhotoType = type?.id === "neuro-photo";
+  const [mode, setMode] = useState<SourceMode>(isNeuroPhotoType ? "photo" : "link");
   const [linkUrl, setLinkUrl] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
   const [peoplePhotos, setPeoplePhotos] = useState<File[]>([]);
@@ -66,9 +67,16 @@ const CreateStep1 = () => {
     if (def && !brandTemplateId) setBrandTemplateId(def.id);
   }, [templates, brandTemplateId]);
 
+  useEffect(() => {
+    if (isNeuroPhotoType) setMode("photo");
+  }, [isNeuroPhotoType]);
+
   const canContinue =
     (mode === "link" && linkUrl.trim().length > 0) ||
-    (mode === "photo" && (photos.length > 0 || peoplePhotos.length > 0)) ||
+    (mode === "photo" &&
+      (isNeuroPhotoType
+        ? peoplePhotos.length > 0
+        : photos.length > 0 || peoplePhotos.length > 0)) ||
     (mode === "description" && description.trim().length > 0);
 
   const showLogoUpload = mode === "photo" || mode === "description";
@@ -125,18 +133,30 @@ const CreateStep1 = () => {
               <PhotoSource
                 files={peoplePhotos}
                 onChange={setPeoplePhotos}
-                title="Фото людей"
-                subtitle="(отдельная загрузка)"
-                hint="Загрузите фотографии людей — они будут использованы как референс лиц в креативах."
+                title={isNeuroPhotoType ? "Селфи / фото человека" : "Фото людей"}
+                subtitle={isNeuroPhotoType ? "(обязательно)" : "(отдельная загрузка)"}
+                hint={
+                  isNeuroPhotoType
+                    ? "Загрузите селфи или портрет — нейрофотосессия создаст креативы с вашим лицом."
+                    : "Загрузите фото человека — система создаст баннер через нейрофотосессию с узнаваемым лицом."
+                }
                 maxFiles={10}
               />
-              <PhotoSource
-                files={photos}
-                onChange={setPhotos}
-                title="Фото товара / контента"
-                subtitle="(до 14 файлов)"
-                hint="Продукт, интерьер, референсы — всё, кроме логотипа и фото людей."
-              />
+              {peoplePhotos.length > 0 && !isNeuroPhotoType && (
+                <p className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-3 text-xs text-foreground">
+                  Включена <span className="font-semibold">нейрофотосессия</span>: баннер будет с лицом
+                  загруженного человека.
+                </p>
+              )}
+              {!isNeuroPhotoType && (
+                <PhotoSource
+                  files={photos}
+                  onChange={setPhotos}
+                  title="Фото товара / контента"
+                  subtitle="(до 14 файлов)"
+                  hint="Продукт, интерьер, референсы — всё, кроме логотипа и фото людей."
+                />
+              )}
             </>
           )}
           {mode === "description" && (
