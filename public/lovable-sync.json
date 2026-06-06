@@ -1,7 +1,7 @@
 {
-  "git_sha": "eaa6125",
-  "git_sha_full": "eaa6125cd98ee94fb517ea1e29e4c85193a1f621",
-  "updated_at": "2026-06-06T15:19:01Z",
-  "label": "chore: lovable sync stamp 13dd167",
+  "git_sha": "ae756e6",
+  "git_sha_full": "ae756e66298296b1718a8c2851c8525a37966da1",
+  "updated_at": "2026-06-06T15:22:06Z",
+  "label": "Merge: idempotent realtime migration Clony",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
