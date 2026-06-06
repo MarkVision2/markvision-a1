@@ -11,12 +11,34 @@ import { z } from "https://esm.sh/zod@3.23.8";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
+const ALLOWED_GREEN_API_HOSTS = new Set([
+  "api.green-api.com",
+  "api.greenapi.com",
+  "7105.api.greenapi.com",
+]);
+
 const BodySchema = z.object({
   idInstance: z.string().trim().min(1),
   apiToken: z.string().trim().min(1),
   apiUrl: z.string().trim().url().optional(),
   webhookUrl: z.string().trim().url(),
 });
+
+function validateGreenApiBaseUrl(raw: string | undefined): string {
+  const fallback = "https://api.green-api.com";
+  if (!raw?.trim()) return fallback;
+  let u: URL;
+  try {
+    u = new URL(raw.trim());
+  } catch {
+    throw new Error("Invalid apiUrl");
+  }
+  if (u.protocol !== "https:") throw new Error("apiUrl must use https");
+  if (!ALLOWED_GREEN_API_HOSTS.has(u.hostname.toLowerCase())) {
+    throw new Error("apiUrl host not allowed");
+  }
+  return u.origin.replace(/\/+$/, "");
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -46,7 +68,12 @@ Deno.serve(async (req) => {
     return json({ error: "Invalid body", details: (e as Error).message }, 400);
   }
 
-  const baseUrl = (body.apiUrl || "https://api.green-api.com").replace(/\/+$/, "");
+  let baseUrl: string;
+  try {
+    baseUrl = validateGreenApiBaseUrl(body.apiUrl);
+  } catch (e) {
+    return json({ error: (e as Error).message }, 400);
+  }
   const url = `${baseUrl}/waInstance${body.idInstance}/setSettings/${body.apiToken}`;
 
   try {

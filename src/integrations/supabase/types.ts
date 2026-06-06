@@ -1072,6 +1072,7 @@ export type Database = {
           followup_2h_minutes: number
           id: boolean
           meta_access_token: string | null
+          meta_access_token_present: boolean | null
           revival_7d_days: number
           revival_7d_enabled: boolean
           revival_7d_template_key: string
@@ -3145,7 +3146,9 @@ export type Database = {
         Row: {
           ads_only: boolean
           api_token: string | null
+          api_token_present: boolean | null
           api_url: string | null
+          webhook_token_present: boolean | null
           connected: boolean
           connected_at: string | null
           display_name: string | null

@@ -47,7 +47,12 @@ export function AutomationsSettings() {
   const [running, setRunning] = useState(false);
 
   const load = async () => {
-    const { data } = await (supabase.from("automation_settings" as any) as any).select("*").eq("id", true).single();
+    const { data } = await (supabase.from("automation_settings" as any) as any)
+      .select(
+        "followup_2h_enabled, followup_2h_minutes, auto_msg_24h_enabled, auto_msg_24h_hours, auto_msg_24h_template_key, revival_7d_enabled, revival_7d_days, revival_7d_template_key",
+      )
+      .eq("id", true)
+      .single();
     if (data) {
       const next = data as unknown as Settings;
       setS(next);

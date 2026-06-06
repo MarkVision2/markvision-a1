@@ -13,7 +13,7 @@ export function useWhatsAppConfig() {
     const [configRes, statusRes] = await Promise.all([
       supabase
         .from("whatsapp_config")
-        .select("*")
+        .select("phone, display_name, connected, connected_at")
         .eq("user_id", user.id)
         .maybeSingle(),
       supabase.functions.invoke("greenapi-proxy", {

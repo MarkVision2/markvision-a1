@@ -471,7 +471,7 @@ type WaBindRow = {
   id: string;
   project_id: string | null;
   id_instance: string | null;
-  api_token: string | null;
+  api_token_present: boolean | null;
   api_url: string | null;
   phone: string | null;
   connected: boolean | null;
@@ -491,7 +491,7 @@ export function WhatsappProjectBindCard() {
     setLoading(true);
     const { data } = await supabase
       .from("whatsapp_config")
-      .select("id, project_id, id_instance, api_token, api_url, phone, connected, ads_only");
+      .select("id, project_id, id_instance, api_token_present, api_url, phone, connected, ads_only");
     setRows((data ?? []) as WaBindRow[]);
     setLoading(false);
   }, []);
@@ -501,9 +501,9 @@ export function WhatsappProjectBindCard() {
   const currentRow = rows.find((r) => r.project_id === active?.id) ?? null;
   useEffect(() => {
     setInstance(currentRow?.id_instance ?? "");
-    setApiToken(currentRow?.api_token ?? "");
+    setApiToken("");
     setApiUrl(currentRow?.api_url ?? "");
-  }, [currentRow?.id_instance, currentRow?.api_token, currentRow?.api_url]);
+  }, [currentRow?.id_instance, currentRow?.api_token_present, currentRow?.api_url]);
 
   const onBind = async () => {
     if (!active?.id) {
@@ -516,7 +516,8 @@ export function WhatsappProjectBindCard() {
       toast.error("idInstance — это число из Green API console");
       return;
     }
-    if (!token || token.length < 20) {
+    const hasStoredToken = !!currentRow?.api_token_present;
+    if (!hasStoredToken && (!token || token.length < 20)) {
       toast.error("apiTokenInstance обязателен — скопируйте его из Green API console");
       return;
     }
@@ -525,7 +526,7 @@ export function WhatsappProjectBindCard() {
       const { error } = await supabase.rpc("bind_whatsapp_to_project", {
         p_project_id: active.id,
         p_id_instance: idInstance,
-        p_api_token: token,
+        p_api_token: token.length >= 20 ? token : undefined,
         p_api_url: apiUrl.trim() || null,
       });
       if (error) throw error;
@@ -581,7 +582,11 @@ export function WhatsappProjectBindCard() {
                 <Input
                   value={apiToken}
                   onChange={(e) => setApiToken(e.target.value)}
-                  placeholder="b3e0…"
+                  placeholder={
+                    currentRow?.api_token_present
+                      ? "•••••• (оставьте пустым, чтобы не менять)"
+                      : "b3e0…"
+                  }
                   type="password"
                 />
               </div>
