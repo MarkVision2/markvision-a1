@@ -1,6 +1,9 @@
 -- Контент-завод (Clony): галерея + шаблоны бренда
 -- Проект: szfgdruhlebfvcmlvxdk
 -- project_id — UUID проекта MarkVision (без FK, таблицы projects здесь нет)
+--
+-- НЕ запускайте 006 повторно, если content_factory_results уже есть.
+-- Ошибка 42710 "already member of publication supabase_realtime" — нормальна, пропустите.
 
 -- ============================================================
 -- 1. Галерея готового контента
