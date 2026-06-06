@@ -5,11 +5,20 @@
 | Проект | Ref | Где используется |
 |--------|-----|------------------|
 | **Основной (Lovable / приложение)** | `mekwfbqmsqiborjdrjxc` | `VITE_SUPABASE_URL` — метрики, CRM, `cabinet_daily_insights` |
-| **Client (отдельный аккаунт)** | `szfgdruhlebfvcmlvxdk` | `VITE_CLIENT_SUPABASE_URL` — client_configs, часть Ads |
+| **Clony / контент-завод** | `szfgdruhlebfvcmlvxdk` | `VITE_CLIENT_SUPABASE_URL` — uploads, results, **галерея**, шаблоны бренда |
 
 Миграции метрик и SQL для `cabinet_daily_insights` выполняйте **только** в **`mekwfbqmsqiborjdrjxc`**.
 
-В `szfgdruhlebfvcmlvxdk` этой таблицы нет — ошибка `relation "public.cabinet_daily_insights" does not exist` ожидаема.
+В `szfgdruhlebfvcmlvxdk` нет таблицы `projects` и CRM-таблиц — ошибка `relation "public.projects" does not exist` значит, что SQL для MarkVision запустили в Clony.
+
+### Миграции контент-завода (Clony)
+
+В SQL Editor проекта **szfgdruhlebfvcmlvxdk** по порядку из `supabase/migrations_client_config/`:
+
+- `006_content_factory_results.sql` — результаты n8n (если ещё нет)
+- `007_content_factory_gallery_brand.sql` — галерея «Готовый контент» + шаблоны бренда + storage buckets
+
+`project_id` в этих таблицах — UUID проекта MarkVision (из приложения), **без FK** на `projects`.
 
 Personal Access Token из Supabase Dashboard часто привязан **только** к client-проекту и **не** даёт доступ к Lovable-проекту `mekwfbqmsqiborjdrjxc`. Пароль БД и SQL Editor для основного проекта — в **Lovable → Project Settings → Supabase**.
 

@@ -47,10 +47,11 @@ export function ContentFactoryGallery({ active = true }: Props) {
 
       {needsMigration && (
         <div className="rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-xs text-amber-900 dark:text-amber-100">
-          Таблица галереи не развёрнута на Supabase. Креативы показываются из результатов генерации и
+          Таблица галереи не развёрнута в Clony Supabase. Креативы показываются из результатов генерации и
           локального кэша. Примените миграцию{" "}
-          <code className="rounded bg-background/60 px-1">20260606160000_content_factory_gallery_brand.sql</code>{" "}
-          на проекте mekwfbqmsqiborjdrjxc.
+          <code className="rounded bg-background/60 px-1">007_content_factory_gallery_brand.sql</code>{" "}
+          в SQL Editor проекта <code className="rounded bg-background/60 px-1">szfgdruhlebfvcmlvxdk</code> (не
+          MarkVision / mekwfbqmsqiborjdrjxc).
         </div>
       )}
 
