@@ -13,6 +13,11 @@ export interface WizardInputState {
   extraInstructions?: string;
   photos?: File[];
   photosCount?: number;
+  /** Логотип для фирменного стиля (шаг 1, режимы photo/description). */
+  logoFile?: File | null;
+  /** Фото людей — отдельно от контентных фото (шаг 1, режим photo). */
+  peoplePhotos?: File[];
+  peoplePhotosCount?: number;
   typeId?: string;
   aspect?: string;
   lang?: string;
@@ -34,7 +39,7 @@ const WIZARD_STORAGE_KEY = "mv:create-wizard:v1";
 export function persistWizardState(patch: WizardInputState): void {
   try {
     const prev = JSON.parse(sessionStorage.getItem(WIZARD_STORAGE_KEY) || "{}") as WizardInputState;
-    const { photos: _p, ...rest } = patch;
+    const { photos: _p, logoFile: _l, peoplePhotos: _pp, ...rest } = patch;
     sessionStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify({ ...prev, ...rest }));
   } catch {
     /* ignore */
@@ -66,16 +71,31 @@ export function buildUserBriefParts(state: WizardInputState): string[] {
   const extraInstructions = (state.extraInstructions ?? "").trim();
   const photos = state.photos ?? [];
   const photosCount = state.photosCount ?? photos.length;
+  const peoplePhotos = state.peoplePhotos ?? [];
+  const peopleCount = state.peoplePhotosCount ?? peoplePhotos.length;
+  const hasLogo = Boolean(state.logoFile);
 
   const parts: string[] = [];
   if (productName) parts.push(`Товар / бренд: ${productName}`);
   if (mode === "link" && linkUrl) parts.push(`Ссылка на источник: ${linkUrl}`);
   if (mode === "description" && description) parts.push(description);
-  if (mode === "photo") {
+  if (hasLogo && (mode === "photo" || mode === "description")) {
     parts.push(
-      `Создать креативы на основе ${photosCount} загруженных фото (включая логотип, если он среди них). ` +
-        "Используй визуал, цвета и фирменный стиль из приложенных изображений.",
+      "Загружен логотип бренда. Внимательно изучи его дизайн, цвета и стиль — примени фирменный визуальный язык ко всему контенту.",
     );
+  }
+  if (mode === "photo") {
+    if (photosCount > 0) {
+      parts.push(
+        `Создать креативы на основе ${photosCount} загруженных фото товара/контента. ` +
+          "Используй визуал и детали из приложенных изображений.",
+      );
+    }
+    if (peopleCount > 0) {
+      parts.push(
+        `Отдельно загружено ${peopleCount} фото людей — используй их как референс лиц и персонажей в креативах.`,
+      );
+    }
   }
   if (extraInstructions) parts.push(`Дополнительные инструкции:\n${extraInstructions}`);
   return parts;
@@ -138,6 +158,11 @@ export function isBriefTooEmpty(state: WizardInputState): boolean {
     Boolean((state.description ?? "").trim()) ||
     Boolean((state.extraInstructions ?? "").trim());
   const hasLink = mode === "link" && Boolean((state.linkUrl ?? "").trim());
-  const hasPhotos = mode === "photo" && ((state.photos?.length ?? 0) > 0 || (state.photosCount ?? 0) > 0);
+  const hasPhotos =
+    mode === "photo" &&
+    ((state.photos?.length ?? 0) > 0 ||
+      (state.photosCount ?? 0) > 0 ||
+      (state.peoplePhotos?.length ?? 0) > 0 ||
+      (state.peoplePhotosCount ?? 0) > 0);
   return !hasText && !hasLink && !hasPhotos;
 }

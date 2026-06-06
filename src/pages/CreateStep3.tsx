@@ -57,6 +57,12 @@ import {
   brandPromptBlock,
   buildBrandWebhookFields,
 } from "@/lib/contentFactoryBrand";
+import {
+  buildLogoWebhookFields,
+  logoPromptBlock,
+  mergeImageUrls,
+  peoplePhotosPromptBlock,
+} from "@/lib/contentFactoryLogo";
 import { useBrandTemplates } from "@/hooks/useBrandTemplates";
 import { useContentFactoryGallery } from "@/hooks/useContentFactoryGallery";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -578,10 +584,19 @@ const CreateStep3 = () => {
     const productName = wizardState.productName ?? "";
     const extraInstructions = wizardState.extraInstructions ?? "";
     const photos = wizardState.photos ?? [];
+    const peoplePhotos = wizardState.peoplePhotos ?? [];
+    const logoFile = wizardState.logoFile ?? null;
 
     const photoMeta = photos.map((f, idx) => ({
       index: idx,
       field: `photo_${idx}`,
+      name: f.name,
+      mimeType: f.type,
+      size: f.size,
+    }));
+    const peoplePhotoMeta = peoplePhotos.map((f, idx) => ({
+      index: idx,
+      field: `people_photo_${idx}`,
       name: f.name,
       mimeType: f.type,
       size: f.size,
@@ -596,6 +611,9 @@ const CreateStep3 = () => {
       extraInstructions,
       photoMeta,
       photos,
+      peoplePhotos,
+      peoplePhotoMeta,
+      logoFile,
     };
   };
 
@@ -669,11 +687,41 @@ const CreateStep3 = () => {
 
       // Аплоад фото в Supabase Storage ДО старта n8n-генерации.
       // n8n читает image_urls: string[] из body — multipart-файлы не парсит.
+      let logoUrl: string | null = null;
+      let uploadedPeople: UploadedAsset[] = [];
       let uploadedAssets: UploadedAsset[] = [];
-      if (brief.mode === "photo" && brief.photos.length > 0) {
-        setStatusMessage(`Загружаем ${brief.photos.length} фото…`);
+
+      const uploadTotal =
+        (brief.logoFile ? 1 : 0) +
+        (brief.mode === "photo" ? brief.peoplePhotos.length + brief.photos.length : 0);
+
+      if (uploadTotal > 0) {
+        setStatusMessage(`Загружаем ${uploadTotal} файл(ов)…`);
         setProgress(15);
-        uploadedAssets = await uploadContentFactoryPhotos(brief.photos, batchId);
+      }
+
+      if (brief.logoFile) {
+        const logoAssets = await uploadContentFactoryPhotos([brief.logoFile], batchId, "logo");
+        logoUrl = logoAssets[0]?.url ?? null;
+        if (!logoUrl) {
+          toast.warning("Логотип не загрузился", {
+            description: "Генерация продолжится без logo_url.",
+          });
+        }
+      }
+
+      if (brief.mode === "photo" && brief.peoplePhotos.length > 0) {
+        uploadedPeople = await uploadContentFactoryPhotos(brief.peoplePhotos, batchId, "people");
+        if (uploadedPeople.length < brief.peoplePhotos.length) {
+          toast.warning(
+            `Загружено ${uploadedPeople.length} из ${brief.peoplePhotos.length} фото людей`,
+            { description: "Часть файлов не залилась — генерация пойдёт без них." },
+          );
+        }
+      }
+
+      if (brief.mode === "photo" && brief.photos.length > 0) {
+        uploadedAssets = await uploadContentFactoryPhotos(brief.photos, batchId, "assets");
         if (uploadedAssets.length < brief.photos.length) {
           toast.warning(
             `Загружено ${uploadedAssets.length} из ${brief.photos.length} фото`,
@@ -681,10 +729,18 @@ const CreateStep3 = () => {
           );
         }
       }
-      const imageUrls = [
-        ...uploadedAssets.map((a) => a.url),
-        ...brandImageUrls(brandTemplate),
-      ];
+
+      const peoplePhotoUrls = uploadedPeople.map((a) => a.url);
+      const productPhotoUrls = uploadedAssets.map((a) => a.url);
+      const effectiveLogoUrl = logoUrl ?? brandTemplate?.logo_url ?? null;
+      const imageUrls = mergeImageUrls({
+        logoUrl: effectiveLogoUrl,
+        peopleUrls: peoplePhotoUrls,
+        assetUrls: productPhotoUrls,
+        brandUrls: brandImageUrls(brandTemplate).filter(
+          (u) => u !== effectiveLogoUrl,
+        ),
+      });
 
       galleryMetaRef.current = {
         batchId,
@@ -757,6 +813,12 @@ const CreateStep3 = () => {
           let finalTechnicalBrief = userEdited
             ? (editedBriefs[styleDef.id] as string)
             : built.technicalBrief;
+          if (effectiveLogoUrl) {
+            finalTechnicalBrief = `${finalTechnicalBrief}\n\n--- Логотип ---\n${logoPromptBlock(effectiveLogoUrl)}`;
+          }
+          if (brief.mode === "photo" && brief.peoplePhotos.length > 0) {
+            finalTechnicalBrief = `${finalTechnicalBrief}\n\n--- Фото людей ---\n${peoplePhotosPromptBlock(brief.peoplePhotos.length)}`;
+          }
           if (brandTemplate) {
             finalTechnicalBrief = `${finalTechnicalBrief}\n\n--- Бренд ---\n${brandPromptBlock(brandTemplate)}`;
           }
@@ -767,6 +829,10 @@ const CreateStep3 = () => {
           }
 
           const brandFields = buildBrandWebhookFields(brandTemplate);
+          const logoFields = buildLogoWebhookFields(
+            effectiveLogoUrl,
+            logoUrl ? "wizard_upload" : brandTemplate?.logo_url ? "brand_template" : "",
+          );
 
           // ВАЖНО: эти ключи (content_type, prompt, name, description, link,
           // image_urls, color, style, language, aspect, slides, fb_niche,
@@ -837,6 +903,9 @@ const CreateStep3 = () => {
             session_id: batchId,
             input_mode: brief.mode,
             project_id: projectId ?? "",
+            people_photo_urls: peoplePhotoUrls,
+            product_photo_urls: productPhotoUrls,
+            ...logoFields,
             ...brandFields,
           };
           // Опциональные поля только если есть значение — иначе n8n IF=exists
@@ -885,9 +954,25 @@ const CreateStep3 = () => {
                   : null,
               photosCount:
                 brief.mode === "photo" ? brief.photos.length : 0,
-              // Только метаданные. Сами файлы — в FormData как photo_0..N.
+              peoplePhotosCount:
+                brief.mode === "photo" ? brief.peoplePhotos.length : 0,
+              // Только метаданные. Файлы залиты в Storage, URL — в image_urls.
               photos: brief.mode === "photo" ? brief.photoMeta : [],
-              photosRole: isNeuroPhoto ? "face_reference" : "brand_assets",
+              peoplePhotos: brief.mode === "photo" ? brief.peoplePhotoMeta : [],
+              logo: brief.logoFile
+                ? {
+                    name: brief.logoFile.name,
+                    mimeType: brief.logoFile.type,
+                    size: brief.logoFile.size,
+                    url: effectiveLogoUrl,
+                  }
+                : null,
+              photosRole:
+                brief.mode === "photo" && brief.peoplePhotos.length > 0
+                  ? "face_reference"
+                  : isNeuroPhoto
+                    ? "face_reference"
+                    : "brand_assets",
               extraInstructions: brief.extraInstructions || null,
             },
             format: {

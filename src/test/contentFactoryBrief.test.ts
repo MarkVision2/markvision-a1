@@ -53,4 +53,26 @@ describe("contentFactoryBrief", () => {
       "wildberries.ru",
     );
   });
+
+  it("включает логотип и фото людей в brief", () => {
+    const text = buildUserBriefText({
+      mode: "photo",
+      photosCount: 2,
+      peoplePhotosCount: 3,
+      logoFile: new File(["x"], "logo.png", { type: "image/png" }),
+    });
+    expect(text).toContain("логотип");
+    expect(text).toContain("3 фото людей");
+    expect(text).toContain("2 загруженных фото товара");
+  });
+
+  it("считает photo mode непустым при только peoplePhotos", () => {
+    expect(
+      isBriefTooEmpty({
+        mode: "photo",
+        peoplePhotos: [new File(["x"], "face.jpg", { type: "image/jpeg" })],
+      }),
+    ).toBe(false);
+  });
 });
+
