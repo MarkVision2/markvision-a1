@@ -78,6 +78,7 @@ import {
 import { useBrandTemplates } from "@/hooks/useBrandTemplates";
 import { useContentFactoryGallery } from "@/hooks/useContentFactoryGallery";
 import { registerGalleryBatch } from "@/lib/contentFactoryGalleryStore";
+import { buildContentFactoryRequestId } from "@/lib/contentFactoryRequestId";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
   Collapsible,
@@ -719,7 +720,11 @@ const CreateStep3 = () => {
           items: selectedStyles.map((styleId) => {
             const styleDef = activeStyles.find((s) => s.id === styleId)!;
             return {
-              requestId: `${batchId}:${styleDef.id}`,
+              requestId: buildContentFactoryRequestId(
+                projectId ?? "",
+                batchId,
+                styleDef.id,
+              ),
               styleId: styleDef.id,
               styleLabel: styleDef.label,
             };
@@ -815,7 +820,11 @@ const CreateStep3 = () => {
           const overlayText = (wizardState.overlayText ?? "").trim();
           finalTechnicalBrief = `${finalTechnicalBrief}\n\n--- Текст на креативе ---\n${copyPromptBlock(copyMode, overlayText)}`;
 
-          const requestId = `${batchId}:${styleDef.id}`;
+          const requestId = buildContentFactoryRequestId(
+            projectId ?? "",
+            batchId,
+            styleDef.id,
+          );
           if (galleryMetaRef.current) {
             galleryMetaRef.current.promptsByRequestId[requestId] = finalTechnicalBrief;
           }

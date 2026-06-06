@@ -119,6 +119,11 @@ export function ContentFactoryGallery({ active = true }: Props) {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-muted-foreground">
           Все генерации сохраняются автоматически — по сессиям, датам и типу контента.
+          {items.length > 0 && (
+            <span className="ml-1 font-medium text-foreground">
+              ({items.length} {items.length === 1 ? "креатив" : "креативов"})
+            </span>
+          )}
         </p>
         <Button
           type="button"

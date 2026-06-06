@@ -8,6 +8,7 @@ import AppSidebar from "./AppSidebar";
 import { MobileBottomNav } from "./MobileBottomNav";
 import { TaskReminderToast } from "@/components/crm/TaskReminderToast";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { ContentFactoryGalleryProvider } from "@/contexts/ContentFactoryGalleryContext";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -17,6 +18,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
   const { active } = useProjectsStore();
 
   return (
+    <ContentFactoryGalleryProvider>
     <SidebarProvider>
       <div className="flex min-h-svh w-full">
         <AppSidebar />
@@ -53,6 +55,7 @@ const AppLayout = ({ children }: AppLayoutProps) => {
       </div>
       <TaskReminderToast />
     </SidebarProvider>
+    </ContentFactoryGalleryProvider>
   );
 };
 

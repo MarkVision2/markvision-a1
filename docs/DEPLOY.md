@@ -18,6 +18,7 @@
 - `006_content_factory_results.sql` — результаты n8n (если ещё нет)
 - `007_content_factory_gallery_brand.sql` — галерея «Готовый контент» + шаблоны бренда + storage buckets
 - `009_content_factory_cleanup.sql` — RPC `cleanup_content_factory_data` + журнал `content_factory_cleanup_log`
+- `010_results_project_id.sql` — `project_id` в `content_factory_results` (галерея грузит все креативы проекта)
 
 `project_id` в этих таблицах — UUID проекта MarkVision (из приложения), **без FK** на `projects`.
 

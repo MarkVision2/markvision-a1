@@ -37,25 +37,29 @@ export interface CachedGalleryItem {
   source: "cache" | "results";
 }
 
-const STORAGE_KEY = "mv:cfgallery:v1";
+const STORAGE_KEY = "mv:cfgallery:v2";
 const MAX_BATCHES_PER_PROJECT = 120;
+const MAX_SESSIONS_PER_PROJECT = 500;
 
 interface StorageShape {
   batches: Record<string, GalleryBatchTrack[]>;
   cache: Record<string, CachedGalleryItem[]>;
+  /** Все session/batch id проекта — для подгрузки results после перезагрузки */
+  sessions: Record<string, string[]>;
 }
 
 function readStorage(): StorageShape {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { batches: {}, cache: {} };
+    if (!raw) return { batches: {}, cache: {}, sessions: {} };
     const parsed = JSON.parse(raw) as StorageShape;
     return {
       batches: parsed.batches ?? {},
       cache: parsed.cache ?? {},
+      sessions: parsed.sessions ?? {},
     };
   } catch {
-    return { batches: {}, cache: {} };
+    return { batches: {}, cache: {}, sessions: {} };
   }
 }
 
@@ -67,8 +71,24 @@ function writeStorage(data: StorageShape): void {
   }
 }
 
+export function registerProjectSession(projectId: string, sessionId: string): void {
+  if (!projectId || !sessionId) return;
+  const data = readStorage();
+  const list = data.sessions[projectId] ?? [];
+  if (!list.includes(sessionId)) {
+    data.sessions[projectId] = [sessionId, ...list].slice(0, MAX_SESSIONS_PER_PROJECT);
+    writeStorage(data);
+  }
+}
+
+export function getProjectSessions(projectId: string): string[] {
+  if (!projectId) return [];
+  return readStorage().sessions[projectId] ?? [];
+}
+
 export function registerGalleryBatch(track: GalleryBatchTrack): void {
   if (!track.projectId || !track.batchId) return;
+  registerProjectSession(track.projectId, track.batchId);
   const data = readStorage();
   const list = data.batches[track.projectId] ?? [];
   const withoutDup = list.filter((b) => b.batchId !== track.batchId);
@@ -102,7 +122,10 @@ export function findBatchItemMeta(
   brandTemplateId: string | null;
 }) | null {
   for (const batch of getGalleryBatches(projectId)) {
-    const item = batch.items.find((i) => i.requestId === requestId);
+    const item = batch.items.find((i) => {
+      if (i.requestId === requestId) return true;
+      return requestId.endsWith(`:${i.styleId}`) && requestId.includes(batch.batchId);
+    });
     if (item) {
       return {
         ...item,
@@ -114,6 +137,19 @@ export function findBatchItemMeta(
     }
   }
   return null;
+}
+
+/** Все session_id проекта: localStorage + галерея в БД */
+export function collectKnownSessionIds(
+  projectId: string,
+  dbSessionIds: string[] = [],
+): Set<string> {
+  const ids = new Set<string>([
+    ...getProjectSessions(projectId),
+    ...getGalleryBatches(projectId).map((b) => b.batchId),
+    ...dbSessionIds.filter(Boolean),
+  ]);
+  return ids;
 }
 
 export function cacheGalleryItem(projectId: string, item: CachedGalleryItem): void {
