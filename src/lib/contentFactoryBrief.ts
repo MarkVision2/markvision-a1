@@ -3,6 +3,12 @@
  * Превью и реальная отправка должны использовать одни и те же функции.
  */
 
+import {
+  copyPromptBlock,
+  normalizeCopyMode,
+  type CopyMode,
+} from "@/lib/contentFactoryCopy";
+
 export type WizardMode = "link" | "photo" | "description" | string | null;
 
 export interface WizardInputState {
@@ -11,6 +17,10 @@ export interface WizardInputState {
   description?: string;
   productName?: string;
   extraInstructions?: string;
+  /** auto = AI пишет текст; custom = дословный overlay */
+  copyMode?: CopyMode;
+  /** Точный текст для наложения (режим custom) */
+  overlayText?: string;
   photos?: File[];
   photosCount?: number;
   /** Логотип для фирменного стиля (шаг 1, режимы photo/description). */
@@ -68,6 +78,8 @@ export function buildUserBriefParts(state: WizardInputState): string[] {
   const linkUrl = (state.linkUrl ?? "").trim();
   const description = (state.description ?? "").trim();
   const productName = (state.productName ?? "").trim();
+  const copyMode = normalizeCopyMode(state.copyMode);
+  const overlayText = (state.overlayText ?? "").trim();
   const extraInstructions = (state.extraInstructions ?? "").trim();
   const photos = state.photos ?? [];
   const photosCount = state.photosCount ?? photos.length;
@@ -97,7 +109,10 @@ export function buildUserBriefParts(state: WizardInputState): string[] {
       );
     }
   }
-  if (extraInstructions) parts.push(`Дополнительные инструкции:\n${extraInstructions}`);
+  parts.push(copyPromptBlock(copyMode, overlayText));
+  if (copyMode === "auto" && extraInstructions) {
+    parts.push(`Дополнительные пожелания для AI:\n${extraInstructions}`);
+  }
   return parts;
 }
 
@@ -153,10 +168,14 @@ export function resolveProductDescription(
 
 export function isBriefTooEmpty(state: WizardInputState): boolean {
   const mode = state.mode ?? null;
+  const hasCustomOverlay =
+    normalizeCopyMode(state.copyMode) === "custom" &&
+    Boolean((state.overlayText ?? "").trim());
   const hasText =
     Boolean((state.productName ?? "").trim()) ||
     Boolean((state.description ?? "").trim()) ||
-    Boolean((state.extraInstructions ?? "").trim());
+    Boolean((state.extraInstructions ?? "").trim()) ||
+    hasCustomOverlay;
   const hasLink = mode === "link" && Boolean((state.linkUrl ?? "").trim());
   const hasPhotos =
     mode === "photo" &&

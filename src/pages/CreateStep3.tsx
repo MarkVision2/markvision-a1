@@ -58,6 +58,11 @@ import {
   buildBrandWebhookFields,
 } from "@/lib/contentFactoryBrand";
 import {
+  buildCopyWebhookFields,
+  copyPromptBlock,
+  normalizeCopyMode,
+} from "@/lib/contentFactoryCopy";
+import {
   buildLogoWebhookFields,
   logoPromptBlock,
   mergeImageUrls,
@@ -655,6 +660,15 @@ const CreateStep3 = () => {
       });
       return;
     }
+    if (
+      normalizeCopyMode(wizardState.copyMode) === "custom" &&
+      !(wizardState.overlayText ?? "").trim()
+    ) {
+      toast.error("Введите текст для наложения", {
+        description: "Режим «Вставить свой текст» — укажите точную подпись на шаге 1.",
+      });
+      return;
+    }
     setSubmitting(true);
     setResults(null);
     setStatus("sending");
@@ -842,6 +856,9 @@ const CreateStep3 = () => {
           if (brandTemplate) {
             finalTechnicalBrief = `${finalTechnicalBrief}\n\n--- Бренд ---\n${brandPromptBlock(brandTemplate)}`;
           }
+          const copyMode = normalizeCopyMode(wizardState.copyMode);
+          const overlayText = (wizardState.overlayText ?? "").trim();
+          finalTechnicalBrief = `${finalTechnicalBrief}\n\n--- Текст на креативе ---\n${copyPromptBlock(copyMode, overlayText)}`;
 
           const requestId = `${batchId}:${styleDef.id}`;
           if (galleryMetaRef.current) {
@@ -849,6 +866,11 @@ const CreateStep3 = () => {
           }
 
           const brandFields = buildBrandWebhookFields(brandTemplate);
+          const copyFields = buildCopyWebhookFields(
+            copyMode,
+            overlayText,
+            brief.extraInstructions,
+          );
           const logoFields = buildLogoWebhookFields(
             effectiveLogoUrl,
             logoUrl ? "wizard_upload" : brandTemplate?.logo_url ? "brand_template" : "",
@@ -915,7 +937,6 @@ const CreateStep3 = () => {
             goal: goal.id,
             goal_label: goal.label,
             goal_description: goal.description,
-            extra_instructions: brief.extraInstructions || "",
             username: "",
             platform: "web",
             // tracking
@@ -925,6 +946,7 @@ const CreateStep3 = () => {
             project_id: projectId ?? "",
             people_photo_urls: peoplePhotoUrls,
             product_photo_urls: productPhotoUrls,
+            ...copyFields,
             ...logoFields,
             ...brandFields,
           };
@@ -993,6 +1015,8 @@ const CreateStep3 = () => {
                   : isNeuroPhoto
                     ? "face_reference"
                     : "brand_assets",
+              copyMode,
+              overlayText: copyMode === "custom" ? overlayText : null,
               extraInstructions: brief.extraInstructions || null,
             },
             format: {

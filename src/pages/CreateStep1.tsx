@@ -9,7 +9,9 @@ import DescriptionSource from "@/components/factory/sources/DescriptionSource";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, Link2, Image as ImageIcon, FileText } from "lucide-react";
 import { CONTENT_TYPES } from "@/data/contentTypes";
+import { CopyModePanel } from "@/components/factory/CopyModePanel";
 import { persistWizardState } from "@/lib/contentFactoryBrief";
+import type { CopyMode } from "@/lib/contentFactoryCopy";
 import { BrandTemplatePicker } from "@/components/factory/BrandTemplatePicker";
 import { useBrandTemplates } from "@/hooks/useBrandTemplates";
 
@@ -53,6 +55,8 @@ const CreateStep1 = () => {
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [description, setDescription] = useState("");
   const [productName, setProductName] = useState("");
+  const [copyMode, setCopyMode] = useState<CopyMode>("auto");
+  const [overlayText, setOverlayText] = useState("");
   const [extraInstructions, setExtraInstructions] = useState("");
   const [brandTemplateId, setBrandTemplateId] = useState<string | null>(null);
   const { templates } = useBrandTemplates();
@@ -149,21 +153,14 @@ const CreateStep1 = () => {
           <BrandTemplatePicker value={brandTemplateId} onChange={setBrandTemplateId} />
         </div>
 
-        {/* Extra instructions (всегда доступно) */}
-        <div className="mt-10 border-t border-border pt-8">
-          <label htmlFor="extra-instructions" className="flex items-center gap-2 text-sm font-medium">
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
-              <FileText className="h-4 w-4" />
-            </span>
-            Дополнительные инструкции (Текст или Голос)
-          </label>
-          <textarea
-            id="extra-instructions"
-            value={extraInstructions}
-            onChange={(e) => setExtraInstructions(e.target.value)}
-            placeholder="Добавьте детали: акцент на преимуществах, яркие цвета, строгий стиль..."
-            rows={4}
-            className="mt-3 w-full resize-none rounded-2xl border border-border bg-secondary/40 px-5 py-4 text-sm text-foreground placeholder:text-muted-foreground/70 outline-none transition-colors focus:border-primary/60 focus:bg-secondary/60"
+        <div className="mt-10">
+          <CopyModePanel
+            mode={copyMode}
+            onModeChange={setCopyMode}
+            overlayText={overlayText}
+            onOverlayTextChange={setOverlayText}
+            extraHints={extraInstructions}
+            onExtraHintsChange={setExtraInstructions}
           />
         </div>
 
@@ -182,6 +179,8 @@ const CreateStep1 = () => {
                 linkUrl,
                 description,
                 productName,
+                copyMode,
+                overlayText,
                 extraInstructions,
                 photosCount: photos.length,
                 photos,
