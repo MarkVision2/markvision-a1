@@ -1,7 +1,7 @@
 {
-  "git_sha": "459cccd",
-  "git_sha_full": "459cccd8f76b189716adde39576357005811209d",
+  "git_sha": "7409300",
+  "git_sha_full": "74093005306b4d152724b150f6cb376c4b668a7e",
   "updated_at": "2026-06-06T09:10:43Z",
-  "label": "fix(security): token RPC save_meta/save_sipuni",
+  "label": "chore: lovable sync stamp 12c2a89",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
