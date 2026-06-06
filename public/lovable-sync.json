@@ -1,7 +1,7 @@
 {
-  "git_sha": "13dd167",
-  "git_sha_full": "13dd167d8d3970baa01995b110e10285407fcefe",
+  "git_sha": "eaa6125",
+  "git_sha_full": "eaa6125cd98ee94fb517ea1e29e4c85193a1f621",
   "updated_at": "2026-06-06T15:19:01Z",
-  "label": "fix: галерея контент-завода в Clony Supabase",
+  "label": "chore: lovable sync stamp 13dd167",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
