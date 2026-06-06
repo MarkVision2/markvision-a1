@@ -2,14 +2,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { getContentFactoryDb } from "@/lib/contentFactoryDb";
+import { CONTENT_TYPES } from "@/data/contentTypes";
 import {
   cacheGalleryItem,
   findBatchItemMeta,
   getCachedGalleryItems,
+  getGalleryBatches,
   getPendingRequestIds,
   markRequestSaved,
   type CachedGalleryItem,
 } from "@/lib/contentFactoryGalleryStore";
+import {
+  collectAllTrackedRequestIds,
+  resolveItemCategory,
+} from "@/lib/contentFactoryGalleryUtils";
+
+const GALLERY_LIMIT = 300;
 
 export interface GalleryItem {
   id: string;
@@ -182,7 +190,7 @@ export function useContentFactoryGallery() {
         )
         .eq("project_id", projectId)
         .order("created_at", { ascending: false })
-        .limit(100);
+        .limit(GALLERY_LIMIT);
 
       if (error) {
         if (isTableMissingError(error.message, error.code)) {
@@ -205,8 +213,10 @@ export function useContentFactoryGallery() {
     );
     savedRequestIdsRef.current = savedIds;
 
+    const trackedIds = collectAllTrackedRequestIds(projectId, dbItems, getGalleryBatches);
     const pendingIds = getPendingRequestIds(projectId, savedIds);
-    const resultItems = await fetchReadyFromResults(pendingIds);
+    const idsToFetch = Array.from(new Set([...trackedIds, ...pendingIds]));
+    const resultItems = await fetchReadyFromResults(idsToFetch);
     const cacheItems = getCachedGalleryItems(projectId).map(cachedToGalleryItem);
     const merged = mergeGalleryItems(dbItems, resultItems, cacheItems);
     setItems(merged);
@@ -215,17 +225,17 @@ export function useContentFactoryGallery() {
     for (const item of resultItems) {
       if (!item.request_id || savedIds.has(item.request_id)) continue;
       const meta = findBatchItemMeta(projectId, item.request_id);
-      if (!meta) continue;
+      const sessionId = meta?.batchId ?? item.session_id ?? item.request_id.split(":")[0] ?? "";
       void saveItemRef.current({
         requestId: item.request_id,
-        sessionId: meta.batchId,
-        typeId: meta.typeId,
-        typeTitle: meta.typeTitle,
-        styleId: meta.styleId,
-        styleLabel: meta.styleLabel,
+        sessionId,
+        typeId: meta?.typeId ?? item.type_id ?? "",
+        typeTitle: meta?.typeTitle ?? item.type_title ?? "",
+        styleId: meta?.styleId ?? item.style_id ?? "",
+        styleLabel: meta?.styleLabel ?? item.style_label ?? "",
         imageUrl: item.image_url,
-        promptSnapshot: meta.promptSnapshot,
-        brandTemplateId: meta.brandTemplateId,
+        promptSnapshot: meta?.promptSnapshot,
+        brandTemplateId: meta?.brandTemplateId ?? null,
         metadata: { source: "backfill" },
       });
     }
@@ -273,6 +283,8 @@ export function useContentFactoryGallery() {
           return true;
         }
 
+        const typeCategory =
+          CONTENT_TYPES.find((t) => t.id === input.typeId)?.category ?? null;
         const baseRow = {
           project_id: projectId,
           created_by: user?.id ?? null,
@@ -285,7 +297,10 @@ export function useContentFactoryGallery() {
           image_url: input.imageUrl,
           prompt_snapshot: input.promptSnapshot ?? null,
           brand_template_id: input.brandTemplateId ?? null,
-          metadata: input.metadata ?? {},
+          metadata: {
+            ...(input.metadata ?? {}),
+            ...(typeCategory ? { type_category: typeCategory } : {}),
+          },
         };
 
         let { error } = await sb.from("content_factory_gallery").insert(baseRow);
@@ -355,12 +370,37 @@ export function useContentFactoryGallery() {
     [items, projectId, sb],
   );
 
+  const removeItems = useCallback(
+    async (ids: string[]) => {
+      if (!ids.length) return;
+      const toRemove = items.filter((i) => ids.includes(i.id));
+      const dbIds = toRemove.filter((i) => i.source === "db").map((i) => i.id);
+      const localIds = toRemove.filter((i) => i.source !== "db").map((i) => i.id);
+
+      for (const item of toRemove) {
+        if (item.request_id && projectId) markRequestSaved(projectId, item.request_id);
+      }
+
+      if (dbIds.length > 0) {
+        if (!sb) throw new Error("Clony Supabase не настроен");
+        const { error } = await sb.from("content_factory_gallery").delete().in("id", dbIds);
+        if (error) throw new Error(error.message);
+      }
+
+      const removeSet = new Set([...dbIds, ...localIds]);
+      setItems((prev) => prev.filter((i) => !removeSet.has(i.id)));
+    },
+    [items, projectId, sb],
+  );
+
   return {
     items,
     loading,
     load,
     saveItem: saveItemInternal,
     removeItem,
+    removeItems,
+    resolveCategory: resolveItemCategory,
     projectId,
     needsMigration,
     lastError,

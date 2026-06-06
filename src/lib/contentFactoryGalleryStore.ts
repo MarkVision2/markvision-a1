@@ -38,7 +38,7 @@ export interface CachedGalleryItem {
 }
 
 const STORAGE_KEY = "mv:cfgallery:v1";
-const MAX_BATCHES_PER_PROJECT = 40;
+const MAX_BATCHES_PER_PROJECT = 120;
 
 interface StorageShape {
   batches: Record<string, GalleryBatchTrack[]>;
