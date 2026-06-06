@@ -25,7 +25,11 @@ import {
   Trees,
   Dumbbell,
   Shirt,
+  Megaphone,
+  Target,
+  MessageCircle,
 } from "lucide-react";
+
 import Header from "@/components/factory/Header";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
