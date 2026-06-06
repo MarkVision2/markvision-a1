@@ -1,7 +1,7 @@
 {
-  "git_sha": "95931ff",
-  "git_sha_full": "95931ff4d6b329c92b97ef1c3161e00f0933433f",
-  "updated_at": "2026-06-06T17:36:31Z",
-  "label": "Merge: weekly content factory auto-cleanup",
+  "git_sha": "1fb1475",
+  "git_sha_full": "1fb1475201aed7fa574815744cfc2c8253bd50b2",
+  "updated_at": "2026-06-06T17:47:30Z",
+  "label": "Merge: gallery history, categories and bulk actions",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
