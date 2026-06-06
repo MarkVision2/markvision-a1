@@ -1,47 +1,52 @@
 /**
- * Configuration for the content-factory workflow that runs on n8n.
- * Keeping the URL here (instead of hardcoded inside CreateStep3) makes it
- * trivial to flip from the test endpoint to a production one.
- *
- * Note: `webhook-test/...` is the n8n test endpoint and gets disabled every
- * time the workflow is reopened in the editor. For production, replace with
- * `webhook/...` (without the `-test` suffix).
+ * Content-factory workflow (n8n «Clony AI»).
+ * Запросы идут через Edge Function `content-factory-proxy`, чтобы не ловить
+ * CORS / Failed to fetch в Lovable preview и на мобильных сетях.
  */
+import { supabase } from "@/integrations/supabase/client";
+
+/** Fallback URL — только если edge function ещё не задеплоена. */
 export const N8N_CONTENT_WEBHOOK =
   "https://n8n.zapoinov.com/webhook/clony-yurii";
 
 /** Hard timeout for a single style generation request (ms). */
 export const N8N_TIMEOUT_MS = 120_000;
 
-/**
- * Send a single style payload to the n8n workflow.
- *
- * Поддерживает два режима:
- *  - JSON      — когда передан plain object (без файлов).
- *  - multipart — когда передан FormData (быстро, без base64-раздувания
- *                для тяжёлых фото/видео).
- *
- * Throws an Error with a human-readable message on non-2xx or timeout.
- */
-export async function postContentFactory(
-  payload: unknown | FormData,
-): Promise<unknown> {
+function formatFetchError(e: unknown): string {
+  const msg = (e as Error)?.message ?? "network error";
+  if (msg.includes("aborted") || msg.includes("timeout")) {
+    return `Таймаут (${Math.round(N8N_TIMEOUT_MS / 1000)}s) — генератор не ответил`;
+  }
+  if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+    return "Нет связи с сервером. Проверьте интернет и повторите. Если ошибка в Lovable preview — нажмите Publish и откройте опубликованный сайт.";
+  }
+  return msg;
+}
+
+async function postViaEdgeFunction(payload: unknown): Promise<unknown> {
+  const { data, error } = await supabase.functions.invoke("content-factory-proxy", {
+    body: payload,
+  });
+  if (error) {
+    throw new Error(formatFetchError(error));
+  }
+  if (data && typeof data === "object" && data !== null && "error" in data) {
+    throw new Error(String((data as { error: unknown }).error));
+  }
+  return data;
+}
+
+async function postDirect(payload: unknown): Promise<unknown> {
   let res: Response;
-  const isForm = typeof FormData !== "undefined" && payload instanceof FormData;
   try {
     res = await fetch(N8N_CONTENT_WEBHOOK, {
       method: "POST",
-      // Для FormData НЕ ставим Content-Type — браузер сам добавит boundary.
-      headers: isForm ? undefined : { "Content-Type": "application/json" },
-      body: isForm ? (payload as FormData) : JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(N8N_TIMEOUT_MS),
     });
   } catch (e) {
-    const msg = (e as Error)?.message ?? "network error";
-    if (msg.includes("aborted") || msg.includes("timeout")) {
-      throw new Error(`Таймаут (${Math.round(N8N_TIMEOUT_MS / 1000)}s) — n8n не ответил`);
-    }
-    throw new Error(`Не удалось связаться с генератором: ${msg}`);
+    throw new Error(`Не удалось связаться с генератором: ${formatFetchError(e)}`);
   }
 
   if (!res.ok) {
@@ -63,5 +68,30 @@ export async function postContentFactory(
     return await res.json();
   } catch {
     return null;
+  }
+}
+
+/**
+ * Send a single style payload to the n8n workflow.
+ * Throws an Error with a human-readable message on failure.
+ */
+export async function postContentFactory(
+  payload: unknown | FormData,
+): Promise<unknown> {
+  if (typeof FormData !== "undefined" && payload instanceof FormData) {
+    throw new Error("multipart не поддерживается — загрузите фото в Storage и отправьте image_urls");
+  }
+
+  try {
+    return await postViaEdgeFunction(payload);
+  } catch (edgeErr) {
+    const edgeMsg = (edgeErr as Error).message ?? "";
+    // Edge function не задеплоена или временно недоступна — пробуем прямой вызов.
+    if (
+      /not found|404|function.*does not exist|failed to send a request/i.test(edgeMsg)
+    ) {
+      return postDirect(payload);
+    }
+    throw new Error(`Не удалось связаться с генератором: ${edgeMsg}`);
   }
 }

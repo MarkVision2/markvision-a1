@@ -41,3 +41,6 @@ verify_jwt = true
 
 [functions.instagram-sync]
 verify_jwt = true
+
+[functions.content-factory-proxy]
+verify_jwt = true
