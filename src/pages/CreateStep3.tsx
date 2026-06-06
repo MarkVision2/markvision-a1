@@ -761,7 +761,20 @@ const CreateStep3 = () => {
             image_count: slidesCount,
             // niche / cta — содержательные сведения о продукте для fb-target.
             fb_niche: nicheBits,
-            ctas: brief.extraInstructions || "",
+            // CTA: готовая фраза, которую n8n должен вписать в overlay/caption.
+            ctas: cta.phrase,
+            cta_id: cta.id,
+            cta_label: cta.label,
+            cta_phrase: cta.phrase,
+            // Тон/стиль подачи контента.
+            tone: tone.id,
+            tone_label: tone.label,
+            tone_description: tone.description,
+            // Маркетинговая цель — определяет акценты в копирайте.
+            goal: goal.id,
+            goal_label: goal.label,
+            goal_description: goal.description,
+            extra_instructions: brief.extraInstructions || "",
             username: "",
             platform: "web",
             // tracking
@@ -773,6 +786,7 @@ const CreateStep3 = () => {
           // пропустит пустую строку дальше и HTTP-нода упадёт.
           if (linkValue) flatForN8n.link = linkValue;
           // audio_url намеренно НЕ выставляем — нет аудио в content-factory.
+
 
           const payload = {
             source: "lovable.content-factory",
