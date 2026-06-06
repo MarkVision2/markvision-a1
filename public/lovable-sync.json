@@ -1,7 +1,7 @@
 {
-  "git_sha": "2de770b",
-  "git_sha_full": "2de770b2623e66e62e840c6fd1e18bc25d93b3fd",
-  "updated_at": "2026-06-06T11:06:49Z",
-  "label": "chore: lovable sync stamp e931cf3",
+  "git_sha": "8b23358",
+  "git_sha_full": "8b23358d2cd440012c2afcfa8621e8adac354031",
+  "updated_at": "2026-06-03T11:15:00Z",
+  "label": "perf(audit): useCrmFlow skipToken dedupe",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
