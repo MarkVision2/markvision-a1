@@ -1,7 +1,7 @@
 {
-  "git_sha": "4085b0e",
-  "git_sha_full": "4085b0e334d162e318a39795a95093e58301d94e",
-  "updated_at": "2026-06-06T09:22:00Z",
-  "label": "fix(content-factory): n8n proxy edge function",
+  "git_sha": "608df74",
+  "git_sha_full": "608df749fd3dde2998435fa61d745846443e14a0",
+  "updated_at": "2026-06-06T09:21:55Z",
+  "label": "chore: lovable sync stamp 4085b0e",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
