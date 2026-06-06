@@ -171,7 +171,7 @@ const FLOWS: Record<string, ContentTypeFlow> = {
     typeId: "insta-carousel",
     wizardMode: "standard",
     totalSteps: 3,
-    step1: { ...ADS_STEP1, showLogo: false, defaultMode: "description" },
+    step1: { ...ADS_STEP1, defaultMode: "description" },
     step2: {
       ...ADS_STEP2,
       aspects: ["1:1", "4:5"],
@@ -180,7 +180,7 @@ const FLOWS: Record<string, ContentTypeFlow> = {
       variantCounts: [3, 5, 7, 10],
       defaultVariants: 5,
     },
-    step3: { ...ADS_STEP3, showColor: false },
+    step3: ADS_STEP3,
   },
 
   "reels-cover": {
@@ -191,11 +191,6 @@ const FLOWS: Record<string, ContentTypeFlow> = {
       ...ADS_STEP1,
       allowedModes: ["photo", "description"],
       defaultMode: "photo",
-      showLogo: false,
-      showPeoplePhoto: true,
-      showProductPhoto: false,
-      showBrandTemplate: false,
-      showCopyMode: true,
     },
     step2: {
       ...ADS_STEP2,
@@ -206,20 +201,14 @@ const FLOWS: Record<string, ContentTypeFlow> = {
       defaultVariants: 3,
       variantsLabel: "Вариантов обложки",
     },
-    step3: {
-      ...ADS_STEP3,
-      showGoal: false,
-      showTone: false,
-      showCta: false,
-      showColor: true,
-    },
+    step3: ADS_STEP3,
   },
 
   stories: {
     typeId: "stories",
     wizardMode: "standard",
     totalSteps: 3,
-    step1: { ...ADS_STEP1, defaultMode: "description", showLogo: false },
+    step1: { ...ADS_STEP1, defaultMode: "description" },
     step2: {
       ...ADS_STEP2,
       aspects: ["9:16"],
@@ -239,12 +228,6 @@ const FLOWS: Record<string, ContentTypeFlow> = {
       ...ADS_STEP1,
       allowedModes: ["photo", "description"],
       defaultMode: "photo",
-      showLogo: false,
-      showPeoplePhoto: true,
-      peoplePhotoRequired: false,
-      showProductPhoto: false,
-      showBrandTemplate: false,
-      showCopyMode: true,
     },
     step2: {
       ...ADS_STEP2,
@@ -254,12 +237,7 @@ const FLOWS: Record<string, ContentTypeFlow> = {
       defaultVariants: 3,
       variantsLabel: "Вариантов превью",
     },
-    step3: {
-      ...ADS_STEP3,
-      showGoal: false,
-      showCta: false,
-      showColor: true,
-    },
+    step3: ADS_STEP3,
   },
 
   "web-banner": {
