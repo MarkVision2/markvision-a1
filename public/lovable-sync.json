@@ -1,7 +1,7 @@
 {
-  "git_sha": "5431410",
-  "git_sha_full": "5431410b5d54d7cda44a42435163ecd1f4f6e708",
+  "git_sha": "c0f3b54",
+  "git_sha_full": "c0f3b545446721f47a8d6494ad174c7bc9295a35",
   "updated_at": "2026-06-06T15:56:35Z",
-  "label": "feat: режим текста на креативе auto/custom",
+  "label": "chore: lovable sync stamp 5431410",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
