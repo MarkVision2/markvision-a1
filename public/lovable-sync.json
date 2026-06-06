@@ -1,7 +1,7 @@
 {
-  "git_sha": "ae756e6",
-  "git_sha_full": "ae756e66298296b1718a8c2851c8525a37966da1",
-  "updated_at": "2026-06-06T15:22:06Z",
-  "label": "Merge: idempotent realtime migration Clony",
+  "git_sha": "5431410",
+  "git_sha_full": "5431410b5d54d7cda44a42435163ecd1f4f6e708",
+  "updated_at": "2026-06-06T15:56:35Z",
+  "label": "feat: режим текста на креативе auto/custom",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
