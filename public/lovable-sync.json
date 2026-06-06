@@ -1,7 +1,7 @@
 {
-  "git_sha": "1fb1475",
-  "git_sha_full": "1fb1475201aed7fa574815744cfc2c8253bd50b2",
-  "updated_at": "2026-06-06T17:47:30Z",
-  "label": "Merge: gallery history, categories and bulk actions",
+  "git_sha": "18ab9b9",
+  "git_sha_full": "18ab9b9b71844aeb668ea8f46e0f8650cf4da149",
+  "updated_at": "2026-06-06T17:58:29Z",
+  "label": "fix: gallery loads all project creatives, not just last one",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
