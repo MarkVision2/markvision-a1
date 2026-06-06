@@ -1,0 +1,61 @@
+# Еженедельная очистка контент-завода (Clony) через edge function на MarkVision.
+# Секреты: CONTENT_FACTORY_CLEANUP_KEY (тот же, что в secrets edge function)
+name: Content factory weekly cleanup
+
+on:
+  schedule:
+    # Воскресенье 03:00 UTC
+    - cron: "0 3 * * 0"
+  workflow_dispatch:
+    inputs:
+      gallery_days:
+        description: "Сколько дней хранить галерею"
+        required: false
+        default: "30"
+      results_days:
+        description: "Сколько дней хранить results"
+        required: false
+        default: "14"
+      uploads_days:
+        description: "Сколько дней хранить uploads/requests"
+        required: false
+        default: "14"
+
+concurrency:
+  group: content-factory-cleanup
+  cancel-in-progress: false
+
+env:
+  CLEANUP_URL: https://mekwfbqmsqiborjdrjxc.supabase.co/functions/v1/content-factory-cleanup
+  CONTENT_FACTORY_CLEANUP_KEY: ${{ secrets.CONTENT_FACTORY_CLEANUP_KEY }}
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify secret
+        run: |
+          set -e
+          test -n "$CONTENT_FACTORY_CLEANUP_KEY" || (echo "::error::CONTENT_FACTORY_CLEANUP_KEY missing"; exit 1)
+
+      - name: Run cleanup
+        env:
+          GALLERY_DAYS: ${{ github.event.inputs.gallery_days || '30' }}
+          RESULTS_DAYS: ${{ github.event.inputs.results_days || '14' }}
+          UPLOADS_DAYS: ${{ github.event.inputs.uploads_days || '14' }}
+        run: |
+          set -e
+          payload=$(jq -n \
+            --argjson gallery_days "$GALLERY_DAYS" \
+            --argjson results_days "$RESULTS_DAYS" \
+            --argjson uploads_days "$UPLOADS_DAYS" \
+            '{gallery_days: $gallery_days, results_days: $results_days, uploads_days: $uploads_days}')
+          echo "Payload: $payload"
+          http_code=$(curl -sS -o /tmp/cleanup-response.json -w "%{http_code}" \
+            -X POST "$CLEANUP_URL" \
+            -H "Content-Type: application/json" \
+            -H "x-cleanup-key: $CONTENT_FACTORY_CLEANUP_KEY" \
+            -d "$payload")
+          cat /tmp/cleanup-response.json
+          echo ""
+          test "$http_code" -ge 200 && test "$http_code" -lt 300 || (echo "::error::Cleanup failed HTTP $http_code"; exit 1)

@@ -17,8 +17,50 @@
 
 - `006_content_factory_results.sql` — результаты n8n (если ещё нет)
 - `007_content_factory_gallery_brand.sql` — галерея «Готовый контент» + шаблоны бренда + storage buckets
+- `009_content_factory_cleanup.sql` — RPC `cleanup_content_factory_data` + журнал `content_factory_cleanup_log`
 
 `project_id` в этих таблицах — UUID проекта MarkVision (из приложения), **без FK** на `projects`.
+
+### Автоочистка старого контента (еженедельно)
+
+Чтобы не упираться в лимиты Clony, раз в неделю удаляются:
+
+| Что | По умолчанию | Где |
+|-----|--------------|-----|
+| `content_factory_gallery` | старше **30** дней | Clony DB |
+| `content_factory_results` | старше **14** дней | Clony DB |
+| `content-factory-uploads/requests/` | старше **14** дней | Clony Storage |
+
+Шаблоны бренда (`content-factory/brand/`) **не трогаем** — они привязаны к активным шаблонам.
+
+**1. Миграция в Clony:** выполните `009_content_factory_cleanup.sql` в SQL Editor **szfgdruhlebfvcmlvxdk**.
+
+**2. Edge function** `content-factory-cleanup` деплоится на **MarkVision** (`mekwfbqmsqiborjdrjxc`) вместе с остальными functions (`supabase-deploy.yml`).
+
+**3. Secrets edge function** (Dashboard → Edge Functions → content-factory-cleanup → Secrets, проект **mekwfbqmsqiborjdrjxc**):
+
+| Secret | Значение |
+|--------|----------|
+| `CONTENT_FACTORY_CLEANUP_KEY` | случайная длинная строка (shared secret для cron) |
+| `CLIENT_SUPABASE_URL` | `https://szfgdruhlebfvcmlvxdk.supabase.co` |
+| `CLIENT_SUPABASE_SERVICE_ROLE_KEY` | service role key проекта **Clony** |
+
+**4. GitHub secret** для cron: `CONTENT_FACTORY_CLEANUP_KEY` — **тот же** ключ, что в п.3.
+
+Workflow: `.github/workflows/content-factory-cleanup.yml` — воскресенье **03:00 UTC**, или **Run workflow** вручную.
+
+Ручной запуск без GitHub:
+
+```bash
+curl -X POST "https://mekwfbqmsqiborjdrjxc.supabase.co/functions/v1/content-factory-cleanup" \
+  -H "Content-Type: application/json" \
+  -H "x-cleanup-key: YOUR_KEY" \
+  -d '{"gallery_days":30,"results_days":14,"uploads_days":14}'
+```
+
+Только SQL (без storage): в Clony SQL Editor — `SELECT public.cleanup_content_factory_data(30, 14);`
+
+Журнал прогонов: `SELECT * FROM content_factory_cleanup_log ORDER BY ran_at DESC LIMIT 20;`
 
 Personal Access Token из Supabase Dashboard часто привязан **только** к client-проекту и **не** даёт доступ к Lovable-проекту `mekwfbqmsqiborjdrjxc`. Пароль БД и SQL Editor для основного проекта — в **Lovable → Project Settings → Supabase**.
 
