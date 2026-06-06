@@ -1,7 +1,7 @@
 {
-  "git_sha": "fc75523",
-  "git_sha_full": "fc755235da61989148b0de4db189c27b18b13d42",
+  "git_sha": "c3f642a",
+  "git_sha_full": "c3f642a9339b23f177bc371a9b98f19f76e7c12a",
   "updated_at": "2026-06-06T07:03:08Z",
-  "label": "feat(mobile): нижняя навигация, меню, safe-area",
-  "publish_hint": "Lovable → Settings → Git → Pull main → Discard local → Publish → Update"
+  "label": "chore: lovable sync stamp 0375a53",
+  "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
