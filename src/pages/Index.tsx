@@ -55,7 +55,7 @@ const Index = () => {
           </TabsContent>
 
           <TabsContent value="gallery" className="mt-0">
-            <ContentFactoryGallery />
+            <ContentFactoryGallery active={tab === "gallery"} />
           </TabsContent>
 
           <TabsContent value="templates" className="mt-0">
