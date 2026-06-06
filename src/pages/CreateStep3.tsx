@@ -25,7 +25,11 @@ import {
   Trees,
   Dumbbell,
   Shirt,
+  Megaphone,
+  Target,
+  MessageCircle,
 } from "lucide-react";
+
 import Header from "@/components/factory/Header";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
@@ -274,7 +278,49 @@ const COLORS: { id: ColorId; label: string; swatch: string }[] = [
   { id: "custom", label: "Custom", swatch: "custom" },
 ];
 
+type CtaId =
+  | "learn_more"
+  | "code_word"
+  | "share"
+  | "subscribe"
+  | "link_in_bio"
+  | "dm_us"
+  | "comment"
+  | "save";
+
+const CTAS: { id: CtaId; label: string; phrase: string; description: string }[] = [
+  { id: "learn_more", label: "Узнать подробнее", phrase: "Узнать подробнее →", description: "Переход на сайт / в директ" },
+  { id: "code_word", label: "Кодовое слово", phrase: 'Пишите кодовое слово "СТАРТ" в директ', description: "Запуск автоворонки в DM" },
+  { id: "share", label: "Поделитесь", phrase: "Поделитесь этим с другом, кому актуально", description: "Виральный охват" },
+  { id: "subscribe", label: "Подписывайтесь", phrase: "Подписывайтесь, чтобы не пропустить", description: "Рост подписчиков" },
+  { id: "link_in_bio", label: "Ссылка в шапке", phrase: "Смотрите/читайте — ссылка в шапке профиля", description: "Переход через bio" },
+  { id: "dm_us", label: "Напишите в директ", phrase: "Напишите в директ — расскажем подробнее", description: "Лиды в DM" },
+  { id: "comment", label: "Комментарий", phrase: 'Напишите "+" в комментариях', description: "Прогрев через комменты" },
+  { id: "save", label: "Сохраните", phrase: "Сохраните, чтобы не потерять", description: "Bookmark = алгоритмический буст" },
+];
+
+type ToneId = "selling" | "native" | "engaging" | "expert" | "ugc";
+
+const TONES: { id: ToneId; label: string; description: string; icon: typeof Megaphone }[] = [
+  { id: "selling", label: "Продающий", description: "Оффер, выгода, дедлайн, CTA на действие", icon: Megaphone },
+  { id: "native", label: "Нативный", description: "Как личная рекомендация, без рекламы", icon: User },
+  { id: "engaging", label: "Вовлекающий", description: "Вопросы, интрига, провокация на реакцию", icon: MessageCircle },
+  { id: "expert", label: "Экспертный", description: "Польза, факты, кейсы, доверие", icon: Sparkles },
+  { id: "ugc", label: "UGC / отзыв", description: "От первого лица, лайфстайл, искренне", icon: Users },
+];
+
+type GoalId = "traffic" | "conversions" | "engagement" | "awareness" | "leads";
+
+const GOALS: { id: GoalId; label: string; description: string; icon: typeof Target }[] = [
+  { id: "traffic", label: "Трафик", description: "На подписки / профиль", icon: Users },
+  { id: "conversions", label: "Конверсии", description: "Переход на сайт / покупка", icon: Target },
+  { id: "engagement", label: "Вовлечённость", description: "Лайки, комментарии, реакции", icon: MessageCircle },
+  { id: "awareness", label: "Охват", description: "Узнаваемость бренда", icon: Megaphone },
+  { id: "leads", label: "Лиды", description: "Заявки в директ / WhatsApp", icon: Send },
+];
+
 interface GeneratedVariant {
+
   styleId: StyleId;
   styleLabel: string;
   imageUrl: string | null;
@@ -321,6 +367,10 @@ const CreateStep3 = () => {
     isNeuroPhoto ? ["front", "three_quarter"] : [],
   );
   const [colorId, setColorId] = useState<ColorId>("auto");
+  const [ctaId, setCtaId] = useState<CtaId>("learn_more");
+  const [toneId, setToneId] = useState<ToneId>("selling");
+  const [goalId, setGoalId] = useState<GoalId>("conversions");
+
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<
     "idle" | "sending" | "queued" | "success" | "error"
@@ -558,8 +608,23 @@ const CreateStep3 = () => {
 
     let progressTimer: ReturnType<typeof setInterval> | null = null;
     try {
-      const brief = await buildBriefPrompt();
+      const briefRaw = await buildBriefPrompt();
+      const cta = CTAS.find((c) => c.id === ctaId)!;
+      const tone = TONES.find((t) => t.id === toneId)!;
+      const goal = GOALS.find((g) => g.id === goalId)!;
+      // Прокидываем стиль подачи, цель и CTA прямо в userBrief, чтобы AI-нода
+      // в n8n получила их как часть ТЗ, а не молча проигнорировала.
+      const briefPromptWithMeta = [
+        `Цель контента: ${goal.label} — ${goal.description}.`,
+        `Стиль подачи: ${tone.label} — ${tone.description}.`,
+        `Призыв к действию (CTA): "${cta.phrase}". Должен быть органично вписан в подпись/оверлей.`,
+        briefRaw.prompt,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
+      const brief = { ...briefRaw, prompt: briefPromptWithMeta };
       const color = COLORS.find((c) => c.id === colorId);
+
 
       // Одна партия = один batch_id. По нему аплоад фото и подписка на realtime.
       const batchId =
@@ -696,7 +761,20 @@ const CreateStep3 = () => {
             image_count: slidesCount,
             // niche / cta — содержательные сведения о продукте для fb-target.
             fb_niche: nicheBits,
-            ctas: brief.extraInstructions || "",
+            // CTA: готовая фраза, которую n8n должен вписать в overlay/caption.
+            ctas: cta.phrase,
+            cta_id: cta.id,
+            cta_label: cta.label,
+            cta_phrase: cta.phrase,
+            // Тон/стиль подачи контента.
+            tone: tone.id,
+            tone_label: tone.label,
+            tone_description: tone.description,
+            // Маркетинговая цель — определяет акценты в копирайте.
+            goal: goal.id,
+            goal_label: goal.label,
+            goal_description: goal.description,
+            extra_instructions: brief.extraInstructions || "",
             username: "",
             platform: "web",
             // tracking
@@ -708,6 +786,7 @@ const CreateStep3 = () => {
           // пропустит пустую строку дальше и HTTP-нода упадёт.
           if (linkValue) flatForN8n.link = linkValue;
           // audio_url намеренно НЕ выставляем — нет аудио в content-factory.
+
 
           const payload = {
             source: "lovable.content-factory",
@@ -784,7 +863,13 @@ const CreateStep3 = () => {
                 swatch: color?.swatch ?? null,
               },
             },
+            marketing: {
+              cta: { id: cta.id, label: cta.label, phrase: cta.phrase, description: cta.description },
+              tone: { id: tone.id, label: tone.label, description: tone.description },
+              goal: { id: goal.id, label: goal.label, description: goal.description },
+            },
           };
+
 
           // Шлём JSON. Фото уже залиты в Supabase Storage и присутствуют
           // в payload.image_urls. n8n при multipart клал бы всё в
@@ -1013,8 +1098,141 @@ const CreateStep3 = () => {
           </div>
         )}
 
+        {/* Goal */}
+        <div className="mt-10">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
+              <Target className="h-4 w-4" />
+            </span>
+            Цель контента
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Под цель подстраивается копирайт, акценты и CTA
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {GOALS.map((g) => {
+              const Icon = g.icon;
+              const selected = goalId === g.id;
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => setGoalId(g.id)}
+                  aria-pressed={selected}
+                  className={cn(
+                    "group relative flex flex-col items-start gap-2 rounded-2xl border bg-card p-4 text-left transition-all",
+                    "hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-elevated",
+                    selected ? "border-primary shadow-glow ring-2 ring-primary/60" : "border-border",
+                  )}
+                >
+                  <span className={cn(
+                    "grid h-8 w-8 place-items-center rounded-lg",
+                    selected ? "bg-primary text-primary-foreground" : "bg-primary/15 text-primary",
+                  )}>
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div className="text-sm font-semibold text-foreground">{g.label}</div>
+                  <div className="text-xs text-muted-foreground line-clamp-2">{g.description}</div>
+                  {selected && (
+                    <span className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full bg-primary text-primary-foreground">
+                      <Check className="h-3 w-3" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Tone */}
+        <div className="mt-10">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
+              <Megaphone className="h-4 w-4" />
+            </span>
+            Стиль подачи
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Как контент будет звучать для зрителя
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {TONES.map((t) => {
+              const Icon = t.icon;
+              const selected = toneId === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setToneId(t.id)}
+                  aria-pressed={selected}
+                  className={cn(
+                    "group relative flex flex-col items-start gap-2 rounded-2xl border bg-card p-4 text-left transition-all",
+                    "hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-elevated",
+                    selected ? "border-primary shadow-glow ring-2 ring-primary/60" : "border-border",
+                  )}
+                >
+                  <span className={cn(
+                    "grid h-8 w-8 place-items-center rounded-lg",
+                    selected ? "bg-primary text-primary-foreground" : "bg-primary/15 text-primary",
+                  )}>
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div className="text-sm font-semibold text-foreground">{t.label}</div>
+                  <div className="text-xs text-muted-foreground line-clamp-2">{t.description}</div>
+                  {selected && (
+                    <span className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full bg-primary text-primary-foreground">
+                      <Check className="h-3 w-3" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* CTA */}
+        <div className="mt-10">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
+              <MessageCircle className="h-4 w-4" />
+            </span>
+            Призыв к действию (CTA)
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Эта фраза будет органично вписана в подпись или оверлей креатива
+          </p>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {CTAS.map((c) => {
+              const selected = ctaId === c.id;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setCtaId(c.id)}
+                  aria-pressed={selected}
+                  className={cn(
+                    "group relative flex flex-col items-start gap-1.5 rounded-2xl border bg-card p-4 text-left transition-all",
+                    "hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-elevated",
+                    selected ? "border-primary shadow-glow ring-2 ring-primary/60" : "border-border",
+                  )}
+                >
+                  <div className="text-sm font-semibold text-foreground">{c.label}</div>
+                  <div className="text-xs italic text-primary/80 line-clamp-2">«{c.phrase}»</div>
+                  <div className="text-[11px] text-muted-foreground line-clamp-1">{c.description}</div>
+                  {selected && (
+                    <span className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full bg-primary text-primary-foreground">
+                      <Check className="h-3 w-3" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Color */}
         <div className="mt-10">
+
           <div className="flex items-center gap-2 text-sm font-medium">
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
               <Palette className="h-4 w-4" />
@@ -1134,12 +1352,22 @@ const CreateStep3 = () => {
                     return { id: a.id, label: a.label, description: a.description };
                   })
                 : [];
+              const previewCta = CTAS.find((c) => c.id === ctaId)!;
+              const previewTone = TONES.find((t) => t.id === toneId)!;
+              const previewGoal = GOALS.find((g) => g.id === goalId)!;
+              const rawUserBrief =
+                ((prevState.description as string | undefined) ?? "") ||
+                ((prevState.linkUrl as string | undefined) ?? "") ||
+                ((prevState.productName as string | undefined) ?? "");
+              const userBriefWithMeta = [
+                `Цель контента: ${previewGoal.label} — ${previewGoal.description}.`,
+                `Стиль подачи: ${previewTone.label} — ${previewTone.description}.`,
+                `Призыв к действию (CTA): "${previewCta.phrase}". Должен быть органично вписан в подпись/оверлей.`,
+                rawUserBrief,
+              ].filter(Boolean).join("\n\n");
               const built = buildStyleBrief({
                 styleId: styleDef.id as BriefStyleId,
-                userBrief:
-                  ((prevState.description as string | undefined) ?? "") ||
-                  ((prevState.linkUrl as string | undefined) ?? "") ||
-                  ((prevState.productName as string | undefined) ?? ""),
+                userBrief: userBriefWithMeta,
                 format: {
                   aspect: (prevState.aspect as string | undefined) ?? null,
                   lang: (prevState.lang as string | undefined) ?? null,
@@ -1149,6 +1377,7 @@ const CreateStep3 = () => {
                 angles: anglesPayload,
                 autoCandidates: isAuto ? autoCandidates : null,
               });
+
               const currentValue =
                 typeof editedBriefs[sid] === "string"
                   ? (editedBriefs[sid] as string)
