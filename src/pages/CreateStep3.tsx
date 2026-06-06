@@ -63,6 +63,11 @@ import {
   normalizeCopyMode,
 } from "@/lib/contentFactoryCopy";
 import {
+  buildFaceWebhookFields,
+  neuroFacePromptBlock,
+  resolveFacePipeline,
+} from "@/lib/contentFactoryFace";
+import {
   buildLogoWebhookFields,
   logoPromptBlock,
   mergeImageUrls,
@@ -669,6 +674,16 @@ const CreateStep3 = () => {
       });
       return;
     }
+    if (
+      isNeuroPhoto &&
+      wizardState.mode === "photo" &&
+      (wizardState.peoplePhotos?.length ?? 0) === 0
+    ) {
+      toast.error("Загрузите фото человека", {
+        description: "Для нейрофотосессии нужно селфи или портрет на шаге 1.",
+      });
+      return;
+    }
     setSubmitting(true);
     setResults(null);
     setStatus("sending");
@@ -801,7 +816,14 @@ const CreateStep3 = () => {
             label: s.label,
             description: s.description,
           }));
-          const task = isNeuroPhoto ? "neuro_photo_session" : "ad_creative";
+          const typeId = (contentType?.id ?? wizardState.typeId ?? "") as string;
+          const facePipeline = resolveFacePipeline({
+            typeId,
+            isNeuroPhotoType: isNeuroPhoto,
+            inputMode: brief.mode,
+            peoplePhotosCount: brief.peoplePhotos.length,
+          });
+          const task = facePipeline.task;
           // Routing-ключ для n8n Switch-ноды. ДОЛЖЕН совпадать с именами веток
           // в воркфлоу: insta-carousel, fb-target, youtube, events, google ads,
           // neuro-photo, reels-cover, instagram-stories, banner, marketplace, logo.
@@ -816,7 +838,6 @@ const CreateStep3 = () => {
             "web-banner": "banner",
             "neuro-photo": "neuro-photo",
           };
-          const typeId = (contentType?.id ?? wizardState.typeId ?? "") as string;
           const route = ROUTE_MAP[typeId] ?? "Fallback";
           const anglesPayload = isNeuroPhoto
             ? selectedAngles.map((aid) => {
@@ -850,7 +871,13 @@ const CreateStep3 = () => {
           if (effectiveLogoUrl) {
             finalTechnicalBrief = `${finalTechnicalBrief}\n\n--- Логотип ---\n${logoPromptBlock(effectiveLogoUrl)}`;
           }
-          if (brief.mode === "photo" && brief.peoplePhotos.length > 0) {
+          if (facePipeline.enabled) {
+            finalTechnicalBrief = `${finalTechnicalBrief}\n\n--- Нейрофотосессия / лицо ---\n${neuroFacePromptBlock(
+              brief.peoplePhotos.length,
+              facePipeline.pipeline,
+              contentType?.title,
+            )}`;
+          } else if (brief.mode === "photo" && brief.peoplePhotos.length > 0) {
             finalTechnicalBrief = `${finalTechnicalBrief}\n\n--- Фото людей ---\n${peoplePhotosPromptBlock(brief.peoplePhotos.length)}`;
           }
           if (brandTemplate) {
@@ -875,6 +902,12 @@ const CreateStep3 = () => {
             effectiveLogoUrl,
             logoUrl ? "wizard_upload" : brandTemplate?.logo_url ? "brand_template" : "",
           );
+          const faceFields = buildFaceWebhookFields({
+            resolution: facePipeline,
+            peoplePhotoUrls,
+            outputContentType: route,
+            outputFormatLabel: contentType?.title,
+          });
 
           // ВАЖНО: эти ключи (content_type, prompt, name, description, link,
           // image_urls, color, style, language, aspect, slides, fb_niche,
@@ -947,6 +980,7 @@ const CreateStep3 = () => {
             people_photo_urls: peoplePhotoUrls,
             product_photo_urls: productPhotoUrls,
             ...copyFields,
+            ...faceFields,
             ...logoFields,
             ...brandFields,
           };
@@ -1009,12 +1043,9 @@ const CreateStep3 = () => {
                     url: effectiveLogoUrl,
                   }
                 : null,
-              photosRole:
-                brief.mode === "photo" && brief.peoplePhotos.length > 0
-                  ? "face_reference"
-                  : isNeuroPhoto
-                    ? "face_reference"
-                    : "brand_assets",
+              photosRole: facePipeline.photosRole,
+              facePipeline: facePipeline.pipeline,
+              faceReferenceEnabled: facePipeline.enabled,
               copyMode,
               overlayText: copyMode === "custom" ? overlayText : null,
               extraInstructions: brief.extraInstructions || null,
