@@ -1352,12 +1352,22 @@ const CreateStep3 = () => {
                     return { id: a.id, label: a.label, description: a.description };
                   })
                 : [];
+              const previewCta = CTAS.find((c) => c.id === ctaId)!;
+              const previewTone = TONES.find((t) => t.id === toneId)!;
+              const previewGoal = GOALS.find((g) => g.id === goalId)!;
+              const rawUserBrief =
+                ((prevState.description as string | undefined) ?? "") ||
+                ((prevState.linkUrl as string | undefined) ?? "") ||
+                ((prevState.productName as string | undefined) ?? "");
+              const userBriefWithMeta = [
+                `Цель контента: ${previewGoal.label} — ${previewGoal.description}.`,
+                `Стиль подачи: ${previewTone.label} — ${previewTone.description}.`,
+                `Призыв к действию (CTA): "${previewCta.phrase}". Должен быть органично вписан в подпись/оверлей.`,
+                rawUserBrief,
+              ].filter(Boolean).join("\n\n");
               const built = buildStyleBrief({
                 styleId: styleDef.id as BriefStyleId,
-                userBrief:
-                  ((prevState.description as string | undefined) ?? "") ||
-                  ((prevState.linkUrl as string | undefined) ?? "") ||
-                  ((prevState.productName as string | undefined) ?? ""),
+                userBrief: userBriefWithMeta,
                 format: {
                   aspect: (prevState.aspect as string | undefined) ?? null,
                   lang: (prevState.lang as string | undefined) ?? null,
@@ -1367,6 +1377,7 @@ const CreateStep3 = () => {
                 angles: anglesPayload,
                 autoCandidates: isAuto ? autoCandidates : null,
               });
+
               const currentValue =
                 typeof editedBriefs[sid] === "string"
                   ? (editedBriefs[sid] as string)
