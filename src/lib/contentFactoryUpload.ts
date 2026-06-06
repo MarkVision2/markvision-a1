@@ -34,9 +34,12 @@ export interface UploadedAsset {
  * Заливает массив File в bucket и возвращает массив объектов с публичным URL.
  * Все ошибки логируются, но НЕ роняют батч — что удалось залить, то и едет.
  */
+export type UploadSubfolder = "assets" | "logo" | "people";
+
 export async function uploadContentFactoryPhotos(
   files: File[],
   requestId: string,
+  subfolder: UploadSubfolder = "assets",
 ): Promise<UploadedAsset[]> {
   if (!clientConfigSupabase) {
     // eslint-disable-next-line no-console
@@ -46,7 +49,7 @@ export async function uploadContentFactoryPhotos(
   if (!files.length) return [];
 
   const sb = clientConfigSupabase;
-  const folder = `requests/${requestId}`;
+  const folder = `requests/${requestId}/${subfolder}`;
 
   const tasks = files.map(async (file, idx): Promise<UploadedAsset | null> => {
     const ext = (file.name.split(".").pop() || "bin").toLowerCase();

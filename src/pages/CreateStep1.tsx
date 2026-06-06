@@ -4,6 +4,7 @@ import Header from "@/components/factory/Header";
 import SourceModeCard from "@/components/factory/SourceModeCard";
 import LinkSource from "@/components/factory/sources/LinkSource";
 import PhotoSource from "@/components/factory/sources/PhotoSource";
+import LogoSource from "@/components/factory/sources/LogoSource";
 import DescriptionSource from "@/components/factory/sources/DescriptionSource";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, Link2, Image as ImageIcon, FileText } from "lucide-react";
@@ -48,6 +49,8 @@ const CreateStep1 = () => {
   const [mode, setMode] = useState<SourceMode>("link");
   const [linkUrl, setLinkUrl] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
+  const [peoplePhotos, setPeoplePhotos] = useState<File[]>([]);
+  const [logoFile, setLogoFile] = useState<File | null>(null);
   const [description, setDescription] = useState("");
   const [productName, setProductName] = useState("");
   const [extraInstructions, setExtraInstructions] = useState("");
@@ -61,8 +64,10 @@ const CreateStep1 = () => {
 
   const canContinue =
     (mode === "link" && linkUrl.trim().length > 0) ||
-    (mode === "photo" && photos.length > 0) ||
+    (mode === "photo" && (photos.length > 0 || peoplePhotos.length > 0)) ||
     (mode === "description" && description.trim().length > 0);
+
+  const showLogoUpload = mode === "photo" || mode === "description";
 
   return (
     <main className="min-h-screen">
@@ -104,12 +109,31 @@ const CreateStep1 = () => {
         </div>
 
         {/* Dynamic source form */}
-        <div className="mt-10">
+        <div className="mt-10 space-y-10">
+          {showLogoUpload && (
+            <LogoSource file={logoFile} onChange={setLogoFile} />
+          )}
           {mode === "link" && (
             <LinkSource value={linkUrl} onChange={setLinkUrl} />
           )}
           {mode === "photo" && (
-            <PhotoSource files={photos} onChange={setPhotos} />
+            <>
+              <PhotoSource
+                files={peoplePhotos}
+                onChange={setPeoplePhotos}
+                title="Фото людей"
+                subtitle="(отдельная загрузка)"
+                hint="Загрузите фотографии людей — они будут использованы как референс лиц в креативах."
+                maxFiles={10}
+              />
+              <PhotoSource
+                files={photos}
+                onChange={setPhotos}
+                title="Фото товара / контента"
+                subtitle="(до 14 файлов)"
+                hint="Продукт, интерьер, референсы — всё, кроме логотипа и фото людей."
+              />
+            </>
           )}
           {mode === "description" && (
             <DescriptionSource
@@ -161,6 +185,9 @@ const CreateStep1 = () => {
                 extraInstructions,
                 photosCount: photos.length,
                 photos,
+                peoplePhotos,
+                peoplePhotosCount: peoplePhotos.length,
+                logoFile,
                 brandTemplateId,
               };
               persistWizardState(nextState);

@@ -5,18 +5,29 @@ import { cn } from "@/lib/utils";
 interface PhotoSourceProps {
   files: File[];
   onChange: (files: File[]) => void;
+  title?: string;
+  subtitle?: string;
+  hint?: string;
+  maxFiles?: number;
 }
 
-const MAX_FILES = 14;
+const DEFAULT_MAX = 14;
 const ACCEPT = "image/png,image/jpeg,image/webp";
 
-const PhotoSource = ({ files, onChange }: PhotoSourceProps) => {
+const PhotoSource = ({
+  files,
+  onChange,
+  title = "Загрузите изображения",
+  subtitle,
+  hint = "PNG, JPG, WEBP до 10MB каждый",
+  maxFiles = DEFAULT_MAX,
+}: PhotoSourceProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
   const addFiles = (incoming: FileList | File[]) => {
     const arr = Array.from(incoming).filter((f) => f.type.startsWith("image/"));
-    const next = [...files, ...arr].slice(0, MAX_FILES);
+    const next = [...files, ...arr].slice(0, maxFiles);
     onChange(next);
   };
 
@@ -41,11 +52,14 @@ const PhotoSource = ({ files, onChange }: PhotoSourceProps) => {
         <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
           <ImageIcon className="h-4 w-4" />
         </span>
-        Загрузите изображения
-        <span className="text-muted-foreground font-normal">
-          (до {MAX_FILES} файлов)
+        {title}
+        <span className="font-normal text-muted-foreground">
+          {subtitle ?? `(до ${maxFiles} файлов)`}
         </span>
       </div>
+      {hint ? (
+        <p className="mt-1.5 text-xs text-muted-foreground">{hint}</p>
+      ) : null}
 
       <div
         role="button"
