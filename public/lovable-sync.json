@@ -1,7 +1,7 @@
 {
-  "git_sha": "304bc04",
-  "git_sha_full": "304bc04cccdc82a3004d68e27bf4180b213310b4",
-  "updated_at": "2026-06-06T12:09:54Z",
-  "label": "chore: lovable sync stamp e29908b",
+  "git_sha": "c669436",
+  "git_sha_full": "c669436a1915d730280945f74684900dc1af2c50",
+  "updated_at": "2026-06-06T14:56:14Z",
+  "label": "fix(content-factory): галерея готового контента",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
