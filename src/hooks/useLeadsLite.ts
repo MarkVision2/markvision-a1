@@ -40,7 +40,7 @@ export interface LeadLite {
 
 export const LEADS_LITE_QUERY_KEY = "leads-lite";
 
-async function fetchLeadsLite(activeId: string | null): Promise<LeadLite[]> {
+export async function fetchLeadsLite(activeId: string | null): Promise<LeadLite[]> {
   let leadsQuery = supabase
     .from("leads")
     .select(

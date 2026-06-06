@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import { useLeadsLite, type LeadLite } from "./useLeadsLite";
+import { skipToken, useQuery } from "@tanstack/react-query";
+import {
+  fetchLeadsLite,
+  LEADS_LITE_QUERY_KEY,
+  type LeadLite,
+} from "./useLeadsLite";
 import { useProjectsStore } from "./useProjectsStore";
 import { useRealtimeTable } from "./useRealtimeTable";
 import { isLeadPaid } from "@/lib/leadStageFlags";
@@ -91,9 +96,13 @@ function ymd(d: Date) {
 }
 
 export function useCrmFlow(range: Range, leadsOverride?: LeadLite[]) {
-  const { leads: fetchedLeads } = useLeadsLite();
-  const liteLeads = leadsOverride ?? fetchedLeads;
   const { activeId: projectId } = useProjectsStore();
+  const hasOverride = leadsOverride !== undefined;
+  const { data: fetchedLeads = [] } = useQuery({
+    queryKey: [LEADS_LITE_QUERY_KEY, projectId],
+    queryFn: hasOverride ? skipToken : () => fetchLeadsLite(projectId),
+  });
+  const liteLeads = leadsOverride ?? fetchedLeads;
   const [stages, setStages] = useState<StageInfo[]>([]);
   const [reasons, setReasons] = useState<LossReasonInfo[]>([]);
   const [stageEnteredAt, setStageEnteredAt] = useState<Map<string, string>>(new Map());
