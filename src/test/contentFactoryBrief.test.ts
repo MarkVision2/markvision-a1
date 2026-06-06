@@ -66,6 +66,17 @@ describe("contentFactoryBrief", () => {
     expect(text).toContain("2 загруженных фото товара");
   });
 
+  it("включает custom overlay в brief", () => {
+    const text = buildUserBriefText({
+      mode: "photo",
+      photosCount: 1,
+      copyMode: "custom",
+      overlayText: "Запишись сегодня",
+    });
+    expect(text).toContain("Запишись сегодня");
+    expect(text).toContain("без перефразирования");
+  });
+
   it("считает photo mode непустым при только peoplePhotos", () => {
     expect(
       isBriefTooEmpty({
