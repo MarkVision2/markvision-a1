@@ -81,7 +81,7 @@ function buildGroups(activeProjectId: string): { label: string; items: NavItem[]
 }
 
 export function AppSidebar() {
-  const { state } = useSidebar();
+  const { state, isMobile, setOpenMobile } = useSidebar();
   const collapsed = state === "collapsed";
   const { pathname } = useLocation();
   const { activeId } = useProjectsStore();
@@ -114,6 +114,7 @@ export function AppSidebar() {
                     <SidebarMenuButton asChild>
                       <NavLink
                         to={item.url}
+                        onClick={() => { if (isMobile) setOpenMobile(false); }}
                         onFocus={() => prefetchRoute(item.url)}
                         onMouseEnter={() => prefetchRoute(item.url)}
                         className={({ isActive }) =>
@@ -146,6 +147,7 @@ export function AppSidebar() {
                   <SidebarMenuButton asChild>
                     <NavLink
                       to={item.url}
+                      onClick={() => { if (isMobile) setOpenMobile(false); }}
                       onFocus={() => prefetchRoute(item.url)}
                       onMouseEnter={() => prefetchRoute(item.url)}
                       className={({ isActive }) => itemClass({ isActive })}

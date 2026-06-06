@@ -126,7 +126,8 @@ const Dashboard = () => {
               title="Синхронизировать кампании и креативы Meta с серверов Facebook"
             >
               {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-              Синхронизировать Meta
+              <span className="hidden sm:inline">Синхронизировать Meta</span>
+              <span className="sm:hidden">Meta</span>
             </Button>
             <Button
               variant="outline"

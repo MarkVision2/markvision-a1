@@ -39,7 +39,7 @@ export function PageHeader({
           <Icon className="h-5 w-5" />
         </span>
         <div className="min-w-0">
-          <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
+          <h1 className="text-xl font-bold tracking-tight sm:text-3xl">
             {title}
           </h1>
           {description && (
@@ -49,7 +49,7 @@ export function PageHeader({
       </div>
 
       {(actions || meta) && (
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
           {meta}
           {actions}
         </div>

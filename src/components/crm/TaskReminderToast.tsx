@@ -122,7 +122,7 @@ export function TaskReminderToast() {
     <div
       role="alert"
       className={cn(
-        "pointer-events-auto fixed left-1/2 top-4 z-[100] flex w-[calc(100vw-2rem)] max-w-md -translate-x-1/2",
+        "pointer-events-auto fixed left-1/2 top-[calc(0.75rem+env(safe-area-inset-top))] z-[100] flex w-[calc(100vw-1.5rem)] max-w-md -translate-x-1/2",
         "items-start gap-3 rounded-2xl border border-warning/40 bg-card/95 px-4 py-3 shadow-2xl backdrop-blur",
       )}
     >

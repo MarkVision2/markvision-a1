@@ -22,7 +22,7 @@ export function PageContainer({
   return (
     <main
       className={cn(
-        "mx-auto w-full px-4 py-6 sm:px-6 sm:py-8 lg:px-8",
+        "mx-auto w-full px-3 py-4 sm:px-6 sm:py-8 lg:px-8",
         wide ? "max-w-[1600px]" : "max-w-[1400px]",
         !noAnimate && "animate-fade-in-up",
         className,

@@ -151,4 +151,20 @@
   .touch-pan-x {
     touch-action: pan-x;
   }
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+  /* Отступ под нижнюю мобильную навигацию (h-14 + safe-area). */
+  .mobile-main {
+    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
+  }
+  @media (min-width: 768px) {
+    .mobile-main {
+      padding-bottom: 0;
+    }
+  }
 }

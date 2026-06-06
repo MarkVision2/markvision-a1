@@ -2,21 +2,32 @@ import { Bell, Sparkles } from "lucide-react";
 import {
   SidebarInset,
   SidebarProvider,
+  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import AppSidebar from "./AppSidebar";
+import { MobileBottomNav } from "./MobileBottomNav";
 import { TaskReminderToast } from "@/components/crm/TaskReminderToast";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
+
 interface AppLayoutProps {
   children: React.ReactNode;
 }
 
 const AppLayout = ({ children }: AppLayoutProps) => {
+  const { active } = useProjectsStore();
+
   return (
     <SidebarProvider>
-      <div className="flex min-h-screen w-full">
+      <div className="flex min-h-svh w-full">
         <AppSidebar />
         <SidebarInset className="flex min-w-0 flex-1 flex-col bg-background">
-          <header className="sticky top-0 z-40 flex h-14 items-center gap-3 border-b border-border/60 bg-background/70 px-3 backdrop-blur-xl sm:px-6">
-            <div className="relative mx-auto w-full max-w-2xl">
+          <header className="sticky top-0 z-40 flex h-14 shrink-0 items-center gap-2 border-b border-border/60 bg-background/80 px-3 pt-[env(safe-area-inset-top)] backdrop-blur-xl sm:gap-3 sm:px-6">
+            <SidebarTrigger className="h-9 w-9 shrink-0 md:hidden" aria-label="Открыть меню" />
+            <div className="min-w-0 flex-1 md:hidden">
+              <div className="truncate text-sm font-semibold">{active?.name ?? "MarkVision"}</div>
+              <div className="truncate text-[10px] text-muted-foreground">Проект</div>
+            </div>
+            <div className="relative hidden min-w-0 flex-1 md:mx-auto md:block md:max-w-2xl">
               <Sparkles className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
               <input
                 placeholder="Спросите ИИ… (скоро)"
@@ -31,16 +42,15 @@ const AppLayout = ({ children }: AppLayoutProps) => {
             <button
               type="button"
               aria-label="Уведомления"
-              className="grid h-9 w-9 place-items-center rounded-full hover:bg-secondary"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full hover:bg-secondary"
             >
               <Bell className="h-4 w-4" />
             </button>
           </header>
-          <main className="min-w-0 flex-1 overflow-x-hidden">{children}</main>
+          <main className="mobile-main min-w-0 flex-1 overflow-x-hidden">{children}</main>
+          <MobileBottomNav />
         </SidebarInset>
       </div>
-      {/* Глобальный тостер напоминаний о задачах — единственный источник правды,
-          dismissed-состояние трекается в localStorage, чтобы не всплывало повторно. */}
       <TaskReminderToast />
     </SidebarProvider>
   );

@@ -198,7 +198,7 @@ const Ads = () => {
 
       {/* Tabs */}
       <Tabs value={tab} onValueChange={(v) => setSearchParams((sp) => { sp.set("tab", v); return sp; }, { replace: true })} className="mt-6">
-        <TabsList className="h-10 rounded-xl bg-card/60 p-1">
+        <TabsList className="scrollbar-none h-10 w-full justify-start overflow-x-auto rounded-xl bg-card/60 p-1 touch-pan-x">
           <TabsTrigger value="cabinets" className="gap-2 rounded-lg px-3 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
             <LayoutGrid className="h-3.5 w-3.5" />
             Кабинеты

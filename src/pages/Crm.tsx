@@ -195,7 +195,7 @@ const Crm = () => {
   };
 
   return (
-    <main className="flex h-[calc(100vh-3.5rem)] min-h-0 flex-col animate-fade-in-up">
+    <main className="flex min-h-0 flex-1 flex-col animate-fade-in-up">
       {/* Compact header */}
       <header className="border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur sm:px-6">
         <div className="mx-auto flex max-w-[1600px] flex-wrap items-center gap-3">
@@ -217,10 +217,10 @@ const Crm = () => {
                 onClick={() => setWaOpen(true)}
                 variant="outline"
                 size="sm"
-                className="hidden sm:inline-flex"
+                className="gap-1.5"
               >
                 <MessageCircle className="h-3.5 w-3.5" />
-                WhatsApp
+                <span className="hidden sm:inline">WhatsApp</span>
               </Button>
             )}
             <Button
@@ -247,7 +247,7 @@ const Crm = () => {
         )}
 
         {/* Tabs */}
-        <div className="mx-auto mt-3 flex max-w-[1600px] gap-1 overflow-x-auto">
+        <div className="mx-auto mt-3 flex max-w-[1600px] gap-1 overflow-x-auto scrollbar-none touch-pan-x pb-0.5">
           {TABS.map((t) => {
             const active = tab === t.id;
             return (
