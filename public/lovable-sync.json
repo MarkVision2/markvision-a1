@@ -1,7 +1,7 @@
 {
-  "git_sha": "f1fe63d",
-  "git_sha_full": "f1fe63d099334fb05dcf8a13f912b00fe3a525ab",
-  "updated_at": "2026-06-06T09:29:24Z",
-  "label": "fix(create): новый дизайн из модалки",
+  "git_sha": "ad4347f",
+  "git_sha_full": "ad4347f48f1836cce0924bbae7d5fe60f67ee6f3",
+  "updated_at": "2026-06-06T09:29:26Z",
+  "label": "chore: lovable sync stamp f1fe63d",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
