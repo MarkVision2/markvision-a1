@@ -17,6 +17,7 @@ export interface WizardInputState {
   aspect?: string;
   lang?: string;
   variants?: number;
+  brandTemplateId?: string | null;
 }
 
 export interface MarketingMeta {

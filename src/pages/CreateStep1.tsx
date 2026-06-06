@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Header from "@/components/factory/Header";
 import SourceModeCard from "@/components/factory/SourceModeCard";
@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, Link2, Image as ImageIcon, FileText } from "lucide-react";
 import { CONTENT_TYPES } from "@/data/contentTypes";
 import { persistWizardState } from "@/lib/contentFactoryBrief";
+import { BrandTemplatePicker } from "@/components/factory/BrandTemplatePicker";
+import { useBrandTemplates } from "@/hooks/useBrandTemplates";
 
 interface LocationState {
   typeId?: string;
@@ -49,6 +51,13 @@ const CreateStep1 = () => {
   const [description, setDescription] = useState("");
   const [productName, setProductName] = useState("");
   const [extraInstructions, setExtraInstructions] = useState("");
+  const [brandTemplateId, setBrandTemplateId] = useState<string | null>(null);
+  const { templates } = useBrandTemplates();
+
+  useEffect(() => {
+    const def = templates.find((t) => t.is_default);
+    if (def && !brandTemplateId) setBrandTemplateId(def.id);
+  }, [templates, brandTemplateId]);
 
   const canContinue =
     (mode === "link" && linkUrl.trim().length > 0) ||
@@ -112,6 +121,10 @@ const CreateStep1 = () => {
           )}
         </div>
 
+        <div className="mt-8">
+          <BrandTemplatePicker value={brandTemplateId} onChange={setBrandTemplateId} />
+        </div>
+
         {/* Extra instructions (всегда доступно) */}
         <div className="mt-10 border-t border-border pt-8">
           <label htmlFor="extra-instructions" className="flex items-center gap-2 text-sm font-medium">
@@ -148,6 +161,7 @@ const CreateStep1 = () => {
                 extraInstructions,
                 photosCount: photos.length,
                 photos,
+                brandTemplateId,
               };
               persistWizardState(nextState);
               navigate("/create/step-2", { state: nextState });

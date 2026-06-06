@@ -53,6 +53,14 @@ import {
   type WizardInputState,
 } from "@/lib/contentFactoryBrief";
 import {
+  brandImageUrls,
+  brandPromptBlock,
+  buildBrandWebhookFields,
+} from "@/lib/contentFactoryBrand";
+import { useBrandTemplates } from "@/hooks/useBrandTemplates";
+import { useContentFactoryGallery } from "@/hooks/useContentFactoryGallery";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
+import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -364,6 +372,17 @@ const CreateStep3 = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const wizardState = loadWizardState((location.state ?? {}) as WizardInputState);
+  const { activeId: projectId } = useProjectsStore();
+  const { getById: getBrandTemplate } = useBrandTemplates();
+  const { saveItem: saveGalleryItem } = useContentFactoryGallery();
+  const brandTemplate = getBrandTemplate(wizardState.brandTemplateId);
+  const galleryMetaRef = useRef<{
+    batchId: string;
+    typeId: string;
+    typeTitle: string;
+    brandTemplateId: string | null;
+    promptsByRequestId: Record<string, string>;
+  } | null>(null);
 
   useEffect(() => {
     persistWizardState((location.state ?? {}) as WizardInputState);
@@ -429,6 +448,21 @@ const CreateStep3 = () => {
           if (v.requestId !== row.request_id) return v;
           if (row.status === "ready" && row.image_url) {
             touched = true;
+            const meta = galleryMetaRef.current;
+            if (meta && v.requestId) {
+              void saveGalleryItem({
+                requestId: v.requestId,
+                sessionId: meta.batchId,
+                typeId: meta.typeId,
+                typeTitle: meta.typeTitle,
+                styleId: v.styleId,
+                styleLabel: v.styleLabel,
+                imageUrl: row.image_url,
+                promptSnapshot: meta.promptsByRequestId[v.requestId],
+                brandTemplateId: meta.brandTemplateId,
+                metadata: { source: "realtime" },
+              });
+            }
             return { ...v, imageUrl: row.image_url, error: undefined };
           }
           if (row.status === "error") {
@@ -647,7 +681,18 @@ const CreateStep3 = () => {
           );
         }
       }
-      const imageUrls = uploadedAssets.map((a) => a.url);
+      const imageUrls = [
+        ...uploadedAssets.map((a) => a.url),
+        ...brandImageUrls(brandTemplate),
+      ];
+
+      galleryMetaRef.current = {
+        batchId,
+        typeId: contentType?.id ?? wizardState.typeId ?? "",
+        typeTitle: contentType?.title ?? "",
+        brandTemplateId: brandTemplate?.id ?? null,
+        promptsByRequestId: {},
+      };
 
       setStatusMessage(
         `Запускаем ${selectedStyles.length} ${selectedStyles.length === 1 ? "генерацию" : "генерации"}...`,
@@ -709,9 +754,19 @@ const CreateStep3 = () => {
             typeof editedBriefs[styleDef.id] === "string" &&
             (editedBriefs[styleDef.id] as string).trim().length > 0 &&
             editedBriefs[styleDef.id] !== built.technicalBrief;
-          const finalTechnicalBrief = userEdited
+          let finalTechnicalBrief = userEdited
             ? (editedBriefs[styleDef.id] as string)
             : built.technicalBrief;
+          if (brandTemplate) {
+            finalTechnicalBrief = `${finalTechnicalBrief}\n\n--- Бренд ---\n${brandPromptBlock(brandTemplate)}`;
+          }
+
+          const requestId = `${batchId}:${styleDef.id}`;
+          if (galleryMetaRef.current) {
+            galleryMetaRef.current.promptsByRequestId[requestId] = finalTechnicalBrief;
+          }
+
+          const brandFields = buildBrandWebhookFields(brandTemplate);
 
           // ВАЖНО: эти ключи (content_type, prompt, name, description, link,
           // image_urls, color, style, language, aspect, slides, fb_niche,
@@ -722,7 +777,6 @@ const CreateStep3 = () => {
           // workflow в https://n8n.zapoinov.com/workflow/sWhNUAx8tFXU0O47
           // Один request_id на стиль — фронт по нему ловит результат
           // в content_factory_results через realtime.
-          const requestId = `${batchId}:${styleDef.id}`;
           const slidesCount =
             typeof wizardState.variants === "number" && wizardState.variants > 0
               ? wizardState.variants
@@ -782,6 +836,8 @@ const CreateStep3 = () => {
             request_id: requestId,
             session_id: batchId,
             input_mode: brief.mode,
+            project_id: projectId ?? "",
+            ...brandFields,
           };
           // Опциональные поля только если есть значение — иначе n8n IF=exists
           // пропустит пустую строку дальше и HTTP-нода упадёт.
@@ -876,10 +932,25 @@ const CreateStep3 = () => {
           // body.payload как строку, и body.content_type / .prompt были бы
           // undefined — AI сгенерил бы шляпу вместо ТЗ.
           const data = await postContentFactory(payload);
+          const syncImageUrl = extractImageUrl(data);
+          if (syncImageUrl && galleryMetaRef.current) {
+            void saveGalleryItem({
+              requestId,
+              sessionId: galleryMetaRef.current.batchId,
+              typeId: galleryMetaRef.current.typeId,
+              typeTitle: galleryMetaRef.current.typeTitle,
+              styleId: styleDef.id,
+              styleLabel: styleDef.label,
+              imageUrl: syncImageUrl,
+              promptSnapshot: finalTechnicalBrief,
+              brandTemplateId: galleryMetaRef.current.brandTemplateId,
+              metadata: { source: "sync" },
+            });
+          }
           return {
             styleId: styleDef.id,
             styleLabel: styleDef.label,
-            imageUrl: extractImageUrl(data),
+            imageUrl: syncImageUrl,
             raw: data,
             requestId,
           };
