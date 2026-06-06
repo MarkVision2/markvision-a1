@@ -1098,8 +1098,141 @@ const CreateStep3 = () => {
           </div>
         )}
 
+        {/* Goal */}
+        <div className="mt-10">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
+              <Target className="h-4 w-4" />
+            </span>
+            Цель контента
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Под цель подстраивается копирайт, акценты и CTA
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {GOALS.map((g) => {
+              const Icon = g.icon;
+              const selected = goalId === g.id;
+              return (
+                <button
+                  key={g.id}
+                  type="button"
+                  onClick={() => setGoalId(g.id)}
+                  aria-pressed={selected}
+                  className={cn(
+                    "group relative flex flex-col items-start gap-2 rounded-2xl border bg-card p-4 text-left transition-all",
+                    "hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-elevated",
+                    selected ? "border-primary shadow-glow ring-2 ring-primary/60" : "border-border",
+                  )}
+                >
+                  <span className={cn(
+                    "grid h-8 w-8 place-items-center rounded-lg",
+                    selected ? "bg-primary text-primary-foreground" : "bg-primary/15 text-primary",
+                  )}>
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div className="text-sm font-semibold text-foreground">{g.label}</div>
+                  <div className="text-xs text-muted-foreground line-clamp-2">{g.description}</div>
+                  {selected && (
+                    <span className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full bg-primary text-primary-foreground">
+                      <Check className="h-3 w-3" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Tone */}
+        <div className="mt-10">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
+              <Megaphone className="h-4 w-4" />
+            </span>
+            Стиль подачи
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Как контент будет звучать для зрителя
+          </p>
+          <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {TONES.map((t) => {
+              const Icon = t.icon;
+              const selected = toneId === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setToneId(t.id)}
+                  aria-pressed={selected}
+                  className={cn(
+                    "group relative flex flex-col items-start gap-2 rounded-2xl border bg-card p-4 text-left transition-all",
+                    "hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-elevated",
+                    selected ? "border-primary shadow-glow ring-2 ring-primary/60" : "border-border",
+                  )}
+                >
+                  <span className={cn(
+                    "grid h-8 w-8 place-items-center rounded-lg",
+                    selected ? "bg-primary text-primary-foreground" : "bg-primary/15 text-primary",
+                  )}>
+                    <Icon className="h-4 w-4" />
+                  </span>
+                  <div className="text-sm font-semibold text-foreground">{t.label}</div>
+                  <div className="text-xs text-muted-foreground line-clamp-2">{t.description}</div>
+                  {selected && (
+                    <span className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full bg-primary text-primary-foreground">
+                      <Check className="h-3 w-3" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* CTA */}
+        <div className="mt-10">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
+              <MessageCircle className="h-4 w-4" />
+            </span>
+            Призыв к действию (CTA)
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Эта фраза будет органично вписана в подпись или оверлей креатива
+          </p>
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {CTAS.map((c) => {
+              const selected = ctaId === c.id;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => setCtaId(c.id)}
+                  aria-pressed={selected}
+                  className={cn(
+                    "group relative flex flex-col items-start gap-1.5 rounded-2xl border bg-card p-4 text-left transition-all",
+                    "hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-elevated",
+                    selected ? "border-primary shadow-glow ring-2 ring-primary/60" : "border-border",
+                  )}
+                >
+                  <div className="text-sm font-semibold text-foreground">{c.label}</div>
+                  <div className="text-xs italic text-primary/80 line-clamp-2">«{c.phrase}»</div>
+                  <div className="text-[11px] text-muted-foreground line-clamp-1">{c.description}</div>
+                  {selected && (
+                    <span className="absolute right-2 top-2 grid h-5 w-5 place-items-center rounded-full bg-primary text-primary-foreground">
+                      <Check className="h-3 w-3" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Color */}
         <div className="mt-10">
+
           <div className="flex items-center gap-2 text-sm font-medium">
             <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
               <Palette className="h-4 w-4" />
