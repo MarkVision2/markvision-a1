@@ -301,7 +301,13 @@ Deno.serve(async (req) => {
             stateWebhook: "yes",
           }),
         });
-        return json({ ok: r.ok, status: r.status, data: r.data });
+        if (r.ok && creds.rowId) {
+          await admin.from("whatsapp_config").update({
+            webhook_url: webhookUrl,
+            updated_at: new Date().toISOString(),
+          }).eq("id", creds.rowId);
+        }
+        return json({ ok: r.ok, status: r.status, data: r.data, webhookUrl });
       }
 
       case "sendMessage": {

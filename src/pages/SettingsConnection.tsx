@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2, QrCode, Phone, CheckCircle2, XCircle, LogOut, RefreshCw } from "lucide-react";
+import { ArrowLeft, Loader2, QrCode, Phone, CheckCircle2, XCircle, LogOut, RefreshCw, Circle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { getCrmWebhookUrl, isValidBotWebhookUrl, WHATSAPP_SETUP_STEPS } from "@/lib/whatsappSetup";
 
 type GreenResp<T = unknown> = {
   ok: boolean;
@@ -44,10 +45,26 @@ const callProxy = async <T = unknown,>(
   return data as GreenResp<T>;
 };
 
+type WaBindRow = {
+  id: string;
+  project_id: string | null;
+  id_instance: string | null;
+  api_token_present: boolean | null;
+  api_url: string | null;
+  phone: string | null;
+  connected: boolean | null;
+  ads_only: boolean | null;
+  bot_webhook_url?: string | null;
+  webhook_url?: string | null;
+};
+
 const SettingsConnection = () => {
   const navigate = useNavigate();
   const { active } = useProjectsStore();
   const projectId = active?.id ?? null;
+  const [waRow, setWaRow] = useState<WaBindRow | null>(null);
+  const [waLoading, setWaLoading] = useState(true);
+  const [webhookOk, setWebhookOk] = useState(false);
   const [state, setState] = useState<string | null>(null);
   const [loadingState, setLoadingState] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
@@ -60,7 +77,27 @@ const SettingsConnection = () => {
   const [logoutLoading, setLogoutLoading] = useState(false);
   const pollRef = useRef<number | null>(null);
 
+  const refreshWaRow = useCallback(async () => {
+    if (!projectId) {
+      setWaRow(null);
+      setWaLoading(false);
+      return;
+    }
+    setWaLoading(true);
+    const { data } = await supabase
+      .from("whatsapp_config_safe")
+      .select("id, project_id, id_instance, api_token_present, api_url, phone, connected, ads_only, bot_webhook_url, webhook_url")
+      .eq("project_id", projectId)
+      .maybeSingle();
+    setWaRow((data as WaBindRow | null) ?? null);
+    setWaLoading(false);
+  }, [projectId]);
+
   const refreshState = useCallback(async () => {
+    if (!projectId || !waRow?.id_instance || !waRow?.api_token_present) {
+      setState(null);
+      return;
+    }
     setLoadingState(true);
     try {
       const r = await callProxy<StateData>("status", undefined, projectId);
@@ -71,10 +108,14 @@ const SettingsConnection = () => {
     } finally {
       setLoadingState(false);
     }
-  }, [projectId]);
+  }, [projectId, waRow?.api_token_present, waRow?.id_instance]);
 
   useEffect(() => {
-    refreshState();
+    void refreshWaRow();
+  }, [refreshWaRow]);
+
+  useEffect(() => {
+    void refreshState();
   }, [refreshState]);
 
   const fetchQr = useCallback(async () => {
@@ -158,6 +199,14 @@ const SettingsConnection = () => {
 
   const stateMeta = state ? STATE_LABELS[state] : null;
   const isAuthed = state === "authorized";
+  const isBound = !!(waRow?.id_instance && waRow?.api_token_present);
+  const crmUrl = getCrmWebhookUrl();
+  const setupSteps = {
+    bind: isBound,
+    auth: isAuthed,
+    webhook: webhookOk,
+    bot: !!(waRow?.bot_webhook_url?.trim()),
+  };
 
   return (
     <main className="min-h-screen">
@@ -174,8 +223,31 @@ const SettingsConnection = () => {
 
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Подключение WhatsApp</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Авторизуйте инстанс Green API через QR-код или по номеру телефона
+          Green API → CRM MarkVision. Проект: <strong>{active?.name ?? "не выбран"}</strong>.
+          В Green API Console webhook всегда указывает на CRM URL ниже; n8n-бот подключается отдельным полем.
         </p>
+
+        <WhatsAppSetupChecklist steps={setupSteps} loading={waLoading} />
+
+        <WhatsappProjectBindCard
+          projectId={projectId}
+          projectName={active?.name ?? null}
+          row={waRow}
+          loading={waLoading}
+          onRefresh={refreshWaRow}
+          onBound={async () => {
+            await refreshWaRow();
+            await refreshState();
+          }}
+        />
+
+        <WebhookCard
+          projectId={projectId}
+          crmUrl={crmUrl}
+          row={waRow}
+          onWebhookStatus={setWebhookOk}
+          onRefresh={refreshWaRow}
+        />
 
         {/* Status Card */}
         <Card className="mt-8 border-border bg-card">
@@ -241,18 +313,12 @@ const SettingsConnection = () => {
           </CardContent>
         </Card>
 
-        {/* Webhook URL */}
-        <WebhookCard projectId={projectId} />
-
-        {/* Bind WhatsApp instance to a project */}
-        <WhatsappProjectBindCard />
-
         {/* Auth Methods */}
         <Card className="mt-6 border-border bg-card">
           <CardHeader>
-            <CardTitle className="text-lg">Способ авторизации</CardTitle>
+            <CardTitle className="text-lg">Шаг 2 — Авторизовать WhatsApp</CardTitle>
             <CardDescription>
-              Выберите удобный способ привязки. QR-код — как в WhatsApp Web; по номеру — стабильнее.
+              После шага 1 отсканируйте QR или получите код по номеру. Без авторизации сообщения не пойдут.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -360,41 +426,118 @@ const SettingsConnection = () => {
   );
 };
 
-function WebhookCard({ projectId }: { projectId: string | null }) {
-  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/greenapi-webhook`;
+function WhatsAppSetupChecklist({
+  steps,
+  loading,
+}: {
+  steps: { bind: boolean; auth: boolean; webhook: boolean; bot: boolean };
+  loading: boolean;
+}) {
+  const values = [steps.bind, steps.auth, steps.webhook, steps.bot];
+  return (
+    <Card className="mt-6 border-primary/20 bg-primary/5">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">Чек-лист подключения</CardTitle>
+        <CardDescription>Шаги 1–3 обязательны для CRM. Шаг 4 — если нужен n8n-бот.</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {WHATSAPP_SETUP_STEPS.map((step, i) => {
+          const done = values[i];
+          const optional = step.id === "bot";
+          return (
+            <div key={step.id} className="flex items-start gap-2 text-sm">
+              {loading ? (
+                <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
+              ) : done ? (
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+              ) : (
+                <Circle className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
+              )}
+              <div>
+                <span className="font-medium">
+                  {i + 1}. {step.title}
+                  {optional ? " (опционально)" : ""}
+                </span>
+                <p className="text-xs text-muted-foreground">{step.hint}</p>
+              </div>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
+function WebhookCard({
+  projectId,
+  crmUrl,
+  row,
+  onWebhookStatus,
+  onRefresh,
+}: {
+  projectId: string | null;
+  crmUrl: string;
+  row: WaBindRow | null;
+  onWebhookStatus: (ok: boolean) => void;
+  onRefresh: () => Promise<void>;
+}) {
   const [current, setCurrent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [botUrl, setBotUrl] = useState("");
+  const [botSaving, setBotSaving] = useState(false);
+
+  useEffect(() => {
+    setBotUrl(row?.bot_webhook_url ?? "");
+  }, [row?.bot_webhook_url]);
 
   const checkSettings = useCallback(async () => {
+    if (!projectId || !row?.id_instance) {
+      setCurrent(null);
+      onWebhookStatus(false);
+      return;
+    }
     setLoading(true);
     try {
       const { data } = await supabase.functions.invoke("greenapi-proxy", {
-        body: { action: "settings", ...(projectId ? { project_id: projectId } : {}) },
+        body: { action: "settings", project_id: projectId },
       });
       const s = (data as { data?: { webhookUrl?: string } } | null)?.data;
-      setCurrent(s?.webhookUrl ?? "");
+      const live = s?.webhookUrl ?? "";
+      setCurrent(live);
+      const matched = !!live && live.replace(/\/+$/, "") === crmUrl.replace(/\/+$/, "");
+      onWebhookStatus(matched);
     } catch {
       setCurrent(null);
+      onWebhookStatus(!!row?.webhook_url && row.webhook_url.replace(/\/+$/, "") === crmUrl.replace(/\/+$/, ""));
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, row?.id_instance, row?.webhook_url, crmUrl, onWebhookStatus]);
 
   useEffect(() => {
     void checkSettings();
   }, [checkSettings]);
 
   const setupWebhook = async () => {
+    if (!projectId) {
+      toast.error("Выберите активный проект");
+      return;
+    }
+    if (!row?.id_instance || !row?.api_token_present) {
+      toast.error("Сначала привяжите idInstance и apiToken к проекту");
+      return;
+    }
     setSaving(true);
     try {
       const { data, error } = await supabase.functions.invoke("greenapi-proxy", {
-        body: { action: "setWebhook", webhookUrl: url, ...(projectId ? { project_id: projectId } : {}) },
+        body: { action: "setWebhook", webhookUrl: crmUrl, project_id: projectId },
       });
       const ok = !error && (data as { ok?: boolean } | null)?.ok !== false;
       if (ok) {
-        toast.success("Webhook настроен в Green API");
+        toast.success("Webhook CRM прописан в Green API");
         await checkSettings();
+        await onRefresh();
       } else {
         toast.error("Не удалось настроить webhook", {
           description: JSON.stringify((data as { data?: unknown })?.data ?? error),
@@ -407,25 +550,49 @@ function WebhookCard({ projectId }: { projectId: string | null }) {
     }
   };
 
-  const matched = current && current.replace(/\/+$/, "") === url.replace(/\/+$/, "");
+  const saveBotUrl = async () => {
+    if (!projectId) return;
+    const trimmed = botUrl.trim();
+    if (trimmed && !isValidBotWebhookUrl(trimmed)) {
+      toast.error("URL бота должен начинаться с https://");
+      return;
+    }
+    setBotSaving(true);
+    try {
+      const { error } = await supabase.rpc("save_whatsapp_bot_webhook", {
+        p_project_id: projectId,
+        p_bot_webhook_url: trimmed || null,
+      });
+      if (error) throw error;
+      toast.success(trimmed ? "URL n8n-бота сохранён" : "Пересылка в n8n отключена");
+      await onRefresh();
+    } catch (e) {
+      toast.error("Не удалось сохранить", { description: (e as Error).message });
+    } finally {
+      setBotSaving(false);
+    }
+  };
+
+  const matched = current && current.replace(/\/+$/, "") === crmUrl.replace(/\/+$/, "");
 
   return (
     <Card className="mt-6 border-border bg-card">
       <CardHeader>
-        <CardTitle className="text-lg">Webhook для входящих сообщений</CardTitle>
+        <CardTitle className="text-lg">Шаг 3 — Webhook CRM (обязательно)</CardTitle>
         <CardDescription>
-          Без этого CRM не будет получать новые сообщения WhatsApp. Нажмите «Настроить автоматически» — мы пропишем URL и включим все нужные уведомления в Green API.
+          Green API принимает только один webhook URL. Он должен указывать на CRM — тогда все сообщения попадают в лиды и чаты.
+          Не вставляйте сюда n8n: для бота есть отдельное поле ниже.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
+      <CardContent className="space-y-4">
         <div className="flex items-center gap-2">
-          <code className="flex-1 break-all rounded-md bg-muted px-3 py-2 text-xs">{url}</code>
+          <code className="flex-1 break-all rounded-md bg-muted px-3 py-2 text-xs">{crmUrl}</code>
           <Button
             variant="outline"
             size="sm"
             onClick={() => {
-              navigator.clipboard.writeText(url);
-              toast.success("URL скопирован");
+              navigator.clipboard.writeText(crmUrl);
+              toast.success("CRM URL скопирован");
             }}
           >
             Копировать
@@ -443,12 +610,12 @@ function WebhookCard({ projectId }: { projectId: string | null }) {
             )}
             <span className="text-muted-foreground">
               {loading
-                ? "Проверка настроек…"
+                ? "Проверка…"
                 : matched
-                  ? "Webhook настроен и совпадает"
+                  ? "Green API → CRM настроено"
                   : current
-                    ? `В Green API сейчас другой URL: ${current || "(пусто)"}`
-                    : "Webhook не настроен"}
+                    ? `В Green API другой URL: ${current || "(пусто)"}`
+                    : "Webhook не настроен — сообщения не попадут в CRM"}
             </span>
           </div>
           <div className="flex gap-2">
@@ -456,49 +623,68 @@ function WebhookCard({ projectId }: { projectId: string | null }) {
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
               Проверить
             </Button>
-            <Button size="sm" onClick={setupWebhook} disabled={saving}>
+            <Button size="sm" onClick={setupWebhook} disabled={saving || !row?.api_token_present}>
               {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              Настроить автоматически
+              Настроить в Green API
             </Button>
           </div>
+        </div>
+
+        <div className="space-y-2 border-t border-border/60 pt-4">
+          <p className="text-xs font-medium text-muted-foreground">
+            Шаг 4 — URL n8n-бота (опционально)
+          </p>
+          <Input
+            value={botUrl}
+            onChange={(e) => setBotUrl(e.target.value)}
+            placeholder="https://n8n.zapoinov.com/webhook/whatsapp-bot"
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Копия каждого события Green API уходит на этот URL после записи в CRM. В Green API Console webhook остаётся CRM URL выше.
+          </p>
+          <Button size="sm" variant="outline" onClick={saveBotUrl} disabled={botSaving || !projectId}>
+            {botSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+            Сохранить URL бота
+          </Button>
         </div>
       </CardContent>
     </Card>
   );
 }
 
-type WaBindRow = {
-  id: string;
-  project_id: string | null;
-  id_instance: string | null;
-  api_token_present: boolean | null;
-  api_url: string | null;
-  phone: string | null;
-  connected: boolean | null;
-  ads_only: boolean | null;
-};
-
-export function WhatsappProjectBindCard() {
-  const { active, projects } = useProjectsStore();
+export function WhatsappProjectBindCard({
+  projectId,
+  projectName,
+  row,
+  loading,
+  onRefresh,
+  onBound,
+}: {
+  projectId: string | null;
+  projectName: string | null;
+  row: WaBindRow | null;
+  loading: boolean;
+  onRefresh: () => Promise<void>;
+  onBound?: () => Promise<void>;
+}) {
+  const { projects } = useProjectsStore();
   const [rows, setRows] = useState<WaBindRow[]>([]);
   const [instance, setInstance] = useState("");
   const [apiToken, setApiToken] = useState("");
   const [apiUrl, setApiUrl] = useState("");
   const [saving, setSaving] = useState(false);
-  const [loading, setLoading] = useState(true);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  const refreshAll = useCallback(async () => {
     const { data } = await supabase
       .from("whatsapp_config_safe")
-      .select("id, project_id, id_instance, api_token_present, api_url, phone, connected, ads_only");
+      .select("id, project_id, id_instance, api_token_present, api_url, phone, connected, ads_only, bot_webhook_url, webhook_url");
     setRows((data ?? []) as WaBindRow[]);
-    setLoading(false);
-  }, []);
+    await onRefresh();
+  }, [onRefresh]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => { void refreshAll(); }, [refreshAll]);
 
-  const currentRow = rows.find((r) => r.project_id === active?.id) ?? null;
+  const currentRow = row;
   useEffect(() => {
     setInstance(currentRow?.id_instance ?? "");
     setApiToken("");
@@ -506,7 +692,7 @@ export function WhatsappProjectBindCard() {
   }, [currentRow?.id_instance, currentRow?.api_token_present, currentRow?.api_url]);
 
   const onBind = async () => {
-    if (!active?.id) {
+    if (!projectId) {
       toast.error("Сначала выберите активный проект");
       return;
     }
@@ -521,19 +707,49 @@ export function WhatsappProjectBindCard() {
       toast.error("apiTokenInstance обязателен — скопируйте его из Green API console");
       return;
     }
+    const trimmedApiUrl = apiUrl.trim();
+    if (trimmedApiUrl) {
+      try {
+        const u = new URL(trimmedApiUrl);
+        const host = u.hostname.toLowerCase();
+        const allowed =
+          host === "api.green-api.com"
+          || host === "api.greenapi.com"
+          || /^[a-z0-9-]+\.api\.greenapi\.com$/i.test(host);
+        if (u.protocol !== "https:" || !allowed || (u.pathname !== "/" && u.pathname !== "")) {
+          toast.error("apiUrl: https://api.green-api.com или *.api.greenapi.com");
+          return;
+        }
+      } catch {
+        toast.error("Некорректный apiUrl");
+        return;
+      }
+    }
     setSaving(true);
     try {
       const { error } = await supabase.rpc("bind_whatsapp_to_project", {
-        p_project_id: active.id,
+        p_project_id: projectId,
         p_id_instance: idInstance,
         p_api_token: token.length >= 20 ? token : undefined,
-        p_api_url: apiUrl.trim() || null,
+        p_api_url: trimmedApiUrl || null,
       });
       if (error) throw error;
-      toast.success(`WhatsApp ${idInstance} привязан к «${active.name}»`, {
-        description: "Теперь нажмите «Получить QR-код» или «По номеру», чтобы авторизовать инстанс.",
+      toast.success(`WhatsApp ${idInstance} привязан к «${projectName ?? "проект"}»`, {
+        description: "Дальше: авторизуйте WA и настройте webhook CRM.",
       });
-      await refresh();
+      await refreshAll();
+      await onBound?.();
+      // Авто-прописка CRM webhook сразу после привязки
+      try {
+        const { data } = await supabase.functions.invoke("greenapi-proxy", {
+          body: { action: "setWebhook", webhookUrl: getCrmWebhookUrl(), project_id: projectId },
+        });
+        if ((data as { ok?: boolean } | null)?.ok) {
+          toast.success("Webhook CRM автоматически прописан в Green API");
+        }
+      } catch {
+        /* пользователь настроит вручную на шаге 3 */
+      }
     } catch (e) {
       toast.error("Не удалось привязать", { description: (e as Error).message });
     } finally {
@@ -541,9 +757,8 @@ export function WhatsappProjectBindCard() {
     }
   };
 
-  // Найти конфликт: один и тот же idInstance уже привязан к другому проекту
   const conflict = instance.trim() && rows.find(
-    (r) => r.id_instance === instance.trim() && r.project_id !== active?.id,
+    (r) => r.id_instance === instance.trim() && r.project_id !== projectId,
   );
   const conflictProject = conflict
     ? projects.find((p) => p.id === conflict.project_id)?.name
@@ -552,9 +767,10 @@ export function WhatsappProjectBindCard() {
   return (
     <Card className="mt-6 border-border bg-card">
       <CardHeader>
-        <CardTitle className="text-lg">WhatsApp → проект</CardTitle>
+        <CardTitle className="text-lg">Шаг 1 — Привязать Green API к проекту</CardTitle>
         <CardDescription>
-          Каждый Green API инстанс привязывается к одному проекту. Входящее сообщение на этот номер попадёт в CRM именно этого проекта, в этап «Новая». Активный проект: <strong>{active?.name ?? "—"}</strong>.
+          Скопируйте из <a href="https://console.green-api.com" target="_blank" rel="noreferrer" className="underline">Green API Console</a> idInstance и apiTokenInstance.
+          Сообщения на этот номер попадут в CRM проекта <strong>{projectName ?? "—"}</strong>, этап «Новая».
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -603,9 +819,9 @@ export function WhatsappProjectBindCard() {
               {currentRow?.id ? (
                 <div className="flex items-start justify-between gap-3 rounded-md border border-border/60 bg-muted/30 p-3">
                   <div className="text-xs">
-                    <p className="font-medium text-foreground">Только заявки с рекламы Meta</p>
+                    <p className="font-medium text-foreground">Только заявки с рекламы Meta (CTWA)</p>
                     <p className="mt-1 text-muted-foreground">
-                      Когда включено, новые лиды в CRM создаются только для входящих сообщений из Click-to-WhatsApp рекламы Facebook/Instagram. Личные чаты и обычные сообщения не попадут в CRM. Существующим лидам сообщения сохраняются всегда.
+                      Выключено по умолчанию — все входящие попадают в CRM. Включите, если нужны только лиды из Click-to-WhatsApp рекламы. Существующим лидам сообщения сохраняются всегда; n8n-бот получает копии в любом случае.
                     </p>
                   </div>
                   <Switch
@@ -629,7 +845,7 @@ export function WhatsappProjectBindCard() {
                 <div className="text-[11px] text-muted-foreground">
                   {conflictProject ? (
                     <span className="text-destructive">
-                      Этот idInstance уже привязан к «{conflictProject}». Перепривязка перенесёт его на «{active?.name}».
+                      Этот idInstance уже привязан к «{conflictProject}». Перепривязка перенесёт его на «{projectName}».
                     </span>
                   ) : currentRow ? (
                     <>
@@ -641,7 +857,7 @@ export function WhatsappProjectBindCard() {
                     "У этого проекта пока нет привязанного WhatsApp."
                   )}
                 </div>
-                <Button onClick={onBind} disabled={saving || !active?.id}>
+                <Button onClick={onBind} disabled={saving || !projectId}>
                   {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                   {currentRow?.id_instance ? "Перепривязать" : "Привязать"}
                 </Button>
