@@ -1,7 +1,7 @@
 {
-  "git_sha": "18ab9b9",
-  "git_sha_full": "18ab9b9b71844aeb668ea8f46e0f8650cf4da149",
-  "updated_at": "2026-06-06T17:58:29Z",
-  "label": "fix: gallery loads all project creatives, not just last one",
+  "git_sha": "053d230",
+  "git_sha_full": "053d230bce6c57c159d5b9cfc80e016ce94f8873",
+  "updated_at": "2026-06-06T18:41:13Z",
+  "label": "Merge: content factory wizard flows + neuro-photo n8n payload fixes",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
