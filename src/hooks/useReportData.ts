@@ -47,7 +47,15 @@ export interface ReportCreative {
   clicks: number;
   ctr: number;
   leads: number;
+  crmLeads: number;
+  crmSales: number;
   crmRevenue: number;
+  crmRomi: number;
+  creativeType: string;
+  thumbnailUrl: string | null;
+  imageUrl: string | null;
+  posterUrl: string | null;
+  videoUrl: string | null;
 }
 
 export interface ReportChannel {
@@ -97,10 +105,39 @@ function ymd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function toReportCreative(r: MetaCreativeRow): ReportCreative {
+  const crmLeads = r.crmLeads ?? 0;
+  const leads = crmLeads > 0 ? crmLeads : r.leads;
+  const spend = r.spend ?? 0;
+  const crmRevenue = r.crmRevenue ?? 0;
+  const crmRomi = spend > 0 && crmRevenue > 0
+    ? ((crmRevenue - spend) / spend) * 100
+    : (r.crmRomi ?? 0);
+
+  return {
+    adId: r.adId,
+    name: r.name?.trim() || r.adId,
+    spend,
+    impressions: r.impressions ?? 0,
+    clicks: r.clicks ?? 0,
+    ctr: r.ctr ?? 0,
+    leads,
+    crmLeads,
+    crmSales: r.crmSales ?? 0,
+    crmRevenue,
+    crmRomi,
+    creativeType: r.creativeType ?? "image",
+    thumbnailUrl: r.thumbnailUrl,
+    imageUrl: r.imageUrl,
+    posterUrl: r.posterUrl,
+    videoUrl: r.videoUrl,
+  };
+}
+
 export function mapMetaCreativesToReport(
   rows: MetaCreativeRow[],
   cabinetId: string,
-  limit = 10,
+  limit = 30,
 ): ReportCreative[] {
   const filtered = cabinetId === "all"
     ? rows
@@ -108,18 +145,14 @@ export function mapMetaCreativesToReport(
 
   return filtered
     .filter((r) => r.spend > 0 || r.crmRevenue > 0 || r.leads > 0 || r.crmLeads > 0)
-    .sort((a, b) => (b.crmRevenue - a.crmRevenue) || (b.spend - a.spend))
-    .slice(0, limit)
-    .map((r) => ({
-      adId: r.adId,
-      name: r.name?.trim() || r.adId,
-      spend: r.spend,
-      impressions: r.impressions,
-      clicks: r.clicks,
-      ctr: r.ctr,
-      leads: r.crmLeads > 0 ? r.crmLeads : r.leads,
-      crmRevenue: r.crmRevenue,
-    }));
+    .map(toReportCreative)
+    .sort((a, b) =>
+      (b.crmRevenue - a.crmRevenue)
+      || (b.crmSales - a.crmSales)
+      || (b.spend - a.spend)
+      || (b.leads - a.leads),
+    )
+    .slice(0, limit);
 }
 
 function normalizeActId(id: string) {
