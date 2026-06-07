@@ -9,11 +9,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "./useProjectsStore";
 import { useRealtimeTable } from "./useRealtimeTable";
 
-function dayKey(d: Date | string) {
-  const x = typeof d === "string" ? new Date(d) : d;
-  return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
-}
-
 type ProviderKey = "meta" | "google" | "instagram_organic";
 
 interface ProviderAgg {
