@@ -74,8 +74,8 @@ export function UnitEconomicsPage({ data, rangeLabel }: Props) {
         <div className="rounded-2xl border border-border/40 bg-card/30 px-4">
           <EcoRow icon={BarChart3} title="Финансовая сводка" sub={`Unit Economics · ${rangeLabel}`} value="" />
           <EcoRow icon={DollarSign} title="Общая выручка" sub="Total Revenue" value={reportFmt.fmtTenge(totals.revenue)} />
-          <EcoRow icon={ShoppingCart} title="Средний чек" sub="Average Order Value" value={reportFmt.fmtTenge(totals.aov)} />
-          <EcoRow icon={Users} title="CAC" sub="Customer Acquisition Cost" value={reportFmt.fmtTenge(totals.cac)} />
+          <EcoRow icon={ShoppingCart} title="Средний чек" sub="Average Order Value" value={totals.sales > 0 ? reportFmt.fmtTenge(totals.aov) : "—"} />
+          <EcoRow icon={Users} title="CAC" sub="Customer Acquisition Cost" value={totals.sales > 0 ? reportFmt.fmtTenge(totals.cac) : "—"} />
           <EcoRow icon={TrendingUp} title="ROMI" sub="Return on Marketing" value={`${totals.romi >= 0 ? "+" : ""}${Math.round(totals.romi)}%`} />
         </div>
       </div>

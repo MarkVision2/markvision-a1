@@ -80,6 +80,35 @@ describe("computeTotals — Таблица показателей (CRM + manual 
     expect(row?.manual_diagnostic_revenue).toBe(10_000);
   });
 
+  it("manual override не дублируется с orphan-CRM в тот же день", () => {
+    const orphanDiag = mkLead({
+      cabinetId: null,
+      stageKey: "visit",
+      diagnosticAmount: 10_000,
+      lastActivityAt: "2026-06-10T12:00:00Z",
+    });
+    const june = { from: new Date("2026-06-01"), to: new Date("2026-06-30") };
+    const crm = aggregateCrm([orphanDiag], june, "all");
+    const resolved = sumResolvedMetricsPerCabinets(
+      june,
+      [orphanDiag],
+      [{
+        cabinet_id: "cab-1",
+        date: "2026-06-10",
+        manual_diagnostics: 1,
+        manual_diagnostic_revenue: 10_000,
+        manual_sales: null,
+        manual_revenue: null,
+      }],
+      ["cab-1"],
+      true,
+    );
+    const totals = computeTotals({ ...emptyMeta }, crm, resolved);
+
+    expect(totals.visits).toBe(1);
+    expect(totals.revenue).toBe(10_000);
+  });
+
   it("ручная выручка диагностик 10k перезаписывает CRM 5k", () => {
     const d1 = mkLead({
       cabinetId: "cab-1",
