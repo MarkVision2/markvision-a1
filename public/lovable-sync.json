@@ -1,7 +1,7 @@
 {
-  "git_sha": "c6f7939",
-  "git_sha_full": "c6f7939385833309afc8576bf6033adb87bf502f",
-  "updated_at": "2026-06-07T12:34:39Z",
-  "label": "fix(metrics): TDZ crash — declare canEditManual before manualHint",
+  "git_sha": "b504348",
+  "git_sha_full": "b504348ac437cd0f21cf41375480091670d02595",
+  "updated_at": "2026-06-07T12:55:09Z",
+  "label": "Fix CDI row matching: manual overrides apply when cabinet_id is null",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
