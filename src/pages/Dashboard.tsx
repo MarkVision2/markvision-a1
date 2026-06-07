@@ -10,7 +10,6 @@ import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPi
 import { MoneyKpiCard } from "@/components/dashboard/MoneyKpiCard";
 import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
 import { EnhancedFunnel } from "@/components/dashboard/EnhancedFunnel";
-import { CampaignGoalsBreakdown } from "@/components/dashboard/CampaignGoalsBreakdown";
 import { ChannelsTable } from "@/components/dashboard/ChannelsTable";
 import { CreativesGrid } from "@/components/dashboard/CreativesGrid";
 import { CrmFunnel } from "@/components/dashboard/CrmFunnel";
@@ -85,7 +84,7 @@ const Dashboard = () => {
   const { stats: codewordStats } = useCodewordStats();
   const { leads: liteLeads } = useLeadsLite();
   const crmFlow = useCrmFlow(range, liteLeads);
-  const { creatives: metaCreatives, campaigns: metaCampaigns } = useMetaDashboard(range);
+  const { creatives: metaCreatives } = useMetaDashboard(range);
   const periodLeads = useMemo(() => {
     const fromTs = range.from.getTime();
     // toTs = начало следующего дня после range.to, чтобы захватить весь последний день
@@ -241,11 +240,7 @@ const Dashboard = () => {
         </>
       )}
 
-      {/* Block 4.2 — Цели кампаний Meta (WhatsApp / лиды с сайта / direct и т.д.) */}
-      <SectionTitle accent="bg-primary">Цели рекламных кампаний Meta</SectionTitle>
-      <CampaignGoalsBreakdown rows={metaCampaigns} />
-
-      {/* Block 4.3 — Топ-6 креативов Meta по выручке CRM */}
+      {/* Block 4.2 — Топ-6 креативов Meta по выручке CRM */}
       <SectionTitle>Топ креативов по выручке CRM</SectionTitle>
       <CreativesGrid rows={metaCreatives} topMode viewAllHref="/ads?tab=creatives" />
 

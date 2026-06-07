@@ -3,7 +3,7 @@ import { useReportData, type ReportPeriodRange } from "./useReportData";
 import { useLeadsLite } from "./useLeadsLite";
 import { useInstagramOrganic } from "./useInstagramOrganic";
 import { buildAlerts } from "@/lib/dashboardAlerts";
-import { normalizeSource } from "@/lib/leadSource";
+import { buildDashboardChannels } from "@/lib/dashboardChannels";
 import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "./useProjectsStore";
@@ -30,11 +30,6 @@ const PROVIDER_LABELS: Record<ProviderKey, string> = {
   google: "Google Ads",
   instagram_organic: "Instagram (organic)",
 };
-
-function dayKeyInRange(date: Date, fromTs: number, toTs: number): boolean {
-  const t = date.getTime();
-  return t >= fromTs && t < toTs;
-}
 
 export function useDashboardData(
   cabinetId: string,
@@ -154,120 +149,29 @@ export function useDashboardData(
     return { total, reached, scheduled, visited, paid };
   }, [leads, fromTs, toTs]);
 
-  // Каналы для дашборда. ВЫСОКОУРОВНЕВЫЕ КАНАЛЫ ТРАФИКА:
-  // WhatsApp · Сайт · Instagram · Google Ads · TikTok Ads.
-  // Раньше показывали «Facebook Ads / Лид-формы / Прочее» — но Facebook Ads
-  // это провайдер рекламы (как Google), а не точка входа лида. Реальные
-  // точки входа — WhatsApp / Сайт / Instagram (organic). Meta-расход
-  // раскидываем по WhatsApp и Сайт пропорционально доле лидов.
-  // Google Ads / TikTok Ads — отдельные строки из providerAgg.
   const channels = useMemo(() => {
-    const inRange = leads.filter((l) => dayKeyInRange(new Date(l.createdAt), fromTs, toTs));
-    const paidInRange = leads.filter((l) => {
-      if (!isLeadPaid(l)) return false;
-      const paidAt = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
-      const t = new Date(paidAt).getTime();
-      return t >= fromTs && t < toTs;
+    const igPaidLeads = igEvents
+      .filter((e) => e.eventType === "lead" && e.leadId)
+      .map((e) => leads.find((l) => l.id === e.leadId))
+      .filter((l): l is typeof leads[number] => {
+        if (!l || l.cabinetId) return false;
+        if (!isLeadPaid(l)) return false;
+        const paidAt = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
+        const t = new Date(paidAt).getTime();
+        return t >= fromTs && t < toTs;
+      });
+
+    return buildDashboardChannels({
+      leads,
+      totals: data?.totals,
+      providerAgg,
+      fromTs,
+      toTs,
+      igOrganicLeads: igFunnel.leads,
+      igOrganicSales: igPaidLeads.length,
+      igOrganicRevenue: igPaidLeads.reduce((s, l) => s + (l.amount || 0), 0),
     });
-
-    type BucketKey = "whatsapp" | "site" | "instagram" | "google" | "tiktok";
-    interface ChannelRow {
-      key: string;
-      name: string;
-      provider: BucketKey;
-      spend: number;
-      leads: number;
-      sales: number;
-      revenue: number;
-    }
-
-    const BUCKET_LABELS: Record<BucketKey, string> = {
-      whatsapp: "WhatsApp",
-      site: "Сайт",
-      instagram: "Instagram",
-      google: "Google Ads",
-      tiktok: "TikTok Ads",
-    };
-
-    const classify = (l: typeof inRange[number]): BucketKey => {
-      const src = (l.source ?? "").toLowerCase();
-      const ch = (l.channel ?? "").toLowerCase();
-      const refr = (l.referrer ?? "").toLowerCase();
-      const landing = (l.utm?.source ?? "").toLowerCase();
-      if (/whatsapp|^wa$|wa\.me/.test(src) || /whatsapp|^wa$/.test(ch) || /wa\.me|whatsapp/.test(refr)) return "whatsapp";
-      if (/tiktok|tt_ads|^tt$/.test(src) || /tiktok/.test(landing)) return "tiktok";
-      if (/google|googleads|gads|gsearch/.test(src) || /google/.test(landing)) return "google";
-      if (/instagram|^ig$|insta/.test(src) || /instagram/.test(landing) || /instagram\.com/.test(refr)) return "instagram";
-      if (/site|web|landing|tilda|wordpress|^lp$/.test(src) || /site|web|form/.test(ch) || /site|web|landing|tilda|wordpress/.test(landing)) return "site";
-      // Meta/Facebook без явного канала: WhatsApp если destination — WA, иначе Сайт.
-      if (/meta|facebook|fb_ads|^fb$|lead.?form|leadgen|fb_form/.test(src)) {
-        if (/whatsapp|wa\.me/.test(refr) || /whatsapp/.test(landing)) return "whatsapp";
-        return "site";
-      }
-      return "site";
-    };
-
-    const buckets = new Map<BucketKey, ChannelRow>();
-    const ensure = (k: BucketKey) => {
-      let cur = buckets.get(k);
-      if (!cur) {
-        cur = { key: k, name: BUCKET_LABELS[k], provider: k, spend: 0, leads: 0, sales: 0, revenue: 0 };
-        buckets.set(k, cur);
-      }
-      return cur;
-    };
-    // Заглушки, чтобы все 5 каналов всегда отображались в одном и том же порядке
-    for (const k of ["whatsapp", "site", "instagram", "google", "tiktok"] as BucketKey[]) ensure(k);
-
-    // 1) Лиды по createdAt
-    for (const l of inRange) ensure(classify(l)).leads += 1;
-    // 2) Продажи по paid_at
-    for (const l of paidInRange) {
-      const b = ensure(classify(l));
-      b.sales += 1;
-      b.revenue += l.amount || 0;
-    }
-
-    // 3) Instagram organic — отдельные события (если есть)
-    if (igFunnel.leads > 0 || igFunnel.codewordDms > 0) {
-      const igPaidLeads = igEvents
-        .filter((e) => e.eventType === "lead" && e.leadId)
-        .map((e) => leads.find((l) => l.id === e.leadId))
-        .filter((l): l is typeof leads[number] => {
-          if (!l || l.cabinetId) return false;
-          if (!isLeadPaid(l)) return false;
-          const paidAt = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
-          const t = new Date(paidAt).getTime();
-          return t >= fromTs && t < toTs;
-        });
-      const ig = ensure("instagram");
-      ig.leads += igFunnel.leads;
-      ig.sales += igPaidLeads.length;
-      ig.revenue += igPaidLeads.reduce((s, l) => s + (l.amount || 0), 0);
-    }
-
-    // 4) Расход CDI: Meta распределяем между WhatsApp и Сайт пропорционально
-    //    доле лидов; Google → bucket "google" целиком; TikTok → "tiktok" целиком.
-    const metaSpend = providerAgg
-      .filter((a) => a.provider !== "google" && a.provider !== "instagram_organic")
-      .reduce((s, a) => s + a.spend, 0);
-    const googleSpend = providerAgg.filter((a) => a.provider === "google").reduce((s, a) => s + a.spend, 0);
-
-    const metaBucketKeys: BucketKey[] = ["whatsapp", "site"];
-    const metaLeadsTotal = metaBucketKeys.reduce((s, k) => s + (buckets.get(k)?.leads ?? 0), 0);
-    if (metaSpend > 0 && metaLeadsTotal > 0) {
-      for (const k of metaBucketKeys) {
-        const b = buckets.get(k);
-        if (b) b.spend = (b.leads / metaLeadsTotal) * metaSpend;
-      }
-    }
-    if (googleSpend > 0) ensure("google").spend += googleSpend;
-
-    // Возвращаем все 5 в фиксированном порядке (даже если в каких-то 0)
-    return ["whatsapp", "site", "instagram", "google", "tiktok"]
-      .map((k) => buckets.get(k as BucketKey)!)
-      .filter(Boolean);
-  }, [providerAgg, igFunnel, igEvents, leads, fromTs, toTs]);
+  }, [providerAgg, igFunnel, igEvents, leads, fromTs, toTs, data?.totals]);
 
 
 
