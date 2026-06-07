@@ -1,7 +1,7 @@
 {
-  "git_sha": "97d6111",
-  "git_sha_full": "97d6111c155075491deb10df9967094444e13495",
-  "updated_at": "2026-06-07T17:32:57Z",
-  "label": "fix(creatives): restore preview fallback while HQ loads in background",
+  "git_sha": "756c4b4",
+  "git_sha_full": "756c4b452afd094cc9e9d9d63bec7fb159583deb",
+  "updated_at": "2026-06-07T17:37:27Z",
+  "label": "feat(ads): redesign creatives grid — no crop, list view, readable labels",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
