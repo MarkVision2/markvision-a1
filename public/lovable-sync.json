@@ -1,7 +1,7 @@
 {
-  "git_sha": "41d4a94",
-  "git_sha_full": "41d4a9491277886945663e1635de87241f4c39f9",
-  "updated_at": "2026-06-07T09:06:07Z",
-  "label": "fix(scripts): bootstrap whatsapp_config in apply-whatsapp-setup.sql",
+  "git_sha": "a40636b",
+  "git_sha_full": "a40636b81d14b3511b35219bebfc71b52cb75079",
+  "updated_at": "2026-06-07T09:40:59Z",
+  "label": "fix(crm): show unassigned WhatsApp leads to project members",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
