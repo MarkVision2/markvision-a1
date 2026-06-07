@@ -1,7 +1,7 @@
 {
-  "git_sha": "a6942e3",
-  "git_sha_full": "a6942e3e26ff25238ed713300066dd29e563a941",
-  "updated_at": "2026-06-07T08:50:04Z",
-  "label": "Merge: WhatsApp guided setup + Green API SSRF hardening",
+  "git_sha": "688e3d9",
+  "git_sha_full": "688e3d90c8483c54e03558e06fe7b89a44f872ec",
+  "updated_at": "2026-06-07T09:02:52Z",
+  "label": "fix(whatsapp): fallback bot URL save + manual SQL script for prod",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
