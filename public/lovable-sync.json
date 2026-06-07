@@ -1,7 +1,7 @@
 {
-  "git_sha": "20d0b44",
-  "git_sha_full": "20d0b44e514e5e71288dd4a0c7a7ba070f56040a",
-  "updated_at": "2026-06-07T12:16:21Z",
-  "label": "fix(metrics): show full KPI labels without truncation",
+  "git_sha": "959ff9b",
+  "git_sha_full": "959ff9bb060a94d5b3b667d642ab7c2e8b13b4c7",
+  "updated_at": "2026-06-07T12:30:43Z",
+  "label": "fix(metrics): CRM-based diagnostics count + working manual override",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
