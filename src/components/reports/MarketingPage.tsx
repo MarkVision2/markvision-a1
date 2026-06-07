@@ -1,5 +1,5 @@
 import {
-  Eye, Flame, MapPin, MousePointerClick,
+  Eye, Flame, MapPin,
   ShoppingCart, Target, TrendingUp, Users, Wallet,
 } from "lucide-react";
 import type { ReportData } from "@/hooks/useReportData";
@@ -7,8 +7,8 @@ import { deltaPct } from "@/hooks/useReportData";
 import { KpiCard } from "./KpiCard";
 import { SectionTitle } from "./SectionTitle";
 import { ReportPageWrapper } from "./ReportPageWrapper";
-import { cn } from "@/lib/utils";
-import { fmtMetricTenge, fmtNum, fmtPct, fmtTenge } from "./reportFormat";
+import { ReportConversionFunnel } from "./ReportConversionFunnel";
+import { fmtMetricTenge, fmtNum, fmtTenge } from "./reportFormat";
 
 interface Props {
   data: ReportData;
@@ -18,14 +18,6 @@ interface Props {
 
 export function MarketingPage({ data, rangeLabel, comparing }: Props) {
   const { totals, prev } = data;
-  const funnel = [
-    { label: "Показы", value: totals.impressions, prev: undefined as number | undefined },
-    { label: "Клики", value: totals.clicks, prev: totals.impressions },
-    { label: "Лиды", value: totals.totalLeads, prev: totals.clicks },
-    { label: "Диагностики", value: totals.visits, prev: totals.totalLeads },
-    { label: "Продажи", value: totals.sales, prev: totals.visits },
-  ];
-  const max = Math.max(...funnel.map((f) => f.value), 1);
 
   return (
     <ReportPageWrapper
@@ -52,44 +44,7 @@ export function MarketingPage({ data, rangeLabel, comparing }: Props) {
 
       <div className="mt-8">
         <SectionTitle>Воронка конверсии</SectionTitle>
-        <div className="space-y-4">
-          {funnel.map((step, i) => {
-            const conv = step.prev !== undefined && step.prev > 0
-              ? (step.value / step.prev) * 100 : null;
-            const loss = conv !== null ? -(100 - conv) : null;
-            const widthPct = (step.value / max) * 100;
-            return (
-              <div key={step.label}>
-                <div className="grid grid-cols-[100px_1fr] items-center gap-4">
-                  <span className="text-xs text-muted-foreground">{step.label}</span>
-                  <div className="relative h-12 overflow-hidden rounded-xl border border-border/40 bg-secondary/20">
-                    <div
-                      className={cn(
-                        "h-full bg-gradient-to-r",
-                        i === 0 && "from-success/40 to-success/20",
-                        i === 1 && "from-success/35 to-success/15",
-                        i === 2 && "from-success/30 to-success/10",
-                        i === 3 && "from-primary/35 to-primary/15",
-                        i === 4 && "from-warning/35 to-warning/15",
-                      )}
-                      style={{ width: `${Math.max(widthPct, step.value > 0 ? 4 : 0)}%` }}
-                    />
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-base font-bold tabular-nums">
-                      {fmtNum(step.value)}
-                    </span>
-                  </div>
-                </div>
-                {conv !== null && (
-                  <div className="ml-[116px] mt-2 flex items-center gap-3 text-[11px]">
-                    <span className="text-success">↓ {fmtPct(conv)} конверсия</span>
-                    <span className="text-muted-foreground">·</span>
-                    <span className="text-destructive">{loss?.toFixed(1)}% потери</span>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
+        <ReportConversionFunnel totals={totals} />
       </div>
     </ReportPageWrapper>
   );
