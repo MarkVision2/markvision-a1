@@ -452,16 +452,15 @@ async function findOrCreateLead(
     return null;
   }
 
-  // RLS: non-admins only see leads where assigned_to/created_by = self.
-  // Inbound WhatsApp has neither — set created_by to project owner so CRM UI shows the lead.
-  let createdBy: string | null = null;
+  // Assign to project owner so CRM shows the lead on first stage for the whole team.
+  let ownerId: string | null = null;
   if (resolvedProject) {
     const { data: proj } = await admin
       .from("projects")
       .select("created_by")
       .eq("id", resolvedProject)
       .maybeSingle();
-    createdBy = (proj as { created_by?: string | null } | null)?.created_by ?? null;
+    ownerId = (proj as { created_by?: string | null } | null)?.created_by ?? null;
   }
 
   const { data: created, error } = await admin
@@ -475,7 +474,8 @@ async function findOrCreateLead(
       cabinet_id: cabinetId,
       pipeline_id: def.pipeline_id,
       stage_id: def.stage_id,
-      created_by: createdBy,
+      created_by: ownerId,
+      assigned_to: ownerId,
       meta_ad_id: attribution?.meta_ad_id ?? null,
       meta_adset_id: metaAdsetId,
       meta_campaign_id: metaCampaignId,
