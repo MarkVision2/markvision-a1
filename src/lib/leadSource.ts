@@ -82,6 +82,24 @@ const TABLE: Record<string, Omit<SourceMeta, "raw">> = {
   manual: { key: "manual", label: "Вручную", Icon: Hand, cls: "text-muted-foreground" },
 };
 
+/** Источник для UI: учитывает source, channel и Meta-атрибуцию. */
+export function resolveLeadSource(lead: {
+  source?: string | null;
+  channel?: string | null;
+  metaAdId?: string | null;
+}): SourceMeta {
+  const raw = (lead.source ?? "").trim() || (lead.channel ?? "").trim();
+  if (lead.metaAdId) {
+    const via = normalizeSource(raw || "whatsapp");
+    if (via.key === "whatsapp") {
+      const meta = normalizeSource("meta");
+      return { ...meta, label: "WhatsApp · Meta Ads", raw: raw || "whatsapp" };
+    }
+    return normalizeSource(raw || "meta");
+  }
+  return normalizeSource(raw);
+}
+
 export function normalizeSource(raw: string | null | undefined): SourceMeta {
   const v = (raw ?? "").trim().toLowerCase();
   if (!v) {

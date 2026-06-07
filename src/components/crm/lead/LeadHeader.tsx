@@ -1,12 +1,13 @@
 import {
-  Star, Phone as PhoneIcon, MessageCircle, Send, Camera, Globe, Tag, Link2,
+  Star, Phone as PhoneIcon, MessageCircle, Tag, Link2,
 } from "lucide-react";
+import { resolveLeadSource } from "@/lib/leadSource";
 import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import type { Lead, LeadStage, LeadChannel } from "@/types/crm";
+import type { Lead, LeadStage } from "@/types/crm";
 import type { TeamMember } from "@/hooks/useTeamStore";
 import { InlineEdit } from "./InlineEdit";
 import { LeadAttribution } from "./LeadAttribution";
@@ -21,21 +22,13 @@ interface Props {
   onChangeStage: (stageId: string) => void;
 }
 
-function ChannelIcon({ channel }: { channel?: LeadChannel }) {
-  switch (channel) {
-    case "telegram": return <Send className="h-3 w-3" />;
-    case "instagram": return <Camera className="h-3 w-3" />;
-    case "phone": return <PhoneIcon className="h-3 w-3" />;
-    case "web": return <Globe className="h-3 w-3" />;
-    default: return <MessageCircle className="h-3 w-3" />;
-  }
-}
-
 export function LeadHeader({
   lead, stages, members, onUpdate, onTogglePin, onAssign, onChangeStage,
 }: Props) {
   const stage = stages.find((s) => s.id === lead.stageId);
   const assignee = members.find((m) => m.id === lead.assigneeId);
+  const sourceMeta = resolveLeadSource(lead);
+  const SourceIcon = sourceMeta.Icon;
 
   return (
     <div className="border-b border-border/60 bg-background pb-3">
@@ -68,9 +61,15 @@ export function LeadHeader({
           </div>
 
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
-            <span className="inline-flex items-center gap-1 rounded-md bg-secondary/60 px-1.5 py-0.5 font-medium">
-              <ChannelIcon channel={lead.channel} />
-              {lead.source}
+            <span
+              className={cn(
+                "inline-flex items-center gap-1 rounded-md bg-secondary/60 px-1.5 py-0.5 font-medium",
+                sourceMeta.cls,
+              )}
+              title={`Источник: ${sourceMeta.label}${lead.channel ? ` · канал: ${lead.channel}` : ""}`}
+            >
+              <SourceIcon className="h-3 w-3 shrink-0" />
+              {sourceMeta.label}
             </span>
 
             {/* stage chip with quick switcher */}
