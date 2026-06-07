@@ -134,28 +134,92 @@ async function getDefaultStage(
   return tryPipe(d4?.id);
 }
 
+type InstanceConfig = {
+  projectId: string | null;
+  ok: boolean;
+  adsOnly: boolean;
+  botWebhookUrl: string | null;
+};
+
 // Resolve which project a webhook belongs to via whatsapp_config.id_instance,
 // and verify the per-instance webhook_token if one is configured.
-// Returns { projectId, ok }. ok=false → reject (token mismatch / spoof attempt).
 async function projectFromInstance(
   idInstance: number | string | null | undefined,
   presentedToken: string | null,
-): Promise<{ projectId: string | null; ok: boolean }> {
-  if (!idInstance) return { projectId: null, ok: true };
+): Promise<InstanceConfig> {
+  if (!idInstance) {
+    return { projectId: null, ok: true, adsOnly: false, botWebhookUrl: null };
+  }
   const { data } = await admin
     .from("whatsapp_config")
-    .select("project_id, webhook_token")
+    .select("project_id, webhook_token, ads_only, bot_webhook_url")
     .eq("id_instance", String(idInstance))
     .maybeSingle();
-  if (!data) return { projectId: null, ok: true };
-  const expected = (data as { webhook_token?: string | null }).webhook_token ?? null;
-  // Global fallback: if no per-row token but GREENAPI_WEBHOOK_TOKEN env is set, require it.
+  if (!data) {
+    return { projectId: null, ok: true, adsOnly: false, botWebhookUrl: null };
+  }
+  const row = data as {
+    project_id?: string | null;
+    webhook_token?: string | null;
+    ads_only?: boolean | null;
+    bot_webhook_url?: string | null;
+  };
+  const expected = row.webhook_token ?? null;
   const envToken = Deno.env.get("GREENAPI_WEBHOOK_TOKEN") ?? null;
   const required = expected || envToken;
   if (required && required !== presentedToken) {
-    return { projectId: data.project_id ?? null, ok: false };
+    return {
+      projectId: row.project_id ?? null,
+      ok: false,
+      adsOnly: !!row.ads_only,
+      botWebhookUrl: row.bot_webhook_url ?? null,
+    };
   }
-  return { projectId: data.project_id ?? null, ok: true };
+  return {
+    projectId: row.project_id ?? null,
+    ok: true,
+    adsOnly: !!row.ads_only,
+    botWebhookUrl: row.bot_webhook_url ?? null,
+  };
+}
+
+function forwardToBotWebhook(url: string | null | undefined, body: Record<string, unknown>) {
+  const target = url?.trim();
+  if (!target) return;
+  fetch(target, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  }).catch((e) => console.warn("bot_webhook forward failed:", e));
+}
+
+async function findExistingLeadId(
+  phone: string,
+  projectId: string | null,
+): Promise<string | null> {
+  const d = digits(phone);
+  if (!d) return null;
+
+  let q = admin
+    .from("leads")
+    .select("id, phone")
+    .or(`phone.eq.${phone},phone.eq.+${d},phone.eq.${d}`)
+    .limit(1);
+  if (projectId) q = q.eq("project_id", projectId);
+  const { data: existing } = await q;
+  if (existing && existing.length > 0) {
+    return (existing[0] as { id: string }).id;
+  }
+
+  let scan = admin
+    .from("leads")
+    .select("id, phone")
+    .order("created_at", { ascending: false })
+    .limit(500);
+  if (projectId) scan = scan.eq("project_id", projectId);
+  const { data: recent } = await scan;
+  const match = (recent ?? []).find((l) => digits(l.phone) === d) as { id: string } | undefined;
+  return match?.id ?? null;
 }
 
 // Best-effort parser of Meta CTWA (Click-To-WhatsApp) referral payload.
@@ -468,12 +532,12 @@ Deno.serve(async (req) => {
   const presentedToken =
     url.searchParams.get("token") ??
     (typeof body.webhookUrlToken === "string" ? (body.webhookUrlToken as string) : null);
-  const resolved = await projectFromInstance(instanceData?.idInstance, presentedToken);
-  if (!resolved.ok) {
+  const instanceCfg = await projectFromInstance(instanceData?.idInstance, presentedToken);
+  if (!instanceCfg.ok) {
     console.warn("greenapi-webhook: invalid webhook token", { idInstance: instanceData?.idInstance });
     return json({ error: "invalid webhook token" }, 401);
   }
-  const projectId = resolved.projectId;
+  const projectId = instanceCfg.projectId;
 
   try {
     const idMessage = (body.idMessage as string | undefined) ?? null;
@@ -485,23 +549,32 @@ Deno.serve(async (req) => {
       const messageData = body.messageData as Record<string, unknown> | undefined;
       const phone = chatIdToPhone(senderData?.chatId ?? senderData?.sender);
       const name = senderData?.senderName?.trim() || "";
-      if (!phone) return json({ ok: true, skipped: "no phone" });
+      if (!phone) {
+        forwardToBotWebhook(instanceCfg.botWebhookUrl, body);
+        return json({ ok: true, skipped: "no phone" });
+      }
       let attribution: CtwaAttribution | null = parseCtwa(messageData, body);
       if (!attribution?.meta_ad_id) {
         const fallback = await attributionFromPhone(phone, projectId);
         if (fallback) attribution = fallback;
       }
       if (!attribution?.meta_ad_id) {
-        // First-touch debug snapshot: log shape once so we can extend parseCtwa later.
         console.log("ctwa_no_attribution", JSON.stringify({ phone, projectId, messageData }).slice(0, 4000));
       }
-      const leadId = await findOrCreateLead(phone, name, projectId, attribution ?? undefined);
+
+      const existingLeadId = await findExistingLeadId(phone, projectId);
+      if (!existingLeadId && instanceCfg.adsOnly && !attribution?.meta_ad_id) {
+        forwardToBotWebhook(instanceCfg.botWebhookUrl, body);
+        return json({ ok: true, skipped: "ads_only_no_ctwa", projectId });
+      }
+
+      const leadId = existingLeadId ??
+        await findOrCreateLead(phone, name, projectId, attribution ?? undefined);
       if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
       const text = extractText(messageData);
       await insertCommunication({ leadId, direction: "in", text, externalId: idMessage });
-      // Триггерим анализ и при входящем — с длинным дебаунсом, чтобы лиды
-      // без ответа менеджера тоже попадали в ai_rop_chat_analyses.
       triggerChatAnalysis(leadId, "in");
+      forwardToBotWebhook(instanceCfg.botWebhookUrl, body);
       return json({ ok: true, leadId, projectId, attribution });
     }
 
@@ -526,6 +599,7 @@ Deno.serve(async (req) => {
       // Fire-and-forget: попросим AI-РОПа переоценить переписку.
       // Не блокируем ответ Green API.
       triggerChatAnalysis(leadId, "out");
+      forwardToBotWebhook(instanceCfg.botWebhookUrl, body);
       return json({ ok: true, leadId, projectId });
     }
 
@@ -547,6 +621,7 @@ Deno.serve(async (req) => {
           .update(patch)
           .eq("id_instance", String(idi));
       }
+      forwardToBotWebhook(instanceCfg.botWebhookUrl, body);
       return json({ ok: true, state: stateInstance, projectId });
     }
 
@@ -571,9 +646,11 @@ Deno.serve(async (req) => {
         .from("communications")
         .update({ status: newStatus })
         .eq("external_id", idMessage);
+      forwardToBotWebhook(instanceCfg.botWebhookUrl, body);
       return json({ ok: true, externalId: idMessage, status: newStatus });
     }
 
+    forwardToBotWebhook(instanceCfg.botWebhookUrl, body);
     return json({ ok: true, skipped: type ?? "unknown" });
   } catch (e) {
     console.error("webhook error", e);
