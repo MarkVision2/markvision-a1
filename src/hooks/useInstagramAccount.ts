@@ -40,7 +40,7 @@ export function useInstagramAccount() {
       return;
     }
     const { data } = await supabase
-      .from("instagram_accounts")
+      .from("instagram_accounts_safe")
       .select("ig_user_id, username, name, profile_picture_url, page_id, page_name, followers_count, follows_count, media_count, active, last_sync_at, last_error")
       .eq("project_id", projectId)
       .maybeSingle();

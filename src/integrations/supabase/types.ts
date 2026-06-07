@@ -3403,6 +3403,28 @@ export type Database = {
           },
         ]
       }
+      instagram_accounts_safe: {
+        Row: {
+          active: boolean | null
+          created_at: string | null
+          followers_count: number | null
+          follows_count: number | null
+          id: string | null
+          ig_user_id: string | null
+          last_error: string | null
+          last_sync_at: string | null
+          media_count: number | null
+          name: string | null
+          page_id: string | null
+          page_name: string | null
+          page_token_present: boolean | null
+          profile_picture_url: string | null
+          project_id: string | null
+          updated_at: string | null
+          username: string | null
+        }
+        Relationships: []
+      }
       crm_stats_health: {
         Row: {
           cabinet_id: string | null
