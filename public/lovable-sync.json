@@ -1,7 +1,7 @@
 {
-  "git_sha": "90a1de2",
-  "git_sha_full": "90a1de2cd004fbd6881c4496bd4184bd2b9e585b",
-  "updated_at": "2026-06-07T16:53:51Z",
-  "label": "Human-readable report metrics and fix revenue orphan logic",
-  "publish_hint": "Lovable → Publish (справа вверху) → Update"
+  "git_sha": "adf3b3ea7c794e53d82bdb1475cedc5989c5216d",
+  "git_sha_full": "adf3b3e",
+  "updated_at": "2026-06-03T17:20:00Z",
+  "label": "Fix blurry video creative previews — HQ poster pipeline",
+  "publish_hint": "Lovable → Publish (справа вверху) → Update. Также задеплойте Edge Function meta-creative-refresh в Supabase."
 }

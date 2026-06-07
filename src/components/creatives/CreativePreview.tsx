@@ -2,12 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { Image as ImageIcon, Layers, Loader2, Play, Video } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { bestCreativeImage } from "@/lib/metaThumb";
-import { enqueuePosterCapture } from "@/lib/videoPosterCapture";
-import { refreshMetaCreative } from "@/lib/metaCreativeRefresh";
+import { useCreativeHqPreview } from "@/hooks/useCreativeHqPreview";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-
-const requestedPosters = new Set<string>();
 
 export interface CreativePreviewSource {
   adId: string;
@@ -30,29 +26,25 @@ interface Props {
 }
 
 /**
- * Универсальное превью креатива Meta: видео автоплей с авто-постером,
- * картинка / карусель с fallback-иконкой, автообновление протухших ссылок
- * через edge-функцию meta-creative-refresh.
+ * Универсальное превью креатива Meta: HQ-постер, видео только при hover
+ * после загрузки чёткого кадра. Низкие 64×64 thumbnail никогда не показываем.
  */
 export function CreativePreview({ row, compact = false, playable = false, className }: Props) {
-  const isVideo = row.creativeType === "video";
   const isCarousel = row.creativeType === "carousel";
-  const [capturedPoster, setCapturedPoster] = useState<string | null>(null);
-  const [refreshedThumb, setRefreshedThumb] = useState<string | null>(null);
-  const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(row.videoUrl);
+  const {
+    isVideo,
+    displaySrc,
+    previewVideoUrl,
+    loadingHq,
+    canPlayInline,
+    forceRefresh,
+  } = useCreativeHqPreview(row, { compact });
+
   const [playerOpen, setPlayerOpen] = useState(false);
   const [loadingFullVideo, setLoadingFullVideo] = useState(false);
   const [mediaError, setMediaError] = useState(false);
   const [playVideo, setPlayVideo] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  const src = bestCreativeImage({
-    posterUrl: capturedPoster ?? row.posterUrl,
-    thumbnailUrl: refreshedThumb ?? row.thumbnailUrl,
-    imageUrl: row.imageUrl,
-    size: compact ? 240 : 1080,
-  });
-  const hasQualityPoster = Boolean(capturedPoster ?? row.posterUrl ?? row.imageUrl);
-  const canPlayInline = isVideo && previewVideoUrl && hasQualityPoster;
 
   useEffect(() => {
     const el = videoRef.current;
@@ -61,61 +53,18 @@ export function CreativePreview({ row, compact = false, playable = false, classN
     else el.pause();
   }, [playVideo, canPlayInline]);
 
-  const refreshVideoPreview = async (force = false) => {
-    if (!row.adId) return null;
-    const data = await refreshMetaCreative(row.adId, force ? { force: true } : undefined);
-    if (data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
-    if (data?.ok && data.video_url) {
-      setPreviewVideoUrl(data.video_url);
-      return data.video_url;
-    }
-    return null;
-  };
-
-  useEffect(() => {
-    setPreviewVideoUrl(row.videoUrl);
-    setRefreshedThumb(null);
-    setCapturedPoster(null);
-  }, [row.adId, row.videoUrl]);
-
-  useEffect(() => {
-    if (!isVideo || !row.adId || row.posterUrl || capturedPoster) return;
-    if (requestedPosters.has(row.adId)) return;
-    requestedPosters.add(row.adId);
-
-    let cancelled = false;
-    void (async () => {
-      let videoUrl = row.videoUrl;
-      if (!videoUrl) {
-        const data = await refreshMetaCreative(row.adId);
-        if (!cancelled && data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
-        videoUrl = data?.ok ? data.video_url ?? null : null;
-      }
-      if (!cancelled && videoUrl) setPreviewVideoUrl(videoUrl);
-      if (!videoUrl || cancelled) return;
-      const poster = await enqueuePosterCapture(row.adId, videoUrl);
-      if (poster && !cancelled) setCapturedPoster(poster);
-    })().catch(() => {
-      requestedPosters.delete(row.adId);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [capturedPoster, isVideo, row.adId, row.posterUrl, row.videoUrl]);
-
   const TypeIcon = isVideo ? Video : isCarousel ? Layers : ImageIcon;
 
   const handlePlayClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
-    // Открываем модалку сразу — пользователь должен увидеть отклик на клик.
     setPlayerOpen(true);
     setLoadingFullVideo(true);
-    // Форсируем — игнорируем кеш/cooldown, потому что это явный клик пользователя.
-    await refreshVideoPreview(true).catch(() => previewVideoUrl);
+    await forceRefresh();
     setLoadingFullVideo(false);
   };
 
+  const showVideo = canPlayInline && playVideo && displaySrc;
+  const showImage = displaySrc && !mediaError && !showVideo;
 
   return (
     <div
@@ -123,38 +72,39 @@ export function CreativePreview({ row, compact = false, playable = false, classN
       onMouseEnter={() => setPlayVideo(true)}
       onMouseLeave={() => setPlayVideo(false)}
     >
-      {canPlayInline && playVideo ? (
+      {showVideo ? (
         <video
           ref={videoRef}
           src={previewVideoUrl!}
-          poster={src ?? undefined}
+          poster={displaySrc ?? undefined}
           muted
           playsInline
           loop
           preload="metadata"
           className="h-full w-full bg-background object-cover"
           onError={() => {
-            setPreviewVideoUrl(null);
-            void refreshVideoPreview();
+            void forceRefresh();
           }}
         />
-      ) : src && !mediaError ? (
+      ) : showImage ? (
         <img
-          src={src}
+          src={displaySrc!}
           alt=""
           className="h-full w-full object-cover"
           loading="lazy"
           referrerPolicy="no-referrer"
           onError={() => {
             setMediaError(true);
-            void refreshVideoPreview().then((url) => {
-              if (url) setMediaError(false);
-            });
+            void forceRefresh().then(() => setMediaError(false));
           }}
         />
       ) : (
-        <div className="flex h-full w-full items-center justify-center">
-          <TypeIcon className={cn("text-muted-foreground/40", compact ? "h-5 w-5" : "h-8 w-8")} />
+        <div className="flex h-full w-full items-center justify-center bg-secondary/20">
+          {loadingHq && isVideo ? (
+            <Loader2 className={cn("animate-spin text-muted-foreground/50", compact ? "h-4 w-4" : "h-6 w-6")} />
+          ) : (
+            <TypeIcon className={cn("text-muted-foreground/40", compact ? "h-5 w-5" : "h-8 w-8")} />
+          )}
         </div>
       )}
       {!compact && (
@@ -206,15 +156,13 @@ export function CreativePreview({ row, compact = false, playable = false, classN
             {previewVideoUrl ? (
               <video
                 src={previewVideoUrl}
-                poster={src ?? undefined}
+                poster={displaySrc ?? undefined}
                 controls
-               
                 playsInline
                 className="aspect-[9/16] h-auto max-h-[92dvh] w-full bg-black"
                 onError={async () => {
-                  setPreviewVideoUrl(null);
                   setLoadingFullVideo(true);
-                  await refreshVideoPreview(true).catch(() => null);
+                  await forceRefresh();
                   setLoadingFullVideo(false);
                 }}
               />
@@ -225,7 +173,7 @@ export function CreativePreview({ row, compact = false, playable = false, classN
             ) : (
               <div
                 className="relative aspect-[9/16] w-full bg-cover bg-center"
-                style={{ backgroundImage: src ? `url(${src})` : undefined, backgroundColor: "#000" }}
+                style={{ backgroundImage: displaySrc ? `url(${displaySrc})` : undefined, backgroundColor: "#000" }}
               >
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/55 p-6 text-center text-sm text-white">
                   <p>Ссылка на видео из Meta истекла.</p>
@@ -234,7 +182,7 @@ export function CreativePreview({ row, compact = false, playable = false, classN
                       type="button"
                       onClick={async () => {
                         setLoadingFullVideo(true);
-                        await refreshVideoPreview(true).catch(() => null);
+                        await forceRefresh();
                         setLoadingFullVideo(false);
                       }}
                       className="rounded-md bg-white/15 px-3 py-1.5 text-xs font-semibold backdrop-blur hover:bg-white/25"

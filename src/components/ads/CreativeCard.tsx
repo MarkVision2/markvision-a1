@@ -1,13 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Image as ImageIcon, Layers, MessageCircle, Play, TrendingDown, TrendingUp, Video } from "lucide-react";
+import { Image as ImageIcon, Layers, Loader2, MessageCircle, Play, TrendingDown, TrendingUp, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { bestCreativeImage } from "@/lib/metaThumb";
-import { enqueuePosterCapture } from "@/lib/videoPosterCapture";
-import { refreshMetaCreative } from "@/lib/metaCreativeRefresh";
+import { useCreativeHqPreview } from "@/hooks/useCreativeHqPreview";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
-
-// Глобальный набор уже запрошенных ad_id, чтобы не спамить рефреш постеров
-const refreshedPosters = new Set<string>();
 
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
@@ -22,66 +17,37 @@ interface Props {
 }
 
 export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "crm" }: Props) {
-  const isVideo = row.creativeType === "video";
   const isCarousel = row.creativeType === "carousel";
+  const {
+    isVideo,
+    displaySrc,
+    previewVideoUrl,
+    loadingHq,
+    canPlayInline,
+    forceRefresh,
+  } = useCreativeHqPreview({
+    adId: row.adId,
+    name: row.name,
+    creativeType: row.creativeType,
+    thumbnailUrl: row.thumbnailUrl,
+    imageUrl: row.imageUrl,
+    posterUrl: row.posterUrl,
+    videoUrl: row.videoUrl,
+    effectiveStatus: row.effectiveStatus,
+  });
 
-  // Локальный override постера, если мы только что захватили его из видео
-  const [capturedPoster, setCapturedPoster] = useState<string | null>(null);
-  const [refreshedThumb, setRefreshedThumb] = useState<string | null>(null);
   const [playVideo, setPlayVideo] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
-    if (playVideo) void el.play().catch(() => {});
+    if (playVideo && canPlayInline) void el.play().catch(() => {});
     else el.pause();
-  }, [playVideo]);
-  const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(row.videoUrl);
-  const src = bestCreativeImage({
-    posterUrl: capturedPoster ?? row.posterUrl,
-    thumbnailUrl: refreshedThumb ?? row.thumbnailUrl,
-    imageUrl: row.imageUrl,
-    size: 1080,
-  });
+  }, [playVideo, canPlayInline]);
+
   const isActive = (row.effectiveStatus ?? "").toUpperCase() === "ACTIVE";
-
-  const refreshVideoPreview = async () => {
-    if (!row.adId) return;
-    const data = await refreshMetaCreative(row.adId);
-    if (data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
-    if (data?.ok && data.video_url) setPreviewVideoUrl(data.video_url);
-  };
-
-  useEffect(() => {
-    setPreviewVideoUrl(row.videoUrl);
-    setRefreshedThumb(null);
-    setCapturedPoster(null);
-  }, [row.id, row.videoUrl]);
-
-  // Для видео без HQ-постера: 1) гарантируем свежие video_url/thumbnail_url, 2) захватываем кадр
-  const needsPoster = isVideo && !row.posterUrl;
-  useEffect(() => {
-    if (!needsPoster || !row.adId) return;
-    if (refreshedPosters.has(row.adId)) return;
-    refreshedPosters.add(row.adId);
-
-    let cancelled = false;
-    void (async () => {
-      let videoUrl = row.videoUrl;
-      if (!videoUrl) {
-        const data = await refreshMetaCreative(row.adId);
-        if (!cancelled && data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
-        videoUrl = data?.ok ? data.video_url ?? null : null;
-      }
-      if (!cancelled && videoUrl) setPreviewVideoUrl(videoUrl);
-      if (!videoUrl || cancelled) return;
-      const poster = await enqueuePosterCapture(row.adId, videoUrl);
-      if (poster && !cancelled) setCapturedPoster(poster);
-    })().catch(() => { refreshedPosters.delete(row.adId); });
-
-    return () => { cancelled = true; };
-  }, [needsPoster, row.adId, row.videoUrl]);
-
+  const showVideo = canPlayInline && playVideo && displaySrc;
 
   const showCrm = metricsView === "crm";
   const metaLeadCount = isWhatsApp ? (row.messages || row.leads) : row.leads;
@@ -107,30 +73,28 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
         active ? "border-primary/60 ring-1 ring-primary/40" : "border-border/60",
       )}
     >
-      {/* Poster 9:16 — без blur-слоёв: видео/кадр должны быть читаемыми */}
       <div
         className="relative aspect-[9/16] w-full overflow-hidden bg-background"
         onMouseEnter={() => setPlayVideo(true)}
         onMouseLeave={() => setPlayVideo(false)}
       >
-        {isVideo && previewVideoUrl ? (
+        {showVideo ? (
           <video
             ref={videoRef}
-            src={previewVideoUrl}
-            poster={src ?? undefined}
+            src={previewVideoUrl!}
+            poster={displaySrc ?? undefined}
             muted
             playsInline
             loop
             preload="metadata"
             className="h-full w-full bg-background object-cover transition group-hover:scale-[1.01]"
             onError={() => {
-              setPreviewVideoUrl(null);
-              void refreshVideoPreview();
+              void forceRefresh();
             }}
           />
-        ) : src ? (
+        ) : displaySrc ? (
           <img
-            src={src}
+            src={displaySrc}
             alt={row.name}
             className={cn(
               "h-full w-full transition group-hover:scale-[1.01]",
@@ -140,12 +104,15 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
             referrerPolicy="no-referrer"
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center">
-            <ImageIcon className="h-8 w-8 text-muted-foreground/40" />
+          <div className="flex h-full w-full items-center justify-center bg-secondary/20">
+            {loadingHq && isVideo ? (
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground/50" />
+            ) : (
+              <ImageIcon className="h-8 w-8 text-muted-foreground/40" />
+            )}
           </div>
         )}
 
-        {/* Status chip */}
         <span
           className={cn(
             "absolute left-2 top-2 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase backdrop-blur",
@@ -155,7 +122,6 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
           {isActive ? "Активно" : (row.effectiveStatus ?? "—").toLowerCase()}
         </span>
 
-        {/* ROMI bubble */}
         {showCrm && row.spend > 0 && hasCrmRevenue && (
           <span
             className={cn(
@@ -180,7 +146,6 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
           </span>
         )}
 
-        {/* Type icon */}
         <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-md bg-background/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider backdrop-blur">
           {isVideo ? <Video className="h-3 w-3" /> : isCarousel ? <Layers className="h-3 w-3" /> : <ImageIcon className="h-3 w-3" />}
           {row.creativeType}
@@ -192,7 +157,6 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
           </span>
         )}
 
-        {/* Compact play indicator (corner, не перекрывает контент) */}
         {isVideo && (
           <span className="absolute right-2 bottom-2 grid h-7 w-7 place-items-center rounded-full bg-background/85 backdrop-blur transition group-hover:scale-110 group-hover:bg-primary group-hover:text-primary-foreground">
             <Play className="h-3 w-3 fill-current" />
@@ -200,9 +164,7 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
         )}
       </div>
 
-      {/* Body */}
       <div className="flex-1 space-y-2 p-3">
-        {/* Заголовок объявления (или название) */}
         <div className="space-y-0.5">
           {row.headline ? (
             <>
@@ -221,7 +183,6 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
         </div>
 
         {showCrm ? (
-          // Сквозные CRM-метрики: лид → продажа → деньги
           <div className="grid grid-cols-2 gap-1.5 text-[11px]">
             <div className="rounded-md bg-secondary/30 px-2 py-1">
               <div className="text-[9px] uppercase tracking-wider text-muted-foreground">{leadLabel}</div>
@@ -243,7 +204,6 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
             </div>
           </div>
         ) : (
-          // Чистые Meta-метрики
           <div className="grid grid-cols-2 gap-1.5 text-[11px]">
             <div className="rounded-md bg-secondary/30 px-2 py-1">
               <div className="text-[9px] uppercase tracking-wider text-muted-foreground">CTR</div>
