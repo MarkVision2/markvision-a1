@@ -1,7 +1,7 @@
 {
-  "git_sha": "053d230",
-  "git_sha_full": "053d230bce6c57c159d5b9cfc80e016ce94f8873",
-  "updated_at": "2026-06-06T18:41:13Z",
-  "label": "Merge: content factory wizard flows + neuro-photo n8n payload fixes",
+  "git_sha": "504fa1a",
+  "git_sha_full": "504fa1adb63aab14832d406a0d12d3ebcfe3c9ce",
+  "updated_at": "2026-06-07T04:51:50Z",
+  "label": "Merge branch 'main' of https://github.com/markvision2/markvision-a1",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
