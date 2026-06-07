@@ -1,7 +1,7 @@
 {
-  "git_sha": "e278a97",
-  "git_sha_full": "e278a97aafa7135e2ff393e884daf991936e0e28",
-  "updated_at": "2026-06-07T12:11:04Z",
-  "label": "fix(crm): instant realtime lead updates + clear source labels",
+  "git_sha": "20d0b44",
+  "git_sha_full": "20d0b44e514e5e71288dd4a0c7a7ba070f56040a",
+  "updated_at": "2026-06-07T12:16:21Z",
+  "label": "fix(metrics): show full KPI labels without truncation",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
