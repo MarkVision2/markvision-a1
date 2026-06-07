@@ -203,6 +203,8 @@ export function useCrmStore() {
   const [chats, setChats] = useState<ChatMessage[]>([]);
   const [pipelineId, setPipelineId] = useState<string | null>(null);
   const projectIdRef = useRef(projectId);
+  const leadsRef = useRef(leads);
+  leadsRef.current = leads;
 
   useEffect(() => {
     projectIdRef.current = projectId;
@@ -216,7 +218,23 @@ export function useCrmStore() {
   }));
 
   const refetchStages = useCallback(async () => {
-    const { data: pipes } = await supabase.from("pipelines").select("*").order("created_at").limit(1);
+    let pipeQuery = supabase
+      .from("pipelines")
+      .select("*")
+      .eq("is_default", true)
+      .order("created_at", { ascending: true })
+      .limit(1);
+    if (projectId) pipeQuery = pipeQuery.eq("project_id", projectId);
+    let { data: pipes } = await pipeQuery;
+    if (!pipes?.length && projectId) {
+      const fallback = await supabase
+        .from("pipelines")
+        .select("*")
+        .eq("project_id", projectId)
+        .order("created_at", { ascending: true })
+        .limit(1);
+      pipes = fallback.data ?? [];
+    }
     const pid = pipes?.[0]?.id ?? null;
     setPipelineId(pid);
     if (!pid) return;
@@ -234,7 +252,7 @@ export function useCrmStore() {
     });
     setStageIdMap({ keyToId, idToKey });
     if (list.length) setStages(list);
-  }, []);
+  }, [projectId]);
 
   const refetchLeads = useCallback(async () => {
     if (stageIdMap.idToKey.size === 0) return;
@@ -320,11 +338,82 @@ export function useCrmStore() {
   useEffect(() => { void refetchStages(); }, [refetchStages]);
   useEffect(() => { void refetchLeads(); }, [refetchLeads]);
 
-  // Single debounced subscription per table — bursty webhook updates collapse
-  // into one refetch.
-  useRealtimeTable("pipeline_stages", refetchStages, true, 600);
-  useRealtimeTable("leads", refetchLeads, true, 600);
-  useRealtimeTable("communications", refetchLeads, true, 600);
+  // Мгновенное обновление UI при INSERT/UPDATE лида и новых сообщениях (без F5).
+  useEffect(() => {
+    const belongsToProject = (row: LeadRow) => {
+      const pid = projectIdRef.current;
+      if (!pid) return true;
+      return !row.project_id || row.project_id === pid;
+    };
+
+    const upsertLeadRow = (row: LeadRow) => {
+      if (!belongsToProject(row)) return;
+      if (row.is_personal) {
+        setLeads((prev) => prev.filter((l) => l.id !== row.id));
+        setChats((prev) => prev.filter((c) => c.leadId !== row.id));
+        return;
+      }
+      if (stageIdMap.idToKey.size === 0) {
+        void refetchLeads();
+        return;
+      }
+      const mapped = leadRowToFrontIndexed(row, stageIdMap.idToKey, new Map(), new Map(), new Map());
+      setLeads((prev) => {
+        const idx = prev.findIndex((l) => l.id === row.id);
+        if (idx >= 0) {
+          const keep = prev[idx];
+          return prev.map((l) =>
+            l.id === row.id
+              ? { ...mapped, events: keep.events, tasks: keep.tasks, stageHistory: keep.stageHistory }
+              : l,
+          );
+        }
+        return [mapped, ...prev].slice(0, 500);
+      });
+    };
+
+    const appendCommRow = (row: CommRow) => {
+      if (!leadsRef.current.some((l) => l.id === row.lead_id)) {
+        void refetchLeads();
+        return;
+      }
+      setChats((prev) => {
+        if (prev.some((c) => c.id === row.id)) return prev;
+        return [...prev, commToChat(row)].sort((a, b) => a.at.localeCompare(b.at));
+      });
+      setLeads((prev) =>
+        prev.map((l) =>
+          l.id === row.lead_id ? { ...l, lastActivityAt: row.created_at } : l,
+        ),
+      );
+    };
+
+    const channel = supabase
+      .channel(`crm-live-${projectId ?? "all"}-${Math.random().toString(36).slice(2, 6)}`)
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "leads" }, (payload) => {
+        upsertLeadRow(payload.new as LeadRow);
+      })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "leads" }, (payload) => {
+        upsertLeadRow(payload.new as LeadRow);
+      })
+      .on("postgres_changes", { event: "DELETE", schema: "public", table: "leads" }, (payload) => {
+        const id = (payload.old as { id?: string })?.id;
+        if (!id) return;
+        setLeads((prev) => prev.filter((l) => l.id !== id));
+        setChats((prev) => prev.filter((c) => c.leadId !== id));
+      })
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "communications" }, (payload) => {
+        appendCommRow(payload.new as CommRow);
+      })
+      .subscribe();
+
+    return () => { void supabase.removeChannel(channel); };
+  }, [projectId, stageIdMap.idToKey, refetchLeads]);
+
+  // Debounced full sync — подстраховка после пачки webhook-событий.
+  useRealtimeTable("pipeline_stages", refetchStages, true, 400);
+  useRealtimeTable("leads", refetchLeads, true, 400);
+  useRealtimeTable("communications", refetchLeads, true, 400);
   useRealtimeTable("tasks", refetchLeads, true, 600);
   useRealtimeTable("events", refetchLeads, true, 600);
   useRealtimeTable("lead_status_history", refetchLeads, true, 600);
@@ -336,8 +425,6 @@ export function useCrmStore() {
   // leads держим в ref, чтобы 30-секундный интервал не пересоздавался на каждом
   // обновлении массива — иначе таймер сбрасывался и фактически почти никогда не
   // срабатывал по расписанию.
-  const leadsRef = useRef(leads);
-  leadsRef.current = leads;
   useEffect(() => {
     let cancelled = false;
     const tick = async () => {

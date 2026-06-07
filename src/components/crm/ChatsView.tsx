@@ -15,6 +15,7 @@ import {
   X,
 } from "lucide-react";
 import type { ChatMessage, Lead, LeadStage, WhatsAppConfig } from "@/types/crm";
+import { resolveLeadSource } from "@/lib/leadSource";
 import { getStageIcon, stageColorClasses } from "./StageIcon";
 import { useQuickReplies } from "@/hooks/useQuickReplies";
 import { AiSuggestButton } from "./AiSuggestButton";
@@ -181,6 +182,8 @@ export function ChatsView({
                 const leadChats = chatsByLeadId.get(lead.id);
                 const last = leadChats?.[leadChats.length - 1];
                 const active = activeLeadId === lead.id;
+                const sourceMeta = resolveLeadSource(lead);
+                const SourceIcon = sourceMeta.Icon;
                 return (
                   <button
                     key={lead.id}
@@ -211,8 +214,20 @@ export function ChatsView({
                           {stage?.title ?? "—"}
                         </span>
                       </div>
-                      <div className="mt-0.5 truncate text-xs text-muted-foreground">
-                        {last ? last.text : lead.phone}
+                      <div className="mt-0.5 flex items-center gap-1.5">
+                        <span
+                          className={cn(
+                            "inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold",
+                            sourceMeta.cls,
+                          )}
+                          title={sourceMeta.label}
+                        >
+                          <SourceIcon className="h-2.5 w-2.5" />
+                          {sourceMeta.label}
+                        </span>
+                        <span className="truncate text-xs text-muted-foreground">
+                          {last ? last.text : lead.phone}
+                        </span>
                       </div>
                     </div>
                   </button>

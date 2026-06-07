@@ -5,7 +5,7 @@ import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import type { Lead } from "@/types/crm";
 import { leadSlaMinutes, recommendationFor, slaTone } from "@/hooks/useCrmAnalytics";
-import { normalizeSource } from "@/lib/leadSource";
+import { resolveLeadSource } from "@/lib/leadSource";
 
 interface LeadCardProps {
   lead: Lead;
@@ -159,7 +159,7 @@ function LeadCardImpl({
 
       <div className="mt-2 flex items-center justify-between gap-2">
         {(() => {
-          const meta = normalizeSource(lead.source);
+          const meta = resolveLeadSource(lead);
           const Icon = meta.Icon;
           return (
             <span
