@@ -1,7 +1,7 @@
 {
-  "git_sha": "90a1de2",
-  "git_sha_full": "90a1de2cd004fbd6881c4496bd4184bd2b9e585b",
-  "updated_at": "2026-06-07T16:53:51Z",
-  "label": "Human-readable report metrics and fix revenue orphan logic",
+  "git_sha": "f8821c8",
+  "git_sha_full": "f8821c8",
+  "updated_at": "2026-06-03T17:17:00Z",
+  "label": "Redesign report creatives page with split logic and cards",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
