@@ -111,7 +111,7 @@ describe("computeTotals — CRM как источник правды (не CDI)"
     const meta = { ...emptyMeta, cabinetDiagnostics: 999 }; // CDI протух — игнор
     const totals = computeTotals(meta, crm);
 
-    expect(totals.visits).toBe(4); // все 4 — диаг (paid тоже visit)
+    expect(totals.visits).toBe(3); // scheduled/visit; оплаченный paid — продажа, не диагностика
   });
 
   it("totalLeads = Meta-лиды (CDI) + orphan CRM (без cabinet_id)", () => {

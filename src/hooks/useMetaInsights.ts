@@ -18,6 +18,8 @@ export interface DailyInsightRow {
   /** Чистое CRM значение, без manual override (для отображения «Из CRM: N» в попапах). */
   crmDiagnostics: number;
   manualDiagnostics: number;
+  /** NULL = авто из CRM; число (включая 0) = ручная корректировка. */
+  manualDiagnosticsRaw: number | null;
   /** Override: оплаты за диагностику ₸. */
   diagnosticRevenue: number;
   crmDiagnosticRevenue: number;
@@ -26,10 +28,12 @@ export interface DailyInsightRow {
   sales: number;
   crmSales: number;
   manualSales: number;
+  manualSalesRaw: number | null;
   /** Override-результат: только выручка ПРОДАЖ (без диагностик). */
   salesRevenue: number;
   crmSalesRevenueOnly: number;
   manualSalesRevenue: number;
+  manualSalesRevenueRaw: number | null;
   /**
    * ИТОГОВАЯ выручка дня = salesRevenue + diagnosticRevenue (override-aware).
    * Это «выручка факт» — единый источник правды для денег.
@@ -37,6 +41,7 @@ export interface DailyInsightRow {
   crmRevenue: number;
   crmRevenueOnly: number;
   manualRevenue: number;
+  manualDiagnosticRevenueRaw: number | null;
 }
 
 export interface InsightTotals {
@@ -171,26 +176,42 @@ function aggregate(rows: CdiRow[]): InsightsData {
       cur.diagnostics += diagnostics;
       cur.crmDiagnostics += crmDiag;
       cur.manualDiagnostics += manDiag;
+      if (isManualOverrideActive(r.manual_diagnostics)) {
+        cur.manualDiagnosticsRaw = Number(r.manual_diagnostics);
+      }
       cur.diagnosticRevenue += diagnosticRevenue;
       cur.crmDiagnosticRevenue += crmDiagRev;
       cur.manualDiagnosticRevenue += manDiagRev;
       cur.sales += sales;
       cur.crmSales += crmSales;
       cur.manualSales += manSales;
+      if (isManualOverrideActive(r.manual_sales)) {
+        cur.manualSalesRaw = Number(r.manual_sales);
+      }
       cur.salesRevenue += salesRevenue;
       cur.crmSalesRevenueOnly += crmSalesRev;
       cur.manualSalesRevenue += manSalesRev;
+      if (isManualOverrideActive(r.manual_revenue)) {
+        cur.manualSalesRevenueRaw = Number(r.manual_revenue);
+      }
       cur.crmRevenue += totalRevenue;
       cur.crmRevenueOnly += crmSalesRev + crmDiagRev;
       cur.manualRevenue += manSalesRev + manDiagRev;
+      if (isManualOverrideActive(r.manual_diagnostic_revenue)) {
+        cur.manualDiagnosticRevenueRaw = Number(r.manual_diagnostic_revenue);
+      }
     } else {
       dailyMap.set(r.date, {
         date: r.date, spend, impressions, clicks, leads,
         pixelRevenue, revenue: pixelRevenue,
         diagnostics, crmDiagnostics: crmDiag, manualDiagnostics: manDiag,
+        manualDiagnosticsRaw: isManualOverrideActive(r.manual_diagnostics) ? Number(r.manual_diagnostics) : null,
         diagnosticRevenue, crmDiagnosticRevenue: crmDiagRev, manualDiagnosticRevenue: manDiagRev,
+        manualDiagnosticRevenueRaw: isManualOverrideActive(r.manual_diagnostic_revenue) ? Number(r.manual_diagnostic_revenue) : null,
         sales, crmSales, manualSales: manSales,
+        manualSalesRaw: isManualOverrideActive(r.manual_sales) ? Number(r.manual_sales) : null,
         salesRevenue, crmSalesRevenueOnly: crmSalesRev, manualSalesRevenue: manSalesRev,
+        manualSalesRevenueRaw: isManualOverrideActive(r.manual_revenue) ? Number(r.manual_revenue) : null,
         crmRevenue: totalRevenue,
         crmRevenueOnly: crmSalesRev + crmDiagRev,
         manualRevenue: manSalesRev + manDiagRev,

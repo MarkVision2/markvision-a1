@@ -32,8 +32,9 @@ import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useMultiMetaInsights, type DailyInsightRow } from "@/hooks/useMetaInsights";
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
-import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
-import type { ReportPeriodRange } from "@/hooks/useReportData";
+import { isLeadPaid } from "@/lib/leadStageFlags";
+import { crmDailyMetrics, type ReportPeriodRange } from "@/hooks/useReportData";
+import { isManualOverrideActive, manualValueForSave, resolveCdiMetric } from "@/lib/cdiManualOverride";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -141,7 +142,9 @@ const Metrics = () => {
   }, [cabinetId, cabinets, cabinetsWithExternalId]);
 
   const manualHint = manualCabinet
-    ? `Ручной факт пишется в кабинет «${manualCabinet.name}»`
+    ? canEditManual
+      ? `Диагностики/продажи: авто из CRM. Ручная правка → кабинет «${manualCabinet.name}»`
+      : `Выбери один кабинет в фильтре, чтобы вручную скорректировать день (сейчас ${cabinetsWithExternalId.length} кабинетов)`
     : cabinetId === "all"
       ? "Выбери один кабинет, чтобы вносить ручные диагностики, оплаты и сумму"
       : "У выбранного кабинета нет внешнего ID для единой статистики";
@@ -195,16 +198,22 @@ const Metrics = () => {
     }),
     [allLeads, cabinetId, monthStartTs, monthEndTs],
   );
-  const orphanVisitsInRange = useMemo(() => {
-    if (cabinetId !== "all") return [];
-    return allLeads.filter((l) => {
-      if (l.cabinetId) return false;
-      if (!isLeadVisit(l)) return false;
-      const ref = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
-      const t = new Date(ref).getTime();
-      return t >= monthStartTs && t < monthEndTs;
-    });
-  }, [allLeads, cabinetId, monthStartTs, monthEndTs]);
+  const crmPeriod: ReportPeriodRange = useMemo(
+    () => ({
+      from: new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1),
+      to: new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0),
+    }),
+    [monthCursor],
+  );
+
+  const cabinetSelector = cabinetId === "all" ? "all" : cabinetId;
+
+  const crmByDay = useMemo(
+    () => crmDailyMetrics(allLeads, crmPeriod, cabinetSelector),
+    [allLeads, crmPeriod, cabinetSelector],
+  );
+
+  const canEditManual = cabinetId !== "all" || cabinetsWithExternalId.length === 1;
   const orphanPaid = useMemo(() => {
     if (cabinetId !== "all") return [];
     return allLeads.filter((l) => {
@@ -215,7 +224,6 @@ const Metrics = () => {
       return t >= monthStartTs && t < monthEndTs;
     });
   }, [allLeads, cabinetId, monthStartTs, monthEndTs]);
-  const orphanDiagnostics = orphanVisitsInRange.length;
   const orphanSalesCount = orphanPaid.length;
   const orphanRevenue = orphanPaid.reduce((s, l) => s + (l.amount || 0), 0);
 
@@ -224,64 +232,94 @@ const Metrics = () => {
   // Без этого пользователь видит «расхождение»: сумма колонки ≠ итог.
   const dailyMap = useMemo(() => {
     const m = new Map<string, DailyInsightRow>();
-    for (const d of data?.daily ?? []) m.set(d.date, { ...d });
 
     const emptyDay = (date: string): DailyInsightRow => ({
       date,
       spend: 0, impressions: 0, clicks: 0, leads: 0,
       pixelRevenue: 0, revenue: 0,
-      diagnostics: 0, crmDiagnostics: 0, manualDiagnostics: 0,
-      diagnosticRevenue: 0, crmDiagnosticRevenue: 0, manualDiagnosticRevenue: 0,
-      sales: 0, crmSales: 0, manualSales: 0,
-      salesRevenue: 0, crmSalesRevenueOnly: 0, manualSalesRevenue: 0,
+      diagnostics: 0, crmDiagnostics: 0, manualDiagnostics: 0, manualDiagnosticsRaw: null,
+      diagnosticRevenue: 0, crmDiagnosticRevenue: 0, manualDiagnosticRevenue: 0, manualDiagnosticRevenueRaw: null,
+      sales: 0, crmSales: 0, manualSales: 0, manualSalesRaw: null,
+      salesRevenue: 0, crmSalesRevenueOnly: 0, manualSalesRevenue: 0, manualSalesRevenueRaw: null,
       crmRevenue: 0, crmRevenueOnly: 0, manualRevenue: 0,
     });
 
-    const dayKey = (iso: string) => iso.slice(0, 10);
+    for (const d of data?.daily ?? []) m.set(d.date, { ...d });
 
-    // Leads по дню создания
+    for (const { iso } of monthDays) {
+      const cdi = m.get(iso) ?? emptyDay(iso);
+      const crm = crmByDay.get(iso);
+      const crmDiag = crm?.diagnostics ?? 0;
+      const crmDiagRev = crm?.diagnosticRevenue ?? 0;
+      const crmSales = crm?.sales ?? 0;
+      const crmSalesRev = crm?.salesRevenue ?? 0;
+
+      const manualDiagRaw = canEditManual ? cdi.manualDiagnosticsRaw : null;
+      const manualDiagRevRaw = canEditManual ? cdi.manualDiagnosticRevenueRaw : null;
+      const manualSalesRaw = canEditManual ? cdi.manualSalesRaw : null;
+      const manualSalesRevRaw = canEditManual ? cdi.manualSalesRevenueRaw : null;
+
+      const diagnostics = resolveCdiMetric(manualDiagRaw, crmDiag);
+      const diagnosticRevenue = resolveCdiMetric(manualDiagRevRaw, crmDiagRev);
+      const sales = resolveCdiMetric(manualSalesRaw, crmSales);
+      const salesRevenue = resolveCdiMetric(manualSalesRevRaw, crmSalesRev);
+
+      m.set(iso, {
+        ...cdi,
+        crmDiagnostics: crmDiag,
+        crmDiagnosticRevenue: crmDiagRev,
+        crmSales,
+        crmSalesRevenueOnly: crmSalesRev,
+        diagnostics,
+        diagnosticRevenue,
+        sales,
+        salesRevenue,
+        manualDiagnostics: isManualOverrideActive(manualDiagRaw) ? Number(manualDiagRaw) : 0,
+        manualDiagnosticRevenue: isManualOverrideActive(manualDiagRevRaw) ? Number(manualDiagRevRaw) : 0,
+        manualSales: isManualOverrideActive(manualSalesRaw) ? Number(manualSalesRaw) : 0,
+        manualSalesRevenue: isManualOverrideActive(manualSalesRevRaw) ? Number(manualSalesRevRaw) : 0,
+        crmRevenue: salesRevenue + diagnosticRevenue,
+        crmRevenueOnly: crmSalesRev + crmDiagRev,
+        manualDiagnosticsRaw: manualDiagRaw,
+        manualDiagnosticRevenueRaw: manualDiagRevRaw,
+        manualSalesRaw,
+        manualSalesRevenueRaw: manualSalesRevRaw,
+      });
+    }
+
+    // Orphan-лиды без cabinet_id: только Meta-лиды (создание), CRM-метрики уже в crmByDay.
     for (const l of orphanThisMonth) {
-      const created = dayKey(l.createdAt);
+      const created = l.createdAt.slice(0, 10);
       const cur = m.get(created) ?? emptyDay(created);
       cur.leads += 1;
       m.set(created, cur);
     }
-    // Диагностики — по дате события (paid_at / lastActivityAt). Раньше брали
-    // orphanThisMonth.filter(isLeadVisit) — это были лиды СОЗДАННЫЕ в месяце,
-    // а не диагностированные в нём. Цифра не совпадала с Dashboard/Reports.
-    for (const l of orphanVisitsInRange) {
-      const key = dayKey(l.paidAt ?? l.lastActivityAt ?? l.createdAt);
-      const cur = m.get(key) ?? emptyDay(key);
-      cur.diagnostics += 1;
-      cur.crmDiagnostics += 1;
-      m.set(key, cur);
-    }
-    // Продажи — по paid_at
-    for (const l of orphanPaid) {
-      const key = dayKey(l.paidAt ?? l.lastActivityAt ?? l.createdAt);
-      const cur = m.get(key) ?? emptyDay(key);
-      const amt = l.amount || 0;
-      cur.sales += 1;
-      cur.crmSales += 1;
-      cur.salesRevenue += amt;
-      cur.crmSalesRevenueOnly += amt;
-      cur.crmRevenue += amt;
-      cur.crmRevenueOnly += amt;
-      m.set(key, cur);
-    }
+
     return m;
-  }, [data, orphanThisMonth, orphanVisitsInRange, orphanPaid]);
+  }, [data, monthDays, crmByDay, canEditManual, orphanThisMonth]);
 
   // ЕДИНЫЙ ИСТОЧНИК ПРАВДЫ: CDI (кабинеты) + orphan CRM (лиды без cabinet_id).
   // Раньше orphan исключали, чтобы избежать задвоения с manual_sales — но manual
   // привязан к конкретному кабинету+дате, а orphan лиды имеют cabinet_id=NULL, поэтому
   // они никогда не пересекаются. Включаем orphan в итоги, иначе цифры на Metrics
   // отличаются от CRM/Analytics/Dashboard (одна и та же продажа выглядит как «3/2/2»).
-  const factDiagnostics = (totals?.diagnostics ?? 0) + orphanDiagnostics;
-  const factDiagnosticRevenue = totals?.diagnosticRevenue ?? 0;
-  const factSales = (totals?.sales ?? 0) + orphanSalesCount;
-  const factSalesRevenue = (totals?.salesRevenue ?? 0) + orphanRevenue;
-  const factRevenue = (totals?.crmRevenue ?? 0) + orphanRevenue;
+  const factDiagnostics = useMemo(
+    () => monthDays.reduce((sum, { iso }) => sum + (dailyMap.get(iso)?.diagnostics ?? 0), 0),
+    [monthDays, dailyMap],
+  );
+  const factDiagnosticRevenue = useMemo(
+    () => monthDays.reduce((sum, { iso }) => sum + (dailyMap.get(iso)?.diagnosticRevenue ?? 0), 0),
+    [monthDays, dailyMap],
+  );
+  const factSales = useMemo(
+    () => monthDays.reduce((sum, { iso }) => sum + (dailyMap.get(iso)?.sales ?? 0), 0),
+    [monthDays, dailyMap],
+  );
+  const factSalesRevenue = useMemo(
+    () => monthDays.reduce((sum, { iso }) => sum + (dailyMap.get(iso)?.salesRevenue ?? 0), 0),
+    [monthDays, dailyMap],
+  );
+  const factRevenue = factSalesRevenue + factDiagnosticRevenue;
   const factLeads = (totals?.leads ?? 0) + orphanThisMonth.length;
   const factCac = factSales > 0 ? (totals?.spend ?? 0) / factSales : 0;
   const factCpd = factDiagnostics > 0 ? (totals?.spend ?? 0) / factDiagnostics : 0;
@@ -377,7 +415,10 @@ const Metrics = () => {
     }
 
     const cleanPatch = Object.fromEntries(
-      Object.entries(patch).map(([key, value]) => [key, Math.max(0, Number(value) || 0)]),
+      Object.entries(patch).map(([key, value]) => [
+        key,
+        value === null ? null : Math.max(0, Number(value) || 0),
+      ]),
     );
 
     try {
@@ -781,8 +822,9 @@ const Metrics = () => {
                         value={d?.diagnostics ?? 0}
                         crm={d?.crmDiagnostics ?? 0}
                         manual={d?.manualDiagnostics ?? 0}
+                        manualRaw={d?.manualDiagnosticsRaw ?? null}
                         autoLabel="CRM"
-                        disabled={!manualCabinet}
+                        disabled={!manualCabinet || !canEditManual}
                         onSave={(next) => upsertManualFact(iso, { manual_diagnostics: next })}
                       />
                     </Cell>
@@ -794,8 +836,9 @@ const Metrics = () => {
                         value={d?.diagnosticRevenue ?? 0}
                         crm={d?.crmDiagnosticRevenue ?? 0}
                         manual={d?.manualDiagnosticRevenue ?? 0}
+                        manualRaw={d?.manualDiagnosticRevenueRaw ?? null}
                         autoLabel="CRM"
-                        disabled={!manualCabinet}
+                        disabled={!manualCabinet || !canEditManual}
                         format={formatNumber}
                         allowDecimal
                         onSave={(next) => upsertManualFact(iso, { manual_diagnostic_revenue: next })}
@@ -809,8 +852,9 @@ const Metrics = () => {
                         value={d?.sales ?? 0}
                         crm={d?.crmSales ?? 0}
                         manual={d?.manualSales ?? 0}
+                        manualRaw={d?.manualSalesRaw ?? null}
                         autoLabel="CRM"
-                        disabled={!manualCabinet}
+                        disabled={!manualCabinet || !canEditManual}
                         onSave={(next) => upsertManualFact(iso, { manual_sales: next })}
                       />
                     </Cell>
@@ -822,8 +866,9 @@ const Metrics = () => {
                         value={d?.salesRevenue ?? 0}
                         crm={d?.crmSalesRevenueOnly ?? 0}
                         manual={d?.manualSalesRevenue ?? 0}
+                        manualRaw={d?.manualSalesRevenueRaw ?? null}
                         autoLabel="CRM"
-                        disabled={!manualCabinet}
+                        disabled={!manualCabinet || !canEditManual}
                         format={formatNumber}
                         allowDecimal
                         onSave={(next) => upsertManualFact(iso, { manual_revenue: next })}
@@ -849,7 +894,7 @@ const Metrics = () => {
       </div>
 
       <p className="mt-4 text-xs text-muted-foreground">
-        Данные подгружаются из подключенных личных рекламных кабинетов: расходы и лиды из Meta, диагностики, оплаты и выручка из CRM плюс ручной факт из этой таблицы.
+        Расходы и лиды — из Meta. Диагностики, продажи и выручка — из CRM (карточки воронки), с возможностью ручной корректировки по дням для выбранного кабинета.
       </p>
     </PageContainer>
   );
@@ -862,6 +907,7 @@ const ManualFactCell = ({
   value,
   crm,
   manual,
+  manualRaw,
   autoLabel,
   onSave,
   disabled,
@@ -876,26 +922,35 @@ const ManualFactCell = ({
   /** Чистое CRM значение, БЕЗ применения override. Нужно, чтобы попап показал "Из CRM: N" корректно. */
   crm: number;
   manual: number;
+  manualRaw?: number | null;
   autoLabel: string;
-  onSave: (newManual: number) => Promise<void>;
+  onSave: (newManual: number | null) => Promise<void>;
   disabled?: boolean;
   format?: (n: number) => string;
   allowDecimal?: boolean;
 }) => {
   const [open, setOpen] = useState(false);
-  const [val, setVal] = useState(String(manual || ""));
+  const hasManualOverride = isManualOverrideActive(manualRaw);
+  const [val, setVal] = useState("");
   const [saving, setSaving] = useState(false);
-  // В попапе всегда показываем настоящее CRM-значение (а не "value - manual",
-  // которое после override-семантики равно 0 как только пользователь ввёл manual).
   const auto = Math.max(0, crm);
   const hasValue = value > 0;
 
   const handleSave = async () => {
-    const raw = Number(val) || 0;
-    const next = allowDecimal ? Math.max(0, raw) : Math.max(0, Math.floor(raw));
+    const next = manualValueForSave(val);
     setSaving(true);
     try {
       await onSave(next);
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleReset = async () => {
+    setSaving(true);
+    try {
+      await onSave(null);
       setOpen(false);
     } finally {
       setSaving(false);
@@ -911,14 +966,17 @@ const ManualFactCell = ({
   }
 
   return (
-    <Popover open={open} onOpenChange={(next) => { setOpen(next); if (next) setVal(manual ? String(manual) : ""); }}>
+    <Popover open={open} onOpenChange={(next) => {
+      setOpen(next);
+      if (next) setVal(hasManualOverride ? String(manualRaw ?? manual) : "");
+    }}>
       <PopoverTrigger asChild>
         <button
           type="button"
           className={cn(
             "group inline-flex min-w-0 w-full items-center justify-end gap-1.5 rounded-lg border border-transparent px-2 py-1 text-right transition-colors hover:border-success/30 hover:bg-success/10",
             !hasValue && "text-muted-foreground",
-            manual > 0 && "border-success/20 bg-success/5 text-success",
+            hasManualOverride && "border-success/20 bg-success/5 text-success",
           )}
           title={`${title}: ${isoDate}`}
         >
@@ -953,7 +1011,7 @@ const ManualFactCell = ({
             </div>
           </div>
           <p className="text-[11px] leading-4 text-muted-foreground">
-            Если задано «Вручную» — оно перезаписывает значение из CRM. Чтобы вернуться к авто-данным, очисти поле (0).
+            «Из CRM» — реальные карточки воронки. Ручное значение перезаписывает день. Пустое поле или «Сбросить» — снова авто из CRM.
           </p>
 
           <div className="space-y-2">
@@ -972,6 +1030,9 @@ const ManualFactCell = ({
           </div>
 
           <div className="flex justify-end gap-2">
+            <Button size="sm" variant="outline" onClick={() => void handleReset()} disabled={saving}>
+              Сбросить к CRM
+            </Button>
             <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
               Отмена
             </Button>
