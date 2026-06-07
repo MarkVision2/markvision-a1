@@ -490,7 +490,7 @@ export function WhatsappProjectBindCard() {
   const refresh = useCallback(async () => {
     setLoading(true);
     const { data } = await supabase
-      .from("whatsapp_config")
+      .from("whatsapp_config_safe")
       .select("id, project_id, id_instance, api_token_present, api_url, phone, connected, ads_only");
     setRows((data ?? []) as WaBindRow[]);
     setLoading(false);
