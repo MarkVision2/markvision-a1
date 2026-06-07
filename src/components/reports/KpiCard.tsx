@@ -5,6 +5,8 @@ import type { LucideIcon } from "lucide-react";
 interface Props {
   icon: LucideIcon;
   label: string;
+  /** Подсказка: как считается метрика (например «расход ÷ диагностики»). */
+  hint?: string;
   value: string;
   delta?: number | null;
   emphasized?: boolean;
@@ -13,7 +15,7 @@ interface Props {
   invertDelta?: boolean;
 }
 
-export function KpiCard({ icon: Icon, label, value, delta, emphasized, comparing, invertDelta }: Props) {
+export function KpiCard({ icon: Icon, label, hint, value, delta, emphasized, comparing, invertDelta }: Props) {
   const isPositive = delta !== null && delta !== undefined ? delta >= 0 : true;
   const good = invertDelta ? !isPositive : isPositive;
   return (
@@ -36,7 +38,10 @@ export function KpiCard({ icon: Icon, label, value, delta, emphasized, comparing
           </span>
         )}
       </div>
-      <div className="mt-3 text-2xl font-bold tabular-nums text-foreground">
+      {hint && (
+        <div className="mt-1 text-[10px] text-muted-foreground">{hint}</div>
+      )}
+      <div className="mt-2 text-2xl font-bold tabular-nums text-foreground">
         {value}
       </div>
       {comparing && (

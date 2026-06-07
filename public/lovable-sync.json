@@ -1,7 +1,7 @@
 {
-  "git_sha": "5c0fc19",
-  "git_sha_full": "5c0fc19d4836bde5cfc4267c607afaa4250b1db9",
-  "updated_at": "2026-06-03T15:08:00Z",
-  "label": "Merge creatives + marketing report fixes into main",
+  "git_sha": "416a5e1",
+  "git_sha_full": "416a5e1d4836bde5cfc4267c607afaa4250b1db9",
+  "updated_at": "2026-06-03T16:54:00Z",
+  "label": "Report metrics labels + revenue orphan fix",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }

@@ -94,7 +94,7 @@ export async function fetchMetaDashboard(
       .gte("date", since)
       .lte("date", until),
     crmTable
-      .select("ad_id, crm_leads, crm_qualified, crm_sales, crm_revenue")
+      .select("ad_id, crm_leads, crm_qualified, crm_sales, crm_revenue, crm_diagnostics, crm_diagnostic_revenue")
       .eq("project_id", projectId)
       .gte("date", since)
       .lte("date", until),
@@ -120,6 +120,8 @@ export async function fetchMetaDashboard(
     crm_qualified: number | string;
     crm_sales: number | string;
     crm_revenue: number | string;
+    crm_diagnostics?: number | string;
+    crm_diagnostic_revenue?: number | string;
   }>;
 
   const agg = new Map<string, {

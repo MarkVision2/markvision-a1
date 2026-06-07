@@ -81,6 +81,34 @@ describe("computeTotals — Таблица показателей (CRM + manual 
     expect(row?.manual_diagnostic_revenue).toBe(10_000);
   });
 
+  it("orphan учитывается, если manual в CDI есть, но не сматчился к кабинету", () => {
+    const orphanDiag = mkLead({
+      cabinetId: null,
+      stageKey: "visit",
+      diagnosticAmount: 10_000,
+      lastActivityAt: "2026-06-10T12:00:00Z",
+    });
+    const june = { from: new Date("2026-06-01"), to: new Date("2026-06-30") };
+    const resolved = sumResolvedMetricsPerCabinets(
+      june,
+      [orphanDiag],
+      [{
+        cabinet_id: "other-cab",
+        date: "2026-06-10",
+        manual_diagnostics: 1,
+        manual_diagnostic_revenue: 10_000,
+        manual_sales: null,
+        manual_revenue: null,
+      }],
+      ["cab-1"],
+      true,
+      new Map([["cab-1", "act_999"]]),
+    );
+
+    expect(resolved.revenue).toBe(10_000);
+    expect(resolved.diagnostics).toBe(1);
+  });
+
   it("manual override не дублируется с orphan-CRM в тот же день", () => {
     const orphanDiag = mkLead({
       cabinetId: null,

@@ -2,12 +2,10 @@ import { crmDailyMetrics, type CrmDailyMetrics, type ReportPeriodRange } from "@
 import type { LeadLite } from "@/hooks/useLeadsLite";
 import { isManualOverrideActive, resolveCdiMetric } from "@/lib/cdiManualOverride";
 
-function dayHasManualDiagnosticOverride(cdiRows: CdiFactRow[], iso: string): boolean {
-  return cdiRows.some(
-    (r) => r.date === iso && (
-      isManualOverrideActive(r.manual_diagnostics)
-      || isManualOverrideActive(r.manual_diagnostic_revenue)
-    ),
+function manualDiagApplied(manual: DayManualFields | undefined): boolean {
+  return (
+    isManualOverrideActive(manual?.manual_diagnostics)
+    || isManualOverrideActive(manual?.manual_diagnostic_revenue)
   );
 }
 
@@ -202,15 +200,18 @@ export function sumResolvedMetricsPerCabinets(
     const iso = ymd(cur);
     const dayRange = singleDayRange(iso);
 
+    let manualDiagAppliedOnDay = false;
     for (const cabId of cabinetInternalIds) {
       const externalId = externalIdByCabinetId?.get(cabId) ?? null;
       const cdiRow = findCdiRowForCabinet(cdiRows, iso, cabId, externalId, cabinetInternalIds);
+      const manual = manualFieldsFromCdiRow(cdiRow);
+      if (manualDiagApplied(manual)) manualDiagAppliedOnDay = true;
       const crm = crmDailyMetrics(leads, dayRange, cabId).get(iso);
-      addResolved(acc, resolveDayMetrics(crm, manualFieldsFromCdiRow(cdiRow), true));
+      addResolved(acc, resolveDayMetrics(crm, manual, true));
     }
 
-    // Orphan-CRM не дублируем, если в этот день уже зафиксирован manual override в CDI.
-    if (includeOrphans && !dayHasManualDiagnosticOverride(cdiRows, iso)) {
+    // Orphan-CRM не дублируем только если manual override реально применился к кабинету.
+    if (includeOrphans && !manualDiagAppliedOnDay) {
       const crm = crmDailyMetrics(orphanLeads, dayRange, "all").get(iso);
       addResolved(acc, resolveDayMetrics(crm, undefined, true));
     }
@@ -240,14 +241,17 @@ export function buildResolvedDailyRevenuePerCabinets(
     const dayRange = singleDayRange(iso);
     let revenue = 0;
 
+    let manualDiagAppliedOnDay = false;
     for (const cabId of cabinetInternalIds) {
       const externalId = externalIdByCabinetId?.get(cabId) ?? null;
       const cdiRow = findCdiRowForCabinet(cdiRows, iso, cabId, externalId, cabinetInternalIds);
+      const manual = manualFieldsFromCdiRow(cdiRow);
+      if (manualDiagApplied(manual)) manualDiagAppliedOnDay = true;
       const crm = crmDailyMetrics(leads, dayRange, cabId).get(iso);
-      revenue += resolveDayMetrics(crm, manualFieldsFromCdiRow(cdiRow), true).revenue;
+      revenue += resolveDayMetrics(crm, manual, true).revenue;
     }
 
-    if (includeOrphans && !dayHasManualDiagnosticOverride(cdiRows, iso)) {
+    if (includeOrphans && !manualDiagAppliedOnDay) {
       const crm = crmDailyMetrics(orphanLeads, dayRange, "all").get(iso);
       revenue += resolveDayMetrics(crm, undefined, true).revenue;
     }

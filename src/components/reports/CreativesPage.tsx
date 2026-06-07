@@ -26,6 +26,13 @@ export function CreativesPage({ data, rangeLabel }: Props) {
         </div>
       ) : (
         <div className="space-y-2">
+          <div className="hidden gap-2 px-4 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground sm:grid sm:grid-cols-[1fr_auto_auto_auto_auto]">
+            <span>Креатив</span>
+            <span>Расход</span>
+            <span>Заявки</span>
+            <span>Выручка CRM</span>
+            <span>CTR</span>
+          </div>
           {top.map((c) => (
             <div
               key={c.adId}
@@ -33,16 +40,16 @@ export function CreativesPage({ data, rangeLabel }: Props) {
             >
               <span className="truncate font-medium" title={c.name}>{c.name}</span>
               <span className="tabular-nums text-muted-foreground">
-                {c.spend > 0 ? reportFmt.fmtTenge(c.spend) : "—"} расход
+                {c.spend > 0 ? reportFmt.fmtTenge(c.spend) : "—"}
               </span>
               <span className="tabular-nums text-muted-foreground">
-                {reportFmt.fmtNum(c.leads)} лидов
+                {reportFmt.fmtNum(c.leads)}
               </span>
               <span className="tabular-nums font-semibold">
-                {c.crmRevenue > 0 ? reportFmt.fmtTenge(c.crmRevenue) : "нет продаж"}
+                {c.crmRevenue > 0 ? reportFmt.fmtTenge(c.crmRevenue) : "—"}
               </span>
               <span className="tabular-nums font-bold text-success">
-                CTR {c.ctr.toFixed(2)}%
+                {c.ctr.toFixed(2)}%
               </span>
             </div>
           ))}
