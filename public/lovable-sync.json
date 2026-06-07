@@ -1,7 +1,7 @@
 {
-  "git_sha": "b504348",
-  "git_sha_full": "b504348ac437cd0f21cf41375480091670d02595",
-  "updated_at": "2026-06-07T12:55:09Z",
-  "label": "Fix CDI row matching: manual overrides apply when cabinet_id is null",
+  "git_sha": "4b73294",
+  "git_sha_full": "4b73294014287554e5f6fda337e9dfc84da751e5",
+  "updated_at": "2026-06-07T14:37:54Z",
+  "label": "Merge branch 'main' of https://github.com/markvision2/markvision-a1",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
