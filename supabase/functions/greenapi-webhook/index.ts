@@ -451,6 +451,19 @@ async function findOrCreateLead(
     console.error("No default pipeline/stage found", { projectId: resolvedProject });
     return null;
   }
+
+  // RLS: non-admins only see leads where assigned_to/created_by = self.
+  // Inbound WhatsApp has neither — set created_by to project owner so CRM UI shows the lead.
+  let createdBy: string | null = null;
+  if (resolvedProject) {
+    const { data: proj } = await admin
+      .from("projects")
+      .select("created_by")
+      .eq("id", resolvedProject)
+      .maybeSingle();
+    createdBy = (proj as { created_by?: string | null } | null)?.created_by ?? null;
+  }
+
   const { data: created, error } = await admin
     .from("leads")
     .insert({
@@ -462,6 +475,7 @@ async function findOrCreateLead(
       cabinet_id: cabinetId,
       pipeline_id: def.pipeline_id,
       stage_id: def.stage_id,
+      created_by: createdBy,
       meta_ad_id: attribution?.meta_ad_id ?? null,
       meta_adset_id: metaAdsetId,
       meta_campaign_id: metaCampaignId,
