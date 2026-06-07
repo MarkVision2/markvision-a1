@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ArrowRight, Eye, Image as ImageIcon, MousePointerClick, TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { pickCreativeTitle } from "@/lib/creativeDisplay";
 import { CreativePreview } from "@/components/creatives/CreativePreview";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
 
@@ -110,8 +111,9 @@ export function CreativesGrid({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
         {visible.map((row) => {
+          const { title, subtitle } = pickCreativeTitle({ name: row.name, headline: row.headline });
           const hasCrmRevenue = (row.crmRevenue ?? 0) > 0;
           const leadValue = (row.crmLeads ?? 0) > 0 ? row.crmLeads : row.leads;
           const leadLabel = (row.crmLeads ?? 0) > 0 ? "Лиды CRM" : "Лиды Meta";
@@ -131,15 +133,16 @@ export function CreativesGrid({
                   videoUrl: row.videoUrl,
                   effectiveStatus: row.effectiveStatus,
                 }}
-                className="aspect-[4/5] w-full rounded-none"
+                fit="contain"
+                className="aspect-[9/16] w-full rounded-none"
               />
               <div className="p-3">
-                <div className="line-clamp-2 min-h-[2.5rem] text-xs font-semibold leading-snug" title={row.name}>
-                  {row.name || "Без названия"}
+                <div className="line-clamp-2 min-h-[2.5rem] text-xs font-semibold leading-snug" title={title}>
+                  {title}
                 </div>
-                {row.headline && (
-                  <div className="mt-1 line-clamp-1 text-[11px] text-muted-foreground" title={row.headline}>
-                    {row.headline}
+                {subtitle && (
+                  <div className="mt-1 line-clamp-1 text-[11px] text-muted-foreground" title={subtitle}>
+                    {subtitle}
                   </div>
                 )}
                 <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">

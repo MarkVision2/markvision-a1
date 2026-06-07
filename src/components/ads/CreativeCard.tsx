@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
-import { Image as ImageIcon, Layers, Loader2, MessageCircle, Play, TrendingDown, TrendingUp, Video } from "lucide-react";
+import { MessageCircle, TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useCreativeHqPreview } from "@/hooks/useCreativeHqPreview";
+import { pickCreativeTitle } from "@/lib/creativeDisplay";
+import { CreativePreview } from "@/components/creatives/CreativePreview";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
 
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
@@ -12,221 +12,153 @@ interface Props {
   isWhatsApp?: boolean;
   onOpen: () => void;
   active?: boolean;
-  /** Какие KPI показывать на карточке: meta-метрики или сквозные CRM. */
+  layout?: "grid" | "list";
   metricsView?: "meta" | "crm";
 }
 
-export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "crm" }: Props) {
-  const isCarousel = row.creativeType === "carousel";
-  const {
-    isVideo,
-    displaySrc,
-    previewVideoUrl,
-    loadingHq,
-    canPlayInline,
-    forceRefresh,
-  } = useCreativeHqPreview({
-    adId: row.adId,
-    name: row.name,
-    creativeType: row.creativeType,
-    thumbnailUrl: row.thumbnailUrl,
-    imageUrl: row.imageUrl,
-    posterUrl: row.posterUrl,
-    videoUrl: row.videoUrl,
-    effectiveStatus: row.effectiveStatus,
-  });
+function MetricPill({ label, value, tone }: { label: string; value: string; tone?: "success" | "muted" | "default" }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div
+        className={cn(
+          "truncate text-sm font-bold tabular-nums",
+          tone === "success" && "text-success",
+          tone === "muted" && "text-muted-foreground",
+        )}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
 
-  const [playVideo, setPlayVideo] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
-    if (playVideo && canPlayInline) void el.play().catch(() => {});
-    else el.pause();
-  }, [playVideo, canPlayInline]);
-
-  const isActive = (row.effectiveStatus ?? "").toUpperCase() === "ACTIVE";
-  const showVideo = canPlayInline && playVideo;
-
+export function CreativeCard({
+  row,
+  isWhatsApp,
+  onOpen,
+  active,
+  layout = "grid",
+  metricsView = "crm",
+}: Props) {
+  const { title, subtitle, tags } = pickCreativeTitle({ name: row.name, headline: row.headline });
   const showCrm = metricsView === "crm";
   const metaLeadCount = isWhatsApp ? (row.messages || row.leads) : row.leads;
   const leadValue = row.crmLeads > 0 ? row.crmLeads : metaLeadCount;
-  const leadLabel = "Лиды";
   const hasCrmRevenue = row.crmRevenue > 0;
   const romiPositive = hasCrmRevenue && row.crmRomi >= 0;
-  const romiClass =
-    row.spend === 0 || !hasCrmRevenue
-      ? "text-muted-foreground"
-      : row.crmRomi >= 100
-        ? "text-success"
-        : row.crmRomi >= 0
-          ? "text-foreground"
-          : "text-destructive";
+
+  const preview = (
+    <CreativePreview
+      row={{
+        adId: row.adId,
+        name: row.name,
+        creativeType: row.creativeType,
+        thumbnailUrl: row.thumbnailUrl,
+        imageUrl: row.imageUrl,
+        posterUrl: row.posterUrl,
+        videoUrl: row.videoUrl,
+        effectiveStatus: row.effectiveStatus,
+      }}
+      fit="contain"
+      playable
+      className={layout === "list" ? "h-[168px] w-[94px] shrink-0 rounded-lg" : "aspect-[9/16] w-full rounded-none"}
+    />
+  );
+
+  const metrics = showCrm ? (
+    <>
+      <MetricPill label="Заявки" value={fmtNum(leadValue)} />
+      <MetricPill label="Расход" value={row.spend > 0 ? fmtTenge(row.spend) : "—"} />
+      <MetricPill
+        label="Выручка"
+        value={hasCrmRevenue ? fmtTenge(row.crmRevenue) : "—"}
+        tone={hasCrmRevenue ? "success" : "muted"}
+      />
+      <MetricPill label="CTR" value={row.ctr > 0 ? `${row.ctr.toFixed(2)}%` : "—"} />
+    </>
+  ) : (
+    <>
+      <MetricPill label="CTR" value={row.ctr > 0 ? `${row.ctr.toFixed(2)}%` : "—"} />
+      <MetricPill label="CPL" value={row.cpl > 0 ? fmtTenge(row.cpl) : "—"} tone="success" />
+      <MetricPill label="Расход" value={row.spend > 0 ? fmtTenge(row.spend) : "—"} />
+      <MetricPill label={isWhatsApp ? "Сообщ." : "Заявки"} value={fmtNum(isWhatsApp ? row.messages : row.leads)} />
+    </>
+  );
+
+  const metaBlock = (
+    <div className="min-w-0 flex-1">
+      <div className="line-clamp-2 text-sm font-semibold leading-snug" title={title}>
+        {title}
+      </div>
+      {subtitle && (
+        <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground" title={subtitle}>
+          {subtitle}
+        </div>
+      )}
+      {(tags.length > 0 || isWhatsApp) && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {isWhatsApp && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-success/15 px-1.5 py-0.5 text-[10px] font-semibold text-success">
+              <MessageCircle className="h-3 w-3" /> WA
+            </span>
+          )}
+          {tags.map((tag) => (
+            <span
+              key={tag}
+              className="rounded-md border border-border/50 bg-secondary/30 px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground"
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
+      {showCrm && row.spend > 0 && hasCrmRevenue && (
+        <div
+          className={cn(
+            "mt-2 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+            romiPositive ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive",
+          )}
+        >
+          {romiPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
+          ROMI {row.crmRomi >= 0 ? "+" : ""}{Math.round(row.crmRomi)}%
+        </div>
+      )}
+    </div>
+  );
+
+  if (layout === "list") {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className={cn(
+          "group flex w-full gap-4 rounded-2xl border bg-card/50 p-3 text-left transition hover:border-primary/40 hover:bg-card/80",
+          active ? "border-primary/60 ring-1 ring-primary/30" : "border-border/50",
+        )}
+      >
+        {preview}
+        <div className="flex min-w-0 flex-1 flex-col justify-between gap-3 sm:flex-row sm:items-center">
+          {metaBlock}
+          <div className="grid shrink-0 grid-cols-2 gap-x-6 gap-y-2 sm:grid-cols-4">{metrics}</div>
+        </div>
+      </button>
+    );
+  }
 
   return (
     <button
       type="button"
       onClick={onOpen}
       className={cn(
-        "group flex flex-col overflow-hidden rounded-2xl border bg-card/60 text-left transition hover:border-primary/40 hover:shadow-lg",
-        active ? "border-primary/60 ring-1 ring-primary/40" : "border-border/60",
+        "group flex h-full flex-col overflow-hidden rounded-2xl border bg-card/50 text-left transition hover:border-primary/40 hover:shadow-md",
+        active ? "border-primary/60 ring-1 ring-primary/30" : "border-border/50",
       )}
     >
-      <div
-        className="relative aspect-[9/16] w-full overflow-hidden bg-background"
-        onMouseEnter={() => setPlayVideo(true)}
-        onMouseLeave={() => setPlayVideo(false)}
-      >
-        {showVideo ? (
-          <video
-            ref={videoRef}
-            src={previewVideoUrl!}
-            poster={displaySrc ?? undefined}
-            muted
-            playsInline
-            loop
-            preload="metadata"
-            className="h-full w-full bg-background object-cover transition group-hover:scale-[1.01]"
-            onError={() => {
-              void forceRefresh();
-            }}
-          />
-        ) : displaySrc ? (
-          <img
-            src={displaySrc}
-            alt={row.name}
-            className={cn(
-              "h-full w-full transition group-hover:scale-[1.01]",
-              isVideo ? "object-cover" : "object-contain",
-            )}
-            loading="lazy"
-            referrerPolicy="no-referrer"
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center bg-secondary/20">
-            {loadingHq && isVideo ? (
-              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground/50" />
-            ) : (
-              <ImageIcon className="h-8 w-8 text-muted-foreground/40" />
-            )}
-          </div>
-        )}
-
-        <span
-          className={cn(
-            "absolute left-2 top-2 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] font-bold uppercase backdrop-blur",
-            isActive ? "bg-success/85 text-success-foreground" : "bg-muted/85 text-muted-foreground",
-          )}
-        >
-          {isActive ? "Активно" : (row.effectiveStatus ?? "—").toLowerCase()}
-        </span>
-
-        {showCrm && row.spend > 0 && hasCrmRevenue && (
-          <span
-            className={cn(
-              "absolute right-2 top-2 inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-bold backdrop-blur",
-              row.crmRomi >= 100
-                ? "bg-success/90 text-success-foreground"
-                : row.crmRomi >= 0
-                  ? "bg-background/85 text-foreground"
-                  : "bg-destructive/85 text-destructive-foreground",
-            )}
-            title="ROMI = (Выручка − Расход) / Расход"
-          >
-            {romiPositive ? <TrendingUp className="h-3 w-3" /> : <TrendingDown className="h-3 w-3" />}
-            ROMI {row.crmRomi >= 0 ? "+" : ""}
-            {Math.round(row.crmRomi)}%
-          </span>
-        )}
-
-        {isWhatsApp && !showCrm && (
-          <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md bg-success/85 px-1.5 py-0.5 text-[10px] font-bold text-success-foreground backdrop-blur">
-            <MessageCircle className="h-3 w-3" /> WhatsApp
-          </span>
-        )}
-
-        <span className="absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-md bg-background/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider backdrop-blur">
-          {isVideo ? <Video className="h-3 w-3" /> : isCarousel ? <Layers className="h-3 w-3" /> : <ImageIcon className="h-3 w-3" />}
-          {row.creativeType}
-        </span>
-
-        {isWhatsApp && showCrm && (
-          <span className="absolute bottom-2 right-2 inline-flex items-center gap-1 rounded-md bg-success/85 px-1.5 py-0.5 text-[10px] font-bold text-success-foreground backdrop-blur">
-            <MessageCircle className="h-3 w-3" /> WA
-          </span>
-        )}
-
-        {isVideo && (
-          <span className="absolute right-2 bottom-2 grid h-7 w-7 place-items-center rounded-full bg-background/85 backdrop-blur transition group-hover:scale-110 group-hover:bg-primary group-hover:text-primary-foreground">
-            <Play className="h-3 w-3 fill-current" />
-          </span>
-        )}
-      </div>
-
-      <div className="flex-1 space-y-2 p-3">
-        <div className="space-y-0.5">
-          {row.headline ? (
-            <>
-              <div className="line-clamp-2 min-h-[2.4rem] text-xs font-bold leading-snug" title={row.headline}>
-                {row.headline}
-              </div>
-              <div className="truncate text-[10px] text-muted-foreground" title={row.name}>
-                {row.name || "—"}
-              </div>
-            </>
-          ) : (
-            <div className="line-clamp-2 min-h-[2.4rem] text-xs font-semibold leading-snug" title={row.name}>
-              {row.name || "Без названия"}
-            </div>
-          )}
-        </div>
-
-        {showCrm ? (
-          <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-            <div className="rounded-md bg-secondary/30 px-2 py-1">
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">{leadLabel}</div>
-              <div className="font-bold tabular-nums">{fmtNum(leadValue)}</div>
-            </div>
-            <div className="rounded-md bg-secondary/30 px-2 py-1">
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Продаж</div>
-              <div className="font-bold tabular-nums text-success">{fmtNum(row.crmSales)}</div>
-            </div>
-            <div className="rounded-md bg-secondary/30 px-2 py-1">
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Расход</div>
-              <div className="font-bold tabular-nums">{row.spend > 0 ? fmtTenge(row.spend) : "—"}</div>
-            </div>
-            <div className="rounded-md bg-secondary/30 px-2 py-1">
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Выручка</div>
-              <div className={cn("font-bold tabular-nums", romiClass)}>
-                {hasCrmRevenue ? fmtTenge(row.crmRevenue) : "нет продаж"}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-            <div className="rounded-md bg-secondary/30 px-2 py-1">
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">CTR</div>
-              <div className="font-bold tabular-nums">{row.ctr > 0 ? `${row.ctr.toFixed(2)}%` : "—"}</div>
-            </div>
-            <div className="rounded-md bg-secondary/30 px-2 py-1">
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">CPL</div>
-              <div className="font-bold tabular-nums text-success">{row.cpl > 0 ? fmtTenge(row.cpl) : "—"}</div>
-            </div>
-            <div className="rounded-md bg-secondary/30 px-2 py-1">
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">Расход</div>
-              <div className="font-bold tabular-nums">{row.spend > 0 ? fmtTenge(row.spend) : "—"}</div>
-            </div>
-            <div className="rounded-md bg-secondary/30 px-2 py-1">
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">
-                {isWhatsApp ? "Сообщ." : "Заявки"}
-              </div>
-              <div className="font-bold tabular-nums">
-                {fmtNum(isWhatsApp ? row.messages : row.leads)}
-              </div>
-            </div>
-          </div>
-        )}
+      {preview}
+      <div className="flex flex-1 flex-col gap-3 p-3">
+        {metaBlock}
+        <div className="mt-auto grid grid-cols-2 gap-2 border-t border-border/40 pt-3">{metrics}</div>
       </div>
     </button>
   );

@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Download, Filter, Loader2, Search, Sparkles } from "lucide-react";
+import { Download, Filter, LayoutGrid, List, Loader2, Search, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/integrations/supabase/client";
 import { CreativeCard } from "./CreativeCard";
@@ -50,12 +51,13 @@ export function AdsCreativesPanel() {
   const [status, setStatus] = useState<StatusFilter>("active_or_spent");
   const [typeF, setTypeF] = useState<TypeFilter>("all");
   const [goalF, setGoalF] = useState<"all" | "whatsapp" | "site">("all");
-  const [sort, setSort] = useState<SortKey>("crmRomi");
+  const [sort, setSort] = useState<SortKey>("crmRevenue");
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [cabinetFilter, setCabinetFilter] = useState<string>("all");
   const [visibleCount, setVisibleCount] = useState(48);
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const PAGE_SIZE = 48;
   const [searchParams, setSearchParams] = useSearchParams();
   const focusAdId = searchParams.get("ad");
@@ -226,6 +228,30 @@ export function AdsCreativesPanel() {
               className="h-9 w-full rounded-lg border-border/60 bg-background pl-8 text-xs lg:w-56"
             />
           </div>
+          <div className="flex rounded-lg border border-border/60 bg-background p-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode("grid")}
+              className={cn(
+                "grid h-8 w-8 place-items-center rounded-md transition",
+                viewMode === "grid" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+              aria-label="Сетка"
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={cn(
+                "grid h-8 w-8 place-items-center rounded-md transition",
+                viewMode === "list" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground",
+              )}
+              aria-label="Список"
+            >
+              <List className="h-3.5 w-3.5" />
+            </button>
+          </div>
           <Button variant="outline" size="sm" className="h-9" onClick={handleSync} disabled={syncing}>
             {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
             Обновить из Meta
@@ -260,14 +286,30 @@ export function AdsCreativesPanel() {
       )}
 
       {/* Grid */}
-      {filtered.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      {filtered.length > 0 && viewMode === "grid" && (
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
           {visible.map(({ row, isWhatsApp }) => (
             <CreativeCard
               key={row.id}
               row={row}
               isWhatsApp={isWhatsApp}
               active={openId === row.id}
+              layout="grid"
+              onOpen={() => setOpenId(row.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      {filtered.length > 0 && viewMode === "list" && (
+        <div className="flex flex-col gap-2">
+          {visible.map(({ row, isWhatsApp }) => (
+            <CreativeCard
+              key={row.id}
+              row={row}
+              isWhatsApp={isWhatsApp}
+              active={openId === row.id}
+              layout="list"
               onOpen={() => setOpenId(row.id)}
             />
           ))}

@@ -1,37 +1,8 @@
 import type { ReportCreative } from "@/hooks/useReportData";
+import { parseCreativeDisplayName } from "@/lib/creativeDisplay";
 
-const TAG_LABELS: Record<string, string> = {
-  video: "Видео",
-  image: "Фото",
-  carousel: "Карусель",
-  wa: "WhatsApp",
-  site: "Сайт",
-  ai: "AI",
-};
-
-export interface ParsedCreativeName {
-  title: string;
-  tags: string[];
-  full: string;
-}
-
-/** Человекочитаемое имя из технической строки Meta (`hook | video | wa | …`). */
-export function parseCreativeDisplayName(name: string): ParsedCreativeName {
-  const full = name.trim();
-  const parts = full.split("|").map((s) => s.trim()).filter(Boolean);
-  const raw = parts[0] || full;
-  const title = raw
-    .replace(/_/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  const tags = parts.slice(1).map((t) => {
-    const key = t.toLowerCase();
-    return TAG_LABELS[key] ?? t;
-  });
-
-  return { title: title || "Без названия", tags, full };
-}
+export { parseCreativeDisplayName } from "@/lib/creativeDisplay";
+export type { ParsedCreativeName } from "@/lib/creativeDisplay";
 
 export interface ReportCreativeSections {
   withRevenue: ReportCreative[];

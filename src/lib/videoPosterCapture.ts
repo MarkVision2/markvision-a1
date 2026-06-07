@@ -102,7 +102,7 @@ function captureFrame(videoUrl: string): Promise<Blob | null> {
         const vh = v.videoHeight;
         if (!vw || !vh) return fail();
         // Целевой размер — фиксируем по большей стороне до 1280, сохраняя пропорции
-        const maxSide = 1280;
+        const maxSide = 1920;
         const scale = Math.min(1, maxSide / Math.max(vw, vh));
         const w = Math.round(vw * scale);
         const h = Math.round(vh * scale);

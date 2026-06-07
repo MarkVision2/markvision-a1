@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Image as ImageIcon, Layers, Loader2, Play, Video } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { formatCreativeStatus, isCreativeActive } from "@/lib/creativeDisplay";
 import { useCreativeHqPreview } from "@/hooks/useCreativeHqPreview";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
@@ -18,18 +19,20 @@ export interface CreativePreviewSource {
 
 interface Props {
   row: CreativePreviewSource;
-  /** Сжатый формат (для строк таблицы): без бейджа и без play-кнопки. */
   compact?: boolean;
-  /** Включить кнопку полноразмерного воспроизведения видео со звуком. */
   playable?: boolean;
+  /** cover — заполняет область (может обрезать). contain — целиком, без обрезки. */
+  fit?: "cover" | "contain";
   className?: string;
 }
 
-/**
- * Универсальное превью креатива Meta: HQ-постер, видео только при hover
- * после загрузки чёткого кадра. Низкие 64×64 thumbnail никогда не показываем.
- */
-export function CreativePreview({ row, compact = false, playable = false, className }: Props) {
+export function CreativePreview({
+  row,
+  compact = false,
+  playable = false,
+  fit = "contain",
+  className,
+}: Props) {
   const isCarousel = row.creativeType === "carousel";
   const {
     isVideo,
@@ -46,6 +49,9 @@ export function CreativePreview({ row, compact = false, playable = false, classN
   const [mediaError, setMediaError] = useState(false);
   const [playVideo, setPlayVideo] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  const isActive = isCreativeActive(row.effectiveStatus);
+  const mediaFit = fit === "contain" ? "object-contain" : "object-cover";
 
   useEffect(() => {
     const el = videoRef.current;
@@ -69,7 +75,11 @@ export function CreativePreview({ row, compact = false, playable = false, classN
 
   return (
     <div
-      className={cn("relative overflow-hidden rounded-xl bg-background", className)}
+      className={cn(
+        "relative overflow-hidden bg-zinc-950",
+        fit === "contain" && "flex items-center justify-center",
+        className,
+      )}
       onMouseEnter={() => setPlayVideo(true)}
       onMouseLeave={() => setPlayVideo(false)}
     >
@@ -82,7 +92,7 @@ export function CreativePreview({ row, compact = false, playable = false, classN
           playsInline
           loop
           preload="metadata"
-          className="h-full w-full bg-background object-cover"
+          className={cn("h-full w-full bg-zinc-950", mediaFit)}
           onError={() => {
             void forceRefresh();
           }}
@@ -91,7 +101,7 @@ export function CreativePreview({ row, compact = false, playable = false, classN
         <img
           src={displaySrc!}
           alt=""
-          className="h-full w-full object-cover"
+          className={cn("h-full w-full", mediaFit)}
           loading="lazy"
           referrerPolicy="no-referrer"
           onError={() => {
@@ -108,51 +118,58 @@ export function CreativePreview({ row, compact = false, playable = false, classN
           )}
         </div>
       )}
+
       {isLowRes && loadingHq && !compact && (
-        <span className="absolute bottom-2 right-2 rounded-md bg-background/85 px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">
-          HD…
+        <span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[9px] font-medium text-white/80">
+          Загрузка HD…
         </span>
       )}
+
       {!compact && (
-        <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
-          <TypeIcon className="h-3 w-3" />
-          {row.creativeType}
-        </span>
+        <div className="absolute left-2 top-2 flex flex-wrap gap-1">
+          <span className="inline-flex items-center gap-1 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+            <TypeIcon className="h-3 w-3" />
+            {row.creativeType === "video" ? "Видео" : row.creativeType === "carousel" ? "Карусель" : "Фото"}
+          </span>
+          {row.effectiveStatus && (
+            <span
+              className={cn(
+                "rounded-md px-1.5 py-0.5 text-[10px] font-semibold backdrop-blur-sm",
+                isActive ? "bg-emerald-600/90 text-white" : "bg-black/55 text-white/85",
+              )}
+            >
+              {formatCreativeStatus(row.effectiveStatus)}
+            </span>
+          )}
+        </div>
       )}
+
       {compact && (
-        <span className="absolute right-0.5 top-0.5 grid h-4 w-4 place-items-center rounded bg-background/90">
+        <span className="absolute right-0.5 top-0.5 grid h-4 w-4 place-items-center rounded bg-black/70 text-white">
           <TypeIcon className="h-2.5 w-2.5" />
         </span>
       )}
+
       {!compact && isVideo && (
         playable ? (
           <button
             type="button"
             onClick={handlePlayClick}
             disabled={loadingFullVideo}
-            className="absolute inset-0 grid place-items-center transition-colors hover:bg-black/20"
+            className="absolute bottom-2 right-2 grid h-9 w-9 place-items-center rounded-full bg-black/70 text-white opacity-0 backdrop-blur-sm transition hover:bg-primary hover:opacity-100 group-hover:opacity-100"
             aria-label="Смотреть видео"
           >
-            <span className="grid h-14 w-14 place-items-center rounded-full border border-white/30 bg-black/55 backdrop-blur-sm transition-transform hover:scale-110">
-              {loadingFullVideo ? (
-                <Loader2 className="h-6 w-6 animate-spin text-white" />
-              ) : (
-                <Play className="h-6 w-6 fill-white text-white" />
-              )}
-            </span>
+            {loadingFullVideo ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Play className="h-4 w-4 fill-current" />
+            )}
           </button>
         ) : (
-          <span className="pointer-events-none absolute inset-0 grid place-items-center">
-            <span className="grid h-10 w-10 place-items-center rounded-full border border-border/50 bg-background/75">
-              <Play className="h-4 w-4 text-foreground" />
-            </span>
+          <span className="pointer-events-none absolute bottom-2 right-2 grid h-8 w-8 place-items-center rounded-full bg-black/55 text-white opacity-0 transition group-hover:opacity-100">
+            <Play className="h-3.5 w-3.5 fill-current" />
           </span>
         )
-      )}
-      {!compact && row.effectiveStatus && row.effectiveStatus !== "ACTIVE" && (
-        <span className="absolute right-2 top-2 rounded-md bg-warning/80 px-1.5 py-0.5 text-[10px] font-bold uppercase text-warning-foreground">
-          {row.effectiveStatus}
-        </span>
       )}
 
       {playable && isVideo && (
@@ -183,34 +200,23 @@ export function CreativePreview({ row, compact = false, playable = false, classN
               >
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/55 p-6 text-center text-sm text-white">
                   <p>Ссылка на видео из Meta истекла.</p>
-                  <div className="flex flex-col gap-2">
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        setLoadingFullVideo(true);
-                        await forceRefresh();
-                        setLoadingFullVideo(false);
-                      }}
-                      className="rounded-md bg-white/15 px-3 py-1.5 text-xs font-semibold backdrop-blur hover:bg-white/25"
-                    >
-                      Попробовать снова
-                    </button>
-                    <a
-                      href={`https://www.facebook.com/ads/library/?id=${row.adId}`}
-                      target="_blank"
-                      rel="noreferrer noopener"
-                      className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:bg-primary/90"
-                    >
-                      Открыть в Facebook Ads Library
-                    </a>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setLoadingFullVideo(true);
+                      await forceRefresh();
+                      setLoadingFullVideo(false);
+                    }}
+                    className="rounded-md bg-white/15 px-3 py-1.5 text-xs font-semibold backdrop-blur hover:bg-white/25"
+                  >
+                    Попробовать снова
+                  </button>
                 </div>
               </div>
             )}
           </DialogContent>
         </Dialog>
       )}
-
     </div>
   );
 }
