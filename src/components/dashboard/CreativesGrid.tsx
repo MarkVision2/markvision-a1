@@ -1,15 +1,12 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Eye, Image as ImageIcon, Layers, MousePointerClick, Play, TrendingDown, TrendingUp, Video } from "lucide-react";
+import { ArrowRight, Eye, Image as ImageIcon, MousePointerClick, TrendingDown, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { bestCreativeImage } from "@/lib/metaThumb";
-import { enqueuePosterCapture } from "@/lib/videoPosterCapture";
-import { refreshMetaCreative } from "@/lib/metaCreativeRefresh";
+import { CreativePreview } from "@/components/creatives/CreativePreview";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
-const requestedDashboardPosters = new Set<string>();
 
 type SortKey = "crmRevenue" | "crmRomi" | "spend" | "ctr" | "cpl" | "leads" | "romi";
 
@@ -31,129 +28,18 @@ interface Props {
   viewAllHref?: string;
 }
 
-function CreativePreview({ row }: { row: MetaCreativeRow }) {
-  const isVideo = row.creativeType === "video";
-  const [playVideo, setPlayVideo] = useState(false);
-  const videoRef = useRef<HTMLVideoElement>(null);
-
-  useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
-    if (playVideo) void el.play().catch(() => {});
-    else el.pause();
-  }, [playVideo]);
-  const isCarousel = row.creativeType === "carousel";
-  const [capturedPoster, setCapturedPoster] = useState<string | null>(null);
-  const [refreshedThumb, setRefreshedThumb] = useState<string | null>(null);
-  const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(row.videoUrl);
-  const [mediaError, setMediaError] = useState(false);
-  const src = bestCreativeImage({
-    posterUrl: capturedPoster ?? row.posterUrl,
-    thumbnailUrl: refreshedThumb ?? row.thumbnailUrl,
-    imageUrl: row.imageUrl,
-    size: 960,
-  });
-
-  const refreshVideoPreview = async () => {
-    if (!row.adId) return;
-    const data = await refreshMetaCreative(row.adId);
-    if (data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
-    if (data?.ok && data.video_url) setPreviewVideoUrl(data.video_url);
-  };
-
-  useEffect(() => {
-    setPreviewVideoUrl(row.videoUrl);
-    setRefreshedThumb(null);
-    setCapturedPoster(null);
-  }, [row.id, row.videoUrl]);
-
-  useEffect(() => {
-    if (!isVideo || !row.adId || row.posterUrl || capturedPoster) return;
-    if (requestedDashboardPosters.has(row.adId)) return;
-    requestedDashboardPosters.add(row.adId);
-
-    let cancelled = false;
-    void (async () => {
-      let videoUrl = row.videoUrl;
-      if (!videoUrl) {
-        const data = await refreshMetaCreative(row.adId);
-        if (!cancelled && data?.thumbnail_url) setRefreshedThumb(data.thumbnail_url);
-        videoUrl = data?.ok ? data.video_url ?? null : null;
-      }
-      if (!cancelled && videoUrl) setPreviewVideoUrl(videoUrl);
-      if (!videoUrl || cancelled) return;
-      const poster = await enqueuePosterCapture(row.adId, videoUrl);
-      if (poster && !cancelled) setCapturedPoster(poster);
-    })().catch(() => {
-      requestedDashboardPosters.delete(row.adId);
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [capturedPoster, isVideo, row.adId, row.posterUrl, row.videoUrl]);
-
-  return (
-    <div
-      className="relative aspect-[4/5] w-full overflow-hidden rounded-xl bg-background"
-      onMouseEnter={() => setPlayVideo(true)}
-      onMouseLeave={() => setPlayVideo(false)}
-    >
-      {isVideo && previewVideoUrl ? (
-        <video
-          ref={videoRef}
-          src={previewVideoUrl}
-          poster={src ?? undefined}
-          muted
-          playsInline
-          loop
-          preload="metadata"
-          className="h-full w-full bg-background object-cover transition duration-300 group-hover:scale-[1.01]"
-          onError={() => {
-            setPreviewVideoUrl(null);
-            void refreshVideoPreview();
-          }}
-        />
-      ) : src && !mediaError ? (
-        <img
-          src={src}
-          alt=""
-          className={cn(
-            "h-full w-full transition duration-300 group-hover:scale-[1.01]",
-            isVideo ? "object-cover" : "object-cover",
-          )}
-          loading="lazy"
-          referrerPolicy="no-referrer"
-          onError={() => setMediaError(true)}
-        />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center">
-          <ImageIcon className="h-8 w-8 text-muted-foreground/40" />
-        </div>
-      )}
-      <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-background/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider backdrop-blur">
-        {isVideo ? <Video className="h-3 w-3" /> : isCarousel ? <Layers className="h-3 w-3" /> : <ImageIcon className="h-3 w-3" />}
-        {row.creativeType}
-      </span>
-      {isVideo && (
-        <span className="absolute inset-0 grid place-items-center">
-          <span className="grid h-10 w-10 place-items-center rounded-full border border-border/40 bg-background/45 backdrop-blur-sm transition group-hover:scale-105 group-hover:bg-background/65">
-            <Play className="h-4 w-4 text-foreground" />
-          </span>
-        </span>
-      )}
-      {row.effectiveStatus && row.effectiveStatus !== "ACTIVE" && (
-        <span className="absolute right-2 top-2 rounded-md bg-warning/80 px-1.5 py-0.5 text-[10px] font-bold uppercase text-warning-foreground">
-          {row.effectiveStatus}
-        </span>
-      )}
-    </div>
-  );
-}
-
 const sortValue = (r: MetaCreativeRow, key: SortKey): number => {
   if (key === "cpl") return r.cpl > 0 ? -r.cpl : Number.NEGATIVE_INFINITY;
-  return (r as any)[key] ?? 0;
+  return (r as Record<string, number>)[key] ?? 0;
+};
+
+const compareCreatives = (a: MetaCreativeRow, b: MetaCreativeRow, key: SortKey): number => {
+  const primary = sortValue(b, key) - sortValue(a, key);
+  if (primary !== 0) return primary;
+  // При равной выручке — сначала креативы с продажами/диагностиками, потом по расходу.
+  const crmDelta = (b.crmSales ?? 0) - (a.crmSales ?? 0);
+  if (crmDelta !== 0) return crmDelta;
+  return b.spend - a.spend;
 };
 
 export function CreativesGrid({
@@ -167,12 +53,13 @@ export function CreativesGrid({
 
   const sorted = useMemo(() => {
     const copy = [...rows];
-    copy.sort((a, b) => sortValue(b, sortKey) - sortValue(a, sortKey));
+    copy.sort((a, b) => compareCreatives(a, b, sortKey));
     return copy;
   }, [rows, sortKey]);
 
   const limit = topMode ? 6 : initialLimit;
   const visible = topMode || !showAll ? sorted.slice(0, limit) : sorted;
+  const withRevenue = sorted.filter((r) => (r.crmRevenue ?? 0) > 0).length;
 
   if (rows.length === 0) {
     return (
@@ -188,7 +75,11 @@ export function CreativesGrid({
       <div className="flex items-center justify-between gap-3">
         <div className="text-xs text-muted-foreground">
           {topMode ? (
-            <>Топ-{Math.min(limit, sorted.length)} креативов <span className="text-foreground/70">по выручке CRM</span> · всего {rows.length}</>
+            <>
+              Топ-{Math.min(limit, sorted.length)} креативов <span className="text-foreground/70">по выручке CRM</span>
+              {withRevenue > 0 ? ` · с выручкой: ${withRevenue}` : " · выручка пока не привязана к креативам"}
+              {" · "}всего {rows.length}
+            </>
           ) : (
             <>Всего креативов: <span className="font-semibold text-foreground">{rows.length}</span></>
           )}
@@ -228,8 +119,20 @@ export function CreativesGrid({
           const romiPositive = romiVal >= 0;
           const RomiIcon = romiPositive ? TrendingUp : TrendingDown;
           const cardInner = (
-            <div className="overflow-hidden rounded-2xl border border-border/60 bg-card/60 transition hover:border-primary/40 hover:bg-card">
-              <CreativePreview row={row} />
+            <div className="group overflow-hidden rounded-2xl border border-border/60 bg-card/60 transition hover:border-primary/40 hover:bg-card">
+              <CreativePreview
+                row={{
+                  adId: row.adId,
+                  name: row.name,
+                  creativeType: row.creativeType,
+                  thumbnailUrl: row.thumbnailUrl,
+                  imageUrl: row.imageUrl,
+                  posterUrl: row.posterUrl,
+                  videoUrl: row.videoUrl,
+                  effectiveStatus: row.effectiveStatus,
+                }}
+                className="aspect-[4/5] w-full rounded-none"
+              />
               <div className="p-3">
                 <div className="line-clamp-2 min-h-[2.5rem] text-xs font-semibold leading-snug" title={row.name}>
                   {row.name || "Без названия"}

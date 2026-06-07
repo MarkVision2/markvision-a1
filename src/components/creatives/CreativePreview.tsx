@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Image as ImageIcon, Layers, Loader2, Play, Video } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -43,12 +43,23 @@ export function CreativePreview({ row, compact = false, playable = false, classN
   const [playerOpen, setPlayerOpen] = useState(false);
   const [loadingFullVideo, setLoadingFullVideo] = useState(false);
   const [mediaError, setMediaError] = useState(false);
+  const [playVideo, setPlayVideo] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const src = bestCreativeImage({
     posterUrl: capturedPoster ?? row.posterUrl,
     thumbnailUrl: refreshedThumb ?? row.thumbnailUrl,
     imageUrl: row.imageUrl,
-    size: compact ? 240 : 960,
+    size: compact ? 240 : 1080,
   });
+  const hasQualityPoster = Boolean(capturedPoster ?? row.posterUrl ?? row.imageUrl);
+  const canPlayInline = isVideo && previewVideoUrl && hasQualityPoster;
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (playVideo && canPlayInline) void el.play().catch(() => {});
+    else el.pause();
+  }, [playVideo, canPlayInline]);
 
   const refreshVideoPreview = async (force = false) => {
     if (!row.adId) return null;
@@ -107,14 +118,18 @@ export function CreativePreview({ row, compact = false, playable = false, classN
 
 
   return (
-    <div className={cn("relative overflow-hidden rounded-xl bg-background", className)}>
-      {isVideo && previewVideoUrl ? (
+    <div
+      className={cn("relative overflow-hidden rounded-xl bg-background", className)}
+      onMouseEnter={() => setPlayVideo(true)}
+      onMouseLeave={() => setPlayVideo(false)}
+    >
+      {canPlayInline && playVideo ? (
         <video
-          src={previewVideoUrl}
+          ref={videoRef}
+          src={previewVideoUrl!}
           poster={src ?? undefined}
           muted
           playsInline
-         
           loop
           preload="metadata"
           className="h-full w-full bg-background object-cover"
@@ -143,13 +158,13 @@ export function CreativePreview({ row, compact = false, playable = false, classN
         </div>
       )}
       {!compact && (
-        <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-background/80 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider backdrop-blur">
+        <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider">
           <TypeIcon className="h-3 w-3" />
           {row.creativeType}
         </span>
       )}
       {compact && (
-        <span className="absolute right-0.5 top-0.5 grid h-4 w-4 place-items-center rounded bg-background/80 backdrop-blur">
+        <span className="absolute right-0.5 top-0.5 grid h-4 w-4 place-items-center rounded bg-background/90">
           <TypeIcon className="h-2.5 w-2.5" />
         </span>
       )}
@@ -172,7 +187,7 @@ export function CreativePreview({ row, compact = false, playable = false, classN
           </button>
         ) : (
           <span className="pointer-events-none absolute inset-0 grid place-items-center">
-            <span className="grid h-10 w-10 place-items-center rounded-full border border-border/40 bg-background/45 backdrop-blur-sm">
+            <span className="grid h-10 w-10 place-items-center rounded-full border border-border/50 bg-background/75">
               <Play className="h-4 w-4 text-foreground" />
             </span>
           </span>

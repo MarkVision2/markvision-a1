@@ -1,6 +1,12 @@
 import { useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  aggregateCreativeCrmFromDaily,
+  aggregateCreativeCrmFromLeads,
+  mergeCreativeCrmMaps,
+} from "@/lib/creativeCrmMetrics";
+import { fetchLeadsLite } from "./useLeadsLite";
 import { useProjectsStore } from "./useProjectsStore";
 import { useRealtimeTable } from "./useRealtimeTable";
 import type { MetaCampaignRow, MetaCreativeRow } from "./useMetaStructure";
@@ -73,7 +79,7 @@ async function fetchMetaDashboard(
   const crmTable = (supabase as any).from("meta_creative_crm_daily");
 
 
-  const [creativesRes, dailyRes, crmRes, campsRes, campDailyRes] = await Promise.all([
+  const [creativesRes, dailyRes, crmRes, campsRes, campDailyRes, leads] = await Promise.all([
     supabase
       .from("meta_creatives")
       .select(
@@ -103,6 +109,7 @@ async function fetchMetaDashboard(
       .eq("project_id", projectId)
       .gte("date", since)
       .lte("date", until),
+    fetchLeadsLite(projectId),
   ]);
 
   const creatives = (creativesRes.data ?? []) as RawCreative[];
@@ -131,15 +138,25 @@ async function fetchMetaDashboard(
     agg.set(d.ad_id, cur);
   }
 
-  const crmAgg = new Map<string, { crmLeads: number; crmQualified: number; crmSales: number; crmRevenue: number }>();
-  for (const c of crm) {
-    const cur = crmAgg.get(c.ad_id) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 };
-    cur.crmLeads += Number(c.crm_leads) || 0;
-    cur.crmQualified += Number(c.crm_qualified) || 0;
-    cur.crmSales += Number(c.crm_sales) || 0;
-    cur.crmRevenue += Number(c.crm_revenue) || 0;
-    crmAgg.set(c.ad_id, cur);
-  }
+  const range = {
+    from: new Date(`${since}T00:00:00`),
+    to: new Date(`${until}T00:00:00`),
+  };
+  const crmFromView = aggregateCreativeCrmFromDaily(crm);
+  const crmFromLeads = aggregateCreativeCrmFromLeads(
+    leads.map((l) => ({
+      metaAdId: l.metaAdId,
+      createdAt: l.createdAt,
+      paidAt: l.paidAt,
+      lastActivityAt: l.lastActivityAt,
+      stageKey: l.stageKey,
+      amount: l.amount,
+      diagnosticAmount: l.diagnosticAmount,
+      paid: l.paid,
+    })),
+    range,
+  );
+  const crmAgg = mergeCreativeCrmMaps(crmFromView, crmFromLeads);
 
   const creativeRows: MetaCreativeRow[] = creatives.map((c) => {
     const a = agg.get(c.ad_id) ?? { spend: 0, impressions: 0, clicks: 0, leads: 0, messages: 0, purchases: 0, revenue: 0 };
@@ -173,7 +190,10 @@ async function fetchMetaDashboard(
       effectiveStatus: c.effective_status,
       ...a,
       ctr, cpl, cpc, cpm, romi,
-      ...cr,
+      crmLeads: cr.crmLeads,
+      crmQualified: cr.crmQualified,
+      crmSales: cr.crmSales,
+      crmRevenue: cr.crmRevenue,
       crmCpl, crmCps, crmAvgCheck, crmRomi, crmProfit,
     };
   });
@@ -184,14 +204,14 @@ async function fetchMetaDashboard(
     if (c.campaign_id) creativeMap.set(c.ad_id, c.campaign_id);
   }
   const crmByCampaign = new Map<string, { crmLeads: number; crmQualified: number; crmSales: number; crmRevenue: number }>();
-  for (const c of crm) {
-    const campaignId = creativeMap.get(c.ad_id);
+  for (const [adId, cr] of crmAgg) {
+    const campaignId = creativeMap.get(adId);
     if (!campaignId) continue;
     const cur = crmByCampaign.get(campaignId) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 };
-    cur.crmLeads += Number(c.crm_leads) || 0;
-    cur.crmQualified += Number(c.crm_qualified) || 0;
-    cur.crmSales += Number(c.crm_sales) || 0;
-    cur.crmRevenue += Number(c.crm_revenue) || 0;
+    cur.crmLeads += cr.crmLeads;
+    cur.crmQualified += cr.crmQualified;
+    cur.crmSales += cr.crmSales;
+    cur.crmRevenue += cr.crmRevenue;
     crmByCampaign.set(campaignId, cur);
   }
 
@@ -257,6 +277,7 @@ export function useMetaDashboard(range: Range) {
   useRealtimeTable("meta_creatives", invalidate, true, 1000);
   useRealtimeTable("meta_campaigns", invalidate, true, 1000);
   useRealtimeTable("meta_campaign_daily", invalidate, true, 2000);
+  useRealtimeTable("leads", invalidate, true, 2000);
 
   const { data, isLoading: loading } = useQuery({
     queryKey: [META_STRUCTURE_QUERY_KEY, projectId, since, until],

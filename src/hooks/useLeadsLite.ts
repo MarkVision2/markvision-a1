@@ -21,6 +21,7 @@ export interface LeadLite {
   channel: string | null;
   referrer: string | null;
   utm: LeadLiteUtm | null;
+  metaAdId: string | null;
   cabinetId: string | null;
   stageKey: string;
   amount: number;
@@ -44,7 +45,7 @@ export async function fetchLeadsLite(activeId: string | null): Promise<LeadLite[
   let leadsQuery = supabase
     .from("leads")
     .select(
-      "id,source,channel,referrer,utm,cabinet_id,stage_id,amount,diagnostic_amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,reject_reason,rejected_at",
+      "id,source,channel,referrer,utm,meta_ad_id,cabinet_id,stage_id,amount,diagnostic_amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,reject_reason,rejected_at",
     )
     .eq("is_personal", false)
     .order("created_at", { ascending: false })
@@ -65,6 +66,7 @@ export async function fetchLeadsLite(activeId: string | null): Promise<LeadLite[
     channel: (r.channel as string | null) ?? null,
     referrer: (r.referrer as string | null) ?? null,
     utm: (r.utm as LeadLiteUtm | null) ?? null,
+    metaAdId: (r.meta_ad_id as string | null) ?? null,
     cabinetId: (r.cabinet_id as string | null) ?? null,
     stageKey: idToKey.get(r.stage_id as string) ?? "new",
     amount: Number(r.amount ?? 0),
