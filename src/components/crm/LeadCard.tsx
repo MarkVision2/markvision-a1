@@ -1,7 +1,8 @@
-import { memo, useSyncExternalStore, type DragEvent } from "react";
+import { memo, useSyncExternalStore, type DragEvent, type MouseEvent } from "react";
 import { Bot, Phone, Sparkles, Star, Tag } from "lucide-react";
 import { subscribeAutoMoved, isRecentlyAutoMoved, getAutoMovedSnapshot } from "@/lib/autoMoveTracker";
 import { cn } from "@/lib/utils";
+import { Checkbox } from "@/components/ui/checkbox";
 import type { Lead } from "@/types/crm";
 import { leadSlaMinutes, recommendationFor, slaTone } from "@/hooks/useCrmAnalytics";
 import { normalizeSource } from "@/lib/leadSource";
@@ -10,6 +11,9 @@ interface LeadCardProps {
   lead: Lead;
   assigneeName?: string;
   highlightSla?: boolean;
+  selectMode?: boolean;
+  selected?: boolean;
+  onSelectToggle?: (leadId: string) => void;
   onClick?: () => void;
   onTogglePin?: (leadId: string) => void;
 }
@@ -33,10 +37,36 @@ function scoreColor(score: number) {
   return "text-muted-foreground";
 }
 
-function LeadCardImpl({ lead, assigneeName, highlightSla, onClick, onTogglePin }: LeadCardProps) {
+function LeadCardImpl({
+  lead,
+  assigneeName,
+  highlightSla,
+  selectMode,
+  selected,
+  onSelectToggle,
+  onClick,
+  onTogglePin,
+}: LeadCardProps) {
   const handleDragStart = (e: DragEvent) => {
+    if (selectMode) {
+      e.preventDefault();
+      return;
+    }
     e.dataTransfer.setData("text/lead-id", lead.id);
     e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleClick = () => {
+    if (selectMode) {
+      onSelectToggle?.(lead.id);
+      return;
+    }
+    onClick?.();
+  };
+
+  const handleCheckboxClick = (e: MouseEvent) => {
+    e.stopPropagation();
+    onSelectToggle?.(lead.id);
   };
 
   const sla = leadSlaMinutes(lead);
@@ -51,15 +81,21 @@ function LeadCardImpl({ lead, assigneeName, highlightSla, onClick, onTogglePin }
   return (
     <button
       type="button"
-      draggable
+      draggable={!selectMode}
       onDragStart={handleDragStart}
-      onClick={onClick}
+      onClick={handleClick}
       className={cn(
-        "group relative w-full shrink-0 cursor-grab rounded-xl border bg-card/80 p-3 pb-9 text-left transition-shadow hover:shadow-md active:cursor-grabbing",
-        lead.pinned ? "border-primary/40 ring-1 ring-primary/20" : "border-border/60 hover:border-primary/50",
+        "group relative w-full shrink-0 rounded-xl border bg-card/80 p-3 pb-9 text-left transition-shadow hover:shadow-md",
+        selectMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
+        selected ? "border-primary ring-2 ring-primary/30" : lead.pinned ? "border-primary/40 ring-1 ring-primary/20" : "border-border/60 hover:border-primary/50",
         showSlaTimer && tone === "bad" && "ring-1 ring-destructive/40",
       )}
     >
+      {selectMode && (
+        <div className="absolute left-2 top-2 z-10" onClick={handleCheckboxClick}>
+          <Checkbox checked={selected} aria-label={`Выбрать ${lead.name}`} />
+        </div>
+      )}
       {showSlaTimer && (
         <div className="mb-2 flex">
           <span

@@ -539,20 +539,59 @@ export function useCrmStore() {
     }
   }, [stageUuid]);
 
-  const removeLead = useCallback(async (id: string) => {
-    // Snapshot для отката, если delete не пройдёт.
+  const removeLeads = useCallback(async (ids: string[]) => {
+    const uniqueIds = [...new Set(ids.filter(Boolean))];
+    if (uniqueIds.length === 0) return { deleted: 0, failed: 0 };
+
+    const idSet = new Set(uniqueIds);
     let prevSnapshot: Lead[] | undefined;
     setLeads((prev) => {
       prevSnapshot = prev;
-      return prev.filter((l) => l.id !== id);
+      return prev.filter((l) => !idSet.has(l.id));
     });
-    const { error } = await supabase.from("leads").delete().eq("id", id);
+
+    const { data, error } = await supabase.from("leads").delete().in("id", uniqueIds).select("id");
     if (error) {
       if (prevSnapshot) setLeads(prevSnapshot);
-      console.error("[useCrmStore.removeLead] failed:", error.message, { id });
-      toast.error(`Не удалось удалить лида: ${error.message}`);
+      console.error("[useCrmStore.removeLeads] failed:", error.message, { ids: uniqueIds });
+      toast.error(`Не удалось удалить: ${error.message}`);
+      return { deleted: 0, failed: uniqueIds.length };
     }
+
+    const deleted = data?.length ?? 0;
+    if (deleted === 0) {
+      if (prevSnapshot) setLeads(prevSnapshot);
+      console.error("[useCrmStore.removeLeads] RLS blocked delete (0 rows)", { ids: uniqueIds });
+      toast.error("Не удалось удалить: нет прав или сделки уже удалены");
+      return { deleted: 0, failed: uniqueIds.length };
+    }
+
+    if (deleted < uniqueIds.length) {
+      const deletedIds = new Set((data ?? []).map((row) => row.id));
+      const failedIds = uniqueIds.filter((id) => !deletedIds.has(id));
+      if (prevSnapshot) {
+        const restore = prevSnapshot.filter((l) => failedIds.includes(l.id));
+        if (restore.length > 0) {
+          setLeads((prev) => {
+            const merged = [...prev];
+            for (const lead of restore) {
+              if (!merged.some((l) => l.id === lead.id)) merged.push(lead);
+            }
+            return merged;
+          });
+        }
+      }
+      toast.error(`Удалено ${deleted} из ${uniqueIds.length}. Остальные недоступны для удаления.`);
+      return { deleted, failed: uniqueIds.length - deleted };
+    }
+
+    return { deleted, failed: 0 };
   }, []);
+
+  const removeLead = useCallback(async (id: string) => {
+    const result = await removeLeads([id]);
+    return result.deleted > 0;
+  }, [removeLeads]);
 
   /**
    * «Убрать в личные» — заявка не от клиента, а от личного контакта владельца.
@@ -880,6 +919,7 @@ export function useCrmStore() {
     addLead,
     updateLead,
     removeLead,
+    removeLeads,
     markPersonal,
     moveLead,
     sendMessage,
@@ -896,7 +936,7 @@ export function useCrmStore() {
   }), [
     stages, leads, chats, whatsapp, setWhatsapp,
     addStage, renameStage, removeStage, moveStage,
-    addLead, updateLead, removeLead, markPersonal, moveLead, sendMessage,
+    addLead, updateLead, removeLead, removeLeads, markPersonal, moveLead, sendMessage,
     togglePin, assignLead, setRejectReason,
     markCall, logCallAttempt, markPaid, setVisit,
     addTask, toggleTask, removeTask,

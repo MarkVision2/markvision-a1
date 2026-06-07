@@ -55,6 +55,7 @@ const Crm = () => {
     addLead,
     updateLead,
     removeLead,
+    removeLeads,
     markPersonal,
     moveLead,
     sendMessage,
@@ -299,6 +300,12 @@ const Crm = () => {
                       onRename={renameStage}
                       onMove={moveStage}
                       onDelete={handleDeleteStage}
+                      onDeleteLeads={async (ids) => {
+                        const { deleted } = await removeLeads(ids);
+                        if (deleted > 0) {
+                          toast.success(deleted === 1 ? "Сделка удалена" : `Удалено сделок: ${deleted}`);
+                        }
+                      }}
                       onDropLead={handleDropLead}
                       onOpenLead={handleOpenLead}
                       onTogglePin={togglePin}
@@ -409,9 +416,9 @@ const Crm = () => {
           }
         }}
         onUpdate={(id, patch) => updateLead(id, patch)}
-        onDelete={(id) => {
-          removeLead(id);
-          toast.success("Лид удалён");
+        onDelete={async (id) => {
+          const ok = await removeLead(id);
+          if (ok) toast.success("Лид удалён");
         }}
         onMarkPersonal={(id) => {
           markPersonal(id);

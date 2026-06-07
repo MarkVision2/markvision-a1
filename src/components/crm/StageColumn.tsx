@@ -2,6 +2,7 @@ import { memo, useRef, useState, type DragEvent } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   AlertTriangle,
+  CheckSquare,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -11,6 +12,7 @@ import {
   TrendingUp,
   Trash2,
   Wallet,
+  X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -20,6 +22,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LeadCard } from "./LeadCard";
 import { getStageIcon, stageColorClasses } from "./StageIcon";
@@ -42,6 +45,7 @@ interface StageColumnProps {
   onRename: (id: string, title: string) => void;
   onMove: (id: string, dir: -1 | 1) => void;
   onDelete: (id: string) => void;
+  onDeleteLeads: (ids: string[]) => void | Promise<void>;
   onDropLead: (leadId: string, stageId: string) => void;
   onOpenLead: (lead: Lead) => void;
   onTogglePin: (leadId: string) => void;
@@ -66,6 +70,7 @@ function StageColumnImpl({
   onRename,
   onMove,
   onDelete,
+  onDeleteLeads,
   onDropLead,
   onOpenLead,
   onTogglePin,
@@ -74,6 +79,8 @@ function StageColumnImpl({
   const [draftTitle, setDraftTitle] = useState(stage.title);
   const [collapsed, setCollapsed] = useState(false);
   const [dragOver, setDragOver] = useState(false);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
   const Icon = getStageIcon(stage);
   const colors = stageColorClasses(stage.color);
@@ -113,6 +120,31 @@ function StageColumnImpl({
     if (leadId) onDropLead(leadId, stage.id);
   };
 
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const toggleLeadSelection = (leadId: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(leadId)) next.delete(leadId);
+      else next.add(leadId);
+      return next;
+    });
+  };
+
+  const selectAllLeads = () => {
+    setSelectedIds(new Set(leads.map((l) => l.id)));
+  };
+
+  const confirmDeleteLeads = async (ids: string[], label: string) => {
+    if (ids.length === 0) return;
+    if (!confirm(`Удалить ${label}? Это действие нельзя отменить.`)) return;
+    await onDeleteLeads(ids);
+    exitSelectMode();
+  };
+
   const renderLeadCard = (lead: Lead) => {
     const assignee = members.find((m) => m.id === lead.assigneeId);
     return (
@@ -121,6 +153,9 @@ function StageColumnImpl({
         lead={lead}
         assigneeName={assignee?.name}
         highlightSla={isAlertColumn}
+        selectMode={selectMode}
+        selected={selectedIds.has(lead.id)}
+        onSelectToggle={toggleLeadSelection}
         onClick={() => onOpenLead(lead)}
         onTogglePin={onTogglePin}
       />
@@ -219,6 +254,25 @@ function StageColumnImpl({
             <DropdownMenuItem onClick={() => onMove(stage.id, 1)} disabled={isLast}>
               <ChevronRight className="h-3.5 w-3.5" /> Сдвинуть вправо
             </DropdownMenuItem>
+            {leads.length > 0 && (
+              <>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => {
+                    setSelectMode(true);
+                    setSelectedIds(new Set());
+                  }}
+                >
+                  <CheckSquare className="h-3.5 w-3.5" /> Выбрать несколько
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => void confirmDeleteLeads(leads.map((l) => l.id), `все ${leads.length} сделок на этапе «${stage.title}»`)}
+                  className="text-destructive focus:text-destructive"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Удалить все на этапе ({leads.length})
+                </DropdownMenuItem>
+              </>
+            )}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => onDelete(stage.id)}
@@ -230,6 +284,41 @@ function StageColumnImpl({
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
+
+      {!collapsed && selectMode && (
+        <div className="mt-2 shrink-0 flex flex-wrap items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 p-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-7 px-2 text-[10px]"
+            onClick={selectAllLeads}
+          >
+            Все ({leads.length})
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="destructive"
+            className="h-7 px-2 text-[10px]"
+            disabled={selectedIds.size === 0}
+            onClick={() => void confirmDeleteLeads([...selectedIds], `${selectedIds.size} выбранных сделок`)}
+          >
+            <Trash2 className="h-3 w-3" />
+            Удалить ({selectedIds.size})
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="ml-auto h-7 w-7 p-0"
+            onClick={exitSelectMode}
+            aria-label="Отменить выбор"
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
 
       {!collapsed && (
         <div className="mt-2 shrink-0 grid grid-cols-2 gap-1.5 rounded-lg bg-secondary/20 p-2 text-[10px]">
