@@ -2,6 +2,15 @@ import { crmDailyMetrics, type CrmDailyMetrics, type ReportPeriodRange } from "@
 import type { LeadLite } from "@/hooks/useLeadsLite";
 import { isManualOverrideActive, resolveCdiMetric } from "@/lib/cdiManualOverride";
 
+function dayHasManualDiagnosticOverride(cdiRows: CdiFactRow[], iso: string): boolean {
+  return cdiRows.some(
+    (r) => r.date === iso && (
+      isManualOverrideActive(r.manual_diagnostics)
+      || isManualOverrideActive(r.manual_diagnostic_revenue)
+    ),
+  );
+}
+
 /** Ручные поля CDI на один день (NULL = авто из CRM). */
 export interface DayManualFields {
   manual_diagnostics: number | null;
@@ -172,24 +181,9 @@ export function resolveDayMetrics(
   };
 }
 
-function resolveCabinetIdForRow(
-  row: CdiFactRow,
-  externalIdByCabinetId?: Map<string, string>,
-): string | null {
-  if (row.cabinet_id) return row.cabinet_id;
-  const ext = (row.external_id ?? "").trim();
-  if (!ext || !externalIdByCabinetId) return null;
-  for (const [cabId, cabExt] of externalIdByCabinetId) {
-    const a = ext.replace(/^act_/i, "");
-    const b = cabExt.replace(/^act_/i, "");
-    if (ext === cabExt || a === b) return cabId;
-  }
-  return null;
-}
-
 /**
- * Итоги периода — как Таблица показателей: по строкам CDI (день × кабинет),
- * live CRM + manual. Не пересчитываем все кабинеты × все дни (завышало диагностики).
+ * Итоги периода — как Таблица показателей: день × кабинет,
+ * live CRM + manual через findCdiRowForCabinet (как в Metrics).
  */
 export function sumResolvedMetricsPerCabinets(
   range: ReportPeriodRange,
@@ -200,54 +194,34 @@ export function sumResolvedMetricsPerCabinets(
   externalIdByCabinetId?: Map<string, string>,
 ): ResolvedPeriodMetrics {
   const acc = { ...EMPTY_RESOLVED };
-  const seen = new Set<string>();
-
-  for (const row of cdiRows) {
-    const cabId = resolveCabinetIdForRow(row, externalIdByCabinetId);
-    if (!cabId || !cabinetInternalIds.includes(cabId)) continue;
-    const key = `${row.date}:${cabId}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    const dayRange = singleDayRange(row.date);
-    const crm = crmDailyMetrics(leads, dayRange, cabId).get(row.date);
-    addResolved(acc, resolveDayMetrics(crm, manualFieldsFromCdiRow(row), true));
-  }
-
-  // CRM-активность в дни без строки CDI (продажа/диагностика вне рекламного дня)
   const cur = new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate());
   const end = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate());
+  const orphanLeads = includeOrphans ? leads.filter((l) => !l.cabinetId) : [];
+
   while (cur.getTime() <= end.getTime()) {
     const iso = ymd(cur);
     const dayRange = singleDayRange(iso);
-    for (const cabId of cabinetInternalIds) {
-      const dedupe = `${iso}:${cabId}`;
-      if (seen.has(dedupe)) continue;
-      const crm = crmDailyMetrics(leads, dayRange, cabId).get(iso);
-      if (!crm || (!crm.diagnostics && !crm.sales && !crm.diagnosticRevenue && !crm.salesRevenue)) {
-        continue;
-      }
-      seen.add(dedupe);
-      addResolved(acc, resolveDayMetrics(crm, undefined, true));
-    }
-    cur.setDate(cur.getDate() + 1);
-  }
 
-  if (includeOrphans) {
-    const orphanLeads = leads.filter((l) => !l.cabinetId);
-    const curOrphan = new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate());
-    while (curOrphan.getTime() <= end.getTime()) {
-      const iso = ymd(curOrphan);
-      const crm = crmDailyMetrics(orphanLeads, singleDayRange(iso), "all").get(iso);
-      addResolved(acc, resolveDayMetrics(crm, undefined, true));
-      curOrphan.setDate(curOrphan.getDate() + 1);
+    for (const cabId of cabinetInternalIds) {
+      const externalId = externalIdByCabinetId?.get(cabId) ?? null;
+      const cdiRow = findCdiRowForCabinet(cdiRows, iso, cabId, externalId, cabinetInternalIds);
+      const crm = crmDailyMetrics(leads, dayRange, cabId).get(iso);
+      addResolved(acc, resolveDayMetrics(crm, manualFieldsFromCdiRow(cdiRow), true));
     }
+
+    // Orphan-CRM не дублируем, если в этот день уже зафиксирован manual override в CDI.
+    if (includeOrphans && !dayHasManualDiagnosticOverride(cdiRows, iso)) {
+      const crm = crmDailyMetrics(orphanLeads, dayRange, "all").get(iso);
+      addResolved(acc, resolveDayMetrics(crm, undefined, true));
+    }
+
+    cur.setDate(cur.getDate() + 1);
   }
 
   return acc;
 }
 
-/** Выручка по дням — та же per-cabinet логика. */
+/** Выручка по дням — та же day × cabinet логика. */
 export function buildResolvedDailyRevenuePerCabinets(
   range: ReportPeriodRange,
   leads: LeadLite[],
@@ -259,31 +233,28 @@ export function buildResolvedDailyRevenuePerCabinets(
   const revByDay = new Map<string, number>();
   const cur = new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate());
   const end = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate());
+  const orphanLeads = includeOrphans ? leads.filter((l) => !l.cabinetId) : [];
 
   while (cur.getTime() <= end.getTime()) {
     const iso = ymd(cur);
-    const dayRange: ReportPeriodRange = { from: new Date(cur), to: new Date(cur) };
+    const dayRange = singleDayRange(iso);
     let revenue = 0;
-    const seen = new Set<string>();
-    for (const row of cdiRows) {
-      if (row.date !== iso) continue;
-      const cabId = resolveCabinetIdForRow(row, externalIdByCabinetId);
-      if (!cabId || !cabinetInternalIds.includes(cabId)) continue;
-      const key = `${iso}:${cabId}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
+
+    for (const cabId of cabinetInternalIds) {
+      const externalId = externalIdByCabinetId?.get(cabId) ?? null;
+      const cdiRow = findCdiRowForCabinet(cdiRows, iso, cabId, externalId, cabinetInternalIds);
       const crm = crmDailyMetrics(leads, dayRange, cabId).get(iso);
-      revenue += resolveDayMetrics(crm, manualFieldsFromCdiRow(row), true).revenue;
+      revenue += resolveDayMetrics(crm, manualFieldsFromCdiRow(cdiRow), true).revenue;
     }
-    if (includeOrphans) {
-      const orphanLeads = leads.filter((l) => !l.cabinetId);
+
+    if (includeOrphans && !dayHasManualDiagnosticOverride(cdiRows, iso)) {
       const crm = crmDailyMetrics(orphanLeads, dayRange, "all").get(iso);
       revenue += resolveDayMetrics(crm, undefined, true).revenue;
     }
+
     revByDay.set(iso, revenue);
     cur.setDate(cur.getDate() + 1);
   }
-  void periodResolved;
   return revByDay;
 }
 

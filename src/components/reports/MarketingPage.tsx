@@ -1,6 +1,6 @@
 import {
-  DollarSign, Eye, Flame, MapPin, MousePointerClick,
-  ShoppingCart, Target, Users,
+  Eye, Flame, MapPin, MousePointerClick,
+  ShoppingCart, Target, TrendingUp, Users, Wallet,
 } from "lucide-react";
 import type { ReportData } from "@/hooks/useReportData";
 import { deltaPct } from "@/hooks/useReportData";
@@ -8,13 +8,7 @@ import { KpiCard } from "./KpiCard";
 import { SectionTitle } from "./SectionTitle";
 import { ReportPageWrapper } from "./ReportPageWrapper";
 import { cn } from "@/lib/utils";
-
-const fmtTenge = (n: number) => {
-  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}K $`;
-  return `${Math.round(n).toLocaleString("ru-RU")} $`;
-};
-const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
-const fmtPct = (n: number) => `${n.toFixed(1)}%`;
+import { fmtMetricTenge, fmtNum, fmtPct, fmtTenge } from "./reportFormat";
 
 interface Props {
   data: ReportData;
@@ -43,16 +37,17 @@ export function MarketingPage({ data, rangeLabel, comparing }: Props) {
     >
       <SectionTitle>Ключевые показатели</SectionTitle>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <KpiCard icon={DollarSign} label="Расходы" value={fmtTenge(totals.spend)} delta={deltaPct(totals.spend, prev?.spend)} comparing={comparing} invertDelta />
+        <KpiCard icon={Wallet} label="Расходы" value={fmtTenge(totals.spend)} delta={deltaPct(totals.spend, prev?.spend)} comparing={comparing} invertDelta />
         <KpiCard icon={Users} label="Лиды" value={fmtNum(totals.totalLeads)} delta={deltaPct(totals.totalLeads, prev?.totalLeads)} comparing={comparing} />
         <KpiCard icon={Target} label="CPL" value={fmtTenge(totals.cpl)} delta={deltaPct(totals.cpl, prev?.cpl)} comparing={comparing} invertDelta />
         <KpiCard icon={Eye} label="Диагностики" value={fmtNum(totals.visits)} delta={deltaPct(totals.visits, prev?.visits)} comparing={comparing} />
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <KpiCard icon={MapPin} label="CPD" value={fmtTenge(totals.cpv)} delta={deltaPct(totals.cpv, prev?.cpv)} comparing={comparing} invertDelta />
+      <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <KpiCard icon={TrendingUp} label="Выручка CRM" value={fmtTenge(totals.revenue)} delta={deltaPct(totals.revenue, prev?.revenue)} comparing={comparing} />
+        <KpiCard icon={MapPin} label="CPD" value={fmtMetricTenge(totals.cpv, totals.visits > 0)} delta={deltaPct(totals.cpv, prev?.cpv)} comparing={comparing} invertDelta />
         <KpiCard icon={ShoppingCart} label="Продажи" value={fmtNum(totals.sales)} delta={deltaPct(totals.sales, prev?.sales)} comparing={comparing} />
-        <KpiCard icon={Flame} label="CAC" value={fmtTenge(totals.cac)} delta={deltaPct(totals.cac, prev?.cac)} comparing={comparing} emphasized invertDelta />
+        <KpiCard icon={Flame} label="CAC" value={fmtMetricTenge(totals.cac, totals.sales > 0)} delta={deltaPct(totals.cac, prev?.cac)} comparing={comparing} emphasized invertDelta />
       </div>
 
       <div className="mt-8">
@@ -100,4 +95,4 @@ export function MarketingPage({ data, rangeLabel, comparing }: Props) {
   );
 }
 
-export const reportFmt = { fmtTenge, fmtNum, fmtPct };
+export { reportFmt } from "./reportFormat";

@@ -1,8 +1,8 @@
-import { BarChart3, DollarSign, Lock, ShoppingCart, TrendingUp, Users } from "lucide-react";
+import { BarChart3, Lock, ShoppingCart, TrendingUp, Users, Wallet } from "lucide-react";
 import type { ReportData } from "@/hooks/useReportData";
 import { ReportPageWrapper } from "./ReportPageWrapper";
 import { SectionTitle } from "./SectionTitle";
-import { reportFmt } from "./MarketingPage";
+import { reportFmt } from "./reportFormat";
 
 interface Props {
   data: ReportData;
@@ -73,9 +73,9 @@ export function UnitEconomicsPage({ data, rangeLabel }: Props) {
         <SectionTitle>Юнит-экономика</SectionTitle>
         <div className="rounded-2xl border border-border/40 bg-card/30 px-4">
           <EcoRow icon={BarChart3} title="Финансовая сводка" sub={`Unit Economics · ${rangeLabel}`} value="" />
-          <EcoRow icon={DollarSign} title="Общая выручка" sub="Total Revenue" value={reportFmt.fmtTenge(totals.revenue)} />
-          <EcoRow icon={ShoppingCart} title="Средний чек" sub="Average Order Value" value={reportFmt.fmtTenge(totals.aov)} />
-          <EcoRow icon={Users} title="CAC" sub="Customer Acquisition Cost" value={reportFmt.fmtTenge(totals.cac)} />
+          <EcoRow icon={Wallet} title="Общая выручка" sub="Total Revenue" value={reportFmt.fmtTenge(totals.revenue)} />
+          <EcoRow icon={ShoppingCart} title="Средний чек" sub="Average Order Value" value={totals.sales > 0 ? reportFmt.fmtTenge(totals.aov) : "—"} />
+          <EcoRow icon={Users} title="CAC" sub="Customer Acquisition Cost" value={totals.sales > 0 ? reportFmt.fmtTenge(totals.cac) : "—"} />
           <EcoRow icon={TrendingUp} title="ROMI" sub="Return on Marketing" value={`${totals.romi >= 0 ? "+" : ""}${Math.round(totals.romi)}%`} />
         </div>
       </div>

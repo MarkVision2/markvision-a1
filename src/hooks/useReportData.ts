@@ -13,6 +13,8 @@ import {
   type CdiFactRow,
   type ResolvedPeriodMetrics,
 } from "@/lib/metricsSourceOfTruth";
+import { fetchMetaDashboard } from "@/hooks/useMetaDashboard";
+import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
 
 export interface ReportPeriodRange {
   from: Date;
@@ -38,11 +40,14 @@ export interface ReportTotals {
 }
 
 export interface ReportCreative {
+  adId: string;
   name: string;
   spend: number;
   impressions: number;
   clicks: number;
   ctr: number;
+  leads: number;
+  crmRevenue: number;
 }
 
 export interface ReportChannel {
@@ -90,6 +95,31 @@ function shiftRange({ from, to }: ReportPeriodRange): ReportPeriodRange {
 
 function ymd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+export function mapMetaCreativesToReport(
+  rows: MetaCreativeRow[],
+  cabinetId: string,
+  limit = 10,
+): ReportCreative[] {
+  const filtered = cabinetId === "all"
+    ? rows
+    : rows.filter((r) => r.cabinetId === cabinetId);
+
+  return filtered
+    .filter((r) => r.spend > 0 || r.crmRevenue > 0 || r.leads > 0 || r.crmLeads > 0)
+    .sort((a, b) => (b.crmRevenue - a.crmRevenue) || (b.spend - a.spend))
+    .slice(0, limit)
+    .map((r) => ({
+      adId: r.adId,
+      name: r.name?.trim() || r.adId,
+      spend: r.spend,
+      impressions: r.impressions,
+      clicks: r.clicks,
+      ctr: r.ctr,
+      leads: r.crmLeads > 0 ? r.crmLeads : r.leads,
+      crmRevenue: r.crmRevenue,
+    }));
 }
 
 function normalizeActId(id: string) {
@@ -406,7 +436,13 @@ export function useReportData(
         const totals = computeTotals(meta, crm, resolved);
         const scoring = computeScoring(crm.leads);
         const channels = computeChannels(crm.leads);
-        const creatives: ReportCreative[] = []; // ad-level not yet exposed by edge fn
+        let creatives: ReportCreative[] = [];
+        if (projectId) {
+          const since = ymd(range.from);
+          const until = ymd(range.to);
+          const { creatives: metaRows } = await fetchMetaDashboard(projectId, since, until);
+          creatives = mapMetaCreativesToReport(metaRows, cabinetId);
+        }
 
         const revByDay = buildResolvedDailyRevenuePerCabinets(
           range, leads, meta.cdiFactRows, cabinetInternalIds, includeOrphans, externalIdByCabinetId,

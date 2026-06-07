@@ -71,7 +71,7 @@ interface RawCampaignDaily {
   revenue: number | string;
 }
 
-async function fetchMetaDashboard(
+export async function fetchMetaDashboard(
   projectId: string,
   since: string,
   until: string,
