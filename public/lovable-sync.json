@@ -1,7 +1,7 @@
 {
   "git_sha": "pending",
   "git_sha_full": "pending",
-  "updated_at": "2026-06-07T17:25:00Z",
-  "label": "Redesign report creatives page with split logic and cards",
-  "publish_hint": "Lovable → Publish (справа вверху) → Update"
+  "updated_at": "2026-06-07T17:26:00Z",
+  "label": "Fix blurry video creative previews — HQ poster pipeline",
+  "publish_hint": "Lovable → Publish (справа вверху) → Update. Также задеплойте Edge Function meta-creative-refresh в Supabase."
 }

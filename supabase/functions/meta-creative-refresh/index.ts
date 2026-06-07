@@ -94,6 +94,15 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  let body: { ad_id?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return json({ ok: false, error: "invalid json" }, 400);
+  }
+  const adId = String(body.ad_id ?? "").trim();
+  if (!adId) return json({ ok: false, error: "ad_id required" }, 400);
+
   const { data: row, error: rowErr } = await admin
     .from("meta_creatives")
     .select("id, video_id, thumbnail_url")
@@ -154,7 +163,11 @@ Deno.serve(async (req) => {
       if (bestThumb) {
         const { error: thumbErr } = await admin
           .from("meta_creatives")
-          .update({ thumbnail_url: bestThumb, last_synced_at: new Date().toISOString() })
+          .update({
+            thumbnail_url: bestThumb,
+            image_url: bestThumb,
+            last_synced_at: new Date().toISOString(),
+          })
           .eq("ad_id", adId);
         if (thumbErr) return json({ ok: false, error: thumbErr.message }, 500);
       }
@@ -165,7 +178,10 @@ Deno.serve(async (req) => {
       video_url: v.source,
       last_synced_at: new Date().toISOString(),
     };
-    if (bestThumb) patch.thumbnail_url = bestThumb;
+    if (bestThumb) {
+      patch.thumbnail_url = bestThumb;
+      patch.image_url = bestThumb;
+    }
 
     const { error: upErr } = await admin
       .from("meta_creatives")
