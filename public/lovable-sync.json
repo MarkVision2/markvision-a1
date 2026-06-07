@@ -1,7 +1,7 @@
 {
-  "git_sha": "688e3d9",
-  "git_sha_full": "688e3d90c8483c54e03558e06fe7b89a44f872ec",
-  "updated_at": "2026-06-07T09:02:52Z",
-  "label": "fix(whatsapp): fallback bot URL save + manual SQL script for prod",
+  "git_sha": "41d4a94",
+  "git_sha_full": "41d4a9491277886945663e1635de87241f4c39f9",
+  "updated_at": "2026-06-07T09:06:07Z",
+  "label": "fix(scripts): bootstrap whatsapp_config in apply-whatsapp-setup.sql",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
