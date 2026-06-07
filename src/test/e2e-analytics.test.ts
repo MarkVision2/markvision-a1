@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { computeTotals, aggregateCrm } from "@/hooks/useReportData";
 import type { LeadLite } from "@/hooks/useLeadsLite";
+import { resolvedMetricsFromCrmAggregate } from "@/lib/metricsSourceOfTruth";
 
 const mk = (over: Partial<LeadLite> = {}): LeadLite => ({
   id: over.id ?? Math.random().toString(36).slice(2),
@@ -45,7 +46,7 @@ describe("Сквозная воронка: реклама → CRM (источн�
       cabinetDiagnostics: 999, cabinetSales: 999, cabinetRevenue: 999_999,
     };
     const crm = aggregateCrm([l1, l2, l3, l4, l5], range, "all");
-    const totals = computeTotals(meta, crm);
+    const totals = computeTotals(meta, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.adsLeads).toBe(5);
     expect(totals.totalLeads).toBe(5);
@@ -64,7 +65,7 @@ describe("Сквозная воронка: реклама → CRM (источн�
     const cabSale = mk({ cabinetId: "cab-1", paid: true, amount: 50_000 });
     const meta = { ...emptyMeta, spend: 50_000, leads: 2, cabinetSales: 1, cabinetRevenue: 50_000 };
     const crm = aggregateCrm([orphanWhatsApp, cabSale], range, "all");
-    const totals = computeTotals(meta, crm);
+    const totals = computeTotals(meta, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.sales).toBe(2);
     expect(totals.revenue).toBe(150_000);
@@ -80,9 +81,9 @@ describe("Сквозная воронка: реклама → CRM (источн�
     ];
     const meta = { ...emptyMeta, leads: 10 };
     const crm = aggregateCrm(leads_, range, "all");
-    const totals = computeTotals(meta, crm);
+    const totals = computeTotals(meta, crm, resolvedMetricsFromCrmAggregate(crm));
 
-    expect(totals.visits).toBe(5);
+    expect(totals.visits).toBe(3); // только scheduled; оплаченные — продажи, не диагностики
     expect(totals.sales).toBe(2);
   });
 
@@ -93,19 +94,19 @@ describe("Сквозная воронка: реклама → CRM (источн�
     const orphan = mk({ paid: true, amount: 100_000 });
     const meta = { ...emptyMeta, spend: 600_000, leads: 6 };
     const crm = aggregateCrm([d1, d2, cabPaid, orphan], range, "all");
-    const totals = computeTotals(meta, crm);
+    const totals = computeTotals(meta, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.totalLeads).toBe(7);
-    expect(totals.visits).toBe(4); // 2 scheduled + 2 paid
+    expect(totals.visits).toBe(2); // 2 scheduled; paid — продажи
     expect(totals.sales).toBe(2);
-    expect(totals.cpv).toBe(150_000); // 600k / 4
+    expect(totals.cpv).toBe(300_000); // 600k / 2
     expect(totals.cac).toBe(300_000); // 600k / 2
   });
 
   it("плательщик считается один раз", () => {
     const lead = mk({ paid: true, stageKey: "paid", amount: 50_000 });
     const crm = aggregateCrm([lead], range, "all");
-    const totals = computeTotals({ ...emptyMeta }, crm);
+    const totals = computeTotals({ ...emptyMeta }, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.sales).toBe(1);
     expect(totals.revenue).toBe(50_000);
@@ -116,7 +117,7 @@ describe("Сквозная воронка: реклама → CRM (источн�
     const orphan = mk({ paid: true, amount: 500_000 });
     const crm = aggregateCrm([cab, orphan], range, "all");
     const meta = { ...emptyMeta, spend: 400_000 };
-    const totals = computeTotals(meta, crm);
+    const totals = computeTotals(meta, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.romi).toBe(100);
   });
@@ -141,7 +142,7 @@ describe("Фильтрация продаж по paid_at (а не createdAt) —
     });
     const crm = aggregateCrm([lead], range, "all");
     const meta = { ...emptyMeta, spend: 100_000 };
-    const totals = computeTotals(meta, crm);
+    const totals = computeTotals(meta, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.sales).toBe(1);
     expect(totals.revenue).toBe(300_000);
@@ -158,7 +159,7 @@ describe("Фильтрация продаж по paid_at (а не createdAt) —
     });
     const crm = aggregateCrm([lead], range, "all");
     const meta = { ...emptyMeta, spend: 100_000 };
-    const totals = computeTotals(meta, crm);
+    const totals = computeTotals(meta, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.sales).toBe(0); // оплачен в июне → майских продаж нет
     expect(totals.crmLeads).toBe(1); // но как лид мая учитывается
@@ -194,7 +195,7 @@ describe("CDI отстаёт от CRM — CRM становится источн�
     const crm = aggregateCrm([cabPaid1, cabPaid2, cabPaid3], range, "all");
     // CDI показывает только 1 (триггер пропустил 2)
     const meta = { ...emptyMeta, spend: 300_000, cabinetSales: 1, cabinetRevenue: 100_000 };
-    const totals = computeTotals(meta, crm);
+    const totals = computeTotals(meta, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.sales).toBe(3); // CRM = 3, max(1+0, 3) = 3
     expect(totals.revenue).toBe(450_000); // CRM revenue = 100+200+150
@@ -206,7 +207,7 @@ describe("CDI отстаёт от CRM — CRM становится источн�
     const scheduledOrphan = mk({ cabinetId: null, stageKey: "scheduled", lastActivityAt: "2026-05-15T10:00:00Z" });
     const crm = aggregateCrm([scheduled1, scheduled2, scheduledOrphan], range, "all");
     const meta = { ...emptyMeta, spend: 200_000, cabinetDiagnostics: 1 };
-    const totals = computeTotals(meta, crm);
+    const totals = computeTotals(meta, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.visits).toBe(3); // CRM = 3, max(1+1, 3) = 3
   });
@@ -217,7 +218,7 @@ describe("CDI отстаёт от CRM — CRM становится источн�
     const cabPaid = mk({ cabinetId: "cab-1", paid: true, amount: 100_000 });
     const crm = aggregateCrm([cabPaid], range, "all");
     const meta = { ...emptyMeta, spend: 200_000, cabinetSales: 5, cabinetRevenue: 500_000 };
-    const totals = computeTotals(meta, crm);
+    const totals = computeTotals(meta, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.sales).toBe(1); // CRM = 1
     expect(totals.revenue).toBe(100_000); // CRM = 100k
@@ -230,7 +231,7 @@ describe("CDI отстаёт от CRM — CRM становится источн�
     const crm = aggregateCrm([cab1, cab2, orphan], range, "all");
     const meta = { ...emptyMeta, cabinetSales: 2, cabinetRevenue: 300_000 }; // CDI знает про 2 cab
 
-    const totals = computeTotals(meta, crm);
+    const totals = computeTotals(meta, crm, resolvedMetricsFromCrmAggregate(crm));
     expect(totals.sales).toBe(3); // CDI(2) + orphan(1) = 3 = CRM total — без расхождений
     expect(totals.revenue).toBe(350_000); // 300k cab + 50k orphan
   });
@@ -253,7 +254,7 @@ describe("Изоляция данных при выборе конкретног
     const cabLead = mk({ cabinetId: "cab-1", paid: true, amount: 50_000 });
     const crm = aggregateCrm([orphan, cabLead], range, "cab-1");
     const meta = { ...emptyMeta, spend: 100_000, cabinetSales: 1, cabinetRevenue: 50_000 };
-    const totals = computeTotals(meta, crm);
+    const totals = computeTotals(meta, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.sales).toBe(1); // только cab-1
     expect(totals.revenue).toBe(50_000);
@@ -276,7 +277,7 @@ describe("Регрессия: orphan, оплаченный в периоде, н
       amount: 250_000,
     });
     const crm = aggregateCrm([lead], range, "all");
-    const totals = computeTotals({ ...emptyMeta }, crm);
+    const totals = computeTotals({ ...emptyMeta }, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(crm.orphanSales.length).toBe(1);
     expect(crm.orphanRevenue).toBe(250_000);
@@ -294,7 +295,7 @@ describe("Регрессия: orphan, оплаченный в периоде, н
       amount: 250_000,
     });
     const crm = aggregateCrm([lead], range, "all");
-    const totals = computeTotals({ ...emptyMeta }, crm);
+    const totals = computeTotals({ ...emptyMeta }, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(crm.orphanLeads.length).toBe(1); // как лид мая учитывается
     expect(crm.orphanSales.length).toBe(0); // но не как продажа мая

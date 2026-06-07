@@ -1,6 +1,11 @@
 import { describe, it, expect } from "vitest";
-import { computeTotals, aggregateCrm } from "@/hooks/useReportData";
+import { computeTotals, aggregateCrm, crmDailyMetrics } from "@/hooks/useReportData";
 import type { LeadLite } from "@/hooks/useLeadsLite";
+import {
+  aggregateCdiManualByDay,
+  resolvedMetricsFromCrmAggregate,
+  sumResolvedMetricsForRange,
+} from "@/lib/metricsSourceOfTruth";
 
 const mkLead = (over: Partial<LeadLite> = {}): LeadLite => ({
   id: over.id ?? Math.random().toString(36).slice(2),
@@ -32,7 +37,34 @@ const emptyMeta = {
   cabinetSales: 0, cabinetRevenue: 0, cabinetDiagnostics: 0, cabinetDiagnosticRevenue: 0,
 };
 
-describe("computeTotals — CRM как источник правды (не CDI)", () => {
+describe("computeTotals — Таблица показателей (CRM + manual override)", () => {
+  it("ручная правка диагностик в CDI перезаписывает CRM в итогах", () => {
+    const d1 = mkLead({ cabinetId: "cab-1", stageKey: "scheduled" });
+    const d2 = mkLead({ cabinetId: "cab-1", stageKey: "scheduled" });
+    const crm = aggregateCrm([d1, d2], range, "all");
+    const crmByDay = crmDailyMetrics([d1, d2], range, "all");
+    const manualByDay = aggregateCdiManualByDay([
+      { date: "2026-05-10", manual_diagnostics: 1 },
+    ]);
+    const resolved = sumResolvedMetricsForRange(range, crmByDay, manualByDay, true);
+    const totals = computeTotals({ ...emptyMeta, spend: 50_000 }, crm, resolved);
+
+    expect(totals.visits).toBe(1);
+  });
+
+  it("без applyManual ручные значения CDI игнорируются (как Metrics при нескольких кабинетах)", () => {
+    const d1 = mkLead({ cabinetId: "cab-1", stageKey: "scheduled" });
+    const d2 = mkLead({ cabinetId: "cab-1", stageKey: "scheduled" });
+    const crm = aggregateCrm([d1, d2], range, "all");
+    const crmByDay = crmDailyMetrics([d1, d2], range, "all");
+    const manualByDay = aggregateCdiManualByDay([
+      { date: "2026-05-10", manual_diagnostics: 1 },
+    ]);
+    const resolved = sumResolvedMetricsForRange(range, crmByDay, manualByDay, false);
+    const totals = computeTotals({ ...emptyMeta }, crm, resolved);
+
+    expect(totals.visits).toBe(2);
+  });
   it("3 продажи в CRM: 400k+800k+500k = 1.7M, CDI инфлирован — игнорим", () => {
     // Сценарий пользователя: CDI протух (3.4М ₸), но в CRM реально 1.7М.
     // Раньше брали max → инфлированный CDI побеждал. Теперь CRM — правда.
@@ -41,7 +73,7 @@ describe("computeTotals — CRM как источник правды (не CDI)"
     const s3 = mkLead({ cabinetId: null, paid: true, amount: 500_000, paidAt: "2026-05-15T10:00:00Z" });
     const crm = aggregateCrm([s1, s2, s3], range, "all");
     const meta = { ...emptyMeta, spend: 300_000, cabinetSales: 99, cabinetRevenue: 9_999_999 };
-    const totals = computeTotals(meta, crm);
+    const totals = computeTotals(meta, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.sales).toBe(3);
     expect(totals.revenue).toBe(1_700_000);
@@ -51,7 +83,7 @@ describe("computeTotals — CRM как источник правды (не CDI)"
   it("если CRM пуст — продажи 0 (даже если CDI хочет что-то показать)", () => {
     const crm = aggregateCrm([], range, "all");
     const meta = { ...emptyMeta, spend: 100_000, cabinetSales: 5, cabinetRevenue: 500_000 };
-    const totals = computeTotals(meta, crm);
+    const totals = computeTotals(meta, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.sales).toBe(0);
     expect(totals.revenue).toBe(0);
@@ -65,7 +97,7 @@ describe("computeTotals — CRM как источник правды (не CDI)"
     });
     const crm = aggregateCrm([paidWithDiag], range, "all");
     const meta = { ...emptyMeta, cabinetRevenue: 9_999_999, cabinetDiagnosticRevenue: 9_999_999 };
-    const totals = computeTotals(meta, crm);
+    const totals = computeTotals(meta, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.revenue).toBe(505_000); // 500k + 5k diagnostic
   });
@@ -74,7 +106,7 @@ describe("computeTotals — CRM как источник правды (не CDI)"
     const s1 = mkLead({ cabinetId: "cab-1", paid: true, amount: 200_000 });
     const s2 = mkLead({ cabinetId: null, paid: true, amount: 100_000 });
     const crm = aggregateCrm([s1, s2], range, "all");
-    const totals = computeTotals({ ...emptyMeta }, crm);
+    const totals = computeTotals({ ...emptyMeta }, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.sales).toBe(2);
     expect(totals.revenue).toBe(300_000);
@@ -86,7 +118,7 @@ describe("computeTotals — CRM как источник правды (не CDI)"
     const s2 = mkLead({ cabinetId: null, paid: true, amount: 400_000 });
     const crm = aggregateCrm([s1, s2], range, "all");
     const meta = { ...emptyMeta, spend: 500_000 };
-    const totals = computeTotals(meta, crm);
+    const totals = computeTotals(meta, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.romi).toBe(100);
   });
@@ -96,7 +128,7 @@ describe("computeTotals — CRM как источник правды (не CDI)"
     const cab2 = mkLead({ cabinetId: "cab-2", paid: true, amount: 500_000 });
     const orphan = mkLead({ cabinetId: null, paid: true, amount: 400_000 });
     const crm = aggregateCrm([cab1, cab2, orphan], range, "cab-1");
-    const totals = computeTotals({ ...emptyMeta, spend: 100_000 }, crm);
+    const totals = computeTotals({ ...emptyMeta, spend: 100_000 }, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.sales).toBe(1);
     expect(totals.revenue).toBe(300_000);
@@ -109,7 +141,7 @@ describe("computeTotals — CRM как источник правды (не CDI)"
     const d4 = mkLead({ cabinetId: "cab-2", paid: true, amount: 100_000 });
     const crm = aggregateCrm([d1, d2, d3, d4], range, "all");
     const meta = { ...emptyMeta, cabinetDiagnostics: 999 }; // CDI протух — игнор
-    const totals = computeTotals(meta, crm);
+    const totals = computeTotals(meta, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.visits).toBe(3); // scheduled/visit; оплаченный paid — продажа, не диагностика
   });
@@ -119,7 +151,7 @@ describe("computeTotals — CRM как источник правды (не CDI)"
     const orphan2 = mkLead({ paid: true, amount: 100_000 });
     const crm = aggregateCrm([orphan1, orphan2], range, "all");
     const meta = { ...emptyMeta, leads: 10, spend: 200_000 };
-    const totals = computeTotals(meta, crm);
+    const totals = computeTotals(meta, crm, resolvedMetricsFromCrmAggregate(crm));
 
     expect(totals.totalLeads).toBe(12);
     expect(totals.cpl).toBeCloseTo(200_000 / 12, 1);

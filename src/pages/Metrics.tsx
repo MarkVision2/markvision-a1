@@ -34,7 +34,12 @@ import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
 import { isLeadPaid } from "@/lib/leadStageFlags";
 import { crmDailyMetrics, type ReportPeriodRange } from "@/hooks/useReportData";
-import { isManualOverrideActive, manualValueForSave, resolveCdiMetric } from "@/lib/cdiManualOverride";
+import { isManualOverrideActive, manualValueForSave } from "@/lib/cdiManualOverride";
+import {
+  resolveDayMetrics,
+  shouldApplyManualOverrides,
+  type DayManualFields,
+} from "@/lib/metricsSourceOfTruth";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -141,7 +146,7 @@ const Metrics = () => {
     return cabinetsWithExternalId.length === 1 ? cabinetsWithExternalId[0] : null;
   }, [cabinetId, cabinets, cabinetsWithExternalId]);
 
-  const canEditManual = cabinetId !== "all" || cabinetsWithExternalId.length === 1;
+  const canEditManual = shouldApplyManualOverrides(cabinetId, cabinetsWithExternalId.length);
 
   const manualHint = manualCabinet
     ? canEditManual
@@ -255,15 +260,13 @@ const Metrics = () => {
       const crmSales = crm?.sales ?? 0;
       const crmSalesRev = crm?.salesRevenue ?? 0;
 
-      const manualDiagRaw = canEditManual ? cdi.manualDiagnosticsRaw : null;
-      const manualDiagRevRaw = canEditManual ? cdi.manualDiagnosticRevenueRaw : null;
-      const manualSalesRaw = canEditManual ? cdi.manualSalesRaw : null;
-      const manualSalesRevRaw = canEditManual ? cdi.manualSalesRevenueRaw : null;
-
-      const diagnostics = resolveCdiMetric(manualDiagRaw, crmDiag);
-      const diagnosticRevenue = resolveCdiMetric(manualDiagRevRaw, crmDiagRev);
-      const sales = resolveCdiMetric(manualSalesRaw, crmSales);
-      const salesRevenue = resolveCdiMetric(manualSalesRevRaw, crmSalesRev);
+      const manual: DayManualFields = {
+        manual_diagnostics: canEditManual ? cdi.manualDiagnosticsRaw : null,
+        manual_diagnostic_revenue: canEditManual ? cdi.manualDiagnosticRevenueRaw : null,
+        manual_sales: canEditManual ? cdi.manualSalesRaw : null,
+        manual_revenue: canEditManual ? cdi.manualSalesRevenueRaw : null,
+      };
+      const resolved = resolveDayMetrics(crm, manual, canEditManual);
 
       m.set(iso, {
         ...cdi,
@@ -271,20 +274,20 @@ const Metrics = () => {
         crmDiagnosticRevenue: crmDiagRev,
         crmSales,
         crmSalesRevenueOnly: crmSalesRev,
-        diagnostics,
-        diagnosticRevenue,
-        sales,
-        salesRevenue,
-        manualDiagnostics: isManualOverrideActive(manualDiagRaw) ? Number(manualDiagRaw) : 0,
-        manualDiagnosticRevenue: isManualOverrideActive(manualDiagRevRaw) ? Number(manualDiagRevRaw) : 0,
-        manualSales: isManualOverrideActive(manualSalesRaw) ? Number(manualSalesRaw) : 0,
-        manualSalesRevenue: isManualOverrideActive(manualSalesRevRaw) ? Number(manualSalesRevRaw) : 0,
-        crmRevenue: salesRevenue + diagnosticRevenue,
+        diagnostics: resolved.diagnostics,
+        diagnosticRevenue: resolved.diagnosticRevenue,
+        sales: resolved.sales,
+        salesRevenue: resolved.salesRevenue,
+        manualDiagnostics: isManualOverrideActive(manual.manual_diagnostics) ? Number(manual.manual_diagnostics) : 0,
+        manualDiagnosticRevenue: isManualOverrideActive(manual.manual_diagnostic_revenue) ? Number(manual.manual_diagnostic_revenue) : 0,
+        manualSales: isManualOverrideActive(manual.manual_sales) ? Number(manual.manual_sales) : 0,
+        manualSalesRevenue: isManualOverrideActive(manual.manual_revenue) ? Number(manual.manual_revenue) : 0,
+        crmRevenue: resolved.revenue,
         crmRevenueOnly: crmSalesRev + crmDiagRev,
-        manualDiagnosticsRaw: manualDiagRaw,
-        manualDiagnosticRevenueRaw: manualDiagRevRaw,
-        manualSalesRaw,
-        manualSalesRevenueRaw: manualSalesRevRaw,
+        manualDiagnosticsRaw: manual.manual_diagnostics,
+        manualDiagnosticRevenueRaw: manual.manual_diagnostic_revenue,
+        manualSalesRaw: manual.manual_sales,
+        manualSalesRevenueRaw: manual.manual_revenue,
       });
     }
 

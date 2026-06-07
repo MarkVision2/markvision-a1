@@ -6,7 +6,14 @@ import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { normalizeSource } from "@/lib/leadSource";
 import { isLeadDiagnosticEvent, isLeadPaid } from "@/lib/leadStageFlags";
-import { isManualOverrideActive, resolveCdiMetric } from "@/lib/cdiManualOverride";
+import { resolveCdiMetric } from "@/lib/cdiManualOverride";
+import {
+  aggregateCdiManualByDay,
+  buildResolvedDailyRevenue,
+  shouldApplyManualOverrides,
+  sumResolvedMetricsForRange,
+  type ResolvedPeriodMetrics,
+} from "@/lib/metricsSourceOfTruth";
 
 export interface ReportPeriodRange {
   from: Date;
@@ -105,10 +112,16 @@ async function fetchMetaForRange(
   spend: number; impressions: number; clicks: number; leads: number;
   cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number;
   cabinetDiagnosticRevenue: number;
+  manualByDay: ReturnType<typeof aggregateCdiManualByDay>;
   daily: { date: string; spend: number; leads: number; revenue: number }[];
 }> {
   if (externalIds.length === 0) {
-    return { spend: 0, impressions: 0, clicks: 0, leads: 0, cabinetSales: 0, cabinetRevenue: 0, cabinetDiagnostics: 0, cabinetDiagnosticRevenue: 0, daily: [] };
+    return {
+      spend: 0, impressions: 0, clicks: 0, leads: 0,
+      cabinetSales: 0, cabinetRevenue: 0, cabinetDiagnostics: 0, cabinetDiagnosticRevenue: 0,
+      manualByDay: new Map(),
+      daily: [],
+    };
   }
   const ids = externalIds.map(normalizeActId);
   const since = ymd(range.from);
@@ -157,6 +170,16 @@ async function fetchMetaForRange(
     dailyAgg.set(row.date, cur);
   }
 
+  const manualByDay = aggregateCdiManualByDay(
+    (data ?? []).map((row) => ({
+      date: row.date,
+      manual_diagnostics: row.manual_diagnostics,
+      manual_diagnostic_revenue: (row as { manual_diagnostic_revenue?: number | null }).manual_diagnostic_revenue,
+      manual_sales: row.manual_sales,
+      manual_revenue: row.manual_revenue,
+    })),
+  );
+
   return {
     spend: totSpend,
     impressions: totImp,
@@ -166,6 +189,7 @@ async function fetchMetaForRange(
     cabinetRevenue: totRevenue,
     cabinetDiagnostics: totDiag,
     cabinetDiagnosticRevenue: totDiagRev,
+    manualByDay,
     daily: Array.from(dailyAgg.entries())
       .map(([date, v]) => ({ date, ...v }))
       .sort((a, b) => a.date.localeCompare(b.date)),
@@ -291,34 +315,24 @@ export function aggregateCrm(
 }
 
 export function computeTotals(
-  meta: { spend: number; impressions: number; clicks: number; leads: number;
-          cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number;
-          cabinetDiagnosticRevenue: number },
+  meta: { spend: number; impressions: number; clicks: number; leads: number },
   crm: {
     leads: LeadLite[];
-    crmSalesCount: number; crmRevenue: number;
-    crmVisitsCount: number; crmDiagnosticRevenue: number;
-    orphanLeads: LeadLite[]; orphanVisits: LeadLite[]; orphanSales: LeadLite[]; orphanRevenue: number;
+    orphanLeads: LeadLite[];
   },
+  resolved: ResolvedPeriodMetrics,
 ): ReportTotals {
-  // CRM — АБСОЛЮТНЫЙ источник правды для продаж/диагностик/выручки.
-  // Раньше брали Math.max(CDI+orphan, CRM-total) — но если CDI протух (старые
-  // триггеры дублировались, или manual_revenue висел от прошлых тестов), max
-  // брал инфлированное число из CDI. Пользователь видел 3.4М ₸ вместо реальных
-  // 1.3М в CRM. Доверяем CRM, потому что:
-  //   • CRM = реальные карточки клиентов (то что менеджер видит и трогает)
-  //   • CDI заполняется триггерами, которые могут пропустить или продублировать
-  //   • Reconcile может почистить CDI, но это разовая операция, drift вернётся
-  // CDI оставляем ТОЛЬКО для рекламных метрик (расход/клики/показы/Meta-лиды).
+  // Единый источник правды = Таблица показателей:
+  // live CRM по дням (crmDailyMetrics) + ручные manual_* из CDI.
+  // CDI здесь только для рекламных метрик (расход/клики/показы/Meta-лиды).
   const orphanLeadsCount = crm.orphanLeads.length;
 
   const totalLeads = meta.leads + orphanLeadsCount;
   const cpl = totalLeads > 0 ? meta.spend / totalLeads : 0;
 
-  // sales/visits/revenue — ТОЛЬКО из CRM.
-  const visits = crm.crmVisitsCount;
-  const sales = crm.crmSalesCount;
-  const revenue = crm.crmRevenue + crm.crmDiagnosticRevenue;
+  const visits = resolved.diagnostics;
+  const sales = resolved.sales;
+  const revenue = resolved.revenue;
   const cpv = visits > 0 ? meta.spend / visits : 0;
   const cac = sales > 0 ? meta.spend / sales : 0;
   const ctr = meta.impressions > 0 ? (meta.clicks / meta.impressions) * 100 : 0;
@@ -391,23 +405,53 @@ export function useReportData(
     (async () => {
       try {
         const cabinetSelector: "all" | string = cabinetId === "all" ? "all" : cabinetId;
+        const applyManual = shouldApplyManualOverrides(cabinetId, cabinetIds.length);
         const meta = await fetchMetaForRange(cabinetIds, range, projectId);
         const crm = aggregateCrm(leads, range, cabinetSelector);
-        const totals = computeTotals(meta, crm);
+        const crmByDay = crmDailyMetrics(leads, range, cabinetSelector);
+        const resolved = sumResolvedMetricsForRange(
+          range, crmByDay, meta.manualByDay, applyManual,
+        );
+        const totals = computeTotals(meta, crm, resolved);
         const scoring = computeScoring(crm.leads);
         const channels = computeChannels(crm.leads);
         const creatives: ReportCreative[] = []; // ad-level not yet exposed by edge fn
+
+        const revByDay = buildResolvedDailyRevenue(
+          range, crmByDay, meta.manualByDay, applyManual,
+        );
+        const spendLeadsByDay = new Map(
+          meta.daily.map((d) => [d.date, { spend: d.spend, leads: d.leads }]),
+        );
+        const monthlyMeta: { date: string; spend: number; leads: number; revenue: number }[] = [];
+        const cur = new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate());
+        const end = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate());
+        while (cur.getTime() <= end.getTime()) {
+          const k = ymd(cur);
+          const sl = spendLeadsByDay.get(k);
+          monthlyMeta.push({
+            date: k,
+            spend: sl?.spend ?? 0,
+            leads: sl?.leads ?? 0,
+            revenue: revByDay.get(k) ?? 0,
+          });
+          cur.setDate(cur.getDate() + 1);
+        }
 
         let prev: ReportTotals | undefined;
         if (compare) {
           const prevRange = shiftRange(range);
           const prevMeta = await fetchMetaForRange(cabinetIds, prevRange, projectId);
           const prevCrm = aggregateCrm(leads, prevRange, cabinetSelector);
-          prev = computeTotals(prevMeta, prevCrm);
+          const prevCrmByDay = crmDailyMetrics(leads, prevRange, cabinetSelector);
+          const prevResolved = sumResolvedMetricsForRange(
+            prevRange, prevCrmByDay, prevMeta.manualByDay, applyManual,
+          );
+          prev = computeTotals(prevMeta, prevCrm, prevResolved);
         }
 
         if (cancelled) return;
-        setData({ totals, prev, creatives, channels, scoring, monthlyMeta: meta.daily });
+        setData({ totals, prev, creatives, channels, scoring, monthlyMeta });
       } catch (e) {
         if (cancelled) return;
         setError(e instanceof Error ? e.message : "Ошибка загрузки");

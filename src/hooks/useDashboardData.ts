@@ -271,47 +271,17 @@ export function useDashboardData(
 
 
 
-  // Daily timeseries: spend (from meta) + revenue (from CRM paid leads)
+  // Daily timeseries: spend/leads из CDI, выручка — из Таблицы показателей (crmDailyMetrics + manual).
   const timeseries = useMemo(() => {
     if (!data) return [];
-    const spendByDay = new Map<string, number>();
-    const leadsByDay = new Map<string, number>();
-    const revByDay = new Map<string, number>();
-    for (const d of data.monthlyMeta) {
-      spendByDay.set(d.date, (spendByDay.get(d.date) ?? 0) + d.spend);
-      leadsByDay.set(d.date, (leadsByDay.get(d.date) ?? 0) + d.leads);
-      revByDay.set(d.date, (revByDay.get(d.date) ?? 0) + (d.revenue ?? 0));
-    }
-    // CRM-лиды без cabinet_id — добавляем их выручку отдельно (чтобы не задвоить CDI).
-    // isLeadPaid вместо хардкода "paid" — иначе график занижался при custom-стадиях
-    // и расходился с totals.revenue в верхних KPI Dashboard.
-    // Группируем по дню ОПЛАТЫ (paidAt), а не по созданию лида — иначе выручка ложится
-    // не на тот день, в который реально пришли деньги.
-    for (const l of leads) {
-      if (!isLeadPaid(l) || l.cabinetId) continue;
-      const dateForBucket = l.paidAt ?? l.createdAt;
-      const t = new Date(dateForBucket).getTime();
-      if (t < fromTs || t >= toTs) continue;
-      const k = dayKey(dateForBucket);
-      revByDay.set(k, (revByDay.get(k) ?? 0) + (l.amount || 0));
-    }
-    const out: { date: string; spend: number; revenue: number; leads: number; cpl: number }[] = [];
-    const cur = new Date(range.from);
-    while (cur.getTime() <= range.to.getTime()) {
-      const k = dayKey(cur);
-      const spend = spendByDay.get(k) ?? 0;
-      const ld = leadsByDay.get(k) ?? 0;
-      out.push({
-        date: k,
-        spend,
-        revenue: revByDay.get(k) ?? 0,
-        leads: ld,
-        cpl: ld > 0 ? spend / ld : 0,
-      });
-      cur.setDate(cur.getDate() + 1);
-    }
-    return out;
-  }, [data, leads, fromTs, toTs, range.from, range.to]);
+    return data.monthlyMeta.map((d) => ({
+      date: d.date,
+      spend: d.spend,
+      revenue: d.revenue ?? 0,
+      leads: d.leads,
+      cpl: d.leads > 0 ? d.spend / d.leads : 0,
+    }));
+  }, [data]);
 
   return {
     data, loading, error, alerts, crmFunnel, channels, timeseries,
