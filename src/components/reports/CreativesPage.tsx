@@ -1,7 +1,7 @@
 import type { ReportData } from "@/hooks/useReportData";
 import { ReportPageWrapper } from "./ReportPageWrapper";
 import { SectionTitle } from "./SectionTitle";
-import { reportFmt } from "./MarketingPage";
+import { reportFmt } from "./reportFormat";
 
 interface Props {
   data: ReportData;

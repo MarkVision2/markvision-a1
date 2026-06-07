@@ -1,6 +1,6 @@
 import {
-  DollarSign, Eye, Flame, MapPin, MousePointerClick,
-  ShoppingCart, Target, TrendingUp, Users,
+  Eye, Flame, MapPin, MousePointerClick,
+  ShoppingCart, Target, TrendingUp, Users, Wallet,
 } from "lucide-react";
 import type { ReportData } from "@/hooks/useReportData";
 import { deltaPct } from "@/hooks/useReportData";
@@ -8,14 +8,7 @@ import { KpiCard } from "./KpiCard";
 import { SectionTitle } from "./SectionTitle";
 import { ReportPageWrapper } from "./ReportPageWrapper";
 import { cn } from "@/lib/utils";
-
-const fmtTenge = (n: number) => {
-  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}K ₸`;
-  return `${Math.round(n).toLocaleString("ru-RU")} ₸`;
-};
-const fmtMetricTenge = (n: number, hasBase: boolean) => (hasBase && n > 0 ? fmtTenge(n) : "—");
-const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
-const fmtPct = (n: number) => `${n.toFixed(1)}%`;
+import { fmtMetricTenge, fmtNum, fmtPct, fmtTenge } from "./reportFormat";
 
 interface Props {
   data: ReportData;
@@ -44,7 +37,7 @@ export function MarketingPage({ data, rangeLabel, comparing }: Props) {
     >
       <SectionTitle>Ключевые показатели</SectionTitle>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <KpiCard icon={DollarSign} label="Расходы" value={fmtTenge(totals.spend)} delta={deltaPct(totals.spend, prev?.spend)} comparing={comparing} invertDelta />
+        <KpiCard icon={Wallet} label="Расходы" value={fmtTenge(totals.spend)} delta={deltaPct(totals.spend, prev?.spend)} comparing={comparing} invertDelta />
         <KpiCard icon={Users} label="Лиды" value={fmtNum(totals.totalLeads)} delta={deltaPct(totals.totalLeads, prev?.totalLeads)} comparing={comparing} />
         <KpiCard icon={Target} label="CPL" value={fmtTenge(totals.cpl)} delta={deltaPct(totals.cpl, prev?.cpl)} comparing={comparing} invertDelta />
         <KpiCard icon={Eye} label="Диагностики" value={fmtNum(totals.visits)} delta={deltaPct(totals.visits, prev?.visits)} comparing={comparing} />
@@ -102,4 +95,4 @@ export function MarketingPage({ data, rangeLabel, comparing }: Props) {
   );
 }
 
-export const reportFmt = { fmtTenge, fmtNum, fmtPct };
+export { reportFmt } from "./reportFormat";
