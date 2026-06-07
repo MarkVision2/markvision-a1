@@ -1,7 +1,7 @@
 {
-  "git_sha": "2aa56dd",
-  "git_sha_full": "2aa56dd7f1170025407894b21b6d632d9674e19b",
-  "updated_at": "2026-06-07T11:43:43Z",
-  "label": "fix(crm): set created_by on WhatsApp leads + one-shot SQL script",
+  "git_sha": "8c259f8",
+  "git_sha_full": "8c259f852477ce805de21ef62cc7fa027e14404f",
+  "updated_at": "2026-06-07T12:03:05Z",
+  "label": "feat(crm): visible bulk delete buttons on stage column header",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
