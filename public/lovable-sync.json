@@ -1,7 +1,7 @@
 {
-  "git_sha": "a40636b",
-  "git_sha_full": "a40636b81d14b3511b35219bebfc71b52cb75079",
-  "updated_at": "2026-06-07T09:40:59Z",
-  "label": "fix(crm): show unassigned WhatsApp leads to project members",
+  "git_sha": "2aa56dd",
+  "git_sha_full": "2aa56dd7f1170025407894b21b6d632d9674e19b",
+  "updated_at": "2026-06-07T11:43:43Z",
+  "label": "fix(crm): set created_by on WhatsApp leads + one-shot SQL script",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
