@@ -1,7 +1,7 @@
 {
-  "git_sha": "4768c5c",
-  "git_sha_full": "4768c5c",
-  "updated_at": "2026-06-07T17:27:00Z",
-  "label": "Funnel + creatives report + HQ video previews",
+  "git_sha": "cfffd00",
+  "git_sha_full": "cfffd004757e6653b9c2cd7d028ad2125063ebb1",
+  "updated_at": "2026-06-07T17:25:16Z",
+  "label": "Merge remote lovable sync stamp into main",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
