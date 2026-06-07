@@ -12,7 +12,7 @@ export function useWhatsAppConfig() {
     if (!user?.id) { setConfig({ connected: false }); return; }
     const [configRes, statusRes] = await Promise.all([
       supabase
-        .from("whatsapp_config")
+        .from("whatsapp_config_safe")
         .select("phone, display_name, connected, connected_at")
         .eq("user_id", user.id)
         .maybeSingle(),

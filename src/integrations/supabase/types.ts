@@ -3425,6 +3425,25 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_config_safe: {
+        Row: {
+          ads_only: boolean | null
+          api_token_present: boolean | null
+          api_url: string | null
+          connected: boolean | null
+          connected_at: string | null
+          display_name: string | null
+          id: string | null
+          id_instance: string | null
+          phone: string | null
+          project_id: string | null
+          updated_at: string | null
+          user_id: string | null
+          webhook_token_present: boolean | null
+          webhook_url: string | null
+        }
+        Relationships: []
+      }
       crm_stats_health: {
         Row: {
           cabinet_id: string | null
