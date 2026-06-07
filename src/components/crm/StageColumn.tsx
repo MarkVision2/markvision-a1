@@ -225,6 +225,32 @@ function StageColumnImpl({
           </button>
         )}
 
+        {leads.length > 0 && !selectMode && (
+          <>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectMode(true);
+                setSelectedIds(new Set());
+              }}
+              className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary"
+              title="Выбрать несколько сделок"
+              aria-label="Выбрать несколько"
+            >
+              <CheckSquare className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => void confirmDeleteLeads(leads.map((l) => l.id), `все ${leads.length} сделок на этапе «${stage.title}»`)}
+              className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              title={`Удалить все сделки на этапе (${leads.length})`}
+              aria-label="Удалить все на этапе"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </>
+        )}
+
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
@@ -287,6 +313,7 @@ function StageColumnImpl({
 
       {!collapsed && selectMode && (
         <div className="mt-2 shrink-0 flex flex-wrap items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 p-2">
+          <span className="text-[10px] font-semibold text-primary">Выбор сделок</span>
           <Button
             type="button"
             size="sm"
@@ -294,7 +321,7 @@ function StageColumnImpl({
             className="h-7 px-2 text-[10px]"
             onClick={selectAllLeads}
           >
-            Все ({leads.length})
+            Выбрать все ({leads.length})
           </Button>
           <Button
             type="button"
@@ -305,17 +332,17 @@ function StageColumnImpl({
             onClick={() => void confirmDeleteLeads([...selectedIds], `${selectedIds.size} выбранных сделок`)}
           >
             <Trash2 className="h-3 w-3" />
-            Удалить ({selectedIds.size})
+            Удалить выбранные ({selectedIds.size})
           </Button>
           <Button
             type="button"
             size="sm"
             variant="ghost"
-            className="ml-auto h-7 w-7 p-0"
+            className="ml-auto h-7 px-2 text-[10px]"
             onClick={exitSelectMode}
-            aria-label="Отменить выбор"
           >
-            <X className="h-3.5 w-3.5" />
+            <X className="h-3 w-3" />
+            Отмена
           </Button>
         </div>
       )}
