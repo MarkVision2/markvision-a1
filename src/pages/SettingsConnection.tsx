@@ -521,6 +521,24 @@ export function WhatsappProjectBindCard() {
       toast.error("apiTokenInstance обязателен — скопируйте его из Green API console");
       return;
     }
+    const trimmedApiUrl = apiUrl.trim();
+    if (trimmedApiUrl) {
+      try {
+        const u = new URL(trimmedApiUrl);
+        const host = u.hostname.toLowerCase();
+        const allowed =
+          host === "api.green-api.com"
+          || host === "api.greenapi.com"
+          || /^[a-z0-9-]+\.api\.greenapi\.com$/i.test(host);
+        if (u.protocol !== "https:" || !allowed || (u.pathname !== "/" && u.pathname !== "")) {
+          toast.error("apiUrl должен быть https://api.green-api.com или региональный *.api.greenapi.com");
+          return;
+        }
+      } catch {
+        toast.error("Некорректный apiUrl");
+        return;
+      }
+    }
     setSaving(true);
     try {
       const { error } = await supabase.rpc("bind_whatsapp_to_project", {

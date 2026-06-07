@@ -7,15 +7,10 @@
 import { corsHeaders } from "https://esm.sh/@supabase/supabase-js@2.95.0/cors";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { z } from "https://esm.sh/zod@3.23.8";
+import { validateGreenApiBaseUrl } from "../_lib/green_api_url.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
-
-const ALLOWED_GREEN_API_HOSTS = new Set([
-  "api.green-api.com",
-  "api.greenapi.com",
-  "7105.api.greenapi.com",
-]);
 
 const BodySchema = z.object({
   idInstance: z.string().trim().min(1),
@@ -23,22 +18,6 @@ const BodySchema = z.object({
   apiUrl: z.string().trim().url().optional(),
   webhookUrl: z.string().trim().url(),
 });
-
-function validateGreenApiBaseUrl(raw: string | undefined): string {
-  const fallback = "https://api.green-api.com";
-  if (!raw?.trim()) return fallback;
-  let u: URL;
-  try {
-    u = new URL(raw.trim());
-  } catch {
-    throw new Error("Invalid apiUrl");
-  }
-  if (u.protocol !== "https:") throw new Error("apiUrl must use https");
-  if (!ALLOWED_GREEN_API_HOSTS.has(u.hostname.toLowerCase())) {
-    throw new Error("apiUrl host not allowed");
-  }
-  return u.origin.replace(/\/+$/, "");
-}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {

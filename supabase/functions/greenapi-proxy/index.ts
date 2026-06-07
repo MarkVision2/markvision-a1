@@ -8,6 +8,10 @@
 // Actions: status, qr, getCode, logout, settings, setWebhook, sendMessage.
 import { corsHeaders } from "https://esm.sh/@supabase/supabase-js@2.95.0/cors";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import {
+  DEFAULT_GREEN_API_BASE_URL,
+  validateGreenApiBaseUrl,
+} from "../_lib/green_api_url.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
@@ -15,7 +19,7 @@ const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 
 const ENV_ID = Deno.env.get("GREENAPI_ID_INSTANCE") ?? "";
 const ENV_TOKEN = Deno.env.get("GREENAPI_API_TOKEN") ?? "";
-const ENV_URL = Deno.env.get("GREENAPI_API_URL") ?? "https://api.green-api.com";
+const ENV_URL = Deno.env.get("GREENAPI_API_URL") ?? DEFAULT_GREEN_API_BASE_URL;
 
 const admin: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false, autoRefreshToken: false },
@@ -37,8 +41,14 @@ function json(body: unknown, status = 200) {
   });
 }
 
-function normalizeUrl(u: string | null | undefined): string {
-  return String(u || ENV_URL).trim().replace(/\/+$/, "");
+function resolveGreenApiBaseUrl(
+  u: string | null | undefined,
+): string | { error: string; status: number } {
+  try {
+    return validateGreenApiBaseUrl(u?.trim() ? u : ENV_URL);
+  } catch (e) {
+    return { error: (e as Error).message, status: 400 };
+  }
 }
 
 async function getUserId(req: Request): Promise<string | null> {
@@ -99,6 +109,10 @@ async function resolveCreds(
       .maybeSingle();
 
     if (row?.id_instance) {
+      const baseUrlOrErr = resolveGreenApiBaseUrl(row.api_url);
+      if (typeof baseUrlOrErr !== "string") {
+        return baseUrlOrErr;
+      }
       const apiToken = (row.api_token ?? "").trim();
       if (!apiToken) {
         if (ENV_TOKEN && row.id_instance === ENV_ID) {
@@ -108,7 +122,7 @@ async function resolveCreds(
             projectId: row.project_id,
             idInstance: row.id_instance,
             apiToken: ENV_TOKEN,
-            baseUrl: normalizeUrl(row.api_url),
+            baseUrl: baseUrlOrErr,
           };
         }
         return {
@@ -123,7 +137,7 @@ async function resolveCreds(
         projectId: row.project_id,
         idInstance: row.id_instance,
         apiToken,
-        baseUrl: normalizeUrl(row.api_url),
+        baseUrl: baseUrlOrErr,
       };
     }
   }
@@ -133,13 +147,17 @@ async function resolveCreds(
     _user_id: userId, _role: "admin",
   });
   if (isAdmin === true && ENV_ID && ENV_TOKEN) {
+    const baseUrlOrErr = resolveGreenApiBaseUrl(ENV_URL);
+    if (typeof baseUrlOrErr !== "string") {
+      return baseUrlOrErr;
+    }
     return {
       source: "env",
       rowId: null,
       projectId,
       idInstance: ENV_ID,
       apiToken: ENV_TOKEN,
-      baseUrl: normalizeUrl(ENV_URL),
+      baseUrl: baseUrlOrErr,
     };
   }
 
