@@ -76,26 +76,24 @@ const SummaryCard = ({
   }[accent];
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card/60 p-3.5 transition-colors hover:border-success/30 hover:bg-card/80">
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-lg border", tone)}>
-            <Icon className="h-3.5 w-3.5" />
-          </span>
-          <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-            {label}
-          </span>
-        </div>
-        <span className={cn("rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider", tone)}>
+    <div className="flex min-h-[118px] flex-col rounded-2xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-success/30 hover:bg-card/80">
+      <div className="flex items-start justify-between gap-2">
+        <span className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-lg border", tone)}>
+          <Icon className="h-4 w-4" />
+        </span>
+        <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider", tone)}>
           {badge}
         </span>
       </div>
-      <div className="mt-2.5 text-lg font-bold tabular-nums leading-tight sm:text-xl">
+      <p className="mt-2.5 text-xs font-semibold leading-snug text-foreground">
+        {label}
+      </p>
+      <div className="mt-2 text-lg font-bold tabular-nums leading-tight sm:text-xl">
         {value}
       </div>
-      <div className="mt-1.5 text-[10px] leading-4 text-muted-foreground">
+      <p className="mt-auto pt-1.5 text-[10px] leading-4 text-muted-foreground">
         {formula}
-      </div>
+      </p>
     </div>
   );
 };
@@ -435,7 +433,7 @@ const Metrics = () => {
       />
 
       {/* Summary cards */}
-      <div className="mt-8 grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <div className="mt-8 grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <SummaryCard
           icon={Eye}
           label="Стоимость диагностики"
