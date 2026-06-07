@@ -141,6 +141,8 @@ const Metrics = () => {
     return cabinetsWithExternalId.length === 1 ? cabinetsWithExternalId[0] : null;
   }, [cabinetId, cabinets, cabinetsWithExternalId]);
 
+  const canEditManual = cabinetId !== "all" || cabinetsWithExternalId.length === 1;
+
   const manualHint = manualCabinet
     ? canEditManual
       ? `Диагностики/продажи: авто из CRM. Ручная правка → кабинет «${manualCabinet.name}»`
@@ -213,7 +215,6 @@ const Metrics = () => {
     [allLeads, crmPeriod, cabinetSelector],
   );
 
-  const canEditManual = cabinetId !== "all" || cabinetsWithExternalId.length === 1;
   const orphanPaid = useMemo(() => {
     if (cabinetId !== "all") return [];
     return allLeads.filter((l) => {
