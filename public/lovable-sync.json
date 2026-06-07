@@ -1,7 +1,7 @@
 {
-  "git_sha": "pending",
-  "git_sha_full": "pending",
-  "updated_at": "2026-06-07T17:26:00Z",
-  "label": "Fix blurry video creative previews — HQ poster pipeline",
-  "publish_hint": "Lovable → Publish (справа вверху) → Update. Также задеплойте Edge Function meta-creative-refresh в Supabase."
+  "git_sha": "4768c5c",
+  "git_sha_full": "4768c5c",
+  "updated_at": "2026-06-07T17:27:00Z",
+  "label": "Funnel + creatives report + HQ video previews",
+  "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
