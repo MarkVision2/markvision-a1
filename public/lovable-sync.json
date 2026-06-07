@@ -1,7 +1,7 @@
 {
-  "git_sha": "8c259f8",
-  "git_sha_full": "8c259f852477ce805de21ef62cc7fa027e14404f",
-  "updated_at": "2026-06-07T12:03:05Z",
-  "label": "feat(crm): visible bulk delete buttons on stage column header",
+  "git_sha": "e278a97",
+  "git_sha_full": "e278a97aafa7135e2ff393e884daf991936e0e28",
+  "updated_at": "2026-06-07T12:11:04Z",
+  "label": "fix(crm): instant realtime lead updates + clear source labels",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
