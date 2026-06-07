@@ -1,7 +1,7 @@
 {
-  "git_sha": "959ff9b",
-  "git_sha_full": "959ff9bb060a94d5b3b667d642ab7c2e8b13b4c7",
-  "updated_at": "2026-06-07T12:30:43Z",
-  "label": "fix(metrics): CRM-based diagnostics count + working manual override",
+  "git_sha": "c6f7939",
+  "git_sha_full": "c6f7939385833309afc8576bf6033adb87bf502f",
+  "updated_at": "2026-06-07T12:34:39Z",
+  "label": "fix(metrics): TDZ crash — declare canEditManual before manualHint",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
