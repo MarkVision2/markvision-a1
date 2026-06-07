@@ -13,6 +13,46 @@ export interface DayManualFields {
 export interface CdiFactRow extends DayManualFields {
   date: string;
   cabinet_id?: string | null;
+  external_id?: string | null;
+}
+
+function rowHasManual(row: CdiFactRow): boolean {
+  return (
+    isManualOverrideActive(row.manual_diagnostics)
+    || isManualOverrideActive(row.manual_diagnostic_revenue)
+    || isManualOverrideActive(row.manual_sales)
+    || isManualOverrideActive(row.manual_revenue)
+  );
+}
+
+/** CDI-строка для кабинета: по cabinet_id, иначе external_id, иначе единственная строка дня. */
+export function findCdiRowForCabinet(
+  cdiRows: CdiFactRow[],
+  iso: string,
+  cabId: string,
+  externalId: string | null | undefined,
+  scopedCabinetIds: string[],
+): CdiFactRow | undefined {
+  const dayRows = cdiRows.filter((r) => r.date === iso);
+  const byCabinet = dayRows.find((r) => r.cabinet_id === cabId);
+  if (byCabinet) return byCabinet;
+
+  if (externalId) {
+    const norm = externalId.trim();
+    const byExternal = dayRows.find((r) => {
+      const ext = (r.external_id ?? "").trim();
+      return ext === norm || ext.replace(/^act_/i, "") === norm.replace(/^act_/i, "");
+    });
+    if (byExternal) return byExternal;
+  }
+
+  if (scopedCabinetIds.length === 1 && scopedCabinetIds[0] === cabId) {
+    if (dayRows.length === 1) return dayRows[0];
+    const nullManual = dayRows.find((r) => !r.cabinet_id && rowHasManual(r));
+    if (nullManual) return nullManual;
+  }
+
+  return undefined;
 }
 
 export interface ResolvedDayMetrics {
@@ -142,6 +182,7 @@ export function sumResolvedMetricsPerCabinets(
   cdiRows: CdiFactRow[],
   cabinetInternalIds: string[],
   includeOrphans: boolean,
+  externalIdByCabinetId?: Map<string, string>,
 ): ResolvedPeriodMetrics {
   const acc = { ...EMPTY_RESOLVED };
   const cur = new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate());
@@ -154,7 +195,13 @@ export function sumResolvedMetricsPerCabinets(
 
     for (const cabId of cabinetInternalIds) {
       const crm = crmDailyMetrics(leads, dayRange, cabId).get(iso);
-      const row = cdiRows.find((r) => r.date === iso && r.cabinet_id === cabId);
+      const row = findCdiRowForCabinet(
+        cdiRows,
+        iso,
+        cabId,
+        externalIdByCabinetId?.get(cabId),
+        cabinetInternalIds,
+      );
       addResolved(dayAcc, resolveDayMetrics(crm, manualFieldsFromCdiRow(row), true));
     }
 
@@ -177,6 +224,7 @@ export function buildResolvedDailyRevenuePerCabinets(
   cdiRows: CdiFactRow[],
   cabinetInternalIds: string[],
   includeOrphans: boolean,
+  externalIdByCabinetId?: Map<string, string>,
 ): Map<string, number> {
   const revByDay = new Map<string, number>();
   const cur = new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate());
@@ -189,7 +237,13 @@ export function buildResolvedDailyRevenuePerCabinets(
 
     for (const cabId of cabinetInternalIds) {
       const crm = crmDailyMetrics(leads, dayRange, cabId).get(iso);
-      const row = cdiRows.find((r) => r.date === iso && r.cabinet_id === cabId);
+      const row = findCdiRowForCabinet(
+        cdiRows,
+        iso,
+        cabId,
+        externalIdByCabinetId?.get(cabId),
+        cabinetInternalIds,
+      );
       revenue += resolveDayMetrics(crm, manualFieldsFromCdiRow(row), true).revenue;
     }
 

@@ -220,9 +220,18 @@ const Metrics = () => {
   const cabinetSelector = cabinetId === "all" ? "all" : cabinetId;
 
   const cabinetInternalIds = useMemo(() => {
-    if (cabinetId === "all") return cabinets.map((c) => c.id);
-    return cabinets.some((c) => c.id === cabinetId) ? [cabinetId] : [];
+    if (cabinetId === "all") return cabinets.filter((c) => c.externalId).map((c) => c.id);
+    const cab = cabinets.find((c) => c.id === cabinetId);
+    return cab?.externalId ? [cabinetId] : [];
   }, [cabinetId, cabinets]);
+
+  const externalIdByCabinetId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of cabinets) {
+      if (c.externalId) m.set(c.id, c.externalId);
+    }
+    return m;
+  }, [cabinets]);
 
   useEffect(() => {
     if (actIds.length === 0) {
@@ -288,6 +297,7 @@ const Metrics = () => {
         cdiFactRows,
         cabinetInternalIds,
         cabinetId === "all",
+        externalIdByCabinetId,
       );
 
       m.set(iso, {
@@ -326,9 +336,9 @@ const Metrics = () => {
 
   const factResolved = useMemo(
     () => sumResolvedMetricsPerCabinets(
-      crmPeriod, allLeads, cdiFactRows, cabinetInternalIds, cabinetId === "all",
+      crmPeriod, allLeads, cdiFactRows, cabinetInternalIds, cabinetId === "all", externalIdByCabinetId,
     ),
-    [crmPeriod, allLeads, cdiFactRows, cabinetInternalIds, cabinetId],
+    [crmPeriod, allLeads, cdiFactRows, cabinetInternalIds, cabinetId, externalIdByCabinetId],
   );
   const factDiagnostics = factResolved.diagnostics;
   const factDiagnosticRevenue = factResolved.diagnosticRevenue;

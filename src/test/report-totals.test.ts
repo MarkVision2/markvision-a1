@@ -4,6 +4,7 @@ import type { LeadLite } from "@/hooks/useLeadsLite";
 import {
   resolvedMetricsFromCrmAggregate,
   sumResolvedMetricsPerCabinets,
+  findCdiRowForCabinet,
 } from "@/lib/metricsSourceOfTruth";
 
 const mkLead = (over: Partial<LeadLite> = {}): LeadLite => ({
@@ -60,6 +61,25 @@ describe("computeTotals — Таблица показателей (CRM + manual 
     expect(totals.visits).toBe(1);
   });
 
+  it("CDI без cabinet_id: manual 10k находится по external_id", () => {
+    const row = findCdiRowForCabinet(
+      [{
+        date: "2026-06-10",
+        cabinet_id: null,
+        external_id: "act_123",
+        manual_diagnostic_revenue: 10_000,
+        manual_diagnostics: null,
+        manual_sales: null,
+        manual_revenue: null,
+      }],
+      "2026-06-10",
+      "cab-1",
+      "act_123",
+      ["cab-1"],
+    );
+    expect(row?.manual_diagnostic_revenue).toBe(10_000);
+  });
+
   it("ручная выручка диагностик 10k перезаписывает CRM 5k", () => {
     const d1 = mkLead({
       cabinetId: "cab-1",
@@ -73,7 +93,8 @@ describe("computeTotals — Таблица показателей (CRM + manual 
       june,
       [d1],
       [{
-        cabinet_id: "cab-1",
+        cabinet_id: null,
+        external_id: "act_999",
         date: "2026-06-10",
         manual_diagnostics: null,
         manual_diagnostic_revenue: 10_000,
@@ -82,6 +103,7 @@ describe("computeTotals — Таблица показателей (CRM + manual 
       }],
       ["cab-1"],
       false,
+      new Map([["cab-1", "act_999"]]),
     );
     const totals = computeTotals({ ...emptyMeta }, crm, resolved);
 

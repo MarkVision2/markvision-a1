@@ -114,7 +114,7 @@ export async function fetchCdiFactRows(
   const until = ymd(range.to);
   let q = supabase
     .from("cabinet_daily_insights")
-    .select("cabinet_id, date, manual_diagnostics, manual_diagnostic_revenue, manual_sales, manual_revenue")
+    .select("cabinet_id, external_id, date, manual_diagnostics, manual_diagnostic_revenue, manual_sales, manual_revenue")
     .in("external_id", ids)
     .gte("date", since)
     .lte("date", until);
@@ -123,6 +123,7 @@ export async function fetchCdiFactRows(
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => ({
     cabinet_id: (row as { cabinet_id?: string | null }).cabinet_id ?? null,
+    external_id: (row as { external_id?: string | null }).external_id ?? null,
     date: row.date,
     manual_diagnostics: row.manual_diagnostics,
     manual_diagnostic_revenue: (row as { manual_diagnostic_revenue?: number | null }).manual_diagnostic_revenue,
@@ -156,7 +157,7 @@ async function fetchMetaForRange(
 
   let q = supabase
     .from("cabinet_daily_insights")
-    .select("cabinet_id, date, spend, impressions, clicks, leads, crm_sales, manual_sales, crm_revenue, manual_revenue, crm_diagnostics, manual_diagnostics, crm_diagnostic_revenue, manual_diagnostic_revenue")
+    .select("cabinet_id, external_id, date, spend, impressions, clicks, leads, crm_sales, manual_sales, crm_revenue, manual_revenue, crm_diagnostics, manual_diagnostics, crm_diagnostic_revenue, manual_diagnostic_revenue")
     .in("external_id", ids)
     .gte("date", since)
     .lte("date", until);
@@ -199,6 +200,7 @@ async function fetchMetaForRange(
 
   const cdiFactRows: CdiFactRow[] = (data ?? []).map((row) => ({
     cabinet_id: (row as { cabinet_id?: string | null }).cabinet_id ?? null,
+    external_id: (row as { external_id?: string | null }).external_id ?? null,
     date: row.date,
     manual_diagnostics: row.manual_diagnostics,
     manual_diagnostic_revenue: (row as { manual_diagnostic_revenue?: number | null }).manual_diagnostic_revenue,
@@ -375,9 +377,18 @@ export function useReportData(
   }, [cabinetId, cabinets]);
 
   const cabinetInternalIds = useMemo(() => {
-    if (cabinetId === "all") return cabinets.map((c) => c.id);
-    return cabinets.some((c) => c.id === cabinetId) ? [cabinetId] : [];
+    if (cabinetId === "all") return cabinets.filter((c) => c.externalId).map((c) => c.id);
+    const cab = cabinets.find((c) => c.id === cabinetId);
+    return cab?.externalId ? [cabinetId] : [];
   }, [cabinetId, cabinets]);
+
+  const externalIdByCabinetId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of cabinets) {
+      if (c.externalId) m.set(c.id, c.externalId);
+    }
+    return m;
+  }, [cabinets]);
 
   useEffect(() => {
     let cancelled = false;
@@ -390,7 +401,7 @@ export function useReportData(
         const meta = await fetchMetaForRange(cabinetIds, range, projectId);
         const crm = aggregateCrm(leads, range, cabinetSelector);
         const resolved = sumResolvedMetricsPerCabinets(
-          range, leads, meta.cdiFactRows, cabinetInternalIds, includeOrphans,
+          range, leads, meta.cdiFactRows, cabinetInternalIds, includeOrphans, externalIdByCabinetId,
         );
         const totals = computeTotals(meta, crm, resolved);
         const scoring = computeScoring(crm.leads);
@@ -398,7 +409,7 @@ export function useReportData(
         const creatives: ReportCreative[] = []; // ad-level not yet exposed by edge fn
 
         const revByDay = buildResolvedDailyRevenuePerCabinets(
-          range, leads, meta.cdiFactRows, cabinetInternalIds, includeOrphans,
+          range, leads, meta.cdiFactRows, cabinetInternalIds, includeOrphans, externalIdByCabinetId,
         );
         const spendLeadsByDay = new Map(
           meta.daily.map((d) => [d.date, { spend: d.spend, leads: d.leads }]),
@@ -424,7 +435,7 @@ export function useReportData(
           const prevMeta = await fetchMetaForRange(cabinetIds, prevRange, projectId);
           const prevCrm = aggregateCrm(leads, prevRange, cabinetSelector);
           const prevResolved = sumResolvedMetricsPerCabinets(
-            prevRange, leads, prevMeta.cdiFactRows, cabinetInternalIds, includeOrphans,
+            prevRange, leads, prevMeta.cdiFactRows, cabinetInternalIds, includeOrphans, externalIdByCabinetId,
           );
           prev = computeTotals(prevMeta, prevCrm, prevResolved);
         }
