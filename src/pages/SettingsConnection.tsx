@@ -539,8 +539,11 @@ function WebhookCard({
         await checkSettings();
         await onRefresh();
       } else {
+        const detail = (data as { data?: { message?: string } } | null)?.data?.message
+          ?? (error as { message?: string } | null)?.message
+          ?? JSON.stringify((data as { data?: unknown })?.data ?? error);
         toast.error("Не удалось настроить webhook", {
-          description: JSON.stringify((data as { data?: unknown })?.data ?? error),
+          description: `${detail}. Проверьте шаг 1: idInstance + apiToken привязаны к проекту.`,
         });
       }
     } catch (e) {
@@ -552,6 +555,10 @@ function WebhookCard({
 
   const saveBotUrl = async () => {
     if (!projectId) return;
+    if (!row?.id_instance) {
+      toast.error("Сначала выполните шаг 1 — привяжите idInstance к проекту");
+      return;
+    }
     const trimmed = botUrl.trim();
     if (trimmed && !isValidBotWebhookUrl(trimmed)) {
       toast.error("URL бота должен начинаться с https://");
@@ -559,11 +566,24 @@ function WebhookCard({
     }
     setBotSaving(true);
     try {
-      const { error } = await supabase.rpc("save_whatsapp_bot_webhook", {
+      const payload = { bot_webhook_url: trimmed || null };
+      const { error: rpcError } = await supabase.rpc("save_whatsapp_bot_webhook" as never, {
         p_project_id: projectId,
         p_bot_webhook_url: trimmed || null,
-      });
-      if (error) throw error;
+      } as never);
+      if (rpcError) {
+        const missingFn = /save_whatsapp_bot_webhook/i.test(rpcError.message);
+        if (!missingFn) throw rpcError;
+        const { error: updError } = await supabase
+          .from("whatsapp_config")
+          .update(payload)
+          .eq("project_id", projectId);
+        if (updError) {
+          throw new Error(
+            `${updError.message}. Выполните scripts/apply-whatsapp-setup.sql в Supabase SQL Editor.`,
+          );
+        }
+      }
       toast.success(trimmed ? "URL n8n-бота сохранён" : "Пересылка в n8n отключена");
       await onRefresh();
     } catch (e) {
