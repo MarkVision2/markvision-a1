@@ -1,7 +1,7 @@
 {
-  "git_sha": "cfffd00",
-  "git_sha_full": "cfffd004757e6653b9c2cd7d028ad2125063ebb1",
-  "updated_at": "2026-06-07T17:25:16Z",
-  "label": "Merge remote lovable sync stamp into main",
+  "git_sha": "97d6111",
+  "git_sha_full": "97d6111c155075491deb10df9967094444e13495",
+  "updated_at": "2026-06-07T17:32:57Z",
+  "label": "fix(creatives): restore preview fallback while HQ loads in background",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
