@@ -1,7 +1,7 @@
 /**
  * Meta CDN часто отдаёт thumbnail_url в 64×64 (p64x64 в stp=...).
- * При растягивании на карточку 9:16 превью выглядит размытым.
- * Эта утилита определяет низкое разрешение и выбирает лучший URL.
+ * Стратегия: сразу показываем любой доступный URL (чтобы не было пустых карточек),
+ * параллельно подгружаем HQ и подменяем превью.
  */
 
 const LOW_RES_PATTERNS = [
@@ -28,7 +28,7 @@ export function isLowResMetaThumb(url: string | null | undefined): boolean {
   return false;
 }
 
-/** Достаточно качества для показа на карточке. */
+/** Достаточно качества для показа на карточке без размытия. */
 export function isHighQualityCreativeUrl(url: string | null | undefined): boolean {
   if (!url) return false;
   if (HQ_STORAGE_HINTS.some((re) => re.test(url))) return true;
@@ -37,7 +37,7 @@ export function isHighQualityCreativeUrl(url: string | null | undefined): boolea
 
 /**
  * Meta CDN: external-* превью можно апскейлить безопасно.
- * scontent/fbcdn подписаны — менять stp нельзя (403), но external можно.
+ * scontent/fbcdn подписаны — менять stp нельзя (403).
  */
 export function upscaleMetaThumb(url: string | null | undefined, size = 720): string | null {
   if (!url) return null;
@@ -55,8 +55,15 @@ export function upscaleMetaThumb(url: string | null | undefined, size = 720): st
   return isLowResMetaThumb(out) ? null : out;
 }
 
-/** Лучший доступный URL картинки для креатива (null = не показывать blur). */
-export function bestCreativeImage(args: {
+function firstUrl(...urls: Array<string | null | undefined>): string | null {
+  for (const u of urls) {
+    if (u) return u;
+  }
+  return null;
+}
+
+/** Только HQ-источник (для проверки «дошла ли чёткая картинка»). */
+export function bestCreativeImageHq(args: {
   posterUrl?: string | null;
   thumbnailUrl?: string | null;
   imageUrl?: string | null;
@@ -74,4 +81,33 @@ export function bestCreativeImage(args: {
     if (url && isHighQualityCreativeUrl(url)) return url;
   }
   return null;
+}
+
+/** Лучший URL для показа: HQ если есть, иначе любой fallback (лучше пиксели, чем пустота). */
+export function pickCreativePreviewUrl(args: {
+  posterUrl?: string | null;
+  thumbnailUrl?: string | null;
+  imageUrl?: string | null;
+  size?: number;
+}): string | null {
+  const hq = bestCreativeImageHq(args);
+  if (hq) return hq;
+
+  const size = args.size ?? 720;
+  return firstUrl(
+    args.posterUrl,
+    args.imageUrl,
+    upscaleMetaThumb(args.thumbnailUrl, size),
+    args.thumbnailUrl,
+  );
+}
+
+/** @deprecated Используйте pickCreativePreviewUrl / bestCreativeImageHq */
+export function bestCreativeImage(args: {
+  posterUrl?: string | null;
+  thumbnailUrl?: string | null;
+  imageUrl?: string | null;
+  size?: number;
+}): string | null {
+  return pickCreativePreviewUrl(args);
 }

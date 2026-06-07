@@ -47,7 +47,7 @@ export function CreativeCard({ row, isWhatsApp, onOpen, active, metricsView = "c
   }, [playVideo, canPlayInline]);
 
   const isActive = (row.effectiveStatus ?? "").toUpperCase() === "ACTIVE";
-  const showVideo = canPlayInline && playVideo && displaySrc;
+  const showVideo = canPlayInline && playVideo;
 
   const showCrm = metricsView === "crm";
   const metaLeadCount = isWhatsApp ? (row.messages || row.leads) : row.leads;

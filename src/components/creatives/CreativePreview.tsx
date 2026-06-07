@@ -36,6 +36,7 @@ export function CreativePreview({ row, compact = false, playable = false, classN
     displaySrc,
     previewVideoUrl,
     loadingHq,
+    isLowRes,
     canPlayInline,
     forceRefresh,
   } = useCreativeHqPreview(row, { compact });
@@ -63,7 +64,7 @@ export function CreativePreview({ row, compact = false, playable = false, classN
     setLoadingFullVideo(false);
   };
 
-  const showVideo = canPlayInline && playVideo && displaySrc;
+  const showVideo = canPlayInline && playVideo;
   const showImage = displaySrc && !mediaError && !showVideo;
 
   return (
@@ -100,12 +101,17 @@ export function CreativePreview({ row, compact = false, playable = false, classN
         />
       ) : (
         <div className="flex h-full w-full items-center justify-center bg-secondary/20">
-          {loadingHq && isVideo ? (
+          {loadingHq ? (
             <Loader2 className={cn("animate-spin text-muted-foreground/50", compact ? "h-4 w-4" : "h-6 w-6")} />
           ) : (
             <TypeIcon className={cn("text-muted-foreground/40", compact ? "h-5 w-5" : "h-8 w-8")} />
           )}
         </div>
+      )}
+      {isLowRes && loadingHq && !compact && (
+        <span className="absolute bottom-2 right-2 rounded-md bg-background/85 px-1.5 py-0.5 text-[9px] font-semibold text-muted-foreground">
+          HD…
+        </span>
       )}
       {!compact && (
         <span className="absolute left-2 top-2 inline-flex items-center gap-1 rounded-md bg-background/90 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider">

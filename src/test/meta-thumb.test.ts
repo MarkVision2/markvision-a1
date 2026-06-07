@@ -1,8 +1,9 @@
 import { describe, it, expect } from "vitest";
 import {
-  bestCreativeImage,
+  bestCreativeImageHq,
   isHighQualityCreativeUrl,
   isLowResMetaThumb,
+  pickCreativePreviewUrl,
   upscaleMetaThumb,
 } from "@/lib/metaThumb";
 
@@ -16,12 +17,13 @@ describe("metaThumb", () => {
   it("считает poster из Storage HQ", () => {
     const url = "https://xxx.supabase.co/storage/v1/object/public/creative-posters/ad-1.jpg";
     expect(isHighQualityCreativeUrl(url)).toBe(true);
-    expect(bestCreativeImage({ posterUrl: url })).toBe(url);
+    expect(pickCreativePreviewUrl({ posterUrl: url })).toBe(url);
   });
 
-  it("не возвращает подписанный scontent p64x64 (нельзя апскейлить)", () => {
+  it("HQ-режим не берёт scontent p64x64, но preview показывает fallback", () => {
     const low = "https://scontent-xxx.xx.fbcdn.net/v/abc?__cft__=1&stp=dst-jpg_p64x64_q75";
-    expect(bestCreativeImage({ thumbnailUrl: low })).toBeNull();
+    expect(bestCreativeImageHq({ thumbnailUrl: low })).toBeNull();
+    expect(pickCreativePreviewUrl({ thumbnailUrl: low })).toBe(low);
   });
 
   it("апскейлит external превью", () => {
@@ -35,7 +37,9 @@ describe("metaThumb", () => {
     const poster = "https://xxx.supabase.co/storage/v1/object/public/creative-posters/a.jpg";
     const image = "https://external.fbcdn.net/p720x720.jpg";
     const thumb = "https://scontent.xx.fbcdn.net/p64x64";
-    expect(bestCreativeImage({ posterUrl: poster, imageUrl: image, thumbnailUrl: thumb })).toBe(poster);
-    expect(bestCreativeImage({ imageUrl: image, thumbnailUrl: thumb })).toBe(image);
+    expect(pickCreativePreviewUrl({ posterUrl: poster, imageUrl: image, thumbnailUrl: thumb })).toBe(poster);
+    expect(pickCreativePreviewUrl({ imageUrl: image, thumbnailUrl: thumb })).toBe(image);
+    const fallback = pickCreativePreviewUrl({ thumbnailUrl: thumb });
+    expect(fallback).toBeTruthy();
   });
 });
