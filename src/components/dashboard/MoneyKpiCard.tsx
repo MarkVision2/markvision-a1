@@ -5,6 +5,8 @@ import type { LucideIcon } from "lucide-react";
 interface Props {
   icon: LucideIcon;
   label: string;
+  /** Короткая подпись (CAC, ROMI) — не обрезается в узкой колонке. */
+  badge?: string;
   value: React.ReactNode;
   hint?: string;
   delta?: number | null;
@@ -15,7 +17,7 @@ interface Props {
 }
 
 export function MoneyKpiCard({
-  icon: Icon, label, value, hint, delta, comparing, invertDelta, emphasize,
+  icon: Icon, label, badge, value, hint, delta, comparing, invertDelta, emphasize,
 }: Props) {
   const hasDelta = delta !== null && delta !== undefined;
   const isUp = hasDelta && (delta as number) >= 0;
@@ -25,19 +27,22 @@ export function MoneyKpiCard({
   return (
     <div
       className={cn(
-        "rounded-2xl border bg-card/60 p-3.5 transition-colors",
+        "flex min-h-[108px] flex-col rounded-2xl border bg-card/60 p-3.5 transition-colors",
         emphasize ? "border-primary/40 shadow-glow" : "border-border/60",
       )}
     >
-      <div className="flex items-center gap-2 text-muted-foreground">
+      <div className="flex items-start justify-between gap-2">
         <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-secondary/60">
-          <Icon className="h-3.5 w-3.5" />
+          <Icon className="h-3.5 w-3.5 text-muted-foreground" />
         </span>
-        <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          {label}
-        </span>
+        {badge ? (
+          <span className="shrink-0 rounded-full border border-border/60 bg-secondary/40 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+            {badge}
+          </span>
+        ) : null}
       </div>
-      <div className="mt-2.5 text-lg font-bold tabular-nums whitespace-nowrap leading-tight sm:text-xl">{value}</div>
+      <p className="mt-2 text-[11px] font-semibold leading-snug text-foreground/90">{label}</p>
+      <div className="mt-1.5 text-lg font-bold tabular-nums leading-tight sm:text-xl">{value}</div>
       <div className="mt-2 flex items-center gap-2 text-[11px]">
         {comparing && hasDelta ? (
           noChange ? (

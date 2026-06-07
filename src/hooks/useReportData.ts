@@ -8,10 +8,9 @@ import { normalizeSource } from "@/lib/leadSource";
 import { isLeadDiagnosticEvent, isLeadPaid } from "@/lib/leadStageFlags";
 import { resolveCdiMetric } from "@/lib/cdiManualOverride";
 import {
-  aggregateCdiManualByDay,
-  buildResolvedDailyRevenue,
-  shouldApplyManualOverrides,
-  sumResolvedMetricsForRange,
+  buildResolvedDailyRevenuePerCabinets,
+  sumResolvedMetricsPerCabinets,
+  type CdiFactRow,
   type ResolvedPeriodMetrics,
 } from "@/lib/metricsSourceOfTruth";
 
@@ -104,6 +103,34 @@ function normalizeActId(id: string) {
  * Единый источник правды по фактам Meta — таблица cabinet_daily_insights.
  * Заполняется ежедневно cron-задачей `meta-daily-sync-1am`.
  */
+export async function fetchCdiFactRows(
+  externalIds: string[],
+  range: ReportPeriodRange,
+  projectId?: string | null,
+): Promise<CdiFactRow[]> {
+  if (externalIds.length === 0) return [];
+  const ids = externalIds.map(normalizeActId);
+  const since = ymd(range.from);
+  const until = ymd(range.to);
+  let q = supabase
+    .from("cabinet_daily_insights")
+    .select("cabinet_id, date, manual_diagnostics, manual_diagnostic_revenue, manual_sales, manual_revenue")
+    .in("external_id", ids)
+    .gte("date", since)
+    .lte("date", until);
+  if (projectId) q = q.eq("project_id", projectId);
+  const { data, error } = await q;
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row) => ({
+    cabinet_id: (row as { cabinet_id?: string | null }).cabinet_id ?? null,
+    date: row.date,
+    manual_diagnostics: row.manual_diagnostics,
+    manual_diagnostic_revenue: (row as { manual_diagnostic_revenue?: number | null }).manual_diagnostic_revenue,
+    manual_sales: row.manual_sales,
+    manual_revenue: row.manual_revenue,
+  }));
+}
+
 async function fetchMetaForRange(
   externalIds: string[],
   range: ReportPeriodRange,
@@ -112,14 +139,14 @@ async function fetchMetaForRange(
   spend: number; impressions: number; clicks: number; leads: number;
   cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number;
   cabinetDiagnosticRevenue: number;
-  manualByDay: ReturnType<typeof aggregateCdiManualByDay>;
+  cdiFactRows: CdiFactRow[];
   daily: { date: string; spend: number; leads: number; revenue: number }[];
 }> {
   if (externalIds.length === 0) {
     return {
       spend: 0, impressions: 0, clicks: 0, leads: 0,
       cabinetSales: 0, cabinetRevenue: 0, cabinetDiagnostics: 0, cabinetDiagnosticRevenue: 0,
-      manualByDay: new Map(),
+      cdiFactRows: [],
       daily: [],
     };
   }
@@ -129,7 +156,7 @@ async function fetchMetaForRange(
 
   let q = supabase
     .from("cabinet_daily_insights")
-    .select("date, spend, impressions, clicks, leads, crm_sales, manual_sales, crm_revenue, manual_revenue, crm_diagnostics, manual_diagnostics, crm_diagnostic_revenue, manual_diagnostic_revenue")
+    .select("cabinet_id, date, spend, impressions, clicks, leads, crm_sales, manual_sales, crm_revenue, manual_revenue, crm_diagnostics, manual_diagnostics, crm_diagnostic_revenue, manual_diagnostic_revenue")
     .in("external_id", ids)
     .gte("date", since)
     .lte("date", until);
@@ -170,15 +197,14 @@ async function fetchMetaForRange(
     dailyAgg.set(row.date, cur);
   }
 
-  const manualByDay = aggregateCdiManualByDay(
-    (data ?? []).map((row) => ({
-      date: row.date,
-      manual_diagnostics: row.manual_diagnostics,
-      manual_diagnostic_revenue: (row as { manual_diagnostic_revenue?: number | null }).manual_diagnostic_revenue,
-      manual_sales: row.manual_sales,
-      manual_revenue: row.manual_revenue,
-    })),
-  );
+  const cdiFactRows: CdiFactRow[] = (data ?? []).map((row) => ({
+    cabinet_id: (row as { cabinet_id?: string | null }).cabinet_id ?? null,
+    date: row.date,
+    manual_diagnostics: row.manual_diagnostics,
+    manual_diagnostic_revenue: (row as { manual_diagnostic_revenue?: number | null }).manual_diagnostic_revenue,
+    manual_sales: row.manual_sales,
+    manual_revenue: row.manual_revenue,
+  }));
 
   return {
     spend: totSpend,
@@ -189,65 +215,15 @@ async function fetchMetaForRange(
     cabinetRevenue: totRevenue,
     cabinetDiagnostics: totDiag,
     cabinetDiagnosticRevenue: totDiagRev,
-    manualByDay,
+    cdiFactRows,
     daily: Array.from(dailyAgg.entries())
       .map(([date, v]) => ({ date, ...v }))
       .sort((a, b) => a.date.localeCompare(b.date)),
   };
 }
 
-export interface CrmDailyMetrics {
-  diagnostics: number;
-  diagnosticRevenue: number;
-  sales: number;
-  salesRevenue: number;
-}
-
-/** CRM-факты по дням (источник правды для диагностик/продаж в Таблице показателей). */
-export function crmDailyMetrics(
-  leads: LeadLite[],
-  range: ReportPeriodRange,
-  cabinetSelector: "all" | string,
-): Map<string, CrmDailyMetrics> {
-  const fromTs = range.from.getTime();
-  const toTs = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate() + 1).getTime();
-  const matchCabinet = (l: LeadLite) =>
-    cabinetSelector === "all" || l.cabinetId === cabinetSelector;
-  const empty = (): CrmDailyMetrics => ({
-    diagnostics: 0,
-    diagnosticRevenue: 0,
-    sales: 0,
-    salesRevenue: 0,
-  });
-  const m = new Map<string, CrmDailyMetrics>();
-
-  for (const l of leads) {
-    if (!matchCabinet(l)) continue;
-    if (isLeadDiagnosticEvent(l)) {
-      const ref = l.lastActivityAt ?? l.createdAt;
-      const t = new Date(ref).getTime();
-      if (t >= fromTs && t < toTs) {
-        const key = ref.slice(0, 10);
-        const cur = m.get(key) ?? empty();
-        cur.diagnostics += 1;
-        cur.diagnosticRevenue += l.diagnosticAmount || 0;
-        m.set(key, cur);
-      }
-    }
-    if (isLeadPaid(l)) {
-      const ref = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
-      const t = new Date(ref).getTime();
-      if (t >= fromTs && t < toTs) {
-        const key = ref.slice(0, 10);
-        const cur = m.get(key) ?? empty();
-        cur.sales += 1;
-        cur.salesRevenue += l.amount || 0;
-        m.set(key, cur);
-      }
-    }
-  }
-  return m;
-}
+export type { CrmDailyMetrics } from "@/lib/crmDailyMetrics";
+export { crmDailyMetrics } from "@/lib/crmDailyMetrics";
 
 export function aggregateCrm(
   leads: LeadLite[],
@@ -398,6 +374,11 @@ export function useReportData(
     return cab?.externalId ? [cab.externalId] : [];
   }, [cabinetId, cabinets]);
 
+  const cabinetInternalIds = useMemo(() => {
+    if (cabinetId === "all") return cabinets.map((c) => c.id);
+    return cabinets.some((c) => c.id === cabinetId) ? [cabinetId] : [];
+  }, [cabinetId, cabinets]);
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -405,20 +386,19 @@ export function useReportData(
     (async () => {
       try {
         const cabinetSelector: "all" | string = cabinetId === "all" ? "all" : cabinetId;
-        const applyManual = shouldApplyManualOverrides(cabinetId, cabinetIds.length);
+        const includeOrphans = cabinetId === "all";
         const meta = await fetchMetaForRange(cabinetIds, range, projectId);
         const crm = aggregateCrm(leads, range, cabinetSelector);
-        const crmByDay = crmDailyMetrics(leads, range, cabinetSelector);
-        const resolved = sumResolvedMetricsForRange(
-          range, crmByDay, meta.manualByDay, applyManual,
+        const resolved = sumResolvedMetricsPerCabinets(
+          range, leads, meta.cdiFactRows, cabinetInternalIds, includeOrphans,
         );
         const totals = computeTotals(meta, crm, resolved);
         const scoring = computeScoring(crm.leads);
         const channels = computeChannels(crm.leads);
         const creatives: ReportCreative[] = []; // ad-level not yet exposed by edge fn
 
-        const revByDay = buildResolvedDailyRevenue(
-          range, crmByDay, meta.manualByDay, applyManual,
+        const revByDay = buildResolvedDailyRevenuePerCabinets(
+          range, leads, meta.cdiFactRows, cabinetInternalIds, includeOrphans,
         );
         const spendLeadsByDay = new Map(
           meta.daily.map((d) => [d.date, { spend: d.spend, leads: d.leads }]),
@@ -443,9 +423,8 @@ export function useReportData(
           const prevRange = shiftRange(range);
           const prevMeta = await fetchMetaForRange(cabinetIds, prevRange, projectId);
           const prevCrm = aggregateCrm(leads, prevRange, cabinetSelector);
-          const prevCrmByDay = crmDailyMetrics(leads, prevRange, cabinetSelector);
-          const prevResolved = sumResolvedMetricsForRange(
-            prevRange, prevCrmByDay, prevMeta.manualByDay, applyManual,
+          const prevResolved = sumResolvedMetricsPerCabinets(
+            prevRange, leads, prevMeta.cdiFactRows, cabinetInternalIds, includeOrphans,
           );
           prev = computeTotals(prevMeta, prevCrm, prevResolved);
         }
@@ -465,7 +444,7 @@ export function useReportData(
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cabinetIds.join(","), range.from.getTime(), range.to.getTime(), compare, leads.length, tick, projectId]);
+  }, [cabinetIds.join(","), cabinetInternalIds.join(","), range.from.getTime(), range.to.getTime(), compare, leads.length, tick, projectId]);
 
   return { data, loading, error };
 }

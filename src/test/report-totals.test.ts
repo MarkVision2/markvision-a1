@@ -1,10 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { computeTotals, aggregateCrm, crmDailyMetrics } from "@/hooks/useReportData";
+import { computeTotals, aggregateCrm } from "@/hooks/useReportData";
 import type { LeadLite } from "@/hooks/useLeadsLite";
 import {
-  aggregateCdiManualByDay,
   resolvedMetricsFromCrmAggregate,
-  sumResolvedMetricsForRange,
+  sumResolvedMetricsPerCabinets,
 } from "@/lib/metricsSourceOfTruth";
 
 const mkLead = (over: Partial<LeadLite> = {}): LeadLite => ({
@@ -39,31 +38,55 @@ const emptyMeta = {
 
 describe("computeTotals — Таблица показателей (CRM + manual override)", () => {
   it("ручная правка диагностик в CDI перезаписывает CRM в итогах", () => {
-    const d1 = mkLead({ cabinetId: "cab-1", stageKey: "scheduled" });
-    const d2 = mkLead({ cabinetId: "cab-1", stageKey: "scheduled" });
+    const d1 = mkLead({ cabinetId: "cab-1", stageKey: "scheduled", lastActivityAt: "2026-05-10T10:00:00Z" });
+    const d2 = mkLead({ cabinetId: "cab-1", stageKey: "scheduled", lastActivityAt: "2026-05-10T14:00:00Z" });
     const crm = aggregateCrm([d1, d2], range, "all");
-    const crmByDay = crmDailyMetrics([d1, d2], range, "all");
-    const manualByDay = aggregateCdiManualByDay([
-      { date: "2026-05-10", manual_diagnostics: 1 },
-    ]);
-    const resolved = sumResolvedMetricsForRange(range, crmByDay, manualByDay, true);
+    const resolved = sumResolvedMetricsPerCabinets(
+      range,
+      [d1, d2],
+      [{
+        cabinet_id: "cab-1",
+        date: "2026-05-10",
+        manual_diagnostics: 1,
+        manual_diagnostic_revenue: null,
+        manual_sales: null,
+        manual_revenue: null,
+      }],
+      ["cab-1"],
+      false,
+    );
     const totals = computeTotals({ ...emptyMeta, spend: 50_000 }, crm, resolved);
 
     expect(totals.visits).toBe(1);
   });
 
-  it("без applyManual ручные значения CDI игнорируются (как Metrics при нескольких кабинетах)", () => {
-    const d1 = mkLead({ cabinetId: "cab-1", stageKey: "scheduled" });
-    const d2 = mkLead({ cabinetId: "cab-1", stageKey: "scheduled" });
-    const crm = aggregateCrm([d1, d2], range, "all");
-    const crmByDay = crmDailyMetrics([d1, d2], range, "all");
-    const manualByDay = aggregateCdiManualByDay([
-      { date: "2026-05-10", manual_diagnostics: 1 },
-    ]);
-    const resolved = sumResolvedMetricsForRange(range, crmByDay, manualByDay, false);
+  it("ручная выручка диагностик 10k перезаписывает CRM 5k", () => {
+    const d1 = mkLead({
+      cabinetId: "cab-1",
+      stageKey: "scheduled",
+      diagnosticAmount: 5_000,
+      lastActivityAt: "2026-06-10T10:00:00Z",
+    });
+    const june = { from: new Date("2026-06-01"), to: new Date("2026-06-30") };
+    const crm = aggregateCrm([d1], june, "all");
+    const resolved = sumResolvedMetricsPerCabinets(
+      june,
+      [d1],
+      [{
+        cabinet_id: "cab-1",
+        date: "2026-06-10",
+        manual_diagnostics: null,
+        manual_diagnostic_revenue: 10_000,
+        manual_sales: null,
+        manual_revenue: null,
+      }],
+      ["cab-1"],
+      false,
+    );
     const totals = computeTotals({ ...emptyMeta }, crm, resolved);
 
-    expect(totals.visits).toBe(2);
+    expect(totals.visits).toBe(1);
+    expect(totals.revenue).toBe(10_000);
   });
   it("3 продажи в CRM: 400k+800k+500k = 1.7M, CDI инфлирован — игнорим", () => {
     // Сценарий пользователя: CDI протух (3.4М ₸), но в CRM реально 1.7М.

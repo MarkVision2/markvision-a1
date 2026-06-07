@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   BarChart3,
@@ -33,12 +33,13 @@ import { useMultiMetaInsights, type DailyInsightRow } from "@/hooks/useMetaInsig
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
 import { isLeadPaid } from "@/lib/leadStageFlags";
-import { crmDailyMetrics, type ReportPeriodRange } from "@/hooks/useReportData";
+import { crmDailyMetrics, fetchCdiFactRows, type ReportPeriodRange } from "@/hooks/useReportData";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { isManualOverrideActive, manualValueForSave } from "@/lib/cdiManualOverride";
 import {
-  resolveDayMetrics,
   shouldApplyManualOverrides,
-  type DayManualFields,
+  sumResolvedMetricsPerCabinets,
+  type CdiFactRow,
 } from "@/lib/metricsSourceOfTruth";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -122,7 +123,10 @@ const Metrics = () => {
   const monthCursor = period.from;
   const [cabinetId, setCabinetId] = useState<string>("all");
   const { cabinets } = usePersonalCabinets();
+  const { activeId: projectId } = useProjectsStore();
   const [resyncing, setResyncing] = useState(false);
+  const [cdiFactRows, setCdiFactRows] = useState<CdiFactRow[]>([]);
+  const [cdiTick, setCdiTick] = useState(0);
 
   const monthParam = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}`;
 
@@ -215,6 +219,23 @@ const Metrics = () => {
 
   const cabinetSelector = cabinetId === "all" ? "all" : cabinetId;
 
+  const cabinetInternalIds = useMemo(() => {
+    if (cabinetId === "all") return cabinets.map((c) => c.id);
+    return cabinets.some((c) => c.id === cabinetId) ? [cabinetId] : [];
+  }, [cabinetId, cabinets]);
+
+  useEffect(() => {
+    if (actIds.length === 0) {
+      setCdiFactRows([]);
+      return;
+    }
+    let cancelled = false;
+    fetchCdiFactRows(actIds, crmPeriod, projectId)
+      .then((rows) => { if (!cancelled) setCdiFactRows(rows); })
+      .catch(() => { if (!cancelled) setCdiFactRows([]); });
+    return () => { cancelled = true; };
+  }, [actIds.join(","), crmPeriod.from.getTime(), crmPeriod.to.getTime(), projectId, cdiTick]);
+
   const crmByDay = useMemo(
     () => crmDailyMetrics(allLeads, crmPeriod, cabinetSelector),
     [allLeads, crmPeriod, cabinetSelector],
@@ -260,13 +281,14 @@ const Metrics = () => {
       const crmSales = crm?.sales ?? 0;
       const crmSalesRev = crm?.salesRevenue ?? 0;
 
-      const manual: DayManualFields = {
-        manual_diagnostics: canEditManual ? cdi.manualDiagnosticsRaw : null,
-        manual_diagnostic_revenue: canEditManual ? cdi.manualDiagnosticRevenueRaw : null,
-        manual_sales: canEditManual ? cdi.manualSalesRaw : null,
-        manual_revenue: canEditManual ? cdi.manualSalesRevenueRaw : null,
-      };
-      const resolved = resolveDayMetrics(crm, manual, canEditManual);
+      const [y, mo, d] = iso.split("-").map(Number);
+      const dayResolved = sumResolvedMetricsPerCabinets(
+        { from: new Date(y, mo - 1, d), to: new Date(y, mo - 1, d) },
+        allLeads,
+        cdiFactRows,
+        cabinetInternalIds,
+        cabinetId === "all",
+      );
 
       m.set(iso, {
         ...cdi,
@@ -274,20 +296,20 @@ const Metrics = () => {
         crmDiagnosticRevenue: crmDiagRev,
         crmSales,
         crmSalesRevenueOnly: crmSalesRev,
-        diagnostics: resolved.diagnostics,
-        diagnosticRevenue: resolved.diagnosticRevenue,
-        sales: resolved.sales,
-        salesRevenue: resolved.salesRevenue,
-        manualDiagnostics: isManualOverrideActive(manual.manual_diagnostics) ? Number(manual.manual_diagnostics) : 0,
-        manualDiagnosticRevenue: isManualOverrideActive(manual.manual_diagnostic_revenue) ? Number(manual.manual_diagnostic_revenue) : 0,
-        manualSales: isManualOverrideActive(manual.manual_sales) ? Number(manual.manual_sales) : 0,
-        manualSalesRevenue: isManualOverrideActive(manual.manual_revenue) ? Number(manual.manual_revenue) : 0,
-        crmRevenue: resolved.revenue,
+        diagnostics: dayResolved.diagnostics,
+        diagnosticRevenue: dayResolved.diagnosticRevenue,
+        sales: dayResolved.sales,
+        salesRevenue: dayResolved.salesRevenue,
+        manualDiagnostics: cdi.manualDiagnostics ?? 0,
+        manualDiagnosticRevenue: cdi.manualDiagnosticRevenue ?? 0,
+        manualSales: cdi.manualSales ?? 0,
+        manualSalesRevenue: cdi.manualSalesRevenue ?? 0,
+        crmRevenue: dayResolved.revenue,
         crmRevenueOnly: crmSalesRev + crmDiagRev,
-        manualDiagnosticsRaw: manual.manual_diagnostics,
-        manualDiagnosticRevenueRaw: manual.manual_diagnostic_revenue,
-        manualSalesRaw: manual.manual_sales,
-        manualSalesRevenueRaw: manual.manual_revenue,
+        manualDiagnosticsRaw: canEditManual ? cdi.manualDiagnosticsRaw : null,
+        manualDiagnosticRevenueRaw: canEditManual ? cdi.manualDiagnosticRevenueRaw : null,
+        manualSalesRaw: canEditManual ? cdi.manualSalesRaw : null,
+        manualSalesRevenueRaw: canEditManual ? cdi.manualSalesRevenueRaw : null,
       });
     }
 
@@ -300,30 +322,19 @@ const Metrics = () => {
     }
 
     return m;
-  }, [data, monthDays, crmByDay, canEditManual, orphanThisMonth]);
+  }, [data, monthDays, crmByDay, canEditManual, orphanThisMonth, allLeads, cdiFactRows, cabinetInternalIds, cabinetId]);
 
-  // ЕДИНЫЙ ИСТОЧНИК ПРАВДЫ: CDI (кабинеты) + orphan CRM (лиды без cabinet_id).
-  // Раньше orphan исключали, чтобы избежать задвоения с manual_sales — но manual
-  // привязан к конкретному кабинету+дате, а orphan лиды имеют cabinet_id=NULL, поэтому
-  // они никогда не пересекаются. Включаем orphan в итоги, иначе цифры на Metrics
-  // отличаются от CRM/Analytics/Dashboard (одна и та же продажа выглядит как «3/2/2»).
-  const factDiagnostics = useMemo(
-    () => monthDays.reduce((sum, { iso }) => sum + (dailyMap.get(iso)?.diagnostics ?? 0), 0),
-    [monthDays, dailyMap],
+  const factResolved = useMemo(
+    () => sumResolvedMetricsPerCabinets(
+      crmPeriod, allLeads, cdiFactRows, cabinetInternalIds, cabinetId === "all",
+    ),
+    [crmPeriod, allLeads, cdiFactRows, cabinetInternalIds, cabinetId],
   );
-  const factDiagnosticRevenue = useMemo(
-    () => monthDays.reduce((sum, { iso }) => sum + (dailyMap.get(iso)?.diagnosticRevenue ?? 0), 0),
-    [monthDays, dailyMap],
-  );
-  const factSales = useMemo(
-    () => monthDays.reduce((sum, { iso }) => sum + (dailyMap.get(iso)?.sales ?? 0), 0),
-    [monthDays, dailyMap],
-  );
-  const factSalesRevenue = useMemo(
-    () => monthDays.reduce((sum, { iso }) => sum + (dailyMap.get(iso)?.salesRevenue ?? 0), 0),
-    [monthDays, dailyMap],
-  );
-  const factRevenue = factSalesRevenue + factDiagnosticRevenue;
+  const factDiagnostics = factResolved.diagnostics;
+  const factDiagnosticRevenue = factResolved.diagnosticRevenue;
+  const factSales = factResolved.sales;
+  const factSalesRevenue = factResolved.salesRevenue;
+  const factRevenue = factResolved.revenue;
   const factLeads = (totals?.leads ?? 0) + orphanThisMonth.length;
   const factCac = factSales > 0 ? (totals?.spend ?? 0) / factSales : 0;
   const factCpd = factDiagnostics > 0 ? (totals?.spend ?? 0) / factDiagnostics : 0;
@@ -455,6 +466,7 @@ const Metrics = () => {
       }
 
       refresh();
+      setCdiTick((t) => t + 1);
       toast.success("Ручной факт сохранен");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось сохранить факт");

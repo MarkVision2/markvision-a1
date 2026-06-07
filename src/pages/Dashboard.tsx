@@ -158,6 +158,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <MoneyKpiCard
           icon={DollarSign}
+          badge="REV"
           label="Выручка"
           value={fmtTenge(totals?.revenue ?? 0)}
           delta={deltaPct(totals?.revenue ?? 0, prev?.revenue)}
@@ -165,6 +166,7 @@ const Dashboard = () => {
         />
         <MoneyKpiCard
           icon={Wallet}
+          badge="ADS"
           label="Расходы"
           value={fmtTenge(totals?.spend ?? 0)}
           delta={deltaPct(totals?.spend ?? 0, prev?.spend)}
@@ -173,6 +175,7 @@ const Dashboard = () => {
         />
         <MoneyKpiCard
           icon={TrendingUp}
+          badge="P&L"
           label="Прибыль"
           value={
             <span className={cn(profit >= 0 ? "text-success" : "text-destructive")}>
@@ -185,6 +188,7 @@ const Dashboard = () => {
         />
         <MoneyKpiCard
           icon={Repeat}
+          badge="ROMI"
           label="Окупаемость рекламы"
           value={
             <span className={cn((totals?.romi ?? 0) >= 0 ? "text-success" : "text-destructive")}>
@@ -196,6 +200,7 @@ const Dashboard = () => {
         />
         <MoneyKpiCard
           icon={Target}
+          badge="CAC"
           label="Стоимость клиента"
           value={totals && totals.cac > 0 ? fmtTenge(totals.cac) : "—"}
           delta={deltaPct(totals?.cac ?? 0, prev?.cac)}
@@ -204,6 +209,7 @@ const Dashboard = () => {
         />
         <MoneyKpiCard
           icon={ShoppingCart}
+          badge="AOV"
           label="Средний чек"
           value={totals && totals.aov > 0 ? fmtTenge(totals.aov) : "—"}
           delta={deltaPct(totals?.aov ?? 0, prev?.aov)}
