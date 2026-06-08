@@ -48,6 +48,7 @@ export function CreativePreview({
   const [loadingFullVideo, setLoadingFullVideo] = useState(false);
   const [mediaError, setMediaError] = useState(false);
   const [playVideo, setPlayVideo] = useState(false);
+  const [touchPreview, setTouchPreview] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const isActive = isCreativeActive(row.effectiveStatus);
@@ -56,9 +57,9 @@ export function CreativePreview({
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
-    if (playVideo && canPlayInline) void el.play().catch(() => {});
+    if ((playVideo || touchPreview) && canPlayInline) void el.play().catch(() => {});
     else el.pause();
-  }, [playVideo, canPlayInline]);
+  }, [playVideo, touchPreview, canPlayInline]);
 
   const TypeIcon = isVideo ? Video : isCarousel ? Layers : ImageIcon;
 
@@ -70,8 +71,14 @@ export function CreativePreview({
     setLoadingFullVideo(false);
   };
 
-  const showVideo = canPlayInline && playVideo;
+  const showVideo = canPlayInline && (playVideo || touchPreview);
   const showImage = displaySrc && !mediaError && !showVideo;
+
+  const handlePreviewTap = (e: React.MouseEvent) => {
+    if (!isVideo || !canPlayInline || playable) return;
+    e.stopPropagation();
+    setTouchPreview((v) => !v);
+  };
 
   return (
     <div
@@ -81,7 +88,19 @@ export function CreativePreview({
         className,
       )}
       onMouseEnter={() => setPlayVideo(true)}
-      onMouseLeave={() => setPlayVideo(false)}
+      onMouseLeave={() => {
+        setPlayVideo(false);
+        setTouchPreview(false);
+      }}
+      onClick={(e) => handlePreviewTap(e)}
+      role={isVideo && canPlayInline && !playable ? "button" : undefined}
+      tabIndex={isVideo && canPlayInline && !playable ? 0 : undefined}
+      onKeyDown={(e) => {
+        if ((e.key === "Enter" || e.key === " ") && isVideo && canPlayInline && !playable) {
+          e.preventDefault();
+          setTouchPreview((v) => !v);
+        }
+      }}
     >
       {showVideo ? (
         <video
@@ -156,7 +175,7 @@ export function CreativePreview({
             type="button"
             onClick={handlePlayClick}
             disabled={loadingFullVideo}
-            className="absolute bottom-2 right-2 grid h-9 w-9 place-items-center rounded-full bg-black/70 text-white opacity-0 backdrop-blur-sm transition hover:bg-primary hover:opacity-100 group-hover:opacity-100"
+            className="absolute bottom-2 right-2 z-10 grid h-11 w-11 place-items-center rounded-full bg-black/75 text-white opacity-100 backdrop-blur-sm transition hover:bg-primary sm:h-9 sm:w-9 sm:opacity-0 sm:group-hover:opacity-100"
             aria-label="Смотреть видео"
           >
             {loadingFullVideo ? (
@@ -166,7 +185,7 @@ export function CreativePreview({
             )}
           </button>
         ) : (
-          <span className="pointer-events-none absolute bottom-2 right-2 grid h-8 w-8 place-items-center rounded-full bg-black/55 text-white opacity-0 transition group-hover:opacity-100">
+          <span className="pointer-events-none absolute bottom-2 right-2 grid h-10 w-10 place-items-center rounded-full bg-black/65 text-white opacity-100 sm:h-8 sm:w-8 sm:opacity-0 sm:group-hover:opacity-100">
             <Play className="h-3.5 w-3.5 fill-current" />
           </span>
         )

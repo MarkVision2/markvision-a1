@@ -111,7 +111,7 @@ export function CreativesGrid({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
         {visible.map((row) => {
           const { title, subtitle } = pickCreativeTitle({ name: row.name, headline: row.headline });
           const hasCrmRevenue = (row.crmRevenue ?? 0) > 0;
@@ -134,7 +134,7 @@ export function CreativesGrid({
                   effectiveStatus: row.effectiveStatus,
                 }}
                 fit="contain"
-                className="aspect-[9/16] w-full rounded-none"
+                className="mx-auto aspect-[9/16] w-full max-h-[min(52vh,440px)] max-w-[min(100%,300px)] rounded-lg sm:max-h-none sm:max-w-none sm:rounded-none"
               />
               <div className="p-3">
                 <div className="line-clamp-2 min-h-[2.5rem] text-xs font-semibold leading-snug" title={title}>

@@ -163,7 +163,7 @@ export function CreativeDetailDrawer({
         {/* Hero */}
         <div className="grid gap-0 md:grid-cols-[minmax(280px,360px)_1fr]">
           <div className="relative bg-black">
-            <CreativePreview row={row} playable className="aspect-[9/16] w-full" />
+            <CreativePreview row={row} playable fit="contain" className="mx-auto aspect-[9/16] w-full max-h-[min(60vh,520px)] max-w-[min(100%,340px)] sm:max-h-none sm:max-w-none" />
           </div>
 
           <div className="space-y-3 p-5">

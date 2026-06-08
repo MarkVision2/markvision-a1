@@ -17,6 +17,7 @@ import {
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPicker";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 type StatusFilter = "active" | "active_or_spent" | "all";
 type TypeFilter = "all" | "video" | "image" | "carousel";
@@ -47,6 +48,7 @@ function classifyCampaignWa(camp: MetaCampaignRow | undefined): { isWhatsApp: bo
 }
 
 export function AdsCreativesPanel() {
+  const isMobile = useIsMobile();
   const [range, setRange] = useState<ReportPeriodRange>(() => currentMonthRange());
   const [status, setStatus] = useState<StatusFilter>("active_or_spent");
   const [typeF, setTypeF] = useState<TypeFilter>("all");
@@ -57,7 +59,9 @@ export function AdsCreativesPanel() {
   const [syncing, setSyncing] = useState(false);
   const [cabinetFilter, setCabinetFilter] = useState<string>("all");
   const [visibleCount, setVisibleCount] = useState(48);
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [viewMode, setViewMode] = useState<"grid" | "list">(() =>
+    typeof window !== "undefined" && window.innerWidth < 768 ? "list" : "grid",
+  );
   const PAGE_SIZE = 48;
   const [searchParams, setSearchParams] = useSearchParams();
   const focusAdId = searchParams.get("ad");
@@ -150,54 +154,88 @@ export function AdsCreativesPanel() {
     }
   };
 
-  return (
-    <div className="space-y-4">
-      {/* Toolbar */}
-      <div className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-card/50 p-3 lg:flex-row lg:items-center lg:justify-between">
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Period */}
-          <PeriodPicker range={range} onChange={setRange} />
+  const filterSelectClass =
+    "h-11 shrink-0 rounded-xl border border-border/60 bg-background px-3 text-sm font-medium sm:h-9 sm:rounded-lg sm:px-2 sm:text-xs";
 
-          {/* Status */}
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value as StatusFilter)}
-            className="h-9 rounded-lg border border-border/60 bg-background px-2 text-xs font-medium"
+  return (
+    <div className="space-y-3 sm:space-y-4">
+      {/* Toolbar */}
+      <div className="space-y-3 rounded-2xl border border-border/60 bg-card/50 p-3">
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <PeriodPicker range={range} onChange={setRange} />
+          </div>
+          <div className="flex shrink-0 rounded-xl border border-border/60 bg-background p-0.5">
+            <button
+              type="button"
+              onClick={() => setViewMode("grid")}
+              className={cn(
+                "grid h-10 w-10 place-items-center rounded-lg transition sm:h-9 sm:w-9",
+                viewMode === "grid" ? "bg-secondary text-foreground" : "text-muted-foreground",
+              )}
+              aria-label="Сетка"
+              aria-pressed={viewMode === "grid"}
+            >
+              <LayoutGrid className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode("list")}
+              className={cn(
+                "grid h-10 w-10 place-items-center rounded-lg transition sm:h-9 sm:w-9",
+                viewMode === "list" ? "bg-secondary text-foreground" : "text-muted-foreground",
+              )}
+              aria-label="Список"
+              aria-pressed={viewMode === "list"}
+            >
+              <List className="h-4 w-4" />
+            </button>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-10 w-10 shrink-0 px-0 sm:h-9 sm:w-auto sm:px-3"
+            onClick={handleSync}
+            disabled={syncing}
+            aria-label="Обновить из Meta"
           >
-            <option value="active">Только активные</option>
-            <option value="active_or_spent">Активные + с расходом</option>
+            {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            <span className="hidden sm:inline sm:ml-2">Обновить из Meta</span>
+          </Button>
+        </div>
+
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Поиск: название, текст, ID"
+            className="h-11 rounded-xl border-border/60 bg-background pl-10 text-sm sm:h-9 sm:rounded-lg sm:text-xs"
+          />
+        </div>
+
+        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none touch-pan-x">
+          <select value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)} className={filterSelectClass}>
+            <option value="active">Активные</option>
+            <option value="active_or_spent">Активные + расход</option>
             <option value="all">Все</option>
           </select>
-
-          {/* Type */}
-          <select
-            value={typeF}
-            onChange={(e) => setTypeF(e.target.value as TypeFilter)}
-            className="h-9 rounded-lg border border-border/60 bg-background px-2 text-xs font-medium"
-          >
+          <select value={typeF} onChange={(e) => setTypeF(e.target.value as TypeFilter)} className={filterSelectClass}>
             <option value="all">Все типы</option>
             <option value="video">Видео</option>
             <option value="image">Фото</option>
             <option value="carousel">Карусель</option>
           </select>
-
-          {/* Goal */}
-          <select
-            value={goalF}
-            onChange={(e) => setGoalF(e.target.value as typeof goalF)}
-            className="h-9 rounded-lg border border-border/60 bg-background px-2 text-xs font-medium"
-          >
+          <select value={goalF} onChange={(e) => setGoalF(e.target.value as typeof goalF)} className={filterSelectClass}>
             <option value="all">Все цели</option>
             <option value="whatsapp">WhatsApp</option>
-            <option value="site">Сайт / лиды</option>
+            <option value="site">Сайт</option>
           </select>
-
-          {/* Cabinet */}
           {cabinets.length > 1 && (
             <select
               value={cabinetFilter}
               onChange={(e) => setCabinetFilter(e.target.value)}
-              className="h-9 max-w-[180px] truncate rounded-lg border border-border/60 bg-background px-2 text-xs font-medium"
+              className={cn(filterSelectClass, "max-w-[200px]")}
             >
               <option value="all">Все кабинеты</option>
               {cabinets.map((c) => (
@@ -205,58 +243,18 @@ export function AdsCreativesPanel() {
               ))}
             </select>
           )}
-
-          {/* Sort */}
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as SortKey)}
-            className="h-9 rounded-lg border border-border/60 bg-background px-2 text-xs font-medium"
-          >
+          <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className={filterSelectClass}>
             {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
-              <option key={k} value={k}>Сортировка: {SORT_LABELS[k]}</option>
+              <option key={k} value={k}>{SORT_LABELS[k]}</option>
             ))}
           </select>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="relative min-w-0 flex-1 md:flex-none">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Название / текст / ID"
-              className="h-9 w-full rounded-lg border-border/60 bg-background pl-8 text-xs lg:w-56"
-            />
-          </div>
-          <div className="flex rounded-lg border border-border/60 bg-background p-0.5">
-            <button
-              type="button"
-              onClick={() => setViewMode("grid")}
-              className={cn(
-                "grid h-8 w-8 place-items-center rounded-md transition",
-                viewMode === "grid" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-              aria-label="Сетка"
-            >
-              <LayoutGrid className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("list")}
-              className={cn(
-                "grid h-8 w-8 place-items-center rounded-md transition",
-                viewMode === "list" ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground",
-              )}
-              aria-label="Список"
-            >
-              <List className="h-3.5 w-3.5" />
-            </button>
-          </div>
-          <Button variant="outline" size="sm" className="h-9" onClick={handleSync} disabled={syncing}>
-            {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            Обновить из Meta
-          </Button>
-        </div>
+        {isMobile && (
+          <p className="text-[11px] text-muted-foreground">
+            На телефоне удобнее режим «Список» — креатив крупнее, метрики под ним.
+          </p>
+        )}
       </div>
 
       {/* Stats line */}
@@ -287,7 +285,7 @@ export function AdsCreativesPanel() {
 
       {/* Grid */}
       {filtered.length > 0 && viewMode === "grid" && (
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {visible.map(({ row, isWhatsApp }) => (
             <CreativeCard
               key={row.id}
@@ -302,7 +300,7 @@ export function AdsCreativesPanel() {
       )}
 
       {filtered.length > 0 && viewMode === "list" && (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-3">
           {visible.map(({ row, isWhatsApp }) => (
             <CreativeCard
               key={row.id}
@@ -321,7 +319,7 @@ export function AdsCreativesPanel() {
           <Button
             variant="outline"
             size="sm"
-            className="rounded-xl"
+            className="h-11 w-full rounded-xl sm:h-9 sm:w-auto"
             onClick={() => setVisibleCount((n) => n + PAGE_SIZE)}
           >
             Показать ещё ({filtered.length - visible.length})
