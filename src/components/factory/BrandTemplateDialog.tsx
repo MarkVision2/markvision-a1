@@ -76,18 +76,18 @@ function UploadZone({ label, hint, accept, multiple, icon, onPick, disabled }: U
           'w-full rounded-xl border-2 border-dashed p-4 sm:p-5 text-left transition-colors',
           'border-border/60 bg-muted/20 hover:border-primary/40 hover:bg-primary/5',
           'disabled:opacity-50 disabled:pointer-events-none',
-          'min-h-[88px] touch-manipulation',
+          'min-h-[96px] touch-manipulation active:bg-primary/10',
         )}
       >
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
             {icon}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-foreground">Нажмите или перетащите файлы</p>
-            <p className="text-xs text-muted-foreground mt-0.5">{hint}</p>
+            <p className="text-sm font-medium text-foreground">Нажмите для загрузки</p>
+            <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground">{hint}</p>
           </div>
-          <Upload className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
+          <Upload className="mt-0.5 h-5 w-5 shrink-0 text-muted-foreground" />
         </div>
       </button>
       <input
@@ -214,21 +214,28 @@ export function BrandTemplateDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[min(92vh,900px)] overflow-y-auto p-4 sm:p-6">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-lg sm:text-xl">
-            <Sparkles className="h-5 w-5 text-primary shrink-0" />
+      <DialogContent
+        className={cn(
+          'flex max-h-[min(92vh,900px)] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl sm:gap-4 sm:p-6',
+          'max-sm:fixed max-sm:inset-0 max-sm:left-0 max-sm:top-0 max-sm:z-50 max-sm:h-[100dvh] max-sm:max-h-[100dvh] max-sm:w-full max-sm:max-w-none',
+          'max-sm:translate-x-0 max-sm:translate-y-0 max-sm:rounded-none',
+          'max-sm:pt-[env(safe-area-inset-top)] max-sm:pb-0',
+        )}
+      >
+        <DialogHeader className="shrink-0 space-y-1 border-b border-border/50 px-4 py-4 text-left sm:border-0 sm:p-0">
+          <DialogTitle className="flex items-center gap-2 pr-8 text-base sm:text-xl">
+            <Sparkles className="h-5 w-5 shrink-0 text-primary" />
             {isEdit ? 'Редактировать шаблон' : 'Создать шаблон бренда'}
           </DialogTitle>
-          <DialogDescription className="text-sm leading-relaxed">
+          <DialogDescription className="text-xs leading-relaxed sm:text-sm">
             Все поля сохраняются в шаблоне и передаются в генерацию: логотип, цвета, шрифты, тон,
             стиль, брендбук и референсы.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-2">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-4 sm:space-y-6 sm:px-0 sm:py-2">
           {/* Основное */}
-          <section className="space-y-3 rounded-xl border border-border/50 bg-card/30 p-4">
+          <section className="space-y-3 rounded-2xl border border-border/50 bg-card/30 p-4">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Основное
             </h3>
@@ -239,7 +246,7 @@ export function BrandTemplateDialog({
                 value={form.name}
                 onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                 placeholder="Например: Mir Bez Granits"
-                className="h-11"
+                className="h-12 text-base sm:h-11 sm:text-sm"
               />
             </div>
             <div className="space-y-2">
@@ -248,20 +255,20 @@ export function BrandTemplateDialog({
                 id="bt-desc"
                 value={form.description}
                 onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))}
-                rows={2}
+                rows={3}
                 placeholder="Кратко о бренде, ЦА, продукте..."
-                className="resize-none"
+                className="resize-none text-base sm:text-sm"
               />
             </div>
           </section>
 
           {/* Цвета и шрифты */}
-          <section className="space-y-3 rounded-xl border border-border/50 bg-card/30 p-4">
+          <section className="space-y-3 rounded-2xl border border-border/50 bg-card/30 p-4">
             <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               <Palette className="h-3.5 w-3.5" />
               Цвета и шрифты
             </h3>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3">
               {(['primary', 'secondary', 'accent'] as const).map((key) => (
                 <div key={key} className="space-y-1.5">
                   <Label className="text-xs capitalize">
@@ -277,7 +284,7 @@ export function BrandTemplateDialog({
                           colors: { ...f.colors, [key]: e.target.value },
                         }))
                       }
-                      className="h-11 w-full min-w-0 cursor-pointer rounded-lg border border-border bg-background"
+                      className="h-12 w-full min-w-0 cursor-pointer rounded-xl border border-border bg-background sm:h-11 sm:rounded-lg"
                     />
                   </div>
                   <p className="text-[10px] font-mono text-muted-foreground truncate">
@@ -294,7 +301,7 @@ export function BrandTemplateDialog({
                   onChange={(e) =>
                     setForm((f) => ({ ...f, fonts: { ...f.fonts, heading: e.target.value } }))
                   }
-                  className="h-10"
+                  className="h-12 text-base sm:h-10 sm:text-sm"
                 />
               </div>
               <div className="space-y-1.5">
@@ -304,14 +311,14 @@ export function BrandTemplateDialog({
                   onChange={(e) =>
                     setForm((f) => ({ ...f, fonts: { ...f.fonts, body: e.target.value } }))
                   }
-                  className="h-10"
+                  className="h-12 text-base sm:h-10 sm:text-sm"
                 />
               </div>
             </div>
           </section>
 
           {/* Стиль */}
-          <section className="space-y-3 rounded-xl border border-border/50 bg-card/30 p-4">
+          <section className="space-y-3 rounded-2xl border border-border/50 bg-card/30 p-4">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Стиль и тон
             </h3>
@@ -322,7 +329,7 @@ export function BrandTemplateDialog({
                 value={form.tone}
                 onChange={(e) => setForm((f) => ({ ...f, tone: e.target.value }))}
                 placeholder="Премиум, дружелюбный, экспертный..."
-                className="h-10"
+                className="h-12 text-base sm:h-10 sm:text-sm"
               />
             </div>
             <div className="space-y-2">
@@ -331,9 +338,9 @@ export function BrandTemplateDialog({
                 id="bt-style"
                 value={form.style_notes}
                 onChange={(e) => setForm((f) => ({ ...f, style_notes: e.target.value }))}
-                rows={2}
+                rows={3}
                 placeholder="Минимализм, много воздуха, фото с людьми..."
-                className="resize-none"
+                className="resize-none text-base sm:text-sm"
               />
             </div>
             <div className="space-y-2">
@@ -342,15 +349,15 @@ export function BrandTemplateDialog({
                 id="bt-addon"
                 value={form.prompt_addon}
                 onChange={(e) => setForm((f) => ({ ...f, prompt_addon: e.target.value }))}
-                rows={2}
+                rows={3}
                 placeholder="Запреты, обязательные элементы, формулировки..."
-                className="resize-none"
+                className="resize-none text-base sm:text-sm"
               />
             </div>
           </section>
 
           {/* Файлы */}
-          <section className="space-y-4 rounded-xl border border-border/50 bg-card/30 p-4">
+          <section className="space-y-4 rounded-2xl border border-border/50 bg-card/30 p-4">
             <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               <ImagePlus className="h-3.5 w-3.5" />
               Логотип, референсы и брендбук
@@ -527,7 +534,7 @@ export function BrandTemplateDialog({
           </section>
 
           {/* Default */}
-          <div className="flex items-center justify-between gap-4 rounded-xl border border-border/50 bg-card/30 p-4">
+          <div className="flex min-h-[56px] items-center justify-between gap-4 rounded-2xl border border-border/50 bg-card/30 p-4">
             <div className="min-w-0">
               <Label htmlFor="bt-default" className="text-sm font-medium">
                 Шаблон по умолчанию
@@ -544,19 +551,24 @@ export function BrandTemplateDialog({
           </div>
         </div>
 
-        <DialogFooter className="flex-col-reverse sm:flex-row gap-2 pt-2">
+        <DialogFooter
+          className={cn(
+            'shrink-0 flex-col-reverse gap-2 border-t border-border/50 bg-background p-4 sm:flex-row sm:border-0 sm:p-0 sm:pt-2',
+            'pb-[calc(1rem+env(safe-area-inset-bottom,0px))] sm:pb-0',
+          )}
+        >
           <Button
             variant="outline"
             onClick={() => handleClose(false)}
             disabled={saving}
-            className="w-full sm:w-auto min-h-[44px]"
+            className="min-h-[48px] w-full sm:min-h-[44px] sm:w-auto"
           >
             Отмена
           </Button>
           <Button
             onClick={handleSave}
             disabled={!form.name.trim() || saving}
-            className="w-full sm:w-auto min-h-[44px]"
+            className="min-h-[48px] w-full sm:min-h-[44px] sm:w-auto"
           >
             {saving ? (
               <>
