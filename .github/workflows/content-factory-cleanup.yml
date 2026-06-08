@@ -25,6 +25,9 @@ concurrency:
   group: content-factory-cleanup
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 env:
   CLEANUP_URL: https://mekwfbqmsqiborjdrjxc.supabase.co/functions/v1/content-factory-cleanup
   CONTENT_FACTORY_CLEANUP_KEY: ${{ secrets.CONTENT_FACTORY_CLEANUP_KEY }}

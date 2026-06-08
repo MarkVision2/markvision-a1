@@ -6,7 +6,7 @@
 // Возвращает: { ok, sent: boolean, event_name, fb_response, score_delta }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { requireUser } from "../_lib/auth.ts";
+import { requireUser, requireCabinetAccess, requireLeadAccess } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -78,6 +78,16 @@ Deno.serve(async (req) => {
         JSON.stringify({ ok: false, error: "stage_key required" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
+    }
+
+    if (lead_id) {
+      const leadAccess = await requireLeadAccess(auth.authHeader, String(lead_id));
+      if (!leadAccess.ok) return leadAccess.response;
+    }
+
+    if (cabinet_id) {
+      const cabinetAccess = await requireCabinetAccess(auth.authHeader, String(cabinet_id));
+      if (!cabinetAccess.ok) return cabinetAccess.response;
     }
 
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;

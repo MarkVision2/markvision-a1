@@ -24,8 +24,10 @@ interface Props {
 
 function genPassword() {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
   let out = "";
-  for (let i = 0; i < 12; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < 12; i++) out += chars[bytes[i] % chars.length];
   return out;
 }
 
