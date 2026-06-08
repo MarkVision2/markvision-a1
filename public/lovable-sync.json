@@ -1,7 +1,7 @@
 {
-  "git_sha": "756c4b4",
-  "git_sha_full": "756c4b452afd094cc9e9d9d63bec7fb159583deb",
-  "updated_at": "2026-06-07T17:37:27Z",
-  "label": "feat(ads): redesign creatives grid — no crop, list view, readable labels",
+  "git_sha": "64bc9cc",
+  "git_sha_full": "64bc9cc8261ea74f8244722b299dd0848a7acc47",
+  "updated_at": "2026-06-08T07:14:44Z",
+  "label": "feat(ads): mobile-first creatives layout — readable previews and touch UX",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
