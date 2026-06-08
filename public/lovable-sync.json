@@ -1,7 +1,7 @@
 {
-  "git_sha": "64bc9cc",
-  "git_sha_full": "64bc9cc8261ea74f8244722b299dd0848a7acc47",
-  "updated_at": "2026-06-08T07:14:44Z",
-  "label": "feat(ads): mobile-first creatives layout — readable previews and touch UX",
+  "git_sha": "1e5735c",
+  "git_sha_full": "1e5735cb09ca86ec54d892fac31e7437bda0a502",
+  "updated_at": "2026-06-08T09:31:14Z",
+  "label": "Improve Content Factory cards and brand template workflow",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
