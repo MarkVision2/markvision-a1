@@ -5,6 +5,7 @@ import type { Lead, LeadChannel } from "@/types/crm";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
+import { sanitizeHref } from "@/lib/safeUrl";
 
 const CHANNELS: { id: LeadChannel; label: string }[] = [
   { id: "whatsapp", label: "WhatsApp" },
@@ -113,17 +114,24 @@ export function LeadProfileTab({ lead, onUpdate }: Props) {
         )}
         {(lead.referrer || lead.landingUrl) && (
           <div className="mt-3 space-y-1.5 border-t border-border/60 pt-2 text-[11px]">
-            {lead.landingUrl && (
-              <div className="flex items-start gap-1.5 text-muted-foreground">
-                <Globe className="mt-0.5 h-3 w-3 shrink-0" />
-                <span className="truncate">
-                  Landing:{" "}
-                  <a href={lead.landingUrl} target="_blank" rel="noreferrer" className="text-foreground hover:underline">
-                    {lead.landingUrl}
-                  </a>
-                </span>
-              </div>
-            )}
+            {lead.landingUrl && (() => {
+              const safe = sanitizeHref(lead.landingUrl);
+              return (
+                <div className="flex items-start gap-1.5 text-muted-foreground">
+                  <Globe className="mt-0.5 h-3 w-3 shrink-0" />
+                  <span className="truncate">
+                    Landing:{" "}
+                    {safe ? (
+                      <a href={safe} target="_blank" rel="noreferrer noopener" className="text-foreground hover:underline">
+                        {lead.landingUrl}
+                      </a>
+                    ) : (
+                      <span className="text-foreground">{lead.landingUrl}</span>
+                    )}
+                  </span>
+                </div>
+              );
+            })()}
             {lead.referrer && (
               <div className="flex items-start gap-1.5 text-muted-foreground">
                 <ExternalLink className="mt-0.5 h-3 w-3 shrink-0" />

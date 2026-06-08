@@ -126,7 +126,7 @@ function normalizeActId(id: string) {
   if (!t) return "";
   if (/^act_\d+$/i.test(t)) return `act_${t.replace(/^act_/i, "")}`;
   if (/^\d+$/.test(t)) return `act_${t}`;
-  return t;
+  return "";
 }
 
 /** User must have RLS access to a cabinet matching this Meta ad account id. */
@@ -135,15 +135,17 @@ export async function requireMetaAdAccountAccess(
   rawActId: string,
 ): Promise<{ ok: true } | { ok: false; response: Response }> {
   const act = normalizeActId(rawActId);
-  const bare = act.replace(/^act_/i, "");
-  if (!act) {
+  if (!act || !/^act_\d+$/.test(act)) {
     return { ok: false, response: jsonError("actId required", 400) };
   }
+  const bare = act.slice(4);
   const client = createUserClient(authHeader);
   const { data, error } = await client
     .from("ad_cabinets")
     .select("id")
-    .or(`external_id.eq.${act},ad_account_id.eq.${act},external_id.eq.${bare},ad_account_id.eq.${bare}`)
+    .or(
+      `external_id.eq.${act},ad_account_id.eq.${act},external_id.eq.${bare},ad_account_id.eq.${bare}`,
+    )
     .limit(1)
     .maybeSingle();
   if (error || !data) {

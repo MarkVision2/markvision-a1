@@ -112,10 +112,17 @@ Deno.serve(async (req) => {
     let scoreDelta = 0;
     let isPaid = false;
 
+    if (!Object.prototype.hasOwnProperty.call(STAGE_MAP, stage_key)) {
+      return new Response(
+        JSON.stringify({ error: "unknown stage_key" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const { data: stage } = await supa
       .from("pipeline_stages")
       .select("capi_event, score_delta, is_paid, name")
-      .or(`name.eq.${stage_key}`)
+      .eq("name", stage_key)
       .limit(1)
       .maybeSingle();
 

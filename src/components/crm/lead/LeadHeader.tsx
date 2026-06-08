@@ -1,7 +1,8 @@
 import {
-  Star, Phone as PhoneIcon, MessageCircle, Tag, Link2,
+  Star, Phone as PhoneIcon, MessageCircle, Tag, Link2, Globe,
 } from "lucide-react";
 import { resolveLeadSource } from "@/lib/leadSource";
+import { sanitizeHref } from "@/lib/safeUrl";
 import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
@@ -182,20 +183,29 @@ function UtmStrip({ lead }: { lead: Lead }) {
 
       {hasAny && (lead.referrer || lead.landingUrl) && (
         <div className="mt-1.5 grid gap-0.5 border-t border-border/60 pt-1.5 text-[10px] text-muted-foreground">
-          {lead.landingUrl && (
-            <div className="flex items-start gap-1">
-              <Globe className="mt-0.5 h-3 w-3 shrink-0" />
-              <a
-                href={lead.landingUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="truncate text-foreground/80 hover:underline"
-                title={lead.landingUrl}
-              >
-                {lead.landingUrl}
-              </a>
-            </div>
-          )}
+          {lead.landingUrl && (() => {
+            const safeLanding = sanitizeHref(lead.landingUrl);
+            return (
+              <div className="flex items-start gap-1">
+                <Globe className="mt-0.5 h-3 w-3 shrink-0" />
+                {safeLanding ? (
+                  <a
+                    href={safeLanding}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="truncate text-foreground/80 hover:underline"
+                    title={lead.landingUrl}
+                  >
+                    {lead.landingUrl}
+                  </a>
+                ) : (
+                  <span className="truncate text-foreground/80" title={lead.landingUrl}>
+                    {lead.landingUrl}
+                  </span>
+                )}
+              </div>
+            );
+          })()}
           {lead.referrer && (
             <div className="flex items-start gap-1">
               <Link2 className="mt-0.5 h-3 w-3 shrink-0" />
