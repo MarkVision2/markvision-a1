@@ -116,8 +116,8 @@ export function ContentFactoryGallery({ active = true }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs leading-relaxed text-muted-foreground">
           Все генерации сохраняются автоматически — по сессиям, датам и типу контента.
           {items.length > 0 && (
             <span className="ml-1 font-medium text-foreground">
@@ -129,11 +129,11 @@ export function ContentFactoryGallery({ active = true }: Props) {
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 gap-1.5"
+          className="h-11 w-full gap-1.5 sm:h-8 sm:w-auto"
           disabled={loading}
           onClick={() => void load()}
         >
-          <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+          <RefreshCw className={cn("h-4 w-4 sm:h-3.5 sm:w-3.5", loading && "animate-spin")} />
           Обновить
         </Button>
       </div>
@@ -153,66 +153,72 @@ export function ContentFactoryGallery({ active = true }: Props) {
         </p>
       )}
 
-      {/* Category filters */}
-      <div className="flex flex-wrap gap-2">
-        {GALLERY_CATEGORY_FILTERS.map((f) => {
-          const realCount = f.id === "all" ? items.length : filterByCategory(items, f.id).length;
-          return (
-            <button
-              key={f.id}
-              type="button"
-              onClick={() => {
-                setCategory(f.id);
-                setSelected(new Set());
-              }}
-              className={cn(
-                "rounded-xl border px-3 py-1.5 text-xs font-medium transition-all",
-                category === f.id
-                  ? "border-primary bg-primary/10 text-primary shadow-glow"
-                  : "border-border bg-card text-muted-foreground hover:border-primary/40",
-              )}
-            >
-              {f.label}
-              <span className="ml-1.5 opacity-70">({realCount})</span>
-            </button>
-          );
-        })}
+      {/* Category filters — горизонтальный скролл на телефоне */}
+      <div className="-mx-3 overflow-x-auto px-3 scrollbar-none sm:mx-0 sm:overflow-visible sm:px-0">
+        <div className="flex w-max min-w-full gap-2 sm:w-auto sm:flex-wrap">
+          {GALLERY_CATEGORY_FILTERS.map((f) => {
+            const realCount = f.id === "all" ? items.length : filterByCategory(items, f.id).length;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => {
+                  setCategory(f.id);
+                  setSelected(new Set());
+                }}
+                className={cn(
+                  "shrink-0 rounded-xl border px-4 py-2.5 text-xs font-medium transition-all touch-manipulation",
+                  "min-h-[44px] sm:min-h-0 sm:py-1.5 sm:px-3",
+                  category === f.id
+                    ? "border-primary bg-primary/10 text-primary shadow-glow"
+                    : "border-border bg-card text-muted-foreground hover:border-primary/40",
+                )}
+              >
+                {f.label}
+                <span className="ml-1.5 opacity-70">({realCount})</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Bulk actions */}
       {filtered.length > 0 && (
-        <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border bg-card/60 px-3 py-2">
-          <label className="flex cursor-pointer items-center gap-2 text-xs font-medium">
+        <div className="space-y-2 rounded-xl border border-border bg-card/60 p-3 sm:flex sm:flex-wrap sm:items-center sm:gap-3 sm:space-y-0 sm:py-2">
+          <label className="flex min-h-[44px] cursor-pointer items-center gap-3 text-sm font-medium sm:min-h-0 sm:gap-2 sm:text-xs">
             <Checkbox
               checked={allVisibleSelected}
               onCheckedChange={() => toggleSelectAllVisible()}
               aria-label="Выбрать все на экране"
+              className="h-5 w-5"
             />
-            Выбрать все
+            Выбрать все ({filtered.length})
           </label>
-          {someSelected && (
+          <div className="flex flex-col gap-2 sm:ml-auto sm:flex-row sm:items-center">
+            {someSelected && (
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                className="h-11 gap-2 text-sm sm:h-7 sm:text-xs"
+                onClick={() => setDeleteMode("selected")}
+              >
+                <Trash2 className="h-4 w-4 sm:h-3 sm:w-3" />
+                Удалить выбранные ({selected.size})
+              </Button>
+            )}
             <Button
               type="button"
-              variant="destructive"
+              variant="outline"
               size="sm"
-              className="h-7 gap-1 text-xs"
-              onClick={() => setDeleteMode("selected")}
+              className="h-11 gap-2 text-sm text-destructive hover:text-destructive sm:h-7 sm:text-xs"
+              onClick={() => setDeleteMode("all_visible")}
             >
-              <Trash2 className="h-3 w-3" />
-              Удалить выбранные ({selected.size})
+              <Trash2 className="h-4 w-4 sm:h-3 sm:w-3" />
+              Удалить все ({filtered.length})
             </Button>
-          )}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-7 gap-1 text-xs text-destructive hover:text-destructive"
-            onClick={() => setDeleteMode("all_visible")}
-          >
-            <Trash2 className="h-3 w-3" />
-            Удалить все ({filtered.length})
-          </Button>
-          <span className="ml-auto text-[11px] text-muted-foreground">
+          </div>
+          <span className="text-center text-[11px] text-muted-foreground sm:ml-0 sm:text-left">
             Показано {filtered.length} из {items.length}
           </span>
         </div>
@@ -270,7 +276,7 @@ export function ContentFactoryGallery({ active = true }: Props) {
                       <button
                         type="button"
                         onClick={() => toggleSession(session.sessionId)}
-                        className="flex w-full items-center gap-3 px-4 py-3 text-left transition-colors hover:bg-secondary/30"
+                        className="flex w-full min-h-[56px] items-center gap-3 px-4 py-4 text-left transition-colors hover:bg-secondary/30 touch-manipulation sm:min-h-0 sm:py-3"
                       >
                         <FolderOpen className="h-4 w-4 shrink-0 text-primary" />
                         <div className="min-w-0 flex-1">
@@ -299,7 +305,7 @@ export function ContentFactoryGallery({ active = true }: Props) {
                       </button>
 
                       {!collapsed && (
-                        <div className="grid gap-3 border-t border-border p-3 sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="grid grid-cols-1 gap-3 border-t border-border p-3 sm:grid-cols-2 lg:grid-cols-3">
                           {session.items.map((item) => (
                             <GalleryCard
                               key={item.id}
@@ -390,33 +396,20 @@ function GalleryCard({
           checked={selected}
           onCheckedChange={onToggleSelect}
           aria-label="Выбрать креатив"
-          className="border-white/80 bg-black/40 data-[state=checked]:bg-primary"
+          className="h-5 w-5 border-white/80 bg-black/40 data-[state=checked]:bg-primary"
         />
       </div>
 
-      <div className="relative aspect-square bg-secondary/40">
+      <div className="relative aspect-[4/5] bg-secondary/40 sm:aspect-square">
         <img
           src={item.image_url}
           alt={item.style_label ?? "Креатив"}
-          className="h-full w-full object-cover"
+          className="h-full w-full object-contain sm:object-cover"
           loading="lazy"
         />
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-3 pt-10 opacity-0 transition-opacity group-hover:opacity-100">
-          <div className="flex gap-2">
-            <Button size="sm" variant="secondary" className="h-8 flex-1" asChild>
-              <a href={item.image_url} target="_blank" rel="noreferrer">
-                <ExternalLink className="mr-1 h-3.5 w-3.5" />
-                Открыть
-              </a>
-            </Button>
-            <Button size="sm" variant="destructive" className="h-8" onClick={() => void onDelete()}>
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        </div>
       </div>
 
-      <div className="space-y-1 p-3">
+      <div className="space-y-2 p-3">
         <div className="flex flex-wrap items-center gap-1.5">
           {item.style_label && (
             <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium text-foreground">
@@ -435,6 +428,38 @@ function GalleryCard({
         {item.prompt_snapshot && (
           <p className="line-clamp-2 text-[11px] text-foreground/70">{item.prompt_snapshot}</p>
         )}
+
+        {/* Кнопки всегда видны на телефоне — hover на мобильном не работает */}
+        <div className="flex gap-2 pt-1 sm:hidden">
+          <Button size="sm" variant="secondary" className="h-11 min-h-[44px] flex-1" asChild>
+            <a href={item.image_url} target="_blank" rel="noreferrer">
+              <ExternalLink className="mr-1.5 h-4 w-4" />
+              Открыть
+            </a>
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            className="h-11 min-h-[44px] min-w-[44px] px-3"
+            onClick={() => void onDelete()}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
+      </div>
+
+      <div className="absolute inset-x-0 bottom-0 hidden bg-gradient-to-t from-black/70 to-transparent p-3 pt-10 opacity-0 transition-opacity group-hover:opacity-100 sm:block">
+        <div className="flex gap-2">
+          <Button size="sm" variant="secondary" className="h-8 flex-1" asChild>
+            <a href={item.image_url} target="_blank" rel="noreferrer">
+              <ExternalLink className="mr-1 h-3.5 w-3.5" />
+              Открыть
+            </a>
+          </Button>
+          <Button size="sm" variant="destructive" className="h-8" onClick={() => void onDelete()}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
     </article>
   );

@@ -103,15 +103,15 @@ export function BrandTemplatePanel() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4 sm:space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <h2 className="text-lg sm:text-xl font-semibold">Шаблоны бренда</h2>
-          <p className="text-sm text-muted-foreground mt-0.5">
+          <h2 className="text-base font-semibold sm:text-xl">Шаблоны бренда</h2>
+          <p className="mt-0.5 text-xs leading-relaxed text-muted-foreground sm:text-sm">
             Цвета, шрифты, логотип и брендбук строго передаются в каждую генерацию
           </p>
         </div>
-        <Button onClick={openCreate} className="w-full sm:w-auto min-h-[44px] shrink-0">
+        <Button onClick={openCreate} className="hidden w-full min-h-[48px] shrink-0 sm:inline-flex sm:w-auto sm:min-h-[44px]">
           <Plus className="h-4 w-4 mr-2" />
           Создать шаблон
         </Button>
@@ -134,85 +134,86 @@ export function BrandTemplatePanel() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
           {templates.map((t) => (
             <Card
               key={t.id}
               className={cn(
-                'overflow-hidden transition-shadow hover:shadow-md',
+                'overflow-hidden transition-shadow active:scale-[0.99] touch-manipulation',
+                'hover:shadow-md',
                 t.is_default && 'ring-2 ring-primary/30',
               )}
             >
               <CardContent className="p-0">
-                {/* Color strip */}
-                <div className="flex h-2">
+                <div className="flex h-2.5 sm:h-2">
                   <div className="flex-1" style={{ backgroundColor: t.colors.primary }} />
                   <div className="flex-1" style={{ backgroundColor: t.colors.secondary }} />
                   <div className="flex-1" style={{ backgroundColor: t.colors.accent }} />
                 </div>
 
-                <div className="p-4 space-y-3">
-                  <div className="flex items-start gap-3">
+                <div className="space-y-3 p-4">
+                  <div className="flex items-center gap-3">
                     {t.logo_url ? (
                       <img
                         src={t.logo_url}
                         alt=""
-                        className="h-12 w-12 rounded-lg object-contain border border-border/50 bg-muted/30 shrink-0"
+                        className="h-14 w-14 rounded-xl object-contain border border-border/50 bg-muted/30 shrink-0 sm:h-12 sm:w-12 sm:rounded-lg"
                       />
                     ) : (
-                      <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                        <Palette className="h-5 w-5 text-muted-foreground" />
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-muted sm:h-12 sm:w-12 sm:rounded-lg">
+                        <Palette className="h-6 w-6 text-muted-foreground sm:h-5 sm:w-5" />
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-semibold truncate">{t.name}</h3>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="text-base font-semibold leading-tight sm:text-sm sm:font-semibold">{t.name}</h3>
                         {t.is_default && (
-                          <Badge variant="secondary" className="text-[10px] gap-1 shrink-0">
+                          <Badge variant="secondary" className="shrink-0 gap-1 text-[10px]">
                             <Star className="h-3 w-3 fill-current" />
                             По умолчанию
                           </Badge>
                         )}
                       </div>
                       {t.description && (
-                        <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
                           {t.description}
                         </p>
                       )}
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-1.5 text-[10px] text-muted-foreground">
-                    <span className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-2 py-0.5">
-                      <ImageIcon className="h-3 w-3" />
+                  <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-muted/50 px-2.5 py-1">
+                      <ImageIcon className="h-3.5 w-3.5" />
                       {t.reference_urls.length} реф.
                     </span>
-                    <span className="inline-flex items-center gap-1 rounded-md bg-muted/50 px-2 py-0.5">
-                      <BookOpen className="h-3 w-3" />
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-muted/50 px-2.5 py-1">
+                      <BookOpen className="h-3.5 w-3.5" />
                       {t.brandbook_urls.length} брендбук
                     </span>
                     {t.tone && (
-                      <span className="rounded-md bg-muted/50 px-2 py-0.5 truncate max-w-[120px]">
+                      <span className="max-w-full truncate rounded-lg bg-muted/50 px-2.5 py-1 sm:max-w-[120px]">
                         {t.tone}
                       </span>
                     )}
                   </div>
 
-                  <div className="flex gap-2 pt-1">
+                  <div className="flex gap-2 pt-0.5">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="flex-1 min-h-[40px]"
+                      className="min-h-[48px] flex-1 text-sm sm:min-h-[40px] sm:text-xs"
                       onClick={() => openEdit(t)}
                     >
-                      <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                      <Pencil className="mr-2 h-4 w-4 sm:mr-1.5 sm:h-3.5 sm:w-3.5" />
                       Изменить
                     </Button>
                     <Button
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
-                      className="min-h-[40px] min-w-[40px] px-2 text-destructive hover:text-destructive"
+                      className="min-h-[48px] min-w-[48px] px-0 text-destructive hover:text-destructive sm:min-h-[40px] sm:min-w-[40px]"
                       onClick={() => setDeleteId(t.id)}
+                      aria-label="Удалить шаблон"
                     >
                       <Trash2 className="h-4 w-4" />
                     </Button>
@@ -223,6 +224,15 @@ export function BrandTemplatePanel() {
           ))}
         </div>
       )}
+
+      {/* Плавающая кнопка создания на телефоне */}
+      <div className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] z-40 px-4 pb-2 sm:hidden">
+        <Button onClick={openCreate} className="h-12 w-full shadow-lg">
+          <Plus className="mr-2 h-5 w-5" />
+          Создать шаблон
+        </Button>
+      </div>
+      <div className="h-14 sm:hidden" aria-hidden />
 
       <BrandTemplateDialog
         open={dialogOpen}
