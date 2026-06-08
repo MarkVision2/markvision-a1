@@ -31,30 +31,48 @@ export interface BrandTemplate {
   updated_at: string;
 }
 
+const IMAGE_URL_RE = /\.(jpe?g|png|gif|webp|avif|bmp)(\?|#|$)/i;
+
+export function isBrandImageUrl(url: string): boolean {
+  return IMAGE_URL_RE.test(url);
+}
+
 export function brandPromptBlock(template: BrandTemplate): string {
   const lines: string[] = [
-    `Бренд-шаблон: ${template.name}.`,
+    `=== БРЕНД-ШАБЛОН (строго соблюдать) ===`,
+    `Название: ${template.name}`,
   ];
   if (template.description?.trim()) lines.push(`Описание бренда: ${template.description.trim()}`);
-  if (template.tone?.trim()) lines.push(`Тон бренда: ${template.tone.trim()}`);
+  if (template.tone?.trim()) lines.push(`Тон коммуникации: ${template.tone.trim()}`);
   if (template.style_notes?.trim()) lines.push(`Стиль и визуал: ${template.style_notes.trim()}`);
+
   const c = template.colors ?? {};
-  const colorBits = [c.primary, c.secondary, c.accent].filter(Boolean);
-  if (colorBits.length) lines.push(`Фирменные цвета: ${colorBits.join(", ")}.`);
+  lines.push(
+    `Фирменные цвета (обязательно): основной ${c.primary || "—"}, вторичный ${c.secondary || "—"}, акцент ${c.accent || "—"}.`,
+  );
+
   const f = template.fonts ?? {};
-  if (f.heading || f.body) {
+  lines.push(
+    `Шрифты (обязательно): заголовки — ${f.heading || "по гайду бренда"}, текст — ${f.body || "по гайду бренда"}.`,
+  );
+
+  if (template.prompt_addon?.trim()) {
+    lines.push(`Дополнительные правила бренда: ${template.prompt_addon.trim()}`);
+  }
+  if (template.logo_url) {
+    lines.push("Логотип: используй brand_logo_url / image_urls[0] — не менять пропорции и цвета логотипа.");
+  }
+  if (template.reference_urls?.length) {
     lines.push(
-      `Шрифты: заголовки — ${f.heading || "по бренду"}, основной текст — ${f.body || "по бренду"}.`,
+      `Референсы стиля (${template.reference_urls.length} шт.): копируй композицию, свет, настроение — brand_reference_urls / image_urls.`,
     );
   }
-  if (template.prompt_addon?.trim()) lines.push(template.prompt_addon.trim());
-  if (template.logo_url) lines.push("Используй логотип из brand_logo_url / image_urls.");
-  if (template.reference_urls?.length) {
-    lines.push(`Референсы стиля (${template.reference_urls.length} шт.) — в brand_reference_urls / image_urls.`);
-  }
   if (template.brandbook_urls?.length) {
-    lines.push(`Материалы брендбука (${template.brandbook_urls.length} шт.) — в brand_brandbook_urls.`);
+    lines.push(
+      `Брендбук (${template.brandbook_urls.length} файл.): строго следуй brand_brandbook_urls — цвета, отступы, типографика, запреты.`,
+    );
   }
+  lines.push("=== КОНЕЦ БРЕНД-ШАБЛОНА ===");
   return lines.join("\n");
 }
 
@@ -108,13 +126,16 @@ export function buildBrandWebhookFields(template: BrandTemplate | null): Record<
   };
 }
 
-/** URL бренда для image_urls (логотип + референсы). */
+/** URL бренда для image_urls: логотип + референсы + изображения из брендбука. */
 export function brandImageUrls(template: BrandTemplate | null): string[] {
   if (!template) return [];
   const urls: string[] = [];
   if (template.logo_url) urls.push(template.logo_url);
   for (const u of template.reference_urls ?? []) {
     if (u && !urls.includes(u)) urls.push(u);
+  }
+  for (const u of template.brandbook_urls ?? []) {
+    if (u && isBrandImageUrl(u) && !urls.includes(u)) urls.push(u);
   }
   return urls;
 }

@@ -44,4 +44,28 @@ describe("contentFactoryBrand", () => {
       "https://cdn.example/ref1.png",
     ]);
   });
+
+  it("includes brandbook images in image_urls but not PDFs", () => {
+    const withBookImages: BrandTemplate = {
+      ...sample,
+      brandbook_urls: [
+        "https://cdn.example/book.pdf",
+        "https://cdn.example/palette.png",
+        "https://cdn.example/typography.webp",
+      ],
+    };
+    expect(brandImageUrls(withBookImages)).toEqual([
+      "https://cdn.example/logo.png",
+      "https://cdn.example/ref1.png",
+      "https://cdn.example/palette.png",
+      "https://cdn.example/typography.webp",
+    ]);
+  });
+
+  it("brand prompt block marks strict compliance", () => {
+    const block = brandPromptBlock(sample);
+    expect(block).toContain("=== БРЕНД-ШАБЛОН");
+    expect(block).toContain("строго соблюдать");
+    expect(block).toContain("=== КОНЕЦ БРЕНД-ШАБЛОНА ===");
+  });
 });

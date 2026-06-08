@@ -8,6 +8,8 @@ import {
   uploadBrandAssets,
 } from "@/lib/contentFactoryStorage";
 
+export type { BrandTemplate } from "@/lib/contentFactoryBrand";
+
 export type BrandTemplateInput = {
   name: string;
   description?: string;
@@ -45,6 +47,89 @@ function rowToTemplate(row: Record<string, unknown>): BrandTemplate {
   };
 }
 
+function assertUploads(input: {
+  logoFile?: File | null;
+  logoUrl: string | null;
+  referenceFiles?: File[];
+  uploadedRefs: string[];
+  brandbookFiles?: File[];
+  uploadedBooks: string[];
+}) {
+  if (input.logoFile && !input.logoUrl) {
+    throw new Error("Не удалось загрузить логотип. Проверьте Clony Supabase Storage (bucket content-factory).");
+  }
+  const refExpected = input.referenceFiles?.length ?? 0;
+  if (refExpected > 0 && input.uploadedRefs.length < refExpected) {
+    throw new Error(
+      `Загружено ${input.uploadedRefs.length} из ${refExpected} референсов. Повторите или уменьшите размер файлов.`,
+    );
+  }
+  const bookExpected = input.brandbookFiles?.length ?? 0;
+  if (bookExpected > 0 && input.uploadedBooks.length < bookExpected) {
+    throw new Error(
+      `Загружено ${input.uploadedBooks.length} из ${bookExpected} файлов брендбука. Повторите загрузку.`,
+    );
+  }
+}
+
+async function uploadBrandFiles(
+  input: BrandTemplateInput,
+  projectId: string,
+  templateId: string,
+  existing?: Pick<BrandTemplate, "logo_url" | "reference_urls" | "brandbook_urls">,
+) {
+  let logoUrl = input.logo_url ?? existing?.logo_url ?? null;
+  const referenceUrls = [...(input.reference_urls ?? existing?.reference_urls ?? [])];
+  const brandbookUrls = [...(input.brandbook_urls ?? existing?.brandbook_urls ?? [])];
+
+  if (input.logoFile) {
+    logoUrl = await uploadBrandAsset(input.logoFile, projectId, templateId, "logo");
+  }
+  const uploadedRefs = input.referenceFiles?.length
+    ? await uploadBrandAssets(input.referenceFiles, projectId, templateId, "reference")
+    : [];
+  const uploadedBooks = input.brandbookFiles?.length
+    ? await uploadBrandAssets(input.brandbookFiles, projectId, templateId, "brandbook")
+    : [];
+
+  assertUploads({
+    logoFile: input.logoFile,
+    logoUrl,
+    referenceFiles: input.referenceFiles,
+    uploadedRefs,
+    brandbookFiles: input.brandbookFiles,
+    uploadedBooks,
+  });
+
+  return {
+    logoUrl,
+    referenceUrls: [...referenceUrls, ...uploadedRefs],
+    brandbookUrls: [...brandbookUrls, ...uploadedBooks],
+  };
+}
+
+function buildRowPayload(input: BrandTemplateInput, userId: string | undefined, files: {
+  logoUrl: string | null;
+  referenceUrls: string[];
+  brandbookUrls: string[];
+}) {
+  return {
+    name: input.name.trim(),
+    description: input.description?.trim() || null,
+    colors: input.colors ?? {},
+    fonts: input.fonts ?? {},
+    tone: input.tone?.trim() || null,
+    style_notes: input.style_notes?.trim() || null,
+    prompt_addon: input.prompt_addon?.trim() || null,
+    logo_url: files.logoUrl,
+    reference_urls: files.referenceUrls,
+    brandbook_urls: files.brandbookUrls,
+    is_default: input.is_default ?? false,
+    updated_at: new Date().toISOString(),
+    ...(userId ? { created_by: userId } : {}),
+  };
+}
+
 export function useBrandTemplates() {
   const { user } = useAuth();
   const { activeId: projectId } = useProjectsStore();
@@ -77,51 +162,31 @@ export function useBrandTemplates() {
     void load();
   }, [load]);
 
+  const clearDefault = useCallback(async () => {
+    if (!projectId || !sb) return;
+    await sb
+      .from("content_factory_brand_templates")
+      .update({ is_default: false })
+      .eq("project_id", projectId);
+  }, [projectId, sb]);
+
   const createTemplate = useCallback(
     async (input: BrandTemplateInput): Promise<BrandTemplate | null> => {
-      if (!projectId || !sb || !input.name.trim()) return null;
+      if (!projectId || !sb || !input.name.trim()) {
+        throw new Error("Выберите проект и укажите название шаблона");
+      }
 
       const tempId = crypto.randomUUID();
-      let logoUrl = input.logo_url ?? null;
-      const referenceUrls = [...(input.reference_urls ?? [])];
-      const brandbookUrls = [...(input.brandbook_urls ?? [])];
+      const files = await uploadBrandFiles(input, projectId, tempId);
 
-      if (input.logoFile) {
-        logoUrl = await uploadBrandAsset(input.logoFile, projectId, tempId, "logo");
-      }
-      const uploadedRefs = input.referenceFiles?.length
-        ? await uploadBrandAssets(input.referenceFiles, projectId, tempId, "reference")
-        : [];
-      const uploadedBooks = input.brandbookFiles?.length
-        ? await uploadBrandAssets(input.brandbookFiles, projectId, tempId, "brandbook")
-        : [];
-      const allReferenceUrls = [...referenceUrls, ...uploadedRefs];
-      const allBrandbookUrls = [...brandbookUrls, ...uploadedBooks];
-
-      if (input.is_default) {
-        await sb
-          .from("content_factory_brand_templates")
-          .update({ is_default: false })
-          .eq("project_id", projectId);
-      }
+      if (input.is_default) await clearDefault();
 
       const { data, error } = await sb
         .from("content_factory_brand_templates")
         .insert({
           id: tempId,
           project_id: projectId,
-          created_by: user?.id ?? null,
-          name: input.name.trim(),
-          description: input.description?.trim() || null,
-          colors: input.colors ?? {},
-          fonts: input.fonts ?? {},
-          tone: input.tone?.trim() || null,
-          style_notes: input.style_notes?.trim() || null,
-          prompt_addon: input.prompt_addon?.trim() || null,
-          logo_url: logoUrl,
-          reference_urls: allReferenceUrls,
-          brandbook_urls: allBrandbookUrls,
-          is_default: input.is_default ?? false,
+          ...buildRowPayload(input, user?.id, files),
         })
         .select("*")
         .single();
@@ -131,7 +196,36 @@ export function useBrandTemplates() {
       await load();
       return created;
     },
-    [projectId, sb, user?.id, load],
+    [projectId, sb, user?.id, load, clearDefault],
+  );
+
+  const updateTemplate = useCallback(
+    async (id: string, input: BrandTemplateInput): Promise<BrandTemplate | null> => {
+      if (!projectId || !sb || !input.name.trim()) {
+        throw new Error("Выберите проект и укажите название шаблона");
+      }
+
+      const existing = templates.find((t) => t.id === id);
+      if (!existing) throw new Error("Шаблон не найден");
+
+      const files = await uploadBrandFiles(input, projectId, id, existing);
+
+      if (input.is_default) await clearDefault();
+
+      const { data, error } = await sb
+        .from("content_factory_brand_templates")
+        .update(buildRowPayload(input, user?.id, files))
+        .eq("id", id)
+        .eq("project_id", projectId)
+        .select("*")
+        .single();
+
+      if (error) throw new Error(error.message);
+      const updated = rowToTemplate(data as Record<string, unknown>);
+      await load();
+      return updated;
+    },
+    [projectId, sb, user?.id, templates, load, clearDefault],
   );
 
   const deleteTemplate = useCallback(
@@ -152,5 +246,15 @@ export function useBrandTemplates() {
     [templates],
   );
 
-  return { templates, loading, load, createTemplate, deleteTemplate, getById, projectId };
+  return {
+    templates,
+    loading,
+    load,
+    createTemplate,
+    updateTemplate,
+    deleteTemplate,
+    getById,
+    projectId,
+    isConfigured: Boolean(sb),
+  };
 }
