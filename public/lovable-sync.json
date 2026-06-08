@@ -1,7 +1,7 @@
 {
-  "git_sha": "1e5735c",
-  "git_sha_full": "1e5735cb09ca86ec54d892fac31e7437bda0a502",
-  "updated_at": "2026-06-08T09:31:14Z",
-  "label": "Improve Content Factory cards and brand template workflow",
+  "git_sha": "ef501df",
+  "git_sha_full": "ef501dfea1c99601b35d725d1afdd9342c7fa204",
+  "updated_at": "2026-06-08T09:41:59Z",
+  "label": "Merge branch 'cursor/content-factory-mobile-ux-3bd5'",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
