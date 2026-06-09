@@ -18,6 +18,8 @@ export type Project = {
   initials: string;
   isPrimary?: boolean;
   intakeToken?: string;
+  /** Instagram-ник без @ — для подписи на креативах (webhook username). */
+  creativeUsername?: string;
 };
 
 function makeInitials(name: string) {
@@ -33,6 +35,7 @@ type Row = {
   initials: string;
   is_primary: boolean;
   intake_token?: string | null;
+  creative_username?: string | null;
 };
 
 const toProject = (r: Row): Project => ({
@@ -42,6 +45,7 @@ const toProject = (r: Row): Project => ({
   initials: r.initials,
   isPrimary: r.is_primary,
   intakeToken: r.intake_token ?? undefined,
+  creativeUsername: r.creative_username ?? undefined,
 });
 
 function describeProjectDbError(error: PostgrestError | null, needsAuth: boolean): string {
@@ -206,7 +210,43 @@ export function useProjectsStore() {
     [refetch],
   );
 
+  const updateCreativeUsername = useCallback(
+    async (projectId: string, raw: string) => {
+      const { data, error } = await supabase.rpc("set_project_creative_username", {
+        p_project_id: projectId,
+        p_username: raw.trim() || null,
+      });
+      if (error) {
+        if (/creative_username|column/i.test(error.message)) {
+          throw new Error(
+            "Колонка creative_username ещё не в БД — примените миграцию 20260609190000_projects_creative_username.sql",
+          );
+        }
+        throw new Error(error.message || "Не удалось сохранить ник");
+      }
+      setProjects((prev) =>
+        prev.map((p) =>
+          p.id === projectId
+            ? { ...p, creativeUsername: (data as string | null) ?? undefined }
+            : p,
+        ),
+      );
+      await refetch();
+      return (data as string | null) ?? "";
+    },
+    [refetch],
+  );
+
   const active = projects.find((p) => p.id === activeId) ?? projects[0];
 
-  return { projects, active, activeId, addProject, removeProject, setActive, rotateIntakeToken };
+  return {
+    projects,
+    active,
+    activeId,
+    addProject,
+    removeProject,
+    setActive,
+    rotateIntakeToken,
+    updateCreativeUsername,
+  };
 }

@@ -5,6 +5,7 @@ import Hero from "@/components/factory/Hero";
 import ContentTypeGrid from "@/components/factory/ContentTypeGrid";
 import { ContentFactoryGallery } from "@/components/factory/ContentFactoryGallery";
 import { BrandTemplatePanel } from "@/components/factory/BrandTemplatePanel";
+import { CreativeUsernamePanel } from "@/components/factory/CreativeUsernamePanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { clearWizardState } from "@/lib/contentFactoryBrief";
 import { CONTENT_TYPES } from "@/data/contentTypes";
@@ -68,6 +69,7 @@ const Index = () => {
           </div>
 
           <TabsContent value="create" className="mt-4 sm:mt-6 focus-visible:outline-none">
+            <CreativeUsernamePanel />
             <ContentTypeGrid selectedId={selectedId} onSelect={handleSelect} />
           </TabsContent>
 

@@ -7,6 +7,7 @@
 ## Обязательно
 
 - JSON плоский на корне + полный дубль `body: { ...те же поля + вложенные блоки }`
+- `username` — **только если** в проекте задан Instagram-ник (Контент-завод → «Ник на креативах», без `@`). Пустой ник → ключ **не** попадает в JSON.
 - В `body` обязательно: `prompt`, `finalPrompt`, `technical_brief`, `user_brief`, `task`, `route`, `typeId`
 - В `body` также: `source_input`, `format`, `design`, `marketing`, `contentType`, `angles` (нейро)
 - Файлы **не** в multipart — только URL из Clony Storage (`content-factory-uploads`)
