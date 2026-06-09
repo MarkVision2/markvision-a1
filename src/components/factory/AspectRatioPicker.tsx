@@ -22,7 +22,7 @@ interface Props {
 
 export function AspectRatioPicker({ value, onChange, allowed }: Props) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
       {allowed.map((id) => {
         const a = ASPECT_META[id];
         const Icon = a.icon;
