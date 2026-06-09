@@ -1,7 +1,7 @@
 {
-  "git_sha": "84d7608",
-  "git_sha_full": "84d7608d87b6f58a000b17cc742ee46813743119",
-  "updated_at": "2026-06-09T09:42:13Z",
-  "label": "Merge branch 'cursor/logo-webhook-verify-3bd5'",
+  "git_sha": "f2834bc",
+  "git_sha_full": "f2834bcf7e96c57cb13dc1c427a4bdd60e7fe8f0",
+  "updated_at": "2026-06-09T09:48:19Z",
+  "label": "Merge branch 'cursor/fix-prompt-webhook-3bd5'",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
