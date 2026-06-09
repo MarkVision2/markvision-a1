@@ -1,7 +1,7 @@
 {
-  "git_sha": "f2834bc",
-  "git_sha_full": "f2834bcf7e96c57cb13dc1c427a4bdd60e7fe8f0",
-  "updated_at": "2026-06-09T09:48:19Z",
-  "label": "Merge branch 'cursor/fix-prompt-webhook-3bd5'",
+  "git_sha": "fc6afb7",
+  "git_sha_full": "fc6afb7c190625382ecf16ed0b77e8890b759f18",
+  "updated_at": "2026-06-09T09:58:16Z",
+  "label": "Merge branch 'cursor/content-factory-webhook-audit-3bd5'",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
