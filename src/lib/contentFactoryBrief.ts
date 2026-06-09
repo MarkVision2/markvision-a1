@@ -188,5 +188,6 @@ export function isBriefTooEmpty(state: WizardInputState): boolean {
       (state.photosCount ?? 0) > 0 ||
       (state.peoplePhotos?.length ?? 0) > 0 ||
       (state.peoplePhotosCount ?? 0) > 0);
-  return !hasText && !hasLink && !hasPhotos;
+  const hasLogo = Boolean(state.logoFile);
+  return !hasText && !hasLink && !hasPhotos && !hasLogo;
 }

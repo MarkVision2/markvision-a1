@@ -43,11 +43,11 @@ const LogoSource = ({ file, onChange }: LogoSourceProps) => {
           <BadgeCheck className="h-4 w-4" />
         </span>
         Логотип бренда
-        <span className="font-normal text-muted-foreground">(рекомендуется)</span>
+        <span className="font-normal text-muted-foreground">(достаточно для продолжения)</span>
       </div>
       <p className="mt-1.5 text-xs text-muted-foreground">
-        Загрузите логотип — AI изучит его форму, цвета и стиль и применит фирменный дизайн ко всему
-        контенту.
+        Загрузите логотип — этого хватит, чтобы перейти дальше. AI изучит форму, цвета и стиль бренда.
+        Фото товара и людей — по желанию.
       </p>
 
       {file && previewUrl ? (

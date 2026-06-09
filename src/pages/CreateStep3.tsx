@@ -646,7 +646,7 @@ const CreateStep3 = () => {
 
     if (!isNeuroPhoto && isBriefTooEmpty(wizardState)) {
       toast.error("ТЗ пустое", {
-        description: "Вернитесь на шаг 1: добавьте ссылку, описание или фото.",
+        description: "Вернитесь на шаг 1: добавьте ссылку, описание, логотип или фото.",
       });
       return;
     }
