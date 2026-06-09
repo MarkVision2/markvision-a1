@@ -8,6 +8,7 @@ import {
   normalizeCopyMode,
   type CopyMode,
 } from "@/lib/contentFactoryCopy";
+import { clearWizardFiles } from "@/lib/wizardFilesStore";
 
 export type WizardMode = "link" | "photo" | "description" | string | null;
 
@@ -76,6 +77,7 @@ export function clearWizardState(): void {
   } catch {
     /* ignore */
   }
+  clearWizardFiles();
 }
 
 export function buildUserBriefParts(state: WizardInputState): string[] {

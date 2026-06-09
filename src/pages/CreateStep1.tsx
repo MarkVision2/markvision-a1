@@ -11,6 +11,7 @@ import { ArrowLeft, ArrowRight, Link2, Image as ImageIcon, FileText } from "luci
 import { CONTENT_TYPES } from "@/data/contentTypes";
 import { CopyModePanel } from "@/components/factory/CopyModePanel";
 import { persistWizardState } from "@/lib/contentFactoryBrief";
+import { stashWizardFiles } from "@/lib/wizardFilesStore";
 import type { CopyMode } from "@/lib/contentFactoryCopy";
 import { BrandTemplatePicker } from "@/components/factory/BrandTemplatePicker";
 import { useBrandTemplates } from "@/hooks/useBrandTemplates";
@@ -233,6 +234,7 @@ const CreateStep1 = () => {
                 logoFile,
                 brandTemplateId,
               };
+              stashWizardFiles({ logoFile, photos, peoplePhotos });
               persistWizardState(nextState);
               navigate("/create/step-2", { state: nextState });
             }}

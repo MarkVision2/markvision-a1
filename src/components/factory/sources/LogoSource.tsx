@@ -63,7 +63,7 @@ const LogoSource = ({ file, onChange }: LogoSourceProps) => {
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium">{file.name}</p>
             <p className="text-xs text-muted-foreground">
-              {(file.size / 1024).toFixed(0)} KB · будет отправлен в webhook как logo_url
+              {(file.size / 1024).toFixed(0)} KB · загрузится в Storage → logo_url + image_urls[0]
             </p>
           </div>
           <button

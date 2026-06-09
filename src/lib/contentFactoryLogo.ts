@@ -12,6 +12,7 @@ export function buildLogoWebhookFields(
   if (!logoUrl) {
     return {
       logo_url: "",
+      brand_logo_url: "",
       logo_type: "",
       logo_style_instruction: "",
     };
@@ -19,9 +20,36 @@ export function buildLogoWebhookFields(
 
   return {
     logo_url: logoUrl,
+    // n8n brand-ноды иногда читают brand_logo_url вместо logo_url
+    brand_logo_url: logoUrl,
     logo_type: source,
     logo_style_instruction: LOGO_STYLE_INSTRUCTION,
   };
+}
+
+/** Проверка контракта перед отправкой в n8n. */
+export function assertLogoWebhookContract(
+  hadLogoFile: boolean,
+  flat: Record<string, unknown>,
+  imageUrls: string[],
+): { ok: true } | { ok: false; reason: string } {
+  if (!hadLogoFile) return { ok: true };
+
+  const logoUrl = flat.logo_url;
+  if (typeof logoUrl !== "string" || !/^https:\/\//.test(logoUrl)) {
+    return { ok: false, reason: "logo_url не содержит публичную HTTPS-ссылку" };
+  }
+
+  const brandLogo = flat.brand_logo_url;
+  if (typeof brandLogo !== "string" || brandLogo !== logoUrl) {
+    return { ok: false, reason: "brand_logo_url не совпадает с logo_url" };
+  }
+
+  if (!imageUrls.length || imageUrls[0] !== logoUrl) {
+    return { ok: false, reason: "logo_url должен быть первым в image_urls" };
+  }
+
+  return { ok: true };
 }
 
 export const LOGO_STYLE_INSTRUCTION =

@@ -5,6 +5,7 @@ import Header from "@/components/factory/Header";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { persistWizardState } from "@/lib/contentFactoryBrief";
+import { readWizardFiles, stashWizardFiles } from "@/lib/wizardFilesStore";
 import { getContentTypeFlow, type AspectId } from "@/data/contentTypeFlows";
 import { AspectRatioPicker } from "@/components/factory/AspectRatioPicker";
 import { VariantCountPicker } from "@/components/factory/VariantCountPicker";
@@ -147,7 +148,25 @@ const CreateStep2 = () => {
           <Button
             size="lg"
             onClick={() => {
-              const nextState = { ...prevState, aspect, lang, variants };
+              const stashed = readWizardFiles();
+              const nextState = {
+                ...prevState,
+                aspect,
+                lang,
+                variants,
+                logoFile: (prevState.logoFile as File | null | undefined) ?? stashed.logoFile,
+                photos: (prevState.photos as File[] | undefined)?.length
+                  ? (prevState.photos as File[])
+                  : stashed.photos,
+                peoplePhotos: (prevState.peoplePhotos as File[] | undefined)?.length
+                  ? (prevState.peoplePhotos as File[])
+                  : stashed.peoplePhotos,
+              };
+              stashWizardFiles({
+                logoFile: nextState.logoFile as File | null,
+                photos: nextState.photos as File[],
+                peoplePhotos: nextState.peoplePhotos as File[],
+              });
               persistWizardState(nextState);
               navigate("/create/step-3", { state: nextState });
             }}
