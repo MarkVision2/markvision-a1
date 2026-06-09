@@ -130,7 +130,7 @@ const CreateStep1 = () => {
         )}
 
         <div className="mt-10 space-y-10">
-          {step1.showLogo && (mode === "photo" || mode === "description") && (
+          {step1.showLogo && (
             <LogoSource file={logoFile} onChange={setLogoFile} />
           )}
           {mode === "link" && (

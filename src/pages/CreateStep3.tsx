@@ -91,8 +91,11 @@ import {
   buildContentFactoryFormatFields,
   buildContentFactoryImageUrls,
   buildMarketingWebhookFields,
-  finalizeN8nWebhookBody,
 } from "@/lib/contentFactoryPayload";
+import {
+  buildContentFactoryWebhookPayload,
+  buildNicheContext,
+} from "@/lib/contentFactoryWebhook";
 import {
   isNeuroPhotoTypeId,
   resolveContentTypeRoute,
@@ -409,10 +412,18 @@ const CreateStep3 = () => {
 
   const [selectedStyles, setSelectedStyles] = useState<StyleId[]>(initialStyles);
   const [selectedAngles, setSelectedAngles] = useState<AngleId[]>(initialAngles);
-  const [colorId, setColorId] = useState<ColorId>("auto");
-  const [ctaId, setCtaId] = useState<CtaId>("learn_more");
-  const [toneId, setToneId] = useState<ToneId>("selling");
-  const [goalId, setGoalId] = useState<GoalId>("conversions");
+  const [colorId, setColorId] = useState<ColorId>(
+    (wizardState.colorId as ColorId) ?? "auto",
+  );
+  const [ctaId, setCtaId] = useState<CtaId>(
+    (wizardState.ctaId as CtaId) ?? "learn_more",
+  );
+  const [toneId, setToneId] = useState<ToneId>(
+    (wizardState.toneId as ToneId) ?? "selling",
+  );
+  const [goalId, setGoalId] = useState<GoalId>(
+    (wizardState.goalId as GoalId) ?? "conversions",
+  );
 
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<
@@ -648,6 +659,15 @@ const CreateStep3 = () => {
       });
       return;
     }
+    persistWizardState({
+      colorId,
+      ctaId,
+      toneId,
+      goalId,
+      selectedStyles,
+      selectedAngles,
+    });
+
     setSubmitting(true);
     setResults(null);
     setStatus("sending");
@@ -941,13 +961,12 @@ const CreateStep3 = () => {
               ? wizardState.variants
               : 1;
           // Niche / контекст — собираем из всех источников ТЗ.
-          const nicheBits = [
-            brief.productName,
-            brief.description,
-            brief.mode === "link" ? brief.linkUrl : null,
-          ]
-            .filter((s): s is string => Boolean(s && s.trim()))
-            .join(" | ");
+          const nicheBits = buildNicheContext({
+            productName: brief.productName,
+            description: brief.description,
+            linkUrl: brief.linkUrl,
+            extraInstructions: brief.extraInstructions,
+          });
           // ВАЖНО: опциональные поля (audio_url, link) НЕ включаем когда они
           // пустые — n8n IF-ноды проверяют их через `exists`, пустая строка
           // проходит как существующая, и последующие HTTP/audio ноды падают
@@ -972,12 +991,14 @@ const CreateStep3 = () => {
             // инструкциями и пользовательским запросом, а не сырой текст.
             prompt: finalTechnicalBrief,
             // n8n-ноды иногда читают name/description вместо prompt — не оставляем пустыми
-            name: resolveProductName(wizardState, contentType?.title),
-            description: resolveProductDescription(wizardState, finalTechnicalBrief),
+            name: resolveProductName(enrichedWizard, contentType?.title),
+            description: resolveProductDescription(enrichedWizard, finalTechnicalBrief),
             // Публичные URL фото из Supabase Storage. n8n берёт первое как референс.
             image_urls: imageUrls,
             ...formatFields,
             color: color?.label ?? "auto",
+            color_id: color?.id ?? "auto",
+            color_swatch: color?.swatch && color.swatch !== "custom" ? color.swatch : "",
             language: wizardState.lang ?? "ru",
             aspect: wizardState.aspect ?? "1:1",
             slides: slidesCount,
@@ -1045,92 +1066,88 @@ const CreateStep3 = () => {
             }
           }
 
-          const bodyForN8n = finalizeN8nWebhookBody(flatForN8n, {
+          const contentTypeBlock = contentType
+            ? {
+                id: contentType.id,
+                title: contentType.title,
+                subtitle: contentType.subtitle,
+                category: contentType.category,
+                tooltip: contentType.tooltip,
+              }
+            : { id: wizardState.typeId ?? null };
+
+          const sourceInputBlock = {
+            mode: brief.mode,
+            linkUrl: brief.linkUrl || null,
+            description: brief.description || null,
+            productName: brief.productName || null,
+            photosCount: brief.photos.length,
+            peoplePhotosCount: brief.peoplePhotos.length,
+            photos: brief.photoMeta,
+            peoplePhotos: brief.peoplePhotoMeta,
+            logo: brief.logoFile
+              ? {
+                  name: brief.logoFile.name,
+                  mimeType: brief.logoFile.type,
+                  size: brief.logoFile.size,
+                  url: effectiveLogoUrl,
+                }
+              : null,
+            brandTemplateId: wizardState.brandTemplateId ?? null,
+            photosRole: facePipeline.photosRole,
+            facePipeline: facePipeline.pipeline,
+            faceReferenceEnabled: facePipeline.enabled,
+            copyMode,
+            overlayText: copyMode === "custom" ? overlayText : null,
+            extraInstructions: brief.extraInstructions || null,
+            hasLogo: Boolean(brief.logoFile || enrichedWizard.hasLogo),
+            logoUrl: effectiveLogoUrl,
+          };
+
+          const formatBlock = {
+            aspect: wizardState.aspect ?? null,
+            lang: wizardState.lang ?? null,
+            variants: wizardState.variants ?? null,
+          };
+
+          const designBlock = {
+            style: selectedStyles,
+            currentStyle: {
+              id: styleDef.id,
+              label: styleDef.label,
+              description: styleDef.description,
+              auto: isAuto,
+              brief: built.structured,
+              technicalBrief: finalTechnicalBrief,
+              userEdited,
+              avoid: built.avoid,
+            },
+            auto: isAuto,
+            autoCandidates: isAuto ? autoCandidates : null,
+            angles: anglesPayload,
+            color: {
+              id: color?.id ?? null,
+              label: color?.label ?? null,
+              swatch: color?.swatch ?? null,
+            },
+          };
+
+          const payload = buildContentFactoryWebhookPayload({
+            flat: flatForN8n,
             finalTechnicalBrief,
             userRawPrompt: brief.prompt,
-          });
-          const payload = {
-            source: "lovable.content-factory",
-            submittedAt: new Date().toISOString(),
             task,
             route,
             typeId,
             category: contentType?.category ?? null,
-            // КРИТИЧНО: плоские поля на корне + body.* (n8n: $json.body ?? $json)
-            ...bodyForN8n,
-            body: bodyForN8n,
-            contentType: contentType
-              ? {
-                  id: contentType.id,
-                  title: contentType.title,
-                  subtitle: contentType.subtitle,
-                  category: contentType.category,
-                  tooltip: contentType.tooltip,
-                }
-              : { id: wizardState.typeId ?? null },
-            source_input: {
-              mode: brief.mode,
-              linkUrl: brief.mode === "link" ? brief.linkUrl || null : null,
-              description:
-                brief.mode === "description" ? brief.description || null : null,
-              productName:
-                brief.mode === "description"
-                  ? brief.productName || null
-                  : null,
-              photosCount:
-                brief.mode === "photo" ? brief.photos.length : 0,
-              peoplePhotosCount:
-                brief.mode === "photo" || isNeuroPhoto ? brief.peoplePhotos.length : 0,
-              photos:
-                brief.mode === "photo" || isNeuroPhoto ? brief.photoMeta : [],
-              peoplePhotos:
-                brief.mode === "photo" || isNeuroPhoto ? brief.peoplePhotoMeta : [],
-              logo: brief.logoFile
-                ? {
-                    name: brief.logoFile.name,
-                    mimeType: brief.logoFile.type,
-                    size: brief.logoFile.size,
-                    url: effectiveLogoUrl,
-                  }
-                : null,
-              photosRole: facePipeline.photosRole,
-              facePipeline: facePipeline.pipeline,
-              faceReferenceEnabled: facePipeline.enabled,
-              copyMode,
-              overlayText: copyMode === "custom" ? overlayText : null,
-              extraInstructions: brief.extraInstructions || null,
-            },
-            format: {
-              aspect: wizardState.aspect ?? null,
-              lang: wizardState.lang ?? null,
-              variants: wizardState.variants ?? null,
-            },
-            design: {
-              style: selectedStyles,
-              currentStyle: {
-                id: styleDef.id,
-                label: styleDef.label,
-                description: styleDef.description,
-                auto: isAuto,
-                // Структурированный бриф стиля (composition, lighting, cameraAngle, ...)
-                brief: built.structured,
-                // Готовый текстовый промпт для AI.
-                technicalBrief: finalTechnicalBrief,
-                userEdited,
-                // Negative prompt — чего избегать.
-                avoid: built.avoid,
-              },
-              auto: isAuto,
-              autoCandidates: isAuto ? autoCandidates : null,
-              angles: anglesPayload,
-              color: {
-                id: color?.id ?? null,
-                label: color?.label ?? null,
-                swatch: color?.swatch ?? null,
-              },
-            },
-            marketing: marketingFields.nested,
-          };
+            sourceInput: sourceInputBlock,
+            formatBlock,
+            designBlock,
+            marketingBlock: marketingFields.nested,
+            contentTypeBlock,
+            angles: anglesPayload.length ? anglesPayload : undefined,
+            autoCandidates: isAuto ? autoCandidates : null,
+          });
 
 
           // Шлём JSON. Фото уже залиты в Supabase Storage и присутствуют

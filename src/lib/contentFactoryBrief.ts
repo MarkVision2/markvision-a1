@@ -43,6 +43,11 @@ export interface WizardInputState {
   selectedAngles?: string[];
   /** Автозапуск генерации без показа шага 3 */
   neuroAutoSubmit?: boolean;
+  /** Шаг 3 — маркетинг и цвет (сохраняются в sessionStorage). */
+  colorId?: string;
+  ctaId?: string;
+  toneId?: string;
+  goalId?: string;
 }
 
 export interface MarketingMeta {
@@ -129,7 +134,7 @@ export function buildUserBriefParts(state: WizardInputState): string[] {
     }
   }
   parts.push(copyPromptBlock(copyMode, overlayText));
-  if (copyMode === "auto" && extraInstructions) {
+  if (extraInstructions) {
     parts.push(`Дополнительные пожелания для AI:\n${extraInstructions}`);
   }
   return parts;
