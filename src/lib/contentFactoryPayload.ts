@@ -191,3 +191,23 @@ export function assertNeuroPhotoPayload(
 export function resolveWebhookRoute(typeId: string): string {
   return resolveContentTypeRoute(typeId);
 }
+
+/** Финальный body для n8n: плоские поля + дубли prompt/finalPrompt для разных нод. */
+export function finalizeN8nWebhookBody(
+  flat: Record<string, unknown>,
+  extras: {
+    finalTechnicalBrief: string;
+    userRawPrompt: string;
+  },
+): Record<string, unknown> {
+  const prompt = extras.finalTechnicalBrief.trim();
+  const userRaw = extras.userRawPrompt.trim();
+  return {
+    ...flat,
+    prompt,
+    finalPrompt: prompt,
+    technical_brief: prompt,
+    user_raw_prompt: userRaw,
+    user_brief: userRaw,
+  };
+}

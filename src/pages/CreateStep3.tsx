@@ -46,6 +46,7 @@ import {
 import { buildStyleBrief, type StyleId as BriefStyleId } from "@/data/styleBriefs";
 import { buildFormatWebhookFields, resolveCreativeFormat } from "@/lib/contentFactoryFormat";
 import {
+  assertPromptWebhookContract,
   buildBriefWithMarketing,
   buildUserBriefText,
   isBriefTooEmpty,
@@ -55,6 +56,10 @@ import {
   resolveProductName,
   type WizardInputState,
 } from "@/lib/contentFactoryBrief";
+import {
+  enrichWizardState,
+  resolveWizardFiles,
+} from "@/lib/contentFactoryWizardContext";
 import {
   brandImageUrls,
   brandPromptBlock,
@@ -86,6 +91,7 @@ import {
   buildContentFactoryFormatFields,
   buildContentFactoryImageUrls,
   buildMarketingWebhookFields,
+  finalizeN8nWebhookBody,
 } from "@/lib/contentFactoryPayload";
 import {
   isNeuroPhotoTypeId,
@@ -575,50 +581,6 @@ const CreateStep3 = () => {
     );
   };
 
-  const buildBriefPrompt = async () => {
-    const mode = wizardState.mode ?? (isNeuroPhoto ? "photo" : null);
-    const linkUrl = wizardState.linkUrl ?? "";
-    const description = wizardState.description ?? "";
-    const productName = wizardState.productName ?? "";
-    const extraInstructions = wizardState.extraInstructions ?? "";
-    const photos = wizardFilesRef.current.photos.length
-      ? wizardFilesRef.current.photos
-      : (wizardState.photos ?? []);
-    const peoplePhotos = wizardFilesRef.current.peoplePhotos.length
-      ? wizardFilesRef.current.peoplePhotos
-      : (wizardState.peoplePhotos ?? []);
-    const logoFile = wizardFilesRef.current.logoFile ?? wizardState.logoFile ?? null;
-
-    const photoMeta = photos.map((f, idx) => ({
-      index: idx,
-      field: `photo_${idx}`,
-      name: f.name,
-      mimeType: f.type,
-      size: f.size,
-    }));
-    const peoplePhotoMeta = peoplePhotos.map((f, idx) => ({
-      index: idx,
-      field: `people_photo_${idx}`,
-      name: f.name,
-      mimeType: f.type,
-      size: f.size,
-    }));
-
-    return {
-      prompt: buildUserBriefText(wizardState),
-      mode,
-      linkUrl,
-      description,
-      productName,
-      extraInstructions,
-      photoMeta,
-      photos,
-      peoplePhotos,
-      peoplePhotoMeta,
-      logoFile,
-    };
-  };
-
   const extractImageUrl = (data: unknown): string | null => {
     if (!data) return null;
     if (typeof data === "string" && /^https?:\/\//.test(data)) return data;
@@ -654,7 +616,10 @@ const CreateStep3 = () => {
       wizardFilesRef.current.peoplePhotos.length ||
       (wizardState.peoplePhotos?.length ?? 0);
 
-    if (!isNeuroPhoto && isBriefTooEmpty(wizardState)) {
+    const wizardFiles = resolveWizardFiles(wizardState, wizardFilesRef.current);
+    const wizardForValidation = enrichWizardState(wizardState, wizardFiles);
+
+    if (!isNeuroPhoto && isBriefTooEmpty(wizardForValidation)) {
       toast.error("ТЗ пустое", {
         description: "Вернитесь на шаг 1: добавьте ссылку, описание, логотип или фото.",
       });
@@ -693,22 +658,11 @@ const CreateStep3 = () => {
 
     let progressTimer: ReturnType<typeof setInterval> | null = null;
     try {
-      const briefRaw = await buildBriefPrompt();
       const cta = CTAS.find((c) => c.id === ctaId)!;
       const tone = TONES.find((t) => t.id === toneId)!;
       const goal = GOALS.find((g) => g.id === goalId)!;
-      const briefPromptWithMeta = isNeuroPhoto
-        ? buildUserBriefText(wizardState)
-        : buildBriefWithMarketing(wizardState, {
-            goalLabel: goal.label,
-            goalDescription: goal.description,
-            toneLabel: tone.label,
-            toneDescription: tone.description,
-            ctaPhrase: cta.phrase,
-          });
-      const brief = { ...briefRaw, prompt: briefPromptWithMeta, mode: briefRaw.mode ?? (isNeuroPhoto ? "photo" : briefRaw.mode) };
       const color = COLORS.find((c) => c.id === colorId);
-
+      const mode = wizardState.mode ?? (isNeuroPhoto ? "photo" : null);
 
       // Одна партия = один batch_id. По нему аплоад фото и подписка на realtime.
       const batchId =
@@ -716,28 +670,28 @@ const CreateStep3 = () => {
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-      // Аплоад фото в Supabase Storage ДО старта n8n-генерации.
+      // Аплоад фото в Supabase Storage ДО сборки промта и n8n.
       // n8n читает image_urls: string[] из body — multipart-файлы не парсит.
       let logoUrl: string | null = null;
       let uploadedPeople: UploadedAsset[] = [];
       let uploadedAssets: UploadedAsset[] = [];
 
       const uploadTotal =
-        (brief.logoFile ? 1 : 0) +
-        (brief.mode === "photo" ? brief.peoplePhotos.length + brief.photos.length : 0);
+        (wizardFiles.logoFile ? 1 : 0) +
+        (mode === "photo" ? wizardFiles.peoplePhotos.length + wizardFiles.photos.length : 0);
 
       if (uploadTotal > 0) {
         setStatusMessage(`Загружаем ${uploadTotal} файл(ов)…`);
         setProgress(15);
       }
 
-      if (brief.logoFile) {
+      if (wizardFiles.logoFile) {
         if (!clientConfigSupabase) {
           throw new Error(
             "Storage для логотипа не настроен. Задайте VITE_CLIENT_SUPABASE_URL и VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY в Lovable → Environment Variables.",
           );
         }
-        const logoAssets = await uploadContentFactoryPhotos([brief.logoFile], batchId, "logo");
+        const logoAssets = await uploadContentFactoryPhotos([wizardFiles.logoFile], batchId, "logo");
         logoUrl = logoAssets[0]?.url ?? null;
         if (!logoUrl) {
           throw new Error(
@@ -746,25 +700,61 @@ const CreateStep3 = () => {
         }
       }
 
-      if ((brief.mode === "photo" || isNeuroPhoto) && brief.peoplePhotos.length > 0) {
-        uploadedPeople = await uploadContentFactoryPhotos(brief.peoplePhotos, batchId, "people");
-        if (uploadedPeople.length < brief.peoplePhotos.length) {
+      if ((mode === "photo" || isNeuroPhoto) && wizardFiles.peoplePhotos.length > 0) {
+        uploadedPeople = await uploadContentFactoryPhotos(wizardFiles.peoplePhotos, batchId, "people");
+        if (uploadedPeople.length < wizardFiles.peoplePhotos.length) {
           toast.warning(
-            `Загружено ${uploadedPeople.length} из ${brief.peoplePhotos.length} фото людей`,
+            `Загружено ${uploadedPeople.length} из ${wizardFiles.peoplePhotos.length} фото людей`,
             { description: "Часть файлов не залилась — генерация пойдёт без них." },
           );
         }
       }
 
-      if (brief.mode === "photo" && brief.photos.length > 0) {
-        uploadedAssets = await uploadContentFactoryPhotos(brief.photos, batchId, "assets");
-        if (uploadedAssets.length < brief.photos.length) {
+      if (mode === "photo" && wizardFiles.photos.length > 0) {
+        uploadedAssets = await uploadContentFactoryPhotos(wizardFiles.photos, batchId, "assets");
+        if (uploadedAssets.length < wizardFiles.photos.length) {
           toast.warning(
-            `Загружено ${uploadedAssets.length} из ${brief.photos.length} фото`,
+            `Загружено ${uploadedAssets.length} из ${wizardFiles.photos.length} фото`,
             { description: "Часть файлов не залилась — генерация пойдёт без них." },
           );
         }
       }
+
+      const enrichedWizard = enrichWizardState(wizardState, wizardFiles, logoUrl);
+      const briefPromptWithMeta = isNeuroPhoto
+        ? buildUserBriefText(enrichedWizard)
+        : buildBriefWithMarketing(enrichedWizard, {
+            goalLabel: goal.label,
+            goalDescription: goal.description,
+            toneLabel: tone.label,
+            toneDescription: tone.description,
+            ctaPhrase: cta.phrase,
+          });
+      const brief = {
+        prompt: briefPromptWithMeta,
+        mode,
+        linkUrl: enrichedWizard.linkUrl ?? "",
+        description: enrichedWizard.description ?? "",
+        productName: enrichedWizard.productName ?? "",
+        extraInstructions: enrichedWizard.extraInstructions ?? "",
+        photoMeta: wizardFiles.photos.map((f, idx) => ({
+          index: idx,
+          field: `photo_${idx}`,
+          name: f.name,
+          mimeType: f.type,
+          size: f.size,
+        })),
+        photos: wizardFiles.photos,
+        peoplePhotos: wizardFiles.peoplePhotos,
+        peoplePhotoMeta: wizardFiles.peoplePhotos.map((f, idx) => ({
+          index: idx,
+          field: `people_photo_${idx}`,
+          name: f.name,
+          mimeType: f.type,
+          size: f.size,
+        })),
+        logoFile: wizardFiles.logoFile,
+      };
 
       const peoplePhotoUrls = uploadedPeople.map((a) => a.url);
       const productPhotoUrls = uploadedAssets.map((a) => a.url);
@@ -1048,26 +1038,26 @@ const CreateStep3 = () => {
             }
           }
 
-          const bodyForN8n = { ...flatForN8n };
+          if (!isNeuroPhoto) {
+            const promptCheck = assertPromptWebhookContract(finalTechnicalBrief, enrichedWizard);
+            if (!promptCheck.ok) {
+              throw new Error(promptCheck.reason);
+            }
+          }
+
+          const bodyForN8n = finalizeN8nWebhookBody(flatForN8n, {
+            finalTechnicalBrief,
+            userRawPrompt: brief.prompt,
+          });
           const payload = {
             source: "lovable.content-factory",
             submittedAt: new Date().toISOString(),
             task,
-            // Главный routing-ключ для Switch-ноды в n8n.
             route,
-            // Дублируем на верхний уровень для удобства разных нод.
             typeId,
             category: contentType?.category ?? null,
-            // Готовый промпт со стилевыми инструкциями + бриф пользователя.
-            // В n8n именно это поле передаётся в AI image generator.
-            finalPrompt: finalTechnicalBrief,
-            // Сырой пользовательский ввод — для дебага. ВНИМАНИЕ:
-            // в плоский body.prompt пишется finalTechnicalBrief (см. flatForN8n),
-            // потому что n8n-ноды читают body.prompt как готовое ТЗ для AI.
-            user_raw_prompt: brief.prompt,
-            // КРИТИЧНО: плоские поля на корне webhook body ($json.prompt).
+            // КРИТИЧНО: плоские поля на корне + body.* (n8n: $json.body ?? $json)
             ...bodyForN8n,
-            // Часть нод Clony AI читает $json.body.* — дублируем контракт.
             body: bodyForN8n,
             contentType: contentType
               ? {

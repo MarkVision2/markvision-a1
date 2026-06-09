@@ -235,7 +235,7 @@ const CreateStep1 = () => {
                 brandTemplateId,
               };
               stashWizardFiles({ logoFile, photos, peoplePhotos });
-              persistWizardState(nextState);
+              persistWizardState({ ...nextState, hasLogo: Boolean(logoFile) });
               navigate("/create/step-2", { state: nextState });
             }}
             className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90 disabled:bg-secondary disabled:bg-none disabled:text-muted-foreground disabled:shadow-none"

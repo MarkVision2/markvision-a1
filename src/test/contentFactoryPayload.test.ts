@@ -4,6 +4,7 @@ import {
   buildContentFactoryFormatFields,
   buildContentFactoryImageUrls,
   buildMarketingWebhookFields,
+  finalizeN8nWebhookBody,
 } from "@/lib/contentFactoryPayload";
 import { resolveFacePipeline } from "@/lib/contentFactoryFace";
 import type { Step3Flow } from "@/data/contentTypeFlows";
@@ -118,6 +119,18 @@ describe("contentFactoryPayload", () => {
       image_urls: [],
     });
     expect(r.ok).toBe(true);
+  });
+
+  it("finalizeN8nWebhookBody duplicates prompt keys for n8n nodes", () => {
+    const body = finalizeN8nWebhookBody(
+      { content_type: "fb-target", image_urls: ["https://x/logo.png"] },
+      { finalTechnicalBrief: "FULL TZ TEXT", userRawPrompt: "user brief" },
+    );
+    expect(body.prompt).toBe("FULL TZ TEXT");
+    expect(body.finalPrompt).toBe("FULL TZ TEXT");
+    expect(body.technical_brief).toBe("FULL TZ TEXT");
+    expect(body.user_raw_prompt).toBe("user brief");
+    expect(body.user_brief).toBe("user brief");
   });
 
   it("assertNeuroPhotoPayload rejects Fallback route", () => {

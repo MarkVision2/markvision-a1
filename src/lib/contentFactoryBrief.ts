@@ -26,6 +26,10 @@ export interface WizardInputState {
   photosCount?: number;
   /** Логотип для фирменного стиля (шаг 1, режимы photo/description). */
   logoFile?: File | null;
+  /** Флаг из шага 1 — File не сохраняется в sessionStorage. */
+  hasLogo?: boolean;
+  /** Публичный URL после upload в Storage (шаг 3). */
+  logoUrl?: string | null;
   /** Фото людей — отдельно от контентных фото (шаг 1, режим photo). */
   peoplePhotos?: File[];
   peoplePhotosCount?: number;
@@ -92,16 +96,24 @@ export function buildUserBriefParts(state: WizardInputState): string[] {
   const photosCount = state.photosCount ?? photos.length;
   const peoplePhotos = state.peoplePhotos ?? [];
   const peopleCount = state.peoplePhotosCount ?? peoplePhotos.length;
-  const hasLogo = Boolean(state.logoFile);
+  const logoUrl = (state.logoUrl ?? "").trim();
+  const hasLogo = Boolean(state.logoFile || state.hasLogo || logoUrl);
 
   const parts: string[] = [];
   if (productName) parts.push(`Товар / бренд: ${productName}`);
-  if (mode === "link" && linkUrl) parts.push(`Ссылка на источник: ${linkUrl}`);
-  if (mode === "description" && description) parts.push(description);
-  if (hasLogo && (mode === "photo" || mode === "description")) {
-    parts.push(
-      "Загружен логотип бренда. Внимательно изучи его дизайн, цвета и стиль — примени фирменный визуальный язык ко всему контенту.",
-    );
+  if (description) parts.push(description);
+  if (linkUrl) parts.push(`Ссылка на источник: ${linkUrl}`);
+  if (hasLogo) {
+    if (logoUrl) {
+      parts.push(
+        `Логотип бренда (обязательно использовать в креативе): ${logoUrl}`,
+        "Изучи логотип по ссылке: форму, цвета, типографику — примени фирменный визуальный язык ко всему контенту.",
+      );
+    } else {
+      parts.push(
+        "Загружен логотип бренда. Внимательно изучи его дизайн, цвета и стиль — примени фирменный визуальный язык ко всему контенту.",
+      );
+    }
   }
   if (mode === "photo") {
     if (photosCount > 0) {
@@ -190,6 +202,30 @@ export function isBriefTooEmpty(state: WizardInputState): boolean {
       (state.photosCount ?? 0) > 0 ||
       (state.peoplePhotos?.length ?? 0) > 0 ||
       (state.peoplePhotosCount ?? 0) > 0);
-  const hasLogo = Boolean(state.logoFile);
+  const hasLogo = Boolean(state.logoFile || state.hasLogo || (state.logoUrl ?? "").trim());
   return !hasText && !hasLink && !hasPhotos && !hasLogo;
+}
+
+/** Минимальная проверка перед отправкой в n8n — не уходит пустой/шаблонный промт. */
+export function assertPromptWebhookContract(
+  prompt: string,
+  state: WizardInputState,
+): { ok: true } | { ok: false; reason: string } {
+  const text = prompt.trim();
+  if (text.length < 120) {
+    return { ok: false, reason: "Промт слишком короткий — вернитесь на шаг 1 и заполните бриф" };
+  }
+  const hasUserInput =
+    Boolean((state.description ?? "").trim()) ||
+    Boolean((state.productName ?? "").trim()) ||
+    Boolean((state.linkUrl ?? "").trim()) ||
+    Boolean(state.hasLogo || state.logoFile || (state.logoUrl ?? "").trim());
+  const genericOnly = text.includes("клиент не оставил описание") && !hasUserInput;
+  if (genericOnly) {
+    return {
+      ok: false,
+      reason: "В промте нет вашего ТЗ — добавьте описание, ссылку или логотип на шаге 1",
+    };
+  }
+  return { ok: true };
 }

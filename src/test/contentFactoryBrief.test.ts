@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertPromptWebhookContract,
   buildBriefWithMarketing,
   buildUserBriefText,
   isBriefTooEmpty,
@@ -102,6 +103,37 @@ describe("contentFactoryBrief", () => {
         productName: "Увлажнитель воздуха",
       }),
     ).toBe(false);
+  });
+
+  it("включает URL логотипа в brief после upload", () => {
+    const url = "https://szfgdruhlebfvcmlvxdk.supabase.co/storage/v1/object/public/content-factory-uploads/logo.png";
+    const text = buildUserBriefText({
+      mode: "photo",
+      hasLogo: true,
+      logoUrl: url,
+    });
+    expect(text).toContain(url);
+    expect(text).toContain("обязательно использовать");
+  });
+
+  it("считает бриф непустым по флагу hasLogo без File", () => {
+    expect(isBriefTooEmpty({ mode: "photo", hasLogo: true })).toBe(false);
+  });
+
+  it("включает описание в brief независимо от mode", () => {
+    const text = buildUserBriefText({
+      mode: "photo",
+      description: "Клиника эстетической стоматологии",
+    });
+    expect(text).toContain("Клиника эстетической стоматологии");
+  });
+
+  it("assertPromptWebhookContract отклоняет только шаблон без ТЗ", () => {
+    const generic =
+      "Создай UGC креатив. Контекст продукта: клиент не оставил описание — используй best-practice по нише. " +
+      "Технические параметры: соотношение 1:1. Чего избегать: шум.";
+    expect(assertPromptWebhookContract(generic, { mode: "photo", hasLogo: true }).ok).toBe(true);
+    expect(assertPromptWebhookContract("коротко", { mode: "photo" }).ok).toBe(false);
   });
 });
 
