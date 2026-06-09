@@ -71,11 +71,14 @@ const ADS_STEP1: Step1Flow = {
   showDescription: true,
 };
 
+/** Единый набор форматов для всех типов контента в мастере */
+export const STANDARD_ASPECTS: AspectId[] = ["1:1", "4:5", "9:16", "16:9"];
+
 const ADS_STEP2: Step2Flow = {
   label: "Формат креатива",
   subtitle: "Соотношение сторон, язык и число вариантов",
   showAspect: true,
-  aspects: ["1:1", "4:5", "9:16", "16:9", "3:4"],
+  aspects: STANDARD_ASPECTS,
   defaultAspect: "1:1",
   showLang: true,
   showVariants: true,
@@ -121,7 +124,7 @@ const FLOWS: Record<string, ContentTypeFlow> = {
       label: "Формат",
       subtitle: "",
       showAspect: true,
-      aspects: ["1:1", "4:5", "9:16", "3:4"],
+      aspects: STANDARD_ASPECTS,
       defaultAspect: "4:5",
       showLang: false,
       showVariants: true,
@@ -155,7 +158,7 @@ const FLOWS: Record<string, ContentTypeFlow> = {
     wizardMode: "standard",
     totalSteps: 3,
     step1: ADS_STEP1,
-    step2: { ...ADS_STEP2, aspects: ["1:1", "4:5", "16:9"], defaultAspect: "1:1" },
+    step2: { ...ADS_STEP2, defaultAspect: "1:1" },
     step3: ADS_STEP3,
   },
   marketplace: {
@@ -163,7 +166,7 @@ const FLOWS: Record<string, ContentTypeFlow> = {
     wizardMode: "standard",
     totalSteps: 3,
     step1: { ...ADS_STEP1, defaultMode: "photo", showLogo: false },
-    step2: { ...ADS_STEP2, aspects: ["1:1", "3:4", "4:5"], defaultAspect: "3:4", variantsLabel: "Слайдов карточки", variantCounts: [1, 3, 5, 7, 10], defaultVariants: 5 },
+    step2: { ...ADS_STEP2, defaultAspect: "1:1", variantsLabel: "Слайдов карточки", variantCounts: [1, 3, 5, 7, 10], defaultVariants: 5 },
     step3: { ...ADS_STEP3, showCta: false },
   },
 
@@ -174,7 +177,6 @@ const FLOWS: Record<string, ContentTypeFlow> = {
     step1: { ...ADS_STEP1, defaultMode: "description" },
     step2: {
       ...ADS_STEP2,
-      aspects: ["1:1", "4:5"],
       defaultAspect: "4:5",
       variantsLabel: "Количество слайдов",
       variantCounts: [3, 5, 7, 10],
@@ -194,7 +196,6 @@ const FLOWS: Record<string, ContentTypeFlow> = {
     },
     step2: {
       ...ADS_STEP2,
-      aspects: ["9:16"],
       defaultAspect: "9:16",
       showLang: true,
       variantCounts: [1, 3, 5],
@@ -211,7 +212,6 @@ const FLOWS: Record<string, ContentTypeFlow> = {
     step1: { ...ADS_STEP1, defaultMode: "description" },
     step2: {
       ...ADS_STEP2,
-      aspects: ["9:16"],
       defaultAspect: "9:16",
       variantsLabel: "Кадров в серии",
       variantCounts: [1, 3, 5, 7],
@@ -231,7 +231,6 @@ const FLOWS: Record<string, ContentTypeFlow> = {
     },
     step2: {
       ...ADS_STEP2,
-      aspects: ["16:9"],
       defaultAspect: "16:9",
       variantCounts: [1, 3, 5],
       defaultVariants: 3,
@@ -247,7 +246,6 @@ const FLOWS: Record<string, ContentTypeFlow> = {
     step1: { ...ADS_STEP1, defaultMode: "link", showLogo: true },
     step2: {
       ...ADS_STEP2,
-      aspects: ["16:9", "21:9", "1:1", "4:5"],
       defaultAspect: "16:9",
       variantCounts: [1, 3, 5],
       defaultVariants: 1,
