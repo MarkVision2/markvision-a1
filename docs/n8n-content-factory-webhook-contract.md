@@ -6,7 +6,9 @@
 
 ## Обязательно
 
-- JSON плоский на корне + дубль `body: { ...те же поля }`
+- JSON плоский на корне + полный дубль `body: { ...те же поля + вложенные блоки }`
+- В `body` обязательно: `prompt`, `finalPrompt`, `technical_brief`, `user_brief`, `task`, `route`, `typeId`
+- В `body` также: `source_input`, `format`, `design`, `marketing`, `contentType`, `angles` (нейро)
 - Файлы **не** в multipart — только URL из Clony Storage (`content-factory-uploads`)
 - 1 POST на каждый выбранный стиль
 - `content_type` — строго из таблицы (иначе n8n → `fb-target`)
@@ -45,6 +47,7 @@ VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY=<clony anon key>
 
 ## Код
 
+- `src/lib/contentFactoryWebhook.ts` — сборка полного payload (root + body)
 - `src/lib/contentFactoryPayload.ts` — image_urls, marketing, format, assert
 - `src/lib/contentFactoryRoutes.ts` — content_type map
 - `src/pages/CreateStep3.tsx` — отправка

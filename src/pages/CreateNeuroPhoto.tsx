@@ -12,6 +12,7 @@ import { getContentTypeFlow } from "@/data/contentTypeFlows";
 import type { AspectId } from "@/data/contentTypeFlows";
 import type { AngleId, NeuroStyleId } from "@/data/neuroStyles";
 import { persistWizardState } from "@/lib/contentFactoryBrief";
+import { stashWizardFiles } from "@/lib/wizardFilesStore";
 import { CONTENT_TYPES } from "@/data/contentTypes";
 import { toast } from "sonner";
 
@@ -57,6 +58,7 @@ const CreateNeuroPhoto = () => {
       overlayText: "",
     };
 
+    stashWizardFiles({ peoplePhotos, photos: [], logoFile: null });
     persistWizardState(state);
     navigate("/create/step-3", { state });
   };
