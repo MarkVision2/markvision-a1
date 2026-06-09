@@ -101,6 +101,7 @@ import {
   resolveContentTypeRoute,
 } from "@/lib/contentFactoryRoutes";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { buildCreativeUsernameWebhookFields } from "@/lib/projectCreativeUsername";
 import {
   Collapsible,
   CollapsibleContent,
@@ -339,7 +340,7 @@ const CreateStep3 = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const wizardState = loadWizardState((location.state ?? {}) as WizardInputState);
-  const { activeId: projectId } = useProjectsStore();
+  const { activeId: projectId, active: activeProject } = useProjectsStore();
   const { getById: getBrandTemplate } = useBrandTemplates();
   const { saveItem: saveGalleryItem } = useContentFactoryGallery();
   const brandTemplate = getBrandTemplate(wizardState.brandTemplateId);
@@ -1007,7 +1008,6 @@ const CreateStep3 = () => {
             fb_niche: nicheBits,
             ...marketingFields.flat,
             generation_pipeline: facePipeline.pipeline,
-            username: "",
             platform: "web",
             // tracking
             request_id: requestId,
@@ -1020,6 +1020,7 @@ const CreateStep3 = () => {
             ...faceFields,
             ...logoFields,
             ...brandFields,
+            ...buildCreativeUsernameWebhookFields(activeProject?.creativeUsername),
           };
           // Опциональные поля только если есть значение — иначе n8n IF=exists
           // пропустит пустую строку дальше и HTTP-нода упадёт.
@@ -1102,6 +1103,7 @@ const CreateStep3 = () => {
             extraInstructions: brief.extraInstructions || null,
             hasLogo: Boolean(brief.logoFile || enrichedWizard.hasLogo),
             logoUrl: effectiveLogoUrl,
+            ...buildCreativeUsernameWebhookFields(activeProject?.creativeUsername),
           };
 
           const formatBlock = {

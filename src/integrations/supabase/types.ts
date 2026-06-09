@@ -2765,6 +2765,7 @@ export type Database = {
         Row: {
           created_at: string
           created_by: string | null
+          creative_username: string | null
           domain: string | null
           id: string
           initials: string
@@ -2776,6 +2777,7 @@ export type Database = {
         Insert: {
           created_at?: string
           created_by?: string | null
+          creative_username?: string | null
           domain?: string | null
           id?: string
           initials?: string
@@ -2787,6 +2789,7 @@ export type Database = {
         Update: {
           created_at?: string
           created_by?: string | null
+          creative_username?: string | null
           domain?: string | null
           id?: string
           initials?: string
@@ -3795,6 +3798,10 @@ export type Database = {
       resolve_intake_project: { Args: { p_token: string }; Returns: string }
       rotate_project_intake_token: {
         Args: { p_project_id: string }
+        Returns: string
+      }
+      set_project_creative_username: {
+        Args: { p_project_id: string; p_username: string | null }
         Returns: string
       }
       save_meta_access_token: {
