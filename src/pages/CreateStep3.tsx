@@ -71,10 +71,12 @@ import {
   resolveFacePipeline,
 } from "@/lib/contentFactoryFace";
 import {
+  assertLogoWebhookContract,
   buildLogoWebhookFields,
   logoPromptBlock,
   peoplePhotosPromptBlock,
 } from "@/lib/contentFactoryLogo";
+import { readWizardFiles } from "@/lib/wizardFilesStore";
 import { useBrandTemplates } from "@/hooks/useBrandTemplates";
 import { useContentFactoryGallery } from "@/hooks/useContentFactoryGallery";
 import { registerGalleryBatch } from "@/lib/contentFactoryGalleryStore";
@@ -352,18 +354,26 @@ const CreateStep3 = () => {
   const flow = getContentTypeFlow(effectiveTypeId);
   const autoSubmitStarted = useRef(false);
 
-  /** File[] не сохраняются в sessionStorage — держим из location.state. */
+  /** File[] не сохраняются в sessionStorage — держим из location.state + stash. */
+  const initialStash = readWizardFiles();
+  const initialState = (location.state ?? {}) as WizardInputState;
   const wizardFilesRef = useRef({
-    peoplePhotos: ((location.state ?? {}) as WizardInputState).peoplePhotos ?? [],
-    photos: ((location.state ?? {}) as WizardInputState).photos ?? [],
-    logoFile: ((location.state ?? {}) as WizardInputState).logoFile ?? null,
+    peoplePhotos: initialState.peoplePhotos?.length
+      ? initialState.peoplePhotos
+      : initialStash.peoplePhotos,
+    photos: initialState.photos?.length ? initialState.photos : initialStash.photos,
+    logoFile: initialState.logoFile ?? initialStash.logoFile,
   });
 
   useEffect(() => {
     const s = (location.state ?? {}) as WizardInputState;
+    const stashed = readWizardFiles();
     if (s.peoplePhotos?.length) wizardFilesRef.current.peoplePhotos = s.peoplePhotos;
+    else if (stashed.peoplePhotos.length) wizardFilesRef.current.peoplePhotos = stashed.peoplePhotos;
     if (s.photos?.length) wizardFilesRef.current.photos = s.photos;
+    else if (stashed.photos.length) wizardFilesRef.current.photos = stashed.photos;
     if (s.logoFile) wizardFilesRef.current.logoFile = s.logoFile;
+    else if (stashed.logoFile) wizardFilesRef.current.logoFile = stashed.logoFile;
   }, [location.state]);
 
   useEffect(() => {
@@ -722,12 +732,17 @@ const CreateStep3 = () => {
       }
 
       if (brief.logoFile) {
+        if (!clientConfigSupabase) {
+          throw new Error(
+            "Storage для логотипа не настроен. Задайте VITE_CLIENT_SUPABASE_URL и VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY в Lovable → Environment Variables.",
+          );
+        }
         const logoAssets = await uploadContentFactoryPhotos([brief.logoFile], batchId, "logo");
         logoUrl = logoAssets[0]?.url ?? null;
         if (!logoUrl) {
-          toast.warning("Логотип не загрузился", {
-            description: "Генерация продолжится без logo_url.",
-          });
+          throw new Error(
+            "Логотип не загрузился в Storage (bucket content-factory-uploads). Проверьте права bucket и повторите.",
+          );
         }
       }
 
@@ -1000,6 +1015,21 @@ const CreateStep3 = () => {
           if (linkValue) flatForN8n.link = linkValue;
           // audio_url намеренно НЕ выставляем — нет аудио в content-factory.
 
+          // Wizard-логотип приоритетнее brand_template — фиксируем оба ключа для n8n.
+          if (effectiveLogoUrl) {
+            flatForN8n.logo_url = effectiveLogoUrl;
+            flatForN8n.brand_logo_url = effectiveLogoUrl;
+          }
+
+          const logoCheck = assertLogoWebhookContract(
+            Boolean(brief.logoFile),
+            flatForN8n,
+            imageUrls,
+          );
+          if (!logoCheck.ok) {
+            throw new Error(`Логотип не попал в webhook: ${logoCheck.reason}`);
+          }
+
           if (isNeuroPhoto) {
             const check = assertNeuroPhotoPayload({
               content_type: flatForN8n.content_type as string,
@@ -1018,6 +1048,7 @@ const CreateStep3 = () => {
             }
           }
 
+          const bodyForN8n = { ...flatForN8n };
           const payload = {
             source: "lovable.content-factory",
             submittedAt: new Date().toISOString(),
@@ -1035,9 +1066,9 @@ const CreateStep3 = () => {
             // потому что n8n-ноды читают body.prompt как готовое ТЗ для AI.
             user_raw_prompt: brief.prompt,
             // КРИТИЧНО: плоские поля на корне webhook body ($json.prompt).
-            ...flatForN8n,
+            ...bodyForN8n,
             // Часть нод Clony AI читает $json.body.* — дублируем контракт.
-            body: flatForN8n,
+            body: bodyForN8n,
             contentType: contentType
               ? {
                   id: contentType.id,
