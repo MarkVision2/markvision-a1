@@ -70,13 +70,20 @@ const CreateStep1 = () => {
     }
   }, [state.typeId, step1.defaultMode, step1.allowedModes, mode]);
 
+  const hasLogo = Boolean(logoFile);
+  const hasLink = linkUrl.trim().length > 0;
+  const hasDescription = description.trim().length > 0;
+  const hasProductName = productName.trim().length > 0;
+  const hasContentPhotos = photos.length > 0;
+  const hasPeoplePhotos = peoplePhotos.length > 0;
+
   const canContinue =
-    (mode === "link" && linkUrl.trim().length > 0) ||
+    (mode === "link" && (hasLink || hasLogo)) ||
     (mode === "photo" &&
       (step1.peoplePhotoRequired
-        ? peoplePhotos.length > 0
-        : photos.length > 0 || peoplePhotos.length > 0)) ||
-    (mode === "description" && description.trim().length > 0);
+        ? hasPeoplePhotos
+        : hasContentPhotos || hasPeoplePhotos || hasLogo)) ||
+    (mode === "description" && (hasDescription || hasProductName || hasLogo));
 
   const visibleModes = step1.allowedModes.map((id) => ({
     id,
@@ -155,8 +162,8 @@ const CreateStep1 = () => {
                   files={photos}
                   onChange={setPhotos}
                   title="Фото товара / контента"
-                  subtitle="(до 14 файлов)"
-                  hint="Продукт, интерьер, референсы — всё, кроме логотипа и фото людей."
+                  subtitle="(необязательно)"
+                  hint="Можно пропустить, если уже загрузили логотип. Продукт, интерьер, референсы — до 14 файлов."
                 />
               )}
             </>
@@ -190,7 +197,19 @@ const CreateStep1 = () => {
           </div>
         )}
 
-        <div className="mt-10 flex items-center justify-between gap-3">
+        {!canContinue && (
+          <p className="mt-8 rounded-xl border border-border/60 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
+            {mode === "photo" && step1.peoplePhotoRequired
+              ? "Загрузите селфи или портрет, чтобы продолжить."
+              : mode === "link"
+                ? "Вставьте ссылку или загрузите логотип."
+                : mode === "photo"
+                  ? "Достаточно логотипа — фото товара и людей необязательны."
+                  : "Достаточно логотипа, описания или названия товара."}
+          </p>
+        )}
+
+        <div className="mt-6 flex items-center justify-between gap-3 sm:mt-10">
           <Button variant="outline" onClick={() => navigate("/")}>
             <ArrowLeft className="h-4 w-4" />
             Назад

@@ -85,5 +85,23 @@ describe("contentFactoryBrief", () => {
       }),
     ).toBe(false);
   });
+
+  it("считает бриф непустым при только логотипе", () => {
+    expect(
+      isBriefTooEmpty({
+        mode: "photo",
+        logoFile: new File(["x"], "logo.png", { type: "image/png" }),
+      }),
+    ).toBe(false);
+  });
+
+  it("считает description mode непустым при только названии товара", () => {
+    expect(
+      isBriefTooEmpty({
+        mode: "description",
+        productName: "Увлажнитель воздуха",
+      }),
+    ).toBe(false);
+  });
 });
 
