@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Rocket, X } from "lucide-react";
+import { GitBranch, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const LOVABLE_EDITOR =
-  "https://lovable.dev/projects/f271a37b-306d-4edb-aaa5-782c76cf9ae3";
+const LIVE_APP = "https://markvision-a1.lovable.app/";
 const DISMISS_KEY = "mv_publish_banner_dismissed";
 
 type SyncInfo = { git_sha?: string; label?: string };
@@ -32,23 +31,22 @@ export function PublishUpdateBanner() {
     <div className="border-b border-primary/30 bg-primary/10 px-3 py-2 sm:px-6">
       <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-2">
         <div className="flex min-w-0 items-start gap-2 text-xs sm:text-sm">
-          <Rocket className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <GitBranch className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <p className="text-foreground/90">
-            <span className="font-medium">Обновления в GitHub</span>
-            {sync?.git_sha ? ` (${sync.git_sha})` : ""}
+            <span className="font-medium">Обновления из GitHub</span>
+            {sync?.git_sha ? ` · коммит ${sync.git_sha}` : ""}
             {" — "}
-            подтяните в Lovable через Git sync, затем{" "}
-            <span className="font-medium">Publish → Update</span> в редакторе.
+            после мержа в main подождите синк Lovable и обновите сайт (Ctrl+Shift+R). Publish не нужен.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <Button asChild size="sm" variant="default" className="h-8 rounded-lg">
-            <a href={LOVABLE_EDITOR} target="_blank" rel="noopener noreferrer">
-              Publish в Lovable
+            <a href={LIVE_APP} target="_blank" rel="noopener noreferrer">
+              Открыть сайт
             </a>
           </Button>
           <Button asChild size="sm" variant="outline" className="h-8 rounded-lg">
-            <Link to="/settings?tab=publish">Инструкция</Link>
+            <Link to="/settings?tab=publish">Как обновить</Link>
           </Button>
           <button
             type="button"

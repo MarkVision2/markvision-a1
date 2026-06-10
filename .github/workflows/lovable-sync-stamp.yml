@@ -33,7 +33,7 @@ jobs:
               git_sha_full: $full,
               updated_at: $ts,
               label: $label,
-              publish_hint: "Lovable → Publish (справа вверху) → Update"
+              publish_hint: "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
             }' > public/lovable-sync.json
 
       - name: Commit stamp if changed
