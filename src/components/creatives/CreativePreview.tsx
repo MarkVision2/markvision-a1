@@ -64,6 +64,8 @@ export function CreativePreview({
     isHqReady,
     isLowRes,
     canPlayInline,
+    useVideoFrame,
+    lowResFallbackSrc,
     forceRefresh,
   } = useCreativeHqPreview(row, { compact, inView });
 
@@ -72,10 +74,16 @@ export function CreativePreview({
   const [mediaError, setMediaError] = useState(false);
   const [playVideo, setPlayVideo] = useState(false);
   const [touchPreview, setTouchPreview] = useState(false);
+  const [videoFrameReady, setVideoFrameReady] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const posterVideoRef = useRef<HTMLVideoElement>(null);
 
   const isActive = isCreativeActive(row.effectiveStatus);
   const mediaFit = fit === "contain" ? "object-contain" : "object-cover";
+
+  useEffect(() => {
+    setVideoFrameReady(false);
+  }, [previewVideoUrl, row.adId]);
 
   useEffect(() => {
     const el = videoRef.current;
@@ -83,6 +91,21 @@ export function CreativePreview({
     if ((playVideo || touchPreview) && canPlayInline) void el.play().catch(() => {});
     else el.pause();
   }, [playVideo, touchPreview, canPlayInline]);
+
+  const primeVideoFrame = (el: HTMLVideoElement) => {
+    const seek = () => {
+      try {
+        const t = Math.min(0.5, Math.max(0.05, (el.duration || 1) * 0.08));
+        if (el.currentTime < 0.05) el.currentTime = t;
+        el.pause();
+        setVideoFrameReady(true);
+      } catch {
+        setVideoFrameReady(false);
+      }
+    };
+    if (el.readyState >= 2) seek();
+    else el.addEventListener("loadeddata", seek, { once: true });
+  };
 
   const TypeIcon = isVideo ? Video : isCarousel ? Layers : ImageIcon;
 
@@ -96,6 +119,13 @@ export function CreativePreview({
 
   const showVideo = canPlayInline && (playVideo || touchPreview);
   const showImage = imageSrc && !mediaError && !showVideo;
+  const showVideoFrame = useVideoFrame && !showVideo && !mediaError;
+  const thumbFallbackSrc =
+    lowResFallbackSrc
+    ?? (mediaError && displaySrc ? displaySrc : null)
+    ?? (loadingHq && displaySrc && !useVideoFrame ? displaySrc : null);
+  const showLowResFallback =
+    Boolean(thumbFallbackSrc) && !showVideo && !showImage && !showVideoFrame;
 
   const handlePreviewTap = (e: React.MouseEvent) => {
     if (!isVideo || !canPlayInline || playable) return;
@@ -157,6 +187,40 @@ export function CreativePreview({
             void forceRefresh().then(() => setMediaError(false));
           }}
         />
+      ) : showVideoFrame ? (
+        <video
+          ref={posterVideoRef}
+          src={previewVideoUrl!}
+          muted
+          playsInline
+          preload="auto"
+          className={cn(
+            "h-full w-full bg-zinc-950 transition-opacity duration-300",
+            mediaFit,
+            videoFrameReady ? "opacity-100" : "opacity-0",
+          )}
+          onLoadedMetadata={(e) => primeVideoFrame(e.currentTarget)}
+          onError={() => {
+            setMediaError(true);
+            void forceRefresh().then(() => setMediaError(false));
+          }}
+        />
+      ) : showLowResFallback ? (
+        <>
+          <div
+            className="absolute inset-0 scale-110 bg-cover bg-center opacity-50 blur-2xl"
+            style={{ backgroundImage: `url(${thumbFallbackSrc})` }}
+            aria-hidden
+          />
+          <img
+            src={thumbFallbackSrc!}
+            alt=""
+            className="relative z-[1] max-h-[72%] max-w-[72%] object-contain opacity-90"
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+          />
+        </>
       ) : (
         <div className="flex h-full w-full items-center justify-center bg-secondary/20">
           {loadingHq ? (
@@ -167,13 +231,19 @@ export function CreativePreview({
         </div>
       )}
 
-      {loadingHq && !imageSrc && (
+      {loadingHq && !imageSrc && !showVideoFrame && !showLowResFallback && (
         <span className="absolute inset-0 flex items-center justify-center bg-zinc-950/80">
           <Loader2 className={cn("animate-spin text-white/70", compact ? "h-4 w-4" : "h-7 w-7")} />
         </span>
       )}
 
-      {isLowRes && loadingHq && imageSrc && !compact && (
+      {showVideoFrame && !videoFrameReady && !loadingHq && (
+        <span className="absolute inset-0 flex items-center justify-center bg-zinc-950/80">
+          <Loader2 className={cn("animate-spin text-white/70", compact ? "h-4 w-4" : "h-7 w-7")} />
+        </span>
+      )}
+
+      {(isLowRes || showLowResFallback) && loadingHq && imageSrc && !compact && (
         <span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white/90">
           Улучшаем качество…
         </span>

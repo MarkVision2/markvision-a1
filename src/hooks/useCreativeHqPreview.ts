@@ -3,6 +3,7 @@ import type { CreativePreviewSource } from "@/components/creatives/CreativePrevi
 import {
   bestCreativeImageHq,
   isHighQualityCreativeUrl,
+  isLowResMetaThumb,
   pickCreativePreviewUrl,
   pickDisplayImageSrc,
 } from "@/lib/metaThumb";
@@ -41,6 +42,7 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
   const [refreshedPoster, setRefreshedPoster] = useState<string | null>(null);
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(row.videoUrl);
   const [loadingHq, setLoadingHq] = useState(() => sourcesNeedHq(row, row.posterUrl));
+  const [hqFailed, setHqFailed] = useState(false);
 
   const thumbSize = opts.compact ? 720 : 1080;
   const sources = useMemo(() => ({
@@ -53,17 +55,29 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
   const displaySrc = useMemo(() => pickCreativePreviewUrl(sources), [sources]);
   const hqSrc = useMemo(() => bestCreativeImageHq(sources), [sources]);
   const imageSrc = useMemo(
-    () => pickDisplayImageSrc({ hqSrc, displaySrc, loadingHq, isLowRes: Boolean(displaySrc && !hqSrc) }),
-    [hqSrc, displaySrc, loadingHq],
+    () => pickDisplayImageSrc({
+      hqSrc,
+      displaySrc,
+      loadingHq,
+      isLowRes: Boolean(displaySrc && !hqSrc),
+      hqFailed,
+    }),
+    [hqSrc, displaySrc, loadingHq, hqFailed],
   );
   const isHqReady = Boolean(hqSrc);
   const isLowRes = Boolean(displaySrc && !isHqReady);
-  const canPlayInline = isVideo && Boolean(previewVideoUrl) && isHqReady;
+  const canPlayInline = isVideo && Boolean(previewVideoUrl);
+  const useVideoFrame = isVideo && Boolean(previewVideoUrl) && !imageSrc;
+  const lowResFallbackSrc =
+    !imageSrc && !useVideoFrame && hqFailed && displaySrc && isLowResMetaThumb(displaySrc)
+      ? displaySrc
+      : null;
 
   useEffect(() => {
     setPreviewVideoUrl(row.videoUrl);
     setRefreshedPoster(null);
     setCapturedPoster(null);
+    setHqFailed(false);
     setLoadingHq(sourcesNeedHq(row, row.posterUrl));
   }, [row.adId, row.videoUrl, row.posterUrl, row.imageUrl, row.thumbnailUrl]);
 
@@ -75,7 +89,10 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
     const needsHq = sourcesNeedHq(row, capturedPoster ?? refreshedPoster ?? row.posterUrl);
 
     void (async () => {
-      if (needsHq) setLoadingHq(true);
+      if (needsHq) {
+        setLoadingHq(true);
+        setHqFailed(false);
+      }
 
       let videoUrl = row.videoUrl ?? null;
       const attempts = refreshAttempts.get(adId) ?? 0;
@@ -103,7 +120,18 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
         if (!cancelled && poster) setCapturedPoster(poster);
       }
 
-      if (!cancelled) setLoadingHq(false);
+      if (!cancelled) {
+        const hasHqNow = Boolean(
+          bestCreativeImageHq({
+            posterUrl: capturedPoster ?? refreshedFromApi ?? refreshedPoster ?? row.posterUrl,
+            thumbnailUrl: row.thumbnailUrl,
+            imageUrl: row.imageUrl,
+            size: thumbSize,
+          }),
+        );
+        setLoadingHq(false);
+        if (!hasHqNow && needsHq) setHqFailed(true);
+      }
     })();
 
     return () => {
@@ -115,11 +143,13 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
     row,
     capturedPoster,
     refreshedPoster,
+    thumbSize,
   ]);
 
   const forceRefresh = async () => {
     if (!row.adId) return null;
     setLoadingHq(true);
+    setHqFailed(false);
     refreshAttempts.delete(row.adId);
     const data = await refreshMetaCreative(row.adId, { force: true }).catch(() => null);
     const poster = applyRefreshPoster(data);
@@ -130,7 +160,9 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
       const captured = await enqueuePosterCapture(row.adId, videoUrl).catch(() => null);
       if (captured) setCapturedPoster(captured);
     }
+    const hasHq = Boolean(poster ?? capturedPoster ?? refreshedPoster ?? row.posterUrl);
     setLoadingHq(false);
+    if (!hasHq) setHqFailed(true);
     return videoUrl;
   };
 
@@ -143,7 +175,10 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
     loadingHq,
     isHqReady,
     isLowRes,
+    hqFailed,
     canPlayInline,
+    useVideoFrame,
+    lowResFallbackSrc,
     forceRefresh,
   };
 }
