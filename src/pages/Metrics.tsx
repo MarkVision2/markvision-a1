@@ -3,22 +3,12 @@ import {
   AlertCircle,
   BarChart3,
   CalendarDays,
-  ClipboardCheck,
-  DollarSign,
   Download,
-  Eye,
   Loader2,
   Pencil,
   RefreshCw,
-  Repeat,
-  Save,
-  Target,
-  TrendingUp,
-  Wallet,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select,
   SelectContent,
@@ -26,8 +16,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Progress } from "@/components/ui/progress";
 import { PeriodPicker, monthRange } from "@/components/dashboard/PeriodPicker";
+import { MetricsDataTable } from "@/components/metrics/MetricsDataTable";
+import { MetricsKpiPanel } from "@/components/metrics/MetricsKpiPanel";
+import { MetricsSummaryStrip } from "@/components/metrics/MetricsSummaryStrip";
+import { MONTHS_GEN_RU, WEEKDAYS_RU } from "@/components/metrics/metricsFormat";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useMultiMetaInsights, type DailyInsightRow } from "@/hooks/useMetaInsights";
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
@@ -35,7 +28,6 @@ import { useLeadsLite } from "@/hooks/useLeadsLite";
 import { isLeadPaid } from "@/lib/leadStageFlags";
 import { crmDailyMetrics, fetchCdiFactRows, type ReportPeriodRange } from "@/hooks/useReportData";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
-import { isManualOverrideActive, manualValueForSave } from "@/lib/cdiManualOverride";
 import {
   shouldApplyManualOverrides,
   sumResolvedMetricsPerCabinets,
@@ -48,76 +40,6 @@ import type { AdCabinet } from "@/types/ads";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 
-const MONTHS_GEN_RU = [
-  "январь", "февраль", "март", "апрель", "май", "июнь",
-  "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь",
-];
-
-const WEEKDAYS_RU = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
-
-const formatTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
-const formatNumber = (n: number) => Math.round(n).toLocaleString("ru-RU");
-const formatPercent = (n: number) => `${n.toFixed(0)}%`;
-
-interface SummaryCardProps {
-  icon: React.ElementType;
-  label: string;
-  value: React.ReactNode;
-  formula: string;
-  badge: string;
-  accent?: "success" | "warning" | "primary";
-}
-
-const SummaryCard = ({
-  icon: Icon,
-  label,
-  value,
-  formula,
-  badge,
-  accent = "success",
-}: SummaryCardProps) => {
-  const tone = {
-    success: "bg-success/10 text-success border-success/20",
-    warning: "bg-warning/10 text-warning border-warning/20",
-    primary: "bg-primary/10 text-primary border-primary/20",
-  }[accent];
-
-  return (
-    <div className="flex min-h-[118px] flex-col rounded-2xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-success/30 hover:bg-card/80">
-      <div className="flex items-start justify-between gap-2">
-        <span className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-lg border", tone)}>
-          <Icon className="h-4 w-4" />
-        </span>
-        <span className={cn("shrink-0 rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider", tone)}>
-          {badge}
-        </span>
-      </div>
-      <p className="mt-2.5 text-xs font-semibold leading-snug text-foreground">
-        {label}
-      </p>
-      <div className="mt-2 text-lg font-bold tabular-nums leading-tight sm:text-xl">
-        {value}
-      </div>
-      <p className="mt-auto pt-1.5 text-[10px] leading-4 text-muted-foreground">
-        {formula}
-      </p>
-    </div>
-  );
-};
-
-const Cell = ({ children, mono = true }: { children: React.ReactNode; mono?: boolean }) => (
-  <td
-    className={cn(
-      "px-2 py-2 text-right text-xs",
-      mono && "tabular-nums",
-    )}
-  >
-    {children}
-  </td>
-);
-
-const Dash = () => <span className="text-muted-foreground/50">—</span>;
-
 const Metrics = () => {
   const [period, setPeriod] = useState<ReportPeriodRange>(() => monthRange(new Date()));
   const monthCursor = period.from;
@@ -125,6 +47,7 @@ const Metrics = () => {
   const { cabinets } = usePersonalCabinets();
   const { activeId: projectId } = useProjectsStore();
   const [resyncing, setResyncing] = useState(false);
+  const [showAllDays, setShowAllDays] = useState(false);
   const [cdiFactRows, setCdiFactRows] = useState<CdiFactRow[]>([]);
   const [cdiTick, setCdiTick] = useState(0);
 
@@ -353,6 +276,29 @@ const Metrics = () => {
   const crDiagnosticsSale =
     factDiagnostics > 0 ? (factSales / factDiagnostics) * 100 : 0;
 
+  const daysWithData = useMemo(
+    () =>
+      monthDays.filter(({ iso }) => {
+        const d = dailyMap.get(iso);
+        if (!d) return false;
+        return (
+          d.spend > 0 ||
+          d.leads > 0 ||
+          d.diagnostics > 0 ||
+          d.sales > 0 ||
+          (d.crmRevenue ?? 0) > 0
+        );
+      }),
+    [monthDays, dailyMap],
+  );
+
+  const visibleDays = showAllDays ? monthDays : daysWithData;
+
+  const cabinetLabel =
+    cabinetId === "all"
+      ? "Все кабинеты"
+      : cabinets.find((c) => c.id === cabinetId)?.name ?? "Кабинет";
+
   const handleExportCsv = () => {
     const header = [
       "Дата", "День",
@@ -488,136 +434,36 @@ const Metrics = () => {
       <PageHeader
         icon={CalendarDays}
         title="Таблица показателей"
-        description={`${filledDays} дней с данными из ${daysInMonth}`}
-        meta={
-          <div className="hidden min-w-[180px] flex-col gap-1 sm:flex">
-            <Progress value={monthProgress} className="h-2" />
-            <span className="text-right text-[11px] font-medium text-success">
-              {monthProgress}% месяца
-            </span>
-          </div>
-        }
+        description={`${cabinetLabel} · ${MONTHS_GEN_RU[monthCursor.getMonth()]} ${monthCursor.getFullYear()}`}
       />
 
-      {/* Summary cards */}
-      <div className="mt-8 grid grid-cols-1 gap-3 min-[480px]:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        <SummaryCard
-          icon={Eye}
-          label="Стоимость диагностики"
-          badge="CPD"
-          accent="success"
-          value={factCpd > 0 ? formatTenge(factCpd) : <Dash />}
-          formula="Расходы / диагностики"
-        />
-        <SummaryCard
-          icon={Wallet}
-          label="Стоимость клиента"
-          badge="CAC"
-          accent="warning"
-          value={factCac > 0 ? formatTenge(factCac) : <Dash />}
-          formula="Расходы / оплаты"
-        />
-        <SummaryCard
-          icon={DollarSign}
-          label="Стоимость заявки"
-          badge="CPL"
-          accent="primary"
-          value={
-            totals && totals.cpl > 0 ? (
-              <span>{formatTenge(totals.cpl)}</span>
-            ) : (
-              <Dash />
-            )
-          }
-          formula="Расходы / заявки"
-        />
-        <SummaryCard
-          icon={Repeat}
-          label="Лид в диагностику"
-          badge="CR"
-          accent="success"
-          value={crLeadDiagnostics > 0 ? <span>{formatPercent(crLeadDiagnostics)}</span> : <Dash />}
-          formula="Диагностики / лиды"
-        />
-        <SummaryCard
-          icon={TrendingUp}
-          label="Диагностика в продажу"
-          badge="CR"
-          accent="success"
-          value={crDiagnosticsSale > 0 ? <span>{formatPercent(crDiagnosticsSale)}</span> : <Dash />}
-          formula="Оплаты / диагностики"
-        />
-      </div>
+      <MetricsKpiPanel
+        plan={plan}
+        factRevenue={factRevenue}
+        factSpend={totals?.spend ?? 0}
+        factLeads={factLeads}
+        factSales={factSales}
+        factDiagnostics={factDiagnostics}
+        factCpl={totals?.cpl ?? 0}
+        factCpd={factCpd}
+        factCac={factCac}
+        crLeadDiagnostics={crLeadDiagnostics}
+        crDiagnosticsSale={crDiagnosticsSale}
+        cdiRevenue={totals?.crmRevenue ?? 0}
+        cdiSales={totals?.sales ?? 0}
+        orphanRevenue={orphanRevenue}
+        orphanSalesCount={orphanSalesCount}
+        cabinetId={cabinetId}
+        monthProgress={monthProgress}
+        filledDays={filledDays}
+        daysInMonth={daysInMonth}
+      />
 
-      {/* Диагностика источников выручки: чтобы было видно, из чего складывается factRevenue.
-          Помогает понять, если сумма не сходится с CRM (например, в orphan лежат старые/тестовые лиды). */}
-      <div className="mt-6 grid gap-3 rounded-2xl border border-border/60 bg-card/40 p-4 sm:grid-cols-3">
-        <div className="rounded-xl border border-border/40 bg-background/40 p-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            Из рекламных кабинетов (CDI)
-          </div>
-          <div className="mt-1.5 text-lg font-bold tabular-nums">{formatTenge(totals?.crmRevenue ?? 0)}</div>
-          <div className="mt-0.5 text-[11px] text-muted-foreground">
-            {totals?.sales ?? 0} оплат · авто-синк из CRM + ручной факт
-          </div>
-        </div>
-        <div className={cn(
-          "rounded-xl border p-3",
-          orphanRevenue > 0 ? "border-warning/30 bg-warning/5" : "border-border/40 bg-background/40",
-        )}>
-          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            CRM без привязки к кабинету
-          </div>
-          <div className="mt-1.5 text-lg font-bold tabular-nums">{formatTenge(orphanRevenue)}</div>
-          <div className="mt-0.5 text-[11px] text-muted-foreground">
-            {orphanSalesCount} оплат · учтены в Итого
-            {orphanRevenue > 0 && cabinetId === "all" && (
-              <div className="mt-1 text-warning">⚠ Привяжи лида к кабинету в CRM, чтобы атрибутировать продажу к источнику рекламы</div>
-            )}
-          </div>
-        </div>
-        <div className="rounded-xl border border-success/30 bg-success/5 p-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-success">
-            Итого (источник правды)
-          </div>
-          <div className="mt-1.5 text-lg font-bold tabular-nums text-success">{formatTenge(factRevenue)}</div>
-          <div className="mt-0.5 text-[11px] text-muted-foreground">
-            {factSales} оплат · CDI + orphan CRM (1:1 с Dashboard и Analytics)
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-6 rounded-2xl border border-success/20 bg-success/5 p-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-start gap-3">
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-success/15 text-success">
-              <ClipboardCheck className="h-5 w-5" />
-            </span>
-            <div>
-              <div className="text-sm font-semibold">Единый ручной факт</div>
-              <p className="mt-1 max-w-3xl text-xs leading-5 text-muted-foreground">
-                Редактируй диагностики, оплаты и сумму прямо в дневных строках. Ручное значение ПЕРЕЗАПИСЫВАЕТ авто-данные из CRM за этот день (если поле пустое — берётся факт из CRM). Так цифры в отчётах всегда совпадают с реальностью.
-              </p>
-            </div>
-          </div>
-          <div className={cn(
-            "rounded-xl border px-3 py-2 text-xs font-medium",
-            manualCabinet
-              ? "border-success/30 bg-success/10 text-success"
-              : "border-warning/30 bg-warning/10 text-warning",
-          )}>
-            {manualHint}
-          </div>
-        </div>
-      </div>
-
-      {/* Controls */}
-      <div className="mt-6 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-3">
+      <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
           <PeriodPicker range={period} onChange={setPeriod} />
-
           <Select value={cabinetId} onValueChange={setCabinetId}>
-            <SelectTrigger className="h-12 min-w-[220px] rounded-2xl border-border/60 bg-card/60">
+            <SelectTrigger className="h-11 min-w-[200px] rounded-xl border-border/60 bg-card/60">
               <BarChart3 className="h-4 w-4 text-muted-foreground" />
               <SelectValue placeholder="Все кабинеты" />
             </SelectTrigger>
@@ -632,33 +478,60 @@ const Metrics = () => {
           </Select>
         </div>
 
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-muted-foreground">
-            {plan ? "План задан" : "План не задан"}
-          </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-xl border border-border/60 bg-card/40 p-0.5">
+            <button
+              type="button"
+              onClick={() => setShowAllDays(false)}
+              className={cn(
+                "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                !showAllDays ? "bg-background text-foreground shadow-sm" : "text-muted-foreground",
+              )}
+            >
+              С данными ({daysWithData.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowAllDays(true)}
+              className={cn(
+                "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                showAllDays ? "bg-background text-foreground shadow-sm" : "text-muted-foreground",
+              )}
+            >
+              Все дни ({daysInMonth})
+            </button>
+          </div>
           <Button
             variant="outline"
-            className="h-12 gap-2 rounded-2xl border-border/60"
+            size="sm"
+            className="h-9 gap-2 rounded-xl"
             onClick={handleResync}
             disabled={resyncing || actIds.length === 0}
-            title="Перетянуть данные с 1 числа выбранного месяца"
           >
-            {resyncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Пересинхронизировать
+            {resyncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            Синхронизация
           </Button>
-          <Button
-            variant="outline"
-            className="h-12 gap-2 rounded-2xl border-border/60"
-            onClick={handleExportCsv}
-          >
-            <Download className="h-4 w-4" />
-            Экспорт CSV
+          <Button variant="outline" size="sm" className="h-9 gap-2 rounded-xl" onClick={handleExportCsv}>
+            <Download className="h-3.5 w-3.5" />
+            CSV
           </Button>
         </div>
       </div>
 
+      <div
+        className={cn(
+          "mt-4 flex items-start gap-2 rounded-xl border px-3 py-2 text-xs",
+          canEditManual && manualCabinet
+            ? "border-success/25 bg-success/5 text-success"
+            : "border-warning/25 bg-warning/5 text-warning",
+        )}
+      >
+        <Pencil className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>{manualHint}</span>
+      </div>
+
       {error && (
-        <div className="mt-6 flex items-start gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+        <div className="mt-4 flex items-start gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <div className="font-semibold">Не удалось загрузить статистику</div>
@@ -667,409 +540,38 @@ const Metrics = () => {
         </div>
       )}
 
-      {/* Table */}
-      <div className="mt-6 overflow-hidden rounded-2xl border border-border/60 bg-card/40">
-        <table className="w-full table-fixed border-collapse text-xs">
-          <colgroup>
-            <col className="w-[78px]" />
-            <col />
-            <col />
-            <col />
-            <col />
-            <col />
-            <col />
-            <col />
-            <col />
-          </colgroup>
-          <thead>
-            <tr className="border-b border-border/60 bg-card/60">
-              <th className="px-2 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Дата
-              </th>
-              {[
-                "Расходы", "Лиды", "CPL",
-                "Диагностики", "Опл. диагн. ₸",
-                "Продажи", "Выр. продаж ₸", "Итого ₸",
-              ].map((h) => (
-                <th
-                  key={h}
-                  className="px-2 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-            <tbody>
-              {/* Plan row */}
-              <tr className="border-b border-border/60">
-                <td className="px-2 py-2">
-                  <div className="flex items-center gap-2">
-                    <span className="grid h-7 w-7 place-items-center rounded-lg bg-success/10 text-success">
-                      <Target className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="text-xs font-bold uppercase tracking-wider text-success">
-                      План
-                    </span>
-                  </div>
-                </td>
-                <Cell>{plan ? formatNumber(plan.spend) : <Dash />}</Cell>
-                <Cell>{plan ? formatNumber(plan.leads) : <Dash />}</Cell>
-                <Cell>{plan ? formatNumber(plan.cpl) : <Dash />}</Cell>
-                <Cell>{plan ? formatNumber(plan.visits) : <Dash />}</Cell>
-                <Cell><Dash /></Cell>
-                <Cell>{plan ? formatNumber(plan.sales) : <Dash />}</Cell>
-                <Cell><Dash /></Cell>
-                <Cell>{plan ? formatNumber(plan.revenue) : <Dash />}</Cell>
-              </tr>
+      <div className="mt-6 space-y-4">
+        <MetricsSummaryStrip
+          plan={plan}
+          fact={{
+            spend: totals?.spend ?? 0,
+            leads: factLeads,
+            cpl: totals?.cpl ?? 0,
+            diagnostics: factDiagnostics,
+            diagnosticRevenue: factDiagnosticRevenue,
+            sales: factSales,
+            salesRevenue: factSalesRevenue,
+            revenue: factRevenue,
+          }}
+        />
 
-              {/* Fact row */}
-              <tr className="border-b border-border/60 bg-card/30">
-                <td className="px-2 py-2">
-                  <div className="flex items-center gap-2">
-                    <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
-                      <BarChart3 className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="text-xs font-bold uppercase tracking-wider">
-                      Факт
-                    </span>
-                  </div>
-                </td>
-                <Cell>
-                  <span className="font-bold">
-                    {totals ? formatNumber(totals.spend) : <Dash />}
-                  </span>
-                </Cell>
-                <Cell>
-                  <span className="font-bold text-success">
-                    {factLeads > 0 ? formatNumber(factLeads) : <Dash />}
-                  </span>
-                </Cell>
-                <Cell>
-                  <span className="font-bold">
-                    {totals && totals.cpl > 0 ? formatNumber(totals.cpl) : <Dash />}
-                  </span>
-                </Cell>
-                <Cell>
-                  <span className="font-bold">
-                    {factDiagnostics > 0 ? formatNumber(factDiagnostics) : <Dash />}
-                  </span>
-                </Cell>
-                <Cell>
-                  <span className="font-bold">
-                    {factDiagnosticRevenue > 0 ? formatNumber(factDiagnosticRevenue) : <Dash />}
-                  </span>
-                </Cell>
-                <Cell>
-                  <span className="font-bold">
-                    {factSales > 0 ? formatNumber(factSales) : <Dash />}
-                  </span>
-                </Cell>
-                <Cell>
-                  <span className="font-bold">
-                    {factSalesRevenue > 0 ? formatNumber(factSalesRevenue) : <Dash />}
-                  </span>
-                </Cell>
-                <Cell>
-                  <span className="font-bold text-success">
-                    {factRevenue > 0 ? formatNumber(factRevenue) : <Dash />}
-                  </span>
-                </Cell>
-              </tr>
-
-              {/* % completion row */}
-              <tr className="border-b border-border/60">
-                <td className="px-2 py-2">
-                  <div className="flex items-center gap-2">
-                    <span className="grid h-7 w-7 place-items-center rounded-lg bg-warning/15 text-warning">
-                      <TrendingUp className="h-3.5 w-3.5" />
-                    </span>
-                    <span className="text-xs font-bold uppercase tracking-wider text-warning">
-                      % выполн.
-                    </span>
-                  </div>
-                </td>
-                {(() => {
-                  const pct = (fact: number, p: number) =>
-                    plan && p > 0 ? `${Math.round((fact / p) * 100)}%` : null;
-                  const factSpend = totals?.spend ?? 0;
-                  const cells = [
-                    pct(factSpend, plan?.spend ?? 0),
-                    pct(factLeads, plan?.leads ?? 0),
-                    null,
-                    pct(factDiagnostics, plan?.visits ?? 0),
-                    null,
-                    pct(factSales, plan?.sales ?? 0),
-                    null,
-                    pct(factRevenue, plan?.revenue ?? 0),
-                  ];
-                  return cells.map((v, i) => (
-                    <Cell key={i}>
-                      {v ? <span className="font-semibold text-warning">{v}</span> : <Dash />}
-                    </Cell>
-                  ));
-                })()}
-              </tr>
-
-              {/* Days */}
-              {monthDays.map(({ day, iso, weekday }) => {
-                const d = dailyMap.get(iso);
-                const cpl = d && d.leads > 0 ? d.spend / d.leads : 0;
-                // d.crmRevenue теперь уже override-aware (manual если задан, иначе CRM).
-                // FB pixel revenue (d.revenue) больше не используем — это атрибуционный сигнал, а не реальные деньги.
-                const dayRevenue = d?.crmRevenue ?? 0;
-                const hasData = !!d && (
-                  d.spend > 0 ||
-                  d.leads > 0 ||
-                  d.impressions > 0 ||
-                  d.diagnostics > 0 ||
-                  d.sales > 0 ||
-                  dayRevenue > 0
-                );
-                return (
-                  <tr
-                    key={iso}
-                    className="border-b border-border/30 transition-colors hover:bg-card/40"
-                  >
-                    <td className="px-2 py-2 text-xs">
-                      <span className="font-medium tabular-nums">
-                        {String(day).padStart(2, "0")}
-                      </span>
-                      <span className="ml-1 text-muted-foreground">{weekday}</span>
-                    </td>
-                    <Cell>{hasData ? formatNumber(d!.spend) : <Dash />}</Cell>
-                    <Cell>{hasData && d!.leads > 0 ? formatNumber(d!.leads) : <Dash />}</Cell>
-                    <Cell>{cpl > 0 ? formatNumber(cpl) : <Dash />}</Cell>
-                    <Cell>
-                      <ManualFactCell
-                        title="Диагностики"
-                        icon={Eye}
-                        isoDate={iso}
-                        value={d?.diagnostics ?? 0}
-                        crm={d?.crmDiagnostics ?? 0}
-                        manual={d?.manualDiagnostics ?? 0}
-                        manualRaw={d?.manualDiagnosticsRaw ?? null}
-                        autoLabel="CRM"
-                        disabled={!manualCabinet || !canEditManual}
-                        onSave={(next) => upsertManualFact(iso, { manual_diagnostics: next })}
-                      />
-                    </Cell>
-                    <Cell>
-                      <ManualFactCell
-                        title="Опл. диагностик"
-                        icon={DollarSign}
-                        isoDate={iso}
-                        value={d?.diagnosticRevenue ?? 0}
-                        crm={d?.crmDiagnosticRevenue ?? 0}
-                        manual={d?.manualDiagnosticRevenue ?? 0}
-                        manualRaw={d?.manualDiagnosticRevenueRaw ?? null}
-                        autoLabel="CRM"
-                        disabled={!manualCabinet || !canEditManual}
-                        format={formatNumber}
-                        allowDecimal
-                        onSave={(next) => upsertManualFact(iso, { manual_diagnostic_revenue: next })}
-                      />
-                    </Cell>
-                    <Cell>
-                      <ManualFactCell
-                        title="Продажи"
-                        icon={Wallet}
-                        isoDate={iso}
-                        value={d?.sales ?? 0}
-                        crm={d?.crmSales ?? 0}
-                        manual={d?.manualSales ?? 0}
-                        manualRaw={d?.manualSalesRaw ?? null}
-                        autoLabel="CRM"
-                        disabled={!manualCabinet || !canEditManual}
-                        onSave={(next) => upsertManualFact(iso, { manual_sales: next })}
-                      />
-                    </Cell>
-                    <Cell>
-                      <ManualFactCell
-                        title="Выр. продаж"
-                        icon={DollarSign}
-                        isoDate={iso}
-                        value={d?.salesRevenue ?? 0}
-                        crm={d?.crmSalesRevenueOnly ?? 0}
-                        manual={d?.manualSalesRevenue ?? 0}
-                        manualRaw={d?.manualSalesRevenueRaw ?? null}
-                        autoLabel="CRM"
-                        disabled={!manualCabinet || !canEditManual}
-                        format={formatNumber}
-                        allowDecimal
-                        onSave={(next) => upsertManualFact(iso, { manual_revenue: next })}
-                      />
-                    </Cell>
-                    <Cell>
-                      <span className="font-semibold tabular-nums text-success">
-                        {dayRevenue > 0 ? formatNumber(dayRevenue) : <Dash />}
-                      </span>
-                    </Cell>
-                  </tr>
-                );
-              })}
-          </tbody>
-        </table>
-
-        {loading && (
-          <div className="flex items-center justify-center gap-2 border-t border-border/60 px-4 py-3 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Загружаем данные за {MONTHS_GEN_RU[monthCursor.getMonth()]} {monthCursor.getFullYear()}...
-          </div>
-        )}
+        <MetricsDataTable
+          monthDays={monthDays}
+          visibleDays={visibleDays}
+          dailyMap={dailyMap}
+          loading={loading}
+          loadingLabel={`Загружаем данные за ${MONTHS_GEN_RU[monthCursor.getMonth()]} ${monthCursor.getFullYear()}...`}
+          manualCabinet={manualCabinet}
+          canEditManual={canEditManual}
+          onSaveDiagnostics={(iso, next) => upsertManualFact(iso, { manual_diagnostics: next })}
+          onSaveDiagnosticRevenue={(iso, next) =>
+            upsertManualFact(iso, { manual_diagnostic_revenue: next })
+          }
+          onSaveSales={(iso, next) => upsertManualFact(iso, { manual_sales: next })}
+          onSaveSalesRevenue={(iso, next) => upsertManualFact(iso, { manual_revenue: next })}
+        />
       </div>
-
-      <p className="mt-4 text-xs text-muted-foreground">
-        Расходы и лиды — из Meta. Диагностики, продажи и выручка — из CRM (карточки воронки), с возможностью ручной корректировки по дням для выбранного кабинета.
-      </p>
     </PageContainer>
-  );
-};
-
-const ManualFactCell = ({
-  title,
-  icon: Icon,
-  isoDate,
-  value,
-  crm,
-  manual,
-  manualRaw,
-  autoLabel,
-  onSave,
-  disabled,
-  format = formatNumber,
-  allowDecimal,
-}: {
-  title: string;
-  icon: React.ElementType;
-  isoDate: string;
-  /** Итоговое значение, которое реально показывается (override-aware). */
-  value: number;
-  /** Чистое CRM значение, БЕЗ применения override. Нужно, чтобы попап показал "Из CRM: N" корректно. */
-  crm: number;
-  manual: number;
-  manualRaw?: number | null;
-  autoLabel: string;
-  onSave: (newManual: number | null) => Promise<void>;
-  disabled?: boolean;
-  format?: (n: number) => string;
-  allowDecimal?: boolean;
-}) => {
-  const [open, setOpen] = useState(false);
-  const hasManualOverride = isManualOverrideActive(manualRaw);
-  const [val, setVal] = useState("");
-  const [saving, setSaving] = useState(false);
-  const auto = Math.max(0, crm);
-  const hasValue = value > 0;
-
-  const handleSave = async () => {
-    const next = manualValueForSave(val);
-    setSaving(true);
-    try {
-      await onSave(next);
-      setOpen(false);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleReset = async () => {
-    setSaving(true);
-    try {
-      await onSave(null);
-      setOpen(false);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (disabled) {
-    return (
-      <span className="inline-flex min-w-0 w-full justify-end text-muted-foreground/50">
-        {hasValue ? format(value) : "—"}
-      </span>
-    );
-  }
-
-  return (
-    <Popover open={open} onOpenChange={(next) => {
-      setOpen(next);
-      if (next) setVal(hasManualOverride ? String(manualRaw ?? manual) : "");
-    }}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            "group inline-flex min-w-0 w-full items-center justify-end gap-1.5 rounded-lg border border-transparent px-2 py-1 text-right transition-colors hover:border-success/30 hover:bg-success/10",
-            !hasValue && "text-muted-foreground",
-            hasManualOverride && "border-success/20 bg-success/5 text-success",
-          )}
-          title={`${title}: ${isoDate}`}
-        >
-          <span className="font-semibold tabular-nums">{hasValue ? format(value) : "—"}</span>
-          <Pencil className="h-3 w-3 opacity-45 transition-opacity group-hover:opacity-100" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-72 rounded-2xl border-border/70" align="end">
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <span className="grid h-9 w-9 place-items-center rounded-xl bg-success/10 text-success">
-              <Icon className="h-4 w-4" />
-            </span>
-            <div>
-              <div className="text-sm font-semibold">{title}</div>
-              <div className="text-xs text-muted-foreground">{isoDate}</div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2 text-center">
-            <div className="rounded-xl border border-border/60 bg-card/60 p-2">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{autoLabel}</div>
-              <div className="mt-1 text-sm font-bold tabular-nums">{format(auto)}</div>
-            </div>
-            <div className="rounded-xl border border-success/25 bg-success/10 p-2">
-              <div className="text-[10px] uppercase tracking-wider text-success">Вручную</div>
-              <div className="mt-1 text-sm font-bold tabular-nums text-success">{format(manual)}</div>
-            </div>
-            <div className="rounded-xl border border-border/60 bg-card/60 p-2">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Показано</div>
-              <div className="mt-1 text-sm font-bold tabular-nums">{format(value)}</div>
-            </div>
-          </div>
-          <p className="text-[11px] leading-4 text-muted-foreground">
-            «Из CRM» — реальные карточки воронки. Ручное значение перезаписывает день. Пустое поле или «Сбросить» — снова авто из CRM.
-          </p>
-
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-muted-foreground">
-              Ввести ручное значение
-            </label>
-            <Input
-              type="number"
-              min={0}
-              step={allowDecimal ? "0.01" : "1"}
-              value={val}
-              onChange={(e) => setVal(e.target.value)}
-              placeholder="0"
-              className="h-11 rounded-xl text-right text-base font-semibold tabular-nums"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2">
-            <Button size="sm" variant="outline" onClick={() => void handleReset()} disabled={saving}>
-              Сбросить к CRM
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
-              Отмена
-            </Button>
-            <Button size="sm" className="gap-2" onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              Сохранить
-            </Button>
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
   );
 };
 
