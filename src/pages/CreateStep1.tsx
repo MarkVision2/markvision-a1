@@ -14,6 +14,7 @@ import { persistWizardState } from "@/lib/contentFactoryBrief";
 import { stashWizardFiles } from "@/lib/wizardFilesStore";
 import type { CopyMode } from "@/lib/contentFactoryCopy";
 import { BrandTemplatePicker } from "@/components/factory/BrandTemplatePicker";
+import { CreativeUsernamePanel } from "@/components/factory/CreativeUsernamePanel";
 import { useBrandTemplates } from "@/hooks/useBrandTemplates";
 import { getContentTypeFlow, type SourceMode } from "@/data/contentTypeFlows";
 
@@ -197,6 +198,10 @@ const CreateStep1 = () => {
             />
           </div>
         )}
+
+        <div className="mt-10">
+          <CreativeUsernamePanel variant="wizard" />
+        </div>
 
         {!canContinue && (
           <p className="mt-8 rounded-xl border border-border/60 bg-muted/30 px-4 py-3 text-sm text-muted-foreground">
