@@ -19,3 +19,19 @@ Cursor/агент **не может** нажать Publish в Lovable за ва�
 ## Supabase (Meta, CRM)
 
 Publish выкладывает только фронт. Edge Functions и секреты — в Supabase проекта **mekwfbqmsqiborjdrjxc**.
+
+### HQ-превью креативов (после мержа PR с fix)
+
+1. GitHub → **Actions** → **Deploy Meta edge functions** → **Run workflow** (ветка `main`).
+2. Нужны секреты репозитория: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF` = `mekwfbqmsqiborjdrjxc`.
+3. В Supabase → Edge Functions → Secrets должен быть `META_ACCESS_TOKEN` (тот же, что для Meta-синка).
+4. Откройте дашборд или запустите `meta-structure-sync` — постеры подтянутся в Storage (`creative-posters`).
+
+Альтернатива без Actions (локально):
+
+```bash
+export SUPABASE_ACCESS_TOKEN="sbp_..."
+supabase functions deploy meta-creative-refresh --project-ref mekwfbqmsqiborjdrjxc
+supabase functions deploy meta-structure-sync --project-ref mekwfbqmsqiborjdrjxc
+supabase functions deploy meta-poster-upload --project-ref mekwfbqmsqiborjdrjxc
+```

@@ -3,11 +3,13 @@
 // поэтому объединяем дубли, ограничиваем параллелизм и держим cooldown при 4xx/5xx.
 
 import { supabase } from "@/integrations/supabase/client";
+import { isHighQualityCreativeUrl } from "@/lib/metaThumb";
 
 export interface RefreshResult {
   ok: boolean;
   video_url?: string | null;
   thumbnail_url?: string | null;
+  poster_url?: string | null;
   fallback?: boolean;
   rate_limited?: boolean;
   retry_after_seconds?: number;
@@ -74,8 +76,11 @@ export function refreshMetaCreative(adId: string, opts?: { force?: boolean }): P
         if (res.fallback || res.rate_limited) {
           cooldownUntil = Date.now() + Math.max(60, res.retry_after_seconds ?? 300) * 1000;
         }
-        // Кешируем только успешные ответы — чтобы повторный клик мог попробовать ещё раз.
-        if (res.ok || res.video_url || res.thumbnail_url) cache.set(adId, res);
+        const hasHqVisual =
+          isHighQualityCreativeUrl(res.poster_url)
+          || isHighQualityCreativeUrl(res.thumbnail_url);
+        // Кешируем только ответы с HQ-постером или свежим video_url.
+        if (res.ok && (hasHqVisual || res.video_url)) cache.set(adId, res);
         return res;
       } finally {
         release();

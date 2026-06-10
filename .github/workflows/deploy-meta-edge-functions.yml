@@ -9,7 +9,11 @@ on:
       - "supabase/functions/meta-list-ad-accounts/**"
       - "supabase/functions/meta-daily-sync/**"
       - "supabase/functions/meta-validate-cabinet/**"
+      - "supabase/functions/meta-creative-refresh/**"
+      - "supabase/functions/meta-structure-sync/**"
+      - "supabase/functions/meta-poster-upload/**"
       - "supabase/functions/_lib/meta_list_ad_accounts.ts"
+      - "supabase/functions/_lib/creativePoster.ts"
       - "supabase/functions/_lib/auth.ts"
       - ".github/workflows/deploy-meta-edge-functions.yml"
   workflow_dispatch: {}
@@ -38,10 +42,16 @@ jobs:
           test -n "$SUPABASE_ACCESS_TOKEN" || (echo "::error::SUPABASE_ACCESS_TOKEN missing"; exit 1)
           test -n "$SUPABASE_PROJECT_REF" || (echo "::error::SUPABASE_PROJECT_REF missing"; exit 1)
 
-      - name: Deploy meta-list-ad-accounts, meta-daily-sync, meta-validate-cabinet
+      - name: Deploy Meta edge functions
         run: |
           set -e
-          for fn in meta-list-ad-accounts meta-daily-sync meta-validate-cabinet; do
+          for fn in \
+            meta-list-ad-accounts \
+            meta-daily-sync \
+            meta-validate-cabinet \
+            meta-creative-refresh \
+            meta-structure-sync \
+            meta-poster-upload; do
             echo "::group::Deploy $fn"
             supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"
             echo "::endgroup::"
