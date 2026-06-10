@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useReportData, type ReportPeriodRange } from "./useReportData";
 import { useLeadsLite } from "./useLeadsLite";
 import { useInstagramOrganic } from "./useInstagramOrganic";
+import { useMetaDashboard } from "./useMetaDashboard";
 import { buildAlerts } from "@/lib/dashboardAlerts";
 import { buildDashboardChannels } from "@/lib/dashboardChannels";
 import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
@@ -33,6 +34,7 @@ export function useDashboardData(
 ) {
   const { data, loading, error } = useReportData(cabinetId, range, compare);
   const { leads } = useLeadsLite();
+  const { campaigns: metaCampaigns } = useMetaDashboard(range);
   const { funnel: igFunnel, events: igEvents } = useInstagramOrganic(range);
   const { activeId: projectId } = useProjectsStore();
   const [providerAgg, setProviderAgg] = useState<ProviderAgg[]>([]);
@@ -165,8 +167,15 @@ export function useDashboardData(
       igOrganicLeads: igFunnel.leads,
       igOrganicSales: igPaidLeads.length,
       igOrganicRevenue: igPaidLeads.reduce((s, l) => s + (l.amount || 0), 0),
+      metaCampaigns: metaCampaigns.map((c) => ({
+        objective: c.objective,
+        destinationType: c.destinationType,
+        leads: c.leads,
+        messages: c.messages,
+        spend: c.spend,
+      })),
     });
-  }, [providerAgg, igFunnel, igEvents, leads, fromTs, toTs, data?.totals]);
+  }, [providerAgg, igFunnel, igEvents, leads, fromTs, toTs, data?.totals, metaCampaigns]);
 
 
 

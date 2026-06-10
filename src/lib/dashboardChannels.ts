@@ -1,5 +1,6 @@
 import type { ReportTotals } from "@/hooks/useReportData";
 import type { LeadLite } from "@/hooks/useLeadsLite";
+import { classifyGoal } from "@/hooks/useMetaStructure";
 import { resolveLeadSource, type SourceKey } from "@/lib/leadSource";
 import { isLeadPaid } from "@/lib/leadStageFlags";
 
@@ -15,6 +16,14 @@ export interface DashboardChannelRow {
   revenue: number;
 }
 
+export interface MetaCampaignLeadSlice {
+  objective: string | null;
+  destinationType: string | null;
+  leads: number;
+  messages: number;
+  spend?: number;
+}
+
 const BUCKET_LABELS: Record<DashboardChannelKey, string> = {
   whatsapp: "WhatsApp",
   site: "Сайт",
@@ -25,10 +34,30 @@ const BUCKET_LABELS: Record<DashboardChannelKey, string> = {
 
 /** Канал дашборда из нормализованного source key. */
 export function sourceKeyToDashboardChannel(key: SourceKey): DashboardChannelKey {
-  if (key === "whatsapp") return "whatsapp";
+  if (key === "whatsapp" || key === "telegram") return "whatsapp";
   if (key === "instagram" || key === "instagram_organic") return "instagram";
   if (key === "google") return "google";
+  if (key === "tiktok") return "tiktok";
   return "site";
+}
+
+/** Meta Ads: заявки/сообщения по типу кампании (WhatsApp vs сайт/форма). */
+export function computeMetaLeadsSplit(campaigns: MetaCampaignLeadSlice[]): { whatsapp: number; site: number } {
+  let whatsapp = 0;
+  let site = 0;
+  for (const c of campaigns) {
+    const goal = classifyGoal(c.objective, c.destinationType);
+    const isMessaging =
+      goal.key === "whatsapp"
+      || goal.key === "messages"
+      || goal.successMetric === "messages";
+    if (isMessaging) {
+      whatsapp += c.messages > 0 ? c.messages : c.leads;
+    } else {
+      site += c.leads;
+    }
+  }
+  return { whatsapp, site };
 }
 
 interface ProviderAgg {
@@ -46,11 +75,12 @@ interface BuildChannelsInput {
   igOrganicLeads?: number;
   igOrganicSales?: number;
   igOrganicRevenue?: number;
+  metaCampaigns?: MetaCampaignLeadSlice[];
 }
 
 /**
- * Источники заявок: CRM-лиды + недостающие Meta-лиды из CDI (adsLeads),
- * чтобы сумма каналов = totals.totalLeads в воронке.
+ * Источники заявок: CRM-лиды + Meta Ads (WhatsApp / сайт) по типу кампании,
+ * чтобы сумма каналов ≈ totals.totalLeads в воронке.
  */
 export function buildDashboardChannels(input: BuildChannelsInput): DashboardChannelRow[] {
   const { leads, totals, providerAgg, fromTs, toTs } = input;
@@ -95,12 +125,24 @@ export function buildDashboardChannels(input: BuildChannelsInput): DashboardChan
     ig.revenue += input.igOrganicRevenue ?? 0;
   }
 
-  // Meta-лиды из CDI, которых нет в CRM (лид-формы без синхронизации в CRM)
-  const crmLeadCount = inRange.length + (input.igOrganicLeads ?? 0);
+  const metaSplit = computeMetaLeadsSplit(input.metaCampaigns ?? []);
   const adsLeads = totals?.adsLeads ?? 0;
-  const metaGap = Math.max(0, adsLeads - crmLeadCount);
-  if (metaGap > 0) {
-    ensure("site").leads += metaGap;
+  const crmLeadCount = inRange.length + (input.igOrganicLeads ?? 0);
+  const wa = ensure("whatsapp");
+  const site = ensure("site");
+
+  // Meta-лиды без CRM: распределяем по WhatsApp / Сайт из структуры кампаний
+  const metaSplitTotal = metaSplit.whatsapp + metaSplit.site;
+  if (adsLeads > 0 && metaSplitTotal > 0) {
+    const targetWa = Math.round(adsLeads * (metaSplit.whatsapp / metaSplitTotal));
+    const targetSite = adsLeads - targetWa;
+    wa.leads = Math.max(wa.leads, targetWa);
+    site.leads = Math.max(site.leads, targetSite);
+  } else {
+    const metaGap = Math.max(0, adsLeads - crmLeadCount);
+    if (metaGap > 0) {
+      site.leads += metaGap;
+    }
   }
 
   // Расход по провайдерам CDI
@@ -111,12 +153,11 @@ export function buildDashboardChannels(input: BuildChannelsInput): DashboardChan
     .filter((a) => a.provider === "google")
     .reduce((s, a) => s + a.spend, 0);
 
-  const site = ensure("site");
-  const wa = ensure("whatsapp");
-  const metaLeadTotal = site.leads + wa.leads;
+  const metaLeadTotal = wa.leads + site.leads;
   if (metaSpend > 0 && metaLeadTotal > 0) {
-    site.spend += (site.leads / metaLeadTotal) * metaSpend;
-    wa.spend += (wa.leads / metaLeadTotal) * metaSpend;
+    const waShare = metaSplitTotal > 0 ? metaSplit.whatsapp / metaSplitTotal : wa.leads / metaLeadTotal;
+    wa.spend += metaSpend * waShare;
+    site.spend += metaSpend * (1 - waShare);
   } else if (metaSpend > 0) {
     site.spend += metaSpend;
   }
@@ -132,6 +173,12 @@ export function buildDashboardChannels(input: BuildChannelsInput): DashboardChan
   );
   if (diagOnlyRevenue > 0) {
     site.revenue += diagOnlyRevenue;
+  }
+
+  // Показываем WhatsApp + Сайт, если Meta-кампании есть (даже при 0 заявок в одном канале)
+  if (metaSplitTotal > 0) {
+    ensure("whatsapp");
+    ensure("site");
   }
 
   return ["whatsapp", "site", "instagram", "google", "tiktok"]

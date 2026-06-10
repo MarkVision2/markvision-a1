@@ -1,4 +1,16 @@
-import { AlertTriangle, Camera, Globe, MessageCircle, Music2, Search, TrendingDown, TrendingUp, Wallet, Users, ShoppingBag } from "lucide-react";
+import {
+  AlertTriangle,
+  Camera,
+  Globe,
+  MessageCircle,
+  Music2,
+  Search,
+  ShoppingBag,
+  TrendingDown,
+  TrendingUp,
+  Users,
+  Wallet,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
@@ -22,12 +34,63 @@ interface Props {
   totalLeads: number;
 }
 
-const PROVIDER_META: Record<ChannelProvider, { icon: typeof Camera; cls: string; bg: string; ring: string; label: string }> = {
-  whatsapp: { icon: MessageCircle, cls: "text-success", bg: "bg-success/10", ring: "ring-success/20", label: "WhatsApp" },
-  site: { icon: Globe, cls: "text-primary", bg: "bg-primary/10", ring: "ring-primary/20", label: "Сайт / лендинг" },
-  instagram: { icon: Camera, cls: "text-pink-500", bg: "bg-pink-500/10", ring: "ring-pink-500/20", label: "Instagram" },
-  google: { icon: Search, cls: "text-warning", bg: "bg-warning/10", ring: "ring-warning/20", label: "Google Ads" },
-  tiktok: { icon: Music2, cls: "text-foreground", bg: "bg-secondary/60", ring: "ring-border/40", label: "TikTok Ads" },
+const PROVIDER_META: Record<
+  ChannelProvider,
+  {
+    icon: typeof Camera;
+    cls: string;
+    bg: string;
+    ring: string;
+    bar: string;
+    label: string;
+    hint: string;
+  }
+> = {
+  whatsapp: {
+    icon: MessageCircle,
+    cls: "text-emerald-400",
+    bg: "bg-emerald-500/10",
+    ring: "ring-emerald-500/25",
+    bar: "bg-emerald-500",
+    label: "WhatsApp",
+    hint: "Сообщения и клики в WhatsApp из Meta Ads",
+  },
+  site: {
+    icon: Globe,
+    cls: "text-sky-400",
+    bg: "bg-sky-500/10",
+    ring: "ring-sky-500/25",
+    bar: "bg-sky-500",
+    label: "Сайт / лендинг",
+    hint: "Лид-формы Meta и заявки с сайта",
+  },
+  instagram: {
+    icon: Camera,
+    cls: "text-pink-400",
+    bg: "bg-pink-500/10",
+    ring: "ring-pink-500/25",
+    bar: "bg-pink-500",
+    label: "Instagram",
+    hint: "Органика и код-слова в Reels",
+  },
+  google: {
+    icon: Search,
+    cls: "text-amber-400",
+    bg: "bg-amber-500/10",
+    ring: "ring-amber-500/25",
+    bar: "bg-amber-500",
+    label: "Google Ads",
+    hint: "Поиск и Performance Max",
+  },
+  tiktok: {
+    icon: Music2,
+    cls: "text-foreground",
+    bg: "bg-secondary/60",
+    ring: "ring-border/40",
+    bar: "bg-primary",
+    label: "TikTok Ads",
+    hint: "Реклама в TikTok",
+  },
 };
 
 export function ChannelsTable({ channels, totalSpend, totalLeads }: Props) {
@@ -57,17 +120,33 @@ export function ChannelsTable({ channels, totalSpend, totalLeads }: Props) {
     const leadsShare = totalLeads > 0 ? (c.leads / totalLeads) * 100 : 0;
     return { ...c, displaySpend: spend, cpl, romi, leadsShare };
   });
-  enriched.sort((a, b) => b.romi - a.romi);
+  enriched.sort((a, b) => b.leads - a.leads || b.displaySpend - a.displaySpend);
 
   const showSpendApprox = !hasExplicitSpend && totalSpend > 0;
+  const primaryCount = enriched.filter((c) => c.provider === "whatsapp" || c.provider === "site").length;
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>
+          Заявок по источникам: <span className="font-semibold text-foreground">{fmtNum(totalLeads)}</span>
+        </span>
+        {totalSpend > 0 && (
+          <span>
+            Расход Meta/Google: <span className="font-semibold text-foreground">{fmtTenge(totalSpend)}</span>
+          </span>
+        )}
+      </div>
+
+      <div
+        className={cn(
+          "grid gap-3",
+          primaryCount === 2 ? "sm:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-3",
+        )}
+      >
         {enriched.map((c) => {
           const meta = PROVIDER_META[c.provider] ?? PROVIDER_META.site;
           const Icon = meta.icon;
-          // Только Instagram-канал может быть полностью органическим (нет CDI-расхода).
           const isOrganic = c.provider === "instagram" && c.spend === 0;
           const romiPositive = c.romi >= 0;
           const RomiIcon = romiPositive ? TrendingUp : TrendingDown;
@@ -77,89 +156,103 @@ export function ChannelsTable({ channels, totalSpend, totalLeads }: Props) {
             <div
               key={c.key}
               className={cn(
-                "group relative overflow-hidden rounded-2xl border border-border/60 bg-card/60 p-4 transition hover:border-primary/40 hover:bg-card",
+                "group relative overflow-hidden rounded-2xl border bg-gradient-to-br from-card/80 to-card/40 p-4 transition hover:border-primary/30",
+                c.provider === "whatsapp" && "border-emerald-500/20 hover:border-emerald-500/40",
+                c.provider === "site" && "border-sky-500/20 hover:border-sky-500/40",
+                !["whatsapp", "site"].includes(c.provider) && "border-border/60",
                 bad && "border-destructive/40",
               )}
             >
-              {/* Header */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-2.5 min-w-0">
-                  <span className={cn("inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1", meta.bg, meta.ring)}>
-                    <Icon className={cn("h-4 w-4", meta.cls)} />
+              <div
+                className={cn(
+                  "pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-20 blur-2xl",
+                  c.provider === "whatsapp" && "bg-emerald-500",
+                  c.provider === "site" && "bg-sky-500",
+                  c.provider === "instagram" && "bg-pink-500",
+                )}
+              />
+
+              <div className="relative flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className={cn("inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl ring-1", meta.bg, meta.ring)}>
+                    <Icon className={cn("h-5 w-5", meta.cls)} />
                   </span>
                   <div className="min-w-0">
-                    <div className="flex items-center gap-1.5 truncate text-sm font-semibold" title={c.name}>
-                      {c.name}
+                    <div className="flex items-center gap-1.5 truncate text-base font-bold" title={c.name}>
+                      {meta.label}
                       {bad && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-destructive" />}
                     </div>
-                    <div className="truncate text-[10px] uppercase tracking-wider text-muted-foreground">{meta.label}</div>
+                    <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">{meta.hint}</div>
                   </div>
                 </div>
                 {c.displaySpend > 0 ? (
-                  <span className={cn(
-                    "inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] font-bold tabular-nums",
-                    romiPositive ? "bg-success/10 text-success" : "bg-destructive/10 text-destructive",
-                  )}>
+                  <span
+                    className={cn(
+                      "inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold tabular-nums",
+                      romiPositive ? "bg-emerald-500/15 text-emerald-400" : "bg-destructive/15 text-destructive",
+                    )}
+                  >
                     <RomiIcon className="h-3 w-3" />
                     {romiPositive ? "+" : ""}{Math.round(c.romi)}%
                   </span>
                 ) : isOrganic ? (
-                  <span className="rounded-md bg-pink-500/10 px-1.5 py-0.5 text-[10px] font-bold uppercase text-pink-500">органика</span>
+                  <span className="rounded-lg bg-pink-500/15 px-2 py-1 text-[10px] font-bold uppercase text-pink-400">органика</span>
                 ) : null}
               </div>
 
-              {/* Leads share bar */}
-              <div className="mt-3">
-                <div className="mb-1 flex items-center justify-between text-[10px] uppercase tracking-wider text-muted-foreground">
-                  <span>Доля заявок</span>
-                  <span className="tabular-nums text-foreground/70">{c.leadsShare.toFixed(0)}%</span>
+              <div className="relative mt-4">
+                <div className="mb-1.5 flex items-end justify-between gap-2">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Заявки</div>
+                    <div className="text-2xl font-bold tabular-nums leading-none">{fmtNum(c.leads)}</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Доля</div>
+                    <div className="text-sm font-semibold tabular-nums text-foreground/80">{c.leadsShare.toFixed(0)}%</div>
+                  </div>
                 </div>
-                <div className="h-1.5 overflow-hidden rounded-full bg-secondary/40">
+                <div className="h-2 overflow-hidden rounded-full bg-secondary/50">
                   <div
-                    className={cn("h-full rounded-full", isOrganic ? "bg-pink-500" : "bg-primary")}
-                    style={{ width: `${Math.min(100, c.leadsShare)}%` }}
+                    className={cn("h-full rounded-full transition-all", meta.bar)}
+                    style={{ width: `${Math.min(100, Math.max(c.leads > 0 ? 4 : 0, c.leadsShare))}%` }}
                   />
                 </div>
               </div>
 
-              {/* KPI grid */}
-              <div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2.5 text-[11px]">
+              <div className="relative mt-4 grid grid-cols-3 gap-2 rounded-xl border border-border/40 bg-background/30 p-2.5 text-[11px]">
                 <div>
                   <div className="flex items-center gap-1 text-muted-foreground">
-                    <Wallet className="h-3 w-3" /> Расход{showSpendApprox && !c.spend ? "*" : ""}
+                    <Wallet className="h-3 w-3" />
+                    Расход{showSpendApprox && !c.spend ? "*" : ""}
                   </div>
-                  <div className="mt-0.5 font-bold tabular-nums">
+                  <div className="mt-1 font-bold tabular-nums">
                     {isOrganic ? "—" : c.displaySpend > 0 ? fmtTenge(c.displaySpend) : "—"}
                   </div>
                 </div>
                 <div>
-                  <div className="flex items-center gap-1 text-muted-foreground">
-                    <Users className="h-3 w-3" /> Заявки
-                  </div>
-                  <div className="mt-0.5 font-bold tabular-nums">{fmtNum(c.leads)}</div>
-                </div>
-                <div>
                   <div className="text-muted-foreground">Цена заявки</div>
-                  <div className="mt-0.5 font-bold tabular-nums">{c.cpl > 0 ? fmtTenge(c.cpl) : "—"}</div>
+                  <div className="mt-1 font-bold tabular-nums">{c.cpl > 0 ? fmtTenge(c.cpl) : "—"}</div>
                 </div>
                 <div>
                   <div className="flex items-center gap-1 text-muted-foreground">
-                    <ShoppingBag className="h-3 w-3" /> Оплаты
+                    <ShoppingBag className="h-3 w-3" />
+                    Оплаты
                   </div>
-                  <div className="mt-0.5 font-bold tabular-nums">{fmtNum(c.sales)}</div>
+                  <div className="mt-1 font-bold tabular-nums">{fmtNum(c.sales)}</div>
                 </div>
               </div>
 
               {c.revenue > 0 && (
-                <div className="mt-3 flex items-center justify-between border-t border-border/40 pt-2 text-[11px]">
-                  <span className="text-muted-foreground">Выручка</span>
-                  <span className="font-bold tabular-nums">{fmtTenge(c.revenue)}</span>
+                <div className="relative mt-3 flex items-center justify-between rounded-xl bg-success/10 px-3 py-2 text-[11px]">
+                  <span className="text-muted-foreground">Выручка CRM</span>
+                  <span className="font-bold tabular-nums text-success">{fmtTenge(c.revenue)}</span>
                 </div>
               )}
             </div>
           );
         })}
       </div>
+
       {showSpendApprox && (
         <div className="rounded-xl border border-border/60 bg-secondary/20 px-3 py-2 text-[11px] text-muted-foreground">
           * Расход распределён пропорционально доле заявок источника. Точный расход появится после привязки UTM к рекламным кабинетам Meta/Google.
