@@ -62,7 +62,16 @@ export function MetricsDataTable({
             </th>
           </tr>
           <tr className="border-b border-border/60 bg-card/50">
-            {["Расходы", "Лиды", "CPL", "Диагн.", "Продажи", "Диагн.", "Продажи", "Итого"].map((h, i) => (
+            {[
+              "Расходы",
+              "Лиды",
+              "CPL",
+              "Диагностики",
+              "Продажи",
+              "Оплата диагностик",
+              "Выручка продаж",
+              "Итого",
+            ].map((h, i) => (
               <th
                 key={h + i}
                 className={cn(
@@ -141,7 +150,7 @@ export function MetricsDataTable({
                   </Cell>
                   <Cell>
                     <ManualFactCell
-                      title="Опл. диагностик"
+                      title="Оплата диагностик"
                       icon={DollarSign}
                       isoDate={iso}
                       value={d?.diagnosticRevenue ?? 0}
@@ -157,7 +166,7 @@ export function MetricsDataTable({
                   </Cell>
                   <Cell>
                     <ManualFactCell
-                      title="Выр. продаж"
+                      title="Выручка от продаж"
                       icon={DollarSign}
                       isoDate={iso}
                       value={d?.salesRevenue ?? 0}

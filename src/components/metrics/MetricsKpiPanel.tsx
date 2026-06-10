@@ -8,7 +8,13 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { MetricsDash } from "@/components/metrics/MetricsDash";
-import { formatNumber, formatPercent, formatTenge } from "@/components/metrics/metricsFormat";
+import {
+  countLabel,
+  formatNumber,
+  formatPercent,
+  formatTenge,
+  pluralRu,
+} from "@/components/metrics/metricsFormat";
 import type { FinancePlan } from "@/hooks/useFinancePlan";
 
 interface Props {
@@ -43,12 +49,14 @@ function HeroMetric({
   sub,
   planPct,
   accent = "default",
+  children,
 }: {
   label: string;
-  value: React.ReactNode;
+  value?: React.ReactNode;
   sub?: string;
   planPct: number | null;
   accent?: "default" | "success" | "warning";
+  children?: React.ReactNode;
 }) {
   const tone = {
     default: "border-border/50 bg-card/50",
@@ -57,40 +65,46 @@ function HeroMetric({
   }[accent];
 
   return (
-    <div className={cn("rounded-2xl border p-4", tone)}>
-      <div className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
-        {label}
-      </div>
-      <div className="mt-1 text-2xl font-bold tabular-nums tracking-tight sm:text-3xl">{value}</div>
-      {sub && <div className="mt-1 text-xs text-muted-foreground">{sub}</div>}
+    <div className={cn("flex min-h-[148px] flex-col rounded-2xl border p-4", tone)}>
+      <div className="text-sm font-semibold text-foreground">{label}</div>
+      {value !== undefined && (
+        <div className="mt-2 text-2xl font-bold tabular-nums tracking-tight sm:text-3xl">{value}</div>
+      )}
+      {children}
+      {sub && <div className="mt-2 text-sm text-muted-foreground">{sub}</div>}
       {planPct !== null && (
-        <div className="mt-3 space-y-1">
+        <div className="mt-auto space-y-1 pt-3">
           <Progress value={Math.min(planPct, 100)} className="h-1.5" />
-          <div className="text-[11px] font-medium text-muted-foreground">{planPct}% от плана</div>
+          <div className="text-xs text-muted-foreground">{planPct}% от плана на месяц</div>
         </div>
       )}
     </div>
   );
 }
 
+function FunnelStatRow({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 border-b border-border/30 py-2 last:border-0 last:pb-0">
+      <span className="text-sm text-muted-foreground">{label}</span>
+      <span className="text-xl font-bold tabular-nums">{value > 0 ? formatNumber(value) : "—"}</span>
+    </div>
+  );
+}
+
 function EfficiencyChip({
   label,
-  badge,
+  hint,
   value,
 }: {
   label: string;
-  badge: string;
+  hint?: string;
   value: React.ReactNode;
 }) {
   return (
-    <div className="flex min-w-[140px] flex-1 flex-col rounded-xl border border-border/50 bg-background/50 px-3 py-2.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
-        <span className="rounded-md bg-secondary px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
-          {badge}
-        </span>
-      </div>
-      <div className="mt-1 text-lg font-bold tabular-nums">{value}</div>
+    <div className="flex min-w-[150px] flex-1 flex-col rounded-xl border border-border/50 bg-background/50 px-3 py-2.5">
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      {hint && <span className="mt-0.5 text-[10px] leading-snug text-muted-foreground/80">{hint}</span>}
+      <div className="mt-1.5 text-lg font-bold tabular-nums">{value}</div>
     </div>
   );
 }
@@ -118,9 +132,16 @@ export function MetricsKpiPanel({
 }: Props) {
   const [sourcesOpen, setSourcesOpen] = useState(false);
 
+  const planDiagnosticsLabel = plan
+    ? `${formatNumber(plan.visits)} ${pluralRu(plan.visits, "диагностика", "диагностики", "диагностик")}`
+    : null;
+  const planSalesLabel = plan
+    ? `${formatNumber(plan.sales)} ${pluralRu(plan.sales, "продажа", "продажи", "продаж")}`
+    : null;
+
   return (
     <div className="mt-6 space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
         <span>
           Данные Meta за <strong className="text-foreground">{filledDays}</strong> из {daysInMonth} дней
         </span>
@@ -132,56 +153,64 @@ export function MetricsKpiPanel({
           label="Выручка"
           accent="success"
           value={factRevenue > 0 ? formatTenge(factRevenue) : <MetricsDash />}
-          sub={factSales > 0 ? `${formatNumber(factSales)} оплат` : undefined}
+          sub={
+            factSales > 0
+              ? countLabel(factSales, "оплата", "оплаты", "оплат")
+              : undefined
+          }
           planPct={pct(factRevenue, plan?.revenue)}
         />
         <HeroMetric
           label="Расходы на рекламу"
           value={factSpend > 0 ? formatTenge(factSpend) : <MetricsDash />}
-          sub={factLeads > 0 ? `${formatNumber(factLeads)} лидов` : undefined}
+          sub={
+            factLeads > 0
+              ? countLabel(factLeads, "лид", "лида", "лидов")
+              : undefined
+          }
           planPct={pct(factSpend, plan?.spend)}
         />
         <HeroMetric
-          label="Воронка"
-          value={
-            factDiagnostics > 0 || factSales > 0 ? (
-              <span>
-                {formatNumber(factDiagnostics)} диагн. · {formatNumber(factSales)} продаж
-              </span>
-            ) : (
-              <MetricsDash />
-            )
-          }
-          sub={plan ? `План: ${formatNumber(plan.visits)} / ${formatNumber(plan.sales)}` : undefined}
+          label="Воронка продаж"
           planPct={pct(factSales, plan?.sales)}
           accent="warning"
-        />
+        >
+          <div className="mt-3">
+            <FunnelStatRow label="Диагностики" value={factDiagnostics} />
+            <FunnelStatRow label="Продажи" value={factSales} />
+          </div>
+          {plan && planDiagnosticsLabel && planSalesLabel && (
+            <div className="mt-2 text-xs leading-relaxed text-muted-foreground">
+              План на месяц: {planDiagnosticsLabel}, {planSalesLabel}
+            </div>
+          )}
+        </HeroMetric>
       </div>
 
       <div className="flex flex-wrap gap-2">
         <EfficiencyChip
           label="Стоимость заявки"
-          badge="CPL"
+          hint="расходы ÷ лиды"
           value={factCpl > 0 ? formatTenge(factCpl) : <MetricsDash />}
         />
         <EfficiencyChip
           label="Стоимость диагностики"
-          badge="CPD"
+          hint="расходы ÷ диагностики"
           value={factCpd > 0 ? formatTenge(factCpd) : <MetricsDash />}
         />
         <EfficiencyChip
           label="Стоимость клиента"
-          badge="CAC"
+          hint="расходы ÷ продажи"
           value={factCac > 0 ? formatTenge(factCac) : <MetricsDash />}
         />
         <EfficiencyChip
           label="Лид → диагностика"
-          badge="CR"
+          hint="конверсия"
           value={crLeadDiagnostics > 0 ? formatPercent(crLeadDiagnostics) : <MetricsDash />}
         />
         <EfficiencyChip
           label="Диагностика → продажа"
-          badge="CR"
+          hint="конверсия"
           value={crDiagnosticsSale > 0 ? formatPercent(crDiagnosticsSale) : <MetricsDash />}
         />
       </div>
@@ -195,7 +224,12 @@ export function MetricsKpiPanel({
           <div className="rounded-xl border border-border/40 bg-background/40 p-3 text-sm">
             <div className="text-xs text-muted-foreground">Рекламные кабинеты</div>
             <div className="mt-1 font-bold tabular-nums">{formatTenge(cdiRevenue)}</div>
-            <div className="mt-0.5 text-xs text-muted-foreground">{cdiSales} оплат · Meta + CRM</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">
+              {cdiSales > 0
+                ? countLabel(cdiSales, "оплата", "оплаты", "оплат")
+                : "нет оплат"}{" "}
+              · Meta и CRM
+            </div>
           </div>
           <div
             className={cn(
@@ -203,29 +237,33 @@ export function MetricsKpiPanel({
               orphanRevenue > 0 ? "border-warning/30 bg-warning/5" : "border-border/40 bg-background/40",
             )}
           >
-            <div className="text-xs text-muted-foreground">CRM без кабинета</div>
+            <div className="text-xs text-muted-foreground">CRM без привязки к кабинету</div>
             <div className="mt-1 font-bold tabular-nums">{formatTenge(orphanRevenue)}</div>
             <div className="mt-0.5 text-xs text-muted-foreground">
-              {orphanSalesCount} оплат
+              {orphanSalesCount > 0
+                ? countLabel(orphanSalesCount, "оплата", "оплаты", "оплат")
+                : "нет оплат"}
               {orphanRevenue > 0 && cabinetId === "all" && (
-                <span className="mt-1 block text-warning">Привяжи лида к кабинету в CRM</span>
+                <span className="mt-1 block text-warning">
+                  Привяжите лида к кабинету в CRM, чтобы учесть источник рекламы
+                </span>
               )}
             </div>
           </div>
           <div className="rounded-xl border border-success/25 bg-success/5 p-3 text-sm">
             <div className="text-xs text-success">Итого (как в Dashboard)</div>
             <div className="mt-1 font-bold tabular-nums text-success">{formatTenge(factRevenue)}</div>
-            <div className="mt-0.5 text-xs text-muted-foreground">CDI + CRM без кабинета</div>
+            <div className="mt-0.5 text-xs text-muted-foreground">кабинеты + CRM без кабинета</div>
           </div>
         </CollapsibleContent>
       </Collapsible>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/40 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
-        <Eye className="h-3.5 w-3.5 shrink-0" />
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/40 bg-muted/20 px-3 py-2.5 text-sm text-muted-foreground">
+        <Eye className="h-4 w-4 shrink-0" />
         <span>
-          <strong className="text-foreground">Реклама</strong> — Meta ·{" "}
-          <strong className="text-foreground">Воронка</strong> — CRM ·{" "}
-          <strong className="text-foreground">Выручка</strong> — оплаты из CRM (можно править по дням)
+          <strong className="text-foreground">Реклама</strong> — из Meta ·{" "}
+          <strong className="text-foreground">Диагностики и продажи</strong> — из CRM ·{" "}
+          <strong className="text-foreground">Выручка</strong> — сумма оплат (можно править по дням)
         </span>
       </div>
     </div>
