@@ -34,15 +34,33 @@ export function CreativePreview({
   className,
 }: Props) {
   const isCarousel = row.creativeType === "carousel";
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) setInView(true);
+      },
+      { rootMargin: "240px" },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
+
   const {
     isVideo,
     displaySrc,
+    imageSrc,
     previewVideoUrl,
     loadingHq,
+    isHqReady,
     isLowRes,
     canPlayInline,
     forceRefresh,
-  } = useCreativeHqPreview(row, { compact });
+  } = useCreativeHqPreview(row, { compact, inView });
 
   const [playerOpen, setPlayerOpen] = useState(false);
   const [loadingFullVideo, setLoadingFullVideo] = useState(false);
@@ -72,7 +90,7 @@ export function CreativePreview({
   };
 
   const showVideo = canPlayInline && (playVideo || touchPreview);
-  const showImage = displaySrc && !mediaError && !showVideo;
+  const showImage = imageSrc && !mediaError && !showVideo;
 
   const handlePreviewTap = (e: React.MouseEvent) => {
     if (!isVideo || !canPlayInline || playable) return;
@@ -82,6 +100,7 @@ export function CreativePreview({
 
   return (
     <div
+      ref={containerRef}
       className={cn(
         "relative overflow-hidden bg-zinc-950",
         fit === "contain" && "flex items-center justify-center",
@@ -106,7 +125,7 @@ export function CreativePreview({
         <video
           ref={videoRef}
           src={previewVideoUrl!}
-          poster={displaySrc ?? undefined}
+          poster={imageSrc ?? displaySrc ?? undefined}
           muted
           playsInline
           loop
@@ -118,10 +137,15 @@ export function CreativePreview({
         />
       ) : showImage ? (
         <img
-          src={displaySrc!}
+          src={imageSrc!}
           alt=""
-          className={cn("h-full w-full", mediaFit)}
+          className={cn(
+            "h-full w-full transition-opacity duration-300",
+            mediaFit,
+            isHqReady ? "opacity-100" : "opacity-95",
+          )}
           loading="lazy"
+          decoding="async"
           referrerPolicy="no-referrer"
           onError={() => {
             setMediaError(true);
@@ -138,9 +162,15 @@ export function CreativePreview({
         </div>
       )}
 
-      {isLowRes && loadingHq && !compact && (
-        <span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[9px] font-medium text-white/80">
-          Загрузка HD…
+      {loadingHq && !imageSrc && (
+        <span className="absolute inset-0 flex items-center justify-center bg-zinc-950/80">
+          <Loader2 className={cn("animate-spin text-white/70", compact ? "h-4 w-4" : "h-7 w-7")} />
+        </span>
+      )}
+
+      {isLowRes && loadingHq && imageSrc && !compact && (
+        <span className="absolute bottom-2 left-2 rounded-md bg-black/70 px-1.5 py-0.5 text-[10px] font-medium text-white/90">
+          Улучшаем качество…
         </span>
       )}
 
@@ -198,7 +228,7 @@ export function CreativePreview({
             {previewVideoUrl ? (
               <video
                 src={previewVideoUrl}
-                poster={displaySrc ?? undefined}
+                poster={imageSrc ?? displaySrc ?? undefined}
                 controls
                 playsInline
                 className="aspect-[9/16] h-auto max-h-[92dvh] w-full bg-black"
