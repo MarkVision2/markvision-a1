@@ -1,7 +1,7 @@
 {
-  "git_sha": "1e97d01",
-  "git_sha_full": "1e97d0165880bf7cf62151d4cd7d0f8b7d33ae50",
-  "updated_at": "2026-06-10T06:26:56Z",
-  "label": "Merge pull request #98 from MarkVision2/cursor/creative-preview-hq-v2-3bd5",
+  "git_sha": "e0483dd",
+  "git_sha_full": "e0483dd9218f9a01d89f14852954e4192bd09456",
+  "updated_at": "2026-06-10T06:42:14Z",
+  "label": "Merge pull request #99 from MarkVision2/cursor/creative-preview-fallback-3bd5",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
