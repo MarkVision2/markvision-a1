@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildDashboardChannels } from "@/lib/dashboardChannels";
+import { buildDashboardChannels, computeMetaLeadsSplit } from "@/lib/dashboardChannels";
 import type { LeadLite } from "@/hooks/useLeadsLite";
 
 const mk = (over: Partial<LeadLite> = {}): LeadLite => ({
@@ -31,8 +31,19 @@ const range = {
   toTs: new Date("2026-07-01").getTime(),
 };
 
+describe("computeMetaLeadsSplit", () => {
+  it("делит WhatsApp (messages) и сайт (leads)", () => {
+    const split = computeMetaLeadsSplit([
+      { objective: "OUTCOME_ENGAGEMENT", destinationType: "WHATSAPP", leads: 2, messages: 20 },
+      { objective: "OUTCOME_LEADS", destinationType: "WEBSITE", leads: 9, messages: 0 },
+    ]);
+    expect(split.whatsapp).toBe(20);
+    expect(split.site).toBe(9);
+  });
+});
+
 describe("buildDashboardChannels", () => {
-  it("добавляет Meta-лиды из CDI, которых нет в CRM", () => {
+  it("распределяет Meta-лиды между WhatsApp и Сайт по кампаниям", () => {
     const channels = buildDashboardChannels({
       leads: [mk({ source: "whatsapp" }), mk({ source: "whatsapp" })],
       totals: {
@@ -43,12 +54,19 @@ describe("buildDashboardChannels", () => {
       providerAgg: [{ provider: "meta", spend: 60_000, leads: 29 }],
       fromTs: range.fromTs,
       toTs: range.toTs,
+      metaCampaigns: [
+        { objective: "OUTCOME_ENGAGEMENT", destinationType: "WHATSAPP", leads: 2, messages: 20 },
+        { objective: "OUTCOME_LEADS", destinationType: "WEBSITE", leads: 9, messages: 0 },
+      ],
     });
 
     const totalChannelLeads = channels.reduce((s, c) => s + c.leads, 0);
     expect(totalChannelLeads).toBe(29);
+    const wa = channels.find((c) => c.provider === "whatsapp");
     const site = channels.find((c) => c.provider === "site");
-    expect(site?.leads).toBe(27);
+    expect(wa?.leads).toBe(20);
+    expect(site?.leads).toBe(9);
+    expect(wa && site).toBeTruthy();
   });
 
   it("не показывает пустые каналы", () => {
