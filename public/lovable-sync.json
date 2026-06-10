@@ -1,7 +1,7 @@
 {
-  "git_sha": "bb0bbdb",
-  "git_sha_full": "bb0bbdbe63bce97c08af95ac0ea78b165d30bd53",
-  "updated_at": "2026-06-09T18:59:09Z",
-  "label": "Merge pull request #91 from MarkVision2/cursor/project-creative-username-3bd5",
+  "git_sha": "da17b93",
+  "git_sha_full": "da17b93d54f74e023a45f71bcb9e74ad29203173",
+  "updated_at": "2026-06-10T05:25:24Z",
+  "label": "Merge pull request #92 from MarkVision2/cursor/fix-projects-list-fallback-3bd5",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
