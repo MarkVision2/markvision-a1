@@ -88,7 +88,7 @@ interface Props {
 }
 
 export function ProjectSwitcher({ collapsed }: Props) {
-  const { projects, active, activeId, setActive, removeProject } = useProjectsStore();
+  const { projects, active, activeId, loadError, setActive, removeProject } = useProjectsStore();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
@@ -122,6 +122,18 @@ export function ProjectSwitcher({ collapsed }: Props) {
             Проекты
           </div>
           <div className="space-y-1">
+            {projects.length === 0 && (
+              <div className="rounded-md border border-dashed border-border/60 px-3 py-4 text-center text-xs text-muted-foreground">
+                {loadError ? (
+                  <>
+                    <div className="font-medium text-destructive">Не удалось загрузить проекты</div>
+                    <div className="mt-1">{loadError}</div>
+                  </>
+                ) : (
+                  <>Проектов пока нет — создайте первый ниже</>
+                )}
+              </div>
+            )}
             {projects.map((p) => {
               const isActive = p.id === activeId;
               return (

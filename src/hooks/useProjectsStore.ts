@@ -3,7 +3,12 @@ import type { PostgrestError } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
-import { PROJECTS_LIST_COLUMNS } from "@/lib/projectColumns";
+import { fetchProjectsRows, type ProjectRow } from "@/lib/fetchProjectsRows";
+import {
+  isMissingCreativeUsernameColumn,
+  PROJECTS_BASE_COLUMNS,
+  PROJECTS_LIST_COLUMNS,
+} from "@/lib/projectColumns";
 
 const ACTIVE_PROJECT_CHANGED_EVENT = "markvision:active-project-changed";
 let activeProjectIdSnapshot = "";
@@ -28,17 +33,7 @@ function makeInitials(name: string) {
   return letters.toUpperCase() || "PR";
 }
 
-type Row = {
-  id: string;
-  name: string;
-  domain: string | null;
-  initials: string;
-  is_primary: boolean;
-  intake_token?: string | null;
-  creative_username?: string | null;
-};
-
-const toProject = (r: Row): Project => ({
+const toProject = (r: ProjectRow): Project => ({
   id: r.id,
   name: r.name,
   domain: r.domain ?? undefined,
@@ -83,17 +78,20 @@ export function useProjectsStore() {
   const { user, session } = useAuth();
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeId, setActiveId] = useState<string>(activeProjectIdSnapshot);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [creativeUsernameAvailable, setCreativeUsernameAvailable] = useState(true);
 
   const refetch = useCallback(async () => {
-    const { data, error } = await supabase
-      .from("projects")
-      .select(PROJECTS_LIST_COLUMNS)
-      .order("created_at");
+    const { rows, creativeUsernameAvailable: hasColumn, error } = await fetchProjectsRows();
     if (error) {
+      const msg = describeProjectDbError(error, false);
+      setLoadError(msg);
       console.warn("[projects] refetch:", error.code, error.message);
       return;
     }
-    const list = (data ?? []).map((r) => toProject(r as Row));
+    setLoadError(null);
+    setCreativeUsernameAvailable(hasColumn);
+    const list = rows.map((r) => toProject(r));
     setProjects(list);
 
     if (user?.id) {
@@ -151,17 +149,29 @@ export function useProjectsStore() {
         initials: makeInitials(name),
         created_by: uid,
       };
-      const { data, error } = await supabase
+      let insertResult = await supabase
         .from("projects")
         .insert(payload)
         .select(PROJECTS_LIST_COLUMNS)
         .single();
 
+      if (
+        insertResult.error &&
+        isMissingCreativeUsernameColumn(insertResult.error.message ?? "")
+      ) {
+        insertResult = await supabase
+          .from("projects")
+          .insert(payload)
+          .select(PROJECTS_BASE_COLUMNS)
+          .single();
+      }
+
+      const { data, error } = insertResult;
       if (error || !data) {
         throw new Error(describeProjectDbError(error, false));
       }
 
-      const project = toProject(data as Row);
+      const project = toProject(data as ProjectRow);
 
       await supabase.from("project_members").upsert(
         { project_id: project.id, user_id: uid, role: "owner" },
@@ -243,6 +253,8 @@ export function useProjectsStore() {
     projects,
     active,
     activeId,
+    loadError,
+    creativeUsernameAvailable,
     addProject,
     removeProject,
     setActive,
