@@ -1,10 +1,3 @@
-import { useState } from "react";
-import { ChevronDown, Eye } from "lucide-react";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
 import { MetricsDash } from "@/components/metrics/MetricsDash";
@@ -29,11 +22,6 @@ interface Props {
   factCac: number;
   crLeadDiagnostics: number;
   crDiagnosticsSale: number;
-  cdiRevenue: number;
-  cdiSales: number;
-  orphanRevenue: number;
-  orphanSalesCount: number;
-  cabinetId: string;
   monthProgress: number;
   filledDays: number;
   daysInMonth: number;
@@ -121,17 +109,10 @@ export function MetricsKpiPanel({
   factCac,
   crLeadDiagnostics,
   crDiagnosticsSale,
-  cdiRevenue,
-  cdiSales,
-  orphanRevenue,
-  orphanSalesCount,
-  cabinetId,
   monthProgress,
   filledDays,
   daysInMonth,
 }: Props) {
-  const [sourcesOpen, setSourcesOpen] = useState(false);
-
   const planDiagnosticsLabel = plan
     ? `${formatNumber(plan.visits)} ${pluralRu(plan.visits, "диагностика", "диагностики", "диагностик")}`
     : null;
@@ -213,58 +194,6 @@ export function MetricsKpiPanel({
           hint="конверсия"
           value={crDiagnosticsSale > 0 ? formatPercent(crDiagnosticsSale) : <MetricsDash />}
         />
-      </div>
-
-      <Collapsible open={sourcesOpen} onOpenChange={setSourcesOpen}>
-        <CollapsibleTrigger className="flex w-full items-center justify-between rounded-xl border border-border/50 bg-card/40 px-4 py-3 text-left text-sm font-medium transition-colors hover:bg-card/70">
-          <span>Откуда складывается выручка</span>
-          <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", sourcesOpen && "rotate-180")} />
-        </CollapsibleTrigger>
-        <CollapsibleContent className="mt-2 grid gap-2 sm:grid-cols-3">
-          <div className="rounded-xl border border-border/40 bg-background/40 p-3 text-sm">
-            <div className="text-xs text-muted-foreground">Рекламные кабинеты</div>
-            <div className="mt-1 font-bold tabular-nums">{formatTenge(cdiRevenue)}</div>
-            <div className="mt-0.5 text-xs text-muted-foreground">
-              {cdiSales > 0
-                ? countLabel(cdiSales, "оплата", "оплаты", "оплат")
-                : "нет оплат"}{" "}
-              · Meta и CRM
-            </div>
-          </div>
-          <div
-            className={cn(
-              "rounded-xl border p-3 text-sm",
-              orphanRevenue > 0 ? "border-warning/30 bg-warning/5" : "border-border/40 bg-background/40",
-            )}
-          >
-            <div className="text-xs text-muted-foreground">CRM без привязки к кабинету</div>
-            <div className="mt-1 font-bold tabular-nums">{formatTenge(orphanRevenue)}</div>
-            <div className="mt-0.5 text-xs text-muted-foreground">
-              {orphanSalesCount > 0
-                ? countLabel(orphanSalesCount, "оплата", "оплаты", "оплат")
-                : "нет оплат"}
-              {orphanRevenue > 0 && cabinetId === "all" && (
-                <span className="mt-1 block text-warning">
-                  Привяжите лида к кабинету в CRM, чтобы учесть источник рекламы
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="rounded-xl border border-success/25 bg-success/5 p-3 text-sm">
-            <div className="text-xs text-success">Итого (как в Dashboard)</div>
-            <div className="mt-1 font-bold tabular-nums text-success">{formatTenge(factRevenue)}</div>
-            <div className="mt-0.5 text-xs text-muted-foreground">кабинеты + CRM без кабинета</div>
-          </div>
-        </CollapsibleContent>
-      </Collapsible>
-
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/40 bg-muted/20 px-3 py-2.5 text-sm text-muted-foreground">
-        <Eye className="h-4 w-4 shrink-0" />
-        <span>
-          <strong className="text-foreground">Реклама</strong> — из Meta ·{" "}
-          <strong className="text-foreground">Диагностики и продажи</strong> — из CRM ·{" "}
-          <strong className="text-foreground">Выручка</strong> — сумма оплат (можно править по дням)
-        </span>
       </div>
     </div>
   );

@@ -25,7 +25,6 @@ import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useMultiMetaInsights, type DailyInsightRow } from "@/hooks/useMetaInsights";
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
-import { isLeadPaid } from "@/lib/leadStageFlags";
 import { crmDailyMetrics, fetchCdiFactRows, type ReportPeriodRange } from "@/hooks/useReportData";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
@@ -172,19 +171,6 @@ const Metrics = () => {
     () => crmDailyMetrics(allLeads, crmPeriod, cabinetSelector),
     [allLeads, crmPeriod, cabinetSelector],
   );
-
-  const orphanPaid = useMemo(() => {
-    if (cabinetId !== "all") return [];
-    return allLeads.filter((l) => {
-      if (l.cabinetId) return false;
-      if (!isLeadPaid(l)) return false;
-      const ref = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
-      const t = new Date(ref).getTime();
-      return t >= monthStartTs && t < monthEndTs;
-    });
-  }, [allLeads, cabinetId, monthStartTs, monthEndTs]);
-  const orphanSalesCount = orphanPaid.length;
-  const orphanRevenue = orphanPaid.reduce((s, l) => s + (l.amount || 0), 0);
 
   // Распределяем orphan-показатели по дням (по дате оплаты или создания лида),
   // чтобы Daily-строки в таблице суммировались точно в Fact-строку.
@@ -449,11 +435,6 @@ const Metrics = () => {
         factCac={factCac}
         crLeadDiagnostics={crLeadDiagnostics}
         crDiagnosticsSale={crDiagnosticsSale}
-        cdiRevenue={totals?.crmRevenue ?? 0}
-        cdiSales={totals?.sales ?? 0}
-        orphanRevenue={orphanRevenue}
-        orphanSalesCount={orphanSalesCount}
-        cabinetId={cabinetId}
         monthProgress={monthProgress}
         filledDays={filledDays}
         daysInMonth={daysInMonth}
