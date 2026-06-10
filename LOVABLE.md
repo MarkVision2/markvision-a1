@@ -23,7 +23,7 @@ Publish выкладывает только фронт. Edge Functions и сек
 ### HQ-превью креативов (после мержа PR с fix)
 
 1. GitHub → **Actions** → **Deploy Meta edge functions** → **Run workflow** (ветка `main`).
-2. Нужны секреты репозитория: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF` = `mekwfbqmsqiborjdrjxc`.
+2. Нужны секреты репозитория: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF` = **`mekwfbqmsqiborjdrjxc`** (только 20 букв, без `https://` и без `.supabase.co`).
 3. В Supabase → Edge Functions → Secrets должен быть `META_ACCESS_TOKEN` (тот же, что для Meta-синка).
 4. Откройте дашборд или запустите `meta-structure-sync` — постеры подтянутся в Storage (`creative-posters`).
 
