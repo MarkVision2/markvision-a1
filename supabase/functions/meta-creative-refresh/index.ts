@@ -53,20 +53,29 @@ function extractVideoId(creative: Record<string, unknown> | null | undefined): s
   return typeof assetVideoId === "string" ? assetVideoId.trim() : null;
 }
 
+function isLowResThumb(url: string): boolean {
+  return /p64x64|p96x96|p128x128|s60x60|s32x32/i.test(url);
+}
+
+function pickBestUrl(...urls: Array<string | null | undefined>): string | null {
+  const clean = urls.filter((u): u is string => typeof u === "string" && u.trim().length > 0);
+  const hq = clean.find((u) => !isLowResThumb(u));
+  return hq ?? clean[0] ?? null;
+}
+
 function extractThumb(creative: Record<string, unknown> | null | undefined): string | null {
   if (!creative) return null;
-  const direct = creative.thumbnail_url ?? creative.image_url;
-  if (typeof direct === "string" && direct.trim()) return direct;
 
   const story = creative.object_story_spec as Record<string, unknown> | undefined;
   const storyVideo = story?.video_data as Record<string, unknown> | undefined;
-  const videoImage = storyVideo?.image_url;
-  if (typeof videoImage === "string" && videoImage.trim()) return videoImage;
-
   const linkData = story?.link_data as Record<string, unknown> | undefined;
-  const picture = linkData?.picture;
-  if (typeof picture === "string" && picture.trim()) return picture;
-  return null;
+
+  return pickBestUrl(
+    typeof creative.image_url === "string" ? creative.image_url : null,
+    typeof storyVideo?.image_url === "string" ? storyVideo.image_url : null,
+    typeof linkData?.picture === "string" ? linkData.picture : null,
+    typeof creative.thumbnail_url === "string" ? creative.thumbnail_url : null,
+  );
 }
 
 async function resolveVideoFromAd(adId: string, token: string) {
@@ -111,24 +120,30 @@ Deno.serve(async (req) => {
   if (rowErr) return json({ ok: false, error: rowErr.message }, 500);
   if (!row) return json({ ok: false, error: "not found" }, 404);
   let videoId = ((row as { video_id?: string | null }).video_id ?? "").trim();
+  const storedThumb = ((row as { thumbnail_url?: string | null }).thumbnail_url ?? "").trim();
   let resolvedThumb: string | null = null;
 
-  if (!videoId) {
+  const thumbLooksLow = !storedThumb || isLowResThumb(storedThumb);
+  if (!videoId || thumbLooksLow) {
     const resolved = await resolveVideoFromAd(adId, META_ACCESS_TOKEN);
     if (!resolved.ok) return metaFallback(resolved.response.status, resolved.text);
-    videoId = resolved.videoId ?? "";
-    resolvedThumb = resolved.thumbnail;
+    if (!videoId) videoId = resolved.videoId ?? "";
+    if (resolved.thumbnail) resolvedThumb = resolved.thumbnail;
     if (videoId || resolvedThumb) {
       const patch: Record<string, unknown> = { last_synced_at: new Date().toISOString() };
       if (videoId) patch.video_id = videoId;
-      if (resolvedThumb) patch.thumbnail_url = resolvedThumb;
+      if (resolvedThumb) {
+        patch.thumbnail_url = resolvedThumb;
+        patch.image_url = resolvedThumb;
+      }
       const { error: patchErr } = await admin.from("meta_creatives").update(patch).eq("ad_id", adId);
       if (patchErr) return json({ ok: false, error: patchErr.message }, 500);
     }
   }
 
   if (!videoId) {
-    return json({ ok: false, reason: "not_video", thumbnail_url: resolvedThumb ?? (row as { thumbnail_url?: string }).thumbnail_url ?? null }, 200);
+    const thumb = resolvedThumb ?? storedThumb || null;
+    return json({ ok: Boolean(thumb), reason: "not_video", thumbnail_url: thumb }, 200);
   }
 
   try {

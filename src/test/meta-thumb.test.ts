@@ -4,6 +4,7 @@ import {
   isHighQualityCreativeUrl,
   isLowResMetaThumb,
   pickCreativePreviewUrl,
+  pickDisplayImageSrc,
   upscaleMetaThumb,
 } from "@/lib/metaThumb";
 
@@ -31,6 +32,16 @@ describe("metaThumb", () => {
     const up = upscaleMetaThumb(url, 720);
     expect(up).toContain("p720x720");
     expect(isLowResMetaThumb(up!)).toBe(false);
+  });
+
+  it("pickDisplayImageSrc hides low-res while HQ loads", () => {
+    const low = "https://scontent.xx.fbcdn.net/p64x64";
+    expect(
+      pickDisplayImageSrc({ hqSrc: null, displaySrc: low, loadingHq: true, isLowRes: true }),
+    ).toBeNull();
+    expect(
+      pickDisplayImageSrc({ hqSrc: "https://x.supabase.co/storage/creative-posters/a.jpg", displaySrc: low, loadingHq: true, isLowRes: true }),
+    ).toContain("creative-posters");
   });
 
   it("приоритет: poster > image > thumbnail", () => {

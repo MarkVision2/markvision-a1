@@ -102,6 +102,18 @@ export function pickCreativePreviewUrl(args: {
   );
 }
 
+/** URL для <img>: HQ если есть; при загрузке HD не показываем пиксельную миниатюру. */
+export function pickDisplayImageSrc(args: {
+  hqSrc: string | null;
+  displaySrc: string | null;
+  loadingHq: boolean;
+  isLowRes: boolean;
+}): string | null {
+  if (args.hqSrc) return args.hqSrc;
+  if (args.loadingHq && args.isLowRes) return null;
+  return args.displaySrc;
+}
+
 /** @deprecated Используйте pickCreativePreviewUrl / bestCreativeImageHq */
 export function bestCreativeImage(args: {
   posterUrl?: string | null;

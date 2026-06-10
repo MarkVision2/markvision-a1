@@ -16,7 +16,7 @@ export interface RefreshResult {
 const cache = new Map<string, RefreshResult>();
 const inflight = new Map<string, Promise<RefreshResult>>();
 let activeCount = 0;
-const MAX_PARALLEL = 1;
+const MAX_PARALLEL = 2;
 const waiters: Array<() => void> = [];
 let cooldownUntil = 0;
 
