@@ -1,7 +1,7 @@
 {
-  "git_sha": "687de2c",
-  "git_sha_full": "687de2cfa3fae0344b8547447493fdaa6055f4fd",
-  "updated_at": "2026-06-10T15:27:42Z",
-  "label": "Merge metrics full month + dashboard channels split",
-  "publish_hint": "Lovable → Publish (справа вверху) → Update"
+  "git_sha": "da81c50",
+  "git_sha_full": "da81c50279c34551ca9ea42846bda06a0e2ca1e0",
+  "updated_at": "2026-06-10T15:28:38Z",
+  "label": "docs: clarify Lovable deploys from GitHub without Publish button",
+  "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
