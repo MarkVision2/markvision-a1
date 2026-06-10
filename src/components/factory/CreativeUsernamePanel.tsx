@@ -11,7 +11,7 @@ import {
 import { toast } from "sonner";
 
 export function CreativeUsernamePanel() {
-  const { active, activeId, updateCreativeUsername } = useProjectsStore();
+  const { active, activeId, creativeUsernameAvailable, updateCreativeUsername } = useProjectsStore();
   const { account } = useInstagramAccount();
   const [value, setValue] = useState("");
   const [saving, setSaving] = useState(false);
@@ -71,6 +71,14 @@ export function CreativeUsernamePanel() {
             и подпись на креативе не ставится.
           </p>
 
+          {!creativeUsernameAvailable && (
+            <p className="mt-2 text-xs text-warning">
+              Сохранение ника временно недоступно — примените миграцию{" "}
+              <span className="font-mono">20260609190000_projects_creative_username.sql</span> в Supabase.
+              Список проектов при этом работает.
+            </p>
+          )}
+
           {display && (
             <p className="mt-2 text-xs text-success">
               Сейчас для проекта «{active?.name ?? "—"}»: <strong>{display}</strong>
@@ -111,7 +119,7 @@ export function CreativeUsernamePanel() {
               type="button"
               size="sm"
               className="gap-1.5"
-              disabled={!dirty || saving || !activeId}
+              disabled={!dirty || saving || !activeId || !creativeUsernameAvailable}
               onClick={() => void handleSave()}
             >
               {saving ? (
