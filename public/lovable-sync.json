@@ -1,7 +1,7 @@
 {
-  "git_sha": "418b9ea",
-  "git_sha_full": "418b9eac0110a6d107a48d5f49dadff056c77e92",
-  "updated_at": "2026-06-10T07:06:47Z",
-  "label": "Merge pull request #100 from MarkVision2/cursor/fix-deploy-project-ref-3bd5",
+  "git_sha": "687de2c",
+  "git_sha_full": "687de2cfa3fae0344b8547447493fdaa6055f4fd",
+  "updated_at": "2026-06-10T15:27:42Z",
+  "label": "Merge metrics full month + dashboard channels split",
   "publish_hint": "Lovable → Publish (справа вверху) → Update"
 }
