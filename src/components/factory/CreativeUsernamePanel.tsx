@@ -10,7 +10,12 @@ import {
 } from "@/lib/projectCreativeUsername";
 import { toast } from "sonner";
 
-export function CreativeUsernamePanel() {
+interface Props {
+  /** wizard — внутри шага мастера создания; home — устар., не используется на главной */
+  variant?: "wizard" | "home";
+}
+
+export function CreativeUsernamePanel({ variant = "wizard" }: Props) {
   const { active, activeId, creativeUsernameAvailable, updateCreativeUsername } = useProjectsStore();
   const { account } = useInstagramAccount();
   const [value, setValue] = useState("");
@@ -50,7 +55,13 @@ export function CreativeUsernamePanel() {
   };
 
   return (
-    <section className="mb-4 rounded-2xl border border-border/60 bg-card/50 p-4 sm:mb-6 sm:p-5">
+    <section
+      className={
+        variant === "wizard"
+          ? "rounded-2xl border border-border/60 bg-card/50 p-4 sm:p-5"
+          : "mb-4 rounded-2xl border border-border/60 bg-card/50 p-4 sm:mb-6 sm:p-5"
+      }
+    >
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
