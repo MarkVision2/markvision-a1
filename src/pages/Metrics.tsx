@@ -46,7 +46,7 @@ const Metrics = () => {
   const { cabinets } = usePersonalCabinets();
   const { activeId: projectId } = useProjectsStore();
   const [resyncing, setResyncing] = useState(false);
-  const [showAllDays, setShowAllDays] = useState(false);
+  const [showAllDays, setShowAllDays] = useState(true);
   const [cdiFactRows, setCdiFactRows] = useState<CdiFactRow[]>([]);
   const [cdiTick, setCdiTick] = useState(0);
 
