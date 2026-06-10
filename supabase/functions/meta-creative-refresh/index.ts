@@ -1,9 +1,15 @@
-// meta-creative-refresh — резолвит свежий mp4 source URL для одного ad_id
-// и обновляет meta_creatives.video_url. Вызывается фронтом, когда у видео
-// истекла временная подпись fbcdn.
+// meta-creative-refresh — резолвит свежий mp4 source URL для одного ad_id,
+// подтягивает HQ-постер из Meta Video API и сохраняет в Supabase Storage.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireUser } from "../_lib/auth.ts";
+import {
+  ensurePosterInStorage,
+  isLowResThumb,
+  isSupabasePosterUrl,
+  pickBestUrl,
+  pickBestVideoThumb,
+} from "../_lib/creativePoster.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -51,16 +57,6 @@ function extractVideoId(creative: Record<string, unknown> | null | undefined): s
   const videos = assetFeed?.videos as Array<Record<string, unknown>> | undefined;
   const assetVideoId = videos?.map((v) => v.video_id).find((v) => typeof v === "string" && v.trim());
   return typeof assetVideoId === "string" ? assetVideoId.trim() : null;
-}
-
-function isLowResThumb(url: string): boolean {
-  return /p64x64|p96x96|p128x128|s60x60|s32x32/i.test(url);
-}
-
-function pickBestUrl(...urls: Array<string | null | undefined>): string | null {
-  const clean = urls.filter((u): u is string => typeof u === "string" && u.trim().length > 0);
-  const hq = clean.find((u) => !isLowResThumb(u));
-  return hq ?? clean[0] ?? null;
 }
 
 function extractThumb(creative: Record<string, unknown> | null | undefined): string | null {
@@ -114,11 +110,22 @@ Deno.serve(async (req) => {
 
   const { data: row, error: rowErr } = await admin
     .from("meta_creatives")
-    .select("id, video_id, thumbnail_url")
+    .select("id, video_id, thumbnail_url, poster_url, cabinet_id")
     .eq("ad_id", adId)
     .maybeSingle();
   if (rowErr) return json({ ok: false, error: rowErr.message }, 500);
   if (!row) return json({ ok: false, error: "not found" }, 404);
+
+  const cabinetId = (row as { cabinet_id?: string | null }).cabinet_id ?? null;
+  const existingPoster = ((row as { poster_url?: string | null }).poster_url ?? "").trim();
+  if (existingPoster && isSupabasePosterUrl(existingPoster)) {
+    return json({
+      ok: true,
+      poster_url: existingPoster,
+      thumbnail_url: existingPoster,
+    });
+  }
+
   let videoId = ((row as { video_id?: string | null }).video_id ?? "").trim();
   const storedThumb = ((row as { thumbnail_url?: string | null }).thumbnail_url ?? "").trim();
   let resolvedThumb: string | null = null;
@@ -143,7 +150,15 @@ Deno.serve(async (req) => {
 
   if (!videoId) {
     const thumb = resolvedThumb ?? storedThumb || null;
-    return json({ ok: Boolean(thumb), reason: "not_video", thumbnail_url: thumb }, 200);
+    const posterUrl = thumb && !isLowResThumb(thumb)
+      ? await ensurePosterInStorage(admin, adId, cabinetId, existingPoster, thumb)
+      : null;
+    return json({
+      ok: Boolean(posterUrl ?? thumb),
+      reason: "not_video",
+      thumbnail_url: posterUrl ?? thumb,
+      poster_url: posterUrl,
+    }, 200);
   }
 
   try {
@@ -159,34 +174,35 @@ Deno.serve(async (req) => {
       picture?: string;
       thumbnails?: { data?: Array<{ uri: string; width?: number; height?: number; is_preferred?: boolean; scale?: number }> };
     };
-    // Выбираем самый большой постер: предпочтительный → max(width*height) → picture
-    const thumbs = v.thumbnails?.data ?? [];
-    let bestThumb: string | null = null;
-    if (thumbs.length) {
-      const preferred = thumbs.find((t) => t.is_preferred);
-      const sorted = [...thumbs].sort(
-        (a, b) => ((b.width ?? 0) * (b.height ?? 0)) - ((a.width ?? 0) * (a.height ?? 0)),
-      );
-      bestThumb = (preferred?.uri && (preferred.width ?? 0) >= 320 ? preferred.uri : null)
-        ?? sorted[0]?.uri
-        ?? null;
-    }
-    if (!bestThumb && v.picture) bestThumb = v.picture;
-    if (!bestThumb && resolvedThumb) bestThumb = resolvedThumb;
+
+    const bestThumb = pickBestVideoThumb(v.thumbnails?.data ?? [], v.picture)
+      ?? resolvedThumb
+      ?? (storedThumb && !isLowResThumb(storedThumb) ? storedThumb : null);
+
+    const posterUrl = bestThumb
+      ? await ensurePosterInStorage(admin, adId, cabinetId, existingPoster, bestThumb)
+      : null;
 
     if (!v.source) {
-      if (bestThumb) {
-        const { error: thumbErr } = await admin
-          .from("meta_creatives")
-          .update({
-            thumbnail_url: bestThumb,
-            image_url: bestThumb,
-            last_synced_at: new Date().toISOString(),
-          })
-          .eq("ad_id", adId);
+      if (bestThumb || posterUrl) {
+        const patch: Record<string, unknown> = {
+          last_synced_at: new Date().toISOString(),
+        };
+        if (bestThumb) {
+          patch.thumbnail_url = bestThumb;
+          patch.image_url = bestThumb;
+        }
+        if (posterUrl) patch.poster_url = posterUrl;
+        const { error: thumbErr } = await admin.from("meta_creatives").update(patch).eq("ad_id", adId);
         if (thumbErr) return json({ ok: false, error: thumbErr.message }, 500);
       }
-      return json({ ok: false, error: "no source url", fallback: true, thumbnail_url: bestThumb }, 200);
+      return json({
+        ok: Boolean(posterUrl),
+        error: "no source url",
+        fallback: true,
+        thumbnail_url: posterUrl ?? bestThumb,
+        poster_url: posterUrl,
+      }, 200);
     }
 
     const patch: Record<string, unknown> = {
@@ -197,6 +213,7 @@ Deno.serve(async (req) => {
       patch.thumbnail_url = bestThumb;
       patch.image_url = bestThumb;
     }
+    if (posterUrl) patch.poster_url = posterUrl;
 
     const { error: upErr } = await admin
       .from("meta_creatives")
@@ -204,7 +221,12 @@ Deno.serve(async (req) => {
       .eq("ad_id", adId);
     if (upErr) return json({ ok: false, error: upErr.message }, 500);
 
-    return json({ ok: true, video_url: v.source, thumbnail_url: bestThumb });
+    return json({
+      ok: true,
+      video_url: v.source,
+      thumbnail_url: posterUrl ?? bestThumb,
+      poster_url: posterUrl,
+    });
   } catch (_e) {
     return json({ ok: false, fallback: true, error: "META_REFRESH_FAILED", retry_after_seconds: 60 });
   }

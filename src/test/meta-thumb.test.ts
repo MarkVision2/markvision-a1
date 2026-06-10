@@ -34,10 +34,13 @@ describe("metaThumb", () => {
     expect(isLowResMetaThumb(up!)).toBe(false);
   });
 
-  it("pickDisplayImageSrc hides low-res while HQ loads", () => {
+  it("pickDisplayImageSrc never shows low-res thumbs", () => {
     const low = "https://scontent.xx.fbcdn.net/p64x64";
     expect(
       pickDisplayImageSrc({ hqSrc: null, displaySrc: low, loadingHq: true, isLowRes: true }),
+    ).toBeNull();
+    expect(
+      pickDisplayImageSrc({ hqSrc: null, displaySrc: low, loadingHq: false, isLowRes: true }),
     ).toBeNull();
     expect(
       pickDisplayImageSrc({ hqSrc: "https://x.supabase.co/storage/creative-posters/a.jpg", displaySrc: low, loadingHq: true, isLowRes: true }),

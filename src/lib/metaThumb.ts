@@ -102,7 +102,7 @@ export function pickCreativePreviewUrl(args: {
   );
 }
 
-/** URL для <img>: HQ если есть; при загрузке HD не показываем пиксельную миниатюру. */
+/** URL для <img>: только HQ; пиксельные миниатюры Meta никогда не растягиваем. */
 export function pickDisplayImageSrc(args: {
   hqSrc: string | null;
   displaySrc: string | null;
@@ -110,6 +110,7 @@ export function pickDisplayImageSrc(args: {
   isLowRes: boolean;
 }): string | null {
   if (args.hqSrc) return args.hqSrc;
+  if (args.displaySrc && isLowResMetaThumb(args.displaySrc)) return null;
   if (args.loadingHq && args.isLowRes) return null;
   return args.displaySrc;
 }

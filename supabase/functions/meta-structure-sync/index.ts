@@ -9,6 +9,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireUser, userHasRole } from "../_lib/auth.ts";
+import { pickBestUrl, pickBestVideoThumb } from "../_lib/creativePoster.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -403,18 +404,26 @@ Deno.serve(async (req) => {
       for (let i = 0; i < videoIds.length; i += 50) {
         const chunk = videoIds.slice(i, i + 50);
         try {
-          const url = `https://graph.facebook.com/${META_API_VERSION}/?ids=${encodeURIComponent(chunk.join(","))}&fields=source,picture&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`;
+          const url = `https://graph.facebook.com/${META_API_VERSION}/?ids=${encodeURIComponent(chunk.join(","))}&fields=source,picture,thumbnails{uri,width,height,is_preferred}&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`;
           const r = await fetch(url);
           if (!r.ok) continue;
-          const body = await r.json() as Record<string, { source?: string; picture?: string }>;
+          const body = await r.json() as Record<string, {
+            source?: string;
+            picture?: string;
+            thumbnails?: { data?: Array<{ uri: string; width?: number; height?: number; is_preferred?: boolean }> };
+          }>;
           for (const [vid, val] of Object.entries(body)) {
             if (val?.source) videoSourceById.set(vid, val.source);
-            if (val?.picture) videoPosterById.set(vid, val.picture);
+            const bestPoster = pickBestVideoThumb(val?.thumbnails?.data ?? [], val?.picture ?? null);
+            if (bestPoster) videoPosterById.set(vid, bestPoster);
           }
         } catch (_) { /* ignore */ }
       }
 
-      const creativeRows = adsMeta.map(({ a, cr, media, ctype }) => ({
+      const creativeRows = adsMeta.map(({ a, cr, media, ctype }) => {
+        const videoPoster = media.video_id ? videoPosterById.get(media.video_id) ?? null : null;
+        const bestThumb = pickBestUrl(videoPoster, media.image, media.thumbnail);
+        return {
         cabinet_id: cabinetId,
         project_id: projectId,
         ad_id: String(a.id),
@@ -424,9 +433,8 @@ Deno.serve(async (req) => {
         status: (a.status as string | undefined) ?? null,
         effective_status: (a.effective_status as string | undefined) ?? null,
         creative_type: ctype,
-        thumbnail_url: media.thumbnail
-          ?? (media.video_id ? videoPosterById.get(media.video_id) ?? null : null),
-        image_url: media.image,
+        thumbnail_url: bestThumb,
+        image_url: pickBestUrl(media.image, videoPoster, media.thumbnail),
         video_id: media.video_id,
         // Готовый mp4 source URL (fbcdn, временная подпись ~24h). Если не удалось
         // достать — пишем null, фронт покажет постер с кнопкой обновить.
@@ -436,7 +444,8 @@ Deno.serve(async (req) => {
         cta: (cr?.call_to_action_type as string | undefined) ?? null,
         destination_url: (cr?.object_url as string | undefined) ?? null,
         last_synced_at: new Date().toISOString(),
-      }));
+      };
+      });
       if (creativeRows.length > 0) {
         const { error } = await admin
           .from("meta_creatives")

@@ -35,20 +35,25 @@ export function CreativePreview({
 }: Props) {
   const isCarousel = row.creativeType === "carousel";
   const containerRef = useRef<HTMLDivElement>(null);
-  const [inView, setInView] = useState(false);
+  const [inView, setInView] = useState(!compact);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    const checkVisible = () => {
+      const rect = el.getBoundingClientRect();
+      if (rect.top < window.innerHeight + 320 && rect.bottom > -320) setInView(true);
+    };
+    checkVisible();
     const obs = new IntersectionObserver(
       ([entry]) => {
         if (entry?.isIntersecting) setInView(true);
       },
-      { rootMargin: "240px" },
+      { rootMargin: "320px" },
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, []);
+  }, [compact]);
 
   const {
     isVideo,
