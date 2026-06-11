@@ -33,6 +33,7 @@ import {
   type CdiFactRow,
 } from "@/lib/metricsSourceOfTruth";
 import { cn } from "@/lib/utils";
+import { formatMetaSyncMessages, syncMetaDaily } from "@/lib/metaSync";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { AdCabinet } from "@/types/ads";
@@ -334,22 +335,27 @@ const Metrics = () => {
   const handleResync = async () => {
     setResyncing(true);
     try {
-      const today = new Date();
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
       const since = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}-01`;
       const lastDay = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0);
-      const monthEnd = lastDay < yesterday ? lastDay : yesterday;
+      const today = new Date();
+      const monthEnd = lastDay < today ? lastDay : today;
       const until = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, "0")}-${String(monthEnd.getDate()).padStart(2, "0")}`;
       const targetCab = cabinetId !== "all"
         ? cabinets.find((c) => c.id === cabinetId)
         : null;
-      const body: Record<string, string> = { since, until };
-      if (targetCab) body.cabinet_id = targetCab.id;
-      const { error: invErr } = await supabase.functions.invoke("meta-daily-sync", { body });
-      if (invErr) throw invErr;
+      const daily = await syncMetaDaily({
+        since,
+        until,
+        ...(targetCab ? { cabinet_id: targetCab.id } : {}),
+      });
+      const messages = formatMetaSyncMessages({
+        daily,
+        structure: { kind: "structure", ok: true, results: [] },
+      });
+      if (messages.success) toast.success(messages.success);
+      for (const warning of messages.warnings) toast.warning(warning);
+      if (messages.error) toast.error(messages.error);
       refresh();
-      toast.success(`Синхронизация ${since} → ${until} выполнена`);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось синхронизировать");
     } finally {

@@ -8,7 +8,8 @@
 // Trigger: cron OR ad-hoc POST with {since, until, cabinet_id?}.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
-import { requireUser, userHasRole } from "../_lib/auth.ts";
+import { requireUser, userHasAnyRole } from "../_lib/auth.ts";
+import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
 import { pickBestUrl, pickBestVideoThumb } from "../_lib/creativePoster.ts";
 
 const corsHeaders = {
@@ -277,21 +278,30 @@ function processInsightRow(
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  // Auth: allow internal cron via shared secret, otherwise require admin JWT.
+  const url = new URL(req.url);
+  let body: Record<string, unknown> = {};
+  if (req.method === "POST") body = await req.json().catch(() => ({}));
+
+  // Auth: allow internal cron via shared secret, otherwise require admin/manager JWT.
   const cronKey = Deno.env.get("META_SYNC_CRON_KEY");
   const provided = req.headers.get("x-cron-key");
   const isCron = !!cronKey && provided === cronKey;
   if (!isCron) {
     const auth = await requireUser(req);
     if (!auth.ok) return auth.response;
-    if (!(await userHasRole(auth.userId, "admin"))) {
-      return json({ ok: false, error: "Forbidden" }, 403);
+    if (!(await userHasAnyRole(auth.userId, ["admin", "manager"]))) {
+      return json({ ok: false, error: "Синхронизация Meta доступна только admin или manager" }, 403);
     }
   }
 
-  const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN");
+  const META_ACCESS_TOKEN = await resolveMetaAccessToken(
+    typeof body.access_token === "string" ? body.access_token : null,
+  );
   if (!META_ACCESS_TOKEN) {
-    return json({ ok: false, error: "META_ACCESS_TOKEN missing" }, 500);
+    return json({
+      ok: false,
+      error: "Meta access token не настроен. Укажите токен в Настройках → Автоматизация.",
+    }, 400);
   }
   const admin = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -299,9 +309,6 @@ Deno.serve(async (req) => {
   );
 
   // ---- params ----
-  const url = new URL(req.url);
-  let body: Record<string, unknown> = {};
-  if (req.method === "POST") body = await req.json().catch(() => ({}));
   const qpSince = url.searchParams.get("since") ?? (body.since as string | undefined) ?? null;
   const qpUntil = url.searchParams.get("until") ?? (body.until as string | undefined) ?? null;
   const qpCabinetId = url.searchParams.get("cabinet_id") ?? (body.cabinet_id as string | undefined) ?? null;
@@ -317,7 +324,10 @@ Deno.serve(async (req) => {
   if (since > until) [since, until] = [until, since];
 
   // ---- cabinets ----
-  let cabQuery = admin.from("ad_cabinets").select("id, external_id, project_id, provider");
+  let cabQuery = admin
+    .from("ad_cabinets")
+    .select("id, external_id, ad_account_id, project_id, provider, name")
+    .or("provider.eq.meta,provider.is.null");
   if (qpCabinetId) cabQuery = cabQuery.eq("id", qpCabinetId);
   const { data: cabinets, error: cabErr } = await cabQuery;
   if (cabErr) return json({ ok: false, error: cabErr.message }, 500);
@@ -325,9 +335,21 @@ Deno.serve(async (req) => {
   const results: Array<Record<string, unknown>> = [];
 
   for (const cab of cabinets ?? []) {
-    if ((cab as { provider?: string }).provider && (cab as { provider?: string }).provider !== "meta") continue;
-    const ext = ((cab as { external_id?: string }).external_id ?? "").trim();
-    if (!ext) continue;
+    const ext = String(
+      (cab as { external_id?: string | null }).external_id
+      ?? (cab as { ad_account_id?: string | null }).ad_account_id
+      ?? "",
+    ).trim();
+    const cabName = (cab as { name?: string }).name ?? ext;
+    if (!ext) {
+      results.push({
+        cabinet_id: (cab as { id: string }).id,
+        cabinet: cabName,
+        ok: false,
+        error: "external_id (ad_account_id) не задан",
+      });
+      continue;
+    }
     const actId = normalizeActId(ext);
     const cabinetId = (cab as { id: string }).id;
     const projectId = ((cab as { project_id?: string }).project_id ?? null) as string | null;

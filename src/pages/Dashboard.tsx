@@ -26,7 +26,7 @@ import { useMetaDashboard } from "@/hooks/useMetaDashboard";
 import { QualityBlock, QualityFunnel } from "@/components/crm/QualityBlock";
 import { deltaPct, type ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
-import { formatMetaSyncMessages, syncMetaFull } from "@/lib/metaSync";
+import { formatMetaSyncMessages, syncMetaFull, ymdAlmaty } from "@/lib/metaSync";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { LayoutGrid } from "lucide-react";
@@ -57,7 +57,7 @@ const Dashboard = () => {
     try {
       const result = await syncMetaFull({
         since: ymdLocal(range.from),
-        until: ymdLocal(range.to),
+        until: ymdAlmaty(),
       });
       const messages = formatMetaSyncMessages(result);
       if (messages.success) toast.success(messages.success);

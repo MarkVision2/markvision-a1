@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
-import { requireUser, userHasRole } from "../_lib/auth.ts";
+import { requireUser, userHasAnyRole } from "../_lib/auth.ts";
+import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -124,21 +125,6 @@ async function getRatesForDates(
   return map;
 }
 
-async function resolveMetaToken(
-  admin: ReturnType<typeof createClient>,
-  bodyToken: string | null | undefined,
-): Promise<string | null> {
-  if (bodyToken?.trim()) return bodyToken.trim();
-  const { data: settings } = await admin
-    .from("automation_settings")
-    .select("meta_access_token")
-    .eq("id", true)
-    .maybeSingle();
-  return (settings as { meta_access_token?: string | null } | null)?.meta_access_token
-    ?? Deno.env.get("META_ACCESS_TOKEN")
-    ?? null;
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -159,8 +145,7 @@ Deno.serve(async (req) => {
         ? body.exclude_act_ids
         : [];
       const exclude = excludeRaw.map((x) => normalizeActIdList(String(x)));
-      const token = await resolveMetaToken(
-        adminPre,
+      const token = await resolveMetaAccessToken(
         typeof body.access_token === "string" ? body.access_token : null,
       );
       if (!token) {
@@ -214,16 +199,22 @@ Deno.serve(async (req) => {
     if (!isCron) {
       const auth = await requireUser(req);
       if (!auth.ok) return auth.response;
-      if (!(await userHasRole(auth.userId, "admin"))) {
-        return new Response(JSON.stringify({ error: "Forbidden" }), {
+      if (!(await userHasAnyRole(auth.userId, ["admin", "manager"]))) {
+        return new Response(JSON.stringify({
+          error: "Синхронизация Meta доступна только admin или manager",
+        }), {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
     }
-    const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN");
+    const META_ACCESS_TOKEN = await resolveMetaAccessToken(
+      typeof body.access_token === "string" ? body.access_token : null,
+    );
     if (!META_ACCESS_TOKEN) {
-      return new Response(JSON.stringify({ error: "META_ACCESS_TOKEN missing" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      return new Response(JSON.stringify({
+        error: "Meta access token не настроен. Укажите токен в Настройках → Автоматизация.",
+      }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -253,7 +244,10 @@ Deno.serve(async (req) => {
     }
     if (since > until) [since, until] = [until, since];
 
-    let cabQuery = admin.from("ad_cabinets").select("id, external_id, project_id, name");
+    let cabQuery = admin
+      .from("ad_cabinets")
+      .select("id, external_id, ad_account_id, project_id, name, provider")
+      .or("provider.eq.meta,provider.is.null");
     if (qpCabinetId) cabQuery = cabQuery.eq("id", qpCabinetId);
     const { data: cabinets, error: cabErr } = await cabQuery;
     if (cabErr) throw cabErr;
@@ -279,7 +273,11 @@ Deno.serve(async (req) => {
     }
 
     for (const cab of cabinets ?? []) {
-      const ext = (cab.external_id ?? "").trim();
+      const ext = String(
+        (cab as { external_id?: string | null }).external_id
+        ?? (cab as { ad_account_id?: string | null }).ad_account_id
+        ?? "",
+      ).trim();
       const cabName = (cab as { name?: string }).name ?? ext;
       if (!ext) {
         // Раньше тихо пропускали — теперь явно логируем, чтобы было видно неконфигурированные кабинеты.

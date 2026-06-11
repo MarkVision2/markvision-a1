@@ -36,17 +36,27 @@ type SyncBody = {
 };
 
 const ADMIN_FORBIDDEN =
-  "Синхронизация Meta доступна только пользователям с ролью admin. Обратитесь к администратору проекта.";
+  "Синхронизация Meta доступна только пользователям с ролью admin или manager.";
 
 const FUNCTION_NOT_DEPLOYED =
   "Edge Function не задеплоена на Supabase. Проверьте GitHub Actions → Deploy Meta edge functions.";
 
-/** Meta отдаёт полные суточные insights с задержкой — не запрашиваем «сегодня». */
-export function capMetaSyncUntil(until: string): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  const yesterday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  return until > yesterday ? yesterday : until;
+/** Сегодня по часовому поясу рекламного кабинета (Asia/Almaty). */
+export function ymdAlmaty(d = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Almaty",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(d);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/** Для ручной синхронизации включаем сегодня, но не будущие даты. */
+export function metaSyncUntilForRange(rangeUntilYmd: string): string {
+  const today = ymdAlmaty();
+  return rangeUntilYmd > today ? today : rangeUntilYmd;
 }
 
 async function parseInvokeError(error: FunctionsHttpError): Promise<string> {
@@ -134,12 +144,20 @@ async function invokeMetaSync(
   };
 }
 
-export async function syncMetaFull(params: SyncBody): Promise<MetaFullSyncResult> {
-  const body: SyncBody = {
+function buildSyncBody(params: SyncBody): SyncBody {
+  return {
     since: params.since,
-    until: capMetaSyncUntil(params.until),
+    until: metaSyncUntilForRange(params.until),
     ...(params.cabinet_id ? { cabinet_id: params.cabinet_id } : {}),
   };
+}
+
+export async function syncMetaDaily(params: SyncBody): Promise<MetaSyncFunctionResult> {
+  return invokeMetaSync("daily", buildSyncBody(params));
+}
+
+export async function syncMetaFull(params: SyncBody): Promise<MetaFullSyncResult> {
+  const body = buildSyncBody(params);
 
   const [daily, structure] = await Promise.all([
     invokeMetaSync("daily", body),

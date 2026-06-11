@@ -72,6 +72,20 @@ export async function userHasRole(userId: string, role: string): Promise<boolean
   return !!data;
 }
 
+export async function userHasAnyRole(userId: string, roles: string[]): Promise<boolean> {
+  if (roles.length === 0) return false;
+  const admin = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+  const { data } = await admin
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .in("role", roles);
+  return (data ?? []).length > 0;
+}
+
 export async function requireProjectAccess(
   authHeader: string,
   projectId: string,

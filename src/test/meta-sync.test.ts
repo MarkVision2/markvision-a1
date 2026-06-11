@@ -1,20 +1,20 @@
 import { describe, it, expect } from "vitest";
 import {
-  capMetaSyncUntil,
   formatMetaSyncMessages,
+  metaSyncUntilForRange,
+  ymdAlmaty,
   type MetaFullSyncResult,
 } from "@/lib/metaSync";
 
-describe("capMetaSyncUntil", () => {
-  it("не запрашивает сегодняшний день", () => {
-    const today = new Date();
-    const todayYmd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-    const capped = capMetaSyncUntil(todayYmd);
-    expect(capped < todayYmd).toBe(true);
+describe("ymdAlmaty / metaSyncUntilForRange", () => {
+  it("включает сегодняшний день в ручную синхронизацию", () => {
+    const today = ymdAlmaty();
+    expect(metaSyncUntilForRange(today)).toBe(today);
+    expect(metaSyncUntilForRange("2099-12-31")).toBe(today);
   });
 
   it("оставляет прошлые даты без изменений", () => {
-    expect(capMetaSyncUntil("2024-01-15")).toBe("2024-01-15");
+    expect(metaSyncUntilForRange("2024-01-15")).toBe("2024-01-15");
   });
 });
 
@@ -56,5 +56,18 @@ describe("formatMetaSyncMessages", () => {
     });
     expect(msg.success).toContain("кампании/креативы");
     expect(msg.warnings.some((w) => w.includes("Forbidden"))).toBe(true);
+  });
+
+  it("показывает ошибку отсутствия токена", () => {
+    const msg = formatMetaSyncMessages({
+      daily: {
+        kind: "daily",
+        ok: false,
+        error: "Meta access token не настроен. Укажите токен в Настройках → Автоматизация.",
+        results: [],
+      },
+      structure: { kind: "structure", ok: false, error: "Meta access token не настроен.", results: [] },
+    });
+    expect(msg.error).toContain("токен");
   });
 });
