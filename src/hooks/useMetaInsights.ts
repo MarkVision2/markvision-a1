@@ -265,6 +265,7 @@ async function fetchInsightsRange(
   since: string,
   until: string,
   projectId?: string | null,
+  cabinetId?: string | null,
 ): Promise<InsightsData> {
   if (actIds.length === 0) {
     return { currency: "USD", totals: EMPTY_TOTALS, daily: [] };
@@ -277,7 +278,8 @@ async function fetchInsightsRange(
     .gte("date", since)
     .lte("date", until)
     .order("date", { ascending: true });
-  if (projectId) q = q.eq("project_id", projectId);
+  if (projectId) q = q.or(`project_id.eq.${projectId},project_id.is.null`);
+  if (cabinetId) q = q.eq("cabinet_id", cabinetId);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
   return aggregate((data ?? []) as CdiRow[]);
@@ -301,8 +303,9 @@ export async function fetchInsightsByDateRange(
   since: string,
   until: string,
   projectId?: string | null,
+  cabinetId?: string | null,
 ): Promise<InsightsData> {
-  return fetchInsightsRange(actIds, since, until, projectId);
+  return fetchInsightsRange(actIds, since, until, projectId, cabinetId);
 }
 
 export function useMetaInsights(
