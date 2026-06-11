@@ -15,6 +15,9 @@ import {
   Target,
   TrendingUp,
   Wallet,
+  Banknote,
+  CalendarCheck,
+  UserCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,6 +38,8 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { AdCabinet } from "@/types/ads";
+import { useRnpDaily, QUAL_SCORE_MIN, type RnpManualPatch } from "@/hooks/useRnpDaily";
+import { factValue } from "@/lib/insightFacts";
 
 const WEEKDAYS_RU = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
 
@@ -148,6 +153,14 @@ const Metrics = () => {
   const { getPlan } = useFinancePlans();
   const plan = getPlan(monthKey(monthCursor));
 
+  // РНП: CRM-метрики по дням (получено/квал/спланировано/проведено) + ручные факты
+  const {
+    manualByDate: rnpByDate,
+    crmByDate,
+    tableMissing: rnpTableMissing,
+    upsertManual: upsertRnp,
+  } = useRnpDaily(monthParam, cabinetId !== "all" ? cabinetId : null);
+
   const totals = data?.totals;
   const dailyMap = useMemo(() => {
     const m = new Map<string, DailyInsightRow>();
@@ -170,6 +183,33 @@ const Metrics = () => {
     });
   }, [monthCursor, daysInMonth]);
 
+  const rnpTotals = useMemo(() => {
+    let received = 0, qualified = 0, diagRevenue = 0, planned = 0,
+      conducted = 0, prepayCount = 0, prepaySum = 0, cash = 0;
+    for (const { iso } of monthDays) {
+      const crm = crmByDate.get(iso);
+      const man = rnpByDate.get(iso);
+      received += crm?.received ?? 0;
+      qualified += crm?.qualified ?? 0;
+      diagRevenue += man?.diagRevenue ?? 0;
+      planned += factValue(crm?.plannedAuto ?? 0, man?.plannedDiagnostics ?? 0);
+      conducted += factValue(crm?.conductedAuto ?? 0, man?.conductedDiagnostics ?? 0);
+      prepayCount += man?.prepaymentsCount ?? 0;
+      prepaySum += man?.prepaymentsSum ?? 0;
+      cash += man?.cashReceived ?? 0;
+    }
+    return { received, qualified, diagRevenue, planned, conducted, prepayCount, prepaySum, cash };
+  }, [monthDays, crmByDate, rnpByDate]);
+
+  const saveRnp = async (isoDate: string, patch: RnpManualPatch) => {
+    try {
+      await upsertRnp(isoDate, patch);
+      toast.success("РНП-факт сохранён");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось сохранить");
+    }
+  };
+
   const filledDays = data?.daily.length ?? 0;
   const monthProgress = Math.round((filledDays / daysInMonth) * 100);
   const factDiagnostics = totals?.diagnostics ?? 0;
@@ -185,12 +225,18 @@ const Metrics = () => {
   const handleExportCsv = () => {
     const header = [
       "Дата", "День",
-      "Расходы", "Лиды", "CPL",
-      "Диагностики", "Оплаты", "Выручка",
+      "Затраты на рекламу", "Лидов передано", "CPL",
+      "Лидов получено", "Квал. лиды",
+      "Диагностик продано", "Сумма по диагностикам",
+      "Спланировано", "Проведено",
+      "Предоплат", "Сумма предоплат",
+      "Оплаты", "Сумма договоров", "Денег в кассе",
       "Показы", "Клики", "CTR", "CPC", "CPM",
     ];
     const rows = monthDays.map(({ day, iso, weekday }) => {
       const d = dailyMap.get(iso);
+      const crm = crmByDate.get(iso);
+      const man = rnpByDate.get(iso);
       const cpl = d && d.leads > 0 ? d.spend / d.leads : 0;
       const cpc = d && d.clicks > 0 ? d.spend / d.clicks : 0;
       const cpm = d && d.impressions > 0 ? (d.spend / d.impressions) * 1000 : 0;
@@ -201,9 +247,17 @@ const Metrics = () => {
         d?.spend ?? 0,
         d?.leads ?? 0,
         cpl ? Math.round(cpl) : "",
+        crm?.received ?? 0,
+        crm?.qualified ?? 0,
         d?.diagnostics ?? 0,
+        man?.diagRevenue ?? 0,
+        factValue(crm?.plannedAuto ?? 0, man?.plannedDiagnostics ?? 0),
+        factValue(crm?.conductedAuto ?? 0, man?.conductedDiagnostics ?? 0),
+        man?.prepaymentsCount ?? 0,
+        man?.prepaymentsSum ?? 0,
         d?.sales ?? 0,
         d?.crmRevenue ?? 0,
+        man?.cashReceived ?? 0,
         d?.impressions ?? 0,
         d?.clicks ?? 0,
         ctr ? ctr.toFixed(2) : "",
@@ -465,18 +519,36 @@ const Metrics = () => {
         </div>
       )}
 
+      {rnpTableMissing && (
+        <div className="mt-6 flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning/10 p-4 text-sm text-warning">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <div className="font-semibold">РНП-столбцы пока некуда сохранять</div>
+            <div className="mt-0.5 text-xs opacity-90">
+              В базе нет таблицы rnp_daily. Применить миграцию
+              supabase/migrations/20260611090000_rnp_daily.sql — после этого сумма диагностик,
+              предоплаты и касса станут редактируемыми.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Table */}
       <div className="mt-6 overflow-hidden rounded-2xl border border-border/60 bg-card/40">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1040px] border-collapse text-sm">
+          <table className="w-full min-w-[1980px] border-collapse text-sm">
             <thead>
               <tr className="border-b border-border/60 bg-card/60">
                 <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Дата
                 </th>
                 {[
-                  "Расходы", "Лиды", "CPL",
-                  "Диагностики", "Оплаты", "Выручка",
+                  "Затраты", "Лиды Инста", "CPL",
+                  "Получено CRM", "Квал. лиды",
+                  "Диагн. продано", "Сумма диагн.",
+                  "Сплан.", "Провед.",
+                  "Предоплат", "Сумма предопл.",
+                  "Оплаты", "Сумма договоров", "Касса",
                 ].map((h) => (
                   <th
                     key={h}
@@ -503,9 +575,17 @@ const Metrics = () => {
                 <Cell>{plan ? formatNumber(plan.spend) : <Dash />}</Cell>
                 <Cell>{plan ? formatNumber(plan.leads) : <Dash />}</Cell>
                 <Cell>{plan ? formatNumber(plan.cpl) : <Dash />}</Cell>
+                <Cell><Dash /></Cell>
+                <Cell><Dash /></Cell>
                 <Cell>{plan ? formatNumber(plan.visits) : <Dash />}</Cell>
+                <Cell><Dash /></Cell>
+                <Cell><Dash /></Cell>
+                <Cell><Dash /></Cell>
+                <Cell><Dash /></Cell>
+                <Cell><Dash /></Cell>
                 <Cell>{plan ? formatNumber(plan.sales) : <Dash />}</Cell>
                 <Cell>{plan ? formatNumber(plan.revenue) : <Dash />}</Cell>
+                <Cell><Dash /></Cell>
               </tr>
 
               {/* Fact row */}
@@ -537,7 +617,42 @@ const Metrics = () => {
                 </Cell>
                 <Cell>
                   <span className="font-bold">
+                    {rnpTotals.received > 0 ? formatNumber(rnpTotals.received) : <Dash />}
+                  </span>
+                </Cell>
+                <Cell>
+                  <span className="font-bold text-success">
+                    {rnpTotals.qualified > 0 ? formatNumber(rnpTotals.qualified) : <Dash />}
+                  </span>
+                </Cell>
+                <Cell>
+                  <span className="font-bold">
                     {factDiagnostics > 0 ? formatNumber(factDiagnostics) : <Dash />}
+                  </span>
+                </Cell>
+                <Cell>
+                  <span className="font-bold">
+                    {rnpTotals.diagRevenue > 0 ? formatNumber(rnpTotals.diagRevenue) : <Dash />}
+                  </span>
+                </Cell>
+                <Cell>
+                  <span className="font-bold">
+                    {rnpTotals.planned > 0 ? formatNumber(rnpTotals.planned) : <Dash />}
+                  </span>
+                </Cell>
+                <Cell>
+                  <span className="font-bold">
+                    {rnpTotals.conducted > 0 ? formatNumber(rnpTotals.conducted) : <Dash />}
+                  </span>
+                </Cell>
+                <Cell>
+                  <span className="font-bold">
+                    {rnpTotals.prepayCount > 0 ? formatNumber(rnpTotals.prepayCount) : <Dash />}
+                  </span>
+                </Cell>
+                <Cell>
+                  <span className="font-bold">
+                    {rnpTotals.prepaySum > 0 ? formatNumber(rnpTotals.prepaySum) : <Dash />}
                   </span>
                 </Cell>
                 <Cell>
@@ -548,6 +663,11 @@ const Metrics = () => {
                 <Cell>
                   <span className="font-bold">
                     {factRevenue > 0 ? formatNumber(factRevenue) : <Dash />}
+                  </span>
+                </Cell>
+                <Cell>
+                  <span className="font-bold">
+                    {rnpTotals.cash > 0 ? formatNumber(rnpTotals.cash) : <Dash />}
                   </span>
                 </Cell>
               </tr>
@@ -573,9 +693,17 @@ const Metrics = () => {
                     pct(factSpend, plan?.spend ?? 0),
                     pct(factLeads, plan?.leads ?? 0),
                     null,
+                    null,
+                    null,
                     pct(factDiagnostics, plan?.visits ?? 0),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
                     pct(factSales, plan?.sales ?? 0),
                     pct(factRevenue, plan?.revenue ?? 0),
+                    null,
                   ];
                   return cells.map((v, i) => (
                     <Cell key={i}>
@@ -588,8 +716,12 @@ const Metrics = () => {
               {/* Days */}
               {monthDays.map(({ day, iso, weekday }) => {
                 const d = dailyMap.get(iso);
+                const crmDay = crmByDate.get(iso);
+                const rnp = rnpByDate.get(iso);
                 const cpl = d && d.leads > 0 ? d.spend / d.leads : 0;
                 const dayRevenue = d ? d.crmRevenue : 0;
+                const plannedVal = factValue(crmDay?.plannedAuto ?? 0, rnp?.plannedDiagnostics ?? 0);
+                const conductedVal = factValue(crmDay?.conductedAuto ?? 0, rnp?.conductedDiagnostics ?? 0);
                 const hasData = !!d && (
                   d.spend > 0 ||
                   d.leads > 0 ||
@@ -613,8 +745,18 @@ const Metrics = () => {
                     <Cell>{hasData && d!.leads > 0 ? formatNumber(d!.leads) : <Dash />}</Cell>
                     <Cell>{cpl > 0 ? formatNumber(cpl) : <Dash />}</Cell>
                     <Cell>
+                      {(crmDay?.received ?? 0) > 0
+                        ? formatNumber(crmDay!.received)
+                        : <Dash />}
+                    </Cell>
+                    <Cell>
+                      {(crmDay?.qualified ?? 0) > 0
+                        ? <span className="text-success">{formatNumber(crmDay!.qualified)}</span>
+                        : <Dash />}
+                    </Cell>
+                    <Cell>
                       <ManualFactCell
-                        title="Диагностики"
+                        title="Диагностик продано"
                         icon={Eye}
                         isoDate={iso}
                         value={d?.diagnostics ?? 0}
@@ -622,6 +764,70 @@ const Metrics = () => {
                         autoLabel="CRM"
                         disabled={!manualCabinet}
                         onSave={(next) => upsertManualFact(iso, { manual_diagnostics: next })}
+                      />
+                    </Cell>
+                    <Cell>
+                      <ManualFactCell
+                        title="Сумма по диагностикам"
+                        icon={DollarSign}
+                        isoDate={iso}
+                        value={rnp?.diagRevenue ?? 0}
+                        manual={rnp?.diagRevenue ?? 0}
+                        autoLabel="—"
+                        disabled={rnpTableMissing}
+                        format={formatNumber}
+                        allowDecimal
+                        onSave={(next) => saveRnp(iso, { diag_revenue: next })}
+                      />
+                    </Cell>
+                    <Cell>
+                      <ManualFactCell
+                        title="Диагностик спланировано"
+                        icon={CalendarCheck}
+                        isoDate={iso}
+                        value={plannedVal}
+                        manual={rnp?.plannedDiagnostics ?? 0}
+                        autoLabel="CRM"
+                        disabled={rnpTableMissing}
+                        onSave={(next) => saveRnp(iso, { planned_diagnostics: next })}
+                      />
+                    </Cell>
+                    <Cell>
+                      <ManualFactCell
+                        title="Диагностик проведено"
+                        icon={ClipboardCheck}
+                        isoDate={iso}
+                        value={conductedVal}
+                        manual={rnp?.conductedDiagnostics ?? 0}
+                        autoLabel="CRM"
+                        disabled={rnpTableMissing}
+                        onSave={(next) => saveRnp(iso, { conducted_diagnostics: next })}
+                      />
+                    </Cell>
+                    <Cell>
+                      <ManualFactCell
+                        title="Предоплат получено"
+                        icon={UserCheck}
+                        isoDate={iso}
+                        value={rnp?.prepaymentsCount ?? 0}
+                        manual={rnp?.prepaymentsCount ?? 0}
+                        autoLabel="—"
+                        disabled={rnpTableMissing}
+                        onSave={(next) => saveRnp(iso, { prepayments_count: next })}
+                      />
+                    </Cell>
+                    <Cell>
+                      <ManualFactCell
+                        title="Сумма предоплат"
+                        icon={DollarSign}
+                        isoDate={iso}
+                        value={rnp?.prepaymentsSum ?? 0}
+                        manual={rnp?.prepaymentsSum ?? 0}
+                        autoLabel="—"
+                        disabled={rnpTableMissing}
+                        format={formatNumber}
+                        allowDecimal
+                        onSave={(next) => saveRnp(iso, { prepayments_sum: next })}
                       />
                     </Cell>
                     <Cell>
@@ -638,7 +844,7 @@ const Metrics = () => {
                     </Cell>
                     <Cell>
                       <ManualFactCell
-                        title="Сумма оплат"
+                        title="Сумма договоров"
                         icon={DollarSign}
                         isoDate={iso}
                         value={dayRevenue}
@@ -648,6 +854,20 @@ const Metrics = () => {
                         format={formatNumber}
                         allowDecimal
                         onSave={(next) => upsertManualFact(iso, { manual_revenue: next })}
+                      />
+                    </Cell>
+                    <Cell>
+                      <ManualFactCell
+                        title="Денег в кассе"
+                        icon={Banknote}
+                        isoDate={iso}
+                        value={rnp?.cashReceived ?? 0}
+                        manual={rnp?.cashReceived ?? 0}
+                        autoLabel="—"
+                        disabled={rnpTableMissing}
+                        format={formatNumber}
+                        allowDecimal
+                        onSave={(next) => saveRnp(iso, { cash_received: next })}
                       />
                     </Cell>
                   </tr>
@@ -666,7 +886,7 @@ const Metrics = () => {
       </div>
 
       <p className="mt-4 text-xs text-muted-foreground">
-        Данные подгружаются из подключенных личных рекламных кабинетов: расходы и лиды из Meta, диагностики, оплаты и выручка из CRM. Ручной факт из таблицы заменяет CRM-значение за выбранный день.
+        Затраты и «Лиды Инста» — из Meta (рекламный кабинет). «Получено CRM» — сколько лидов реально упало в CRM. «Квал. лиды» — лиды со скорингом Green API бота от {QUAL_SCORE_MIN} баллов. «Сплан.» и «Провед.» считаются по дате диагностики в карточке лида, их можно переопределить вручную. Сумма диагностик, предоплаты и касса вносятся вручную. Ручной факт всегда заменяет авто-значение за этот день.
       </p>
     </main>
   );
