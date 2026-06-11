@@ -27,6 +27,7 @@ import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
 import { crmDailyMetrics, fetchCdiFactRows, type ReportPeriodRange } from "@/hooks/useReportData";
 import { metricsRnpDaily } from "@/lib/metricsRnpDaily";
+import { useRnpManual, type RnpManualPatch } from "@/hooks/useRnpManual";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
   shouldApplyManualOverrides,
@@ -166,6 +167,13 @@ const Metrics = () => {
     [allLeads, crmPeriod, cabinetSelector],
   );
 
+  // Ручные РНП-факты (предоплаты) — project-level, не зависят от кабинета.
+  const {
+    byDate: rnpManualByDate,
+    tableMissing: rnpTableMissing,
+    upsert: upsertRnpManual,
+  } = useRnpManual(monthParam);
+
   // Распределяем orphan-показатели по дням (по дате оплаты или создания лида),
   // чтобы Daily-строки в таблице суммировались точно в Fact-строку.
   // Без этого пользователь видит «расхождение»: сумма колонки ≠ итог.
@@ -181,8 +189,9 @@ const Metrics = () => {
       sales: 0, crmSales: 0, manualSales: 0, manualSalesRaw: null,
       salesRevenue: 0, crmSalesRevenueOnly: 0, manualSalesRevenue: 0, manualSalesRevenueRaw: null,
       crmRevenue: 0, crmRevenueOnly: 0, manualRevenue: 0,
-      crmReceived: 0, plannedVisits: 0, conductedVisits: 0,
+      crmReceived: 0, qualified: 0, plannedVisits: 0, conductedVisits: 0,
       diagnosticsPaid: 0, diagnosticRevenuePaid: 0, cashRevenue: 0,
+      prepayCount: 0, prepaySum: 0,
     });
 
     for (const d of data?.daily ?? []) m.set(d.date, { ...d });
@@ -227,6 +236,9 @@ const Metrics = () => {
         manualSalesRaw: canEditManual ? cdi.manualSalesRaw : null,
         manualSalesRevenueRaw: canEditManual ? cdi.manualSalesRevenueRaw : null,
         crmReceived: rnp?.crmReceived ?? 0,
+        qualified: rnp?.qualified ?? 0,
+        prepayCount: rnpManualByDate.get(iso)?.prepayCount ?? 0,
+        prepaySum: rnpManualByDate.get(iso)?.prepaySum ?? 0,
         plannedVisits: rnp?.plannedVisits ?? 0,
         conductedVisits: rnp?.conductedVisits ?? 0,
         diagnosticsPaid: rnp?.diagnosticsPaid ?? 0,
@@ -236,7 +248,7 @@ const Metrics = () => {
     }
 
     return m;
-  }, [data, monthDays, crmByDay, rnpByDay, canEditManual, allLeads, cdiFactRows, cabinetInternalIds, cabinetId]);
+  }, [data, monthDays, crmByDay, rnpByDay, rnpManualByDate, canEditManual, allLeads, cdiFactRows, cabinetInternalIds, cabinetId]);
 
   const factResolved = useMemo(
     () => sumResolvedMetricsPerCabinets(
@@ -254,6 +266,16 @@ const Metrics = () => {
     for (const v of rnpByDay.values()) sum += v.crmReceived;
     return sum;
   }, [rnpByDay]);
+  const factQualified = useMemo(() => {
+    let sum = 0;
+    for (const v of rnpByDay.values()) sum += v.qualified;
+    return sum;
+  }, [rnpByDay]);
+  const factPrepay = useMemo(() => {
+    let count = 0, sum = 0;
+    for (const v of rnpManualByDate.values()) { count += v.prepayCount; sum += v.prepaySum; }
+    return { count, sum };
+  }, [rnpManualByDate]);
   const factLeads = factCrmReceived;
   const factCac = factSales > 0 ? (totals?.spend ?? 0) / factSales : 0;
   const factCpd = factDiagnostics > 0 ? (totals?.spend ?? 0) / factDiagnostics : 0;
@@ -293,8 +315,9 @@ const Metrics = () => {
   const handleExportCsv = () => {
     const header = [
       "Дата", "День",
-      "Затраты", "Передано Meta", "CPL", "Получено CRM",
+      "Затраты", "Передано Meta", "CPL", "Получено CRM", "Квал. лиды",
       "Записано", "Проведено", "Оплачено диаг", "Сумма диаг",
+      "Предоплат", "Сумма предоплат",
       "Продажи", "Выручка продаж", "Касса", "Итого",
     ];
     const rows = monthDays.map(({ day, iso, weekday }) => {
@@ -307,10 +330,13 @@ const Metrics = () => {
         d?.leads ?? 0,
         cpl ? Math.round(cpl) : "",
         d?.crmReceived ?? 0,
+        d?.qualified ?? 0,
         d?.plannedVisits ?? 0,
         d?.conductedVisits ?? 0,
         d?.diagnosticsPaid ?? 0,
         d?.diagnosticRevenuePaid ?? 0,
+        d?.prepayCount ?? 0,
+        d?.prepaySum ?? 0,
         d?.sales ?? 0,
         d?.salesRevenue ?? 0,
         d?.cashRevenue ?? 0,
@@ -420,6 +446,15 @@ const Metrics = () => {
     }
   };
 
+  const saveRnpManual = async (isoDate: string, patch: RnpManualPatch) => {
+    try {
+      await upsertRnpManual(isoDate, patch);
+      toast.success("РНП-факт сохранён");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось сохранить");
+    }
+  };
+
   return (
     <PageContainer>
       <PageHeader
@@ -526,6 +561,19 @@ const Metrics = () => {
         </div>
       )}
 
+      {rnpTableMissing && (
+        <div className="mt-4 flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning/10 p-4 text-sm text-warning">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <div className="font-semibold">Предоплаты пока некуда сохранять</div>
+            <div className="mt-0.5 text-xs opacity-90">
+              В базе нет таблицы rnp_daily — применить миграцию
+              supabase/migrations/20260611090000_rnp_daily.sql.
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mt-6 space-y-4">
         <MetricsSummaryStrip
           plan={plan}
@@ -554,6 +602,9 @@ const Metrics = () => {
           }
           onSaveSales={(iso, next) => upsertManualFact(iso, { manual_sales: next })}
           onSaveSalesRevenue={(iso, next) => upsertManualFact(iso, { manual_revenue: next })}
+          rnpEditDisabled={rnpTableMissing}
+          onSavePrepayCount={(iso, next) => saveRnpManual(iso, { prepayments_count: next ?? 0 })}
+          onSavePrepaySum={(iso, next) => saveRnpManual(iso, { prepayments_sum: next ?? 0 })}
         />
       </div>
     </PageContainer>

@@ -1,4 +1,4 @@
-import { DollarSign, Loader2, Wallet } from "lucide-react";
+import { DollarSign, HandCoins, Loader2, Wallet } from "lucide-react";
 import { ManualFactCell } from "@/components/metrics/ManualFactCell";
 import { MetricsDash } from "@/components/metrics/MetricsDash";
 import { formatNumber } from "@/components/metrics/metricsFormat";
@@ -26,9 +26,13 @@ interface Props {
   onSaveDiagnosticRevenue: (iso: string, next: number | null) => Promise<void>;
   onSaveSales: (iso: string, next: number | null) => Promise<void>;
   onSaveSalesRevenue: (iso: string, next: number | null) => Promise<void>;
+  /** true, пока таблица rnp_daily не создана в базе. */
+  rnpEditDisabled: boolean;
+  onSavePrepayCount: (iso: string, next: number | null) => Promise<void>;
+  onSavePrepaySum: (iso: string, next: number | null) => Promise<void>;
 }
 
-const COL_COUNT = 13;
+const COL_COUNT = 16;
 
 export function MetricsDataTable({
   visibleDays,
@@ -40,6 +44,9 @@ export function MetricsDataTable({
   onSaveDiagnosticRevenue,
   onSaveSales,
   onSaveSalesRevenue,
+  rnpEditDisabled,
+  onSavePrepayCount,
+  onSavePrepaySum,
 }: Props) {
   const editDisabled = !manualCabinet || !canEditManual;
 
@@ -48,7 +55,7 @@ export function MetricsDataTable({
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-border/60 bg-card/30">
-      <table className="w-full min-w-[1100px] border-collapse text-xs">
+      <table className="w-full min-w-[1400px] border-collapse text-xs">
         <thead>
           <tr className="border-b border-border/40 bg-muted/30">
             <th rowSpan={2} className="sticky left-0 z-10 bg-muted/30 px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -57,13 +64,13 @@ export function MetricsDataTable({
             <th colSpan={3} className="border-b border-border/30 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               Реклама
             </th>
-            <th rowSpan={2} className="border-l border-border/30 px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <th colSpan={2} className="border-b border-l border-border/30 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               CRM
             </th>
             <th colSpan={4} className="border-b border-l border-border/30 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               Диагностики
             </th>
-            <th colSpan={4} className="border-b border-l border-border/30 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <th colSpan={6} className="border-b border-l border-border/30 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               Деньги ₸
             </th>
           </tr>
@@ -73,11 +80,14 @@ export function MetricsDataTable({
               { h: "Передано", border: false },
               { h: "CPL", border: false },
               { h: "Получено", border: true },
+              { h: "Квал", border: false },
               { h: "Записано", border: true },
               { h: "Проведено", border: false },
               { h: "Оплачено", border: false },
               { h: "Сумма", border: false },
-              { h: "Продажи", border: true },
+              { h: "Предоплат", border: true },
+              { h: "Сумма предопл.", border: false },
+              { h: "Продажи", border: false },
               { h: "Выручка", border: false },
               { h: "Касса", border: false },
               { h: "Итого", border: false },
@@ -134,6 +144,11 @@ export function MetricsDataTable({
                   <Cell>{num(d?.leads)}</Cell>
                   <Cell>{cpl > 0 ? formatNumber(cpl) : <MetricsDash />}</Cell>
                   <Cell>{num(d?.crmReceived)}</Cell>
+                  <Cell>
+                    {(d?.qualified ?? 0) > 0
+                      ? <span className="text-success">{formatNumber(d!.qualified)}</span>
+                      : <MetricsDash />}
+                  </Cell>
                   <Cell>{num(d?.plannedVisits)}</Cell>
                   <Cell>{num(d?.conductedVisits)}</Cell>
                   <Cell>{num(d?.diagnosticsPaid)}</Cell>
@@ -151,6 +166,36 @@ export function MetricsDataTable({
                       format={formatNumber}
                       allowDecimal
                       onSave={(next) => onSaveDiagnosticRevenue(iso, next)}
+                    />
+                  </Cell>
+                  <Cell>
+                    <ManualFactCell
+                      title="Предоплат получено"
+                      icon={HandCoins}
+                      isoDate={iso}
+                      value={d?.prepayCount ?? 0}
+                      crm={0}
+                      manual={d?.prepayCount ?? 0}
+                      manualRaw={(d?.prepayCount ?? 0) > 0 ? d!.prepayCount : null}
+                      autoLabel="—"
+                      disabled={rnpEditDisabled}
+                      onSave={(next) => onSavePrepayCount(iso, next)}
+                    />
+                  </Cell>
+                  <Cell>
+                    <ManualFactCell
+                      title="Сумма предоплат"
+                      icon={HandCoins}
+                      isoDate={iso}
+                      value={d?.prepaySum ?? 0}
+                      crm={0}
+                      manual={d?.prepaySum ?? 0}
+                      manualRaw={(d?.prepaySum ?? 0) > 0 ? d!.prepaySum : null}
+                      autoLabel="—"
+                      disabled={rnpEditDisabled}
+                      format={formatNumber}
+                      allowDecimal
+                      onSave={(next) => onSavePrepaySum(iso, next)}
                     />
                   </Cell>
                   <Cell>

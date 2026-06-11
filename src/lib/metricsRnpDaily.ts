@@ -2,9 +2,14 @@ import type { LeadLite } from "@/hooks/useLeadsLite";
 import type { ReportPeriodRange } from "@/lib/crmDailyMetrics";
 import { isLeadConductedVisit, isLeadPaid } from "@/lib/leadStageFlags";
 
+/** Лид квалифицирован, когда скоринг Green API бота >= порога (0-100). */
+export const QUAL_SCORE_MIN = 50;
+
 export interface RnpDailyMetrics {
   /** Лидов получено в CRM (created_at). */
   crmReceived: number;
+  /** Квал. лиды — скоринг Green API бота >= QUAL_SCORE_MIN. */
+  qualified: number;
   /** Запланировано визитов на этот день (next_visit_at). */
   plannedVisits: number;
   /** Проведено визитов / диагностик (факт, не запись). */
@@ -52,6 +57,7 @@ export function metricsRnpDaily(
 
   const empty = (): RnpDailyMetrics => ({
     crmReceived: 0,
+    qualified: 0,
     plannedVisits: 0,
     conductedVisits: 0,
     diagnosticsPaid: 0,
@@ -68,6 +74,7 @@ export function metricsRnpDaily(
     if (createdYmd && inMonthRange(createdYmd, range)) {
       const cur = m.get(createdYmd) ?? empty();
       cur.crmReceived += 1;
+      if ((l.aiScore ?? 0) >= QUAL_SCORE_MIN) cur.qualified += 1;
       m.set(createdYmd, cur);
     }
 

@@ -44,6 +44,12 @@ export interface DailyInsightRow {
   manualDiagnosticRevenueRaw: number | null;
   /** Лидов получено в CRM (created_at). */
   crmReceived: number;
+  /** Квал. лиды (скоринг Green API >= порога). */
+  qualified: number;
+  /** Предоплат получено, шт (ручной ввод, rnp_daily). */
+  prepayCount: number;
+  /** Сумма предоплат ₸ (ручной ввод, rnp_daily). */
+  prepaySum: number;
   /** Запланировано визитов на день (next_visit_at). */
   plannedVisits: number;
   /** Проведено визитов (факт). */
@@ -86,6 +92,9 @@ export interface InsightsData {
 
 const RNP_DAY_ZERO = {
   crmReceived: 0,
+  qualified: 0,
+  prepayCount: 0,
+  prepaySum: 0,
   plannedVisits: 0,
   conductedVisits: 0,
   diagnosticsPaid: 0,
