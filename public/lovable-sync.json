@@ -1,7 +1,7 @@
 {
-  "git_sha": "06ea23e",
-  "git_sha_full": "06ea23ebb796b7769da73d63fb03dd3566e0819c",
-  "updated_at": "2026-06-11T13:19:46Z",
-  "label": "Merge pull request #106 from MarkVision2/cursor/metrics-manual-display-fix-3bd5",
+  "git_sha": "e907485",
+  "git_sha_full": "e907485dd223bffc31a9cfcab2cc30ab53b80816",
+  "updated_at": "2026-06-11T13:31:00Z",
+  "label": "fix(metrics): align KPI and money columns with Dashboard source of truth",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
