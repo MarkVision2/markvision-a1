@@ -1,4 +1,4 @@
-import { HandCoins, Loader2 } from "lucide-react";
+import { DollarSign, HandCoins, Loader2, Wallet } from "lucide-react";
 import { ManualFactCell } from "@/components/metrics/ManualFactCell";
 import { MetricsDash } from "@/components/metrics/MetricsDash";
 import { formatNumber, formatTenge } from "@/components/metrics/metricsFormat";
@@ -20,9 +20,21 @@ export interface MetricsTableDay {
   scheduled: number;
   conducted: number;
   diagnosticsPaid: number;
+  diagnosticsPaidAuto: number;
+  manualDiagnosticsRaw: number | null;
+  manualDiagnostics: number;
   diagnosticRevenuePaid: number;
+  diagnosticRevenueAuto: number;
+  manualDiagnosticRevenueRaw: number | null;
+  manualDiagnosticRevenue: number;
   sales: number;
+  salesAuto: number;
+  manualSalesRaw: number | null;
+  manualSales: number;
   salesRevenue: number;
+  salesRevenueAuto: number;
+  manualSalesRevenueRaw: number | null;
+  manualSalesRevenue: number;
   cashRevenue: number;
   prepaySum: number;
 }
@@ -47,7 +59,12 @@ interface Props {
   totals: MetricsTableTotals;
   loading: boolean;
   loadingLabel: string;
+  editDisabled: boolean;
   rnpEditDisabled: boolean;
+  onSaveDiagnosticsPaid: (iso: string, next: number | null) => Promise<void>;
+  onSaveDiagnosticRevenue: (iso: string, next: number | null) => Promise<void>;
+  onSaveSales: (iso: string, next: number | null) => Promise<void>;
+  onSaveSalesRevenue: (iso: string, next: number | null) => Promise<void>;
   onSavePrepaySum: (iso: string, next: number | null) => Promise<void>;
 }
 
@@ -97,22 +114,17 @@ function DisabledSoon() {
   );
 }
 
-function PaidDiagnosticsCell({ count, sum }: { count: number; sum: number }) {
-  if (count === 0 && sum === 0) return <CountValue value={0} />;
-  return (
-    <span className="inline-flex flex-col items-end gap-0.5">
-      <CountValue value={count} />
-      {sum > 0 && <span className="text-[10px] text-muted-foreground">{formatTenge(sum)}</span>}
-    </span>
-  );
-}
-
 export function MetricsDataTable({
   visibleDays,
   totals,
   loading,
   loadingLabel,
+  editDisabled,
   rnpEditDisabled,
+  onSaveDiagnosticsPaid,
+  onSaveDiagnosticRevenue,
+  onSaveSales,
+  onSaveSalesRevenue,
   onSavePrepaySum,
 }: Props) {
   const totalCpl = totals.hasAnyCdi && totals.metaLeads > 0 ? totals.spend / totals.metaLeads : null;
@@ -208,6 +220,7 @@ export function MetricsDataTable({
                 d.scheduled > 0 ||
                 d.conducted > 0 ||
                 d.diagnosticsPaid > 0 ||
+                d.diagnosticRevenuePaid > 0 ||
                 d.sales > 0 ||
                 d.salesRevenue > 0 ||
                 d.cashRevenue > 0 ||
@@ -235,11 +248,64 @@ export function MetricsDataTable({
                   <Cell><CountValue value={d.scheduled} /></Cell>
                   <Cell><CountValue value={d.conducted} /></Cell>
                   <Cell>
-                    <PaidDiagnosticsCell count={d.diagnosticsPaid} sum={d.diagnosticRevenuePaid} />
+                    <div className="flex flex-col items-end gap-0.5">
+                      <ManualFactCell
+                        title="Оплачено диагностик"
+                        icon={DollarSign}
+                        isoDate={d.iso}
+                        value={d.diagnosticsPaid}
+                        crm={d.diagnosticsPaidAuto}
+                        manual={d.manualDiagnostics}
+                        manualRaw={d.manualDiagnosticsRaw}
+                        autoLabel="CRM"
+                        disabled={editDisabled}
+                        onSave={(next) => onSaveDiagnosticsPaid(d.iso, next)}
+                      />
+                      <ManualFactCell
+                        title="Сумма диагностик"
+                        icon={DollarSign}
+                        isoDate={d.iso}
+                        value={d.diagnosticRevenuePaid}
+                        crm={d.diagnosticRevenueAuto}
+                        manual={d.manualDiagnosticRevenue}
+                        manualRaw={d.manualDiagnosticRevenueRaw}
+                        autoLabel="CRM"
+                        disabled={editDisabled}
+                        format={formatTenge}
+                        allowDecimal
+                        onSave={(next) => onSaveDiagnosticRevenue(d.iso, next)}
+                      />
+                    </div>
                   </Cell>
-                  <Cell><CountValue value={d.sales} /></Cell>
                   <Cell>
-                    {d.salesRevenue > 0 ? formatTenge(d.salesRevenue) : <CountValue value={0} />}
+                    <ManualFactCell
+                      title="Продажи"
+                      icon={Wallet}
+                      isoDate={d.iso}
+                      value={d.sales}
+                      crm={d.salesAuto}
+                      manual={d.manualSales}
+                      manualRaw={d.manualSalesRaw}
+                      autoLabel="CRM"
+                      disabled={editDisabled}
+                      onSave={(next) => onSaveSales(d.iso, next)}
+                    />
+                  </Cell>
+                  <Cell>
+                    <ManualFactCell
+                      title="Выручка от продаж"
+                      icon={DollarSign}
+                      isoDate={d.iso}
+                      value={d.salesRevenue}
+                      crm={d.salesRevenueAuto}
+                      manual={d.manualSalesRevenue}
+                      manualRaw={d.manualSalesRevenueRaw}
+                      autoLabel="CRM"
+                      disabled={editDisabled}
+                      format={formatTenge}
+                      allowDecimal
+                      onSave={(next) => onSaveSalesRevenue(d.iso, next)}
+                    />
                   </Cell>
                   <Cell>
                     {d.cashRevenue > 0 ? formatTenge(d.cashRevenue) : <CountValue value={0} />}
@@ -284,7 +350,12 @@ export function MetricsDataTable({
               <Cell><CountValue value={totals.scheduled} /></Cell>
               <Cell><CountValue value={totals.conducted} /></Cell>
               <Cell>
-                <PaidDiagnosticsCell count={totals.diagnosticsPaid} sum={totals.diagnosticRevenuePaid} />
+                <span className="inline-flex flex-col items-end gap-0.5">
+                  <CountValue value={totals.diagnosticsPaid} />
+                  <span className="text-[10px] font-normal text-muted-foreground">
+                    {formatTenge(totals.diagnosticRevenuePaid)}
+                  </span>
+                </span>
               </Cell>
               <Cell><CountValue value={totals.sales} /></Cell>
               <Cell>{formatTenge(totals.salesRevenue)}</Cell>

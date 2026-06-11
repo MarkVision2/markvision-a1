@@ -5,6 +5,7 @@ import {
   CalendarDays,
   Download,
   Loader2,
+  Pencil,
   RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,11 +26,11 @@ import { MetricsPeriodPicker } from "@/components/metrics/MetricsPeriodPicker";
 import { MetricsSummaryStrip } from "@/components/metrics/MetricsSummaryStrip";
 import { WEEKDAYS_RU } from "@/components/metrics/metricsFormat";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
-import { fetchInsightsByDateRange } from "@/hooks/useMetaInsights";
+import { fetchInsightsByDateRange, type DailyInsightRow } from "@/hooks/useMetaInsights";
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
 import { type ReportPeriodRange } from "@/hooks/useReportData";
-import { metricsRnpDaily, sumRnpDaily } from "@/lib/metricsRnpDaily";
+import { metricsRnpDaily } from "@/lib/metricsRnpDaily";
 import { useRnpManual, type RnpManualPatch } from "@/hooks/useRnpManual";
 import { useStageChangeEvents } from "@/hooks/useStageChangeEvents";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -41,8 +42,12 @@ import {
   ymdLocal,
 } from "@/lib/metricsPeriod";
 import { cn } from "@/lib/utils";
+import { resolveCdiMetric } from "@/lib/cdiManualOverride";
 import { formatMetaSyncMessages, syncMetaDaily, ymdAlmaty } from "@/lib/metaSync";
+import { shouldApplyManualOverrides } from "@/lib/metricsSourceOfTruth";
+import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import type { AdCabinet } from "@/types/ads";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 
@@ -67,11 +72,32 @@ const Metrics = () => {
     [cabinets],
   );
 
+  const cabinetsWithExternalId = useMemo(
+    () => cabinets.filter((c) => Boolean(c.externalId)),
+    [cabinets],
+  );
+
   const actIds = useMemo(() => {
     if (cabinetId === "all") return allActIds;
     const cab = cabinets.find((c) => c.id === cabinetId);
     return cab?.externalId ? [cab.externalId] : [];
   }, [cabinetId, allActIds, cabinets]);
+
+  const manualCabinet = useMemo(() => {
+    if (cabinetId !== "all") return cabinets.find((c) => c.id === cabinetId) ?? null;
+    return cabinetsWithExternalId.length === 1 ? cabinetsWithExternalId[0] : null;
+  }, [cabinetId, cabinets, cabinetsWithExternalId]);
+
+  const canEditManual = shouldApplyManualOverrides(cabinetId, cabinetsWithExternalId.length);
+  const editDisabled = !canEditManual || !manualCabinet?.externalId;
+
+  const manualHint = manualCabinet
+    ? canEditManual
+      ? `Клик по ячейке «Оплачено» / «Продажи» / «Выручка» → ручная правка дня (кабинет «${manualCabinet.name}»)`
+      : `Выбери один кабинет в фильтре для ручного ввода (сейчас ${cabinetsWithExternalId.length} кабинетов)`
+    : cabinetId === "all"
+      ? "Выбери один кабинет, чтобы вносить ручные суммы"
+      : "У выбранного кабинета нет внешнего ID";
 
   const cabinetSelector = cabinetId === "all" ? "all" : cabinetId;
 
@@ -110,11 +136,9 @@ const Metrics = () => {
     [allLeads, stageEvents, period, cabinetSelector],
   );
 
-  const cdiByDate = useMemo(() => {
-    const m = new Map<string, { spend: number; leads: number }>();
-    for (const d of insights?.daily ?? []) {
-      m.set(d.date, { spend: d.spend, leads: d.leads });
-    }
+  const insightByDate = useMemo(() => {
+    const m = new Map<string, DailyInsightRow>();
+    for (const d of insights?.daily ?? []) m.set(d.date, d);
     return m;
   }, [insights]);
 
@@ -123,30 +147,50 @@ const Metrics = () => {
     return isos.map((iso) => {
       const [y, mo, day] = iso.split("-").map(Number);
       const date = new Date(y, mo - 1, day);
-      const cdi = cdiByDate.get(iso);
+      const ins = insightByDate.get(iso);
       const rnp = rnpByDay.get(iso);
+      const autoDiagPaid = rnp?.diagnosticsPaid ?? 0;
+      const autoDiagRev = rnp?.diagnosticRevenuePaid ?? 0;
+      const autoSales = rnp?.sales ?? 0;
+      const autoSalesRev = rnp?.salesRevenue ?? 0;
+      const manualDiagRaw = canEditManual ? ins?.manualDiagnosticsRaw ?? null : null;
+      const manualDiagRevRaw = canEditManual ? ins?.manualDiagnosticRevenueRaw ?? null : null;
+      const manualSalesRaw = canEditManual ? ins?.manualSalesRaw ?? null : null;
+      const manualSalesRevRaw = canEditManual ? ins?.manualSalesRevenueRaw ?? null : null;
       return {
         iso,
         day,
         weekday: WEEKDAYS_RU[date.getDay()],
-        hasCdi: cdi != null,
-        spend: cdi?.spend ?? 0,
-        metaLeads: cdi?.leads ?? 0,
+        hasCdi: ins != null,
+        spend: ins?.spend ?? 0,
+        metaLeads: ins?.leads ?? 0,
         crmReceived: rnp?.crmReceived ?? 0,
         scheduled: rnp?.scheduled ?? 0,
         conducted: rnp?.conducted ?? 0,
-        diagnosticsPaid: rnp?.diagnosticsPaid ?? 0,
-        diagnosticRevenuePaid: rnp?.diagnosticRevenuePaid ?? 0,
-        sales: rnp?.sales ?? 0,
-        salesRevenue: rnp?.salesRevenue ?? 0,
+        diagnosticsPaid: resolveCdiMetric(manualDiagRaw, autoDiagPaid),
+        diagnosticsPaidAuto: autoDiagPaid,
+        manualDiagnosticsRaw: manualDiagRaw,
+        manualDiagnostics: ins?.manualDiagnostics ?? 0,
+        diagnosticRevenuePaid: resolveCdiMetric(manualDiagRevRaw, autoDiagRev),
+        diagnosticRevenueAuto: autoDiagRev,
+        manualDiagnosticRevenueRaw: manualDiagRevRaw,
+        manualDiagnosticRevenue: ins?.manualDiagnosticRevenue ?? 0,
+        sales: resolveCdiMetric(manualSalesRaw, autoSales),
+        salesAuto: autoSales,
+        manualSalesRaw,
+        manualSales: ins?.manualSales ?? 0,
+        salesRevenue: resolveCdiMetric(manualSalesRevRaw, autoSalesRev),
+        salesRevenueAuto: autoSalesRev,
+        manualSalesRevenueRaw: manualSalesRevRaw,
+        manualSalesRevenue: ins?.manualSalesRevenue ?? 0,
         cashRevenue: rnp?.cashRevenue ?? 0,
         prepaySum: rnpManualByDate.get(iso)?.prepaySum ?? 0,
       };
     });
-  }, [period, cdiByDate, rnpByDay, rnpManualByDate]);
+  }, [period, insightByDate, rnpByDay, rnpManualByDate, canEditManual]);
 
   const sortedDays = useMemo(
-    () => [...periodDays].sort((a, b) => b.iso.localeCompare(a.iso)),
+    () => [...periodDays].sort((a, b) => a.iso.localeCompare(b.iso)),
     [periodDays],
   );
 
@@ -169,41 +213,50 @@ const Metrics = () => {
 
   const visibleDays = showAllDays ? sortedDays : daysWithData;
 
-  const rnpTotals = useMemo(() => sumRnpDaily(rnpByDay), [rnpByDay]);
-
   const tableTotals = useMemo((): MetricsTableTotals => {
-    let prepaySum = 0;
-    for (const v of rnpManualByDate.values()) prepaySum += v.prepaySum;
-    const cdiDays = insights?.daily ?? [];
-    const hasAnyCdi = cdiDays.length > 0;
-    return {
-      spend: insights?.totals.spend ?? 0,
-      metaLeads: insights?.totals.leads ?? 0,
-      crmReceived: rnpTotals.crmReceived,
-      scheduled: rnpTotals.scheduled,
-      conducted: rnpTotals.conducted,
-      diagnosticsPaid: rnpTotals.diagnosticsPaid,
-      diagnosticRevenuePaid: rnpTotals.diagnosticRevenuePaid,
-      sales: rnpTotals.sales,
-      salesRevenue: rnpTotals.salesRevenue,
-      cashRevenue: rnpTotals.cashRevenue,
-      prepaySum,
-      hasAnyCdi,
+    const t: MetricsTableTotals = {
+      spend: 0,
+      metaLeads: 0,
+      crmReceived: 0,
+      scheduled: 0,
+      conducted: 0,
+      diagnosticsPaid: 0,
+      diagnosticRevenuePaid: 0,
+      sales: 0,
+      salesRevenue: 0,
+      cashRevenue: 0,
+      prepaySum: 0,
+      hasAnyCdi: false,
     };
-  }, [insights, rnpTotals, rnpManualByDate]);
+    for (const d of periodDays) {
+      if (d.hasCdi) t.hasAnyCdi = true;
+      t.spend += d.spend;
+      t.metaLeads += d.metaLeads;
+      t.crmReceived += d.crmReceived;
+      t.scheduled += d.scheduled;
+      t.conducted += d.conducted;
+      t.diagnosticsPaid += d.diagnosticsPaid;
+      t.diagnosticRevenuePaid += d.diagnosticRevenuePaid;
+      t.sales += d.sales;
+      t.salesRevenue += d.salesRevenue;
+      t.cashRevenue += d.cashRevenue;
+      t.prepaySum += d.prepaySum;
+    }
+    return t;
+  }, [periodDays]);
 
   const { getPlan } = useFinancePlans();
   const plan = getPlan(monthKey(period.from));
 
-  const factRevenue = rnpTotals.salesRevenue + rnpTotals.diagnosticRevenuePaid;
-  const factSpend = insights?.totals.spend ?? 0;
+  const factRevenue = tableTotals.salesRevenue + tableTotals.diagnosticRevenuePaid;
+  const factSpend = tableTotals.spend;
   const factCpl = tableTotals.metaLeads > 0 ? factSpend / tableTotals.metaLeads : 0;
-  const factCpd = rnpTotals.diagnosticsPaid > 0 ? factSpend / rnpTotals.diagnosticsPaid : 0;
-  const factCac = rnpTotals.sales > 0 ? factSpend / rnpTotals.sales : 0;
+  const factCpd = tableTotals.diagnosticsPaid > 0 ? factSpend / tableTotals.diagnosticsPaid : 0;
+  const factCac = tableTotals.sales > 0 ? factSpend / tableTotals.sales : 0;
   const crLeadDiagnostics =
-    rnpTotals.crmReceived > 0 ? (rnpTotals.diagnosticsPaid / rnpTotals.crmReceived) * 100 : 0;
+    tableTotals.crmReceived > 0 ? (tableTotals.diagnosticsPaid / tableTotals.crmReceived) * 100 : 0;
   const crDiagnosticsSale =
-    rnpTotals.diagnosticsPaid > 0 ? (rnpTotals.sales / rnpTotals.diagnosticsPaid) * 100 : 0;
+    tableTotals.diagnosticsPaid > 0 ? (tableTotals.sales / tableTotals.diagnosticsPaid) * 100 : 0;
 
   const filledDays = daysWithData.length;
   const daysInPeriod = periodDays.length;
@@ -298,6 +351,63 @@ const Metrics = () => {
     }
   };
 
+  const upsertManualFact = async (
+    isoDate: string,
+    patch: {
+      manual_diagnostics?: number | null;
+      manual_diagnostic_revenue?: number | null;
+      manual_sales?: number | null;
+      manual_revenue?: number | null;
+    },
+  ) => {
+    if (!manualCabinet?.externalId) {
+      toast.error("Выбери конкретный кабинет для ручного ввода");
+      return;
+    }
+
+    const cleanPatch = Object.fromEntries(
+      Object.entries(patch).map(([key, value]) => [
+        key,
+        value === null ? null : Math.max(0, Number(value) || 0),
+      ]),
+    );
+
+    try {
+      const { data: existing, error: findError } = await supabase
+        .from("cabinet_daily_insights")
+        .select("id")
+        .eq("cabinet_id", manualCabinet.id)
+        .eq("date", isoDate)
+        .maybeSingle();
+      if (findError) throw findError;
+
+      if (existing?.id) {
+        const { error: updateError } = await (supabase as any)
+          .from("cabinet_daily_insights")
+          .update(cleanPatch)
+          .eq("id", existing.id);
+        if (updateError) throw updateError;
+      } else {
+        const { error: insertError } = await supabase
+          .from("cabinet_daily_insights")
+          .insert({
+            cabinet_id: manualCabinet.id,
+            external_id: manualCabinet.externalId,
+            project_id: (manualCabinet as AdCabinet & { projectId?: string }).projectId ?? null,
+            date: isoDate,
+            currency: manualCabinet.currency ?? "KZT",
+            ...cleanPatch,
+          });
+        if (insertError) throw insertError;
+      }
+
+      refreshInsights();
+      toast.success("Ручной факт сохранён");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось сохранить факт");
+    }
+  };
+
   return (
     <PageContainer>
       <PageHeader
@@ -310,9 +420,9 @@ const Metrics = () => {
         plan={plan}
         factRevenue={factRevenue}
         factSpend={factSpend}
-        factLeads={rnpTotals.crmReceived}
-        factSales={rnpTotals.sales}
-        factDiagnostics={rnpTotals.diagnosticsPaid}
+        factLeads={tableTotals.crmReceived}
+        factSales={tableTotals.sales}
+        factDiagnostics={tableTotals.diagnosticsPaid}
         factCpl={factCpl}
         factCpd={factCpd}
         factCac={factCac}
@@ -382,6 +492,18 @@ const Metrics = () => {
         </div>
       </div>
 
+      <div
+        className={cn(
+          "mt-4 flex items-start gap-2 rounded-xl border px-3 py-2 text-xs",
+          canEditManual && manualCabinet
+            ? "border-success/25 bg-success/5 text-success"
+            : "border-warning/25 bg-warning/5 text-warning",
+        )}
+      >
+        <Pencil className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+        <span>{manualHint}</span>
+      </div>
+
       {insightsError && (
         <div className="mt-4 flex items-start gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -410,12 +532,12 @@ const Metrics = () => {
           plan={plan}
           fact={{
             spend: factSpend,
-            leads: rnpTotals.crmReceived,
+            leads: tableTotals.crmReceived,
             cpl: factCpl,
-            diagnostics: rnpTotals.diagnosticsPaid,
-            diagnosticRevenue: rnpTotals.diagnosticRevenuePaid,
-            sales: rnpTotals.sales,
-            salesRevenue: rnpTotals.salesRevenue,
+            diagnostics: tableTotals.diagnosticsPaid,
+            diagnosticRevenue: tableTotals.diagnosticRevenuePaid,
+            sales: tableTotals.sales,
+            salesRevenue: tableTotals.salesRevenue,
             revenue: factRevenue,
           }}
         />
@@ -425,7 +547,16 @@ const Metrics = () => {
           totals={tableTotals}
           loading={insightsLoading}
           loadingLabel={`Загружаем данные за ${formatPeriodLabel(period)}...`}
+          editDisabled={editDisabled}
           rnpEditDisabled={rnpTableMissing}
+          onSaveDiagnosticsPaid={(iso, next) =>
+            upsertManualFact(iso, { manual_diagnostics: next })
+          }
+          onSaveDiagnosticRevenue={(iso, next) =>
+            upsertManualFact(iso, { manual_diagnostic_revenue: next })
+          }
+          onSaveSales={(iso, next) => upsertManualFact(iso, { manual_sales: next })}
+          onSaveSalesRevenue={(iso, next) => upsertManualFact(iso, { manual_revenue: next })}
           onSavePrepaySum={(iso, next) => saveRnpManual(iso, { prepayments_sum: next ?? 0 })}
         />
       </div>
