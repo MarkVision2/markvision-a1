@@ -1,7 +1,7 @@
 {
-  "git_sha": "a19bd0d",
-  "git_sha_full": "a19bd0de61d0fb031bbd49ef677484ef65ae3a93",
-  "updated_at": "2026-06-11T17:26:02+05:00",
-  "label": "РНП: квал. лиды и предоплаты в таблице показателей",
+  "git_sha": "5fea9d0",
+  "git_sha_full": "5fea9d06cec0d36eed447a503c42add146baa4c4",
+  "updated_at": "2026-06-11T13:07:48Z",
+  "label": "Merge pull request #104 from MarkVision2/cursor/metrics-tz-phase1-3bd5",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
