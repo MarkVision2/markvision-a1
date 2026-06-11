@@ -42,7 +42,7 @@ import {
   ymdLocal,
 } from "@/lib/metricsPeriod";
 import { cn } from "@/lib/utils";
-import { resolveCdiMetric } from "@/lib/cdiManualOverride";
+import { resolveMetricsDayMoney } from "@/lib/metricsDayMoney";
 import { formatMetaSyncMessages, syncMetaDaily, ymdAlmaty } from "@/lib/metaSync";
 import { shouldApplyManualOverrides } from "@/lib/metricsSourceOfTruth";
 import { supabase } from "@/integrations/supabase/client";
@@ -118,7 +118,13 @@ const Metrics = () => {
     let cancelled = false;
     setInsightsLoading(true);
     setInsightsError(null);
-    fetchInsightsByDateRange(actIds, periodSince, periodUntil, projectId)
+    fetchInsightsByDateRange(
+      actIds,
+      periodSince,
+      periodUntil,
+      projectId,
+      cabinetId !== "all" ? cabinetId : null,
+    )
       .then((d) => { if (!cancelled) setInsights(d); })
       .catch((e) => {
         if (cancelled) return;
@@ -127,7 +133,7 @@ const Metrics = () => {
       })
       .finally(() => { if (!cancelled) setInsightsLoading(false); });
     return () => { cancelled = true; };
-  }, [actIds.join(","), periodSince, periodUntil, projectId, insightsTick]);
+  }, [actIds.join(","), periodSince, periodUntil, projectId, cabinetId, insightsTick]);
 
   const refreshInsights = () => setInsightsTick((t) => t + 1);
 
@@ -149,14 +155,7 @@ const Metrics = () => {
       const date = new Date(y, mo - 1, day);
       const ins = insightByDate.get(iso);
       const rnp = rnpByDay.get(iso);
-      const autoDiagPaid = rnp?.diagnosticsPaid ?? 0;
-      const autoDiagRev = rnp?.diagnosticRevenuePaid ?? 0;
-      const autoSales = rnp?.sales ?? 0;
-      const autoSalesRev = rnp?.salesRevenue ?? 0;
-      const manualDiagRaw = canEditManual ? ins?.manualDiagnosticsRaw ?? null : null;
-      const manualDiagRevRaw = canEditManual ? ins?.manualDiagnosticRevenueRaw ?? null : null;
-      const manualSalesRaw = canEditManual ? ins?.manualSalesRaw ?? null : null;
-      const manualSalesRevRaw = canEditManual ? ins?.manualSalesRevenueRaw ?? null : null;
+      const money = resolveMetricsDayMoney(ins, rnp, cabinetId === "all");
       return {
         iso,
         day,
@@ -167,27 +166,12 @@ const Metrics = () => {
         crmReceived: rnp?.crmReceived ?? 0,
         scheduled: rnp?.scheduled ?? 0,
         conducted: rnp?.conducted ?? 0,
-        diagnosticsPaid: resolveCdiMetric(manualDiagRaw, autoDiagPaid),
-        diagnosticsPaidAuto: autoDiagPaid,
-        manualDiagnosticsRaw: manualDiagRaw,
-        manualDiagnostics: ins?.manualDiagnostics ?? 0,
-        diagnosticRevenuePaid: resolveCdiMetric(manualDiagRevRaw, autoDiagRev),
-        diagnosticRevenueAuto: autoDiagRev,
-        manualDiagnosticRevenueRaw: manualDiagRevRaw,
-        manualDiagnosticRevenue: ins?.manualDiagnosticRevenue ?? 0,
-        sales: resolveCdiMetric(manualSalesRaw, autoSales),
-        salesAuto: autoSales,
-        manualSalesRaw,
-        manualSales: ins?.manualSales ?? 0,
-        salesRevenue: resolveCdiMetric(manualSalesRevRaw, autoSalesRev),
-        salesRevenueAuto: autoSalesRev,
-        manualSalesRevenueRaw: manualSalesRevRaw,
-        manualSalesRevenue: ins?.manualSalesRevenue ?? 0,
         cashRevenue: rnp?.cashRevenue ?? 0,
         prepaySum: rnpManualByDate.get(iso)?.prepaySum ?? 0,
+        ...money,
       };
     });
-  }, [period, insightByDate, rnpByDay, rnpManualByDate, canEditManual]);
+  }, [period, insightByDate, rnpByDay, rnpManualByDate, cabinetId]);
 
   const sortedDays = useMemo(
     () => [...periodDays].sort((a, b) => a.iso.localeCompare(b.iso)),
@@ -203,6 +187,7 @@ const Metrics = () => {
           d.scheduled > 0 ||
           d.conducted > 0 ||
           d.diagnosticsPaid > 0 ||
+          d.diagnosticRevenuePaid > 0 ||
           d.sales > 0 ||
           d.salesRevenue > 0 ||
           d.cashRevenue > 0 ||
@@ -396,6 +381,9 @@ const Metrics = () => {
             project_id: (manualCabinet as AdCabinet & { projectId?: string }).projectId ?? null,
             date: isoDate,
             currency: manualCabinet.currency ?? "KZT",
+            provider: "meta",
+            spend: 0,
+            leads: 0,
             ...cleanPatch,
           });
         if (insertError) throw insertError;
