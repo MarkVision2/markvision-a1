@@ -1,7 +1,7 @@
 {
-  "git_sha": "da81c50",
-  "git_sha_full": "da81c50279c34551ca9ea42846bda06a0e2ca1e0",
-  "updated_at": "2026-06-10T15:28:38Z",
-  "label": "docs: clarify Lovable deploys from GitHub without Publish button",
+  "git_sha": "c724526",
+  "git_sha_full": "c72452692fdaf479a3a385793b7e9eab7f409d2f",
+  "updated_at": "2026-06-11T11:31:27Z",
+  "label": "fix(metrics): sync until today in Asia/Almaty timezone",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
