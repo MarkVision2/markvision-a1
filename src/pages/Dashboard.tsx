@@ -5,7 +5,6 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
 import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPicker";
 import { MoneyKpiCard } from "@/components/dashboard/MoneyKpiCard";
 import { AlertsPanel } from "@/components/dashboard/AlertsPanel";
@@ -27,6 +26,7 @@ import { useMetaDashboard } from "@/hooks/useMetaDashboard";
 import { QualityBlock, QualityFunnel } from "@/components/crm/QualityBlock";
 import { deltaPct, type ReportPeriodRange } from "@/hooks/useReportData";
 import { cn } from "@/lib/utils";
+import { formatMetaSyncMessages, syncMetaFull } from "@/lib/metaSync";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { LayoutGrid } from "lucide-react";
@@ -52,24 +52,17 @@ const Dashboard = () => {
   const [comparing] = useState(true);
   const [syncing, setSyncing] = useState(false);
 
-  const handleSyncMetaStructure = async () => {
+  const handleSyncMeta = async () => {
     setSyncing(true);
     try {
-      const { data, error } = await supabase.functions.invoke("meta-structure-sync", {
-        body: { since: ymdLocal(range.from), until: ymdLocal(range.to) },
+      const result = await syncMetaFull({
+        since: ymdLocal(range.from),
+        until: ymdLocal(range.to),
       });
-      if (error) throw new Error(error.message);
-      const results = (data as { results?: Array<{ ok: boolean; cabinet: string; campaigns?: number; creatives?: number }> } | null)?.results ?? [];
-      const ok = results.filter((r) => r.ok);
-      const failed = results.filter((r) => !r.ok);
-      if (ok.length > 0) {
-        const camps = ok.reduce((s, r) => s + (r.campaigns ?? 0), 0);
-        const ads = ok.reduce((s, r) => s + (r.creatives ?? 0), 0);
-        toast.success(`Синхронизировано: ${ok.length} кабинет(ов), ${camps} кампаний, ${ads} креативов`);
-      }
-      if (failed.length > 0) {
-        toast.error(`Ошибка по ${failed.length} кабинет(ам): ${failed[0].cabinet}`);
-      }
+      const messages = formatMetaSyncMessages(result);
+      if (messages.success) toast.success(messages.success);
+      for (const warning of messages.warnings) toast.warning(warning);
+      if (messages.error) toast.error(messages.error);
       // Триггерим перезагрузку данных тем же приёмом, что и кнопка «Обновить».
       setRange({ ...range });
     } catch (e) {
@@ -120,9 +113,9 @@ const Dashboard = () => {
             <Button
               variant="outline"
               className="h-10 gap-2 rounded-xl border-border/60"
-              onClick={handleSyncMetaStructure}
+              onClick={handleSyncMeta}
               disabled={syncing}
-              title="Синхронизировать кампании и креативы Meta с серверов Facebook"
+              title="Подтянуть расходы, лиды, кампании и креативы из Meta"
             >
               {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
               <span className="hidden sm:inline">Синхронизировать Meta</span>
