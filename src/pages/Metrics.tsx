@@ -33,7 +33,7 @@ import {
   type CdiFactRow,
 } from "@/lib/metricsSourceOfTruth";
 import { cn } from "@/lib/utils";
-import { formatMetaSyncMessages, syncMetaDaily } from "@/lib/metaSync";
+import { formatMetaSyncMessages, syncMetaDaily, ymdAlmaty } from "@/lib/metaSync";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { AdCabinet } from "@/types/ads";
@@ -336,10 +336,7 @@ const Metrics = () => {
     setResyncing(true);
     try {
       const since = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}-01`;
-      const lastDay = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0);
-      const today = new Date();
-      const monthEnd = lastDay < today ? lastDay : today;
-      const until = `${monthEnd.getFullYear()}-${String(monthEnd.getMonth() + 1).padStart(2, "0")}-${String(monthEnd.getDate()).padStart(2, "0")}`;
+      const until = ymdAlmaty();
       const targetCab = cabinetId !== "all"
         ? cabinets.find((c) => c.id === cabinetId)
         : null;
