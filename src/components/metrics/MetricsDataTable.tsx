@@ -1,4 +1,4 @@
-import { HandCoins, Info, Loader2 } from "lucide-react";
+import { HandCoins, Loader2 } from "lucide-react";
 import { ManualFactCell } from "@/components/metrics/ManualFactCell";
 import { MetricsDash } from "@/components/metrics/MetricsDash";
 import { formatNumber, formatTenge } from "@/components/metrics/metricsFormat";
