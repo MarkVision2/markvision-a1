@@ -46,6 +46,15 @@ async function fetchStageChangeEvents(
     });
   }
 
+  const stageMeta = (toId: string, payload: { to_key?: string; to_is_diagnostic?: boolean } | null) => {
+    const fromPayload = payload?.to_key ? String(payload.to_key).toLowerCase() : null;
+    const stage = stageById.get(toId);
+    return {
+      key: fromPayload ?? stage?.key ?? "",
+      isDiagnostic: payload?.to_is_diagnostic ?? stage?.isDiagnostic ?? false,
+    };
+  };
+
   const leadIds = [...new Set((eventsRes.data ?? []).map((e) => e.lead_id as string))];
   if (leadIds.length === 0) return [];
 
@@ -69,17 +78,17 @@ async function fetchStageChangeEvents(
   for (const e of eventsRes.data ?? []) {
     const leadId = e.lead_id as string;
     if (!leadCabinet.has(leadId)) continue;
-    const payload = e.payload as { to?: string } | null;
+    const payload = e.payload as { to?: string; to_key?: string; to_is_diagnostic?: boolean } | null;
     const toId = payload?.to;
     if (!toId) continue;
-    const stage = stageById.get(toId);
-    if (!stage) continue;
+    const meta = stageMeta(toId, payload);
+    if (!meta.key) continue;
     out.push({
       leadId,
       cabinetId: leadCabinet.get(leadId) ?? null,
       at: e.created_at as string,
-      toStageKey: stage.key,
-      isDiagnostic: stage.isDiagnostic,
+      toStageKey: meta.key,
+      isDiagnostic: meta.isDiagnostic,
     });
   }
   return out;
