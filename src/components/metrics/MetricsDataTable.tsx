@@ -144,17 +144,7 @@ export function MetricsDataTable({
               colSpan={3}
               className={cn("border-b border-l border-border/30 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider", GROUP_STYLES.diag)}
             >
-              <span className="inline-flex items-center justify-center gap-1">
-                Диагностика
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <Info className="h-3 w-3 shrink-0 opacity-70" aria-label="Подсказка" />
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="max-w-xs text-xs">
-                    Считается по переходам стадий; данные с момента включения логирования
-                  </TooltipContent>
-                </Tooltip>
-              </span>
+              Диагностика
             </th>
             <th
               colSpan={4}
