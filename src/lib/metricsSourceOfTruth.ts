@@ -222,6 +222,46 @@ export function sumResolvedMetricsPerCabinets(
   return acc;
 }
 
+/** Метрики денег по дням — day × cabinet, как Dashboard. */
+export function buildResolvedDailyMetricsPerCabinets(
+  range: ReportPeriodRange,
+  leads: LeadLite[],
+  cdiRows: CdiFactRow[],
+  cabinetInternalIds: string[],
+  includeOrphans: boolean,
+  externalIdByCabinetId?: Map<string, string>,
+): Map<string, ResolvedDayMetrics> {
+  const byDay = new Map<string, ResolvedDayMetrics>();
+  const cur = new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate());
+  const end = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate());
+  const orphanLeads = includeOrphans ? leads.filter((l) => !l.cabinetId) : [];
+
+  while (cur.getTime() <= end.getTime()) {
+    const iso = ymd(cur);
+    const dayRange = singleDayRange(iso);
+    const dayAcc = { ...EMPTY_RESOLVED };
+    let manualDiagAppliedOnDay = false;
+
+    for (const cabId of cabinetInternalIds) {
+      const externalId = externalIdByCabinetId?.get(cabId) ?? null;
+      const cdiRow = findCdiRowForCabinet(cdiRows, iso, cabId, externalId, cabinetInternalIds);
+      const manual = manualFieldsFromCdiRow(cdiRow);
+      if (manualDiagApplied(manual)) manualDiagAppliedOnDay = true;
+      const crm = crmDailyMetrics(leads, dayRange, cabId).get(iso);
+      addResolved(dayAcc, resolveDayMetrics(crm, manual, true));
+    }
+
+    if (includeOrphans && !manualDiagAppliedOnDay) {
+      const crm = crmDailyMetrics(orphanLeads, dayRange, "all").get(iso);
+      addResolved(dayAcc, resolveDayMetrics(crm, undefined, true));
+    }
+
+    byDay.set(iso, dayAcc);
+    cur.setDate(cur.getDate() + 1);
+  }
+  return byDay;
+}
+
 /** Выручка по дням — та же day × cabinet логика. */
 export function buildResolvedDailyRevenuePerCabinets(
   range: ReportPeriodRange,

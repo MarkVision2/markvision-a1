@@ -181,7 +181,7 @@ export async function fetchCdiFactRows(
     .in("external_id", ids)
     .gte("date", since)
     .lte("date", until);
-  if (projectId) q = q.eq("project_id", projectId);
+  if (projectId) q = q.or(`project_id.eq.${projectId},project_id.is.null`);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => ({

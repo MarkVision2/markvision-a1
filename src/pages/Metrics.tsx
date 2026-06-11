@@ -29,7 +29,7 @@ import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { fetchInsightsByDateRange, type DailyInsightRow } from "@/hooks/useMetaInsights";
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
-import { type ReportPeriodRange } from "@/hooks/useReportData";
+import { crmDailyMetrics, fetchCdiFactRows, type ReportPeriodRange } from "@/hooks/useReportData";
 import { metricsRnpDaily } from "@/lib/metricsRnpDaily";
 import { useRnpManual, type RnpManualPatch } from "@/hooks/useRnpManual";
 import { useStageChangeEvents } from "@/hooks/useStageChangeEvents";
@@ -42,9 +42,15 @@ import {
   ymdLocal,
 } from "@/lib/metricsPeriod";
 import { cn } from "@/lib/utils";
-import { resolveMetricsDayMoney } from "@/lib/metricsDayMoney";
 import { formatMetaSyncMessages, syncMetaDaily, ymdAlmaty } from "@/lib/metaSync";
-import { shouldApplyManualOverrides } from "@/lib/metricsSourceOfTruth";
+import {
+  buildResolvedDailyMetricsPerCabinets,
+  findCdiRowForCabinet,
+  manualFieldsFromCdiRow,
+  shouldApplyManualOverrides,
+  sumResolvedMetricsPerCabinets,
+  type CdiFactRow,
+} from "@/lib/metricsSourceOfTruth";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { AdCabinet } from "@/types/ads";
@@ -63,6 +69,7 @@ const Metrics = () => {
   const [insightsLoading, setInsightsLoading] = useState(false);
   const [insightsError, setInsightsError] = useState<string | null>(null);
   const [insightsTick, setInsightsTick] = useState(0);
+  const [cdiFactRows, setCdiFactRows] = useState<CdiFactRow[]>([]);
 
   const periodSince = ymdLocal(period.from);
   const periodUntil = ymdLocal(period.to);
@@ -101,6 +108,20 @@ const Metrics = () => {
 
   const cabinetSelector = cabinetId === "all" ? "all" : cabinetId;
 
+  const cabinetInternalIds = useMemo(() => {
+    if (cabinetId === "all") return cabinets.filter((c) => c.externalId).map((c) => c.id);
+    const cab = cabinets.find((c) => c.id === cabinetId);
+    return cab?.externalId ? [cabinetId] : [];
+  }, [cabinetId, cabinets]);
+
+  const externalIdByCabinetId = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const c of cabinets) {
+      if (c.externalId) m.set(c.id, c.externalId);
+    }
+    return m;
+  }, [cabinets]);
+
   const { leads: allLeads } = useLeadsLite();
   const { events: stageEvents } = useStageChangeEvents(period, true);
 
@@ -137,6 +158,34 @@ const Metrics = () => {
 
   const refreshInsights = () => setInsightsTick((t) => t + 1);
 
+  useEffect(() => {
+    if (actIds.length === 0) {
+      setCdiFactRows([]);
+      return;
+    }
+    let cancelled = false;
+    fetchCdiFactRows(actIds, period, projectId)
+      .then((rows) => { if (!cancelled) setCdiFactRows(rows); })
+      .catch(() => { if (!cancelled) setCdiFactRows([]); });
+    return () => { cancelled = true; };
+  }, [actIds.join(","), period.from.getTime(), period.to.getTime(), projectId, insightsTick]);
+
+  const includeOrphans = cabinetId === "all";
+
+  const resolvedByDay = useMemo(
+    () => buildResolvedDailyMetricsPerCabinets(
+      period, allLeads, cdiFactRows, cabinetInternalIds, includeOrphans, externalIdByCabinetId,
+    ),
+    [period, allLeads, cdiFactRows, cabinetInternalIds, includeOrphans, externalIdByCabinetId],
+  );
+
+  const resolvedPeriod = useMemo(
+    () => sumResolvedMetricsPerCabinets(
+      period, allLeads, cdiFactRows, cabinetInternalIds, includeOrphans, externalIdByCabinetId,
+    ),
+    [period, allLeads, cdiFactRows, cabinetInternalIds, includeOrphans, externalIdByCabinetId],
+  );
+
   const rnpByDay = useMemo(
     () => metricsRnpDaily(allLeads, stageEvents, period, cabinetSelector),
     [allLeads, stageEvents, period, cabinetSelector],
@@ -153,9 +202,17 @@ const Metrics = () => {
     return isos.map((iso) => {
       const [y, mo, day] = iso.split("-").map(Number);
       const date = new Date(y, mo - 1, day);
+      const dayRange = { from: date, to: date };
       const ins = insightByDate.get(iso);
       const rnp = rnpByDay.get(iso);
-      const money = resolveMetricsDayMoney(ins, rnp, cabinetId === "all");
+      const resolved = resolvedByDay.get(iso);
+      const crmDay = crmDailyMetrics(allLeads, dayRange, cabinetSelector).get(iso);
+      const cdiRow = cabinetId !== "all"
+        ? findCdiRowForCabinet(
+          cdiFactRows, iso, cabinetId, externalIdByCabinetId.get(cabinetId), cabinetInternalIds,
+        )
+        : undefined;
+      const manual = manualFieldsFromCdiRow(cdiRow);
       return {
         iso,
         day,
@@ -168,10 +225,28 @@ const Metrics = () => {
         conducted: rnp?.conducted ?? 0,
         cashRevenue: rnp?.cashRevenue ?? 0,
         prepaySum: rnpManualByDate.get(iso)?.prepaySum ?? 0,
-        ...money,
+        diagnosticsPaid: resolved?.diagnostics ?? 0,
+        diagnosticsPaidAuto: crmDay?.diagnostics ?? 0,
+        manualDiagnosticsRaw: manual?.manual_diagnostics ?? null,
+        manualDiagnostics: manual?.manual_diagnostics ?? 0,
+        diagnosticRevenuePaid: resolved?.diagnosticRevenue ?? 0,
+        diagnosticRevenueAuto: crmDay?.diagnosticRevenue ?? 0,
+        manualDiagnosticRevenueRaw: manual?.manual_diagnostic_revenue ?? null,
+        manualDiagnosticRevenue: manual?.manual_diagnostic_revenue ?? 0,
+        sales: resolved?.sales ?? 0,
+        salesAuto: crmDay?.sales ?? 0,
+        manualSalesRaw: manual?.manual_sales ?? null,
+        manualSales: manual?.manual_sales ?? 0,
+        salesRevenue: resolved?.salesRevenue ?? 0,
+        salesRevenueAuto: crmDay?.salesRevenue ?? 0,
+        manualSalesRevenueRaw: manual?.manual_revenue ?? null,
+        manualSalesRevenue: manual?.manual_revenue ?? 0,
       };
     });
-  }, [period, insightByDate, rnpByDay, rnpManualByDate, cabinetId]);
+  }, [
+    period, insightByDate, rnpByDay, rnpManualByDate, resolvedByDay, allLeads,
+    cabinetSelector, cabinetId, cdiFactRows, cabinetInternalIds, externalIdByCabinetId,
+  ]);
 
   const sortedDays = useMemo(
     () => [...periodDays].sort((a, b) => a.iso.localeCompare(b.iso)),
@@ -233,15 +308,16 @@ const Metrics = () => {
   const { getPlan } = useFinancePlans();
   const plan = getPlan(monthKey(period.from));
 
-  const factRevenue = tableTotals.salesRevenue + tableTotals.diagnosticRevenuePaid;
+  const factRevenue = resolvedPeriod.revenue;
   const factSpend = tableTotals.spend;
-  const factCpl = tableTotals.metaLeads > 0 ? factSpend / tableTotals.metaLeads : 0;
-  const factCpd = tableTotals.diagnosticsPaid > 0 ? factSpend / tableTotals.diagnosticsPaid : 0;
-  const factCac = tableTotals.sales > 0 ? factSpend / tableTotals.sales : 0;
+  const metaLeadsTotal = insights?.totals.leads ?? tableTotals.metaLeads;
+  const factCpl = metaLeadsTotal > 0 ? factSpend / metaLeadsTotal : 0;
+  const factCpd = resolvedPeriod.diagnostics > 0 ? factSpend / resolvedPeriod.diagnostics : 0;
+  const factCac = resolvedPeriod.sales > 0 ? factSpend / resolvedPeriod.sales : 0;
   const crLeadDiagnostics =
-    tableTotals.crmReceived > 0 ? (tableTotals.diagnosticsPaid / tableTotals.crmReceived) * 100 : 0;
+    tableTotals.crmReceived > 0 ? (resolvedPeriod.diagnostics / tableTotals.crmReceived) * 100 : 0;
   const crDiagnosticsSale =
-    tableTotals.diagnosticsPaid > 0 ? (tableTotals.sales / tableTotals.diagnosticsPaid) * 100 : 0;
+    resolvedPeriod.diagnostics > 0 ? (resolvedPeriod.sales / resolvedPeriod.diagnostics) * 100 : 0;
 
   const filledDays = daysWithData.length;
   const daysInPeriod = periodDays.length;
@@ -408,9 +484,9 @@ const Metrics = () => {
         plan={plan}
         factRevenue={factRevenue}
         factSpend={factSpend}
-        factLeads={tableTotals.crmReceived}
-        factSales={tableTotals.sales}
-        factDiagnostics={tableTotals.diagnosticsPaid}
+        factLeads={metaLeadsTotal}
+        factSales={resolvedPeriod.sales}
+        factDiagnostics={resolvedPeriod.diagnostics}
         factCpl={factCpl}
         factCpd={factCpd}
         factCac={factCac}
@@ -520,12 +596,12 @@ const Metrics = () => {
           plan={plan}
           fact={{
             spend: factSpend,
-            leads: tableTotals.crmReceived,
+            leads: metaLeadsTotal,
             cpl: factCpl,
-            diagnostics: tableTotals.diagnosticsPaid,
-            diagnosticRevenue: tableTotals.diagnosticRevenuePaid,
-            sales: tableTotals.sales,
-            salesRevenue: tableTotals.salesRevenue,
+            diagnostics: resolvedPeriod.diagnostics,
+            diagnosticRevenue: resolvedPeriod.diagnosticRevenue,
+            sales: resolvedPeriod.sales,
+            salesRevenue: resolvedPeriod.salesRevenue,
             revenue: factRevenue,
           }}
         />
