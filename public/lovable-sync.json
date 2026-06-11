@@ -1,7 +1,7 @@
 {
-  "git_sha": "114a5c2",
-  "git_sha_full": "114a5c248b876b85ea0d0d63bbe406f7bfdd8a6e",
-  "updated_at": "2026-06-11T13:16:02Z",
-  "label": "Merge pull request #105 from MarkVision2/cursor/metrics-sort-edit-3bd5",
+  "git_sha": "06ea23e",
+  "git_sha_full": "06ea23ebb796b7769da73d63fb03dd3566e0819c",
+  "updated_at": "2026-06-11T13:19:46Z",
+  "label": "Merge pull request #106 from MarkVision2/cursor/metrics-manual-display-fix-3bd5",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
