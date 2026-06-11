@@ -5,7 +5,6 @@ import {
   CalendarDays,
   Download,
   Loader2,
-  Pencil,
   RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -16,51 +15,55 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { PeriodPicker, monthRange } from "@/components/dashboard/PeriodPicker";
-import { MetricsDataTable } from "@/components/metrics/MetricsDataTable";
+import {
+  MetricsDataTable,
+  type MetricsTableDay,
+  type MetricsTableTotals,
+} from "@/components/metrics/MetricsDataTable";
 import { MetricsKpiPanel } from "@/components/metrics/MetricsKpiPanel";
+import { MetricsPeriodPicker } from "@/components/metrics/MetricsPeriodPicker";
 import { MetricsSummaryStrip } from "@/components/metrics/MetricsSummaryStrip";
-import { MONTHS_GEN_RU, WEEKDAYS_RU } from "@/components/metrics/metricsFormat";
+import { WEEKDAYS_RU } from "@/components/metrics/metricsFormat";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
-import { useMultiMetaInsights, type DailyInsightRow } from "@/hooks/useMetaInsights";
+import { fetchInsightsByDateRange } from "@/hooks/useMetaInsights";
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
-import { crmDailyMetrics, fetchCdiFactRows, type ReportPeriodRange } from "@/hooks/useReportData";
-import { metricsRnpDaily } from "@/lib/metricsRnpDaily";
+import { type ReportPeriodRange } from "@/hooks/useReportData";
+import { metricsRnpDaily, sumRnpDaily } from "@/lib/metricsRnpDaily";
 import { useRnpManual, type RnpManualPatch } from "@/hooks/useRnpManual";
+import { useStageChangeEvents } from "@/hooks/useStageChangeEvents";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
-  shouldApplyManualOverrides,
-  sumResolvedMetricsPerCabinets,
-  type CdiFactRow,
-} from "@/lib/metricsSourceOfTruth";
+  daysInRange,
+  formatPeriodLabel,
+  monthRange,
+  type MetricsPeriodPreset,
+  ymdLocal,
+} from "@/lib/metricsPeriod";
 import { cn } from "@/lib/utils";
 import { formatMetaSyncMessages, syncMetaDaily, ymdAlmaty } from "@/lib/metaSync";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import type { AdCabinet } from "@/types/ads";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 
 const Metrics = () => {
-  const [period, setPeriod] = useState<ReportPeriodRange>(() => monthRange(new Date()));
-  const monthCursor = period.from;
+  const [preset, setPreset] = useState<MetricsPeriodPreset>("month");
+  const [period, setPeriod] = useState<ReportPeriodRange>(() => monthRange());
   const [cabinetId, setCabinetId] = useState<string>("all");
   const { cabinets } = usePersonalCabinets();
   const { activeId: projectId } = useProjectsStore();
   const [resyncing, setResyncing] = useState(false);
   const [showAllDays, setShowAllDays] = useState(true);
-  const [cdiFactRows, setCdiFactRows] = useState<CdiFactRow[]>([]);
-  const [cdiTick, setCdiTick] = useState(0);
+  const [insights, setInsights] = useState<Awaited<ReturnType<typeof fetchInsightsByDateRange>> | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsError, setInsightsError] = useState<string | null>(null);
+  const [insightsTick, setInsightsTick] = useState(0);
 
-  const monthParam = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}`;
+  const periodSince = ymdLocal(period.from);
+  const periodUntil = ymdLocal(period.to);
 
   const allActIds = useMemo(
     () => cabinets.map((c) => c.externalId).filter(Boolean),
-    [cabinets],
-  );
-  const cabinetsWithExternalId = useMemo(
-    () => cabinets.filter((c) => Boolean(c.externalId)),
     [cabinets],
   );
 
@@ -70,277 +73,177 @@ const Metrics = () => {
     return cab?.externalId ? [cab.externalId] : [];
   }, [cabinetId, allActIds, cabinets]);
 
-  const manualCabinet = useMemo(() => {
-    if (cabinetId !== "all") return cabinets.find((c) => c.id === cabinetId) ?? null;
-    return cabinetsWithExternalId.length === 1 ? cabinetsWithExternalId[0] : null;
-  }, [cabinetId, cabinets, cabinetsWithExternalId]);
-
-  const canEditManual = shouldApplyManualOverrides(cabinetId, cabinetsWithExternalId.length);
-
-  const manualHint = manualCabinet
-    ? canEditManual
-      ? `Диагностики/продажи: авто из CRM. Ручная правка → кабинет «${manualCabinet.name}»`
-      : `Выбери один кабинет в фильтре, чтобы вручную скорректировать день (сейчас ${cabinetsWithExternalId.length} кабинетов)`
-    : cabinetId === "all"
-      ? "Выбери один кабинет, чтобы вносить ручные диагностики, оплаты и сумму"
-      : "У выбранного кабинета нет внешнего ID для единой статистики";
-
-  const { data, loading, error, refresh } = useMultiMetaInsights(
-    actIds,
-    monthParam,
-    actIds.length > 0,
-  );
-
-  const { getPlan } = useFinancePlans();
-  const plan = getPlan(monthKey(monthCursor));
-
-  const totals = data?.totals;
-
-  // Days in selected month
-  const daysInMonth = new Date(
-    monthCursor.getFullYear(),
-    monthCursor.getMonth() + 1,
-    0,
-  ).getDate();
-  const monthDays = useMemo(() => {
-    return Array.from({ length: daysInMonth }, (_, i) => {
-      const day = i + 1;
-      const date = new Date(monthCursor.getFullYear(), monthCursor.getMonth(), day);
-      const iso = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-      return { day, iso, weekday: WEEKDAYS_RU[date.getDay()] };
-    });
-  }, [monthCursor, daysInMonth]);
-
-  const filledDays = data?.daily.length ?? 0;
-  const monthProgress = Math.round((filledDays / daysInMonth) * 100);
-
-  // Orphan CRM-лиды этого месяца (без cabinet_id) — заявки с сайта/WhatsApp,
-  // которые не относятся ни к одному рекламному кабинету. Чтобы факты Metrics
-  // совпадали с Dashboard/Analytics, прибавляем их к CDI-суммам.
-  // ЕДИНАЯ СЕМАНТИКА ДАТ (как в useReportData / Analytics):
-  //   leads (для счёта) — по createdAt в периоде
-  //   sales/diagnostics/revenue — по ДАТЕ СОБЫТИЯ (paid_at / lastActivityAt)
-  const { leads: allLeads } = useLeadsLite();
-  const crmPeriod: ReportPeriodRange = useMemo(
-    () => ({
-      from: new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1),
-      to: new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0),
-    }),
-    [monthCursor],
-  );
-
   const cabinetSelector = cabinetId === "all" ? "all" : cabinetId;
 
-  const cabinetInternalIds = useMemo(() => {
-    if (cabinetId === "all") return cabinets.filter((c) => c.externalId).map((c) => c.id);
-    const cab = cabinets.find((c) => c.id === cabinetId);
-    return cab?.externalId ? [cabinetId] : [];
-  }, [cabinetId, cabinets]);
+  const { leads: allLeads } = useLeadsLite();
+  const { events: stageEvents } = useStageChangeEvents(period, true);
 
-  const externalIdByCabinetId = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const c of cabinets) {
-      if (c.externalId) m.set(c.id, c.externalId);
-    }
-    return m;
-  }, [cabinets]);
-
-  useEffect(() => {
-    if (actIds.length === 0) {
-      setCdiFactRows([]);
-      return;
-    }
-    let cancelled = false;
-    fetchCdiFactRows(actIds, crmPeriod, projectId)
-      .then((rows) => { if (!cancelled) setCdiFactRows(rows); })
-      .catch(() => { if (!cancelled) setCdiFactRows([]); });
-    return () => { cancelled = true; };
-  }, [actIds.join(","), crmPeriod.from.getTime(), crmPeriod.to.getTime(), projectId, cdiTick]);
-
-  const crmByDay = useMemo(
-    () => crmDailyMetrics(allLeads, crmPeriod, cabinetSelector),
-    [allLeads, crmPeriod, cabinetSelector],
-  );
-
-  const rnpByDay = useMemo(
-    () => metricsRnpDaily(allLeads, crmPeriod, cabinetSelector),
-    [allLeads, crmPeriod, cabinetSelector],
-  );
-
-  // Ручные РНП-факты (предоплаты) — project-level, не зависят от кабинета.
   const {
     byDate: rnpManualByDate,
     tableMissing: rnpTableMissing,
     upsert: upsertRnpManual,
-  } = useRnpManual(monthParam);
+  } = useRnpManual(periodSince, periodUntil);
 
-  // Распределяем orphan-показатели по дням (по дате оплаты или создания лида),
-  // чтобы Daily-строки в таблице суммировались точно в Fact-строку.
-  // Без этого пользователь видит «расхождение»: сумма колонки ≠ итог.
-  const dailyMap = useMemo(() => {
-    const m = new Map<string, DailyInsightRow>();
+  useEffect(() => {
+    if (actIds.length === 0) {
+      setInsights(null);
+      return;
+    }
+    let cancelled = false;
+    setInsightsLoading(true);
+    setInsightsError(null);
+    fetchInsightsByDateRange(actIds, periodSince, periodUntil, projectId)
+      .then((d) => { if (!cancelled) setInsights(d); })
+      .catch((e) => {
+        if (cancelled) return;
+        setInsightsError(e instanceof Error ? e.message : "Неизвестная ошибка");
+        setInsights(null);
+      })
+      .finally(() => { if (!cancelled) setInsightsLoading(false); });
+    return () => { cancelled = true; };
+  }, [actIds.join(","), periodSince, periodUntil, projectId, insightsTick]);
 
-    const emptyDay = (date: string): DailyInsightRow => ({
-      date,
-      spend: 0, impressions: 0, clicks: 0, leads: 0,
-      pixelRevenue: 0, revenue: 0,
-      diagnostics: 0, crmDiagnostics: 0, manualDiagnostics: 0, manualDiagnosticsRaw: null,
-      diagnosticRevenue: 0, crmDiagnosticRevenue: 0, manualDiagnosticRevenue: 0, manualDiagnosticRevenueRaw: null,
-      sales: 0, crmSales: 0, manualSales: 0, manualSalesRaw: null,
-      salesRevenue: 0, crmSalesRevenueOnly: 0, manualSalesRevenue: 0, manualSalesRevenueRaw: null,
-      crmRevenue: 0, crmRevenueOnly: 0, manualRevenue: 0,
-      crmReceived: 0, qualified: 0, plannedVisits: 0, conductedVisits: 0,
-      diagnosticsPaid: 0, diagnosticRevenuePaid: 0, cashRevenue: 0,
-      prepayCount: 0, prepaySum: 0,
-    });
+  const refreshInsights = () => setInsightsTick((t) => t + 1);
 
-    for (const d of data?.daily ?? []) m.set(d.date, { ...d });
+  const rnpByDay = useMemo(
+    () => metricsRnpDaily(allLeads, stageEvents, period, cabinetSelector),
+    [allLeads, stageEvents, period, cabinetSelector],
+  );
 
-    for (const { iso } of monthDays) {
-      const cdi = m.get(iso) ?? emptyDay(iso);
-      const crm = crmByDay.get(iso);
-      const crmDiag = crm?.diagnostics ?? 0;
-      const crmDiagRev = crm?.diagnosticRevenue ?? 0;
-      const crmSales = crm?.sales ?? 0;
-      const crmSalesRev = crm?.salesRevenue ?? 0;
+  const cdiByDate = useMemo(() => {
+    const m = new Map<string, { spend: number; leads: number }>();
+    for (const d of insights?.daily ?? []) {
+      m.set(d.date, { spend: d.spend, leads: d.leads });
+    }
+    return m;
+  }, [insights]);
+
+  const periodDays = useMemo((): MetricsTableDay[] => {
+    const isos = daysInRange(period);
+    return isos.map((iso) => {
+      const [y, mo, day] = iso.split("-").map(Number);
+      const date = new Date(y, mo - 1, day);
+      const cdi = cdiByDate.get(iso);
       const rnp = rnpByDay.get(iso);
-
-      const [y, mo, d] = iso.split("-").map(Number);
-      const dayResolved = sumResolvedMetricsPerCabinets(
-        { from: new Date(y, mo - 1, d), to: new Date(y, mo - 1, d) },
-        allLeads,
-        cdiFactRows,
-        cabinetInternalIds,
-        cabinetId === "all",
-        externalIdByCabinetId,
-      );
-
-      m.set(iso, {
-        ...cdi,
-        crmDiagnostics: crmDiag,
-        crmDiagnosticRevenue: crmDiagRev,
-        crmSales,
-        crmSalesRevenueOnly: crmSalesRev,
-        diagnostics: dayResolved.diagnostics,
-        diagnosticRevenue: dayResolved.diagnosticRevenue,
-        sales: dayResolved.sales,
-        salesRevenue: dayResolved.salesRevenue,
-        manualDiagnostics: cdi.manualDiagnostics ?? 0,
-        manualDiagnosticRevenue: cdi.manualDiagnosticRevenue ?? 0,
-        manualSales: cdi.manualSales ?? 0,
-        manualSalesRevenue: cdi.manualSalesRevenue ?? 0,
-        crmRevenue: dayResolved.revenue,
-        crmRevenueOnly: crmSalesRev + crmDiagRev,
-        manualDiagnosticsRaw: canEditManual ? cdi.manualDiagnosticsRaw : null,
-        manualDiagnosticRevenueRaw: canEditManual ? cdi.manualDiagnosticRevenueRaw : null,
-        manualSalesRaw: canEditManual ? cdi.manualSalesRaw : null,
-        manualSalesRevenueRaw: canEditManual ? cdi.manualSalesRevenueRaw : null,
+      return {
+        iso,
+        day,
+        weekday: WEEKDAYS_RU[date.getDay()],
+        hasCdi: cdi != null,
+        spend: cdi?.spend ?? 0,
+        metaLeads: cdi?.leads ?? 0,
         crmReceived: rnp?.crmReceived ?? 0,
-        qualified: rnp?.qualified ?? 0,
-        prepayCount: rnpManualByDate.get(iso)?.prepayCount ?? 0,
-        prepaySum: rnpManualByDate.get(iso)?.prepaySum ?? 0,
-        plannedVisits: rnp?.plannedVisits ?? 0,
-        conductedVisits: rnp?.conductedVisits ?? 0,
+        scheduled: rnp?.scheduled ?? 0,
+        conducted: rnp?.conducted ?? 0,
         diagnosticsPaid: rnp?.diagnosticsPaid ?? 0,
         diagnosticRevenuePaid: rnp?.diagnosticRevenuePaid ?? 0,
+        sales: rnp?.sales ?? 0,
+        salesRevenue: rnp?.salesRevenue ?? 0,
         cashRevenue: rnp?.cashRevenue ?? 0,
-      });
-    }
+        prepaySum: rnpManualByDate.get(iso)?.prepaySum ?? 0,
+      };
+    });
+  }, [period, cdiByDate, rnpByDay, rnpManualByDate]);
 
-    return m;
-  }, [data, monthDays, crmByDay, rnpByDay, rnpManualByDate, canEditManual, allLeads, cdiFactRows, cabinetInternalIds, cabinetId]);
-
-  const factResolved = useMemo(
-    () => sumResolvedMetricsPerCabinets(
-      crmPeriod, allLeads, cdiFactRows, cabinetInternalIds, cabinetId === "all", externalIdByCabinetId,
-    ),
-    [crmPeriod, allLeads, cdiFactRows, cabinetInternalIds, cabinetId, externalIdByCabinetId],
+  const sortedDays = useMemo(
+    () => [...periodDays].sort((a, b) => b.iso.localeCompare(a.iso)),
+    [periodDays],
   );
-  const factDiagnostics = factResolved.diagnostics;
-  const factDiagnosticRevenue = factResolved.diagnosticRevenue;
-  const factSales = factResolved.sales;
-  const factSalesRevenue = factResolved.salesRevenue;
-  const factRevenue = factResolved.revenue;
-  const factCrmReceived = useMemo(() => {
-    let sum = 0;
-    for (const v of rnpByDay.values()) sum += v.crmReceived;
-    return sum;
-  }, [rnpByDay]);
-  const factQualified = useMemo(() => {
-    let sum = 0;
-    for (const v of rnpByDay.values()) sum += v.qualified;
-    return sum;
-  }, [rnpByDay]);
-  const factPrepay = useMemo(() => {
-    let count = 0, sum = 0;
-    for (const v of rnpManualByDate.values()) { count += v.prepayCount; sum += v.prepaySum; }
-    return { count, sum };
-  }, [rnpManualByDate]);
-  const factLeads = factCrmReceived;
-  const factCac = factSales > 0 ? (totals?.spend ?? 0) / factSales : 0;
-  const factCpd = factDiagnostics > 0 ? (totals?.spend ?? 0) / factDiagnostics : 0;
-  const crLeadDiagnostics =
-    factLeads > 0 ? (factDiagnostics / factLeads) * 100 : 0;
-  const crDiagnosticsSale =
-    factDiagnostics > 0 ? (factSales / factDiagnostics) * 100 : 0;
 
   const daysWithData = useMemo(
     () =>
-      monthDays.filter(({ iso }) => {
-        const d = dailyMap.get(iso);
-        if (!d) return false;
-        return (
-          d.spend > 0 ||
-          d.leads > 0 ||
+      sortedDays.filter(
+        (d) =>
+          d.hasCdi ||
           d.crmReceived > 0 ||
-          d.plannedVisits > 0 ||
-          d.conductedVisits > 0 ||
+          d.scheduled > 0 ||
+          d.conducted > 0 ||
           d.diagnosticsPaid > 0 ||
-          d.diagnostics > 0 ||
           d.sales > 0 ||
-          (d.crmRevenue ?? 0) > 0 ||
-          d.cashRevenue > 0
-        );
-      }),
-    [monthDays, dailyMap],
+          d.salesRevenue > 0 ||
+          d.cashRevenue > 0 ||
+          d.prepaySum > 0,
+      ),
+    [sortedDays],
   );
 
-  const visibleDays = showAllDays ? monthDays : daysWithData;
+  const visibleDays = showAllDays ? sortedDays : daysWithData;
+
+  const rnpTotals = useMemo(() => sumRnpDaily(rnpByDay), [rnpByDay]);
+
+  const tableTotals = useMemo((): MetricsTableTotals => {
+    let prepaySum = 0;
+    for (const v of rnpManualByDate.values()) prepaySum += v.prepaySum;
+    const cdiDays = insights?.daily ?? [];
+    const hasAnyCdi = cdiDays.length > 0;
+    return {
+      spend: insights?.totals.spend ?? 0,
+      metaLeads: insights?.totals.leads ?? 0,
+      crmReceived: rnpTotals.crmReceived,
+      scheduled: rnpTotals.scheduled,
+      conducted: rnpTotals.conducted,
+      diagnosticsPaid: rnpTotals.diagnosticsPaid,
+      diagnosticRevenuePaid: rnpTotals.diagnosticRevenuePaid,
+      sales: rnpTotals.sales,
+      salesRevenue: rnpTotals.salesRevenue,
+      cashRevenue: rnpTotals.cashRevenue,
+      prepaySum,
+      hasAnyCdi,
+    };
+  }, [insights, rnpTotals, rnpManualByDate]);
+
+  const { getPlan } = useFinancePlans();
+  const plan = getPlan(monthKey(period.from));
+
+  const factRevenue = rnpTotals.salesRevenue + rnpTotals.diagnosticRevenuePaid;
+  const factSpend = insights?.totals.spend ?? 0;
+  const factCpl = tableTotals.metaLeads > 0 ? factSpend / tableTotals.metaLeads : 0;
+  const factCpd = rnpTotals.diagnosticsPaid > 0 ? factSpend / rnpTotals.diagnosticsPaid : 0;
+  const factCac = rnpTotals.sales > 0 ? factSpend / rnpTotals.sales : 0;
+  const crLeadDiagnostics =
+    rnpTotals.crmReceived > 0 ? (rnpTotals.diagnosticsPaid / rnpTotals.crmReceived) * 100 : 0;
+  const crDiagnosticsSale =
+    rnpTotals.diagnosticsPaid > 0 ? (rnpTotals.sales / rnpTotals.diagnosticsPaid) * 100 : 0;
+
+  const filledDays = daysWithData.length;
+  const daysInPeriod = periodDays.length;
+  const monthProgress = daysInPeriod > 0 ? Math.round((filledDays / daysInPeriod) * 100) : 0;
 
   const cabinetLabel =
     cabinetId === "all"
       ? "Все кабинеты"
       : cabinets.find((c) => c.id === cabinetId)?.name ?? "Кабинет";
 
+  const handlePeriodChange = (nextPreset: MetricsPeriodPreset, range: ReportPeriodRange) => {
+    setPreset(nextPreset);
+    setPeriod(range);
+  };
+
   const handleExportCsv = () => {
     const header = [
       "Дата", "День",
-      "Затраты", "Передано Meta", "CPL", "Получено CRM", "Квал. лиды",
+      "Затраты", "Передано Meta", "CPL", "Получено CRM", "Квал",
       "Записано", "Проведено", "Оплачено диаг", "Сумма диаг",
-      "Предоплат", "Сумма предоплат",
-      "Продажи", "Выручка продаж", "Касса", "Итого",
+      "Продажи", "Выручка", "Касса", "Предоплаты",
     ];
-    const rows = monthDays.map(({ day, iso, weekday }) => {
-      const d = dailyMap.get(iso);
-      const cpl = d && d.leads > 0 ? d.spend / d.leads : 0;
+    const rows = sortedDays.map((d) => {
+      const cpl = d.hasCdi && d.metaLeads > 0 ? d.spend / d.metaLeads : "";
       return [
-        iso,
-        `${String(day).padStart(2, "0")} ${weekday}`,
-        d?.spend ?? 0,
-        d?.leads ?? 0,
-        cpl ? Math.round(cpl) : "",
-        d?.crmReceived ?? 0,
-        d?.qualified ?? 0,
-        d?.plannedVisits ?? 0,
-        d?.conductedVisits ?? 0,
-        d?.diagnosticsPaid ?? 0,
-        d?.diagnosticRevenuePaid ?? 0,
-        d?.prepayCount ?? 0,
-        d?.prepaySum ?? 0,
-        d?.sales ?? 0,
-        d?.salesRevenue ?? 0,
-        d?.cashRevenue ?? 0,
-        d?.crmRevenue ?? 0,
+        d.iso,
+        `${String(d.day).padStart(2, "0")} ${d.weekday}`,
+        d.hasCdi ? d.spend : "",
+        d.hasCdi ? d.metaLeads : "",
+        cpl ? Math.round(Number(cpl)) : "",
+        d.crmReceived,
+        "",
+        d.scheduled,
+        d.conducted,
+        d.diagnosticsPaid,
+        d.diagnosticRevenuePaid,
+        d.sales,
+        d.salesRevenue,
+        d.cashRevenue,
+        d.prepaySum,
       ];
     });
     const csv = [header, ...rows]
@@ -355,7 +258,7 @@ const Metrics = () => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `metrics-${monthParam}.csv`;
+    a.download = `metrics-${periodSince}_${periodUntil}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -363,14 +266,12 @@ const Metrics = () => {
   const handleResync = async () => {
     setResyncing(true);
     try {
-      const since = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}-01`;
-      const until = ymdAlmaty();
       const targetCab = cabinetId !== "all"
         ? cabinets.find((c) => c.id === cabinetId)
         : null;
       const daily = await syncMetaDaily({
-        since,
-        until,
+        since: periodSince,
+        until: ymdAlmaty(),
         ...(targetCab ? { cabinet_id: targetCab.id } : {}),
       });
       const messages = formatMetaSyncMessages({
@@ -380,7 +281,7 @@ const Metrics = () => {
       if (messages.success) toast.success(messages.success);
       for (const warning of messages.warnings) toast.warning(warning);
       if (messages.error) toast.error(messages.error);
-      refresh();
+      refreshInsights();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось синхронизировать");
     } finally {
@@ -388,68 +289,10 @@ const Metrics = () => {
     }
   };
 
-  const upsertManualFact = async (
-    isoDate: string,
-    patch: {
-      manual_diagnostics?: number | null;
-      manual_sales?: number | null;
-      manual_revenue?: number | null;
-      manual_diagnostic_revenue?: number | null;
-    },
-  ) => {
-    if (!manualCabinet?.externalId) {
-      toast.error("Выбери конкретный кабинет для ручного ввода");
-      return;
-    }
-
-    const cleanPatch = Object.fromEntries(
-      Object.entries(patch).map(([key, value]) => [
-        key,
-        value === null ? null : Math.max(0, Number(value) || 0),
-      ]),
-    );
-
-    try {
-      const { data: existing, error: findError } = await supabase
-        .from("cabinet_daily_insights")
-        .select("id")
-        .eq("cabinet_id", manualCabinet.id)
-        .eq("date", isoDate)
-        .maybeSingle();
-      if (findError) throw findError;
-
-      if (existing?.id) {
-        const { error: updateError } = await (supabase as any)
-          .from("cabinet_daily_insights")
-          .update(cleanPatch)
-          .eq("id", existing.id);
-        if (updateError) throw updateError;
-      } else {
-        const { error: insertError } = await supabase
-          .from("cabinet_daily_insights")
-          .insert({
-            cabinet_id: manualCabinet.id,
-            external_id: manualCabinet.externalId,
-            project_id: (manualCabinet as AdCabinet & { projectId?: string }).projectId ?? null,
-            date: isoDate,
-            currency: manualCabinet.currency ?? "KZT",
-            ...cleanPatch,
-          });
-        if (insertError) throw insertError;
-      }
-
-      refresh();
-      setCdiTick((t) => t + 1);
-      toast.success("Ручной факт сохранен");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Не удалось сохранить факт");
-    }
-  };
-
   const saveRnpManual = async (isoDate: string, patch: RnpManualPatch) => {
     try {
       await upsertRnpManual(isoDate, patch);
-      toast.success("РНП-факт сохранён");
+      toast.success("Предоплата сохранена");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось сохранить");
     }
@@ -460,29 +303,29 @@ const Metrics = () => {
       <PageHeader
         icon={CalendarDays}
         title="Таблица показателей"
-        description={`${cabinetLabel} · ${MONTHS_GEN_RU[monthCursor.getMonth()]} ${monthCursor.getFullYear()}`}
+        description={`${cabinetLabel} · ${formatPeriodLabel(period)}`}
       />
 
       <MetricsKpiPanel
         plan={plan}
         factRevenue={factRevenue}
-        factSpend={totals?.spend ?? 0}
-        factLeads={factLeads}
-        factSales={factSales}
-        factDiagnostics={factDiagnostics}
-        factCpl={totals?.cpl ?? 0}
+        factSpend={factSpend}
+        factLeads={rnpTotals.crmReceived}
+        factSales={rnpTotals.sales}
+        factDiagnostics={rnpTotals.diagnosticsPaid}
+        factCpl={factCpl}
         factCpd={factCpd}
         factCac={factCac}
         crLeadDiagnostics={crLeadDiagnostics}
         crDiagnosticsSale={crDiagnosticsSale}
         monthProgress={monthProgress}
         filledDays={filledDays}
-        daysInMonth={daysInMonth}
+        daysInMonth={daysInPeriod}
       />
 
       <div className="mt-6 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <PeriodPicker range={period} onChange={setPeriod} />
+          <MetricsPeriodPicker preset={preset} range={period} onPresetChange={handlePeriodChange} />
           <Select value={cabinetId} onValueChange={setCabinetId}>
             <SelectTrigger className="h-11 min-w-[200px] rounded-xl border-border/60 bg-card/60">
               <BarChart3 className="h-4 w-4 text-muted-foreground" />
@@ -519,7 +362,7 @@ const Metrics = () => {
                 showAllDays ? "bg-background text-foreground shadow-sm" : "text-muted-foreground",
               )}
             >
-              Все дни ({daysInMonth})
+              Все дни ({daysInPeriod})
             </button>
           </div>
           <Button
@@ -539,24 +382,12 @@ const Metrics = () => {
         </div>
       </div>
 
-      <div
-        className={cn(
-          "mt-4 flex items-start gap-2 rounded-xl border px-3 py-2 text-xs",
-          canEditManual && manualCabinet
-            ? "border-success/25 bg-success/5 text-success"
-            : "border-warning/25 bg-warning/5 text-warning",
-        )}
-      >
-        <Pencil className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        <span>{manualHint}</span>
-      </div>
-
-      {error && (
+      {insightsError && (
         <div className="mt-4 flex items-start gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <div className="font-semibold">Не удалось загрузить статистику</div>
-            <div className="mt-0.5 text-xs opacity-90">{error}</div>
+            <div className="mt-0.5 text-xs opacity-90">{insightsError}</div>
           </div>
         </div>
       )}
@@ -578,32 +409,23 @@ const Metrics = () => {
         <MetricsSummaryStrip
           plan={plan}
           fact={{
-            spend: totals?.spend ?? 0,
-            leads: factLeads,
-            cpl: totals?.cpl ?? 0,
-            diagnostics: factDiagnostics,
-            diagnosticRevenue: factDiagnosticRevenue,
-            sales: factSales,
-            salesRevenue: factSalesRevenue,
+            spend: factSpend,
+            leads: rnpTotals.crmReceived,
+            cpl: factCpl,
+            diagnostics: rnpTotals.diagnosticsPaid,
+            diagnosticRevenue: rnpTotals.diagnosticRevenuePaid,
+            sales: rnpTotals.sales,
+            salesRevenue: rnpTotals.salesRevenue,
             revenue: factRevenue,
           }}
         />
 
         <MetricsDataTable
-          monthDays={monthDays}
           visibleDays={visibleDays}
-          dailyMap={dailyMap}
-          loading={loading}
-          loadingLabel={`Загружаем данные за ${MONTHS_GEN_RU[monthCursor.getMonth()]} ${monthCursor.getFullYear()}...`}
-          manualCabinet={manualCabinet}
-          canEditManual={canEditManual}
-          onSaveDiagnosticRevenue={(iso, next) =>
-            upsertManualFact(iso, { manual_diagnostic_revenue: next })
-          }
-          onSaveSales={(iso, next) => upsertManualFact(iso, { manual_sales: next })}
-          onSaveSalesRevenue={(iso, next) => upsertManualFact(iso, { manual_revenue: next })}
+          totals={tableTotals}
+          loading={insightsLoading}
+          loadingLabel={`Загружаем данные за ${formatPeriodLabel(period)}...`}
           rnpEditDisabled={rnpTableMissing}
-          onSavePrepayCount={(iso, next) => saveRnpManual(iso, { prepayments_count: next ?? 0 })}
           onSavePrepaySum={(iso, next) => saveRnpManual(iso, { prepayments_sum: next ?? 0 })}
         />
       </div>

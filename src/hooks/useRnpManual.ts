@@ -16,23 +16,21 @@ export type RnpManualPatch = Partial<{
   prepayments_sum: number;
 }>;
 
-function monthBounds(month: string): { since: string; untilExcl: string } | null {
-  const m = /^(\d{4})-(\d{2})$/.exec(month);
-  if (!m) return null;
-  const year = Number(m[1]);
-  const idx = Number(m[2]) - 1;
+function dateRangeBounds(since: string, until: string): { since: string; untilExcl: string } {
+  const end = new Date(until);
+  end.setDate(end.getDate() + 1);
   const ymd = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  return { since: ymd(new Date(year, idx, 1)), untilExcl: ymd(new Date(year, idx + 1, 1)) };
+  return { since, untilExcl: ymd(end) };
 }
 
-/** @param month "YYYY-MM" */
-export function useRnpManual(month: string) {
+/** @param since YYYY-MM-DD @param until YYYY-MM-DD включительно */
+export function useRnpManual(since: string, until: string) {
   const { activeId } = useProjectsStore();
   const [byDate, setByDate] = useState<Map<string, RnpManualDay>>(new Map());
   const [tableMissing, setTableMissing] = useState(false);
 
-  const bounds = useMemo(() => monthBounds(month), [month]);
+  const bounds = useMemo(() => dateRangeBounds(since, until), [since, until]);
 
   const refetch = useCallback(async () => {
     if (!bounds) return;
