@@ -37,6 +37,8 @@ export interface LeadLite {
   rejectReason: string | null;
   rejectedAt: string | null;
   stageId: string | null;
+  nextVisitAt: string | null;
+  paymentMethod: string | null;
 }
 
 export const LEADS_LITE_QUERY_KEY = "leads-lite";
@@ -45,7 +47,7 @@ export async function fetchLeadsLite(activeId: string | null): Promise<LeadLite[
   let leadsQuery = supabase
     .from("leads")
     .select(
-      "id,source,channel,referrer,utm,meta_ad_id,cabinet_id,stage_id,amount,diagnostic_amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,reject_reason,rejected_at",
+      "id,source,channel,referrer,utm,meta_ad_id,cabinet_id,stage_id,amount,diagnostic_amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,reject_reason,rejected_at,next_visit_at,payment_method",
     )
     .eq("is_personal", false)
     .order("created_at", { ascending: false })
@@ -82,6 +84,8 @@ export async function fetchLeadsLite(activeId: string | null): Promise<LeadLite[
     rejectReason: ((r as { reject_reason?: string | null }).reject_reason ?? null) as string | null,
     rejectedAt: ((r as { rejected_at?: string | null }).rejected_at ?? null) as string | null,
     stageId: (r.stage_id as string | null) ?? null,
+    nextVisitAt: (r.next_visit_at as string | null) ?? null,
+    paymentMethod: (r.payment_method as string | null) ?? null,
   }));
 }
 

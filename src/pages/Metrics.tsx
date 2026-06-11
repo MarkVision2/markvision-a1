@@ -26,6 +26,7 @@ import { useMultiMetaInsights, type DailyInsightRow } from "@/hooks/useMetaInsig
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
 import { crmDailyMetrics, fetchCdiFactRows, type ReportPeriodRange } from "@/hooks/useReportData";
+import { metricsRnpDaily } from "@/lib/metricsRnpDaily";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
   shouldApplyManualOverrides,
@@ -119,19 +120,6 @@ const Metrics = () => {
   //   leads (для счёта) — по createdAt в периоде
   //   sales/diagnostics/revenue — по ДАТЕ СОБЫТИЯ (paid_at / lastActivityAt)
   const { leads: allLeads } = useLeadsLite();
-  const monthStartTs = monthCursor.getTime();
-  const monthEndTs = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 1).getTime();
-  const orphanThisMonth = useMemo(
-    () => allLeads.filter((l) => {
-      if (l.cabinetId) return false;
-      // Если выбран конкретный кабинет — orphan-лиды не показываем,
-      // т.к. они не относятся ни к какому кабинету.
-      if (cabinetId !== "all") return false;
-      const t = new Date(l.createdAt).getTime();
-      return t >= monthStartTs && t < monthEndTs;
-    }),
-    [allLeads, cabinetId, monthStartTs, monthEndTs],
-  );
   const crmPeriod: ReportPeriodRange = useMemo(
     () => ({
       from: new Date(monthCursor.getFullYear(), monthCursor.getMonth(), 1),
@@ -173,6 +161,11 @@ const Metrics = () => {
     [allLeads, crmPeriod, cabinetSelector],
   );
 
+  const rnpByDay = useMemo(
+    () => metricsRnpDaily(allLeads, crmPeriod, cabinetSelector),
+    [allLeads, crmPeriod, cabinetSelector],
+  );
+
   // Распределяем orphan-показатели по дням (по дате оплаты или создания лида),
   // чтобы Daily-строки в таблице суммировались точно в Fact-строку.
   // Без этого пользователь видит «расхождение»: сумма колонки ≠ итог.
@@ -188,6 +181,8 @@ const Metrics = () => {
       sales: 0, crmSales: 0, manualSales: 0, manualSalesRaw: null,
       salesRevenue: 0, crmSalesRevenueOnly: 0, manualSalesRevenue: 0, manualSalesRevenueRaw: null,
       crmRevenue: 0, crmRevenueOnly: 0, manualRevenue: 0,
+      crmReceived: 0, plannedVisits: 0, conductedVisits: 0,
+      diagnosticsPaid: 0, diagnosticRevenuePaid: 0, cashRevenue: 0,
     });
 
     for (const d of data?.daily ?? []) m.set(d.date, { ...d });
@@ -199,6 +194,7 @@ const Metrics = () => {
       const crmDiagRev = crm?.diagnosticRevenue ?? 0;
       const crmSales = crm?.sales ?? 0;
       const crmSalesRev = crm?.salesRevenue ?? 0;
+      const rnp = rnpByDay.get(iso);
 
       const [y, mo, d] = iso.split("-").map(Number);
       const dayResolved = sumResolvedMetricsPerCabinets(
@@ -230,19 +226,17 @@ const Metrics = () => {
         manualDiagnosticRevenueRaw: canEditManual ? cdi.manualDiagnosticRevenueRaw : null,
         manualSalesRaw: canEditManual ? cdi.manualSalesRaw : null,
         manualSalesRevenueRaw: canEditManual ? cdi.manualSalesRevenueRaw : null,
+        crmReceived: rnp?.crmReceived ?? 0,
+        plannedVisits: rnp?.plannedVisits ?? 0,
+        conductedVisits: rnp?.conductedVisits ?? 0,
+        diagnosticsPaid: rnp?.diagnosticsPaid ?? 0,
+        diagnosticRevenuePaid: rnp?.diagnosticRevenuePaid ?? 0,
+        cashRevenue: rnp?.cashRevenue ?? 0,
       });
     }
 
-    // Orphan-лиды без cabinet_id: только Meta-лиды (создание), CRM-метрики уже в crmByDay.
-    for (const l of orphanThisMonth) {
-      const created = l.createdAt.slice(0, 10);
-      const cur = m.get(created) ?? emptyDay(created);
-      cur.leads += 1;
-      m.set(created, cur);
-    }
-
     return m;
-  }, [data, monthDays, crmByDay, canEditManual, orphanThisMonth, allLeads, cdiFactRows, cabinetInternalIds, cabinetId]);
+  }, [data, monthDays, crmByDay, rnpByDay, canEditManual, allLeads, cdiFactRows, cabinetInternalIds, cabinetId]);
 
   const factResolved = useMemo(
     () => sumResolvedMetricsPerCabinets(
@@ -255,7 +249,12 @@ const Metrics = () => {
   const factSales = factResolved.sales;
   const factSalesRevenue = factResolved.salesRevenue;
   const factRevenue = factResolved.revenue;
-  const factLeads = (totals?.leads ?? 0) + orphanThisMonth.length;
+  const factCrmReceived = useMemo(() => {
+    let sum = 0;
+    for (const v of rnpByDay.values()) sum += v.crmReceived;
+    return sum;
+  }, [rnpByDay]);
+  const factLeads = factCrmReceived;
   const factCac = factSales > 0 ? (totals?.spend ?? 0) / factSales : 0;
   const factCpd = factDiagnostics > 0 ? (totals?.spend ?? 0) / factDiagnostics : 0;
   const crLeadDiagnostics =
@@ -271,9 +270,14 @@ const Metrics = () => {
         return (
           d.spend > 0 ||
           d.leads > 0 ||
+          d.crmReceived > 0 ||
+          d.plannedVisits > 0 ||
+          d.conductedVisits > 0 ||
+          d.diagnosticsPaid > 0 ||
           d.diagnostics > 0 ||
           d.sales > 0 ||
-          (d.crmRevenue ?? 0) > 0
+          (d.crmRevenue ?? 0) > 0 ||
+          d.cashRevenue > 0
         );
       }),
     [monthDays, dailyMap],
@@ -289,30 +293,28 @@ const Metrics = () => {
   const handleExportCsv = () => {
     const header = [
       "Дата", "День",
-      "Расходы", "Лиды", "CPL",
-      "Диагностики", "Оплаты", "Выручка",
-      "Показы", "Клики", "CTR", "CPC", "CPM",
+      "Затраты", "Передано Meta", "CPL", "Получено CRM",
+      "Записано", "Проведено", "Оплачено диаг", "Сумма диаг",
+      "Продажи", "Выручка продаж", "Касса", "Итого",
     ];
     const rows = monthDays.map(({ day, iso, weekday }) => {
       const d = dailyMap.get(iso);
       const cpl = d && d.leads > 0 ? d.spend / d.leads : 0;
-      const cpc = d && d.clicks > 0 ? d.spend / d.clicks : 0;
-      const cpm = d && d.impressions > 0 ? (d.spend / d.impressions) * 1000 : 0;
-      const ctr = d && d.impressions > 0 ? (d.clicks / d.impressions) * 100 : 0;
       return [
         iso,
         `${String(day).padStart(2, "0")} ${weekday}`,
         d?.spend ?? 0,
         d?.leads ?? 0,
         cpl ? Math.round(cpl) : "",
-        d?.diagnostics ?? 0,
+        d?.crmReceived ?? 0,
+        d?.plannedVisits ?? 0,
+        d?.conductedVisits ?? 0,
+        d?.diagnosticsPaid ?? 0,
+        d?.diagnosticRevenuePaid ?? 0,
         d?.sales ?? 0,
+        d?.salesRevenue ?? 0,
+        d?.cashRevenue ?? 0,
         d?.crmRevenue ?? 0,
-        d?.impressions ?? 0,
-        d?.clicks ?? 0,
-        ctr ? ctr.toFixed(2) : "",
-        cpc ? Math.round(cpc) : "",
-        cpm ? Math.round(cpm) : "",
       ];
     });
     const csv = [header, ...rows]
@@ -547,7 +549,6 @@ const Metrics = () => {
           loadingLabel={`Загружаем данные за ${MONTHS_GEN_RU[monthCursor.getMonth()]} ${monthCursor.getFullYear()}...`}
           manualCabinet={manualCabinet}
           canEditManual={canEditManual}
-          onSaveDiagnostics={(iso, next) => upsertManualFact(iso, { manual_diagnostics: next })}
           onSaveDiagnosticRevenue={(iso, next) =>
             upsertManualFact(iso, { manual_diagnostic_revenue: next })
           }

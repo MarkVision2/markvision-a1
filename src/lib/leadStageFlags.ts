@@ -57,3 +57,20 @@ export function isLeadDiagnosticEvent(l: LeadFlagsInput): boolean {
   const k = (l.stageKey ?? "").toLowerCase().trim();
   return VISIT_STAGE_KEYS.has(k);
 }
+
+const SCHEDULED_STAGE_KEYS = new Set([
+  "scheduled", "scheduled_diag", "записан", "запись",
+]);
+
+/** Визит состоялся (не только запись в календаре). */
+export function isLeadConductedVisit(l: LeadFlagsInput & { stageKey?: string | null }): boolean {
+  if (isLeadPaid(l)) return false;
+  if ((l.diagnosticAmount ?? 0) > 0) return true;
+  const k = (l.stageKey ?? "").toLowerCase().trim();
+  if (SCHEDULED_STAGE_KEYS.has(k)) return false;
+  const CONDUCTED_KEYS = new Set([
+    "invoice", "счёт", "счет",
+    "visit", "diagnosed", "diagnostic", "арегистрация", "визит", "диагностика",
+  ]);
+  return CONDUCTED_KEYS.has(k);
+}

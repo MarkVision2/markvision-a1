@@ -42,6 +42,18 @@ export interface DailyInsightRow {
   crmRevenueOnly: number;
   manualRevenue: number;
   manualDiagnosticRevenueRaw: number | null;
+  /** Лидов получено в CRM (created_at). */
+  crmReceived: number;
+  /** Запланировано визитов на день (next_visit_at). */
+  plannedVisits: number;
+  /** Проведено визитов (факт). */
+  conductedVisits: number;
+  /** Оплачено диагностик, шт (diagnostic_amount > 0). */
+  diagnosticsPaid: number;
+  /** Сумма оплат диагностик из CRM (auto). */
+  diagnosticRevenuePaid: number;
+  /** Наличные за день ₸. */
+  cashRevenue: number;
 }
 
 export interface InsightTotals {
@@ -71,6 +83,15 @@ export interface InsightsData {
   totals: InsightTotals;
   daily: DailyInsightRow[];
 }
+
+const RNP_DAY_ZERO = {
+  crmReceived: 0,
+  plannedVisits: 0,
+  conductedVisits: 0,
+  diagnosticsPaid: 0,
+  diagnosticRevenuePaid: 0,
+  cashRevenue: 0,
+} as const;
 
 const EMPTY_TOTALS: InsightTotals = {
   spend: 0, impressions: 0, clicks: 0, leads: 0, pixelRevenue: 0, revenue: 0,
@@ -215,6 +236,7 @@ function aggregate(rows: CdiRow[]): InsightsData {
         crmRevenue: totalRevenue,
         crmRevenueOnly: crmSalesRev + crmDiagRev,
         manualRevenue: manSalesRev + manDiagRev,
+        ...RNP_DAY_ZERO,
       });
     }
   }

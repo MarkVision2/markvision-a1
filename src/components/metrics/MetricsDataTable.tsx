@@ -1,4 +1,4 @@
-import { DollarSign, Eye, Loader2, Wallet } from "lucide-react";
+import { DollarSign, Loader2, Wallet } from "lucide-react";
 import { ManualFactCell } from "@/components/metrics/ManualFactCell";
 import { MetricsDash } from "@/components/metrics/MetricsDash";
 import { formatNumber } from "@/components/metrics/metricsFormat";
@@ -23,11 +23,12 @@ interface Props {
   loadingLabel: string;
   manualCabinet: { name: string } | null;
   canEditManual: boolean;
-  onSaveDiagnostics: (iso: string, next: number | null) => Promise<void>;
   onSaveDiagnosticRevenue: (iso: string, next: number | null) => Promise<void>;
   onSaveSales: (iso: string, next: number | null) => Promise<void>;
   onSaveSalesRevenue: (iso: string, next: number | null) => Promise<void>;
 }
+
+const COL_COUNT = 13;
 
 export function MetricsDataTable({
   visibleDays,
@@ -36,16 +37,18 @@ export function MetricsDataTable({
   loadingLabel,
   manualCabinet,
   canEditManual,
-  onSaveDiagnostics,
   onSaveDiagnosticRevenue,
   onSaveSales,
   onSaveSalesRevenue,
 }: Props) {
   const editDisabled = !manualCabinet || !canEditManual;
 
+  const num = (v: number | undefined) =>
+    v && v > 0 ? formatNumber(v) : <MetricsDash />;
+
   return (
     <div className="overflow-x-auto rounded-2xl border border-border/60 bg-card/30">
-      <table className="w-full min-w-[880px] border-collapse text-xs">
+      <table className="w-full min-w-[1100px] border-collapse text-xs">
         <thead>
           <tr className="border-b border-border/40 bg-muted/30">
             <th rowSpan={2} className="sticky left-0 z-10 bg-muted/30 px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
@@ -54,30 +57,36 @@ export function MetricsDataTable({
             <th colSpan={3} className="border-b border-border/30 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
               Реклама
             </th>
-            <th colSpan={2} className="border-b border-l border-border/30 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Воронка
+            <th rowSpan={2} className="border-l border-border/30 px-2 py-2 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              CRM
             </th>
-            <th colSpan={3} className="border-b border-l border-border/30 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Выручка ₸
+            <th colSpan={4} className="border-b border-l border-border/30 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Диагностики
+            </th>
+            <th colSpan={4} className="border-b border-l border-border/30 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              Деньги ₸
             </th>
           </tr>
           <tr className="border-b border-border/60 bg-card/50">
             {[
-              "Расходы",
-              "Лиды",
-              "CPL",
-              "Диагностики",
-              "Продажи",
-              "Оплата диагностик",
-              "Выручка продаж",
-              "Итого",
-            ].map((h, i) => (
+              { h: "Затраты", border: false },
+              { h: "Передано", border: false },
+              { h: "CPL", border: false },
+              { h: "Получено", border: true },
+              { h: "Записано", border: true },
+              { h: "Проведено", border: false },
+              { h: "Оплачено", border: false },
+              { h: "Сумма", border: false },
+              { h: "Продажи", border: true },
+              { h: "Выручка", border: false },
+              { h: "Касса", border: false },
+              { h: "Итого", border: false },
+            ].map(({ h, border }) => (
               <th
-                key={h + i}
+                key={h}
                 className={cn(
                   "px-2 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground",
-                  i === 3 && "border-l border-border/30",
-                  i === 5 && "border-l border-border/30",
+                  border && "border-l border-border/30",
                 )}
               >
                 {h}
@@ -88,7 +97,7 @@ export function MetricsDataTable({
         <tbody>
           {visibleDays.length === 0 ? (
             <tr>
-              <td colSpan={9} className="px-4 py-10 text-center text-sm text-muted-foreground">
+              <td colSpan={COL_COUNT} className="px-4 py-10 text-center text-sm text-muted-foreground">
                 Нет дней с данными за выбранный период
               </td>
             </tr>
@@ -100,9 +109,13 @@ export function MetricsDataTable({
               const hasData = !!d && (
                 d.spend > 0 ||
                 d.leads > 0 ||
-                d.diagnostics > 0 ||
+                d.crmReceived > 0 ||
+                d.plannedVisits > 0 ||
+                d.conductedVisits > 0 ||
+                d.diagnosticsPaid > 0 ||
                 d.sales > 0 ||
-                dayRevenue > 0
+                dayRevenue > 0 ||
+                d.cashRevenue > 0
               );
 
               return (
@@ -117,21 +130,27 @@ export function MetricsDataTable({
                     <span className="font-semibold tabular-nums">{String(day).padStart(2, "0")}</span>
                     <span className="ml-1.5 text-muted-foreground">{weekday}</span>
                   </td>
-                  <Cell>{hasData && d!.spend > 0 ? formatNumber(d!.spend) : <MetricsDash />}</Cell>
-                  <Cell>{hasData && d!.leads > 0 ? formatNumber(d!.leads) : <MetricsDash />}</Cell>
+                  <Cell>{num(d?.spend)}</Cell>
+                  <Cell>{num(d?.leads)}</Cell>
                   <Cell>{cpl > 0 ? formatNumber(cpl) : <MetricsDash />}</Cell>
+                  <Cell>{num(d?.crmReceived)}</Cell>
+                  <Cell>{num(d?.plannedVisits)}</Cell>
+                  <Cell>{num(d?.conductedVisits)}</Cell>
+                  <Cell>{num(d?.diagnosticsPaid)}</Cell>
                   <Cell>
                     <ManualFactCell
-                      title="Диагностики"
-                      icon={Eye}
+                      title="Сумма диагностик"
+                      icon={DollarSign}
                       isoDate={iso}
-                      value={d?.diagnostics ?? 0}
-                      crm={d?.crmDiagnostics ?? 0}
-                      manual={d?.manualDiagnostics ?? 0}
-                      manualRaw={d?.manualDiagnosticsRaw ?? null}
+                      value={d?.diagnosticRevenue ?? 0}
+                      crm={d?.diagnosticRevenuePaid ?? 0}
+                      manual={d?.manualDiagnosticRevenue ?? 0}
+                      manualRaw={d?.manualDiagnosticRevenueRaw ?? null}
                       autoLabel="CRM"
                       disabled={editDisabled}
-                      onSave={(next) => onSaveDiagnostics(iso, next)}
+                      format={formatNumber}
+                      allowDecimal
+                      onSave={(next) => onSaveDiagnosticRevenue(iso, next)}
                     />
                   </Cell>
                   <Cell>
@@ -150,22 +169,6 @@ export function MetricsDataTable({
                   </Cell>
                   <Cell>
                     <ManualFactCell
-                      title="Оплата диагностик"
-                      icon={DollarSign}
-                      isoDate={iso}
-                      value={d?.diagnosticRevenue ?? 0}
-                      crm={d?.crmDiagnosticRevenue ?? 0}
-                      manual={d?.manualDiagnosticRevenue ?? 0}
-                      manualRaw={d?.manualDiagnosticRevenueRaw ?? null}
-                      autoLabel="CRM"
-                      disabled={editDisabled}
-                      format={formatNumber}
-                      allowDecimal
-                      onSave={(next) => onSaveDiagnosticRevenue(iso, next)}
-                    />
-                  </Cell>
-                  <Cell>
-                    <ManualFactCell
                       title="Выручка от продаж"
                       icon={DollarSign}
                       isoDate={iso}
@@ -180,6 +183,7 @@ export function MetricsDataTable({
                       onSave={(next) => onSaveSalesRevenue(iso, next)}
                     />
                   </Cell>
+                  <Cell>{num(d?.cashRevenue)}</Cell>
                   <Cell>
                     <span className={cn("font-semibold", dayRevenue > 0 && "text-success")}>
                       {dayRevenue > 0 ? formatNumber(dayRevenue) : <MetricsDash />}
