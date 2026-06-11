@@ -5,16 +5,22 @@
 -- 1) Обогатить существующие stage_changed (UUID → key в payload)
 -- =============================================================================
 UPDATE public.events e
-SET payload = e.payload
-  || jsonb_build_object(
-    'from_key', fs.key,
-    'to_key', ts.key,
-    'to_is_diagnostic', COALESCE(ts.is_diagnostic, false)
-  )
-FROM public.pipeline_stages ts
-LEFT JOIN public.pipeline_stages fs ON fs.id::text = e.payload->>'from'
+SET payload = e.payload || jsonb_build_object(
+  'from_key', (
+    SELECT ps.key FROM public.pipeline_stages ps
+    WHERE ps.id::text = e.payload->>'from'
+  ),
+  'to_key', (
+    SELECT ps.key FROM public.pipeline_stages ps
+    WHERE ps.id::text = e.payload->>'to'
+  ),
+  'to_is_diagnostic', COALESCE((
+    SELECT ps.is_diagnostic FROM public.pipeline_stages ps
+    WHERE ps.id::text = e.payload->>'to'
+  ), false)
+)
 WHERE e.event_type = 'stage_changed'
-  AND ts.id::text = e.payload->>'to'
+  AND e.payload->>'to' IS NOT NULL
   AND e.payload->>'to_key' IS NULL;
 
 -- =============================================================================
