@@ -260,13 +260,13 @@ function aggregate(rows: CdiRow[]): InsightsData {
   return { currency, totals, daily };
 }
 
-async function fetchInsights(
+async function fetchInsightsRange(
   actIds: string[],
-  month: string,
+  since: string,
+  until: string,
   projectId?: string | null,
 ): Promise<InsightsData> {
-  const range = monthRange(month);
-  if (!range || actIds.length === 0) {
+  if (actIds.length === 0) {
     return { currency: "USD", totals: EMPTY_TOTALS, daily: [] };
   }
   const ids = actIds.map(normalizeActId);
@@ -274,15 +274,35 @@ async function fetchInsights(
     .from("cabinet_daily_insights")
     .select("date, spend, impressions, clicks, leads, revenue, currency, crm_diagnostics, manual_diagnostics, crm_sales, manual_sales, crm_revenue, manual_revenue, crm_diagnostic_revenue, manual_diagnostic_revenue")
     .in("external_id", ids)
-    .gte("date", range.since)
-    .lte("date", range.until)
+    .gte("date", since)
+    .lte("date", until)
     .order("date", { ascending: true });
-  // Изоляция проекта: если несколько проектов делили один external_id (миграция кабинета и т.п.),
-  // чужие строки в выборку не попадут.
   if (projectId) q = q.eq("project_id", projectId);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
   return aggregate((data ?? []) as CdiRow[]);
+}
+
+async function fetchInsights(
+  actIds: string[],
+  month: string,
+  projectId?: string | null,
+): Promise<InsightsData> {
+  const range = monthRange(month);
+  if (!range) {
+    return { currency: "USD", totals: EMPTY_TOTALS, daily: [] };
+  }
+  return fetchInsightsRange(actIds, range.since, range.until, projectId);
+}
+
+/** CDI за произвольный диапазон дат (YYYY-MM-DD). */
+export async function fetchInsightsByDateRange(
+  actIds: string[],
+  since: string,
+  until: string,
+  projectId?: string | null,
+): Promise<InsightsData> {
+  return fetchInsightsRange(actIds, since, until, projectId);
 }
 
 export function useMetaInsights(

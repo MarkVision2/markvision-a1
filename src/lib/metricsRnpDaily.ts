@@ -1,24 +1,24 @@
 import type { LeadLite } from "@/hooks/useLeadsLite";
+import type { StageChangeEvent } from "@/hooks/useStageChangeEvents";
 import type { ReportPeriodRange } from "@/lib/crmDailyMetrics";
-import { isLeadConductedVisit, isLeadPaid } from "@/lib/leadStageFlags";
+import { ymdLocal } from "@/lib/metricsPeriod";
 
-/** Лид квалифицирован, когда скоринг Green API бота >= порога (0-100). */
-export const QUAL_SCORE_MIN = 50;
+const SCHEDULED_KEYS = new Set([
+  "scheduled", "scheduled_diag", "записан", "запись",
+]);
+
+const CONDUCTED_KEYS = new Set([
+  "visit", "diagnosed", "diagnostic", "визит", "диагностика", "арегистрация",
+]);
 
 export interface RnpDailyMetrics {
-  /** Лидов получено в CRM (created_at). */
   crmReceived: number;
-  /** Квал. лиды — скоринг Green API бота >= QUAL_SCORE_MIN. */
-  qualified: number;
-  /** Запланировано визитов на этот день (next_visit_at). */
-  plannedVisits: number;
-  /** Проведено визитов / диагностик (факт, не запись). */
-  conductedVisits: number;
-  /** Оплачено диагностик (шт, diagnostic_amount > 0). */
+  scheduled: number;
+  conducted: number;
   diagnosticsPaid: number;
-  /** Сумма оплат диагностик ₸. */
   diagnosticRevenuePaid: number;
-  /** Наличные за день ₸ (payment_method = cash). */
+  sales: number;
+  salesRevenue: number;
   cashRevenue: number;
 }
 
@@ -35,70 +35,48 @@ function ymdAlmatyFromIso(iso: string): string {
   return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
-function eventYmd(l: LeadLite): string {
-  const ref = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
-  return ymdAlmatyFromIso(ref);
-}
-
-function inMonthRange(ymd: string, range: ReportPeriodRange): boolean {
-  const from = `${range.from.getFullYear()}-${String(range.from.getMonth() + 1).padStart(2, "0")}-${String(range.from.getDate()).padStart(2, "0")}`;
-  const to = `${range.to.getFullYear()}-${String(range.to.getMonth() + 1).padStart(2, "0")}-${String(range.to.getDate()).padStart(2, "0")}`;
+function inDateRange(ymd: string, range: ReportPeriodRange): boolean {
+  const from = ymdLocal(range.from);
+  const to = ymdLocal(range.to);
   return ymd >= from && ymd <= to;
 }
 
-/** РНП-метрики по дням для «Таблицы показателей». */
+/** РНП-метрики по дням для «Таблицы показателей» (Фаза 1). */
 export function metricsRnpDaily(
   leads: LeadLite[],
+  stageEvents: StageChangeEvent[],
   range: ReportPeriodRange,
   cabinetSelector: "all" | string,
 ): Map<string, RnpDailyMetrics> {
-  const matchCabinet = (l: LeadLite) =>
-    cabinetSelector === "all" || l.cabinetId === cabinetSelector;
+  const matchCabinet = (cabinetId: string | null) =>
+    cabinetSelector === "all" || cabinetId === cabinetSelector;
 
   const empty = (): RnpDailyMetrics => ({
     crmReceived: 0,
-    qualified: 0,
-    plannedVisits: 0,
-    conductedVisits: 0,
+    scheduled: 0,
+    conducted: 0,
     diagnosticsPaid: 0,
     diagnosticRevenuePaid: 0,
+    sales: 0,
+    salesRevenue: 0,
     cashRevenue: 0,
   });
 
   const m = new Map<string, RnpDailyMetrics>();
 
   for (const l of leads) {
-    if (!matchCabinet(l)) continue;
+    if (!matchCabinet(l.cabinetId)) continue;
 
     const createdYmd = ymdAlmatyFromIso(l.createdAt);
-    if (createdYmd && inMonthRange(createdYmd, range)) {
+    if (createdYmd && inDateRange(createdYmd, range)) {
       const cur = m.get(createdYmd) ?? empty();
       cur.crmReceived += 1;
-      if ((l.aiScore ?? 0) >= QUAL_SCORE_MIN) cur.qualified += 1;
       m.set(createdYmd, cur);
     }
 
-    if (l.nextVisitAt) {
-      const planYmd = ymdAlmatyFromIso(l.nextVisitAt);
-      if (planYmd && inMonthRange(planYmd, range)) {
-        const cur = m.get(planYmd) ?? empty();
-        cur.plannedVisits += 1;
-        m.set(planYmd, cur);
-      }
-    }
-
-    if (isLeadConductedVisit(l)) {
-      const ymd = eventYmd(l);
-      if (ymd && inMonthRange(ymd, range)) {
-        const cur = m.get(ymd) ?? empty();
-        cur.conductedVisits += 1;
-        m.set(ymd, cur);
-      }
-    }
-
-    if ((l.diagnosticAmount ?? 0) > 0) {
-      const ymd = eventYmd(l);
-      if (ymd && inMonthRange(ymd, range)) {
+    if (l.paidAt && (l.diagnosticAmount ?? 0) > 0) {
+      const ymd = ymdAlmatyFromIso(l.paidAt);
+      if (ymd && inDateRange(ymd, range)) {
         const cur = m.get(ymd) ?? empty();
         cur.diagnosticsPaid += 1;
         cur.diagnosticRevenuePaid += l.diagnosticAmount;
@@ -106,15 +84,60 @@ export function metricsRnpDaily(
       }
     }
 
-    if (isLeadPaid(l) && l.paymentMethod === "cash" && (l.amount ?? 0) > 0) {
-      const ymd = eventYmd(l);
-      if (ymd && inMonthRange(ymd, range)) {
+    if (l.paid === true && l.paidAt) {
+      const ymd = ymdAlmatyFromIso(l.paidAt);
+      if (ymd && inDateRange(ymd, range)) {
         const cur = m.get(ymd) ?? empty();
-        cur.cashRevenue += l.amount;
+        cur.sales += 1;
+        cur.salesRevenue += l.amount ?? 0;
+        if (l.paymentMethod === "cash" && (l.amount ?? 0) > 0) {
+          cur.cashRevenue += l.amount;
+        }
         m.set(ymd, cur);
       }
     }
   }
 
+  for (const ev of stageEvents) {
+    if (!matchCabinet(ev.cabinetId)) continue;
+    if (!ev.isDiagnostic) continue;
+    const ymd = ymdAlmatyFromIso(ev.at);
+    if (!ymd || !inDateRange(ymd, range)) continue;
+    const key = ev.toStageKey.toLowerCase();
+    const cur = m.get(ymd) ?? empty();
+    if (SCHEDULED_KEYS.has(key)) cur.scheduled += 1;
+    else if (CONDUCTED_KEYS.has(key)) cur.conducted += 1;
+    else continue;
+    m.set(ymd, cur);
+  }
+
   return m;
+}
+
+export function sumRnpDaily(map: Map<string, RnpDailyMetrics>): RnpDailyMetrics {
+  const total = emptyTotals();
+  for (const v of map.values()) {
+    total.crmReceived += v.crmReceived;
+    total.scheduled += v.scheduled;
+    total.conducted += v.conducted;
+    total.diagnosticsPaid += v.diagnosticsPaid;
+    total.diagnosticRevenuePaid += v.diagnosticRevenuePaid;
+    total.sales += v.sales;
+    total.salesRevenue += v.salesRevenue;
+    total.cashRevenue += v.cashRevenue;
+  }
+  return total;
+}
+
+function emptyTotals(): RnpDailyMetrics {
+  return {
+    crmReceived: 0,
+    scheduled: 0,
+    conducted: 0,
+    diagnosticsPaid: 0,
+    diagnosticRevenuePaid: 0,
+    sales: 0,
+    salesRevenue: 0,
+    cashRevenue: 0,
+  };
 }
