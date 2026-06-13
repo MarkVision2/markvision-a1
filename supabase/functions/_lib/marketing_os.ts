@@ -14,6 +14,7 @@ import {
   site_briefSkill,
   site_brief_site_blocksRef,
   site_buildSkill,
+  site_build_design_intelligenceRef,
   site_build_html_templateRef,
 } from "../_marketing_os/skills.gen.ts";
 
@@ -35,7 +36,10 @@ const SKILL_MAP: Record<SkillName, { skill: string; refs: string[] }> = {
   creatives: { skill: creativesSkill, refs: [creatives_creative_formulasRef] },
   content: { skill: contentSkill, refs: [] },
   site_brief: { skill: site_briefSkill, refs: [site_brief_site_blocksRef] },
-  site_build: { skill: site_buildSkill, refs: [site_build_html_templateRef] },
+  site_build: {
+    skill: site_buildSkill,
+    refs: [site_build_design_intelligenceRef, site_build_html_templateRef],
+  },
 };
 
 const NO_WEB_RESEARCH_NOTE = `
