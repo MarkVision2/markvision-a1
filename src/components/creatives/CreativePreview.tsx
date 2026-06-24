@@ -85,6 +85,14 @@ export function CreativePreview({
     setVideoFrameReady(false);
   }, [previewVideoUrl, row.adId]);
 
+  // Сбрасываем флаг ошибки, когда появляется новый источник (после forceRefresh
+  // или смены креатива). Иначе после первой неудачной загрузки превью навсегда
+  // оставалось бы плейсхолдером — даже если подъехал валидный постер. И наоборот:
+  // не зацикливаемся на повторной загрузке одного и того же битого URL.
+  useEffect(() => {
+    setMediaError(false);
+  }, [imageSrc, previewVideoUrl, row.adId]);
+
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
@@ -118,14 +126,15 @@ export function CreativePreview({
   };
 
   const showVideo = canPlayInline && (playVideo || touchPreview);
-  const showImage = imageSrc && !mediaError && !showVideo;
+  const showImage = Boolean(imageSrc) && !mediaError && !showVideo;
   const showVideoFrame = useVideoFrame && !showVideo && !mediaError;
+  // Не подставляем обратно тот же URL, который только что отвалился (mediaError) —
+  // иначе получаем цикл error→refresh→error. При ошибке уходим в плейсхолдер.
   const thumbFallbackSrc =
     lowResFallbackSrc
-    ?? (mediaError && displaySrc ? displaySrc : null)
     ?? (loadingHq && displaySrc && !useVideoFrame ? displaySrc : null);
   const showLowResFallback =
-    Boolean(thumbFallbackSrc) && !showVideo && !showImage && !showVideoFrame;
+    Boolean(thumbFallbackSrc) && !mediaError && !showVideo && !showImage && !showVideoFrame;
 
   const handlePreviewTap = (e: React.MouseEvent) => {
     if (!isVideo || !canPlayInline || playable) return;
@@ -184,7 +193,7 @@ export function CreativePreview({
           referrerPolicy="no-referrer"
           onError={() => {
             setMediaError(true);
-            void forceRefresh().then(() => setMediaError(false));
+            void forceRefresh();
           }}
         />
       ) : showVideoFrame ? (
@@ -202,7 +211,7 @@ export function CreativePreview({
           onLoadedMetadata={(e) => primeVideoFrame(e.currentTarget)}
           onError={() => {
             setMediaError(true);
-            void forceRefresh().then(() => setMediaError(false));
+            void forceRefresh();
           }}
         />
       ) : showLowResFallback ? (
@@ -222,11 +231,14 @@ export function CreativePreview({
           />
         </>
       ) : (
-        <div className="flex h-full w-full items-center justify-center bg-secondary/20">
+        <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-zinc-700/60 to-zinc-900">
           {loadingHq ? (
-            <Loader2 className={cn("animate-spin text-muted-foreground/50", compact ? "h-4 w-4" : "h-6 w-6")} />
+            <Loader2 className={cn("animate-spin text-white/55", compact ? "h-4 w-4" : "h-6 w-6")} />
           ) : (
-            <TypeIcon className={cn("text-muted-foreground/40", compact ? "h-5 w-5" : "h-8 w-8")} />
+            <>
+              <TypeIcon className={cn("text-white/40", compact ? "h-5 w-5" : "h-8 w-8")} />
+              {!compact && <span className="px-2 text-center text-[10px] font-medium text-white/45">Превью недоступно</span>}
+            </>
           )}
         </div>
       )}

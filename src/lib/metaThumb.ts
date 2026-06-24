@@ -102,7 +102,12 @@ export function pickCreativePreviewUrl(args: {
   );
 }
 
-/** URL для <img>: HQ сразу; low-res — только после неудачной загрузки HD (с blur-обёрткой в UI). */
+/**
+ * URL для <img>: HQ если уже есть, иначе сразу показываем любой доступный
+ * (low-res) — лучше слегка размытое превью, чем чёрный квадрат, пока грузится/
+ * обновляется HD. Когда HD дойдёт, превью подменится. UI рисует бейдж
+ * «Улучшаем качество…» поверх low-res.
+ */
 export function pickDisplayImageSrc(args: {
   hqSrc: string | null;
   displaySrc: string | null;
@@ -110,10 +115,7 @@ export function pickDisplayImageSrc(args: {
   isLowRes: boolean;
   hqFailed?: boolean;
 }): string | null {
-  if (args.hqSrc) return args.hqSrc;
-  if (args.loadingHq && args.isLowRes) return null;
-  if (args.isLowRes && !args.hqFailed) return null;
-  return args.displaySrc;
+  return args.hqSrc ?? args.displaySrc;
 }
 
 /** @deprecated Используйте pickCreativePreviewUrl / bestCreativeImageHq */

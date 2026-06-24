@@ -34,17 +34,24 @@ describe("metaThumb", () => {
     expect(isLowResMetaThumb(up!)).toBe(false);
   });
 
-  it("pickDisplayImageSrc hides low-res while loading, allows after hqFailed", () => {
+  it("pickDisplayImageSrc показывает low-res сразу (лучше пиксели, чем чёрный квадрат), HQ в приоритете", () => {
     const low = "https://scontent.xx.fbcdn.net/p64x64";
+    // Пока грузится HD — показываем low-res, а не пустоту.
     expect(
       pickDisplayImageSrc({ hqSrc: null, displaySrc: low, loadingHq: true, isLowRes: true }),
-    ).toBeNull();
+    ).toBe(low);
+    // После провала HD — тоже low-res.
     expect(
       pickDisplayImageSrc({ hqSrc: null, displaySrc: low, loadingHq: false, isLowRes: true, hqFailed: true }),
     ).toBe(low);
+    // Если есть HQ — он в приоритете над low-res.
     expect(
       pickDisplayImageSrc({ hqSrc: "https://x.supabase.co/storage/creative-posters/a.jpg", displaySrc: low, loadingHq: true, isLowRes: true }),
     ).toContain("creative-posters");
+    // Нет вообще ничего — null (UI покажет плейсхолдер).
+    expect(
+      pickDisplayImageSrc({ hqSrc: null, displaySrc: null, loadingHq: false, isLowRes: false }),
+    ).toBeNull();
   });
 
   it("приоритет: poster > image > thumbnail", () => {
