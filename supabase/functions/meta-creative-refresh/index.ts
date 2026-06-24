@@ -3,6 +3,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireUser } from "../_lib/auth.ts";
+import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
 import {
   ensurePosterInStorage,
   isLowResThumb,
@@ -91,8 +92,12 @@ Deno.serve(async (req) => {
   const auth = await requireUser(req);
   if (!auth.ok) return auth.response;
 
-  const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN");
-  if (!META_ACCESS_TOKEN) return json({ ok: false, error: "META_ACCESS_TOKEN missing" }, 500);
+  // Токен берём из БД (automation_settings.meta_access_token) ИЛИ env — как и
+  // остальные Meta-функции (meta-structure-sync / meta-daily-sync). Раньше тут
+  // читался ТОЛЬКО env-секрет, поэтому токен, заданный в Настройках → Автоматизация,
+  // кнопкой «Обновить превью» не подхватывался и постеры не обновлялись.
+  const META_ACCESS_TOKEN = await resolveMetaAccessToken();
+  if (!META_ACCESS_TOKEN) return json({ ok: false, error: "META_ACCESS_TOKEN missing (ни в Настройках, ни в env)" }, 500);
 
   const admin = createClient(
     Deno.env.get("SUPABASE_URL")!,
