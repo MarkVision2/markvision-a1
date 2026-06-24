@@ -1,7 +1,7 @@
 {
-  "git_sha": "d24fd52",
-  "git_sha_full": "d24fd525c93aeb076e4fee4175a6ade248d89cba",
-  "updated_at": "2026-06-24T16:29:44Z",
-  "label": "feat(creatives): кнопка массового обновления превью в воронке",
+  "git_sha": "6f9e878",
+  "git_sha_full": "6f9e8789cdb815afffbe4b6e2f1d48058cae18dd",
+  "updated_at": "2026-06-24T16:37:54Z",
+  "label": "fix(meta): meta-creative-refresh берёт токен из БД, а не только env",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
