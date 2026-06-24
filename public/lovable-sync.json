@@ -1,7 +1,7 @@
 {
-  "git_sha": "11867d6",
-  "git_sha_full": "11867d67af586bf838d37dcf53edff034cf19a43",
-  "updated_at": "2026-06-24T16:08:26Z",
-  "label": "fix(creatives): убраны чёрные превью + чинён cron атрибуции",
+  "git_sha": "d24fd52",
+  "git_sha_full": "d24fd525c93aeb076e4fee4175a6ade248d89cba",
+  "updated_at": "2026-06-24T16:29:44Z",
+  "label": "feat(creatives): кнопка массового обновления превью в воронке",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
