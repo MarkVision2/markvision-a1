@@ -1,7 +1,7 @@
 {
-  "git_sha": "7180ad1",
-  "git_sha_full": "7180ad11d785f73d67f0e4de82181e94ccc11fde",
-  "updated_at": "2026-06-24T15:42:07Z",
-  "label": "fix(metrics): унификация данных под источник правды (Таблица показателей)",
+  "git_sha": "e7ca739",
+  "git_sha_full": "e7ca739a19037cd25cf9eb200724a0fc97d9f1a8",
+  "updated_at": "2026-06-24T15:48:47Z",
+  "label": "refactor(nav): чёткая группировка бокового меню",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
