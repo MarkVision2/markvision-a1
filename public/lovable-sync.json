@@ -1,7 +1,7 @@
 {
-  "git_sha": "a860a4a",
-  "git_sha_full": "a860a4a2cb5f6234a4744b984868a6ee544cd034",
-  "updated_at": "2026-06-24T15:56:20Z",
-  "label": "chore(security): устранены уязвимости в зависимостях (npm audit)",
+  "git_sha": "11867d6",
+  "git_sha_full": "11867d67af586bf838d37dcf53edff034cf19a43",
+  "updated_at": "2026-06-24T16:08:26Z",
+  "label": "fix(creatives): убраны чёрные превью + чинён cron атрибуции",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
