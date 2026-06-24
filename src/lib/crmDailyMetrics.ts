@@ -13,6 +13,21 @@ export interface CrmDailyMetrics {
   salesRevenue: number;
 }
 
+/**
+ * Ключ дня по ЛОКАЛЬНОМУ времени — согласован с фильтром периода ниже
+ * (он тоже в локальном времени) и с `ymd()` в metricsSourceOfTruth.
+ * Раньше ключ брался как `ref.slice(0, 10)` — это UTC-дата из ISO-строки.
+ * Для часовых поясов восточнее UTC (Asia/Almaty, UTC+5) лид, оплаченный
+ * ночью по локали (например 02:00 = предыдущий день по UTC), попадал в
+ * фильтр периода (локаль), но ключевался прошлой датой (UTC) → `.get(iso)`
+ * в источнике правды его не находил и выручка «терялась». Теперь и фильтр,
+ * и ключ — в одном (локальном) времени.
+ */
+function dayKeyLocal(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 /** CRM-факты по дням (источник правды для диагностик/продаж в Таблице показателей). */
 export function crmDailyMetrics(
   leads: LeadLite[],
@@ -37,7 +52,7 @@ export function crmDailyMetrics(
       const ref = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
       const t = new Date(ref).getTime();
       if (t >= fromTs && t < toTs) {
-        const key = ref.slice(0, 10);
+        const key = dayKeyLocal(ref);
         const cur = m.get(key) ?? empty();
         cur.diagnostics += 1;
         cur.diagnosticRevenue += l.diagnosticAmount || 0;
@@ -48,7 +63,7 @@ export function crmDailyMetrics(
       const ref = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
       const t = new Date(ref).getTime();
       if (t >= fromTs && t < toTs) {
-        const key = ref.slice(0, 10);
+        const key = dayKeyLocal(ref);
         const cur = m.get(key) ?? empty();
         cur.sales += 1;
         cur.salesRevenue += l.amount || 0;

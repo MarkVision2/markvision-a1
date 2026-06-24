@@ -224,9 +224,12 @@ async function fetchMetaForRange(
     .in("external_id", ids)
     .gte("date", since)
     .lte("date", until);
-  // Изолируем по проекту, чтобы цифры совпадали с useDashboardData / useMonthlyAggregates,
-  // которые тоже фильтруют по project_id.
-  if (projectId) q = q.eq("project_id", projectId);
+  // Источник правды — Таблица показателей (fetchCdiFactRows) — берёт строки
+  // этого проекта И строки с project_id = NULL (ручные правки, сохранённые без
+  // активного проекта). Здесь делаем так же, иначе Отчёты/Дашборд теряли бы
+  // ручные правки тех дней, что правились без проекта, и расходились с Таблицей.
+  // Строки и так сужены по external_id до кабинетов этого проекта.
+  if (projectId) q = q.or(`project_id.eq.${projectId},project_id.is.null`);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
 

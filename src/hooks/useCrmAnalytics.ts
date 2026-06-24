@@ -2,22 +2,26 @@ import { useMemo } from "react";
 import type { Lead, LeadStage, RejectReason } from "@/types/crm";
 import { REJECT_REASONS } from "@/types/crm";
 import type { TeamMember } from "@/hooks/useTeamStore";
-import { isLeadPaid } from "@/lib/leadStageFlags";
+import { isLeadPaid, isLeadVisit, type LeadFlagsInput } from "@/lib/leadStageFlags";
 
 /** Stage IDs that mean the lead has been touched (manager reacted). */
 const REACHED_STAGES = new Set(["in_progress", "invoice", "scheduled", "visit", "paid"]);
-const SCHEDULED_STAGES = new Set(["scheduled", "visit", "paid"]);
-const VISITED_STAGES = new Set(["visit", "paid"]);
 
 // Lead из useCrmStore не имеет stageKey — у него stageId это уже ключ стадии (см. typings).
-// Адаптер чтобы единообразно использовать isLeadPaid по проекту с custom-стадиями.
-const isPaidLead = (l: Lead): boolean =>
-  isLeadPaid({
-    paid: (l as { paid?: boolean }).paid,
-    paidAt: (l as { paidAt?: string | null }).paidAt ?? null,
-    stageKey: l.stageId,
-    amount: l.amount,
-  });
+// Приводим к каноническим флагам, чтобы paid/visit определялись теми же helpers,
+// что и в Таблице показателей / на дашборде (с поддержкой custom-стадий и булевых
+// paid/paidAt/diagnosticAmount).
+const toFlags = (l: Lead): LeadFlagsInput => ({
+  paid: (l as { paid?: boolean }).paid,
+  paidAt: (l as { paidAt?: string | null }).paidAt ?? null,
+  stageKey: l.stageId,
+  amount: l.amount,
+  diagnosticAmount: (l as { diagnosticAmount?: number | null }).diagnosticAmount ?? null,
+});
+const isPaidLead = (l: Lead): boolean => isLeadPaid(toFlags(l));
+// «Записан на диагностику и дальше» — через канонический helper (visit включает
+// scheduled/visit/paid/diagnosticAmount), а не захардкоженный набор ключей.
+const isScheduledLead = (l: Lead): boolean => isLeadVisit(toFlags(l));
 const isRejectedLead = (l: Lead): boolean => {
   const k = (l.stageId ?? "").toLowerCase().trim();
   return k === "rejected" || k === "refused" || k === "lost" || k === "отказ" || k === "потерян";
@@ -133,8 +137,10 @@ export function useCrmAnalytics(
     const now = Date.now();
     const total = leads.length || 1;
 
-    const reached = leads.filter((l) => REACHED_STAGES.has(l.stageId)).length;
-    const scheduled = leads.filter((l) => SCHEDULED_STAGES.has(l.stageId)).length;
+    // «Дозвон» = менеджер среагировал: явные «рабочие» стадии ИЛИ лид уже дошёл
+    // до диагностики/оплаты (что тоже означает контакт), включая custom-стадии.
+    const reached = leads.filter((l) => REACHED_STAGES.has(l.stageId) || isScheduledLead(l)).length;
+    const scheduled = leads.filter(isScheduledLead).length;
     const paid = leads.filter(isPaidLead).length;
     const rejected = leads.filter(isRejectedLead).length;
 
