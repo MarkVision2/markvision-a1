@@ -12,6 +12,7 @@ import {
   Sparkles,
   Filter,
   Hash,
+  Bot,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -53,6 +54,7 @@ const marketingOsIcon = Sparkles;
 const sales: NavItem[] = [
   { title: "CRM", url: "/crm", icon: Users },
   { title: "AI РОП", url: "/sales-ai", icon: PhoneCall },
+  { title: "AI агенты", url: "/ai-agents", icon: Bot },
 ];
 
 const analytics: NavItem[] = [
