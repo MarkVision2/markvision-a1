@@ -1,7 +1,7 @@
 {
-  "git_sha": "e907485",
-  "git_sha_full": "e907485dd223bffc31a9cfcab2cc30ab53b80816",
-  "updated_at": "2026-06-11T13:31:00Z",
-  "label": "fix(metrics): align KPI and money columns with Dashboard source of truth",
+  "git_sha": "a62f8e2",
+  "git_sha_full": "a62f8e23dd535d5dc2620562739b945f7e55ad0c",
+  "updated_at": "2026-06-24T15:12:47Z",
+  "label": "feat(sales): раздел «Рассылка» — массовые сообщения по WhatsApp/SMS",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
