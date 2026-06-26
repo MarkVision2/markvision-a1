@@ -90,7 +90,7 @@ export async function ensurePosterInStorage(
   if (existingPosterUrl && isSupabasePosterUrl(existingPosterUrl)) {
     return existingPosterUrl;
   }
-  if (!remoteThumbUrl || isLowResThumb(remoteThumbUrl)) return null;
+  if (!remoteThumbUrl) return null;
   const uploaded = await uploadPosterFromUrl(admin, adId, cabinetId, remoteThumbUrl);
   if (!uploaded) return null;
 

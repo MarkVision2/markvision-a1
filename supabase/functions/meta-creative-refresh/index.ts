@@ -3,6 +3,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireUser } from "../_lib/auth.ts";
+import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
 import {
   ensurePosterInStorage,
   isLowResThumb,
@@ -91,9 +92,6 @@ Deno.serve(async (req) => {
   const auth = await requireUser(req);
   if (!auth.ok) return auth.response;
 
-  const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN");
-  if (!META_ACCESS_TOKEN) return json({ ok: false, error: "META_ACCESS_TOKEN missing" }, 500);
-
   const admin = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -117,6 +115,17 @@ Deno.serve(async (req) => {
   if (!row) return json({ ok: false, error: "not found" }, 404);
 
   const cabinetId = (row as { cabinet_id?: string | null }).cabinet_id ?? null;
+  let META_ACCESS_TOKEN = await resolveMetaAccessToken(null);
+  if (cabinetId) {
+    const { data: cab } = await admin
+      .from("ad_cabinets")
+      .select("access_token")
+      .eq("id", cabinetId)
+      .maybeSingle();
+    const cabToken = (cab as { access_token?: string | null } | null)?.access_token;
+    if (cabToken?.trim()) META_ACCESS_TOKEN = cabToken.trim();
+  }
+  if (!META_ACCESS_TOKEN) return json({ ok: false, error: "META_ACCESS_TOKEN missing" }, 500);
   const existingPoster = ((row as { poster_url?: string | null }).poster_url ?? "").trim();
   if (existingPoster && isSupabasePosterUrl(existingPoster)) {
     return json({
@@ -150,7 +159,7 @@ Deno.serve(async (req) => {
 
   if (!videoId) {
     const thumb = resolvedThumb ?? storedThumb || null;
-    const posterUrl = thumb && !isLowResThumb(thumb)
+    const posterUrl = thumb
       ? await ensurePosterInStorage(admin, adId, cabinetId, existingPoster, thumb)
       : null;
     return json({
@@ -177,7 +186,8 @@ Deno.serve(async (req) => {
 
     const bestThumb = pickBestVideoThumb(v.thumbnails?.data ?? [], v.picture)
       ?? resolvedThumb
-      ?? (storedThumb && !isLowResThumb(storedThumb) ? storedThumb : null);
+      ?? storedThumb
+      || null;
 
     const posterUrl = bestThumb
       ? await ensurePosterInStorage(admin, adId, cabinetId, existingPoster, bestThumb)

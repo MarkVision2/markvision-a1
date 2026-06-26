@@ -76,11 +76,11 @@ export function refreshMetaCreative(adId: string, opts?: { force?: boolean }): P
         if (res.fallback || res.rate_limited) {
           cooldownUntil = Date.now() + Math.max(60, res.retry_after_seconds ?? 300) * 1000;
         }
-        const hasHqVisual =
+        const hasVisual =
           isHighQualityCreativeUrl(res.poster_url)
-          || isHighQualityCreativeUrl(res.thumbnail_url);
-        // Кешируем только ответы с HQ-постером или свежим video_url.
-        if (res.ok && (hasHqVisual || res.video_url)) cache.set(adId, res);
+          || Boolean(res.thumbnail_url)
+          || Boolean(res.video_url);
+        if (hasVisual) cache.set(adId, res);
         return res;
       } finally {
         release();

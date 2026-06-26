@@ -4,10 +4,11 @@ import {
   bestCreativeImageHq,
   isHighQualityCreativeUrl,
   isLowResMetaThumb,
+  isPersistedCreativeUrl,
   pickCreativePreviewUrl,
   pickDisplayImageSrc,
 } from "@/lib/metaThumb";
-import { refreshMetaCreative } from "@/lib/metaCreativeRefresh";
+import { refreshMetaCreative, type RefreshResult } from "@/lib/metaCreativeRefresh";
 import { enqueuePosterCapture } from "@/lib/videoPosterCapture";
 
 const refreshAttempts = new Map<string, number>();
@@ -19,20 +20,28 @@ interface Options {
   inView?: boolean;
 }
 
-function sourcesNeedHq(row: CreativePreviewSource, posterUrl: string | null): boolean {
-  return !(
-    isHighQualityCreativeUrl(posterUrl)
-    || isHighQualityCreativeUrl(row.imageUrl)
-    || isHighQualityCreativeUrl(row.thumbnailUrl)
+/** Нужен refresh, если нет постоянного poster_url в Storage (fbcdn-ссылки истекают). */
+function needsVisualRefresh(row: CreativePreviewSource, extraPoster: string | null): boolean {
+  const urls = [extraPoster, row.posterUrl, row.imageUrl, row.thumbnailUrl].filter(
+    (u): u is string => typeof u === "string" && u.trim().length > 0,
   );
+  if (urls.length === 0) return true;
+  return !urls.some(isPersistedCreativeUrl);
 }
 
-function applyRefreshPoster(
-  data: { poster_url?: string | null; thumbnail_url?: string | null } | null,
-): string | null {
-  if (data?.poster_url && isHighQualityCreativeUrl(data.poster_url)) return data.poster_url;
-  if (data?.thumbnail_url && isHighQualityCreativeUrl(data.thumbnail_url)) return data.thumbnail_url;
-  return null;
+function applyRefreshVisuals(data: RefreshResult | null): {
+  poster: string | null;
+  thumb: string | null;
+  video: string | null;
+} {
+  if (!data) return { poster: null, thumb: null, video: null };
+  const poster = data.poster_url?.trim() || null;
+  const thumb = data.thumbnail_url?.trim() || null;
+  return {
+    poster,
+    thumb,
+    video: data.video_url?.trim() || null,
+  };
 }
 
 export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options = {}) {
@@ -40,17 +49,18 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
   const inView = opts.inView ?? true;
   const [capturedPoster, setCapturedPoster] = useState<string | null>(null);
   const [refreshedPoster, setRefreshedPoster] = useState<string | null>(null);
+  const [refreshedThumb, setRefreshedThumb] = useState<string | null>(null);
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(row.videoUrl);
-  const [loadingHq, setLoadingHq] = useState(() => sourcesNeedHq(row, row.posterUrl));
+  const [loadingHq, setLoadingHq] = useState(() => needsVisualRefresh(row, row.posterUrl));
   const [hqFailed, setHqFailed] = useState(false);
 
   const thumbSize = opts.compact ? 720 : 1080;
   const sources = useMemo(() => ({
     posterUrl: capturedPoster ?? refreshedPoster ?? row.posterUrl,
-    thumbnailUrl: row.thumbnailUrl,
-    imageUrl: row.imageUrl,
+    thumbnailUrl: refreshedThumb ?? row.thumbnailUrl,
+    imageUrl: refreshedThumb ?? row.imageUrl,
     size: thumbSize,
-  }), [capturedPoster, refreshedPoster, row.posterUrl, row.thumbnailUrl, row.imageUrl, thumbSize]);
+  }), [capturedPoster, refreshedPoster, refreshedThumb, row.posterUrl, row.thumbnailUrl, row.imageUrl, thumbSize]);
 
   const displaySrc = useMemo(() => pickCreativePreviewUrl(sources), [sources]);
   const hqSrc = useMemo(() => bestCreativeImageHq(sources), [sources]);
@@ -67,18 +77,19 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
   const isHqReady = Boolean(hqSrc);
   const isLowRes = Boolean(displaySrc && !isHqReady);
   const canPlayInline = isVideo && Boolean(previewVideoUrl);
-  const useVideoFrame = isVideo && Boolean(previewVideoUrl) && !imageSrc;
+  const useVideoFrame = isVideo && Boolean(previewVideoUrl) && !displaySrc;
   const lowResFallbackSrc =
-    !imageSrc && !useVideoFrame && hqFailed && displaySrc && isLowResMetaThumb(displaySrc)
+    displaySrc && isLowResMetaThumb(displaySrc) && !isHighQualityCreativeUrl(imageSrc)
       ? displaySrc
       : null;
 
   useEffect(() => {
     setPreviewVideoUrl(row.videoUrl);
     setRefreshedPoster(null);
+    setRefreshedThumb(null);
     setCapturedPoster(null);
     setHqFailed(false);
-    setLoadingHq(sourcesNeedHq(row, row.posterUrl));
+    setLoadingHq(needsVisualRefresh(row, row.posterUrl));
   }, [row.adId, row.videoUrl, row.posterUrl, row.imageUrl, row.thumbnailUrl]);
 
   useEffect(() => {
@@ -86,10 +97,13 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
 
     let cancelled = false;
     const adId = row.adId;
-    const needsHq = sourcesNeedHq(row, capturedPoster ?? refreshedPoster ?? row.posterUrl);
+    const needsRefresh = needsVisualRefresh(
+      row,
+      capturedPoster ?? refreshedPoster ?? row.posterUrl,
+    );
 
     void (async () => {
-      if (needsHq) {
+      if (needsRefresh) {
         setLoadingHq(true);
         setHqFailed(false);
       }
@@ -97,40 +111,50 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
       let videoUrl = row.videoUrl ?? null;
       const attempts = refreshAttempts.get(adId) ?? 0;
 
-      let refreshedFromApi: string | null = null;
-      if (needsHq && attempts < MAX_REFRESH_ATTEMPTS) {
+      let refreshedFromApi: { poster: string | null; thumb: string | null } = {
+        poster: null,
+        thumb: null,
+      };
+      if (needsRefresh && attempts < MAX_REFRESH_ATTEMPTS) {
         refreshAttempts.set(adId, attempts + 1);
         const data = await refreshMetaCreative(adId).catch(() => null);
         if (cancelled) return;
-        refreshedFromApi = applyRefreshPoster(data);
-        if (refreshedFromApi) setRefreshedPoster(refreshedFromApi);
+        refreshedFromApi = applyRefreshVisuals(data);
+        if (refreshedFromApi.poster) setRefreshedPoster(refreshedFromApi.poster);
+        else if (refreshedFromApi.thumb) setRefreshedThumb(refreshedFromApi.thumb);
         if (data?.video_url) {
           videoUrl = data.video_url;
           setPreviewVideoUrl(data.video_url);
         }
       }
 
-      const hasHqAfterRefresh = !sourcesNeedHq(
-        row,
-        capturedPoster ?? refreshedFromApi ?? refreshedPoster ?? row.posterUrl,
-      );
+      const posterAfterRefresh =
+        capturedPoster
+        ?? refreshedFromApi.poster
+        ?? refreshedPoster
+        ?? row.posterUrl;
+      const stillNeedsHq = needsVisualRefresh(row, posterAfterRefresh);
 
-      if (isVideo && !hasHqAfterRefresh && videoUrl) {
+      if (isVideo && stillNeedsHq && videoUrl) {
         const poster = await enqueuePosterCapture(adId, videoUrl).catch(() => null);
         if (!cancelled && poster) setCapturedPoster(poster);
       }
 
       if (!cancelled) {
-        const hasHqNow = Boolean(
-          bestCreativeImageHq({
-            posterUrl: capturedPoster ?? refreshedFromApi ?? refreshedPoster ?? row.posterUrl,
-            thumbnailUrl: row.thumbnailUrl,
-            imageUrl: row.imageUrl,
+        const hasPersisted = isPersistedCreativeUrl(
+          capturedPoster ?? refreshedFromApi.poster ?? refreshedPoster ?? row.posterUrl,
+        );
+        const hasAnyVisual = Boolean(
+          hasPersisted
+          || bestCreativeImageHq({
+            posterUrl: capturedPoster ?? refreshedFromApi.poster ?? refreshedPoster ?? row.posterUrl,
+            thumbnailUrl: refreshedFromApi.thumb ?? refreshedThumb ?? row.thumbnailUrl,
+            imageUrl: refreshedFromApi.thumb ?? refreshedThumb ?? row.imageUrl,
             size: thumbSize,
           }),
         );
         setLoadingHq(false);
-        if (!hasHqNow && needsHq) setHqFailed(true);
+        if (!hasAnyVisual && needsRefresh) setHqFailed(true);
       }
     })();
 
@@ -143,6 +167,7 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
     row,
     capturedPoster,
     refreshedPoster,
+    refreshedThumb,
     thumbSize,
   ]);
 
@@ -152,17 +177,26 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
     setHqFailed(false);
     refreshAttempts.delete(row.adId);
     const data = await refreshMetaCreative(row.adId, { force: true }).catch(() => null);
-    const poster = applyRefreshPoster(data);
-    if (poster) setRefreshedPoster(poster);
-    let videoUrl = data?.video_url ?? previewVideoUrl ?? row.videoUrl ?? null;
-    if (data?.video_url) setPreviewVideoUrl(data.video_url);
-    if (isVideo && !poster && videoUrl) {
+    const visuals = applyRefreshVisuals(data);
+    if (visuals.poster) setRefreshedPoster(visuals.poster);
+    else if (visuals.thumb) setRefreshedThumb(visuals.thumb);
+    let videoUrl = visuals.video ?? previewVideoUrl ?? row.videoUrl ?? null;
+    if (visuals.video) setPreviewVideoUrl(visuals.video);
+    if (isVideo && !visuals.poster && !visuals.thumb && videoUrl) {
       const captured = await enqueuePosterCapture(row.adId, videoUrl).catch(() => null);
       if (captured) setCapturedPoster(captured);
     }
-    const hasHq = Boolean(poster ?? capturedPoster ?? refreshedPoster ?? row.posterUrl);
+    const hasVisual = Boolean(
+      visuals.poster
+      ?? visuals.thumb
+      ?? capturedPoster
+      ?? refreshedPoster
+      ?? refreshedThumb
+      ?? row.posterUrl
+      ?? row.thumbnailUrl,
+    );
     setLoadingHq(false);
-    if (!hasHq) setHqFailed(true);
+    if (!hasVisual) setHqFailed(true);
     return videoUrl;
   };
 

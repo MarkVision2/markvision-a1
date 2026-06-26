@@ -10,7 +10,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireUser, userHasAnyRole } from "../_lib/auth.ts";
 import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
-import { pickBestUrl, pickBestVideoThumb } from "../_lib/creativePoster.ts";
+import { pickBestUrl, pickBestVideoThumb, ensurePosterInStorage } from "../_lib/creativePoster.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -473,6 +473,15 @@ Deno.serve(async (req) => {
           .from("meta_creatives")
           .upsert(creativeRows, { onConflict: "ad_id" });
         if (error) throw error;
+
+        // Сохраняем постеры в Storage — fbcdn-ссылки Meta истекают через ~24ч.
+        for (const cr of creativeRows) {
+          const thumb = cr.thumbnail_url;
+          if (!thumb) continue;
+          try {
+            await ensurePosterInStorage(admin, cr.ad_id, cabinetId, null, thumb);
+          } catch { /* не блокируем sync */ }
+        }
       }
 
       // ---- 4. Insights at campaign + ad level ----

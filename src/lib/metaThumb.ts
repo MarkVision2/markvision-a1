@@ -18,6 +18,12 @@ const HQ_STORAGE_HINTS = [
   /supabase\.co\/storage/i,
 ];
 
+/** Постоянный URL (Supabase Storage) — не истекает как fbcdn. */
+export function isPersistedCreativeUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return HQ_STORAGE_HINTS.some((re) => re.test(url));
+}
+
 /** URL явно указывает на миниатюру ≤128px. */
 export function isLowResMetaThumb(url: string | null | undefined): boolean {
   if (!url) return true;
@@ -102,7 +108,7 @@ export function pickCreativePreviewUrl(args: {
   );
 }
 
-/** URL для <img>: HQ сразу; low-res — только после неудачной загрузки HD (с blur-обёрткой в UI). */
+/** URL для <img>: HQ если есть, иначе сразу любой fallback (лучше пиксели, чем чёрная карточка). */
 export function pickDisplayImageSrc(args: {
   hqSrc: string | null;
   displaySrc: string | null;
@@ -111,8 +117,6 @@ export function pickDisplayImageSrc(args: {
   hqFailed?: boolean;
 }): string | null {
   if (args.hqSrc) return args.hqSrc;
-  if (args.loadingHq && args.isLowRes) return null;
-  if (args.isLowRes && !args.hqFailed) return null;
   return args.displaySrc;
 }
 

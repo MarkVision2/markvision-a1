@@ -35,7 +35,7 @@ export function CreativePreview({
 }: Props) {
   const isCarousel = row.creativeType === "carousel";
   const containerRef = useRef<HTMLDivElement>(null);
-  const [inView, setInView] = useState(!compact);
+  const [inView, setInView] = useState(true);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -79,7 +79,11 @@ export function CreativePreview({
   const posterVideoRef = useRef<HTMLVideoElement>(null);
 
   const isActive = isCreativeActive(row.effectiveStatus);
-  const mediaFit = fit === "contain" ? "object-contain" : "object-cover";
+  const mediaFit = compact
+    ? "object-cover"
+    : fit === "contain"
+      ? "object-contain"
+      : "object-cover";
 
   useEffect(() => {
     setVideoFrameReady(false);
@@ -121,11 +125,10 @@ export function CreativePreview({
   const showImage = imageSrc && !mediaError && !showVideo;
   const showVideoFrame = useVideoFrame && !showVideo && !mediaError;
   const thumbFallbackSrc =
-    lowResFallbackSrc
-    ?? (mediaError && displaySrc ? displaySrc : null)
-    ?? (loadingHq && displaySrc && !useVideoFrame ? displaySrc : null);
+    (mediaError && displaySrc ? displaySrc : null)
+    ?? lowResFallbackSrc;
   const showLowResFallback =
-    Boolean(thumbFallbackSrc) && !showVideo && !showImage && !showVideoFrame;
+    Boolean(thumbFallbackSrc) && !showVideo && !showImage && (!showVideoFrame || mediaError);
 
   const handlePreviewTap = (e: React.MouseEvent) => {
     if (!isVideo || !canPlayInline || playable) return;
@@ -188,23 +191,36 @@ export function CreativePreview({
           }}
         />
       ) : showVideoFrame ? (
-        <video
-          ref={posterVideoRef}
-          src={previewVideoUrl!}
-          muted
-          playsInline
-          preload="auto"
-          className={cn(
-            "h-full w-full bg-zinc-950 transition-opacity duration-300",
-            mediaFit,
-            videoFrameReady ? "opacity-100" : "opacity-0",
+        <>
+          {displaySrc && !videoFrameReady && (
+            <img
+              src={displaySrc}
+              alt=""
+              className={cn("absolute inset-0 h-full w-full", mediaFit)}
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
+            />
           )}
-          onLoadedMetadata={(e) => primeVideoFrame(e.currentTarget)}
-          onError={() => {
-            setMediaError(true);
-            void forceRefresh().then(() => setMediaError(false));
-          }}
-        />
+          <video
+            ref={posterVideoRef}
+            src={previewVideoUrl!}
+            poster={displaySrc ?? undefined}
+            muted
+            playsInline
+            preload="auto"
+            className={cn(
+              "relative z-[1] h-full w-full bg-zinc-950 transition-opacity duration-300",
+              mediaFit,
+              videoFrameReady ? "opacity-100" : "opacity-0",
+            )}
+            onLoadedMetadata={(e) => primeVideoFrame(e.currentTarget)}
+            onError={() => {
+              setMediaError(true);
+              void forceRefresh().then(() => setMediaError(false));
+            }}
+          />
+        </>
       ) : showLowResFallback ? (
         <>
           <div
@@ -231,7 +247,7 @@ export function CreativePreview({
         </div>
       )}
 
-      {loadingHq && !imageSrc && !showVideoFrame && !showLowResFallback && (
+      {loadingHq && !imageSrc && !displaySrc && !showVideoFrame && !showLowResFallback && (
         <span className="absolute inset-0 flex items-center justify-center bg-zinc-950/80">
           <Loader2 className={cn("animate-spin text-white/70", compact ? "h-4 w-4" : "h-7 w-7")} />
         </span>
