@@ -1,7 +1,7 @@
 {
-  "git_sha": "4a06adc",
-  "git_sha_full": "4a06adc8e778709bb32cb6a7d2a79a44679b40b1",
-  "updated_at": "2026-07-01T14:37:03Z",
-  "label": "Fixed build errors",
+  "git_sha": "d0d0c03",
+  "git_sha_full": "d0d0c035adec61b935311eeef1e65edce5d2b31b",
+  "updated_at": "2026-07-01T14:39:46Z",
+  "label": "Упростил удаление проектов",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
