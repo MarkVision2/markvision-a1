@@ -296,7 +296,7 @@ function TokenRefreshBlock({
       return;
     }
     setSaving(true);
-    const { error } = await supabase.rpc("save_meta_access_token", { p_token: t });
+    const { error } = await supabase.rpc("save_meta_access_token" as never, { p_token: t } as never);
     setSaving(false);
     if (error) {
       toast.error("Не сохранено: " + error.message);
