@@ -24,6 +24,8 @@ const mk = (over: Partial<LeadLite> = {}): LeadLite => ({
   rejectReason: over.rejectReason ?? null,
   rejectedAt: over.rejectedAt ?? null,
   stageId: over.stageId ?? null,
+  nextVisitAt: over.nextVisitAt ?? null,
+  paymentMethod: over.paymentMethod ?? null,
 });
 
 const range = {
