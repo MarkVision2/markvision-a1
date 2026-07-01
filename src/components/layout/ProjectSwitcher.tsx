@@ -155,7 +155,15 @@ export function ProjectSwitcher({ collapsed }: Props) {
                   {!p.isPrimary && (
                     <button
                       type="button"
-                      onClick={() => removeProject(p.id)}
+                      onClick={async () => {
+                        if (!window.confirm(`Удалить проект «${p.name}»? Это действие необратимо.`)) return;
+                        try {
+                          await removeProject(p.id);
+                          toast.success("Проект удалён");
+                        } catch (e) {
+                          toast.error(e instanceof Error ? e.message : "Не удалось удалить проект");
+                        }
+                      }}
                       className="rounded-md p-1.5 text-muted-foreground opacity-0 transition hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
                       aria-label="Удалить"
                     >
