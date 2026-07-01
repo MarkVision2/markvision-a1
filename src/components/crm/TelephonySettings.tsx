@@ -91,7 +91,7 @@ export function TelephonySettings() {
   const saveToken = async () => {
     if (!isAdmin || !tokenInput.trim()) return;
     setSavingToken(true);
-    const { error } = await supabase.rpc("save_sipuni_token", { p_token: tokenInput.trim() });
+    const { error } = await supabase.rpc("save_sipuni_token" as never, { p_token: tokenInput.trim() } as never);
     setSavingToken(false);
     if (error) toast.error("Не сохранено: " + error.message);
     else { toast.success("Токен сохранён"); setTokenInput(""); invalidateTelephonyCache(); }

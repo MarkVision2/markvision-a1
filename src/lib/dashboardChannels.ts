@@ -37,9 +37,10 @@ export function sourceKeyToDashboardChannel(key: SourceKey): DashboardChannelKey
   if (key === "whatsapp" || key === "telegram") return "whatsapp";
   if (key === "instagram" || key === "instagram_organic") return "instagram";
   if (key === "google") return "google";
-  if (key === "tiktok") return "tiktok";
+  if ((key as string) === "tiktok") return "tiktok";
   return "site";
 }
+
 
 /** Meta Ads: заявки/сообщения по типу кампании (WhatsApp vs сайт/форма). */
 export function computeMetaLeadsSplit(campaigns: MetaCampaignLeadSlice[]): { whatsapp: number; site: number } {
@@ -169,8 +170,9 @@ export function buildDashboardChannels(input: BuildChannelsInput): DashboardChan
   // Диагностическая выручка без продаж — в канал «Сайт» (Meta лид-формы)
   const diagOnlyRevenue = Math.max(
     0,
-    (totals?.revenue ?? 0) - buckets.values().reduce((s, b) => s + b.revenue, 0),
+    (totals?.revenue ?? 0) - Array.from(buckets.values()).reduce((s, b) => s + b.revenue, 0),
   );
+
   if (diagOnlyRevenue > 0) {
     site.revenue += diagOnlyRevenue;
   }

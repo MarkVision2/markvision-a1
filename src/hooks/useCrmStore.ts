@@ -80,7 +80,9 @@ type LeadRow = {
   cabinet_id?: string | null;
   meta_ad_id?: string | null; meta_adset_id?: string | null; meta_campaign_id?: string | null;
   is_personal?: boolean | null;
+  project_id?: string | null;
 };
+
 
 type CommRow = {
   id: string; lead_id: string; type: string; direction: string | null;

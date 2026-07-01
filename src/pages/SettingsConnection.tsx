@@ -86,10 +86,11 @@ const SettingsConnection = () => {
     setWaLoading(true);
     const { data } = await supabase
       .from("whatsapp_config_safe")
-      .select("id, project_id, id_instance, api_token_present, api_url, phone, connected, ads_only, bot_webhook_url, webhook_url")
+      .select("id, project_id, id_instance, api_token_present, api_url, phone, connected, ads_only, webhook_url")
       .eq("project_id", projectId)
       .maybeSingle();
-    setWaRow((data as WaBindRow | null) ?? null);
+    setWaRow((data ? { ...(data as Record<string, unknown>), bot_webhook_url: null } as unknown as WaBindRow : null));
+
     setWaLoading(false);
   }, [projectId]);
 
@@ -697,10 +698,11 @@ export function WhatsappProjectBindCard({
   const refreshAll = useCallback(async () => {
     const { data } = await supabase
       .from("whatsapp_config_safe")
-      .select("id, project_id, id_instance, api_token_present, api_url, phone, connected, ads_only, bot_webhook_url, webhook_url");
-    setRows((data ?? []) as WaBindRow[]);
+      .select("id, project_id, id_instance, api_token_present, api_url, phone, connected, ads_only, webhook_url");
+    setRows(((data ?? []) as Array<Record<string, unknown>>).map((r) => ({ ...r, bot_webhook_url: null })) as unknown as WaBindRow[]);
     await onRefresh();
   }, [onRefresh]);
+
 
   useEffect(() => { void refreshAll(); }, [refreshAll]);
 
@@ -855,7 +857,7 @@ export function WhatsappProjectBindCard({
                         toast.error("Не удалось сохранить", { description: error.message });
                       } else {
                         toast.success(v ? "Фильтр включён: только реклама" : "Фильтр выключен: все входящие");
-                        await refresh();
+                        await refreshAll();
                       }
                     }}
                   />
