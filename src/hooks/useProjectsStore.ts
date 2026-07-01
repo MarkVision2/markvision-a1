@@ -191,7 +191,10 @@ export function useProjectsStore() {
 
   const removeProject = useCallback(
     async (id: string) => {
-      await supabase.from("projects").delete().eq("id", id);
+      const { error } = await supabase.from("projects").delete().eq("id", id);
+      if (error) {
+        throw new Error(error.message || "Не удалось удалить проект");
+      }
       await refetch();
     },
     [refetch],
