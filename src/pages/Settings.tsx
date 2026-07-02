@@ -47,7 +47,7 @@ const ROLE_COLOR: Record<string, string> = {
 
 const SETTINGS_TABS = [
   "publish", "team", "profile", "pipelines", "loss",
-  "telephony", "whatsapp", "site", "inbound", "ig-organic", "clientview",
+  "telephony", "whatsapp", "site", "inbound", "ig-organic", "meta-tokens", "clientview",
 ] as const;
 
 type SettingsTab = (typeof SETTINGS_TABS)[number];
