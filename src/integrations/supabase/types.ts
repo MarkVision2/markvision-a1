@@ -1876,7 +1876,7 @@ export type Database = {
           from_stage_id: string | null
           id: string
           lead_id: string
-          to_stage_id: string
+          to_stage_id: string | null
         }
         Insert: {
           changed_at?: string
@@ -1884,7 +1884,7 @@ export type Database = {
           from_stage_id?: string | null
           id?: string
           lead_id: string
-          to_stage_id: string
+          to_stage_id?: string | null
         }
         Update: {
           changed_at?: string
@@ -1892,7 +1892,7 @@ export type Database = {
           from_stage_id?: string | null
           id?: string
           lead_id?: string
-          to_stage_id?: string
+          to_stage_id?: string | null
         }
         Relationships: [
           {
