@@ -1,7 +1,7 @@
 {
-  "git_sha": "99fa040",
-  "git_sha_full": "99fa040ad6cc658c01e96d697c1bee274d763bb5",
-  "updated_at": "2026-07-02T07:40:42Z",
-  "label": "Removed NOT NULL constraints",
+  "git_sha": "d8b78d8",
+  "git_sha_full": "d8b78d80cf2aacf044a513c15f14460a31a38e2b",
+  "updated_at": "2026-07-02T07:44:47Z",
+  "label": "Fixed lead history not-null",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
