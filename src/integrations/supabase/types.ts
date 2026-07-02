@@ -1954,14 +1954,14 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["payment_method"] | null
           phone: string
           pinned: boolean
-          pipeline_id: string
+          pipeline_id: string | null
           project_id: string | null
           referrer: string | null
           reject_reason: string | null
           rejected_at: string | null
           service: string | null
           source: string
-          stage_id: string
+          stage_id: string | null
           updated_at: string
           utm: Json | null
         }
@@ -2000,14 +2000,14 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"] | null
           phone: string
           pinned?: boolean
-          pipeline_id: string
+          pipeline_id?: string | null
           project_id?: string | null
           referrer?: string | null
           reject_reason?: string | null
           rejected_at?: string | null
           service?: string | null
           source?: string
-          stage_id: string
+          stage_id?: string | null
           updated_at?: string
           utm?: Json | null
         }
@@ -2046,14 +2046,14 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"] | null
           phone?: string
           pinned?: boolean
-          pipeline_id?: string
+          pipeline_id?: string | null
           project_id?: string | null
           referrer?: string | null
           reject_reason?: string | null
           rejected_at?: string | null
           service?: string | null
           source?: string
-          stage_id?: string
+          stage_id?: string | null
           updated_at?: string
           utm?: Json | null
         }
