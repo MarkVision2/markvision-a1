@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Camera, Edit2, Eye, Globe, GitBranch, Link2, MessageCircle, Phone, Plus, Rocket, Search, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
+import { Camera, Edit2, Eye, Globe, GitBranch, KeyRound, Link2, MessageCircle, Phone, Plus, Rocket, Search, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,7 @@ import { LossReasonsSettings } from "@/components/settings/LossReasonsSettings";
 import { InboundTokensSettings } from "@/components/settings/InboundTokensSettings";
 import { ClientDashTokensSettings } from "@/components/settings/ClientDashTokensSettings";
 import { InstagramOrganicSettings } from "@/components/settings/InstagramOrganicSettings";
+import { MetaTokensSettings } from "@/components/settings/MetaTokensSettings";
 import { LovablePublishGuide } from "@/components/settings/LovablePublishGuide";
 import { SiteIntakeCard } from "@/pages/SettingsConnection";
 import { PageContainer } from "@/components/layout/PageContainer";
@@ -46,7 +47,7 @@ const ROLE_COLOR: Record<string, string> = {
 
 const SETTINGS_TABS = [
   "publish", "team", "profile", "pipelines", "loss",
-  "telephony", "whatsapp", "site", "inbound", "ig-organic", "clientview",
+  "telephony", "whatsapp", "site", "inbound", "ig-organic", "meta-tokens", "clientview",
 ] as const;
 
 type SettingsTab = (typeof SETTINGS_TABS)[number];
@@ -104,6 +105,7 @@ export default function Settings() {
           <TabsTrigger value="site" className="gap-2"><Globe className="h-3.5 w-3.5" /> Сайт</TabsTrigger>
           <TabsTrigger value="inbound" className="gap-2"><Link2 className="h-3.5 w-3.5" /> Лендинги</TabsTrigger>
           <TabsTrigger value="ig-organic" className="gap-2"><Camera className="h-3.5 w-3.5" /> Instagram organic</TabsTrigger>
+          <TabsTrigger value="meta-tokens" className="gap-2"><KeyRound className="h-3.5 w-3.5" /> Meta токен</TabsTrigger>
           <TabsTrigger value="clientview" className="gap-2"><Eye className="h-3.5 w-3.5" /> Доступ клиента</TabsTrigger>
         </TabsList>
 
@@ -271,6 +273,12 @@ export default function Settings() {
         <TabsContent value="ig-organic" className="mt-0">
           <InstagramOrganicSettings />
         </TabsContent>
+
+        <TabsContent value="meta-tokens" className="mt-0">
+          <MetaTokensSettings />
+        </TabsContent>
+
+
 
         <TabsContent value="inbound" className="mt-0">
           <div className="rounded-2xl border border-border bg-card p-6">
