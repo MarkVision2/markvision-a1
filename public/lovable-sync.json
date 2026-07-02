@@ -1,7 +1,7 @@
 {
-  "git_sha": "d8b78d8",
-  "git_sha_full": "d8b78d80cf2aacf044a513c15f14460a31a38e2b",
-  "updated_at": "2026-07-02T07:44:47Z",
-  "label": "Fixed lead history not-null",
+  "git_sha": "ef8379d",
+  "git_sha_full": "ef8379d089009e70c0dbf2a68704e1dea46f5ef6",
+  "updated_at": "2026-07-02T07:52:35Z",
+  "label": "Добавил Мета токен в Настройках",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
