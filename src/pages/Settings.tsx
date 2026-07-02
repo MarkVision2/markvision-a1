@@ -23,6 +23,7 @@ import { LossReasonsSettings } from "@/components/settings/LossReasonsSettings";
 import { InboundTokensSettings } from "@/components/settings/InboundTokensSettings";
 import { ClientDashTokensSettings } from "@/components/settings/ClientDashTokensSettings";
 import { InstagramOrganicSettings } from "@/components/settings/InstagramOrganicSettings";
+import { MetaTokensSettings } from "@/components/settings/MetaTokensSettings";
 import { LovablePublishGuide } from "@/components/settings/LovablePublishGuide";
 import { SiteIntakeCard } from "@/pages/SettingsConnection";
 import { PageContainer } from "@/components/layout/PageContainer";
