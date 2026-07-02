@@ -1,7 +1,7 @@
 {
-  "git_sha": "4735b14",
-  "git_sha_full": "4735b1469a02990b92f7e9ada362ef9d8d2b16bc",
-  "updated_at": "2026-07-02T07:38:43Z",
-  "label": "Переключил FK на SET NULL",
+  "git_sha": "99fa040",
+  "git_sha_full": "99fa040ad6cc658c01e96d697c1bee274d763bb5",
+  "updated_at": "2026-07-02T07:40:42Z",
+  "label": "Removed NOT NULL constraints",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
