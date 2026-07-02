@@ -274,6 +274,12 @@ export default function Settings() {
           <InstagramOrganicSettings />
         </TabsContent>
 
+        <TabsContent value="meta-tokens" className="mt-0">
+          <MetaTokensSettings />
+        </TabsContent>
+
+
+
         <TabsContent value="inbound" className="mt-0">
           <div className="rounded-2xl border border-border bg-card p-6">
             <div className="mb-4 flex items-start gap-4">
