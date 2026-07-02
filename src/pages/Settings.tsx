@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Camera, Edit2, Eye, Globe, GitBranch, Link2, MessageCircle, Phone, Plus, Rocket, Search, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
+import { Camera, Edit2, Eye, Globe, GitBranch, KeyRound, Link2, MessageCircle, Phone, Plus, Rocket, Search, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
