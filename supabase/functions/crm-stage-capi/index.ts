@@ -6,7 +6,7 @@
 // Возвращает: { ok, sent: boolean, event_name, fb_response, score_delta }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { requireUser } from "../_lib/auth.ts";
+import { requireUser, requireCabinetAccess } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -88,6 +88,11 @@ Deno.serve(async (req) => {
     let token = tokIn || "";
     let adAccount = String(adAccIn || "");
     let pixelId = String(pxIn || "");
+
+    if (cabinet_id) {
+      const access = await requireCabinetAccess(auth.authHeader, String(cabinet_id));
+      if (!access.ok) return access.response;
+    }
 
     if (cabinet_id && (!token || !adAccount || !pixelId)) {
       // На main supabase данные кабинета лежат в ad_cabinets (там и access_token,
