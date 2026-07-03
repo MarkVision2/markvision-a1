@@ -1,7 +1,7 @@
 {
-  "git_sha": "ef8379d",
-  "git_sha_full": "ef8379d089009e70c0dbf2a68704e1dea46f5ef6",
-  "updated_at": "2026-07-02T07:52:35Z",
-  "label": "Добавил Мета токен в Настройках",
+  "git_sha": "a4f27d4",
+  "git_sha_full": "a4f27d47608a11c0cd3f35003650cbde61052492",
+  "updated_at": "2026-07-03T07:42:32Z",
+  "label": "Fixed CAPI auth and token leaks",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
