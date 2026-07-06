@@ -1,7 +1,7 @@
 {
-  "git_sha": "fb651bf",
-  "git_sha_full": "fb651bfd2853c28468150e80f34ebcf34f0eec1e",
-  "updated_at": "2026-07-06T21:33:12+05:00",
-  "label": "fix(autopost): понятное «Лучшее время» — рекомендация по реальному лучшему слоту",
+  "git_sha": "da90dcf",
+  "git_sha_full": "da90dcffec1dadc8594d3a45f33e6e405c004269",
+  "updated_at": "2026-07-06T21:45:23+05:00",
+  "label": "fix(dashboard): понятные «Источники заявок» — «нет оплат» вместо алармистского −100%",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
