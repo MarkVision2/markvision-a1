@@ -27,4 +27,17 @@ Edge Functions деплоятся на **szfg**:
 
 Секреты GitHub: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF` = `szfgdruhlebfvcmlvxdk`.
 
-Env в Lovable (Settings → Environment): те же `VITE_SUPABASE_*`, что в `.env` репозитория.
+Env в Lovable (**Settings → Environment**), затем дождитесь пересборки:
+
+```env
+VITE_SUPABASE_PROJECT_ID=szfgdruhlebfvcmlvxdk
+VITE_SUPABASE_URL=https://szfgdruhlebfvcmlvxdk.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_uOw4GUu0skHaB7F7LZ8tlQ_Fq0hrwe-
+
+VITE_CLIENT_SUPABASE_URL=https://szfgdruhlebfvcmlvxdk.supabase.co
+VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY=sb_publishable_uOw4GUu0skHaB7F7LZ8tlQ_Fq0hrwe-
+```
+
+`VITE_CLIENT_*` обязателен для **Контент-центра**, контент-завода и storage. Без него на проде будет ошибка «VITE_CLIENT_SUPABASE_URL не задан».
+
+Проверка после деплоя: **Настройки → Обновления** — коммит совпадает с GitHub `main`; Контент-центр загружает посты (не пустая ошибка env).

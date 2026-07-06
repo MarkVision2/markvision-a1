@@ -16,11 +16,13 @@
 ```env
 VITE_SUPABASE_URL=https://szfgdruhlebfvcmlvxdk.supabase.co
 VITE_SUPABASE_PROJECT_ID=szfgdruhlebfvcmlvxdk
-VITE_SUPABASE_PUBLISHABLE_KEY=<anon>
+VITE_SUPABASE_PUBLISHABLE_KEY=sb_publishable_uOw4GUu0skHaB7F7LZ8tlQ_Fq0hrwe-
 
 VITE_CLIENT_SUPABASE_URL=https://szfgdruhlebfvcmlvxdk.supabase.co
-VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY=<тот же anon>
+VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY=sb_publishable_uOw4GUu0skHaB7F7LZ8tlQ_Fq0hrwe-
 ```
+
+Lovable: **Settings → Environment** — вставить блок выше, сохранить, дождаться rebuild.
 
 До cutover в `.env` может оставаться Lovable — см. чеклист миграции.
 
