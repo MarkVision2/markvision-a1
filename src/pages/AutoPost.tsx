@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Film, FlaskConical,
-  Images, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Send, Sparkles, Trash2, Upload, X, Zap,
+  Flame, Images, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Send, Sparkles, Trash2, Upload, X, Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
@@ -35,6 +35,7 @@ interface Stats {
   total_posts: number; published_this_period: number; scheduled_upcoming: number;
   best_weekday: number | null; best_hour: number | null;
   by_weekday: { dow: number; posts: number; avg_reach: number }[];
+  heatmap: { dow: number; hour: number; posts: number; avg_reach: number }[];
 }
 
 const TYPE_META: Record<PostType, { label: string; icon: typeof Images; accept: string; multiple: boolean; hint: string }> = {
@@ -211,8 +212,8 @@ const AutoPost = () => {
                     title="Добавить публикацию"
                   ><Plus className="h-3.5 w-3.5 text-muted-foreground hover:text-primary" /></button>
                 </div>
-                <div className="mt-1 space-y-1">
-                  {dayPosts.slice(0, 4).map((p) => {
+                <div className="mt-1 max-h-[74px] space-y-1 overflow-y-auto pr-0.5">
+                  {dayPosts.map((p) => {
                     const s = STATUS_META[p.status] ?? STATUS_META.queued;
                     return (
                       <button
@@ -228,7 +229,6 @@ const AutoPost = () => {
                       </button>
                     );
                   })}
-                  {dayPosts.length > 4 && <div className="px-1.5 text-[10px] text-muted-foreground">+{dayPosts.length - 4} ещё</div>}
                 </div>
               </div>
             );
@@ -238,11 +238,69 @@ const AutoPost = () => {
 
       <p className="mt-3 text-[11px] text-muted-foreground">Лимит Instagram — 25 публикаций за 24 часа. Клик по дню — добавить пост, клик по посту — открыть и отредактировать.</p>
 
+      {stats && stats.heatmap && stats.heatmap.length > 0 && (
+        <div className="mt-4 rounded-2xl border border-border/60 bg-card/60 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="flex items-center gap-1.5 text-sm font-semibold"><Flame className="h-4 w-4 text-orange-500" /> Лучшее время для публикаций</h2>
+            {stats.best_weekday != null && stats.best_hour != null && (
+              <span className="text-[11px] text-muted-foreground">Рекомендуем: <b className="text-foreground">{WD_FROM_DOW[stats.best_weekday]}, {pad(stats.best_hour)}:00</b></span>
+            )}
+          </div>
+          <p className="mt-1 text-[11px] text-muted-foreground">По среднему охвату прошлых публикаций. Чем ярче ячейка — тем выше охват в это время (Алматы).</p>
+          <div className="mt-3"><Heatmap cells={stats.heatmap} bestDow={stats.best_weekday} bestHour={stats.best_hour} /></div>
+        </div>
+      )}
+
       {addDay && <AddDialog day={addDay} onClose={() => setAddDay(null)} onDone={() => { setAddDay(null); void loadAll(view); }} />}
       {editing && <EditDialog post={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); void loadAll(view); }} />}
     </PageContainer>
   );
 };
+
+// ——— Теплокарта день × час ———
+function Heatmap({ cells, bestDow, bestHour }: { cells: { dow: number; hour: number; posts: number; avg_reach: number }[]; bestDow: number | null; bestHour: number | null }) {
+  const map = new Map<string, { posts: number; avg_reach: number }>();
+  let max = 1;
+  for (const c of cells) { map.set(`${c.dow}-${c.hour}`, c); if (c.avg_reach > max) max = c.avg_reach; }
+  const dows = [1, 2, 3, 4, 5, 6, 0];
+  const hours = Array.from({ length: 24 }, (_, h) => h);
+  return (
+    <div className="overflow-x-auto">
+      <div className="min-w-[560px]">
+        <div className="flex pl-8">
+          {hours.map((h) => <div key={h} className="flex-1 text-center text-[8px] text-muted-foreground">{h % 6 === 0 ? h : ""}</div>)}
+        </div>
+        <div className="mt-0.5 space-y-0.5">
+          {dows.map((dw) => (
+            <div key={dw} className="flex items-center gap-0.5">
+              <div className="w-8 shrink-0 text-[10px] text-muted-foreground">{WD_FROM_DOW[dw]}</div>
+              {hours.map((h) => {
+                const c = map.get(`${dw}-${h}`);
+                const intensity = c ? Math.max(0.18, c.avg_reach / max) : 0;
+                const isBest = dw === bestDow && h === bestHour;
+                return (
+                  <div
+                    key={h}
+                    title={c ? `${WD_FROM_DOW[dw]} ${pad(h)}:00 · охват ~${fmtNum(c.avg_reach)}, постов ${c.posts}` : `${WD_FROM_DOW[dw]} ${pad(h)}:00 · нет данных`}
+                    className={cn("h-4 flex-1 rounded-[3px]", isBest && "ring-2 ring-primary")}
+                    style={{ backgroundColor: c ? `hsl(var(--primary) / ${intensity})` : "hsl(var(--muted) / 0.5)" }}
+                  />
+                );
+              })}
+            </div>
+          ))}
+        </div>
+        <div className="mt-2 flex items-center gap-2 pl-8 text-[9px] text-muted-foreground">
+          <span>меньше</span>
+          <div className="flex gap-0.5">
+            {[0.18, 0.4, 0.6, 0.8, 1].map((o) => <div key={o} className="h-3 w-4 rounded-[2px]" style={{ backgroundColor: `hsl(var(--primary) / ${o})` }} />)}
+          </div>
+          <span>больше охват</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ——— Диалог добавления публикации на конкретный день ———
 function AddDialog({ day, onClose, onDone }: { day: string; onClose: () => void; onDone: () => void }) {

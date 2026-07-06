@@ -24,7 +24,7 @@ async function fetchStageChangeEvents(
   const [stagesRes, eventsRes] = await Promise.all([
     supabase.from("pipeline_stages").select("id,key,is_diagnostic"),
     (() => {
-      let q = supabase
+      const q = supabase
         .from("events")
         .select("lead_id,created_at,payload")
         .eq("event_type", "stage_changed")

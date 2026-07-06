@@ -70,7 +70,7 @@ export interface ResolvedDayMetrics {
   revenue: number;
 }
 
-export interface ResolvedPeriodMetrics extends ResolvedDayMetrics {}
+export type ResolvedPeriodMetrics = ResolvedDayMetrics;
 
 const EMPTY_DAY_MANUAL: DayManualFields = {
   manual_diagnostics: null,

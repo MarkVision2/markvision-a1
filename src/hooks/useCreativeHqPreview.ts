@@ -180,7 +180,7 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
     const visuals = applyRefreshVisuals(data);
     if (visuals.poster) setRefreshedPoster(visuals.poster);
     else if (visuals.thumb) setRefreshedThumb(visuals.thumb);
-    let videoUrl = visuals.video ?? previewVideoUrl ?? row.videoUrl ?? null;
+    const videoUrl = visuals.video ?? previewVideoUrl ?? row.videoUrl ?? null;
     if (visuals.video) setPreviewVideoUrl(visuals.video);
     if (isVideo && !visuals.poster && !visuals.thumb && videoUrl) {
       const captured = await enqueuePosterCapture(row.adId, videoUrl).catch(() => null);
