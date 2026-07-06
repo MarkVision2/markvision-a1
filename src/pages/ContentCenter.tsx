@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import {
   ArrowDown, ArrowUp, ArrowUpDown, ExternalLink, Eye, Loader2, MousePointerClick,
   MessageCircle, RefreshCw, Search, Stethoscope, TrendingUp, Trophy,
@@ -434,25 +434,41 @@ const ContentCenter = () => {
                 <tr key={p.ig_media_id} className="border-t border-border/30 transition hover:bg-secondary/20">
                   <td className="whitespace-nowrap px-3 py-3 text-left tabular-nums text-muted-foreground">{fmtDate(p.posted_at)}</td>
                   <td className="px-3 py-3 align-top">
-                    <div className="grid grid-cols-[56px_minmax(0,1fr)] items-start gap-3">
-                      <PostPreview post={p} />
-                      <div className="min-w-0">
-                        <div className="line-clamp-2 text-xs font-medium leading-snug" title={p.caption ?? undefined}>
-                          {p.caption || <span className="text-muted-foreground">Без подписи</span>}
-                        </div>
-                        {p.permalink && (
-                          <a
-                            href={p.permalink}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-primary hover:underline"
-                            onClick={(e) => e.stopPropagation()}
+                    <table className="w-full border-collapse" role="presentation">
+                      <tbody>
+                        <tr>
+                          <td
+                            className="align-top"
+                            style={{
+                              width: POST_THUMB_PX,
+                              minWidth: POST_THUMB_PX,
+                              maxWidth: POST_THUMB_PX,
+                              padding: 0,
+                              paddingRight: 12,
+                              verticalAlign: "top",
+                            }}
                           >
-                            Открыть пост <ExternalLink className="h-2.5 w-2.5" />
-                          </a>
-                        )}
-                      </div>
-                    </div>
+                            <PostPreview post={p} />
+                          </td>
+                          <td className="min-w-0 align-top" style={{ padding: 0, verticalAlign: "top" }}>
+                            <div className="line-clamp-2 text-xs font-medium leading-snug" title={p.caption ?? undefined}>
+                              {p.caption || <span className="text-muted-foreground">Без подписи</span>}
+                            </div>
+                            {p.permalink && (
+                              <a
+                                href={p.permalink}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-primary hover:underline"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                Открыть пост <ExternalLink className="h-2.5 w-2.5" />
+                              </a>
+                            )}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </td>
                   <td className="px-3 py-3 text-right tabular-nums font-semibold">{fmtNum(p.reach)}</td>
                   <td className="px-3 py-3">
@@ -489,46 +505,43 @@ const ContentCenter = () => {
 
 const POST_THUMB_PX = 56;
 
+function thumbBoxStyle(src: string | null, px: number): CSSProperties {
+  return {
+    width: px,
+    height: px,
+    minWidth: px,
+    maxWidth: px,
+    minHeight: px,
+    maxHeight: px,
+    boxSizing: "border-box",
+    display: "block",
+    overflow: "hidden",
+    backgroundColor: "hsl(var(--secondary) / 0.5)",
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    backgroundRepeat: "no-repeat",
+    ...(src ? { backgroundImage: `url(${JSON.stringify(src)})` } : {}),
+  };
+}
+
 function PostPreview({ post }: { post: CCPost }) {
   const src = post.thumbnail_url;
-  const thumbStyle = {
-    width: POST_THUMB_PX,
-    height: POST_THUMB_PX,
-    minWidth: POST_THUMB_PX,
-    maxWidth: POST_THUMB_PX,
-    flexShrink: 0,
-  } as const;
 
   return (
     <HoverCard openDelay={120} closeDelay={80}>
       <HoverCardTrigger asChild>
-        <div
-          role="button"
-          tabIndex={0}
+        <button
+          type="button"
           aria-label="Предпросмотр публикации"
-          className="block shrink-0 cursor-zoom-in overflow-hidden rounded-lg bg-secondary/50 ring-1 ring-border/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          style={thumbStyle}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") e.preventDefault();
-          }}
+          className="m-0 block cursor-zoom-in appearance-none rounded-lg p-0 ring-1 ring-border/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          style={thumbBoxStyle(src, POST_THUMB_PX)}
         >
-          {src ? (
-            <img
-              src={src}
-              alt=""
-              loading="lazy"
-              decoding="async"
-              referrerPolicy="no-referrer"
-              width={POST_THUMB_PX}
-              height={POST_THUMB_PX}
-              className="block h-full w-full object-cover"
-            />
-          ) : (
-            <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+          {!src && (
+            <span className="flex h-full w-full items-center justify-center text-muted-foreground">
               <Eye className="h-4 w-4" />
-            </div>
+            </span>
           )}
-        </div>
+        </button>
       </HoverCardTrigger>
       <HoverCardContent align="start" className="w-72 p-3">
         {src && (
@@ -552,32 +565,19 @@ function PostPreview({ post }: { post: CCPost }) {
   );
 }
 
-function Thumb({ post, className }: { post: CCPost; className?: string }) {
+function Thumb({ post }: { post: CCPost }) {
   const src = post.thumbnail_url;
   const px = 36;
   return (
     <div
-      className={cn(
-        "shrink-0 overflow-hidden rounded-md bg-secondary/50 ring-1 ring-border/40",
-        className,
-      )}
-      style={{ width: px, height: px, minWidth: px, maxWidth: px }}
+      className="shrink-0 rounded-md ring-1 ring-border/40"
+      style={thumbBoxStyle(src, px)}
+      aria-hidden
     >
-      {src ? (
-        <img
-          src={src}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
-          width={px}
-          height={px}
-          className="block h-full w-full object-cover"
-        />
-      ) : (
-        <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-          <Eye className="h-4 w-4" />
-        </div>
+      {!src && (
+        <span className="flex h-full w-full items-center justify-center text-muted-foreground">
+          <Eye className="h-3.5 w-3.5" />
+        </span>
       )}
     </div>
   );
