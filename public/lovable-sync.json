@@ -1,7 +1,7 @@
 {
-  "git_sha": "583b480",
-  "git_sha_full": "583b480e2d3a8894e1a628c7598a5017dc8ead69",
-  "updated_at": "2026-07-06T19:24:46+05:00",
-  "label": "feat(autopost): теплокарта лучшего времени + фикс ошибок линта",
+  "git_sha": "7e085d0",
+  "git_sha_full": "7e085d0c2c83ddd6d3dfa42cb11e74016f5617b8",
+  "updated_at": "2026-07-06T20:33:38+05:00",
+  "label": "feat(autopost): обложка для Reels + подсказка охвата по времени",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
