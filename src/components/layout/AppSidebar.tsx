@@ -14,6 +14,7 @@ import {
   Hash,
   Bot,
   Send,
+  TrendingUp,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -47,6 +48,7 @@ const main: NavItem[] = [
 const marketing: NavItem[] = [
   { title: "Управление рекламой", url: "/ads", icon: Target },
   { title: "Контент-завод", url: "/", icon: Wand2 },
+  { title: "Контент-центр", url: "/marketing/content-center", icon: TrendingUp },
 ];
 
 // Marketing OS — собирается динамически в компоненте, т.к. URL зависит от активного проекта
