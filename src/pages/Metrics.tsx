@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   BarChart3,
@@ -34,6 +34,12 @@ import {
   sumResolvedMetricsPerCabinets,
   type CdiFactRow,
 } from "@/lib/metricsSourceOfTruth";
+import { metricsEditHint, resolveMetricsEditScope } from "@/lib/metricsManualEdit";
+import {
+  applyProjectDailyOverride,
+  fetchProjectDailyOverrides,
+  type ProjectDailyOverride,
+} from "@/lib/projectDailyOverrides";
 import { cn } from "@/lib/utils";
 import { formatMetaSyncMessages, syncMetaDaily, ymdAlmaty } from "@/lib/metaSync";
 import { supabase } from "@/integrations/supabase/client";
@@ -52,6 +58,14 @@ const Metrics = () => {
   const [showAllDays, setShowAllDays] = useState(true);
   const [cdiFactRows, setCdiFactRows] = useState<CdiFactRow[]>([]);
   const [cdiTick, setCdiTick] = useState(0);
+  const [projectOverrides, setProjectOverrides] = useState<Map<string, ProjectDailyOverride>>(new Map());
+  const [projectTick, setProjectTick] = useState(0);
+
+  const editScope = useMemo(
+    () => resolveMetricsEditScope(cabinetId, cabinets),
+    [cabinetId, cabinets],
+  );
+  const useProjectOverrides = editScope?.kind === "project";
 
   const monthParam = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}`;
 
@@ -70,26 +84,44 @@ const Metrics = () => {
     return cab?.externalId ? [cab.externalId] : [];
   }, [cabinetId, allActIds, cabinets]);
 
-  const manualCabinet = useMemo(() => {
-    if (cabinetId !== "all") return cabinets.find((c) => c.id === cabinetId) ?? null;
-    return cabinetsWithExternalId.length === 1 ? cabinetsWithExternalId[0] : null;
-  }, [cabinetId, cabinets, cabinetsWithExternalId]);
-
   const canEditManual = shouldApplyManualOverrides(cabinetId, cabinetsWithExternalId.length);
 
-  const manualHint = manualCabinet
-    ? canEditManual
-      ? `Диагностики/продажи: авто из CRM. Ручная правка → кабинет «${manualCabinet.name}»`
-      : `Выбери один кабинет в фильтре, чтобы вручную скорректировать день (сейчас ${cabinetsWithExternalId.length} кабинетов)`
-    : cabinetId === "all"
-      ? "Выбери один кабинет, чтобы вносить ручные диагностики, оплаты и сумму"
-      : "У выбранного кабинета нет внешнего ID для единой статистики";
+  const manualHint = metricsEditHint(editScope, cabinetsWithExternalId.length);
 
   const { data, loading, error, refresh } = useMultiMetaInsights(
     actIds,
     monthParam,
     actIds.length > 0,
   );
+
+  // Автоподтягивание Meta → cabinet_daily_insights при открытии месяца / смене кабинета.
+  const autoSyncKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (actIds.length === 0) return;
+    const syncKey = `${monthParam}:${cabinetId}`;
+    if (autoSyncKeyRef.current === syncKey) return;
+    autoSyncKeyRef.current = syncKey;
+
+    const since = `${monthParam}-01`;
+    const until = ymdAlmaty();
+    const targetCab = cabinetId !== "all"
+      ? cabinets.find((c) => c.id === cabinetId)
+      : undefined;
+
+    void (async () => {
+      try {
+        await syncMetaDaily({
+          since,
+          until,
+          ...(targetCab ? { cabinet_id: targetCab.id } : {}),
+        });
+        refresh();
+        setCdiTick((t) => t + 1);
+      } catch {
+        /* синхронизация опциональна — есть кнопка «Синхронизация» */
+      }
+    })();
+  }, [monthParam, cabinetId, actIds.join(","), cabinets, refresh]);
 
   const { getPlan } = useFinancePlans();
   const plan = getPlan(monthKey(monthCursor));
@@ -157,6 +189,16 @@ const Metrics = () => {
     return () => { cancelled = true; };
   }, [actIds.join(","), crmPeriod.from.getTime(), crmPeriod.to.getTime(), projectId, cdiTick]);
 
+  useEffect(() => {
+    let cancelled = false;
+    fetchProjectDailyOverrides(crmPeriod, projectId)
+      .then((m) => { if (!cancelled) setProjectOverrides(m); })
+      .catch(() => { if (!cancelled) setProjectOverrides(new Map()); });
+    return () => { cancelled = true; };
+  }, [crmPeriod.from.getTime(), crmPeriod.to.getTime(), projectId, projectTick]);
+
+  const manualCabinet = editScope?.kind === "cabinet" ? editScope.cabinet : null;
+
   const crmByDay = useMemo(
     () => crmDailyMetrics(allLeads, crmPeriod, cabinetSelector),
     [allLeads, crmPeriod, cabinetSelector],
@@ -182,15 +224,21 @@ const Metrics = () => {
 
     const emptyDay = (date: string): DailyInsightRow => ({
       date,
-      spend: 0, impressions: 0, clicks: 0, leads: 0,
+      spend: 0, autoSpend: 0, manualSpend: 0, manualSpendRaw: null,
+      impressions: 0, clicks: 0, leads: 0, autoLeads: 0, manualLeads: 0, manualLeadsRaw: null,
       pixelRevenue: 0, revenue: 0,
       diagnostics: 0, crmDiagnostics: 0, manualDiagnostics: 0, manualDiagnosticsRaw: null,
       diagnosticRevenue: 0, crmDiagnosticRevenue: 0, manualDiagnosticRevenue: 0, manualDiagnosticRevenueRaw: null,
       sales: 0, crmSales: 0, manualSales: 0, manualSalesRaw: null,
       salesRevenue: 0, crmSalesRevenueOnly: 0, manualSalesRevenue: 0, manualSalesRevenueRaw: null,
       crmRevenue: 0, crmRevenueOnly: 0, manualRevenue: 0,
-      crmReceived: 0, qualified: 0, plannedVisits: 0, conductedVisits: 0,
-      diagnosticsPaid: 0, diagnosticRevenuePaid: 0, cashRevenue: 0,
+      crmReceived: 0, autoCrmReceived: 0, manualCrmReceivedRaw: null,
+      qualified: 0, autoQualified: 0, manualQualifiedRaw: null,
+      plannedVisits: 0, autoPlannedVisits: 0, manualPlannedVisitsRaw: null,
+      conductedVisits: 0, autoConductedVisits: 0, manualConductedVisitsRaw: null,
+      diagnosticsPaid: 0, autoDiagnosticsPaid: 0, manualDiagnosticsPaidRaw: null,
+      diagnosticRevenuePaid: 0,
+      cashRevenue: 0, autoCashRevenue: 0, manualCashRaw: null,
       prepayCount: 0, prepaySum: 0,
     });
 
@@ -204,6 +252,7 @@ const Metrics = () => {
       const crmSales = crm?.sales ?? 0;
       const crmSalesRev = crm?.salesRevenue ?? 0;
       const rnp = rnpByDay.get(iso);
+      const proj = projectOverrides.get(iso);
 
       const [y, mo, d] = iso.split("-").map(Number);
       const dayResolved = sumResolvedMetricsPerCabinets(
@@ -215,70 +264,132 @@ const Metrics = () => {
         externalIdByCabinetId,
       );
 
-      m.set(iso, {
-        ...cdi,
-        crmDiagnostics: crmDiag,
-        crmDiagnosticRevenue: crmDiagRev,
-        crmSales,
-        crmSalesRevenueOnly: crmSalesRev,
+      const autoBlock = {
+        spend: cdi.autoSpend ?? cdi.spend ?? 0,
+        leads: cdi.autoLeads ?? cdi.leads ?? 0,
+        crmReceived: rnp?.crmReceived ?? 0,
+        qualified: rnp?.qualified ?? 0,
+        plannedVisits: rnp?.plannedVisits ?? 0,
+        conductedVisits: rnp?.conductedVisits ?? 0,
+        diagnosticsPaid: rnp?.diagnosticsPaid ?? 0,
         diagnostics: dayResolved.diagnostics,
         diagnosticRevenue: dayResolved.diagnosticRevenue,
         sales: dayResolved.sales,
         salesRevenue: dayResolved.salesRevenue,
+        cashRevenue: rnp?.cashRevenue ?? 0,
+        prepayCount: rnpManualByDate.get(iso)?.prepayCount ?? 0,
+        prepaySum: rnpManualByDate.get(iso)?.prepaySum ?? 0,
+      };
+
+      const merged = useProjectOverrides
+        ? applyProjectDailyOverride(autoBlock, proj)
+        : autoBlock;
+
+      const salesRevenue = useProjectOverrides ? merged.salesRevenue : dayResolved.salesRevenue;
+      const diagnosticRevenue = useProjectOverrides ? merged.diagnosticRevenue : dayResolved.diagnosticRevenue;
+      const totalRevenue = salesRevenue + diagnosticRevenue;
+
+      m.set(iso, {
+        ...cdi,
+        spend: merged.spend,
+        autoSpend: autoBlock.spend,
+        manualSpendRaw: useProjectOverrides ? (proj?.manualSpend ?? null) : cdi.manualSpendRaw ?? null,
+        leads: merged.leads,
+        autoLeads: autoBlock.leads,
+        manualLeadsRaw: useProjectOverrides ? (proj?.manualLeads ?? null) : cdi.manualLeadsRaw ?? null,
+        crmDiagnostics: crmDiag,
+        crmDiagnosticRevenue: crmDiagRev,
+        crmSales,
+        crmSalesRevenueOnly: crmSalesRev,
+        diagnostics: merged.diagnostics,
+        diagnosticRevenue,
+        sales: merged.sales,
+        salesRevenue,
         manualDiagnostics: cdi.manualDiagnostics ?? 0,
         manualDiagnosticRevenue: cdi.manualDiagnosticRevenue ?? 0,
         manualSales: cdi.manualSales ?? 0,
         manualSalesRevenue: cdi.manualSalesRevenue ?? 0,
-        crmRevenue: dayResolved.revenue,
+        crmRevenue: totalRevenue,
         crmRevenueOnly: crmSalesRev + crmDiagRev,
-        manualDiagnosticsRaw: canEditManual ? cdi.manualDiagnosticsRaw : null,
-        manualDiagnosticRevenueRaw: canEditManual ? cdi.manualDiagnosticRevenueRaw : null,
-        manualSalesRaw: canEditManual ? cdi.manualSalesRaw : null,
-        manualSalesRevenueRaw: canEditManual ? cdi.manualSalesRevenueRaw : null,
-        crmReceived: rnp?.crmReceived ?? 0,
-        qualified: rnp?.qualified ?? 0,
-        prepayCount: rnpManualByDate.get(iso)?.prepayCount ?? 0,
-        prepaySum: rnpManualByDate.get(iso)?.prepaySum ?? 0,
-        plannedVisits: rnp?.plannedVisits ?? 0,
-        conductedVisits: rnp?.conductedVisits ?? 0,
-        diagnosticsPaid: rnp?.diagnosticsPaid ?? 0,
+        manualDiagnosticsRaw: useProjectOverrides
+          ? (proj?.manualDiagnostics ?? null)
+          : (canEditManual ? cdi.manualDiagnosticsRaw : null),
+        manualDiagnosticRevenueRaw: useProjectOverrides
+          ? (proj?.manualDiagnosticRevenue ?? null)
+          : (canEditManual ? cdi.manualDiagnosticRevenueRaw : null),
+        manualSalesRaw: useProjectOverrides
+          ? (proj?.manualSales ?? null)
+          : (canEditManual ? cdi.manualSalesRaw : null),
+        manualSalesRevenueRaw: useProjectOverrides
+          ? (proj?.manualSalesRevenue ?? null)
+          : (canEditManual ? cdi.manualSalesRevenueRaw : null),
+        crmReceived: merged.crmReceived,
+        autoCrmReceived: autoBlock.crmReceived,
+        manualCrmReceivedRaw: useProjectOverrides ? (proj?.manualCrmReceived ?? null) : null,
+        qualified: merged.qualified,
+        autoQualified: autoBlock.qualified,
+        manualQualifiedRaw: useProjectOverrides ? (proj?.manualQualified ?? null) : null,
+        prepayCount: merged.prepayCount,
+        prepaySum: merged.prepaySum,
+        plannedVisits: merged.plannedVisits,
+        autoPlannedVisits: autoBlock.plannedVisits,
+        manualPlannedVisitsRaw: useProjectOverrides ? (proj?.manualPlannedVisits ?? null) : null,
+        conductedVisits: merged.conductedVisits,
+        autoConductedVisits: autoBlock.conductedVisits,
+        manualConductedVisitsRaw: useProjectOverrides ? (proj?.manualConductedVisits ?? null) : null,
+        diagnosticsPaid: merged.diagnosticsPaid,
+        autoDiagnosticsPaid: autoBlock.diagnosticsPaid,
+        manualDiagnosticsPaidRaw: useProjectOverrides ? (proj?.manualDiagnosticsPaid ?? null) : null,
         diagnosticRevenuePaid: rnp?.diagnosticRevenuePaid ?? 0,
-        cashRevenue: rnp?.cashRevenue ?? 0,
+        cashRevenue: merged.cashRevenue,
+        autoCashRevenue: autoBlock.cashRevenue,
+        manualCashRaw: useProjectOverrides ? (proj?.manualCash ?? null) : null,
       });
     }
 
     return m;
-  }, [data, monthDays, crmByDay, rnpByDay, rnpManualByDate, canEditManual, allLeads, cdiFactRows, cabinetInternalIds, cabinetId]);
+  }, [
+    data, monthDays, crmByDay, rnpByDay, rnpManualByDate, canEditManual, allLeads, cdiFactRows,
+    cabinetInternalIds, cabinetId, externalIdByCabinetId, projectOverrides, useProjectOverrides,
+  ]);
 
-  const factResolved = useMemo(
-    () => sumResolvedMetricsPerCabinets(
-      crmPeriod, allLeads, cdiFactRows, cabinetInternalIds, cabinetId === "all", externalIdByCabinetId,
-    ),
-    [crmPeriod, allLeads, cdiFactRows, cabinetInternalIds, cabinetId, externalIdByCabinetId],
-  );
-  const factDiagnostics = factResolved.diagnostics;
-  const factDiagnosticRevenue = factResolved.diagnosticRevenue;
-  const factSales = factResolved.sales;
-  const factSalesRevenue = factResolved.salesRevenue;
-  const factRevenue = factResolved.revenue;
-  const factCrmReceived = useMemo(() => {
-    let sum = 0;
-    for (const v of rnpByDay.values()) sum += v.crmReceived;
-    return sum;
-  }, [rnpByDay]);
-  const factQualified = useMemo(() => {
-    let sum = 0;
-    for (const v of rnpByDay.values()) sum += v.qualified;
-    return sum;
-  }, [rnpByDay]);
+  const factFromDaily = useMemo(() => {
+    let spend = 0, leads = 0, diagnostics = 0, diagnosticRevenue = 0;
+    let sales = 0, salesRevenue = 0, revenue = 0;
+    let crmReceived = 0, qualified = 0;
+    for (const { iso } of monthDays) {
+      const d = dailyMap.get(iso);
+      if (!d) continue;
+      spend += d.spend;
+      leads += d.leads;
+      diagnostics += d.diagnostics;
+      diagnosticRevenue += d.diagnosticRevenue;
+      sales += d.sales;
+      salesRevenue += d.salesRevenue;
+      revenue += d.crmRevenue ?? 0;
+      crmReceived += d.crmReceived;
+      qualified += d.qualified;
+    }
+    return { spend, leads, diagnostics, diagnosticRevenue, sales, salesRevenue, revenue, crmReceived, qualified };
+  }, [dailyMap, monthDays]);
+
+  const factDiagnostics = factFromDaily.diagnostics;
+  const factDiagnosticRevenue = factFromDaily.diagnosticRevenue;
+  const factSales = factFromDaily.sales;
+  const factSalesRevenue = factFromDaily.salesRevenue;
+  const factRevenue = factFromDaily.revenue;
+  const factCrmReceived = factFromDaily.crmReceived;
+  const factQualified = factFromDaily.qualified;
   const factPrepay = useMemo(() => {
     let count = 0, sum = 0;
     for (const v of rnpManualByDate.values()) { count += v.prepayCount; sum += v.prepaySum; }
     return { count, sum };
   }, [rnpManualByDate]);
   const factLeads = factCrmReceived;
-  const factCac = factSales > 0 ? (totals?.spend ?? 0) / factSales : 0;
-  const factCpd = factDiagnostics > 0 ? (totals?.spend ?? 0) / factDiagnostics : 0;
+  const factSpend = useProjectOverrides ? factFromDaily.spend : (totals?.spend ?? 0);
+  const factCpl = factFromDaily.leads > 0 ? factSpend / factFromDaily.leads : (totals?.cpl ?? 0);
+  const factCac = factSales > 0 ? factSpend / factSales : 0;
+  const factCpd = factDiagnostics > 0 ? factSpend / factDiagnostics : 0;
   const crLeadDiagnostics =
     factLeads > 0 ? (factDiagnostics / factLeads) * 100 : 0;
   const crDiagnosticsSale =
@@ -391,14 +502,26 @@ const Metrics = () => {
   const upsertManualFact = async (
     isoDate: string,
     patch: {
+      manual_spend?: number | null;
+      manual_leads?: number | null;
       manual_diagnostics?: number | null;
       manual_sales?: number | null;
       manual_revenue?: number | null;
       manual_diagnostic_revenue?: number | null;
+      manual_crm_received?: number | null;
+      manual_qualified?: number | null;
+      manual_planned_visits?: number | null;
+      manual_conducted_visits?: number | null;
+      manual_diagnostics_paid?: number | null;
+      manual_cash?: number | null;
     },
   ) => {
+    if (useProjectOverrides) {
+      await saveProjectManual(isoDate, patch);
+      return;
+    }
     if (!manualCabinet?.externalId) {
-      toast.error("Выбери конкретный кабинет для ручного ввода");
+      toast.error("Подключи рекламный кабинет с Ad Account ID");
       return;
     }
 
@@ -409,6 +532,19 @@ const Metrics = () => {
       ]),
     );
 
+    const legacyAdPatch = (p: Record<string, unknown>): Record<string, unknown> => {
+      const out = { ...p };
+      if (out.manual_spend !== undefined && out.manual_spend !== null) {
+        out.spend = out.manual_spend;
+        delete out.manual_spend;
+      }
+      if (out.manual_leads !== undefined && out.manual_leads !== null) {
+        out.leads = out.manual_leads;
+        delete out.manual_leads;
+      }
+      return out;
+    };
+
     try {
       const { data: existing, error: findError } = await supabase
         .from("cabinet_daily_insights")
@@ -418,24 +554,37 @@ const Metrics = () => {
         .maybeSingle();
       if (findError) throw findError;
 
-      if (existing?.id) {
-        const { error: updateError } = await (supabase as any)
-          .from("cabinet_daily_insights")
-          .update(cleanPatch)
-          .eq("id", existing.id);
-        if (updateError) throw updateError;
-      } else {
-        const { error: insertError } = await supabase
-          .from("cabinet_daily_insights")
-          .insert({
-            cabinet_id: manualCabinet.id,
-            external_id: manualCabinet.externalId,
-            project_id: (manualCabinet as AdCabinet & { projectId?: string }).projectId ?? null,
-            date: isoDate,
-            currency: manualCabinet.currency ?? "KZT",
-            ...cleanPatch,
-          });
-        if (insertError) throw insertError;
+      const writeRow = async (rowPatch: Record<string, unknown>) => {
+        if (existing?.id) {
+          const { error: updateError } = await (supabase as any)
+            .from("cabinet_daily_insights")
+            .update(rowPatch)
+            .eq("id", existing.id);
+          if (updateError) throw updateError;
+        } else {
+          const { error: insertError } = await supabase
+            .from("cabinet_daily_insights")
+            .insert({
+              cabinet_id: manualCabinet.id,
+              external_id: manualCabinet.externalId,
+              project_id: (manualCabinet as AdCabinet & { projectId?: string }).projectId ?? null,
+              date: isoDate,
+              currency: manualCabinet.currency ?? "KZT",
+              ...rowPatch,
+            });
+          if (insertError) throw insertError;
+        }
+      };
+
+      try {
+        await writeRow(cleanPatch);
+      } catch (writeErr) {
+        const msg = writeErr instanceof Error ? writeErr.message : "";
+        if (/manual_spend|manual_leads/i.test(msg)) {
+          await writeRow(legacyAdPatch(cleanPatch));
+        } else {
+          throw writeErr;
+        }
       }
 
       refresh();
@@ -446,10 +595,15 @@ const Metrics = () => {
     }
   };
 
-  const saveRnpManual = async (isoDate: string, patch: RnpManualPatch) => {
+  const saveProjectManual = async (isoDate: string, patch: RnpManualPatch) => {
+    if (rnpTableMissing) {
+      toast.error("Примени миграцию rnp_daily в Supabase");
+      return;
+    }
     try {
       await upsertRnpManual(isoDate, patch);
-      toast.success("РНП-факт сохранён");
+      setProjectTick((t) => t + 1);
+      toast.success("Ручной факт сохранен");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось сохранить");
     }
@@ -466,11 +620,11 @@ const Metrics = () => {
       <MetricsKpiPanel
         plan={plan}
         factRevenue={factRevenue}
-        factSpend={totals?.spend ?? 0}
+        factSpend={factSpend}
         factLeads={factLeads}
         factSales={factSales}
         factDiagnostics={factDiagnostics}
-        factCpl={totals?.cpl ?? 0}
+        factCpl={factCpl}
         factCpd={factCpd}
         factCac={factCac}
         crLeadDiagnostics={crLeadDiagnostics}
@@ -542,7 +696,7 @@ const Metrics = () => {
       <div
         className={cn(
           "mt-4 flex items-start gap-2 rounded-xl border px-3 py-2 text-xs",
-          canEditManual && manualCabinet
+          canEditManual && editScope
             ? "border-success/25 bg-success/5 text-success"
             : "border-warning/25 bg-warning/5 text-warning",
         )}
@@ -578,9 +732,9 @@ const Metrics = () => {
         <MetricsSummaryStrip
           plan={plan}
           fact={{
-            spend: totals?.spend ?? 0,
+            spend: factSpend,
             leads: factLeads,
-            cpl: totals?.cpl ?? 0,
+            cpl: factCpl,
             diagnostics: factDiagnostics,
             diagnosticRevenue: factDiagnosticRevenue,
             sales: factSales,
@@ -595,16 +749,23 @@ const Metrics = () => {
           dailyMap={dailyMap}
           loading={loading}
           loadingLabel={`Загружаем данные за ${MONTHS_GEN_RU[monthCursor.getMonth()]} ${monthCursor.getFullYear()}...`}
-          manualCabinet={manualCabinet}
-          canEditManual={canEditManual}
+          canEdit={Boolean(editScope) && canEditManual}
+          rnpEditDisabled={rnpTableMissing}
+          onSaveSpend={(iso, next) => upsertManualFact(iso, { manual_spend: next })}
+          onSaveLeads={(iso, next) => upsertManualFact(iso, { manual_leads: next })}
+          onSaveCrmReceived={(iso, next) => saveProjectManual(iso, { manual_crm_received: next })}
+          onSaveQualified={(iso, next) => saveProjectManual(iso, { manual_qualified: next })}
+          onSavePlannedVisits={(iso, next) => saveProjectManual(iso, { manual_planned_visits: next })}
+          onSaveConductedVisits={(iso, next) => saveProjectManual(iso, { manual_conducted_visits: next })}
+          onSaveDiagnosticsPaid={(iso, next) => saveProjectManual(iso, { manual_diagnostics_paid: next })}
           onSaveDiagnosticRevenue={(iso, next) =>
             upsertManualFact(iso, { manual_diagnostic_revenue: next })
           }
           onSaveSales={(iso, next) => upsertManualFact(iso, { manual_sales: next })}
           onSaveSalesRevenue={(iso, next) => upsertManualFact(iso, { manual_revenue: next })}
-          rnpEditDisabled={rnpTableMissing}
-          onSavePrepayCount={(iso, next) => saveRnpManual(iso, { prepayments_count: next ?? 0 })}
-          onSavePrepaySum={(iso, next) => saveRnpManual(iso, { prepayments_sum: next ?? 0 })}
+          onSaveCash={(iso, next) => saveProjectManual(iso, { manual_cash: next })}
+          onSavePrepayCount={(iso, next) => saveProjectManual(iso, { prepayments_count: next ?? 0 })}
+          onSavePrepaySum={(iso, next) => saveProjectManual(iso, { prepayments_sum: next ?? 0 })}
         />
       </div>
     </PageContainer>

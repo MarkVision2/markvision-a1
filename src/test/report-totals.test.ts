@@ -138,6 +138,35 @@ describe("computeTotals — Таблица показателей (CRM + manual 
     expect(totals.revenue).toBe(10_000);
   });
 
+  it("orphan-продажа сохраняется, если в тот же день ручная диагностика кабинета", () => {
+    const orphanSale = mkLead({
+      cabinetId: null,
+      paid: true,
+      amount: 500_000,
+      paidAt: "2026-06-10T14:00:00Z",
+    });
+    const june = { from: new Date("2026-06-01"), to: new Date("2026-06-30") };
+    const resolved = sumResolvedMetricsPerCabinets(
+      june,
+      [orphanSale],
+      [{
+        cabinet_id: "cab-1",
+        date: "2026-06-10",
+        manual_diagnostics: 2,
+        manual_diagnostic_revenue: 20_000,
+        manual_sales: null,
+        manual_revenue: null,
+      }],
+      ["cab-1"],
+      true,
+    );
+
+    expect(resolved.sales).toBe(1);
+    expect(resolved.salesRevenue).toBe(500_000);
+    expect(resolved.revenue).toBe(520_000);
+    expect(resolved.diagnostics).toBe(2);
+  });
+
   it("ручная выручка диагностик 10k перезаписывает CRM 5k", () => {
     const d1 = mkLead({
       cabinetId: "cab-1",

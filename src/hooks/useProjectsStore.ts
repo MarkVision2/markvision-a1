@@ -49,7 +49,7 @@ function describeProjectDbError(error: PostgrestError | null, needsAuth: boolean
   const msg = error.message ?? "";
   const code = error.code ?? "";
   if (code === "PGRST205" || /Could not find the table/i.test(msg)) {
-    return "Таблица projects не найдена в Supabase — примените миграции на mekwfbqmsqiborjdrjxc.";
+    return "Таблица projects не найдена в Supabase — примените миграции на szfgdruhlebfvcmlvxdk.";
   }
   if (
     code === "42501" ||

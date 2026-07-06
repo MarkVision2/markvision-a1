@@ -105,12 +105,12 @@ function addResolved(acc: ResolvedDayMetrics, day: ResolvedDayMetrics): void {
   acc.revenue += day.revenue;
 }
 
-/** Только UI Metrics: можно ли редактировать manual в таблице. */
+/** Редактирование всегда доступно — маршрут в CDI или rnp_daily задаёт resolveMetricsEditScope. */
 export function shouldApplyManualOverrides(
-  cabinetId: string,
-  cabinetsWithExternalId: number,
+  _cabinetId: string,
+  _cabinetsWithExternalId: number,
 ): boolean {
-  return cabinetId !== "all" || cabinetsWithExternalId === 1;
+  return true;
 }
 
 type CdiManualRow = {
@@ -210,10 +210,22 @@ export function sumResolvedMetricsPerCabinets(
       addResolved(acc, resolveDayMetrics(crm, manual, true));
     }
 
-    // Orphan-CRM не дублируем только если manual override реально применился к кабинету.
-    if (includeOrphans && !manualDiagAppliedOnDay) {
+    // Orphan-CRM: при ручной правке диагностик кабинета не дублируем только диагностики
+    // (часто тот же факт), но продажи orphan-лидов (WhatsApp/сайт без cabinet_id) сохраняем.
+    if (includeOrphans) {
       const crm = crmDailyMetrics(orphanLeads, dayRange, "all").get(iso);
-      addResolved(acc, resolveDayMetrics(crm, undefined, true));
+      const orphanResolved = resolveDayMetrics(crm, undefined, true);
+      if (manualDiagAppliedOnDay) {
+        addResolved(acc, {
+          diagnostics: 0,
+          diagnosticRevenue: 0,
+          sales: orphanResolved.sales,
+          salesRevenue: orphanResolved.salesRevenue,
+          revenue: orphanResolved.salesRevenue,
+        });
+      } else {
+        addResolved(acc, orphanResolved);
+      }
     }
 
     cur.setDate(cur.getDate() + 1);
@@ -251,9 +263,10 @@ export function buildResolvedDailyRevenuePerCabinets(
       revenue += resolveDayMetrics(crm, manual, true).revenue;
     }
 
-    if (includeOrphans && !manualDiagAppliedOnDay) {
+    if (includeOrphans) {
       const crm = crmDailyMetrics(orphanLeads, dayRange, "all").get(iso);
-      revenue += resolveDayMetrics(crm, undefined, true).revenue;
+      const orphanResolved = resolveDayMetrics(crm, undefined, true);
+      revenue += manualDiagAppliedOnDay ? orphanResolved.salesRevenue : orphanResolved.revenue;
     }
 
     revByDay.set(iso, revenue);

@@ -15,8 +15,16 @@
 
 ## Supabase (не Lovable)
 
-Edge Functions и секреты — проект **mekwfbqmsqiborjdrjxc**.
+Единый прод-проект: **szfgdruhlebfvcmlvxdk** (CRM, метрики, Meta, контент-завод).
 
-GitHub → Actions → **Deploy Meta edge functions** → Run workflow.
+Edge Functions деплоятся на **szfg**:
 
-Секреты: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF` = `mekwfbqmsqiborjdrjxc`.
+```bash
+./scripts/migrate-to-szfg/05-deploy-functions.sh
+```
+
+Или GitHub → Actions → **Deploy Meta edge functions** / **Supabase deploy**.
+
+Секреты GitHub: `SUPABASE_ACCESS_TOKEN`, `SUPABASE_PROJECT_REF` = `szfgdruhlebfvcmlvxdk`.
+
+Env в Lovable (Settings → Environment): те же `VITE_SUPABASE_*`, что в `.env` репозитория.

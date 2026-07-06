@@ -5,8 +5,10 @@ import { useInstagramOrganic } from "./useInstagramOrganic";
 import { useMetaDashboard } from "./useMetaDashboard";
 import { buildAlerts } from "@/lib/dashboardAlerts";
 import { buildDashboardChannels } from "@/lib/dashboardChannels";
+import { resolveCdiMetric } from "@/lib/cdiManualOverride";
 import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
 import { supabase } from "@/integrations/supabase/client";
+import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useProjectsStore } from "./useProjectsStore";
 import { useRealtimeTable } from "./useRealtimeTable";
 
@@ -37,8 +39,14 @@ export function useDashboardData(
   const { campaigns: metaCampaigns } = useMetaDashboard(range);
   const { funnel: igFunnel, events: igEvents } = useInstagramOrganic(range);
   const { activeId: projectId } = useProjectsStore();
+  const { cabinets } = usePersonalCabinets();
   const [providerAgg, setProviderAgg] = useState<ProviderAgg[]>([]);
   const [pTick, setPTick] = useState(0);
+
+  const externalIds = useMemo(
+    () => cabinets.map((c) => c.externalId).filter(Boolean),
+    [cabinets],
+  );
 
   useRealtimeTable("cabinet_daily_insights", () => setPTick((t) => t + 1), true, 1000);
 
@@ -66,7 +74,7 @@ export function useDashboardData(
   // по платформам (Meta vs Google), чтобы строки в таблице каналов были
   // реальными, а не разнесёнными пропорционально доле лидов.
   useEffect(() => {
-    if (!projectId) {
+    if (!projectId || externalIds.length === 0) {
       setProviderAgg([]);
       return;
     }
@@ -76,6 +84,7 @@ export function useDashboardData(
         .from("cabinet_daily_insights")
         .select("provider, spend, leads, crm_sales, manual_sales, crm_revenue, manual_revenue")
         .eq("project_id", projectId)
+        .in("external_id", externalIds)
         .gte("date", sinceYmd)
         .lte("date", untilYmd);
       if (cancelled || err) {
@@ -92,19 +101,18 @@ export function useDashboardData(
         };
         cur.spend += Number((r as { spend?: number }).spend ?? 0);
         cur.leads += Number((r as { leads?: number }).leads ?? 0);
-        // Override-семантика: ручные значения перезаписывают CRM (NULL = «не задано»).
         const crmS = Number((r as { crm_sales?: number }).crm_sales ?? 0);
         const manS = (r as { manual_sales?: number | null }).manual_sales;
-        cur.sales += manS !== null && manS !== undefined ? Number(manS) || 0 : crmS;
+        cur.sales += resolveCdiMetric(manS, crmS);
         const crmR = Number((r as { crm_revenue?: number }).crm_revenue ?? 0);
         const manR = (r as { manual_revenue?: number | null }).manual_revenue;
-        cur.revenue += manR !== null && manR !== undefined ? Number(manR) || 0 : crmR;
+        cur.revenue += resolveCdiMetric(manR, crmR);
         acc.set(provider, cur);
       }
       setProviderAgg(Array.from(acc.values()));
     })();
     return () => { cancelled = true; };
-  }, [projectId, sinceYmd, untilYmd, pTick]);
+  }, [projectId, externalIds.join(","), sinceYmd, untilYmd, pTick]);
 
   // CRM funnel: total/reached считаем по createdAt (когда лид пришёл).
   // scheduled/visited/paid — по дате СОБЫТИЯ (paid_at / last_activity_at), как

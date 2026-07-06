@@ -158,7 +158,7 @@ Deno.serve(async (req) => {
   }
 
   if (!videoId) {
-    const thumb = resolvedThumb ?? storedThumb || null;
+    const thumb = (resolvedThumb ?? storedThumb) || null;
     const posterUrl = thumb
       ? await ensurePosterInStorage(admin, adId, cabinetId, existingPoster, thumb)
       : null;
@@ -184,10 +184,9 @@ Deno.serve(async (req) => {
       thumbnails?: { data?: Array<{ uri: string; width?: number; height?: number; is_preferred?: boolean; scale?: number }> };
     };
 
-    const bestThumb = pickBestVideoThumb(v.thumbnails?.data ?? [], v.picture)
+    const bestThumb = (pickBestVideoThumb(v.thumbnails?.data ?? [], v.picture)
       ?? resolvedThumb
-      ?? storedThumb
-      || null;
+      ?? storedThumb) || null;
 
     const posterUrl = bestThumb
       ? await ensurePosterInStorage(admin, adId, cabinetId, existingPoster, bestThumb)

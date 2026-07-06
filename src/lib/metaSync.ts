@@ -41,16 +41,29 @@ const ADMIN_FORBIDDEN =
 const FUNCTION_NOT_DEPLOYED =
   "Edge Function не задеплоена на Supabase. Проверьте GitHub Actions → Deploy Meta edge functions.";
 
-/** Сегодня по часовому поясу рекламного кабинета (Asia/Almaty). */
-export function ymdAlmaty(d = new Date()): string {
+const ALMATY_TZ = "Asia/Almaty";
+
+function ymdAlmatyParts(d: Date): string {
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Almaty",
+    timeZone: ALMATY_TZ,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
   }).formatToParts(d);
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
   return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/** Сегодня по часовому поясу рекламного кабинета (Asia/Almaty). */
+export function ymdAlmaty(d = new Date()): string {
+  return ymdAlmatyParts(d);
+}
+
+/** День события CRM/Meta в Asia/Almaty — как date_start в CDI и Таблице показателей. */
+export function ymdAlmatyFromIso(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return ymdAlmatyParts(d);
 }
 
 /** Для ручной синхронизации включаем сегодня, но не будущие даты. */

@@ -3,6 +3,7 @@ import {
   bestCreativeImageHq,
   isHighQualityCreativeUrl,
   isLowResMetaThumb,
+  isPersistedCreativeUrl,
   pickCreativePreviewUrl,
   pickDisplayImageSrc,
   upscaleMetaThumb,
@@ -34,17 +35,23 @@ describe("metaThumb", () => {
     expect(isLowResMetaThumb(up!)).toBe(false);
   });
 
-  it("pickDisplayImageSrc hides low-res while loading, allows after hqFailed", () => {
+  it("pickDisplayImageSrc shows fallback immediately, prefers HQ when ready", () => {
     const low = "https://scontent.xx.fbcdn.net/p64x64";
+    const hq = "https://x.supabase.co/storage/creative-posters/a.jpg";
     expect(
       pickDisplayImageSrc({ hqSrc: null, displaySrc: low, loadingHq: true, isLowRes: true }),
-    ).toBeNull();
+    ).toBe(low);
     expect(
       pickDisplayImageSrc({ hqSrc: null, displaySrc: low, loadingHq: false, isLowRes: true, hqFailed: true }),
     ).toBe(low);
     expect(
-      pickDisplayImageSrc({ hqSrc: "https://x.supabase.co/storage/creative-posters/a.jpg", displaySrc: low, loadingHq: true, isLowRes: true }),
-    ).toContain("creative-posters");
+      pickDisplayImageSrc({ hqSrc: hq, displaySrc: low, loadingHq: true, isLowRes: true }),
+    ).toBe(hq);
+  });
+
+  it("isPersistedCreativeUrl detects storage posters", () => {
+    expect(isPersistedCreativeUrl("https://xxx.supabase.co/storage/v1/object/public/creative-posters/a.jpg")).toBe(true);
+    expect(isPersistedCreativeUrl("https://scontent.xx.fbcdn.net/p64x64")).toBe(false);
   });
 
   it("приоритет: poster > image > thumbnail", () => {

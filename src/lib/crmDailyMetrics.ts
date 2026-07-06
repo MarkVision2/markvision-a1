@@ -1,5 +1,10 @@
 import type { LeadLite } from "@/hooks/useLeadsLite";
+import { ymdAlmatyFromIso } from "@/lib/metaSync";
 import { isLeadDiagnosticEvent, isLeadPaid } from "@/lib/leadStageFlags";
+
+function eventDayKey(ref: string): string {
+  return ymdAlmatyFromIso(ref);
+}
 
 export interface ReportPeriodRange {
   from: Date;
@@ -37,7 +42,8 @@ export function crmDailyMetrics(
       const ref = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
       const t = new Date(ref).getTime();
       if (t >= fromTs && t < toTs) {
-        const key = ref.slice(0, 10);
+        const key = eventDayKey(ref);
+        if (!key) continue;
         const cur = m.get(key) ?? empty();
         cur.diagnostics += 1;
         cur.diagnosticRevenue += l.diagnosticAmount || 0;
@@ -48,7 +54,8 @@ export function crmDailyMetrics(
       const ref = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
       const t = new Date(ref).getTime();
       if (t >= fromTs && t < toTs) {
-        const key = ref.slice(0, 10);
+        const key = eventDayKey(ref);
+        if (!key) continue;
         const cur = m.get(key) ?? empty();
         cur.sales += 1;
         cur.salesRevenue += l.amount || 0;

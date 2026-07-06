@@ -1,14 +1,22 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { CDI_SELECT_WITH_AD_MANUAL, fetchCdiRows } from "@/lib/cdiFetch";
 import { isManualOverrideActive, resolveCdiMetric } from "@/lib/cdiManualOverride";
 
 export interface DailyInsightRow {
   date: string;
   spend: number;
+  /** Meta/CDI до проектного override. */
+  autoSpend: number;
+  manualSpend: number;
+  manualSpendRaw: number | null;
   impressions: number;
   clicks: number;
   leads: number;
+  autoLeads: number;
+  manualLeads: number;
+  manualLeadsRaw: number | null;
   /** FB pixel revenue. НЕ используется для бизнес-выручки — это событийная атрибуция. */
   pixelRevenue: number;
   /** @deprecated alias на pixelRevenue для обратной совместимости. */
@@ -44,22 +52,34 @@ export interface DailyInsightRow {
   manualDiagnosticRevenueRaw: number | null;
   /** Лидов получено в CRM (created_at). */
   crmReceived: number;
+  autoCrmReceived: number;
+  manualCrmReceivedRaw: number | null;
   /** Квал. лиды (скоринг Green API >= порога). */
   qualified: number;
+  autoQualified: number;
+  manualQualifiedRaw: number | null;
   /** Предоплат получено, шт (ручной ввод, rnp_daily). */
   prepayCount: number;
   /** Сумма предоплат ₸ (ручной ввод, rnp_daily). */
   prepaySum: number;
   /** Запланировано визитов на день (next_visit_at). */
   plannedVisits: number;
+  autoPlannedVisits: number;
+  manualPlannedVisitsRaw: number | null;
   /** Проведено визитов (факт). */
   conductedVisits: number;
+  autoConductedVisits: number;
+  manualConductedVisitsRaw: number | null;
   /** Оплачено диагностик, шт (diagnostic_amount > 0). */
   diagnosticsPaid: number;
+  autoDiagnosticsPaid: number;
+  manualDiagnosticsPaidRaw: number | null;
   /** Сумма оплат диагностик из CRM (auto). */
   diagnosticRevenuePaid: number;
   /** Наличные за день ₸. */
   cashRevenue: number;
+  autoCashRevenue: number;
+  manualCashRaw: number | null;
 }
 
 export interface InsightTotals {
@@ -91,6 +111,24 @@ export interface InsightsData {
 }
 
 const RNP_DAY_ZERO = {
+  autoSpend: 0,
+  manualSpend: 0,
+  manualSpendRaw: null as number | null,
+  autoLeads: 0,
+  manualLeads: 0,
+  manualLeadsRaw: null as number | null,
+  autoCrmReceived: 0,
+  manualCrmReceivedRaw: null as number | null,
+  autoQualified: 0,
+  manualQualifiedRaw: null as number | null,
+  autoPlannedVisits: 0,
+  manualPlannedVisitsRaw: null as number | null,
+  autoConductedVisits: 0,
+  manualConductedVisitsRaw: null as number | null,
+  autoDiagnosticsPaid: 0,
+  manualDiagnosticsPaidRaw: null as number | null,
+  autoCashRevenue: 0,
+  manualCashRaw: null as number | null,
   crmReceived: 0,
   qualified: 0,
   prepayCount: 0,
@@ -134,6 +172,8 @@ interface CdiRow {
   leads: number;
   revenue: number | string;
   currency: string;
+  manual_spend?: number | string | null;
+  manual_leads?: number | string | null;
   crm_diagnostics?: number;
   manual_diagnostics?: number;
   crm_sales?: number;
@@ -150,11 +190,13 @@ function aggregate(rows: CdiRow[]): InsightsData {
   let currency = "USD";
   for (const r of rows) {
     currency = r.currency || currency;
-    const spend = Number(r.spend) || 0;
+    const autoSpendVal = Number(r.spend) || 0;
+    const autoLeadsVal = Number(r.leads) || 0;
+    const spend = resolveCdiMetric(r.manual_spend, autoSpendVal);
     const pixelRevenue = Number(r.revenue) || 0;
     const impressions = Number(r.impressions) || 0;
     const clicks = Number(r.clicks) || 0;
-    const leads = Number(r.leads) || 0;
+    const leads = resolveCdiMetric(r.manual_leads, autoLeadsVal);
     // Override-семантика: ручные значения ПЕРЕЗАПИСЫВАЮТ CRM, а не суммируются с ним.
     // Раньше складывали (crm + manual) — это приводило к задвоению, когда менеджер вводил
     // 400к manual поверх 800к из CRM и получал 1.2М вместо 800к. См. жалобу пользователя.
@@ -197,10 +239,18 @@ function aggregate(rows: CdiRow[]): InsightsData {
     totals.crmRevenue += totalRevenue;
     const cur = dailyMap.get(r.date);
     if (cur) {
+      cur.autoSpend = (cur.autoSpend ?? 0) + autoSpendVal;
       cur.spend += spend;
+      if (isManualOverrideActive(r.manual_spend)) {
+        cur.manualSpendRaw = Number(r.manual_spend);
+      }
+      cur.autoLeads = (cur.autoLeads ?? 0) + autoLeadsVal;
       cur.impressions += impressions;
       cur.clicks += clicks;
       cur.leads += leads;
+      if (isManualOverrideActive(r.manual_leads)) {
+        cur.manualLeadsRaw = Number(r.manual_leads);
+      }
       cur.pixelRevenue += pixelRevenue;
       cur.revenue += pixelRevenue;
       cur.diagnostics += diagnostics;
@@ -232,7 +282,10 @@ function aggregate(rows: CdiRow[]): InsightsData {
       }
     } else {
       dailyMap.set(r.date, {
-        date: r.date, spend, impressions, clicks, leads,
+        date: r.date, spend, autoSpend: autoSpendVal, manualSpend: 0,
+        manualSpendRaw: isManualOverrideActive(r.manual_spend) ? Number(r.manual_spend) : null,
+        impressions, clicks, leads, autoLeads: autoLeadsVal, manualLeads: 0,
+        manualLeadsRaw: isManualOverrideActive(r.manual_leads) ? Number(r.manual_leads) : null,
         pixelRevenue, revenue: pixelRevenue,
         diagnostics, crmDiagnostics: crmDiag, manualDiagnostics: manDiag,
         manualDiagnosticsRaw: isManualOverrideActive(r.manual_diagnostics) ? Number(r.manual_diagnostics) : null,
@@ -270,19 +323,14 @@ async function fetchInsights(
     return { currency: "USD", totals: EMPTY_TOTALS, daily: [] };
   }
   const ids = actIds.map(normalizeActId);
-  let q = supabase
-    .from("cabinet_daily_insights")
-    .select("date, spend, impressions, clicks, leads, revenue, currency, crm_diagnostics, manual_diagnostics, crm_sales, manual_sales, crm_revenue, manual_revenue, crm_diagnostic_revenue, manual_diagnostic_revenue")
-    .in("external_id", ids)
-    .gte("date", range.since)
-    .lte("date", range.until)
-    .order("date", { ascending: true });
-  // Изоляция проекта: если несколько проектов делили один external_id (миграция кабинета и т.п.),
-  // чужие строки в выборку не попадут.
-  if (projectId) q = q.eq("project_id", projectId);
-  const { data, error } = await q;
-  if (error) throw new Error(error.message);
-  return aggregate((data ?? []) as CdiRow[]);
+  const data = await fetchCdiRows<CdiRow>(CDI_SELECT_WITH_AD_MANUAL, {
+    externalIds: ids,
+    since: range.since,
+    until: range.until,
+    projectId,
+    order: true,
+  });
+  return aggregate(data);
 }
 
 export function useMetaInsights(

@@ -1,4 +1,4 @@
-import { DollarSign, HandCoins, Loader2, Wallet } from "lucide-react";
+import { DollarSign, HandCoins, Loader2, Target, Users, Wallet } from "lucide-react";
 import { ManualFactCell } from "@/components/metrics/ManualFactCell";
 import { MetricsDash } from "@/components/metrics/MetricsDash";
 import { formatNumber } from "@/components/metrics/metricsFormat";
@@ -21,13 +21,19 @@ interface Props {
   dailyMap: Map<string, DailyInsightRow>;
   loading: boolean;
   loadingLabel: string;
-  manualCabinet: { name: string } | null;
-  canEditManual: boolean;
+  canEdit: boolean;
+  rnpEditDisabled: boolean;
+  onSaveSpend: (iso: string, next: number | null) => Promise<void>;
+  onSaveLeads: (iso: string, next: number | null) => Promise<void>;
+  onSaveCrmReceived: (iso: string, next: number | null) => Promise<void>;
+  onSaveQualified: (iso: string, next: number | null) => Promise<void>;
+  onSavePlannedVisits: (iso: string, next: number | null) => Promise<void>;
+  onSaveConductedVisits: (iso: string, next: number | null) => Promise<void>;
+  onSaveDiagnosticsPaid: (iso: string, next: number | null) => Promise<void>;
   onSaveDiagnosticRevenue: (iso: string, next: number | null) => Promise<void>;
   onSaveSales: (iso: string, next: number | null) => Promise<void>;
   onSaveSalesRevenue: (iso: string, next: number | null) => Promise<void>;
-  /** true, пока таблица rnp_daily не создана в базе. */
-  rnpEditDisabled: boolean;
+  onSaveCash: (iso: string, next: number | null) => Promise<void>;
   onSavePrepayCount: (iso: string, next: number | null) => Promise<void>;
   onSavePrepaySum: (iso: string, next: number | null) => Promise<void>;
 }
@@ -39,16 +45,23 @@ export function MetricsDataTable({
   dailyMap,
   loading,
   loadingLabel,
-  manualCabinet,
-  canEditManual,
+  canEdit,
+  rnpEditDisabled,
+  onSaveSpend,
+  onSaveLeads,
+  onSaveCrmReceived,
+  onSaveQualified,
+  onSavePlannedVisits,
+  onSaveConductedVisits,
+  onSaveDiagnosticsPaid,
   onSaveDiagnosticRevenue,
   onSaveSales,
   onSaveSalesRevenue,
-  rnpEditDisabled,
+  onSaveCash,
   onSavePrepayCount,
   onSavePrepaySum,
 }: Props) {
-  const editDisabled = !manualCabinet || !canEditManual;
+  const editDisabled = !canEdit;
 
   const num = (v: number | undefined) =>
     v && v > 0 ? formatNumber(v) : <MetricsDash />;
@@ -140,25 +153,114 @@ export function MetricsDataTable({
                     <span className="font-semibold tabular-nums">{String(day).padStart(2, "0")}</span>
                     <span className="ml-1.5 text-muted-foreground">{weekday}</span>
                   </td>
-                  <Cell>{num(d?.spend)}</Cell>
-                  <Cell>{num(d?.leads)}</Cell>
-                  <Cell>{cpl > 0 ? formatNumber(cpl) : <MetricsDash />}</Cell>
-                  <Cell>{num(d?.crmReceived)}</Cell>
                   <Cell>
-                    {(d?.qualified ?? 0) > 0
-                      ? <span className="text-success">{formatNumber(d!.qualified)}</span>
-                      : <MetricsDash />}
+                    <ManualFactCell
+                      title="Затраты на рекламу"
+                      icon={Wallet}
+                      isoDate={iso}
+                      value={d?.spend ?? 0}
+                      crm={d?.autoSpend ?? d?.spend ?? 0}
+                      manual={d?.manualSpend ?? 0}
+                      manualRaw={d?.manualSpendRaw ?? null}
+                      autoLabel="Meta"
+                      disabled={editDisabled}
+                      format={formatNumber}
+                      allowDecimal
+                      onSave={(next) => onSaveSpend(iso, next)}
+                    />
                   </Cell>
-                  <Cell>{num(d?.plannedVisits)}</Cell>
-                  <Cell>{num(d?.conductedVisits)}</Cell>
-                  <Cell>{num(d?.diagnosticsPaid)}</Cell>
+                  <Cell>
+                    <ManualFactCell
+                      title="Лиды Meta"
+                      icon={Target}
+                      isoDate={iso}
+                      value={d?.leads ?? 0}
+                      crm={d?.autoLeads ?? d?.leads ?? 0}
+                      manual={d?.manualLeads ?? 0}
+                      manualRaw={d?.manualLeadsRaw ?? null}
+                      autoLabel="Meta"
+                      disabled={editDisabled}
+                      onSave={(next) => onSaveLeads(iso, next)}
+                    />
+                  </Cell>
+                  <Cell>{cpl > 0 ? formatNumber(cpl) : <MetricsDash />}</Cell>
+                  <Cell>
+                    <ManualFactCell
+                      title="Получено в CRM"
+                      icon={Users}
+                      isoDate={iso}
+                      value={d?.crmReceived ?? 0}
+                      crm={d?.autoCrmReceived ?? d?.crmReceived ?? 0}
+                      manual={d?.crmReceived ?? 0}
+                      manualRaw={d?.manualCrmReceivedRaw ?? null}
+                      autoLabel="CRM"
+                      disabled={editDisabled || rnpEditDisabled}
+                      onSave={(next) => onSaveCrmReceived(iso, next)}
+                    />
+                  </Cell>
+                  <Cell>
+                    <ManualFactCell
+                      title="Квалифицированные лиды"
+                      icon={Users}
+                      isoDate={iso}
+                      value={d?.qualified ?? 0}
+                      crm={d?.autoQualified ?? d?.qualified ?? 0}
+                      manual={d?.qualified ?? 0}
+                      manualRaw={d?.manualQualifiedRaw ?? null}
+                      autoLabel="CRM"
+                      disabled={editDisabled || rnpEditDisabled}
+                      onSave={(next) => onSaveQualified(iso, next)}
+                    />
+                  </Cell>
+                  <Cell>
+                    <ManualFactCell
+                      title="Записано на визит"
+                      icon={Users}
+                      isoDate={iso}
+                      value={d?.plannedVisits ?? 0}
+                      crm={d?.autoPlannedVisits ?? d?.plannedVisits ?? 0}
+                      manual={d?.plannedVisits ?? 0}
+                      manualRaw={d?.manualPlannedVisitsRaw ?? null}
+                      autoLabel="CRM"
+                      disabled={editDisabled || rnpEditDisabled}
+                      onSave={(next) => onSavePlannedVisits(iso, next)}
+                    />
+                  </Cell>
+                  <Cell>
+                    <ManualFactCell
+                      title="Проведено визитов"
+                      icon={Users}
+                      isoDate={iso}
+                      value={d?.conductedVisits ?? 0}
+                      crm={d?.autoConductedVisits ?? d?.conductedVisits ?? 0}
+                      manual={d?.conductedVisits ?? 0}
+                      manualRaw={d?.manualConductedVisitsRaw ?? null}
+                      autoLabel="CRM"
+                      disabled={editDisabled || rnpEditDisabled}
+                      onSave={(next) => onSaveConductedVisits(iso, next)}
+                    />
+                  </Cell>
+                  <Cell>
+                    <ManualFactCell
+                      title="Оплачено диагностик"
+                      icon={Users}
+                      isoDate={iso}
+                      value={d?.diagnosticsPaid ?? 0}
+                      crm={d?.autoDiagnosticsPaid ?? d?.diagnosticsPaid ?? 0}
+                      manual={d?.diagnosticsPaid ?? 0}
+                      manualRaw={d?.manualDiagnosticsPaidRaw ?? null}
+                      autoLabel="CRM"
+                      disabled={editDisabled || rnpEditDisabled}
+                      onSave={(next) => onSaveDiagnosticsPaid(iso, next)}
+                    />
+                  </Cell>
                   <Cell>
                     <ManualFactCell
                       title="Сумма диагностик"
                       icon={DollarSign}
                       isoDate={iso}
                       value={d?.diagnosticRevenue ?? 0}
-                      crm={d?.diagnosticRevenuePaid ?? 0}
+                      crm={d?.diagnosticRevenuePaid ?? d?.crmDiagnosticRevenue ?? 0}
                       manual={d?.manualDiagnosticRevenue ?? 0}
                       manualRaw={d?.manualDiagnosticRevenueRaw ?? null}
                       autoLabel="CRM"
@@ -178,7 +280,7 @@ export function MetricsDataTable({
                       manual={d?.prepayCount ?? 0}
                       manualRaw={(d?.prepayCount ?? 0) > 0 ? d!.prepayCount : null}
                       autoLabel="—"
-                      disabled={rnpEditDisabled}
+                      disabled={editDisabled || rnpEditDisabled}
                       onSave={(next) => onSavePrepayCount(iso, next)}
                     />
                   </Cell>
@@ -192,7 +294,7 @@ export function MetricsDataTable({
                       manual={d?.prepaySum ?? 0}
                       manualRaw={(d?.prepaySum ?? 0) > 0 ? d!.prepaySum : null}
                       autoLabel="—"
-                      disabled={rnpEditDisabled}
+                      disabled={editDisabled || rnpEditDisabled}
                       format={formatNumber}
                       allowDecimal
                       onSave={(next) => onSavePrepaySum(iso, next)}
@@ -228,7 +330,22 @@ export function MetricsDataTable({
                       onSave={(next) => onSaveSalesRevenue(iso, next)}
                     />
                   </Cell>
-                  <Cell>{num(d?.cashRevenue)}</Cell>
+                  <Cell>
+                    <ManualFactCell
+                      title="Касса (наличные)"
+                      icon={DollarSign}
+                      isoDate={iso}
+                      value={d?.cashRevenue ?? 0}
+                      crm={d?.autoCashRevenue ?? d?.cashRevenue ?? 0}
+                      manual={d?.cashRevenue ?? 0}
+                      manualRaw={d?.manualCashRaw ?? null}
+                      autoLabel="CRM"
+                      disabled={editDisabled || rnpEditDisabled}
+                      format={formatNumber}
+                      allowDecimal
+                      onSave={(next) => onSaveCash(iso, next)}
+                    />
+                  </Cell>
                   <Cell>
                     <span className={cn("font-semibold", dayRevenue > 0 && "text-success")}>
                       {dayRevenue > 0 ? formatNumber(dayRevenue) : <MetricsDash />}

@@ -1,8 +1,8 @@
-// Ручные РНП-факты по дням из таблицы rnp_daily (project + date):
-// предоплаты (шт и сумма). Таблица создаётся миграцией
-// supabase/migrations/20260611090000_rnp_daily.sql.
+// Ручные дневные показатели проекта (таблица rnp_daily).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { manualValueForSave } from "@/lib/cdiManualOverride";
+import type { ProjectDailyOverridePatch } from "@/lib/projectDailyOverrides";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 
 export interface RnpManualDay {
@@ -11,10 +11,7 @@ export interface RnpManualDay {
   prepaySum: number;
 }
 
-export type RnpManualPatch = Partial<{
-  prepayments_count: number;
-  prepayments_sum: number;
-}>;
+export type RnpManualPatch = ProjectDailyOverridePatch;
 
 function monthBounds(month: string): { since: string; untilExcl: string } | null {
   const m = /^(\d{4})-(\d{2})$/.exec(month);
@@ -24,6 +21,19 @@ function monthBounds(month: string): { since: string; untilExcl: string } | null
   const ymd = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   return { since: ymd(new Date(year, idx, 1)), untilExcl: ymd(new Date(year, idx + 1, 1)) };
+}
+
+function cleanPatch(patch: RnpManualPatch): Record<string, number | null> {
+  const out: Record<string, number | null> = {};
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) continue;
+    if (k.startsWith("manual_")) {
+      out[k] = manualValueForSave(v as number | string | null);
+    } else {
+      out[k] = Math.max(0, Number(v) || 0);
+    }
+  }
+  return out;
 }
 
 /** @param month "YYYY-MM" */
@@ -44,7 +54,6 @@ export function useRnpManual(month: string) {
     if (activeId) q = q.or(`project_id.eq.${activeId},project_id.is.null`);
     const { data, error } = await q;
     if (error) {
-      // Таблица не создана — миграция rnp_daily ещё не применена к базе.
       if (/rnp_daily/i.test(error.message)) setTableMissing(true);
       return;
     }
@@ -62,11 +71,8 @@ export function useRnpManual(month: string) {
 
   useEffect(() => { void refetch(); }, [refetch]);
 
-  /** Сохранить ручной факт за день (insert или update). null = сбросить в 0. */
   const upsert = useCallback(async (isoDate: string, patch: RnpManualPatch) => {
-    const clean = Object.fromEntries(
-      Object.entries(patch).map(([k, v]) => [k, Math.max(0, Number(v) || 0)]),
-    );
+    const clean = cleanPatch(patch);
     const existing = byDate.get(isoDate);
     if (existing) {
       const { error } = await (supabase as any)

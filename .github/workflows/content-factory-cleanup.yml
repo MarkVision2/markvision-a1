@@ -1,4 +1,4 @@
-# Еженедельная очистка контент-завода (Clony) через edge function на MarkVision.
+# Еженедельная очистка контент-завода (edge function на szfgdruhlebfvcmlvxdk).
 # Секреты: CONTENT_FACTORY_CLEANUP_KEY (тот же, что в secrets edge function)
 name: Content factory weekly cleanup
 
@@ -26,7 +26,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CLEANUP_URL: https://mekwfbqmsqiborjdrjxc.supabase.co/functions/v1/content-factory-cleanup
+  CLEANUP_URL: https://szfgdruhlebfvcmlvxdk.supabase.co/functions/v1/content-factory-cleanup
   CONTENT_FACTORY_CLEANUP_KEY: ${{ secrets.CONTENT_FACTORY_CLEANUP_KEY }}
 
 jobs:

@@ -8,6 +8,12 @@ import { normalizeSource } from "@/lib/leadSource";
 import { isLeadDiagnosticEvent, isLeadPaid } from "@/lib/leadStageFlags";
 import { resolveCdiMetric } from "@/lib/cdiManualOverride";
 import {
+  applyProjectDailyOverride,
+  fetchProjectDailyOverrides,
+  rebuildReportWithProjectOverrides,
+  shouldUseProjectDailyOverrides,
+} from "@/lib/projectDailyOverrides";
+import {
   buildResolvedDailyRevenuePerCabinets,
   sumResolvedMetricsPerCabinets,
   type CdiFactRow,
@@ -15,6 +21,7 @@ import {
 } from "@/lib/metricsSourceOfTruth";
 import { fetchMetaDashboard } from "@/hooks/useMetaDashboard";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
+import { CDI_SELECT_REPORT_WITH_AD_MANUAL, fetchCdiRows } from "@/lib/cdiFetch";
 
 export interface ReportPeriodRange {
   from: Date;
@@ -218,27 +225,22 @@ async function fetchMetaForRange(
   const since = ymd(range.from);
   const until = ymd(range.to);
 
-  let q = supabase
-    .from("cabinet_daily_insights")
-    .select("cabinet_id, external_id, date, spend, impressions, clicks, leads, crm_sales, manual_sales, crm_revenue, manual_revenue, crm_diagnostics, manual_diagnostics, crm_diagnostic_revenue, manual_diagnostic_revenue")
-    .in("external_id", ids)
-    .gte("date", since)
-    .lte("date", until);
-  // Изолируем по проекту, чтобы цифры совпадали с useDashboardData / useMonthlyAggregates,
-  // которые тоже фильтруют по project_id.
-  if (projectId) q = q.eq("project_id", projectId);
-  const { data, error } = await q;
-  if (error) throw new Error(error.message);
+  const data = await fetchCdiRows<Record<string, unknown>>(CDI_SELECT_REPORT_WITH_AD_MANUAL, {
+    externalIds: ids,
+    since,
+    until,
+    projectId,
+  });
 
   const dailyAgg = new Map<string, { spend: number; leads: number; revenue: number }>();
   let totSpend = 0, totImp = 0, totClicks = 0, totLeads = 0;
   let totSales = 0, totRevenue = 0, totDiag = 0, totDiagRev = 0;
 
   for (const row of data ?? []) {
-    const spend = Number(row.spend) || 0;
+    const spend = resolveCdiMetric((row as { manual_spend?: number | null }).manual_spend, Number(row.spend) || 0);
     const impressions = Number(row.impressions) || 0;
     const clicks = Number(row.clicks) || 0;
-    const leads = Number(row.leads) || 0;
+    const leads = resolveCdiMetric((row as { manual_leads?: number | null }).manual_leads, Number(row.leads) || 0);
     // Override-семантика: manual_* перезаписывает crm_* (а не суммируется).
     // Раньше складывали → задвоение, когда оба источника содержат одну и ту же продажу.
     const crmSales = Number(row.crm_sales) || 0;
@@ -463,10 +465,44 @@ export function useReportData(
         const includeOrphans = cabinetId === "all";
         const meta = await fetchMetaForRange(cabinetIds, range, projectId);
         const crm = aggregateCrm(leads, range, cabinetSelector);
-        const resolved = sumResolvedMetricsPerCabinets(
+        let resolved = sumResolvedMetricsPerCabinets(
           range, leads, meta.cdiFactRows, cabinetInternalIds, includeOrphans, externalIdByCabinetId,
         );
-        const totals = computeTotals(meta, crm, resolved);
+        let metaForTotals = meta;
+        let monthlyMeta: { date: string; spend: number; leads: number; revenue: number }[] = [];
+
+        if (shouldUseProjectDailyOverrides(cabinetId, cabinetInternalIds.length)) {
+          const projectOverrides = await fetchProjectDailyOverrides(range, projectId);
+          const rebuilt = rebuildReportWithProjectOverrides(
+            range, meta, resolved, leads, meta.cdiFactRows, cabinetInternalIds,
+            includeOrphans, externalIdByCabinetId, projectOverrides,
+          );
+          metaForTotals = { ...meta, spend: rebuilt.meta.spend, leads: rebuilt.meta.leads };
+          resolved = rebuilt.resolved;
+          monthlyMeta = rebuilt.monthlyMeta;
+        } else {
+          const revByDay = buildResolvedDailyRevenuePerCabinets(
+            range, leads, meta.cdiFactRows, cabinetInternalIds, includeOrphans, externalIdByCabinetId,
+          );
+          const spendLeadsByDay = new Map(
+            meta.daily.map((d) => [d.date, { spend: d.spend, leads: d.leads }]),
+          );
+          const cur = new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate());
+          const end = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate());
+          while (cur.getTime() <= end.getTime()) {
+            const k = ymd(cur);
+            const sl = spendLeadsByDay.get(k);
+            monthlyMeta.push({
+              date: k,
+              spend: sl?.spend ?? 0,
+              leads: sl?.leads ?? 0,
+              revenue: revByDay.get(k) ?? 0,
+            });
+            cur.setDate(cur.getDate() + 1);
+          }
+        }
+
+        const totals = computeTotals(metaForTotals, crm, resolved);
         const scoring = computeScoring(crm.leads);
         const channels = computeChannels(crm.leads);
         let creatives: ReportCreative[] = [];
@@ -475,27 +511,6 @@ export function useReportData(
           const until = ymd(range.to);
           const { creatives: metaRows } = await fetchMetaDashboard(projectId, since, until);
           creatives = mapMetaCreativesToReport(metaRows, cabinetId);
-        }
-
-        const revByDay = buildResolvedDailyRevenuePerCabinets(
-          range, leads, meta.cdiFactRows, cabinetInternalIds, includeOrphans, externalIdByCabinetId,
-        );
-        const spendLeadsByDay = new Map(
-          meta.daily.map((d) => [d.date, { spend: d.spend, leads: d.leads }]),
-        );
-        const monthlyMeta: { date: string; spend: number; leads: number; revenue: number }[] = [];
-        const cur = new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate());
-        const end = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate());
-        while (cur.getTime() <= end.getTime()) {
-          const k = ymd(cur);
-          const sl = spendLeadsByDay.get(k);
-          monthlyMeta.push({
-            date: k,
-            spend: sl?.spend ?? 0,
-            leads: sl?.leads ?? 0,
-            revenue: revByDay.get(k) ?? 0,
-          });
-          cur.setDate(cur.getDate() + 1);
         }
 
         let prev: ReportTotals | undefined;

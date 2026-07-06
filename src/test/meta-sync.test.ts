@@ -3,6 +3,7 @@ import {
   formatMetaSyncMessages,
   metaSyncUntilForRange,
   ymdAlmaty,
+  ymdAlmatyFromIso,
   type MetaFullSyncResult,
 } from "@/lib/metaSync";
 
@@ -15,6 +16,10 @@ describe("ymdAlmaty / metaSyncUntilForRange", () => {
 
   it("оставляет прошлые даты без изменений", () => {
     expect(metaSyncUntilForRange("2024-01-15")).toBe("2024-01-15");
+  });
+
+  it("ymdAlmatyFromIso совпадает с днём Meta date_start", () => {
+    expect(ymdAlmatyFromIso("2026-06-01T20:00:00Z")).toBe("2026-06-02");
   });
 });
 

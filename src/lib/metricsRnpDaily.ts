@@ -1,5 +1,6 @@
 import type { LeadLite } from "@/hooks/useLeadsLite";
 import type { ReportPeriodRange } from "@/lib/crmDailyMetrics";
+import { ymdAlmatyFromIso } from "@/lib/metaSync";
 import { isLeadConductedVisit, isLeadPaid } from "@/lib/leadStageFlags";
 
 /** Лид квалифицирован, когда скоринг Green API бота >= порога (0-100). */
@@ -20,19 +21,6 @@ export interface RnpDailyMetrics {
   diagnosticRevenuePaid: number;
   /** Наличные за день ₸ (payment_method = cash). */
   cashRevenue: number;
-}
-
-function ymdAlmatyFromIso(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Almaty",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(d);
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
-  return `${get("year")}-${get("month")}-${get("day")}`;
 }
 
 function eventYmd(l: LeadLite): string {
