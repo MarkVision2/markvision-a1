@@ -19,8 +19,9 @@ import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { cn } from "@/lib/utils";
 import { HealthCheckPanel } from "@/components/onboarding/HealthCheckPanel";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const WEBHOOK_URL = `${SUPABASE_URL}/functions/v1/greenapi-webhook`;
+import { supabaseUrl } from "@/lib/supabaseConfig";
+
+const WEBHOOK_URL = `${supabaseUrl}/functions/v1/greenapi-webhook`;
 
 const STEPS = [
   { id: 1, title: "Идентификация", icon: Building2 },

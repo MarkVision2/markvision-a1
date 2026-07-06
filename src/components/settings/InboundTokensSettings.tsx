@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { clientConfigSupabase } from "@/integrations/clientConfig/client";
+import { clientSupabaseUrl } from "@/lib/supabaseConfig";
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
 
 interface TokenRow {
@@ -15,7 +16,7 @@ interface TokenRow {
   created_at: string;
 }
 
-const BASE_URL = (import.meta.env.VITE_CLIENT_SUPABASE_URL as string | undefined) ?? "";
+const BASE_URL = clientSupabaseUrl;
 const ENDPOINT = `${BASE_URL}/functions/v1/lead-intake`;
 
 function randomToken(): string {

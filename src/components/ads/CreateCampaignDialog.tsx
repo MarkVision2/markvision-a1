@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseConfig";
 import { DEFAULT_META_UTM_TEMPLATE } from "@/lib/utmDefaults";
 import type { AdCabinet } from "@/types/ads";
 import { saveCampaign } from "@/hooks/useCabinetsStore";
@@ -402,8 +403,8 @@ const CreateCampaignDialog = ({
   // Запуск кампании идёт через edge-функцию НОВОГО Supabase, где живут
   // clients_config + актуальная функция (поддержка creative_feed/creative_stories,
   // upload в FB /advideos). Auth/проекты остаются на VITE_SUPABASE_URL (Lovable).
-  const LAUNCH_BASE = (import.meta.env.VITE_CLIENT_SUPABASE_URL as string | undefined) || (import.meta.env.VITE_SUPABASE_URL as string);
-  const LAUNCH_KEY = (import.meta.env.VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY as string | undefined) || (import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string);
+  const LAUNCH_BASE = clientSupabaseUrl;
+  const LAUNCH_KEY = clientSupabasePublishableKey;
   const WEBHOOK_URL = `${LAUNCH_BASE}/functions/v1/launch-campaign`;
 
   const handleSubmit = async () => {

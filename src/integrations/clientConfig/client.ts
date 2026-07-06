@@ -1,7 +1,8 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { clientSupabasePublishableKey, clientSupabaseUrl } from '@/lib/supabaseConfig';
 
-const URL = import.meta.env.VITE_CLIENT_SUPABASE_URL as string | undefined;
-const KEY = import.meta.env.VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY as string | undefined;
+const URL = clientSupabaseUrl;
+const KEY = clientSupabasePublishableKey;
 
 if (!URL || !KEY) {
   // eslint-disable-next-line no-console

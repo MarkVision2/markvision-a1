@@ -11,13 +11,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { clientConfigSupabase } from "@/integrations/clientConfig/client";
+import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseConfig";
 import { fmtNum } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 // Раздел «Автопостинг» — календарь публикаций Instagram (cf_scheduled_posts, клиентский Supabase).
 // Медиа → публичный бакет autopost, публикует publisher по крону раз в минуту. Время — Алматы.
-const CLIENT_URL = (import.meta.env.VITE_CLIENT_SUPABASE_URL as string | undefined) || "";
-const CLIENT_KEY = (import.meta.env.VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY as string | undefined) || "";
+const CLIENT_URL = clientSupabaseUrl;
+const CLIENT_KEY = clientSupabasePublishableKey;
 const BUCKET = "autopost";
 const WD_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 const WD_FROM_DOW = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];

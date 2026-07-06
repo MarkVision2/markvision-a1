@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { CheckCircle2, Flame, Snowflake, ThermometerSun } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { clientSupabaseUrl } from "@/lib/supabaseConfig";
 
-const SUPA_URL = (import.meta.env.VITE_CLIENT_SUPABASE_URL as string | undefined) || "";
+const SUPA_URL = clientSupabaseUrl;
 
 type Cat = "paid" | "hot" | "warm" | "cold" | "unknown";
 

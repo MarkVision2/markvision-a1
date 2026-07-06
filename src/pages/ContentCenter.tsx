@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPicker";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { fmtKzt, fmtNum } from "@/lib/format";
+import { clientSupabaseUrl } from "@/lib/supabaseConfig";
 import { cn } from "@/lib/utils";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import {
@@ -28,7 +29,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 // Раздел «Контент-центр» — аналитика Instagram-автоворонки (cf_*), которая живёт
 // в клиентском Supabase (szfgdruhlebfvcmlvxdk). Данные считает edge-функция
 // content-center одним запросом (посты + KPI + воронка за период).
-const CLIENT_URL = (import.meta.env.VITE_CLIENT_SUPABASE_URL as string | undefined) || "";
+const CLIENT_URL = clientSupabaseUrl;
 
 interface CCPost {
   ig_media_id: string;
@@ -352,7 +353,6 @@ const ContentCenter = () => {
   const [viewModeOverride, setViewModeOverride] = useState<ViewMode | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
 
-  const configMissing = !CLIENT_URL;
   const viewMode = viewModeOverride ?? (isMobile ? "cards" : "table");
   const openPost = (p: Derived) => setSelectedPost(p);
 
@@ -360,11 +360,6 @@ const ContentCenter = () => {
   const to = ymd(range.to);
 
   useEffect(() => {
-    if (configMissing) {
-      setLoading(false);
-      setError("VITE_CLIENT_SUPABASE_URL не задан — раздел недоступен");
-      return;
-    }
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -373,7 +368,7 @@ const ContentCenter = () => {
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [from, to, refreshTick, configMissing]);
+  }, [from, to, refreshTick]);
 
   const posts = useMemo(() => (data?.posts ?? []).map(enrich), [data]);
   const totals = data?.totals;
@@ -477,7 +472,7 @@ const ContentCenter = () => {
     }
   };
 
-  const isEmptyPeriod = !loading && !configMissing && !error && posts.length === 0;
+  const isEmptyPeriod = !loading && !error && posts.length === 0;
 
   return (
     <PageContainer wide>
@@ -500,7 +495,7 @@ const ContentCenter = () => {
               className="h-10 w-10 rounded-xl border-border/60"
               aria-label="Обновить"
               onClick={() => setRefreshTick((t) => t + 1)}
-              disabled={loading || configMissing}
+              disabled={loading}
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             </Button>
@@ -511,17 +506,9 @@ const ContentCenter = () => {
       {error && (
         <div className="mt-6 rounded-2xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
-          {configMissing && (
-            <p className="mt-2 text-muted-foreground">
-              Добавьте <code className="text-xs">VITE_CLIENT_SUPABASE_URL</code> в переменные окружения Lovable
-              или откройте{" "}
-              <Link to="/analytics/content" className="text-primary hover:underline">Контент-аналитику</Link>.
-            </p>
-          )}
         </div>
       )}
 
-      {configMissing ? null : (
       <>
       {isEmptyPeriod && (
         <div className="mt-6 rounded-2xl border border-pink-500/30 bg-pink-500/5 px-6 py-8 text-center">
@@ -829,7 +816,6 @@ const ContentCenter = () => {
         {" "}Заявка — переписка в WhatsApp по код-слову. Суммы — в тенге.
       </p>
       </>
-      )}
     </PageContainer>
   );
 };

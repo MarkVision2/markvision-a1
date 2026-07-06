@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { fetchPendingAdvances, markAdvanceDone } from "@/integrations/clientConfig/client";
 import { markAutoMoved } from "@/lib/autoMoveTracker";
+import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseConfig";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type {
@@ -717,8 +718,8 @@ export function useCrmStore() {
 
     // Параллельно дёргаем CAPI на нового Supabase — он сам решит, слать ли Schedule/Purchase в Meta.
     try {
-      const NEW_URL = (import.meta.env.VITE_CLIENT_SUPABASE_URL as string | undefined) || "";
-      const NEW_KEY = (import.meta.env.VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY as string | undefined) || "";
+      const NEW_URL = clientSupabaseUrl;
+      const NEW_KEY = clientSupabasePublishableKey;
       if (!NEW_URL || !NEW_KEY) return;
       const lead = leads.find((l) => l.id === leadId);
       void fetch(`${NEW_URL}/functions/v1/crm-stage-capi`, {

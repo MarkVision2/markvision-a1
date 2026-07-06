@@ -1,7 +1,8 @@
+import { supabaseUrl } from "@/lib/supabaseConfig";
+
 /** CRM ingress — Green API must point here (single webhook URL). */
 export function getCrmWebhookUrl(): string {
-  const base = import.meta.env.VITE_SUPABASE_URL?.replace(/\/+$/, "") ?? "";
-  return `${base}/functions/v1/greenapi-webhook`;
+  return `${supabaseUrl}/functions/v1/greenapi-webhook`;
 }
 
 export function isValidBotWebhookUrl(raw: string): boolean {

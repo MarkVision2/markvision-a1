@@ -13,6 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { getCrmWebhookUrl, isValidBotWebhookUrl, WHATSAPP_SETUP_STEPS } from "@/lib/whatsappSetup";
+import { supabaseUrl } from "@/lib/supabaseConfig";
 
 type GreenResp<T = unknown> = {
   ok: boolean;
@@ -925,7 +926,7 @@ export function WhatsappProjectBindCard({
 
 export function SiteIntakeCard() {
   const { active, rotateIntakeToken } = useProjectsStore();
-  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/lead-intake`;
+  const url = `${supabaseUrl}/functions/v1/lead-intake`;
   const token = active?.intakeToken ?? "";
   const projectName = active?.name ?? "—";
   const [testing, setTesting] = useState(false);
