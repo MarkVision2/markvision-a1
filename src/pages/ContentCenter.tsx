@@ -11,6 +11,7 @@ import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPi
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { fmtKzt, fmtNum } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 
 // Раздел «Контент-центр» — аналитика Instagram-автоворонки (cf_*), которая живёт
 // в клиентском Supabase (szfgdruhlebfvcmlvxdk). Данные считает edge-функция
@@ -420,9 +421,9 @@ const ContentCenter = () => {
                   <td className="whitespace-nowrap px-3 py-3 text-left tabular-nums text-muted-foreground">{fmtDate(p.posted_at)}</td>
                   <td className="px-3 py-3">
                     <div className="flex items-center gap-2">
-                      <Thumb post={p} className="h-10 w-10" />
-                      <div className="min-w-0 max-w-[240px]">
-                        <div className="line-clamp-1 text-xs font-medium" title={p.caption ?? undefined}>
+                      <PostPreview post={p} />
+                      <div className="min-w-0 max-w-[360px]">
+                        <div className="line-clamp-2 text-xs font-medium" title={p.caption ?? undefined}>
                           {p.caption || <span className="text-muted-foreground">Без подписи</span>}
                         </div>
                         {p.permalink && (
@@ -471,6 +472,35 @@ const ContentCenter = () => {
     </PageContainer>
   );
 };
+
+function PostPreview({ post, size = "h-14 w-14" }: { post: CCPost; size?: string }) {
+  const src = post.thumbnail_url;
+  const img = src ? (
+    <img src={src} alt="" loading="lazy" className={cn("shrink-0 rounded-md object-cover ring-1 ring-border/40", size)} />
+  ) : (
+    <div className={cn("grid shrink-0 place-items-center rounded-md bg-secondary/50 text-muted-foreground ring-1 ring-border/40", size)}>
+      <Eye className="h-4 w-4" />
+    </div>
+  );
+  return (
+    <HoverCard openDelay={120} closeDelay={80}>
+      <HoverCardTrigger asChild>
+        <div className="cursor-zoom-in">{img}</div>
+      </HoverCardTrigger>
+      <HoverCardContent align="start" className="w-72 p-3">
+        {src && <img src={src} alt="" className="mb-2 max-h-64 w-full rounded-lg object-cover" />}
+        <div className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs text-foreground/90">
+          {post.caption || "Без подписи"}
+        </div>
+        {post.permalink && (
+          <a href={post.permalink} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-[11px] text-primary hover:underline">
+            Открыть в Instagram <ExternalLink className="h-3 w-3" />
+          </a>
+        )}
+      </HoverCardContent>
+    </HoverCard>
+  );
+}
 
 function Thumb({ post, className }: { post: CCPost; className?: string }) {
   const src = post.thumbnail_url;
