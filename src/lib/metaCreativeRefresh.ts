@@ -78,8 +78,6 @@ export function refreshMetaCreative(
           },
         );
         if (error) {
-          // Rate-limited or other failure → long cooldown to stop the storm
-          cooldownUntil = Date.now() + 300_000;
           const failed: RefreshResult = { ok: false };
           if (!force) cache.set(adId, failed);
           return failed;

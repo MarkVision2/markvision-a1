@@ -136,14 +136,12 @@ export function CreativePreview({
     setLoadingFullVideo(false);
   };
 
-  const showVideo = canPlayInline && (playVideo || touchPreview);
+  const showVideo = canPlayInline && !playable && (playVideo || touchPreview);
   const showImage = Boolean(imageSrc) && !mediaError && !showVideo;
   const showVideoFrame = useVideoFrame && !showVideo && !mediaError;
   // Не подставляем обратно тот же URL, который только что отвалился (mediaError) —
   // иначе получаем цикл error→refresh→error. При ошибке уходим в плейсхолдер.
-  const thumbFallbackSrc =
-    lowResFallbackSrc
-    ?? (loadingHq && displaySrc && !useVideoFrame ? displaySrc : null);
+  const thumbFallbackSrc = lowResFallbackSrc;
   const showLowResFallback =
     Boolean(thumbFallbackSrc) && !mediaError && !showVideo && !showImage && !showVideoFrame;
 
@@ -161,7 +159,9 @@ export function CreativePreview({
         fit === "contain" && "flex items-center justify-center",
         className,
       )}
-      onMouseEnter={() => setPlayVideo(true)}
+      onMouseEnter={() => {
+        if (!playable) setPlayVideo(true);
+      }}
       onMouseLeave={() => {
         setPlayVideo(false);
         setTouchPreview(false);

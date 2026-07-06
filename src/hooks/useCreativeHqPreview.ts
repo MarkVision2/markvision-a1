@@ -29,14 +29,6 @@ function needsVisualRefresh(row: CreativePreviewSource, extraPoster: string | nu
   return !urls.some(isPersistedCreativeUrl);
 }
 
-/** Meta mp4 source всегда временный — нужен refresh перед воспроизведением. */
-function needsVideoRefresh(row: CreativePreviewSource): boolean {
-  if (row.creativeType !== "video") return false;
-  const url = row.videoUrl?.trim();
-  if (!url) return true;
-  return /fbcdn\.net|facebook\.com/i.test(url);
-}
-
 function applyRefreshVisuals(data: RefreshResult | null): {
   poster: string | null;
   thumb: string | null;
@@ -105,17 +97,16 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
 
     let cancelled = false;
     const adId = row.adId;
-    const needsRefresh = needsVisualRefresh(
-      row,
-      capturedPoster ?? refreshedPoster ?? row.posterUrl,
-    );
-    const needsVideo = needsVideoRefresh(row);
+    const needsRefresh = needsVisualRefresh(row, row.posterUrl);
+
+    if (!needsRefresh) {
+      setLoadingHq(false);
+      return;
+    }
 
     void (async () => {
-      if (needsRefresh || needsVideo) {
-        setLoadingHq(true);
-        setHqFailed(false);
-      }
+      setLoadingHq(true);
+      setHqFailed(false);
 
       let videoUrl = row.videoUrl ?? null;
       const attempts = refreshAttempts.get(adId) ?? 0;
@@ -125,11 +116,12 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
         thumb: null,
         video: null,
       };
-      if ((needsRefresh || needsVideo) && attempts < MAX_REFRESH_ATTEMPTS) {
+      if (attempts < MAX_REFRESH_ATTEMPTS) {
         refreshAttempts.set(adId, attempts + 1);
-        const data = await refreshMetaCreative(adId, { refreshVideo: needsVideo }).catch(() => null);
+        // На карточке обновляем постер; свежий mp4 — по клику ▶ (forceRefresh).
+        const data = await refreshMetaCreative(adId, { refreshVideo: false }).catch(() => null);
         if (cancelled) return;
-        refreshedFromApi = { ...applyRefreshVisuals(data), video: data?.video_url?.trim() || null };
+        refreshedFromApi = applyRefreshVisuals(data);
         if (refreshedFromApi.poster) setRefreshedPoster(refreshedFromApi.poster);
         else if (refreshedFromApi.thumb) setRefreshedThumb(refreshedFromApi.thumb);
         if (refreshedFromApi.video) {
@@ -138,11 +130,7 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
         }
       }
 
-      const posterAfterRefresh =
-        capturedPoster
-        ?? refreshedFromApi.poster
-        ?? refreshedPoster
-        ?? row.posterUrl;
+      const posterAfterRefresh = refreshedFromApi.poster ?? row.posterUrl;
       const stillNeedsHq = needsVisualRefresh(row, posterAfterRefresh);
 
       if (isVideo && stillNeedsHq && videoUrl) {
@@ -152,19 +140,19 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
 
       if (!cancelled) {
         const hasPersisted = isPersistedCreativeUrl(
-          capturedPoster ?? refreshedFromApi.poster ?? refreshedPoster ?? row.posterUrl,
+          refreshedFromApi.poster ?? row.posterUrl,
         );
         const hasAnyVisual = Boolean(
           hasPersisted
           || bestCreativeImageHq({
-            posterUrl: capturedPoster ?? refreshedFromApi.poster ?? refreshedPoster ?? row.posterUrl,
-            thumbnailUrl: refreshedFromApi.thumb ?? refreshedThumb ?? row.thumbnailUrl,
-            imageUrl: refreshedFromApi.thumb ?? refreshedThumb ?? row.imageUrl,
+            posterUrl: refreshedFromApi.poster ?? row.posterUrl,
+            thumbnailUrl: refreshedFromApi.thumb ?? row.thumbnailUrl,
+            imageUrl: refreshedFromApi.thumb ?? row.imageUrl,
             size: thumbSize,
           }),
         );
         setLoadingHq(false);
-        if (!hasAnyVisual && (needsRefresh || needsVideo)) setHqFailed(true);
+        if (!hasAnyVisual && needsRefresh) setHqFailed(true);
       }
     })();
 
@@ -173,11 +161,12 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
     };
   }, [
     inView,
-    isVideo,
-    row,
-    capturedPoster,
-    refreshedPoster,
-    refreshedThumb,
+    row.adId,
+    row.creativeType,
+    row.videoUrl,
+    row.posterUrl,
+    row.thumbnailUrl,
+    row.imageUrl,
     thumbSize,
   ]);
 
