@@ -1,7 +1,7 @@
 {
-  "git_sha": "da515e7",
-  "git_sha_full": "da515e799c37347cf0ccc7d5dbf7ff578a8fdc49",
-  "updated_at": "2026-07-06T18:45:22+05:00",
-  "label": "feat(content-center): redesign KPI, funnel, table and insights",
+  "git_sha": "5d108e4",
+  "git_sha_full": "5d108e4b0a1315ce7501f29e8a7a0c08d1f592e4",
+  "updated_at": "2026-07-06T18:50:21+05:00",
+  "label": "feat(content-center): post detail drawer and card view",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
