@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Film, FlaskConical,
-  Flame, Images, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Send, Sparkles, Trash2, Upload, X, Zap,
+  Camera, Flame, Images, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Send, Sparkles, Trash2, Upload, X, Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
@@ -35,6 +35,7 @@ interface Stats {
   total_posts: number; published_this_period: number; scheduled_upcoming: number;
   best_weekday: number | null; best_hour: number | null;
   by_weekday: { dow: number; posts: number; avg_reach: number }[];
+  by_hour: { hour: number; posts: number; avg_reach: number }[];
   heatmap: { dow: number; hour: number; posts: number; avg_reach: number }[];
 }
 
@@ -133,6 +134,7 @@ const AutoPost = () => {
   const [addDay, setAddDay] = useState<string | null>(null);
   const [editing, setEditing] = useState<QueuePost | null>(null);
 
+  const hourReach = useMemo(() => { const m = new Map<number, number>(); for (const h of stats?.by_hour ?? []) m.set(h.hour, h.avg_reach); return m; }, [stats]);
   const openAdd = (ymd: string) => setAddDay(ymd);
   const monthLabel = `${MONTHS[view.getMonth()]} ${view.getFullYear()}`;
 
@@ -251,7 +253,7 @@ const AutoPost = () => {
         </div>
       )}
 
-      {addDay && <AddDialog day={addDay} onClose={() => setAddDay(null)} onDone={() => { setAddDay(null); void loadAll(view); }} />}
+      {addDay && <AddDialog day={addDay} hourReach={hourReach} onClose={() => setAddDay(null)} onDone={() => { setAddDay(null); void loadAll(view); }} />}
       {editing && <EditDialog post={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); void loadAll(view); }} />}
     </PageContainer>
   );
@@ -303,7 +305,7 @@ function Heatmap({ cells, bestDow, bestHour }: { cells: { dow: number; hour: num
 }
 
 // ——— Диалог добавления публикации на конкретный день ———
-function AddDialog({ day, onClose, onDone }: { day: string; onClose: () => void; onDone: () => void }) {
+function AddDialog({ day, hourReach, onClose, onDone }: { day: string; hourReach: Map<number, number>; onClose: () => void; onDone: () => void }) {
   const [type, setType] = useState<PostType>("IMAGE");
   const [files, setFiles] = useState<File[]>([]);
   const [caption, setCaption] = useState("");
@@ -311,10 +313,38 @@ function AddDialog({ day, onClose, onDone }: { day: string; onClose: () => void;
   const [minute, setMinute] = useState(0);
   const [dryRun, setDryRun] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const [videoSrc, setVideoSrc] = useState<string | null>(null);
+  const [seek, setSeek] = useState(0);
+  const [duration, setDuration] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
+  const coverRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
   const meta = TYPE_META[type];
 
-  const pick = (list: FileList | null) => { if (!list) return; const a = Array.from(list); setFiles(meta.multiple ? a.slice(0, 10) : a.slice(0, 1)); };
+  useEffect(() => () => { if (videoSrc) URL.revokeObjectURL(videoSrc); if (coverPreview) URL.revokeObjectURL(coverPreview); }, [videoSrc, coverPreview]);
+
+  const clearCover = () => { setCoverFile(null); setCoverPreview((p) => { if (p) URL.revokeObjectURL(p); return null; }); };
+  const applyCover = (fl: File) => { setCoverPreview((p) => { if (p) URL.revokeObjectURL(p); return URL.createObjectURL(fl); }); setCoverFile(fl); };
+
+  const pick = (list: FileList | null) => {
+    if (!list) return;
+    const a = Array.from(list);
+    const next = meta.multiple ? a.slice(0, 10) : a.slice(0, 1);
+    setFiles(next); clearCover();
+    setVideoSrc((prev) => { if (prev) URL.revokeObjectURL(prev); return (type === "REELS" && next[0]?.type.startsWith("video/")) ? URL.createObjectURL(next[0]) : null; });
+    setSeek(0); setDuration(0);
+  };
+  const captureFrame = () => {
+    const v = videoRef.current; if (!v) return;
+    const cvs = document.createElement("canvas");
+    cvs.width = v.videoWidth || 720; cvs.height = v.videoHeight || 1280;
+    const ctx = cvs.getContext("2d"); if (!ctx) return;
+    ctx.drawImage(v, 0, 0, cvs.width, cvs.height);
+    cvs.toBlob((blob) => { if (blob) applyCover(new File([blob], `cover-${Date.now()}.jpg`, { type: "image/jpeg" })); }, "image/jpeg", 0.92);
+  };
+
   const validate = (): string | null => {
     if (files.length === 0) return "Добавьте медиа";
     if (type === "CAROUSEL" && files.length < 2) return "Карусель: минимум 2 файла";
@@ -328,12 +358,18 @@ function AddDialog({ day, onClose, onDone }: { day: string; onClose: () => void;
     try {
       const urls: string[] = [];
       for (const f of files) urls.push(await uploadToBucket(f));
+      let coverUrl: string | null = null;
+      if (type === "REELS" && coverFile) coverUrl = await uploadToBucket(coverFile);
       const payload: Record<string, unknown> = {
         media_type: type, caption: type === "STORIES" ? "" : caption,
         scheduled_at: now ? new Date().toISOString() : buildISO(day, hour, minute), dry_run: now ? false : dryRun,
       };
       if (type === "CAROUSEL") { payload.child_urls = urls; payload.thumbnail_url = urls.find((_, i) => !isVideoFile(files[i])) ?? urls[0]; }
-      else { payload.media_url = urls[0]; payload.thumbnail_url = isVideoFile(files[0]) ? null : urls[0]; }
+      else {
+        payload.media_url = urls[0];
+        if (type === "REELS") { if (coverUrl) { payload.cover_url = coverUrl; payload.thumbnail_url = coverUrl; } }
+        else payload.thumbnail_url = isVideoFile(files[0]) ? null : urls[0];
+      }
       const res = await schedulerApi<{ post: QueuePost }>("create", payload);
       if (now && res.post?.id) await schedulerApi("publish_now", { id: res.post.id });
       toast.success(now ? "Публикуем сейчас…" : dryRun ? "Добавлено в пробном режиме" : "Запланировано");
@@ -342,16 +378,18 @@ function AddDialog({ day, onClose, onDone }: { day: string; onClose: () => void;
     finally { setBusy(false); }
   };
 
+  const reachHint = hourReach.get(hour);
+
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader><DialogTitle>Публикация на {prettyDay(day)}</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-4 gap-2">
             {(Object.keys(TYPE_META) as PostType[]).map((t) => {
               const M = TYPE_META[t]; const Icon = M.icon;
               return (
-                <button key={t} type="button" onClick={() => { setType(t); setFiles([]); if (fileRef.current) fileRef.current.value = ""; }}
+                <button key={t} type="button" onClick={() => { setType(t); setFiles([]); clearCover(); setVideoSrc((p) => { if (p) URL.revokeObjectURL(p); return null; }); if (fileRef.current) fileRef.current.value = ""; }}
                   className={cn("flex flex-col items-center gap-1 rounded-xl border px-2 py-2 text-[11px] font-medium transition",
                     type === t ? "border-primary/60 bg-primary/10 text-primary" : "border-border/60 bg-background hover:bg-secondary/40")}>
                   <Icon className="h-4 w-4" /> {M.label}
@@ -378,11 +416,30 @@ function AddDialog({ day, onClose, onDone }: { day: string; onClose: () => void;
             </div>
           )}
 
+          {type === "REELS" && videoSrc && (
+            <div className="rounded-xl border border-border/60 p-3">
+              <div className="text-[11px] font-semibold">Обложка Reels</div>
+              <div className="mt-2 flex gap-3">                <video ref={videoRef} src={videoSrc} onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)} className="h-32 w-auto rounded-lg bg-black" muted playsInline />
+                {coverPreview
+                  ? <img src={coverPreview} alt="обложка" className="h-32 w-auto rounded-lg object-cover ring-2 ring-primary/50" />
+                  : <div className="grid h-32 w-24 place-items-center rounded-lg border border-dashed border-border/60 text-[10px] text-muted-foreground">нет обложки</div>}
+              </div>
+              <input type="range" min={0} max={duration || 0} step={0.1} value={seek} onChange={(e) => { const t = Number(e.target.value); setSeek(t); if (videoRef.current) videoRef.current.currentTime = t; }} className="mt-2 w-full accent-primary" />
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" className="rounded-lg" onClick={captureFrame}><Camera className="mr-1 h-4 w-4" /> Взять этот кадр</Button>
+                <input ref={coverRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) applyCover(f); }} />
+                <Button size="sm" variant="outline" className="rounded-lg" onClick={() => coverRef.current?.click()}><Upload className="mr-1 h-4 w-4" /> Загрузить обложку</Button>
+                {coverPreview && <Button size="sm" variant="ghost" className="rounded-lg text-muted-foreground" onClick={clearCover}>Убрать</Button>}
+              </div>
+              <p className="mt-1 text-[10px] text-muted-foreground">Двигайте ползунок и нажмите «Взять этот кадр», либо загрузите свою картинку. Без обложки Instagram выберет кадр сам.</p>
+            </div>
+          )}
+
           {type !== "STORIES" && (
             <Textarea value={caption} onChange={(e) => setCaption(e.target.value.slice(0, 2200))} placeholder="Текст публикации, хэштеги…" className="min-h-[80px] rounded-xl border-border/60 text-sm" />
           )}
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Clock className="h-4 w-4 text-muted-foreground" />
             <span className="text-xs text-muted-foreground">Время:</span>
             <select value={hour} onChange={(e) => setHour(Number(e.target.value))} className="h-9 rounded-lg border border-border/60 bg-background px-2 text-sm">
@@ -397,6 +454,7 @@ function AddDialog({ day, onClose, onDone }: { day: string; onClose: () => void;
               <FlaskConical className="h-3.5 w-3.5 text-violet-500" /> Пробный
             </label>
           </div>
+          {reachHint ? <p className="text-[10px] text-muted-foreground">≈ средний охват в это время по прошлым постам: <b className="text-foreground">{fmtNum(reachHint)}</b></p> : null}
         </div>
         <DialogFooter className="gap-2">
           <Button variant="outline" className="rounded-xl border-primary/40 text-primary hover:bg-primary/10" onClick={() => void submit(true)} disabled={busy || dryRun}><Zap className="mr-1.5 h-4 w-4" /> Сейчас</Button>
