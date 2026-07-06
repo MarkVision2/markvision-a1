@@ -1,7 +1,7 @@
 {
-  "git_sha": "cfd70a7",
-  "git_sha_full": "cfd70a715ecbbfd54b5fcb8777e313e934ed2e9d",
-  "updated_at": "2026-07-06T19:09:22+05:00",
-  "label": "docs: pin szfg Supabase env vars for Lovable deploy",
+  "git_sha": "d485621",
+  "git_sha_full": "d4856211707ffec52e49d6b743b08841c0ee70a9",
+  "updated_at": "2026-07-06T19:16:08+05:00",
+  "label": "feat(autopost): календарь на месяц",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
