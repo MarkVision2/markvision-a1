@@ -1,7 +1,7 @@
 {
-  "git_sha": "9464919",
-  "git_sha_full": "9464919e431c77f3cac11a74c21a54768ae92175",
-  "updated_at": "2026-07-06T19:22:55+05:00",
-  "label": "fix: bake szfg Supabase env into production build",
+  "git_sha": "583b480",
+  "git_sha_full": "583b480e2d3a8894e1a628c7598a5017dc8ead69",
+  "updated_at": "2026-07-06T19:24:46+05:00",
+  "label": "feat(autopost): теплокарта лучшего времени + фикс ошибок линта",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
