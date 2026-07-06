@@ -4100,6 +4100,7 @@ export type Database = {
         Args: { p_cabinet_id?: string; p_since?: string; p_until?: string }
         Returns: Json
       }
+      mv_export_table_inserts: { Args: { p_table: string }; Returns: string[] }
       normalize_green_api_url: { Args: { p_url: string }; Returns: string }
       normalize_phone: { Args: { p: string }; Returns: string }
       reconcile_cdi_for_project: {
