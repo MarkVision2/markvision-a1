@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Banknote, ExternalLink, Eye,
-  Instagram, Lightbulb, Loader2, MousePointerClick, MessageCircle, RefreshCw, Search,
+  Instagram, LayoutGrid, Lightbulb, List, Loader2, MousePointerClick, MessageCircle, RefreshCw, Search,
   ShoppingCart, Stethoscope, Target, Trophy,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -22,6 +22,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // Раздел «Контент-центр» — аналитика Instagram-автоворонки (cf_*), которая живёт
 // в клиентском Supabase (szfgdruhlebfvcmlvxdk). Данные считает edge-функция
@@ -327,6 +329,7 @@ function ContentFunnel({
 }
 
 type Top5Mode = "revenue" | "leads" | "clicks" | "crSale";
+type ViewMode = "table" | "cards";
 const TOP5_MODES: { key: Top5Mode; label: string }[] = [
   { key: "revenue", label: "по выручке" },
   { key: "leads", label: "по заявкам" },
@@ -335,6 +338,7 @@ const TOP5_MODES: { key: Top5Mode; label: string }[] = [
 ];
 
 const ContentCenter = () => {
+  const isMobile = useIsMobile();
   const [range, setRange] = useState<ReportPeriodRange>(() => currentMonthRange());
   const [data, setData] = useState<CCResp | null>(null);
   const [loading, setLoading] = useState(true);
@@ -344,6 +348,11 @@ const ContentCenter = () => {
   const [search, setSearch] = useState("");
   const [codeword, setCodeword] = useState<string>("all");
   const [top5Mode, setTop5Mode] = useState<Top5Mode>("revenue");
+  const [selectedPost, setSelectedPost] = useState<Derived | null>(null);
+  const [viewModeOverride, setViewModeOverride] = useState<ViewMode | null>(null);
+
+  const viewMode = viewModeOverride ?? (isMobile ? "cards" : "table");
+  const openPost = (p: Derived) => setSelectedPost(p);
 
   const from = ymd(range.from);
   const to = ymd(range.to);
@@ -588,7 +597,11 @@ const ContentCenter = () => {
             {top5.map((p, idx) => (
               <div
                 key={p.ig_media_id}
-                className="flex items-center gap-2.5 rounded-xl border border-transparent px-2 py-1.5 transition hover:border-border/50 hover:bg-secondary/30"
+                role="button"
+                tabIndex={0}
+                onClick={() => openPost(p)}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") openPost(p); }}
+                className="flex cursor-pointer items-center gap-2.5 rounded-xl border border-transparent px-2 py-1.5 transition hover:border-border/50 hover:bg-secondary/30"
               >
                 <div
                   className={cn(
@@ -639,6 +652,7 @@ const ContentCenter = () => {
             ))}
           </SelectContent>
         </Select>
+        <ViewModeToggle mode={viewMode} onChange={setViewModeOverride} />
       </div>
 
       <div className="mt-2 text-[11px] text-muted-foreground">
@@ -675,8 +689,19 @@ const ContentCenter = () => {
         </div>
       )}
 
-      {/* Table */}
-      <div className="mt-3 overflow-hidden rounded-2xl border border-border/60 bg-card/60">
+      {viewMode === "cards" ? (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {filtered.length === 0 && (
+            <div className="col-span-full rounded-2xl border border-border/60 bg-card/60 px-4 py-12 text-center text-sm text-muted-foreground">
+              {loading ? "Загружаем публикации…" : "Под фильтр ничего не попало. Смените период или снимите фильтры."}
+            </div>
+          )}
+          {filtered.map((p) => (
+            <PostCard key={p.ig_media_id} post={p} onOpen={() => openPost(p)} />
+          ))}
+        </div>
+      ) : (
+        <div className="mt-3 overflow-hidden rounded-2xl border border-border/60 bg-card/60">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[760px] table-fixed text-sm">
             <colgroup>
@@ -704,11 +729,15 @@ const ContentCenter = () => {
                 </tr>
               )}
               {filtered.map((p) => (
-                <tr key={p.ig_media_id} className="border-t border-border/30 transition hover:bg-secondary/20">
+                <tr
+                  key={p.ig_media_id}
+                  onClick={() => openPost(p)}
+                  className="cursor-pointer border-t border-border/30 transition hover:bg-secondary/20"
+                >
                   <td className="px-3 py-3 align-top">
                     <div className="mb-1 text-[10px] tabular-nums text-muted-foreground">{fmtDate(p.posted_at)}</div>
                     <div className="flex items-start gap-3">
-                      <PostPreview post={p} />
+                      <PostPreview post={p} stopClickPropagation />
                       <div className="min-w-0 flex-1">
                         <div className="line-clamp-2 text-xs font-medium leading-snug" title={p.caption ?? undefined}>
                           {p.caption || <span className="text-muted-foreground">Без подписи</span>}
@@ -754,7 +783,14 @@ const ContentCenter = () => {
             </tbody>
           </table>
         </div>
-      </div>
+        </div>
+      )}
+
+      <PostDetailSheet
+        post={selectedPost}
+        open={selectedPost !== null}
+        onOpenChange={(open) => { if (!open) setSelectedPost(null); }}
+      />
 
       <p className="mt-4 text-[11px] text-muted-foreground">
         Воронка в строке: клики → заявки → диагностики → продажи. Сортировка «Воронка» — по заявкам.
@@ -837,11 +873,11 @@ function PostThumb({ src, size }: { src: string | null; size: number }) {
   );
 }
 
-function PostPreview({ post }: { post: CCPost }) {
+function PostPreview({ post, stopClickPropagation }: { post: CCPost; stopClickPropagation?: boolean }) {
   const src = post.thumbnail_url;
 
   return (
-    <div className="shrink-0">
+    <div className="shrink-0" onClick={stopClickPropagation ? (e) => e.stopPropagation() : undefined}>
       <HoverCard openDelay={120} closeDelay={80}>
         <HoverCardTrigger asChild>
           <button
@@ -871,6 +907,254 @@ function PostPreview({ post }: { post: CCPost }) {
         )}
       </HoverCardContent>
       </HoverCard>
+    </div>
+  );
+}
+
+function ViewModeToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode) => void }) {
+  return (
+    <div className="flex h-10 shrink-0 items-center rounded-xl border border-border/60 bg-background p-0.5">
+      <button
+        type="button"
+        aria-label="Карточки"
+        onClick={() => onChange("cards")}
+        className={cn(
+          "flex h-full items-center justify-center rounded-lg px-2.5 transition",
+          mode === "cards" ? "bg-secondary text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        <LayoutGrid className="h-4 w-4" />
+      </button>
+      <button
+        type="button"
+        aria-label="Таблица"
+        onClick={() => onChange("table")}
+        className={cn(
+          "flex h-full items-center justify-center rounded-lg px-2.5 transition",
+          mode === "table" ? "bg-secondary text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        <List className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+function PostCard({ post, onOpen }: { post: Derived; onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="rounded-2xl border border-border/60 bg-card/60 text-left transition hover:border-border hover:bg-secondary/20"
+    >
+      <div className="flex gap-3 p-3">
+        <PostThumb src={post.thumbnail_url} size={72} />
+        <div className="min-w-0 flex-1">
+          <div className="text-[10px] tabular-nums text-muted-foreground">{fmtDate(post.posted_at)}</div>
+          <div className="mt-0.5 line-clamp-2 text-sm font-medium leading-snug">
+            {post.caption || <span className="text-muted-foreground">Без подписи</span>}
+          </div>
+          {(post.codewords ?? []).length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {post.codewords.map((c) => (
+                <span
+                  key={c}
+                  className="rounded-full bg-pink-500/10 px-1.5 py-0.5 text-[10px] font-medium text-pink-600 dark:text-pink-400"
+                >
+                  {c}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2 border-t border-border/40 px-3 py-2.5 text-center text-[10px] uppercase tracking-wider text-muted-foreground">
+        <div>
+          <div className="text-[9px]">Охват</div>
+          <div className="text-sm font-bold tabular-nums text-foreground">{fmtNum(post.reach)}</div>
+        </div>
+        <div>
+          <div className="text-[9px]">Заявки</div>
+          <div className={cn("text-sm font-bold tabular-nums", post.leads > 0 ? "text-primary" : "text-foreground")}>
+            {fmtNum(post.leads)}
+          </div>
+        </div>
+        <div>
+          <div className="text-[9px]">Выручка</div>
+          <div className={cn("text-sm font-bold tabular-nums", post.revenue > 0 ? "text-success" : "text-foreground")}>
+            {post.revenue > 0 ? fmtKzt(post.revenue) : "0 ₸"}
+          </div>
+        </div>
+      </div>
+      <div className="border-t border-border/40 px-3 py-2">
+        <MiniFunnel post={post} />
+      </div>
+    </button>
+  );
+}
+
+const MEDIA_LABEL: Record<string, string> = {
+  IMAGE: "Фото",
+  VIDEO: "Видео",
+  CAROUSEL_ALBUM: "Карусель",
+  REELS: "Reels",
+};
+
+function PostDetailSheet({
+  post,
+  open,
+  onOpenChange,
+}: {
+  post: Derived | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  if (!post) return null;
+
+  const funnelRows: {
+    label: string;
+    value: number;
+    pct: number | null;
+    pctLabel: string;
+    money?: number;
+  }[] = [
+    { label: "Охват", value: post.reach, pct: null, pctLabel: "" },
+    { label: "Клики", value: post.clicks, pct: post.ctr, pctLabel: "CTR" },
+    { label: "Заявки", value: post.leads, pct: post.crLead, pctLabel: "из кликов" },
+    { label: "Диагностики", value: post.diagnostics, pct: post.crDiag, pctLabel: "из заявок", money: post.diagnostic_sum },
+    { label: "Продажи", value: post.sales, pct: post.crSale, pctLabel: "из диагн.", money: post.sale_sum },
+  ];
+
+  const max = Math.max(...funnelRows.map((r) => r.value), 1);
+
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-md">
+        <SheetHeader className="sr-only">
+          <SheetTitle>Публикация {fmtDate(post.posted_at)}</SheetTitle>
+        </SheetHeader>
+
+        <div className="flex-1 overflow-y-auto">
+          {post.thumbnail_url && (
+            <img
+              src={post.thumbnail_url}
+              alt=""
+              referrerPolicy="no-referrer"
+              className="aspect-square w-full object-cover"
+            />
+          )}
+
+          <div className="space-y-4 p-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs tabular-nums text-muted-foreground">{fmtDate(post.posted_at)}</span>
+              {post.media_type && (
+                <span className="rounded-full bg-pink-500/10 px-2 py-0.5 text-[10px] font-semibold text-pink-600 dark:text-pink-400">
+                  {MEDIA_LABEL[post.media_type] ?? post.media_type}
+                </span>
+              )}
+              {post.reach > 0 && (
+                <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-medium tabular-nums">
+                  e2e {fmtPct(post.e2e)}
+                </span>
+              )}
+            </div>
+
+            <p className="whitespace-pre-wrap text-sm leading-relaxed">
+              {post.caption || <span className="text-muted-foreground">Без подписи</span>}
+            </p>
+
+            {(post.codewords ?? []).length > 0 && (
+              <div className="flex flex-wrap gap-1.5">
+                {post.codewords.map((c) => (
+                  <span
+                    key={c}
+                    className="rounded-full bg-pink-500/10 px-2 py-0.5 text-xs font-medium text-pink-600 dark:text-pink-400"
+                  >
+                    {c}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {post.permalink && (
+              <a
+                href={post.permalink}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
+              >
+                Открыть в Instagram <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            )}
+
+            <div className="grid grid-cols-2 gap-2">
+              <MetricCell label="Выручка" value={fmtKzt(post.revenue)} highlight={post.revenue > 0 ? "success" : undefined} />
+              <MetricCell label="Средний чек" value={post.avgCheck > 0 ? fmtKzt(post.avgCheck) : "—"} />
+              <MetricCell label="Охват" value={fmtNum(post.reach)} />
+              <MetricCell label="Просмотры" value={fmtNum(post.views)} />
+              <MetricCell label="CTR" value={post.reach > 0 ? fmtPct(post.ctr) : "—"} />
+              <MetricCell label="Клики" value={fmtNum(post.clicks)} />
+            </div>
+
+            <div>
+              <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Воронка публикации</h3>
+              <div className="mt-2 space-y-2">
+                {funnelRows.map((row, i) => (
+                  <div key={row.label} className="rounded-xl border border-border/50 bg-secondary/20 px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-medium text-muted-foreground">{row.label}</span>
+                      <div className="flex items-center gap-2">
+                        {row.pct != null && row.value > 0 && (
+                          <span className="text-[10px] font-bold text-success tabular-nums">
+                            {fmtPct(row.pct)} <span className="font-normal text-muted-foreground">{row.pctLabel}</span>
+                          </span>
+                        )}
+                        <span className="text-sm font-bold tabular-nums">{fmtNum(row.value)}</span>
+                      </div>
+                    </div>
+                    <div className="relative mt-1.5 h-2 overflow-hidden rounded-full bg-background/50">
+                      <div
+                        className={cn("h-full rounded-full bg-gradient-to-r", FUNNEL_GRADIENTS[i])}
+                        style={{ width: `${Math.max((row.value / max) * 100, row.value > 0 ? 4 : 0)}%` }}
+                      />
+                    </div>
+                    {row.money != null && row.money > 0 && (
+                      <div className="mt-1 text-right text-xs font-semibold tabular-nums text-success">
+                        {fmtKzt(row.money)}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function MetricCell({
+  label,
+  value,
+  highlight,
+}: {
+  label: string;
+  value: string;
+  highlight?: "success" | "primary";
+}) {
+  return (
+    <div className="rounded-xl border border-border/50 bg-secondary/20 px-3 py-2">
+      <div className="text-[9px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div
+        className={cn(
+          "mt-0.5 text-sm font-bold tabular-nums",
+          highlight === "success" && "text-success",
+          highlight === "primary" && "text-primary",
+        )}
+      >
+        {value}
+      </div>
     </div>
   );
 }
