@@ -135,6 +135,7 @@ export function CreativesGrid({
                   effectiveStatus: row.effectiveStatus,
                 }}
                 fit="contain"
+                playable
                 className="mx-auto aspect-[9/16] w-full max-h-[min(52vh,440px)] max-w-[min(100%,300px)] rounded-lg sm:max-h-none sm:max-w-none sm:rounded-none"
               />
               <div className="p-3">
@@ -182,7 +183,15 @@ export function CreativesGrid({
             </div>
           );
           return topMode ? (
-            <Link key={row.id} to={`${viewAllHref}&ad=${row.adId}`} className="block">{cardInner}</Link>
+            <div key={row.id} className="flex flex-col">
+              {cardInner}
+              <Link
+                to={`${viewAllHref}&ad=${row.adId}`}
+                className="mt-1.5 inline-flex items-center gap-1 px-3 text-[10px] font-semibold text-primary hover:underline"
+              >
+                Подробнее в креативах <ArrowRight className="h-3 w-3" />
+              </Link>
+            </div>
           ) : (
             <div key={row.id}>{cardInner}</div>
           );

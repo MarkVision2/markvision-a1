@@ -59,40 +59,46 @@ function CreativeCard({ creative, rank, variant }: CardProps) {
   const RomiIcon = romiPositive ? TrendingUp : TrendingDown;
   const crmOnly = hasRevenue && creative.spend <= 0;
 
+  const previewSource = {
+    adId: creative.adId,
+    name: creative.name,
+    creativeType: creative.creativeType,
+    thumbnailUrl: creative.thumbnailUrl,
+    imageUrl: creative.imageUrl,
+    posterUrl: creative.posterUrl,
+    videoUrl: creative.videoUrl,
+  };
+
   return (
     <article
       className={cn(
-        "overflow-hidden rounded-2xl border bg-card/40 transition-colors",
+        "group overflow-hidden rounded-2xl border bg-card/40 transition-colors",
         variant === "revenue"
           ? "border-success/35 bg-success/[0.04]"
           : "border-border/45",
       )}
     >
-      <div className="flex gap-4 p-4">
-        <div className="flex shrink-0 flex-col items-center gap-2">
+      <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start">
+        <div className="relative mx-auto w-full shrink-0 sm:mx-0 sm:w-[200px]">
           <span
             className={cn(
-              "grid h-8 w-8 place-items-center rounded-xl text-xs font-bold tabular-nums",
+              "absolute left-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-xl text-xs font-bold tabular-nums shadow-sm",
               rank === 1 && variant === "revenue"
-                ? "bg-success/20 text-success"
-                : "bg-secondary/60 text-muted-foreground",
+                ? "bg-success text-success-foreground"
+                : "bg-black/70 text-white",
             )}
           >
             {rank}
           </span>
           <CreativePreview
-            row={{
-              adId: creative.adId,
-              name: creative.name,
-              creativeType: creative.creativeType,
-              thumbnailUrl: creative.thumbnailUrl,
-              imageUrl: creative.imageUrl,
-              posterUrl: creative.posterUrl,
-              videoUrl: creative.videoUrl,
-            }}
-            compact
-            className="h-20 w-16 rounded-lg"
+            row={previewSource}
+            fit="contain"
+            playable
+            className="aspect-[9/16] w-full rounded-xl ring-1 ring-border/50"
           />
+          <p className="mt-2 text-center text-[10px] text-muted-foreground sm:text-left print:hidden">
+            Наведите для превью · кнопка ▶ для полного видео
+          </p>
         </div>
 
         <div className="min-w-0 flex-1">
