@@ -1,7 +1,7 @@
 {
-  "git_sha": "4ad629d",
-  "git_sha_full": "4ad629d97681ca1913fb968e592aa34d6a704d5f",
-  "updated_at": "2026-07-06T11:24:45Z",
-  "label": "Applied admin-only RLS fixes",
+  "git_sha": "580cb64",
+  "git_sha_full": "580cb64f0bd47083eadb9d91e8ffb620b0eadc33",
+  "updated_at": "2026-07-06T11:54:13Z",
+  "label": "Добавил страницу Контент-центр",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
