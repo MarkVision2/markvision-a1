@@ -1,7 +1,7 @@
 {
-  "git_sha": "3089c27",
-  "git_sha_full": "3089c278e04cc6e1a06dbf90711f4e0e03262038",
-  "updated_at": "2026-07-06T11:04:07Z",
-  "label": "Перенёс схему в новый Supabase",
+  "git_sha": "4ad629d",
+  "git_sha_full": "4ad629d97681ca1913fb968e592aa34d6a704d5f",
+  "updated_at": "2026-07-06T11:24:45Z",
+  "label": "Applied admin-only RLS fixes",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
