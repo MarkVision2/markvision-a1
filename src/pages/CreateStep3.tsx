@@ -404,12 +404,13 @@ const CreateStep3 = () => {
     wizardState.selectedStyles?.length
       ? (wizardState.selectedStyles as StyleId[])
       : [defaultStyle];
-  const initialAngles =
+  const initialAngles: AngleId[] =
     wizardState.selectedAngles?.length
       ? (wizardState.selectedAngles as AngleId[])
       : isNeuroPhoto
-        ? ["front", "three_quarter"]
+        ? (["front", "three_quarter"] as AngleId[])
         : [];
+
 
   const [selectedStyles, setSelectedStyles] = useState<StyleId[]>(initialStyles);
   const [selectedAngles, setSelectedAngles] = useState<AngleId[]>(initialAngles);
@@ -1039,8 +1040,9 @@ const CreateStep3 = () => {
             imageUrls,
           );
           if (!logoCheck.ok) {
-            throw new Error(`Логотип не попал в webhook: ${logoCheck.reason}`);
+            throw new Error(`Логотип не попал в webhook: ${(logoCheck as { ok: false; reason: string }).reason}`);
           }
+
 
           if (isNeuroPhoto) {
             const check = assertNeuroPhotoPayload({
@@ -1056,15 +1058,16 @@ const CreateStep3 = () => {
               image_urls: imageUrls,
             });
             if (!check.ok) {
-              throw new Error(`Нейрофото: ${check.reason}`);
+              throw new Error(`Нейрофото: ${(check as { ok: false; reason: string }).reason}`);
             }
           }
 
           if (!isNeuroPhoto) {
             const promptCheck = assertPromptWebhookContract(finalTechnicalBrief, enrichedWizard);
             if (!promptCheck.ok) {
-              throw new Error(promptCheck.reason);
+              throw new Error((promptCheck as { ok: false; reason: string }).reason);
             }
+
           }
 
           const contentTypeBlock = contentType

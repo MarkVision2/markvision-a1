@@ -16,7 +16,9 @@ export type ProjectRow = {
   created_at?: string;
   updated_at?: string;
   creative_username?: string | null;
+  intake_token?: string | null;
 };
+
 
 export async function fetchProjectsRows(): Promise<{
   rows: ProjectRow[];

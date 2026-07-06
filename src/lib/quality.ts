@@ -1,15 +1,22 @@
 // Единая утилита расчёта качества лида.
 // Скор 0–100. Категория зависит от скора и стадии воронки.
-import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
+import { isLeadPaid, isLeadVisit, type LeadFlagsInput } from "@/lib/leadStageFlags";
 
 export type QualityCategory = "hot" | "warm" | "cold" | "paid" | "unknown";
 
-export function classifyQuality(score: number | null | undefined, stageId?: string | null): QualityCategory {
+/**
+ * Классификация по тем же признакам, что и источник правды: булевы paid/paidAt,
+ * diagnosticAmount и stageKey через общие helpers.
+ *
+ * ВАЖНО: вторым аргументом нужно передавать объект-флаги (stageKey/paid/paidAt/
+ * diagnosticAmount), а НЕ «id стадии». Раньше передавали `stageId`, который у
+ * LeadLite — это UUID, а не ключ → isLeadPaid({stageKey: UUID}) никогда не
+ * срабатывал, и на дашборде «Оплатил/Горячий» считались неверно.
+ */
+export function classifyQuality(score: number | null | undefined, flags?: LeadFlagsInput | null): QualityCategory {
   const s = Number(score ?? 0);
-  // Используем единые helpers вместо локальных сетов стадий — иначе при custom-стадии
-  // (например "completed" / "оплачено") лид классифицировался бы как warm/cold вместо paid.
-  if (stageId && isLeadPaid({ stageKey: stageId })) return "paid";
-  if (stageId && isLeadVisit({ stageKey: stageId })) return "hot";
+  if (flags && isLeadPaid(flags)) return "paid";
+  if (flags && isLeadVisit(flags)) return "hot";
   if (s >= 75) return "hot";
   if (s >= 50) return "warm";
   if (s > 0) return "cold";
@@ -49,12 +56,14 @@ export interface QualityCounts {
   total: number;
 }
 
-export function countQuality<T extends { aiScore?: number | null; stageId?: string | null }>(
+export type QualityLeadFlags = LeadFlagsInput & { aiScore?: number | null };
+
+export function countQuality<T extends QualityLeadFlags>(
   leads: readonly T[],
 ): QualityCounts {
   const acc: QualityCounts = { paid: 0, hot: 0, warm: 0, cold: 0, unknown: 0, total: 0 };
   for (const l of leads) {
-    const c = classifyQuality(l.aiScore ?? null, l.stageId ?? null);
+    const c = classifyQuality(l.aiScore ?? null, l);
     acc[c] += 1;
     acc.total += 1;
   }
@@ -62,7 +71,7 @@ export function countQuality<T extends { aiScore?: number | null; stageId?: stri
 }
 
 /** Группировка по неделям ISO (yyyy-Www). */
-export function bucketByWeek<T extends { createdAt?: string | null; aiScore?: number | null; stageId?: string | null }>(
+export function bucketByWeek<T extends QualityLeadFlags & { createdAt?: string | null }>(
   leads: readonly T[],
   weeks = 8,
 ): Array<{ week: string; counts: QualityCounts }> {

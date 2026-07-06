@@ -70,7 +70,11 @@ export function aggregateCreativeCrmFromLeads(
           crmSales: 1,
           crmRevenue: (Number(l.amount) || 0) + (Number(l.diagnosticAmount) || 0),
         });
-        bump(adId, { crmDiagnostics: 1 });
+        // Диагностику считаем, только если она реально была (diagnosticAmount > 0),
+        // как в источнике правды (isLeadDiagnosticEvent). Раньше КАЖДАЯ оплата
+        // засчитывалась как диагностика → завышение диагностик по креативам и
+        // расхождение с Таблицей показателей.
+        if (isLeadDiagnosticEvent(l)) bump(adId, { crmDiagnostics: 1 });
       }
     } else if (isLeadDiagnosticEvent(l)) {
       const ref = l.paidAt ?? l.lastActivityAt ?? l.createdAt;

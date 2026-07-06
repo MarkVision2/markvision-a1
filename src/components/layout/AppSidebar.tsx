@@ -12,6 +12,8 @@ import {
   Sparkles,
   Filter,
   Hash,
+  Bot,
+  Send,
   TrendingUp,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
@@ -55,13 +57,22 @@ const marketingOsIcon = Sparkles;
 const sales: NavItem[] = [
   { title: "CRM", url: "/crm", icon: Users },
   { title: "AI РОП", url: "/sales-ai", icon: PhoneCall },
+  { title: "AI агенты", url: "/ai-agents", icon: Bot },
+  { title: "Рассылка", url: "/broadcasts", icon: Send },
 ];
 
+// Аналитика — «Таблица показателей» (источник правды) первой, дальше от общего
+// к частному: сквозная → креативы → контент.
 const analytics: NavItem[] = [
-  { title: "Сквозная аналитика", url: "/analytics", icon: GitBranch },
-  { title: "Контент-аналитика", url: "/analytics/content", icon: Hash },
-  { title: "Воронка по креативам", url: "/analytics/creatives", icon: Filter },
   { title: "Таблица показателей", url: "/metrics", icon: TableProperties },
+  { title: "Сквозная аналитика", url: "/analytics", icon: GitBranch },
+  { title: "Воронка по креативам", url: "/analytics/creatives", icon: Filter },
+  { title: "Контент-аналитика", url: "/analytics/content", icon: Hash },
+];
+
+// Финансы и отчётность вынесены из «Аналитики» в отдельную группу —
+// чтобы блок аналитики не превращался в кашу из 6 пунктов.
+const finance: NavItem[] = [
   { title: "Финансы", url: "/finance", icon: Wallet },
   { title: "Отчётность", url: "/reports", icon: FileBarChart2 },
 ];
@@ -79,6 +90,7 @@ function buildGroups(activeProjectId: string): { label: string; items: NavItem[]
     { label: "Маркетинг", items: [...marketing, ...marketingOs] },
     { label: "Продажи", items: sales },
     { label: "Аналитика", items: analytics },
+    { label: "Финансы и отчёты", items: finance },
   ];
 }
 

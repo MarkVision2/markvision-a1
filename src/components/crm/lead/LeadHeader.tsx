@@ -1,6 +1,7 @@
 import {
-  Star, Phone as PhoneIcon, MessageCircle, Tag, Link2,
+  Star, Phone as PhoneIcon, MessageCircle, Tag, Link2, Globe,
 } from "lucide-react";
+
 import { resolveLeadSource } from "@/lib/leadSource";
 import {
   Popover, PopoverContent, PopoverTrigger,

@@ -8,13 +8,31 @@ import {
   type QualityCounts,
   type QualityCategory,
 } from "@/lib/quality";
-import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
+import { isLeadPaid, isLeadVisit, type LeadFlagsInput } from "@/lib/leadStageFlags";
 
 export interface QualityLeadLike {
   aiScore?: number | null;
   stageId?: string | null;
   stageKey?: string | null;
+  paid?: boolean | null;
+  paidAt?: string | null;
+  diagnosticAmount?: number | null;
   createdAt?: string | null;
+}
+
+/**
+ * Приводит лид к каноническим флагам. КЛЮЧ стадии берём как `stageKey ?? stageId`:
+ * у CRM-лида `stageId` — это уже ключ, а у LeadLite ключ лежит в `stageKey`
+ * (там `stageId` — UUID). Плюс пробрасываем булевы paid/paidAt/diagnosticAmount,
+ * чтобы классификация совпадала с источником правды.
+ */
+function toFlags(l: QualityLeadLike): LeadFlagsInput {
+  return {
+    stageKey: l.stageKey ?? l.stageId ?? "",
+    paid: l.paid ?? null,
+    paidAt: l.paidAt ?? null,
+    diagnosticAmount: l.diagnosticAmount ?? null,
+  };
 }
 
 interface Props {
@@ -65,10 +83,12 @@ function Counter({ counts, cat }: { counts: QualityCounts; cat: QualityCategory 
   );
 }
 
-function normalize<T extends QualityLeadLike>(leads: readonly T[]): { aiScore: number | null; stageId: string | null; createdAt: string | null }[] {
+function normalize<T extends QualityLeadLike>(
+  leads: readonly T[],
+): (LeadFlagsInput & { aiScore: number | null; createdAt: string | null })[] {
   return leads.map((l) => ({
     aiScore: l.aiScore ?? null,
-    stageId: l.stageId ?? l.stageKey ?? null,
+    ...toFlags(l),
     createdAt: l.createdAt ?? null,
   }));
 }
@@ -154,16 +174,12 @@ export function QualityBlock({ leads, weeks = 8, title = "Качество ли�
  * Считает по `stageId`. Если стадия пустая — лид не входит.
  */
 export function QualityFunnel({ leads }: { leads: readonly QualityLeadLike[] }) {
-  const stage = (l: QualityLeadLike) => l.stageId ?? l.stageKey ?? "";
   const totalLeads = leads.length;
-  // Через общий helper — поддерживает все языковые варианты paid-стадии и leads.paid boolean.
-  // Раньше было захардкожено ["paid", "completed"] — в проектах с переименованной стадией
-  // воронка показывала 0 оплат, при этом Dashboard.totals.revenue считал правильно → расхождение.
-  const scheduled = leads.filter((l) => {
-    const s = stage(l);
-    return s === "scheduled" || isLeadVisit({ stageKey: s });
-  }).length;
-  const paid = leads.filter((l) => isLeadPaid({ stageKey: stage(l) })).length;
+  // Через общий helper на канонических флагах (stageKey + paid/paidAt/diagnosticAmount).
+  // Раньше передавался только `stageId`, который у LeadLite — UUID → воронка на
+  // дашборде считала 0 записей/оплат, хотя Dashboard.totals.revenue был верным.
+  const scheduled = leads.filter((l) => isLeadVisit(toFlags(l))).length;
+  const paid = leads.filter((l) => isLeadPaid(toFlags(l))).length;
 
   const pctScheduled = totalLeads > 0 ? Math.round((scheduled / totalLeads) * 100) : 0;
   const pctPaid = scheduled > 0 ? Math.round((paid / scheduled) * 100) : 0;

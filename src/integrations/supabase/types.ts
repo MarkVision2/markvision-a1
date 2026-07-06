@@ -300,42 +300,78 @@ export type Database = {
       ad_sync_runs: {
         Row: {
           cabinet_id: string | null
+          clicks: number | null
+          created_at: string | null
           created_by: string | null
+          days: number | null
           error: string | null
+          error_code: string | null
+          external_id: string | null
           finished_at: string | null
           id: string
           kind: string
+          leads: number | null
+          ok: boolean | null
           payload: Json
           project_id: string | null
+          provider: string | null
+          revenue: number | null
+          since: string | null
+          spend: number | null
           started_at: string
           status: string
           triggered_by: string
+          until: string | null
         }
         Insert: {
           cabinet_id?: string | null
+          clicks?: number | null
+          created_at?: string | null
           created_by?: string | null
+          days?: number | null
           error?: string | null
-          finished_at?: string | null
-          id?: string
-          kind: string
-          payload?: Json
-          project_id?: string | null
-          started_at?: string
-          status?: string
-          triggered_by?: string
-        }
-        Update: {
-          cabinet_id?: string | null
-          created_by?: string | null
-          error?: string | null
+          error_code?: string | null
+          external_id?: string | null
           finished_at?: string | null
           id?: string
           kind?: string
+          leads?: number | null
+          ok?: boolean | null
           payload?: Json
           project_id?: string | null
+          provider?: string | null
+          revenue?: number | null
+          since?: string | null
+          spend?: number | null
           started_at?: string
           status?: string
           triggered_by?: string
+          until?: string | null
+        }
+        Update: {
+          cabinet_id?: string | null
+          clicks?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          days?: number | null
+          error?: string | null
+          error_code?: string | null
+          external_id?: string | null
+          finished_at?: string | null
+          id?: string
+          kind?: string
+          leads?: number | null
+          ok?: boolean | null
+          payload?: Json
+          project_id?: string | null
+          provider?: string | null
+          revenue?: number | null
+          since?: string | null
+          spend?: number | null
+          started_at?: string
+          status?: string
+          triggered_by?: string
+          until?: string | null
         }
         Relationships: [
           {
@@ -1093,6 +1129,7 @@ export type Database = {
           followup_2h_minutes?: number
           id?: boolean
           meta_access_token?: string | null
+          meta_access_token_present?: boolean | null
           revival_7d_days?: number
           revival_7d_enabled?: boolean
           revival_7d_template_key?: string
@@ -1113,6 +1150,7 @@ export type Database = {
           followup_2h_minutes?: number
           id?: boolean
           meta_access_token?: string | null
+          meta_access_token_present?: boolean | null
           revival_7d_days?: number
           revival_7d_enabled?: boolean
           revival_7d_template_key?: string
@@ -1146,8 +1184,10 @@ export type Database = {
           leads: number
           manual_diagnostic_revenue: number | null
           manual_diagnostics: number | null
+          manual_leads: number | null
           manual_revenue: number | null
           manual_sales: number | null
+          manual_spend: number | null
           project_id: string | null
           provider: string
           revenue: number
@@ -1173,8 +1213,10 @@ export type Database = {
           leads?: number
           manual_diagnostic_revenue?: number | null
           manual_diagnostics?: number | null
+          manual_leads?: number | null
           manual_revenue?: number | null
           manual_sales?: number | null
+          manual_spend?: number | null
           project_id?: string | null
           provider?: string
           revenue?: number
@@ -1200,8 +1242,10 @@ export type Database = {
           leads?: number
           manual_diagnostic_revenue?: number | null
           manual_diagnostics?: number | null
+          manual_leads?: number | null
           manual_revenue?: number | null
           manual_sales?: number | null
+          manual_spend?: number | null
           project_id?: string | null
           provider?: string
           revenue?: number
@@ -1508,6 +1552,7 @@ export type Database = {
           page_access_token: string
           page_id: string
           page_name: string | null
+          page_token_present: boolean | null
           profile_picture_url: string | null
           project_id: string
           updated_at: string
@@ -1527,6 +1572,7 @@ export type Database = {
           page_access_token: string
           page_id: string
           page_name?: string | null
+          page_token_present?: boolean | null
           profile_picture_url?: string | null
           project_id: string
           updated_at?: string
@@ -1546,6 +1592,7 @@ export type Database = {
           page_access_token?: string
           page_id?: string
           page_name?: string | null
+          page_token_present?: boolean | null
           profile_picture_url?: string | null
           project_id?: string
           updated_at?: string
@@ -1829,7 +1876,7 @@ export type Database = {
           from_stage_id: string | null
           id: string
           lead_id: string
-          to_stage_id: string
+          to_stage_id: string | null
         }
         Insert: {
           changed_at?: string
@@ -1837,7 +1884,7 @@ export type Database = {
           from_stage_id?: string | null
           id?: string
           lead_id: string
-          to_stage_id: string
+          to_stage_id?: string | null
         }
         Update: {
           changed_at?: string
@@ -1845,7 +1892,7 @@ export type Database = {
           from_stage_id?: string | null
           id?: string
           lead_id?: string
-          to_stage_id?: string
+          to_stage_id?: string | null
         }
         Relationships: [
           {
@@ -1907,14 +1954,14 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["payment_method"] | null
           phone: string
           pinned: boolean
-          pipeline_id: string
+          pipeline_id: string | null
           project_id: string | null
           referrer: string | null
           reject_reason: string | null
           rejected_at: string | null
           service: string | null
           source: string
-          stage_id: string
+          stage_id: string | null
           updated_at: string
           utm: Json | null
         }
@@ -1953,14 +2000,14 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"] | null
           phone: string
           pinned?: boolean
-          pipeline_id: string
+          pipeline_id?: string | null
           project_id?: string | null
           referrer?: string | null
           reject_reason?: string | null
           rejected_at?: string | null
           service?: string | null
           source?: string
-          stage_id: string
+          stage_id?: string | null
           updated_at?: string
           utm?: Json | null
         }
@@ -1999,14 +2046,14 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"] | null
           phone?: string
           pinned?: boolean
-          pipeline_id?: string
+          pipeline_id?: string | null
           project_id?: string | null
           referrer?: string | null
           reject_reason?: string | null
           rejected_at?: string | null
           service?: string | null
           source?: string
-          stage_id?: string
+          stage_id?: string | null
           updated_at?: string
           utm?: Json | null
         }
@@ -2416,6 +2463,70 @@ export type Database = {
           },
           {
             foreignKeyName: "meta_creatives_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      meta_tokens: {
+        Row: {
+          access_token: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          label: string
+          last_validated_at: string | null
+          last_validation_status: string | null
+          project_id: string
+          token_last4: string | null
+          updated_at: string
+        }
+        Insert: {
+          access_token: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          label: string
+          last_validated_at?: string | null
+          last_validation_status?: string | null
+          project_id: string
+          token_last4?: string | null
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          label?: string
+          last_validated_at?: string | null
+          last_validation_status?: string | null
+          project_id?: string
+          token_last4?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "meta_tokens_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "meta_tokens_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "meta_tokens_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects_public"
@@ -2915,6 +3026,106 @@ export type Database = {
           },
         ]
       }
+      rnp_daily: {
+        Row: {
+          cash_received: number
+          conducted_diagnostics: number
+          created_at: string
+          date: string
+          diag_revenue: number
+          id: string
+          manual_cash: number | null
+          manual_conducted_visits: number | null
+          manual_crm_received: number | null
+          manual_diagnostic_revenue: number | null
+          manual_diagnostics: number | null
+          manual_diagnostics_paid: number | null
+          manual_leads: number | null
+          manual_planned_visits: number | null
+          manual_qualified: number | null
+          manual_sales: number | null
+          manual_sales_revenue: number | null
+          manual_spend: number | null
+          planned_diagnostics: number
+          prepayments_count: number
+          prepayments_sum: number
+          project_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          cash_received?: number
+          conducted_diagnostics?: number
+          created_at?: string
+          date: string
+          diag_revenue?: number
+          id?: string
+          manual_cash?: number | null
+          manual_conducted_visits?: number | null
+          manual_crm_received?: number | null
+          manual_diagnostic_revenue?: number | null
+          manual_diagnostics?: number | null
+          manual_diagnostics_paid?: number | null
+          manual_leads?: number | null
+          manual_planned_visits?: number | null
+          manual_qualified?: number | null
+          manual_sales?: number | null
+          manual_sales_revenue?: number | null
+          manual_spend?: number | null
+          planned_diagnostics?: number
+          prepayments_count?: number
+          prepayments_sum?: number
+          project_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          cash_received?: number
+          conducted_diagnostics?: number
+          created_at?: string
+          date?: string
+          diag_revenue?: number
+          id?: string
+          manual_cash?: number | null
+          manual_conducted_visits?: number | null
+          manual_crm_received?: number | null
+          manual_diagnostic_revenue?: number | null
+          manual_diagnostics?: number | null
+          manual_diagnostics_paid?: number | null
+          manual_leads?: number | null
+          manual_planned_visits?: number | null
+          manual_qualified?: number | null
+          manual_sales?: number | null
+          manual_sales_revenue?: number | null
+          manual_spend?: number | null
+          planned_diagnostics?: number
+          prepayments_count?: number
+          prepayments_sum?: number
+          project_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "rnp_daily_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "rnp_daily_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "rnp_daily_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sipuni_cdr_log: {
         Row: {
           created_at: string
@@ -3151,7 +3362,7 @@ export type Database = {
           api_token: string | null
           api_token_present: boolean | null
           api_url: string | null
-          webhook_token_present: boolean | null
+          bot_webhook_url: string | null
           connected: boolean
           connected_at: string | null
           display_name: string | null
@@ -3162,12 +3373,15 @@ export type Database = {
           updated_at: string
           user_id: string
           webhook_token: string | null
+          webhook_token_present: boolean | null
           webhook_url: string | null
         }
         Insert: {
           ads_only?: boolean
           api_token?: string | null
+          api_token_present?: boolean | null
           api_url?: string | null
+          bot_webhook_url?: string | null
           connected?: boolean
           connected_at?: string | null
           display_name?: string | null
@@ -3178,12 +3392,15 @@ export type Database = {
           updated_at?: string
           user_id: string
           webhook_token?: string | null
+          webhook_token_present?: boolean | null
           webhook_url?: string | null
         }
         Update: {
           ads_only?: boolean
           api_token?: string | null
+          api_token_present?: boolean | null
           api_url?: string | null
+          bot_webhook_url?: string | null
           connected?: boolean
           connected_at?: string | null
           display_name?: string | null
@@ -3194,6 +3411,7 @@ export type Database = {
           updated_at?: string
           user_id?: string
           webhook_token?: string | null
+          webhook_token_present?: boolean | null
           webhook_url?: string | null
         }
         Relationships: [
@@ -3406,47 +3624,6 @@ export type Database = {
           },
         ]
       }
-      instagram_accounts_safe: {
-        Row: {
-          active: boolean | null
-          created_at: string | null
-          followers_count: number | null
-          follows_count: number | null
-          id: string | null
-          ig_user_id: string | null
-          last_error: string | null
-          last_sync_at: string | null
-          media_count: number | null
-          name: string | null
-          page_id: string | null
-          page_name: string | null
-          page_token_present: boolean | null
-          profile_picture_url: string | null
-          project_id: string | null
-          updated_at: string | null
-          username: string | null
-        }
-        Relationships: []
-      }
-      whatsapp_config_safe: {
-        Row: {
-          ads_only: boolean | null
-          api_token_present: boolean | null
-          api_url: string | null
-          connected: boolean | null
-          connected_at: string | null
-          display_name: string | null
-          id: string | null
-          id_instance: string | null
-          phone: string | null
-          project_id: string | null
-          updated_at: string | null
-          user_id: string | null
-          webhook_token_present: boolean | null
-          webhook_url: string | null
-        }
-        Relationships: []
-      }
       crm_stats_health: {
         Row: {
           cabinet_id: string | null
@@ -3483,6 +3660,66 @@ export type Database = {
           is_active?: never
           project_id?: string | null
           token?: string | null
+        }
+        Relationships: []
+      }
+      instagram_accounts_safe: {
+        Row: {
+          active: boolean | null
+          created_at: string | null
+          followers_count: number | null
+          follows_count: number | null
+          id: string | null
+          ig_user_id: string | null
+          last_error: string | null
+          last_sync_at: string | null
+          media_count: number | null
+          name: string | null
+          page_id: string | null
+          page_name: string | null
+          page_token_present: boolean | null
+          profile_picture_url: string | null
+          project_id: string | null
+          updated_at: string | null
+          username: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          created_at?: string | null
+          followers_count?: number | null
+          follows_count?: number | null
+          id?: string | null
+          ig_user_id?: string | null
+          last_error?: string | null
+          last_sync_at?: string | null
+          media_count?: number | null
+          name?: string | null
+          page_id?: string | null
+          page_name?: string | null
+          page_token_present?: boolean | null
+          profile_picture_url?: string | null
+          project_id?: string | null
+          updated_at?: string | null
+          username?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          created_at?: string | null
+          followers_count?: number | null
+          follows_count?: number | null
+          id?: string | null
+          ig_user_id?: string | null
+          last_error?: string | null
+          last_sync_at?: string | null
+          media_count?: number | null
+          name?: string | null
+          page_id?: string | null
+          page_name?: string | null
+          page_token_present?: boolean | null
+          profile_picture_url?: string | null
+          project_id?: string | null
+          updated_at?: string | null
+          username?: string | null
         }
         Relationships: []
       }
@@ -3734,6 +3971,79 @@ export type Database = {
         }
         Relationships: []
       }
+      whatsapp_config_safe: {
+        Row: {
+          ads_only: boolean | null
+          api_token_present: boolean | null
+          api_url: string | null
+          connected: boolean | null
+          connected_at: string | null
+          display_name: string | null
+          id: string | null
+          id_instance: string | null
+          phone: string | null
+          project_id: string | null
+          updated_at: string | null
+          user_id: string | null
+          webhook_token_present: boolean | null
+          webhook_url: string | null
+        }
+        Insert: {
+          ads_only?: boolean | null
+          api_token_present?: boolean | null
+          api_url?: string | null
+          connected?: boolean | null
+          connected_at?: string | null
+          display_name?: string | null
+          id?: string | null
+          id_instance?: string | null
+          phone?: string | null
+          project_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          webhook_token_present?: boolean | null
+          webhook_url?: string | null
+        }
+        Update: {
+          ads_only?: boolean | null
+          api_token_present?: boolean | null
+          api_url?: string | null
+          connected?: boolean | null
+          connected_at?: string | null
+          display_name?: string | null
+          id?: string | null
+          id_instance?: string | null
+          phone?: string | null
+          project_id?: string | null
+          updated_at?: string | null
+          user_id?: string | null
+          webhook_token_present?: boolean | null
+          webhook_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_config_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "inbound_tokens"
+            referencedColumns: ["project_id"]
+          },
+          {
+            foreignKeyName: "whatsapp_config_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_config_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       _get_usd_kzt_rate: { Args: { p_date: string }; Returns: number }
@@ -3790,6 +4100,8 @@ export type Database = {
         Args: { p_cabinet_id?: string; p_since?: string; p_until?: string }
         Returns: Json
       }
+      mv_export_table_inserts: { Args: { p_table: string }; Returns: string[] }
+      normalize_green_api_url: { Args: { p_url: string }; Returns: string }
       normalize_phone: { Args: { p: string }; Returns: string }
       reconcile_cdi_for_project: {
         Args: { p_project_id: string; p_since?: string }
@@ -3800,17 +4112,21 @@ export type Database = {
         Args: { p_project_id: string }
         Returns: string
       }
+      save_whatsapp_bot_webhook: {
+        Args: { p_bot_webhook_url: string; p_project_id: string }
+        Returns: undefined
+      }
+      seed_demo_project_ask_med: {
+        Args: {
+          p_month_end?: string
+          p_month_start?: string
+          p_source_project_name?: string
+        }
+        Returns: Json
+      }
       set_project_creative_username: {
-        Args: { p_project_id: string; p_username: string | null }
+        Args: { p_project_id: string; p_username: string }
         Returns: string
-      }
-      save_meta_access_token: {
-        Args: { p_token: string }
-        Returns: undefined
-      }
-      save_sipuni_token: {
-        Args: { p_token: string }
-        Returns: undefined
       }
       user_can_access_project: {
         Args: { _project_id: string }

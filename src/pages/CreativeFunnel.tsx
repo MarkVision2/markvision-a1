@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpDown, ArrowUpRight, Filter, Info, Loader2, RefreshCw, Search } from "lucide-react";
+import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpDown, ArrowUpRight, Filter, ImageDown, Info, Loader2, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
+import { useQueryClient } from "@tanstack/react-query";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,8 @@ import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPi
 import { CreativePreview } from "@/components/creatives/CreativePreview";
 import { CreativeDetailDrawer } from "@/components/creatives/CreativeDetailDrawer";
 import { useMetaCreatives, type MetaCreativeRow } from "@/hooks/useMetaStructure";
+import { META_STRUCTURE_QUERY_KEY } from "@/hooks/useMetaDashboard";
+import { refreshMetaCreative } from "@/lib/metaCreativeRefresh";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
 import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
@@ -73,7 +76,10 @@ const CreativeFunnel = () => {
   const [backfilling, setBackfilling] = useState(false);
   const [orphanLeads, setOrphanLeads] = useState(0);
   const [crmTotals, setCrmTotals] = useState({ leads: 0, diagnostics: 0, sales: 0, revenue: 0 });
+  const [refreshingPosters, setRefreshingPosters] = useState(false);
+  const [posterProgress, setPosterProgress] = useState({ done: 0, total: 0 });
   const { activeId: projectId } = useProjectsStore();
+  const queryClient = useQueryClient();
 
   const { rows, loading } = useMetaCreatives(range);
 
@@ -268,6 +274,34 @@ const CreativeFunnel = () => {
     );
   }, [filtered]);
 
+  // Массовое обновление превью: форс-рефреш постера/видео каждого креатива через
+  // meta-creative-refresh (свежий URL + постер в Supabase Storage). Внутренняя
+  // очередь в metaCreativeRefresh троттлит запросы (2 параллельно), чтобы не упереться
+  // в лимиты Meta. После — перезагружаем список, чтобы подтянуть новые ссылки.
+  const refreshAllPosters = async () => {
+    const adIds = Array.from(new Set(filtered.map((r) => r.adId).filter(Boolean)));
+    if (adIds.length === 0 || refreshingPosters) return;
+    setRefreshingPosters(true);
+    setPosterProgress({ done: 0, total: adIds.length });
+    let ok = 0;
+    await Promise.all(
+      adIds.map(async (adId) => {
+        const res = await refreshMetaCreative(adId, { force: true }).catch(() => null);
+        if (res?.ok) ok += 1;
+        setPosterProgress((p) => ({ ...p, done: p.done + 1 }));
+      }),
+    );
+    await queryClient.invalidateQueries({ queryKey: [META_STRUCTURE_QUERY_KEY] });
+    setRefreshingPosters(false);
+    if (ok > 0) {
+      toast.success(`Обновлено превью: ${ok} из ${adIds.length}`);
+    } else {
+      toast.error("Свежих превью не получено", {
+        description: "Проверьте META_ACCESS_TOKEN и логи функции meta-creative-refresh.",
+      });
+    }
+  };
+
   // Используем фактические CRM-показатели по проекту (а не только привязанные к креативам),
   // чтобы цифры в KPI-полоске сходились с реальной CRM
   const crmRevenueTotal = crmTotals.revenue;
@@ -290,6 +324,25 @@ const CreativeFunnel = () => {
         actions={
           <>
             <PeriodPicker range={range} onChange={setRange} />
+            <Button
+              variant="outline"
+              className="h-10 rounded-xl border-border/60"
+              onClick={() => void refreshAllPosters()}
+              disabled={refreshingPosters || loading || rows.length === 0}
+              title="Перетянуть свежие превью из Meta для всех креативов"
+            >
+              {refreshingPosters ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  {posterProgress.done}/{posterProgress.total}
+                </>
+              ) : (
+                <>
+                  <ImageDown className="mr-2 h-4 w-4" />
+                  Обновить превью
+                </>
+              )}
+            </Button>
             <Button
               variant="outline"
               size="icon"

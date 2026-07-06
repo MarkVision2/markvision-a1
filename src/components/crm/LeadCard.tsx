@@ -144,7 +144,12 @@ function LeadCardImpl({
             {lead.aiScore}
           </span>
           {(() => {
-            const cat = classifyQuality(lead.aiScore, lead.stageId);
+            const cat = classifyQuality(lead.aiScore, {
+              stageKey: lead.stageId,
+              paid: lead.paid,
+              paidAt: lead.paidAt,
+              diagnosticAmount: lead.diagnosticAmount,
+            });
             return (
               <span
                 className={cn("rounded-md px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide", QUALITY_BADGE_CLS[cat])}

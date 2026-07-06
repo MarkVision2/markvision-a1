@@ -35,7 +35,7 @@ export function CreativePreview({
 }: Props) {
   const isCarousel = row.creativeType === "carousel";
   const containerRef = useRef<HTMLDivElement>(null);
-  const [inView, setInView] = useState(true);
+  const [inView, setInView] = useState(!compact);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -79,15 +79,19 @@ export function CreativePreview({
   const posterVideoRef = useRef<HTMLVideoElement>(null);
 
   const isActive = isCreativeActive(row.effectiveStatus);
-  const mediaFit = compact
-    ? "object-cover"
-    : fit === "contain"
-      ? "object-contain"
-      : "object-cover";
+  const mediaFit = fit === "contain" ? "object-contain" : "object-cover";
 
   useEffect(() => {
     setVideoFrameReady(false);
   }, [previewVideoUrl, row.adId]);
+
+  // Сбрасываем флаг ошибки, когда появляется новый источник (после forceRefresh
+  // или смены креатива). Иначе после первой неудачной загрузки превью навсегда
+  // оставалось бы плейсхолдером — даже если подъехал валидный постер. И наоборот:
+  // не зацикливаемся на повторной загрузке одного и того же битого URL.
+  useEffect(() => {
+    setMediaError(false);
+  }, [imageSrc, previewVideoUrl, row.adId]);
 
   useEffect(() => {
     const el = videoRef.current;
@@ -122,13 +126,15 @@ export function CreativePreview({
   };
 
   const showVideo = canPlayInline && (playVideo || touchPreview);
-  const showImage = imageSrc && !mediaError && !showVideo;
+  const showImage = Boolean(imageSrc) && !mediaError && !showVideo;
   const showVideoFrame = useVideoFrame && !showVideo && !mediaError;
+  // Не подставляем обратно тот же URL, который только что отвалился (mediaError) —
+  // иначе получаем цикл error→refresh→error. При ошибке уходим в плейсхолдер.
   const thumbFallbackSrc =
-    (mediaError && displaySrc ? displaySrc : null)
-    ?? lowResFallbackSrc;
+    lowResFallbackSrc
+    ?? (loadingHq && displaySrc && !useVideoFrame ? displaySrc : null);
   const showLowResFallback =
-    Boolean(thumbFallbackSrc) && !showVideo && !showImage && (!showVideoFrame || mediaError);
+    Boolean(thumbFallbackSrc) && !mediaError && !showVideo && !showImage && !showVideoFrame;
 
   const handlePreviewTap = (e: React.MouseEvent) => {
     if (!isVideo || !canPlayInline || playable) return;
@@ -187,40 +193,27 @@ export function CreativePreview({
           referrerPolicy="no-referrer"
           onError={() => {
             setMediaError(true);
-            void forceRefresh().then(() => setMediaError(false));
+            void forceRefresh();
           }}
         />
       ) : showVideoFrame ? (
-        <>
-          {displaySrc && !videoFrameReady && (
-            <img
-              src={displaySrc}
-              alt=""
-              className={cn("absolute inset-0 h-full w-full", mediaFit)}
-              loading="lazy"
-              decoding="async"
-              referrerPolicy="no-referrer"
-            />
+        <video
+          ref={posterVideoRef}
+          src={previewVideoUrl!}
+          muted
+          playsInline
+          preload="auto"
+          className={cn(
+            "h-full w-full bg-zinc-950 transition-opacity duration-300",
+            mediaFit,
+            videoFrameReady ? "opacity-100" : "opacity-0",
           )}
-          <video
-            ref={posterVideoRef}
-            src={previewVideoUrl!}
-            poster={displaySrc ?? undefined}
-            muted
-            playsInline
-            preload="auto"
-            className={cn(
-              "relative z-[1] h-full w-full bg-zinc-950 transition-opacity duration-300",
-              mediaFit,
-              videoFrameReady ? "opacity-100" : "opacity-0",
-            )}
-            onLoadedMetadata={(e) => primeVideoFrame(e.currentTarget)}
-            onError={() => {
-              setMediaError(true);
-              void forceRefresh().then(() => setMediaError(false));
-            }}
-          />
-        </>
+          onLoadedMetadata={(e) => primeVideoFrame(e.currentTarget)}
+          onError={() => {
+            setMediaError(true);
+            void forceRefresh();
+          }}
+        />
       ) : showLowResFallback ? (
         <>
           <div
@@ -238,16 +231,19 @@ export function CreativePreview({
           />
         </>
       ) : (
-        <div className="flex h-full w-full items-center justify-center bg-secondary/20">
+        <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-gradient-to-br from-zinc-700/60 to-zinc-900">
           {loadingHq ? (
-            <Loader2 className={cn("animate-spin text-muted-foreground/50", compact ? "h-4 w-4" : "h-6 w-6")} />
+            <Loader2 className={cn("animate-spin text-white/55", compact ? "h-4 w-4" : "h-6 w-6")} />
           ) : (
-            <TypeIcon className={cn("text-muted-foreground/40", compact ? "h-5 w-5" : "h-8 w-8")} />
+            <>
+              <TypeIcon className={cn("text-white/40", compact ? "h-5 w-5" : "h-8 w-8")} />
+              {!compact && <span className="px-2 text-center text-[10px] font-medium text-white/45">Превью недоступно</span>}
+            </>
           )}
         </div>
       )}
 
-      {loadingHq && !imageSrc && !displaySrc && !showVideoFrame && !showLowResFallback && (
+      {loadingHq && !imageSrc && !showVideoFrame && !showLowResFallback && (
         <span className="absolute inset-0 flex items-center justify-center bg-zinc-950/80">
           <Loader2 className={cn("animate-spin text-white/70", compact ? "h-4 w-4" : "h-7 w-7")} />
         </span>

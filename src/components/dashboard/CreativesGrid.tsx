@@ -31,8 +31,9 @@ interface Props {
 
 const sortValue = (r: MetaCreativeRow, key: SortKey): number => {
   if (key === "cpl") return r.cpl > 0 ? -r.cpl : Number.NEGATIVE_INFINITY;
-  return (r as Record<string, number>)[key] ?? 0;
+  return (r as unknown as Record<string, number>)[key] ?? 0;
 };
+
 
 const compareCreatives = (a: MetaCreativeRow, b: MetaCreativeRow, key: SortKey): number => {
   const primary = sortValue(b, key) - sortValue(a, key);

@@ -92,6 +92,13 @@ Deno.serve(async (req) => {
   const auth = await requireUser(req);
   if (!auth.ok) return auth.response;
 
+  // Токен берём из БД (automation_settings.meta_access_token) ИЛИ env — как и
+  // остальные Meta-функции (meta-structure-sync / meta-daily-sync). Раньше тут
+  // читался ТОЛЬКО env-секрет, поэтому токен, заданный в Настройках → Автоматизация,
+  // кнопкой «Обновить превью» не подхватывался и постеры не обновлялись.
+  const META_ACCESS_TOKEN = await resolveMetaAccessToken();
+  if (!META_ACCESS_TOKEN) return json({ ok: false, error: "META_ACCESS_TOKEN missing (ни в Настройках, ни в env)" }, 500);
+
   const admin = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -115,17 +122,6 @@ Deno.serve(async (req) => {
   if (!row) return json({ ok: false, error: "not found" }, 404);
 
   const cabinetId = (row as { cabinet_id?: string | null }).cabinet_id ?? null;
-  let META_ACCESS_TOKEN = await resolveMetaAccessToken(null);
-  if (cabinetId) {
-    const { data: cab } = await admin
-      .from("ad_cabinets")
-      .select("access_token")
-      .eq("id", cabinetId)
-      .maybeSingle();
-    const cabToken = (cab as { access_token?: string | null } | null)?.access_token;
-    if (cabToken?.trim()) META_ACCESS_TOKEN = cabToken.trim();
-  }
-  if (!META_ACCESS_TOKEN) return json({ ok: false, error: "META_ACCESS_TOKEN missing" }, 500);
   const existingPoster = ((row as { poster_url?: string | null }).poster_url ?? "").trim();
   if (existingPoster && isSupabasePosterUrl(existingPoster)) {
     return json({
@@ -159,7 +155,7 @@ Deno.serve(async (req) => {
 
   if (!videoId) {
     const thumb = (resolvedThumb ?? storedThumb) || null;
-    const posterUrl = thumb
+    const posterUrl = thumb && !isLowResThumb(thumb)
       ? await ensurePosterInStorage(admin, adId, cabinetId, existingPoster, thumb)
       : null;
     return json({
@@ -184,9 +180,9 @@ Deno.serve(async (req) => {
       thumbnails?: { data?: Array<{ uri: string; width?: number; height?: number; is_preferred?: boolean; scale?: number }> };
     };
 
-    const bestThumb = (pickBestVideoThumb(v.thumbnails?.data ?? [], v.picture)
+    const bestThumb = pickBestVideoThumb(v.thumbnails?.data ?? [], v.picture)
       ?? resolvedThumb
-      ?? storedThumb) || null;
+      ?? (storedThumb && !isLowResThumb(storedThumb) ? storedThumb : null);
 
     const posterUrl = bestThumb
       ? await ensurePosterInStorage(admin, adId, cabinetId, existingPoster, bestThumb)

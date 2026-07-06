@@ -18,12 +18,6 @@ const HQ_STORAGE_HINTS = [
   /supabase\.co\/storage/i,
 ];
 
-/** Постоянный URL (Supabase Storage) — не истекает как fbcdn. */
-export function isPersistedCreativeUrl(url: string | null | undefined): boolean {
-  if (!url) return false;
-  return HQ_STORAGE_HINTS.some((re) => re.test(url));
-}
-
 /** URL явно указывает на миниатюру ≤128px. */
 export function isLowResMetaThumb(url: string | null | undefined): boolean {
   if (!url) return true;
@@ -108,7 +102,12 @@ export function pickCreativePreviewUrl(args: {
   );
 }
 
-/** URL для <img>: HQ если есть, иначе сразу любой fallback (лучше пиксели, чем чёрная карточка). */
+/**
+ * URL для <img>: HQ если уже есть, иначе сразу показываем любой доступный
+ * (low-res) — лучше слегка размытое превью, чем чёрный квадрат, пока грузится/
+ * обновляется HD. Когда HD дойдёт, превью подменится. UI рисует бейдж
+ * «Улучшаем качество…» поверх low-res.
+ */
 export function pickDisplayImageSrc(args: {
   hqSrc: string | null;
   displaySrc: string | null;
@@ -116,8 +115,7 @@ export function pickDisplayImageSrc(args: {
   isLowRes: boolean;
   hqFailed?: boolean;
 }): string | null {
-  if (args.hqSrc) return args.hqSrc;
-  return args.displaySrc;
+  return args.hqSrc ?? args.displaySrc;
 }
 
 /** @deprecated Используйте pickCreativePreviewUrl / bestCreativeImageHq */
