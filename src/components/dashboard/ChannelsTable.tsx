@@ -150,7 +150,9 @@ export function ChannelsTable({ channels, totalSpend, totalLeads }: Props) {
           const isOrganic = c.provider === "instagram" && c.spend === 0;
           const romiPositive = c.romi >= 0;
           const RomiIcon = romiPositive ? TrendingUp : TrendingDown;
-          const bad = c.displaySpend > 0 && c.romi < 0;
+          const measuredLoss = c.displaySpend > 0 && c.revenue > 0 && c.romi < 0;
+          const noSales = c.displaySpend > 0 && c.revenue === 0;
+          const bad = measuredLoss;
 
           return (
             <div
@@ -180,13 +182,14 @@ export function ChannelsTable({ channels, totalSpend, totalLeads }: Props) {
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 truncate text-base font-bold" title={c.name}>
                       {meta.label}
-                      {bad && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-destructive" />}
+                      {bad && <span title="Выручка меньше расхода — реклама убыточна"><AlertTriangle className="h-3.5 w-3.5 shrink-0 text-destructive" /></span>}
                     </div>
                     <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground">{meta.hint}</div>
                   </div>
                 </div>
-                {c.displaySpend > 0 ? (
+                {c.displaySpend > 0 && c.revenue > 0 ? (
                   <span
+                    title="Окупаемость рекламы (ROMI): (выручка − расход) ÷ расход"
                     className={cn(
                       "inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-bold tabular-nums",
                       romiPositive ? "bg-emerald-500/15 text-emerald-400" : "bg-destructive/15 text-destructive",
@@ -195,6 +198,8 @@ export function ChannelsTable({ channels, totalSpend, totalLeads }: Props) {
                     <RomiIcon className="h-3 w-3" />
                     {romiPositive ? "+" : ""}{Math.round(c.romi)}%
                   </span>
+                ) : noSales ? (
+                  <span title="За период есть расход, но оплат ещё нет" className="shrink-0 rounded-lg bg-amber-500/15 px-2 py-1 text-[10px] font-semibold text-amber-500">нет оплат</span>
                 ) : isOrganic ? (
                   <span className="rounded-lg bg-pink-500/15 px-2 py-1 text-[10px] font-bold uppercase text-pink-400">органика</span>
                 ) : null}
