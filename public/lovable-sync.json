@@ -1,7 +1,7 @@
 {
-  "git_sha": "580cb64",
-  "git_sha_full": "580cb64f0bd47083eadb9d91e8ffb620b0eadc33",
-  "updated_at": "2026-07-06T11:54:13Z",
-  "label": "Добавил страницу Контент-центр",
+  "git_sha": "f28bb53",
+  "git_sha_full": "f28bb53037dd734bc61da33517b8cc24f05e46c0",
+  "updated_at": "2026-07-06T17:50:32+05:00",
+  "label": "feat(content-center): реальные превью постов + предпросмотр по наведению",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
