@@ -1,7 +1,7 @@
 {
-  "git_sha": "eac403c",
-  "git_sha_full": "eac403cdeb65f458bd9227b539677ed7954d0cfc",
-  "updated_at": "2026-07-06T18:28:34+05:00",
-  "label": "feat(autopost): раздел «Автопостинг» + фикс сборки",
+  "git_sha": "23d918d",
+  "git_sha_full": "23d918dbb2fe28080c0a3d0fe0f7c9525ae8bd93",
+  "updated_at": "2026-07-06T18:29:04+05:00",
+  "label": "fix(content-center): render thumbnails via background-image",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
