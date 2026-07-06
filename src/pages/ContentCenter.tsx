@@ -345,7 +345,7 @@ const ContentCenter = () => {
             {top5.map((p, idx) => (
               <div key={p.ig_media_id} className="flex items-center gap-2">
                 <div className="w-4 shrink-0 text-center text-xs font-bold text-muted-foreground">{idx + 1}</div>
-                <Thumb post={p} className="h-9 w-9" />
+                <Thumb post={p} className="size-9" />
                 <div className="min-w-0 flex-1">
                   <div className="line-clamp-1 text-xs font-medium">
                     {(p.codewords && p.codewords[0]) || p.caption || p.ig_media_id}
@@ -395,7 +395,7 @@ const ContentCenter = () => {
             <thead className="bg-secondary/40 text-[10px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <SortableTh label="Дата" sortKey="posted_at" current={sortKey} dir={sortDir} onSort={onSort} align="left" />
-                <th className="px-3 py-3 text-left font-semibold">Публикация</th>
+                <th className="min-w-[280px] px-3 py-3 text-left font-semibold">Публикация</th>
                 <SortableTh label="Охват" sortKey="reach" current={sortKey} dir={sortDir} onSort={onSort} />
                 <th className="px-3 py-3 text-left font-semibold">Код-слова</th>
                 <SortableTh label="Клики" sortKey="clicks" current={sortKey} dir={sortDir} onSort={onSort} />
@@ -419,11 +419,11 @@ const ContentCenter = () => {
               {filtered.map((p) => (
                 <tr key={p.ig_media_id} className="border-t border-border/30 transition hover:bg-secondary/20">
                   <td className="whitespace-nowrap px-3 py-3 text-left tabular-nums text-muted-foreground">{fmtDate(p.posted_at)}</td>
-                  <td className="px-3 py-3">
-                    <div className="flex items-center gap-2">
+                  <td className="px-3 py-3 align-top">
+                    <div className="flex items-start gap-3">
                       <PostPreview post={p} />
-                      <div className="min-w-0 max-w-[360px]">
-                        <div className="line-clamp-2 text-xs font-medium" title={p.caption ?? undefined}>
+                      <div className="min-w-0 flex-1">
+                        <div className="line-clamp-2 text-xs font-medium leading-snug" title={p.caption ?? undefined}>
                           {p.caption || <span className="text-muted-foreground">Без подписи</span>}
                         </div>
                         {p.permalink && (
@@ -473,22 +473,46 @@ const ContentCenter = () => {
   );
 };
 
-function PostPreview({ post, size = "h-14 w-14" }: { post: CCPost; size?: string }) {
+function PostPreview({ post }: { post: CCPost }) {
   const src = post.thumbnail_url;
-  const img = src ? (
-    <img src={src} alt="" loading="lazy" className={cn("shrink-0 rounded-md object-cover ring-1 ring-border/40", size)} />
-  ) : (
-    <div className={cn("grid shrink-0 place-items-center rounded-md bg-secondary/50 text-muted-foreground ring-1 ring-border/40", size)}>
-      <Eye className="h-4 w-4" />
+  const thumb = (
+    <div className="relative size-14 shrink-0 overflow-hidden rounded-lg bg-secondary/50 ring-1 ring-border/40">
+      {src ? (
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          className="size-full object-cover"
+        />
+      ) : (
+        <div className="flex size-full items-center justify-center text-muted-foreground">
+          <Eye className="h-4 w-4" />
+        </div>
+      )}
     </div>
   );
   return (
     <HoverCard openDelay={120} closeDelay={80}>
       <HoverCardTrigger asChild>
-        <div className="cursor-zoom-in">{img}</div>
+        <button
+          type="button"
+          className="shrink-0 cursor-zoom-in rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          aria-label="Предпросмотр публикации"
+        >
+          {thumb}
+        </button>
       </HoverCardTrigger>
       <HoverCardContent align="start" className="w-72 p-3">
-        {src && <img src={src} alt="" className="mb-2 max-h-64 w-full rounded-lg object-cover" />}
+        {src && (
+          <img
+            src={src}
+            alt=""
+            referrerPolicy="no-referrer"
+            className="mb-2 max-h-64 w-full rounded-lg object-cover"
+          />
+        )}
         <div className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs text-foreground/90">
           {post.caption || "Без подписи"}
         </div>
@@ -504,20 +528,28 @@ function PostPreview({ post, size = "h-14 w-14" }: { post: CCPost; size?: string
 
 function Thumb({ post, className }: { post: CCPost; className?: string }) {
   const src = post.thumbnail_url;
-  if (!src) {
-    return (
-      <div className={cn("grid shrink-0 place-items-center rounded-md bg-secondary/50 text-muted-foreground ring-1 ring-border/40", className)}>
-        <Eye className="h-4 w-4" />
-      </div>
-    );
-  }
   return (
-    <img
-      src={src}
-      alt=""
-      loading="lazy"
-      className={cn("shrink-0 rounded-md object-cover ring-1 ring-border/40", className)}
-    />
+    <div
+      className={cn(
+        "relative shrink-0 overflow-hidden rounded-md bg-secondary/50 ring-1 ring-border/40",
+        className ?? "size-9",
+      )}
+    >
+      {src ? (
+        <img
+          src={src}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          className="size-full object-cover"
+        />
+      ) : (
+        <div className="flex size-full items-center justify-center text-muted-foreground">
+          <Eye className="h-4 w-4" />
+        </div>
+      )}
+    </div>
   );
 }
 
