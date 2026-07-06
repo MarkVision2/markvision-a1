@@ -286,7 +286,7 @@ const CreativeFunnel = () => {
     let ok = 0;
     await Promise.all(
       adIds.map(async (adId) => {
-        const res = await refreshMetaCreative(adId, { force: true }).catch(() => null);
+        const res = await refreshMetaCreative(adId, { force: true, refreshVideo: true }).catch(() => null);
         if (res?.ok) ok += 1;
         setPosterProgress((p) => ({ ...p, done: p.done + 1 }));
       }),

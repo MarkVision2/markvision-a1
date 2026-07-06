@@ -36,7 +36,10 @@ function release() {
   if (next) next();
 }
 
-export function refreshMetaCreative(adId: string, opts?: { force?: boolean }): Promise<RefreshResult> {
+export function refreshMetaCreative(
+  adId: string,
+  opts?: { force?: boolean; refreshVideo?: boolean },
+): Promise<RefreshResult> {
   if (!adId) return Promise.resolve({ ok: false });
   const force = !!opts?.force;
   if (force) {
@@ -46,7 +49,11 @@ export function refreshMetaCreative(adId: string, opts?: { force?: boolean }): P
   }
   if (!force && cooldownUntil > Date.now()) return Promise.resolve({ ok: false, fallback: true, rate_limited: true });
   const cached = cache.get(adId);
-  if (cached) return Promise.resolve(cached);
+  if (cached) {
+    const needsVideo = !!opts?.refreshVideo;
+    // Кеш без video_url не подходит для воспроизведения — запрашиваем заново.
+    if (!needsVideo || cached.video_url) return Promise.resolve(cached);
+  }
   const exists = inflight.get(adId);
   if (exists) return exists;
 
@@ -63,7 +70,12 @@ export function refreshMetaCreative(adId: string, opts?: { force?: boolean }): P
         await new Promise((r) => setTimeout(r, 250));
         const { data, error } = await supabase.functions.invoke<RefreshResult>(
           "meta-creative-refresh",
-          { body: { ad_id: adId } },
+          {
+            body: {
+              ad_id: adId,
+              ...(opts?.refreshVideo ? { refresh_video: true } : {}),
+            },
+          },
         );
         if (error) {
           // Rate-limited or other failure → long cooldown to stop the storm

@@ -42,7 +42,7 @@ export function CreativeExpanded({ row, campaignName, goalLabel, isWhatsApp, ran
   const refreshVideo = async (silent = false) => {
     setRefreshing(true);
     try {
-      const data = await refreshMetaCreative(row.adId);
+      const data = await refreshMetaCreative(row.adId, { force: true, refreshVideo: isVideo });
       const url = data.video_url;
       if (!url) throw new Error(data.rate_limited ? "Meta временно ограничила обновление превью" : "Не удалось получить ссылку на видео");
       setVideoUrl(url);

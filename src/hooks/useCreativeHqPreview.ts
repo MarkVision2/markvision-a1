@@ -29,6 +29,14 @@ function needsVisualRefresh(row: CreativePreviewSource, extraPoster: string | nu
   return !urls.some(isPersistedCreativeUrl);
 }
 
+/** Meta mp4 source всегда временный — нужен refresh перед воспроизведением. */
+function needsVideoRefresh(row: CreativePreviewSource): boolean {
+  if (row.creativeType !== "video") return false;
+  const url = row.videoUrl?.trim();
+  if (!url) return true;
+  return /fbcdn\.net|facebook\.com/i.test(url);
+}
+
 function applyRefreshVisuals(data: RefreshResult | null): {
   poster: string | null;
   thumb: string | null;
@@ -101,9 +109,10 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
       row,
       capturedPoster ?? refreshedPoster ?? row.posterUrl,
     );
+    const needsVideo = needsVideoRefresh(row);
 
     void (async () => {
-      if (needsRefresh) {
+      if (needsRefresh || needsVideo) {
         setLoadingHq(true);
         setHqFailed(false);
       }
@@ -111,20 +120,21 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
       let videoUrl = row.videoUrl ?? null;
       const attempts = refreshAttempts.get(adId) ?? 0;
 
-      let refreshedFromApi: { poster: string | null; thumb: string | null } = {
+      let refreshedFromApi: { poster: string | null; thumb: string | null; video: string | null } = {
         poster: null,
         thumb: null,
+        video: null,
       };
-      if (needsRefresh && attempts < MAX_REFRESH_ATTEMPTS) {
+      if ((needsRefresh || needsVideo) && attempts < MAX_REFRESH_ATTEMPTS) {
         refreshAttempts.set(adId, attempts + 1);
-        const data = await refreshMetaCreative(adId).catch(() => null);
+        const data = await refreshMetaCreative(adId, { refreshVideo: needsVideo }).catch(() => null);
         if (cancelled) return;
-        refreshedFromApi = applyRefreshVisuals(data);
+        refreshedFromApi = { ...applyRefreshVisuals(data), video: data?.video_url?.trim() || null };
         if (refreshedFromApi.poster) setRefreshedPoster(refreshedFromApi.poster);
         else if (refreshedFromApi.thumb) setRefreshedThumb(refreshedFromApi.thumb);
-        if (data?.video_url) {
-          videoUrl = data.video_url;
-          setPreviewVideoUrl(data.video_url);
+        if (refreshedFromApi.video) {
+          videoUrl = refreshedFromApi.video;
+          setPreviewVideoUrl(refreshedFromApi.video);
         }
       }
 
@@ -154,7 +164,7 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
           }),
         );
         setLoadingHq(false);
-        if (!hasAnyVisual && needsRefresh) setHqFailed(true);
+        if (!hasAnyVisual && (needsRefresh || needsVideo)) setHqFailed(true);
       }
     })();
 
@@ -176,11 +186,13 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
     setLoadingHq(true);
     setHqFailed(false);
     refreshAttempts.delete(row.adId);
-    const data = await refreshMetaCreative(row.adId, { force: true }).catch(() => null);
+    const data = await refreshMetaCreative(row.adId, { force: true, refreshVideo: isVideo }).catch(() => null);
     const visuals = applyRefreshVisuals(data);
     if (visuals.poster) setRefreshedPoster(visuals.poster);
     else if (visuals.thumb) setRefreshedThumb(visuals.thumb);
-    const videoUrl = visuals.video ?? previewVideoUrl ?? row.videoUrl ?? null;
+    const videoUrl = isVideo
+      ? (visuals.video ?? null)
+      : (visuals.video ?? previewVideoUrl ?? row.videoUrl ?? null);
     if (visuals.video) setPreviewVideoUrl(visuals.video);
     if (isVideo && !visuals.poster && !visuals.thumb && videoUrl) {
       const captured = await enqueuePosterCapture(row.adId, videoUrl).catch(() => null);

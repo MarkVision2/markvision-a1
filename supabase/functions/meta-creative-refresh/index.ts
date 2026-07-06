@@ -104,7 +104,7 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  let body: { ad_id?: string };
+  let body: { ad_id?: string; refresh_video?: boolean };
   try {
     body = await req.json();
   } catch {
@@ -112,6 +112,7 @@ Deno.serve(async (req) => {
   }
   const adId = String(body.ad_id ?? "").trim();
   if (!adId) return json({ ok: false, error: "ad_id required" }, 400);
+  const refreshVideo = Boolean(body.refresh_video);
 
   const { data: row, error: rowErr } = await admin
     .from("meta_creatives")
@@ -123,7 +124,11 @@ Deno.serve(async (req) => {
 
   const cabinetId = (row as { cabinet_id?: string | null }).cabinet_id ?? null;
   const existingPoster = ((row as { poster_url?: string | null }).poster_url ?? "").trim();
-  if (existingPoster && isSupabasePosterUrl(existingPoster)) {
+  const hasPersistedPoster = Boolean(existingPoster && isSupabasePosterUrl(existingPoster));
+  // Постер в Storage постоянный, но mp4 source из Meta истекает через часы.
+  // Раньше здесь был ранний return без video_url — из-за этого плеер показывал
+  // «Ссылка на видео истекла», хотя постер уже был сохранён.
+  if (hasPersistedPoster && !refreshVideo) {
     return json({
       ok: true,
       poster_url: existingPoster,
@@ -184,9 +189,11 @@ Deno.serve(async (req) => {
       ?? resolvedThumb
       ?? (storedThumb && !isLowResThumb(storedThumb) ? storedThumb : null);
 
-    const posterUrl = bestThumb
-      ? await ensurePosterInStorage(admin, adId, cabinetId, existingPoster, bestThumb)
-      : null;
+    const posterUrl = hasPersistedPoster
+      ? existingPoster
+      : bestThumb
+        ? await ensurePosterInStorage(admin, adId, cabinetId, existingPoster, bestThumb)
+        : null;
 
     if (!v.source) {
       if (bestThumb || posterUrl) {

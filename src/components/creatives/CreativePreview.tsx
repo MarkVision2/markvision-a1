@@ -70,6 +70,7 @@ export function CreativePreview({
   } = useCreativeHqPreview(row, { compact, inView });
 
   const [playerOpen, setPlayerOpen] = useState(false);
+  const [playerVideoUrl, setPlayerVideoUrl] = useState<string | null>(null);
   const [loadingFullVideo, setLoadingFullVideo] = useState(false);
   const [mediaError, setMediaError] = useState(false);
   const [playVideo, setPlayVideo] = useState(false);
@@ -120,8 +121,18 @@ export function CreativePreview({
   const handlePlayClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setPlayerOpen(true);
+    setPlayerVideoUrl(null);
     setLoadingFullVideo(true);
-    await forceRefresh();
+    const freshUrl = await forceRefresh();
+    setPlayerVideoUrl(freshUrl);
+    setLoadingFullVideo(false);
+  };
+
+  const handleRetryVideo = async () => {
+    setPlayerVideoUrl(null);
+    setLoadingFullVideo(true);
+    const freshUrl = await forceRefresh();
+    setPlayerVideoUrl(freshUrl);
     setLoadingFullVideo(false);
   };
 
@@ -309,20 +320,26 @@ export function CreativePreview({
       )}
 
       {playable && isVideo && (
-        <Dialog open={playerOpen} onOpenChange={setPlayerOpen}>
+        <Dialog
+          open={playerOpen}
+          onOpenChange={(open) => {
+            setPlayerOpen(open);
+            if (!open) setPlayerVideoUrl(null);
+          }}
+        >
           <DialogContent className="max-h-[100dvh] max-w-[100vw] border-0 bg-black p-0 sm:max-w-[min(420px,95vw)]">
             <DialogTitle className="sr-only">{row.name ?? "Видео из Meta"}</DialogTitle>
-            {previewVideoUrl ? (
+            {playerVideoUrl ? (
               <video
-                src={previewVideoUrl}
+                key={playerVideoUrl}
+                src={playerVideoUrl}
                 poster={imageSrc ?? displaySrc ?? undefined}
                 controls
+                autoPlay
                 playsInline
                 className="aspect-[9/16] h-auto max-h-[92dvh] w-full bg-black"
-                onError={async () => {
-                  setLoadingFullVideo(true);
-                  await forceRefresh();
-                  setLoadingFullVideo(false);
+                onError={() => {
+                  void handleRetryVideo();
                 }}
               />
             ) : loadingFullVideo ? (
@@ -335,13 +352,11 @@ export function CreativePreview({
                 style={{ backgroundImage: displaySrc ? `url(${displaySrc})` : undefined, backgroundColor: "#000" }}
               >
                 <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/55 p-6 text-center text-sm text-white">
-                  <p>Ссылка на видео из Meta истекла.</p>
+                  <p>Не удалось загрузить видео из Meta.</p>
                   <button
                     type="button"
-                    onClick={async () => {
-                      setLoadingFullVideo(true);
-                      await forceRefresh();
-                      setLoadingFullVideo(false);
+                    onClick={() => {
+                      void handleRetryVideo();
                     }}
                     className="rounded-md bg-white/15 px-3 py-1.5 text-xs font-semibold backdrop-blur hover:bg-white/25"
                   >
