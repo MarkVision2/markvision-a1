@@ -1,7 +1,7 @@
 {
-  "git_sha": "50d5825",
-  "git_sha_full": "50d58251ac0f6e46e0d2eca8c456af07e372419b",
-  "updated_at": "2026-07-06T18:55:40+05:00",
-  "label": "feat(autopost): редизайн — статистика, лучшее время, календарь, редактирование, публикация сейчас, пробный режим",
+  "git_sha": "8d4dd51",
+  "git_sha_full": "8d4dd51e7f4363981461580f4d78c547dfcd69f1",
+  "updated_at": "2026-07-06T18:58:36+05:00",
+  "label": "polish(content-center): sidebar icon, empty states, refresh fix",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
