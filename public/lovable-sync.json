@@ -1,7 +1,7 @@
 {
-  "git_sha": "662b58e",
-  "git_sha_full": "662b58e28c9328cd0be77048a79811a927638528",
-  "updated_at": "2026-07-06T21:02:27+05:00",
-  "label": "fix(creatives): stop refresh storm that blocked Meta previews",
+  "git_sha": "8f53ab0",
+  "git_sha_full": "8f53ab07a3551ed0f5bf979012daa52ad0ae4235",
+  "updated_at": "2026-07-06T21:13:24+05:00",
+  "label": "chore(migrate): переключить основной Supabase на szfg (кат-овер)",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
