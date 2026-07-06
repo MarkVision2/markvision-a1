@@ -37,6 +37,7 @@ interface Stats {
   by_weekday: { dow: number; posts: number; avg_reach: number }[];
   by_hour: { hour: number; posts: number; avg_reach: number }[];
   heatmap: { dow: number; hour: number; posts: number; avg_reach: number }[];
+  best_slots: { dow: number; hour: number; posts: number; avg_reach: number }[];
 }
 
 const TYPE_META: Record<PostType, { label: string; icon: typeof Images; accept: string; multiple: boolean; hint: string }> = {
@@ -135,6 +136,9 @@ const AutoPost = () => {
   const [editing, setEditing] = useState<QueuePost | null>(null);
 
   const hourReach = useMemo(() => { const m = new Map<number, number>(); for (const h of stats?.by_hour ?? []) m.set(h.hour, h.avg_reach); return m; }, [stats]);
+  const topSlot = stats?.best_slots?.[0] ?? null;
+  const bestDow = topSlot?.dow ?? null;
+  const bestHour = topSlot?.hour ?? null;
   const openAdd = (ymd: string) => setAddDay(ymd);
   const monthLabel = `${MONTHS[view.getMonth()]} ${view.getFullYear()}`;
 
@@ -157,7 +161,7 @@ const AutoPost = () => {
           { label: "Опубликовано за месяц", value: fmtNum(stats?.published_this_period ?? 0), cls: "text-emerald-600" },
           { label: "Запланировано", value: fmtNum(stats?.scheduled_upcoming ?? 0) },
           { label: "Постов в анализе", value: fmtNum(stats?.total_posts ?? 0) },
-          { label: "Лучшее время", value: stats?.best_weekday != null && stats?.best_hour != null ? `${WD_FROM_DOW[stats.best_weekday]} ${pad(stats.best_hour)}:00` : "—" },
+          { label: "Лучшее время", value: bestDow != null && bestHour != null ? `${WD_FROM_DOW[bestDow]} ${pad(bestHour)}:00` : "—" },
         ].map((k) => (
           <div key={k.label} className="rounded-2xl border border-border/60 bg-card/60 p-3">
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{k.label}</div>
@@ -173,9 +177,9 @@ const AutoPost = () => {
           <div className="min-w-[150px] text-center text-lg font-bold capitalize">{monthLabel}</div>
           <Button variant="outline" size="icon" className="h-9 w-9 rounded-lg" onClick={() => setView(new Date(view.getFullYear(), view.getMonth() + 1, 1))}><ChevronRight className="h-4 w-4" /></Button>
           <Button variant="ghost" size="sm" className="h-9 rounded-lg text-xs" onClick={() => setView(new Date())}>Сегодня</Button>
-          {stats?.best_weekday != null && stats?.best_hour != null && (
+          {bestDow != null && bestHour != null && (
             <span className="ml-2 hidden items-center gap-1 text-[11px] text-muted-foreground sm:inline-flex">
-              <Sparkles className="h-3.5 w-3.5 text-primary" /> Лучшее время: <b className="text-foreground">{WD_FROM_DOW[stats.best_weekday]} {pad(stats.best_hour)}:00</b>
+              <Sparkles className="h-3.5 w-3.5 text-primary" /> Лучшее время: <b className="text-foreground">{WD_FROM_DOW[bestDow]} {pad(bestHour)}:00</b>
             </span>
           )}
         </div>
@@ -244,12 +248,21 @@ const AutoPost = () => {
         <div className="mt-4 rounded-2xl border border-border/60 bg-card/60 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="flex items-center gap-1.5 text-sm font-semibold"><Flame className="h-4 w-4 text-orange-500" /> Лучшее время для публикаций</h2>
-            {stats.best_weekday != null && stats.best_hour != null && (
-              <span className="text-[11px] text-muted-foreground">Рекомендуем: <b className="text-foreground">{WD_FROM_DOW[stats.best_weekday]}, {pad(stats.best_hour)}:00</b></span>
+            {bestDow != null && bestHour != null && (
+              <span className="text-[11px] text-muted-foreground">Рекомендуем: <b className="text-foreground">{WD_FROM_DOW[bestDow]}, {pad(bestHour)}:00</b></span>
             )}
           </div>
-          <p className="mt-1 text-[11px] text-muted-foreground">По среднему охвату прошлых публикаций. Чем ярче ячейка — тем выше охват в это время (Алматы).</p>
-          <div className="mt-3"><Heatmap cells={stats.heatmap} bestDow={stats.best_weekday} bestHour={stats.best_hour} /></div>
+          <p className="mt-1 text-[11px] text-muted-foreground">Строки — дни недели, столбцы — часы (0–23). Чем ярче ячейка, тем выше средний охват прошлых постов в это время (Алматы).</p>
+          {(stats.best_slots ?? []).length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {(stats.best_slots ?? []).map((slot, i) => (
+                <span key={`${slot.dow}-${slot.hour}`} className={cn("inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-medium", i === 0 ? "bg-primary/15 text-primary" : "bg-secondary/60 text-foreground/80")}>
+                  {i === 0 && <Sparkles className="h-3 w-3" />}{WD_FROM_DOW[slot.dow]} {pad(slot.hour)}:00 · охват ~{fmtNum(slot.avg_reach)}
+                </span>
+              ))}
+            </div>
+          )}
+          <div className="mt-3"><Heatmap cells={stats.heatmap} bestDow={bestDow} bestHour={bestHour} /></div>
         </div>
       )}
 
