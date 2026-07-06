@@ -1,7 +1,7 @@
 {
-  "git_sha": "176facd",
-  "git_sha_full": "176facd2037134b9a3fd3d5536449fdb42601d25",
-  "updated_at": "2026-07-06T17:56:16+05:00",
-  "label": "Merge branch 'main' of https://github.com/MarkVision2/markvision-a1",
+  "git_sha": "39d2742",
+  "git_sha_full": "39d2742e903b43231eb9e217c0a2573d4751bc2b",
+  "updated_at": "2026-07-06T18:05:35+05:00",
+  "label": "fix(content-center): stabilize publication thumbnail layout",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
