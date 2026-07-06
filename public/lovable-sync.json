@@ -1,7 +1,7 @@
 {
-  "git_sha": "37102a7",
-  "git_sha_full": "37102a7ee7a9bc38d6e11e6964b64a68ec824567",
-  "updated_at": "2026-07-06T21:17:14+05:00",
-  "label": "fix(settings): detect when Lovable deploy lags behind GitHub main",
+  "git_sha": "fb651bf",
+  "git_sha_full": "fb651bfd2853c28468150e80f34ebcf34f0eec1e",
+  "updated_at": "2026-07-06T21:33:12+05:00",
+  "label": "fix(autopost): понятное «Лучшее время» — рекомендация по реальному лучшему слоту",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
