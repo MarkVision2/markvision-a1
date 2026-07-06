@@ -113,7 +113,15 @@ export default function ContentAnalytics() {
       <PageHeader
         icon={Hash}
         title="Контент-аналитика"
-        description="Код-слова в DM и статистика Instagram Business: охват, Reels, аудитория и продажи в CRM."
+        description={
+          <span>
+            Код-слова в DM и статистика Instagram Business: охват, Reels, аудитория и продажи в CRM.
+            {" "}
+            <Link to="/marketing/content-center" className="text-primary hover:underline">
+              Контент-центр →
+            </Link>
+          </span>
+        }
         actions={
           <div className="flex flex-wrap items-center gap-2">
             <PeriodPicker range={range} onChange={setRange} />

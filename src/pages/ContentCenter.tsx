@@ -350,7 +350,9 @@ const ContentCenter = () => {
   const [top5Mode, setTop5Mode] = useState<Top5Mode>("revenue");
   const [selectedPost, setSelectedPost] = useState<Derived | null>(null);
   const [viewModeOverride, setViewModeOverride] = useState<ViewMode | null>(null);
+  const [refreshTick, setRefreshTick] = useState(0);
 
+  const configMissing = !CLIENT_URL;
   const viewMode = viewModeOverride ?? (isMobile ? "cards" : "table");
   const openPost = (p: Derived) => setSelectedPost(p);
 
@@ -358,6 +360,11 @@ const ContentCenter = () => {
   const to = ymd(range.to);
 
   useEffect(() => {
+    if (configMissing) {
+      setLoading(false);
+      setError("VITE_CLIENT_SUPABASE_URL не задан — раздел недоступен");
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(null);
@@ -366,7 +373,7 @@ const ContentCenter = () => {
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [from, to]);
+  }, [from, to, refreshTick, configMissing]);
 
   const posts = useMemo(() => (data?.posts ?? []).map(enrich), [data]);
   const totals = data?.totals;
@@ -470,10 +477,13 @@ const ContentCenter = () => {
     }
   };
 
+  const isEmptyPeriod = !loading && !configMissing && !error && posts.length === 0;
+
   return (
     <PageContainer wide>
       <PageHeader
         icon={Instagram}
+        iconAccent="pink"
         title="Контент-центр"
         description={
           <span>
@@ -489,8 +499,8 @@ const ContentCenter = () => {
               size="icon"
               className="h-10 w-10 rounded-xl border-border/60"
               aria-label="Обновить"
-              onClick={() => setRange({ ...range })}
-              disabled={loading}
+              onClick={() => setRefreshTick((t) => t + 1)}
+              disabled={loading || configMissing}
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             </Button>
@@ -501,6 +511,28 @@ const ContentCenter = () => {
       {error && (
         <div className="mt-6 rounded-2xl border border-destructive/40 bg-destructive/5 px-4 py-3 text-sm text-destructive">
           {error}
+          {configMissing && (
+            <p className="mt-2 text-muted-foreground">
+              Добавьте <code className="text-xs">VITE_CLIENT_SUPABASE_URL</code> в переменные окружения Lovable
+              или откройте{" "}
+              <Link to="/analytics/content" className="text-primary hover:underline">Контент-аналитику</Link>.
+            </p>
+          )}
+        </div>
+      )}
+
+      {configMissing ? null : (
+      <>
+      {isEmptyPeriod && (
+        <div className="mt-6 rounded-2xl border border-pink-500/30 bg-pink-500/5 px-6 py-8 text-center">
+          <Instagram className="mx-auto h-8 w-8 text-pink-500" />
+          <h2 className="mt-3 text-lg font-semibold">Нет публикаций за период</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Подключите Instagram Business, синхронизируйте контент или расширьте диапазон дат.
+          </p>
+          <Button asChild variant="outline" className="mt-4 rounded-xl">
+            <Link to="/analytics/content">Перейти в Контент-аналитику</Link>
+          </Button>
         </div>
       )}
 
@@ -796,6 +828,8 @@ const ContentCenter = () => {
         Воронка в строке: клики → заявки → диагностики → продажи. Сортировка «Воронка» — по заявкам.
         {" "}Заявка — переписка в WhatsApp по код-слову. Суммы — в тенге.
       </p>
+      </>
+      )}
     </PageContainer>
   );
 };

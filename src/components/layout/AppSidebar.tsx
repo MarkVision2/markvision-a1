@@ -14,7 +14,7 @@ import {
   Hash,
   Bot,
   Send,
-  TrendingUp,
+  Instagram,
   CalendarClock,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
@@ -49,7 +49,7 @@ const main: NavItem[] = [
 const marketing: NavItem[] = [
   { title: "Управление рекламой", url: "/ads", icon: Target },
   { title: "Контент-завод", url: "/", icon: Wand2 },
-  { title: "Контент-центр", url: "/marketing/content-center", icon: TrendingUp },
+  { title: "Контент-центр", url: "/marketing/content-center", icon: Instagram },
   { title: "Автопостинг", url: "/marketing/autopost", icon: CalendarClock },
 ];
 

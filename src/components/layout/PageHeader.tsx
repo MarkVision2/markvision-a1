@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 interface PageHeaderProps {
   /** Иконка слева в плашке. */
   icon: LucideIcon;
+  /** Цвет плашки иконки. По умолчанию — success (зелёный). */
+  iconAccent?: "success" | "pink" | "primary";
   /** Основной заголовок страницы (H1). */
   title: string;
   /** Подзаголовок под title — короткое описание/статус. */
@@ -15,12 +17,19 @@ interface PageHeaderProps {
   className?: string;
 }
 
+const ICON_ACCENT_CLS: Record<NonNullable<PageHeaderProps["iconAccent"]>, string> = {
+  success: "bg-success/10 text-success",
+  pink: "bg-pink-500/10 text-pink-500",
+  primary: "bg-primary/10 text-primary",
+};
+
 /**
  * Единый шапка-блок для всех страниц приложения.
  * Один размер иконки-плашки, один размер H1, один отступ.
  */
 export function PageHeader({
   icon: Icon,
+  iconAccent = "success",
   title,
   description,
   actions,
@@ -35,7 +44,7 @@ export function PageHeader({
       )}
     >
       <div className="flex items-center gap-3">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-success/10 text-success">
+        <span className={cn("grid h-11 w-11 shrink-0 place-items-center rounded-2xl", ICON_ACCENT_CLS[iconAccent])}>
           <Icon className="h-5 w-5" />
         </span>
         <div className="min-w-0">
