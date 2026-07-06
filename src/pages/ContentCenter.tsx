@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import {
-  ArrowDown, ArrowUp, ArrowUpDown, ExternalLink, Eye, Loader2, MousePointerClick,
-  MessageCircle, RefreshCw, Search, Stethoscope, TrendingUp, Trophy,
+  AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Banknote, ExternalLink, Eye,
+  Instagram, Lightbulb, Loader2, MousePointerClick, MessageCircle, RefreshCw, Search,
+  ShoppingCart, Stethoscope, Target, Trophy,
 } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -12,6 +15,13 @@ import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { fmtKzt, fmtNum } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 // Раздел «Контент-центр» — аналитика Instagram-автоворонки (cf_*), которая живёт
 // в клиентском Supabase (szfgdruhlebfvcmlvxdk). Данные считает edge-функция
@@ -116,13 +126,205 @@ function SortableTh({
   );
 }
 
-const FUNNEL_STEPS: { key: keyof CCFunnel; label: string; Icon: typeof Eye; color: string }[] = [
-  { key: "reach", label: "Охват", Icon: Eye, color: "bg-sky-500" },
-  { key: "clicks", label: "Клики", Icon: MousePointerClick, color: "bg-indigo-500" },
-  { key: "leads", label: "Заявки", Icon: MessageCircle, color: "bg-violet-500" },
-  { key: "diagnostics", label: "Диагностики", Icon: Stethoscope, color: "bg-amber-500" },
-  { key: "sales", label: "Продажи", Icon: Trophy, color: "bg-emerald-500" },
+const FUNNEL_STEPS: {
+  key: keyof CCFunnel;
+  label: string;
+  transition?: string;
+  moneyKey?: keyof CCTotals;
+}[] = [
+  { key: "reach", label: "Охват" },
+  { key: "clicks", label: "Клики", transition: "CTR" },
+  { key: "leads", label: "Заявки", transition: "Из кликов" },
+  { key: "diagnostics", label: "Диагностики", transition: "Из заявок", moneyKey: "diagnostic_sum" },
+  { key: "sales", label: "Продажи", transition: "Из диагн.", moneyKey: "sale_sum" },
 ];
+
+const FUNNEL_GRADIENTS = [
+  "from-pink-500/50 to-pink-500/20",
+  "from-indigo-500/45 to-indigo-500/15",
+  "from-violet-500/45 to-violet-500/15",
+  "from-amber-500/45 to-amber-500/15",
+  "from-emerald-500/55 to-emerald-500/25",
+];
+
+function KpiCard({
+  icon: Icon,
+  label,
+  value,
+  sub,
+  emphasized,
+  accent = "muted",
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+  sub?: string;
+  emphasized?: boolean;
+  accent?: "pink" | "success" | "primary" | "muted";
+}) {
+  const iconCls =
+    accent === "pink"
+      ? "bg-pink-500/10 text-pink-500"
+      : accent === "success"
+        ? "bg-success/10 text-success"
+        : accent === "primary"
+          ? "bg-primary/10 text-primary"
+          : "bg-secondary text-muted-foreground";
+
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border border-border/60 bg-card/60 p-3.5 transition-colors",
+        emphasized && accent === "success" && "border-success/40 bg-success/5",
+        emphasized && accent === "pink" && "border-pink-500/30 bg-pink-500/5",
+        emphasized && accent === "primary" && "border-primary/30 bg-primary/5",
+      )}
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        <span className={cn("grid h-7 w-7 shrink-0 place-items-center rounded-lg", iconCls)}>
+          <Icon className="h-3.5 w-3.5" />
+        </span>
+        <span className="truncate text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          {label}
+        </span>
+      </div>
+      <div className={cn("mt-2.5 text-xl font-bold tabular-nums leading-tight", emphasized && accent === "success" && "text-success")}>
+        {value}
+      </div>
+      {sub && <div className="mt-1 text-[11px] text-muted-foreground">{sub}</div>}
+    </div>
+  );
+}
+
+function KpiSkeleton() {
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card/60 p-3.5 animate-pulse">
+      <div className="flex items-center gap-2">
+        <div className="h-7 w-7 rounded-lg bg-secondary" />
+        <div className="h-3 w-20 rounded bg-secondary" />
+      </div>
+      <div className="mt-3 h-7 w-24 rounded bg-secondary" />
+    </div>
+  );
+}
+
+function ContentFunnel({
+  funnel,
+  totals,
+  rangeLabel,
+  e2e,
+}: {
+  funnel: CCFunnel | undefined;
+  totals: CCTotals | undefined;
+  rangeLabel: string;
+  e2e: number;
+}) {
+  const steps = FUNNEL_STEPS.map((s) => ({
+    ...s,
+    value: funnel?.[s.key] ?? 0,
+    money: s.moneyKey && totals ? totals[s.moneyKey] : null,
+  }));
+
+  const max = Math.max(...steps.map((s) => s.value), 1);
+  const convs = steps.map((s, i) =>
+    i === 0 || steps[i - 1].value === 0 ? null : (s.value / steps[i - 1].value) * 100,
+  );
+
+  let worstIdx = -1;
+  let worstVal = Infinity;
+  convs.forEach((c, i) => {
+    if (c !== null && c < worstVal && steps[i - 1].value > 5) {
+      worstVal = c;
+      worstIdx = i;
+    }
+  });
+
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card/60 p-5 sm:p-6">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Instagram className="h-3.5 w-3.5 text-pink-500" />
+          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Воронка контента
+          </span>
+          <span className="rounded-full border border-border/60 bg-secondary/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+            {rangeLabel}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="flex items-center gap-1.5 rounded-full border border-success/30 bg-success/10 px-2.5 py-1 text-[10px] font-bold text-success">
+            <Target className="h-3 w-3" />
+            Охват → продажа: {fmtPct(e2e)}
+          </span>
+          {worstIdx > 0 && (
+            <span className="flex items-center gap-1.5 rounded-full border border-destructive/40 bg-destructive/10 px-2.5 py-1 text-[10px] font-bold text-destructive">
+              <AlertTriangle className="h-3 w-3" />
+              Узкое место: {steps[worstIdx - 1].label} → {steps[worstIdx].label}
+            </span>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-2.5">
+        {steps.map((s, i) => {
+          const conv = convs[i];
+          const isWorst = i === worstIdx;
+          const widthPct = (s.value / max) * 100;
+          return (
+            <div
+              key={s.key}
+              className={cn(
+                "group relative grid grid-cols-[100px_1fr_100px] items-center gap-3 rounded-xl border px-3 py-2.5 transition-colors sm:grid-cols-[110px_1fr_120px]",
+                isWorst
+                  ? "border-destructive/50 bg-destructive/5"
+                  : "border-border/50 bg-secondary/20 hover:border-border/80",
+              )}
+            >
+              <div className="flex flex-col">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  {s.label}
+                </span>
+                {conv !== null && (
+                  <span
+                    className={cn(
+                      "mt-0.5 text-[11px] font-bold tabular-nums",
+                      isWorst ? "text-destructive" : "text-success",
+                    )}
+                  >
+                    {conv.toFixed(1)}%
+                  </span>
+                )}
+                {s.transition && (
+                  <span className="mt-0.5 text-[9px] uppercase tracking-wider text-muted-foreground/70">
+                    {s.transition}
+                  </span>
+                )}
+              </div>
+
+              <div className="relative h-9 overflow-hidden rounded-lg border border-border/40 bg-background/40">
+                <div
+                  className={cn("h-full bg-gradient-to-r transition-all duration-500", FUNNEL_GRADIENTS[i])}
+                  style={{ width: `${Math.max(widthPct, s.value > 0 ? 2 : 0)}%` }}
+                />
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base font-bold tabular-nums">
+                  {fmtNum(s.value)}
+                </span>
+              </div>
+
+              <div className="text-right">
+                {s.money != null && s.money > 0 ? (
+                  <span className="text-sm font-bold tabular-nums">{fmtKzt(s.money)}</span>
+                ) : (
+                  <span className="text-xs text-muted-foreground/60">—</span>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 type Top5Mode = "revenue" | "leads" | "clicks" | "crSale";
 const TOP5_MODES: { key: Top5Mode; label: string }[] = [
@@ -197,6 +399,41 @@ const ContentCenter = () => {
       .slice(0, 5);
   }, [posts, top5Mode]);
 
+  const insights = useMemo(() => {
+    if (!posts.length) return [];
+    const items: { tone: "success" | "warning" | "default"; text: string }[] = [];
+
+    const withReach = posts.filter((p) => p.reach > 0);
+    if (withReach.length) {
+      const bestCtr = [...withReach].sort((a, b) => b.ctr - a.ctr)[0];
+      if (bestCtr.ctr > 0) {
+        const snippet = (bestCtr.caption || bestCtr.codewords?.[0] || "пост").slice(0, 42);
+        items.push({
+          tone: "success",
+          text: `Лучший CTR ${fmtPct(bestCtr.ctr)} — «${snippet}${snippet.length >= 42 ? "…" : ""}»`,
+        });
+      }
+    }
+
+    const deadPosts = posts.filter((p) => p.reach >= 5000 && p.leads === 0);
+    if (deadPosts.length > 0) {
+      items.push({
+        tone: "warning",
+        text: `${deadPosts.length} пост(ов) с охватом ≥5k без заявок — проверьте код-слово в подписи`,
+      });
+    }
+
+    const bestRev = [...posts].filter((p) => p.revenue > 0).sort((a, b) => b.revenue - a.revenue)[0];
+    if (bestRev) {
+      items.push({
+        tone: "default",
+        text: `Лидер по выручке: ${fmtKzt(bestRev.revenue)} (${fmtDate(bestRev.posted_at)})`,
+      });
+    }
+
+    return items.slice(0, 3);
+  }, [posts]);
+
   const onSort = (k: SortKey) => {
     if (sortKey === k) setSortDir(sortDir === "asc" ? "desc" : "asc");
     else { setSortKey(k); setSortDir(k === "posted_at" ? "desc" : "desc"); }
@@ -210,20 +447,10 @@ const ContentCenter = () => {
 
   const e2e = pct(funnel?.sales ?? 0, funnel?.reach ?? 0);
 
-  const kpis = totals
-    ? [
-        { label: "Общий охват", value: fmtNum(totals.reach) },
-        { label: "Всего кликов", value: fmtNum(totals.clicks) },
-        { label: "Всего заявок", value: fmtNum(totals.leads) },
-        { label: "Диагностики", value: fmtNum(totals.diagnostics), sub: fmtKzt(totals.diagnostic_sum) },
-        { label: "Продажи", value: fmtNum(totals.sales), sub: fmtKzt(totals.sale_sum) },
-        { label: "Общая выручка", value: fmtKzt(totals.revenue), cls: "text-success" },
-        {
-          label: "Средний чек",
-          value: fmtKzt(totals.diagnostics + totals.sales > 0 ? totals.revenue / (totals.diagnostics + totals.sales) : 0),
-        },
-      ]
-    : [];
+  const avgCheck =
+    totals && totals.diagnostics + totals.sales > 0
+      ? totals.revenue / (totals.diagnostics + totals.sales)
+      : 0;
 
   const top5Value = (p: Derived) => {
     switch (top5Mode) {
@@ -237,9 +464,14 @@ const ContentCenter = () => {
   return (
     <PageContainer wide>
       <PageHeader
-        icon={TrendingUp}
+        icon={Instagram}
         title="Контент-центр"
-        description={`Охват → код-слово → клик → заявка → диагностика → продажа по каждой публикации · ${rangeLabel}`}
+        description={
+          <span>
+            <span className="text-pink-500 font-medium">Instagram</span>
+            {" · "}охват → код-слово → заявка → диагностика → продажа · {rangeLabel}
+          </span>
+        }
         actions={
           <>
             <PeriodPicker range={range} onChange={setRange} />
@@ -263,60 +495,71 @@ const ContentCenter = () => {
         </div>
       )}
 
-      {/* KPI cards */}
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-        {kpis.map((k) => (
-          <div key={k.label} className="rounded-2xl border border-border/60 bg-card/60 p-3">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{k.label}</div>
-            <div className={cn("mt-1 whitespace-nowrap text-lg font-bold tabular-nums", k.cls)}>{k.value}</div>
-            {k.sub && <div className="mt-0.5 text-[11px] tabular-nums text-muted-foreground">{k.sub}</div>}
+      {/* KPI — главные + детали */}
+      {loading && !totals ? (
+        <>
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => <KpiSkeleton key={`h-${i}`} />)}
           </div>
-        ))}
-      </div>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => <KpiSkeleton key={`s-${i}`} />)}
+          </div>
+        </>
+      ) : totals ? (
+        <>
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <KpiCard
+              icon={Banknote}
+              label="Выручка с контента"
+              value={fmtKzt(totals.revenue)}
+              sub={`${fmtNum(totals.sales)} продаж · ${fmtNum(totals.diagnostics)} диагн.`}
+              emphasized
+              accent="success"
+            />
+            <KpiCard
+              icon={MessageCircle}
+              label="Заявки"
+              value={fmtNum(totals.leads)}
+              sub={`из ${fmtNum(totals.clicks)} кликов`}
+              emphasized
+              accent="primary"
+            />
+            <KpiCard
+              icon={Target}
+              label="Конверсия в продажу"
+              value={fmtPct(e2e)}
+              sub="охват → продажа за период"
+              emphasized
+              accent="pink"
+            />
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <KpiCard icon={Eye} label="Охват" value={fmtNum(totals.reach)} sub="уникальный reach" />
+            <KpiCard icon={MousePointerClick} label="Клики" value={fmtNum(totals.clicks)} sub="без ботов" />
+            <KpiCard
+              icon={Stethoscope}
+              label="Диагностики"
+              value={fmtNum(totals.diagnostics)}
+              sub={totals.diagnostic_sum > 0 ? fmtKzt(totals.diagnostic_sum) : "нет оплат"}
+            />
+            <KpiCard
+              icon={ShoppingCart}
+              label="Средний чек"
+              value={avgCheck > 0 ? fmtKzt(avgCheck) : "—"}
+              sub={totals.sales + totals.diagnostics > 0 ? "на сделку" : "нет сделок"}
+            />
+          </div>
+        </>
+      ) : null}
 
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
-        {/* Funnel */}
-        <div className="rounded-2xl border border-border/60 bg-card/60 p-4 lg:col-span-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Воронка за период</h2>
-            <div className="text-[11px] text-muted-foreground">
-              Сквозная конверсия охват → продажа:{" "}
-              <span className="font-bold text-success tabular-nums">{fmtPct(e2e)}</span>
-            </div>
-          </div>
-          <div className="mt-4 space-y-2">
-            {FUNNEL_STEPS.map((step, i) => {
-              const value = funnel?.[step.key] ?? 0;
-              const prev = i === 0 ? value : (funnel?.[FUNNEL_STEPS[i - 1].key] ?? 0);
-              const width = funnel && funnel.reach > 0 ? Math.max((value / funnel.reach) * 100, value > 0 ? 6 : 2) : 2;
-              const cr = i === 0 ? 100 : pct(value, prev);
-              const Icon = step.Icon;
-              return (
-                <div key={step.key} className="flex items-center gap-3">
-                  <div className="flex w-28 shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-                    <Icon className="h-3.5 w-3.5" />
-                    {step.label}
-                  </div>
-                  <div className="relative h-8 flex-1 overflow-hidden rounded-lg bg-secondary/40">
-                    <div
-                      className={cn("flex h-full items-center rounded-lg px-2 text-xs font-bold text-white transition-all", step.color)}
-                      style={{ width: `${width}%` }}
-                    >
-                      <span className="tabular-nums drop-shadow">{fmtNum(value)}</span>
-                    </div>
-                  </div>
-                  <div className="w-16 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
-                    {i === 0 ? "—" : fmtPct(cr)}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+        <div className="lg:col-span-2">
+          <ContentFunnel funnel={funnel} totals={totals} rangeLabel={rangeLabel} e2e={e2e} />
         </div>
-
         {/* Top-5 */}
         <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Trophy className="h-4 w-4 text-amber-500" />
             <h2 className="text-sm font-semibold">Топ-5 публикаций</h2>
           </div>
           <div className="mt-2 flex flex-wrap gap-1">
@@ -343,15 +586,28 @@ const ContentCenter = () => {
               </div>
             )}
             {top5.map((p, idx) => (
-              <div key={p.ig_media_id} className="flex items-center gap-2">
-                <div className="w-4 shrink-0 text-center text-xs font-bold text-muted-foreground">{idx + 1}</div>
-                <Thumb post={p} />
+              <div
+                key={p.ig_media_id}
+                className="flex items-center gap-2.5 rounded-xl border border-transparent px-2 py-1.5 transition hover:border-border/50 hover:bg-secondary/30"
+              >
+                <div
+                  className={cn(
+                    "flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold",
+                    idx === 0 && "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+                    idx === 1 && "bg-secondary text-muted-foreground",
+                    idx === 2 && "bg-amber-700/10 text-amber-700/80 dark:text-amber-600/80",
+                    idx > 2 && "text-muted-foreground",
+                  )}
+                >
+                  {idx + 1}
+                </div>
+                <PostThumb src={p.thumbnail_url} size={44} />
                 <div className="min-w-0 flex-1">
                   <div className="line-clamp-1 text-xs font-medium">
                     {(p.codewords && p.codewords[0]) || p.caption || p.ig_media_id}
                   </div>
                   <div className="text-[10px] text-muted-foreground tabular-nums">
-                    охват → продажа {fmtPct(p.e2e)}
+                    охват {fmtNum(p.reach)} · e2e {fmtPct(p.e2e)}
                   </div>
                 </div>
                 <div className="shrink-0 text-right text-xs font-bold tabular-nums">{top5Value(p)}</div>
@@ -372,80 +628,109 @@ const ContentCenter = () => {
             className="h-10 rounded-xl border-border/60 pl-9"
           />
         </div>
-        <select
-          value={codeword}
-          onChange={(e) => setCodeword(e.target.value)}
-          className="h-10 rounded-xl border border-border/60 bg-background px-2 text-xs font-medium"
-        >
-          <option value="all">Все код-слова</option>
-          {codewordOptions.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
+        <Select value={codeword} onValueChange={setCodeword}>
+          <SelectTrigger className="h-10 w-[180px] rounded-xl border-border/60 text-xs font-medium">
+            <SelectValue placeholder="Код-слово" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Все код-слова</SelectItem>
+            {codewordOptions.map((c) => (
+              <SelectItem key={c} value={c}>{c}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="mt-2 text-[11px] text-muted-foreground">
         Показано {filtered.length} публикаций
+        <span className="mx-2 text-border">·</span>
+        <Link to="/analytics/content" className="text-primary hover:underline">
+          Настроить код-слова →
+        </Link>
       </div>
+
+      {insights.length > 0 && (
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {insights.map((ins) => (
+            <div
+              key={ins.text}
+              className={cn(
+                "flex items-start gap-2 rounded-xl border px-3 py-2.5 text-xs",
+                ins.tone === "success" && "border-success/30 bg-success/5",
+                ins.tone === "warning" && "border-warning/40 bg-warning/5",
+                ins.tone === "default" && "border-border/60 bg-card/40",
+              )}
+            >
+              <Lightbulb
+                className={cn(
+                  "mt-0.5 h-3.5 w-3.5 shrink-0",
+                  ins.tone === "success" && "text-success",
+                  ins.tone === "warning" && "text-warning",
+                  ins.tone === "default" && "text-muted-foreground",
+                )}
+              />
+              <span>{ins.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Table */}
       <div className="mt-3 overflow-hidden rounded-2xl border border-border/60 bg-card/60">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1100px] table-fixed text-sm">
+          <table className="w-full min-w-[760px] table-fixed text-sm">
             <colgroup>
-              <col className="w-[88px]" />
-              <col className="w-[300px]" />
-              <col className="w-[72px]" />
-              <col className="w-[100px]" />
-              <col className="w-[64px]" />
-              <col className="w-[56px]" />
-              <col className="w-[64px]" />
-              <col className="w-[56px]" />
-              <col className="w-[80px]" />
-              <col className="w-[64px]" />
-              <col className="w-[80px]" />
-              <col className="w-[96px]" />
+              <col className="w-[42%]" />
+              <col className="w-[12%]" />
+              <col className="w-[26%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
             </colgroup>
             <thead className="bg-secondary/40 text-[10px] uppercase tracking-wider text-muted-foreground">
               <tr>
-                <SortableTh label="Дата" sortKey="posted_at" current={sortKey} dir={sortDir} onSort={onSort} align="left" />
-                <th className="min-w-[280px] px-3 py-3 text-left font-semibold">Публикация</th>
+                <th className="px-3 py-3 text-left font-semibold">Публикация</th>
                 <SortableTh label="Охват" sortKey="reach" current={sortKey} dir={sortDir} onSort={onSort} />
-                <th className="px-3 py-3 text-left font-semibold">Код-слова</th>
-                <SortableTh label="Клики" sortKey="clicks" current={sortKey} dir={sortDir} onSort={onSort} />
+                <SortableTh label="Воронка" sortKey="leads" current={sortKey} dir={sortDir} onSort={onSort} align="left" />
                 <SortableTh label="CTR" sortKey="ctr" current={sortKey} dir={sortDir} onSort={onSort} />
-                <SortableTh label="Заявки" sortKey="leads" current={sortKey} dir={sortDir} onSort={onSort} />
-                <SortableTh label="Диагн." sortKey="diagnostics" current={sortKey} dir={sortDir} onSort={onSort} />
-                <SortableTh label="Σ диагн." sortKey="diagnostic_sum" current={sortKey} dir={sortDir} onSort={onSort} />
-                <SortableTh label="Продажи" sortKey="sales" current={sortKey} dir={sortDir} onSort={onSort} />
-                <SortableTh label="Σ продаж" sortKey="sale_sum" current={sortKey} dir={sortDir} onSort={onSort} />
                 <SortableTh label="Выручка" sortKey="revenue" current={sortKey} dir={sortDir} onSort={onSort} />
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="px-4 py-12 text-center text-sm text-muted-foreground">
+                  <td colSpan={5} className="px-4 py-12 text-center text-sm text-muted-foreground">
                     {loading ? "Загружаем публикации…" : "Под фильтр ничего не попало. Смените период или снимите фильтры."}
                   </td>
                 </tr>
               )}
               {filtered.map((p) => (
                 <tr key={p.ig_media_id} className="border-t border-border/30 transition hover:bg-secondary/20">
-                  <td className="whitespace-nowrap px-3 py-3 text-left tabular-nums text-muted-foreground">{fmtDate(p.posted_at)}</td>
                   <td className="px-3 py-3 align-top">
+                    <div className="mb-1 text-[10px] tabular-nums text-muted-foreground">{fmtDate(p.posted_at)}</div>
                     <div className="flex items-start gap-3">
                       <PostPreview post={p} />
                       <div className="min-w-0 flex-1">
                         <div className="line-clamp-2 text-xs font-medium leading-snug" title={p.caption ?? undefined}>
                           {p.caption || <span className="text-muted-foreground">Без подписи</span>}
                         </div>
+                        {(p.codewords ?? []).length > 0 && (
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {p.codewords.map((c) => (
+                              <span
+                                key={c}
+                                className="rounded-full bg-pink-500/10 px-1.5 py-0.5 text-[10px] font-medium text-pink-600 dark:text-pink-400"
+                              >
+                                {c}
+                              </span>
+                            ))}
+                          </div>
+                        )}
                         {p.permalink && (
                           <a
                             href={p.permalink}
                             target="_blank"
                             rel="noreferrer"
-                            className="mt-0.5 inline-flex items-center gap-1 text-[10px] text-primary hover:underline"
+                            className="mt-1 inline-flex items-center gap-1 text-[10px] text-primary hover:underline"
                             onClick={(e) => e.stopPropagation()}
                           >
                             Открыть пост <ExternalLink className="h-2.5 w-2.5" />
@@ -454,24 +739,16 @@ const ContentCenter = () => {
                       </div>
                     </div>
                   </td>
-                  <td className="px-3 py-3 text-right tabular-nums font-semibold">{fmtNum(p.reach)}</td>
-                  <td className="px-3 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {(p.codewords ?? []).length === 0
-                        ? <span className="text-muted-foreground">—</span>
-                        : p.codewords.map((c) => (
-                            <span key={c} className="rounded bg-secondary/60 px-1.5 py-0.5 text-[10px] font-medium">{c}</span>
-                          ))}
-                    </div>
+                  <td className="px-3 py-3 text-right tabular-nums font-semibold align-top">{fmtNum(p.reach)}</td>
+                  <td className="px-3 py-3 align-top">
+                    <MiniFunnel post={p} />
                   </td>
-                  <td className="px-3 py-3 text-right tabular-nums">{fmtNum(p.clicks)}</td>
-                  <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">{p.reach > 0 ? fmtPct(p.ctr) : "—"}</td>
-                  <td className={cn("px-3 py-3 text-right tabular-nums", p.leads > 0 ? "font-semibold text-primary" : "text-muted-foreground")}>{fmtNum(p.leads)}</td>
-                  <td className="px-3 py-3 text-right tabular-nums">{fmtNum(p.diagnostics)}</td>
-                  <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">{p.diagnostic_sum > 0 ? fmtKzt(p.diagnostic_sum) : "—"}</td>
-                  <td className={cn("px-3 py-3 text-right tabular-nums", p.sales > 0 ? "font-semibold text-success" : "text-muted-foreground")}>{fmtNum(p.sales)}</td>
-                  <td className="px-3 py-3 text-right tabular-nums text-muted-foreground">{p.sale_sum > 0 ? fmtKzt(p.sale_sum) : "—"}</td>
-                  <td className="px-3 py-3 text-right tabular-nums font-semibold">{p.revenue > 0 ? fmtKzt(p.revenue) : <span className="font-normal text-muted-foreground">0 ₸</span>}</td>
+                  <td className="px-3 py-3 text-right tabular-nums text-muted-foreground align-top">
+                    {p.reach > 0 ? fmtPct(p.ctr) : "—"}
+                  </td>
+                  <td className="px-3 py-3 text-right tabular-nums font-semibold align-top">
+                    {p.revenue > 0 ? fmtKzt(p.revenue) : <span className="font-normal text-muted-foreground">0 ₸</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -480,8 +757,8 @@ const ContentCenter = () => {
       </div>
 
       <p className="mt-4 text-[11px] text-muted-foreground">
-        Заявка — человек начал переписку в WhatsApp (бот сматчил номер по код-слову). Диагностика — пришёл и прошёл
-        (статус «диагностика проведена» / оплата типа diagnostic). Клики очищены от ботов. Все суммы — в тенге.
+        Воронка в строке: клики → заявки → диагностики → продажи. Сортировка «Воронка» — по заявкам.
+        {" "}Заявка — переписка в WhatsApp по код-слову. Суммы — в тенге.
       </p>
     </PageContainer>
   );
@@ -489,12 +766,56 @@ const ContentCenter = () => {
 
 const POST_THUMB_PX = 56;
 
+function MiniFunnel({ post }: { post: Derived }) {
+  const steps: { v: number; label: string; tone?: "primary" | "success" }[] = [
+    { v: post.clicks, label: "клики" },
+    { v: post.leads, label: "заявки", tone: post.leads > 0 ? "primary" : undefined },
+    { v: post.diagnostics, label: "диагн." },
+    { v: post.sales, label: "продажи", tone: post.sales > 0 ? "success" : undefined },
+  ];
+
+  const allZero = steps.every((s) => s.v === 0);
+
+  return (
+    <div className="space-y-1">
+      <div className="flex flex-wrap items-center gap-x-1 text-xs tabular-nums">
+        {allZero ? (
+          <span className="text-muted-foreground">нет конверсий</span>
+        ) : (
+          steps.map((s, i) => (
+            <span key={s.label} className="inline-flex items-center gap-1">
+              {i > 0 && <span className="text-muted-foreground/35">→</span>}
+              <span
+                className={cn(
+                  s.tone === "primary" && "font-semibold text-primary",
+                  s.tone === "success" && "font-semibold text-success",
+                  !s.tone && s.v > 0 && "font-medium text-foreground",
+                  s.v === 0 && "text-muted-foreground",
+                )}
+              >
+                {fmtNum(s.v)}
+              </span>
+            </span>
+          ))
+        )}
+      </div>
+      {(post.diagnostic_sum > 0 || post.sale_sum > 0) && (
+        <div className="text-[10px] tabular-nums text-muted-foreground">
+          {post.diagnostic_sum > 0 && <span>{fmtKzt(post.diagnostic_sum)}</span>}
+          {post.diagnostic_sum > 0 && post.sale_sum > 0 && <span className="mx-1">·</span>}
+          {post.sale_sum > 0 && <span className="text-success">{fmtKzt(post.sale_sum)}</span>}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PostThumb({ src, size }: { src: string | null; size: number }) {
   return (
     <div
       className={cn(
         "relative shrink-0 overflow-hidden rounded-lg bg-secondary/50 ring-1 ring-border/40",
-        size === POST_THUMB_PX ? "size-14" : "size-9",
+        size === POST_THUMB_PX ? "size-14" : size >= 44 ? "size-11" : "size-9",
       )}
       style={{ width: size, height: size, minWidth: size, minHeight: size }}
     >
@@ -552,10 +873,6 @@ function PostPreview({ post }: { post: CCPost }) {
       </HoverCard>
     </div>
   );
-}
-
-function Thumb({ post }: { post: CCPost }) {
-  return <PostThumb src={post.thumbnail_url} size={36} />;
 }
 
 export default ContentCenter;
