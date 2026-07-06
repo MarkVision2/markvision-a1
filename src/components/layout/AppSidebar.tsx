@@ -14,6 +14,7 @@ import {
   Hash,
   Bot,
   Send,
+  TrendingUp,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
