@@ -1,7 +1,7 @@
 {
-  "git_sha": "6cb051a",
-  "git_sha_full": "6cb051ac9c9d1aaa1eb951c9529e449441531e4a",
-  "updated_at": "2026-07-06T20:37:14+05:00",
-  "label": "feat(reports): large playable video previews for top creatives",
+  "git_sha": "12be296",
+  "git_sha_full": "12be296a5bf7a11f929e54dd5d89721db832ab8c",
+  "updated_at": "2026-07-06T20:48:33+05:00",
+  "label": "fix(creatives): refresh expired Meta video URLs before playback",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
