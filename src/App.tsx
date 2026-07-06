@@ -28,6 +28,7 @@ const Broadcasts = lazy(routeImports.Broadcasts);
 const Analytics = lazy(routeImports.Analytics);
 const CreativeFunnel = lazy(routeImports.CreativeFunnel);
 const ContentAnalytics = lazy(routeImports.ContentAnalytics);
+const ContentCenter = lazy(routeImports.ContentCenter);
 const Finance = lazy(routeImports.Finance);
 const Reports = lazy(routeImports.Reports);
 const Settings = lazy(routeImports.Settings);
