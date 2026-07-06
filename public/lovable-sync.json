@@ -1,7 +1,7 @@
 {
-  "git_sha": "a4f27d4",
-  "git_sha_full": "a4f27d47608a11c0cd3f35003650cbde61052492",
-  "updated_at": "2026-07-03T07:42:32Z",
-  "label": "Fixed CAPI auth and token leaks",
+  "git_sha": "3089c27",
+  "git_sha_full": "3089c278e04cc6e1a06dbf90711f4e0e03262038",
+  "updated_at": "2026-07-06T11:04:07Z",
+  "label": "Перенёс схему в новый Supabase",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
