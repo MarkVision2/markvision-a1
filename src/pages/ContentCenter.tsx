@@ -345,7 +345,7 @@ const ContentCenter = () => {
             {top5.map((p, idx) => (
               <div key={p.ig_media_id} className="flex items-center gap-2">
                 <div className="w-4 shrink-0 text-center text-xs font-bold text-muted-foreground">{idx + 1}</div>
-                <Thumb post={p} className="size-9" />
+                <Thumb post={p} />
                 <div className="min-w-0 flex-1">
                   <div className="line-clamp-1 text-xs font-medium">
                     {(p.codewords && p.codewords[0]) || p.caption || p.ig_media_id}
@@ -391,7 +391,21 @@ const ContentCenter = () => {
       {/* Table */}
       <div className="mt-3 overflow-hidden rounded-2xl border border-border/60 bg-card/60">
         <div className="overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full min-w-[1100px] table-fixed text-sm">
+            <colgroup>
+              <col className="w-[88px]" />
+              <col className="w-[300px]" />
+              <col className="w-[72px]" />
+              <col className="w-[100px]" />
+              <col className="w-[64px]" />
+              <col className="w-[56px]" />
+              <col className="w-[64px]" />
+              <col className="w-[56px]" />
+              <col className="w-[80px]" />
+              <col className="w-[64px]" />
+              <col className="w-[80px]" />
+              <col className="w-[96px]" />
+            </colgroup>
             <thead className="bg-secondary/40 text-[10px] uppercase tracking-wider text-muted-foreground">
               <tr>
                 <SortableTh label="Дата" sortKey="posted_at" current={sortKey} dir={sortDir} onSort={onSort} align="left" />
@@ -420,9 +434,9 @@ const ContentCenter = () => {
                 <tr key={p.ig_media_id} className="border-t border-border/30 transition hover:bg-secondary/20">
                   <td className="whitespace-nowrap px-3 py-3 text-left tabular-nums text-muted-foreground">{fmtDate(p.posted_at)}</td>
                   <td className="px-3 py-3 align-top">
-                    <div className="flex items-start gap-3">
+                    <div className="grid grid-cols-[56px_minmax(0,1fr)] items-start gap-3">
                       <PostPreview post={p} />
-                      <div className="min-w-0 flex-1">
+                      <div className="min-w-0">
                         <div className="line-clamp-2 text-xs font-medium leading-snug" title={p.caption ?? undefined}>
                           {p.caption || <span className="text-muted-foreground">Без подписи</span>}
                         </div>
@@ -473,36 +487,48 @@ const ContentCenter = () => {
   );
 };
 
+const POST_THUMB_PX = 56;
+
 function PostPreview({ post }: { post: CCPost }) {
   const src = post.thumbnail_url;
-  const thumb = (
-    <div className="relative size-14 shrink-0 overflow-hidden rounded-lg bg-secondary/50 ring-1 ring-border/40">
-      {src ? (
-        <img
-          src={src}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
-          className="size-full object-cover"
-        />
-      ) : (
-        <div className="flex size-full items-center justify-center text-muted-foreground">
-          <Eye className="h-4 w-4" />
-        </div>
-      )}
-    </div>
-  );
+  const thumbStyle = {
+    width: POST_THUMB_PX,
+    height: POST_THUMB_PX,
+    minWidth: POST_THUMB_PX,
+    maxWidth: POST_THUMB_PX,
+    flexShrink: 0,
+  } as const;
+
   return (
     <HoverCard openDelay={120} closeDelay={80}>
       <HoverCardTrigger asChild>
-        <button
-          type="button"
-          className="shrink-0 cursor-zoom-in rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        <div
+          role="button"
+          tabIndex={0}
           aria-label="Предпросмотр публикации"
+          className="block shrink-0 cursor-zoom-in overflow-hidden rounded-lg bg-secondary/50 ring-1 ring-border/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          style={thumbStyle}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") e.preventDefault();
+          }}
         >
-          {thumb}
-        </button>
+          {src ? (
+            <img
+              src={src}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              width={POST_THUMB_PX}
+              height={POST_THUMB_PX}
+              className="block h-full w-full object-cover"
+            />
+          ) : (
+            <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+              <Eye className="h-4 w-4" />
+            </div>
+          )}
+        </div>
       </HoverCardTrigger>
       <HoverCardContent align="start" className="w-72 p-3">
         {src && (
@@ -528,12 +554,14 @@ function PostPreview({ post }: { post: CCPost }) {
 
 function Thumb({ post, className }: { post: CCPost; className?: string }) {
   const src = post.thumbnail_url;
+  const px = 36;
   return (
     <div
       className={cn(
-        "relative shrink-0 overflow-hidden rounded-md bg-secondary/50 ring-1 ring-border/40",
-        className ?? "size-9",
+        "shrink-0 overflow-hidden rounded-md bg-secondary/50 ring-1 ring-border/40",
+        className,
       )}
+      style={{ width: px, height: px, minWidth: px, maxWidth: px }}
     >
       {src ? (
         <img
@@ -542,10 +570,12 @@ function Thumb({ post, className }: { post: CCPost; className?: string }) {
           loading="lazy"
           decoding="async"
           referrerPolicy="no-referrer"
-          className="size-full object-cover"
+          width={px}
+          height={px}
+          className="block h-full w-full object-cover"
         />
       ) : (
-        <div className="flex size-full items-center justify-center text-muted-foreground">
+        <div className="flex h-full w-full items-center justify-center text-muted-foreground">
           <Eye className="h-4 w-4" />
         </div>
       )}
