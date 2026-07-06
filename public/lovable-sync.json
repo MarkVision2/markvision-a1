@@ -1,7 +1,7 @@
 {
-  "git_sha": "8f53ab0",
-  "git_sha_full": "8f53ab07a3551ed0f5bf979012daa52ad0ae4235",
-  "updated_at": "2026-07-06T21:13:24+05:00",
-  "label": "chore(migrate): переключить основной Supabase на szfg (кат-овер)",
+  "git_sha": "37102a7",
+  "git_sha_full": "37102a7ee7a9bc38d6e11e6964b64a68ec824567",
+  "updated_at": "2026-07-06T21:17:14+05:00",
+  "label": "fix(settings): detect when Lovable deploy lags behind GitHub main",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
