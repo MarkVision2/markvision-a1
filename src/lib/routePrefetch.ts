@@ -20,6 +20,7 @@ export const routeImports = {
   CreativeFunnel: () => import("@/pages/CreativeFunnel"),
   ContentAnalytics: () => import("@/pages/ContentAnalytics"),
   ContentCenter: () => import("@/pages/ContentCenter"),
+  AutoPost: () => import("@/pages/AutoPost"),
   Finance: () => import("@/pages/Finance"),
   Reports: () => import("@/pages/Reports"),
   Settings: () => import("@/pages/Settings"),

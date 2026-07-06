@@ -35,6 +35,12 @@ export function isHighQualityCreativeUrl(url: string | null | undefined): boolea
   return !isLowResMetaThumb(url);
 }
 
+/** URL сохранён в нашем Storage (постоянный), а не истекающая ссылка Meta CDN. */
+export function isPersistedCreativeUrl(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return HQ_STORAGE_HINTS.some((re) => re.test(url));
+}
+
 /**
  * Meta CDN: external-* превью можно апскейлить безопасно.
  * scontent/fbcdn подписаны — менять stp нельзя (403).
