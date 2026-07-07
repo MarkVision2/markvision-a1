@@ -1,7 +1,7 @@
 {
-  "git_sha": "c055442",
-  "git_sha_full": "c05544200514452007322804bcdfc15a062634e9",
-  "updated_at": "2026-07-07T20:29:29+05:00",
-  "label": "feat: устойчивые looks, умный выбор голоса, галерея «Готовый контент» (#118)",
+  "git_sha": "ecd4338",
+  "git_sha_full": "ecd4338ed2e5d597eea3e46bed02b83116d7bc58",
+  "updated_at": "2026-07-07T20:44:35+05:00",
+  "label": "feat: управление списками — скрывать/возвращать аватары и голоса (#119)",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
