@@ -1,7 +1,7 @@
 {
-  "git_sha": "c6d91c0",
-  "git_sha_full": "c6d91c0d6a21d71f315dfce2deac1c26e21f12e7",
-  "updated_at": "2026-07-07T19:36:22+05:00",
-  "label": "feat: авто обложка + описание к видео по сценарию (сайт + Telegram) (#115)",
+  "git_sha": "f22d0a9",
+  "git_sha_full": "f22d0a9f4126898663e912c7e1eb176696a62d60",
+  "updated_at": "2026-07-07T20:08:45+05:00",
+  "label": "feat: в разделе аватаров — только свои созданные (группы), без публичных (#116)",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
