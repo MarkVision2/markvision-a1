@@ -1,7 +1,7 @@
 {
-  "git_sha": "198970b",
-  "git_sha_full": "198970bb90188f03b011e7e4c0ea431d7c37d530",
-  "updated_at": "2026-07-07T15:11:55+05:00",
-  "label": "redesign(factory): Шаг 1 — единый стиль, проще выбор источника",
+  "git_sha": "62b3779",
+  "git_sha_full": "62b377952128a152e7629f1cd816c9aa9d3c619d",
+  "updated_at": "2026-07-07T15:30:39+05:00",
+  "label": "feat(metrics): redesign RNP table to horizontal matrix view",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
