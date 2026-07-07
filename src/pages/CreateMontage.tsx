@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import {
-  AlertTriangle, Check, Clapperboard, Download, Film, Loader2, Pause, Play, Plus, Search,
+  AlertTriangle, Check, Clapperboard, Copy, Download, Film, Image as ImageIcon, Loader2, Pause, Play, Plus, Search,
   Sparkles, Star, Upload, UserRound, Video, Volume2, X, Zap,
 } from "lucide-react";
 import Header from "@/components/factory/Header";
@@ -10,6 +10,7 @@ import { AspectRatioPicker } from "@/components/factory/AspectRatioPicker";
 import { TelegramConnect } from "@/components/factory/TelegramConnect";
 import { HeygenUsagePanel } from "@/components/factory/HeygenUsagePanel";
 import { estimateCost, recordUsage } from "@/lib/heygenUsage";
+import { generateVideoAssets, type VideoAssets } from "@/lib/videoAssets";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -566,6 +567,25 @@ const CreateMontage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resultUrl]);
 
+  // Обложка + описание: авто-генерация по сценарию при готовом видео.
+  const [assets, setAssets] = useState<VideoAssets | null>(null);
+  const [assetsLoading, setAssetsLoading] = useState(false);
+  const assetsRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!resultUrl || !projectId) return;
+    const ref = agentActive ? agentSessionId : videoId;
+    const s = mode === "agent" ? agentPrompt.trim() : mode === "avatar" ? script.trim() : "";
+    if (!ref || !s || assetsRef.current === ref) return;
+    assetsRef.current = ref;
+    setAssets(null);
+    setAssetsLoading(true);
+    generateVideoAssets({ script: s, aspect, projectId })
+      .then(setAssets)
+      .catch((e) => toast.error(`Обложка/описание: ${(e as Error).message}`))
+      .finally(() => setAssetsLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resultUrl]);
+
   const busyLabel = useMemo(() => {
     if (submitting) return "Отправляем в HeyGen…";
     if (rendering) return "HeyGen собирает видео…";
@@ -801,6 +821,59 @@ const CreateMontage = () => {
                 <Download className="h-4 w-4" /> Скачать MP4
               </Button>
             </a>
+          </section>
+        )}
+
+        {/* Обложка + описание (авто по сценарию) */}
+        {resultUrl && (assetsLoading || assets) && (
+          <section className="mt-4 rounded-2xl border border-border/60 bg-card/60 p-4">
+            <div className="mb-3 flex items-center gap-2">
+              <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary/10 text-primary">
+                <ImageIcon className="h-4 w-4" />
+              </span>
+              <h2 className="text-sm font-semibold">Обложка и описание</h2>
+              {assetsLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+            </div>
+
+            {assetsLoading && !assets && (
+              <p className="text-sm text-muted-foreground">Генерируем обложку и описание по сценарию…</p>
+            )}
+
+            {assets?.cover_url && (
+              <div className="mb-3">
+                <img src={assets.cover_url} alt="Обложка" className="w-full rounded-xl" />
+                <a href={assets.cover_url} target="_blank" rel="noreferrer" download>
+                  <Button variant="secondary" size="sm" className="mt-2 gap-2">
+                    <Download className="h-4 w-4" /> Скачать обложку
+                  </Button>
+                </a>
+              </div>
+            )}
+
+            {assets?.description && (
+              <div className="rounded-xl border border-border/50 bg-background/40 p-3">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Описание</span>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard?.writeText(assets.description ?? "").then(
+                      () => toast.success("Описание скопировано"),
+                      () => toast.error("Не удалось скопировать"),
+                    )}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <Copy className="h-3.5 w-3.5" /> Копировать
+                  </button>
+                </div>
+                <p className="whitespace-pre-wrap text-sm">{assets.description}</p>
+              </div>
+            )}
+
+            {!assetsLoading && assets && !assets.cover_url && !assets.description && (
+              <p className="text-sm text-muted-foreground">
+                Генератор не вернул обложку/описание. Проверьте, что n8n-workflow обрабатывает <code>type: "video_assets"</code>.
+              </p>
+            )}
           </section>
         )}
 

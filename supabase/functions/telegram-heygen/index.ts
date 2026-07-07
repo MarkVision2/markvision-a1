@@ -126,7 +126,7 @@ Deno.serve(async (req) => {
       await send(chat.id, `HeyGen не принял запрос${data?.message ? `: ${data.message}` : ""}. Попробуйте ещё раз.`);
       return ok();
     }
-    await admin.from("heygen_jobs").insert({ project_id: link.project_id, chat_id: chatId, session_id: sessionId });
+    await admin.from("heygen_jobs").insert({ project_id: link.project_id, chat_id: chatId, session_id: sessionId, script: text });
     await send(chat.id, "Принял сценарий — собираю видео. Пришлю MP4 сюда, как будет готово (обычно пара минут).");
   } catch (e) {
     await send(chat.id, `Не удалось запустить генерацию: ${(e as Error)?.message ?? "ошибка сети"}`);
