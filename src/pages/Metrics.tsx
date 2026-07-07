@@ -61,6 +61,11 @@ const Metrics = () => {
   const [cdiTick, setCdiTick] = useState(0);
   const [projectOverrides, setProjectOverrides] = useState<Map<string, ProjectDailyOverride>>(new Map());
   const [projectTick, setProjectTick] = useState(0);
+  const [lastSyncStatus, setLastSyncStatus] = useState<{
+    kind: "success" | "warning" | "error";
+    text: string;
+    at: string;
+  } | null>(null);
 
   const editScope = useMemo(
     () => resolveMetricsEditScope(cabinetId, cabinets),
@@ -493,9 +498,40 @@ const Metrics = () => {
       if (messages.success) toast.success(messages.success);
       for (const warning of messages.warnings) toast.warning(warning);
       if (messages.error) toast.error(messages.error);
+      const okRows = (daily.results ?? []).filter((r) => r.ok);
+      const syncedDays = okRows.reduce((s, r) => s + (r.days ?? 0), 0);
+      const syncedLeads = okRows.reduce((s, r) => s + (r.leads ?? 0), 0);
+      const now = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+      if (messages.error) {
+        setLastSyncStatus({
+          kind: "error",
+          text: messages.error,
+          at: now,
+        });
+      } else if (!okRows.length) {
+        setLastSyncStatus({
+          kind: "warning",
+          text: "Meta ответила без новых данных за выбранный период",
+          at: now,
+        });
+      } else {
+        setLastSyncStatus({
+          kind: "success",
+          text: `Обновлено: ${okRows.length} каб., ${syncedDays} дн., ${syncedLeads} лидов`,
+          at: now,
+        });
+      }
       refresh();
+      setCdiTick((t) => t + 1);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Не удалось синхронизировать");
+      const msg = e instanceof Error ? e.message : "Не удалось синхронизировать";
+      toast.error(msg);
+      const now = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+      setLastSyncStatus({
+        kind: "error",
+        text: msg,
+        at: now,
+      });
     } finally {
       setResyncing(false);
     }
@@ -739,6 +775,22 @@ const Metrics = () => {
               Откройте «Управление рекламой» и укажите внешний ID кабинета Meta.
             </div>
           </div>
+        </div>
+      )}
+
+      {lastSyncStatus && (
+        <div
+          className={cn(
+            "mt-3 flex items-start gap-2 rounded-xl border px-3 py-2 text-xs",
+            lastSyncStatus.kind === "success" && "border-success/25 bg-success/5 text-success",
+            lastSyncStatus.kind === "warning" && "border-warning/25 bg-warning/5 text-warning",
+            lastSyncStatus.kind === "error" && "border-destructive/25 bg-destructive/5 text-destructive",
+          )}
+        >
+          <RefreshCw className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>
+            Последняя синхронизация ({lastSyncStatus.at}): {lastSyncStatus.text}
+          </span>
         </div>
       )}
 
