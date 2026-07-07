@@ -1,7 +1,7 @@
 {
-  "git_sha": "63d693c",
-  "git_sha_full": "63d693c1c5fc24a0bff8f1e9ab05c01f1e9ea86d",
-  "updated_at": "2026-07-07T18:30:23+05:00",
-  "label": "fix: устойчивый поллинг Video Agent и глобальное состояние рендера (#112)",
+  "git_sha": "987e6ee",
+  "git_sha_full": "987e6ee5a788bffce45cc06b8bfeddec0c633276",
+  "updated_at": "2026-07-07T18:47:21+05:00",
+  "label": "feat: Telegram-бот для монтажа + модель «проект = клиент» (дефолты на проект) (#113)",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
