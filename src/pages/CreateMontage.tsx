@@ -11,6 +11,7 @@ import { TelegramConnect } from "@/components/factory/TelegramConnect";
 import { HeygenUsagePanel } from "@/components/factory/HeygenUsagePanel";
 import { estimateCost, loadRecentVoices, pushRecentVoice, recordUsage } from "@/lib/heygenUsage";
 import { HeygenGallery } from "@/components/factory/HeygenGallery";
+import { loadHidden, toggleHidden } from "@/lib/heygenHidden";
 import { generateVideoAssets, type VideoAssets } from "@/lib/videoAssets";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -59,37 +60,60 @@ const DIMENSIONS: Record<AspectId, { width: number; height: number }> = {
 const isTerminal = (s?: string) => s === "completed" || s === "failed";
 
 // ── Карточка аватара (видео при наведении) ──────────────────────────────────
-function AvatarCard({ a, active, onSelect }: { a: HeygenAvatar; active: boolean; onSelect: () => void }) {
+function AvatarCard({
+  a, active, onSelect, manage, hidden, onToggleHide,
+}: {
+  a: HeygenAvatar;
+  active: boolean;
+  onSelect: () => void;
+  manage?: boolean;
+  hidden?: boolean;
+  onToggleHide?: () => void;
+}) {
   const [hover, setHover] = useState(false);
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
+    <div
       className={cn(
         "group relative overflow-hidden rounded-xl border border-border/60 bg-card/60 text-left transition hover:border-primary/40",
         active && "border-primary ring-2 ring-primary/40",
+        hidden && "opacity-50",
       )}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
     >
-      <div className="relative aspect-[3/4] w-full bg-secondary/50">
-        {hover && a.preview_video_url ? (
-          <video src={a.preview_video_url} className="h-full w-full object-cover" autoPlay muted loop playsInline />
-        ) : a.preview_image_url ? (
-          <img src={a.preview_image_url} alt={a.name} className="h-full w-full object-cover" loading="lazy" />
-        ) : (
-          <div className="grid h-full w-full place-items-center text-muted-foreground">
-            <UserRound className="h-7 w-7" />
-          </div>
-        )}
-        {active && (
-          <span className="absolute right-1.5 top-1.5 grid h-5 w-5 place-items-center rounded-full bg-primary text-primary-foreground">
-            <Check className="h-3.5 w-3.5" />
-          </span>
-        )}
-      </div>
-      <div className="truncate p-2 text-xs font-medium">{a.name}</div>
-    </button>
+      <button type="button" onClick={onSelect} disabled={manage} className="block w-full text-left">
+        <div className="relative aspect-[3/4] w-full bg-secondary/50">
+          {hover && a.preview_video_url ? (
+            <video src={a.preview_video_url} className="h-full w-full object-cover" autoPlay muted loop playsInline />
+          ) : a.preview_image_url ? (
+            <img src={a.preview_image_url} alt={a.name} className="h-full w-full object-cover" loading="lazy" />
+          ) : (
+            <div className="grid h-full w-full place-items-center text-muted-foreground">
+              <UserRound className="h-7 w-7" />
+            </div>
+          )}
+          {active && !manage && (
+            <span className="absolute right-1.5 top-1.5 grid h-5 w-5 place-items-center rounded-full bg-primary text-primary-foreground">
+              <Check className="h-3.5 w-3.5" />
+            </span>
+          )}
+        </div>
+        <div className="truncate p-2 text-xs font-medium">{a.name}</div>
+      </button>
+      {manage && onToggleHide && (
+        <button
+          type="button"
+          onClick={onToggleHide}
+          title={hidden ? "Вернуть в список" : "Скрыть из списка"}
+          className={cn(
+            "absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full border text-white shadow",
+            hidden ? "border-primary bg-primary/80" : "border-white/30 bg-black/60 hover:bg-destructive",
+          )}
+        >
+          {hidden ? <Plus className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -120,7 +144,7 @@ function SelectedAvatar({ a }: { a: HeygenAvatar }) {
 
 // ── Пикер аватара ───────────────────────────────────────────────────────────
 function AvatarPicker({
-  query, selected, onSelect, optional, isDefault, onToggleDefault,
+  query, selected, onSelect, optional, isDefault, onToggleDefault, projectId,
 }: {
   query: UseQueryResult<HeygenAvatar[]>;
   selected: HeygenAvatar | null;
@@ -128,10 +152,32 @@ function AvatarPicker({
   optional?: boolean;
   isDefault?: boolean;
   onToggleDefault?: () => void;
+  projectId: string;
 }) {
-  const all = query.data ?? [];
+  const [manage, setManage] = useState(false);
+  const [hidden, setHidden] = useState<string[]>(() => loadHidden("avatars", projectId));
+  useEffect(() => { setHidden(loadHidden("avatars", projectId)); }, [projectId]);
+  const hiddenSet = new Set(hidden);
+  const toggleHide = (id: string) => setHidden(toggleHidden("avatars", projectId, id));
+
+  const raw = query.data ?? [];
+  // В обычном режиме скрытые не показываем; в «Управлять» — показываем все.
+  const all = manage ? raw : raw.filter((a) => !hiddenSet.has(a.id));
   const mine = all.filter((a) => a.mine);
   const heygenAvatars = all.filter((a) => !a.mine);
+  const hiddenCount = raw.filter((a) => hiddenSet.has(a.id)).length;
+
+  const card = (a: HeygenAvatar) => (
+    <AvatarCard
+      key={a.id}
+      a={a}
+      active={selected?.id === a.id}
+      onSelect={() => onSelect(a)}
+      manage={manage}
+      hidden={hiddenSet.has(a.id)}
+      onToggleHide={() => toggleHide(a.id)}
+    />
+  );
 
   return (
     <section className="space-y-3">
@@ -139,12 +185,29 @@ function AvatarPicker({
         <label className="text-sm font-semibold">
           Аватар {optional && <span className="text-xs font-normal text-muted-foreground">— необязательно</span>}
         </label>
-        {selected && optional && (
-          <button type="button" onClick={() => onSelect(null)} className="text-xs text-muted-foreground hover:text-foreground">
-            Сбросить
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {selected && optional && !manage && (
+            <button type="button" onClick={() => onSelect(null)} className="text-xs text-muted-foreground hover:text-foreground">
+              Сбросить
+            </button>
+          )}
+          {raw.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setManage((m) => !m)}
+              className={cn("text-xs font-medium", manage ? "text-primary" : "text-muted-foreground hover:text-foreground")}
+            >
+              {manage ? "Готово" : `Управлять${hiddenCount ? ` (${hiddenCount} скрыто)` : ""}`}
+            </button>
+          )}
+        </div>
       </div>
+
+      {manage && (
+        <p className="rounded-lg border border-border/50 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
+          Нажмите ✕ на карточке, чтобы скрыть аватар из списка, или + чтобы вернуть. Из HeyGen ничего не удаляется.
+        </p>
+      )}
 
       {query.isLoading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -154,7 +217,7 @@ function AvatarPicker({
         <p className="text-sm text-warning">Аватары недоступны: {(query.error as Error).message}</p>
       ) : (
         <>
-          {selected && (
+          {selected && !manage && (
             <div className="space-y-2">
               <SelectedAvatar a={selected} />
               {onToggleDefault && (
@@ -171,9 +234,7 @@ function AvatarPicker({
                 <UserRound className="h-3.5 w-3.5" /> Мои аватары
               </div>
               <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-                {mine.map((a) => (
-                  <AvatarCard key={a.id} a={a} active={selected?.id === a.id} onSelect={() => onSelect(a)} />
-                ))}
+                {mine.map(card)}
               </div>
             </div>
           )}
@@ -186,16 +247,19 @@ function AvatarPicker({
                 </div>
               )}
               <div className="grid max-h-80 grid-cols-3 gap-3 overflow-y-auto pr-1 sm:grid-cols-4">
-                {heygenAvatars.map((a) => (
-                  <AvatarCard key={a.id} a={a} active={selected?.id === a.id} onSelect={() => onSelect(a)} />
-                ))}
+                {heygenAvatars.map(card)}
               </div>
             </div>
           )}
 
-          {all.length === 0 && (
+          {raw.length === 0 && (
             <p className="text-sm text-muted-foreground">
               Свои аватары не найдены. Создайте аватар в HeyGen — он появится здесь.
+            </p>
+          )}
+          {raw.length > 0 && all.length === 0 && !manage && (
+            <p className="text-sm text-muted-foreground">
+              Все аватары скрыты. Нажмите «Управлять», чтобы вернуть нужные.
             </p>
           )}
         </>
@@ -218,12 +282,19 @@ function VoicePicker({
 }) {
   const [search, setSearch] = useState("");
   const [playing, setPlaying] = useState<string | null>(null);
+  const [manage, setManage] = useState(false);
+  const [hidden, setHidden] = useState<string[]>(() => loadHidden("voices", projectId));
+  useEffect(() => { setHidden(loadHidden("voices", projectId)); }, [projectId]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => () => { audioRef.current?.pause(); }, []);
 
-  const all = query.data ?? [];
-  const selectedVoice = all.find((v) => v.voice_id === value) ?? null;
+  const hiddenSet = new Set(hidden);
+  const toggleHide = (id: string) => setHidden(toggleHidden("voices", projectId, id));
+  const raw = query.data ?? [];
+  const all = manage ? raw : raw.filter((v) => !hiddenSet.has(v.voice_id));
+  const hiddenCount = raw.filter((v) => hiddenSet.has(v.voice_id)).length;
+  const selectedVoice = raw.find((v) => v.voice_id === value) ?? null;
   const q = search.trim().toLowerCase();
 
   const togglePlay = (v: HeygenVoice) => {
@@ -270,13 +341,31 @@ function VoicePicker({
         >
           {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
         </button>
-        <button type="button" onClick={() => select(v.voice_id)} className="min-w-0 flex-1 text-left text-sm">
+        <button
+          type="button"
+          onClick={() => (manage ? toggleHide(v.voice_id) : select(v.voice_id))}
+          className={cn("min-w-0 flex-1 text-left text-sm", manage && hiddenSet.has(v.voice_id) && "opacity-50")}
+        >
           <span className="truncate font-medium">{v.name}</span>
           <span className="ml-1 text-xs text-muted-foreground">
             {v.language ?? ""}{v.language && v.gender ? " · " : ""}{v.gender ?? ""}
           </span>
         </button>
-        {active && <Check className="h-4 w-4 shrink-0 text-primary" />}
+        {manage ? (
+          <button
+            type="button"
+            onClick={() => toggleHide(v.voice_id)}
+            title={hiddenSet.has(v.voice_id) ? "Вернуть" : "Скрыть"}
+            className={cn(
+              "grid h-6 w-6 shrink-0 place-items-center rounded-full border",
+              hiddenSet.has(v.voice_id) ? "border-primary bg-primary/10 text-primary" : "border-border/60 text-muted-foreground hover:border-destructive hover:text-destructive",
+            )}
+          >
+            {hiddenSet.has(v.voice_id) ? <Plus className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+          </button>
+        ) : (
+          active && <Check className="h-4 w-4 shrink-0 text-primary" />
+        )}
       </div>
     );
   };
@@ -293,9 +382,26 @@ function VoicePicker({
 
   return (
     <section className="space-y-2">
-      <label className="text-sm font-semibold">
-        Голос {optional && <span className="text-xs font-normal text-muted-foreground">— необязательно</span>}
-      </label>
+      <div className="flex items-center justify-between">
+        <label className="text-sm font-semibold">
+          Голос {optional && <span className="text-xs font-normal text-muted-foreground">— необязательно</span>}
+        </label>
+        {raw.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setManage((m) => !m)}
+            className={cn("text-xs font-medium", manage ? "text-primary" : "text-muted-foreground hover:text-foreground")}
+          >
+            {manage ? "Готово" : `Управлять${hiddenCount ? ` (${hiddenCount} скрыто)` : ""}`}
+          </button>
+        )}
+      </div>
+
+      {manage && (
+        <p className="rounded-lg border border-border/50 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
+          Нажмите ✕, чтобы скрыть голос из списка, или +, чтобы вернуть. Из HeyGen ничего не удаляется.
+        </p>
+      )}
 
       {query.isLoading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -706,13 +812,13 @@ const CreateMontage = () => {
               />
               <p className="mt-1 text-xs text-muted-foreground">{agentPrompt.trim().length} символов</p>
             </section>
-            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} optional isDefault={avatarIsDefault} onToggleDefault={toggleDefaultAvatar} />
+            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} optional isDefault={avatarIsDefault} onToggleDefault={toggleDefaultAvatar} projectId={projectId} />
             <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} optional isDefault={voiceIsDefault} onToggleDefault={toggleDefaultVoice} projectId={projectId} />
           </TabsContent>
 
           {/* Аватар + сценарий */}
           <TabsContent value="avatar" className="mt-6 space-y-6 focus-visible:outline-none">
-            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} isDefault={avatarIsDefault} onToggleDefault={toggleDefaultAvatar} />
+            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} isDefault={avatarIsDefault} onToggleDefault={toggleDefaultAvatar} projectId={projectId} />
             <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} isDefault={voiceIsDefault} onToggleDefault={toggleDefaultVoice} projectId={projectId} />
             <section>
               <label className="mb-2 block text-sm font-semibold">Сценарий</label>
@@ -779,7 +885,7 @@ const CreateMontage = () => {
 
           {/* Готовые клипы */}
           <TabsContent value="clips" className="mt-6 space-y-6 focus-visible:outline-none">
-            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} isDefault={avatarIsDefault} onToggleDefault={toggleDefaultAvatar} />
+            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} isDefault={avatarIsDefault} onToggleDefault={toggleDefaultAvatar} projectId={projectId} />
             <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} isDefault={voiceIsDefault} onToggleDefault={toggleDefaultVoice} projectId={projectId} />
 
             <section>
