@@ -1,7 +1,7 @@
 {
-  "git_sha": "f837a3c",
-  "git_sha_full": "f837a3cfae032ed6acaa546c19dd4f1ddbfef25e",
-  "updated_at": "2026-07-07T11:19:58Z",
-  "label": "Fixed types and added meta",
+  "git_sha": "0e325b1",
+  "git_sha_full": "0e325b1458dde07bb8d7e18c479dd42db024e516",
+  "updated_at": "2026-07-07T17:17:06+05:00",
+  "label": "feat: AI монтаж через HeyGen в Контент-заводе (Статичный/Видео контент) (#108)",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
