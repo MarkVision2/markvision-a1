@@ -19,6 +19,7 @@ vi.mock("@/hooks/useHeygen", () => ({
     { voice_id: "v-en", name: "John", language: "English", gender: "Male" },
   ]),
   fetchTemplates: vi.fn(async () => []),
+  fetchTemplateDetail: vi.fn(async () => []),
   fetchQuota: vi.fn(async () => ({ remaining_quota: 100 })),
   fetchVideoStatus: vi.fn(async () => ({ status: "pending" })),
   fetchAgentStatus: vi.fn(async () => ({ status: "generating" })),

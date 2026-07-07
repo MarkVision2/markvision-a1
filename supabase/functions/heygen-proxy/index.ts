@@ -61,6 +61,12 @@ function resolveCall(action: string, payload: Record<string, unknown>): HeygenCa
       return { method: "GET", url: `${HEYGEN_BASE}/v2/voices` };
     case "list_templates":
       return { method: "GET", url: `${HEYGEN_BASE}/v2/templates` };
+    // Детали шаблона: переменные (поля) для подстановки перед сборкой.
+    case "template_detail": {
+      const tid = String(payload.template_id ?? "").trim();
+      if (!tid) return { error: "template_id required" };
+      return { method: "GET", url: `${HEYGEN_BASE}/v2/template/${encodeURIComponent(tid)}` };
+    }
 
     // Быстрое создание (Video Agent v3): промпт/сценарий → авто-монтаж с б-роллом.
     case "video_agent":

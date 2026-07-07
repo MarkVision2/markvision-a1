@@ -147,6 +147,26 @@ export async function fetchTemplates(): Promise<HeygenTemplate[]> {
   return res.data?.templates ?? [];
 }
 
+// Поле шаблона, которое пользователь заполняет перед сборкой.
+export interface TemplateVariable {
+  name: string;
+  type: string; // text | image | video | audio | character | voice …
+}
+
+/** Детали шаблона: список переменных (полей) для подстановки. Парсинг устойчив
+ *  к тому, что HeyGen отдаёт variables объектом {name: {...}} или массивом. */
+export async function fetchTemplateDetail(templateId: string): Promise<TemplateVariable[]> {
+  const res = await call<{ data?: { variables?: unknown } }>({ action: "template_detail", template_id: templateId });
+  const raw = res.data?.variables;
+  if (!raw || typeof raw !== "object") return [];
+  const list = Array.isArray(raw)
+    ? (raw as RawObj[])
+    : Object.entries(raw as RawObj).map(([k, v]) => ({ name: (v as RawObj)?.name ?? k, type: (v as RawObj)?.type }));
+  return list
+    .map((v) => ({ name: String((v as RawObj).name ?? ""), type: String((v as RawObj).type ?? "text") }))
+    .filter((v) => v.name.length > 0);
+}
+
 export interface GenerateAvatarInput {
   avatar: AvatarRef;
   voiceId: string;
