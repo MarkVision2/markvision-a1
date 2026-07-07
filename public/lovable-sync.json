@@ -1,7 +1,7 @@
 {
-  "git_sha": "982fe92",
-  "git_sha_full": "982fe92c5cc8ef0862293357b13962ffc8586eac",
-  "updated_at": "2026-07-07T19:23:05+05:00",
-  "label": "feat: статистика расходов/квоты HeyGen + харденинг Telegram-функций (#114)",
+  "git_sha": "c6d91c0",
+  "git_sha_full": "c6d91c0d6a21d71f315dfce2deac1c26e21f12e7",
+  "updated_at": "2026-07-07T19:36:22+05:00",
+  "label": "feat: авто обложка + описание к видео по сценарию (сайт + Telegram) (#115)",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
