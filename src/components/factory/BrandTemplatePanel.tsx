@@ -111,7 +111,7 @@ export function BrandTemplatePanel() {
             Цвета, шрифты, логотип и брендбук строго передаются в каждую генерацию
           </p>
         </div>
-        <Button onClick={openCreate} className="hidden w-full min-h-[48px] shrink-0 sm:inline-flex sm:w-auto sm:min-h-[44px]">
+        <Button onClick={openCreate} className="w-full shrink-0 rounded-xl sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           Создать шаблон
         </Button>
@@ -139,9 +139,9 @@ export function BrandTemplatePanel() {
             <Card
               key={t.id}
               className={cn(
-                'overflow-hidden transition-shadow active:scale-[0.99] touch-manipulation',
-                'hover:shadow-md',
-                t.is_default && 'ring-2 ring-primary/30',
+                'overflow-hidden border-border/60 bg-card/60 transition active:scale-[0.99]',
+                'hover:border-primary/30',
+                t.is_default && 'ring-1 ring-primary/30',
               )}
             >
               <CardContent className="p-0">
@@ -183,16 +183,16 @@ export function BrandTemplatePanel() {
                   </div>
 
                   <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-                    <span className="inline-flex items-center gap-1 rounded-lg bg-muted/50 px-2.5 py-1">
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-secondary/60 px-2 py-1">
                       <ImageIcon className="h-3.5 w-3.5" />
                       {t.reference_urls.length} реф.
                     </span>
-                    <span className="inline-flex items-center gap-1 rounded-lg bg-muted/50 px-2.5 py-1">
+                    <span className="inline-flex items-center gap-1 rounded-lg bg-secondary/60 px-2 py-1">
                       <BookOpen className="h-3.5 w-3.5" />
                       {t.brandbook_urls.length} брендбук
                     </span>
                     {t.tone && (
-                      <span className="max-w-full truncate rounded-lg bg-muted/50 px-2.5 py-1 sm:max-w-[120px]">
+                      <span className="max-w-full truncate rounded-lg bg-secondary/60 px-2 py-1 sm:max-w-[120px]">
                         {t.tone}
                       </span>
                     )}
@@ -224,15 +224,6 @@ export function BrandTemplatePanel() {
           ))}
         </div>
       )}
-
-      {/* Плавающая кнопка создания на телефоне */}
-      <div className="fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom,0px))] z-40 px-4 pb-2 sm:hidden">
-        <Button onClick={openCreate} className="h-12 w-full shadow-lg">
-          <Plus className="mr-2 h-5 w-5" />
-          Создать шаблон
-        </Button>
-      </div>
-      <div className="h-14 sm:hidden" aria-hidden />
 
       <BrandTemplateDialog
         open={dialogOpen}
