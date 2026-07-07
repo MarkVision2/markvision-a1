@@ -25,6 +25,32 @@ async function tg(method: string, body: Record<string, unknown>) {
 
 const send = (chatId: number | string, text: string) => tg("sendMessage", { chat_id: chatId, text });
 
+// Пример хорошего сценария — показываем, если прислали слишком короткий текст.
+const SCRIPT_EXAMPLE =
+  "«Ролик на 30 секунд, вертикальный 9:16. Приглашаем на тест-драйв нового кроссовера в эти выходные: спецусловия по трейд-ин и подарок при покупке. Запись по телефону в описании.»";
+
+// Подсказки формата/длительности прямо из текста сценария → директива для агента.
+// У Video Agent нет отдельного поля аспекта, поэтому нормализуем требование в промпт.
+function parseHints(t: string): string {
+  const s = t.toLowerCase();
+  let aspect: string | undefined;
+  if (/\b9\s*[:xх]\s*16\b|вертикал|vertical|сторис|stories|reels|рилс|shorts|шортс|тикток|tiktok/.test(s)) aspect = "9:16";
+  else if (/\b16\s*[:xх]\s*9\b|горизонтал|horizontal|широк|ютуб|youtube|landscape/.test(s)) aspect = "16:9";
+
+  let seconds: number | undefined;
+  const minMatch = s.match(/(\d+(?:[.,]\d+)?)\s*(?:мин|min)/);
+  const secMatch = s.match(/(\d+)\s*(?:сек|sec)/);
+  if (/полминут|пол минут/.test(s)) seconds = 30;
+  else if (secMatch) seconds = parseInt(secMatch[1], 10);
+  else if (minMatch) seconds = Math.round(parseFloat(minMatch[1].replace(",", ".")) * 60);
+  else if (/\bминут[аы]?\b/.test(s)) seconds = 60;
+
+  const parts: string[] = [];
+  if (aspect) parts.push(`формат ${aspect} (${aspect === "9:16" ? "вертикальное" : "горизонтальное"})`);
+  if (seconds) parts.push(`длительность около ${seconds} сек`);
+  return parts.length ? `\n\nТребования к ролику: ${parts.join(", ")}.` : "";
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return ok();
 
@@ -78,7 +104,7 @@ Deno.serve(async (req) => {
     }
     await admin.from("telegram_links").upsert({ chat_id: chatId, project_id: row.project_id, username: from?.username ?? null });
     await admin.from("telegram_link_codes").update({ used: true }).eq("code", code);
-    await send(chat.id, "Готово! Этот чат привязан к проекту. Теперь пришлите сценарий текстом — соберу видео и отправлю сюда.");
+    await send(chat.id, "Готово! Этот чат привязан к проекту. Теперь пришлите сценарий текстом — соберу видео и отправлю сюда. Формат и длительность можно указать прямо в тексте.\n\nПример:\n" + SCRIPT_EXAMPLE);
     return ok();
   }
 
@@ -96,7 +122,11 @@ Deno.serve(async (req) => {
   // Слишком короткий текст — не сценарий. Иначе Video Agent генерит «из бренда»
   // аккаунта (напр. Toyota Center Pavlodar) и жжёт кредиты впустую.
   if (text.length < 12 || text.split(/\s+/).length < 3) {
-    await send(chat.id, "Это похоже на короткое сообщение, а не на сценарий. Пришлите текст ролика (о чём видео, что сказать) — минимум пару фраз, и я соберу его.");
+    await send(
+      chat.id,
+      "Это похоже на короткое сообщение, а не на сценарий. Пришлите текст ролика — о чём видео и что сказать. " +
+        "Формат и длительность можно указать прямо в тексте.\n\nПример:\n" + SCRIPT_EXAMPLE,
+    );
     return ok();
   }
 
@@ -117,7 +147,7 @@ Deno.serve(async (req) => {
     voice?: { id: string };
   };
 
-  const agent: Record<string, unknown> = { prompt: text };
+  const agent: Record<string, unknown> = { prompt: text + parseHints(text) };
   if (d.avatar && d.avatar.kind === "avatar") agent.avatar_id = d.avatar.id;
   if (d.voice) agent.voice_id = d.voice.id;
 
