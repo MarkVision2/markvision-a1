@@ -96,15 +96,15 @@ const CreateStep1 = () => {
     <main className="min-h-screen">
       <Header onClose={() => navigate("/")} />
 
-      <section className="container max-w-4xl pt-10 pb-16 sm:pt-14 animate-fade-in-up">
+      <section className="container max-w-3xl pt-6 pb-16 animate-fade-in-up">
         <div className="inline-flex items-center rounded-xl border border-primary/40 bg-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-primary">
           Шаг 1 из {flow.totalSteps}
         </div>
 
-        <h1 className="mt-6 text-4xl font-bold tracking-tight sm:text-5xl">
+        <h1 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl">
           {step1.label}
         </h1>
-        <p className="mt-3 text-base text-muted-foreground sm:text-lg">
+        <p className="mt-2 text-sm text-muted-foreground sm:text-base">
           {step1.subtitle}
         </p>
         {type && (

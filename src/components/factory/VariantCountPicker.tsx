@@ -10,7 +10,7 @@ interface Props {
 
 export function VariantCountPicker({ value, onChange, counts, unitLabel = "вариантов" }: Props) {
   return (
-    <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+    <div className="grid grid-cols-4 gap-2.5">
       {counts.map((n) => {
         const selected = value === n;
         return (

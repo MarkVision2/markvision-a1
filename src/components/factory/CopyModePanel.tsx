@@ -63,8 +63,8 @@ export function CopyModePanel({
               aria-pressed={selected}
               className={cn(
                 "flex flex-col items-start gap-2 rounded-2xl border border-border bg-card px-5 py-4 text-left transition-all",
-                "hover:border-primary/60 hover:shadow-elevated",
-                selected && "border-primary bg-gradient-card-hover shadow-glow",
+                "hover:border-primary/40",
+                selected && "border-primary/60 bg-primary/5",
               )}
             >
               <span
