@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import type { DailyInsightRow } from "@/hooks/useMetaInsights";
 
 const Cell = ({ children, mono = true }: { children: React.ReactNode; mono?: boolean }) => (
-  <td className={cn("px-2 py-2 text-right text-xs", mono && "tabular-nums")}>{children}</td>
+  <td className={cn("px-2 py-2.5 text-right text-xs", mono && "tabular-nums")}>{children}</td>
 );
 
 interface DayRow {
@@ -16,6 +16,7 @@ interface DayRow {
 }
 
 interface Props {
+  mode: "business" | "detailed";
   monthDays: DayRow[];
   visibleDays: DayRow[];
   dailyMap: Map<string, DailyInsightRow>;
@@ -38,9 +39,11 @@ interface Props {
   onSavePrepaySum: (iso: string, next: number | null) => Promise<void>;
 }
 
-const COL_COUNT = 16;
+const COL_COUNT_DETAILED = 16;
+const COL_COUNT_BUSINESS = 9;
 
 export function MetricsDataTable({
+  mode,
   visibleDays,
   dailyMap,
   loading,
@@ -68,8 +71,17 @@ export function MetricsDataTable({
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-border/60 bg-card/30">
-      <table className="w-full min-w-[1400px] border-collapse text-xs">
-        <thead>
+      <table className={cn("w-full border-collapse text-xs", mode === "business" ? "min-w-[980px]" : "min-w-[1400px]")}>
+        <thead className="sticky top-0 z-[2]">
+          {mode === "business" ? (
+            <tr className="border-b border-border/60 bg-card/60">
+              <th className="sticky left-0 z-10 bg-card/60 px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Дата</th>
+              {["Затраты", "Передано", "CPL", "Получено CRM", "Квал", "Проведено", "Продажи", "Выручка", "Итого"].map((h) => (
+                <th key={h} className="px-2 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
+              ))}
+            </tr>
+          ) : (
+            <>
           <tr className="border-b border-border/40 bg-muted/30">
             <th rowSpan={2} className="sticky left-0 z-10 bg-muted/30 px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
               Дата
@@ -116,11 +128,42 @@ export function MetricsDataTable({
               </th>
             ))}
           </tr>
+          <tr className="border-b border-border/40 bg-background/70">
+            <th className="sticky left-0 z-10 bg-background/70 px-3 py-1 text-left text-[10px] font-medium text-muted-foreground">
+              Источник
+            </th>
+            {[
+              "Meta/CDI",
+              "Meta/CDI",
+              "расчёт",
+              "CRM/rnp",
+              "CRM/rnp",
+              "CRM/rnp",
+              "CRM/rnp",
+              "CRM/rnp",
+              "CRM/CDI",
+              "rnp_daily",
+              "rnp_daily",
+              "CRM/CDI",
+              "CRM/CDI",
+              "CRM/rnp",
+              "сумма",
+            ].map((src, idx) => (
+              <th
+                key={`${src}-${idx}`}
+                className="px-2 py-1 text-right text-[10px] font-medium text-muted-foreground"
+              >
+                {src}
+              </th>
+            ))}
+          </tr>
+            </>
+          )}
         </thead>
         <tbody>
           {visibleDays.length === 0 ? (
             <tr>
-              <td colSpan={COL_COUNT} className="px-4 py-10 text-center text-sm text-muted-foreground">
+              <td colSpan={mode === "business" ? COL_COUNT_BUSINESS : COL_COUNT_DETAILED} className="px-4 py-10 text-center text-sm text-muted-foreground">
                 Нет дней с данными за выбранный период
               </td>
             </tr>
@@ -147,12 +190,31 @@ export function MetricsDataTable({
                   className={cn(
                     "group border-b border-border/20 transition-colors hover:bg-card/50",
                     hasData && "bg-card/20",
+                    !hasData && "opacity-70",
                   )}
                 >
                   <td className="sticky left-0 z-[1] bg-inherit px-3 py-2">
                     <span className="font-semibold tabular-nums">{String(day).padStart(2, "0")}</span>
                     <span className="ml-1.5 text-muted-foreground">{weekday}</span>
                   </td>
+                  {mode === "business" ? (
+                    <>
+                      <Cell>{num(d?.spend)}</Cell>
+                      <Cell>{num(d?.leads)}</Cell>
+                      <Cell>{cpl > 0 ? formatNumber(cpl) : <MetricsDash />}</Cell>
+                      <Cell>{num(d?.crmReceived)}</Cell>
+                      <Cell>{num(d?.qualified)}</Cell>
+                      <Cell>{num(d?.conductedVisits)}</Cell>
+                      <Cell>{num(d?.sales)}</Cell>
+                      <Cell>{num(d?.salesRevenue)}</Cell>
+                      <Cell>
+                        <span className={cn("font-semibold", dayRevenue > 0 && "text-success")}>
+                          {dayRevenue > 0 ? formatNumber(dayRevenue) : <MetricsDash />}
+                        </span>
+                      </Cell>
+                    </>
+                  ) : (
+                    <>
                   <Cell>
                     <ManualFactCell
                       title="Затраты на рекламу"
@@ -351,6 +413,8 @@ export function MetricsDataTable({
                       {dayRevenue > 0 ? formatNumber(dayRevenue) : <MetricsDash />}
                     </span>
                   </Cell>
+                    </>
+                  )}
                 </tr>
               );
             })

@@ -56,6 +56,7 @@ const Metrics = () => {
   const { activeId: projectId } = useProjectsStore();
   const [resyncing, setResyncing] = useState(false);
   const [showAllDays, setShowAllDays] = useState(true);
+  const [tableMode, setTableMode] = useState<"business" | "detailed">("business");
   const [cdiFactRows, setCdiFactRows] = useState<CdiFactRow[]>([]);
   const [cdiTick, setCdiTick] = useState(0);
   const [projectOverrides, setProjectOverrides] = useState<Map<string, ProjectDailyOverride>>(new Map());
@@ -85,6 +86,7 @@ const Metrics = () => {
   }, [cabinetId, allActIds, cabinets]);
 
   const canEditManual = shouldApplyManualOverrides(cabinetId, cabinetsWithExternalId.length);
+  const hasMetaConnectedCabinets = cabinetsWithExternalId.length > 0;
 
   const manualHint = metricsEditHint(editScope, cabinetsWithExternalId.length);
 
@@ -621,7 +623,7 @@ const Metrics = () => {
         plan={plan}
         factRevenue={factRevenue}
         factSpend={factSpend}
-        factLeads={factLeads}
+        factCrmReceived={factLeads}
         factSales={factSales}
         factDiagnostics={factDiagnostics}
         factCpl={factCpl}
@@ -654,6 +656,28 @@ const Metrics = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-xl border border-border/60 bg-card/40 p-0.5">
+            <button
+              type="button"
+              onClick={() => setTableMode("business")}
+              className={cn(
+                "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                tableMode === "business" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground",
+              )}
+            >
+              Бизнес вид
+            </button>
+            <button
+              type="button"
+              onClick={() => setTableMode("detailed")}
+              className={cn(
+                "rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
+                tableMode === "detailed" ? "bg-background text-foreground shadow-sm" : "text-muted-foreground",
+              )}
+            >
+              Детально
+            </button>
+          </div>
           <div className="flex rounded-xl border border-border/60 bg-card/40 p-0.5">
             <button
               type="button"
@@ -705,6 +729,38 @@ const Metrics = () => {
         <span>{manualHint}</span>
       </div>
 
+      {!hasMetaConnectedCabinets && (
+        <div className="mt-3 flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning/10 p-4 text-sm text-warning">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <div className="font-semibold">Meta данные не подтягиваются</div>
+            <div className="mt-0.5 text-xs opacity-90">
+              В личных кабинетах не заполнен Ad Account ID (`act_...`), поэтому колонки «Затраты / Передано» пустые.
+              Откройте «Управление рекламой» и укажите внешний ID кабинета Meta.
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-3 grid gap-2 rounded-xl border border-border/60 bg-card/30 p-3 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
+        <div>
+          <span className="font-semibold text-foreground">Meta/CDI:</span>{" "}
+          затраты и передано лидов.
+        </div>
+        <div>
+          <span className="font-semibold text-foreground">CRM:</span>{" "}
+          получено, квалификация, визиты, оплаты.
+        </div>
+        <div>
+          <span className="font-semibold text-foreground">rnp_daily:</span>{" "}
+          касса и предоплаты (ручные корректировки).
+        </div>
+        <div>
+          <span className="font-semibold text-foreground">Важно:</span>{" "}
+          «Передано» и «Получено CRM» могут отличаться по определению.
+        </div>
+      </div>
+
       {error && (
         <div className="mt-4 flex items-start gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -744,6 +800,7 @@ const Metrics = () => {
         />
 
         <MetricsDataTable
+          mode={tableMode}
           monthDays={monthDays}
           visibleDays={visibleDays}
           dailyMap={dailyMap}

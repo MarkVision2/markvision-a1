@@ -14,7 +14,7 @@ interface Props {
   plan: FinancePlan | null;
   factRevenue: number;
   factSpend: number;
-  factLeads: number;
+  factCrmReceived: number;
   factSales: number;
   factDiagnostics: number;
   factCpl: number;
@@ -101,7 +101,7 @@ export function MetricsKpiPanel({
   plan,
   factRevenue,
   factSpend,
-  factLeads,
+  factCrmReceived,
   factSales,
   factDiagnostics,
   factCpl,
@@ -124,7 +124,7 @@ export function MetricsKpiPanel({
     <div className="mt-6 space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
         <span>
-          Данные Meta за <strong className="text-foreground">{filledDays}</strong> из {daysInMonth} дней
+          Дни с фактами Meta/CDI: <strong className="text-foreground">{filledDays}</strong> из {daysInMonth}
         </span>
         <span className="font-medium text-success">{monthProgress}% месяца заполнено</span>
       </div>
@@ -145,8 +145,8 @@ export function MetricsKpiPanel({
           label="Расходы на рекламу"
           value={factSpend > 0 ? formatTenge(factSpend) : <MetricsDash />}
           sub={
-            factLeads > 0
-              ? countLabel(factLeads, "лид", "лида", "лидов")
+            factCrmReceived > 0
+              ? countLabel(factCrmReceived, "лид в CRM", "лида в CRM", "лидов в CRM")
               : undefined
           }
           planPct={pct(factSpend, plan?.spend)}
