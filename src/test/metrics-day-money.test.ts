@@ -49,6 +49,9 @@ describe("resolveMetricsDayMoney", () => {
       ins({ date: "2026-06-05", manualSalesRevenueRaw: 700000 }),
       {
         crmReceived: 0,
+        qualified: 0,
+        plannedVisits: 0,
+        conductedVisits: 0,
         scheduled: 0,
         conducted: 0,
         diagnosticsPaid: 0,

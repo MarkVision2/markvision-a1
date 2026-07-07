@@ -23,6 +23,9 @@ export interface MetricsDayMoney {
 
 const emptyRnp = (): RnpDailyMetrics => ({
   crmReceived: 0,
+  qualified: 0,
+  plannedVisits: 0,
+  conductedVisits: 0,
   scheduled: 0,
   conducted: 0,
   diagnosticsPaid: 0,
