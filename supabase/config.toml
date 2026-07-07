@@ -47,3 +47,6 @@ verify_jwt = true
 
 [functions.content-factory-cleanup]
 verify_jwt = false
+
+[functions.heygen-proxy]
+verify_jwt = true
