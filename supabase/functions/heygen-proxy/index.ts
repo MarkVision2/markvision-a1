@@ -60,9 +60,7 @@ function resolveCall(action: string, payload: Record<string, unknown>): HeygenCa
       };
     }
 
-    // Загрузка готового клипа как HeyGen-ассета (для сборки из своих видео).
-    case "upload_asset":
-      return { method: "POST", url: `${HEYGEN_UPLOAD}/v1/asset` };
+    // upload_asset обрабатывается отдельно (бинарный passthrough, action в query).
 
     default:
       return { error: `Unknown action: ${action}` };
@@ -86,6 +84,32 @@ Deno.serve(async (req) => {
       { error: "HEYGEN_API_KEY не задан в секретах Supabase (Edge Functions → Secrets)." },
       500,
     );
+  }
+
+  // Загрузка готового клипа — бинарный passthrough (файл в теле, action в query).
+  const queryAction = new URL(req.url).searchParams.get("action");
+  if (queryAction === "upload_asset") {
+    const contentType = req.headers.get("content-type") || "application/octet-stream";
+    const bytes = await req.arrayBuffer();
+    if (bytes.byteLength === 0) return json({ error: "Пустое тело файла" }, 400);
+    try {
+      const res = await fetch(`${HEYGEN_UPLOAD}/v1/asset`, {
+        method: "POST",
+        headers: { "X-Api-Key": apiKey, "Content-Type": contentType },
+        body: bytes,
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        return json({ error: `HeyGen upload вернул ${res.status}${text ? `: ${text.slice(0, 300)}` : ""}` }, 502);
+      }
+      return new Response(text || "null", {
+        status: 200,
+        headers: { ...AUTH_CORS_HEADERS, "Content-Type": "application/json" },
+      });
+    } catch (e) {
+      return json({ error: `Загрузка в HeyGen не удалась: ${(e as Error)?.message ?? "network error"}` }, 502);
+    }
   }
 
   let payload: Record<string, unknown>;

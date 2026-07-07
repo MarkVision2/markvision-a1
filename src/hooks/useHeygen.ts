@@ -1,6 +1,7 @@
 // Клиентская обёртка над edge-функцией heygen-proxy.
 // Ключ HeyGen живёт в секретах Supabase — сюда приходят только данные.
 import { supabase } from "@/integrations/supabase/client";
+import { supabaseUrl } from "@/lib/supabaseConfig";
 
 export interface HeygenAvatar {
   avatar_id: string;
@@ -127,6 +128,69 @@ export async function generateTemplateVideo(input: GenerateTemplateInput): Promi
       test: false,
       title: input.title ?? "MarkVision AI монтаж",
       variables: input.variables ?? {},
+      dimension: { width: input.width, height: input.height },
+    },
+  });
+  const id = res.data?.video_id;
+  if (!id) throw new Error("HeyGen не вернул video_id");
+  return id;
+}
+
+export interface UploadedClip {
+  id: string;
+  url: string;
+}
+
+/** Загрузка готового клипа в HeyGen как ассета (бинарный passthrough). */
+export async function uploadClip(file: File): Promise<UploadedClip> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) throw new Error("Нет активной сессии");
+
+  const res = await fetch(`${supabaseUrl}/functions/v1/heygen-proxy?action=upload_asset`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": file.type || "application/octet-stream",
+    },
+    body: file,
+  });
+  const parsed = await res.json().catch(() => ({}));
+  if (!res.ok || parsed?.error) {
+    throw new Error(parsed?.error || `Загрузка не удалась (${res.status})`);
+  }
+  const d = parsed.data ?? parsed;
+  const url = d.url as string | undefined;
+  const id = (d.id ?? d.asset_id) as string | undefined;
+  if (!url) throw new Error("HeyGen не вернул ссылку на клип");
+  return { id: id ?? "", url };
+}
+
+export interface ClipScene {
+  clipUrl: string;
+  script: string;
+}
+
+export interface GenerateFromClipsInput {
+  avatarId: string;
+  voiceId: string;
+  scenes: ClipScene[];
+  width: number;
+  height: number;
+  title?: string;
+}
+
+/** Монтаж из готовых клипов: каждый клип — фон сцены, аватар проговаривает текст. */
+export async function generateFromClips(input: GenerateFromClipsInput): Promise<string> {
+  const res = await call<{ data?: { video_id?: string } }>({
+    action: "generate_avatar",
+    video: {
+      title: input.title ?? "MarkVision AI монтаж",
+      video_inputs: input.scenes.map((s) => ({
+        character: { type: "avatar", avatar_id: input.avatarId, avatar_style: "normal" },
+        voice: { type: "text", input_text: s.script, voice_id: input.voiceId },
+        background: { type: "video", url: s.clipUrl, play_style: "fit_to_scene" },
+      })),
       dimension: { width: input.width, height: input.height },
     },
   });
