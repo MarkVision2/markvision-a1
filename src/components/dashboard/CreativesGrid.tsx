@@ -46,6 +46,20 @@ const compareCreatives = (a: MetaCreativeRow, b: MetaCreativeRow, key: SortKey):
   return b.spend - a.spend;
 };
 
+/** Креатив был активен в выбранном периоде (расход, показы или CRM). */
+function hasPeriodActivity(r: MetaCreativeRow): boolean {
+  return (
+    r.spend > 0 ||
+    r.impressions > 0 ||
+    r.clicks > 0 ||
+    r.leads > 0 ||
+    r.messages > 0 ||
+    (r.crmRevenue ?? 0) > 0 ||
+    (r.crmLeads ?? 0) > 0 ||
+    (r.crmSales ?? 0) > 0
+  );
+}
+
 export function CreativesGrid({
   rows,
   initialLimit = 8,
@@ -57,21 +71,36 @@ export function CreativesGrid({
   const [sortKey, setSortKey] = useState<SortKey>(topMode ? "crmRevenue" : "spend");
   const [showAll, setShowAll] = useState(false);
 
+  const scopedRows = useMemo(
+    () => (topMode ? rows.filter(hasPeriodActivity) : rows),
+    [rows, topMode],
+  );
+
   const sorted = useMemo(() => {
-    const copy = [...rows];
+    const copy = [...scopedRows];
     copy.sort((a, b) => compareCreatives(a, b, sortKey));
     return copy;
-  }, [rows, sortKey]);
+  }, [scopedRows, sortKey]);
 
   const limit = topMode ? topLimit : initialLimit;
   const visible = topMode || !showAll ? sorted.slice(0, limit) : sorted;
   const withRevenue = sorted.filter((r) => (r.crmRevenue ?? 0) > 0).length;
 
-  if (rows.length === 0) {
+  if (scopedRows.length === 0) {
     return (
       <div className="rounded-2xl border border-border/60 bg-card/60 p-6 text-center text-sm text-muted-foreground">
         <ImageIcon className="mx-auto mb-2 h-5 w-5" />
-        Креативы появятся здесь после первого запуска <code className="rounded bg-secondary px-1 text-[11px]">meta-structure-sync</code> по подключённому кабинету Meta.
+        {topMode && rows.length > 0 ? (
+          <>
+            За выбранный период нет активных креативов (расход, показы или заявки = 0).
+            {periodLabel ? ` Период: ${periodLabel}.` : ""}
+          </>
+        ) : (
+          <>
+            Креативы появятся здесь после первого запуска{" "}
+            <code className="rounded bg-secondary px-1 text-[11px]">meta-structure-sync</code> по подключённому кабинету Meta.
+          </>
+        )}
       </div>
     );
   }
@@ -85,7 +114,7 @@ export function CreativesGrid({
               Топ-{Math.min(limit, sorted.length)} креативов <span className="text-foreground/70">по выручке CRM</span>
               {periodLabel ? ` · период: ${periodLabel}` : ""}
               {withRevenue > 0 ? ` · с выручкой: ${withRevenue}` : " · выручка пока не привязана к креативам"}
-              {" · "}всего {rows.length}
+              {" · "}активных за период: {scopedRows.length}
             </>
           ) : (
             <>Всего креативов: <span className="font-semibold text-foreground">{rows.length}</span></>
