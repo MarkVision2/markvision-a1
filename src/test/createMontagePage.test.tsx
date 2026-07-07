@@ -46,13 +46,14 @@ const renderPage = () => {
 describe("CreateMontage page", () => {
   beforeEach(() => localStorage.clear());
 
-  it("монтируется, показывает 4 режима, «Быстро» — по умолчанию", () => {
+  it("монтируется, показывает режимы + «Готовые», «Быстро» — по умолчанию", () => {
     renderPage();
     expect(screen.getByRole("heading", { name: "AI монтаж" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Быстро/ })).toHaveAttribute("data-state", "active");
     expect(screen.getByRole("tab", { name: /Аватар/ })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Шаблон/ })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /Клипы/ })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Из клипов/ })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /Готовые/ })).toBeInTheDocument();
     expect(screen.getByPlaceholderText(/45 секунд/)).toBeInTheDocument();
   });
 
