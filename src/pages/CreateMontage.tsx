@@ -2,16 +2,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import {
-  AlertTriangle, Clapperboard, Download, Film, Loader2, Play, Plus, Sparkles, Upload, Video, X, Zap,
+  AlertTriangle, Check, Clapperboard, Download, Film, Loader2, Pause, Play, Plus, Search,
+  Sparkles, Upload, UserRound, Video, Volume2, X, Zap,
 } from "lucide-react";
 import Header from "@/components/factory/Header";
 import { AspectRatioPicker } from "@/components/factory/AspectRatioPicker";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select";
 import type { AspectId } from "@/data/contentTypeFlows";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -34,77 +33,255 @@ const DIMENSIONS: Record<AspectId, { width: number; height: number }> = {
 
 const isTerminal = (s?: string) => s === "completed" || s === "failed";
 
-// ── Пикер аватара ──────────────────────────────────────────────────────────
+// ── Карточка аватара (видео при наведении) ──────────────────────────────────
+function AvatarCard({ a, active, onSelect }: { a: HeygenAvatar; active: boolean; onSelect: () => void }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className={cn(
+        "group relative overflow-hidden rounded-xl border border-border/60 bg-card/60 text-left transition hover:border-primary/40",
+        active && "border-primary ring-2 ring-primary/40",
+      )}
+    >
+      <div className="relative aspect-[3/4] w-full bg-secondary/50">
+        {hover && a.preview_video_url ? (
+          <video src={a.preview_video_url} className="h-full w-full object-cover" autoPlay muted loop playsInline />
+        ) : a.preview_image_url ? (
+          <img src={a.preview_image_url} alt={a.name} className="h-full w-full object-cover" loading="lazy" />
+        ) : (
+          <div className="grid h-full w-full place-items-center text-muted-foreground">
+            <UserRound className="h-7 w-7" />
+          </div>
+        )}
+        {active && (
+          <span className="absolute right-1.5 top-1.5 grid h-5 w-5 place-items-center rounded-full bg-primary text-primary-foreground">
+            <Check className="h-3.5 w-3.5" />
+          </span>
+        )}
+      </div>
+      <div className="truncate p-2 text-xs font-medium">{a.name}</div>
+    </button>
+  );
+}
+
+// ── Панель выбранного аватара ───────────────────────────────────────────────
+function SelectedAvatar({ a }: { a: HeygenAvatar }) {
+  return (
+    <div className="flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-3">
+      <div className="aspect-[3/4] w-16 shrink-0 overflow-hidden rounded-lg bg-secondary/50">
+        {a.preview_video_url ? (
+          <video src={a.preview_video_url} className="h-full w-full object-cover" autoPlay muted loop playsInline />
+        ) : a.preview_image_url ? (
+          <img src={a.preview_image_url} alt={a.name} className="h-full w-full object-cover" />
+        ) : (
+          <div className="grid h-full w-full place-items-center text-muted-foreground"><UserRound className="h-6 w-6" /></div>
+        )}
+      </div>
+      <div className="min-w-0">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-primary">Выбранный аватар</div>
+        <div className="truncate text-sm font-semibold">{a.name}</div>
+        <div className="text-xs text-muted-foreground">
+          {a.kind === "talking_photo" ? "Ваш видео-аватар" : "HeyGen аватар"}
+          {a.gender ? ` · ${a.gender}` : ""}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Пикер аватара ───────────────────────────────────────────────────────────
 function AvatarPicker({
-  query, value, onChange,
+  query, selected, onSelect, optional,
 }: {
   query: UseQueryResult<HeygenAvatar[]>;
-  value: string;
-  onChange: (id: string) => void;
+  selected: HeygenAvatar | null;
+  onSelect: (a: HeygenAvatar | null) => void;
+  optional?: boolean;
 }) {
+  const all = query.data ?? [];
+  const avatars = all.filter((a) => a.kind === "avatar");
+  const myVideos = all.filter((a) => a.kind === "talking_photo");
+
   return (
-    <section>
-      <label className="mb-2 block text-sm font-semibold">Аватар</label>
+    <section className="space-y-3">
+      <div className="flex items-center justify-between">
+        <label className="text-sm font-semibold">
+          Аватар {optional && <span className="text-xs font-normal text-muted-foreground">— необязательно</span>}
+        </label>
+        {selected && optional && (
+          <button type="button" onClick={() => onSelect(null)} className="text-xs text-muted-foreground hover:text-foreground">
+            Сбросить
+          </button>
+        )}
+      </div>
+
       {query.isLoading ? (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" /> Загружаем аватаров…
         </div>
+      ) : query.error ? (
+        <p className="text-sm text-warning">Аватары недоступны: {(query.error as Error).message}</p>
       ) : (
-        <div className="grid max-h-72 grid-cols-2 gap-3 overflow-y-auto pr-1 sm:grid-cols-3">
-          {(query.data ?? []).map((a) => (
-            <button
-              key={a.avatar_id}
-              type="button"
-              onClick={() => onChange(a.avatar_id)}
-              className={cn(
-                "overflow-hidden rounded-xl border border-border/60 bg-card/60 text-left transition hover:border-primary/40",
-                value === a.avatar_id && "border-primary ring-1 ring-primary/40",
-              )}
-            >
-              {a.preview_image_url ? (
-                <img src={a.preview_image_url} alt={a.avatar_name} className="aspect-[3/4] w-full object-cover" />
-              ) : (
-                <div className="grid aspect-[3/4] w-full place-items-center bg-secondary/50 text-muted-foreground">
-                  <Sparkles className="h-6 w-6" />
-                </div>
-              )}
-              <div className="truncate p-2 text-xs font-medium">{a.avatar_name}</div>
-            </button>
-          ))}
-          {(query.data ?? []).length === 0 && (
-            <p className="col-span-full text-sm text-muted-foreground">Аватары не найдены.</p>
+        <>
+          {selected && <SelectedAvatar a={selected} />}
+
+          {myVideos.length > 0 && (
+            <div>
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <Video className="h-3.5 w-3.5" /> Мои видео-аватары
+              </div>
+              <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+                {myVideos.map((a) => (
+                  <AvatarCard key={a.id} a={a} active={selected?.id === a.id} onSelect={() => onSelect(a)} />
+                ))}
+              </div>
+            </div>
           )}
-        </div>
+
+          <div>
+            {myVideos.length > 0 && (
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <Sparkles className="h-3.5 w-3.5" /> Аватары HeyGen
+              </div>
+            )}
+            <div className="grid max-h-80 grid-cols-3 gap-3 overflow-y-auto pr-1 sm:grid-cols-4">
+              {avatars.map((a) => (
+                <AvatarCard key={a.id} a={a} active={selected?.id === a.id} onSelect={() => onSelect(a)} />
+              ))}
+              {all.length === 0 && <p className="col-span-full text-sm text-muted-foreground">Аватары не найдены.</p>}
+            </div>
+          </div>
+        </>
       )}
     </section>
   );
 }
 
-// ── Пикер голоса ───────────────────────────────────────────────────────────
+// ── Пикер голоса (с прослушиванием) ─────────────────────────────────────────
 function VoicePicker({
-  query, value, onChange,
+  query, value, onChange, optional,
 }: {
   query: UseQueryResult<HeygenVoice[]>;
   value: string;
   onChange: (id: string) => void;
+  optional?: boolean;
 }) {
+  const [search, setSearch] = useState("");
+  const [playing, setPlaying] = useState<string | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => () => { audioRef.current?.pause(); }, []);
+
+  const all = query.data ?? [];
+  const selectedVoice = all.find((v) => v.voice_id === value) ?? null;
+  const q = search.trim().toLowerCase();
+  const filtered = (q
+    ? all.filter((v) => `${v.name} ${v.language ?? ""} ${v.gender ?? ""}`.toLowerCase().includes(q))
+    : all
+  ).slice(0, 80);
+
+  const togglePlay = (v: HeygenVoice) => {
+    if (!v.preview_audio) return;
+    if (playing === v.voice_id) {
+      audioRef.current?.pause();
+      setPlaying(null);
+      return;
+    }
+    audioRef.current?.pause();
+    const audio = new Audio(v.preview_audio);
+    audio.onended = () => setPlaying(null);
+    audio.play().catch(() => setPlaying(null));
+    audioRef.current = audio;
+    setPlaying(v.voice_id);
+  };
+
   return (
-    <section>
-      <label className="mb-2 block text-sm font-semibold">Голос</label>
-      <Select value={value} onValueChange={onChange} disabled={query.isLoading}>
-        <SelectTrigger>
-          <SelectValue placeholder={query.isLoading ? "Загружаем голоса…" : "Выберите голос"} />
-        </SelectTrigger>
-        <SelectContent className="max-h-72">
-          {(query.data ?? []).map((v) => (
-            <SelectItem key={v.voice_id} value={v.voice_id}>
-              {v.name}
-              {v.language ? ` · ${v.language}` : ""}
-              {v.gender ? ` · ${v.gender}` : ""}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+    <section className="space-y-2">
+      <label className="text-sm font-semibold">
+        Голос {optional && <span className="text-xs font-normal text-muted-foreground">— необязательно</span>}
+      </label>
+
+      {query.isLoading ? (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" /> Загружаем голоса…
+        </div>
+      ) : query.error ? (
+        <p className="text-sm text-warning">Голоса недоступны: {(query.error as Error).message}</p>
+      ) : (
+        <>
+          {selectedVoice && (
+            <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+              <Volume2 className="h-4 w-4 shrink-0 text-primary" />
+              <span className="min-w-0 flex-1 truncate font-medium">
+                {selectedVoice.name}
+                {selectedVoice.language ? ` · ${selectedVoice.language}` : ""}
+                {selectedVoice.gender ? ` · ${selectedVoice.gender}` : ""}
+              </span>
+              {optional && (
+                <button type="button" onClick={() => onChange("")} className="text-xs text-muted-foreground hover:text-foreground">
+                  Сбросить
+                </button>
+              )}
+            </div>
+          )}
+
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Поиск: имя, язык (напр. Russian), пол…"
+              className="pl-9"
+            />
+          </div>
+
+          <div className="max-h-64 space-y-1 overflow-y-auto pr-1">
+            {filtered.map((v) => {
+              const active = value === v.voice_id;
+              const isPlaying = playing === v.voice_id;
+              return (
+                <div
+                  key={v.voice_id}
+                  className={cn(
+                    "flex items-center gap-2 rounded-lg border px-2 py-1.5 transition",
+                    active ? "border-primary bg-primary/5" : "border-transparent hover:bg-secondary/60",
+                  )}
+                >
+                  <button
+                    type="button"
+                    aria-label={isPlaying ? "Пауза" : "Прослушать"}
+                    disabled={!v.preview_audio}
+                    onClick={() => togglePlay(v)}
+                    className={cn(
+                      "grid h-7 w-7 shrink-0 place-items-center rounded-full border border-border/60 text-muted-foreground transition",
+                      v.preview_audio ? "hover:border-primary/50 hover:text-primary" : "opacity-40",
+                      isPlaying && "border-primary bg-primary/10 text-primary",
+                    )}
+                  >
+                    {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onChange(v.voice_id)}
+                    className="min-w-0 flex-1 text-left text-sm"
+                  >
+                    <span className="truncate font-medium">{v.name}</span>
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      {v.language ?? ""}{v.language && v.gender ? " · " : ""}{v.gender ?? ""}
+                    </span>
+                  </button>
+                  {active && <Check className="h-4 w-4 shrink-0 text-primary" />}
+                </div>
+              );
+            })}
+            {filtered.length === 0 && <p className="px-2 py-3 text-sm text-muted-foreground">Ничего не найдено.</p>}
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -124,7 +301,7 @@ const CreateMontage = () => {
   const [aspect, setAspect] = useState<AspectId>("9:16");
 
   const [agentPrompt, setAgentPrompt] = useState("");
-  const [avatarId, setAvatarId] = useState("");
+  const [selectedAvatar, setSelectedAvatar] = useState<HeygenAvatar | null>(null);
   const [voiceId, setVoiceId] = useState("");
   const [script, setScript] = useState("");
   const [templateId, setTemplateId] = useState("");
@@ -135,8 +312,8 @@ const CreateMontage = () => {
   const [agentSessionId, setAgentSessionId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  // Аватары/голоса нужны ручным режимам; для «Быстрого создания» — нет.
-  const needsCatalog = mode === "avatar" || mode === "clips";
+  // Каталог аватаров/голосов нужен всем режимам кроме «шаблона».
+  const needsCatalog = mode !== "template";
   const avatarsQ = useQuery({ queryKey: ["heygen-avatars"], queryFn: fetchAvatars, staleTime: 300_000, enabled: needsCatalog });
   const voicesQ = useQuery({ queryKey: ["heygen-voices"], queryFn: fetchVoices, staleTime: 300_000, enabled: needsCatalog });
   const templatesQ = useQuery({
@@ -147,7 +324,7 @@ const CreateMontage = () => {
     queryKey: ["heygen-status", videoId],
     queryFn: () => fetchVideoStatus(videoId as string),
     enabled: !!videoId,
-    refetchInterval: (q) => (isTerminal(q.state.data?.status) ? false : 8_000),
+    refetchInterval: (query) => (isTerminal(query.state.data?.status) ? false : 8_000),
   });
 
   const agentTerminal = (s?: AgentStatus) =>
@@ -157,7 +334,7 @@ const CreateMontage = () => {
     queryKey: ["heygen-agent", agentSessionId],
     queryFn: () => fetchAgentStatus(agentSessionId as string),
     enabled: !!agentSessionId,
-    refetchInterval: (q) => (agentTerminal(q.state.data) ? false : 10_000),
+    refetchInterval: (query) => (agentTerminal(query.state.data) ? false : 10_000),
   });
 
   const loadError = avatarsQ.error || voicesQ.error;
@@ -167,8 +344,7 @@ const CreateMontage = () => {
   }, [statusQ.data?.status]);
 
   useEffect(() => {
-    const s = agentQ.data?.status ?? "";
-    if (["failed", "error"].includes(s)) toast.error("HeyGen: генерация не удалась");
+    if (["failed", "error"].includes(agentQ.data?.status ?? "")) toast.error("HeyGen: генерация не удалась");
   }, [agentQ.data?.status]);
 
   const handleFiles = async (files: FileList | null) => {
@@ -187,20 +363,20 @@ const CreateMontage = () => {
           const { url } = await uploadClip(file);
           setClips((prev) => prev.map((c) => (c.key === key ? { ...c, url, status: "ready" } : c)));
         } catch (e) {
-          setClips((prev) =>
-            prev.map((c) => (c.key === key ? { ...c, status: "error", error: (e as Error).message } : c)),
-          );
+          setClips((prev) => prev.map((c) => (c.key === key ? { ...c, status: "error", error: (e as Error).message } : c)));
         }
       }),
     );
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const avatarRef = selectedAvatar ? { kind: selectedAvatar.kind, id: selectedAvatar.id } : null;
+
   const canSubmitAgent = agentPrompt.trim().length > 0;
-  const canSubmitAvatar = !!avatarId && !!voiceId && script.trim().length > 0;
+  const canSubmitAvatar = !!avatarRef && !!voiceId && script.trim().length > 0;
   const canSubmitTemplate = !!templateId;
   const canSubmitClips =
-    !!avatarId && !!voiceId && clips.length > 0 &&
+    !!avatarRef && !!voiceId && clips.length > 0 &&
     clips.every((c) => c.status === "ready" && c.script.trim().length > 0);
 
   const canSubmit =
@@ -216,15 +392,18 @@ const CreateMontage = () => {
     setAgentSessionId(null);
     try {
       if (mode === "agent") {
-        const sid = await generateVideoAgent(agentPrompt.trim());
-        setAgentSessionId(sid);
+        setAgentSessionId(await generateVideoAgent({
+          prompt: agentPrompt.trim(),
+          avatar: avatarRef ?? undefined,
+          voiceId: voiceId || undefined,
+        }));
       } else if (mode === "avatar") {
-        setVideoId(await generateAvatarVideo({ avatarId, voiceId, script: script.trim(), width: dim.width, height: dim.height }));
+        setVideoId(await generateAvatarVideo({ avatar: avatarRef!, voiceId, script: script.trim(), width: dim.width, height: dim.height }));
       } else if (mode === "template") {
         setVideoId(await generateTemplateVideo({ templateId, width: dim.width, height: dim.height }));
       } else {
         setVideoId(await generateFromClips({
-          avatarId, voiceId,
+          avatar: avatarRef!, voiceId,
           scenes: clips.map((c) => ({ clipUrl: c.url as string, script: c.script.trim() })),
           width: dim.width, height: dim.height,
         }));
@@ -237,7 +416,6 @@ const CreateMontage = () => {
     }
   };
 
-  // Унифицированный результат для v2 (videoId) и v3 Video Agent (session).
   const v2Rendering = !!videoId && !isTerminal(statusQ.data?.status);
   const agentFailed = ["failed", "error"].includes(agentQ.data?.status ?? "");
   const agentRendering = !!agentSessionId && !agentQ.data?.video_url && !agentFailed;
@@ -300,26 +478,29 @@ const CreateMontage = () => {
           </TabsList>
 
           {/* Быстрое создание (Video Agent) */}
-          <TabsContent value="agent" className="mt-6 space-y-4 focus-visible:outline-none">
+          <TabsContent value="agent" className="mt-6 space-y-6 focus-visible:outline-none">
             <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
-              Вставьте текст или бриф — HeyGen сам подберёт аватара, соберёт сцены, б-ролл, субтитры и смонтирует видео.
+              Вставьте текст или бриф — HeyGen сам соберёт сцены, б-ролл, субтитры и смонтирует видео.
+              Аватар и голос ниже — по желанию: не выберете, агент подберёт сам.
             </div>
             <section>
               <label className="mb-2 block text-sm font-semibold">Текст / сценарий</label>
               <Textarea
                 value={agentPrompt}
                 onChange={(e) => setAgentPrompt(e.target.value)}
-                rows={8}
+                rows={7}
                 placeholder="Напр.: Сделай ролик на 45 секунд о запуске нашего продукта, дружелюбный тон, вертикальный формат для Reels…"
                 className="resize-y"
               />
               <p className="mt-1 text-xs text-muted-foreground">{agentPrompt.trim().length} символов</p>
             </section>
+            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} optional />
+            <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} optional />
           </TabsContent>
 
           {/* Аватар + сценарий */}
           <TabsContent value="avatar" className="mt-6 space-y-6 focus-visible:outline-none">
-            <AvatarPicker query={avatarsQ} value={avatarId} onChange={setAvatarId} />
+            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} />
             <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} />
             <section>
               <label className="mb-2 block text-sm font-semibold">Сценарий</label>
@@ -376,7 +557,7 @@ const CreateMontage = () => {
 
           {/* Готовые клипы */}
           <TabsContent value="clips" className="mt-6 space-y-6 focus-visible:outline-none">
-            <AvatarPicker query={avatarsQ} value={avatarId} onChange={setAvatarId} />
+            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} />
             <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} />
 
             <section>
@@ -385,14 +566,7 @@ const CreateMontage = () => {
                 <span className="text-xs text-muted-foreground">каждый клип — сцена, аватар проговаривает текст</span>
               </div>
 
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="video/*"
-                multiple
-                className="hidden"
-                onChange={(e) => handleFiles(e.target.files)}
-              />
+              <input ref={fileInputRef} type="file" accept="video/*" multiple className="hidden" onChange={(e) => handleFiles(e.target.files)} />
 
               {clips.length === 0 ? (
                 <button
@@ -409,9 +583,7 @@ const CreateMontage = () => {
                   {clips.map((c, idx) => (
                     <div key={c.key} className="rounded-xl border border-border/60 bg-card/60 p-3">
                       <div className="mb-2 flex items-center gap-2">
-                        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-secondary text-xs font-bold">
-                          {idx + 1}
-                        </span>
+                        <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-secondary text-xs font-bold">{idx + 1}</span>
                         <span className="min-w-0 flex-1 truncate text-sm font-medium">{c.name}</span>
                         {c.status === "uploading" && <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />}
                         {c.status === "error" && <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />}
@@ -429,9 +601,7 @@ const CreateMontage = () => {
                       ) : (
                         <Textarea
                           value={c.script}
-                          onChange={(e) =>
-                            setClips((prev) => prev.map((x) => (x.key === c.key ? { ...x, script: e.target.value } : x)))
-                          }
+                          onChange={(e) => setClips((prev) => prev.map((x) => (x.key === c.key ? { ...x, script: e.target.value } : x)))}
                           rows={2}
                           placeholder="Текст для этой сцены…"
                           className="resize-y text-sm"
