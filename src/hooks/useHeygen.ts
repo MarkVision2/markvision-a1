@@ -89,50 +89,55 @@ interface RawAvatarGroup {
 }
 interface RawGroupLook {
   id: string;
+  name?: string;
   image_url?: string;
   preview_image_url?: string;
   preview_video_url?: string;
 }
 
 /**
- * Только СВОИ аватары — группы, созданные в аккаунте («Юрий Кат», «Юрий идёт»),
- * без публичных и без дублей по ракурсам. Для генерации резолвим один «взгляд».
+ * Только СВОИ аватары. Показываем ВСЕ looks (скины) из ваших групп
+ * («Юрий Кат за микрофоном», «Юрий Кат in brown jacket», …) — как в HeyGen,
+ * без публичных аватаров. Каждый look — свой avatar_id для генерации.
  */
 export async function fetchAvatars(): Promise<HeygenAvatar[]> {
   const res = await call<{ data?: { avatar_group_list?: RawAvatarGroup[] } }>({ action: "list_avatar_groups" });
   const groups = res.data?.avatar_group_list ?? [];
 
-  const avatars = await Promise.all(
-    groups.map(async (g): Promise<HeygenAvatar> => {
-      let lookId = g.id;
-      let preview = g.preview_image_url;
-      let previewVideo = g.preview_video_url;
+  const perGroup = await Promise.all(
+    groups.map(async (g): Promise<HeygenAvatar[]> => {
       try {
         const looks = await call<{ data?: { avatar_list?: RawGroupLook[] } }>({
           action: "list_group_avatars",
           group_id: g.id,
         });
-        const first = looks.data?.avatar_list?.[0];
-        if (first?.id) {
-          lookId = first.id;
-          preview = preview ?? first.preview_image_url ?? first.image_url;
-          previewVideo = previewVideo ?? first.preview_video_url;
+        const list = looks.data?.avatar_list ?? [];
+        if (list.length > 0) {
+          return list.map((lk) => ({
+            id: lk.id,
+            name: lk.name ?? g.name ?? "Мой аватар",
+            kind: "avatar" as const,
+            mine: true,
+            gender: g.gender,
+            preview_image_url: lk.preview_image_url ?? lk.image_url ?? g.preview_image_url,
+            preview_video_url: lk.preview_video_url ?? g.preview_video_url,
+          }));
         }
       } catch {
-        /* нет доступа к looks — оставляем данные группы */
+        /* нет доступа к looks — покажем группу одной карточкой */
       }
-      return {
-        id: lookId,
+      return [{
+        id: g.id,
         name: g.name ?? "Мой аватар",
         kind: "avatar",
         mine: true,
         gender: g.gender,
-        preview_image_url: preview,
-        preview_video_url: previewVideo,
-      };
+        preview_image_url: g.preview_image_url,
+        preview_video_url: g.preview_video_url,
+      }];
     }),
   );
-  return avatars;
+  return perGroup.flat();
 }
 
 export async function fetchVoices(): Promise<HeygenVoice[]> {
