@@ -1,7 +1,7 @@
 {
-  "git_sha": "e00e2e0",
-  "git_sha_full": "e00e2e095721402ec017143033d4cb3acc044ed6",
-  "updated_at": "2026-07-07T14:41:06+05:00",
-  "label": "feat(metrics): add business mode and clear Meta data diagnostics",
+  "git_sha": "9ef25d2",
+  "git_sha_full": "9ef25d233098a542c5cf61789d1a68f572e56b65",
+  "updated_at": "2026-07-07T14:45:30+05:00",
+  "label": "feat(dashboard): show top 4 creatives for selected period",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
