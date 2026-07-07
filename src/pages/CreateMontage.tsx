@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import {
-  AlertTriangle, Clapperboard, Download, Film, Loader2, Play, Plus, Sparkles, Upload, Video, X,
+  AlertTriangle, Clapperboard, Download, Film, Loader2, Play, Plus, Sparkles, Upload, Video, X, Zap,
 } from "lucide-react";
 import Header from "@/components/factory/Header";
 import { AspectRatioPicker } from "@/components/factory/AspectRatioPicker";
@@ -16,9 +16,9 @@ import type { AspectId } from "@/data/contentTypeFlows";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import {
-  fetchAvatars, fetchTemplates, fetchVideoStatus, fetchVoices,
-  generateAvatarVideo, generateFromClips, generateTemplateVideo, uploadClip,
-  type HeygenAvatar, type HeygenVideoStatus, type HeygenVoice,
+  fetchAgentStatus, fetchAvatars, fetchTemplates, fetchVideoStatus, fetchVoices,
+  generateAvatarVideo, generateFromClips, generateTemplateVideo, generateVideoAgent, uploadClip,
+  type AgentStatus, type HeygenAvatar, type HeygenVideoStatus, type HeygenVoice,
 } from "@/hooks/useHeygen";
 
 const ASPECTS: AspectId[] = ["9:16", "16:9", "1:1", "4:5"];
@@ -120,9 +120,10 @@ interface ClipItem {
 
 const CreateMontage = () => {
   const navigate = useNavigate();
-  const [mode, setMode] = useState<"avatar" | "template" | "clips">("avatar");
+  const [mode, setMode] = useState<"agent" | "avatar" | "template" | "clips">("agent");
   const [aspect, setAspect] = useState<AspectId>("9:16");
 
+  const [agentPrompt, setAgentPrompt] = useState("");
   const [avatarId, setAvatarId] = useState("");
   const [voiceId, setVoiceId] = useState("");
   const [script, setScript] = useState("");
@@ -131,10 +132,13 @@ const CreateMontage = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [videoId, setVideoId] = useState<string | null>(null);
+  const [agentSessionId, setAgentSessionId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const avatarsQ = useQuery({ queryKey: ["heygen-avatars"], queryFn: fetchAvatars, staleTime: 300_000 });
-  const voicesQ = useQuery({ queryKey: ["heygen-voices"], queryFn: fetchVoices, staleTime: 300_000 });
+  // Аватары/голоса нужны ручным режимам; для «Быстрого создания» — нет.
+  const needsCatalog = mode === "avatar" || mode === "clips";
+  const avatarsQ = useQuery({ queryKey: ["heygen-avatars"], queryFn: fetchAvatars, staleTime: 300_000, enabled: needsCatalog });
+  const voicesQ = useQuery({ queryKey: ["heygen-voices"], queryFn: fetchVoices, staleTime: 300_000, enabled: needsCatalog });
   const templatesQ = useQuery({
     queryKey: ["heygen-templates"], queryFn: fetchTemplates, staleTime: 300_000, enabled: mode === "template",
   });
@@ -146,11 +150,26 @@ const CreateMontage = () => {
     refetchInterval: (q) => (isTerminal(q.state.data?.status) ? false : 8_000),
   });
 
+  const agentTerminal = (s?: AgentStatus) =>
+    !!s?.video_url || ["completed", "success", "done", "failed", "error"].includes(s?.status ?? "");
+
+  const agentQ = useQuery<AgentStatus>({
+    queryKey: ["heygen-agent", agentSessionId],
+    queryFn: () => fetchAgentStatus(agentSessionId as string),
+    enabled: !!agentSessionId,
+    refetchInterval: (q) => (agentTerminal(q.state.data) ? false : 10_000),
+  });
+
   const loadError = avatarsQ.error || voicesQ.error;
 
   useEffect(() => {
     if (statusQ.data?.status === "failed") toast.error("HeyGen: рендер не удался");
   }, [statusQ.data?.status]);
+
+  useEffect(() => {
+    const s = agentQ.data?.status ?? "";
+    if (["failed", "error"].includes(s)) toast.error("HeyGen: генерация не удалась");
+  }, [agentQ.data?.status]);
 
   const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -177,43 +196,58 @@ const CreateMontage = () => {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
+  const canSubmitAgent = agentPrompt.trim().length > 0;
   const canSubmitAvatar = !!avatarId && !!voiceId && script.trim().length > 0;
   const canSubmitTemplate = !!templateId;
   const canSubmitClips =
     !!avatarId && !!voiceId && clips.length > 0 &&
     clips.every((c) => c.status === "ready" && c.script.trim().length > 0);
 
-  const canSubmit = mode === "avatar" ? canSubmitAvatar : mode === "template" ? canSubmitTemplate : canSubmitClips;
+  const canSubmit =
+    mode === "agent" ? canSubmitAgent
+      : mode === "avatar" ? canSubmitAvatar
+        : mode === "template" ? canSubmitTemplate
+          : canSubmitClips;
 
   const handleGenerate = async () => {
     const dim = DIMENSIONS[aspect];
     setSubmitting(true);
     setVideoId(null);
+    setAgentSessionId(null);
     try {
-      let id: string;
-      if (mode === "avatar") {
-        id = await generateAvatarVideo({ avatarId, voiceId, script: script.trim(), width: dim.width, height: dim.height });
+      if (mode === "agent") {
+        const sid = await generateVideoAgent(agentPrompt.trim());
+        setAgentSessionId(sid);
+      } else if (mode === "avatar") {
+        setVideoId(await generateAvatarVideo({ avatarId, voiceId, script: script.trim(), width: dim.width, height: dim.height }));
       } else if (mode === "template") {
-        id = await generateTemplateVideo({ templateId, width: dim.width, height: dim.height });
+        setVideoId(await generateTemplateVideo({ templateId, width: dim.width, height: dim.height }));
       } else {
-        id = await generateFromClips({
+        setVideoId(await generateFromClips({
           avatarId, voiceId,
           scenes: clips.map((c) => ({ clipUrl: c.url as string, script: c.script.trim() })),
           width: dim.width, height: dim.height,
-        });
+        }));
       }
-      setVideoId(id);
-      toast.success("Рендер запущен — собираем видео");
+      toast.success("Запущено — собираем видео");
     } catch (e) {
-      toast.error((e as Error).message || "Не удалось запустить рендер");
+      toast.error((e as Error).message || "Не удалось запустить генерацию");
     } finally {
       setSubmitting(false);
     }
   };
 
-  const status = statusQ.data?.status;
-  const rendering = !!videoId && !isTerminal(status);
-  const done = status === "completed" && statusQ.data?.video_url;
+  // Унифицированный результат для v2 (videoId) и v3 Video Agent (session).
+  const v2Rendering = !!videoId && !isTerminal(statusQ.data?.status);
+  const agentFailed = ["failed", "error"].includes(agentQ.data?.status ?? "");
+  const agentRendering = !!agentSessionId && !agentQ.data?.video_url && !agentFailed;
+  const rendering = mode === "agent" ? agentRendering : v2Rendering;
+
+  const resultUrl =
+    mode === "agent"
+      ? agentQ.data?.video_url
+      : statusQ.data?.status === "completed" ? statusQ.data?.video_url : undefined;
+  const resultThumb = mode === "agent" ? agentQ.data?.thumbnail_url : statusQ.data?.thumbnail_url;
 
   const busyLabel = useMemo(() => {
     if (submitting) return "Отправляем в HeyGen…";
@@ -233,7 +267,7 @@ const CreateMontage = () => {
           <div>
             <h1 className="text-xl font-bold tracking-tight sm:text-2xl">AI монтаж</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Видео через HeyGen: аватар со сценарием, сборка по шаблону или монтаж из ваших клипов
+              Видео через HeyGen: быстрое создание из текста, аватар со сценарием, шаблон или монтаж из ваших клипов
             </p>
           </div>
         </div>
@@ -250,17 +284,38 @@ const CreateMontage = () => {
         )}
 
         <Tabs value={mode} onValueChange={(v) => setMode(v as typeof mode)}>
-          <TabsList className="grid w-full grid-cols-3 rounded-2xl">
-            <TabsTrigger value="avatar" className="gap-1.5 rounded-xl text-xs sm:text-sm">
-              <Sparkles className="h-4 w-4" /> Аватар
+          <TabsList className="grid w-full grid-cols-4 rounded-2xl">
+            <TabsTrigger value="agent" className="gap-1 rounded-xl px-1 text-[11px] sm:gap-1.5 sm:text-sm">
+              <Zap className="h-4 w-4 shrink-0" /> Быстро
             </TabsTrigger>
-            <TabsTrigger value="template" className="gap-1.5 rounded-xl text-xs sm:text-sm">
-              <Film className="h-4 w-4" /> Шаблон
+            <TabsTrigger value="avatar" className="gap-1 rounded-xl px-1 text-[11px] sm:gap-1.5 sm:text-sm">
+              <Sparkles className="h-4 w-4 shrink-0" /> Аватар
             </TabsTrigger>
-            <TabsTrigger value="clips" className="gap-1.5 rounded-xl text-xs sm:text-sm">
-              <Video className="h-4 w-4" /> Клипы
+            <TabsTrigger value="template" className="gap-1 rounded-xl px-1 text-[11px] sm:gap-1.5 sm:text-sm">
+              <Film className="h-4 w-4 shrink-0" /> Шаблон
+            </TabsTrigger>
+            <TabsTrigger value="clips" className="gap-1 rounded-xl px-1 text-[11px] sm:gap-1.5 sm:text-sm">
+              <Video className="h-4 w-4 shrink-0" /> Клипы
             </TabsTrigger>
           </TabsList>
+
+          {/* Быстрое создание (Video Agent) */}
+          <TabsContent value="agent" className="mt-6 space-y-4 focus-visible:outline-none">
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+              Вставьте текст или бриф — HeyGen сам подберёт аватара, соберёт сцены, б-ролл, субтитры и смонтирует видео.
+            </div>
+            <section>
+              <label className="mb-2 block text-sm font-semibold">Текст / сценарий</label>
+              <Textarea
+                value={agentPrompt}
+                onChange={(e) => setAgentPrompt(e.target.value)}
+                rows={8}
+                placeholder="Напр.: Сделай ролик на 45 секунд о запуске нашего продукта, дружелюбный тон, вертикальный формат для Reels…"
+                className="resize-y"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">{agentPrompt.trim().length} символов</p>
+            </section>
+          </TabsContent>
 
           {/* Аватар + сценарий */}
           <TabsContent value="avatar" className="mt-6 space-y-6 focus-visible:outline-none">
@@ -394,11 +449,13 @@ const CreateMontage = () => {
           </TabsContent>
         </Tabs>
 
-        {/* Формат — общий для всех режимов */}
-        <section className="mt-6">
-          <label className="mb-2 block text-sm font-semibold">Формат</label>
-          <AspectRatioPicker value={aspect} onChange={setAspect} allowed={ASPECTS} />
-        </section>
+        {/* Формат — для ручных режимов; в «Быстро» его выбирает агент */}
+        {mode !== "agent" && (
+          <section className="mt-6">
+            <label className="mb-2 block text-sm font-semibold">Формат</label>
+            <AspectRatioPicker value={aspect} onChange={setAspect} allowed={ASPECTS} />
+          </section>
+        )}
 
         {/* Действие */}
         <div className="mt-8">
@@ -408,17 +465,19 @@ const CreateMontage = () => {
           </Button>
           {rendering && (
             <p className="mt-2 text-center text-xs text-muted-foreground">
-              Рендер обычно занимает пару минут — можно не закрывать вкладку.
+              {mode === "agent"
+                ? "Video Agent собирает монтаж — обычно несколько минут, можно не закрывать вкладку."
+                : "Рендер обычно занимает пару минут — можно не закрывать вкладку."}
             </p>
           )}
         </div>
 
         {/* Результат */}
-        {done && (
+        {resultUrl && (
           <section className="mt-8 rounded-2xl border border-border/60 bg-card/60 p-4">
             <h2 className="mb-3 text-sm font-semibold">Готово</h2>
-            <video src={statusQ.data!.video_url} controls className="w-full rounded-xl" poster={statusQ.data?.thumbnail_url} />
-            <a href={statusQ.data!.video_url} target="_blank" rel="noreferrer" download>
+            <video src={resultUrl} controls className="w-full rounded-xl" poster={resultThumb} />
+            <a href={resultUrl} target="_blank" rel="noreferrer" download>
               <Button variant="secondary" className="mt-3 w-full gap-2">
                 <Download className="h-4 w-4" /> Скачать MP4
               </Button>

@@ -35,6 +35,16 @@ function resolveCall(action: string, payload: Record<string, unknown>): HeygenCa
     case "list_templates":
       return { method: "GET", url: `${HEYGEN_BASE}/v2/templates` };
 
+    // Быстрое создание (Video Agent v3): промпт/сценарий → авто-монтаж с б-роллом.
+    case "video_agent":
+      return { method: "POST", url: `${HEYGEN_BASE}/v3/video-agents`, body: payload.agent ?? { prompt: payload.prompt } };
+
+    case "video_agent_status": {
+      const sessionId = String(payload.session_id ?? "").trim();
+      if (!sessionId) return { error: "session_id required" };
+      return { method: "GET", url: `${HEYGEN_BASE}/v3/video-agents/${encodeURIComponent(sessionId)}` };
+    }
+
     // Аватар + сценарий (talking head).
     case "generate_avatar":
       return { method: "POST", url: `${HEYGEN_BASE}/v2/video/generate`, body: payload.video ?? payload };
