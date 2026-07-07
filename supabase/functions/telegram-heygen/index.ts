@@ -93,6 +93,13 @@ Deno.serve(async (req) => {
     return ok();
   }
 
+  // Слишком короткий текст — не сценарий. Иначе Video Agent генерит «из бренда»
+  // аккаунта (напр. Toyota Center Pavlodar) и жжёт кредиты впустую.
+  if (text.length < 12 || text.split(/\s+/).length < 3) {
+    await send(chat.id, "Это похоже на короткое сообщение, а не на сценарий. Пришлите текст ролика (о чём видео, что сказать) — минимум пару фраз, и я соберу его.");
+    return ok();
+  }
+
   const apiKey = Deno.env.get("HEYGEN_API_KEY");
   if (!apiKey) {
     await send(chat.id, "Сервис временно недоступен (нет ключа HeyGen). Напишите позже.");
