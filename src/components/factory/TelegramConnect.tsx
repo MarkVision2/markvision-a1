@@ -58,9 +58,9 @@ export function TelegramConnect({ projectId }: { projectId: string }) {
       </p>
 
       {!link ? (
-        <Button size="sm" className="gap-2" disabled={loading} onClick={getCode}>
+        <Button size="sm" className="gap-2" disabled={loading || !projectId} onClick={getCode}>
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          Получить код привязки
+          {projectId ? "Получить код привязки" : "Выберите проект"}
         </Button>
       ) : (
         <div className="space-y-2">

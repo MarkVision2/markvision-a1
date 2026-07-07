@@ -46,7 +46,12 @@ Deno.serve(async (req) => {
   const code = makeCode();
   const { error } = await admin
     .from("telegram_link_codes")
-    .insert({ code, project_id: projectId, created_by: auth.userId });
+    .insert({
+      code,
+      project_id: projectId,
+      created_by: auth.userId,
+      expires_at: new Date(Date.now() + 15 * 60_000).toISOString(),
+    });
   if (error) return json({ error: error.message }, 500);
 
   const botUser = Deno.env.get("TELEGRAM_BOT_USERNAME") ?? "";
