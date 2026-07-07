@@ -128,6 +128,7 @@ Deno.serve(async (req) => {
       }
 
       const chatId = await resolveChatId(job); // Telegram-чат для доставки (у веб-задач — привязанный к проекту)
+      const ageMin = (Date.now() - new Date(job.created_at).getTime()) / 60000;
 
       if (url) {
         if (chatId) {
@@ -149,9 +150,19 @@ Deno.serve(async (req) => {
         });
         delivered++;
       } else if (TERMINAL_FAIL.includes(status)) {
-        await notify(botToken, chatId, "Не удалось собрать видео. Попробуйте ещё раз.");
-        await admin.from("heygen_jobs").update({ delivered: true, status: "failed", error: status, updated_at: new Date().toISOString() }).eq("id", job.id);
-        failed++;
+        // HeyGen иногда помечает сессию failed, но видео всё же создаётся (и списывается).
+        // Если есть video_id и задача ещё «молодая» — не хороним, ждём готовности MP4.
+        if (pickVideoId(d) && ageMin <= MAX_AGE_MIN) {
+          pending++;
+        } else {
+          await notify(botToken, chatId, "Не удалось собрать видео. Попробуйте ещё раз.");
+          await admin.from("heygen_jobs").update({
+            delivered: true, status: "failed",
+            error: ("fail: " + JSON.stringify(d)).slice(0, 600), // сырой ответ для диагностики
+            updated_at: new Date().toISOString(),
+          }).eq("id", job.id);
+          failed++;
+        }
       } else if (TERMINAL_OK.includes(status)) {
         // терминальный успех без ссылки — сохраняем сырой ответ для диагностики.
         await notify(botToken, chatId, "Видео готово, но ссылка не пришла. Попробуйте ещё раз.");
@@ -162,7 +173,6 @@ Deno.serve(async (req) => {
         }).eq("id", job.id);
         failed++;
       } else {
-        const ageMin = (Date.now() - new Date(job.created_at).getTime()) / 60000;
         if (ageMin > MAX_AGE_MIN) {
           await notify(botToken, chatId, "Генерация заняла слишком долго. Попробуйте ещё раз.");
           await admin.from("heygen_jobs").update({ delivered: true, status: "timeout", updated_at: new Date().toISOString() }).eq("id", job.id);
