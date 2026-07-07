@@ -34,6 +34,12 @@ async function tg(token: string, method: string, body: Record<string, unknown>) 
   }).then((r) => r.ok).catch(() => false);
 }
 
+// Уведомление в чат. У веб-задач чата нет (chat_id = null) — молча пропускаем.
+async function notify(token: string, chatId: string | null, text: string) {
+  if (!chatId) return;
+  await tg(token, "sendMessage", { chat_id: chatId, text });
+}
+
 Deno.serve(async (req) => {
   const admin = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -56,14 +62,15 @@ Deno.serve(async (req) => {
 
   const { data: jobs } = await admin
     .from("heygen_jobs")
-    .select("id, project_id, chat_id, session_id, script, created_at")
+    .select("id, project_id, chat_id, session_id, script, source, created_at")
     .eq("delivered", false)
     .order("created_at", { ascending: true })
     .limit(BATCH);
 
-  // Обложка + описание по сценарию через n8n Clony (для Telegram-доставки).
-  async function sendAssets(job: { chat_id: string; project_id: string | null; script: string | null }) {
-    if (!job.script) return;
+  // Обложка + описание по сценарию через n8n Clony. В чат шлём, только если он есть
+  // (у веб-задач chat_id = null) — но cover/desc всё равно возвращаем для записи в галерею.
+  async function sendAssets(job: { chat_id: string | null; project_id: string | null; script: string | null }) {
+    if (!job.script) return { cover: null, desc: null };
     try {
       const res = await fetch(N8N_WEBHOOK, {
         method: "POST",
@@ -74,8 +81,8 @@ Deno.serve(async (req) => {
       const a = await res.json().catch(() => ({}));
       const cover = a?.cover_url ?? a?.image_url ?? a?.thumbnail_url;
       const desc = a?.description ?? a?.caption ?? a?.text;
-      if (cover) await tg(botToken, "sendPhoto", { chat_id: job.chat_id, photo: cover, caption: "Обложка" });
-      if (desc) await tg(botToken, "sendMessage", { chat_id: job.chat_id, text: `Описание:\n${desc}` });
+      if (cover && job.chat_id) await tg(botToken, "sendPhoto", { chat_id: job.chat_id, photo: cover, caption: "Обложка" });
+      if (desc && job.chat_id) await tg(botToken, "sendMessage", { chat_id: job.chat_id, text: `Описание:\n${desc}` });
       return { cover: cover ?? null, desc: desc ?? null };
     } catch { /* обложка/описание не критичны */ }
     return { cover: null, desc: null };
@@ -111,29 +118,31 @@ Deno.serve(async (req) => {
       }
 
       if (url) {
-        const okVideo = await tg(botToken, "sendVideo", { chat_id: job.chat_id, video: url, caption: "Готово ✅" });
-        if (!okVideo) await tg(botToken, "sendMessage", { chat_id: job.chat_id, text: `Видео готово: ${url}` });
+        if (job.chat_id) {
+          const okVideo = await tg(botToken, "sendVideo", { chat_id: job.chat_id, video: url, caption: "Готово ✅" });
+          if (!okVideo) await tg(botToken, "sendMessage", { chat_id: job.chat_id, text: `Видео готово: ${url}` });
+        }
         await admin.from("heygen_jobs").update({ delivered: true, status: "done", video_url: url, updated_at: new Date().toISOString() }).eq("id", job.id);
-        const assets = await sendAssets(job); // обложка + описание в чат
+        const assets = await sendAssets(job); // обложка + описание (в чат, если он есть)
         // Учёт расхода + запись в галерею «Готовый контент».
         const durRaw = (meta.duration ?? meta.duration_sec) as number | undefined;
         const durationSec = typeof durRaw === "number" ? durRaw : null;
         const cost = durationSec ? Math.round((durationSec / 60) * 2 * 100) / 100 : null;
         const thumb = (meta.thumbnail_url ?? (meta.video as Record<string, unknown> | undefined)?.thumbnail_url) as string | null ?? null;
         await admin.from("heygen_usage").insert({
-          project_id: job.project_id, source: "telegram", mode: "agent",
+          project_id: job.project_id, source: job.source ?? (job.chat_id ? "telegram" : "web"), mode: "agent",
           ref_id: job.session_id, duration_sec: durationSec, cost_usd: cost, status: "completed",
           title: (job.script ?? "").slice(0, 80) || "Видео",
           video_url: url, thumbnail_url: thumb, cover_url: assets.cover, description: assets.desc,
         });
         delivered++;
       } else if (TERMINAL_FAIL.includes(status)) {
-        await tg(botToken, "sendMessage", { chat_id: job.chat_id, text: "Не удалось собрать видео. Попробуйте ещё раз." });
+        await notify(botToken, job.chat_id, "Не удалось собрать видео. Попробуйте ещё раз.");
         await admin.from("heygen_jobs").update({ delivered: true, status: "failed", error: status, updated_at: new Date().toISOString() }).eq("id", job.id);
         failed++;
       } else if (TERMINAL_OK.includes(status)) {
         // терминальный успех без ссылки — сохраняем сырой ответ для диагностики.
-        await tg(botToken, "sendMessage", { chat_id: job.chat_id, text: "Видео готово, но ссылка не пришла. Попробуйте ещё раз." });
+        await notify(botToken, job.chat_id, "Видео готово, но ссылка не пришла. Попробуйте ещё раз.");
         await admin.from("heygen_jobs").update({
           delivered: true, status: "failed",
           error: ("no_url: " + JSON.stringify(d)).slice(0, 600),
@@ -143,7 +152,7 @@ Deno.serve(async (req) => {
       } else {
         const ageMin = (Date.now() - new Date(job.created_at).getTime()) / 60000;
         if (ageMin > MAX_AGE_MIN) {
-          await tg(botToken, "sendMessage", { chat_id: job.chat_id, text: "Генерация заняла слишком долго. Попробуйте ещё раз." });
+          await notify(botToken, job.chat_id, "Генерация заняла слишком долго. Попробуйте ещё раз.");
           await admin.from("heygen_jobs").update({ delivered: true, status: "timeout", updated_at: new Date().toISOString() }).eq("id", job.id);
           failed++;
         } else {

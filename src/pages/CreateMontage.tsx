@@ -9,7 +9,7 @@ import Header from "@/components/factory/Header";
 import { AspectRatioPicker } from "@/components/factory/AspectRatioPicker";
 import { TelegramConnect } from "@/components/factory/TelegramConnect";
 import { HeygenUsagePanel } from "@/components/factory/HeygenUsagePanel";
-import { estimateCost, loadRecentVoices, pushRecentVoice, recordUsage } from "@/lib/heygenUsage";
+import { enqueueAgentJob, estimateCost, loadRecentVoices, pushRecentVoice, recordUsage } from "@/lib/heygenUsage";
 import { HeygenGallery } from "@/components/factory/HeygenGallery";
 import { loadHidden, toggleHidden } from "@/lib/heygenHidden";
 import { generateVideoAssets, type VideoAssets } from "@/lib/videoAssets";
@@ -665,11 +665,15 @@ const CreateMontage = () => {
     setAgentSessionId(null);
     try {
       if (mode === "agent") {
-        setAgentSessionId(await generateVideoAgent({
+        const sid = await generateVideoAgent({
           prompt: agentPrompt.trim(),
           avatar: avatarRef ?? undefined,
           voiceId: voiceId || undefined,
-        }));
+        });
+        setAgentSessionId(sid);
+        // Дублируем в серверную очередь: воркер докрутит и запишет в «Готовый
+        // контент» даже если закрыть вкладку. Учёт для agent — на стороне воркера.
+        void enqueueAgentJob(projectId, sid, agentPrompt.trim(), aspect);
       } else if (mode === "avatar") {
         setVideoId(await generateAvatarVideo({ avatar: avatarRef!, voiceId, script: script.trim(), width: dim.width, height: dim.height }));
       } else if (mode === "template") {
@@ -709,17 +713,19 @@ const CreateMontage = () => {
   const recordedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!resultUrl || !projectId) return;
-    const ref = agentActive ? agentSessionId : videoId;
+    // Для agent учёт ведёт серверный воркер (по heygen_jobs) — иначе задвоение.
+    if (agentActive) return;
+    const ref = videoId;
     if (!ref || recordedRef.current === ref) return;
     recordedRef.current = ref;
-    const durationSec = agentActive ? agentQ.data?.duration_sec : statusQ.data?.duration_sec;
+    const durationSec = statusQ.data?.duration_sec;
     void recordUsage(projectId, {
       source: "web",
       mode,
       ref_id: ref,
       duration_sec: durationSec ?? null,
       cost_usd: estimateCost(mode, durationSec),
-      title: (mode === "agent" ? agentPrompt : script).trim().slice(0, 80) || "Видео",
+      title: script.trim().slice(0, 80) || "Видео",
       video_url: resultUrl,
       thumbnail_url: resultThumb ?? null,
     });
