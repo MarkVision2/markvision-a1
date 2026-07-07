@@ -26,6 +26,8 @@ interface Props {
   initialLimit?: number;
   /** Топ-N режим для дашборда: фиксированный лимит, ссылка «все креативы». */
   topMode?: boolean;
+  topLimit?: number;
+  periodLabel?: string;
   viewAllHref?: string;
 }
 
@@ -48,6 +50,8 @@ export function CreativesGrid({
   rows,
   initialLimit = 8,
   topMode = false,
+  topLimit = 6,
+  periodLabel,
   viewAllHref = "/ads?tab=creatives",
 }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>(topMode ? "crmRevenue" : "spend");
@@ -59,7 +63,7 @@ export function CreativesGrid({
     return copy;
   }, [rows, sortKey]);
 
-  const limit = topMode ? 6 : initialLimit;
+  const limit = topMode ? topLimit : initialLimit;
   const visible = topMode || !showAll ? sorted.slice(0, limit) : sorted;
   const withRevenue = sorted.filter((r) => (r.crmRevenue ?? 0) > 0).length;
 
@@ -79,6 +83,7 @@ export function CreativesGrid({
           {topMode ? (
             <>
               Топ-{Math.min(limit, sorted.length)} креативов <span className="text-foreground/70">по выручке CRM</span>
+              {periodLabel ? ` · период: ${periodLabel}` : ""}
               {withRevenue > 0 ? ` · с выручкой: ${withRevenue}` : " · выручка пока не привязана к креативам"}
               {" · "}всего {rows.length}
             </>
@@ -112,7 +117,12 @@ export function CreativesGrid({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+      <div
+        className={cn(
+          "grid grid-cols-1 gap-3 sm:grid-cols-2",
+          topMode ? "lg:grid-cols-4 xl:grid-cols-4 2xl:grid-cols-4" : "lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5",
+        )}
+      >
         {visible.map((row) => {
           const { title, subtitle } = pickCreativeTitle({ name: row.name, headline: row.headline });
           const hasCrmRevenue = (row.crmRevenue ?? 0) > 0;
