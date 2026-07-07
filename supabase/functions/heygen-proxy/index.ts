@@ -14,6 +14,24 @@ function json(body: unknown, status = 200) {
   });
 }
 
+// HeyGen отдаёт ссылку на видео по-разному; Video Agent часто возвращает только
+// video_id, а сам MP4 (и длительность) забираются вторым запросом к /v1.
+function nestedOf(d: Record<string, unknown>, k: string, s: string) {
+  const v = d[k];
+  return v && typeof v === "object" ? (v as Record<string, unknown>)[s] : undefined;
+}
+function pickUrl(d: Record<string, unknown>): string | undefined {
+  return [
+    d.video_url, d.url, d.download_url, d.mp4_url,
+    nestedOf(d, "video", "url"), nestedOf(d, "video", "video_url"), nestedOf(d, "video", "download_url"),
+    nestedOf(d, "output", "video_url"), nestedOf(d, "result", "video_url"), nestedOf(d, "data", "video_url"),
+  ].find((x) => typeof x === "string" && (x as string).length > 0) as string | undefined;
+}
+function pickVideoId(d: Record<string, unknown>): string | undefined {
+  return [d.video_id, nestedOf(d, "video", "video_id"), nestedOf(d, "video", "id"), nestedOf(d, "result", "video_id")]
+    .find((x) => typeof x === "string" && (x as string).length > 0) as string | undefined;
+}
+
 type HeygenCall = {
   method: "GET" | "POST";
   url: string;
@@ -140,6 +158,47 @@ Deno.serve(async (req) => {
 
   const action = String(payload.action ?? "").trim();
   if (!action) return json({ error: "action required" }, 400);
+
+  // Статус Video Agent: если ссылки нет, но есть video_id — добираем MP4 из /v1,
+  // чтобы браузер не получал «готово без ссылки».
+  if (action === "video_agent_status") {
+    const sessionId = String(payload.session_id ?? "").trim();
+    if (!sessionId) return json({ error: "session_id required" }, 400);
+    try {
+      const r = await fetch(`${HEYGEN_BASE}/v3/video-agents/${encodeURIComponent(sessionId)}`, {
+        headers: { "X-Api-Key": apiKey, Accept: "application/json" },
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      const body = await r.json().catch(() => ({}));
+      if (!r.ok) return json({ error: `HeyGen вернул ${r.status}` }, 502);
+      const d = (body?.data ?? body ?? {}) as Record<string, unknown>;
+      if (!pickUrl(d)) {
+        const vid = pickVideoId(d);
+        if (vid) {
+          const vr = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${encodeURIComponent(vid)}`, {
+            headers: { "X-Api-Key": apiKey, Accept: "application/json" },
+            signal: AbortSignal.timeout(TIMEOUT_MS),
+          });
+          const vbody = await vr.json().catch(() => ({}));
+          const vd = (vbody?.data ?? {}) as Record<string, unknown>;
+          const url = pickUrl(vd);
+          if (url) {
+            d.video_url = url;
+            if (d.duration == null && vd.duration != null) d.duration = vd.duration;
+            if (!d.thumbnail_url && vd.thumbnail_url) d.thumbnail_url = vd.thumbnail_url;
+            if (!d.video_id && vd.id) d.video_id = vd.id;
+          }
+        }
+      }
+      return json({ data: d });
+    } catch (e) {
+      const msg = (e as Error)?.message ?? "network error";
+      if (msg.includes("aborted") || msg.includes("timeout")) {
+        return json({ error: `Таймаут (${Math.round(TIMEOUT_MS / 1000)}s) — HeyGen не ответил` }, 504);
+      }
+      return json({ error: `Не удалось связаться с HeyGen: ${msg}` }, 502);
+    }
+  }
 
   const call = resolveCall(action, payload);
   if ("error" in call) return json({ error: call.error }, 400);
