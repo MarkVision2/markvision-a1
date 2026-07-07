@@ -1,7 +1,7 @@
 {
-  "git_sha": "6e622f4",
-  "git_sha_full": "6e622f4801d4d5567e1f1ffd4d2e73ce69ac4f5b",
-  "updated_at": "2026-07-07T14:56:13+05:00",
-  "label": "redesign(factory): проще мастер — шаги 1 и 2",
+  "git_sha": "e824bf8",
+  "git_sha_full": "e824bf85c885fcd96278482da47ad99cc806d2c1",
+  "updated_at": "2026-07-07T15:00:39+05:00",
+  "label": "redesign(factory): Шаг 3 «Стиль и маркетинг» спокойнее",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
