@@ -14,7 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { AspectId } from "@/data/contentTypeFlows";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { loadDefaults, patchDefaults, type HeygenDefaults } from "@/lib/heygenDefaults";
+import { cacheDefaults, fetchServerDefaults, loadDefaults, patchDefaults, type HeygenDefaults } from "@/lib/heygenDefaults";
 import {
   fetchAgentStatus, fetchAvatars, fetchTemplates, fetchVideoStatus, fetchVoices,
   generateAvatarVideo, generateFromClips, generateTemplateVideo, generateVideoAgent, uploadClip,
@@ -382,6 +382,20 @@ const CreateMontage = () => {
   });
 
   const loadError = avatarsQ.error || voicesQ.error;
+
+  // Серверные дефолты — источник истины: подтягиваем при входе и применяем.
+  useEffect(() => {
+    let cancelled = false;
+    fetchServerDefaults().then((d) => {
+      if (cancelled || !d || Object.keys(d).length === 0) return;
+      cacheDefaults(d);
+      setDefaults(d);
+      if (d.avatar) setSelectedAvatar({ ...d.avatar });
+      if (d.voice) setVoiceId(d.voice.id);
+      if (d.templateId) setTemplateId(d.templateId);
+    });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (statusQ.data?.status === "failed") toast.error("HeyGen: рендер не удался");
