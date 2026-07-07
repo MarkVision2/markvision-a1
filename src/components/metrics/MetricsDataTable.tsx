@@ -6,8 +6,15 @@ import { cn } from "@/lib/utils";
 import type { DailyInsightRow } from "@/hooks/useMetaInsights";
 
 const Cell = ({ children, mono = true }: { children: React.ReactNode; mono?: boolean }) => (
-  <td className={cn("px-2 py-2.5 text-right text-xs", mono && "tabular-nums")}>{children}</td>
+  <td className={cn("px-3 py-3 text-right text-sm", mono && "tabular-nums")}>{children}</td>
 );
+
+const todayIso = (() => {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+})();
+
+const isWeekend = (weekday: string) => weekday === "Сб" || weekday === "Вс";
 
 interface DayRow {
   day: number;
@@ -69,37 +76,41 @@ export function MetricsDataTable({
   const num = (v: number | undefined) =>
     v && v > 0 ? formatNumber(v) : <MetricsDash />;
 
+  const headerTh =
+    "px-3 py-3 text-[11px] font-bold uppercase tracking-wide text-foreground";
+  const stickyDateHeader = cn(headerTh, "sticky left-0 z-10 bg-muted/70 px-4 text-left");
+
   return (
-    <div className="overflow-x-auto rounded-2xl border border-border/60 bg-card/30">
-      <table className={cn("w-full border-collapse text-xs", mode === "business" ? "min-w-[980px]" : "min-w-[1400px]")}>
+    <div className="overflow-x-auto rounded-2xl border border-border/60 bg-card/30 shadow-sm">
+      <table className={cn("w-full border-collapse text-sm", mode === "business" ? "min-w-[980px]" : "min-w-[1400px]")}>
         <thead className="sticky top-0 z-[2]">
           {mode === "business" ? (
-            <tr className="border-b border-border/60 bg-card/60">
-              <th className="sticky left-0 z-10 bg-card/60 px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Дата</th>
+            <tr className="border-b-2 border-border/80 bg-muted/70 shadow-sm">
+              <th className={stickyDateHeader}>Дата</th>
               {["Затраты", "Лиды Meta", "Получено CRM", "CPL", "Визиты", "Продажи", "Итого"].map((h) => (
-                <th key={h} className="px-2 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
+                <th key={h} className={cn(headerTh, "text-right")}>{h}</th>
               ))}
             </tr>
           ) : (
             <>
-          <tr className="border-b border-border/40 bg-muted/30">
-            <th rowSpan={2} className="sticky left-0 z-10 bg-muted/30 px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <tr className="border-b border-border/50 bg-muted/60">
+            <th rowSpan={2} className={stickyDateHeader}>
               Дата
             </th>
-            <th colSpan={3} className="border-b border-border/30 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <th colSpan={3} className="border-b border-border/40 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-foreground">
               Реклама
             </th>
-            <th colSpan={2} className="border-b border-l border-border/30 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <th colSpan={2} className="border-b border-l border-border/40 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-foreground">
               CRM
             </th>
-            <th colSpan={4} className="border-b border-l border-border/30 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <th colSpan={4} className="border-b border-l border-border/40 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-foreground">
               Диагностики
             </th>
-            <th colSpan={6} className="border-b border-l border-border/30 px-2 py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+            <th colSpan={6} className="border-b border-l border-border/40 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-foreground">
               Деньги ₸
             </th>
           </tr>
-          <tr className="border-b border-border/60 bg-card/50">
+          <tr className="border-b-2 border-border/80 bg-muted/70">
             {[
               { h: "Затраты", border: false },
               { h: "Передано", border: false },
@@ -120,16 +131,17 @@ export function MetricsDataTable({
               <th
                 key={h}
                 className={cn(
-                  "px-2 py-2 text-right text-[10px] font-semibold uppercase tracking-wider text-muted-foreground",
-                  border && "border-l border-border/30",
+                  headerTh,
+                  "text-right",
+                  border && "border-l border-border/40",
                 )}
               >
                 {h}
               </th>
             ))}
           </tr>
-          <tr className="border-b border-border/40 bg-background/70">
-            <th className="sticky left-0 z-10 bg-background/70 px-3 py-1 text-left text-[10px] font-medium text-muted-foreground">
+          <tr className="border-b border-border/50 bg-muted/40">
+            <th className="sticky left-0 z-10 bg-muted/40 px-4 py-1.5 text-left text-[10px] font-medium text-muted-foreground">
               Источник
             </th>
             {[
@@ -168,10 +180,12 @@ export function MetricsDataTable({
               </td>
             </tr>
           ) : (
-            visibleDays.map(({ day, iso, weekday }) => {
+            visibleDays.map(({ day, iso, weekday }, rowIdx) => {
               const d = dailyMap.get(iso);
               const cpl = d && d.leads > 0 ? d.spend / d.leads : 0;
               const dayRevenue = d?.crmRevenue ?? 0;
+              const weekend = isWeekend(weekday);
+              const today = iso === todayIso;
               const hasData = !!d && (
                 d.spend > 0 ||
                 d.leads > 0 ||
@@ -188,14 +202,34 @@ export function MetricsDataTable({
                 <tr
                   key={iso}
                   className={cn(
-                    "group border-b border-border/20 transition-colors hover:bg-card/50",
-                    hasData && "bg-card/20",
-                    !hasData && "opacity-70",
+                    "group border-b border-border/25 transition-colors hover:bg-accent/25",
+                    rowIdx % 2 === 1 && !weekend && !today && "bg-muted/10",
+                    weekend && "bg-muted/25",
+                    today && "bg-primary/5 ring-1 ring-inset ring-primary/25",
+                    hasData && !weekend && !today && "bg-card/20",
+                    !hasData && "opacity-60",
                   )}
                 >
-                  <td className="sticky left-0 z-[1] bg-inherit px-3 py-2">
-                    <span className="font-semibold tabular-nums">{String(day).padStart(2, "0")}</span>
-                    <span className="ml-1.5 text-muted-foreground">{weekday}</span>
+                  <td className="sticky left-0 z-[1] bg-inherit px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className={cn("text-sm font-bold tabular-nums", today && "text-primary")}>
+                        {String(day).padStart(2, "0")}
+                      </span>
+                      <span
+                        className={cn(
+                          "text-xs font-medium",
+                          weekend ? "text-warning" : "text-muted-foreground",
+                          today && "text-primary",
+                        )}
+                      >
+                        {weekday}
+                      </span>
+                      {today && (
+                        <span className="rounded-md bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                          сегодня
+                        </span>
+                      )}
+                    </div>
                   </td>
                   {mode === "business" ? (
                     <>
