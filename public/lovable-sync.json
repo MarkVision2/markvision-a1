@@ -1,7 +1,7 @@
 {
-  "git_sha": "435bb81",
-  "git_sha_full": "435bb8186c52422719b794ab4dd9fb0d0ad5565a",
-  "updated_at": "2026-07-07T15:46:43+05:00",
-  "label": "refactor(metrics): simplify page layout and remove duplicate blocks",
+  "git_sha": "43bc9de",
+  "git_sha_full": "43bc9de4abed50f303154b050a1d2da555d94251",
+  "updated_at": "2026-07-07T15:55:32+05:00",
+  "label": "fix(dashboard): show only period-active creatives in top block",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
