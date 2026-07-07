@@ -24,7 +24,7 @@ vi.mock("@/hooks/useHeygen", () => ({
 }));
 
 import CreateMontage from "@/pages/CreateMontage";
-import { generateVideoAgent } from "@/hooks/useHeygen";
+import { generateVideoAgent, fetchAgentStatus } from "@/hooks/useHeygen";
 
 const renderPage = () => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -104,5 +104,14 @@ describe("CreateMontage page", () => {
         expect.objectContaining({ prompt: "Сделай ролик про запуск продукта" }),
       ),
     );
+  });
+
+  it("показывает готовое видео, когда Video Agent завершился", async () => {
+    vi.mocked(fetchAgentStatus).mockResolvedValue({ status: "completed", video_url: "http://x/out.mp4" });
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText(/45 секунд/), { target: { value: "тест" } });
+    fireEvent.click(screen.getByRole("button", { name: /Собрать видео/ }));
+    await waitFor(() => expect(screen.getByText("Готово")).toBeInTheDocument());
+    expect(screen.getByText("Скачать MP4")).toBeInTheDocument();
   });
 });
