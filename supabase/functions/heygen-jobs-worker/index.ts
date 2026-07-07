@@ -3,6 +3,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 
 const HEYGEN_BASE = "https://api.heygen.com";
+const N8N_WEBHOOK = Deno.env.get("N8N_CONTENT_WEBHOOK_URL") ?? "https://n8n.zapoinov.com/webhook/clony-yurii";
 const BATCH = 20;
 const MAX_AGE_MIN = 30; // задачи старше — помечаем ошибкой, чтобы не висели вечно
 
@@ -48,10 +49,28 @@ Deno.serve(async (req) => {
 
   const { data: jobs } = await admin
     .from("heygen_jobs")
-    .select("id, project_id, chat_id, session_id, created_at")
+    .select("id, project_id, chat_id, session_id, script, created_at")
     .eq("delivered", false)
     .order("created_at", { ascending: true })
     .limit(BATCH);
+
+  // Обложка + описание по сценарию через n8n Clony (для Telegram-доставки).
+  async function sendAssets(job: { chat_id: string; project_id: string | null; script: string | null }) {
+    if (!job.script) return;
+    try {
+      const res = await fetch(N8N_WEBHOOK, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source: "heygen_montage", type: "video_assets", script: job.script, project_id: job.project_id }),
+        signal: AbortSignal.timeout(60_000),
+      });
+      const a = await res.json().catch(() => ({}));
+      const cover = a?.cover_url ?? a?.image_url ?? a?.thumbnail_url;
+      const desc = a?.description ?? a?.caption ?? a?.text;
+      if (cover) await tg(botToken, "sendPhoto", { chat_id: job.chat_id, photo: cover, caption: "Обложка" });
+      if (desc) await tg(botToken, "sendMessage", { chat_id: job.chat_id, text: `Описание:\n${desc}` });
+    } catch { /* обложка/описание не критичны */ }
+  }
 
   let delivered = 0, failed = 0, pending = 0;
 
@@ -77,6 +96,7 @@ Deno.serve(async (req) => {
           project_id: job.project_id, source: "telegram", mode: "agent",
           ref_id: job.session_id, duration_sec: durationSec, cost_usd: cost, status: "completed",
         });
+        await sendAssets(job); // обложка + описание в чат
         delivered++;
       } else if (TERMINAL_FAIL.includes(status)) {
         await tg(botToken, "sendMessage", { chat_id: job.chat_id, text: "Не удалось собрать видео. Попробуйте ещё раз." });
