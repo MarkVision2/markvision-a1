@@ -1,0 +1,49 @@
+# Деплой heygen-proxy edge function (раздел «Монтаж» / AI монтаж через HeyGen).
+# Секреты: SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF (= szfgdruhlebfvcmlvxdk).
+# Ключ HeyGen (HEYGEN_API_KEY) задаётся отдельно в Supabase → Edge Functions → Secrets.
+name: Deploy HeyGen edge function
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/heygen-proxy/**"
+      - "supabase/functions/_lib/auth.ts"
+      - ".github/workflows/deploy-heygen-edge-function.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-heygen-edge-function
+  cancel-in-progress: false
+
+env:
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF || 'szfgdruhlebfvcmlvxdk' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Verify secrets
+        run: |
+          set -e
+          test -n "$SUPABASE_ACCESS_TOKEN" || (echo "::error::SUPABASE_ACCESS_TOKEN missing"; exit 1)
+
+      - name: Normalize project ref
+        id: ref
+        run: bash .github/scripts/normalize-supabase-ref.sh
+
+      - name: Deploy heygen-proxy
+        env:
+          SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
+        run: |
+          set -e
+          echo "::group::Deploy heygen-proxy"
+          supabase functions deploy heygen-proxy --project-ref "$SUPABASE_PROJECT_REF"
+          echo "::endgroup::"
