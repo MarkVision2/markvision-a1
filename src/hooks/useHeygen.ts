@@ -48,6 +48,7 @@ export interface HeygenVideoStatus {
   status: RenderStatus;
   video_url?: string;
   thumbnail_url?: string;
+  duration_sec?: number;
   error?: unknown;
 }
 
@@ -252,6 +253,7 @@ export interface AgentStatus {
   video_url?: string;
   video_id?: string;
   thumbnail_url?: string;
+  duration_sec?: number;
 }
 
 export interface VideoAgentInput {
@@ -289,6 +291,7 @@ export async function fetchAgentStatus(sessionId: string): Promise<AgentStatus> 
     session_id: sessionId,
   });
   const d = res.data ?? {};
+  const dur = d.duration ?? d.duration_sec ?? nested(d, "video", "duration");
   return {
     status: (d.status as string) ?? "generating",
     video_url: pickString(
@@ -299,6 +302,7 @@ export async function fetchAgentStatus(sessionId: string): Promise<AgentStatus> 
     ),
     video_id: d.video_id as string | undefined,
     thumbnail_url: pickString(d.thumbnail_url, nested(d, "video", "thumbnail_url")),
+    duration_sec: typeof dur === "number" ? dur : undefined,
   };
 }
 
@@ -310,6 +314,9 @@ export async function fetchVideoStatus(videoId: string): Promise<HeygenVideoStat
     status: d.status ?? "pending",
     video_url: d.video_url,
     thumbnail_url: d.thumbnail_url,
+    duration_sec: typeof (d as { duration?: number }).duration === "number"
+      ? (d as { duration?: number }).duration
+      : d.duration_sec,
     error: d.error,
   };
 }

@@ -32,10 +32,11 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
-  // Авторизация cron-вызова.
+  // Авторизация cron-вызова (fail-closed: без валидного секрета — отказ).
   const { data: settings } = await admin.from("automation_settings").select("cron_secret").eq("id", true).maybeSingle();
-  const expected = settings?.cron_secret as string | undefined;
-  if (expected && req.headers.get("x-automation-key") !== expected) {
+  const secret = settings?.cron_secret as string | undefined;
+  const provided = req.headers.get("x-automation-key");
+  if (!secret || !provided || provided !== secret) {
     return new Response("forbidden", { status: 403 });
   }
 
@@ -47,7 +48,7 @@ Deno.serve(async (req) => {
 
   const { data: jobs } = await admin
     .from("heygen_jobs")
-    .select("id, chat_id, session_id, created_at")
+    .select("id, project_id, chat_id, session_id, created_at")
     .eq("delivered", false)
     .order("created_at", { ascending: true })
     .limit(BATCH);
@@ -68,6 +69,14 @@ Deno.serve(async (req) => {
         const okVideo = await tg(botToken, "sendVideo", { chat_id: job.chat_id, video: url, caption: "Готово ✅" });
         if (!okVideo) await tg(botToken, "sendMessage", { chat_id: job.chat_id, text: `Видео готово: ${url}` });
         await admin.from("heygen_jobs").update({ delivered: true, status: "done", video_url: url, updated_at: new Date().toISOString() }).eq("id", job.id);
+        // Учёт расхода (Video Agent, $2/мин).
+        const durRaw = (d.duration ?? d.duration_sec) as number | undefined;
+        const durationSec = typeof durRaw === "number" ? durRaw : null;
+        const cost = durationSec ? Math.round((durationSec / 60) * 2 * 100) / 100 : null;
+        await admin.from("heygen_usage").insert({
+          project_id: job.project_id, source: "telegram", mode: "agent",
+          ref_id: job.session_id, duration_sec: durationSec, cost_usd: cost, status: "completed",
+        });
         delivered++;
       } else if (TERMINAL_FAIL.includes(status)) {
         await tg(botToken, "sendMessage", { chat_id: job.chat_id, text: "Не удалось собрать видео. Попробуйте ещё раз." });

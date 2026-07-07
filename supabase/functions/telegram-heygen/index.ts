@@ -53,6 +53,13 @@ Deno.serve(async (req) => {
   );
   const chatId = String(chat.id);
 
+  // Дедуп: Telegram ретраит доставку при медленном ответе — не генерим дважды.
+  const updateId = update.update_id;
+  if (typeof updateId === "number") {
+    const { error: dupErr } = await admin.from("telegram_updates").insert({ update_id: updateId });
+    if (dupErr) return ok(); // уже обрабатывали (unique) — тихо выходим
+  }
+
   // ── Привязка аккаунта: /start КОД или /link КОД ───────────────────────────
   if (text.startsWith("/start") || text.startsWith("/link")) {
     const code = text.split(/\s+/)[1]?.toUpperCase();

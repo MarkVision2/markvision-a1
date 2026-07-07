@@ -8,6 +8,8 @@ import {
 import Header from "@/components/factory/Header";
 import { AspectRatioPicker } from "@/components/factory/AspectRatioPicker";
 import { TelegramConnect } from "@/components/factory/TelegramConnect";
+import { HeygenUsagePanel } from "@/components/factory/HeygenUsagePanel";
+import { estimateCost, recordUsage } from "@/lib/heygenUsage";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -546,6 +548,24 @@ const CreateMontage = () => {
   const resultUrl = agentActive ? agentUrl : v2Done ? statusQ.data?.video_url : undefined;
   const resultThumb = agentActive ? agentQ.data?.thumbnail_url : statusQ.data?.thumbnail_url;
 
+  // Учёт расхода при завершении рендера (один раз на задачу).
+  const recordedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!resultUrl || !projectId) return;
+    const ref = agentActive ? agentSessionId : videoId;
+    if (!ref || recordedRef.current === ref) return;
+    recordedRef.current = ref;
+    const durationSec = agentActive ? agentQ.data?.duration_sec : statusQ.data?.duration_sec;
+    void recordUsage(projectId, {
+      source: "web",
+      mode,
+      ref_id: ref,
+      duration_sec: durationSec ?? null,
+      cost_usd: estimateCost(mode, durationSec),
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resultUrl]);
+
   const busyLabel = useMemo(() => {
     if (submitting) return "Отправляем в HeyGen…";
     if (rendering) return "HeyGen собирает видео…";
@@ -784,6 +804,7 @@ const CreateMontage = () => {
           </section>
         )}
 
+        <HeygenUsagePanel projectId={projectId} />
         <TelegramConnect projectId={projectId} />
       </div>
     </main>
