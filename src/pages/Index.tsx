@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { FolderOpen, LayoutGrid, Palette } from "lucide-react";
+import { Image as ImageIcon, Video } from "lucide-react";
 import Hero from "@/components/factory/Hero";
 import ContentTypeGrid from "@/components/factory/ContentTypeGrid";
+import VideoContentGrid from "@/components/factory/VideoContentGrid";
 import { ContentFactoryGallery } from "@/components/factory/ContentFactoryGallery";
 import { BrandTemplatePanel } from "@/components/factory/BrandTemplatePanel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,8 +19,14 @@ const TAB_ITEMS = [
   { value: "templates", icon: Palette, label: "Шаблоны бренда", short: "Бренд" },
 ] as const;
 
+const CONTENT_KINDS = [
+  { value: "static", icon: ImageIcon, label: "Статичный контент" },
+  { value: "video", icon: Video, label: "Видео контент" },
+] as const;
+
 const Index = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [contentKind, setContentKind] = useState<"static" | "video">("static");
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = searchParams.get("tab") ?? "create";
@@ -68,7 +76,32 @@ const Index = () => {
           </div>
 
           <TabsContent value="create" className="mt-4 sm:mt-6 focus-visible:outline-none">
-            <ContentTypeGrid selectedId={selectedId} onSelect={handleSelect} />
+            {/* Развилка: статичный контент или видео */}
+            <div className="mb-5 grid grid-cols-2 gap-2 rounded-2xl border border-border/40 bg-secondary/60 p-1">
+              {CONTENT_KINDS.map(({ value, icon: Icon, label }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setContentKind(value)}
+                  aria-pressed={contentKind === value}
+                  className={cn(
+                    "flex min-h-[44px] items-center justify-center gap-2 rounded-xl px-2 py-2 text-sm font-semibold transition",
+                    contentKind === value
+                      ? "bg-background text-foreground shadow-sm"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                  <span className="truncate">{label}</span>
+                </button>
+              ))}
+            </div>
+
+            {contentKind === "static" ? (
+              <ContentTypeGrid selectedId={selectedId} onSelect={handleSelect} />
+            ) : (
+              <VideoContentGrid />
+            )}
           </TabsContent>
 
           <TabsContent value="gallery" className="mt-4 sm:mt-6 focus-visible:outline-none">
