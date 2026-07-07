@@ -856,6 +856,17 @@ const Metrics = () => {
           monthDays={monthDays}
           visibleDays={visibleDays}
           dailyMap={dailyMap}
+          plan={plan}
+          monthFact={{
+            spend: factSpend,
+            leads: factLeads,
+            diagnosticsBooked: monthDays.reduce((s, d) => s + (dailyMap.get(d.iso)?.plannedVisits ?? 0), 0),
+            visits: monthDays.reduce((s, d) => s + (dailyMap.get(d.iso)?.conductedVisits ?? 0), 0),
+            diagnosticsRevenue: factDiagnosticRevenue,
+            sales: factSales,
+            salesRevenue: factSalesRevenue,
+            totalRevenue: factRevenue,
+          }}
           loading={loading}
           loadingLabel={`Загружаем данные за ${MONTHS_GEN_RU[monthCursor.getMonth()]} ${monthCursor.getFullYear()}...`}
           canEdit={Boolean(editScope) && canEditManual}
