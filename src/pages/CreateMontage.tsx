@@ -24,7 +24,7 @@ import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { cacheDefaults, fetchServerDefaults, loadDefaults, patchDefaults, type HeygenDefaults } from "@/lib/heygenDefaults";
 import {
   fetchAgentStatus, fetchAvatars, fetchTemplates, fetchVideoStatus, fetchVoices,
-  generateAvatarVideo, generateFromClips, generateTemplateVideo, generateVideoAgent, uploadClip,
+  generateFromClips, generateTemplateVideo, generateVideoAgent, uploadClip,
   type AgentStatus, type HeygenAvatar, type HeygenTemplate, type HeygenVideoStatus, type HeygenVoice,
 } from "@/hooks/useHeygen";
 
@@ -498,13 +498,12 @@ interface ClipItem {
 const CreateMontage = () => {
   const navigate = useNavigate();
   const { activeId: projectId } = useProjectsStore();
-  const [mode, setMode] = useState<"agent" | "avatar" | "template" | "clips" | "gallery">("agent");
+  const [mode, setMode] = useState<"agent" | "template" | "clips" | "gallery">("agent");
   const [aspect, setAspect] = useState<AspectId>("9:16");
 
   const [agentPrompt, setAgentPrompt] = useState("");
   const [selectedAvatar, setSelectedAvatar] = useState<HeygenAvatar | null>(null);
   const [voiceId, setVoiceId] = useState("");
-  const [script, setScript] = useState("");
   const [templateId, setTemplateId] = useState("");
   const [clips, setClips] = useState<ClipItem[]>([]);
   const [defaults, setDefaults] = useState<HeygenDefaults>({});
@@ -646,7 +645,6 @@ const CreateMontage = () => {
   };
 
   const canSubmitAgent = agentPrompt.trim().length > 0;
-  const canSubmitAvatar = !!avatarRef && !!voiceId && script.trim().length > 0;
   const canSubmitTemplate = !!templateId;
   const canSubmitClips =
     !!avatarRef && !!voiceId && clips.length > 0 &&
@@ -654,9 +652,8 @@ const CreateMontage = () => {
 
   const canSubmit =
     mode === "agent" ? canSubmitAgent
-      : mode === "avatar" ? canSubmitAvatar
-        : mode === "template" ? canSubmitTemplate
-          : canSubmitClips;
+      : mode === "template" ? canSubmitTemplate
+        : canSubmitClips;
 
   const handleGenerate = async () => {
     const dim = DIMENSIONS[aspect];
@@ -669,13 +666,12 @@ const CreateMontage = () => {
           prompt: agentPrompt.trim(),
           avatar: avatarRef ?? undefined,
           voiceId: voiceId || undefined,
+          aspect,
         });
         setAgentSessionId(sid);
         // Дублируем в серверную очередь: воркер докрутит и запишет в «Готовый
         // контент» даже если закрыть вкладку. Учёт для agent — на стороне воркера.
         void enqueueAgentJob(projectId, sid, agentPrompt.trim(), aspect);
-      } else if (mode === "avatar") {
-        setVideoId(await generateAvatarVideo({ avatar: avatarRef!, voiceId, script: script.trim(), width: dim.width, height: dim.height }));
       } else if (mode === "template") {
         setVideoId(await generateTemplateVideo({ templateId, width: dim.width, height: dim.height }));
       } else {
@@ -725,7 +721,7 @@ const CreateMontage = () => {
       ref_id: ref,
       duration_sec: durationSec ?? null,
       cost_usd: estimateCost(mode, durationSec),
-      title: script.trim().slice(0, 80) || "Видео",
+      title: (mode === "template" ? selectedTemplate?.name : undefined)?.slice(0, 80) || "Видео",
       video_url: resultUrl,
       thumbnail_url: resultThumb ?? null,
     });
@@ -739,7 +735,7 @@ const CreateMontage = () => {
   useEffect(() => {
     if (!resultUrl || !projectId) return;
     const ref = agentActive ? agentSessionId : videoId;
-    const s = mode === "agent" ? agentPrompt.trim() : mode === "avatar" ? script.trim() : "";
+    const s = mode === "agent" ? agentPrompt.trim() : "";
     if (!ref || !s || assetsRef.current === ref) return;
     assetsRef.current = ref;
     setAssets(null);
@@ -786,12 +782,9 @@ const CreateMontage = () => {
         )}
 
         <Tabs value={mode} onValueChange={(v) => setMode(v as typeof mode)}>
-          <TabsList className="grid w-full grid-cols-5 rounded-2xl">
+          <TabsList className="grid w-full grid-cols-4 rounded-2xl">
             <TabsTrigger value="agent" className="gap-1 rounded-xl px-1 text-[11px] sm:gap-1.5 sm:text-sm">
               <Zap className="h-4 w-4 shrink-0" /> Быстро
-            </TabsTrigger>
-            <TabsTrigger value="avatar" className="gap-1 rounded-xl px-1 text-[11px] sm:gap-1.5 sm:text-sm">
-              <Sparkles className="h-4 w-4 shrink-0" /> Аватар
             </TabsTrigger>
             <TabsTrigger value="template" className="gap-1 rounded-xl px-1 text-[11px] sm:gap-1.5 sm:text-sm">
               <Film className="h-4 w-4 shrink-0" /> Шаблон
@@ -823,23 +816,6 @@ const CreateMontage = () => {
             </section>
             <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} optional isDefault={avatarIsDefault} onToggleDefault={toggleDefaultAvatar} projectId={projectId} />
             <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} optional isDefault={voiceIsDefault} onToggleDefault={toggleDefaultVoice} projectId={projectId} />
-          </TabsContent>
-
-          {/* Аватар + сценарий */}
-          <TabsContent value="avatar" className="mt-6 space-y-6 focus-visible:outline-none">
-            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} isDefault={avatarIsDefault} onToggleDefault={toggleDefaultAvatar} projectId={projectId} />
-            <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} isDefault={voiceIsDefault} onToggleDefault={toggleDefaultVoice} projectId={projectId} />
-            <section>
-              <label className="mb-2 block text-sm font-semibold">Сценарий</label>
-              <Textarea
-                value={script}
-                onChange={(e) => setScript(e.target.value)}
-                rows={6}
-                placeholder="Вставьте текст, который проговорит аватар…"
-                className="resize-y"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">{script.trim().length} символов</p>
-            </section>
           </TabsContent>
 
           {/* По шаблону */}
@@ -964,13 +940,12 @@ const CreateMontage = () => {
         {/* Блок создания скрыт на вкладке «Готовые» */}
         {mode !== "gallery" && (
         <>
-        {/* Формат — для ручных режимов; в «Быстро» его выбирает агент */}
-        {mode !== "agent" && (
-          <section className="mt-6">
-            <label className="mb-2 block text-sm font-semibold">Формат</label>
-            <AspectRatioPicker value={aspect} onChange={setAspect} allowed={ASPECTS} />
-          </section>
-        )}
+        {/* Формат — для всех режимов создания. В «Быстро» передаём агенту как
+            пожелание к раскладке (9:16 / 16:9). */}
+        <section className="mt-6">
+          <label className="mb-2 block text-sm font-semibold">Формат</label>
+          <AspectRatioPicker value={aspect} onChange={setAspect} allowed={ASPECTS} />
+        </section>
 
         {/* Действие */}
         <div className="mt-8">

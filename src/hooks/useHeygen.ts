@@ -277,15 +277,21 @@ export interface VideoAgentInput {
   prompt: string;
   avatar?: AvatarRef;
   voiceId?: string;
+  aspect?: string; // "9:16" | "16:9"
 }
 
 /** Быстрое создание (Video Agent v3): промпт/сценарий → session_id.
- *  avatar/voice — необязательные подсказки; без них агент подбирает сам. */
+ *  avatar/voice — необязательные подсказки; без них агент подбирает сам.
+ *  Формат передаём и явным полем aspect_ratio, и директивой в промпт — у v3 нет
+ *  отдельного параметра раскладки, поэтому дублируем, чтобы агент его учёл. */
 export async function generateVideoAgent(input: VideoAgentInput): Promise<string> {
-  const agent: Record<string, unknown> = { prompt: input.prompt };
+  const orient = input.aspect === "16:9" ? "горизонтальное" : input.aspect === "9:16" ? "вертикальное" : "";
+  const prompt = input.aspect ? `${input.prompt}\n\nФормат ролика: ${input.aspect} (${orient}).` : input.prompt;
+  const agent: Record<string, unknown> = { prompt };
   // avatar_id имеет смысл только для обычного аватара; talking_photo агент не примет.
   if (input.avatar && input.avatar.kind === "avatar") agent.avatar_id = input.avatar.id;
   if (input.voiceId) agent.voice_id = input.voiceId;
+  if (input.aspect) agent.aspect_ratio = input.aspect;
   const res = await call<{ data?: { session_id?: string } }>({ action: "video_agent", agent });
   const id = res.data?.session_id;
   if (!id) throw new Error("HeyGen не вернул session_id");

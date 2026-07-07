@@ -50,7 +50,7 @@ describe("CreateMontage page", () => {
     renderPage();
     expect(screen.getByRole("heading", { name: "AI монтаж" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Быстро/ })).toHaveAttribute("data-state", "active");
-    expect(screen.getByRole("tab", { name: /Аватар/ })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Аватар/ })).not.toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Шаблон/ })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Из клипов/ })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Готовые/ })).toBeInTheDocument();
