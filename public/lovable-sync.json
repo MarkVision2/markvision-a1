@@ -1,7 +1,7 @@
 {
-  "git_sha": "b9485e7",
-  "git_sha_full": "b9485e7bf0bca88655e55e56a30fc03b5c43323a",
-  "updated_at": "2026-07-07T22:34:53+05:00",
-  "label": "AI монтаж: формат в «Быстро», убрана «Аватар», заполняемые шаблоны (#121)",
+  "git_sha": "d92a9b4",
+  "git_sha_full": "d92a9b4953c904da5b295301a1c3f20c89da4d43",
+  "updated_at": "2026-07-07T22:43:31+05:00",
+  "label": "fix(worker): не хоронить «failed»-сессию HeyGen с ещё зреющим video_id (#122)",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
