@@ -30,6 +30,15 @@ function resolveCall(action: string, payload: Record<string, unknown>): HeygenCa
     // Справочники для пикеров в UI.
     case "list_avatars":
       return { method: "GET", url: `${HEYGEN_BASE}/v2/avatars` };
+    // Только СВОИ аватары (группы: «Юрий Кат» и т.п.), без публичных.
+    case "list_avatar_groups":
+      return { method: "GET", url: `${HEYGEN_BASE}/v2/avatar_group.list?include_public=false` };
+    // «Взгляды» (looks) внутри группы аватара.
+    case "list_group_avatars": {
+      const gid = String(payload.group_id ?? "").trim();
+      if (!gid) return { error: "group_id required" };
+      return { method: "GET", url: `${HEYGEN_BASE}/v2/avatar_group/${encodeURIComponent(gid)}/avatars` };
+    }
     case "list_voices":
       return { method: "GET", url: `${HEYGEN_BASE}/v2/voices` };
     case "list_templates":
