@@ -2,16 +2,11 @@
  * Ручной факт в cabinet_daily_insights: NULL = «брать из CRM»,
  * число (включая 0) = явная корректировка только для этой даты и кабинета.
  */
-export function isManualOverrideActive(
-  manual: number | string | null | undefined,
-): boolean {
+export function isManualOverrideActive(manual: unknown): boolean {
   return manual !== null && manual !== undefined && !Number.isNaN(Number(manual));
 }
 
-export function resolveCdiMetric(
-  manual: number | string | null | undefined,
-  crm: number,
-): number {
+export function resolveCdiMetric(manual: unknown, crm: number): number {
   if (isManualOverrideActive(manual)) {
     return Math.max(0, Number(manual) || 0);
   }
