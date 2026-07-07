@@ -3,12 +3,23 @@
 import { supabase } from "@/integrations/supabase/client";
 import { supabaseUrl } from "@/lib/supabaseConfig";
 
+// Нормализованный аватар: обычный HeyGen-аватар или ваш собственный
+// видео-аватар (talking photo). kind нужен, чтобы правильно собрать character.
 export interface HeygenAvatar {
-  avatar_id: string;
-  avatar_name: string;
+  id: string;
+  name: string;
+  kind: "avatar" | "talking_photo";
   gender?: string;
   preview_image_url?: string;
   preview_video_url?: string;
+}
+
+export type AvatarRef = { kind: "avatar" | "talking_photo"; id: string };
+
+function buildCharacter(ref: AvatarRef) {
+  return ref.kind === "talking_photo"
+    ? { type: "talking_photo" as const, talking_photo_id: ref.id }
+    : { type: "avatar" as const, avatar_id: ref.id, avatar_style: "normal" };
 }
 
 export interface HeygenVoice {
@@ -67,9 +78,38 @@ export async function fetchQuota(): Promise<HeygenQuota> {
   return (res.data ?? (res as HeygenQuota));
 }
 
+interface RawAvatar {
+  avatar_id: string;
+  avatar_name?: string;
+  gender?: string;
+  preview_image_url?: string;
+  preview_video_url?: string;
+}
+interface RawTalkingPhoto {
+  talking_photo_id: string;
+  talking_photo_name?: string;
+  preview_image_url?: string;
+}
+
 export async function fetchAvatars(): Promise<HeygenAvatar[]> {
-  const res = await call<{ data?: { avatars?: HeygenAvatar[] } }>({ action: "list_avatars" });
-  return res.data?.avatars ?? [];
+  const res = await call<{ data?: { avatars?: RawAvatar[]; talking_photos?: RawTalkingPhoto[] } }>({
+    action: "list_avatars",
+  });
+  const avatars: HeygenAvatar[] = (res.data?.avatars ?? []).map((a) => ({
+    id: a.avatar_id,
+    name: a.avatar_name ?? "Аватар",
+    kind: "avatar",
+    gender: a.gender,
+    preview_image_url: a.preview_image_url,
+    preview_video_url: a.preview_video_url,
+  }));
+  const talkingPhotos: HeygenAvatar[] = (res.data?.talking_photos ?? []).map((t) => ({
+    id: t.talking_photo_id,
+    name: t.talking_photo_name ?? "Мой видео-аватар",
+    kind: "talking_photo",
+    preview_image_url: t.preview_image_url,
+  }));
+  return [...avatars, ...talkingPhotos];
 }
 
 export async function fetchVoices(): Promise<HeygenVoice[]> {
@@ -83,7 +123,7 @@ export async function fetchTemplates(): Promise<HeygenTemplate[]> {
 }
 
 export interface GenerateAvatarInput {
-  avatarId: string;
+  avatar: AvatarRef;
   voiceId: string;
   script: string;
   width: number;
@@ -99,7 +139,7 @@ export async function generateAvatarVideo(input: GenerateAvatarInput): Promise<s
       title: input.title ?? "MarkVision AI монтаж",
       video_inputs: [
         {
-          character: { type: "avatar", avatar_id: input.avatarId, avatar_style: "normal" },
+          character: buildCharacter(input.avatar),
           voice: { type: "text", input_text: input.script, voice_id: input.voiceId },
         },
       ],
@@ -172,7 +212,7 @@ export interface ClipScene {
 }
 
 export interface GenerateFromClipsInput {
-  avatarId: string;
+  avatar: AvatarRef;
   voiceId: string;
   scenes: ClipScene[];
   width: number;
@@ -182,12 +222,13 @@ export interface GenerateFromClipsInput {
 
 /** Монтаж из готовых клипов: каждый клип — фон сцены, аватар проговаривает текст. */
 export async function generateFromClips(input: GenerateFromClipsInput): Promise<string> {
+  const character = buildCharacter(input.avatar);
   const res = await call<{ data?: { video_id?: string } }>({
     action: "generate_avatar",
     video: {
       title: input.title ?? "MarkVision AI монтаж",
       video_inputs: input.scenes.map((s) => ({
-        character: { type: "avatar", avatar_id: input.avatarId, avatar_style: "normal" },
+        character,
         voice: { type: "text", input_text: s.script, voice_id: input.voiceId },
         background: { type: "video", url: s.clipUrl, play_style: "fit_to_scene" },
       })),
@@ -206,9 +247,19 @@ export interface AgentStatus {
   thumbnail_url?: string;
 }
 
-/** Быстрое создание (Video Agent v3): промпт/сценарий → session_id. */
-export async function generateVideoAgent(prompt: string): Promise<string> {
-  const res = await call<{ data?: { session_id?: string } }>({ action: "video_agent", prompt });
+export interface VideoAgentInput {
+  prompt: string;
+  avatar?: AvatarRef;
+  voiceId?: string;
+}
+
+/** Быстрое создание (Video Agent v3): промпт/сценарий → session_id.
+ *  avatar/voice — необязательные подсказки; без них агент подбирает сам. */
+export async function generateVideoAgent(input: VideoAgentInput): Promise<string> {
+  const agent: Record<string, unknown> = { prompt: input.prompt };
+  if (input.avatar) agent.avatar_id = input.avatar.id;
+  if (input.voiceId) agent.voice_id = input.voiceId;
+  const res = await call<{ data?: { session_id?: string } }>({ action: "video_agent", agent });
   const id = res.data?.session_id;
   if (!id) throw new Error("HeyGen не вернул session_id");
   return id;
