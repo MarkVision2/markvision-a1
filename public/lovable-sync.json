@@ -1,7 +1,7 @@
 {
-  "git_sha": "238a14a",
-  "git_sha_full": "238a14ae73290ba6741f796b617128bf5de83b9a",
-  "updated_at": "2026-07-07T11:15:52Z",
-  "label": "Улучшил дизайн шага 1 БРФРИ",
+  "git_sha": "f837a3c",
+  "git_sha_full": "f837a3cfae032ed6acaa546c19dd4f1ddbfef25e",
+  "updated_at": "2026-07-07T11:19:58Z",
+  "label": "Fixed types and added meta",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
