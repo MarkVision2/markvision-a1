@@ -1,6 +1,7 @@
 import { ArrowRight, Flame } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ContentType } from "@/data/contentTypes";
+import { BrandIcon, hasBrandIcon } from "./BrandIcon";
 
 interface ContentTypeCardProps {
   type: ContentType;
@@ -24,14 +25,20 @@ const ContentTypeCard = ({ type, selected, onSelect }: ContentTypeCardProps) => 
         selected && "border-primary/50 bg-primary/5 ring-1 ring-primary/30",
       )}
     >
-      <span
-        className={cn(
-          "grid h-12 w-12 shrink-0 place-items-center rounded-xl",
-          isAi || selected ? "bg-primary/10 text-primary" : "bg-secondary/70 text-foreground",
-        )}
-      >
-        <Icon className="h-6 w-6" strokeWidth={1.75} />
-      </span>
+      {hasBrandIcon(type.id) ? (
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white/[0.03] ring-1 ring-border/50">
+          <BrandIcon id={type.id} className="h-8 w-8" />
+        </span>
+      ) : (
+        <span
+          className={cn(
+            "grid h-12 w-12 shrink-0 place-items-center rounded-xl",
+            isAi || selected ? "bg-primary/10 text-primary" : "bg-secondary/70 text-foreground",
+          )}
+        >
+          <Icon className="h-6 w-6" strokeWidth={1.75} />
+        </span>
+      )}
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
