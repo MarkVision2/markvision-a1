@@ -71,7 +71,7 @@ describe("CreateMontage page", () => {
     await waitFor(() => expect(screen.getByText("Ivan")).toBeInTheDocument());
     expect(screen.getByText("John")).toBeInTheDocument();
 
-    fireEvent.change(screen.getByPlaceholderText(/Поиск: имя/), { target: { value: "Ivan" } });
+    fireEvent.change(screen.getByPlaceholderText(/Поиск/), { target: { value: "Ivan" } });
     expect(screen.getByText("Ivan")).toBeInTheDocument();
     expect(screen.queryByText("John")).not.toBeInTheDocument();
   });

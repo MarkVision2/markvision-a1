@@ -29,6 +29,7 @@ export interface HeygenVoice {
   language?: string;
   gender?: string;
   preview_audio?: string;
+  mine?: boolean; // ваш кастомный/загруженный голос (если HeyGen помечает)
 }
 
 export interface HeygenTemplate {
@@ -80,69 +81,65 @@ export async function fetchQuota(): Promise<HeygenQuota> {
   return (res.data ?? (res as HeygenQuota));
 }
 
-interface RawAvatarGroup {
-  id: string;
-  name?: string;
-  preview_image_url?: string;
-  preview_video_url?: string;
-  gender?: string;
-}
-interface RawGroupLook {
-  id: string;
-  name?: string;
-  image_url?: string;
-  preview_image_url?: string;
-  preview_video_url?: string;
+type RawObj = Record<string, unknown>;
+const str = (v: unknown): string | undefined => (typeof v === "string" && v.length > 0 ? v : undefined);
+// Ищем массив по нескольким возможным именам полей.
+function pickArray(obj: RawObj | undefined, keys: string[]): RawObj[] {
+  if (!obj) return [];
+  for (const k of keys) {
+    if (Array.isArray(obj[k])) return obj[k] as RawObj[];
+  }
+  return [];
 }
 
 /**
  * Только СВОИ аватары. Показываем ВСЕ looks (скины) из ваших групп
  * («Юрий Кат за микрофоном», «Юрий Кат in brown jacket», …) — как в HeyGen,
  * без публичных аватаров. Каждый look — свой avatar_id для генерации.
+ * Парсинг устойчив к разным именам полей в ответе HeyGen.
  */
 export async function fetchAvatars(): Promise<HeygenAvatar[]> {
-  const res = await call<{ data?: { avatar_group_list?: RawAvatarGroup[] } }>({ action: "list_avatar_groups" });
-  const groups = res.data?.avatar_group_list ?? [];
+  const res = await call<{ data?: RawObj }>({ action: "list_avatar_groups" });
+  const groups = pickArray(res.data, ["avatar_group_list", "avatar_groups", "groups", "list"]);
 
   const perGroup = await Promise.all(
     groups.map(async (g): Promise<HeygenAvatar[]> => {
+      const groupId = str(g.id) ?? str(g.group_id) ?? "";
+      const groupName = str(g.name) ?? str(g.group_name) ?? "Мой аватар";
+      const groupPreview = str(g.preview_image_url) ?? str(g.preview_image) ?? str(g.image_url);
       try {
-        const looks = await call<{ data?: { avatar_list?: RawGroupLook[] } }>({
-          action: "list_group_avatars",
-          group_id: g.id,
-        });
-        const list = looks.data?.avatar_list ?? [];
+        const looks = await call<{ data?: RawObj }>({ action: "list_group_avatars", group_id: groupId });
+        const list = pickArray(looks.data, ["avatar_list", "avatars", "looks", "list", "avatar_group_looks"]);
         if (list.length > 0) {
           return list.map((lk) => ({
-            id: lk.id,
-            name: lk.name ?? g.name ?? "Мой аватар",
+            id: str(lk.id) ?? str(lk.avatar_id) ?? str(lk.talking_photo_id) ?? groupId,
+            name: str(lk.name) ?? str(lk.avatar_name) ?? groupName,
             kind: "avatar" as const,
             mine: true,
-            gender: g.gender,
-            preview_image_url: lk.preview_image_url ?? lk.image_url ?? g.preview_image_url,
-            preview_video_url: lk.preview_video_url ?? g.preview_video_url,
+            preview_image_url: str(lk.preview_image_url) ?? str(lk.image_url) ?? str(lk.normal_preview) ?? groupPreview,
+            preview_video_url: str(lk.preview_video_url) ?? str(lk.motion_preview),
           }));
         }
       } catch {
         /* нет доступа к looks — покажем группу одной карточкой */
       }
-      return [{
-        id: g.id,
-        name: g.name ?? "Мой аватар",
-        kind: "avatar",
-        mine: true,
-        gender: g.gender,
-        preview_image_url: g.preview_image_url,
-        preview_video_url: g.preview_video_url,
-      }];
+      return [{ id: groupId, name: groupName, kind: "avatar" as const, mine: true, preview_image_url: groupPreview }];
     }),
   );
-  return perGroup.flat();
+  return perGroup.flat().filter((a) => a.id);
 }
 
 export async function fetchVoices(): Promise<HeygenVoice[]> {
-  const res = await call<{ data?: { voices?: HeygenVoice[] } }>({ action: "list_voices" });
-  return res.data?.voices ?? [];
+  const res = await call<{ data?: { voices?: RawObj[] } }>({ action: "list_voices" });
+  return (res.data?.voices ?? []).map((v) => ({
+    voice_id: str(v.voice_id) ?? str(v.id) ?? "",
+    name: str(v.name) ?? str(v.voice_name) ?? "Голос",
+    language: str(v.language),
+    gender: str(v.gender),
+    preview_audio: str(v.preview_audio) ?? str(v.preview_url) ?? str(v.sample_url),
+    // Кастомные/загруженные голоса HeyGen помечает по-разному — берём несколько сигналов.
+    mine: v.is_public === false || v.category === "cloned" || v.is_cloned === true || v.type === "cloned",
+  })).filter((v) => v.voice_id);
 }
 
 export async function fetchTemplates(): Promise<HeygenTemplate[]> {

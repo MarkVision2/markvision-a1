@@ -16,6 +16,11 @@ export interface UsageRow {
   duration_sec: number | null;
   cost_usd: number | null;
   created_at: string;
+  title?: string | null;
+  video_url?: string | null;
+  thumbnail_url?: string | null;
+  cover_url?: string | null;
+  description?: string | null;
 }
 
 // Таблицы нет в сгенерированных типах — нетипизированный клиент.
@@ -31,7 +36,16 @@ export function estimateCost(mode: string, durationSec?: number | null): number 
 
 export async function recordUsage(
   projectId: string,
-  u: { source: string; mode: string; ref_id?: string; duration_sec?: number | null; cost_usd?: number | null },
+  u: {
+    source: string;
+    mode: string;
+    ref_id?: string;
+    duration_sec?: number | null;
+    cost_usd?: number | null;
+    title?: string | null;
+    video_url?: string | null;
+    thumbnail_url?: string | null;
+  },
 ): Promise<void> {
   if (!projectId) return;
   try {
@@ -53,5 +67,44 @@ export async function fetchUsage(projectId: string): Promise<UsageRow[]> {
     return (data ?? []) as UsageRow[];
   } catch {
     return [];
+  }
+}
+
+/** Готовые видео проекта (для раздела «Готовый контент»). */
+export async function fetchFinishedVideos(projectId: string): Promise<UsageRow[]> {
+  if (!projectId) return [];
+  try {
+    const { data } = await db
+      .from("heygen_usage")
+      .select("id,mode,source,duration_sec,cost_usd,created_at,title,video_url,thumbnail_url,cover_url,description")
+      .eq("project_id", projectId)
+      .not("video_url", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(50);
+    return (data ?? []) as UsageRow[];
+  } catch {
+    return [];
+  }
+}
+
+// ── Недавние голоса на проект (для удобного выбора) ─────────────────────────
+const recentKey = (projectId: string) => `markvision.heygen.recentVoices.${projectId || "none"}`;
+
+export function loadRecentVoices(projectId: string): string[] {
+  try {
+    const arr = JSON.parse(localStorage.getItem(recentKey(projectId)) || "[]");
+    return Array.isArray(arr) ? (arr as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function pushRecentVoice(projectId: string, voiceId: string): void {
+  if (!projectId || !voiceId) return;
+  try {
+    const next = [voiceId, ...loadRecentVoices(projectId).filter((v) => v !== voiceId)].slice(0, 8);
+    localStorage.setItem(recentKey(projectId), JSON.stringify(next));
+  } catch {
+    /* не критично */
   }
 }

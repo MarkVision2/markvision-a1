@@ -69,7 +69,9 @@ Deno.serve(async (req) => {
       const desc = a?.description ?? a?.caption ?? a?.text;
       if (cover) await tg(botToken, "sendPhoto", { chat_id: job.chat_id, photo: cover, caption: "Обложка" });
       if (desc) await tg(botToken, "sendMessage", { chat_id: job.chat_id, text: `Описание:\n${desc}` });
+      return { cover: cover ?? null, desc: desc ?? null };
     } catch { /* обложка/описание не критичны */ }
+    return { cover: null, desc: null };
   }
 
   let delivered = 0, failed = 0, pending = 0;
@@ -88,15 +90,18 @@ Deno.serve(async (req) => {
         const okVideo = await tg(botToken, "sendVideo", { chat_id: job.chat_id, video: url, caption: "Готово ✅" });
         if (!okVideo) await tg(botToken, "sendMessage", { chat_id: job.chat_id, text: `Видео готово: ${url}` });
         await admin.from("heygen_jobs").update({ delivered: true, status: "done", video_url: url, updated_at: new Date().toISOString() }).eq("id", job.id);
-        // Учёт расхода (Video Agent, $2/мин).
+        const assets = await sendAssets(job); // обложка + описание в чат
+        // Учёт расхода + запись в галерею «Готовый контент».
         const durRaw = (d.duration ?? d.duration_sec) as number | undefined;
         const durationSec = typeof durRaw === "number" ? durRaw : null;
         const cost = durationSec ? Math.round((durationSec / 60) * 2 * 100) / 100 : null;
+        const thumb = (d.thumbnail_url ?? (d.video as Record<string, unknown> | undefined)?.thumbnail_url) as string | null ?? null;
         await admin.from("heygen_usage").insert({
           project_id: job.project_id, source: "telegram", mode: "agent",
           ref_id: job.session_id, duration_sec: durationSec, cost_usd: cost, status: "completed",
+          title: (job.script ?? "").slice(0, 80) || "Видео",
+          video_url: url, thumbnail_url: thumb, cover_url: assets.cover, description: assets.desc,
         });
-        await sendAssets(job); // обложка + описание в чат
         delivered++;
       } else if (TERMINAL_FAIL.includes(status)) {
         await tg(botToken, "sendMessage", { chat_id: job.chat_id, text: "Не удалось собрать видео. Попробуйте ещё раз." });
