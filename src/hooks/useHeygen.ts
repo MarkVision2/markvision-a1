@@ -80,44 +80,59 @@ export async function fetchQuota(): Promise<HeygenQuota> {
   return (res.data ?? (res as HeygenQuota));
 }
 
-interface RawAvatar {
-  avatar_id: string;
-  avatar_name?: string;
-  gender?: string;
+interface RawAvatarGroup {
+  id: string;
+  name?: string;
   preview_image_url?: string;
   preview_video_url?: string;
-  is_public?: boolean; // false → ваш собственный (кастомный) аватар/скин
-  premium?: boolean;
+  gender?: string;
 }
-interface RawTalkingPhoto {
-  talking_photo_id: string;
-  talking_photo_name?: string;
+interface RawGroupLook {
+  id: string;
+  image_url?: string;
   preview_image_url?: string;
+  preview_video_url?: string;
 }
 
+/**
+ * Только СВОИ аватары — группы, созданные в аккаунте («Юрий Кат», «Юрий идёт»),
+ * без публичных и без дублей по ракурсам. Для генерации резолвим один «взгляд».
+ */
 export async function fetchAvatars(): Promise<HeygenAvatar[]> {
-  const res = await call<{ data?: { avatars?: RawAvatar[]; talking_photos?: RawTalkingPhoto[] } }>({
-    action: "list_avatars",
-  });
-  const avatars: HeygenAvatar[] = (res.data?.avatars ?? []).map((a) => ({
-    id: a.avatar_id,
-    name: a.avatar_name ?? "Аватар",
-    kind: "avatar",
-    // is_public === false → ваш кастомный аватар (скин), созданный в аккаунте.
-    mine: a.is_public === false,
-    gender: a.gender,
-    preview_image_url: a.preview_image_url,
-    preview_video_url: a.preview_video_url,
-  }));
-  // Talking photos — всегда ваши собственные (загруженные/созданные) аватары.
-  const talkingPhotos: HeygenAvatar[] = (res.data?.talking_photos ?? []).map((t) => ({
-    id: t.talking_photo_id,
-    name: t.talking_photo_name ?? "Мой аватар",
-    kind: "talking_photo",
-    mine: true,
-    preview_image_url: t.preview_image_url,
-  }));
-  return [...avatars, ...talkingPhotos];
+  const res = await call<{ data?: { avatar_group_list?: RawAvatarGroup[] } }>({ action: "list_avatar_groups" });
+  const groups = res.data?.avatar_group_list ?? [];
+
+  const avatars = await Promise.all(
+    groups.map(async (g): Promise<HeygenAvatar> => {
+      let lookId = g.id;
+      let preview = g.preview_image_url;
+      let previewVideo = g.preview_video_url;
+      try {
+        const looks = await call<{ data?: { avatar_list?: RawGroupLook[] } }>({
+          action: "list_group_avatars",
+          group_id: g.id,
+        });
+        const first = looks.data?.avatar_list?.[0];
+        if (first?.id) {
+          lookId = first.id;
+          preview = preview ?? first.preview_image_url ?? first.image_url;
+          previewVideo = previewVideo ?? first.preview_video_url;
+        }
+      } catch {
+        /* нет доступа к looks — оставляем данные группы */
+      }
+      return {
+        id: lookId,
+        name: g.name ?? "Мой аватар",
+        kind: "avatar",
+        mine: true,
+        gender: g.gender,
+        preview_image_url: preview,
+        preview_video_url: previewVideo,
+      };
+    }),
+  );
+  return avatars;
 }
 
 export async function fetchVoices(): Promise<HeygenVoice[]> {

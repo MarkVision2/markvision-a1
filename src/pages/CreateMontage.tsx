@@ -177,19 +177,26 @@ function AvatarPicker({
             </div>
           )}
 
-          <div>
-            {mine.length > 0 && (
-              <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <Sparkles className="h-3.5 w-3.5" /> Аватары HeyGen
+          {heygenAvatars.length > 0 && (
+            <div>
+              {mine.length > 0 && (
+                <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  <Sparkles className="h-3.5 w-3.5" /> Аватары HeyGen
+                </div>
+              )}
+              <div className="grid max-h-80 grid-cols-3 gap-3 overflow-y-auto pr-1 sm:grid-cols-4">
+                {heygenAvatars.map((a) => (
+                  <AvatarCard key={a.id} a={a} active={selected?.id === a.id} onSelect={() => onSelect(a)} />
+                ))}
               </div>
-            )}
-            <div className="grid max-h-80 grid-cols-3 gap-3 overflow-y-auto pr-1 sm:grid-cols-4">
-              {heygenAvatars.map((a) => (
-                <AvatarCard key={a.id} a={a} active={selected?.id === a.id} onSelect={() => onSelect(a)} />
-              ))}
-              {all.length === 0 && <p className="col-span-full text-sm text-muted-foreground">Аватары не найдены.</p>}
             </div>
-          </div>
+          )}
+
+          {all.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              Свои аватары не найдены. Создайте аватар в HeyGen — он появится здесь.
+            </p>
+          )}
         </>
       )}
     </section>
