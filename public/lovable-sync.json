@@ -1,7 +1,7 @@
 {
-  "git_sha": "297bce3",
-  "git_sha_full": "297bce301375756b1a0a042ceec717ee5038fd8d",
-  "updated_at": "2026-07-07T15:41:39+05:00",
-  "label": "style(metrics): polish vertical RNP table readability",
+  "git_sha": "518e09c",
+  "git_sha_full": "518e09caef69808cef21b581a9b727c37b021fc5",
+  "updated_at": "2026-07-07T15:44:37+05:00",
+  "label": "redesign(step3): unified clean cards — CreativeFormatPicker simplified (no heavy gradient previews), goal/tone/CTA/neuro cards to calm unified style",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
