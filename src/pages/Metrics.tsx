@@ -207,7 +207,7 @@ const Metrics = () => {
   );
 
   const rnpByDay = useMemo(
-    () => metricsRnpDaily(allLeads, crmPeriod, cabinetSelector),
+    () => metricsRnpDaily(allLeads, [], crmPeriod, cabinetSelector),
     [allLeads, crmPeriod, cabinetSelector],
   );
 

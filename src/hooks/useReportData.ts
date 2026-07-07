@@ -256,22 +256,23 @@ async function fetchMetaForRange(
     );
     totSpend += spend; totImp += impressions; totClicks += clicks; totLeads += leads;
     totSales += sales; totRevenue += revenue; totDiag += diag; totDiagRev += diagRev;
-    const cur = dailyAgg.get(row.date) ?? { spend: 0, leads: 0, revenue: 0 };
+    const dateKey = String(row.date ?? "");
+    const cur = dailyAgg.get(dateKey) ?? { spend: 0, leads: 0, revenue: 0 };
     cur.spend += spend;
     cur.leads += leads;
     cur.revenue += revenue + diagRev;
-    dailyAgg.set(row.date, cur);
+    dailyAgg.set(dateKey, cur);
   }
 
   const cdiFactRows: CdiFactRow[] = (data ?? []).map((row) => ({
     cabinet_id: (row as { cabinet_id?: string | null }).cabinet_id ?? null,
     external_id: (row as { external_id?: string | null }).external_id ?? null,
-    date: row.date,
-    manual_diagnostics: row.manual_diagnostics,
-    manual_diagnostic_revenue: (row as { manual_diagnostic_revenue?: number | null }).manual_diagnostic_revenue,
-    manual_sales: row.manual_sales,
-    manual_revenue: row.manual_revenue,
-  }));
+    date: String(row.date ?? ""),
+    manual_diagnostics: (row as { manual_diagnostics?: number | null }).manual_diagnostics ?? null,
+    manual_diagnostic_revenue: (row as { manual_diagnostic_revenue?: number | null }).manual_diagnostic_revenue ?? null,
+    manual_sales: (row as { manual_sales?: number | null }).manual_sales ?? null,
+    manual_revenue: (row as { manual_revenue?: number | null }).manual_revenue ?? null,
+  })) as CdiFactRow[];
 
   return {
     spend: totSpend,

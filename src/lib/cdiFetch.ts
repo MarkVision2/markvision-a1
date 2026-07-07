@@ -7,10 +7,11 @@ import {
   cdiMissingAdManualColumns,
 } from "@/lib/cdiColumns";
 
-type CdiQuery = ReturnType<typeof supabase.from>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type CdiFilter = any;
 
 function applyCdiFilters(
-  q: CdiQuery,
+  q: CdiFilter,
   opts: {
     externalIds?: string[];
     since: string;
@@ -18,7 +19,7 @@ function applyCdiFilters(
     projectId?: string | null;
     order?: boolean;
   },
-) {
+): CdiFilter {
   let query = q.gte("date", opts.since).lte("date", opts.until);
   if (opts.externalIds?.length) {
     query = query.in("external_id", opts.externalIds);
@@ -29,7 +30,7 @@ function applyCdiFilters(
 }
 
 /** Чтение CDI с fallback, если миграция manual_spend/leads ещё не применена. */
-export async function fetchCdiRows<T extends Record<string, unknown>>(
+export async function fetchCdiRows<T>(
   select: string,
   opts: {
     externalIds?: string[];
@@ -41,7 +42,7 @@ export async function fetchCdiRows<T extends Record<string, unknown>>(
 ): Promise<T[]> {
   const run = async (cols: string) => {
     const q = applyCdiFilters(
-      supabase.from("cabinet_daily_insights").select(cols) as CdiQuery,
+      supabase.from("cabinet_daily_insights").select(cols) as CdiFilter,
       opts,
     );
     return q;
