@@ -1,7 +1,7 @@
 {
-  "git_sha": "9ef25d2",
-  "git_sha_full": "9ef25d233098a542c5cf61789d1a68f572e56b65",
-  "updated_at": "2026-07-07T14:45:30+05:00",
-  "label": "feat(dashboard): show top 4 creatives for selected period",
+  "git_sha": "ebca882",
+  "git_sha_full": "ebca88208603712f0ccd93af044a88598c219c8c",
+  "updated_at": "2026-07-07T14:48:43+05:00",
+  "label": "redesign(factory): настоящие логотипы брендов в карточках форматов",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
