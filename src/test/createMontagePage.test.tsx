@@ -3,6 +3,11 @@ import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
+// Активный проект (клиент) — дефолты и Telegram привязаны к проекту.
+vi.mock("@/hooks/useProjectsStore", () => ({
+  useProjectsStore: () => ({ activeId: "proj-1" }),
+}));
+
 // Моки HeyGen-хука: аватары (обычный + видео-аватар) и голоса с превью.
 vi.mock("@/hooks/useHeygen", () => ({
   fetchAvatars: vi.fn(async () => [

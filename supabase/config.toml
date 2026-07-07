@@ -50,3 +50,12 @@ verify_jwt = false
 
 [functions.heygen-proxy]
 verify_jwt = true
+
+[functions.heygen-telegram-link]
+verify_jwt = true
+
+[functions.telegram-heygen]
+verify_jwt = false
+
+[functions.heygen-jobs-worker]
+verify_jwt = false

@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import Header from "@/components/factory/Header";
 import { AspectRatioPicker } from "@/components/factory/AspectRatioPicker";
+import { TelegramConnect } from "@/components/factory/TelegramConnect";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -14,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { AspectId } from "@/data/contentTypeFlows";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { cacheDefaults, fetchServerDefaults, loadDefaults, patchDefaults, type HeygenDefaults } from "@/lib/heygenDefaults";
 import {
   fetchAgentStatus, fetchAvatars, fetchTemplates, fetchVideoStatus, fetchVoices,
@@ -336,21 +338,41 @@ interface ClipItem {
 
 const CreateMontage = () => {
   const navigate = useNavigate();
+  const { activeId: projectId } = useProjectsStore();
   const [mode, setMode] = useState<"agent" | "avatar" | "template" | "clips">("agent");
   const [aspect, setAspect] = useState<AspectId>("9:16");
 
   const [agentPrompt, setAgentPrompt] = useState("");
-  // Стартовые значения — из сохранённых дефолтов (аватар/голос/шаблон).
-  const [selectedAvatar, setSelectedAvatar] = useState<HeygenAvatar | null>(() => {
-    const d = loadDefaults();
-    return d.avatar ? { ...d.avatar } : null;
-  });
-  const [voiceId, setVoiceId] = useState(() => loadDefaults().voice?.id ?? "");
+  const [selectedAvatar, setSelectedAvatar] = useState<HeygenAvatar | null>(null);
+  const [voiceId, setVoiceId] = useState("");
   const [script, setScript] = useState("");
-  const [templateId, setTemplateId] = useState(() => loadDefaults().templateId ?? "");
+  const [templateId, setTemplateId] = useState("");
   const [clips, setClips] = useState<ClipItem[]>([]);
-  const [defaults, setDefaults] = useState<HeygenDefaults>(loadDefaults);
+  const [defaults, setDefaults] = useState<HeygenDefaults>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Дефолты — на активный проект (клиента): применяем кэш сразу, затем сервер.
+  const applyDefaults = (d: HeygenDefaults) => {
+    setDefaults(d);
+    setSelectedAvatar(d.avatar ? { ...d.avatar } : null);
+    setVoiceId(d.voice?.id ?? "");
+    setTemplateId(d.templateId ?? "");
+  };
+  useEffect(() => {
+    if (!projectId) {
+      applyDefaults({});
+      return;
+    }
+    applyDefaults(loadDefaults(projectId));
+    let cancelled = false;
+    fetchServerDefaults(projectId).then((d) => {
+      if (cancelled || !d) return;
+      cacheDefaults(projectId, d);
+      applyDefaults(d);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
 
   const [videoId, setVideoId] = useState<string | null>(null);
   const [agentSessionId, setAgentSessionId] = useState<string | null>(null);
@@ -382,20 +404,6 @@ const CreateMontage = () => {
   });
 
   const loadError = avatarsQ.error || voicesQ.error;
-
-  // Серверные дефолты — источник истины: подтягиваем при входе и применяем.
-  useEffect(() => {
-    let cancelled = false;
-    fetchServerDefaults().then((d) => {
-      if (cancelled || !d || Object.keys(d).length === 0) return;
-      cacheDefaults(d);
-      setDefaults(d);
-      if (d.avatar) setSelectedAvatar({ ...d.avatar });
-      if (d.voice) setVoiceId(d.voice.id);
-      if (d.templateId) setTemplateId(d.templateId);
-    });
-    return () => { cancelled = true; };
-  }, []);
 
   useEffect(() => {
     if (statusQ.data?.status === "failed") toast.error("HeyGen: рендер не удался");
@@ -435,37 +443,41 @@ const CreateMontage = () => {
 
   const avatarRef = selectedAvatar ? { kind: selectedAvatar.kind, id: selectedAvatar.id } : null;
 
-  // ── Дефолты: сохранить/сбросить выбранные аватар/голос/шаблон ──────────────
+  // ── Дефолты (на активный проект): сохранить/сбросить аватар/голос/шаблон ────
+  const noProject = () => toast.error("Сначала выберите проект (клиента) вверху");
   const avatarIsDefault = !!selectedAvatar && defaults.avatar?.id === selectedAvatar.id && defaults.avatar?.kind === selectedAvatar.kind;
   const toggleDefaultAvatar = () => {
     if (!selectedAvatar) return;
-    const next = patchDefaults({
+    if (!projectId) return noProject();
+    const next = patchDefaults(projectId, {
       avatar: avatarIsDefault ? undefined : {
         id: selectedAvatar.id, kind: selectedAvatar.kind, name: selectedAvatar.name, mine: selectedAvatar.mine,
         preview_image_url: selectedAvatar.preview_image_url, preview_video_url: selectedAvatar.preview_video_url,
       },
     });
     setDefaults(next);
-    toast.success(avatarIsDefault ? "Аватар убран из «по умолчанию»" : "Аватар сохранён по умолчанию");
+    toast.success(avatarIsDefault ? "Аватар убран из «по умолчанию»" : "Аватар сохранён по умолчанию для проекта");
   };
 
   const selectedVoice = (voicesQ.data ?? []).find((v) => v.voice_id === voiceId) ?? null;
   const voiceIsDefault = !!voiceId && defaults.voice?.id === voiceId;
   const toggleDefaultVoice = () => {
     if (!voiceId) return;
-    const next = patchDefaults({
+    if (!projectId) return noProject();
+    const next = patchDefaults(projectId, {
       voice: voiceIsDefault ? undefined
         : { id: voiceId, name: selectedVoice?.name ?? "Голос", language: selectedVoice?.language, gender: selectedVoice?.gender },
     });
     setDefaults(next);
-    toast.success(voiceIsDefault ? "Голос убран из «по умолчанию»" : "Голос сохранён по умолчанию");
+    toast.success(voiceIsDefault ? "Голос убран из «по умолчанию»" : "Голос сохранён по умолчанию для проекта");
   };
 
   const selectedTemplate = (templatesQ.data ?? []).find((t: HeygenTemplate) => t.template_id === templateId) ?? null;
   const templateIsDefault = !!templateId && defaults.templateId === templateId;
   const toggleDefaultTemplate = () => {
     if (!templateId) return;
-    const next = patchDefaults(
+    if (!projectId) return noProject();
+    const next = patchDefaults(projectId,
       templateIsDefault
         ? { templateId: undefined, templateName: undefined }
         : { templateId, templateName: selectedTemplate?.name },
@@ -771,6 +783,8 @@ const CreateMontage = () => {
             </a>
           </section>
         )}
+
+        <TelegramConnect projectId={projectId} />
       </div>
     </main>
   );
