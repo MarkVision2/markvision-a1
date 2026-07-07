@@ -388,8 +388,13 @@ const CreateMontage = () => {
   }, [statusQ.data?.status]);
 
   useEffect(() => {
-    if (["failed", "error"].includes(agentQ.data?.status ?? "")) toast.error("HeyGen: генерация не удалась");
-  }, [agentQ.data?.status]);
+    const s = agentQ.data?.status ?? "";
+    if (["failed", "error"].includes(s)) {
+      toast.error("HeyGen: генерация не удалась");
+    } else if (["completed", "success", "done"].includes(s) && !agentQ.data?.video_url) {
+      toast.error("HeyGen: готово, но ссылка на видео не пришла — попробуйте ещё раз");
+    }
+  }, [agentQ.data?.status, agentQ.data?.video_url]);
 
   const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -499,16 +504,21 @@ const CreateMontage = () => {
     }
   };
 
-  const v2Rendering = !!videoId && !isTerminal(statusQ.data?.status);
-  const agentFailed = ["failed", "error"].includes(agentQ.data?.status ?? "");
-  const agentRendering = !!agentSessionId && !agentQ.data?.video_url && !agentFailed;
-  const rendering = mode === "agent" ? agentRendering : v2Rendering;
+  // Состояние активной задачи считаем ГЛОБАЛЬНО (по видимому videoId/agentSessionId),
+  // а не по текущей вкладке — иначе результат пропадает и рендер бросается при переключении.
+  const agentActive = !!agentSessionId;
+  const agentStr = agentQ.data?.status ?? "";
+  const agentUrl = agentQ.data?.video_url;
+  const agentIsTerminal = !!agentUrl || ["completed", "success", "done", "failed", "error"].includes(agentStr);
 
-  const resultUrl =
-    mode === "agent"
-      ? agentQ.data?.video_url
-      : statusQ.data?.status === "completed" ? statusQ.data?.video_url : undefined;
-  const resultThumb = mode === "agent" ? agentQ.data?.thumbnail_url : statusQ.data?.thumbnail_url;
+  const v2Active = !!videoId;
+  const v2Done = statusQ.data?.status === "completed" && !!statusQ.data?.video_url;
+
+  const rendering =
+    (agentActive && !agentIsTerminal) || (v2Active && !isTerminal(statusQ.data?.status));
+
+  const resultUrl = agentActive ? agentUrl : v2Done ? statusQ.data?.video_url : undefined;
+  const resultThumb = agentActive ? agentQ.data?.thumbnail_url : statusQ.data?.thumbnail_url;
 
   const busyLabel = useMemo(() => {
     if (submitting) return "Отправляем в HeyGen…";
@@ -728,7 +738,7 @@ const CreateMontage = () => {
           </Button>
           {rendering && (
             <p className="mt-2 text-center text-xs text-muted-foreground">
-              {mode === "agent"
+              {agentActive
                 ? "Video Agent собирает монтаж — обычно несколько минут, можно не закрывать вкладку."
                 : "Рендер обычно занимает пару минут — можно не закрывать вкладку."}
             </p>

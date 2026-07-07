@@ -264,7 +264,8 @@ export interface VideoAgentInput {
  *  avatar/voice — необязательные подсказки; без них агент подбирает сам. */
 export async function generateVideoAgent(input: VideoAgentInput): Promise<string> {
   const agent: Record<string, unknown> = { prompt: input.prompt };
-  if (input.avatar) agent.avatar_id = input.avatar.id;
+  // avatar_id имеет смысл только для обычного аватара; talking_photo агент не примет.
+  if (input.avatar && input.avatar.kind === "avatar") agent.avatar_id = input.avatar.id;
   if (input.voiceId) agent.voice_id = input.voiceId;
   const res = await call<{ data?: { session_id?: string } }>({ action: "video_agent", agent });
   const id = res.data?.session_id;
@@ -272,15 +273,32 @@ export async function generateVideoAgent(input: VideoAgentInput): Promise<string
   return id;
 }
 
+// HeyGen может вернуть ссылку на видео по-разному — читаем несколько вариантов.
+function pickString(...vals: unknown[]): string | undefined {
+  return vals.find((v) => typeof v === "string" && v.length > 0) as string | undefined;
+}
+function nested(obj: Record<string, unknown>, key: string, sub: string): unknown {
+  const v = obj[key];
+  return v && typeof v === "object" ? (v as Record<string, unknown>)[sub] : undefined;
+}
+
 /** Опрос статуса Video Agent по session_id. */
 export async function fetchAgentStatus(sessionId: string): Promise<AgentStatus> {
-  const res = await call<{ data?: AgentStatus }>({ action: "video_agent_status", session_id: sessionId });
+  const res = await call<{ data?: Record<string, unknown> }>({
+    action: "video_agent_status",
+    session_id: sessionId,
+  });
   const d = res.data ?? {};
   return {
-    status: d.status ?? "generating",
-    video_url: d.video_url,
-    video_id: d.video_id,
-    thumbnail_url: d.thumbnail_url,
+    status: (d.status as string) ?? "generating",
+    video_url: pickString(
+      d.video_url,
+      nested(d, "video", "url"),
+      nested(d, "output", "video_url"),
+      nested(d, "result", "video_url"),
+    ),
+    video_id: d.video_id as string | undefined,
+    thumbnail_url: pickString(d.thumbnail_url, nested(d, "video", "thumbnail_url")),
   };
 }
 
