@@ -199,6 +199,33 @@ export async function generateFromClips(input: GenerateFromClipsInput): Promise<
   return id;
 }
 
+export interface AgentStatus {
+  status: string;
+  video_url?: string;
+  video_id?: string;
+  thumbnail_url?: string;
+}
+
+/** Быстрое создание (Video Agent v3): промпт/сценарий → session_id. */
+export async function generateVideoAgent(prompt: string): Promise<string> {
+  const res = await call<{ data?: { session_id?: string } }>({ action: "video_agent", prompt });
+  const id = res.data?.session_id;
+  if (!id) throw new Error("HeyGen не вернул session_id");
+  return id;
+}
+
+/** Опрос статуса Video Agent по session_id. */
+export async function fetchAgentStatus(sessionId: string): Promise<AgentStatus> {
+  const res = await call<{ data?: AgentStatus }>({ action: "video_agent_status", session_id: sessionId });
+  const d = res.data ?? {};
+  return {
+    status: d.status ?? "generating",
+    video_url: d.video_url,
+    video_id: d.video_id,
+    thumbnail_url: d.thumbnail_url,
+  };
+}
+
 /** Опрос статуса рендера. */
 export async function fetchVideoStatus(videoId: string): Promise<HeygenVideoStatus> {
   const res = await call<{ data?: HeygenVideoStatus }>({ action: "status", video_id: videoId });
