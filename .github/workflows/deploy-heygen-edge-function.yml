@@ -1,6 +1,6 @@
-# Деплой heygen-proxy edge function (раздел «Монтаж» / AI монтаж через HeyGen).
-# Секреты: SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF (= szfgdruhlebfvcmlvxdk).
-# Ключ HeyGen (HEYGEN_API_KEY) задаётся отдельно в Supabase → Edge Functions → Secrets.
+# Деплой HeyGen/Telegram edge functions (раздел «Монтаж» + Telegram-бот).
+# Секреты Supabase → Edge Functions → Secrets:
+#   HEYGEN_API_KEY, TELEGRAM_BOT_TOKEN, TELEGRAM_WEBHOOK_SECRET, TELEGRAM_BOT_USERNAME.
 name: Deploy HeyGen edge function
 
 on:
@@ -8,6 +8,9 @@ on:
     branches: [main]
     paths:
       - "supabase/functions/heygen-proxy/**"
+      - "supabase/functions/heygen-telegram-link/**"
+      - "supabase/functions/telegram-heygen/**"
+      - "supabase/functions/heygen-jobs-worker/**"
       - "supabase/functions/_lib/auth.ts"
       - ".github/workflows/deploy-heygen-edge-function.yml"
   workflow_dispatch: {}
@@ -39,11 +42,17 @@ jobs:
         id: ref
         run: bash .github/scripts/normalize-supabase-ref.sh
 
-      - name: Deploy heygen-proxy
+      - name: Deploy functions
         env:
           SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
         run: |
           set -e
-          echo "::group::Deploy heygen-proxy"
-          supabase functions deploy heygen-proxy --project-ref "$SUPABASE_PROJECT_REF"
-          echo "::endgroup::"
+          for fn in \
+            heygen-proxy \
+            heygen-telegram-link \
+            telegram-heygen \
+            heygen-jobs-worker; do
+            echo "::group::Deploy $fn"
+            supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"
+            echo "::endgroup::"
+          done
