@@ -1,7 +1,7 @@
 {
-  "git_sha": "497e7bc",
-  "git_sha_full": "497e7bcadc60c03f3aab55c68c823a3d4aca21b7",
-  "updated_at": "2026-07-07T14:39:43+05:00",
-  "label": "redesign(factory): «Шаблоны бренда» проще",
+  "git_sha": "e00e2e0",
+  "git_sha_full": "e00e2e095721402ec017143033d4cb3acc044ed6",
+  "updated_at": "2026-07-07T14:41:06+05:00",
+  "label": "feat(metrics): add business mode and clear Meta data diagnostics",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
