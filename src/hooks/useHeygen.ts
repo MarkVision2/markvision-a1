@@ -9,6 +9,7 @@ export interface HeygenAvatar {
   id: string;
   name: string;
   kind: "avatar" | "talking_photo";
+  mine?: boolean; // ваш собственный аватар/скин (не публичный аватар HeyGen)
   gender?: string;
   preview_image_url?: string;
   preview_video_url?: string;
@@ -84,6 +85,8 @@ interface RawAvatar {
   gender?: string;
   preview_image_url?: string;
   preview_video_url?: string;
+  is_public?: boolean; // false → ваш собственный (кастомный) аватар/скин
+  premium?: boolean;
 }
 interface RawTalkingPhoto {
   talking_photo_id: string;
@@ -99,14 +102,18 @@ export async function fetchAvatars(): Promise<HeygenAvatar[]> {
     id: a.avatar_id,
     name: a.avatar_name ?? "Аватар",
     kind: "avatar",
+    // is_public === false → ваш кастомный аватар (скин), созданный в аккаунте.
+    mine: a.is_public === false,
     gender: a.gender,
     preview_image_url: a.preview_image_url,
     preview_video_url: a.preview_video_url,
   }));
+  // Talking photos — всегда ваши собственные (загруженные/созданные) аватары.
   const talkingPhotos: HeygenAvatar[] = (res.data?.talking_photos ?? []).map((t) => ({
     id: t.talking_photo_id,
-    name: t.talking_photo_name ?? "Мой видео-аватар",
+    name: t.talking_photo_name ?? "Мой аватар",
     kind: "talking_photo",
+    mine: true,
     preview_image_url: t.preview_image_url,
   }));
   return [...avatars, ...talkingPhotos];

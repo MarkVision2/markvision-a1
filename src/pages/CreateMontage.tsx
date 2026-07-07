@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import {
   AlertTriangle, Check, Clapperboard, Download, Film, Loader2, Pause, Play, Plus, Search,
-  Sparkles, Upload, UserRound, Video, Volume2, X, Zap,
+  Sparkles, Star, Upload, UserRound, Video, Volume2, X, Zap,
 } from "lucide-react";
 import Header from "@/components/factory/Header";
 import { AspectRatioPicker } from "@/components/factory/AspectRatioPicker";
@@ -14,13 +14,32 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { AspectId } from "@/data/contentTypeFlows";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { loadDefaults, patchDefaults, type HeygenDefaults } from "@/lib/heygenDefaults";
 import {
   fetchAgentStatus, fetchAvatars, fetchTemplates, fetchVideoStatus, fetchVoices,
   generateAvatarVideo, generateFromClips, generateTemplateVideo, generateVideoAgent, uploadClip,
-  type AgentStatus, type HeygenAvatar, type HeygenVideoStatus, type HeygenVoice,
+  type AgentStatus, type HeygenAvatar, type HeygenTemplate, type HeygenVideoStatus, type HeygenVoice,
 } from "@/hooks/useHeygen";
 
-const ASPECTS: AspectId[] = ["9:16", "16:9", "1:1", "4:5"];
+// Кнопка «по умолчанию» для аватара / голоса / шаблона.
+function DefaultStar({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 text-[11px] font-medium transition",
+        on ? "border-primary bg-primary/10 text-primary" : "border-border/60 text-muted-foreground hover:text-foreground",
+      )}
+    >
+      <Star className={cn("h-3.5 w-3.5", on && "fill-primary")} />
+      {on ? "По умолчанию" : "Сделать по умолчанию"}
+    </button>
+  );
+}
+
+// Только вертикаль (Reels/Stories) и горизонталь (YouTube/баннер).
+const ASPECTS: AspectId[] = ["9:16", "16:9"];
 
 const DIMENSIONS: Record<AspectId, { width: number; height: number }> = {
   "9:16": { width: 720, height: 1280 },
@@ -95,16 +114,18 @@ function SelectedAvatar({ a }: { a: HeygenAvatar }) {
 
 // ── Пикер аватара ───────────────────────────────────────────────────────────
 function AvatarPicker({
-  query, selected, onSelect, optional,
+  query, selected, onSelect, optional, isDefault, onToggleDefault,
 }: {
   query: UseQueryResult<HeygenAvatar[]>;
   selected: HeygenAvatar | null;
   onSelect: (a: HeygenAvatar | null) => void;
   optional?: boolean;
+  isDefault?: boolean;
+  onToggleDefault?: () => void;
 }) {
   const all = query.data ?? [];
-  const avatars = all.filter((a) => a.kind === "avatar");
-  const myVideos = all.filter((a) => a.kind === "talking_photo");
+  const mine = all.filter((a) => a.mine);
+  const heygenAvatars = all.filter((a) => !a.mine);
 
   return (
     <section className="space-y-3">
@@ -127,15 +148,24 @@ function AvatarPicker({
         <p className="text-sm text-warning">Аватары недоступны: {(query.error as Error).message}</p>
       ) : (
         <>
-          {selected && <SelectedAvatar a={selected} />}
+          {selected && (
+            <div className="space-y-2">
+              <SelectedAvatar a={selected} />
+              {onToggleDefault && (
+                <div className="flex justify-end">
+                  <DefaultStar on={!!isDefault} onClick={onToggleDefault} />
+                </div>
+              )}
+            </div>
+          )}
 
-          {myVideos.length > 0 && (
+          {mine.length > 0 && (
             <div>
-              <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                <Video className="h-3.5 w-3.5" /> Мои видео-аватары
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-primary">
+                <UserRound className="h-3.5 w-3.5" /> Мои аватары
               </div>
               <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-                {myVideos.map((a) => (
+                {mine.map((a) => (
                   <AvatarCard key={a.id} a={a} active={selected?.id === a.id} onSelect={() => onSelect(a)} />
                 ))}
               </div>
@@ -143,13 +173,13 @@ function AvatarPicker({
           )}
 
           <div>
-            {myVideos.length > 0 && (
+            {mine.length > 0 && (
               <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 <Sparkles className="h-3.5 w-3.5" /> Аватары HeyGen
               </div>
             )}
             <div className="grid max-h-80 grid-cols-3 gap-3 overflow-y-auto pr-1 sm:grid-cols-4">
-              {avatars.map((a) => (
+              {heygenAvatars.map((a) => (
                 <AvatarCard key={a.id} a={a} active={selected?.id === a.id} onSelect={() => onSelect(a)} />
               ))}
               {all.length === 0 && <p className="col-span-full text-sm text-muted-foreground">Аватары не найдены.</p>}
@@ -163,12 +193,14 @@ function AvatarPicker({
 
 // ── Пикер голоса (с прослушиванием) ─────────────────────────────────────────
 function VoicePicker({
-  query, value, onChange, optional,
+  query, value, onChange, optional, isDefault, onToggleDefault,
 }: {
   query: UseQueryResult<HeygenVoice[]>;
   value: string;
   onChange: (id: string) => void;
   optional?: boolean;
+  isDefault?: boolean;
+  onToggleDefault?: () => void;
 }) {
   const [search, setSearch] = useState("");
   const [playing, setPlaying] = useState<string | null>(null);
@@ -214,17 +246,24 @@ function VoicePicker({
       ) : (
         <>
           {selectedVoice && (
-            <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
-              <Volume2 className="h-4 w-4 shrink-0 text-primary" />
-              <span className="min-w-0 flex-1 truncate font-medium">
-                {selectedVoice.name}
-                {selectedVoice.language ? ` · ${selectedVoice.language}` : ""}
-                {selectedVoice.gender ? ` · ${selectedVoice.gender}` : ""}
-              </span>
-              {optional && (
-                <button type="button" onClick={() => onChange("")} className="text-xs text-muted-foreground hover:text-foreground">
-                  Сбросить
-                </button>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
+                <Volume2 className="h-4 w-4 shrink-0 text-primary" />
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  {selectedVoice.name}
+                  {selectedVoice.language ? ` · ${selectedVoice.language}` : ""}
+                  {selectedVoice.gender ? ` · ${selectedVoice.gender}` : ""}
+                </span>
+                {optional && (
+                  <button type="button" onClick={() => onChange("")} className="text-xs text-muted-foreground hover:text-foreground">
+                    Сбросить
+                  </button>
+                )}
+              </div>
+              {onToggleDefault && (
+                <div className="flex justify-end">
+                  <DefaultStar on={!!isDefault} onClick={onToggleDefault} />
+                </div>
               )}
             </div>
           )}
@@ -301,11 +340,16 @@ const CreateMontage = () => {
   const [aspect, setAspect] = useState<AspectId>("9:16");
 
   const [agentPrompt, setAgentPrompt] = useState("");
-  const [selectedAvatar, setSelectedAvatar] = useState<HeygenAvatar | null>(null);
-  const [voiceId, setVoiceId] = useState("");
+  // Стартовые значения — из сохранённых дефолтов (аватар/голос/шаблон).
+  const [selectedAvatar, setSelectedAvatar] = useState<HeygenAvatar | null>(() => {
+    const d = loadDefaults();
+    return d.avatar ? { ...d.avatar } : null;
+  });
+  const [voiceId, setVoiceId] = useState(() => loadDefaults().voice?.id ?? "");
   const [script, setScript] = useState("");
-  const [templateId, setTemplateId] = useState("");
+  const [templateId, setTemplateId] = useState(() => loadDefaults().templateId ?? "");
   const [clips, setClips] = useState<ClipItem[]>([]);
+  const [defaults, setDefaults] = useState<HeygenDefaults>(loadDefaults);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [videoId, setVideoId] = useState<string | null>(null);
@@ -371,6 +415,45 @@ const CreateMontage = () => {
   };
 
   const avatarRef = selectedAvatar ? { kind: selectedAvatar.kind, id: selectedAvatar.id } : null;
+
+  // ── Дефолты: сохранить/сбросить выбранные аватар/голос/шаблон ──────────────
+  const avatarIsDefault = !!selectedAvatar && defaults.avatar?.id === selectedAvatar.id && defaults.avatar?.kind === selectedAvatar.kind;
+  const toggleDefaultAvatar = () => {
+    if (!selectedAvatar) return;
+    const next = patchDefaults({
+      avatar: avatarIsDefault ? undefined : {
+        id: selectedAvatar.id, kind: selectedAvatar.kind, name: selectedAvatar.name, mine: selectedAvatar.mine,
+        preview_image_url: selectedAvatar.preview_image_url, preview_video_url: selectedAvatar.preview_video_url,
+      },
+    });
+    setDefaults(next);
+    toast.success(avatarIsDefault ? "Аватар убран из «по умолчанию»" : "Аватар сохранён по умолчанию");
+  };
+
+  const selectedVoice = (voicesQ.data ?? []).find((v) => v.voice_id === voiceId) ?? null;
+  const voiceIsDefault = !!voiceId && defaults.voice?.id === voiceId;
+  const toggleDefaultVoice = () => {
+    if (!voiceId) return;
+    const next = patchDefaults({
+      voice: voiceIsDefault ? undefined
+        : { id: voiceId, name: selectedVoice?.name ?? "Голос", language: selectedVoice?.language, gender: selectedVoice?.gender },
+    });
+    setDefaults(next);
+    toast.success(voiceIsDefault ? "Голос убран из «по умолчанию»" : "Голос сохранён по умолчанию");
+  };
+
+  const selectedTemplate = (templatesQ.data ?? []).find((t: HeygenTemplate) => t.template_id === templateId) ?? null;
+  const templateIsDefault = !!templateId && defaults.templateId === templateId;
+  const toggleDefaultTemplate = () => {
+    if (!templateId) return;
+    const next = patchDefaults(
+      templateIsDefault
+        ? { templateId: undefined, templateName: undefined }
+        : { templateId, templateName: selectedTemplate?.name },
+    );
+    setDefaults(next);
+    toast.success(templateIsDefault ? "Шаблон убран из «по умолчанию»" : "Шаблон сохранён по умолчанию");
+  };
 
   const canSubmitAgent = agentPrompt.trim().length > 0;
   const canSubmitAvatar = !!avatarRef && !!voiceId && script.trim().length > 0;
@@ -494,14 +577,14 @@ const CreateMontage = () => {
               />
               <p className="mt-1 text-xs text-muted-foreground">{agentPrompt.trim().length} символов</p>
             </section>
-            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} optional />
-            <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} optional />
+            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} optional isDefault={avatarIsDefault} onToggleDefault={toggleDefaultAvatar} />
+            <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} optional isDefault={voiceIsDefault} onToggleDefault={toggleDefaultVoice} />
           </TabsContent>
 
           {/* Аватар + сценарий */}
           <TabsContent value="avatar" className="mt-6 space-y-6 focus-visible:outline-none">
-            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} />
-            <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} />
+            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} isDefault={avatarIsDefault} onToggleDefault={toggleDefaultAvatar} />
+            <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} isDefault={voiceIsDefault} onToggleDefault={toggleDefaultVoice} />
             <section>
               <label className="mb-2 block text-sm font-semibold">Сценарий</label>
               <Textarea
@@ -517,6 +600,10 @@ const CreateMontage = () => {
 
           {/* По шаблону */}
           <TabsContent value="template" className="mt-6 space-y-6 focus-visible:outline-none">
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+              Шаблон — это ваш готовый дизайн монтажа из HeyGen (шрифты, бренд, моушен, звуки, музыка).
+              Выберите его вручную или задайте «по умолчанию» — система будет применять его автоматически.
+            </div>
             <section>
               <label className="mb-2 block text-sm font-semibold">Шаблон HeyGen</label>
               {templatesQ.isLoading ? (
@@ -552,13 +639,19 @@ const CreateMontage = () => {
                   )}
                 </div>
               )}
+              {selectedTemplate && (
+                <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2">
+                  <span className="min-w-0 flex-1 truncate text-sm font-medium">{selectedTemplate.name}</span>
+                  <DefaultStar on={templateIsDefault} onClick={toggleDefaultTemplate} />
+                </div>
+              )}
             </section>
           </TabsContent>
 
           {/* Готовые клипы */}
           <TabsContent value="clips" className="mt-6 space-y-6 focus-visible:outline-none">
-            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} />
-            <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} />
+            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} isDefault={avatarIsDefault} onToggleDefault={toggleDefaultAvatar} />
+            <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} isDefault={voiceIsDefault} onToggleDefault={toggleDefaultVoice} />
 
             <section>
               <div className="mb-2 flex items-center justify-between">
