@@ -1298,15 +1298,15 @@ const CreateStep3 = () => {
       )}
 
       {!neuroAutoSubmit && (
-      <section className="container max-w-5xl pt-10 pb-16 sm:pt-14 animate-fade-in-up">
+      <section className="container max-w-4xl pt-6 pb-16 animate-fade-in-up">
         <div className="inline-flex items-center rounded-xl border border-primary/40 bg-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-primary">
           Шаг 3 из {flow.totalSteps}
         </div>
 
-        <h1 className="mt-6 text-4xl font-bold tracking-tight sm:text-5xl">
+        <h1 className="mt-4 text-2xl font-bold tracking-tight sm:text-3xl">
           {flow.step3.label}
         </h1>
-        <p className="mt-3 text-base text-muted-foreground sm:text-lg">
+        <p className="mt-2 text-sm text-muted-foreground sm:text-base">
           {flow.step3.subtitle}
         </p>
 
@@ -1345,9 +1345,9 @@ const CreateStep3 = () => {
                     style={{ minHeight: 260 }}
                     className={cn(
                       "group relative flex w-full flex-col overflow-hidden rounded-2xl border bg-card text-left transition-all duration-300",
-                      "hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-elevated",
+                      " hover:border-primary/40 ",
                       selected
-                        ? "border-primary shadow-glow ring-2 ring-primary/60"
+                        ? "border-primary  ring-1 ring-primary/40"
                         : "border-border",
                     )}
                   >
@@ -1355,7 +1355,7 @@ const CreateStep3 = () => {
                       <StylePreviewImage style={s} selected={selected} />
                       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-card/90 via-card/10 to-transparent" />
                       {selected && order !== null && (
-                        <span className="absolute left-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-primary text-xs font-bold text-primary-foreground shadow-glow">
+                        <span className="absolute left-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-primary text-xs font-bold text-primary-foreground ">
                           {order}
                         </span>
                       )}
@@ -1428,8 +1428,8 @@ const CreateStep3 = () => {
                     className={cn(
                       "rounded-xl border px-4 py-2.5 text-sm font-medium transition-all",
                       selected
-                        ? "border-primary bg-primary/10 text-primary shadow-glow"
-                        : "border-border bg-card text-foreground hover:border-primary/60",
+                        ? "border-primary bg-primary/10 text-primary "
+                        : "border-border bg-card text-foreground hover:border-primary/40",
                     )}
                     title={a.description}
                   >
@@ -1466,8 +1466,8 @@ const CreateStep3 = () => {
                   aria-pressed={selected}
                   className={cn(
                     "group relative flex flex-col items-start gap-2 rounded-2xl border bg-card p-4 text-left transition-all",
-                    "hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-elevated",
-                    selected ? "border-primary shadow-glow ring-2 ring-primary/60" : "border-border",
+                    " hover:border-primary/40 ",
+                    selected ? "border-primary  ring-1 ring-primary/40" : "border-border",
                   )}
                 >
                   <span className={cn(
@@ -1514,8 +1514,8 @@ const CreateStep3 = () => {
                   aria-pressed={selected}
                   className={cn(
                     "group relative flex flex-col items-start gap-2 rounded-2xl border bg-card p-4 text-left transition-all",
-                    "hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-elevated",
-                    selected ? "border-primary shadow-glow ring-2 ring-primary/60" : "border-border",
+                    " hover:border-primary/40 ",
+                    selected ? "border-primary  ring-1 ring-primary/40" : "border-border",
                   )}
                 >
                   <span className={cn(
@@ -1561,8 +1561,8 @@ const CreateStep3 = () => {
                   aria-pressed={selected}
                   className={cn(
                     "group relative flex flex-col items-start gap-1.5 rounded-2xl border bg-card p-4 text-left transition-all",
-                    "hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-elevated",
-                    selected ? "border-primary shadow-glow ring-2 ring-primary/60" : "border-border",
+                    " hover:border-primary/40 ",
+                    selected ? "border-primary  ring-1 ring-primary/40" : "border-border",
                   )}
                 >
                   <div className="text-sm font-semibold text-foreground">{c.label}</div>
@@ -1603,9 +1603,9 @@ const CreateStep3 = () => {
                   aria-pressed={selected}
                   className={cn(
                     "relative h-14 w-14 overflow-hidden rounded-2xl border-2 transition-all duration-200",
-                    "hover:-translate-y-0.5 hover:scale-105",
+                    " hover:scale-105",
                     selected
-                      ? "border-foreground shadow-glow"
+                      ? "border-foreground "
                       : "border-transparent",
                   )}
                   style={
@@ -1655,7 +1655,7 @@ const CreateStep3 = () => {
             size="lg"
             onClick={handleCreate}
             disabled={submitting || selectedStyles.length === 0}
-            className="h-14 rounded-2xl bg-gradient-primary text-base font-semibold text-primary-foreground shadow-glow hover:opacity-90"
+            className="h-14 rounded-2xl bg-gradient-primary text-base font-semibold text-primary-foreground  hover:opacity-90"
           >
             {submitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -1671,7 +1671,7 @@ const CreateStep3 = () => {
           <CollapsibleTrigger asChild>
             <button
               type="button"
-              className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-card px-5 py-4 text-left transition-all hover:border-primary/60"
+              className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-card px-5 py-4 text-left transition-all hover:border-primary/40"
             >
               <div className="flex items-center gap-3">
                 <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary/15 text-primary">
@@ -1927,7 +1927,7 @@ const CreateStep3 = () => {
                   <div
                     key={`${v.styleId}-${i}`}
                     className={cn(
-                      "overflow-hidden rounded-2xl border bg-card shadow-elevated transition-colors",
+                      "overflow-hidden rounded-2xl border bg-card  transition-colors",
                       isReady && "border-emerald-500/50",
                       isPending && "border-primary/40",
                       isError && "border-destructive/50",
@@ -2023,7 +2023,7 @@ const CreateStep3 = () => {
       >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-primary text-primary-foreground shadow-glow">
+            <div className="mx-auto mb-3 grid h-14 w-14 place-items-center rounded-2xl bg-gradient-primary text-primary-foreground ">
               {status === "success" ? (
                 <CheckCircle2 className="h-7 w-7" />
               ) : status === "error" ? (
