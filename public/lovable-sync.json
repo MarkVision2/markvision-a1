@@ -1,7 +1,7 @@
 {
-  "git_sha": "f22d0a9",
-  "git_sha_full": "f22d0a9f4126898663e912c7e1eb176696a62d60",
-  "updated_at": "2026-07-07T20:08:45+05:00",
-  "label": "feat: в разделе аватаров — только свои созданные (группы), без публичных (#116)",
+  "git_sha": "3e55cda",
+  "git_sha_full": "3e55cdaa4e9fec1f6a7a160d53e7a70612bb731e",
+  "updated_at": "2026-07-07T20:18:51+05:00",
+  "label": "feat: показывать все looks (скины) из своих аватаров, а не по одному (#117)",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
