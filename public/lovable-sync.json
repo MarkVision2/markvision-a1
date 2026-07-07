@@ -1,7 +1,7 @@
 {
-  "git_sha": "ecd4338",
-  "git_sha_full": "ecd4338ed2e5d597eea3e46bed02b83116d7bc58",
-  "updated_at": "2026-07-07T20:44:35+05:00",
-  "label": "feat: управление списками — скрывать/возвращать аватары и голоса (#119)",
+  "git_sha": "416954d",
+  "git_sha_full": "416954dbcd6685d24fd37a854a901fce0fe13494",
+  "updated_at": "2026-07-07T22:09:33+05:00",
+  "label": "AI монтаж (HeyGen) в Контент-заводе: создание видео, дефолты проекта, Telegram-бот, готовый контент (#120)",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
