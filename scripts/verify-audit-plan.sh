@@ -13,7 +13,10 @@ run 'test -f src/hooks/useMetaDashboard.ts'
 run 'rg -q useMetaDashboard src/pages/Dashboard.tsx'
 run 'rg -q PAGE_SIZE src/components/ads/AdsCreativesPanel.tsx'
 run '! rg -q autoPlay src/components/ads/CreativeCard.tsx src/components/dashboard/CreativesGrid.tsx'
-run 'rg -q "const \\[mediaError, setMediaError\\]" src/components/dashboard/CreativesGrid.tsx'
+# Крупные проигрываемые превью топ-креативов; фолбэк при ошибке медиа перенесён
+# из CreativesGrid в общий CreativePreview (там onError уходит в плейсхолдер).
+run 'rg -q "playable" src/components/dashboard/CreativesGrid.tsx'
+run 'rg -q "onError" src/components/creatives/CreativePreview.tsx'
 run 'rg -q "Без креатива" src/pages/CreativeFunnel.tsx'
 run 'rg -q useVirtualizer src/components/crm/StageColumn.tsx'
 run 'rg -q chatsByLeadId src/components/crm/ChatsView.tsx'
