@@ -9,7 +9,7 @@ import Header from "@/components/factory/Header";
 import { AspectRatioPicker } from "@/components/factory/AspectRatioPicker";
 import { TelegramConnect } from "@/components/factory/TelegramConnect";
 import { HeygenUsagePanel } from "@/components/factory/HeygenUsagePanel";
-import { estimateCost, loadRecentVoices, pushRecentVoice, recordUsage } from "@/lib/heygenUsage";
+import { enqueueAgentJob, estimateCost, loadRecentVoices, pushRecentVoice, recordUsage } from "@/lib/heygenUsage";
 import { HeygenGallery } from "@/components/factory/HeygenGallery";
 import { loadHidden, toggleHidden } from "@/lib/heygenHidden";
 import { generateVideoAssets, type VideoAssets } from "@/lib/videoAssets";
@@ -498,7 +498,7 @@ interface ClipItem {
 const CreateMontage = () => {
   const navigate = useNavigate();
   const { activeId: projectId } = useProjectsStore();
-  const [mode, setMode] = useState<"agent" | "avatar" | "template" | "clips">("agent");
+  const [mode, setMode] = useState<"agent" | "avatar" | "template" | "clips" | "gallery">("agent");
   const [aspect, setAspect] = useState<AspectId>("9:16");
 
   const [agentPrompt, setAgentPrompt] = useState("");
@@ -665,11 +665,15 @@ const CreateMontage = () => {
     setAgentSessionId(null);
     try {
       if (mode === "agent") {
-        setAgentSessionId(await generateVideoAgent({
+        const sid = await generateVideoAgent({
           prompt: agentPrompt.trim(),
           avatar: avatarRef ?? undefined,
           voiceId: voiceId || undefined,
-        }));
+        });
+        setAgentSessionId(sid);
+        // Дублируем в серверную очередь: воркер докрутит и запишет в «Готовый
+        // контент» даже если закрыть вкладку. Учёт для agent — на стороне воркера.
+        void enqueueAgentJob(projectId, sid, agentPrompt.trim(), aspect);
       } else if (mode === "avatar") {
         setVideoId(await generateAvatarVideo({ avatar: avatarRef!, voiceId, script: script.trim(), width: dim.width, height: dim.height }));
       } else if (mode === "template") {
@@ -709,17 +713,19 @@ const CreateMontage = () => {
   const recordedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!resultUrl || !projectId) return;
-    const ref = agentActive ? agentSessionId : videoId;
+    // Для agent учёт ведёт серверный воркер (по heygen_jobs) — иначе задвоение.
+    if (agentActive) return;
+    const ref = videoId;
     if (!ref || recordedRef.current === ref) return;
     recordedRef.current = ref;
-    const durationSec = agentActive ? agentQ.data?.duration_sec : statusQ.data?.duration_sec;
+    const durationSec = statusQ.data?.duration_sec;
     void recordUsage(projectId, {
       source: "web",
       mode,
       ref_id: ref,
       duration_sec: durationSec ?? null,
       cost_usd: estimateCost(mode, durationSec),
-      title: (mode === "agent" ? agentPrompt : script).trim().slice(0, 80) || "Видео",
+      title: script.trim().slice(0, 80) || "Видео",
       video_url: resultUrl,
       thumbnail_url: resultThumb ?? null,
     });
@@ -780,7 +786,7 @@ const CreateMontage = () => {
         )}
 
         <Tabs value={mode} onValueChange={(v) => setMode(v as typeof mode)}>
-          <TabsList className="grid w-full grid-cols-4 rounded-2xl">
+          <TabsList className="grid w-full grid-cols-5 rounded-2xl">
             <TabsTrigger value="agent" className="gap-1 rounded-xl px-1 text-[11px] sm:gap-1.5 sm:text-sm">
               <Zap className="h-4 w-4 shrink-0" /> Быстро
             </TabsTrigger>
@@ -791,7 +797,10 @@ const CreateMontage = () => {
               <Film className="h-4 w-4 shrink-0" /> Шаблон
             </TabsTrigger>
             <TabsTrigger value="clips" className="gap-1 rounded-xl px-1 text-[11px] sm:gap-1.5 sm:text-sm">
-              <Video className="h-4 w-4 shrink-0" /> Клипы
+              <Video className="h-4 w-4 shrink-0" /> Из клипов
+            </TabsTrigger>
+            <TabsTrigger value="gallery" className="gap-1 rounded-xl px-1 text-[11px] sm:gap-1.5 sm:text-sm">
+              <Play className="h-4 w-4 shrink-0" /> Готовые
             </TabsTrigger>
           </TabsList>
 
@@ -945,8 +954,16 @@ const CreateMontage = () => {
               )}
             </section>
           </TabsContent>
+
+          {/* Готовый контент — собранные видео проекта */}
+          <TabsContent value="gallery" className="mt-6 focus-visible:outline-none">
+            <HeygenGallery projectId={projectId} />
+          </TabsContent>
         </Tabs>
 
+        {/* Блок создания скрыт на вкладке «Готовые» */}
+        {mode !== "gallery" && (
+        <>
         {/* Формат — для ручных режимов; в «Быстро» его выбирает агент */}
         {mode !== "agent" && (
           <section className="mt-6">
@@ -1035,8 +1052,9 @@ const CreateMontage = () => {
             )}
           </section>
         )}
+        </>
+        )}
 
-        <HeygenGallery projectId={projectId} />
         <HeygenUsagePanel projectId={projectId} />
         <TelegramConnect projectId={projectId} />
       </div>

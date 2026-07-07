@@ -55,6 +55,28 @@ export async function recordUsage(
   }
 }
 
+/** Ставит веб-задачу Video Agent в очередь heygen_jobs. Серверный воркер докрутит
+ *  её и запишет в «Готовый контент» со статистикой — даже если закрыть вкладку. */
+export async function enqueueAgentJob(
+  projectId: string,
+  sessionId: string,
+  script: string,
+  aspect?: string,
+): Promise<void> {
+  if (!projectId || !sessionId) return;
+  try {
+    await db.from("heygen_jobs").insert({
+      project_id: projectId,
+      session_id: sessionId,
+      source: "web",
+      script: script.slice(0, 2000),
+      aspect: aspect ?? null,
+    });
+  } catch {
+    /* очередь не критична: клиент всё равно опрашивает статус сам */
+  }
+}
+
 export async function fetchUsage(projectId: string): Promise<UsageRow[]> {
   if (!projectId) return [];
   try {

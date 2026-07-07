@@ -9,6 +9,9 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    // Бизнес-логика (CRM day-keys) считает по Asia/Almaty. Фиксируем TZ, иначе
+    // на UTC-раннерах (GitHub Actions) даты «уезжают» и тесты падают недетерминированно.
+    env: { TZ: "Asia/Almaty" },
   },
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
