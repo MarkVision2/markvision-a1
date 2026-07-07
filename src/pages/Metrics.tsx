@@ -19,11 +19,9 @@ import {
 import { PeriodPicker, monthRange } from "@/components/dashboard/PeriodPicker";
 import { MetricsDataTable } from "@/components/metrics/MetricsDataTable";
 import { MetricsKpiPanel } from "@/components/metrics/MetricsKpiPanel";
-import { MetricsSummaryStrip } from "@/components/metrics/MetricsSummaryStrip";
 import { MONTHS_GEN_RU, WEEKDAYS_RU } from "@/components/metrics/metricsFormat";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useMultiMetaInsights, type DailyInsightRow } from "@/hooks/useMetaInsights";
-import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
 import { crmDailyMetrics, fetchCdiFactRows, type ReportPeriodRange } from "@/hooks/useReportData";
 import { metricsRnpDaily } from "@/lib/metricsRnpDaily";
@@ -129,9 +127,6 @@ const Metrics = () => {
       }
     })();
   }, [monthParam, cabinetId, actIds.join(","), cabinets, refresh]);
-
-  const { getPlan } = useFinancePlans();
-  const plan = getPlan(monthKey(monthCursor));
 
   const totals = data?.totals;
 
@@ -395,8 +390,6 @@ const Metrics = () => {
   const factLeads = factCrmReceived;
   const factSpend = useProjectOverrides ? factFromDaily.spend : (totals?.spend ?? 0);
   const factCpl = factFromDaily.leads > 0 ? factSpend / factFromDaily.leads : (totals?.cpl ?? 0);
-  const factCac = factSales > 0 ? factSpend / factSales : 0;
-  const factCpd = factDiagnostics > 0 ? factSpend / factDiagnostics : 0;
   const crLeadDiagnostics =
     factLeads > 0 ? (factDiagnostics / factLeads) * 100 : 0;
   const crDiagnosticsSale =
@@ -656,15 +649,12 @@ const Metrics = () => {
       />
 
       <MetricsKpiPanel
-        plan={plan}
         factRevenue={factRevenue}
         factSpend={factSpend}
         factCrmReceived={factLeads}
         factSales={factSales}
         factDiagnostics={factDiagnostics}
         factCpl={factCpl}
-        factCpd={factCpd}
-        factCac={factCac}
         crLeadDiagnostics={crLeadDiagnostics}
         crDiagnosticsSale={crDiagnosticsSale}
         monthProgress={monthProgress}
@@ -753,17 +743,12 @@ const Metrics = () => {
         </div>
       </div>
 
-      <div
-        className={cn(
-          "mt-4 flex items-start gap-2 rounded-xl border px-3 py-2 text-xs",
-          canEditManual && editScope
-            ? "border-success/25 bg-success/5 text-success"
-            : "border-warning/25 bg-warning/5 text-warning",
-        )}
-      >
-        <Pencil className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-        <span>{manualHint}</span>
-      </div>
+      {tableMode === "detailed" && canEditManual && editScope && (
+        <div className="mt-3 flex items-start gap-2 rounded-xl border border-border/60 bg-muted/20 px-3 py-2 text-xs text-muted-foreground">
+          <Pencil className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{manualHint}</span>
+        </div>
+      )}
 
       {!hasMetaConnectedCabinets && (
         <div className="mt-3 flex items-start gap-3 rounded-2xl border border-warning/30 bg-warning/10 p-4 text-sm text-warning">
@@ -794,25 +779,6 @@ const Metrics = () => {
         </div>
       )}
 
-      <div className="mt-3 grid gap-2 rounded-xl border border-border/60 bg-card/30 p-3 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
-        <div>
-          <span className="font-semibold text-foreground">Meta/CDI:</span>{" "}
-          затраты и передано лидов.
-        </div>
-        <div>
-          <span className="font-semibold text-foreground">CRM:</span>{" "}
-          получено, квалификация, визиты, оплаты.
-        </div>
-        <div>
-          <span className="font-semibold text-foreground">rnp_daily:</span>{" "}
-          касса и предоплаты (ручные корректировки).
-        </div>
-        <div>
-          <span className="font-semibold text-foreground">Важно:</span>{" "}
-          «Передано» и «Получено CRM» могут отличаться по определению.
-        </div>
-      </div>
-
       {error && (
         <div className="mt-4 flex items-start gap-3 rounded-2xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
@@ -836,21 +802,7 @@ const Metrics = () => {
         </div>
       )}
 
-      <div className="mt-6 space-y-4">
-        <MetricsSummaryStrip
-          plan={plan}
-          fact={{
-            spend: factSpend,
-            leads: factLeads,
-            cpl: factCpl,
-            diagnostics: factDiagnostics,
-            diagnosticRevenue: factDiagnosticRevenue,
-            sales: factSales,
-            salesRevenue: factSalesRevenue,
-            revenue: factRevenue,
-          }}
-        />
-
+      <div className="mt-4">
         <MetricsDataTable
           mode={tableMode}
           monthDays={monthDays}

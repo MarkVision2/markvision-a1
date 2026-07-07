@@ -140,35 +140,6 @@ export function MetricsDataTable({
               </th>
             ))}
           </tr>
-          <tr className="border-b border-border/50 bg-muted/40">
-            <th className="sticky left-0 z-10 bg-muted/40 px-4 py-1.5 text-left text-[10px] font-medium text-muted-foreground">
-              Источник
-            </th>
-            {[
-              "Meta/CDI",
-              "Meta/CDI",
-              "расчёт",
-              "CRM/rnp",
-              "CRM/rnp",
-              "CRM/rnp",
-              "CRM/rnp",
-              "CRM/rnp",
-              "CRM/CDI",
-              "rnp_daily",
-              "rnp_daily",
-              "CRM/CDI",
-              "CRM/CDI",
-              "CRM/rnp",
-              "сумма",
-            ].map((src, idx) => (
-              <th
-                key={`${src}-${idx}`}
-                className="px-2 py-1 text-right text-[10px] font-medium text-muted-foreground"
-              >
-                {src}
-              </th>
-            ))}
-          </tr>
             </>
           )}
         </thead>
