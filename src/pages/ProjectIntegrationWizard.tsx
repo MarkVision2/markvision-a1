@@ -117,7 +117,7 @@ export default function ProjectIntegrationWizard() {
     [],
   );
   const intakeUrl = useMemo(
-    () => (intakeToken ? `${SUPABASE_URL}/functions/v1/lead-intake/t/${intakeToken}` : ""),
+    () => (intakeToken ? `${supabaseUrl}/functions/v1/lead-intake/t/${intakeToken}` : ""),
     [intakeToken],
   );
 

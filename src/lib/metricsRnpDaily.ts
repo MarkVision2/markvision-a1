@@ -1,25 +1,24 @@
 import type { LeadLite } from "@/hooks/useLeadsLite";
+import type { StageChangeEvent } from "@/hooks/useStageChangeEvents";
 import type { ReportPeriodRange } from "@/lib/crmDailyMetrics";
 import { ymdAlmatyFromIso } from "@/lib/metaSync";
 import { isLeadConductedVisit, isLeadPaid } from "@/lib/leadStageFlags";
 
-/** Лид квалифицирован, когда скоринг Green API бота >= порога (0-100). */
 export const QUAL_SCORE_MIN = 50;
 
 export interface RnpDailyMetrics {
-  /** Лидов получено в CRM (created_at). */
   crmReceived: number;
-  /** Квал. лиды — скоринг Green API бота >= QUAL_SCORE_MIN. */
   qualified: number;
-  /** Запланировано визитов на этот день (next_visit_at). */
   plannedVisits: number;
-  /** Проведено визитов / диагностик (факт, не запись). */
   conductedVisits: number;
-  /** Оплачено диагностик (шт, diagnostic_amount > 0). */
+  /** Записано (stage_changed → scheduled). */
+  scheduled: number;
+  /** Проведено (stage_changed → visit / conducted). */
+  conducted: number;
   diagnosticsPaid: number;
-  /** Сумма оплат диагностик ₸. */
   diagnosticRevenuePaid: number;
-  /** Наличные за день ₸ (payment_method = cash). */
+  sales: number;
+  salesRevenue: number;
   cashRevenue: number;
 }
 
@@ -34,75 +33,112 @@ function inMonthRange(ymd: string, range: ReportPeriodRange): boolean {
   return ymd >= from && ymd <= to;
 }
 
-/** РНП-метрики по дням для «Таблицы показателей». */
-export function metricsRnpDaily(
-  leads: LeadLite[],
-  range: ReportPeriodRange,
-  cabinetSelector: "all" | string,
-): Map<string, RnpDailyMetrics> {
-  const matchCabinet = (l: LeadLite) =>
-    cabinetSelector === "all" || l.cabinetId === cabinetSelector;
-
-  const empty = (): RnpDailyMetrics => ({
+function empty(): RnpDailyMetrics {
+  return {
     crmReceived: 0,
     qualified: 0,
     plannedVisits: 0,
     conductedVisits: 0,
+    scheduled: 0,
+    conducted: 0,
     diagnosticsPaid: 0,
     diagnosticRevenuePaid: 0,
+    sales: 0,
+    salesRevenue: 0,
     cashRevenue: 0,
-  });
+  };
+}
+
+/** РНП-метрики по дням. stageEvents необязательны — используются для scheduled/conducted. */
+export function metricsRnpDaily(
+  leads: LeadLite[],
+  stageEvents: StageChangeEvent[],
+  range: ReportPeriodRange,
+  cabinetSelector: "all" | string,
+): Map<string, RnpDailyMetrics> {
+  const matchCabinet = (cabinetId: string | null | undefined) =>
+    cabinetSelector === "all" || cabinetId === cabinetSelector;
 
   const m = new Map<string, RnpDailyMetrics>();
+  const get = (ymd: string): RnpDailyMetrics => {
+    const cur = m.get(ymd) ?? empty();
+    m.set(ymd, cur);
+    return cur;
+  };
 
   for (const l of leads) {
-    if (!matchCabinet(l)) continue;
+    if (!matchCabinet(l.cabinetId)) continue;
 
     const createdYmd = ymdAlmatyFromIso(l.createdAt);
     if (createdYmd && inMonthRange(createdYmd, range)) {
-      const cur = m.get(createdYmd) ?? empty();
+      const cur = get(createdYmd);
       cur.crmReceived += 1;
       if ((l.aiScore ?? 0) >= QUAL_SCORE_MIN) cur.qualified += 1;
-      m.set(createdYmd, cur);
     }
 
     if (l.nextVisitAt) {
       const planYmd = ymdAlmatyFromIso(l.nextVisitAt);
       if (planYmd && inMonthRange(planYmd, range)) {
-        const cur = m.get(planYmd) ?? empty();
-        cur.plannedVisits += 1;
-        m.set(planYmd, cur);
+        get(planYmd).plannedVisits += 1;
       }
     }
 
     if (isLeadConductedVisit(l)) {
       const ymd = eventYmd(l);
       if (ymd && inMonthRange(ymd, range)) {
-        const cur = m.get(ymd) ?? empty();
-        cur.conductedVisits += 1;
-        m.set(ymd, cur);
+        get(ymd).conductedVisits += 1;
       }
     }
 
-    if ((l.diagnosticAmount ?? 0) > 0) {
-      const ymd = eventYmd(l);
+    if ((l.diagnosticAmount ?? 0) > 0 && l.paidAt) {
+      const ymd = ymdAlmatyFromIso(l.paidAt);
       if (ymd && inMonthRange(ymd, range)) {
-        const cur = m.get(ymd) ?? empty();
+        const cur = get(ymd);
         cur.diagnosticsPaid += 1;
-        cur.diagnosticRevenuePaid += l.diagnosticAmount;
-        m.set(ymd, cur);
+        cur.diagnosticRevenuePaid += l.diagnosticAmount ?? 0;
       }
     }
 
-    if (isLeadPaid(l) && l.paymentMethod === "cash" && (l.amount ?? 0) > 0) {
-      const ymd = eventYmd(l);
+    if (isLeadPaid(l) && (l.amount ?? 0) > 0 && l.paidAt) {
+      const ymd = ymdAlmatyFromIso(l.paidAt);
       if (ymd && inMonthRange(ymd, range)) {
-        const cur = m.get(ymd) ?? empty();
-        cur.cashRevenue += l.amount;
-        m.set(ymd, cur);
+        const cur = get(ymd);
+        cur.sales += 1;
+        cur.salesRevenue += l.amount ?? 0;
+        if (l.paymentMethod === "cash") {
+          cur.cashRevenue += l.amount ?? 0;
+        }
       }
     }
   }
 
+  for (const ev of stageEvents) {
+    if (!ev.isDiagnostic) continue;
+    if (!matchCabinet(ev.cabinetId)) continue;
+    const ymd = ymdAlmatyFromIso(ev.at);
+    if (!ymd || !inMonthRange(ymd, range)) continue;
+    const cur = get(ymd);
+    if (ev.toStageKey === "scheduled") cur.scheduled += 1;
+    else if (ev.toStageKey === "visit" || ev.toStageKey === "conducted") cur.conducted += 1;
+  }
+
   return m;
+}
+
+export function sumRnpDaily(map: Map<string, RnpDailyMetrics>): RnpDailyMetrics {
+  const total = empty();
+  for (const v of map.values()) {
+    total.crmReceived += v.crmReceived;
+    total.qualified += v.qualified;
+    total.plannedVisits += v.plannedVisits;
+    total.conductedVisits += v.conductedVisits;
+    total.scheduled += v.scheduled;
+    total.conducted += v.conducted;
+    total.diagnosticsPaid += v.diagnosticsPaid;
+    total.diagnosticRevenuePaid += v.diagnosticRevenuePaid;
+    total.sales += v.sales;
+    total.salesRevenue += v.salesRevenue;
+    total.cashRevenue += v.cashRevenue;
+  }
+  return total;
 }
