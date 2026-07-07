@@ -75,9 +75,9 @@ const PhotoSource = ({
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
         className={cn(
-          "mt-3 flex min-h-[220px] cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border bg-secondary/30 px-6 py-10 text-center transition-all",
-          "hover:border-primary/60 hover:bg-secondary/50",
-          dragOver && "border-primary bg-primary/5 shadow-glow",
+          "mt-3 flex min-h-[200px] cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-border/60 bg-card/40 px-6 py-10 text-center transition",
+          "hover:border-primary/40 hover:bg-secondary/40",
+          dragOver && "border-primary/50 bg-primary/5",
         )}
       >
         <span className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/15 text-primary">

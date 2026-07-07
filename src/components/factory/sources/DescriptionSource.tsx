@@ -28,7 +28,7 @@ const DescriptionSource = ({
           onChange={(e) => onChange(e.target.value)}
           rows={6}
           placeholder="Основная идея дизайна или текст поста..."
-          className="mt-3 w-full resize-none rounded-2xl border border-border bg-secondary/40 px-5 py-4 text-sm text-foreground placeholder:text-muted-foreground/70 outline-none transition-colors focus:border-primary/60 focus:bg-secondary/60"
+          className="mt-3 w-full resize-none rounded-2xl border border-border/60 bg-background px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground/70 outline-none transition-colors focus:border-primary/50"
         />
       </div>
 
@@ -45,7 +45,7 @@ const DescriptionSource = ({
           value={productName}
           onChange={(e) => onProductNameChange(e.target.value)}
           placeholder="Например: Увлажнитель воздуха, Кроссовки Nike..."
-          className="mt-3 h-14 w-full rounded-2xl border border-border bg-secondary/40 px-5 text-base text-foreground placeholder:text-muted-foreground/70 outline-none transition-colors focus:border-primary/60 focus:bg-secondary/60"
+          className="mt-3 h-12 w-full rounded-2xl border border-border/60 bg-background px-4 text-sm text-foreground placeholder:text-muted-foreground/70 outline-none transition-colors focus:border-primary/50"
         />
       </div>
     </div>

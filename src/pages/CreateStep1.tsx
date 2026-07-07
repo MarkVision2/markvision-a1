@@ -116,7 +116,7 @@ const CreateStep1 = () => {
         )}
 
         {step1.showModeSelector && visibleModes.length > 1 && (
-          <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3 sm:gap-4">
+          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
             {visibleModes.map((m) => (
               <SourceModeCard
                 key={m.id}
@@ -130,7 +130,7 @@ const CreateStep1 = () => {
           </div>
         )}
 
-        <div className="mt-10 space-y-10">
+        <div className="mt-6 space-y-6">
           {step1.showLogo && (
             <LogoSource file={logoFile} onChange={setLogoFile} />
           )}
@@ -181,13 +181,13 @@ const CreateStep1 = () => {
         </div>
 
         {step1.showBrandTemplate && (
-          <div className="mt-8">
+          <div className="mt-6">
             <BrandTemplatePicker value={brandTemplateId} onChange={setBrandTemplateId} />
           </div>
         )}
 
         {step1.showCopyMode && (
-          <div className="mt-10">
+          <div className="mt-6">
             <CopyModePanel
               mode={copyMode}
               onModeChange={setCopyMode}
@@ -199,7 +199,7 @@ const CreateStep1 = () => {
           </div>
         )}
 
-        <div className="mt-10">
+        <div className="mt-6">
           <CreativeUsernamePanel variant="wizard" />
         </div>
 

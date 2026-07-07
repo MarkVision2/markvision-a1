@@ -9,45 +9,32 @@ interface SourceModeCardProps {
   onClick: () => void;
 }
 
-const SourceModeCard = ({
-  icon: Icon,
-  title,
-  subtitle,
-  selected,
-  onClick,
-}: SourceModeCardProps) => {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={selected}
+const SourceModeCard = ({ icon: Icon, title, subtitle, selected, onClick }: SourceModeCardProps) => (
+  <button
+    type="button"
+    onClick={onClick}
+    aria-pressed={selected}
+    className={cn(
+      "group flex items-center gap-3 rounded-2xl border p-4 text-left transition",
+      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      selected
+        ? "border-primary/50 bg-primary/5 ring-1 ring-primary/30"
+        : "border-border/60 bg-card/60 hover:border-primary/40 hover:bg-card",
+    )}
+  >
+    <span
       className={cn(
-        "group relative flex flex-col items-center justify-center gap-3 overflow-hidden rounded-2xl border border-border bg-card px-6 py-7 text-center",
-        "transition-all duration-300 ease-out",
-        "hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-elevated",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-        selected && "border-primary bg-gradient-card-hover shadow-glow",
+        "grid h-11 w-11 shrink-0 place-items-center rounded-xl transition-colors",
+        selected ? "bg-primary/10 text-primary" : "bg-secondary/70 text-foreground",
       )}
     >
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 bg-gradient-card-hover"
-      />
-      <span
-        className={cn(
-          "relative grid h-12 w-12 place-items-center rounded-xl border border-border bg-secondary/60 transition-colors",
-          "group-hover:border-primary/50 group-hover:text-primary",
-          selected && "border-primary/70 bg-primary/15 text-primary",
-        )}
-      >
-        <Icon className="h-6 w-6" strokeWidth={1.75} />
-      </span>
-      <div className="relative">
-        <h3 className="text-base font-semibold text-foreground">{title}</h3>
-        <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
-      </div>
-    </button>
-  );
-};
+      <Icon className="h-5 w-5" strokeWidth={1.75} />
+    </span>
+    <div className="min-w-0">
+      <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+      <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
+    </div>
+  </button>
+);
 
 export default SourceModeCard;
