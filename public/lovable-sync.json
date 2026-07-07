@@ -1,7 +1,7 @@
 {
-  "git_sha": "990f318",
-  "git_sha_full": "990f31830a3c974845ca62e7cd84a2399e48ed07",
-  "updated_at": "2026-07-07T18:04:13+05:00",
-  "label": "feat: превью аватаров и прослушивание голосов в AI монтаже (#110)",
+  "git_sha": "784c680",
+  "git_sha_full": "784c68069fe74c766273b68de8e76a09234df5ee",
+  "updated_at": "2026-07-07T18:17:34+05:00",
+  "label": "feat: 2 формата, «Мои аватары», дефолты аватар/голос/шаблон (#111)",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
