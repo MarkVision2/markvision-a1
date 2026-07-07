@@ -1,7 +1,7 @@
 {
-  "git_sha": "416954d",
-  "git_sha_full": "416954dbcd6685d24fd37a854a901fce0fe13494",
-  "updated_at": "2026-07-07T22:09:33+05:00",
-  "label": "AI монтаж (HeyGen) в Контент-заводе: создание видео, дефолты проекта, Telegram-бот, готовый контент (#120)",
+  "git_sha": "b9485e7",
+  "git_sha_full": "b9485e7bf0bca88655e55e56a30fc03b5c43323a",
+  "updated_at": "2026-07-07T22:34:53+05:00",
+  "label": "AI монтаж: формат в «Быстро», убрана «Аватар», заполняемые шаблоны (#121)",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
