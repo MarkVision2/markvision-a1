@@ -1,7 +1,7 @@
 {
-  "git_sha": "da90dcf",
-  "git_sha_full": "da90dcffec1dadc8594d3a45f33e6e405c004269",
-  "updated_at": "2026-07-06T21:45:23+05:00",
-  "label": "fix(dashboard): понятные «Источники заявок» — «нет оплат» вместо алармистского −100%",
+  "git_sha": "0a87c48",
+  "git_sha_full": "0a87c484620924de85d4c8a44fa59b1d05155817",
+  "updated_at": "2026-07-07T14:30:11+05:00",
+  "label": "redesign(factory): чистый и простой хаб Контент-завода",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
