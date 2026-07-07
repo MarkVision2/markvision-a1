@@ -1315,7 +1315,7 @@ const CreateStep3 = () => {
         <div className="mt-10">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm font-medium">
-              <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
+              <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">
                 <Palette className="h-4 w-4" />
               </span>
               {isNeuroPhoto ? "Стиль съёмки" : "Формат"}
@@ -1344,11 +1344,11 @@ const CreateStep3 = () => {
                     aria-label={`${s.label}: ${s.description}`}
                     style={{ minHeight: 260 }}
                     className={cn(
-                      "group relative flex w-full flex-col overflow-hidden rounded-2xl border bg-card text-left transition-all duration-300",
+                      "group relative flex w-full flex-col overflow-hidden rounded-2xl border bg-card/60 text-left transition-all duration-300",
                       " hover:border-primary/40 ",
                       selected
-                        ? "border-primary  ring-1 ring-primary/40"
-                        : "border-border",
+                        ? "border-primary/50 ring-1 ring-primary/30"
+                        : "border-border/60",
                     )}
                   >
                     <div className="relative aspect-[5/3] w-full overflow-hidden bg-secondary/40">
@@ -1401,7 +1401,7 @@ const CreateStep3 = () => {
           <div className="mt-10">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2 text-sm font-medium">
-                <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
+                <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">
                   <Camera className="h-4 w-4" />
                 </span>
                 Ракурсы
@@ -1446,7 +1446,7 @@ const CreateStep3 = () => {
         {flow.step3.showGoal && (
         <div className="mt-10">
           <div className="flex items-center gap-2 text-sm font-medium">
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">
               <Target className="h-4 w-4" />
             </span>
             Цель контента
@@ -1465,9 +1465,9 @@ const CreateStep3 = () => {
                   onClick={() => setGoalId(g.id)}
                   aria-pressed={selected}
                   className={cn(
-                    "group relative flex flex-col items-start gap-2 rounded-2xl border bg-card p-4 text-left transition-all",
+                    "group relative flex flex-col items-start gap-2 rounded-2xl border bg-card/60 p-4 text-left transition",
                     " hover:border-primary/40 ",
-                    selected ? "border-primary  ring-1 ring-primary/40" : "border-border",
+                    selected ? "border-primary/50 bg-primary/5 ring-1 ring-primary/30" : "border-border/60",
                   )}
                 >
                   <span className={cn(
@@ -1494,7 +1494,7 @@ const CreateStep3 = () => {
         {flow.step3.showTone && (
         <div className="mt-10">
           <div className="flex items-center gap-2 text-sm font-medium">
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">
               <Megaphone className="h-4 w-4" />
             </span>
             Стиль подачи
@@ -1513,9 +1513,9 @@ const CreateStep3 = () => {
                   onClick={() => setToneId(t.id)}
                   aria-pressed={selected}
                   className={cn(
-                    "group relative flex flex-col items-start gap-2 rounded-2xl border bg-card p-4 text-left transition-all",
+                    "group relative flex flex-col items-start gap-2 rounded-2xl border bg-card/60 p-4 text-left transition",
                     " hover:border-primary/40 ",
-                    selected ? "border-primary  ring-1 ring-primary/40" : "border-border",
+                    selected ? "border-primary/50 bg-primary/5 ring-1 ring-primary/30" : "border-border/60",
                   )}
                 >
                   <span className={cn(
@@ -1542,7 +1542,7 @@ const CreateStep3 = () => {
         {flow.step3.showCta && (
         <div className="mt-10">
           <div className="flex items-center gap-2 text-sm font-medium">
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">
               <MessageCircle className="h-4 w-4" />
             </span>
             Призыв к действию (CTA)
@@ -1560,9 +1560,9 @@ const CreateStep3 = () => {
                   onClick={() => setCtaId(c.id)}
                   aria-pressed={selected}
                   className={cn(
-                    "group relative flex flex-col items-start gap-1.5 rounded-2xl border bg-card p-4 text-left transition-all",
+                    "group relative flex flex-col items-start gap-1.5 rounded-2xl border bg-card/60 p-4 text-left transition",
                     " hover:border-primary/40 ",
-                    selected ? "border-primary  ring-1 ring-primary/40" : "border-border",
+                    selected ? "border-primary/50 bg-primary/5 ring-1 ring-primary/30" : "border-border/60",
                   )}
                 >
                   <div className="text-sm font-semibold text-foreground">{c.label}</div>
@@ -1585,7 +1585,7 @@ const CreateStep3 = () => {
         <div className="mt-10">
 
           <div className="flex items-center gap-2 text-sm font-medium">
-            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
+            <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">
               <Palette className="h-4 w-4" />
             </span>
             Основной цвет
@@ -1674,7 +1674,7 @@ const CreateStep3 = () => {
               className="group flex w-full items-center justify-between gap-3 rounded-2xl border border-border bg-card px-5 py-4 text-left transition-all hover:border-primary/40"
             >
               <div className="flex items-center gap-3">
-                <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary/15 text-primary">
+                <span className="grid h-9 w-9 place-items-center rounded-lg bg-primary/10 text-primary">
                   <FileText className="h-4 w-4" />
                 </span>
                 <div>
@@ -1741,7 +1741,7 @@ const CreateStep3 = () => {
                 >
                   <div className="flex items-center justify-between gap-3 border-b border-border bg-secondary/40 px-5 py-3">
                     <div className="flex items-center gap-2">
-                      <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
+                      <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">
                         <Icon className="h-4 w-4" />
                       </span>
                       <div className="text-sm font-semibold">{styleDef.label}</div>
