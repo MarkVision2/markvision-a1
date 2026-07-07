@@ -19,6 +19,7 @@ vi.mock("@/hooks/useHeygen", () => ({
     { voice_id: "v-en", name: "John", language: "English", gender: "Male" },
   ]),
   fetchTemplates: vi.fn(async () => []),
+  fetchTemplateDetail: vi.fn(async () => []),
   fetchQuota: vi.fn(async () => ({ remaining_quota: 100 })),
   fetchVideoStatus: vi.fn(async () => ({ status: "pending" })),
   fetchAgentStatus: vi.fn(async () => ({ status: "generating" })),
@@ -50,7 +51,7 @@ describe("CreateMontage page", () => {
     renderPage();
     expect(screen.getByRole("heading", { name: "AI монтаж" })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Быстро/ })).toHaveAttribute("data-state", "active");
-    expect(screen.getByRole("tab", { name: /Аватар/ })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /Аватар/ })).not.toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Шаблон/ })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Из клипов/ })).toBeInTheDocument();
     expect(screen.getByRole("tab", { name: /Готовые/ })).toBeInTheDocument();

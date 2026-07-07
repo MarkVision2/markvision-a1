@@ -23,9 +23,10 @@ import { toast } from "sonner";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { cacheDefaults, fetchServerDefaults, loadDefaults, patchDefaults, type HeygenDefaults } from "@/lib/heygenDefaults";
 import {
-  fetchAgentStatus, fetchAvatars, fetchTemplates, fetchVideoStatus, fetchVoices,
-  generateAvatarVideo, generateFromClips, generateTemplateVideo, generateVideoAgent, uploadClip,
+  fetchAgentStatus, fetchAvatars, fetchTemplateDetail, fetchTemplates, fetchVideoStatus, fetchVoices,
+  generateFromClips, generateTemplateVideo, generateVideoAgent, uploadClip,
   type AgentStatus, type HeygenAvatar, type HeygenTemplate, type HeygenVideoStatus, type HeygenVoice,
+  type TemplateVariable,
 } from "@/hooks/useHeygen";
 
 // Кнопка «по умолчанию» для аватара / голоса / шаблона.
@@ -495,16 +496,42 @@ interface ClipItem {
   error?: string;
 }
 
+// Payload переменных шаблона для HeyGen: только заполненные поля.
+// text → properties.content; медиа (image/video/audio) → properties.url.
+function buildTemplateVariables(
+  defs: TemplateVariable[],
+  values: Record<string, string>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const d of defs) {
+    const val = (values[d.name] ?? "").trim();
+    if (!val) continue;
+    out[d.name] = {
+      name: d.name,
+      type: d.type,
+      properties: d.type === "text" ? { content: val } : { url: val },
+    };
+  }
+  return out;
+}
+
+// Человекочитаемая подпись типа поля шаблона.
+const VAR_TYPE_LABEL: Record<string, string> = {
+  text: "текст",
+  image: "картинка (URL)",
+  video: "видео (URL)",
+  audio: "аудио (URL)",
+};
+
 const CreateMontage = () => {
   const navigate = useNavigate();
   const { activeId: projectId } = useProjectsStore();
-  const [mode, setMode] = useState<"agent" | "avatar" | "template" | "clips" | "gallery">("agent");
+  const [mode, setMode] = useState<"agent" | "template" | "clips" | "gallery">("agent");
   const [aspect, setAspect] = useState<AspectId>("9:16");
 
   const [agentPrompt, setAgentPrompt] = useState("");
   const [selectedAvatar, setSelectedAvatar] = useState<HeygenAvatar | null>(null);
   const [voiceId, setVoiceId] = useState("");
-  const [script, setScript] = useState("");
   const [templateId, setTemplateId] = useState("");
   const [clips, setClips] = useState<ClipItem[]>([]);
   const [defaults, setDefaults] = useState<HeygenDefaults>({});
@@ -544,6 +571,16 @@ const CreateMontage = () => {
   const templatesQ = useQuery({
     queryKey: ["heygen-templates"], queryFn: fetchTemplates, staleTime: 300_000, enabled: mode === "template",
   });
+  // Поля выбранного шаблона + значения, которые вводит пользователь.
+  const templateDetailQ = useQuery({
+    queryKey: ["heygen-template-detail", templateId],
+    queryFn: () => fetchTemplateDetail(templateId),
+    enabled: mode === "template" && !!templateId,
+    staleTime: 300_000,
+  });
+  const [templateVars, setTemplateVars] = useState<Record<string, string>>({});
+  // Сбрасываем введённые значения при смене шаблона.
+  useEffect(() => { setTemplateVars({}); }, [templateId]);
 
   const statusQ = useQuery<HeygenVideoStatus>({
     queryKey: ["heygen-status", videoId],
@@ -646,7 +683,6 @@ const CreateMontage = () => {
   };
 
   const canSubmitAgent = agentPrompt.trim().length > 0;
-  const canSubmitAvatar = !!avatarRef && !!voiceId && script.trim().length > 0;
   const canSubmitTemplate = !!templateId;
   const canSubmitClips =
     !!avatarRef && !!voiceId && clips.length > 0 &&
@@ -654,9 +690,8 @@ const CreateMontage = () => {
 
   const canSubmit =
     mode === "agent" ? canSubmitAgent
-      : mode === "avatar" ? canSubmitAvatar
-        : mode === "template" ? canSubmitTemplate
-          : canSubmitClips;
+      : mode === "template" ? canSubmitTemplate
+        : canSubmitClips;
 
   const handleGenerate = async () => {
     const dim = DIMENSIONS[aspect];
@@ -669,15 +704,17 @@ const CreateMontage = () => {
           prompt: agentPrompt.trim(),
           avatar: avatarRef ?? undefined,
           voiceId: voiceId || undefined,
+          aspect,
         });
         setAgentSessionId(sid);
         // Дублируем в серверную очередь: воркер докрутит и запишет в «Готовый
         // контент» даже если закрыть вкладку. Учёт для agent — на стороне воркера.
         void enqueueAgentJob(projectId, sid, agentPrompt.trim(), aspect);
-      } else if (mode === "avatar") {
-        setVideoId(await generateAvatarVideo({ avatar: avatarRef!, voiceId, script: script.trim(), width: dim.width, height: dim.height }));
       } else if (mode === "template") {
-        setVideoId(await generateTemplateVideo({ templateId, width: dim.width, height: dim.height }));
+        setVideoId(await generateTemplateVideo({
+          templateId, width: dim.width, height: dim.height,
+          variables: buildTemplateVariables(templateDetailQ.data ?? [], templateVars),
+        }));
       } else {
         setVideoId(await generateFromClips({
           avatar: avatarRef!, voiceId,
@@ -725,7 +762,7 @@ const CreateMontage = () => {
       ref_id: ref,
       duration_sec: durationSec ?? null,
       cost_usd: estimateCost(mode, durationSec),
-      title: script.trim().slice(0, 80) || "Видео",
+      title: (mode === "template" ? selectedTemplate?.name : undefined)?.slice(0, 80) || "Видео",
       video_url: resultUrl,
       thumbnail_url: resultThumb ?? null,
     });
@@ -739,7 +776,7 @@ const CreateMontage = () => {
   useEffect(() => {
     if (!resultUrl || !projectId) return;
     const ref = agentActive ? agentSessionId : videoId;
-    const s = mode === "agent" ? agentPrompt.trim() : mode === "avatar" ? script.trim() : "";
+    const s = mode === "agent" ? agentPrompt.trim() : "";
     if (!ref || !s || assetsRef.current === ref) return;
     assetsRef.current = ref;
     setAssets(null);
@@ -786,12 +823,9 @@ const CreateMontage = () => {
         )}
 
         <Tabs value={mode} onValueChange={(v) => setMode(v as typeof mode)}>
-          <TabsList className="grid w-full grid-cols-5 rounded-2xl">
+          <TabsList className="grid w-full grid-cols-4 rounded-2xl">
             <TabsTrigger value="agent" className="gap-1 rounded-xl px-1 text-[11px] sm:gap-1.5 sm:text-sm">
               <Zap className="h-4 w-4 shrink-0" /> Быстро
-            </TabsTrigger>
-            <TabsTrigger value="avatar" className="gap-1 rounded-xl px-1 text-[11px] sm:gap-1.5 sm:text-sm">
-              <Sparkles className="h-4 w-4 shrink-0" /> Аватар
             </TabsTrigger>
             <TabsTrigger value="template" className="gap-1 rounded-xl px-1 text-[11px] sm:gap-1.5 sm:text-sm">
               <Film className="h-4 w-4 shrink-0" /> Шаблон
@@ -825,28 +859,14 @@ const CreateMontage = () => {
             <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} optional isDefault={voiceIsDefault} onToggleDefault={toggleDefaultVoice} projectId={projectId} />
           </TabsContent>
 
-          {/* Аватар + сценарий */}
-          <TabsContent value="avatar" className="mt-6 space-y-6 focus-visible:outline-none">
-            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} isDefault={avatarIsDefault} onToggleDefault={toggleDefaultAvatar} projectId={projectId} />
-            <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} isDefault={voiceIsDefault} onToggleDefault={toggleDefaultVoice} projectId={projectId} />
-            <section>
-              <label className="mb-2 block text-sm font-semibold">Сценарий</label>
-              <Textarea
-                value={script}
-                onChange={(e) => setScript(e.target.value)}
-                rows={6}
-                placeholder="Вставьте текст, который проговорит аватар…"
-                className="resize-y"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">{script.trim().length} символов</p>
-            </section>
-          </TabsContent>
-
           {/* По шаблону */}
           <TabsContent value="template" className="mt-6 space-y-6 focus-visible:outline-none">
             <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
               Шаблон — это ваш готовый дизайн монтажа из HeyGen (шрифты, бренд, моушен, звуки, музыка).
-              Выберите его вручную или задайте «по умолчанию» — система будет применять его автоматически.
+              Выберите его, заполните поля ниже и соберите видео; можно задать «по умолчанию» (★) — тогда система применит его автоматически.{" "}
+              Сами шаблоны создаются в редакторе HeyGen —{" "}
+              <a href="https://app.heygen.com/templates" target="_blank" rel="noreferrer" className="font-medium text-primary underline">открыть шаблоны HeyGen</a>,
+              после сохранения они появятся в этом списке.
             </div>
             <section>
               <label className="mb-2 block text-sm font-semibold">Шаблон HeyGen</label>
@@ -890,6 +910,51 @@ const CreateMontage = () => {
                 </div>
               )}
             </section>
+
+            {/* Поля шаблона — заполняются перед сборкой. */}
+            {templateId && (
+              <section>
+                <label className="mb-2 block text-sm font-semibold">Поля шаблона</label>
+                {templateDetailQ.isLoading ? (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Загружаем поля шаблона…
+                  </div>
+                ) : templateDetailQ.error ? (
+                  <p className="text-sm text-warning">Не удалось загрузить поля: {(templateDetailQ.error as Error).message}</p>
+                ) : (templateDetailQ.data ?? []).length === 0 ? (
+                  <p className="text-sm text-muted-foreground">У этого шаблона нет полей для заполнения — соберётся с исходным содержимым.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {(templateDetailQ.data ?? []).map((v: TemplateVariable) => (
+                      <div key={v.name}>
+                        <label className="mb-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                          <span className="truncate">{v.name}</span>
+                          <span className="rounded bg-secondary px-1.5 py-0.5 text-[10px]">{VAR_TYPE_LABEL[v.type] ?? v.type}</span>
+                        </label>
+                        {v.type === "text" ? (
+                          <Textarea
+                            value={templateVars[v.name] ?? ""}
+                            onChange={(e) => setTemplateVars((p) => ({ ...p, [v.name]: e.target.value }))}
+                            rows={2}
+                            placeholder={`Текст для «${v.name}»…`}
+                            className="resize-y text-sm"
+                          />
+                        ) : (
+                          <Input
+                            value={templateVars[v.name] ?? ""}
+                            onChange={(e) => setTemplateVars((p) => ({ ...p, [v.name]: e.target.value }))}
+                            placeholder={`Ссылка на ${VAR_TYPE_LABEL[v.type] ?? v.type}…`}
+                          />
+                        )}
+                      </div>
+                    ))}
+                    <p className="text-[11px] text-muted-foreground">
+                      Пустые поля останутся как в шаблоне. Для медиа вставьте прямую ссылку (URL).
+                    </p>
+                  </div>
+                )}
+              </section>
+            )}
           </TabsContent>
 
           {/* Готовые клипы */}
@@ -964,13 +1029,12 @@ const CreateMontage = () => {
         {/* Блок создания скрыт на вкладке «Готовые» */}
         {mode !== "gallery" && (
         <>
-        {/* Формат — для ручных режимов; в «Быстро» его выбирает агент */}
-        {mode !== "agent" && (
-          <section className="mt-6">
-            <label className="mb-2 block text-sm font-semibold">Формат</label>
-            <AspectRatioPicker value={aspect} onChange={setAspect} allowed={ASPECTS} />
-          </section>
-        )}
+        {/* Формат — для всех режимов создания. В «Быстро» передаём агенту как
+            пожелание к раскладке (9:16 / 16:9). */}
+        <section className="mt-6">
+          <label className="mb-2 block text-sm font-semibold">Формат</label>
+          <AspectRatioPicker value={aspect} onChange={setAspect} allowed={ASPECTS} />
+        </section>
 
         {/* Действие */}
         <div className="mt-8">

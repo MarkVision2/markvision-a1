@@ -147,6 +147,26 @@ export async function fetchTemplates(): Promise<HeygenTemplate[]> {
   return res.data?.templates ?? [];
 }
 
+// Поле шаблона, которое пользователь заполняет перед сборкой.
+export interface TemplateVariable {
+  name: string;
+  type: string; // text | image | video | audio | character | voice …
+}
+
+/** Детали шаблона: список переменных (полей) для подстановки. Парсинг устойчив
+ *  к тому, что HeyGen отдаёт variables объектом {name: {...}} или массивом. */
+export async function fetchTemplateDetail(templateId: string): Promise<TemplateVariable[]> {
+  const res = await call<{ data?: { variables?: unknown } }>({ action: "template_detail", template_id: templateId });
+  const raw = res.data?.variables;
+  if (!raw || typeof raw !== "object") return [];
+  const list = Array.isArray(raw)
+    ? (raw as RawObj[])
+    : Object.entries(raw as RawObj).map(([k, v]) => ({ name: (v as RawObj)?.name ?? k, type: (v as RawObj)?.type }));
+  return list
+    .map((v) => ({ name: String((v as RawObj).name ?? ""), type: String((v as RawObj).type ?? "text") }))
+    .filter((v) => v.name.length > 0);
+}
+
 export interface GenerateAvatarInput {
   avatar: AvatarRef;
   voiceId: string;
@@ -277,15 +297,21 @@ export interface VideoAgentInput {
   prompt: string;
   avatar?: AvatarRef;
   voiceId?: string;
+  aspect?: string; // "9:16" | "16:9"
 }
 
 /** Быстрое создание (Video Agent v3): промпт/сценарий → session_id.
- *  avatar/voice — необязательные подсказки; без них агент подбирает сам. */
+ *  avatar/voice — необязательные подсказки; без них агент подбирает сам.
+ *  Формат передаём и явным полем aspect_ratio, и директивой в промпт — у v3 нет
+ *  отдельного параметра раскладки, поэтому дублируем, чтобы агент его учёл. */
 export async function generateVideoAgent(input: VideoAgentInput): Promise<string> {
-  const agent: Record<string, unknown> = { prompt: input.prompt };
+  const orient = input.aspect === "16:9" ? "горизонтальное" : input.aspect === "9:16" ? "вертикальное" : "";
+  const prompt = input.aspect ? `${input.prompt}\n\nФормат ролика: ${input.aspect} (${orient}).` : input.prompt;
+  const agent: Record<string, unknown> = { prompt };
   // avatar_id имеет смысл только для обычного аватара; talking_photo агент не примет.
   if (input.avatar && input.avatar.kind === "avatar") agent.avatar_id = input.avatar.id;
   if (input.voiceId) agent.voice_id = input.voiceId;
+  if (input.aspect) agent.aspect_ratio = input.aspect;
   const res = await call<{ data?: { session_id?: string } }>({ action: "video_agent", agent });
   const id = res.data?.session_id;
   if (!id) throw new Error("HeyGen не вернул session_id");
