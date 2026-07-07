@@ -1,7 +1,7 @@
 {
-  "git_sha": "0a87c48",
-  "git_sha_full": "0a87c484620924de85d4c8a44fa59b1d05155817",
-  "updated_at": "2026-07-07T14:30:11+05:00",
-  "label": "redesign(factory): чистый и простой хаб Контент-завода",
+  "git_sha": "be75908",
+  "git_sha_full": "be7590892d052aacfc07fc3cd7868309b8782db9",
+  "updated_at": "2026-07-07T14:36:26+05:00",
+  "label": "redesign(factory): чистая вкладка «Готовый контент»",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
