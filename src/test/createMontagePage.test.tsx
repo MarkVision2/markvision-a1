@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
@@ -6,8 +6,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 // Моки HeyGen-хука: аватары (обычный + видео-аватар) и голоса с превью.
 vi.mock("@/hooks/useHeygen", () => ({
   fetchAvatars: vi.fn(async () => [
-    { id: "av1", name: "Anna", kind: "avatar", preview_image_url: "http://x/anna.png" },
-    { id: "tp1", name: "Мой аватар", kind: "talking_photo", preview_image_url: "http://x/me.png" },
+    { id: "av1", name: "Anna", kind: "avatar", mine: false, preview_image_url: "http://x/anna.png" },
+    { id: "tp1", name: "Мой аватар", kind: "talking_photo", mine: true, preview_image_url: "http://x/me.png" },
   ]),
   fetchVoices: vi.fn(async () => [
     { voice_id: "v-ru", name: "Ivan", language: "Russian", gender: "Male", preview_audio: "http://x/ivan.mp3" },
@@ -38,6 +38,8 @@ const renderPage = () => {
 };
 
 describe("CreateMontage page", () => {
+  beforeEach(() => localStorage.clear());
+
   it("монтируется, показывает 4 режима, «Быстро» — по умолчанию", () => {
     renderPage();
     expect(screen.getByRole("heading", { name: "AI монтаж" })).toBeInTheDocument();
@@ -48,10 +50,10 @@ describe("CreateMontage page", () => {
     expect(screen.getByPlaceholderText(/45 секунд/)).toBeInTheDocument();
   });
 
-  it("подгружает аватары, показывает раздел «Мои видео-аватары» и выбирает аватар с превью", async () => {
+  it("подгружает аватары, показывает раздел «Мои аватары» и выбирает аватар с превью", async () => {
     renderPage();
     await waitFor(() => expect(screen.getByText("Anna")).toBeInTheDocument());
-    expect(screen.getByText("Мои видео-аватары")).toBeInTheDocument();
+    expect(screen.getByText("Мои аватары")).toBeInTheDocument();
 
     fireEvent.click(screen.getByText("Anna"));
     // появилась панель выбранного аватара
@@ -76,6 +78,19 @@ describe("CreateMontage page", () => {
     expect(
       screen.getByText((_, el) => !!el && /Ivan/.test(el.textContent ?? "") && /Russian/.test(el.textContent ?? "") && el.tagName === "SPAN"),
     ).toBeInTheDocument();
+  });
+
+  it("сохраняет аватар «по умолчанию» и подставляет его при повторном заходе", async () => {
+    const first = renderPage();
+    await waitFor(() => expect(screen.getByText("Anna")).toBeInTheDocument());
+    fireEvent.click(screen.getByText("Anna"));
+    fireEvent.click(screen.getByRole("button", { name: /Сделать по умолчанию/ }));
+    first.unmount();
+
+    // Новый заход — аватар уже выбран из дефолта.
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Выбранный аватар")).toBeInTheDocument());
+    expect(screen.getByRole("button", { name: /По умолчанию/ })).toBeInTheDocument();
   });
 
   it("запускает Video Agent из текста", async () => {
