@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpDown, ArrowUpRight, Filter, ImageDown, Info, Loader2, RefreshCw, Search } from "lucide-react";
+import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpDown, ArrowUpRight, Filter, ImageDown, Info, Loader2, RefreshCw, Search, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -23,6 +23,8 @@ import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { LEADS_LITE_QUERY_KEY, useLeadsLite } from "@/hooks/useLeadsLite";
 import { supabase } from "@/integrations/supabase/client";
+import { formatMetaSyncMessages, syncMetaFull } from "@/lib/metaSync";
+import { supabaseProjectId } from "@/lib/supabaseConfig";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import {
   buildAdToCabinetMap,
@@ -91,6 +93,7 @@ const CreativeFunnel = () => {
   const [orphanLeads, setOrphanLeads] = useState(0);
   const [refreshingPosters, setRefreshingPosters] = useState(false);
   const [posterProgress, setPosterProgress] = useState({ done: 0, total: 0 });
+  const [syncingMeta, setSyncingMeta] = useState(false);
   const { activeId: projectId } = useProjectsStore();
   const { cabinets } = usePersonalCabinets();
   const queryClient = useQueryClient();
@@ -136,6 +139,24 @@ const CreativeFunnel = () => {
   const refreshData = () => {
     void queryClient.invalidateQueries({ queryKey: [META_STRUCTURE_QUERY_KEY] });
     void queryClient.invalidateQueries({ queryKey: [LEADS_LITE_QUERY_KEY, projectId] });
+  };
+
+  const runMetaSync = async () => {
+    setSyncingMeta(true);
+    try {
+      const result = await syncMetaFull({
+        since: sinceYmd,
+        until: ymd(range.to),
+        ...(cabinetId !== "all" ? { cabinet_id: cabinetId } : {}),
+      });
+      const messages = formatMetaSyncMessages(result);
+      if (messages.success) toast.success(messages.success);
+      if (messages.error) toast.error(messages.error);
+      for (const w of messages.warnings) toast.warning(w);
+      refreshData();
+    } finally {
+      setSyncingMeta(false);
+    }
   };
 
   const runBackfill = async () => {
@@ -261,6 +282,25 @@ const CreativeFunnel = () => {
             <Button
               variant="outline"
               className="h-10 rounded-xl border-border/60"
+              onClick={() => void runMetaSync()}
+              disabled={syncingMeta || loading}
+              title="Подтянуть расходы и креативы из Meta за выбранный период"
+            >
+              {syncingMeta ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Meta…
+                </>
+              ) : (
+                <>
+                  <Zap className="mr-2 h-4 w-4" />
+                  Синхронизация Meta
+                </>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              className="h-10 rounded-xl border-border/60"
               onClick={() => void refreshAllPosters()}
               disabled={refreshingPosters || loading || scopedRows.length === 0}
               title="Перетянуть свежие превью из Meta для всех креативов"
@@ -316,7 +356,26 @@ const CreativeFunnel = () => {
         По креативам в таблице: CRM-лиды {fmtNum(attributedCrmLeads)}
         {orphanLeads > 0 ? ` · без креатива ${fmtNum(orphanLeads)}` : ""}
         {cabinetId !== "all" ? " · выбран один кабинет" : ""}
+        {" · "}
+        БД <code className="text-[10px]">{supabaseProjectId}</code>
       </div>
+
+      {!loading && scopedRows.length > 0 && tableTotals.spend === 0 && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
+          <p>
+            <span className="font-medium">Расход 0 ₸</span>
+            <span className="text-muted-foreground">
+              {" "}
+              — в таблице <code className="text-xs">meta_creative_daily</code> нет данных за период.
+              Превью Lovable может показывать другую базу, пока не завершена миграция на szfg.
+            </span>
+          </p>
+          <Button size="sm" className="rounded-xl" onClick={() => void runMetaSync()} disabled={syncingMeta}>
+            {syncingMeta ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
+            Синхронизация Meta
+          </Button>
+        </div>
+      )}
 
       {orphanLeads > 0 && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-warning/40 bg-warning/5 px-4 py-3">
