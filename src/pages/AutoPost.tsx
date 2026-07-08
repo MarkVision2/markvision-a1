@@ -28,8 +28,12 @@ const CLIENT_KEY = clientSupabasePublishableKey;
 const BUCKET = "autopost";
 // Free-план Supabase жёстко ограничивает Storage 50 МБ на файл вне зависимости
 // от bucket-level file_size_limit — превышение даёт нечитаемую ошибку
-// "The object exceeded the maximum allowed size". Проверяем на клиенте заранее.
-const MAX_FILE_MB = 50;
+// "The object exceeded the maximum allowed size". Файлы до этого порога грузим
+// напрямую в Supabase (как раньше); больше — через presigned URL в Cloudflare
+// R2 (r2-presign-upload), у которого такого лимита нет.
+const SUPABASE_DIRECT_MAX_MB = 50;
+const SUPABASE_DIRECT_MAX_BYTES = SUPABASE_DIRECT_MAX_MB * 1024 * 1024;
+const MAX_FILE_MB = 500;
 const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
 const WD_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 const WD_FROM_DOW = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
@@ -106,17 +110,39 @@ async function schedulerApi<T = unknown>(action: string, payload: Record<string,
   if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
   return j as T;
 }
+async function uploadToR2(file: File): Promise<string> {
+  if (!CLIENT_URL) throw new Error("VITE_CLIENT_SUPABASE_URL не задан");
+  const res = await fetch(`${CLIENT_URL}/functions/v1/r2-presign-upload`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-app-key": CLIENT_KEY },
+    body: JSON.stringify({ filename: file.name, contentType: file.type || "application/octet-stream", size: file.size }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || j.error) throw new Error(j.error || `Не удалось получить ссылку для загрузки (HTTP ${res.status})`);
+  const put = await fetch(j.uploadUrl as string, {
+    method: "PUT",
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+    body: file,
+  });
+  if (!put.ok) throw new Error(`Загрузка в хранилище не удалась (HTTP ${put.status})`);
+  return j.publicUrl as string;
+}
+
 async function uploadToBucket(file: File): Promise<string> {
-  if (!clientConfigSupabase) throw new Error("Хранилище не настроено (VITE_CLIENT_SUPABASE_*)");
   if (file.size > MAX_FILE_BYTES) {
     throw new Error(`Файл ${(file.size / 1024 / 1024).toFixed(0)} МБ — максимум ${MAX_FILE_MB} МБ. Сожмите видео или уменьшите разрешение/битрейт.`);
   }
+  // Файлы > 50 МБ Supabase Storage на Free-плане не принимает — грузим через R2.
+  if (file.size > SUPABASE_DIRECT_MAX_BYTES) return uploadToR2(file);
+  if (!clientConfigSupabase) throw new Error("Хранилище не настроено (VITE_CLIENT_SUPABASE_*)");
   const ext = (file.name.split(".").pop() || "bin").toLowerCase();
   const path = `posts/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
   const { error } = await clientConfigSupabase.storage.from(BUCKET).upload(path, file, { contentType: file.type || undefined, upsert: false });
   if (error) {
     if (/exceeded the maximum allowed size/i.test(error.message)) {
-      throw new Error(`Файл больше ${MAX_FILE_MB} МБ — это лимит хранилища. Сожмите видео или уменьшите разрешение/битрейт.`);
+      // Порог 50 МБ уже проверен выше, но на всякий случай — реальная платформенная
+      // ошибка означает то же самое: пробуем через R2 вместо провала загрузки.
+      return uploadToR2(file);
     }
     throw new Error(`Загрузка не удалась: ${error.message}`);
   }
@@ -666,7 +692,7 @@ function AddDialog({ day, hourReach, bestHour, onClose, onDone }: { day: string;
     const tooBig = a.find((f) => f.size > MAX_FILE_BYTES);
     if (tooBig) {
       toast.error(`Файл «${tooBig.name}» слишком большой (${(tooBig.size / 1024 / 1024).toFixed(0)} МБ)`, {
-        description: `Максимум ${MAX_FILE_MB} МБ на файл — лимит тарифа Supabase. Сожмите видео или уменьшите разрешение/битрейт.`,
+        description: `Максимум ${MAX_FILE_MB} МБ на файл. Сожмите видео или уменьшите разрешение/битрейт.`,
       });
       return;
     }
