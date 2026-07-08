@@ -384,7 +384,7 @@ export async function fetchAgentStatus(sessionId: string): Promise<AgentStatus> 
 /** Опрос статуса рендера. */
 export async function fetchVideoStatus(videoId: string): Promise<HeygenVideoStatus> {
   const res = await call<{ data?: HeygenVideoStatus }>({ action: "status", video_id: videoId });
-  const d = res.data ?? {};
+  const d = (res.data ?? {}) as Partial<HeygenVideoStatus> & { duration?: number };
   return {
     status: d.status ?? "pending",
     video_url: d.video_url,
