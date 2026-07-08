@@ -226,7 +226,8 @@ export default function Settings() {
 
       if (cancelled) return;
 
-      const telephonyConnected = !!(telephonyRes.data?.sipuni_enabled && telephonyRes.data?.sipuni_token_present);
+      const telephonyData = telephonyRes.data as { sipuni_enabled?: boolean; sipuni_token_present?: boolean } | null;
+      const telephonyConnected = !!(telephonyData?.sipuni_enabled && telephonyData?.sipuni_token_present);
       const waConnected = !!(waRes.data?.id_instance && waRes.data?.api_token_present && waRes.data?.connected);
       const siteConnected = !!active?.intakeToken;
       const igConnected = !!(igRes.data?.ig_user_id && igRes.data?.active);
