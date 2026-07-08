@@ -1,365 +1,375 @@
-import { useMemo, useState } from "react";
-import { Camera, Copy, ExternalLink, Hash, Instagram, Loader2, Plus } from "lucide-react";
-import { Link, useSearchParams } from "react-router-dom";
-import { toast } from "sonner";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import {
+  Area,
+  AreaChart,
+  ResponsiveContainer,
+} from "recharts";
+import {
+  ArrowDown,
+  ArrowRight,
+  ArrowUp,
+  BarChart3,
+  Eye,
+  ExternalLink,
+  Factory,
+  Film,
+  Heart,
+  Images,
+  ImageIcon,
+  Loader2,
+  RefreshCw,
+  TrendingDown,
+  TrendingUp,
+  Trophy,
+  Users,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
-import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPicker";
-import { InstagramOrganicFunnel } from "@/components/dashboard/InstagramOrganicFunnel";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { InstagramAnalyticsPanel } from "@/components/content/InstagramAnalyticsPanel";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  useCodewordLeads,
-  useCodewordStats,
-  useInstagramCodewords,
-  useInstagramOrganic,
-} from "@/hooks/useInstagramOrganic";
-import type { ReportPeriodRange } from "@/hooks/useReportData";
-import { ContentTrendChart } from "@/pages/content-analytics/ContentTrendChart";
+import { fmtNum } from "@/lib/format";
+import { clientSupabaseUrl } from "@/lib/supabaseConfig";
 import { cn } from "@/lib/utils";
-import { igOrganicBotLink } from "@/lib/igOrganicLinks";
+import { ContentPerformanceChart, type TrendPoint } from "@/pages/content-analytics/ContentPerformanceChart";
 
-const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
-const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
+const CLIENT_URL = clientSupabaseUrl;
+
+interface CAKpis {
+  posts: number; reach: number; views: number; engagement: number;
+  saves: number; shares: number; er: number;
+  reach_prev: number; engagement_prev: number; posts_prev: number; er_prev: number;
+}
+interface CAFormat { media_type: string; posts: number; avg_reach: number; avg_views: number; engagement: number; er: number; }
+interface CAPost {
+  ig_media_id: string; caption: string; permalink: string | null; media_type: string;
+  thumbnail_url: string | null; posted_at: string | null; reach: number; views: number; engagement: number; er: number;
+}
+interface CAFollowers { now: number | null; growth: number; series: { date: string; followers: number; net: number | null }[]; }
+interface CAProduction { generated: number; published: number; generated_all: number; }
+interface CAResp {
+  from: string; to: string; kpis: CAKpis; trend: TrendPoint[];
+  by_format: CAFormat[]; top_posts: CAPost[]; bottom_posts: CAPost[];
+  followers: CAFollowers; production: CAProduction;
+}
+
+const FORMAT: Record<string, { label: string; color: string; icon: LucideIcon }> = {
+  CAROUSEL_ALBUM: { label: "Карусель", color: "#6366f1", icon: Images },
+  IMAGE: { label: "Фото", color: "#f59e0b", icon: ImageIcon },
+  VIDEO: { label: "Reels", color: "#ec4899", icon: Film },
+};
+const fmtOf = (t: string) => FORMAT[t] ?? { label: t, color: "hsl(var(--muted-foreground))", icon: ImageIcon };
+
+const ymd = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+const PERIODS: { id: string; label: string; from: () => string }[] = [
+  { id: "90d", label: "90 дней", from: () => ymd(new Date(Date.now() - 90 * 864e5)) },
+  { id: "12m", label: "12 месяцев", from: () => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return ymd(d); } },
+  { id: "all", label: "Всё время", from: () => "2020-01-01" },
+];
+
+const fmtDate = (s: string | null) =>
+  s ? new Date(s).toLocaleDateString("ru-RU", { day: "2-digit", month: "short" }) : "—";
+
+async function fetchAnalytics(from: string, to: string): Promise<CAResp> {
+  if (!CLIENT_URL) throw new Error("VITE_CLIENT_SUPABASE_URL не задан — раздел недоступен");
+  const r = await fetch(`${CLIENT_URL}/functions/v1/content-analytics`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from, to }),
+  });
+  if (!r.ok) throw new Error(`content-analytics: HTTP ${r.status}`);
+  return (await r.json()) as CAResp;
+}
+
+function Delta({ cur, prev, suffix }: { cur: number; prev: number; suffix?: string }) {
+  if (!prev) return null;
+  const diff = ((cur - prev) / prev) * 100;
+  if (!isFinite(diff) || Math.abs(diff) < 0.5) return <span className="text-[11px] text-muted-foreground">≈ прошл. период</span>;
+  const up = diff > 0;
+  return (
+    <span className={cn("inline-flex items-center gap-0.5 text-[11px] font-medium", up ? "text-success" : "text-destructive")}>
+      {up ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+      {Math.abs(diff).toFixed(0)}%{suffix}
+    </span>
+  );
+}
+
+function KpiCard({ icon: Icon, label, value, sub, delta }: {
+  icon: LucideIcon; label: string; value: string; sub?: string; delta?: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+      <div className="flex items-center gap-2 text-muted-foreground">
+        <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">
+          <Icon className="h-4 w-4" />
+        </span>
+        <span className="text-xs font-medium">{label}</span>
+      </div>
+      <div className="mt-2 text-2xl font-bold tabular-nums">{value}</div>
+      <div className="mt-0.5 flex items-center gap-2">
+        {sub && <span className="text-xs text-muted-foreground">{sub}</span>}
+        {delta}
+      </div>
+    </div>
+  );
+}
+
+function PostRow({ p, rank }: { p: CAPost; rank: number }) {
+  const f = fmtOf(p.media_type);
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/20">
+      <span className="w-4 shrink-0 text-center text-xs font-bold text-muted-foreground">{rank}</span>
+      <div className="h-11 w-11 shrink-0 overflow-hidden rounded-lg bg-secondary/50">
+        {p.thumbnail_url ? (
+          <img src={p.thumbnail_url} alt="" className="h-full w-full object-cover" loading="lazy" />
+        ) : (
+          <div className="grid h-full w-full place-items-center text-muted-foreground"><ImageIcon className="h-4 w-4" /></div>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className="rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide" style={{ background: `${f.color}22`, color: f.color }}>
+            {f.label}
+          </span>
+          <span className="text-[11px] text-muted-foreground">{fmtDate(p.posted_at)}</span>
+        </div>
+        <p className="mt-0.5 truncate text-sm">{p.caption || "—"}</p>
+      </div>
+      <div className="shrink-0 text-right">
+        <div className="text-sm font-semibold tabular-nums">ER {p.er}%</div>
+        <div className="text-[11px] text-muted-foreground tabular-nums">{fmtNum(p.reach)} охват</div>
+      </div>
+      {p.permalink && (
+        <a href={p.permalink} target="_blank" rel="noopener noreferrer" className="shrink-0 text-muted-foreground hover:text-foreground">
+          <ExternalLink className="h-4 w-4" />
+        </a>
+      )}
+    </div>
+  );
+}
 
 export default function ContentAnalytics() {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = searchParams.get("tab") === "instagram" ? "instagram" : "codewords";
-  const setActiveTab = (tab: string) => {
-    setSearchParams(tab === "instagram" ? { tab: "instagram" } : {}, { replace: true });
-  };
+  const [periodId, setPeriodId] = useState("12m");
+  const [data, setData] = useState<CAResp | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const [range, setRange] = useState<ReportPeriodRange>(() => currentMonthRange());
-  const { events, funnel, loading, error } = useInstagramOrganic(range);
-  const { stats, loading: statsLoading } = useCodewordStats();
-  const { items, add, loading: wordsLoading } = useInstagramCodewords();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [detailCodewordId, setDetailCodewordId] = useState<string | null>(null);
-  const { rows: leadRows, loading: leadsLoading } = useCodewordLeads(detailCodewordId);
-
-  const [draft, setDraft] = useState({
-    codeword: "",
-    reelUrl: "",
-    targetUrl: "",
-    thumbnailUrl: "",
-    caption: "",
-  });
-  const [saving, setSaving] = useState(false);
-
-  const totals = useMemo(() => {
-    return stats.reduce(
-      (acc, s) => ({
-        sales: acc.sales + s.sales,
-        revenue: acc.revenue + s.revenue,
-      }),
-      { sales: 0, revenue: 0 },
-    );
-  }, [stats]);
-
-  const handleAdd = async () => {
-    if (!draft.codeword.trim()) {
-      toast.error("Введите код-слово");
-      return;
-    }
-    if (!draft.targetUrl.trim()) {
-      toast.error("Укажите Target URL — страницу оффера");
-      return;
-    }
-    setSaving(true);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
-      await add({
-        codeword: draft.codeword,
-        shortId: null,
-        reelId: null,
-        reelUrl: draft.reelUrl || null,
-        thumbnailUrl: draft.thumbnailUrl || null,
-        caption: draft.caption || null,
-        publishedAt: null,
-        targetUrl: draft.targetUrl,
-        active: true,
-      });
-      setDraft({ codeword: "", reelUrl: "", targetUrl: "", thumbnailUrl: "", caption: "" });
-      setDialogOpen(false);
-      toast.success("Код-слово добавлено");
+      const p = PERIODS.find((x) => x.id === periodId)!;
+      const res = await fetchAnalytics(p.from(), ymd(new Date()));
+      setData(res);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Не удалось сохранить");
+      setError(e instanceof Error ? e.message : "Не удалось загрузить аналитику");
     } finally {
-      setSaving(false);
+      setLoading(false);
     }
-  };
+  }, [periodId]);
 
-  const copyShort = (shortId: string | null, codeword: string) => {
-    if (!shortId) {
-      toast.error("short_id появится после применения миграции в Supabase");
-      return;
-    }
-    void navigator.clipboard.writeText(igOrganicBotLink(shortId));
-    toast.success(`Ссылка для бота (${codeword}) скопирована`);
-  };
+  useEffect(() => { void load(); }, [load]);
 
-  const selectedStat = stats.find((s) => s.codewordId === detailCodewordId) ?? null;
+  const k = data?.kpis;
+  const bestFormat = useMemo(() => {
+    if (!data?.by_format?.length) return null;
+    return [...data.by_format].sort((a, b) => b.er - a.er)[0];
+  }, [data]);
 
   return (
     <PageContainer>
       <PageHeader
-        icon={Hash}
+        icon={BarChart3}
         title="Контент-аналитика"
         description={
           <span>
-            Код-слова в DM и статистика Instagram Business: охват, Reels, аудитория и продажи в CRM.
-            {" "}
+            Как в целом растёт органический контент: охват, вовлечённость, форматы, аудитория.{" "}
             <Link to="/marketing/content-center" className="text-primary hover:underline">
-              Контент-центр →
+              Разбор по постам — в Контент-центре →
             </Link>
           </span>
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <PeriodPicker range={range} onChange={setRange} />
-            {activeTab === "codewords" && (
-              <Button className="gap-2" onClick={() => setDialogOpen(true)}>
-                <Plus className="h-4 w-4" />
-                Добавить код-слово
-              </Button>
-            )}
+            <div className="inline-flex items-center gap-1 rounded-2xl border border-border/60 bg-card/60 p-1">
+              {PERIODS.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => setPeriodId(p.id)}
+                  className={cn(
+                    "rounded-xl px-3 py-1.5 text-xs font-medium transition",
+                    periodId === p.id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <Button variant="outline" size="icon" className="h-10 w-10 rounded-2xl" onClick={() => void load()} disabled={loading}>
+              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            </Button>
           </div>
         }
       />
 
-      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-        <TabsList className="mb-6 grid h-11 w-full max-w-lg grid-cols-2">
-          <TabsTrigger value="codewords" className="gap-2">
-            <Hash className="h-4 w-4" />
-            Код-слова
-          </TabsTrigger>
-          <TabsTrigger value="instagram" className="gap-2">
-            <Instagram className="h-4 w-4" />
-            Instagram аналитика
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="codewords">
       {error && (
         <div className="mb-4 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
           {error}
         </div>
       )}
 
-      <div className="mb-6 grid gap-4 lg:grid-cols-[1fr_280px]">
-        <div className={cn(loading && "opacity-60 pointer-events-none")}>
-          <InstagramOrganicFunnel funnel={funnel} topCodewords={stats} />
-        </div>
-        <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-            Продажи CRM (период)
+      {loading && !data ? (
+        <div className="flex justify-center py-24 text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /></div>
+      ) : !data ? null : (
+        <div className={cn("space-y-6", loading && "opacity-60")}>
+          {/* KPI */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <KpiCard icon={BarChart3} label="Постов" value={fmtNum(k!.posts)}
+              delta={<Delta cur={k!.posts} prev={k!.posts_prev} />} />
+            <KpiCard icon={Eye} label="Охват" value={fmtNum(k!.reach)}
+              delta={<Delta cur={k!.reach} prev={k!.reach_prev} />} />
+            <KpiCard icon={Film} label="Просмотры" value={fmtNum(k!.views)} />
+            <KpiCard icon={Heart} label="Вовлечённость" value={`${k!.er}%`} sub={`${fmtNum(k!.engagement)} реакций`}
+              delta={<Delta cur={k!.er} prev={k!.er_prev} suffix=" п.п." />} />
+            <KpiCard icon={Users} label="Подписчики" value={data.followers.now != null ? fmtNum(data.followers.now) : "—"}
+              delta={data.followers.growth ? (
+                <span className={cn("inline-flex items-center gap-0.5 text-[11px] font-medium", data.followers.growth >= 0 ? "text-success" : "text-destructive")}>
+                  {data.followers.growth >= 0 ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                  {Math.abs(data.followers.growth)} за период
+                </span>
+              ) : undefined} />
           </div>
-          <div className="mt-2 text-2xl font-bold tabular-nums">{fmtNum(totals.sales)}</div>
-          <div className="text-xs text-muted-foreground">оплаченных лидов</div>
-          <div className="mt-3 text-lg font-bold tabular-nums text-success">{fmtTenge(totals.revenue)}</div>
-          <div className="text-xs text-muted-foreground">выручка</div>
-          <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
-            Продажи считаются по лидам из событий <code className="rounded bg-secondary px-1">lead</code> с{" "}
-            <code className="rounded bg-secondary px-1">paid=true</code> в CRM.
-          </p>
-        </div>
-      </div>
 
-      <div className="mb-6 rounded-2xl border border-border/60 bg-card/60 p-4">
-        <div className="mb-3 text-sm font-semibold">Динамика за период</div>
-        <ContentTrendChart events={events} />
-      </div>
+          {/* Trend */}
+          <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+            <div className="mb-1 flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Динамика контента</h2>
+              <span className="text-xs text-muted-foreground">охват · просмотры · ER по неделям</span>
+            </div>
+            <ContentPerformanceChart data={data.trend} />
+          </div>
 
-      <div className="rounded-2xl border border-border/60 bg-card/60 overflow-hidden">
-        <div className="flex items-center justify-between border-b border-border/40 px-4 py-3">
-          <h2 className="text-sm font-semibold">Код-слова и воронка</h2>
-          <span className="text-xs text-muted-foreground">{stats.length} шт.</span>
-        </div>
-        {statsLoading || wordsLoading ? (
-          <div className="flex justify-center py-12 text-muted-foreground">
-            <Loader2 className="h-5 w-5 animate-spin" />
-          </div>
-        ) : stats.length === 0 ? (
-          <div className="py-12 text-center text-sm text-muted-foreground">
-            <Camera className="mx-auto mb-2 h-6 w-6 text-pink-500" />
-            Создайте первое код-слово — затем настройте n8n на{" "}
-            <Link to="/settings" className="text-primary underline-offset-2 hover:underline">
-              webhook intake
-            </Link>
-            .
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
-              <thead>
-                <tr className="border-b border-border/40 text-left text-[10px] uppercase tracking-wider text-muted-foreground">
-                  <th className="px-4 py-2">Код-слово</th>
-                  <th className="px-4 py-2 text-right">DM</th>
-                  <th className="px-4 py-2 text-right">Клики</th>
-                  <th className="px-4 py-2 text-right">Заявки</th>
-                  <th className="px-4 py-2 text-right">Продажи</th>
-                  <th className="px-4 py-2 text-right">Выручка</th>
-                  <th className="px-4 py-2" />
-                </tr>
-              </thead>
-              <tbody>
-                {stats.map((s) => (
-                  <tr
-                    key={s.codewordId}
-                    className="border-b border-border/20 hover:bg-secondary/20"
-                  >
-                    <td className="px-4 py-3">
-                      <div className="font-mono font-semibold">«{s.codeword}»</div>
-                      {s.reelUrl && (
-                        <a
-                          href={s.reelUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="mt-0.5 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:underline"
-                        >
-                          Reel <ExternalLink className="h-3 w-3" />
-                        </a>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums">{fmtNum(s.codewordDms)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{fmtNum(s.linkClicks)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{fmtNum(s.leads)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{fmtNum(s.sales)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{fmtTenge(s.revenue)}</td>
-                    <td className="px-4 py-3">
-                      <div className="flex justify-end gap-1">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="h-8 gap-1 text-xs"
-                          onClick={() => copyShort(s.shortId, s.codeword)}
-                        >
-                          <Copy className="h-3 w-3" />
-                          Ссылка
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-8 text-xs"
-                          onClick={() => setDetailCodewordId(s.codewordId)}
-                        >
-                          Лиды
-                        </Button>
+          <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+            {/* Formats */}
+            <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="text-sm font-semibold">Что заходит лучше — по форматам</h2>
+                {bestFormat && (
+                  <span className="text-xs text-muted-foreground">
+                    лидер: <span className="font-semibold text-foreground">{fmtOf(bestFormat.media_type).label}</span>
+                  </span>
+                )}
+              </div>
+              <div className="space-y-2">
+                {data.by_format.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">Нет данных</p>
+                ) : (
+                  data.by_format.map((f) => {
+                    const meta = fmtOf(f.media_type);
+                    const maxEr = Math.max(...data.by_format.map((x) => x.er), 1);
+                    return (
+                      <div key={f.media_type} className="rounded-xl border border-border/50 p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="grid h-7 w-7 place-items-center rounded-lg" style={{ background: `${meta.color}22`, color: meta.color }}>
+                              <meta.icon className="h-4 w-4" />
+                            </span>
+                            <span className="text-sm font-medium">{meta.label}</span>
+                            <span className="text-xs text-muted-foreground">· {f.posts} шт.</span>
+                          </div>
+                          <div className="text-right">
+                            <div className="text-sm font-semibold tabular-nums">ER {f.er}%</div>
+                            <div className="text-[11px] text-muted-foreground tabular-nums">ср. охват {fmtNum(f.avg_reach)}</div>
+                          </div>
+                        </div>
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-secondary">
+                          <div className="h-full rounded-full" style={{ width: `${(f.er / maxEr) * 100}%`, background: meta.color }} />
+                        </div>
                       </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
 
-        </TabsContent>
-
-        <TabsContent value="instagram" className="mt-0 focus-visible:outline-none">
-          <InstagramAnalyticsPanel range={range} />
-        </TabsContent>
-      </Tabs>
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Новое код-слово</DialogTitle>
-          </DialogHeader>
-          <div className="grid gap-3">
-            <div className="space-y-1.5">
-              <Label>Код-слово (как пишут в DM)</Label>
-              <Input
-                placeholder="smile"
-                value={draft.codeword}
-                onChange={(e) => setDraft((d) => ({ ...d, codeword: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Reel URL</Label>
-              <Input
-                placeholder="https://www.instagram.com/reel/..."
-                value={draft.reelUrl}
-                onChange={(e) => setDraft((d) => ({ ...d, reelUrl: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Target URL (лендинг оффера)</Label>
-              <Input
-                placeholder="https://landing.example/offer"
-                value={draft.targetUrl}
-                onChange={(e) => setDraft((d) => ({ ...d, targetUrl: e.target.value }))}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Превью (URL картинки)</Label>
-              <Input
-                value={draft.thumbnailUrl}
-                onChange={(e) => setDraft((d) => ({ ...d, thumbnailUrl: e.target.value }))}
-              />
-            </div>
-            <Button onClick={handleAdd} disabled={saving} className="mt-2 gap-2">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-              Сохранить
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!detailCodewordId} onOpenChange={(v) => !v && setDetailCodewordId(null)}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>Лиды — «{selectedStat?.codeword ?? ""}»</DialogTitle>
-          </DialogHeader>
-          {leadsLoading ? (
-            <div className="flex justify-center py-8">
-              <Loader2 className="h-5 w-5 animate-spin" />
-            </div>
-          ) : leadRows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Пока нет заявок по этому код-слову.</p>
-          ) : (
-            <ul className="max-h-80 space-y-2 overflow-y-auto">
-              {leadRows.map((r) => (
-                <li
-                  key={r.leadId}
-                  className="flex items-center justify-between rounded-lg border border-border/50 px-3 py-2 text-sm"
-                >
+            {/* Followers + production */}
+            <div className="space-y-6">
+              <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <Users className="h-4 w-4 text-primary" /> Аудитория
+                </div>
+                <div className="mt-3 flex items-end justify-between">
                   <div>
-                    <div className="font-medium">{r.name}</div>
-                    <div className="text-xs text-muted-foreground">{r.phone}</div>
+                    <div className="text-2xl font-bold tabular-nums">{data.followers.now != null ? fmtNum(data.followers.now) : "—"}</div>
+                    <div className="text-xs text-muted-foreground">подписчиков сейчас</div>
                   </div>
-                  <div className="text-right text-xs">
-                    {r.paid ? (
-                      <span className="font-semibold text-success">{fmtTenge(r.amount)}</span>
-                    ) : (
-                      <span className="text-muted-foreground">не оплачен</span>
-                    )}
+                  <div className={cn("flex items-center gap-1 text-sm font-semibold", data.followers.growth >= 0 ? "text-success" : "text-destructive")}>
+                    {data.followers.growth >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+                    {data.followers.growth >= 0 ? "+" : ""}{data.followers.growth}
                   </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </DialogContent>
-      </Dialog>
+                </div>
+                {data.followers.series.length > 1 && (
+                  <div className="mt-3 h-12 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={data.followers.series} margin={{ top: 2, right: 0, left: 0, bottom: 0 }}>
+                        <Area type="monotone" dataKey="followers" stroke="hsl(var(--primary))" fill="hsl(var(--primary) / 0.15)" strokeWidth={2} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+              </div>
 
-      {items.length > 0 && (
-        <p className="mt-4 text-center text-[11px] text-muted-foreground">
-          Шаблон ответа бота: «Спасибо! Лови ссылку:» + короткая ссылка из колонки «Ссылка».
-          Полная настройка — в{" "}
-          <Link to="/settings" className="underline-offset-2 hover:underline">
-            Настройки → Instagram organic
-          </Link>
-          .
-        </p>
+              <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+                <div className="flex items-center gap-2 text-sm font-semibold">
+                  <Factory className="h-4 w-4 text-primary" /> Производство → публикация
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-2">
+                  <div className="flex-1 rounded-xl bg-secondary/40 p-3 text-center">
+                    <div className="text-xl font-bold tabular-nums">{fmtNum(data.production.generated)}</div>
+                    <div className="text-[11px] text-muted-foreground">креативов на Заводе</div>
+                  </div>
+                  <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  <div className="flex-1 rounded-xl bg-primary/10 p-3 text-center">
+                    <div className="text-xl font-bold tabular-nums text-primary">{fmtNum(data.production.published)}</div>
+                    <div className="text-[11px] text-muted-foreground">постов вышло</div>
+                  </div>
+                </div>
+                <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
+                  Сколько сгенерировано на Контент-заводе и сколько постов реально опубликовано за период.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Top / bottom posts */}
+          <div className="grid gap-6 lg:grid-cols-2">
+            <div className="overflow-hidden rounded-2xl border border-border/60 bg-card/60">
+              <div className="flex items-center gap-2 border-b border-border/40 px-4 py-3">
+                <Trophy className="h-4 w-4 text-amber-500" />
+                <h2 className="text-sm font-semibold">Лучшие посты</h2>
+              </div>
+              <div className="divide-y divide-border/20">
+                {data.top_posts.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground">Нет данных</p>
+                ) : data.top_posts.map((p, i) => <PostRow key={p.ig_media_id} p={p} rank={i + 1} />)}
+              </div>
+            </div>
+            <div className="overflow-hidden rounded-2xl border border-border/60 bg-card/60">
+              <div className="flex items-center gap-2 border-b border-border/40 px-4 py-3">
+                <TrendingDown className="h-4 w-4 text-muted-foreground" />
+                <h2 className="text-sm font-semibold">Слабые посты</h2>
+              </div>
+              <div className="divide-y divide-border/20">
+                {data.bottom_posts.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground">Нет данных</p>
+                ) : data.bottom_posts.map((p, i) => <PostRow key={p.ig_media_id} p={p} rank={i + 1} />)}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </PageContainer>
   );
