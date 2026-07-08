@@ -1,17 +1,38 @@
-# Как выкатить обновления (без Publish)
+# Как выкатить обновления
 
-Код: **MarkVision2/markvision-a1**, ветка **main**.
+Код: **MarkVision2/markvision-a1**, ветка **main**.  
+Репозиторий: https://github.com/MarkVision2/markvision-a1
 
-## Publish в Lovable может отсутствовать — это нормально
+## Два сайта — один GitHub, разные сборки
 
-Если в Lovable подключён **GitHub**, фронт выкатывается **автоматически** из `main`. Кнопки Publish / Update может не быть.
+```
+git push origin main
+        │
+        ├─► Vercel (markvision-ai-s-projects) ──► www.markvision.kz   ← ОСНОВНОЙ ДОМЕН
+        │
+        └─► Lovable Git sync ──► markvision-a1.lovable.app          ← превью (отстаёт на 2–10 мин)
+```
 
-## Что делать
+**Lovable НЕ деплоит на markvision.kz.** Домен обновляется только из GitHub → Vercel.  
+Кнопка **Publish** в редакторе Lovable не обязательна, если Git подключён.
 
-1. Смержите PR / push в **main** на GitHub.
-2. Lovable → **Project settings → Git** — Connected, ветка `main`. Подождите 2–5 минут.
-3. Откройте https://markvision-a1.lovable.app/ → **Ctrl+Shift+R**.
-4. В приложении: **Настройки → Обновления** — сверьте коммит с GitHub `main`.
+## Чеклист после push в main
+
+1. GitHub `main` — последний коммит (не `[lovable-stamp]`).
+2. **www.markvision.kz/lovable-sync.json** — тот же `git_sha`, что в GitHub.
+3. Lovable → **Settings → Git** — Connected, ветка `main`, подождать синк.
+4. **Settings → Environment** — Supabase **szfg** (как ниже), иначе в редакторе другие цифры, чем на домене.
+5. `Cmd+Shift+R` на https://www.markvision.kz
+
+Проверка версии в приложении: **Настройки → Обновления**.
+
+## Publish в Lovable
+
+Если Git Connected — Publish не нужен для домена. Если синк завис:
+
+- Сохраните или отмените несохранённые правки в редакторе
+- Settings → Git → Pull / Sync from GitHub
+- Подождите 5–10 минут
 
 ## Supabase (не Lovable)
 

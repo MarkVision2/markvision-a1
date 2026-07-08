@@ -33,7 +33,7 @@ jobs:
               git_sha_full: $full,
               updated_at: $ts,
               label: $label,
-              publish_hint: "GitHub main → Vercel (www.markvision.kz) + Lovable preview → Ctrl+Shift+R"
+              publish_hint: "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
             }' > public/lovable-sync.json
 
       - name: Commit stamp if changed
