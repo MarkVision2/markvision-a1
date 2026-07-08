@@ -1,7 +1,7 @@
 {
-  "git_sha": "1a8e358",
-  "git_sha_full": "1a8e35809fb5195c0d9f96bdf271e33ee7611ff0",
-  "updated_at": "2026-07-08T12:09:34+05:00",
-  "label": "fix(creatives): Meta sync button and DB hint on creative funnel",
+  "git_sha": "24e9575",
+  "git_sha_full": "24e95758e4233e3b1f569fea84bac9bf0719df0d",
+  "updated_at": "2026-07-08T12:36:11+05:00",
+  "label": "fix(creatives): show CDI spend on funnel when creative daily is empty",
   "publish_hint": "GitHub main → Vercel (www.markvision.kz) + Lovable preview → Ctrl+Shift+R"
 }
