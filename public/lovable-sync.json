@@ -1,7 +1,7 @@
 {
-  "git_sha": "17273c7",
-  "git_sha_full": "17273c75c9c986f13e9bde1ced379df1b4ebc828",
-  "updated_at": "2026-07-08T10:52:51+05:00",
-  "label": "fix(metrics): load spend from all project cabinets by cabinet_id",
-  "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
+  "git_sha": "071c220",
+  "git_sha_full": "071c2204d97f1b0919ab3330d6158b73ff555445",
+  "updated_at": "2026-07-08T11:57:50+05:00",
+  "label": "fix(deploy): point live site links to www.markvision.kz",
+  "publish_hint": "GitHub main → Vercel (www.markvision.kz) + Lovable preview → Ctrl+Shift+R"
 }
