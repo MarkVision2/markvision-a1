@@ -20,6 +20,24 @@ function ymd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+/** Carousel albums often have null thumbnail_url — use first image child / media_url. */
+function pickThumbnail(m: any): string | null {
+  if (typeof m?.thumbnail_url === "string" && m.thumbnail_url) return m.thumbnail_url;
+  const children = m?.children?.data;
+  if (Array.isArray(children)) {
+    for (const child of children) {
+      if (typeof child?.thumbnail_url === "string" && child.thumbnail_url) return child.thumbnail_url;
+      if (typeof child?.media_url === "string" && child.media_url && !/\.mp4(\?|$)/i.test(child.media_url)) {
+        return child.media_url;
+      }
+    }
+  }
+  if (typeof m?.media_url === "string" && m.media_url && !/\.mp4(\?|$)/i.test(m.media_url)) {
+    return m.media_url;
+  }
+  return null;
+}
+
 async function syncOne(supa: any, account: any) {
   const token = account.page_access_token;
   const igId = account.ig_user_id;
@@ -49,9 +67,9 @@ async function syncOne(supa: any, account: any) {
     return;
   }
 
-  // 2) Media list (last 100)
+  // 2) Media list (last 100). children needed for carousel preview fallback.
   const mediaRes = await fetch(
-    `${GRAPH}/${igId}/media?fields=id,caption,media_type,media_product_type,permalink,thumbnail_url,media_url,timestamp,like_count,comments_count&limit=100&access_token=${token}`,
+    `${GRAPH}/${igId}/media?fields=id,caption,media_type,media_product_type,permalink,thumbnail_url,media_url,timestamp,like_count,comments_count,children{media_type,media_url,thumbnail_url}&limit=100&access_token=${token}`,
   );
   const mediaJson = await mediaRes.json();
   if (mediaJson.error) {
@@ -60,37 +78,42 @@ async function syncOne(supa: any, account: any) {
   }
   const items = (mediaJson.data ?? []) as any[];
 
-  // 3) Insights per media
+  // 3) Insights per media.
+  // Graph API v22+: impressions/plays are invalid for many IG media types.
+  // Asking for an invalid metric rejects the WHOLE request → zeros in UI.
+  // Use: reach + views (+ interactions). views → plays/impressions for old UI.
   for (const m of items) {
     const isStory = m.media_product_type === "STORY";
-    const isReel = m.media_product_type === "REELS";
-    let metrics: string[];
-    if (isStory) {
-      metrics = ["reach", "impressions", "replies"];
-    } else if (isReel) {
-      metrics = ["reach", "plays", "likes", "comments", "shares", "saved", "total_interactions"];
-    } else {
-      metrics = ["reach", "impressions", "likes", "comments", "shares", "saved", "total_interactions"];
-    }
+    const metrics = isStory
+      ? ["reach", "views", "replies"]
+      : ["reach", "views", "likes", "comments", "shares", "saved", "total_interactions"];
+
     let reach = 0, impressions = 0, plays = 0, shares = 0, saved = 0, totalInter = 0, videoViews = 0;
     try {
       const ir = await fetch(
         `${GRAPH}/${m.id}/insights?metric=${metrics.join(",")}&access_token=${token}`,
       );
       const ij = await ir.json();
-      if (ij.data) {
-        for (const row of ij.data) {
-          const val = row.values?.[0]?.value ?? 0;
-          if (row.name === "reach") reach = val;
-          else if (row.name === "impressions") impressions = val;
-          else if (row.name === "plays") plays = val;
-          else if (row.name === "shares") shares = val;
-          else if (row.name === "saved") saved = val;
-          else if (row.name === "total_interactions") totalInter = val;
-          else if (row.name === "video_views") videoViews = val;
-        }
+      const rows = ij.data ?? (ij.error
+        ? ((await (await fetch(`${GRAPH}/${m.id}/insights?metric=reach&access_token=${token}`)).json()).data ?? [])
+        : []);
+      for (const row of rows) {
+        const val = Number(row.values?.[0]?.value ?? 0);
+        if (row.name === "reach") reach = val;
+        else if (row.name === "views" || row.name === "plays" || row.name === "video_views") {
+          plays = val;
+          videoViews = val;
+          impressions = val;
+        } else if (row.name === "impressions") impressions = val;
+        else if (row.name === "shares") shares = val;
+        else if (row.name === "saved") saved = val;
+        else if (row.name === "total_interactions") totalInter = val;
       }
     } catch (_e) { /* skip */ }
+
+    const likes = Number(m.like_count ?? 0);
+    const comments = Number(m.comments_count ?? 0);
+    if (!totalInter) totalInter = likes + comments + shares + saved;
 
     await supa.from("instagram_media").upsert({
       project_id: account.project_id,
@@ -100,11 +123,11 @@ async function syncOne(supa: any, account: any) {
       media_product_type: m.media_product_type ?? "FEED",
       caption: m.caption ?? null,
       permalink: m.permalink ?? null,
-      thumbnail_url: m.thumbnail_url ?? null,
+      thumbnail_url: pickThumbnail(m),
       media_url: m.media_url ?? null,
       timestamp: m.timestamp ?? null,
-      like_count: m.like_count ?? 0,
-      comments_count: m.comments_count ?? 0,
+      like_count: likes,
+      comments_count: comments,
       shares_count: shares,
       saved_count: saved,
       reach, impressions, video_views: videoViews, plays,
@@ -113,12 +136,12 @@ async function syncOne(supa: any, account: any) {
     }, { onConflict: "media_id" });
   }
 
-  // 4) Account daily insights (last 30 days)
+  // 4) Account daily insights (last 30 days) — reach only (other day metrics need metric_type=total_value).
   try {
     const since = Math.floor((Date.now() - 30 * 86400_000) / 1000);
     const until = Math.floor(Date.now() / 1000);
     const ar = await fetch(
-      `${GRAPH}/${igId}/insights?metric=reach,impressions,profile_views,website_clicks&period=day&since=${since}&until=${until}&access_token=${token}`,
+      `${GRAPH}/${igId}/insights?metric=reach&period=day&since=${since}&until=${until}&access_token=${token}`,
     );
     const aj = await ar.json();
     if (aj.data) {

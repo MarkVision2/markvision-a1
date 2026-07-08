@@ -75,7 +75,7 @@ export function useInstagramAnalytics(range: ReportPeriodRange) {
 
       const [mRes, dRes, demRes] = await Promise.all([
         supabase.from("instagram_media")
-          .select("media_id, media_type, media_product_type, caption, permalink, thumbnail_url, timestamp, like_count, comments_count, shares_count, saved_count, reach, impressions, plays, total_interactions")
+          .select("media_id, media_type, media_product_type, caption, permalink, thumbnail_url, media_url, timestamp, like_count, comments_count, shares_count, saved_count, reach, impressions, plays, total_interactions")
           .eq("project_id", projectId)
           .eq("ig_user_id", igUserId)
           .gte("timestamp", fromIso)
@@ -101,7 +101,7 @@ export function useInstagramAnalytics(range: ReportPeriodRange) {
         mediaProductType: r.media_product_type ?? "FEED",
         caption: r.caption,
         permalink: r.permalink,
-        thumbnailUrl: r.thumbnail_url,
+        thumbnailUrl: r.thumbnail_url || (r.media_url && !/\.mp4(\?|$)/i.test(String(r.media_url)) ? r.media_url : null),
         timestamp: r.timestamp,
         likeCount: r.like_count ?? 0,
         commentsCount: r.comments_count ?? 0,
