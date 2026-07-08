@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import type { ComponentType } from "react";
 import { Link, useSearchParams } from "react-router-dom";
+import type { LucideIcon } from "lucide-react";
 import { Camera, CheckCircle2, Edit2, Eye, Globe, GitBranch, KeyRound, Link2, Loader2, MessageCircle, Phone, Plus, RefreshCw, Search, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -58,11 +57,18 @@ const SETTINGS_TABS = [
 type SettingsTab = (typeof SETTINGS_TABS)[number];
 type ConnectionStatus = "connected" | "disconnected" | "checking";
 
-const CONNECTION_SECTIONS: Array<{
+const PROJECT_NAV: Array<{ tab: SettingsTab; title: string; icon: LucideIcon }> = [
+  { tab: "team", title: "Команда", icon: Users2 },
+  { tab: "profile", title: "Профиль", icon: UserCircle2 },
+  { tab: "pipelines", title: "Воронки", icon: GitBranch },
+  { tab: "loss", title: "Причины отказа", icon: XCircle },
+];
+
+const CONNECTION_NAV: Array<{
   tab: SettingsTab;
   title: string;
   desc: string;
-  icon: ComponentType<{ className?: string }>;
+  icon: LucideIcon;
 }> = [
   {
     tab: "telephony",
@@ -90,14 +96,14 @@ const CONNECTION_SECTIONS: Array<{
   },
   {
     tab: "ig-organic",
-    title: "Instagram organic",
-    desc: "Подключение органического Instagram проекта.",
+    title: "Instagram",
+    desc: "Органический Instagram проекта: код-слова, вебхуки, связь с контент-аналитикой.",
     icon: Camera,
   },
   {
     tab: "meta-tokens",
-    title: "Meta токен",
-    desc: "Токены Meta API для рекламных данных.",
+    title: "Meta",
+    desc: "Вход через Facebook и токены Meta API для рекламы и автопостинга.",
     icon: KeyRound,
   },
   {
@@ -108,12 +114,31 @@ const CONNECTION_SECTIONS: Array<{
   },
 ];
 
+function ConnectionStatusBadge({ status }: { status: ConnectionStatus }) {
+  if (status === "checking") {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+        <Loader2 className="h-3 w-3 animate-spin" />
+      </span>
+    );
+  }
+  if (status === "connected") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-medium text-success">
+        <CheckCircle2 className="h-3 w-3" />
+      </span>
+    );
+  }
+  return <span className="h-2 w-2 shrink-0 rounded-full bg-muted-foreground/40" title="Не настроено" />;
+}
+
 export default function Settings() {
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
-  const defaultTab: SettingsTab = SETTINGS_TABS.includes(tabParam as SettingsTab)
+  const activeTab: SettingsTab = SETTINGS_TABS.includes(tabParam as SettingsTab)
     ? (tabParam as SettingsTab)
     : "team";
+  const setActiveTab = (tab: SettingsTab) => setSearchParams({ tab });
   const { members, removeMember } = useTeamStore();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<TeamMember | null>(null);
@@ -254,83 +279,79 @@ export default function Settings() {
     };
   }, [activeId, active?.intakeToken, statusRefreshTick]);
 
+  const connectedCount = useMemo(
+    () => CONNECTION_NAV.filter((s) => connectionStatus[s.tab] === "connected").length,
+    [connectionStatus],
+  );
+
+  const activeConnection = CONNECTION_NAV.find((s) => s.tab === activeTab);
+
+  const navButton = (tab: SettingsTab, title: string, Icon: LucideIcon, showStatus?: boolean) => (
+    <button
+      key={tab}
+      type="button"
+      onClick={() => setActiveTab(tab)}
+      className={cn(
+        "flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm transition-colors",
+        activeTab === tab
+          ? "bg-primary/10 font-medium text-primary"
+          : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground",
+      )}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <span className="min-w-0 flex-1 truncate">{title}</span>
+      {showStatus && <ConnectionStatusBadge status={connectionStatus[tab]} />}
+    </button>
+  );
+
   return (
     <PageContainer>
       <PageHeader
         icon={SettingsIcon}
         title="Настройки"
-        description="Команда, воронки и все подключения проекта в одном месте"
+        description="Слева — разделы проекта и интеграций. Справа — настройки выбранного пункта."
       />
 
-      <section className="mt-6 rounded-2xl border border-border/60 bg-card/40 p-4">
-        <div className="mb-3 flex items-start justify-between gap-3">
+      <div className="mt-6 flex flex-col gap-6 lg:grid lg:grid-cols-[minmax(220px,260px)_1fr] lg:items-start">
+        <aside className="space-y-4 rounded-2xl border border-border/60 bg-card/40 p-3 lg:sticky lg:top-4">
           <div>
-            <h2 className="text-sm font-semibold">Карта подключений</h2>
-            <p className="text-xs text-muted-foreground">
-              Пройдите разделы по порядку: WhatsApp, сайт/лендинги, Instagram, Meta токен и клиентский доступ.
-            </p>
+            <p className="px-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Проект</p>
+            <nav className="mt-1 space-y-0.5">
+              {PROJECT_NAV.map(({ tab, title, icon }) => navButton(tab, title, icon))}
+            </nav>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-8 rounded-lg"
-            onClick={() => setStatusRefreshTick((v) => v + 1)}
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Проверить ещё раз
-          </Button>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          {CONNECTION_SECTIONS.map((s) => (
-            <Link
-              key={s.tab}
-              to={`/settings?tab=${s.tab}`}
-              className="rounded-xl border border-border/60 bg-background/40 p-3 transition-colors hover:bg-secondary/30"
-            >
-              <div className="flex items-center gap-2">
-                <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">
-                  <s.icon className="h-4 w-4" />
-                </span>
-                <span className="text-sm font-medium">{s.title}</span>
-                <span
-                  className={cn(
-                    "ml-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
-                    connectionStatus[s.tab] === "connected" && "bg-success/15 text-success",
-                    connectionStatus[s.tab] === "disconnected" && "bg-muted text-muted-foreground",
-                    connectionStatus[s.tab] === "checking" && "bg-primary/10 text-primary",
-                  )}
-                >
-                  {connectionStatus[s.tab] === "connected" && <CheckCircle2 className="h-3 w-3" />}
-                  {connectionStatus[s.tab] === "checking" && <Loader2 className="h-3 w-3 animate-spin" />}
-                  {connectionStatus[s.tab] === "connected"
-                    ? "Подключено"
-                    : connectionStatus[s.tab] === "checking"
-                      ? "Проверка"
-                      : "Не настроено"}
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">{s.desc}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
 
-      <Tabs defaultValue={defaultTab} key={defaultTab} className="mt-6 w-full">
-        <TabsList className="mb-5 flex h-auto w-full flex-wrap justify-start gap-1 bg-card/40 p-1">
-          <TabsTrigger value="team" className="gap-2"><Users2 className="h-3.5 w-3.5" /> Команда</TabsTrigger>
-          <TabsTrigger value="profile" className="gap-2"><UserCircle2 className="h-3.5 w-3.5" /> Профиль</TabsTrigger>
-          <TabsTrigger value="pipelines" className="gap-2"><GitBranch className="h-3.5 w-3.5" /> Воронки</TabsTrigger>
-          <TabsTrigger value="loss" className="gap-2"><XCircle className="h-3.5 w-3.5" /> Причины отказа</TabsTrigger>
-          <TabsTrigger value="telephony" className="gap-2"><Phone className="h-3.5 w-3.5" /> Телефония</TabsTrigger>
-          <TabsTrigger value="whatsapp" className="gap-2"><MessageCircle className="h-3.5 w-3.5" /> WhatsApp</TabsTrigger>
-          <TabsTrigger value="site" className="gap-2"><Globe className="h-3.5 w-3.5" /> Сайт</TabsTrigger>
-          <TabsTrigger value="inbound" className="gap-2"><Link2 className="h-3.5 w-3.5" /> Лендинги</TabsTrigger>
-          <TabsTrigger value="ig-organic" className="gap-2"><Camera className="h-3.5 w-3.5" /> Instagram organic</TabsTrigger>
-          <TabsTrigger value="meta-tokens" className="gap-2"><KeyRound className="h-3.5 w-3.5" /> Meta токен</TabsTrigger>
-          <TabsTrigger value="clientview" className="gap-2"><Eye className="h-3.5 w-3.5" /> Доступ клиента</TabsTrigger>
-        </TabsList>
+          <div className="border-t border-border/50 pt-3">
+            <div className="flex items-center justify-between gap-2 px-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Подключения</p>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0"
+                title="Обновить статусы"
+                onClick={() => setStatusRefreshTick((v) => v + 1)}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+            <p className="mt-1 px-2 text-[11px] text-muted-foreground">
+              {connectedCount} из {CONNECTION_NAV.length} готово
+            </p>
+            <nav className="mt-2 space-y-0.5">
+              {CONNECTION_NAV.map(({ tab, title, icon }) => navButton(tab, title, icon, true))}
+            </nav>
+          </div>
+        </aside>
 
-        <TabsContent value="team" className="mt-0">
+        <div className="min-w-0">
+          {activeConnection && (
+            <div className="mb-4 rounded-xl border border-border/50 bg-card/30 px-4 py-3">
+              <h2 className="text-base font-semibold">{activeConnection.title}</h2>
+              <p className="mt-0.5 text-sm text-muted-foreground">{activeConnection.desc}</p>
+            </div>
+          )}
+
+          {activeTab === "team" && (
       <section className="rounded-2xl border border-border/60 bg-card/40 p-5">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -433,105 +454,43 @@ export default function Settings() {
           </div>
         )}
       </section>
-        </TabsContent>
+          )}
 
-        <TabsContent value="profile" className="mt-0">
-          <ProfileSettings />
-        </TabsContent>
+          {activeTab === "profile" && <ProfileSettings />}
 
-        <TabsContent value="pipelines" className="mt-0">
-          <PipelinesSettings />
-        </TabsContent>
+          {activeTab === "pipelines" && <PipelinesSettings />}
 
-        <TabsContent value="loss" className="mt-0">
-          <LossReasonsSettings />
-        </TabsContent>
+          {activeTab === "loss" && <LossReasonsSettings />}
 
-        <TabsContent value="telephony" className="mt-0">
-          <SipuniSettings />
-        </TabsContent>
+          {activeTab === "telephony" && <SipuniSettings />}
 
-        <TabsContent value="whatsapp" className="mt-0">
-          <div className="rounded-2xl border border-border bg-card p-6">
-            <div className="flex items-start gap-4">
-              <span className="grid h-12 w-12 place-items-center rounded-xl bg-success/15 text-success">
-                <MessageCircle className="h-6 w-6" />
-              </span>
-              <div className="flex-1">
-                <h3 className="text-base font-semibold">Подключение WhatsApp (Green API)</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Авторизуйте инстанс Green API через QR-код или по номеру телефона.
-                </p>
-              </div>
+          {activeTab === "whatsapp" && (
+            <div className="rounded-2xl border border-border bg-card p-6">
+              <p className="mb-4 text-sm text-muted-foreground">
+                Авторизуйте инстанс Green API через QR-код или по номеру телефона. Сообщения попадут в CRM проекта.
+              </p>
               <Button asChild>
-                <Link to="/settings/connection">Открыть</Link>
+                <Link to="/settings/connection">Открыть мастер подключения</Link>
               </Button>
             </div>
-          </div>
-        </TabsContent>
+          )}
 
-        <TabsContent value="site" className="mt-0">
-          <div className="rounded-2xl border border-border bg-card p-6">
-            <div className="mb-4 flex items-start gap-4">
-              <span className="grid h-12 w-12 place-items-center rounded-xl bg-primary/15 text-primary">
-                <Globe className="h-6 w-6" />
-              </span>
-              <div className="flex-1">
-                <h3 className="text-base font-semibold">Заявки с сайта (Tilda и любая HTML-форма)</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Скопируйте URL вебхука и вставьте его в настройки формы на сайте. Каждая отправка создаст новую сделку в этапе «Новая» с UTM-метками и источником.
-                </p>
-              </div>
+          {activeTab === "site" && <SiteIntakeCard />}
+
+          {activeTab === "ig-organic" && <InstagramOrganicSettings />}
+
+          {activeTab === "meta-tokens" && (
+            <div className="space-y-6">
+              <FacebookConnect />
+              <MetaTokensSettings />
             </div>
-            <SiteIntakeCard />
-          </div>
-        </TabsContent>
+          )}
 
-        <TabsContent value="ig-organic" className="mt-0">
-          <InstagramOrganicSettings />
-        </TabsContent>
+          {activeTab === "inbound" && <InboundTokensSettings />}
 
-        <TabsContent value="meta-tokens" className="mt-0 space-y-6">
-          <FacebookConnect />
-          <MetaTokensSettings />
-        </TabsContent>
-
-
-
-        <TabsContent value="inbound" className="mt-0">
-          <div className="rounded-2xl border border-border bg-card p-6">
-            <div className="mb-4 flex items-start gap-4">
-              <span className="grid h-12 w-12 place-items-center rounded-xl bg-primary/15 text-primary">
-                <Link2 className="h-6 w-6" />
-              </span>
-              <div className="flex-1">
-                <h3 className="text-base font-semibold">Лендинги и формы</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Создайте токен для каждого лендинга. Скопируйте HTML-сниппет — все заявки автоматически уйдут в нужного клиента/кабинет, с UTM, fbc/fbp и автоматическим CAPI Lead в Meta.
-                </p>
-              </div>
-            </div>
-            <InboundTokensSettings />
-          </div>
-        </TabsContent>
-
-        <TabsContent value="clientview" className="mt-0">
-          <div className="rounded-2xl border border-border bg-card p-6">
-            <div className="mb-4 flex items-start gap-4">
-              <span className="grid h-12 w-12 place-items-center rounded-xl bg-primary/15 text-primary">
-                <Eye className="h-6 w-6" />
-              </span>
-              <div className="flex-1">
-                <h3 className="text-base font-semibold">Доступ клиента к дашборду</h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Создайте read-only ссылку для клиента: лиды, качество, конверсии, выручка. Без логина, без доступа к контактам и админке.
-                </p>
-              </div>
-            </div>
-            <ClientDashTokensSettings />
-          </div>
-        </TabsContent>
-      </Tabs>
+          {activeTab === "clientview" && <ClientDashTokensSettings />}
+        </div>
+      </div>
 
       <AddMemberDialog open={open} onOpenChange={setOpen} editing={editing} />
 
