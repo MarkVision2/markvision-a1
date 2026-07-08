@@ -1,7 +1,7 @@
 {
-  "git_sha": "24e9575",
-  "git_sha_full": "24e95758e4233e3b1f569fea84bac9bf0719df0d",
-  "updated_at": "2026-07-08T12:36:11+05:00",
-  "label": "fix(creatives): show CDI spend on funnel when creative daily is empty",
-  "publish_hint": "GitHub main → Vercel (www.markvision.kz) + Lovable preview → Ctrl+Shift+R"
+  "git_sha": "6fae7ed",
+  "git_sha_full": "6fae7ed6d5034cf7e674e42a29117878c2b63ea5",
+  "updated_at": "2026-07-08T12:39:48+05:00",
+  "label": "chore(deploy): sync trigger — canonical www.markvision.kz + deploy docs",
+  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
