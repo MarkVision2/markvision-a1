@@ -1,7 +1,7 @@
 {
-  "git_sha": "b649bf5",
-  "git_sha_full": "b649bf5de72fdb9a339f4f59a57a4a03208476be",
-  "updated_at": "2026-07-08T19:36:47+05:00",
-  "label": "Show connected Instagram account on Autopost page.",
+  "git_sha": "c7f3f3e",
+  "git_sha_full": "c7f3f3ec91599141bf584d4e148cde41745c2439",
+  "updated_at": "2026-07-08T19:41:19+05:00",
+  "label": "Fix autopost publishing with project-scoped Instagram tokens.",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
