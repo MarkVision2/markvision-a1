@@ -1,7 +1,7 @@
 {
-  "git_sha": "8152f76",
-  "git_sha_full": "8152f76707dc812fda669fc6ce231ca9ff2162b8",
-  "updated_at": "2026-07-08T14:18:49Z",
-  "label": "Facebook connect: popup UX + explicit page/ad-account picker",
+  "git_sha": "59a953c",
+  "git_sha_full": "59a953c32e9bba34810d15ad01db7ee8bc2372d8",
+  "updated_at": "2026-07-08T14:33:15Z",
+  "label": "Fix Facebook connect popup: Supabase rewrites text/html to text/plain on GET",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
