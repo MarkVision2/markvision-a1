@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Facebook, Instagram, Loader2, CheckCircle2 } from "lucide-react";
+import { Facebook, Instagram, Loader2, CheckCircle2, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -21,7 +21,19 @@ type PendingPage = { id: string; name: string; instagram?: PendingPageInstagram 
 type PendingAdAccount = { id: string; name: string; currency: string | null };
 type PendingSelection = { selectionId: string; pages: PendingPage[]; adAccounts: PendingAdAccount[] };
 
-type ConnectedSummary = { username: string | null; pageName: string | null; profilePictureUrl: string | null };
+type ConnectedSummary = {
+  pageName: string | null;
+  igUsername: string | null;
+  igProfilePic: string | null;
+  igFollowers: number | null;
+  igMediaCount: number | null;
+  igLastError: string | null;
+  adAccountName: string | null;
+  adAccountId: string | null;
+  adCurrency: string | null;
+};
+
+const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 
 type OAuthMessage = {
   source?: string;
@@ -60,22 +72,45 @@ export function FacebookConnect() {
 
   // Показываем, что реально подключено сейчас — без этого после успешного
   // подключения карточка не менялась (только тост), и было непонятно,
-  // применилось ли что-то на самом деле.
+  // применилось ли что-то на самом деле. Собираем полную картину: страница +
+  // Instagram (instagram_accounts) и рекламный кабинет (ad_cabinets_safe —
+  // безопасное представление без токенов), сматченный по той же странице.
   const refreshConnected = useCallback(async () => {
     if (!projectId) {
       setConnected(null);
       return;
     }
-    const { data } = await supabase
+    const { data: ig } = await supabase
       .from("instagram_accounts")
-      .select("username, page_name, profile_picture_url")
+      .select("username, page_id, page_name, profile_picture_url, followers_count, media_count, last_error")
       .eq("project_id", projectId)
       .maybeSingle();
-    setConnected(
-      data
-        ? { username: data.username, pageName: data.page_name, profilePictureUrl: data.profile_picture_url }
-        : null,
-    );
+
+    let adQuery = supabase
+      .from("ad_cabinets_safe" as any)
+      .select("name, ad_account_id, currency, page_name, page_id")
+      .eq("project_id", projectId)
+      .order("updated_at", { ascending: false })
+      .limit(1);
+    if (ig?.page_id) adQuery = adQuery.eq("page_id", ig.page_id);
+    const { data: adRows } = await adQuery;
+    const ad = (adRows as Array<{ name: string; ad_account_id: string; currency: string; page_name: string; page_id: string }> | null)?.[0] ?? null;
+
+    if (!ig && !ad) {
+      setConnected(null);
+      return;
+    }
+    setConnected({
+      pageName: ig?.page_name ?? ad?.page_name ?? null,
+      igUsername: ig?.username ?? null,
+      igProfilePic: ig?.profile_picture_url ?? null,
+      igFollowers: ig?.followers_count ?? null,
+      igMediaCount: ig?.media_count ?? null,
+      igLastError: ig?.last_error ?? null,
+      adAccountName: ad?.name ?? null,
+      adAccountId: ad?.ad_account_id ?? null,
+      adCurrency: ad?.currency ?? null,
+    });
   }, [projectId]);
 
   useEffect(() => {
@@ -236,22 +271,63 @@ export function FacebookConnect() {
         </Button>
 
         {connected && (
-          <div className="mt-4 flex items-center gap-3 rounded-xl border border-border/60 bg-secondary/40 p-3">
-            {connected.profilePictureUrl ? (
-              <img src={connected.profilePictureUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
-            ) : (
-              <div className="grid h-10 w-10 place-items-center rounded-full bg-pink-500/15 text-pink-500">
-                <Instagram className="h-5 w-5" />
+          <div className="mt-4 space-y-3 rounded-xl border border-border/60 bg-secondary/40 p-3">
+            <div className="flex items-center gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-[#1877F2]/15 text-[#1877F2]">
+                <Facebook className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1 text-sm">
+                <div className="flex items-center gap-1.5 font-semibold">
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+                  <span className="truncate">Страница «{connected.pageName ?? "—"}»</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3">
+              {connected.igProfilePic ? (
+                <img src={connected.igProfilePic} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
+              ) : (
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-pink-500/15 text-pink-500">
+                  <Instagram className="h-4 w-4" />
+                </span>
+              )}
+              <div className="min-w-0 flex-1 text-sm">
+                {connected.igUsername ? (
+                  <>
+                    <div className="font-semibold">Instagram @{connected.igUsername}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {fmtNum(connected.igFollowers ?? 0)} подписчиков · {fmtNum(connected.igMediaCount ?? 0)} публикаций
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-muted-foreground">Instagram не привязан к этой странице</div>
+                )}
+              </div>
+            </div>
+
+            {connected.igLastError && (
+              <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+                {connected.igLastError}
               </div>
             )}
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1.5 text-sm font-semibold">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
-                {connected.username ? `Instagram @${connected.username}` : "Instagram не привязан к странице"}
+
+            <div className="flex items-center gap-3">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-emerald-500/15 text-emerald-500">
+                <Wallet className="h-4 w-4" />
+              </span>
+              <div className="min-w-0 flex-1 text-sm">
+                {connected.adAccountName ? (
+                  <>
+                    <div className="truncate font-semibold">{connected.adAccountName}</div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {connected.adAccountId}{connected.adCurrency ? ` · ${connected.adCurrency}` : ""}
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-muted-foreground">Рекламный кабинет не подключён</div>
+                )}
               </div>
-              {connected.pageName && (
-                <div className="truncate text-xs text-muted-foreground">страница «{connected.pageName}»</div>
-              )}
             </div>
           </div>
         )}
