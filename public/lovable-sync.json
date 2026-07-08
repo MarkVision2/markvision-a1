@@ -1,7 +1,7 @@
 {
-  "git_sha": "1ebfb22",
-  "git_sha_full": "1ebfb22af21eae435d4069fbcf42353c1297c638",
-  "updated_at": "2026-07-08T09:33:04+05:00",
-  "label": "feat(creatives): inline Meta video player with controls in drawer",
+  "git_sha": "17273c7",
+  "git_sha_full": "17273c75c9c986f13e9bde1ced379df1b4ebc828",
+  "updated_at": "2026-07-08T10:52:51+05:00",
+  "label": "fix(metrics): load spend from all project cabinets by cabinet_id",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
