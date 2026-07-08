@@ -1,7 +1,7 @@
 {
-  "git_sha": "11049a0",
-  "git_sha_full": "11049a0e35fb8dce6a076b30e9678862d7f290a9",
-  "updated_at": "2026-07-08T15:13:25+05:00",
-  "label": "Improve content period UX and clarify settings integrations.",
+  "git_sha": "d9387ad",
+  "git_sha_full": "d9387add4afeecb9de735207348e37e30e1a56dc",
+  "updated_at": "2026-07-08T10:18:13Z",
+  "label": "Added missing import in Settings",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
