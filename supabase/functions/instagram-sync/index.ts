@@ -121,7 +121,9 @@ async function syncOne(supa: any, account: any) {
       `${GRAPH}/${igId}/insights?metric=reach,impressions,profile_views,website_clicks&period=day&since=${since}&until=${until}&access_token=${token}`,
     );
     const aj = await ar.json();
-    if (aj.data) {
+    if (aj.error) {
+      console.error("[instagram-sync] daily insights error", igId, aj.error);
+    } else if (aj.data) {
       const byDate: Record<string, any> = {};
       for (const m of aj.data) {
         for (const v of m.values ?? []) {
@@ -142,10 +144,13 @@ async function syncOne(supa: any, account: any) {
         synced_at: new Date().toISOString(),
       }));
       if (rows.length > 0) {
-        await supa.from("instagram_account_daily").upsert(rows, { onConflict: "ig_user_id,date" });
+        const { error: dailyErr } = await supa.from("instagram_account_daily").upsert(rows, { onConflict: "ig_user_id,date" });
+        if (dailyErr) console.error("[instagram-sync] daily insights upsert failed", igId, dailyErr);
       }
     }
-  } catch (_e) { /* skip */ }
+  } catch (e) {
+    console.error("[instagram-sync] daily insights threw", igId, e);
+  }
 
   // 5) Demographics (lifetime, once per day)
   try {
@@ -155,6 +160,10 @@ async function syncOne(supa: any, account: any) {
         `${GRAPH}/${igId}/insights?metric=${dim}&period=lifetime&access_token=${token}`,
       );
       const dj = await dr.json();
+      if (dj.error) {
+        console.error("[instagram-sync] demographics error", igId, dim, dj.error);
+        continue;
+      }
       const vals = dj.data?.[0]?.values?.[0]?.value;
       if (!vals) continue;
       const dimName = dim === "audience_city" ? "city" : "age_gender";
@@ -170,10 +179,13 @@ async function syncOne(supa: any, account: any) {
         snapshot_at: new Date().toISOString(),
       }));
       if (rows.length > 0) {
-        await supa.from("instagram_demographics").upsert(rows, { onConflict: "ig_user_id,dimension,key" });
+        const { error: demErr } = await supa.from("instagram_demographics").upsert(rows, { onConflict: "ig_user_id,dimension,key" });
+        if (demErr) console.error("[instagram-sync] demographics upsert failed", igId, dim, demErr);
       }
     }
-  } catch (_e) { /* skip */ }
+  } catch (e) {
+    console.error("[instagram-sync] demographics threw", igId, e);
+  }
 }
 
 Deno.serve(async (req) => {
