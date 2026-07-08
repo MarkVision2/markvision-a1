@@ -1,7 +1,7 @@
 {
-  "git_sha": "d92a9b4",
-  "git_sha_full": "d92a9b4953c904da5b295301a1c3f20c89da4d43",
-  "updated_at": "2026-07-07T22:43:31+05:00",
-  "label": "fix(worker): не хоронить «failed»-сессию HeyGen с ещё зреющим video_id (#122)",
+  "git_sha": "c70a88a",
+  "git_sha_full": "c70a88ae897d75aee1a43dc8a1549a09bbbd0901",
+  "updated_at": "2026-07-08T08:27:39+05:00",
+  "label": "fix(heygen): sync balance and spend from HeyGen account API",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
