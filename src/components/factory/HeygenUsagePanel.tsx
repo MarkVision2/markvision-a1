@@ -96,7 +96,12 @@ export function HeygenUsagePanel({ projectId }: { projectId: string }) {
               <Loader2 className="h-4 w-4 animate-spin" /> загрузка…
             </div>
           ) : accountQ.error ? (
-            <div className="mt-1 text-sm text-warning">нет доступа к балансу</div>
+            <div className="mt-1 text-sm text-warning">
+              нет доступа к балансу
+              <div className="mt-0.5 text-[11px] opacity-90">
+                {(accountQ.error as Error).message || "проверь HEYGEN_API_KEY в Supabase Secrets"}
+              </div>
+            </div>
           ) : (
             <div className="mt-1">
               <div className="text-lg font-bold tabular-nums">
