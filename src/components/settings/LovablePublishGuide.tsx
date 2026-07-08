@@ -10,7 +10,8 @@ import {
 
 const LOVABLE_PROJECT_URL =
   "https://lovable.dev/projects/f271a37b-306d-4edb-aaa5-782c76cf9ae3";
-const LIVE_APP_URL = "https://markvision-a1.lovable.app/";
+const LIVE_APP_URL = "https://www.markvision.kz/";
+const LOVABLE_PREVIEW_URL = "https://markvision-a1.lovable.app/";
 const GITHUB_MAIN = "https://github.com/MarkVision2/markvision-a1/tree/main";
 
 export function LovablePublishGuide() {
@@ -120,10 +121,20 @@ export function LovablePublishGuide() {
             rel="noopener noreferrer"
             className="font-medium text-primary underline-offset-2 hover:underline"
           >
-            markvision-a1.lovable.app
+            www.markvision.kz
           </a>
           {" "}
           и нажмите <span className="font-medium text-foreground">Ctrl+Shift+R</span> (жёсткое обновление).
+          Превью Lovable:{" "}
+          <a
+            href={LOVABLE_PREVIEW_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-medium text-primary underline-offset-2 hover:underline"
+          >
+            markvision-a1.lovable.app
+          </a>
+          .
         </li>
         <li>
           Проверьте коммит ниже — он должен совпасть с последним в{" "}

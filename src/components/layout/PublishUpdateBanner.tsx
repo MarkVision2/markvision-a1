@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { GitBranch, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-const LIVE_APP = "https://markvision-a1.lovable.app/";
+const LIVE_APP = "https://www.markvision.kz/";
 const DISMISS_KEY = "mv_publish_banner_dismissed";
 
 type SyncInfo = { git_sha?: string; label?: string };
