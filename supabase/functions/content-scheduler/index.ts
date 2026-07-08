@@ -47,7 +47,7 @@ Deno.serve(async (req) => {
     const from = String(b.from ?? ""), to = String(b.to ?? "");
     const re = /^\d{4}-\d{2}-\d{2}$/;
     if (!re.test(from) || !re.test(to)) return json({ ok: false, error: "bad period" }, 400);
-    const r = await fetch(`${SB_URL}/rest/v1/rpc/cf_autopost_stats`, { method: "POST", headers: { ...H }, body: JSON.stringify({ p_from: from, p_to: to }) });
+    const r = await fetch(`${SB_URL}/rest/v1/rpc/cf_autopost_stats`, { method: "POST", headers: { ...H }, body: JSON.stringify({ p_from: from, p_to: to, p_project_id: projectId }) });
     const t = await r.text();
     let data: unknown = null; try { data = t ? JSON.parse(t) : null; } catch { /* */ }
     if (!r.ok) return json({ ok: false, error: "rpc", detail: t }, 500);

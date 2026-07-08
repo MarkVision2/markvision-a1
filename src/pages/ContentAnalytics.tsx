@@ -32,6 +32,7 @@ import { fmtNum } from "@/lib/format";
 import { clientSupabaseUrl } from "@/lib/supabaseConfig";
 import { cn } from "@/lib/utils";
 import { ContentPerformanceChart, type TrendPoint } from "@/pages/content-analytics/ContentPerformanceChart";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 
 const CLIENT_URL = clientSupabaseUrl;
 
@@ -72,12 +73,12 @@ const PERIODS: { id: string; label: string; from: () => string }[] = [
 const fmtDate = (s: string | null) =>
   s ? new Date(s).toLocaleDateString("ru-RU", { day: "2-digit", month: "short" }) : "—";
 
-async function fetchAnalytics(from: string, to: string): Promise<CAResp> {
+async function fetchAnalytics(from: string, to: string, projectId: string | null): Promise<CAResp> {
   if (!CLIENT_URL) throw new Error("VITE_CLIENT_SUPABASE_URL не задан — раздел недоступен");
   const r = await fetch(`${CLIENT_URL}/functions/v1/content-analytics`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to }),
+    body: JSON.stringify({ from, to, project_id: projectId }),
   });
   if (!r.ok) throw new Error(`content-analytics: HTTP ${r.status}`);
   return (await r.json()) as CAResp;
@@ -151,6 +152,7 @@ function PostRow({ p, rank }: { p: CAPost; rank: number }) {
 }
 
 export default function ContentAnalytics() {
+  const { activeId: projectId } = useProjectsStore();
   const [periodId, setPeriodId] = useState("12m");
   const [data, setData] = useState<CAResp | null>(null);
   const [loading, setLoading] = useState(true);
@@ -161,14 +163,14 @@ export default function ContentAnalytics() {
     setError(null);
     try {
       const p = PERIODS.find((x) => x.id === periodId)!;
-      const res = await fetchAnalytics(p.from(), ymd(new Date()));
+      const res = await fetchAnalytics(p.from(), ymd(new Date()), projectId);
       setData(res);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Не удалось загрузить аналитику");
     } finally {
       setLoading(false);
     }
-  }, [periodId]);
+  }, [periodId, projectId]);
 
   useEffect(() => { void load(); }, [load]);
 

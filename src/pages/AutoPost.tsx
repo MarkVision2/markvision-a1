@@ -99,7 +99,7 @@ const AutoPost = () => {
       const { from, to } = monthRangeYmd(v);
       const [q, s] = await Promise.all([
         schedulerApi<{ posts: QueuePost[] }>("list", { project_id: projectId }),
-        schedulerApi<{ stats: Stats }>("stats", { from, to }),
+        schedulerApi<{ stats: Stats }>("stats", { from, to, project_id: projectId }),
       ]);
       setPosts(q.posts ?? []); setStats(s.stats ?? null);
     } catch (e) { toast.error("Не удалось загрузить", { description: e instanceof Error ? e.message : String(e) }); }
