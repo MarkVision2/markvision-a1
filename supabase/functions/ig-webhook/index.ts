@@ -17,6 +17,16 @@ async function db(path: string, init: RequestInit = {}) {
   try { return t ? JSON.parse(t) : null; } catch { return null; }
 }
 
+// Возвращает { status, json } — нужен реальный HTTP-статус, чтобы отличить
+// конфликт уникального constraint (409, дубль вебхука) от обычной вставки.
+async function dbRaw(path: string, init: RequestInit = {}) {
+  const r = await fetch(`${SB_URL}/rest/v1/${path}`, { ...init, headers: { ...H, ...(init.headers as Record<string, string> || {}) } });
+  const t = await r.text();
+  let json: unknown = null;
+  try { json = t ? JSON.parse(t) : null; } catch { /* noop */ }
+  return { status: r.status, json };
+}
+
 async function setting(key: string): Promise<string | undefined> {
   const rows = await db(`cf_settings?key=eq.${key}&select=value`);
   return rows?.[0]?.value;
@@ -56,9 +66,46 @@ async function matchCodeword(projectId: string, mediaId: string | null, text: st
   return rows.find((k) => low.includes(k.codeword.toLowerCase()) && (!k.reel_id || k.reel_id === mediaId)) ?? null;
 }
 
-async function alreadyProcessed(externalId: string): Promise<boolean> {
-  const rows = await db(`instagram_organic_events?external_id=eq.${encodeURIComponent(externalId)}&select=id&limit=1`);
-  return Array.isArray(rows) && rows.length > 0;
+// Атомарно "застолбливает" событие: вставляет строку до публичного ответа и
+// DM, полагаясь на уникальный индекс по external_id. Если Meta прислала тот
+// же вебхук второй раз (retry/дубль доставки), вставка упадёт с 409 и мы
+// молча выходим — публичный ответ/DM для этого комментария уже в работе или
+// готовы у первого обработчика. Возвращает id вставленной строки или null.
+async function claimEvent(
+  projectId: string,
+  kw: Codeword,
+  mediaId: string | null,
+  commentId: string,
+  username: string | null,
+): Promise<string | null> {
+  const occurredAt = new Date();
+  const { status, json } = await dbRaw("instagram_organic_events", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      project_id: projectId,
+      codeword_id: kw.id,
+      codeword: kw.codeword,
+      reel_id: kw.reel_id ?? mediaId,
+      reel_url: kw.reel_url,
+      event_type: "codeword_dm",
+      username,
+      date: ymd(occurredAt),
+      occurred_at: occurredAt.toISOString(),
+      external_id: commentId,
+      payload: { comment_id: commentId, media_id: mediaId, dm_status: "pending" },
+    }),
+  });
+  if (status === 409) return null; // дубль доставки — уже застолблено
+  const row = Array.isArray(json) ? (json[0] as { id?: string } | undefined) : undefined;
+  return row?.id ?? null;
+}
+
+async function finalizeEvent(eventId: string, payload: Record<string, unknown>) {
+  await db(`instagram_organic_events?id=eq.${eventId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ payload }),
+  });
 }
 
 async function postPublicReply(commentId: string, token: string, text: string) {
@@ -109,13 +156,15 @@ Deno.serve(async (req) => {
         const fromId = v.from?.id ?? null;
         const username = v.from?.username ?? null;
         if (!commentId || !fromId || fromId === igUserId) continue;
-        if (await alreadyProcessed(commentId)) continue;
 
         const account = await resolveAccount(igUserId);
         if (!account) continue; // аккаунт не подключён ни к одному проекту CRM
 
         const kw = await matchCodeword(account.project_id, mediaId, text);
         if (!kw) continue;
+
+        const eventId = await claimEvent(account.project_id, kw, mediaId, commentId, username);
+        if (!eventId) continue; // дубль доставки того же вебхука — уже обработано
 
         if (kw.reply_text) {
           await postPublicReply(commentId, account.page_access_token, kw.reply_text);
@@ -125,22 +174,11 @@ Deno.serve(async (req) => {
         const dmMessage = kw.dm_text ? `${kw.dm_text} ${redirectUrl}` : redirectUrl;
         const sent = await sendPrivateDm(igUserId, account.page_access_token, commentId, dmMessage);
 
-        const occurredAt = new Date();
-        await db("instagram_organic_events", {
-          method: "POST",
-          body: JSON.stringify({
-            project_id: account.project_id,
-            codeword_id: kw.id,
-            codeword: kw.codeword,
-            reel_id: kw.reel_id ?? mediaId,
-            reel_url: kw.reel_url,
-            event_type: "codeword_dm",
-            username,
-            date: ymd(occurredAt),
-            occurred_at: occurredAt.toISOString(),
-            external_id: commentId,
-            payload: { comment_id: commentId, media_id: mediaId, dm_status: sent.ok ? "sent" : "failed", dm_error: sent.ok ? null : sent.body },
-          }),
+        await finalizeEvent(eventId, {
+          comment_id: commentId,
+          media_id: mediaId,
+          dm_status: sent.ok ? "sent" : "failed",
+          dm_error: sent.ok ? null : sent.body,
         });
       }
     }
