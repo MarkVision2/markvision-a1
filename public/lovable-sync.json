@@ -1,7 +1,7 @@
 {
-  "git_sha": "aa915f3",
-  "git_sha_full": "aa915f32af9247e8c3bcff42b7e5867ab7aa2e2f",
-  "updated_at": "2026-07-08T09:12:50+05:00",
-  "label": "feat(content-analytics): переделать раздел в макро-дашборд органического контента",
+  "git_sha": "8e51bd6",
+  "git_sha_full": "8e51bd6252df0d138170d166d4cf6f13f356c282",
+  "updated_at": "2026-07-08T09:29:13+05:00",
+  "label": "fix(creatives): align creative funnel metrics, filters, and drawer",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
