@@ -44,6 +44,7 @@ const mk = (over: Partial<MetaCreativeRow> = {}): MetaCreativeRow => ({
   crmAvgCheck: 0,
   crmRomi: 0,
   crmProfit: 0,
+  crmDiagnostics: over.crmDiagnostics ?? 0,
 });
 
 describe("mapMetaCreativesToReport", () => {
