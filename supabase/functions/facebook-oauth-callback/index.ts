@@ -1,23 +1,70 @@
 // deno-lint-ignore-file no-explicit-any
-// Шаг 2 входа через Facebook: сюда Meta редиректит браузер с ?code&state.
-// Обменивает code на долгоживущий токен, забирает страницу + Instagram +
-// рекламный кабинет и сохраняет всё сразу — без ручного выбора и вставки
-// токенов. Публичный эндпоинт (verify_jwt=false): Meta не шлёт наш JWT,
-// доверие обеспечивается одноразовым state из meta_oauth_states.
+// Шаг 2 входа через Facebook: сюда Meta редиректит попап-окно с ?code&state.
+// Обменивает code на долгоживущий токен и забирает список страниц + рекламных
+// кабинетов. Если у аккаунта ровно одна страница и максимум один кабинет —
+// подключает сразу. Если больше одной страницы или кабинета (агентский
+// аккаунт) — не угадывает, а откладывает выбор: сохраняет список в
+// meta_oauth_pending_selections и просит пользователя выбрать
+// (facebook-oauth-finish завершает подключение по выбору).
+//
+// Публичный эндпоинт (verify_jwt=false): Meta не шлёт наш JWT, доверие
+// обеспечивается одноразовым state из meta_oauth_states.
+//
+// Результат передаётся родительскому окну через postMessage, после чего
+// попап закрывается сам. Если попап заблокирован и открылся как обычная
+// вкладка (нет window.opener) — запасной вариант: обычный редирект на
+// return_url с ?fb_connected/?fb_error/?fb_select.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { connectPageAndAdAccount, type FbAdAccount, type FbPage } from "../_lib/facebookConnect.ts";
 
 const META_APP_ID = "943753324681398";
 const GRAPH = "https://graph.facebook.com/v21.0";
 const STATE_TTL_MS = 15 * 60_000;
 
-function redirect(url: string) {
-  return new Response(null, { status: 302, headers: { Location: url } });
-}
+type Page = FbPage;
+type AdAccount = FbAdAccount;
 
-function withParam(url: string, key: string, value: string) {
-  const u = new URL(url);
-  u.searchParams.set(key, value);
-  return u.toString();
+function finish(returnUrl: string, payload: Record<string, unknown>) {
+  let targetOrigin = "*";
+  try { targetOrigin = new URL(returnUrl).origin; } catch { /* keep "*" */ }
+  // needsSelection: carry the (already token-free) pages/adAccounts list in the
+  // fallback URL itself — a blocked-popup redirect has no other channel to
+  // hand that list back to the page for the picker dialog.
+  const fallbackParam = payload.success
+    ? payload.needsSelection
+      ? `fb_select=${encodeURIComponent(JSON.stringify({
+          selectionId: payload.selectionId,
+          pages: payload.pages,
+          adAccounts: payload.adAccounts,
+        }))}`
+      : `fb_connected=${encodeURIComponent(String(payload.summary ?? ""))}`
+    : `fb_error=${encodeURIComponent(String(payload.error ?? "unknown"))}`;
+  const fallbackUrl = `${returnUrl}${returnUrl.includes("?") ? "&" : "?"}${fallbackParam}`;
+
+  const html = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Facebook</title></head>
+<body style="font-family: system-ui, sans-serif; display:grid; place-items:center; height:100vh; margin:0; color:#666;">
+<div>Завершаем подключение…</div>
+<script>
+(function () {
+  var payload = ${JSON.stringify({ source: "fb-oauth", ...payload })};
+  var targetOrigin = ${JSON.stringify(targetOrigin)};
+  var fallbackUrl = ${JSON.stringify(fallbackUrl)};
+  try {
+    if (window.opener) {
+      window.opener.postMessage(payload, targetOrigin);
+      window.close();
+      setTimeout(function () {
+        document.body.firstElementChild.textContent = "Готово, можно закрыть это окно.";
+      }, 300);
+      return;
+    }
+  } catch (e) { /* fall through to redirect */ }
+  window.location.href = fallbackUrl;
+})();
+</script>
+</body></html>`;
+  return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } });
 }
 
 Deno.serve(async (req) => {
@@ -42,14 +89,16 @@ Deno.serve(async (req) => {
   await supa.from("meta_oauth_states").delete().eq("id", state);
 
   if (!stateRow) return new Response("Unknown or already used state", { status: 400 });
-  const { project_id: projectId, return_url: returnUrl } = stateRow as { project_id: string; return_url: string; created_at: string };
+  const { project_id: projectId, user_id: userId, return_url: returnUrl } = stateRow as {
+    project_id: string; user_id: string; return_url: string; created_at: string;
+  };
 
   if (Date.now() - new Date((stateRow as any).created_at).getTime() > STATE_TTL_MS) {
-    return redirect(withParam(returnUrl, "fb_error", "Ссылка авторизации устарела, попробуйте снова"));
+    return finish(returnUrl, { success: false, error: "Ссылка авторизации устарела, попробуйте снова" });
   }
-  if (oauthError) return redirect(withParam(returnUrl, "fb_error", oauthError));
-  if (!code) return redirect(withParam(returnUrl, "fb_error", "Facebook не вернул код авторизации"));
-  if (!APP_SECRET) return redirect(withParam(returnUrl, "fb_error", "META_APP_SECRET не настроен на сервере"));
+  if (oauthError) return finish(returnUrl, { success: false, error: oauthError });
+  if (!code) return finish(returnUrl, { success: false, error: "Facebook не вернул код авторизации" });
+  if (!APP_SECRET) return finish(returnUrl, { success: false, error: "META_APP_SECRET не настроен на сервере" });
 
   try {
     const redirectUri = `${SUPABASE_URL}/functions/v1/facebook-oauth-callback`;
@@ -73,88 +122,38 @@ Deno.serve(async (req) => {
     const pagesRes = await fetch(`${GRAPH}/me/accounts?fields=id,name,access_token&limit=200&access_token=${userToken}`);
     const pagesJson = await pagesRes.json();
     if (pagesJson.error) throw new Error(pagesJson.error.message);
-    const pages = (pagesJson.data ?? []) as { id: string; name: string; access_token: string }[];
+    const pages = (pagesJson.data ?? []) as Page[];
     if (pages.length === 0) {
-      return redirect(withParam(returnUrl, "fb_error", "У этого Facebook-аккаунта нет ни одной страницы"));
+      return finish(returnUrl, { success: false, error: "У этого Facebook-аккаунта нет ни одной страницы" });
     }
-    const page = pages[0];
-    const extraPagesNote = pages.length > 1 ? `; ещё ${pages.length - 1} стр. пропущено — подключите вручную при необходимости` : "";
 
     // 4) ad accounts
     const adsRes = await fetch(`${GRAPH}/me/adaccounts?fields=id,name,account_status,currency,business{id,name}&limit=200&access_token=${userToken}`);
     const adsJson = await adsRes.json();
-    const adAccounts = (adsJson.data ?? []) as { id: string; name: string; currency?: string; business?: { id: string; name: string } }[];
-    const adAccount = adAccounts[0];
+    const adAccounts = (adsJson.data ?? []) as AdAccount[];
 
-    // 5) Instagram business account linked to the page
-    const igRes = await fetch(
-      `${GRAPH}/${page.id}?fields=instagram_business_account{id,username,name,profile_picture_url,followers_count,follows_count,media_count}&access_token=${page.access_token}`,
-    );
-    const igJson = await igRes.json();
-    const ig = igJson.instagram_business_account as
-      | { id: string; username?: string; name?: string; profile_picture_url?: string; followers_count?: number; follows_count?: number; media_count?: number }
-      | undefined;
-
-    if (ig?.id) {
-      await supa.from("instagram_accounts").upsert({
-        project_id: projectId,
-        ig_user_id: ig.id,
-        username: ig.username ?? null,
-        name: ig.name ?? null,
-        profile_picture_url: ig.profile_picture_url ?? null,
-        page_id: page.id,
-        page_name: page.name,
-        page_access_token: page.access_token,
-        followers_count: ig.followers_count ?? 0,
-        follows_count: ig.follows_count ?? 0,
-        media_count: ig.media_count ?? 0,
-        active: true,
-        last_error: null,
-      }, { onConflict: "project_id" });
-
-      fetch(`${SUPABASE_URL}/functions/v1/instagram-sync`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${SERVICE_ROLE}` },
-        body: JSON.stringify({ project_id: projectId }),
-      }).catch(() => {});
-
-      await fetch(`${GRAPH}/${page.id}/subscribed_apps?subscribed_fields=comments,messages&access_token=${page.access_token}`, { method: "POST" }).catch(() => {});
+    // Ровно одна страница и максимум один кабинет — подключаем сразу, без выбора.
+    if (pages.length === 1 && adAccounts.length <= 1) {
+      const summary = await connectPageAndAdAccount(supa, projectId, userToken, pages[0], adAccounts[0] ?? null);
+      return finish(returnUrl, { success: true, summary });
     }
 
-    if (adAccount) {
-      const { data: existing } = await supa
-        .from("ad_cabinets")
-        .select("id")
-        .eq("project_id", projectId)
-        .eq("ad_account_id", adAccount.id)
-        .maybeSingle();
-      const row: Record<string, unknown> = {
-        project_id: projectId,
-        name: adAccount.business?.name || adAccount.name || page.name,
-        external_id: adAccount.id,
-        ad_account_id: adAccount.id,
-        access_token: userToken,
-        page_id: page.id,
-        page_name: page.name,
-        instagram_id: ig?.id ?? null,
-        business_id: adAccount.business?.id ?? null,
-        currency: adAccount.currency ?? "KZT",
-        provider: "meta",
-      };
-      if (existing) {
-        await supa.from("ad_cabinets").update(row).eq("id", (existing as { id: string }).id);
-      } else {
-        await supa.from("ad_cabinets").insert(row);
-      }
-    }
+    // Иначе — не угадываем: откладываем выбор пользователю.
+    const { data: selection, error: selErr } = await supa
+      .from("meta_oauth_pending_selections")
+      .insert({ project_id: projectId, user_id: userId, user_token: userToken, pages, ad_accounts: adAccounts })
+      .select("id")
+      .single();
+    if (selErr || !selection) throw new Error(selErr?.message ?? "failed to store selection");
 
-    const summary = [
-      `страница «${page.name}»${extraPagesNote}`,
-      ig?.username ? `Instagram @${ig.username}` : "без привязанного Instagram",
-      adAccount ? `кабинет «${adAccount.name}»` : "без рекламного кабинета",
-    ].join(", ");
-    return redirect(withParam(returnUrl, "fb_connected", summary));
+    return finish(returnUrl, {
+      success: true,
+      needsSelection: true,
+      selectionId: (selection as { id: string }).id,
+      pages: pages.map((p) => ({ id: p.id, name: p.name })),
+      adAccounts: adAccounts.map((a) => ({ id: a.id, name: a.business?.name || a.name, currency: a.currency ?? null })),
+    });
   } catch (e) {
-    return redirect(withParam(returnUrl, "fb_error", e instanceof Error ? e.message : "unknown error"));
+    return finish(returnUrl, { success: false, error: e instanceof Error ? e.message : "unknown error" });
   }
 });
