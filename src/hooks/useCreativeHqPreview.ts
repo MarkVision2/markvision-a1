@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CreativePreviewSource } from "@/components/creatives/CreativePreview";
 import {
   bestCreativeImageHq,
@@ -170,7 +170,7 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
     thumbSize,
   ]);
 
-  const forceRefresh = async () => {
+  const forceRefresh = useCallback(async () => {
     if (!row.adId) return null;
     setLoadingHq(true);
     setHqFailed(false);
@@ -199,7 +199,17 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
     setLoadingHq(false);
     if (!hasVisual) setHqFailed(true);
     return videoUrl;
-  };
+  }, [
+    row.adId,
+    isVideo,
+    previewVideoUrl,
+    row.videoUrl,
+    row.posterUrl,
+    row.thumbnailUrl,
+    capturedPoster,
+    refreshedPoster,
+    refreshedThumb,
+  ]);
 
   return {
     isVideo,

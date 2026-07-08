@@ -21,6 +21,8 @@ interface Props {
   row: CreativePreviewSource;
   compact?: boolean;
   playable?: boolean;
+  /** inline — плеер с controls на месте (drawer). modal — в диалоге. */
+  playerLayout?: "inline" | "modal";
   /** cover — заполняет область (может обрезать). contain — целиком, без обрезки. */
   fit?: "cover" | "contain";
   className?: string;
@@ -30,6 +32,7 @@ export function CreativePreview({
   row,
   compact = false,
   playable = false,
+  playerLayout = "inline",
   fit = "contain",
   className,
 }: Props) {
@@ -71,16 +74,58 @@ export function CreativePreview({
 
   const [playerOpen, setPlayerOpen] = useState(false);
   const [playerVideoUrl, setPlayerVideoUrl] = useState<string | null>(null);
+  const [inlineVideoUrl, setInlineVideoUrl] = useState<string | null>(null);
   const [loadingFullVideo, setLoadingFullVideo] = useState(false);
+  const [inlineVideoError, setInlineVideoError] = useState(false);
   const [mediaError, setMediaError] = useState(false);
   const [playVideo, setPlayVideo] = useState(false);
   const [touchPreview, setTouchPreview] = useState(false);
   const [videoFrameReady, setVideoFrameReady] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const posterVideoRef = useRef<HTMLVideoElement>(null);
+  const inlineVideoRef = useRef<HTMLVideoElement>(null);
 
   const isActive = isCreativeActive(row.effectiveStatus);
   const mediaFit = fit === "contain" ? "object-contain" : "object-cover";
+  const useInlinePlayer = playable && isVideo && playerLayout === "inline";
+
+  useEffect(() => {
+    setInlineVideoUrl(null);
+    setInlineVideoError(false);
+  }, [row.adId, row.videoUrl]);
+
+  const loadFullVideo = async (): Promise<string | null> => {
+    setLoadingFullVideo(true);
+    setInlineVideoError(false);
+    const freshUrl = await forceRefresh();
+    setLoadingFullVideo(false);
+    if (freshUrl) setInlineVideoUrl(freshUrl);
+    return freshUrl;
+  };
+
+  useEffect(() => {
+    if (!useInlinePlayer || !inView) return;
+    let cancelled = false;
+    void (async () => {
+      setLoadingFullVideo(true);
+      const cached = previewVideoUrl ?? row.videoUrl;
+      if (cached) {
+        if (!cancelled) {
+          setInlineVideoUrl(cached);
+          setLoadingFullVideo(false);
+        }
+      }
+      const freshUrl = await forceRefresh();
+      if (!cancelled) {
+        setInlineVideoUrl(freshUrl ?? cached ?? null);
+        setLoadingFullVideo(false);
+        if (!freshUrl && !cached) setInlineVideoError(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [useInlinePlayer, inView, row.adId, row.videoUrl, previewVideoUrl, forceRefresh]);
 
   useEffect(() => {
     setVideoFrameReady(false);
@@ -118,8 +163,17 @@ export function CreativePreview({
 
   const TypeIcon = isVideo ? Video : isCarousel ? Layers : ImageIcon;
 
-  const handlePlayClick = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const handlePlayClick = async (e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    if (useInlinePlayer) {
+      if (inlineVideoUrl && inlineVideoRef.current) {
+        void inlineVideoRef.current.play().catch(() => {});
+        return;
+      }
+      const url = await loadFullVideo();
+      if (url) requestAnimationFrame(() => inlineVideoRef.current?.play().catch(() => {}));
+      return;
+    }
     setPlayerOpen(true);
     setPlayerVideoUrl(null);
     setLoadingFullVideo(true);
@@ -129,6 +183,14 @@ export function CreativePreview({
   };
 
   const handleRetryVideo = async () => {
+    if (useInlinePlayer) {
+      setInlineVideoUrl(null);
+      setInlineVideoError(false);
+      const url = await loadFullVideo();
+      if (!url) setInlineVideoError(true);
+      else requestAnimationFrame(() => inlineVideoRef.current?.load());
+      return;
+    }
     setPlayerVideoUrl(null);
     setLoadingFullVideo(true);
     const freshUrl = await forceRefresh();
@@ -146,16 +208,122 @@ export function CreativePreview({
     Boolean(thumbFallbackSrc) && !mediaError && !showVideo && !showImage && !showVideoFrame;
 
   const handlePreviewTap = (e: React.MouseEvent) => {
-    if (!isVideo || !canPlayInline || playable) return;
+    if (!isVideo || playable) return;
+    if (!canPlayInline) return;
     e.stopPropagation();
     setTouchPreview((v) => !v);
   };
+
+  if (useInlinePlayer) {
+    const poster = imageSrc ?? displaySrc ?? undefined;
+    return (
+      <div
+        ref={containerRef}
+        className={cn(
+          "group relative overflow-hidden bg-zinc-950",
+          fit === "contain" && "flex items-center justify-center",
+          className,
+        )}
+      >
+        {inlineVideoUrl && !inlineVideoError ? (
+          <video
+            ref={inlineVideoRef}
+            key={inlineVideoUrl}
+            src={inlineVideoUrl}
+            poster={poster}
+            controls
+            playsInline
+            preload="metadata"
+            className={cn("h-full w-full bg-black", mediaFit)}
+            onError={() => {
+              setInlineVideoError(true);
+              void handleRetryVideo();
+            }}
+          />
+        ) : (
+          <button
+            type="button"
+            className="relative flex h-full w-full items-center justify-center"
+            onClick={(e) => void handlePlayClick(e)}
+            aria-label="Включить видео"
+          >
+            {showImage ? (
+              <img
+                src={imageSrc!}
+                alt=""
+                className={cn("h-full w-full", mediaFit)}
+                loading="lazy"
+                decoding="async"
+                referrerPolicy="no-referrer"
+              />
+            ) : showVideoFrame ? (
+              <video
+                ref={posterVideoRef}
+                src={previewVideoUrl!}
+                muted
+                playsInline
+                preload="metadata"
+                className={cn("h-full w-full bg-zinc-950", mediaFit)}
+                onLoadedMetadata={(e) => primeVideoFrame(e.currentTarget)}
+              />
+            ) : (
+              <div className="flex h-full w-full flex-col items-center justify-center gap-2 bg-gradient-to-br from-zinc-700/60 to-zinc-900">
+                <Video className="h-10 w-10 text-white/50" />
+                <span className="text-xs text-white/60">Нажмите, чтобы загрузить видео</span>
+              </div>
+            )}
+            <span className="absolute inset-0 flex items-center justify-center bg-black/25 transition group-hover:bg-black/35">
+              {loadingFullVideo ? (
+                <Loader2 className="h-12 w-12 animate-spin text-white" />
+              ) : (
+                <span className="grid h-14 w-14 place-items-center rounded-full bg-black/70 text-white shadow-lg ring-2 ring-white/30">
+                  <Play className="h-6 w-6 fill-current" />
+                </span>
+              )}
+            </span>
+          </button>
+        )}
+
+        {inlineVideoError && (
+          <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-background/90 p-2 text-xs backdrop-blur">
+            <span className="text-muted-foreground">Не удалось загрузить видео</span>
+            <button
+              type="button"
+              onClick={() => void handleRetryVideo()}
+              className="rounded-md bg-primary px-2 py-1 text-[11px] font-semibold text-primary-foreground"
+            >
+              Повторить
+            </button>
+          </div>
+        )}
+
+        {!compact && (
+          <div className="pointer-events-none absolute left-2 top-2 flex flex-wrap gap-1">
+            <span className="inline-flex items-center gap-1 rounded-md bg-black/65 px-1.5 py-0.5 text-[10px] font-semibold text-white backdrop-blur-sm">
+              <Video className="h-3 w-3" />
+              Видео
+            </span>
+            {row.effectiveStatus && (
+              <span
+                className={cn(
+                  "rounded-md px-1.5 py-0.5 text-[10px] font-semibold backdrop-blur-sm",
+                  isActive ? "bg-emerald-600/90 text-white" : "bg-black/55 text-white/85",
+                )}
+              >
+                {formatCreativeStatus(row.effectiveStatus)}
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div
       ref={containerRef}
       className={cn(
-        "relative overflow-hidden bg-zinc-950",
+        "group relative overflow-hidden bg-zinc-950",
         fit === "contain" && "flex items-center justify-center",
         className,
       )}
@@ -297,29 +465,29 @@ export function CreativePreview({
         </span>
       )}
 
-      {!compact && isVideo && (
-        playable ? (
-          <button
-            type="button"
-            onClick={handlePlayClick}
-            disabled={loadingFullVideo}
-            className="absolute bottom-2 right-2 z-10 grid h-11 w-11 place-items-center rounded-full bg-black/75 text-white opacity-100 backdrop-blur-sm transition hover:bg-primary sm:h-9 sm:w-9 sm:opacity-0 sm:group-hover:opacity-100"
-            aria-label="Смотреть видео"
-          >
-            {loadingFullVideo ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Play className="h-4 w-4 fill-current" />
-            )}
-          </button>
-        ) : (
-          <span className="pointer-events-none absolute bottom-2 right-2 grid h-10 w-10 place-items-center rounded-full bg-black/65 text-white opacity-100 sm:h-8 sm:w-8 sm:opacity-0 sm:group-hover:opacity-100">
-            <Play className="h-3.5 w-3.5 fill-current" />
-          </span>
-        )
+      {!compact && isVideo && playable && playerLayout === "modal" && (
+        <button
+          type="button"
+          onClick={(e) => void handlePlayClick(e)}
+          disabled={loadingFullVideo}
+          className="absolute bottom-2 right-2 z-10 grid h-11 w-11 place-items-center rounded-full bg-black/75 text-white opacity-100 backdrop-blur-sm transition hover:bg-primary sm:h-10 sm:w-10"
+          aria-label="Смотреть видео"
+        >
+          {loadingFullVideo ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Play className="h-4 w-4 fill-current" />
+          )}
+        </button>
       )}
 
-      {playable && isVideo && (
+      {!compact && isVideo && !playable && (
+        <span className="pointer-events-none absolute bottom-2 right-2 grid h-10 w-10 place-items-center rounded-full bg-black/65 text-white opacity-100 sm:h-8 sm:w-8 sm:opacity-0 sm:group-hover:opacity-100">
+          <Play className="h-3.5 w-3.5 fill-current" />
+        </span>
+      )}
+
+      {playable && isVideo && playerLayout === "modal" && (
         <Dialog
           open={playerOpen}
           onOpenChange={(open) => {
