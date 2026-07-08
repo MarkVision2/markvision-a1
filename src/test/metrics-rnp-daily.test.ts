@@ -6,6 +6,7 @@ import type { StageChangeEvent } from "@/hooks/useStageChangeEvents";
 function lead(partial: Partial<LeadLite> & Pick<LeadLite, "id" | "createdAt">): LeadLite {
   return {
     id: partial.id,
+    projectId: partial.projectId ?? "p1",
     source: "whatsapp",
     channel: "whatsapp",
     referrer: null,
