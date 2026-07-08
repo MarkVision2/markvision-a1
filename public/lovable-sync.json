@@ -1,7 +1,7 @@
 {
-  "git_sha": "21ab2af",
-  "git_sha_full": "21ab2af0e41d5b8edea1e4b23d3166ec68fed48b",
-  "updated_at": "2026-07-08T14:56:30Z",
-  "label": "Facebook connect: show full connection details (page, Instagram, ad account)",
+  "git_sha": "fd872bf",
+  "git_sha_full": "fd872bf8a15d82bed5e40c87748e7b5e2d9c5c1e",
+  "updated_at": "2026-07-08T15:18:07Z",
+  "label": "Redesign Autopost: Calendar/Queue views, upcoming rail, richer Add dialog",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
