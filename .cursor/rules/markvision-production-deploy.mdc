@@ -1,0 +1,35 @@
+---
+description: Основной прод MarkVision AI — www.markvision.kz, не preview-домены Vercel
+alwaysApply: true
+---
+
+# Прод MarkVision AI
+
+## Основной домен
+
+**Прод для пользователей — https://www.markvision.kz** (MarkVision AI).
+
+Не считать продом и не направлять пользователя на:
+- `markvision-a1-theta.vercel.app`
+- другие `*.vercel.app` preview-URL проекта `markvision-a1`
+
+## Как выкатывать фронтенд
+
+1. Закоммитить изменения в `main`
+2. `git push origin main`
+3. Vercel (GitHub → main) автоматически обновляет **www.markvision.kz**
+4. Проверить версию: https://www.markvision.kz/lovable-sync.json — `git_sha` должен совпасть с последним коммитом
+5. Сказать пользователю открыть **www.markvision.kz** и сделать жёсткое обновление (Cmd+Shift+R)
+
+`vercel --prod` из CLI деплоит только на preview-алиас `markvision-a1-theta.vercel.app` — **не заменяет** основной домен.
+
+## Supabase (edge functions, миграции)
+
+Прод-проект: **szfgdruhlebfvcmlvxdk**
+
+- Миграции / edge functions — через Supabase CLI или MCP `user-supabase`
+- Фронт на markvision.kz подтягивается только через git push
+
+## После деплоя
+
+В ответе пользователю всегда указывать ссылку на **https://www.markvision.kz**, не на vercel.app.

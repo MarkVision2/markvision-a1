@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Film, FlaskConical,
-  Camera, Flame, Images, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Send, Sparkles, Trash2, Upload, X, Zap,
+  Camera, Flame, Images, Instagram, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Send, Sparkles, Trash2, Upload, X, Zap,
 } from "lucide-react";
 import { toast } from "sonner";
+import { Link } from "react-router-dom";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { useInstagramAccount } from "@/hooks/useInstagramAccount";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -87,6 +90,8 @@ const monthRangeYmd = (view: Date) => {
 };
 
 const AutoPost = () => {
+  const { active } = useProjectsStore();
+  const { account, loading: accountLoading } = useInstagramAccount();
   const [view, setView] = useState(() => new Date());
   const [posts, setPosts] = useState<QueuePost[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -147,13 +152,73 @@ const AutoPost = () => {
       <PageHeader
         icon={CalendarDays}
         title="Автопостинг"
-        description="Календарь публикаций в Instagram. Кликните день, чтобы запланировать пост. Время — по Алматы."
+        description={
+          <span>
+            Календарь публикаций в Instagram
+            {active?.name ? <> для проекта «{active.name}»</> : null}
+            {account?.username ? <> · публикации идут в @{account.username}</> : null}
+            . Кликните день, чтобы запланировать пост. Время — по Алматы.
+          </span>
+        }
         actions={
           <Button variant="outline" size="icon" className="h-10 w-10 rounded-xl border-border/60" aria-label="Обновить" onClick={() => void loadAll(view)} disabled={loading}>
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
           </Button>
         }
       />
+
+      <div className="mt-4">
+        {accountLoading && !account ? (
+          <div className="flex items-center gap-2 rounded-2xl border border-border/60 bg-card/60 px-4 py-3 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Загружаем аккаунт Instagram…
+          </div>
+        ) : account ? (
+          <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-pink-500/25 bg-pink-500/5 px-4 py-3">
+            {account.profilePictureUrl ? (
+              <img src={account.profilePictureUrl} alt="" className="h-12 w-12 rounded-full object-cover ring-2 ring-pink-500/40" />
+            ) : (
+              <span className="grid h-12 w-12 place-items-center rounded-full bg-pink-500/15 text-pink-500">
+                <Instagram className="h-6 w-6" />
+              </span>
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-semibold">Публикации идут в Instagram</span>
+                {account.active && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+              </div>
+              <div className="mt-0.5 text-sm">
+                <span className="font-medium">@{account.username ?? account.name ?? account.igUserId}</span>
+                {account.pageName ? (
+                  <span className="text-muted-foreground"> · страница Facebook «{account.pageName}»</span>
+                ) : null}
+              </div>
+              <div className="mt-1 text-[11px] text-muted-foreground">
+                {fmtNum(account.followersCount)} подписчиков · {fmtNum(account.mediaCount)} публикаций в аккаунте
+              </div>
+            </div>
+            <Link
+              to="/settings?tab=meta-tokens"
+              className="text-xs text-primary hover:underline shrink-0"
+            >
+              Сменить аккаунт
+            </Link>
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-start gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-4 py-3">
+            <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="text-sm font-medium">Instagram не подключён к проекту</div>
+              <p className="text-xs text-muted-foreground">
+                Без привязанного аккаунта публикации не смогут выйти в Instagram. Подключите страницу Facebook с Instagram в настройках.
+              </p>
+            </div>
+            <Button asChild size="sm" variant="outline" className="shrink-0 rounded-lg">
+              <Link to="/settings?tab=meta-tokens">Подключить Instagram</Link>
+            </Button>
+          </div>
+        )}
+      </div>
 
       {/* Статистика */}
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
