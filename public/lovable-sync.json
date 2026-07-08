@@ -1,7 +1,7 @@
 {
-  "git_sha": "5eed26e",
-  "git_sha_full": "5eed26eb00deda1e1b51a2deef1fc8f88b41945d",
-  "updated_at": "2026-07-08T15:41:10+05:00",
-  "label": "Simplify Settings navigation and remove duplicate connection map.",
+  "git_sha": "8152f76",
+  "git_sha_full": "8152f76707dc812fda669fc6ce231ca9ff2162b8",
+  "updated_at": "2026-07-08T14:18:49Z",
+  "label": "Facebook connect: popup UX + explicit page/ad-account picker",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
