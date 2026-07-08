@@ -165,8 +165,9 @@ Deno.serve(async (req) => {
   const action = String(payload.action ?? "").trim();
   if (!action) return json({ error: "action required" }, 400);
 
-  // Статус Video Agent: если ссылки нет, но есть video_id — добираем MP4 из /v1,
-  // чтобы браузер не получал «готово без ссылки».
+  // Статус Video Agent: авторитетен статус самого ВИДЕО (/v3/videos/{id}), а не
+  // сессии агента (она бывает «failed», пока видео ещё рендерится). Как только у
+  // сессии есть video_id — подменяем статус/ссылку данными видео.
   if (action === "video_agent_status") {
     const sessionId = String(payload.session_id ?? "").trim();
     if (!sessionId) return json({ error: "session_id required" }, 400);
@@ -178,22 +179,30 @@ Deno.serve(async (req) => {
       const body = await r.json().catch(() => ({}));
       if (!r.ok) return json({ error: `HeyGen вернул ${r.status}` }, 502);
       const d = (body?.data ?? body ?? {}) as Record<string, unknown>;
-      if (!pickUrl(d)) {
-        const vid = pickVideoId(d);
-        if (vid) {
-          const vr = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${encodeURIComponent(vid)}`, {
+      const vid = pickVideoId(d);
+      if (vid) {
+        let vd: Record<string, unknown> = {};
+        try {
+          const vr = await fetch(`${HEYGEN_BASE}/v3/videos/${encodeURIComponent(vid)}`, {
             headers: { "X-Api-Key": apiKey, Accept: "application/json" },
             signal: AbortSignal.timeout(TIMEOUT_MS),
           });
-          const vbody = await vr.json().catch(() => ({}));
-          const vd = (vbody?.data ?? {}) as Record<string, unknown>;
-          const url = pickUrl(vd);
-          if (url) {
-            d.video_url = url;
-            if (d.duration == null && vd.duration != null) d.duration = vd.duration;
-            if (!d.thumbnail_url && vd.thumbnail_url) d.thumbnail_url = vd.thumbnail_url;
-            if (!d.video_id && vd.id) d.video_id = vd.id;
-          }
+          vd = ((await vr.json().catch(() => ({})))?.data ?? {}) as Record<string, unknown>;
+        } catch { /* ignore */ }
+        if (!pickUrl(vd) && !vd.status) {
+          const vr1 = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${encodeURIComponent(vid)}`, {
+            headers: { "X-Api-Key": apiKey, Accept: "application/json" },
+            signal: AbortSignal.timeout(TIMEOUT_MS),
+          });
+          vd = ((await vr1.json().catch(() => ({})))?.data ?? vd) as Record<string, unknown>;
+        }
+        if (vd.status) d.status = vd.status; // статус видео важнее статуса сессии
+        const url = pickUrl(vd);
+        if (url) {
+          d.video_url = url;
+          if (d.duration == null && vd.duration != null) d.duration = vd.duration;
+          if (!d.thumbnail_url && vd.thumbnail_url) d.thumbnail_url = vd.thumbnail_url;
+          if (!d.video_id) d.video_id = vid;
         }
       }
       return json({ data: d });
