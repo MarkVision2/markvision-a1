@@ -1,7 +1,7 @@
 {
-  "git_sha": "39c95fa",
-  "git_sha_full": "39c95fa4190981374838b6d2f82925590fdb95f3",
-  "updated_at": "2026-07-08T15:30:08+05:00",
-  "label": "Clarify empty content periods in analytics.",
+  "git_sha": "5eed26e",
+  "git_sha_full": "5eed26eb00deda1e1b51a2deef1fc8f88b41945d",
+  "updated_at": "2026-07-08T15:41:10+05:00",
+  "label": "Simplify Settings navigation and remove duplicate connection map.",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
