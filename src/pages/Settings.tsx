@@ -24,6 +24,7 @@ import { InboundTokensSettings } from "@/components/settings/InboundTokensSettin
 import { ClientDashTokensSettings } from "@/components/settings/ClientDashTokensSettings";
 import { InstagramOrganicSettings } from "@/components/settings/InstagramOrganicSettings";
 import { MetaTokensSettings } from "@/components/settings/MetaTokensSettings";
+import { FacebookConnect } from "@/components/settings/FacebookConnect";
 import { LovablePublishGuide } from "@/components/settings/LovablePublishGuide";
 import { SiteIntakeCard } from "@/pages/SettingsConnection";
 import { PageContainer } from "@/components/layout/PageContainer";
@@ -274,7 +275,8 @@ export default function Settings() {
           <InstagramOrganicSettings />
         </TabsContent>
 
-        <TabsContent value="meta-tokens" className="mt-0">
+        <TabsContent value="meta-tokens" className="mt-0 space-y-6">
+          <FacebookConnect />
           <MetaTokensSettings />
         </TabsContent>
 
