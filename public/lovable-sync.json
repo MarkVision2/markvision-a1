@@ -1,7 +1,7 @@
 {
-  "git_sha": "c70a88a",
-  "git_sha_full": "c70a88ae897d75aee1a43dc8a1549a09bbbd0901",
-  "updated_at": "2026-07-08T08:27:39+05:00",
-  "label": "fix(heygen): sync balance and spend from HeyGen account API",
+  "git_sha": "9285be4",
+  "git_sha_full": "9285be4c7e062cf11c92b2537ef94da761df291e",
+  "updated_at": "2026-07-08T08:33:20+05:00",
+  "label": "fix(heygen): show balance API error details in usage panel",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
