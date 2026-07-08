@@ -10,10 +10,15 @@
 // Публичный эндпоинт (verify_jwt=false): Meta не шлёт наш JWT, доверие
 // обеспечивается одноразовым state из meta_oauth_states.
 //
-// Результат передаётся родительскому окну через postMessage, после чего
-// попап закрывается сам. Если попап заблокирован и открылся как обычная
-// вкладка (нет window.opener) — запасной вариант: обычный редирект на
-// return_url с ?fb_connected/?fb_error/?fb_select.
+// Важно: Supabase Edge Functions переписывают любой text/html-ответ на GET
+// в text/plain (см. https://supabase.com/docs/guides/functions/development-tips),
+// поэтому вернуть отсюда работающую HTML-страницу со скриптом (window.opener.
+// postMessage) невозможно — браузер покажет её как обычный текст, ничего не
+// выполнив. Поэтому результат просто передаётся через 302-редирект обратно
+// на return_url с ?fb_connected/?fb_error/?fb_select — а уже сам фронтенд
+// (реальная страница на Vercel, а не эта функция) решает: если он открыт в
+// попапе (есть window.opener) — форвардит результат родительскому окну через
+// postMessage и закрывается сам; если нет — обрабатывает результат на месте.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { connectPageAndAdAccount, type FbAdAccount, type FbPage } from "../_lib/facebookConnect.ts";
 
@@ -25,12 +30,9 @@ type Page = FbPage;
 type AdAccount = FbAdAccount;
 
 function finish(returnUrl: string, payload: Record<string, unknown>) {
-  let targetOrigin = "*";
-  try { targetOrigin = new URL(returnUrl).origin; } catch { /* keep "*" */ }
   // needsSelection: carry the (already token-free) pages/adAccounts list in the
-  // fallback URL itself — a blocked-popup redirect has no other channel to
-  // hand that list back to the page for the picker dialog.
-  const fallbackParam = payload.success
+  // redirect URL itself, since this is the only channel back to the page.
+  const param = payload.success
     ? payload.needsSelection
       ? `fb_select=${encodeURIComponent(JSON.stringify({
           selectionId: payload.selectionId,
@@ -39,32 +41,8 @@ function finish(returnUrl: string, payload: Record<string, unknown>) {
         }))}`
       : `fb_connected=${encodeURIComponent(String(payload.summary ?? ""))}`
     : `fb_error=${encodeURIComponent(String(payload.error ?? "unknown"))}`;
-  const fallbackUrl = `${returnUrl}${returnUrl.includes("?") ? "&" : "?"}${fallbackParam}`;
-
-  const html = `<!doctype html>
-<html><head><meta charset="utf-8"><title>Facebook</title></head>
-<body style="font-family: system-ui, sans-serif; display:grid; place-items:center; height:100vh; margin:0; color:#666;">
-<div>Завершаем подключение…</div>
-<script>
-(function () {
-  var payload = ${JSON.stringify({ source: "fb-oauth", ...payload })};
-  var targetOrigin = ${JSON.stringify(targetOrigin)};
-  var fallbackUrl = ${JSON.stringify(fallbackUrl)};
-  try {
-    if (window.opener) {
-      window.opener.postMessage(payload, targetOrigin);
-      window.close();
-      setTimeout(function () {
-        document.body.firstElementChild.textContent = "Готово, можно закрыть это окно.";
-      }, 300);
-      return;
-    }
-  } catch (e) { /* fall through to redirect */ }
-  window.location.href = fallbackUrl;
-})();
-</script>
-</body></html>`;
-  return new Response(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } });
+  const redirectUrl = `${returnUrl}${returnUrl.includes("?") ? "&" : "?"}${param}`;
+  return new Response(null, { status: 302, headers: { Location: redirectUrl } });
 }
 
 Deno.serve(async (req) => {
