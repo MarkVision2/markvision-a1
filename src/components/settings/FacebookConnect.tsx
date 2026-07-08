@@ -34,10 +34,16 @@ type OAuthMessage = {
 const OAUTH_MESSAGE_SOURCE = "fb-oauth";
 
 // Один вход через Facebook — попап открывает диалог Facebook, а после
-// подключения сам себя закрывает и возвращает результат в это окно
-// (facebook-oauth-start → диалог Facebook → facebook-oauth-callback,
-// связь через postMessage). Если у аккаунта несколько страниц или
-// рекламных кабинетов — просим выбрать явно, а не угадываем.
+// подключения facebook-oauth-callback редиректит попап обратно на эту же
+// страницу с результатом в query-параметрах (?fb_connected/?fb_error/
+// ?fb_select). Supabase Edge Functions не умеют отдавать рабочий text/html
+// на GET (браузер покажет его как обычный текст), поэтому связь с открывшим
+// окном происходит не из функции, а из самого фронтенда: если страница
+// обнаруживает, что она открыта в попапе (есть window.opener), она
+// форвардит результат родительскому окну через postMessage и закрывается
+// сама; иначе обрабатывает результат на месте (обычный редирект — попап был
+// заблокирован). Если у аккаунта несколько страниц или рекламных кабинетов —
+// просим выбрать явно, а не угадываем.
 export function FacebookConnect() {
   const { activeId: projectId } = useProjectsStore();
   const [connecting, setConnecting] = useState(false);
@@ -61,11 +67,37 @@ export function FacebookConnect() {
     setSelectedAdAccountId(null);
   };
 
-  // Fallback: popup was blocked, so Facebook redirected this whole tab back.
+  // facebook-oauth-callback always redirects back here with the result in
+  // the query string. If this page instance is the popup itself (it has an
+  // opener), forward the result to the parent window and close; otherwise
+  // (popup was blocked and this is the same tab that navigated away) handle
+  // it locally, same as before.
   useEffect(() => {
     const connected = params.get("fb_connected");
     const error = params.get("fb_error");
     const select = params.get("fb_select");
+    if (!connected && !error && !select) return;
+
+    const isPopup = !!window.opener && window.opener !== window;
+    if (isPopup) {
+      try {
+        let payload: OAuthMessage;
+        if (connected) {
+          payload = { source: OAUTH_MESSAGE_SOURCE, success: true, summary: connected };
+        } else if (error) {
+          payload = { source: OAUTH_MESSAGE_SOURCE, success: false, error };
+        } else {
+          const sel = JSON.parse(select as string) as PendingSelection;
+          payload = { source: OAUTH_MESSAGE_SOURCE, success: true, needsSelection: true, ...sel };
+        }
+        window.opener.postMessage(payload, window.location.origin);
+        window.close();
+      } catch {
+        // Fall through to local handling if postMessage/close somehow fails.
+      }
+      return;
+    }
+
     if (connected) {
       toast.success("Facebook подключён", { description: connected });
       setParams((p) => { p.delete("fb_connected"); return p; }, { replace: true });
