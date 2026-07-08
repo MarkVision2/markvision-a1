@@ -33,7 +33,9 @@ import {
   filterRowsByCabinet,
   metaLeadCount,
   sumCreativeTableTotals,
+  type CreativeTableTotals,
 } from "@/lib/creativeFunnelUtils";
+import { fetchCdiRows } from "@/lib/cdiFetch";
 import { cn } from "@/lib/utils";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
@@ -94,6 +96,11 @@ const CreativeFunnel = () => {
   const [refreshingPosters, setRefreshingPosters] = useState(false);
   const [posterProgress, setPosterProgress] = useState({ done: 0, total: 0 });
   const [syncingMeta, setSyncingMeta] = useState(false);
+  const [cdiTotals, setCdiTotals] = useState<Pick<CreativeTableTotals, "spend" | "metaLeads">>({
+    spend: 0,
+    metaLeads: 0,
+  });
+  const [cdiTick, setCdiTick] = useState(0);
   const { activeId: projectId } = useProjectsStore();
   const { cabinets } = usePersonalCabinets();
   const queryClient = useQueryClient();
@@ -136,6 +143,39 @@ const CreativeFunnel = () => {
     return () => { cancelled = true; };
   }, [projectId, sinceYmd, untilExclusive, backfilling, cabinetId]);
 
+  useEffect(() => {
+    if (!projectId) {
+      setCdiTotals({ spend: 0, metaLeads: 0 });
+      return;
+    }
+    let cancelled = false;
+    const cabinetIds =
+      cabinetId !== "all" ? [cabinetId] : cabinets.map((c) => c.id).filter(Boolean);
+    if (cabinetIds.length === 0) {
+      setCdiTotals({ spend: 0, metaLeads: 0 });
+      return;
+    }
+    void (async () => {
+      const rows = await fetchCdiRows<{ spend: number | string; leads: number | string }>(
+        "spend, leads",
+        {
+          cabinetIds,
+          since: sinceYmd,
+          until: ymd(range.to),
+          projectId,
+        },
+      );
+      if (cancelled) return;
+      setCdiTotals({
+        spend: rows.reduce((s, r) => s + (Number(r.spend) || 0), 0),
+        metaLeads: rows.reduce((s, r) => s + (Number(r.leads) || 0), 0),
+      });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, sinceYmd, range.to, cabinetId, cabinets, cdiTick]);
+
   const refreshData = () => {
     void queryClient.invalidateQueries({ queryKey: [META_STRUCTURE_QUERY_KEY] });
     void queryClient.invalidateQueries({ queryKey: [LEADS_LITE_QUERY_KEY, projectId] });
@@ -154,6 +194,7 @@ const CreativeFunnel = () => {
       if (messages.error) toast.error(messages.error);
       for (const w of messages.warnings) toast.warning(w);
       refreshData();
+      setCdiTick((t) => t + 1);
     } finally {
       setSyncingMeta(false);
     }
@@ -221,8 +262,12 @@ const CreativeFunnel = () => {
   useEffect(() => { setPage(1); }, [search, status, type, hasSpend, hasLeads, hasSales, range.from, range.to, cabinetId]);
 
   const tableTotals = useMemo(() => sumCreativeTableTotals(filtered), [filtered]);
-  const totalsRomi = tableTotals.spend > 0
-    ? ((crmTotals.revenue - tableTotals.spend) / tableTotals.spend) * 100
+  const kpiTotals = useMemo(() => sumCreativeTableTotals(scopedRows), [scopedRows]);
+  const displaySpend = kpiTotals.spend > 0 ? kpiTotals.spend : cdiTotals.spend;
+  const displayMetaLeads = kpiTotals.metaLeads > 0 ? kpiTotals.metaLeads : cdiTotals.metaLeads;
+  const spendFromCdi = kpiTotals.spend === 0 && cdiTotals.spend > 0;
+  const totalsRomi = displaySpend > 0
+    ? ((crmTotals.revenue - displaySpend) / displaySpend) * 100
     : 0;
 
   const refreshAllPosters = async () => {
@@ -333,16 +378,19 @@ const CreativeFunnel = () => {
 
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
         {[
-          { label: "Расход", value: fmtTenge(tableTotals.spend) },
-          { label: "Лиды Meta", value: fmtNum(tableTotals.metaLeads) },
+          {
+            label: spendFromCdi ? "Расход (CDI)" : "Расход",
+            value: fmtTenge(displaySpend),
+          },
+          { label: "Лиды Meta", value: fmtNum(displayMetaLeads) },
           { label: "Лиды CRM", value: fmtNum(crmTotals.leads) },
           { label: "Диагностики", value: fmtNum(crmTotals.diagnostics) },
           { label: "Продажи", value: fmtNum(crmTotals.sales) },
           { label: "Выручка", value: fmtTenge(crmTotals.revenue) },
           {
             label: "ROMI",
-            value: tableTotals.spend > 0 ? `${totalsRomi >= 0 ? "+" : ""}${Math.round(totalsRomi)}%` : "—",
-            cls: tableTotals.spend > 0 ? (totalsRomi >= 0 ? "text-success" : "text-destructive") : "",
+            value: displaySpend > 0 ? `${totalsRomi >= 0 ? "+" : ""}${Math.round(totalsRomi)}%` : "—",
+            cls: displaySpend > 0 ? (totalsRomi >= 0 ? "text-success" : "text-destructive") : "",
           },
         ].map((k) => (
           <div key={k.label} className="rounded-2xl border border-border/60 bg-card/60 p-3">
@@ -360,7 +408,25 @@ const CreativeFunnel = () => {
         БД <code className="text-[10px]">{supabaseProjectId}</code>
       </div>
 
-      {!loading && scopedRows.length > 0 && tableTotals.spend === 0 && (
+      {!loading && scopedRows.length > 0 && kpiTotals.spend === 0 && spendFromCdi && (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
+          <p>
+            <span className="font-medium">Расход по креативам в таблице — 0 ₸</span>
+            <span className="text-muted-foreground">
+              {" "}
+              — нет строк в <code className="text-xs">meta_creative_daily</code> за период.
+              В шапке показан суммарный расход из таблицы показателей (CDI): {fmtTenge(cdiTotals.spend)}.
+              Нажмите «Синхронизация Meta», чтобы разнести по креативам.
+            </span>
+          </p>
+          <Button size="sm" className="rounded-xl" onClick={() => void runMetaSync()} disabled={syncingMeta}>
+            {syncingMeta ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Zap className="mr-2 h-4 w-4" />}
+            Синхронизация Meta
+          </Button>
+        </div>
+      )}
+
+      {!loading && scopedRows.length > 0 && kpiTotals.spend === 0 && !spendFromCdi && (
         <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/30 bg-primary/5 px-4 py-3 text-sm">
           <p>
             <span className="font-medium">Расход 0 ₸</span>
