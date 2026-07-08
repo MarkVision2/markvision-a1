@@ -2,6 +2,13 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpDown, ArrowUpRight, Filter, ImageDown, Info, Loader2, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -13,21 +20,27 @@ import { useMetaCreatives, type MetaCreativeRow } from "@/hooks/useMetaStructure
 import { META_STRUCTURE_QUERY_KEY } from "@/hooks/useMetaDashboard";
 import { refreshMetaCreative } from "@/lib/metaCreativeRefresh";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
-import { useLeadsLite } from "@/hooks/useLeadsLite";
-import { isLeadPaid, isLeadVisit } from "@/lib/leadStageFlags";
+import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
+import { LEADS_LITE_QUERY_KEY, useLeadsLite } from "@/hooks/useLeadsLite";
 import { supabase } from "@/integrations/supabase/client";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
+import {
+  buildAdToCabinetMap,
+  computeProjectCrmTotals,
+  dedupMetaCreatives,
+  filterRowsByCabinet,
+  metaLeadCount,
+  sumCreativeTableTotals,
+} from "@/lib/creativeFunnelUtils";
 import { cn } from "@/lib/utils";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")}\u00a0₸`;
 
-
 type SortKey = "crmRevenue" | "crmRomi" | "crmSales" | "crmLeads" | "leads" | "spend" | "ctr" | "cpl" | "name";
 type SortDir = "asc" | "desc";
 type StatusFilter = "all" | "active" | "paused";
 type TypeFilter = "all" | "video" | "image" | "carousel";
-
 
 function SortableTh({
   label, sortKey, current, dir, onSort, align = "right",
@@ -61,6 +74,7 @@ function SortableTh({
 
 const CreativeFunnel = () => {
   const [range, setRange] = useState<ReportPeriodRange>(() => currentMonthRange());
+  const [cabinetId, setCabinetId] = useState<string>("all");
   const [sortKey, setSortKey] = useState<SortKey>("crmRevenue");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [search, setSearch] = useState("");
@@ -75,28 +89,36 @@ const CreativeFunnel = () => {
 
   const [backfilling, setBackfilling] = useState(false);
   const [orphanLeads, setOrphanLeads] = useState(0);
-  const [crmTotals, setCrmTotals] = useState({ leads: 0, diagnostics: 0, sales: 0, revenue: 0 });
   const [refreshingPosters, setRefreshingPosters] = useState(false);
   const [posterProgress, setPosterProgress] = useState({ done: 0, total: 0 });
   const { activeId: projectId } = useProjectsStore();
+  const { cabinets } = usePersonalCabinets();
   const queryClient = useQueryClient();
 
-  const { rows, loading } = useMetaCreatives(range);
+  const { rows: rawRows, loading } = useMetaCreatives(range);
+  const { leads: allLeads } = useLeadsLite();
 
-  // Половинно-открытый интервал [since, untilExclusive). Раньше использовали
-  // lte("created_at", "...23:59:59") — это могло отсечь записи с
-  // микросекундами в последнюю секунду суток.
   const ymd = (d: Date) =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const sinceYmd = ymd(range.from);
   const untilExclusive = ymd(new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate() + 1));
 
-  // Лиды без привязки к креативу — для строки "Без креатива" и баннера
+  const adToCabinet = useMemo(() => buildAdToCabinetMap(rawRows), [rawRows]);
+  const scopedRows = useMemo(
+    () => dedupMetaCreatives(filterRowsByCabinet(rawRows, cabinetId)),
+    [rawRows, cabinetId],
+  );
+
+  const crmTotals = useMemo(
+    () => computeProjectCrmTotals(allLeads, range, projectId, cabinetId, adToCabinet),
+    [allLeads, range, projectId, cabinetId, adToCabinet],
+  );
+
   useEffect(() => {
     if (!projectId) { setOrphanLeads(0); return; }
     let cancelled = false;
     void (async () => {
-      const { count } = await supabase
+      let q = supabase
         .from("leads")
         .select("id", { count: "exact", head: true })
         .eq("project_id", projectId)
@@ -104,60 +126,22 @@ const CreativeFunnel = () => {
         .is("meta_ad_id", null)
         .gte("created_at", sinceYmd)
         .lt("created_at", untilExclusive);
+      if (cabinetId !== "all") q = q.eq("cabinet_id", cabinetId);
+      const { count } = await q;
       if (!cancelled) setOrphanLeads(count ?? 0);
     })();
     return () => { cancelled = true; };
-  }, [projectId, sinceYmd, untilExclusive, backfilling]);
+  }, [projectId, sinceYmd, untilExclusive, backfilling, cabinetId]);
 
-  // Сводные CRM-показатели по проекту за период (диагностики/продажи/выручка).
-  // ЕДИНАЯ СЕМАНТИКА с Dashboard / Analytics / Reports / Metrics:
-  //   leads — по createdAt (когда лид пришёл)
-  //   sales — по paid_at (когда оплатил)
-  //   diagnostics — по дате события (paid_at / lastActivityAt)
-  //   revenue — продажи.amount + диагностики.diagnostic_amount
-  // Раньше всё фильтровалось по created_at — лид, оплаченный в следующем
-  // месяце, не попадал в продажи, и сумма расходилась с Dashboard.
-  const { leads: allLeads } = useLeadsLite();
-  useEffect(() => {
-    if (!projectId) { setCrmTotals({ leads: 0, diagnostics: 0, sales: 0, revenue: 0 }); return; }
-    const sinceTs = range.from.getTime();
-    const untilTs = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate() + 1).getTime();
-    let leadsCount = 0;
-    let diagnostics = 0;
-    let sales = 0;
-    let revenue = 0;
-    for (const l of allLeads) {
-      const createdTs = new Date(l.createdAt).getTime();
-      if (createdTs >= sinceTs && createdTs < untilTs) leadsCount += 1;
-
-      if (isLeadPaid(l)) {
-        const paidAt = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
-        const t = new Date(paidAt).getTime();
-        if (t >= sinceTs && t < untilTs) {
-          sales += 1;
-          revenue += Number(l.amount) || 0;
-          // Диагностика автоматически включает paid-лидов.
-          diagnostics += 1;
-          revenue += Number(l.diagnosticAmount) || 0;
-        }
-      } else if (isLeadVisit(l)) {
-        // Лид прошёл диагностику, но ещё не оплатил.
-        const ref = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
-        const t = new Date(ref).getTime();
-        if (t >= sinceTs && t < untilTs) {
-          diagnostics += 1;
-          revenue += Number(l.diagnosticAmount) || 0;
-        }
-      }
-    }
-    setCrmTotals({ leads: leadsCount, diagnostics, sales, revenue });
-  }, [projectId, allLeads, range, backfilling]);
-
+  const refreshData = () => {
+    void queryClient.invalidateQueries({ queryKey: [META_STRUCTURE_QUERY_KEY] });
+    void queryClient.invalidateQueries({ queryKey: [LEADS_LITE_QUERY_KEY, projectId] });
+  };
 
   const runBackfill = async () => {
     if (!projectId) return;
     setBackfilling(true);
-    const since = `${range.from.getFullYear()}-${String(range.from.getMonth()+1).padStart(2,"0")}-${String(range.from.getDate()).padStart(2,"0")}`;
+    const since = `${range.from.getFullYear()}-${String(range.from.getMonth() + 1).padStart(2, "0")}-${String(range.from.getDate()).padStart(2, "0")}`;
     const { data, error } = await (supabase as unknown as { rpc: (fn: string, args: Record<string, unknown>) => Promise<{ data: { attributed?: number } | null; error: unknown }> })
       .rpc("backfill_lead_attribution", { p_project_id: projectId, p_since: since });
     setBackfilling(false);
@@ -169,73 +153,30 @@ const CreativeFunnel = () => {
     const n = data?.attributed ?? 0;
     if (n > 0) {
       toast.success(`Привязано лидов: ${n}`);
-      setRange({ ...range });
+      refreshData();
     } else {
       toast.message("Новых привязок не найдено", { description: "Лиды без меток нельзя привязать к креативу" });
     }
   };
 
-
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let r = rows;
+    let r = scopedRows;
     if (status === "active") r = r.filter((x) => x.effectiveStatus === "ACTIVE");
     if (status === "paused") r = r.filter((x) => x.effectiveStatus && x.effectiveStatus !== "ACTIVE");
     if (type !== "all") r = r.filter((x) => x.creativeType === type);
     if (hasSpend) r = r.filter((x) => x.spend > 0);
-    if (hasLeads) r = r.filter((x) => x.crmLeads > 0 || x.leads > 0);
+    if (hasLeads) r = r.filter((x) => x.crmLeads > 0 || metaLeadCount(x) > 0);
     if (hasSales) r = r.filter((x) => x.crmSales > 0);
     if (q) r = r.filter((x) => x.name.toLowerCase().includes(q) || x.adId.includes(q));
 
-    // Дедупликация: одинаковая медиа (видео/картинка) — это один креатив,
-    // даже если откручен в нескольких кампаниях. Складываем метрики.
-    const dedupKey = (x: MetaCreativeRow) =>
-      x.videoId
-      || x.videoUrl
-      || x.imageUrl
-      || x.thumbnailUrl
-      || x.posterUrl
-      || `name:${x.creativeType}:${x.name}`;
-    const groups = new Map<string, MetaCreativeRow>();
-    for (const row of r) {
-      const key = dedupKey(row);
-      const existing = groups.get(key);
-      if (!existing) {
-        groups.set(key, { ...row });
-        continue;
-      }
-      existing.spend += row.spend;
-      existing.impressions += row.impressions;
-      existing.clicks += row.clicks;
-      existing.leads += row.leads;
-      existing.messages += row.messages;
-      existing.purchases += row.purchases;
-      existing.revenue += row.revenue;
-      existing.crmLeads += row.crmLeads;
-      existing.crmQualified += row.crmQualified;
-      existing.crmSales += row.crmSales;
-      existing.crmRevenue += row.crmRevenue;
-      // Если ACTIVE есть хоть в одной кампании — считаем активным
-      if (row.effectiveStatus === "ACTIVE") existing.effectiveStatus = "ACTIVE";
-    }
-    const merged = Array.from(groups.values()).map((x) => {
-      const ctr = x.impressions > 0 ? (x.clicks / x.impressions) * 100 : 0;
-      const cpl = x.leads > 0 ? x.spend / x.leads : 0;
-      const cpc = x.clicks > 0 ? x.spend / x.clicks : 0;
-      const cpm = x.impressions > 0 ? (x.spend / x.impressions) * 1000 : 0;
-      const romi = x.spend > 0 ? ((x.revenue - x.spend) / x.spend) * 100 : 0;
-      const crmCpl = x.crmLeads > 0 ? x.spend / x.crmLeads : 0;
-      const crmCps = x.crmSales > 0 ? x.spend / x.crmSales : 0;
-      const crmAvgCheck = x.crmSales > 0 ? x.crmRevenue / x.crmSales : 0;
-      const crmRomi = x.spend > 0 ? ((x.crmRevenue - x.spend) / x.spend) * 100 : 0;
-      const crmProfit = x.crmRevenue - x.spend;
-      return { ...x, ctr, cpl, cpc, cpm, romi, crmCpl, crmCps, crmAvgCheck, crmRomi, crmProfit };
-    });
-
-    const sorted = merged;
+    const sorted = [...r];
     const dir = sortDir === "asc" ? 1 : -1;
     sorted.sort((a, b) => {
       if (sortKey === "name") return a.name.localeCompare(b.name) * dir;
+      if (sortKey === "leads") {
+        return (metaLeadCount(b) - metaLeadCount(a)) * dir;
+      }
       if (sortKey === "cpl") {
         const av = a.crmCpl > 0 ? a.crmCpl : a.cpl;
         const bv = b.crmCpl > 0 ? b.crmCpl : b.cpl;
@@ -248,8 +189,7 @@ const CreativeFunnel = () => {
       return (vb - va) * dir;
     });
     return sorted;
-  }, [rows, sortKey, sortDir, search, status, type, hasSpend, hasLeads, hasSales]);
-
+  }, [scopedRows, sortKey, sortDir, search, status, type, hasSpend, hasLeads, hasSales]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -257,29 +197,15 @@ const CreativeFunnel = () => {
     () => filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
     [filtered, safePage],
   );
-  useEffect(() => { setPage(1); }, [search, status, type, hasSpend, hasLeads, hasSales, range.from, range.to]);
+  useEffect(() => { setPage(1); }, [search, status, type, hasSpend, hasLeads, hasSales, range.from, range.to, cabinetId]);
 
-  const totals = useMemo(() => {
+  const tableTotals = useMemo(() => sumCreativeTableTotals(filtered), [filtered]);
+  const totalsRomi = tableTotals.spend > 0
+    ? ((crmTotals.revenue - tableTotals.spend) / tableTotals.spend) * 100
+    : 0;
 
-    return filtered.reduce(
-      (acc, r) => ({
-        spend: acc.spend + r.spend,
-        metaLeads: acc.metaLeads + r.leads,
-        crmLeads: acc.crmLeads + r.crmLeads,
-        crmQualified: acc.crmQualified + r.crmQualified,
-        crmSales: acc.crmSales + r.crmSales,
-        crmRevenue: acc.crmRevenue + r.crmRevenue,
-      }),
-      { spend: 0, metaLeads: 0, crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 },
-    );
-  }, [filtered]);
-
-  // Массовое обновление превью: форс-рефреш постера/видео каждого креатива через
-  // meta-creative-refresh (свежий URL + постер в Supabase Storage). Внутренняя
-  // очередь в metaCreativeRefresh троттлит запросы (2 параллельно), чтобы не упереться
-  // в лимиты Meta. После — перезагружаем список, чтобы подтянуть новые ссылки.
   const refreshAllPosters = async () => {
-    const adIds = Array.from(new Set(filtered.map((r) => r.adId).filter(Boolean)));
+    const adIds = Array.from(new Set(filtered.flatMap((r) => r.mergedAdIds ?? [r.adId]).filter(Boolean)));
     if (adIds.length === 0 || refreshingPosters) return;
     setRefreshingPosters(true);
     setPosterProgress({ done: 0, total: adIds.length });
@@ -291,7 +217,7 @@ const CreativeFunnel = () => {
         setPosterProgress((p) => ({ ...p, done: p.done + 1 }));
       }),
     );
-    await queryClient.invalidateQueries({ queryKey: [META_STRUCTURE_QUERY_KEY] });
+    refreshData();
     setRefreshingPosters(false);
     if (ok > 0) {
       toast.success(`Обновлено превью: ${ok} из ${adIds.length}`);
@@ -302,18 +228,13 @@ const CreativeFunnel = () => {
     }
   };
 
-  // Используем фактические CRM-показатели по проекту (а не только привязанные к креативам),
-  // чтобы цифры в KPI-полоске сходились с реальной CRM
-  const crmRevenueTotal = crmTotals.revenue;
-  const totalsRomi = totals.spend > 0 ? ((crmRevenueTotal - totals.spend) / totals.spend) * 100 : 0;
-
   const rangeLabel = useMemo(() => {
     const f = range.from.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
     const t = range.to.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
     return `${f} — ${t}`;
   }, [range]);
 
-  
+  const attributedCrmLeads = tableTotals.crmLeads;
 
   return (
     <PageContainer>
@@ -324,11 +245,24 @@ const CreativeFunnel = () => {
         actions={
           <>
             <PeriodPicker range={range} onChange={setRange} />
+            {cabinets.length > 1 && (
+              <Select value={cabinetId} onValueChange={setCabinetId}>
+                <SelectTrigger className="h-10 w-[180px] rounded-xl border-border/60">
+                  <SelectValue placeholder="Кабинет" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все кабинеты</SelectItem>
+                  {cabinets.map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
             <Button
               variant="outline"
               className="h-10 rounded-xl border-border/60"
               onClick={() => void refreshAllPosters()}
-              disabled={refreshingPosters || loading || rows.length === 0}
+              disabled={refreshingPosters || loading || scopedRows.length === 0}
               title="Перетянуть свежие превью из Meta для всех креативов"
             >
               {refreshingPosters ? (
@@ -348,7 +282,7 @@ const CreativeFunnel = () => {
               size="icon"
               className="h-10 w-10 rounded-xl border-border/60"
               aria-label="Обновить"
-              onClick={() => setRange({ ...range })}
+              onClick={refreshData}
               disabled={loading}
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
@@ -357,19 +291,18 @@ const CreativeFunnel = () => {
         }
       />
 
-      {/* KPI strip */}
       <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
         {[
-          { label: "Расход", value: fmtTenge(totals.spend) },
-          { label: "Лиды Meta", value: fmtNum(totals.metaLeads) },
+          { label: "Расход", value: fmtTenge(tableTotals.spend) },
+          { label: "Лиды Meta", value: fmtNum(tableTotals.metaLeads) },
           { label: "Лиды CRM", value: fmtNum(crmTotals.leads) },
           { label: "Диагностики", value: fmtNum(crmTotals.diagnostics) },
           { label: "Продажи", value: fmtNum(crmTotals.sales) },
-          { label: "Выручка", value: fmtTenge(crmRevenueTotal) },
+          { label: "Выручка", value: fmtTenge(crmTotals.revenue) },
           {
             label: "ROMI",
-            value: totals.spend > 0 ? `${totalsRomi >= 0 ? "+" : ""}${Math.round(totalsRomi)}%` : "—",
-            cls: totals.spend > 0 ? (totalsRomi >= 0 ? "text-success" : "text-destructive") : "",
+            value: tableTotals.spend > 0 ? `${totalsRomi >= 0 ? "+" : ""}${Math.round(totalsRomi)}%` : "—",
+            cls: tableTotals.spend > 0 ? (totalsRomi >= 0 ? "text-success" : "text-destructive") : "",
           },
         ].map((k) => (
           <div key={k.label} className="rounded-2xl border border-border/60 bg-card/60 p-3">
@@ -379,9 +312,11 @@ const CreativeFunnel = () => {
         ))}
       </div>
 
-
-
-
+      <div className="mt-2 text-[11px] text-muted-foreground">
+        По креативам в таблице: CRM-лиды {fmtNum(attributedCrmLeads)}
+        {orphanLeads > 0 ? ` · без креатива ${fmtNum(orphanLeads)}` : ""}
+        {cabinetId !== "all" ? " · выбран один кабинет" : ""}
+      </div>
 
       {orphanLeads > 0 && (
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-warning/40 bg-warning/5 px-4 py-3">
@@ -401,7 +336,6 @@ const CreativeFunnel = () => {
         </div>
       )}
 
-      {/* Toolbar */}
       <div className="mt-6 flex flex-wrap items-center gap-2">
         <div className="relative min-w-[220px] flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -451,11 +385,9 @@ const CreativeFunnel = () => {
       </div>
 
       <div className="mt-2 text-[11px] text-muted-foreground">
-        Показано {filtered.length} из {rows.length} креативов (после объединения дублей)
+        Показано {filtered.length} из {scopedRows.length} креативов (после объединения дублей)
       </div>
 
-
-      {/* Table */}
       <div className="mt-3 overflow-hidden rounded-2xl border border-border/60 bg-card/60">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -511,8 +443,8 @@ const CreativeFunnel = () => {
                       </div>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums font-semibold">{fmtNum(orphanLeads)}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</td>
+                  <td className="px-4 py-3 text-right tabular-nums font-semibold">{fmtNum(orphanLeads)}</td>
                   <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</td>
                   <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</td>
                   <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">—</td>
@@ -531,6 +463,8 @@ const CreativeFunnel = () => {
                 const romiPositive = row.crmRomi >= 0;
                 const RomiIcon = romiPositive ? ArrowUpRight : ArrowDownRight;
                 const cplValue = row.crmCpl > 0 ? row.crmCpl : row.cpl;
+                const metaLeads = metaLeadCount(row);
+                const mergedCount = row.mergedAdIds?.length ?? 1;
                 return (
                   <tr
                     key={row.id}
@@ -544,8 +478,13 @@ const CreativeFunnel = () => {
                           <div className="line-clamp-1 text-sm font-semibold" title={row.name}>
                             {row.name || "Без названия"}
                           </div>
-                          <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-muted-foreground">
+                          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
                             <code className="rounded bg-secondary/60 px-1 tabular-nums">{row.adId}</code>
+                            {mergedCount > 1 && (
+                              <span className="rounded bg-primary/10 px-1 font-semibold text-primary">
+                                +{mergedCount - 1} объявл.
+                              </span>
+                            )}
                             {row.effectiveStatus && (
                               <span className={cn(
                                 "rounded px-1 font-bold uppercase",
@@ -558,7 +497,7 @@ const CreativeFunnel = () => {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums font-semibold">{fmtNum(row.leads)}</td>
+                    <td className="px-4 py-3 text-right tabular-nums font-semibold">{fmtNum(metaLeads)}</td>
                     <td className={cn("px-4 py-3 text-right tabular-nums font-semibold", row.crmLeads > 0 ? "text-primary" : "text-muted-foreground")}>
                       {fmtNum(row.crmLeads)}
                     </td>
@@ -642,11 +581,10 @@ const CreativeFunnel = () => {
         </div>
       )}
 
-
       <p className="mt-4 text-[11px] text-muted-foreground">
-        Атрибуция: WhatsApp — через Meta CTWA referral; сайт — через UTM-шаблон с
-        {" "}<code className="rounded bg-secondary/60 px-1">utm_content=&#123;&#123;ad.id&#125;&#125;</code>.
-        Клик по строке откроет полную карточку креатива с воронкой и списком лидов.
+        Атрибуция: WhatsApp — через Meta CTWA (в «Лиды Meta» показываем messages, если они больше leads);
+        сайт — через UTM с <code className="rounded bg-secondary/60 px-1">utm_content=&#123;&#123;ad.id&#125;&#125;</code>.
+        Клик по строке откроет воронку по всем объявлениям этого креатива.
       </p>
 
       <CreativeDetailDrawer

@@ -17,6 +17,7 @@ export interface LeadLiteUtm {
 
 export interface LeadLite {
   id: string;
+  projectId: string | null;
   source: string;
   channel: string | null;
   referrer: string | null;
@@ -64,6 +65,7 @@ export async function fetchLeadsLite(activeId: string | null): Promise<LeadLite[
 
   return (leadsRes.data ?? []).map((r) => ({
     id: r.id as string,
+    projectId: (r.project_id as string | null) ?? null,
     source: (r.source as string) ?? "",
     channel: (r.channel as string | null) ?? null,
     referrer: (r.referrer as string | null) ?? null,

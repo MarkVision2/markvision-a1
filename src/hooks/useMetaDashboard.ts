@@ -162,7 +162,7 @@ export async function fetchMetaDashboard(
 
   const creativeRows: MetaCreativeRow[] = creatives.map((c) => {
     const a = agg.get(c.ad_id) ?? { spend: 0, impressions: 0, clicks: 0, leads: 0, messages: 0, purchases: 0, revenue: 0 };
-    const cr = crmAgg.get(c.ad_id) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 };
+    const cr = crmAgg.get(c.ad_id) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmDiagnostics: 0, crmRevenue: 0 };
     const ctr = a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0;
     const cpl = a.leads > 0 ? a.spend / a.leads : 0;
     const cpc = a.clicks > 0 ? a.spend / a.clicks : 0;
@@ -195,6 +195,7 @@ export async function fetchMetaDashboard(
       crmLeads: cr.crmLeads,
       crmQualified: cr.crmQualified,
       crmSales: cr.crmSales,
+      crmDiagnostics: cr.crmDiagnostics,
       crmRevenue: cr.crmRevenue,
       crmCpl, crmCps, crmAvgCheck, crmRomi, crmProfit,
     };

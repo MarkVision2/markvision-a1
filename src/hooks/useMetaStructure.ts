@@ -40,6 +40,7 @@ export interface MetaCreativeRow {
   crmLeads: number;
   crmQualified: number;
   crmSales: number;
+  crmDiagnostics: number;
   crmRevenue: number;
   /** Расчётные сквозные показатели. */
   crmCpl: number;
@@ -47,6 +48,8 @@ export interface MetaCreativeRow {
   crmAvgCheck: number;
   crmRomi: number;
   crmProfit: number;
+  /** Все ad_id одного креатива после дедупликации (для воронки в drawer). */
+  mergedAdIds?: string[];
 }
 
 function ymd(d: Date) {

@@ -142,3 +142,59 @@ export function mergeCreativeCrmMaps(
   }
   return out;
 }
+
+export interface ProjectCrmTotals {
+  leads: number;
+  qualified: number;
+  diagnostics: number;
+  sales: number;
+  revenue: number;
+}
+
+/** CRM-сводка по проекту за период — та же семантика, что по креативам. */
+export function aggregateProjectCrmTotals(
+  leads: LeadForCreativeCrm[],
+  range: { from: Date; to: Date },
+): ProjectCrmTotals {
+  const sinceTs = range.from.getTime();
+  const untilTs = new Date(
+    range.to.getFullYear(),
+    range.to.getMonth(),
+    range.to.getDate() + 1,
+  ).getTime();
+
+  const totals: ProjectCrmTotals = {
+    leads: 0,
+    qualified: 0,
+    diagnostics: 0,
+    sales: 0,
+    revenue: 0,
+  };
+
+  for (const l of leads) {
+    const createdTs = new Date(l.createdAt).getTime();
+    if (inHalfOpenRange(createdTs, sinceTs, untilTs)) {
+      totals.leads += 1;
+      if (isLeadDiagnosticEvent(l) || isLeadPaid(l)) totals.qualified += 1;
+    }
+
+    if (isLeadPaid(l)) {
+      const paidAt = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
+      const t = new Date(paidAt).getTime();
+      if (inHalfOpenRange(t, sinceTs, untilTs)) {
+        totals.sales += 1;
+        totals.revenue += (Number(l.amount) || 0) + (Number(l.diagnosticAmount) || 0);
+        if (isLeadDiagnosticEvent(l)) totals.diagnostics += 1;
+      }
+    } else if (isLeadDiagnosticEvent(l)) {
+      const ref = l.paidAt ?? l.lastActivityAt ?? l.createdAt;
+      const t = new Date(ref).getTime();
+      if (inHalfOpenRange(t, sinceTs, untilTs)) {
+        totals.diagnostics += 1;
+        totals.revenue += Number(l.diagnosticAmount) || 0;
+      }
+    }
+  }
+
+  return totals;
+}

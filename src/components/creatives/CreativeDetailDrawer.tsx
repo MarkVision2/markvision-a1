@@ -98,7 +98,10 @@ export function CreativeDetailDrawer({
   campaignName: campaignNameProp,
   isWhatsApp: isWhatsAppProp,
 }: Props) {
-  const { data, loading } = useCreativeFunnel(open && row ? row.adId : null, range);
+  const { data, loading } = useCreativeFunnel(
+    open && row ? (row.mergedAdIds?.length ? row.mergedAdIds : row.adId) : null,
+    range,
+  );
   const [textExpanded, setTextExpanded] = useState(false);
   const [leadsExpanded, setLeadsExpanded] = useState(false);
 
