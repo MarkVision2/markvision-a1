@@ -1,7 +1,7 @@
 {
-  "git_sha": "8e51bd6",
-  "git_sha_full": "8e51bd6252df0d138170d166d4cf6f13f356c282",
-  "updated_at": "2026-07-08T09:29:13+05:00",
-  "label": "fix(creatives): align creative funnel metrics, filters, and drawer",
+  "git_sha": "1ebfb22",
+  "git_sha_full": "1ebfb22af21eae435d4069fbcf42353c1297c638",
+  "updated_at": "2026-07-08T09:33:04+05:00",
+  "label": "feat(creatives): inline Meta video player with controls in drawer",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
