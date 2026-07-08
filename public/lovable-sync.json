@@ -1,7 +1,7 @@
 {
-  "git_sha": "f4e399c",
-  "git_sha_full": "f4e399c8e9b770bea6511bd8b3791626d3bd9b03",
-  "updated_at": "2026-07-08T14:22:51+05:00",
-  "label": "Scope Content Analytics to the project's connected Instagram.",
+  "git_sha": "e0e60af",
+  "git_sha_full": "e0e60af47e00b5469a2a77e64102c838197f64f9",
+  "updated_at": "2026-07-08T14:35:34+05:00",
+  "label": "Fix Instagram insights metrics and carousel previews.",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
