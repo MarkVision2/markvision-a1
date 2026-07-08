@@ -45,6 +45,19 @@ function resolveCall(action: string, payload: Record<string, unknown>): HeygenCa
     case "quota":
       return { method: "GET", url: `${HEYGEN_BASE}/v2/user/remaining_quota` };
 
+    // Актуальный баланс/расход аккаунта (pay-as-you-go, subscription, wallet).
+    case "user_profile":
+      return { method: "GET", url: `${HEYGEN_BASE}/v3/users/me` };
+
+    // Список роликов аккаунта — для истории и оценки расхода.
+    case "list_videos": {
+      const limit = Math.min(Math.max(Number(payload.limit) || 50, 1), 100);
+      const token = String(payload.token ?? "").trim();
+      const qs = new URLSearchParams({ limit: String(limit) });
+      if (token) qs.set("token", token);
+      return { method: "GET", url: `${HEYGEN_BASE}/v3/videos?${qs.toString()}` };
+    }
+
     // Справочники для пикеров в UI.
     case "list_avatars":
       return { method: "GET", url: `${HEYGEN_BASE}/v2/avatars` };

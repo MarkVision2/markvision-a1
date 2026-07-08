@@ -2,6 +2,15 @@
 // Ключ HeyGen живёт в секретах Supabase — сюда приходят только данные.
 import { supabase } from "@/integrations/supabase/client";
 import { supabaseUrl } from "@/lib/supabaseConfig";
+import {
+  estimateHeygenVideoCost,
+  parseHeygenAccount,
+  type HeygenAccountStats,
+  type HeygenVideoRow,
+  type RawUserProfile,
+} from "@/lib/heygenAccount";
+
+export type { HeygenAccountStats, HeygenVideoRow };
 
 // Нормализованный аватар: обычный HeyGen-аватар или ваш собственный
 // видео-аватар (talking photo). kind нужен, чтобы правильно собрать character.
@@ -75,10 +84,33 @@ async function call<T>(body: Record<string, unknown>): Promise<T> {
   return data as T;
 }
 
-/** Диагностика: доступ к API и остаток кредитов на плане. */
+/** Диагностика: доступ к API и остаток кредитов на плане (legacy v2). */
 export async function fetchQuota(): Promise<HeygenQuota> {
   const res = await call<{ data?: HeygenQuota } & Partial<HeygenQuota>>({ action: "quota" });
   return (res.data ?? (res as HeygenQuota));
+}
+
+/** Баланс и расход аккаунта HeyGen (v3/users/me). */
+export async function fetchAccountStats(): Promise<HeygenAccountStats> {
+  const res = await call<{ data?: RawUserProfile }>({ action: "user_profile" });
+  return parseHeygenAccount(res.data ?? {});
+}
+
+/** Последние ролики аккаунта HeyGen — для истории и оценки расхода. */
+export async function fetchRecentVideos(limit = 50): Promise<HeygenVideoRow[]> {
+  const res = await call<{ data?: RawObj[] }>({ action: "list_videos", limit });
+  const list = Array.isArray(res.data) ? res.data : [];
+  return list.map((v) => {
+    const durationSec = typeof v.duration === "number" ? v.duration : null;
+    return {
+      id: String(v.id ?? ""),
+      title: typeof v.title === "string" ? v.title : null,
+      status: String(v.status ?? ""),
+      createdAt: typeof v.created_at === "number" ? v.created_at : null,
+      durationSec,
+      costUsd: estimateHeygenVideoCost(durationSec, "agent"),
+    };
+  }).filter((v) => v.id.length > 0);
 }
 
 type RawObj = Record<string, unknown>;
