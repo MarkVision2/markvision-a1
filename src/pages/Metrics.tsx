@@ -93,10 +93,18 @@ const Metrics = () => {
 
   const manualHint = metricsEditHint(editScope, cabinetsWithExternalId.length);
 
+  const cabinetInternalIds = useMemo(() => {
+    if (cabinetId === "all") return cabinets.map((c) => c.id);
+    return cabinets.some((c) => c.id === cabinetId) ? [cabinetId] : [];
+  }, [cabinetId, cabinets]);
+
+  const cdiCabinetIds = cabinetInternalIds;
+
   const { data, loading, error, refresh } = useMultiMetaInsights(
     actIds,
     monthParam,
-    actIds.length > 0,
+    actIds.length > 0 || cdiCabinetIds.length > 0,
+    cdiCabinetIds,
   );
 
   // Автоподтягивание Meta → cabinet_daily_insights при открытии месяца / смене кабинета.
@@ -165,12 +173,6 @@ const Metrics = () => {
 
   const cabinetSelector = cabinetId === "all" ? "all" : cabinetId;
 
-  const cabinetInternalIds = useMemo(() => {
-    if (cabinetId === "all") return cabinets.filter((c) => c.externalId).map((c) => c.id);
-    const cab = cabinets.find((c) => c.id === cabinetId);
-    return cab?.externalId ? [cabinetId] : [];
-  }, [cabinetId, cabinets]);
-
   const externalIdByCabinetId = useMemo(() => {
     const m = new Map<string, string>();
     for (const c of cabinets) {
@@ -180,16 +182,16 @@ const Metrics = () => {
   }, [cabinets]);
 
   useEffect(() => {
-    if (actIds.length === 0) {
+    if (cabinetInternalIds.length === 0) {
       setCdiFactRows([]);
       return;
     }
     let cancelled = false;
-    fetchCdiFactRows(actIds, crmPeriod, projectId)
+    fetchCdiFactRows(actIds, crmPeriod, projectId, cabinetInternalIds)
       .then((rows) => { if (!cancelled) setCdiFactRows(rows); })
       .catch(() => { if (!cancelled) setCdiFactRows([]); });
     return () => { cancelled = true; };
-  }, [actIds.join(","), crmPeriod.from.getTime(), crmPeriod.to.getTime(), projectId, cdiTick]);
+  }, [actIds.join(","), cabinetInternalIds.join(","), crmPeriod.from.getTime(), crmPeriod.to.getTime(), projectId, cdiTick]);
 
   useEffect(() => {
     let cancelled = false;
@@ -388,7 +390,7 @@ const Metrics = () => {
     return { count, sum };
   }, [rnpManualByDate]);
   const factLeads = factCrmReceived;
-  const factSpend = useProjectOverrides ? factFromDaily.spend : (totals?.spend ?? 0);
+  const factSpend = factFromDaily.spend;
   const factCpl = factFromDaily.leads > 0 ? factSpend / factFromDaily.leads : (totals?.cpl ?? 0);
   const crLeadDiagnostics =
     factLeads > 0 ? (factDiagnostics / factLeads) * 100 : 0;

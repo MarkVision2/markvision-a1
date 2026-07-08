@@ -156,7 +156,17 @@ const Analytics = () => {
     return cab?.externalId ? [cab.externalId] : [];
   }, [cabinetId, allActIds, cabinets]);
 
-  const { data, loading, error, refresh } = useMultiMetaInsights(actIds, monthParam, actIds.length > 0);
+  const cdiCabinetIds = useMemo(() => {
+    if (cabinetId === "all") return cabinets.map((c) => c.id);
+    return cabinets.some((c) => c.id === cabinetId) ? [cabinetId] : [];
+  }, [cabinetId, cabinets]);
+
+  const { data, loading, error, refresh } = useMultiMetaInsights(
+    actIds,
+    monthParam,
+    actIds.length > 0 || cdiCabinetIds.length > 0,
+    cdiCabinetIds,
+  );
 
   // Единый источник правды для KPI — тот же, что у Dashboard / Reports / Metrics.
   // Это убирает расхождение «100 vs 107 vs 115» между страницами.

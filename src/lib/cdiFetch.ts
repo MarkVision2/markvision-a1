@@ -14,6 +14,7 @@ function applyCdiFilters(
   q: CdiFilter,
   opts: {
     externalIds?: string[];
+    cabinetIds?: string[];
     since: string;
     until: string;
     projectId?: string | null;
@@ -21,10 +22,16 @@ function applyCdiFilters(
   },
 ): CdiFilter {
   let query = q.gte("date", opts.since).lte("date", opts.until);
-  if (opts.externalIds?.length) {
+  // cabinet_id надёжнее external_id: один act_ может быть у разных проектов,
+  // а external_id в ad_cabinets иногда расходится с CDI после миграции.
+  if (opts.cabinetIds?.length) {
+    query = query.in("cabinet_id", opts.cabinetIds);
+  } else if (opts.externalIds?.length) {
     query = query.in("external_id", opts.externalIds);
   }
-  if (opts.projectId) query = query.eq("project_id", opts.projectId);
+  if (opts.projectId) {
+    query = query.or(`project_id.eq.${opts.projectId},project_id.is.null`);
+  }
   if (opts.order) query = query.order("date", { ascending: true });
   return query;
 }
@@ -34,6 +41,7 @@ export async function fetchCdiRows<T>(
   select: string,
   opts: {
     externalIds?: string[];
+    cabinetIds?: string[];
     since: string;
     until: string;
     projectId?: string | null;

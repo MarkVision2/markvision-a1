@@ -317,14 +317,16 @@ async function fetchInsights(
   actIds: string[],
   month: string,
   projectId?: string | null,
+  cabinetIds?: string[],
 ): Promise<InsightsData> {
   const range = monthRange(month);
-  if (!range || actIds.length === 0) {
+  if (!range || (actIds.length === 0 && !cabinetIds?.length)) {
     return { currency: "USD", totals: EMPTY_TOTALS, daily: [] };
   }
   const ids = actIds.map(normalizeActId);
   const data = await fetchCdiRows<CdiRow>(CDI_SELECT_WITH_AD_MANUAL, {
-    externalIds: ids,
+    externalIds: ids.length > 0 ? ids : undefined,
+    cabinetIds: cabinetIds?.length ? cabinetIds : undefined,
     since: range.since,
     until: range.until,
     projectId,
@@ -337,6 +339,7 @@ export function useMetaInsights(
   actId: string | null | undefined,
   month: string,
   enabled = true,
+  cabinetId?: string | null,
 ) {
   const { activeId: projectId } = useProjectsStore();
   const [data, setData] = useState<InsightsData | null>(null);
@@ -352,7 +355,8 @@ export function useMetaInsights(
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchInsights([actId], month, projectId)
+    const cabIds = cabinetId ? [cabinetId] : undefined;
+    fetchInsights([actId], month, projectId, cabIds)
       .then((d) => { if (!cancelled) setData(d); })
       .catch((e) => {
         if (cancelled) return;
@@ -368,7 +372,7 @@ export function useMetaInsights(
         "postgres_changes",
         { event: "*", schema: "public", table: "cabinet_daily_insights", filter: `external_id=eq.${norm}` },
         () => {
-          fetchInsights([actId], month, projectId)
+          fetchInsights([actId], month, projectId, cabIds)
             .then((d) => { if (!cancelled) setData(d); })
             .catch((e) => { if (!cancelled) console.warn("[useMetaInsights] realtime refetch failed", e); });
         },
@@ -378,7 +382,7 @@ export function useMetaInsights(
       cancelled = true;
       supabase.removeChannel(channel);
     };
-  }, [actId, month, enabled, refreshKey, projectId]);
+  }, [actId, month, enabled, refreshKey, projectId, cabinetId]);
 
   return { data, loading, error, refresh: () => setRefreshKey((k) => k + 1) };
 }
@@ -387,6 +391,7 @@ export function useMultiMetaInsights(
   actIds: string[],
   month: string,
   enabled = true,
+  cabinetIds?: string[],
 ) {
   const { activeId: projectId } = useProjectsStore();
   const [data, setData] = useState<InsightsData | null>(null);
@@ -394,16 +399,17 @@ export function useMultiMetaInsights(
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
   const key = actIds.join(",");
+  const cabKey = cabinetIds?.join(",") ?? "";
 
   useEffect(() => {
-    if (!enabled || actIds.length === 0) {
+    if (!enabled || (actIds.length === 0 && !cabinetIds?.length)) {
       setData({ currency: "USD", totals: EMPTY_TOTALS, daily: [] });
       return;
     }
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchInsights(actIds, month, projectId)
+    fetchInsights(actIds, month, projectId, cabinetIds)
       .then((d) => { if (!cancelled) setData(d); })
       .catch((e) => {
         if (cancelled) return;
@@ -413,7 +419,7 @@ export function useMultiMetaInsights(
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key, month, enabled, refreshKey, projectId]);
+  }, [key, cabKey, month, enabled, refreshKey, projectId]);
 
   return { data, loading, error, refresh: () => setRefreshKey((k) => k + 1) };
 }

@@ -177,18 +177,23 @@ export async function fetchCdiFactRows(
   externalIds: string[],
   range: ReportPeriodRange,
   projectId?: string | null,
+  cabinetIds?: string[],
 ): Promise<CdiFactRow[]> {
-  if (externalIds.length === 0) return [];
+  if (externalIds.length === 0 && !cabinetIds?.length) return [];
   const ids = externalIds.map(normalizeActId);
   const since = ymd(range.from);
   const until = ymd(range.to);
   let q = supabase
     .from("cabinet_daily_insights")
     .select("cabinet_id, external_id, date, manual_diagnostics, manual_diagnostic_revenue, manual_sales, manual_revenue")
-    .in("external_id", ids)
     .gte("date", since)
     .lte("date", until);
-  if (projectId) q = q.eq("project_id", projectId);
+  if (cabinetIds?.length) {
+    q = q.in("cabinet_id", cabinetIds);
+  } else if (ids.length > 0) {
+    q = q.in("external_id", ids);
+  }
+  if (projectId) q = q.or(`project_id.eq.${projectId},project_id.is.null`);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => ({
@@ -206,6 +211,7 @@ async function fetchMetaForRange(
   externalIds: string[],
   range: ReportPeriodRange,
   projectId?: string | null,
+  cabinetIds?: string[],
 ): Promise<{
   spend: number; impressions: number; clicks: number; leads: number;
   cabinetSales: number; cabinetRevenue: number; cabinetDiagnostics: number;
@@ -213,7 +219,7 @@ async function fetchMetaForRange(
   cdiFactRows: CdiFactRow[];
   daily: { date: string; spend: number; leads: number; revenue: number }[];
 }> {
-  if (externalIds.length === 0) {
+  if (externalIds.length === 0 && !cabinetIds?.length) {
     return {
       spend: 0, impressions: 0, clicks: 0, leads: 0,
       cabinetSales: 0, cabinetRevenue: 0, cabinetDiagnostics: 0, cabinetDiagnosticRevenue: 0,
@@ -226,7 +232,8 @@ async function fetchMetaForRange(
   const until = ymd(range.to);
 
   const data = await fetchCdiRows<Record<string, unknown>>(CDI_SELECT_REPORT_WITH_AD_MANUAL, {
-    externalIds: ids,
+    externalIds: ids.length > 0 ? ids : undefined,
+    cabinetIds: cabinetIds?.length ? cabinetIds : undefined,
     since,
     until,
     projectId,
@@ -443,9 +450,8 @@ export function useReportData(
   }, [cabinetId, cabinets]);
 
   const cabinetInternalIds = useMemo(() => {
-    if (cabinetId === "all") return cabinets.filter((c) => c.externalId).map((c) => c.id);
-    const cab = cabinets.find((c) => c.id === cabinetId);
-    return cab?.externalId ? [cabinetId] : [];
+    if (cabinetId === "all") return cabinets.map((c) => c.id);
+    return cabinets.some((c) => c.id === cabinetId) ? [cabinetId] : [];
   }, [cabinetId, cabinets]);
 
   const externalIdByCabinetId = useMemo(() => {
@@ -464,7 +470,7 @@ export function useReportData(
       try {
         const cabinetSelector: "all" | string = cabinetId === "all" ? "all" : cabinetId;
         const includeOrphans = cabinetId === "all";
-        const meta = await fetchMetaForRange(cabinetIds, range, projectId);
+        const meta = await fetchMetaForRange(cabinetIds, range, projectId, cabinetInternalIds);
         const crm = aggregateCrm(leads, range, cabinetSelector);
         let resolved = sumResolvedMetricsPerCabinets(
           range, leads, meta.cdiFactRows, cabinetInternalIds, includeOrphans, externalIdByCabinetId,
@@ -517,7 +523,7 @@ export function useReportData(
         let prev: ReportTotals | undefined;
         if (compare) {
           const prevRange = shiftRange(range);
-          const prevMeta = await fetchMetaForRange(cabinetIds, prevRange, projectId);
+          const prevMeta = await fetchMetaForRange(cabinetIds, prevRange, projectId, cabinetInternalIds);
           const prevCrm = aggregateCrm(leads, prevRange, cabinetSelector);
           const prevResolved = sumResolvedMetricsPerCabinets(
             prevRange, leads, prevMeta.cdiFactRows, cabinetInternalIds, includeOrphans, externalIdByCabinetId,

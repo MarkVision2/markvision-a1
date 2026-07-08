@@ -96,6 +96,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
     cabinet.externalId,
     monthParam,
     true,
+    cabinet.id,
   );
 
   const [syncing, setSyncing] = useState(false);
