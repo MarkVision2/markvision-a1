@@ -1,7 +1,7 @@
 {
-  "git_sha": "73af529",
-  "git_sha_full": "73af529e9fa1178ea3be6876e1e7a232842402a8",
-  "updated_at": "2026-07-08T10:23:21Z",
-  "label": "Removed duplicate import",
+  "git_sha": "87e33b5",
+  "git_sha_full": "87e33b5c231a843d38d4a11fe404248d98780390",
+  "updated_at": "2026-07-08T10:25:04Z",
+  "label": "Changes",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
