@@ -177,6 +177,15 @@ export default function ContentAnalytics() {
     void refetch();
   }, [account?.igUserId, refetch]);
 
+  const expandToYear = () => {
+    const to = new Date();
+    to.setHours(0, 0, 0, 0);
+    const from = new Date(to);
+    from.setDate(from.getDate() - 364);
+    setPreset("custom");
+    setRange({ from, to });
+  };
+
   return (
     <PageContainer>
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -253,6 +262,18 @@ export default function ContentAnalytics() {
           <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
             <InstagramAccountConnect />
           </div>
+
+          {k && k.posts === 0 && (account?.mediaCount ?? 0) > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-xs">
+              <span className="text-muted-foreground">
+                В выбранном периоде нет публикаций. В аккаунте всего {fmtNum(account?.mediaCount ?? 0)} постов.
+                Выберите более широкий период.
+              </span>
+              <Button variant="outline" size="sm" className="h-7 rounded-lg" onClick={expandToYear}>
+                Показать последние 12 месяцев
+              </Button>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <KpiCard icon={BarChart3} label="Постов" value={fmtNum(k!.posts)}
