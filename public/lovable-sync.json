@@ -1,7 +1,7 @@
 {
-  "git_sha": "b5d6ec7",
-  "git_sha_full": "b5d6ec7e97eb79ef5f2d9d8b022a4a806a8777c0",
-  "updated_at": "2026-07-08T08:49:50+05:00",
-  "label": "fix(heygen): period-based wallet spend with July baseline",
+  "git_sha": "697ea31",
+  "git_sha_full": "697ea312c79a38a281f95fd84a44e4f08e392141",
+  "updated_at": "2026-07-08T08:55:53+05:00",
+  "label": "fix(heygen): use authoritative video status (/v3/videos/{id}) for Video Agent (#123)",
   "publish_hint": "GitHub main → подождите синк Lovable → Ctrl+Shift+R на markvision-a1.lovable.app"
 }
