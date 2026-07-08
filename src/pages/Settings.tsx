@@ -31,6 +31,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Settings as SettingsIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { clientConfigSupabase } from "@/integrations/clientConfig/client";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
   MODULES,
   ROLE_LABELS,
