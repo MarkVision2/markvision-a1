@@ -1,12 +1,16 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Coins, Loader2, Wallet } from "lucide-react";
+import { PeriodPicker, monthRange } from "@/components/dashboard/PeriodPicker";
+import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { fetchAccountStats, fetchRecentVideos } from "@/hooks/useHeygen";
 import { fetchUsage, RATE_USD_PER_MIN } from "@/lib/heygenUsage";
 import {
   formatHeygenBalance,
   formatHeygenUsd,
-  sumEstimatedVideoSpend,
+  isInReportPeriod,
+  remoteVideosForPeriod,
+  resolveAccountSpent,
 } from "@/lib/heygenAccount";
 
 const MODE_LABEL: Record<string, string> = {
@@ -19,8 +23,10 @@ const MODE_LABEL: Record<string, string> = {
 
 const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
 
-// Панель «Баланс и расходы»: остаток и расход из HeyGen API + локальная история проекта.
+// Панель «Баланс и расходы»: остаток из HeyGen API + расход за выбранный месяц.
 export function HeygenUsagePanel({ projectId }: { projectId: string }) {
+  const [period, setPeriod] = useState<ReportPeriodRange>(() => monthRange(new Date()));
+
   const accountQ = useQuery({
     queryKey: ["heygen-account"],
     queryFn: fetchAccountStats,
@@ -29,7 +35,7 @@ export function HeygenUsagePanel({ projectId }: { projectId: string }) {
   });
   const videosQ = useQuery({
     queryKey: ["heygen-videos"],
-    queryFn: () => fetchRecentVideos(50),
+    queryFn: () => fetchRecentVideos(100),
     staleTime: 60_000,
     retry: 1,
   });
@@ -44,11 +50,18 @@ export function HeygenUsagePanel({ projectId }: { projectId: string }) {
   const videos = videosQ.data ?? [];
   const usage = usageQ.data ?? [];
 
-  const accountSpent = account?.spentUsd ?? (videos.length > 0 ? sumEstimatedVideoSpend(videos) : null);
-  const projectSpent = usage.reduce((s, u) => s + (u.cost_usd ?? 0), 0);
+  const usageInPeriod = useMemo(
+    () => usage.filter((u) => isInReportPeriod(u.created_at, period)),
+    [usage, period],
+  );
+
+  const spentEstimate = resolveAccountSpent(account, videos, period);
+  const accountSpent = spentEstimate.amount;
+  const projectSpent = usageInPeriod.reduce((s, u) => s + (u.cost_usd ?? 0), 0);
+  const remoteVideos = remoteVideosForPeriod(account, videos, period);
 
   const history = useMemo(() => {
-    const local = usage.map((u) => ({
+    const local = usageInPeriod.map((u) => ({
       id: u.id,
       mode: u.mode,
       source: u.source,
@@ -58,32 +71,33 @@ export function HeygenUsagePanel({ projectId }: { projectId: string }) {
       title: null as string | null,
     }));
 
-    const remote = videos
-      .filter((v) => v.status === "completed")
-      .map((v) => ({
-        id: `hg-${v.id}`,
-        mode: "heygen",
-        source: "heygen",
-        duration_sec: v.durationSec,
-        cost_usd: v.costUsd,
-        created_at: v.createdAt ? new Date(v.createdAt * 1000).toISOString() : "",
-        title: v.title,
-      }));
+    const remote = remoteVideos.map((v) => ({
+      id: `hg-${v.id}`,
+      mode: "heygen",
+      source: "heygen",
+      duration_sec: v.durationSec,
+      cost_usd: v.costUsd,
+      created_at: v.createdAt ? new Date(v.createdAt * 1000).toISOString() : "",
+      title: v.title,
+    }));
 
     return [...local, ...remote]
       .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
       .slice(0, 20);
-  }, [usage, videos]);
+  }, [usageInPeriod, remoteVideos]);
 
   const loading = accountQ.isLoading || videosQ.isLoading;
 
   return (
     <section className="mt-8 rounded-2xl border border-border/60 bg-card/60 p-4">
-      <div className="mb-3 flex items-center gap-2">
-        <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary/10 text-primary">
-          <Wallet className="h-4 w-4" />
-        </span>
-        <h2 className="text-sm font-semibold">Баланс и расходы</h2>
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary/10 text-primary">
+            <Wallet className="h-4 w-4" />
+          </span>
+          <h2 className="text-sm font-semibold">Баланс и расходы</h2>
+        </div>
+        <PeriodPicker range={period} onChange={setPeriod} />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
@@ -115,27 +129,27 @@ export function HeygenUsagePanel({ projectId }: { projectId: string }) {
         </div>
 
         <div className="rounded-xl border border-border/50 bg-background/40 p-3">
-          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Потрачено (аккаунт)</div>
+          <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+            Потрачено за период
+          </div>
           <div className="mt-1 text-lg font-bold tabular-nums">
             {formatHeygenUsd(accountSpent)}
           </div>
           <div className="text-[11px] text-muted-foreground">
-            {account?.spentUsd != null
-              ? "текущий период в HeyGen"
-              : `оценка по ${videos.filter((v) => v.status === "completed").length} роликам`}
+            {spentEstimate.label || "—"}
           </div>
         </div>
       </div>
 
       <div className="mt-3 rounded-xl border border-border/40 bg-background/30 px-3 py-2 text-xs text-muted-foreground">
-        В MarkVision учтено: <span className="font-semibold text-foreground">{fmtUsd(projectSpent)}</span>
+        В MarkVision за период: <span className="font-semibold text-foreground">{fmtUsd(projectSpent)}</span>
         {" · "}
-        роликов в проекте: {usage.length}
+        роликов: {usageInPeriod.length}
       </div>
 
       {history.length > 0 && (
         <div className="mt-3 space-y-1">
-          <div className="px-1 text-[11px] uppercase tracking-wider text-muted-foreground">История</div>
+          <div className="px-1 text-[11px] uppercase tracking-wider text-muted-foreground">История за период</div>
           <div className="max-h-52 space-y-1 overflow-y-auto pr-1">
             {history.map((u) => (
               <div key={u.id} className="flex items-center gap-2 rounded-lg border border-border/40 px-2 py-1.5 text-sm">
@@ -163,8 +177,9 @@ export function HeygenUsagePanel({ projectId }: { projectId: string }) {
       )}
 
       <p className="mt-2 text-[11px] text-muted-foreground">
-        Баланс и расход подтягиваются из HeyGen API автоматически.
-        Оценка ролика: Video Agent ${RATE_USD_PER_MIN.agent}/мин, аватар ${RATE_USD_PER_MIN.avatar}/мин.
+        Остаток — из HeyGen API. Расход API-кошелька считается с 7 июля 2026 (ролики по подписке не входят).
+        С августа — оценка по роликам за выбранный месяц.
+        Video Agent ${RATE_USD_PER_MIN.agent}/мин, аватар ${RATE_USD_PER_MIN.avatar}/мин.
       </p>
     </section>
   );
