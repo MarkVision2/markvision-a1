@@ -13,6 +13,8 @@ export type MetaSyncCabinetResult = {
   leads?: number;
   campaigns?: number;
   creatives?: number;
+  campaign_daily?: number;
+  creative_daily?: number;
 };
 
 export type MetaSyncFunctionResult = {
@@ -33,6 +35,8 @@ type SyncBody = {
   since: string;
   until: string;
   cabinet_id?: string;
+  /** Только meta_*_daily из Insights API — без перезагрузки 200+ креативов и постеров. */
+  insights_only?: boolean;
 };
 
 const ADMIN_FORBIDDEN =
@@ -162,6 +166,7 @@ function buildSyncBody(params: SyncBody): SyncBody {
     since: params.since,
     until: metaSyncUntilForRange(params.until),
     ...(params.cabinet_id ? { cabinet_id: params.cabinet_id } : {}),
+    ...(params.insights_only ? { insights_only: true } : {}),
   };
 }
 
@@ -171,10 +176,11 @@ export async function syncMetaDaily(params: SyncBody): Promise<MetaSyncFunctionR
 
 export async function syncMetaFull(params: SyncBody): Promise<MetaFullSyncResult> {
   const body = buildSyncBody(params);
+  const structureBody = buildSyncBody(params);
 
   const [daily, structure] = await Promise.all([
     invokeMetaSync("daily", body),
-    invokeMetaSync("structure", body),
+    invokeMetaSync("structure", structureBody),
   ]);
 
   return { daily, structure };
@@ -198,6 +204,10 @@ function summarizeDaily(results: MetaSyncCabinetResult[]): string | null {
 function summarizeStructure(results: MetaSyncCabinetResult[]): string | null {
   const ok = results.filter((r) => r.ok);
   if (ok.length === 0) return null;
+  const adDays = ok.reduce((s, r) => s + (r.creative_daily ?? 0), 0);
+  if (adDays > 0) {
+    return `по объявлениям: ${ok.length} каб., ${adDays} строк расходов`;
+  }
   const campaigns = ok.reduce((s, r) => s + (r.campaigns ?? 0), 0);
   const creatives = ok.reduce((s, r) => s + (r.creatives ?? 0), 0);
   return `кампании/креативы: ${ok.length} каб., ${campaigns} камп., ${creatives} креативов`;

@@ -187,6 +187,7 @@ const CreativeFunnel = () => {
       const result = await syncMetaFull({
         since: sinceYmd,
         until: ymd(range.to),
+        insights_only: true,
         ...(cabinetId !== "all" ? { cabinet_id: cabinetId } : {}),
       });
       const messages = formatMetaSyncMessages(result);

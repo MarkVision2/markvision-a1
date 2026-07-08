@@ -336,6 +336,10 @@ Deno.serve(async (req) => {
   const qpSince = url.searchParams.get("since") ?? (body.since as string | undefined) ?? null;
   const qpUntil = url.searchParams.get("until") ?? (body.until as string | undefined) ?? null;
   const qpCabinetId = url.searchParams.get("cabinet_id") ?? (body.cabinet_id as string | undefined) ?? null;
+  const insightsOnly =
+    body.insights_only === true
+    || url.searchParams.get("insights_only") === "1"
+    || url.searchParams.get("insights_only") === "true";
   const isYmd = (s: string | null) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s);
   let since: string; let until: string;
   if (isYmd(qpSince) && isYmd(qpUntil)) { since = qpSince!; until = qpUntil!; }
@@ -386,6 +390,10 @@ Deno.serve(async (req) => {
       const accountJson = await accountRes.json().catch(() => ({}));
       const accountCurrency: string = (accountJson?.currency as string) ?? "USD";
 
+      let campaignRows: Array<Record<string, unknown>> = [];
+      let creativeRows: Array<Record<string, unknown>> = [];
+
+      if (!insightsOnly) {
       // ---- 2. Campaigns ----
       const campFields = ["id", "name", "objective", "status", "effective_status", "daily_budget", "lifetime_budget", "start_time", "stop_time"].join(",");
       const campaigns = await fetchAllPages<Record<string, unknown>>(
@@ -404,7 +412,7 @@ Deno.serve(async (req) => {
         if (cid && dest && !destByCampaign.has(cid)) destByCampaign.set(cid, dest);
       }
 
-      const campaignRows = campaigns.map((c) => ({
+      campaignRows = campaigns.map((c) => ({
         cabinet_id: cabinetId,
         project_id: projectId,
         campaign_id: String(c.id),
@@ -466,7 +474,7 @@ Deno.serve(async (req) => {
         } catch (_) { /* ignore */ }
       }
 
-      const creativeRows = adsMeta.map(({ a, cr, media, ctype }) => {
+      creativeRows = adsMeta.map(({ a, cr, media, ctype }) => {
         const videoPoster = media.video_id ? videoPosterById.get(media.video_id) ?? null : null;
         const bestThumb = pickBestUrl(videoPoster, media.image, media.thumbnail);
         return {
@@ -507,6 +515,7 @@ Deno.serve(async (req) => {
           } catch { /* не блокируем sync */ }
         }
       }
+      } // end !insightsOnly
 
       // ---- 4. Insights at campaign + ad level ----
       const insightFields = ["date_start", "spend", "impressions", "clicks", "actions", "action_values"].join(",");
