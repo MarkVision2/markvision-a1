@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useInstagramAccount } from "@/hooks/useInstagramAccount";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
@@ -43,6 +44,8 @@ function ymd(d: Date) {
 
 export function useInstagramAnalytics(range: ReportPeriodRange) {
   const { activeId: projectId } = useProjectsStore();
+  const { account } = useInstagramAccount();
+  const igUserId = account?.igUserId ?? null;
   const [media, setMedia] = useState<IgMediaRow[]>([]);
   const [daily, setDaily] = useState<IgDailyRow[]>([]);
   const [demographics, setDemographics] = useState<IgDemographic[]>([]);
@@ -52,9 +55,14 @@ export function useInstagramAnalytics(range: ReportPeriodRange) {
   useRealtimeTable("instagram_media", () => setTick((n) => n + 1), !!projectId, 1200);
   useRealtimeTable("instagram_account_daily", () => setTick((n) => n + 1), !!projectId, 1200);
 
+  const refetch = useCallback(async () => {
+    setTick((n) => n + 1);
+  }, []);
+
   useEffect(() => {
-    if (!projectId) {
+    if (!projectId || !igUserId) {
       setMedia([]); setDaily([]); setDemographics([]);
+      setLoading(false);
       return;
     }
     let cancelled = false;
@@ -69,6 +77,7 @@ export function useInstagramAnalytics(range: ReportPeriodRange) {
         supabase.from("instagram_media")
           .select("media_id, media_type, media_product_type, caption, permalink, thumbnail_url, timestamp, like_count, comments_count, shares_count, saved_count, reach, impressions, plays, total_interactions")
           .eq("project_id", projectId)
+          .eq("ig_user_id", igUserId)
           .gte("timestamp", fromIso)
           .lt("timestamp", toIso)
           .order("timestamp", { ascending: false })
@@ -76,12 +85,14 @@ export function useInstagramAnalytics(range: ReportPeriodRange) {
         supabase.from("instagram_account_daily")
           .select("date, followers, reach, impressions, profile_views, website_clicks")
           .eq("project_id", projectId)
+          .eq("ig_user_id", igUserId)
           .gte("date", since)
           .lte("date", until)
           .order("date"),
         supabase.from("instagram_demographics")
           .select("dimension, key, value")
-          .eq("project_id", projectId),
+          .eq("project_id", projectId)
+          .eq("ig_user_id", igUserId),
       ]);
       if (cancelled) return;
       setMedia((mRes.data ?? []).map((r: any) => ({
@@ -113,7 +124,7 @@ export function useInstagramAnalytics(range: ReportPeriodRange) {
       setLoading(false);
     })();
     return () => { cancelled = true; };
-  }, [projectId, range.from, range.to, tick]);
+  }, [projectId, igUserId, range.from, range.to, tick]);
 
   const totals = useMemo(() => {
     const t = { posts: media.length, reach: 0, impressions: 0, likes: 0, comments: 0, shares: 0, saved: 0, plays: 0, websiteClicks: 0, profileViews: 0 };
@@ -138,5 +149,5 @@ export function useInstagramAnalytics(range: ReportPeriodRange) {
     return daily[daily.length - 1].followers - daily[0].followers;
   }, [daily]);
 
-  return { media, daily, demographics, totals, followersDelta, loading };
+  return { media, daily, demographics, totals, followersDelta, loading, refetch, igUserId };
 }

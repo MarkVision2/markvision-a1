@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   Area,
@@ -28,30 +28,15 @@ import type { LucideIcon } from "lucide-react";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
+import { InstagramAccountConnect } from "@/components/settings/InstagramAccountConnect";
+import { useInstagramAccount } from "@/hooks/useInstagramAccount";
+import { useInstagramAnalytics } from "@/hooks/useInstagramAnalytics";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { buildContentAnalyticsFromIg, type ContentAnalyticsPost } from "@/lib/contentAnalyticsFromIg";
 import { fmtNum } from "@/lib/format";
-import { clientSupabaseUrl } from "@/lib/supabaseConfig";
 import { cn } from "@/lib/utils";
-import { ContentPerformanceChart, type TrendPoint } from "@/pages/content-analytics/ContentPerformanceChart";
-
-const CLIENT_URL = clientSupabaseUrl;
-
-interface CAKpis {
-  posts: number; reach: number; views: number; engagement: number;
-  saves: number; shares: number; er: number;
-  reach_prev: number; engagement_prev: number; posts_prev: number; er_prev: number;
-}
-interface CAFormat { media_type: string; posts: number; avg_reach: number; avg_views: number; engagement: number; er: number; }
-interface CAPost {
-  ig_media_id: string; caption: string; permalink: string | null; media_type: string;
-  thumbnail_url: string | null; posted_at: string | null; reach: number; views: number; engagement: number; er: number;
-}
-interface CAFollowers { now: number | null; growth: number; series: { date: string; followers: number; net: number | null }[]; }
-interface CAProduction { generated: number; published: number; generated_all: number; }
-interface CAResp {
-  from: string; to: string; kpis: CAKpis; trend: TrendPoint[];
-  by_format: CAFormat[]; top_posts: CAPost[]; bottom_posts: CAPost[];
-  followers: CAFollowers; production: CAProduction;
-}
+import { ContentPerformanceChart } from "@/pages/content-analytics/ContentPerformanceChart";
+import type { ReportPeriodRange } from "@/hooks/useReportData";
 
 const FORMAT: Record<string, { label: string; color: string; icon: LucideIcon }> = {
   CAROUSEL_ALBUM: { label: "Карусель", color: "#6366f1", icon: Images },
@@ -63,25 +48,26 @@ const fmtOf = (t: string) => FORMAT[t] ?? { label: t, color: "hsl(var(--muted-fo
 const ymd = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-const PERIODS: { id: string; label: string; from: () => string }[] = [
-  { id: "90d", label: "90 дней", from: () => ymd(new Date(Date.now() - 90 * 864e5)) },
-  { id: "12m", label: "12 месяцев", from: () => { const d = new Date(); d.setFullYear(d.getFullYear() - 1); return ymd(d); } },
-  { id: "all", label: "Всё время", from: () => "2020-01-01" },
+const PERIODS: { id: string; label: string; days: number | null }[] = [
+  { id: "90d", label: "90 дней", days: 90 },
+  { id: "12m", label: "12 месяцев", days: 365 },
+  { id: "all", label: "Всё время", days: null },
 ];
+
+function rangeForPeriod(periodId: string): ReportPeriodRange {
+  const to = new Date();
+  to.setHours(0, 0, 0, 0);
+  const meta = PERIODS.find((p) => p.id === periodId) ?? PERIODS[1];
+  if (meta.days == null) {
+    return { from: new Date(2020, 0, 1), to };
+  }
+  const from = new Date(to);
+  from.setDate(from.getDate() - (meta.days - 1));
+  return { from, to };
+}
 
 const fmtDate = (s: string | null) =>
   s ? new Date(s).toLocaleDateString("ru-RU", { day: "2-digit", month: "short" }) : "—";
-
-async function fetchAnalytics(from: string, to: string): Promise<CAResp> {
-  if (!CLIENT_URL) throw new Error("VITE_CLIENT_SUPABASE_URL не задан — раздел недоступен");
-  const r = await fetch(`${CLIENT_URL}/functions/v1/content-analytics`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to }),
-  });
-  if (!r.ok) throw new Error(`content-analytics: HTTP ${r.status}`);
-  return (await r.json()) as CAResp;
-}
 
 function Delta({ cur, prev, suffix }: { cur: number; prev: number; suffix?: string }) {
   if (!prev) return null;
@@ -116,7 +102,7 @@ function KpiCard({ icon: Icon, label, value, sub, delta }: {
   );
 }
 
-function PostRow({ p, rank }: { p: CAPost; rank: number }) {
+function PostRow({ p, rank }: { p: ContentAnalyticsPost; rank: number }) {
   const f = fmtOf(p.media_type);
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 hover:bg-secondary/20">
@@ -152,31 +138,51 @@ function PostRow({ p, rank }: { p: CAPost; rank: number }) {
 
 export default function ContentAnalytics() {
   const [periodId, setPeriodId] = useState("12m");
-  const [data, setData] = useState<CAResp | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const range = useMemo(() => rangeForPeriod(periodId), [periodId]);
+  const { active } = useProjectsStore();
+  const { account, loading: accountLoading, sync } = useInstagramAccount();
+  const [syncing, setSyncing] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const p = PERIODS.find((x) => x.id === periodId)!;
-      const res = await fetchAnalytics(p.from(), ymd(new Date()));
-      setData(res);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Не удалось загрузить аналитику");
-    } finally {
-      setLoading(false);
-    }
-  }, [periodId]);
+  // Wider fetch window so prev-period deltas work inside buildContentAnalyticsFromIg.
+  const fetchRange = useMemo(() => {
+    const days = PERIODS.find((p) => p.id === periodId)?.days ?? 365;
+    if (days == null) return range;
+    const from = new Date(range.from);
+    from.setDate(from.getDate() - days);
+    return { from, to: range.to };
+  }, [periodId, range]);
+  const { media, daily, loading, refetch } = useInstagramAnalytics(fetchRange);
 
-  useEffect(() => { void load(); }, [load]);
+  const data = useMemo(() => {
+    if (!account) return null;
+    return buildContentAnalyticsFromIg({
+      from: ymd(range.from),
+      to: ymd(range.to),
+      media,
+      daily,
+      followersNow: account.followersCount,
+    });
+  }, [account, range.from, range.to, media, daily]);
 
   const k = data?.kpis;
   const bestFormat = useMemo(() => {
     if (!data?.by_format?.length) return null;
     return [...data.by_format].sort((a, b) => b.er - a.er)[0];
   }, [data]);
+
+  const refresh = async () => {
+    setSyncing(true);
+    try {
+      await sync();
+      await refetch();
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    void refetch();
+  }, [account?.igUserId, refetch]);
 
   return (
     <PageContainer>
@@ -185,7 +191,10 @@ export default function ContentAnalytics() {
         title="Контент-аналитика"
         description={
           <span>
-            Как в целом растёт органический контент: охват, вовлечённость, форматы, аудитория.{" "}
+            Статистика по Instagram, подключённому к проекту
+            {active?.name ? <> «{active.name}»</> : null}
+            {account?.username ? <> · @{account.username}</> : null}
+            .{" "}
             <Link to="/marketing/content-center" className="text-primary hover:underline">
               Разбор по постам — в Контент-центре →
             </Link>
@@ -208,24 +217,38 @@ export default function ContentAnalytics() {
                 </button>
               ))}
             </div>
-            <Button variant="outline" size="icon" className="h-10 w-10 rounded-2xl" onClick={() => void load()} disabled={loading}>
-              <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-10 w-10 rounded-2xl"
+              onClick={() => void refresh()}
+              disabled={syncing || loading || !account}
+              title="Синхронизировать Instagram и обновить"
+            >
+              <RefreshCw className={cn("h-4 w-4", (syncing || loading) && "animate-spin")} />
             </Button>
           </div>
         }
       />
 
-      {error && (
-        <div className="mb-4 rounded-xl border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-          {error}
+      {(accountLoading && !account) ? (
+        <div className="flex justify-center py-24 text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /></div>
+      ) : !account ? (
+        <div className="mx-auto max-w-xl space-y-4 py-8">
+          <div className="rounded-2xl border border-pink-500/30 bg-pink-500/5 px-4 py-3 text-sm text-muted-foreground">
+            Подключите Instagram Business к этому проекту — после синхронизации охват, ER и посты появятся здесь.
+            Один проект = один Instagram аккаунт.
+          </div>
+          <InstagramAccountConnect />
         </div>
-      )}
-
-      {loading && !data ? (
+      ) : loading && !data ? (
         <div className="flex justify-center py-24 text-muted-foreground"><Loader2 className="h-6 w-6 animate-spin" /></div>
       ) : !data ? null : (
-        <div className={cn("space-y-6", loading && "opacity-60")}>
-          {/* KPI */}
+        <div className={cn("space-y-6", (loading || syncing) && "opacity-60")}>
+          <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
+            <InstagramAccountConnect />
+          </div>
+
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <KpiCard icon={BarChart3} label="Постов" value={fmtNum(k!.posts)}
               delta={<Delta cur={k!.posts} prev={k!.posts_prev} />} />
@@ -243,7 +266,6 @@ export default function ContentAnalytics() {
               ) : undefined} />
           </div>
 
-          {/* Trend */}
           <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
             <div className="mb-1 flex items-center justify-between">
               <h2 className="text-sm font-semibold">Динамика контента</h2>
@@ -253,7 +275,6 @@ export default function ContentAnalytics() {
           </div>
 
           <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
-            {/* Formats */}
             <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
               <div className="mb-3 flex items-center justify-between">
                 <h2 className="text-sm font-semibold">Что заходит лучше — по форматам</h2>
@@ -265,7 +286,7 @@ export default function ContentAnalytics() {
               </div>
               <div className="space-y-2">
                 {data.by_format.length === 0 ? (
-                  <p className="py-6 text-center text-sm text-muted-foreground">Нет данных</p>
+                  <p className="py-6 text-center text-sm text-muted-foreground">Нет данных — нажмите обновить для синхронизации</p>
                 ) : (
                   data.by_format.map((f) => {
                     const meta = fmtOf(f.media_type);
@@ -295,11 +316,10 @@ export default function ContentAnalytics() {
               </div>
             </div>
 
-            {/* Followers + production */}
             <div className="space-y-6">
               <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
                 <div className="flex items-center gap-2 text-sm font-semibold">
-                  <Users className="h-4 w-4 text-primary" /> Аудитория
+                  <Users className="h-4 w-4 text-primary" /> Аудитория @{account.username}
                 </div>
                 <div className="mt-3 flex items-end justify-between">
                   <div>
@@ -337,14 +357,10 @@ export default function ContentAnalytics() {
                     <div className="text-[11px] text-muted-foreground">постов вышло</div>
                   </div>
                 </div>
-                <p className="mt-2 text-[11px] leading-relaxed text-muted-foreground">
-                  Сколько сгенерировано на Контент-заводе и сколько постов реально опубликовано за период.
-                </p>
               </div>
             </div>
           </div>
 
-          {/* Top / bottom posts */}
           <div className="grid gap-6 lg:grid-cols-2">
             <div className="overflow-hidden rounded-2xl border border-border/60 bg-card/60">
               <div className="flex items-center gap-2 border-b border-border/40 px-4 py-3">

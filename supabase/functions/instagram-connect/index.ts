@@ -68,6 +68,21 @@ Deno.serve(async (req) => {
     const ig = igJson.instagram_business_account;
     if (!ig?.id || ig.id !== ig_user_id) return json({ error: "ig account mismatch" }, 400);
 
+    // If project already linked to another IG, drop stale analytics so UI never mixes accounts.
+    const { data: existing } = await supa
+      .from("instagram_accounts")
+      .select("ig_user_id")
+      .eq("project_id", project_id)
+      .maybeSingle();
+    const prevIg = (existing as { ig_user_id?: string } | null)?.ig_user_id ?? null;
+    if (prevIg && prevIg !== ig_user_id) {
+      await Promise.all([
+        supa.from("instagram_media").delete().eq("project_id", project_id).neq("ig_user_id", ig_user_id),
+        supa.from("instagram_account_daily").delete().eq("project_id", project_id).neq("ig_user_id", ig_user_id),
+        supa.from("instagram_demographics").delete().eq("project_id", project_id).neq("ig_user_id", ig_user_id),
+      ]);
+    }
+
     // Upsert account
     const { error: upErr } = await supa.from("instagram_accounts").upsert({
       project_id,
