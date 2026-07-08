@@ -4,6 +4,7 @@ import type { LeadLite } from "@/hooks/useLeadsLite";
 
 const mk = (over: Partial<LeadLite> = {}): LeadLite => ({
   id: over.id ?? "1",
+  projectId: over.projectId ?? "p1",
   source: over.source ?? "whatsapp",
   channel: over.channel ?? null,
   referrer: over.referrer ?? null,
