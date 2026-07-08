@@ -1,7 +1,7 @@
 {
-  "git_sha": "071c220",
-  "git_sha_full": "071c2204d97f1b0919ab3330d6158b73ff555445",
-  "updated_at": "2026-07-08T11:57:50+05:00",
-  "label": "fix(deploy): point live site links to www.markvision.kz",
+  "git_sha": "1a8e358",
+  "git_sha_full": "1a8e35809fb5195c0d9f96bdf271e33ee7611ff0",
+  "updated_at": "2026-07-08T12:09:34+05:00",
+  "label": "fix(creatives): Meta sync button and DB hint on creative funnel",
   "publish_hint": "GitHub main → Vercel (www.markvision.kz) + Lovable preview → Ctrl+Shift+R"
 }
