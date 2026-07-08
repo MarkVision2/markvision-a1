@@ -9,6 +9,7 @@ import {
 
 const mkLead = (over: Partial<LeadLite> = {}): LeadLite => ({
   id: over.id ?? Math.random().toString(36).slice(2),
+  projectId: over.projectId ?? "p1",
   source: over.source ?? "whatsapp",
   channel: over.channel ?? null,
   referrer: over.referrer ?? null,
