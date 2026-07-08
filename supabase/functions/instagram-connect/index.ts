@@ -68,6 +68,21 @@ Deno.serve(async (req) => {
     const ig = igJson.instagram_business_account;
     if (!ig?.id || ig.id !== ig_user_id) return json({ error: "ig account mismatch" }, 400);
 
+    // If project already linked to another IG, drop stale analytics so UI never mixes accounts.
+    const { data: existing } = await supa
+      .from("instagram_accounts")
+      .select("ig_user_id")
+      .eq("project_id", project_id)
+      .maybeSingle();
+    const prevIg = (existing as { ig_user_id?: string } | null)?.ig_user_id ?? null;
+    if (prevIg && prevIg !== ig_user_id) {
+      await Promise.all([
+        supa.from("instagram_media").delete().eq("project_id", project_id).neq("ig_user_id", ig_user_id),
+        supa.from("instagram_account_daily").delete().eq("project_id", project_id).neq("ig_user_id", ig_user_id),
+        supa.from("instagram_demographics").delete().eq("project_id", project_id).neq("ig_user_id", ig_user_id),
+      ]);
+    }
+
     // Upsert account
     const { error: upErr } = await supa.from("instagram_accounts").upsert({
       project_id,
@@ -96,7 +111,27 @@ Deno.serve(async (req) => {
       body: JSON.stringify({ project_id }),
     }).catch(() => {});
 
-    return json({ ok: true });
+    // Subscribe the page to comment/message webhooks so the code-word →
+    // auto-reply → DM engine (ig-webhook) starts receiving events for this
+    // account immediately — no manual setup per project.
+    let webhookSubscribed = true;
+    let webhookError: string | null = null;
+    try {
+      const subRes = await fetch(
+        `${GRAPH}/${page_id}/subscribed_apps?subscribed_fields=comments,messages&access_token=${page.access_token}`,
+        { method: "POST" },
+      );
+      const subJson = await subRes.json().catch(() => ({}));
+      if (!subRes.ok || subJson?.error) {
+        webhookSubscribed = false;
+        webhookError = subJson?.error?.message ?? `HTTP ${subRes.status}`;
+      }
+    } catch (e) {
+      webhookSubscribed = false;
+      webhookError = e instanceof Error ? e.message : "unknown";
+    }
+
+    return json({ ok: true, webhookSubscribed, webhookError });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "unknown" }, 500);
   }

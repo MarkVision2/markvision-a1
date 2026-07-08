@@ -28,8 +28,13 @@ export function InstagramAccountConnect() {
   const handleConnect = async (acc: AvailableIgAccount) => {
     setConnecting(acc.ig_user_id);
     try {
-      await connect(acc);
+      const { webhookSubscribed, webhookError } = await connect(acc);
       toast.success(`Подключён @${acc.username}`);
+      if (!webhookSubscribed) {
+        toast.warning(
+          `Аккаунт подключён, но автоответ на комментарии/DM пока не активен: ${webhookError ?? "не удалось подписаться на вебхук"}. Проверьте права instagram_manage_comments / instagram_manage_messages у Meta-токена.`,
+        );
+      }
       setDialogOpen(false);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Ошибка подключения");

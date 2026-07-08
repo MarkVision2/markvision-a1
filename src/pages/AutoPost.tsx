@@ -12,6 +12,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { clientConfigSupabase } from "@/integrations/clientConfig/client";
 import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseConfig";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { fmtNum } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -87,6 +88,7 @@ const monthRangeYmd = (view: Date) => {
 };
 
 const AutoPost = () => {
+  const { activeId: projectId } = useProjectsStore();
   const [view, setView] = useState(() => new Date());
   const [posts, setPosts] = useState<QueuePost[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -96,13 +98,13 @@ const AutoPost = () => {
     try {
       const { from, to } = monthRangeYmd(v);
       const [q, s] = await Promise.all([
-        schedulerApi<{ posts: QueuePost[] }>("list"),
+        schedulerApi<{ posts: QueuePost[] }>("list", { project_id: projectId }),
         schedulerApi<{ stats: Stats }>("stats", { from, to }),
       ]);
       setPosts(q.posts ?? []); setStats(s.stats ?? null);
     } catch (e) { toast.error("Не удалось загрузить", { description: e instanceof Error ? e.message : String(e) }); }
     finally { setLoading(false); }
-  }, []);
+  }, [projectId]);
   useEffect(() => { void loadAll(view); }, [loadAll, view]);
   useEffect(() => {
     const pending = posts.some((p) => p.status === "queued" || p.status === "processing");
@@ -319,6 +321,7 @@ function Heatmap({ cells, bestDow, bestHour }: { cells: { dow: number; hour: num
 
 // ——— Диалог добавления публикации на конкретный день ———
 function AddDialog({ day, hourReach, onClose, onDone }: { day: string; hourReach: Map<number, number>; onClose: () => void; onDone: () => void }) {
+  const { activeId: projectId } = useProjectsStore();
   const [type, setType] = useState<PostType>("IMAGE");
   const [files, setFiles] = useState<File[]>([]);
   const [caption, setCaption] = useState("");
@@ -376,6 +379,7 @@ function AddDialog({ day, hourReach, onClose, onDone }: { day: string; hourReach
       const payload: Record<string, unknown> = {
         media_type: type, caption: type === "STORIES" ? "" : caption,
         scheduled_at: now ? new Date().toISOString() : buildISO(day, hour, minute), dry_run: now ? false : dryRun,
+        project_id: projectId,
       };
       if (type === "CAROUSEL") { payload.child_urls = urls; payload.thumbnail_url = urls.find((_, i) => !isVideoFile(files[i])) ?? urls[0]; }
       else {

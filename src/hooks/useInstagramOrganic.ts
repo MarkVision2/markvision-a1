@@ -194,6 +194,8 @@ export interface InstagramCodeword {
   caption: string | null;
   publishedAt: string | null;
   targetUrl: string | null;
+  replyText: string | null;
+  dmText: string | null;
   active: boolean;
 }
 
@@ -230,6 +232,8 @@ export function useInstagramCodewords() {
           caption: (r.caption as string | null) ?? null,
           publishedAt: (r.published_at as string | null) ?? null,
           targetUrl: (r.target_url as string | null) ?? null,
+          replyText: (r.reply_text as string | null) ?? null,
+          dmText: (r.dm_text as string | null) ?? null,
           active: !!r.active,
         })),
       );
@@ -249,6 +253,8 @@ export function useInstagramCodewords() {
       caption: input.caption,
       published_at: input.publishedAt,
       target_url: input.targetUrl,
+      reply_text: input.replyText,
+      dm_text: input.dmText,
       active: input.active,
     });
     if (error) throw error;
@@ -263,6 +269,8 @@ export function useInstagramCodewords() {
     if (patch.caption !== undefined) payload.caption = patch.caption;
     if (patch.publishedAt !== undefined) payload.published_at = patch.publishedAt;
     if (patch.targetUrl !== undefined) payload.target_url = patch.targetUrl;
+    if (patch.replyText !== undefined) payload.reply_text = patch.replyText;
+    if (patch.dmText !== undefined) payload.dm_text = patch.dmText;
     if (patch.active !== undefined) payload.active = patch.active;
     const { error } = await supabase.from("instagram_codewords").update(payload as never).eq("id", id);
     if (error) throw error;

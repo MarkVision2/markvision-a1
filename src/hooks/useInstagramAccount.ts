@@ -105,6 +105,7 @@ export function useInstagramAccount() {
     if (error) throw new Error(error.message);
     if (data?.error) throw new Error(data.error);
     await refetch();
+    return { webhookSubscribed: data?.webhookSubscribed !== false, webhookError: data?.webhookError ?? null };
   }, [projectId, refetch]);
 
   const disconnect = useCallback(async () => {

@@ -40,6 +40,11 @@ Deno.serve(async (req) => {
       if (!mem) return json({ error: "forbidden" }, 403);
     }
 
+    await Promise.all([
+      supa.from("instagram_media").delete().eq("project_id", project_id),
+      supa.from("instagram_account_daily").delete().eq("project_id", project_id),
+      supa.from("instagram_demographics").delete().eq("project_id", project_id),
+    ]);
     await supa.from("instagram_accounts").delete().eq("project_id", project_id);
     return json({ ok: true });
   } catch (e) {

@@ -27,6 +27,8 @@ interface DraftCodeword {
   targetUrl: string;
   thumbnailUrl: string;
   caption: string;
+  replyText: string;
+  dmText: string;
 }
 
 const EMPTY_DRAFT: DraftCodeword = {
@@ -35,6 +37,8 @@ const EMPTY_DRAFT: DraftCodeword = {
   targetUrl: "",
   thumbnailUrl: "",
   caption: "",
+  replyText: "Спасибо за комментарий! Отправил ссылку в директ 📩",
+  dmText: "Привет! Вот ссылка:",
 };
 
 export function InstagramOrganicSettings() {
@@ -61,6 +65,8 @@ export function InstagramOrganicSettings() {
         caption: draft.caption || null,
         publishedAt: null,
         targetUrl: draft.targetUrl || null,
+        replyText: draft.replyText || null,
+        dmText: draft.dmText || null,
         active: true,
       });
       setDraft(EMPTY_DRAFT);
@@ -121,7 +127,7 @@ export function InstagramOrganicSettings() {
           <div className="flex-1">
             <h3 className="text-base font-semibold">Instagram organic — код-слова</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Заведите код-слово для каждого рилса. Когда подписчики напишут его в Direct, n8n или GreenAPI отправят событие сюда, и оно появится в воронке на дашборде.
+              Заведите код-слово для каждого рилса. Когда подписчик напишет его в комментарии под вашим постом, система сама ответит в комментариях и пришлёт ему ссылку в Direct — без n8n и без ручной настройки.
             </p>
           </div>
         </div>
@@ -170,6 +176,24 @@ export function InstagramOrganicSettings() {
               placeholder="О чём этот рилс — для статистики"
               value={draft.caption}
               onChange={(e) => setDraft((d) => ({ ...d, caption: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ig-reply">Ответ на комментарий (публично)</Label>
+            <Input
+              id="ig-reply"
+              placeholder="Спасибо за комментарий! Отправил ссылку в директ 📩"
+              value={draft.replyText}
+              onChange={(e) => setDraft((d) => ({ ...d, replyText: e.target.value }))}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ig-dm">Текст сообщения в Direct (перед ссылкой)</Label>
+            <Input
+              id="ig-dm"
+              placeholder="Привет! Вот ссылка:"
+              value={draft.dmText}
+              onChange={(e) => setDraft((d) => ({ ...d, dmText: e.target.value }))}
             />
           </div>
         </div>
@@ -259,9 +283,9 @@ export function InstagramOrganicSettings() {
       </div>
 
       <div className="rounded-2xl border border-border bg-card p-6">
-        <h4 className="mb-2 text-sm font-semibold">Куда отправлять события из n8n / GreenAPI</h4>
+        <h4 className="mb-2 text-sm font-semibold">Опционально: события из внешних систем (n8n / GreenAPI / WhatsApp)</h4>
         <p className="mb-3 text-xs text-muted-foreground">
-          Настройте автоматизацию: при получении DM с код-словом — отправлять POST на этот URL. То же самое для клика по ссылке и появления заявки.
+          Комментарии и Direct в Instagram система обрабатывает сама — этот вебхук не нужен. Используйте его только если хотите присылать сюда заявки из других каналов (например, WhatsApp) для отображения в той же воронке.
         </p>
         <div className="mb-4 flex items-center gap-2">
           <Input value={IG_ORGANIC_INTAKE_URL} readOnly className="font-mono text-xs" />
