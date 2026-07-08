@@ -1,7 +1,7 @@
 {
-  "git_sha": "3710eaf",
-  "git_sha_full": "3710eafcff199df238c62ebb1009dbe13eac54af",
-  "updated_at": "2026-07-08T10:21:01Z",
-  "label": "Fix missing useProjectsStore import crashing Settings page",
+  "git_sha": "73af529",
+  "git_sha_full": "73af529e9fa1178ea3be6876e1e7a232842402a8",
+  "updated_at": "2026-07-08T10:23:21Z",
+  "label": "Removed duplicate import",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
