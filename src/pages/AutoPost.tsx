@@ -65,10 +65,28 @@ const todayAlmatyYmd = () => new Date().toLocaleDateString("en-CA", { timeZone: 
 const ymdOf = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const prettyDay = (ymd: string) => { const [y, m, d] = ymd.split("-").map(Number); return `${d} ${MONTHS[m - 1]} ${y}`; };
 
-async function schedulerApi<T = unknown>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
+function formatPublishError(raw: string | null | undefined): string {
+  if (!raw) return "Неизвестная ошибка публикации";
+  try {
+    const j = JSON.parse(raw) as { error?: { message?: string; code?: number } };
+    if (j.error?.code === 190 || /Invalid OAuth access token|Cannot parse access token/i.test(j.error?.message ?? "")) {
+      return "Токен Instagram устарел. Переподключите Facebook в Настройках → Meta и нажмите «Повторить».";
+    }
+    if (j.error?.message) return j.error.message;
+  } catch {
+    if (/Invalid OAuth access token|Cannot parse access token|code.?190/i.test(raw)) {
+      return "Токен Instagram устарел. Переподключите Facebook в Настройках → Meta и нажмите «Повторить».";
+    }
+  }
+  return raw.length > 240 ? `${raw.slice(0, 240)}…` : raw;
+}
+
+async function schedulerApi<T = unknown>(action: string, payload: Record<string, unknown> = {}, projectId?: string | null): Promise<T> {
   if (!CLIENT_URL) throw new Error("VITE_CLIENT_SUPABASE_URL не задан");
   const r = await fetch(`${CLIENT_URL}/functions/v1/content-scheduler`, {
-    method: "POST", headers: { "Content-Type": "application/json", "x-app-key": CLIENT_KEY }, body: JSON.stringify({ action, ...payload }),
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-app-key": CLIENT_KEY },
+    body: JSON.stringify({ action, ...(projectId ? { project_id: projectId } : {}), ...payload }),
   });
   const j = await r.json().catch(() => ({}));
   if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
@@ -90,7 +108,7 @@ const monthRangeYmd = (view: Date) => {
 };
 
 const AutoPost = () => {
-  const { active } = useProjectsStore();
+  const { active, activeId: projectId } = useProjectsStore();
   const { account, loading: accountLoading } = useInstagramAccount();
   const [view, setView] = useState(() => new Date());
   const [posts, setPosts] = useState<QueuePost[]>([]);
@@ -98,16 +116,22 @@ const AutoPost = () => {
   const [loading, setLoading] = useState(true);
 
   const loadAll = useCallback(async (v: Date) => {
+    if (!projectId) {
+      setPosts([]);
+      setStats(null);
+      setLoading(false);
+      return;
+    }
     try {
       const { from, to } = monthRangeYmd(v);
       const [q, s] = await Promise.all([
-        schedulerApi<{ posts: QueuePost[] }>("list"),
-        schedulerApi<{ stats: Stats }>("stats", { from, to }),
+        schedulerApi<{ posts: QueuePost[] }>("list", {}, projectId),
+        schedulerApi<{ stats: Stats }>("stats", { from, to }, projectId),
       ]);
       setPosts(q.posts ?? []); setStats(s.stats ?? null);
     } catch (e) { toast.error("Не удалось загрузить", { description: e instanceof Error ? e.message : String(e) }); }
     finally { setLoading(false); }
-  }, []);
+  }, [projectId]);
   useEffect(() => { void loadAll(view); }, [loadAll, view]);
   useEffect(() => {
     const pending = posts.some((p) => p.status === "queued" || p.status === "processing");
@@ -331,8 +355,24 @@ const AutoPost = () => {
         </div>
       )}
 
-      {addDay && <AddDialog day={addDay} hourReach={hourReach} onClose={() => setAddDay(null)} onDone={() => { setAddDay(null); void loadAll(view); }} />}
-      {editing && <EditDialog post={editing} onClose={() => setEditing(null)} onDone={() => { setEditing(null); void loadAll(view); }} />}
+      {addDay && (
+        <AddDialog
+          day={addDay}
+          hourReach={hourReach}
+          projectId={projectId}
+          hasAccount={!!account}
+          onClose={() => setAddDay(null)}
+          onDone={() => { setAddDay(null); void loadAll(view); }}
+        />
+      )}
+      {editing && (
+        <EditDialog
+          post={editing}
+          projectId={projectId}
+          onClose={() => setEditing(null)}
+          onDone={() => { setEditing(null); void loadAll(view); }}
+        />
+      )}
     </PageContainer>
   );
 };
@@ -383,7 +423,10 @@ function Heatmap({ cells, bestDow, bestHour }: { cells: { dow: number; hour: num
 }
 
 // ——— Диалог добавления публикации на конкретный день ———
-function AddDialog({ day, hourReach, onClose, onDone }: { day: string; hourReach: Map<number, number>; onClose: () => void; onDone: () => void }) {
+function AddDialog({ day, hourReach, projectId, hasAccount, onClose, onDone }: {
+  day: string; hourReach: Map<number, number>; projectId: string | null; hasAccount: boolean;
+  onClose: () => void; onDone: () => void;
+}) {
   const [type, setType] = useState<PostType>("IMAGE");
   const [files, setFiles] = useState<File[]>([]);
   const [caption, setCaption] = useState("");
@@ -431,6 +474,8 @@ function AddDialog({ day, hourReach, onClose, onDone }: { day: string; hourReach
     return null;
   };
   const submit = async (now: boolean) => {
+    if (!projectId) { toast.error("Сначала выберите проект"); return; }
+    if (!hasAccount) { toast.error("Подключите Instagram к проекту", { description: "Настройки → Meta / Facebook" }); return; }
     const err = validate(); if (err) { toast.error(err); return; }
     setBusy(true);
     try {
@@ -448,8 +493,8 @@ function AddDialog({ day, hourReach, onClose, onDone }: { day: string; hourReach
         if (type === "REELS") { if (coverUrl) { payload.cover_url = coverUrl; payload.thumbnail_url = coverUrl; } }
         else payload.thumbnail_url = isVideoFile(files[0]) ? null : urls[0];
       }
-      const res = await schedulerApi<{ post: QueuePost }>("create", payload);
-      if (now && res.post?.id) await schedulerApi("publish_now", { id: res.post.id });
+      const res = await schedulerApi<{ post: QueuePost }>("create", payload, projectId);
+      if (now && res.post?.id) await schedulerApi("publish_now", { id: res.post.id }, projectId);
       toast.success(now ? "Публикуем сейчас…" : dryRun ? "Добавлено в пробном режиме" : "Запланировано");
       onDone();
     } catch (e) { toast.error("Не удалось", { description: e instanceof Error ? e.message : String(e) }); }
@@ -544,7 +589,7 @@ function AddDialog({ day, hourReach, onClose, onDone }: { day: string; hourReach
 }
 
 // ——— Диалог просмотра/редактирования поста ———
-function EditDialog({ post, onClose, onDone }: { post: QueuePost; onClose: () => void; onDone: () => void }) {
+function EditDialog({ post, projectId, onClose, onDone }: { post: QueuePost; projectId: string | null; onClose: () => void; onDone: () => void }) {
   const s = STATUS_META[post.status] ?? STATUS_META.queued;
   const editable = post.status === "queued" || post.status === "failed" || post.status === "tested";
   const alm = new Date(new Date(post.scheduled_at).toLocaleString("en-US", { timeZone: "Asia/Almaty" }));
@@ -573,7 +618,16 @@ function EditDialog({ post, onClose, onDone }: { post: QueuePost; onClose: () =>
           {post.thumbnail_url && (
             <img src={post.thumbnail_url} alt="" className="max-h-52 w-full rounded-xl object-cover ring-1 ring-border/40" />
           )}
-          {post.status === "failed" && post.error && <div className="rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{post.error}</div>}
+          {post.status === "failed" && post.error && (
+            <div className="space-y-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
+              <div>{formatPublishError(post.error)}</div>
+              {/токен|token|OAuth|190/i.test(post.error) && (
+                <Link to="/settings?tab=meta-tokens" className="inline-block font-medium text-primary hover:underline">
+                  Переподключить Instagram →
+                </Link>
+              )}
+            </div>
+          )}
 
           {editable ? (
             <>
@@ -601,12 +655,12 @@ function EditDialog({ post, onClose, onDone }: { post: QueuePost; onClose: () =>
 
         <DialogFooter className="flex-wrap gap-2 sm:justify-between">
           <div className="flex gap-2">
-            {post.status !== "published" && <Button variant="ghost" size="sm" className="rounded-lg text-destructive hover:bg-destructive/10" onClick={() => void act(() => schedulerApi("delete", { id: post.id }))} disabled={busy}><Trash2 className="mr-1 h-4 w-4" /> Удалить</Button>}
-            {post.status === "failed" && <Button variant="ghost" size="sm" className="rounded-lg" onClick={() => void act(() => schedulerApi("retry", { id: post.id }), "Повторяем")} disabled={busy}><RotateCcw className="mr-1 h-4 w-4" /> Повторить</Button>}
+            {post.status !== "published" && <Button variant="ghost" size="sm" className="rounded-lg text-destructive hover:bg-destructive/10" onClick={() => void act(() => schedulerApi("delete", { id: post.id }, projectId))} disabled={busy}><Trash2 className="mr-1 h-4 w-4" /> Удалить</Button>}
+            {post.status === "failed" && <Button variant="ghost" size="sm" className="rounded-lg" onClick={() => void act(() => schedulerApi("retry", { id: post.id }, projectId), "Повторяем")} disabled={busy}><RotateCcw className="mr-1 h-4 w-4" /> Повторить</Button>}
           </div>
           <div className="flex gap-2">
-            {editable && <Button variant="outline" size="sm" className="rounded-lg border-primary/40 text-primary hover:bg-primary/10" onClick={() => void act(() => schedulerApi("publish_now", { id: post.id }), "Публикуем сейчас…")} disabled={busy}><Zap className="mr-1 h-4 w-4" /> Сейчас</Button>}
-            {editable && <Button size="sm" className="rounded-lg" onClick={() => void act(() => schedulerApi("update", { id: post.id, caption, scheduled_at: buildISO(ymd, hour, minute) }), "Сохранено")} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Pencil className="mr-1 h-4 w-4" /> Сохранить</>}</Button>}
+            {editable && <Button variant="outline" size="sm" className="rounded-lg border-primary/40 text-primary hover:bg-primary/10" onClick={() => void act(() => schedulerApi("publish_now", { id: post.id }, projectId), "Публикуем сейчас…")} disabled={busy}><Zap className="mr-1 h-4 w-4" /> Сейчас</Button>}
+            {editable && <Button size="sm" className="rounded-lg" onClick={() => void act(() => schedulerApi("update", { id: post.id, caption, scheduled_at: buildISO(ymd, hour, minute) }, projectId), "Сохранено")} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Pencil className="mr-1 h-4 w-4" /> Сохранить</>}</Button>}
             {!editable && <Button size="sm" className="rounded-lg" onClick={onClose}>Закрыть</Button>}
           </div>
         </DialogFooter>

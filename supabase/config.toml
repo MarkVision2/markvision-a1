@@ -62,3 +62,9 @@ verify_jwt = false
 
 [functions.heygen-jobs-worker]
 verify_jwt = false
+
+[functions.content-scheduler]
+verify_jwt = false
+
+[functions.publisher]
+verify_jwt = false
