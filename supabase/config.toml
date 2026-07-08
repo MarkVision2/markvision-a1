@@ -30,17 +30,20 @@ verify_jwt = false
 [functions.lead-intake]
 verify_jwt = false
 
+# Auth is enforced inside the functions (user JWT + project access).
+# Gateway verify_jwt=true returns 401 without CORS → browser shows
+# "Failed to send a request to the Edge Function" instead of a real error.
 [functions.instagram-list-accounts]
-verify_jwt = true
+verify_jwt = false
 
 [functions.instagram-connect]
-verify_jwt = true
+verify_jwt = false
 
 [functions.instagram-disconnect]
-verify_jwt = true
+verify_jwt = false
 
 [functions.instagram-sync]
-verify_jwt = true
+verify_jwt = false
 
 [functions.content-factory-proxy]
 verify_jwt = true

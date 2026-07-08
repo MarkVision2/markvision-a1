@@ -1,9 +1,11 @@
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -44,9 +46,12 @@ Deno.serve(async (req) => {
       if (!mem) return json({ error: "forbidden" }, 403);
     }
 
-    const { data: settings } = await supa.from("automation_settings").select("meta_access_token").eq("id", true).maybeSingle();
-    const token = settings?.meta_access_token;
-    if (!token) return json({ error: "meta_access_token not configured" }, 400);
+    const token = await resolveMetaAccessToken(null);
+    if (!token) {
+      return json({
+        error: "Meta access token не настроен. Укажите токен в Настройках → Автоматизация.",
+      }, 400);
+    }
 
     // Get page access token (long-lived, derived from user token)
     const pagesRes = await fetch(`${GRAPH}/me/accounts?fields=id,name,access_token&limit=200&access_token=${token}`);

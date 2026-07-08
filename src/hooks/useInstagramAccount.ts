@@ -74,7 +74,23 @@ export function useInstagramAccount() {
       const { data, error } = await supabase.functions.invoke("instagram-list-accounts", {
         body: { project_id: projectId },
       });
-      if (error) return { accounts: [], error: error.message };
+      if (error) {
+        let message = error.message;
+        try {
+          const ctx = (error as { context?: Response }).context;
+          if (ctx && typeof ctx.json === "function") {
+            const body = await ctx.json();
+            if (body?.error) message = String(body.error);
+          }
+        } catch {
+          /* ignore */
+        }
+        if (/failed to send a request/i.test(message)) {
+          message =
+            "Edge Function недоступна. Обновите страницу и повторите. Если ошибка останется — функция instagram-list-accounts не отвечает.";
+        }
+        return { accounts: [], error: message };
+      }
       return { accounts: data?.accounts ?? [], error: data?.error };
     } finally {
       setLoading(false);
