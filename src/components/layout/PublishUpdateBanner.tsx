@@ -46,7 +46,7 @@ export function PublishUpdateBanner() {
             </a>
           </Button>
           <Button asChild size="sm" variant="outline" className="h-8 rounded-lg">
-            <Link to="/settings?tab=publish">Как обновить</Link>
+            <Link to="/settings">Открыть настройки</Link>
           </Button>
           <button
             type="button"

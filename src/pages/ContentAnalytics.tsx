@@ -18,6 +18,7 @@ import {
   Images,
   ImageIcon,
   Loader2,
+  MoveRight,
   RefreshCw,
   TrendingDown,
   TrendingUp,
@@ -25,6 +26,7 @@ import {
   Users,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { ContentPeriodPicker, type ContentPeriodPreset } from "@/components/content/ContentPeriodPicker";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -34,6 +36,12 @@ import { useInstagramAnalytics } from "@/hooks/useInstagramAnalytics";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { buildContentAnalyticsFromIg, type ContentAnalyticsPost } from "@/lib/contentAnalyticsFromIg";
 import { fmtNum } from "@/lib/format";
+import {
+  formatPeriodLabel,
+  previousEqualRange,
+  thisMonthRange,
+  ymdLocal,
+} from "@/lib/metricsPeriod";
 import { cn } from "@/lib/utils";
 import { ContentPerformanceChart } from "@/pages/content-analytics/ContentPerformanceChart";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
@@ -44,27 +52,6 @@ const FORMAT: Record<string, { label: string; color: string; icon: LucideIcon }>
   VIDEO: { label: "Reels", color: "#ec4899", icon: Film },
 };
 const fmtOf = (t: string) => FORMAT[t] ?? { label: t, color: "hsl(var(--muted-foreground))", icon: ImageIcon };
-
-const ymd = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
-const PERIODS: { id: string; label: string; days: number | null }[] = [
-  { id: "90d", label: "90 дней", days: 90 },
-  { id: "12m", label: "12 месяцев", days: 365 },
-  { id: "all", label: "Всё время", days: null },
-];
-
-function rangeForPeriod(periodId: string): ReportPeriodRange {
-  const to = new Date();
-  to.setHours(0, 0, 0, 0);
-  const meta = PERIODS.find((p) => p.id === periodId) ?? PERIODS[1];
-  if (meta.days == null) {
-    return { from: new Date(2020, 0, 1), to };
-  }
-  const from = new Date(to);
-  from.setDate(from.getDate() - (meta.days - 1));
-  return { from, to };
-}
 
 const fmtDate = (s: string | null) =>
   s ? new Date(s).toLocaleDateString("ru-RU", { day: "2-digit", month: "short" }) : "—";
@@ -137,32 +124,38 @@ function PostRow({ p, rank }: { p: ContentAnalyticsPost; rank: number }) {
 }
 
 export default function ContentAnalytics() {
-  const [periodId, setPeriodId] = useState("12m");
-  const range = useMemo(() => rangeForPeriod(periodId), [periodId]);
+  const [preset, setPreset] = useState<ContentPeriodPreset>("this_month");
+  const [range, setRange] = useState<ReportPeriodRange>(() => thisMonthRange());
+  const [compare, setCompare] = useState(true);
   const { active } = useProjectsStore();
   const { account, loading: accountLoading, sync } = useInstagramAccount();
   const [syncing, setSyncing] = useState(false);
 
+  const compareRange = useMemo(() => previousEqualRange(range), [range]);
+  const compareLabel = useMemo(() => formatPeriodLabel(compareRange), [compareRange]);
+
   // Wider fetch window so prev-period deltas work inside buildContentAnalyticsFromIg.
   const fetchRange = useMemo(() => {
-    const days = PERIODS.find((p) => p.id === periodId)?.days ?? 365;
-    if (days == null) return range;
-    const from = new Date(range.from);
-    from.setDate(from.getDate() - days);
-    return { from, to: range.to };
-  }, [periodId, range]);
+    if (!compare) return range;
+    return { from: compareRange.from, to: range.to };
+  }, [compare, compareRange.from, range]);
   const { media, daily, loading, refetch } = useInstagramAnalytics(fetchRange);
 
   const data = useMemo(() => {
     if (!account) return null;
     return buildContentAnalyticsFromIg({
-      from: ymd(range.from),
-      to: ymd(range.to),
+      from: ymdLocal(range.from),
+      to: ymdLocal(range.to),
       media,
       daily,
       followersNow: account.followersCount,
     });
   }, [account, range.from, range.to, media, daily]);
+
+  const onPresetChange = (next: ContentPeriodPreset, nextRange: ReportPeriodRange) => {
+    setPreset(next);
+    setRange(nextRange);
+  };
 
   const k = data?.kpis;
   const bestFormat = useMemo(() => {
@@ -186,37 +179,49 @@ export default function ContentAnalytics() {
 
   return (
     <PageContainer>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Link
+          to="/analytics/content"
+          className="rounded-xl border border-primary/40 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary"
+        >
+          Контент-аналитика (охват и ER)
+        </Link>
+        <Link
+          to="/marketing/content-center"
+          className="rounded-xl border border-border/60 bg-card/50 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Контент-центр (заявки и выручка)
+        </Link>
+      </div>
+
       <PageHeader
         icon={BarChart3}
         title="Контент-аналитика"
         description={
           <span>
-            Статистика по Instagram, подключённому к проекту
+            Контент-аналитика отвечает за эффективность контента: охват, просмотры, ER и лучшие форматы.
+            {" "}
+            Для бизнес-результата (клики, заявки, продажи, выручка) используйте{" "}
+            <Link to="/marketing/content-center" className="text-primary hover:underline">
+              Контент-центр
+            </Link>
+            .{" "}
+            Данные по Instagram, подключённому к проекту
             {active?.name ? <> «{active.name}»</> : null}
             {account?.username ? <> · @{account.username}</> : null}
-            .{" "}
-            <Link to="/marketing/content-center" className="text-primary hover:underline">
-              Разбор по постам — в Контент-центре →
-            </Link>
+            .
           </span>
         }
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex items-center gap-1 rounded-2xl border border-border/60 bg-card/60 p-1">
-              {PERIODS.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => setPeriodId(p.id)}
-                  className={cn(
-                    "rounded-xl px-3 py-1.5 text-xs font-medium transition",
-                    periodId === p.id ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
+            <ContentPeriodPicker
+              preset={preset}
+              range={range}
+              compare={compare}
+              compareLabel={compare ? compareLabel : null}
+              onPresetChange={onPresetChange}
+              onCompareChange={setCompare}
+            />
             <Button
               variant="outline"
               size="icon"
@@ -251,12 +256,12 @@ export default function ContentAnalytics() {
 
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <KpiCard icon={BarChart3} label="Постов" value={fmtNum(k!.posts)}
-              delta={<Delta cur={k!.posts} prev={k!.posts_prev} />} />
+              delta={compare ? <Delta cur={k!.posts} prev={k!.posts_prev} /> : undefined} />
             <KpiCard icon={Eye} label="Охват" value={fmtNum(k!.reach)}
-              delta={<Delta cur={k!.reach} prev={k!.reach_prev} />} />
+              delta={compare ? <Delta cur={k!.reach} prev={k!.reach_prev} /> : undefined} />
             <KpiCard icon={Film} label="Просмотры" value={fmtNum(k!.views)} />
             <KpiCard icon={Heart} label="Вовлечённость" value={`${k!.er}%`} sub={`${fmtNum(k!.engagement)} реакций`}
-              delta={<Delta cur={k!.er} prev={k!.er_prev} suffix=" п.п." />} />
+              delta={compare ? <Delta cur={k!.er} prev={k!.er_prev} suffix=" п.п." /> : undefined} />
             <KpiCard icon={Users} label="Подписчики" value={data.followers.now != null ? fmtNum(data.followers.now) : "—"}
               delta={data.followers.growth ? (
                 <span className={cn("inline-flex items-center gap-0.5 text-[11px] font-medium", data.followers.growth >= 0 ? "text-success" : "text-destructive")}>
@@ -265,6 +270,12 @@ export default function ContentAnalytics() {
                 </span>
               ) : undefined} />
           </div>
+
+          {compare && (
+            <div className="rounded-xl border border-border/60 bg-card/40 px-3 py-2 text-xs text-muted-foreground">
+              Сравнение включено: текущий период vs {compareLabel}
+            </div>
+          )}
 
           <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
             <div className="mb-1 flex items-center justify-between">
@@ -366,6 +377,12 @@ export default function ContentAnalytics() {
               <div className="flex items-center gap-2 border-b border-border/40 px-4 py-3">
                 <Trophy className="h-4 w-4 text-amber-500" />
                 <h2 className="text-sm font-semibold">Лучшие посты</h2>
+                <Link
+                  to="/marketing/content-center"
+                  className="ml-auto inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                >
+                  Проверить деньги <MoveRight className="h-3 w-3" />
+                </Link>
               </div>
               <div className="divide-y divide-border/20">
                 {data.top_posts.length === 0 ? (
@@ -377,6 +394,12 @@ export default function ContentAnalytics() {
               <div className="flex items-center gap-2 border-b border-border/40 px-4 py-3">
                 <TrendingDown className="h-4 w-4 text-muted-foreground" />
                 <h2 className="text-sm font-semibold">Слабые посты</h2>
+                <Link
+                  to="/marketing/content-center"
+                  className="ml-auto inline-flex items-center gap-1 text-[11px] text-primary hover:underline"
+                >
+                  Где теряем лиды <MoveRight className="h-3 w-3" />
+                </Link>
               </div>
               <div className="divide-y divide-border/20">
                 {data.bottom_posts.length === 0 ? (

@@ -27,6 +27,34 @@ export function monthRange(date = new Date()): ReportPeriodRange {
   return { from, to };
 }
 
+/** Текущий месяц: с 1-го числа по сегодня. */
+export function thisMonthRange(now = new Date()): ReportPeriodRange {
+  const from = new Date(now.getFullYear(), now.getMonth(), 1);
+  const to = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return { from, to };
+}
+
+/** Прошлый календарный месяц целиком. */
+export function lastMonthRange(now = new Date()): ReportPeriodRange {
+  const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const to = new Date(now.getFullYear(), now.getMonth(), 0);
+  return { from, to };
+}
+
+/** Предыдущий отрезок той же длины (для сравнения KPI). */
+export function previousEqualRange(range: ReportPeriodRange): ReportPeriodRange {
+  const fromMs = new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate()).getTime();
+  const toExclusive = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate());
+  toExclusive.setDate(toExclusive.getDate() + 1);
+  const periodMs = Math.max(86_400_000, toExclusive.getTime() - fromMs);
+  const prevFrom = new Date(fromMs - periodMs);
+  const prevTo = new Date(fromMs - 86_400_000);
+  return {
+    from: new Date(prevFrom.getFullYear(), prevFrom.getMonth(), prevFrom.getDate()),
+    to: new Date(prevTo.getFullYear(), prevTo.getMonth(), prevTo.getDate()),
+  };
+}
+
 export function daysInRange(range: ReportPeriodRange): string[] {
   const out: string[] = [];
   const cur = new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate());

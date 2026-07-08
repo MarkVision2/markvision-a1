@@ -476,12 +476,34 @@ const ContentCenter = () => {
 
   return (
     <PageContainer wide>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Link
+          to="/analytics/content"
+          className="rounded-xl border border-border/60 bg-card/50 px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          Контент-аналитика (охват и ER)
+        </Link>
+        <Link
+          to="/marketing/content-center"
+          className="rounded-xl border border-pink-500/40 bg-pink-500/10 px-3 py-1.5 text-xs font-semibold text-pink-500"
+        >
+          Контент-центр (заявки и выручка)
+        </Link>
+      </div>
+
       <PageHeader
         icon={Instagram}
         iconAccent="pink"
         title="Контент-центр"
         description={
           <span>
+            Контент-центр отвечает за коммерцию контента: путь от охвата до продажи в деньгах (₸).
+            {" "}
+            Для анализа форматов, ER и охватов используйте{" "}
+            <Link to="/analytics/content" className="text-primary hover:underline">
+              Контент-аналитику
+            </Link>
+            .{" "}
             <span className="text-pink-500 font-medium">Instagram</span>
             {" · "}охват → код-слово → заявка → диагностика → продажа · {rangeLabel}
           </span>

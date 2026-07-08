@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import type { ComponentType } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Camera, Edit2, Eye, Globe, GitBranch, KeyRound, Link2, MessageCircle, Phone, Plus, Rocket, Search, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
+import { Camera, CheckCircle2, Edit2, Eye, Globe, GitBranch, KeyRound, Link2, Loader2, MessageCircle, Phone, Plus, Search, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -24,11 +25,12 @@ import { InboundTokensSettings } from "@/components/settings/InboundTokensSettin
 import { ClientDashTokensSettings } from "@/components/settings/ClientDashTokensSettings";
 import { InstagramOrganicSettings } from "@/components/settings/InstagramOrganicSettings";
 import { MetaTokensSettings } from "@/components/settings/MetaTokensSettings";
-import { LovablePublishGuide } from "@/components/settings/LovablePublishGuide";
 import { SiteIntakeCard } from "@/pages/SettingsConnection";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Settings as SettingsIcon } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { clientConfigSupabase } from "@/integrations/clientConfig/client";
 import {
   MODULES,
   ROLE_LABELS,
@@ -46,23 +48,89 @@ const ROLE_COLOR: Record<string, string> = {
 };
 
 const SETTINGS_TABS = [
-  "publish", "team", "profile", "pipelines", "loss",
+  "team", "profile", "pipelines", "loss",
   "telephony", "whatsapp", "site", "inbound", "ig-organic", "meta-tokens", "clientview",
 ] as const;
 
 type SettingsTab = (typeof SETTINGS_TABS)[number];
+type ConnectionStatus = "connected" | "disconnected" | "checking";
+
+const CONNECTION_SECTIONS: Array<{
+  tab: SettingsTab;
+  title: string;
+  desc: string;
+  icon: ComponentType<{ className?: string }>;
+}> = [
+  {
+    tab: "telephony",
+    title: "Телефония",
+    desc: "SIP/звонки и базовые параметры коммуникаций.",
+    icon: Phone,
+  },
+  {
+    tab: "whatsapp",
+    title: "WhatsApp",
+    desc: "Привязка Green API, QR/код и webhook CRM.",
+    icon: MessageCircle,
+  },
+  {
+    tab: "site",
+    title: "Сайт",
+    desc: "Webhook для заявок с сайта и тест отправки.",
+    icon: Globe,
+  },
+  {
+    tab: "inbound",
+    title: "Лендинги",
+    desc: "Токены и HTML-сниппеты для форм и страниц.",
+    icon: Link2,
+  },
+  {
+    tab: "ig-organic",
+    title: "Instagram organic",
+    desc: "Подключение органического Instagram проекта.",
+    icon: Camera,
+  },
+  {
+    tab: "meta-tokens",
+    title: "Meta токен",
+    desc: "Токены Meta API для рекламных данных.",
+    icon: KeyRound,
+  },
+  {
+    tab: "clientview",
+    title: "Доступ клиента",
+    desc: "Read-only ссылка клиента на дашборд.",
+    icon: Eye,
+  },
+];
 
 export default function Settings() {
   const [searchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
   const defaultTab: SettingsTab = SETTINGS_TABS.includes(tabParam as SettingsTab)
     ? (tabParam as SettingsTab)
-    : "publish";
+    : "team";
   const { members, removeMember } = useTeamStore();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<TeamMember | null>(null);
   const [query, setQuery] = useState("");
   const [confirmDel, setConfirmDel] = useState<TeamMember | null>(null);
+  const [statusRefreshTick, setStatusRefreshTick] = useState(0);
+  const { activeId, active } = useProjectsStore();
+  const [connectionStatus, setConnectionStatus] = useState<Record<SettingsTab, ConnectionStatus>>({
+    team: "disconnected",
+    profile: "disconnected",
+    pipelines: "disconnected",
+    loss: "disconnected",
+    telephony: "checking",
+    whatsapp: "checking",
+    site: "checking",
+    inbound: "checking",
+    "ig-organic": "checking",
+    "meta-tokens": "checking",
+    clientview: "checking",
+  });
 
   const handleEdit = (m: TeamMember) => { setEditing(m); setOpen(true); };
   const handleAdd = () => { setEditing(null); setOpen(true); };
@@ -85,17 +153,166 @@ export default function Settings() {
     setConfirmDel(null);
   };
 
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadConnectionStatus = async () => {
+      if (!activeId) {
+        if (!cancelled) {
+          setConnectionStatus((prev) => ({
+            ...prev,
+            telephony: "disconnected",
+            whatsapp: "disconnected",
+            site: "disconnected",
+            inbound: "disconnected",
+            "ig-organic": "disconnected",
+            "meta-tokens": "disconnected",
+            clientview: "disconnected",
+          }));
+        }
+        return;
+      }
+
+      setConnectionStatus((prev) => ({
+        ...prev,
+        telephony: "checking",
+        whatsapp: "checking",
+        site: "checking",
+        inbound: "checking",
+        "ig-organic": "checking",
+        "meta-tokens": "checking",
+        clientview: "checking",
+      }));
+
+      const [telephonyRes, waRes, igRes, metaRes, inboundRes, clientViewRes] = await Promise.all([
+        supabase
+          .from("automation_settings" as never)
+          .select("sipuni_enabled,sipuni_token_present")
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("whatsapp_config_safe")
+          .select("id_instance,api_token_present,connected")
+          .eq("project_id", activeId)
+          .maybeSingle(),
+        supabase
+          .from("instagram_accounts_safe")
+          .select("ig_user_id,active")
+          .eq("project_id", activeId)
+          .maybeSingle(),
+        supabase
+          .from("meta_tokens" as never)
+          .select("id")
+          .eq("project_id", activeId)
+          .eq("is_active", true)
+          .limit(1),
+        clientConfigSupabase
+          ? clientConfigSupabase
+              .from("inbound_tokens")
+              .select("token")
+              .eq("is_active", true)
+              .limit(1)
+          : Promise.resolve({ data: null, error: null }),
+        clientConfigSupabase
+          ? clientConfigSupabase
+              .from("client_dashboard_tokens")
+              .select("token")
+              .eq("is_active", true)
+              .limit(1)
+          : Promise.resolve({ data: null, error: null }),
+      ]);
+
+      if (cancelled) return;
+
+      const telephonyConnected = !!(telephonyRes.data?.sipuni_enabled && telephonyRes.data?.sipuni_token_present);
+      const waConnected = !!(waRes.data?.id_instance && waRes.data?.api_token_present && waRes.data?.connected);
+      const siteConnected = !!active?.intakeToken;
+      const igConnected = !!(igRes.data?.ig_user_id && igRes.data?.active);
+      const metaConnected = !!(metaRes.data && metaRes.data.length > 0);
+      const inboundConnected = !!(inboundRes.data && inboundRes.data.length > 0);
+      const clientViewConnected = !!(clientViewRes.data && clientViewRes.data.length > 0);
+
+      setConnectionStatus((prev) => ({
+        ...prev,
+        telephony: telephonyConnected ? "connected" : "disconnected",
+        whatsapp: waConnected ? "connected" : "disconnected",
+        site: siteConnected ? "connected" : "disconnected",
+        inbound: inboundConnected ? "connected" : "disconnected",
+        "ig-organic": igConnected ? "connected" : "disconnected",
+        "meta-tokens": metaConnected ? "connected" : "disconnected",
+        clientview: clientViewConnected ? "connected" : "disconnected",
+      }));
+    };
+
+    void loadConnectionStatus();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId, active?.intakeToken, statusRefreshTick]);
+
   return (
     <PageContainer>
       <PageHeader
         icon={SettingsIcon}
         title="Настройки"
-        description="Команда, воронки, телефония и личный профиль"
+        description="Команда, воронки и все подключения проекта в одном месте"
       />
+
+      <section className="mt-6 rounded-2xl border border-border/60 bg-card/40 p-4">
+        <div className="mb-3 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold">Карта подключений</h2>
+            <p className="text-xs text-muted-foreground">
+              Пройдите разделы по порядку: WhatsApp, сайт/лендинги, Instagram, Meta токен и клиентский доступ.
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-8 rounded-lg"
+            onClick={() => setStatusRefreshTick((v) => v + 1)}
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Проверить ещё раз
+          </Button>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {CONNECTION_SECTIONS.map((s) => (
+            <Link
+              key={s.tab}
+              to={`/settings?tab=${s.tab}`}
+              className="rounded-xl border border-border/60 bg-background/40 p-3 transition-colors hover:bg-secondary/30"
+            >
+              <div className="flex items-center gap-2">
+                <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/10 text-primary">
+                  <s.icon className="h-4 w-4" />
+                </span>
+                <span className="text-sm font-medium">{s.title}</span>
+                <span
+                  className={cn(
+                    "ml-auto inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                    connectionStatus[s.tab] === "connected" && "bg-success/15 text-success",
+                    connectionStatus[s.tab] === "disconnected" && "bg-muted text-muted-foreground",
+                    connectionStatus[s.tab] === "checking" && "bg-primary/10 text-primary",
+                  )}
+                >
+                  {connectionStatus[s.tab] === "connected" && <CheckCircle2 className="h-3 w-3" />}
+                  {connectionStatus[s.tab] === "checking" && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {connectionStatus[s.tab] === "connected"
+                    ? "Подключено"
+                    : connectionStatus[s.tab] === "checking"
+                      ? "Проверка"
+                      : "Не настроено"}
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">{s.desc}</p>
+            </Link>
+          ))}
+        </div>
+      </section>
 
       <Tabs defaultValue={defaultTab} key={defaultTab} className="mt-6 w-full">
         <TabsList className="mb-5 flex h-auto w-full flex-wrap justify-start gap-1 bg-card/40 p-1">
-          <TabsTrigger value="publish" className="gap-2"><Rocket className="h-3.5 w-3.5" /> Обновления</TabsTrigger>
           <TabsTrigger value="team" className="gap-2"><Users2 className="h-3.5 w-3.5" /> Команда</TabsTrigger>
           <TabsTrigger value="profile" className="gap-2"><UserCircle2 className="h-3.5 w-3.5" /> Профиль</TabsTrigger>
           <TabsTrigger value="pipelines" className="gap-2"><GitBranch className="h-3.5 w-3.5" /> Воронки</TabsTrigger>
@@ -108,10 +325,6 @@ export default function Settings() {
           <TabsTrigger value="meta-tokens" className="gap-2"><KeyRound className="h-3.5 w-3.5" /> Meta токен</TabsTrigger>
           <TabsTrigger value="clientview" className="gap-2"><Eye className="h-3.5 w-3.5" /> Доступ клиента</TabsTrigger>
         </TabsList>
-
-        <TabsContent value="publish" className="mt-0">
-          <LovablePublishGuide />
-        </TabsContent>
 
         <TabsContent value="team" className="mt-0">
       <section className="rounded-2xl border border-border/60 bg-card/40 p-5">
