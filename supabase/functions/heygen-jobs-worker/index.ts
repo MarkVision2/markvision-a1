@@ -107,24 +107,37 @@ Deno.serve(async (req) => {
       });
       const body = await res.json().catch(() => ({}));
       const d = (body?.data ?? body ?? {}) as Record<string, unknown>;
-      const status = String(d.status ?? "");
+      const vid = pickVideoId(d);
       let url = pickUrl(d);
-      let meta: Record<string, unknown> = d; // источник длительности/обложки (v3 или v1)
+      let meta: Record<string, unknown> = d; // источник длительности/обложки
+      let status = String(d.status ?? ""); // статус сессии агента (пока нет video_id)
+      let failMsg = "";
 
-      // Video Agent часто отдаёт video_id, а MP4 (и длительность) забираются вторым запросом (/v1).
-      if (!url) {
-        const vid = pickVideoId(d);
-        if (vid) {
+      // Как только у сессии есть video_id — авторитетен статус самого ВИДЕО
+      // (GET /v3/videos/{id}), а не сессии агента: сессия бывает «failed», пока
+      // видео ещё рендерится и затем успешно завершается (docs: Video Agent).
+      if (vid) {
+        let vd: Record<string, unknown> = {};
+        try {
+          const vr = await fetch(`${HEYGEN_BASE}/v3/videos/${encodeURIComponent(vid)}`, {
+            headers: { "X-Api-Key": apiKey, Accept: "application/json" },
+          });
+          vd = ((await vr.json().catch(() => ({})))?.data ?? {}) as Record<string, unknown>;
+        } catch { /* ignore */ }
+        // Запасной путь — классический /v1, если v3 ничего не вернул.
+        if (!pickUrl(vd) && !vd.status) {
           try {
-            const vres = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${encodeURIComponent(vid)}`, {
+            const vr1 = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${encodeURIComponent(vid)}`, {
               headers: { "X-Api-Key": apiKey, Accept: "application/json" },
             });
-            const vbody = await vres.json().catch(() => ({}));
-            const vd = (vbody?.data ?? {}) as Record<string, unknown>;
-            url = pickUrl(vd);
-            if (url) meta = vd; // длительность/обложка тоже приходят из /v1
+            vd = ((await vr1.json().catch(() => ({})))?.data ?? vd) as Record<string, unknown>;
           } catch { /* ignore */ }
         }
+        const vs = String(vd.status ?? "");
+        if (vs) status = vs; // статус видео важнее статуса сессии
+        const vurl = pickUrl(vd);
+        if (vurl) { url = vurl; meta = vd; }
+        failMsg = String(vd.failure_message ?? vd.error ?? "");
       }
 
       const chatId = await resolveChatId(job); // Telegram-чат для доставки (у веб-задач — привязанный к проекту)
@@ -150,25 +163,20 @@ Deno.serve(async (req) => {
         });
         delivered++;
       } else if (TERMINAL_FAIL.includes(status)) {
-        // HeyGen иногда помечает сессию failed, но видео всё же создаётся (и списывается).
-        // Если есть video_id и задача ещё «молодая» — не хороним, ждём готовности MP4.
-        if (pickVideoId(d) && ageMin <= MAX_AGE_MIN) {
-          pending++;
-        } else {
-          await notify(botToken, chatId, "Не удалось собрать видео. Попробуйте ещё раз.");
-          await admin.from("heygen_jobs").update({
-            delivered: true, status: "failed",
-            error: ("fail: " + JSON.stringify(d)).slice(0, 600), // сырой ответ для диагностики
-            updated_at: new Date().toISOString(),
-          }).eq("id", job.id);
-          failed++;
-        }
+        // Статус видео (или сессии без video_id) — терминальный провал.
+        await notify(botToken, chatId, "Не удалось собрать видео. Попробуйте ещё раз.");
+        await admin.from("heygen_jobs").update({
+          delivered: true, status: "failed",
+          error: ("fail: " + (failMsg || JSON.stringify(meta))).slice(0, 600),
+          updated_at: new Date().toISOString(),
+        }).eq("id", job.id);
+        failed++;
       } else if (TERMINAL_OK.includes(status)) {
         // терминальный успех без ссылки — сохраняем сырой ответ для диагностики.
         await notify(botToken, chatId, "Видео готово, но ссылка не пришла. Попробуйте ещё раз.");
         await admin.from("heygen_jobs").update({
           delivered: true, status: "failed",
-          error: ("no_url: " + JSON.stringify(d)).slice(0, 600),
+          error: ("no_url: " + JSON.stringify(meta)).slice(0, 600),
           updated_at: new Date().toISOString(),
         }).eq("id", job.id);
         failed++;
