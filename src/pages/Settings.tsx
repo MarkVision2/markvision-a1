@@ -38,6 +38,7 @@ import {
   useTeamStore,
 } from "@/hooks/useTeamStore";
 import { toast } from "sonner";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 
 const ROLE_COLOR: Record<string, string> = {
   admin: "bg-destructive/15 text-destructive border-destructive/40",
