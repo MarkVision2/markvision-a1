@@ -1,7 +1,7 @@
 {
-  "git_sha": "f9a94b5",
-  "git_sha_full": "f9a94b529edf2b95f2185d57895c28e22d00135d",
-  "updated_at": "2026-07-08T14:45:22Z",
-  "label": "Fix Facebook connect popup and show Instagram/connection state",
+  "git_sha": "21ab2af",
+  "git_sha_full": "21ab2af0e41d5b8edea1e4b23d3166ec68fed48b",
+  "updated_at": "2026-07-08T14:56:30Z",
+  "label": "Facebook connect: show full connection details (page, Instagram, ad account)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
