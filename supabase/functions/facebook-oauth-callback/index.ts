@@ -116,10 +116,30 @@ Deno.serve(async (req) => {
       return finish(returnUrl, { success: true, summary });
     }
 
-    // Иначе — не угадываем: откладываем выбор пользователю.
+    // Иначе — не угадываем: откладываем выбор пользователю. Заодно подтягиваем
+    // для каждой страницы привязанный Instagram (если есть), чтобы в списке
+    // выбора было видно, к какой странице какой Instagram подключится — иначе
+    // легко выбрать страницу без Instagram вслепую.
+    const pagesWithIg: Page[] = await Promise.all(
+      pages.map(async (p) => {
+        try {
+          const r = await fetch(
+            `${GRAPH}/${p.id}?fields=instagram_business_account{id,username,profile_picture_url}&access_token=${p.access_token}`,
+          );
+          const j = await r.json();
+          const ig = j.instagram_business_account;
+          return { ...p, instagram: ig?.id ? { id: ig.id, username: ig.username, profile_picture_url: ig.profile_picture_url } : null };
+        } catch {
+          return { ...p, instagram: null };
+        }
+      }),
+    );
+    // Pages with a linked Instagram first — that's almost always what the user wants.
+    pagesWithIg.sort((a, b) => (b.instagram ? 1 : 0) - (a.instagram ? 1 : 0));
+
     const { data: selection, error: selErr } = await supa
       .from("meta_oauth_pending_selections")
-      .insert({ project_id: projectId, user_id: userId, user_token: userToken, pages, ad_accounts: adAccounts })
+      .insert({ project_id: projectId, user_id: userId, user_token: userToken, pages: pagesWithIg, ad_accounts: adAccounts })
       .select("id")
       .single();
     if (selErr || !selection) throw new Error(selErr?.message ?? "failed to store selection");
@@ -128,7 +148,7 @@ Deno.serve(async (req) => {
       success: true,
       needsSelection: true,
       selectionId: (selection as { id: string }).id,
-      pages: pages.map((p) => ({ id: p.id, name: p.name })),
+      pages: pagesWithIg.map((p) => ({ id: p.id, name: p.name, instagram: p.instagram ?? null })),
       adAccounts: adAccounts.map((a) => ({ id: a.id, name: a.business?.name || a.name, currency: a.currency ?? null })),
     });
   } catch (e) {

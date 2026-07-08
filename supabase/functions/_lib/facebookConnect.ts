@@ -6,7 +6,15 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
-export type FbPage = { id: string; name: string; access_token: string };
+export type FbPage = {
+  id: string;
+  name: string;
+  access_token: string;
+  // Preview-only, filled in by facebook-oauth-callback so the picker can show
+  // which page already has an Instagram account attached — connectPageAndAdAccount
+  // always re-fetches this itself and does not read it.
+  instagram?: { id: string; username?: string; profile_picture_url?: string } | null;
+};
 export type FbAdAccount = { id: string; name: string; currency?: string; business?: { id: string; name: string } };
 
 export async function connectPageAndAdAccount(

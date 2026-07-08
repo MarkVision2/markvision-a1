@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Facebook, Loader2, CheckCircle2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Facebook, Instagram, Loader2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -16,9 +16,12 @@ import {
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 
-type PendingPage = { id: string; name: string };
+type PendingPageInstagram = { id: string; username?: string; profile_picture_url?: string } | null;
+type PendingPage = { id: string; name: string; instagram?: PendingPageInstagram };
 type PendingAdAccount = { id: string; name: string; currency: string | null };
 type PendingSelection = { selectionId: string; pages: PendingPage[]; adAccounts: PendingAdAccount[] };
+
+type ConnectedSummary = { username: string | null; pageName: string | null; profilePictureUrl: string | null };
 
 type OAuthMessage = {
   source?: string;
@@ -51,8 +54,33 @@ export function FacebookConnect() {
   const [selection, setSelection] = useState<PendingSelection | null>(null);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [selectedAdAccountId, setSelectedAdAccountId] = useState<string | null>(null);
+  const [connected, setConnected] = useState<ConnectedSummary | null>(null);
   const [params, setParams] = useSearchParams();
   const pollRef = useRef<number | null>(null);
+
+  // Показываем, что реально подключено сейчас — без этого после успешного
+  // подключения карточка не менялась (только тост), и было непонятно,
+  // применилось ли что-то на самом деле.
+  const refreshConnected = useCallback(async () => {
+    if (!projectId) {
+      setConnected(null);
+      return;
+    }
+    const { data } = await supabase
+      .from("instagram_accounts")
+      .select("username, page_name, profile_picture_url")
+      .eq("project_id", projectId)
+      .maybeSingle();
+    setConnected(
+      data
+        ? { username: data.username, pageName: data.page_name, profilePictureUrl: data.profile_picture_url }
+        : null,
+    );
+  }, [projectId]);
+
+  useEffect(() => {
+    refreshConnected();
+  }, [refreshConnected]);
 
   const stopPolling = () => {
     if (pollRef.current) {
@@ -73,17 +101,17 @@ export function FacebookConnect() {
   // (popup was blocked and this is the same tab that navigated away) handle
   // it locally, same as before.
   useEffect(() => {
-    const connected = params.get("fb_connected");
+    const connectedSummary = params.get("fb_connected");
     const error = params.get("fb_error");
     const select = params.get("fb_select");
-    if (!connected && !error && !select) return;
+    if (!connectedSummary && !error && !select) return;
 
     const isPopup = !!window.opener && window.opener !== window;
     if (isPopup) {
       try {
         let payload: OAuthMessage;
-        if (connected) {
-          payload = { source: OAUTH_MESSAGE_SOURCE, success: true, summary: connected };
+        if (connectedSummary) {
+          payload = { source: OAUTH_MESSAGE_SOURCE, success: true, summary: connectedSummary };
         } else if (error) {
           payload = { source: OAUTH_MESSAGE_SOURCE, success: false, error };
         } else {
@@ -98,8 +126,9 @@ export function FacebookConnect() {
       return;
     }
 
-    if (connected) {
-      toast.success("Facebook подключён", { description: connected });
+    if (connectedSummary) {
+      toast.success("Facebook подключён", { description: connectedSummary });
+      refreshConnected();
       setParams((p) => { p.delete("fb_connected"); return p; }, { replace: true });
     } else if (error) {
       toast.error("Не удалось подключить Facebook", { description: error });
@@ -125,11 +154,12 @@ export function FacebookConnect() {
         openSelection({ selectionId: payload.selectionId, pages: payload.pages, adAccounts: payload.adAccounts ?? [] });
       } else {
         toast.success("Facebook подключён", { description: payload.summary });
+        refreshConnected();
       }
     };
     window.addEventListener("message", handler);
     return () => window.removeEventListener("message", handler);
-  }, []);
+  }, [refreshConnected]);
 
   useEffect(() => stopPolling, []);
 
@@ -176,6 +206,7 @@ export function FacebookConnect() {
       if (data?.error) throw new Error(data.error);
       toast.success("Facebook подключён", { description: data?.summary });
       setSelection(null);
+      refreshConnected();
     } catch (e) {
       toast.error("Не удалось завершить подключение", { description: e instanceof Error ? e.message : String(e) });
     } finally {
@@ -201,8 +232,29 @@ export function FacebookConnect() {
         </div>
         <Button onClick={handleConnect} disabled={connecting || !projectId} className="gap-2 bg-[#1877F2] hover:bg-[#1877F2]/90">
           {connecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Facebook className="h-4 w-4" />}
-          Войти через Facebook
+          {connected ? "Переподключить Facebook" : "Войти через Facebook"}
         </Button>
+
+        {connected && (
+          <div className="mt-4 flex items-center gap-3 rounded-xl border border-border/60 bg-secondary/40 p-3">
+            {connected.profilePictureUrl ? (
+              <img src={connected.profilePictureUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
+            ) : (
+              <div className="grid h-10 w-10 place-items-center rounded-full bg-pink-500/15 text-pink-500">
+                <Instagram className="h-5 w-5" />
+              </div>
+            )}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5 text-sm font-semibold">
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+                {connected.username ? `Instagram @${connected.username}` : "Instagram не привязан к странице"}
+              </div>
+              {connected.pageName && (
+                <div className="truncate text-xs text-muted-foreground">страница «{connected.pageName}»</div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       <Dialog open={!!selection} onOpenChange={(open) => { if (!open) setSelection(null); }}>
@@ -211,7 +263,7 @@ export function FacebookConnect() {
             <DialogTitle>Выберите, что подключить</DialogTitle>
             <DialogDescription>
               У этого Facebook-аккаунта несколько страниц{selection && selection.adAccounts.length > 1 ? " и рекламных кабинетов" : ""}.
-              Выберите страницу — вместе с ней подключится и связанный с ней Instagram-аккаунт.
+              Выберите страницу — рядом показан привязанный к ней Instagram, если он есть; именно он подключится к проекту.
             </DialogDescription>
           </DialogHeader>
 
@@ -227,12 +279,22 @@ export function FacebookConnect() {
                       {selection.pages.map((page) => (
                         <CommandItem
                           key={page.id}
-                          value={page.name}
+                          value={`${page.name} ${page.instagram?.username ?? ""}`}
                           onSelect={() => setSelectedPageId(page.id)}
                           className={cn("cursor-pointer gap-2", selectedPageId === page.id && "bg-accent")}
                         >
-                          <CheckCircle2 className={cn("h-4 w-4 text-primary", selectedPageId !== page.id && "opacity-0")} />
-                          {page.name}
+                          <CheckCircle2 className={cn("h-4 w-4 shrink-0 text-primary", selectedPageId !== page.id && "opacity-0")} />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate">{page.name}</div>
+                            {page.instagram ? (
+                              <div className="flex items-center gap-1 text-xs text-pink-500">
+                                <Instagram className="h-3 w-3 shrink-0" />
+                                <span className="truncate">@{page.instagram.username}</span>
+                              </div>
+                            ) : (
+                              <div className="text-xs text-muted-foreground">без Instagram</div>
+                            )}
+                          </div>
                         </CommandItem>
                       ))}
                     </CommandGroup>
