@@ -334,12 +334,20 @@ export interface VideoAgentInput {
 
 /** Быстрое создание (Video Agent v3): промпт/сценарий → session_id.
  *  avatar/voice — необязательные подсказки; без них агент подбирает сам.
- *  У v3 нет параметра раскладки в теле запроса (HeyGen отдаёт 400 "Extra
- *  inputs are not permitted" на aspect_ratio) — формат передаём только
- *  директивой в тексте промпта. */
+ *  У v3 нет параметров раскладки/языка/субтитров в теле запроса (HeyGen
+ *  отдаёт 400 "Extra inputs are not permitted" на любое лишнее поле,
+ *  включая aspect_ratio) — все такие настройки передаём только директивой
+ *  в тексте промпта, это единственный документированный канал влияния на
+ *  Video Agent. Без явного указания языка агент по умолчанию тянет
+ *  англоязычный b-roll/оверлеи и не всегда прожигает субтитры. */
 export async function generateVideoAgent(input: VideoAgentInput): Promise<string> {
   const orient = input.aspect === "16:9" ? "горизонтальное" : input.aspect === "9:16" ? "вертикальное" : "";
-  const prompt = input.aspect ? `${input.prompt}\n\nФормат ролика: ${input.aspect} (${orient}).` : input.prompt;
+  const directives = [
+    input.aspect ? `Формат ролика: ${input.aspect} (${orient}).` : null,
+    "Субтитры на русском языке обязательны — вшей их в видео на каждой сцене.",
+    "Весь текст на экране, оверлеи и подобранный b-roll — только на русском. Никаких английских слов, надписей или англоязычных вставок в кадре.",
+  ].filter(Boolean);
+  const prompt = `${input.prompt}\n\n${directives.join("\n")}`;
   const agent: Record<string, unknown> = { prompt };
   // avatar_id имеет смысл только для обычного аватара; talking_photo агент не примет.
   if (input.avatar && input.avatar.kind === "avatar") agent.avatar_id = input.avatar.id;
