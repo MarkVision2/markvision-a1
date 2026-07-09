@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import {
-  AlertTriangle, Captions, Check, Clapperboard, Copy, Download, Film, Image as ImageIcon, Loader2, Pause, Play, Plus, Search,
+  AlertTriangle, Captions, Check, CheckCircle2, Clapperboard, Download, Film, Loader2, Pause, Play, Plus, Search,
   Sparkles, Star, Upload, UserRound, Video, Volume2, X, Zap,
 } from "lucide-react";
 import Header from "@/components/factory/Header";
@@ -12,7 +12,6 @@ import { HeygenUsagePanel } from "@/components/factory/HeygenUsagePanel";
 import { enqueueAgentJob, estimateCost, loadRecentVoices, pushRecentVoice, recordUsage } from "@/lib/heygenUsage";
 import { HeygenGallery } from "@/components/factory/HeygenGallery";
 import { loadHidden, toggleHidden } from "@/lib/heygenHidden";
-import { generateVideoAssets, type VideoAssets } from "@/lib/videoAssets";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -23,9 +22,9 @@ import { toast } from "sonner";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { cacheDefaults, fetchServerDefaults, loadDefaults, patchDefaults, type HeygenDefaults } from "@/lib/heygenDefaults";
 import {
-  fetchAgentStatus, fetchAvatars, fetchTemplateDetail, fetchTemplates, fetchVideoStatus, fetchVoices,
+  fetchAvatars, fetchTemplateDetail, fetchTemplates, fetchVideoStatus, fetchVoices,
   generateFromClips, generateTemplateVideo, generateVideoAgent, transcribeVideo, uploadClip,
-  type AgentStatus, type HeygenAvatar, type HeygenTemplate, type HeygenVideoStatus, type HeygenVoice,
+  type HeygenAvatar, type HeygenTemplate, type HeygenVideoStatus, type HeygenVoice,
   type TemplateVariable,
 } from "@/hooks/useHeygen";
 import { addDynamicCaptions } from "@/lib/ownVideoMontage";
@@ -571,8 +570,12 @@ const CreateMontage = () => {
   }, [projectId]);
 
   const [videoId, setVideoId] = useState<string | null>(null);
-  const [agentSessionId, setAgentSessionId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  // Быстрое создание (agent) — fire-and-forget: доставку и учёт полностью
+  // ведёт серверный воркер (heygen_jobs), эта страница не поллит статус и
+  // не ждёт результат. agentSubmitted просто держит подтверждение на экране,
+  // пока не начнут печатать новый бриф.
+  const [agentSubmitted, setAgentSubmitted] = useState(false);
 
   // Каталог аватаров/голосов нужен всем режимам кроме «шаблона».
   const needsCatalog = mode !== "template";
@@ -599,30 +602,11 @@ const CreateMontage = () => {
     refetchInterval: (query) => (isTerminal(query.state.data?.status) ? false : 8_000),
   });
 
-  const agentTerminal = (s?: AgentStatus) =>
-    !!s?.video_url || ["completed", "success", "done", "failed", "error"].includes(s?.status ?? "");
-
-  const agentQ = useQuery<AgentStatus>({
-    queryKey: ["heygen-agent", agentSessionId],
-    queryFn: () => fetchAgentStatus(agentSessionId as string),
-    enabled: !!agentSessionId,
-    refetchInterval: (query) => (agentTerminal(query.state.data) ? false : 10_000),
-  });
-
   const loadError = avatarsQ.error || voicesQ.error;
 
   useEffect(() => {
     if (statusQ.data?.status === "failed") toast.error("HeyGen: рендер не удался");
   }, [statusQ.data?.status]);
-
-  useEffect(() => {
-    const s = agentQ.data?.status ?? "";
-    if (["failed", "error"].includes(s)) {
-      toast.error("HeyGen: генерация не удалась");
-    } else if (["completed", "success", "done"].includes(s) && !agentQ.data?.video_url) {
-      toast.error("HeyGen: готово, но ссылка на видео не пришла — попробуйте ещё раз");
-    }
-  }, [agentQ.data?.status, agentQ.data?.video_url]);
 
   const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -744,7 +728,6 @@ const CreateMontage = () => {
     const dim = DIMENSIONS[aspect];
     setSubmitting(true);
     setVideoId(null);
-    setAgentSessionId(null);
     try {
       if (mode === "agent") {
         const sid = await generateVideoAgent({
@@ -753,23 +736,29 @@ const CreateMontage = () => {
           voiceId: voiceId || undefined,
           aspect,
         });
-        setAgentSessionId(sid);
-        // Дублируем в серверную очередь: воркер докрутит и запишет в «Готовый
-        // контент» даже если закрыть вкладку. Учёт для agent — на стороне воркера.
+        // Fire-and-forget: HeyGen-сессия статуса session-level ненадёжна
+        // (бывает «failed», пока видео ещё рендерится, и только видео-статус
+        // авторитетен) — раньше это давало бесконечный «идёт монтаж» на
+        // экране даже спустя час. Доставку и учёт полностью ведёт серверный
+        // воркер (heygen_jobs), эта страница просто подтверждает отправку.
         void enqueueAgentJob(projectId, sid, agentPrompt.trim(), aspect);
+        setAgentPrompt("");
+        setAgentSubmitted(true);
+        toast.success("ТЗ отправлено в HeyGen. Готовое видео появится во вкладке «Готовые».");
       } else if (mode === "template") {
         setVideoId(await generateTemplateVideo({
           templateId, width: dim.width, height: dim.height,
           variables: buildTemplateVariables(templateDetailQ.data ?? [], templateVars),
         }));
+        toast.success("Запущено — собираем видео");
       } else {
         setVideoId(await generateFromClips({
           avatar: avatarRef!, voiceId,
           scenes: clips.map((c) => ({ clipUrl: c.url as string, script: c.script.trim() })),
           width: dim.width, height: dim.height,
         }));
+        toast.success("Запущено — собираем видео");
       }
-      toast.success("Запущено — собираем видео");
     } catch (e) {
       toast.error((e as Error).message || "Не удалось запустить генерацию");
     } finally {
@@ -777,28 +766,22 @@ const CreateMontage = () => {
     }
   };
 
-  // Состояние активной задачи считаем ГЛОБАЛЬНО (по видимому videoId/agentSessionId),
-  // а не по текущей вкладке — иначе результат пропадает и рендер бросается при переключении.
-  const agentActive = !!agentSessionId;
-  const agentStr = agentQ.data?.status ?? "";
-  const agentUrl = agentQ.data?.video_url;
-  const agentIsTerminal = !!agentUrl || ["completed", "success", "done", "failed", "error"].includes(agentStr);
-
+  // Быстрое создание (agent) больше не участвует в этом состоянии — оно
+  // fire-and-forget (см. handleGenerate). resultUrl/rendering здесь — только
+  // для «Шаблон»/«Из клипов», у которых нет серверного воркера-доставщика
+  // и статус-эндпоинт (fetchVideoStatus, /v2/video) действительно надёжен.
   const v2Active = !!videoId;
   const v2Done = statusQ.data?.status === "completed" && !!statusQ.data?.video_url;
 
-  const rendering =
-    (agentActive && !agentIsTerminal) || (v2Active && !isTerminal(statusQ.data?.status));
+  const rendering = v2Active && !isTerminal(statusQ.data?.status);
 
-  const resultUrl = agentActive ? agentUrl : v2Done ? statusQ.data?.video_url : undefined;
-  const resultThumb = agentActive ? agentQ.data?.thumbnail_url : statusQ.data?.thumbnail_url;
+  const resultUrl = v2Done ? statusQ.data?.video_url : undefined;
+  const resultThumb = statusQ.data?.thumbnail_url;
 
   // Учёт расхода при завершении рендера (один раз на задачу).
   const recordedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!resultUrl || !projectId) return;
-    // Для agent учёт ведёт серверный воркер (по heygen_jobs) — иначе задвоение.
-    if (agentActive) return;
     const ref = videoId;
     if (!ref || recordedRef.current === ref) return;
     recordedRef.current = ref;
@@ -813,25 +796,6 @@ const CreateMontage = () => {
       video_url: resultUrl,
       thumbnail_url: resultThumb ?? null,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resultUrl]);
-
-  // Обложка + описание: авто-генерация по сценарию при готовом видео.
-  const [assets, setAssets] = useState<VideoAssets | null>(null);
-  const [assetsLoading, setAssetsLoading] = useState(false);
-  const assetsRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (!resultUrl || !projectId) return;
-    const ref = agentActive ? agentSessionId : videoId;
-    const s = mode === "agent" ? agentPrompt.trim() : "";
-    if (!ref || !s || assetsRef.current === ref) return;
-    assetsRef.current = ref;
-    setAssets(null);
-    setAssetsLoading(true);
-    generateVideoAssets({ script: s, aspect, projectId })
-      .then(setAssets)
-      .catch((e) => toast.error(`Обложка/описание: ${(e as Error).message}`))
-      .finally(() => setAssetsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resultUrl]);
 
@@ -894,11 +858,24 @@ const CreateMontage = () => {
               Вставьте текст или бриф — HeyGen сам соберёт сцены, б-ролл, субтитры и смонтирует видео.
               Аватар и голос ниже — по желанию: не выберете, агент подберёт сам.
             </div>
+
+            {agentSubmitted && (
+              <div className="flex items-start gap-2 rounded-xl border border-success/30 bg-success/10 p-3 text-sm">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
+                <div>
+                  <p className="font-medium">Видео успешно отправлено на монтаж</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Ожидайте готовый ролик — обычно занимает несколько минут. Появится во вкладке «Готовые».
+                  </p>
+                </div>
+              </div>
+            )}
+
             <section>
               <label className="mb-2 block text-sm font-semibold">Текст / сценарий</label>
               <Textarea
                 value={agentPrompt}
-                onChange={(e) => setAgentPrompt(e.target.value)}
+                onChange={(e) => { setAgentPrompt(e.target.value); setAgentSubmitted(false); }}
                 rows={7}
                 placeholder="Напр.: Сделай ролик на 45 секунд о запуске нашего продукта, дружелюбный тон, вертикальный формат для Reels…"
                 className="resize-y"
@@ -1179,14 +1156,12 @@ const CreateMontage = () => {
           </Button>
           {rendering && (
             <p className="mt-2 text-center text-xs text-muted-foreground">
-              {agentActive
-                ? "Video Agent собирает монтаж — обычно несколько минут, можно не закрывать вкладку."
-                : "Рендер обычно занимает пару минут — можно не закрывать вкладку."}
+              Рендер обычно занимает пару минут — можно не закрывать вкладку.
             </p>
           )}
         </div>
 
-        {/* Результат */}
+        {/* Результат (Шаблон / Из клипов — «Быстро» отправляется fire-and-forget, см. выше) */}
         {resultUrl && (
           <section className="mt-8 rounded-2xl border border-border/60 bg-card/60 p-4">
             <h2 className="mb-3 text-sm font-semibold">Готово</h2>
@@ -1196,59 +1171,6 @@ const CreateMontage = () => {
                 <Download className="h-4 w-4" /> Скачать MP4
               </Button>
             </a>
-          </section>
-        )}
-
-        {/* Обложка + описание (авто по сценарию) */}
-        {resultUrl && (assetsLoading || assets) && (
-          <section className="mt-4 rounded-2xl border border-border/60 bg-card/60 p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary/10 text-primary">
-                <ImageIcon className="h-4 w-4" />
-              </span>
-              <h2 className="text-sm font-semibold">Обложка и описание</h2>
-              {assetsLoading && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-            </div>
-
-            {assetsLoading && !assets && (
-              <p className="text-sm text-muted-foreground">Генерируем обложку и описание по сценарию…</p>
-            )}
-
-            {assets?.cover_url && (
-              <div className="mb-3">
-                <img src={assets.cover_url} alt="Обложка" className="w-full rounded-xl" />
-                <a href={assets.cover_url} target="_blank" rel="noreferrer" download>
-                  <Button variant="secondary" size="sm" className="mt-2 gap-2">
-                    <Download className="h-4 w-4" /> Скачать обложку
-                  </Button>
-                </a>
-              </div>
-            )}
-
-            {assets?.description && (
-              <div className="rounded-xl border border-border/50 bg-background/40 p-3">
-                <div className="mb-1 flex items-center justify-between">
-                  <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Описание</span>
-                  <button
-                    type="button"
-                    onClick={() => navigator.clipboard?.writeText(assets.description ?? "").then(
-                      () => toast.success("Описание скопировано"),
-                      () => toast.error("Не удалось скопировать"),
-                    )}
-                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                  >
-                    <Copy className="h-3.5 w-3.5" /> Копировать
-                  </button>
-                </div>
-                <p className="whitespace-pre-wrap text-sm">{assets.description}</p>
-              </div>
-            )}
-
-            {!assetsLoading && assets && !assets.cover_url && !assets.description && (
-              <p className="text-sm text-muted-foreground">
-                Генератор не вернул обложку/описание. Проверьте, что n8n-workflow обрабатывает <code>type: "video_assets"</code>.
-              </p>
-            )}
           </section>
         )}
         </>

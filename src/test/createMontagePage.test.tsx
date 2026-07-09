@@ -22,16 +22,25 @@ vi.mock("@/hooks/useHeygen", () => ({
   fetchTemplateDetail: vi.fn(async () => []),
   fetchQuota: vi.fn(async () => ({ remaining_quota: 100 })),
   fetchVideoStatus: vi.fn(async () => ({ status: "pending" })),
-  fetchAgentStatus: vi.fn(async () => ({ status: "generating" })),
   generateAvatarVideo: vi.fn(async () => "vid_1"),
   generateFromClips: vi.fn(async () => "vid_2"),
   generateTemplateVideo: vi.fn(async () => "vid_3"),
   generateVideoAgent: vi.fn(async () => "sess_1"),
   uploadClip: vi.fn(async () => ({ id: "a1", url: "http://x/clip.mp4" })),
+  // Нужны HeygenUsagePanel, который рендерится на этой же странице ниже формы.
+  fetchAccountStats: vi.fn(async () => ({})),
+  fetchRecentVideos: vi.fn(async () => []),
 }));
 
+// enqueueAgentJob шлётся fire-and-forget при отправке брифа — воркер сам
+// доставит готовое видео (heygen_jobs), эта страница его не ждёт и не поллит.
+vi.mock("@/lib/heygenUsage", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/heygenUsage")>();
+  return { ...actual, enqueueAgentJob: vi.fn(async () => {}) };
+});
+
 import CreateMontage from "@/pages/CreateMontage";
-import { generateVideoAgent, fetchAgentStatus } from "@/hooks/useHeygen";
+import { generateVideoAgent } from "@/hooks/useHeygen";
 
 const renderPage = () => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -114,12 +123,15 @@ describe("CreateMontage page", () => {
     );
   });
 
-  it("показывает готовое видео, когда Video Agent завершился", async () => {
-    vi.mocked(fetchAgentStatus).mockResolvedValue({ status: "completed", video_url: "http://x/out.mp4" });
+  it("после отправки ТЗ сразу показывает подтверждение вместо бесконечного статуса", async () => {
     renderPage();
     fireEvent.change(screen.getByPlaceholderText(/45 секунд/), { target: { value: "тест" } });
     fireEvent.click(screen.getByRole("button", { name: /Собрать видео/ }));
-    await waitFor(() => expect(screen.getByText("Готово")).toBeInTheDocument());
-    expect(screen.getByText("Скачать MP4")).toBeInTheDocument();
+    // Быстрое создание — fire-and-forget: подтверждение приходит сразу же,
+    // без опроса статуса HeyGen (он был ненадёжен и мог висеть часами).
+    await waitFor(() => expect(screen.getByText("Видео успешно отправлено на монтаж")).toBeInTheDocument());
+    // Поле очищено — готово для следующего брифа («кнопка создать новое видео»).
+    expect(screen.getByPlaceholderText(/45 секунд/)).toHaveValue("");
+    expect(screen.queryByText("Готово")).not.toBeInTheDocument();
   });
 });
