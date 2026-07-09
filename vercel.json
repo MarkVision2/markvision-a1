@@ -2,6 +2,13 @@
   "framework": "vite",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "functions": {
+    "api/montage/burn.ts": {
+      "maxDuration": 300,
+      "memory": 2048,
+      "includeFiles": "api/montage/assets/**"
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",

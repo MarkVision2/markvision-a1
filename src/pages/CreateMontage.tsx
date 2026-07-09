@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import {
-  AlertTriangle, Check, Clapperboard, Copy, Download, Film, Image as ImageIcon, Loader2, Pause, Play, Plus, Search,
+  AlertTriangle, Captions, Check, Clapperboard, Copy, Download, Film, Image as ImageIcon, Loader2, Pause, Play, Plus, Search,
   Sparkles, Star, Upload, UserRound, Video, Volume2, X, Zap,
 } from "lucide-react";
 import Header from "@/components/factory/Header";
@@ -24,10 +24,11 @@ import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { cacheDefaults, fetchServerDefaults, loadDefaults, patchDefaults, type HeygenDefaults } from "@/lib/heygenDefaults";
 import {
   fetchAgentStatus, fetchAvatars, fetchTemplateDetail, fetchTemplates, fetchVideoStatus, fetchVoices,
-  generateFromClips, generateTemplateVideo, generateVideoAgent, uploadClip,
+  generateFromClips, generateTemplateVideo, generateVideoAgent, transcribeVideo, uploadClip,
   type AgentStatus, type HeygenAvatar, type HeygenTemplate, type HeygenVideoStatus, type HeygenVoice,
   type TemplateVariable,
 } from "@/hooks/useHeygen";
+import { addDynamicCaptions } from "@/lib/ownVideoMontage";
 
 // Кнопка «по умолчанию» для аватара / голоса / шаблона.
 function DefaultStar({ on, onClick }: { on: boolean; onClick: () => void }) {
@@ -526,7 +527,7 @@ const VAR_TYPE_LABEL: Record<string, string> = {
 const CreateMontage = () => {
   const navigate = useNavigate();
   const { activeId: projectId } = useProjectsStore();
-  const [mode, setMode] = useState<"agent" | "template" | "clips" | "gallery">("agent");
+  const [mode, setMode] = useState<"agent" | "template" | "clips" | "own" | "gallery">("agent");
   const [aspect, setAspect] = useState<AspectId>("9:16");
 
   const [agentPrompt, setAgentPrompt] = useState("");
@@ -536,6 +537,15 @@ const CreateMontage = () => {
   const [clips, setClips] = useState<ClipItem[]>([]);
   const [defaults, setDefaults] = useState<HeygenDefaults>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Своё видео: монтаж/субтитры без HeyGen (Whisper + FFmpeg) ──────────────
+  const [ownFile, setOwnFile] = useState<{ url: string; size: number; name: string } | null>(null);
+  const [ownUploadStatus, setOwnUploadStatus] = useState<"idle" | "uploading" | "error">("idle");
+  const [ownUploadError, setOwnUploadError] = useState<string | null>(null);
+  const [ownStage, setOwnStage] = useState<"idle" | "transcribing" | "burning" | "done" | "error">("idle");
+  const [ownError, setOwnError] = useState<string | null>(null);
+  const [ownResultUrl, setOwnResultUrl] = useState<string | null>(null);
+  const ownFileInputRef = useRef<HTMLInputElement>(null);
 
   // Дефолты — на активный проект (клиента): применяем кэш сразу, затем сервер.
   const applyDefaults = (d: HeygenDefaults) => {
@@ -635,6 +645,43 @@ const CreateMontage = () => {
       }),
     );
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleOwnFile = async (files: FileList | null) => {
+    const file = files?.[0];
+    if (!file) return;
+    setOwnUploadStatus("uploading");
+    setOwnUploadError(null);
+    setOwnResultUrl(null);
+    setOwnStage("idle");
+    setOwnError(null);
+    try {
+      const { url } = await uploadClip(file);
+      setOwnFile({ url, size: file.size, name: file.name });
+      setOwnUploadStatus("idle");
+    } catch (e) {
+      setOwnUploadStatus("error");
+      setOwnUploadError((e as Error).message);
+    } finally {
+      if (ownFileInputRef.current) ownFileInputRef.current.value = "";
+    }
+  };
+
+  const handleOwnProcess = async () => {
+    if (!ownFile) return;
+    setOwnError(null);
+    setOwnResultUrl(null);
+    try {
+      setOwnStage("transcribing");
+      const words = await transcribeVideo(ownFile.url);
+      setOwnStage("burning");
+      const resultUrl = await addDynamicCaptions(ownFile.url, ownFile.size, words);
+      setOwnResultUrl(resultUrl);
+      setOwnStage("done");
+    } catch (e) {
+      setOwnStage("error");
+      setOwnError((e as Error).message);
+    }
   };
 
   const avatarRef = selectedAvatar ? { kind: selectedAvatar.kind, id: selectedAvatar.id } : null;
@@ -823,7 +870,7 @@ const CreateMontage = () => {
         )}
 
         <Tabs value={mode} onValueChange={(v) => setMode(v as typeof mode)}>
-          <TabsList className="grid w-full grid-cols-4 rounded-2xl">
+          <TabsList className="grid w-full grid-cols-5 rounded-2xl">
             <TabsTrigger value="agent" className="gap-1 rounded-xl px-1 text-[11px] sm:gap-1.5 sm:text-sm">
               <Zap className="h-4 w-4 shrink-0" /> Быстро
             </TabsTrigger>
@@ -832,6 +879,9 @@ const CreateMontage = () => {
             </TabsTrigger>
             <TabsTrigger value="clips" className="gap-1 rounded-xl px-1 text-[11px] sm:gap-1.5 sm:text-sm">
               <Video className="h-4 w-4 shrink-0" /> Из клипов
+            </TabsTrigger>
+            <TabsTrigger value="own" className="gap-1 rounded-xl px-1 text-[11px] sm:gap-1.5 sm:text-sm">
+              <Captions className="h-4 w-4 shrink-0" /> Своё видео
             </TabsTrigger>
             <TabsTrigger value="gallery" className="gap-1 rounded-xl px-1 text-[11px] sm:gap-1.5 sm:text-sm">
               <Play className="h-4 w-4 shrink-0" /> Готовые
@@ -1020,14 +1070,99 @@ const CreateMontage = () => {
             </section>
           </TabsContent>
 
+          {/* Своё видео — монтаж/субтитры без HeyGen (Whisper + FFmpeg) */}
+          <TabsContent value="own" className="mt-6 space-y-6 focus-visible:outline-none">
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
+              Загрузите готовое видео — мы распознаем речь и наложим динамичные субтитры (без генерации через HeyGen).
+              Формат/аватар/голос здесь не нужны — только исходное видео.
+            </div>
+
+            <section>
+              <label className="mb-2 block text-sm font-semibold">Видео</label>
+              <input
+                ref={ownFileInputRef}
+                type="file"
+                accept="video/*"
+                className="hidden"
+                onChange={(e) => void handleOwnFile(e.target.files)}
+              />
+
+              {!ownFile ? (
+                <button
+                  type="button"
+                  onClick={() => ownFileInputRef.current?.click()}
+                  disabled={ownUploadStatus === "uploading"}
+                  className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border/70 bg-card/40 px-4 py-10 text-center transition hover:border-primary/50 hover:bg-card disabled:opacity-60"
+                >
+                  {ownUploadStatus === "uploading" ? (
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  ) : (
+                    <Upload className="h-6 w-6 text-muted-foreground" />
+                  )}
+                  <span className="text-sm font-medium">{ownUploadStatus === "uploading" ? "Загружаем…" : "Загрузить видео"}</span>
+                  <span className="text-xs text-muted-foreground">MP4, до 50 МБ</span>
+                </button>
+              ) : (
+                <div className="rounded-xl border border-border/60 bg-card/60 p-3">
+                  <div className="flex items-center gap-2">
+                    <Video className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">{ownFile.name}</span>
+                    <button
+                      type="button"
+                      aria-label="Убрать видео"
+                      onClick={() => { setOwnFile(null); setOwnResultUrl(null); setOwnStage("idle"); setOwnError(null); }}
+                      className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
+              {ownUploadStatus === "error" && (
+                <p className="mt-2 text-xs text-destructive">{ownUploadError}</p>
+              )}
+            </section>
+
+            {ownFile && (
+              <div>
+                <Button
+                  size="lg"
+                  className="w-full gap-2"
+                  disabled={ownStage === "transcribing" || ownStage === "burning"}
+                  onClick={() => void handleOwnProcess()}
+                >
+                  {ownStage === "transcribing" || ownStage === "burning"
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <Captions className="h-4 w-4" />}
+                  {ownStage === "transcribing" ? "Распознаём речь…"
+                    : ownStage === "burning" ? "Накладываем субтитры…"
+                      : "Наложить субтитры"}
+                </Button>
+                {ownStage === "error" && <p className="mt-2 text-center text-xs text-destructive">{ownError}</p>}
+              </div>
+            )}
+
+            {ownResultUrl && (
+              <section className="rounded-2xl border border-border/60 bg-card/60 p-4">
+                <h2 className="mb-3 text-sm font-semibold">Готово</h2>
+                <video src={ownResultUrl} controls className="w-full rounded-xl" />
+                <a href={ownResultUrl} target="_blank" rel="noreferrer" download>
+                  <Button variant="secondary" className="mt-3 w-full gap-2">
+                    <Download className="h-4 w-4" /> Скачать MP4
+                  </Button>
+                </a>
+              </section>
+            )}
+          </TabsContent>
+
           {/* Готовый контент — собранные видео проекта */}
           <TabsContent value="gallery" className="mt-6 focus-visible:outline-none">
             <HeygenGallery projectId={projectId} />
           </TabsContent>
         </Tabs>
 
-        {/* Блок создания скрыт на вкладке «Готовые» */}
-        {mode !== "gallery" && (
+        {/* Блок создания скрыт на вкладках «Готовые» и «Своё видео» (у своего видео — собственный флоу выше) */}
+        {mode !== "gallery" && mode !== "own" && (
         <>
         {/* Формат — для всех режимов создания. В «Быстро» передаём агенту как
             пожелание к раскладке (9:16 / 16:9). */}

@@ -253,6 +253,30 @@ export async function generateTemplateVideo(input: GenerateTemplateInput): Promi
   return id;
 }
 
+export interface TranscriptWord {
+  word: string;
+  start: number;
+  end: number;
+}
+
+/** Транскрипция готового видео с пословными таймкодами (montage-transcribe,
+ *  Whisper через Lovable AI Gateway) — фундамент для динамичных субтитров
+ *  без HeyGen: своё видео + свой монтаж через FFmpeg (см. api/montage/burn). */
+export async function transcribeVideo(videoUrl: string): Promise<TranscriptWord[]> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) throw new Error("Нет активной сессии");
+
+  const res = await fetch(`${supabaseUrl}/functions/v1/montage-transcribe`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ video_url: videoUrl }),
+  });
+  const parsed = await res.json().catch(() => ({}));
+  if (!res.ok || parsed?.error) throw new Error(parsed?.error || `Транскрипция не удалась (${res.status})`);
+  return Array.isArray(parsed?.words) ? parsed.words : [];
+}
+
 export interface UploadedClip {
   id: string;
   url: string;
