@@ -675,6 +675,8 @@ function AddDialog({ day, hourReach, bestHour, onClose, onDone }: { day: string;
   const coverRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const meta = TYPE_META[type];
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
 
   useEffect(() => () => { if (videoSrc) URL.revokeObjectURL(videoSrc); if (coverPreview) URL.revokeObjectURL(coverPreview); }, [videoSrc, coverPreview]);
   useEffect(() => {
@@ -729,28 +731,42 @@ function AddDialog({ day, hourReach, bestHour, onClose, onDone }: { day: string;
   const submit = async (now: boolean) => {
     const err = validate(); if (err) { toast.error(err); return; }
     setBusy(true);
+
+    // Большой файл (через R2) может грузиться минуты — не держим диалог открытым
+    // на всё это время со спиннером, который выглядит как зависание. Закрываем
+    // диалог сразу, дальше загрузка и создание публикации продолжаются в фоне;
+    // список обновится сам, когда всё будет готово.
+    const filesToUpload = files;
+    const coverToUpload = type === "REELS" ? coverFile : null;
+    onClose();
+    toast.info(
+      filesToUpload.some((f) => f.size > SUPABASE_DIRECT_MAX_BYTES)
+        ? "Файл загружается — публикация появится в очереди, когда загрузка завершится"
+        : "Добавляем публикацию…",
+    );
+
     try {
       const urls: string[] = [];
-      for (const f of files) urls.push(await uploadToBucket(f));
+      for (const f of filesToUpload) urls.push(await uploadToBucket(f));
       let coverUrl: string | null = null;
-      if (type === "REELS" && coverFile) coverUrl = await uploadToBucket(coverFile);
+      if (coverToUpload) coverUrl = await uploadToBucket(coverToUpload);
       const payload: Record<string, unknown> = {
         media_type: type, caption: type === "STORIES" ? "" : caption,
         scheduled_at: now ? new Date().toISOString() : buildISO(day, hour, minute), dry_run: now ? false : dryRun,
         project_id: projectId,
       };
-      if (type === "CAROUSEL") { payload.child_urls = urls; payload.thumbnail_url = urls.find((_, i) => !isVideoFile(files[i])) ?? urls[0]; }
+      if (type === "CAROUSEL") { payload.child_urls = urls; payload.thumbnail_url = urls.find((_, i) => !isVideoFile(filesToUpload[i])) ?? urls[0]; }
       else {
         payload.media_url = urls[0];
         if (type === "REELS") { if (coverUrl) { payload.cover_url = coverUrl; payload.thumbnail_url = coverUrl; } }
-        else payload.thumbnail_url = isVideoFile(files[0]) ? null : urls[0];
+        else payload.thumbnail_url = isVideoFile(filesToUpload[0]) ? null : urls[0];
       }
       const res = await schedulerApi<{ post: QueuePost }>("create", payload);
       if (now && res.post?.id) await schedulerApi("publish_now", { id: res.post.id });
-      toast.success(now ? "Публикуем сейчас…" : dryRun ? "Добавлено в пробном режиме" : "Запланировано");
+      toast.success(now ? "Опубликовано" : dryRun ? "Добавлено в пробном режиме" : "Запланировано");
       onDone();
-    } catch (e) { toast.error("Не удалось", { description: e instanceof Error ? e.message : String(e) }); }
-    finally { setBusy(false); }
+    } catch (e) { toast.error("Не удалось загрузить публикацию", { description: e instanceof Error ? e.message : String(e) }); }
+    finally { if (mountedRef.current) setBusy(false); }
   };
 
   const reachHint = hourReach.get(hour);
