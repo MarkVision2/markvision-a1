@@ -206,12 +206,16 @@ Deno.serve(async (req) => {
         const durationSec = typeof durRaw === "number" ? durRaw : null;
         const cost = durationSec ? Math.round((durationSec / 60) * 2 * 100) / 100 : null;
         const thumb = (meta.thumbnail_url ?? (meta.video as Record<string, unknown> | undefined)?.thumbnail_url) as string | null ?? null;
-        await admin.from("heygen_usage").insert({
+        const renderTimeSec = Math.round((Date.now() - new Date(job.created_at).getTime()) / 1000);
+        // ref_id = настоящий video_id HeyGen (vid), а не session_id агента — так
+        // локальная запись совпадает с id того же ролика в списке аккаунта HeyGen
+        // (там же ключ для upsert-идемпотентности ниже: heygen_usage_project_ref_unique).
+        await admin.from("heygen_usage").upsert({
           project_id: job.project_id, source: job.source ?? (job.chat_id ? "telegram" : "web"), mode: "agent",
-          ref_id: job.session_id, duration_sec: durationSec, cost_usd: cost, status: "completed",
-          title: (job.script ?? "").slice(0, 80) || "Видео",
+          ref_id: vid ?? job.session_id, duration_sec: durationSec, cost_usd: cost, status: "completed",
+          title: (job.script ?? "").slice(0, 80) || "Видео", render_time_sec: renderTimeSec,
           video_url: url, thumbnail_url: thumb, cover_url: assets.cover, description: assets.desc,
-        });
+        }, { onConflict: "project_id,ref_id", ignoreDuplicates: true });
         delivered++;
       } else if (TERMINAL_FAIL.includes(status)) {
         // Статус видео (или сессии без video_id) — терминальный провал.
