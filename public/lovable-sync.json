@@ -1,7 +1,7 @@
 {
-  "git_sha": "1b3f641",
-  "git_sha_full": "1b3f64167de5c3f0d297e687dc1abafc36455b36",
-  "updated_at": "2026-07-09T13:23:11Z",
-  "label": "fix: stop sending aspect_ratio to HeyGen Video Agent v3",
+  "git_sha": "5d19d8c",
+  "git_sha_full": "5d19d8c203e03ad6d30826d5983b2be803b61677",
+  "updated_at": "2026-07-09T13:51:32Z",
+  "label": "fix: surface real Telegram API errors instead of swallowing them",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
