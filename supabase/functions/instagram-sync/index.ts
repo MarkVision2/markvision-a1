@@ -1,10 +1,11 @@
 // deno-lint-ignore-file no-explicit-any
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { requireUser, requireProjectAccess } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+    "authorization, x-client-info, apikey, content-type, x-automation-key, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 const GRAPH = "https://graph.facebook.com/v21.0";
@@ -68,7 +69,10 @@ async function syncOne(supa: any, account: any) {
     if (isStory) {
       metrics = ["reach", "impressions", "replies"];
     } else if (isReel) {
-      metrics = ["reach", "plays", "likes", "comments", "shares", "saved", "total_interactions"];
+      // "plays" был переименован Meta в "views" — старое имя отклоняется Graph API
+      // целиком (400 на весь запрос insights), из-за чего reach/просмотры рилсов
+      // молча оставались нулевыми (ошибка проглатывалась в catch ниже).
+      metrics = ["reach", "views", "likes", "comments", "shares", "saved", "total_interactions"];
     } else {
       metrics = ["reach", "impressions", "likes", "comments", "shares", "saved", "total_interactions"];
     }
@@ -78,12 +82,14 @@ async function syncOne(supa: any, account: any) {
         `${GRAPH}/${m.id}/insights?metric=${metrics.join(",")}&access_token=${token}`,
       );
       const ij = await ir.json();
-      if (ij.data) {
+      if (ij.error) {
+        console.error("[instagram-sync] media insights error", m.id, ij.error);
+      } else if (ij.data) {
         for (const row of ij.data) {
           const val = row.values?.[0]?.value ?? 0;
           if (row.name === "reach") reach = val;
           else if (row.name === "impressions") impressions = val;
-          else if (row.name === "plays") plays = val;
+          else if (row.name === "views") plays = val;
           else if (row.name === "shares") shares = val;
           else if (row.name === "saved") saved = val;
           else if (row.name === "total_interactions") totalInter = val;
@@ -197,6 +203,29 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const { project_id, all } = body ?? {};
+
+    // Cron-triggered full sync (all: true) requires the shared automation key.
+    // A per-project sync from the "Обновить" button requires a logged-in user
+    // with RLS access to that project — otherwise anyone could trigger syncs
+    // (and burn this app's Graph API quota) for any project by guessing an id.
+    if (all) {
+      const automationKey = req.headers.get("x-automation-key");
+      const { data: settings } = await supa
+        .from("automation_settings")
+        .select("cron_secret")
+        .eq("id", true)
+        .maybeSingle();
+      const dbSecret = (settings as { cron_secret?: string | null } | null)?.cron_secret ?? null;
+      if (!automationKey || !dbSecret || automationKey !== dbSecret) {
+        return json({ error: "Unauthorized" }, 401);
+      }
+    } else {
+      const auth = await requireUser(req);
+      if (!auth.ok) return auth.response;
+      if (!project_id) return json({ error: "project_id required" }, 400);
+      const access = await requireProjectAccess(auth.authHeader, project_id);
+      if (!access.ok) return access.response;
+    }
 
     let query = supa.from("instagram_accounts").select("*").eq("active", true);
     if (project_id && !all) query = query.eq("project_id", project_id);
