@@ -26,12 +26,27 @@ function pickVideoId(d: Record<string, unknown>): string | undefined {
     .find((x) => typeof x === "string" && (x as string).length > 0) as string | undefined;
 }
 
+// Telegram Bot API часто отвечает HTTP 200 даже на отказ (ok:false в теле,
+// например "wrong file identifier/HTTP URL specified" для sendVideo по ссылке)
+// — проверка одного r.ok маскировала реальную причину недоставки. Разбираем
+// тело и логируем description, если Telegram отказал.
 async function tg(token: string, method: string, body: Record<string, unknown>) {
-  return fetch(`https://api.telegram.org/bot${token}/${method}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  }).then((r) => r.ok).catch(() => false);
+  try {
+    const r = await fetch(`https://api.telegram.org/bot${token}/${method}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j?.ok === false) {
+      console.error(`telegram ${method} failed`, r.status, JSON.stringify(j));
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error(`telegram ${method} threw`, e instanceof Error ? e.message : String(e));
+    return false;
+  }
 }
 
 // Уведомление в чат. У веб-задач чата нет (chat_id = null) — молча пропускаем.
