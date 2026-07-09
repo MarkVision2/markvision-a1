@@ -23,6 +23,12 @@ const MODE_LABEL: Record<string, string> = {
 
 const fmtUsd = (n: number) => `$${n.toFixed(2)}`;
 
+const fmtRenderTime = (sec: number): string => {
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  return m > 0 ? `${m}м ${s}с` : `${s}с`;
+};
+
 // Панель «Баланс и расходы»: остаток из HeyGen API + расход за выбранный месяц.
 export function HeygenUsagePanel({ projectId }: { projectId: string }) {
   const [period, setPeriod] = useState<ReportPeriodRange>(() => monthRange(new Date()));
@@ -68,18 +74,28 @@ export function HeygenUsagePanel({ projectId }: { projectId: string }) {
       duration_sec: u.duration_sec,
       cost_usd: u.cost_usd,
       created_at: u.created_at,
-      title: null as string | null,
+      title: u.title ?? null,
+      render_time_sec: u.render_time_sec ?? null,
     }));
 
-    const remote = remoteVideos.map((v) => ({
-      id: `hg-${v.id}`,
-      mode: "heygen",
-      source: "heygen",
-      duration_sec: v.durationSec,
-      cost_usd: v.costUsd,
-      created_at: v.createdAt ? new Date(v.createdAt * 1000).toISOString() : "",
-      title: v.title,
-    }));
+    // Каждый ролик, сгенерированный через наш пайплайн (Быстро/агент), уже
+    // попадает в local (пишет heygen-jobs-worker) и одновременно виден в
+    // собственном списке видео аккаунта HeyGen (remote) — без фильтра он
+    // задваивался бы в истории. ref_id у local хранит настоящий video_id
+    // HeyGen (см. heygen-jobs-worker), так что сверяем именно по нему.
+    const localRefIds = new Set(usageInPeriod.map((u) => u.ref_id).filter(Boolean));
+    const remote = remoteVideos
+      .filter((v) => !localRefIds.has(v.id))
+      .map((v) => ({
+        id: `hg-${v.id}`,
+        mode: "heygen",
+        source: "heygen",
+        duration_sec: v.durationSec,
+        cost_usd: v.costUsd,
+        created_at: v.createdAt ? new Date(v.createdAt * 1000).toISOString() : "",
+        title: v.title,
+        render_time_sec: null as number | null,
+      }));
 
     return [...local, ...remote]
       .sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""))
@@ -162,6 +178,11 @@ export function HeygenUsagePanel({ projectId }: { projectId: string }) {
                 {u.title && (
                   <span className="max-w-[140px] truncate text-xs text-muted-foreground" title={u.title}>
                     {u.title}
+                  </span>
+                )}
+                {u.render_time_sec != null && (
+                  <span className="text-[10px] text-muted-foreground" title="Время генерации">
+                    ⏱ {fmtRenderTime(u.render_time_sec)}
                   </span>
                 )}
                 <span className="ml-auto text-xs text-muted-foreground">

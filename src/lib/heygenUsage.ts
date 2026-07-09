@@ -17,6 +17,8 @@ export interface UsageRow {
   cost_usd: number | null;
   created_at: string;
   title?: string | null;
+  ref_id?: string | null;
+  render_time_sec?: number | null;
   video_url?: string | null;
   thumbnail_url?: string | null;
   cover_url?: string | null;
@@ -49,7 +51,11 @@ export async function recordUsage(
 ): Promise<void> {
   if (!projectId) return;
   try {
-    await db.from("heygen_usage").insert({ project_id: projectId, ...u });
+    // upsert по (project_id, ref_id) — защита от повторной записи одного и того
+    // же ролика (например, при повторном срабатывании эффекта на ремаунте страницы).
+    await db
+      .from("heygen_usage")
+      .upsert({ project_id: projectId, ...u }, { onConflict: "project_id,ref_id", ignoreDuplicates: true });
   } catch {
     /* учёт не критичен для генерации */
   }
@@ -82,7 +88,7 @@ export async function fetchUsage(projectId: string): Promise<UsageRow[]> {
   try {
     const { data } = await db
       .from("heygen_usage")
-      .select("id,mode,source,duration_sec,cost_usd,created_at")
+      .select("id,mode,source,duration_sec,cost_usd,created_at,title,ref_id,render_time_sec")
       .eq("project_id", projectId)
       .order("created_at", { ascending: false })
       .limit(20);
