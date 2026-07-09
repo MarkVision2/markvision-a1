@@ -1,7 +1,7 @@
 {
-  "git_sha": "fc434c9",
-  "git_sha_full": "fc434c9005e939588155b20e4314b1e148960abd",
-  "updated_at": "2026-07-09T15:55:38Z",
-  "label": "fix: force Russian language and burned-in captions for Video Agent",
+  "git_sha": "32da4b2",
+  "git_sha_full": "32da4b2fca81751fc75bf3c443aaa72090d1be0b",
+  "updated_at": "2026-07-09T15:59:12Z",
+  "label": "fix: upload video files to Telegram instead of link-only, sharpen captions",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
