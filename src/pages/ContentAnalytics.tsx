@@ -32,6 +32,7 @@ import { fmtNum } from "@/lib/format";
 import { clientSupabaseUrl } from "@/lib/supabaseConfig";
 import { cn } from "@/lib/utils";
 import { ContentPerformanceChart, type TrendPoint } from "@/pages/content-analytics/ContentPerformanceChart";
+import { InstagramCodewordSection } from "@/components/content/InstagramCodewordSection";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 
 const CLIENT_URL = clientSupabaseUrl;
@@ -345,6 +346,9 @@ export default function ContentAnalytics() {
               </div>
             </div>
           </div>
+
+          {/* Instagram codewords → DM → lead funnel */}
+          <InstagramCodewordSection />
 
           {/* Top / bottom posts */}
           <div className="grid gap-6 lg:grid-cols-2">
