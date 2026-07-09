@@ -1,7 +1,7 @@
 {
-  "git_sha": "32da4b2",
-  "git_sha_full": "32da4b2fca81751fc75bf3c443aaa72090d1be0b",
-  "updated_at": "2026-07-09T15:59:12Z",
-  "label": "fix: upload video files to Telegram instead of link-only, sharpen captions",
+  "git_sha": "16775bf",
+  "git_sha_full": "16775bf231932b3f9742498c143ce6f50eb885c0",
+  "updated_at": "2026-07-09T16:55:27Z",
+  "label": "fix: make Video Agent submission fire-and-forget instead of polling forever",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
