@@ -1,7 +1,7 @@
 {
-  "git_sha": "16775bf",
-  "git_sha_full": "16775bf231932b3f9742498c143ce6f50eb885c0",
-  "updated_at": "2026-07-09T16:55:27Z",
-  "label": "fix: make Video Agent submission fire-and-forget instead of polling forever",
+  "git_sha": "8f07f45",
+  "git_sha_full": "8f07f45ee4cc3585433065ae1217b844cd4713c9",
+  "updated_at": "2026-07-09T17:18:11Z",
+  "label": "Fix duplicate cost history entries, show real titles and render time",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
