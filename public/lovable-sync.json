@@ -1,7 +1,7 @@
 {
-  "git_sha": "0300eea",
-  "git_sha_full": "0300eeaa767869692df849b35a9c77e83bb52e28",
-  "updated_at": "2026-07-08T16:05:51Z",
-  "label": "Autopost: route uploads >50MB through Cloudflare R2 instead of Supabase",
+  "git_sha": "fa64fd8",
+  "git_sha_full": "fa64fd80c20e43d860d47477495ac96a70ef110d",
+  "updated_at": "2026-07-09T07:25:20Z",
+  "label": "Add Instagram Login DM token field to the connected-account settings",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
