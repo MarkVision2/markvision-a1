@@ -101,6 +101,23 @@ const fmtDuration = (s: number) => {
   return `${m}:${String(sec).padStart(2, "0")}`;
 };
 
+// "Failed to fetch" intermittent (~2/10) на автопостинге — сервер (edge-логи)
+// не видит ни одного упавшего запроса, значит обрыв всегда чисто сетевой
+// (мобильная сеть/wifi моргнули) на этапе транспорта, а не в бизнес-логике.
+// Ретраим сами fetch-вызовы к presign и PUT в R2 — они идемпотентны (просто
+// перезаливают те же байты в тот же ключ), поэтому безопасны для повтора.
+async function fetchWithRetry(input: RequestInfo | URL, init: RequestInit, attempts = 3): Promise<Response> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fetch(input, init);
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("Сетевая ошибка");
+}
 async function schedulerApi<T = unknown>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
   if (!CLIENT_URL) throw new Error("VITE_CLIENT_SUPABASE_URL не задан");
   const r = await fetch(`${CLIENT_URL}/functions/v1/content-scheduler`, {
@@ -112,14 +129,14 @@ async function schedulerApi<T = unknown>(action: string, payload: Record<string,
 }
 async function uploadToR2(file: File): Promise<string> {
   if (!CLIENT_URL) throw new Error("VITE_CLIENT_SUPABASE_URL не задан");
-  const res = await fetch(`${CLIENT_URL}/functions/v1/r2-presign-upload`, {
+  const res = await fetchWithRetry(`${CLIENT_URL}/functions/v1/r2-presign-upload`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-app-key": CLIENT_KEY },
     body: JSON.stringify({ filename: file.name, contentType: file.type || "application/octet-stream", size: file.size }),
   });
   const j = await res.json().catch(() => ({}));
   if (!res.ok || j.error) throw new Error(j.error || `Не удалось получить ссылку для загрузки (HTTP ${res.status})`);
-  const put = await fetch(j.uploadUrl as string, {
+  const put = await fetchWithRetry(j.uploadUrl as string, {
     method: "PUT",
     headers: { "Content-Type": file.type || "application/octet-stream" },
     body: file,
