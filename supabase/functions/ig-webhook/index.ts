@@ -142,6 +142,21 @@ async function sendPrivateDm(
   return { ok: resp.ok, body: await resp.json().catch(() => ({})) };
 }
 
+// Оборачивает длинный трек-редирект в короткую ссылку для показа в DM — сам
+// клик по-прежнему идёт через redirectUrl (лог link_click + 302 на target_url),
+// TinyURL только меняет то, что видит получатель. При сбое сократителя просто
+// возвращаем исходную ссылку, чтобы DM не сломался из-за стороннего сервиса.
+async function shortenUrl(longUrl: string): Promise<string> {
+  try {
+    const r = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(longUrl)}`);
+    if (!r.ok) return longUrl;
+    const short = (await r.text()).trim();
+    return short.startsWith("http") ? short : longUrl;
+  } catch {
+    return longUrl;
+  }
+}
+
 function ymd(d: Date) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Almaty", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 }
@@ -187,8 +202,13 @@ Deno.serve(async (req) => {
           await postPublicReply(commentId, account.page_access_token, kw.reply_text);
         }
 
+        // Трекинг кликов нужен (ig-organic-redirect), но длинный supabase.co-адрес
+        // в DM выглядит некрасиво — прогоняем его через сократитель, чтобы в
+        // сообщении была короткая ссылка, а клик всё равно логировался и
+        // редиректил на target_url с UTM-метками.
         const redirectUrl = `${SB_URL}/functions/v1/ig-organic-redirect?c=${encodeURIComponent(kw.short_id)}${username ? `&u=${encodeURIComponent(username)}` : ""}`;
-        const dmMessage = kw.dm_text ? `${kw.dm_text} ${redirectUrl}` : redirectUrl;
+        const link = await shortenUrl(redirectUrl);
+        const dmMessage = kw.dm_text ? `${kw.dm_text} ${link}` : link;
         const sent = await sendPrivateDm(igUserId, account, commentId, dmMessage);
 
         await finalizeEvent(eventId, {
