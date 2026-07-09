@@ -1,7 +1,7 @@
 {
-  "git_sha": "6f40e82",
-  "git_sha_full": "6f40e828ef3e5990ee2dab4d50eaa005d4def4c5",
-  "updated_at": "2026-07-09T08:26:25Z",
-  "label": "fix: retry autopost upload fetches on intermittent Failed to fetch",
+  "git_sha": "1b3f641",
+  "git_sha_full": "1b3f64167de5c3f0d297e687dc1abafc36455b36",
+  "updated_at": "2026-07-09T13:23:11Z",
+  "label": "fix: stop sending aspect_ratio to HeyGen Video Agent v3",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
