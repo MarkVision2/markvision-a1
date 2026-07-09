@@ -16,6 +16,7 @@ export interface InstagramAccount {
   active: boolean;
   lastSyncAt: string | null;
   lastError: string | null;
+  igLoginTokenPresent: boolean;
 }
 
 export interface AvailableIgAccount {
@@ -41,7 +42,7 @@ export function useInstagramAccount() {
     }
     const { data } = await supabase
       .from("instagram_accounts_safe")
-      .select("ig_user_id, username, name, profile_picture_url, page_id, page_name, followers_count, follows_count, media_count, active, last_sync_at, last_error")
+      .select("ig_user_id, username, name, profile_picture_url, page_id, page_name, followers_count, follows_count, media_count, active, last_sync_at, last_error, ig_login_token_present")
       .eq("project_id", projectId)
       .maybeSingle();
     if (!data) {
@@ -61,6 +62,7 @@ export function useInstagramAccount() {
       active: data.active,
       lastSyncAt: data.last_sync_at,
       lastError: data.last_error,
+      igLoginTokenPresent: !!data.ig_login_token_present,
     });
   }, [projectId]);
 
@@ -105,6 +107,7 @@ export function useInstagramAccount() {
     if (error) throw new Error(error.message);
     if (data?.error) throw new Error(data.error);
     await refetch();
+    return { webhookSubscribed: data?.webhookSubscribed !== false, webhookError: data?.webhookError ?? null };
   }, [projectId, refetch]);
 
   const disconnect = useCallback(async () => {
@@ -124,5 +127,15 @@ export function useInstagramAccount() {
     }
   }, [projectId, refetch]);
 
-  return { account, loading, listAvailable, connect, disconnect, sync, refetch };
+  const setLoginToken = useCallback(async (token: string) => {
+    if (!projectId) throw new Error("no project");
+    const { data, error } = await supabase.functions.invoke("instagram-set-login-token", {
+      body: { project_id: projectId, token },
+    });
+    if (error) throw new Error(error.message);
+    if (data?.error) throw new Error(data.error);
+    await refetch();
+  }, [projectId, refetch]);
+
+  return { account, loading, listAvailable, connect, disconnect, sync, setLoginToken, refetch };
 }
