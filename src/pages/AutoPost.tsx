@@ -117,6 +117,23 @@ function formatPublishError(raw: string | null | undefined): string {
   return raw.length > 240 ? `${raw.slice(0, 240)}…` : raw;
 }
 
+// "Failed to fetch" intermittent (~2/10) на автопостинге — сервер (edge-логи)
+// не видит ни одного упавшего запроса, значит обрыв всегда чисто сетевой
+// (мобильная сеть/wifi моргнули) на этапе транспорта, а не в бизнес-логике.
+// Ретраим сами fetch-вызовы к presign и PUT в R2 — они идемпотентны (просто
+// перезаливают те же байты в тот же ключ), поэтому безопасны для повтора.
+async function fetchWithRetry(input: RequestInfo | URL, init: RequestInit, attempts = 3): Promise<Response> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      return await fetch(input, init);
+    } catch (e) {
+      lastErr = e;
+      if (i < attempts - 1) await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error("Сетевая ошибка");
+}
 async function schedulerApi<T = unknown>(action: string, payload: Record<string, unknown> = {}, projectId?: string | null): Promise<T> {
   if (!CLIENT_URL) throw new Error("VITE_CLIENT_SUPABASE_URL не задан");
   const r = await fetch(`${CLIENT_URL}/functions/v1/content-scheduler`, {
@@ -130,14 +147,14 @@ async function schedulerApi<T = unknown>(action: string, payload: Record<string,
 }
 async function uploadToR2(file: File): Promise<string> {
   if (!CLIENT_URL) throw new Error("VITE_CLIENT_SUPABASE_URL не задан");
-  const res = await fetch(`${CLIENT_URL}/functions/v1/r2-presign-upload`, {
+  const res = await fetchWithRetry(`${CLIENT_URL}/functions/v1/r2-presign-upload`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-app-key": CLIENT_KEY },
     body: JSON.stringify({ filename: file.name, contentType: file.type || "application/octet-stream", size: file.size }),
   });
   const j = await res.json().catch(() => ({}));
   if (!res.ok || j.error) throw new Error(j.error || `Не удалось получить ссылку для загрузки (HTTP ${res.status})`);
-  const put = await fetch(j.uploadUrl as string, {
+  const put = await fetchWithRetry(j.uploadUrl as string, {
     method: "PUT",
     headers: { "Content-Type": file.type || "application/octet-stream" },
     body: file,
@@ -155,16 +172,28 @@ async function uploadToBucket(file: File): Promise<string> {
   if (!clientConfigSupabase) throw new Error("Хранилище не настроено (VITE_CLIENT_SUPABASE_*)");
   const ext = (file.name.split(".").pop() || "bin").toLowerCase();
   const path = `posts/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const { error } = await clientConfigSupabase.storage.from(BUCKET).upload(path, file, { contentType: file.type || undefined, upsert: false });
-  if (error) {
+  const attempts = 3;
+  let lastMessage = "";
+  for (let i = 0; i < attempts; i++) {
+    // upsert:true с попытки №2 — предыдущая попытка могла упасть уже после
+    // того, как объект частично записался, а "Failed to fetch" — это тот же
+    // чисто сетевой обрыв, что и в R2-ветке (см. fetchWithRetry выше), просто
+    // здесь его кидает сам Supabase SDK, а не наш fetch.
+    const { error } = await clientConfigSupabase.storage.from(BUCKET).upload(path, file, { contentType: file.type || undefined, upsert: i > 0 });
+    if (!error) return clientConfigSupabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
     if (/exceeded the maximum allowed size/i.test(error.message)) {
       // Порог 50 МБ уже проверен выше, но на всякий случай — реальная платформенная
       // ошибка означает то же самое: пробуем через R2 вместо провала загрузки.
       return uploadToR2(file);
     }
-    throw new Error(`Загрузка не удалась: ${error.message}`);
+    lastMessage = error.message;
+    if (/failed to fetch/i.test(error.message) && i < attempts - 1) {
+      await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+      continue;
+    }
+    break;
   }
-  return clientConfigSupabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  throw new Error(`Загрузка не удалась: ${lastMessage}`);
 }
 const isVideoFile = (f: File) => f.type.startsWith("video/");
 const monthRangeYmd = (view: Date) => {
