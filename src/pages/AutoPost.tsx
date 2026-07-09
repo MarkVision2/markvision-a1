@@ -154,16 +154,28 @@ async function uploadToBucket(file: File): Promise<string> {
   if (!clientConfigSupabase) throw new Error("Хранилище не настроено (VITE_CLIENT_SUPABASE_*)");
   const ext = (file.name.split(".").pop() || "bin").toLowerCase();
   const path = `posts/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-  const { error } = await clientConfigSupabase.storage.from(BUCKET).upload(path, file, { contentType: file.type || undefined, upsert: false });
-  if (error) {
+  const attempts = 3;
+  let lastMessage = "";
+  for (let i = 0; i < attempts; i++) {
+    // upsert:true с попытки №2 — предыдущая попытка могла упасть уже после
+    // того, как объект частично записался, а "Failed to fetch" — это тот же
+    // чисто сетевой обрыв, что и в R2-ветке (см. fetchWithRetry выше), просто
+    // здесь его кидает сам Supabase SDK, а не наш fetch.
+    const { error } = await clientConfigSupabase.storage.from(BUCKET).upload(path, file, { contentType: file.type || undefined, upsert: i > 0 });
+    if (!error) return clientConfigSupabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
     if (/exceeded the maximum allowed size/i.test(error.message)) {
       // Порог 50 МБ уже проверен выше, но на всякий случай — реальная платформенная
       // ошибка означает то же самое: пробуем через R2 вместо провала загрузки.
       return uploadToR2(file);
     }
-    throw new Error(`Загрузка не удалась: ${error.message}`);
+    lastMessage = error.message;
+    if (/failed to fetch/i.test(error.message) && i < attempts - 1) {
+      await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+      continue;
+    }
+    break;
   }
-  return clientConfigSupabase.storage.from(BUCKET).getPublicUrl(path).data.publicUrl;
+  throw new Error(`Загрузка не удалась: ${lastMessage}`);
 }
 const isVideoFile = (f: File) => f.type.startsWith("video/");
 const monthRangeYmd = (view: Date) => {
