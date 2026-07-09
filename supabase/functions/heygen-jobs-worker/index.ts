@@ -26,6 +26,14 @@ function pickVideoId(d: Record<string, unknown>): string | undefined {
     .find((x) => typeof x === "string" && (x as string).length > 0) as string | undefined;
 }
 
+// HeyGen отказывает в рендере с "Insufficient credit..." при пустом API-кошельке —
+// это не сбой генерации, а закончившийся баланс, и пользователю нужно сообщить
+// именно это, а не общее "попробуйте ещё раз" (оно вводит в заблуждение — повтор
+// не поможет, пока не пополнить баланс).
+function isCreditError(msg: string): boolean {
+  return /insufficient|credit|balance/i.test(msg);
+}
+
 // Telegram Bot API часто отвечает HTTP 200 даже на отказ (ok:false в теле,
 // например "wrong file identifier/HTTP URL specified" для sendVideo по ссылке)
 // — проверка одного r.ok маскировала реальную причину недоставки. Разбираем
@@ -219,10 +227,14 @@ Deno.serve(async (req) => {
         delivered++;
       } else if (TERMINAL_FAIL.includes(status)) {
         // Статус видео (или сессии без video_id) — терминальный провал.
-        await notify(botToken, chatId, "Не удалось собрать видео. Попробуйте ещё раз.");
+        const failText = failMsg || JSON.stringify(meta);
+        const userMsg = isCreditError(failText)
+          ? "Не удалось собрать видео: закончился баланс HeyGen (API-кошелёк). Пополните баланс в кабинете HeyGen и запустите генерацию заново."
+          : "Не удалось собрать видео. Попробуйте ещё раз.";
+        await notify(botToken, chatId, userMsg);
         await admin.from("heygen_jobs").update({
           delivered: true, status: "failed",
-          error: ("fail: " + (failMsg || JSON.stringify(meta))).slice(0, 600),
+          error: ("fail: " + failText).slice(0, 600),
           updated_at: new Date().toISOString(),
         }).eq("id", job.id);
         failed++;
