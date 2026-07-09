@@ -16,6 +16,11 @@ const SCOPES = [
   "pages_show_list",
   "pages_read_engagement",
   "pages_manage_metadata",
+  // Без этого разрешения отправка личных сообщений в Instagram через Page-linked
+  // (Facebook Login for Business) аккаунт падает с "(#3) Application does not
+  // have the capability to make this API call" — Meta требует pages_messaging
+  // на самой странице в дополнение к instagram_manage_messages.
+  "pages_messaging",
   "instagram_basic",
   "instagram_manage_insights",
   "instagram_manage_comments",
