@@ -55,6 +55,38 @@ async function notify(token: string, chatId: string | null, text: string) {
   await tg(token, "sendMessage", { chat_id: chatId, text });
 }
 
+// Telegram's sendVideo с video:<url> просит ЕГО серверá сами скачать файл —
+// это ненадёжно против CDN HeyGen (иногда получаем "wrong file identifier/
+// HTTP URL specified"), и тогда доставка тихо падала в plain-text ссылку.
+// Качаем видео сами и грузим байты как multipart — так результат не зависит
+// от того, смог ли Telegram сам достучаться до CDN.
+const TELEGRAM_UPLOAD_LIMIT_BYTES = 49 * 1024 * 1024; // предел загрузки ботом файла через Bot API — 50 МБ
+async function sendVideoFile(token: string, chatId: string, url: string, caption: string): Promise<boolean> {
+  try {
+    const fileRes = await fetch(url);
+    if (!fileRes.ok) return false;
+    const contentType = fileRes.headers.get("content-type") || "video/mp4";
+    const bytes = new Uint8Array(await fileRes.arrayBuffer());
+    if (bytes.byteLength === 0 || bytes.byteLength > TELEGRAM_UPLOAD_LIMIT_BYTES) return false;
+
+    const form = new FormData();
+    form.append("chat_id", chatId);
+    form.append("caption", caption);
+    form.append("video", new Blob([bytes], { type: contentType }), "video.mp4");
+
+    const r = await fetch(`https://api.telegram.org/bot${token}/sendVideo`, { method: "POST", body: form });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j?.ok === false) {
+      console.error("telegram sendVideo(file) failed", r.status, JSON.stringify(j));
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error("telegram sendVideo(file) threw", e instanceof Error ? e.message : String(e));
+    return false;
+  }
+}
+
 Deno.serve(async (req) => {
   const admin = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -160,7 +192,11 @@ Deno.serve(async (req) => {
 
       if (url) {
         if (chatId) {
-          const okVideo = await tg(botToken, "sendVideo", { chat_id: chatId, video: url, caption: "Готово ✅" });
+          // Сначала грузим файл сами (надёжнее), затем пробуем через ссылку
+          // силами самого Telegram, и только если оба варианта не удались —
+          // шлём голую ссылку текстом (например, если файл больше 50 МБ).
+          const okVideo = await sendVideoFile(botToken, chatId, url, "Готово ✅")
+            || await tg(botToken, "sendVideo", { chat_id: chatId, video: url, caption: "Готово ✅" });
           if (!okVideo) await tg(botToken, "sendMessage", { chat_id: chatId, text: `Видео готово: ${url}` });
         }
         await admin.from("heygen_jobs").update({ delivered: true, status: "done", video_url: url, updated_at: new Date().toISOString() }).eq("id", job.id);
