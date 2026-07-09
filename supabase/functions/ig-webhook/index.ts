@@ -36,11 +36,12 @@ interface ProjectAccount {
   project_id: string;
   ig_user_id: string;
   page_access_token: string;
+  ig_login_access_token: string | null;
 }
 
 async function resolveAccount(igUserId: string): Promise<ProjectAccount | null> {
   const rows = await db(
-    `instagram_accounts?ig_user_id=eq.${encodeURIComponent(igUserId)}&active=eq.true&select=project_id,ig_user_id,page_access_token&limit=1`,
+    `instagram_accounts?ig_user_id=eq.${encodeURIComponent(igUserId)}&active=eq.true&select=project_id,ig_user_id,page_access_token,ig_login_access_token&limit=1`,
   );
   const row = rows?.[0];
   if (!row?.project_id || !row?.page_access_token) return null;
@@ -116,8 +117,24 @@ async function postPublicReply(commentId: string, token: string, text: string) {
   }).catch(() => {});
 }
 
-async function sendPrivateDm(igUserId: string, token: string, commentId: string, text: string) {
-  const resp = await fetch(`${GRAPH}/${igUserId}/messages`, {
+// Отправка DM через Page-linked токен (Facebook Login for Business) стабильно
+// падает на этом приложении с "(#3) Application does not have the capability
+// to make this API call" — судя по настройкам в Meta App Dashboard, у него
+// реально настроен продукт "Instagram API with Instagram Login", а не
+// полноценная Facebook-Login-for-Business связка для сообщений. Если для
+// аккаунта сохранён отдельный Instagram Login токен — шлём DM через
+// graph.instagram.com им; иначе как раньше через Page-токен (на случай, если
+// когда-нибудь всё же заработает и через него).
+async function sendPrivateDm(
+  igUserId: string,
+  account: ProjectAccount,
+  commentId: string,
+  text: string,
+) {
+  const useLogin = !!account.ig_login_access_token;
+  const host = useLogin ? "https://graph.instagram.com/v21.0" : GRAPH;
+  const token = useLogin ? account.ig_login_access_token! : account.page_access_token;
+  const resp = await fetch(`${host}/${igUserId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ recipient: { comment_id: commentId }, message: { text } }),
@@ -172,7 +189,7 @@ Deno.serve(async (req) => {
 
         const redirectUrl = `${SB_URL}/functions/v1/ig-organic-redirect?c=${encodeURIComponent(kw.short_id)}${username ? `&u=${encodeURIComponent(username)}` : ""}`;
         const dmMessage = kw.dm_text ? `${kw.dm_text} ${redirectUrl}` : redirectUrl;
-        const sent = await sendPrivateDm(igUserId, account.page_access_token, commentId, dmMessage);
+        const sent = await sendPrivateDm(igUserId, account, commentId, dmMessage);
 
         await finalizeEvent(eventId, {
           comment_id: commentId,

@@ -1,19 +1,36 @@
 import { useState } from "react";
-import { Instagram, RefreshCw, Loader2, AlertCircle, Unplug, CheckCircle2 } from "lucide-react";
+import { Instagram, RefreshCw, Loader2, AlertCircle, Unplug, CheckCircle2, KeyRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useInstagramAccount, type AvailableIgAccount } from "@/hooks/useInstagramAccount";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 
 export function InstagramAccountConnect() {
-  const { account, loading, listAvailable, connect, disconnect, sync } = useInstagramAccount();
+  const { account, loading, listAvailable, connect, disconnect, sync, setLoginToken } = useInstagramAccount();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [available, setAvailable] = useState<AvailableIgAccount[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const [listing, setListing] = useState(false);
   const [connecting, setConnecting] = useState<string | null>(null);
+  const [loginToken, setLoginTokenInput] = useState("");
+  const [savingToken, setSavingToken] = useState(false);
+
+  const handleSaveLoginToken = async () => {
+    if (!loginToken.trim()) return;
+    setSavingToken(true);
+    try {
+      await setLoginToken(loginToken.trim());
+      setLoginTokenInput("");
+      toast.success("Instagram Login токен сохранён — DM теперь пойдут через него");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось сохранить токен");
+    } finally {
+      setSavingToken(false);
+    }
+  };
 
   const openDialog = async () => {
     setDialogOpen(true);
@@ -116,6 +133,29 @@ export function InstagramAccountConnect() {
                 Последняя синх.: {new Date(account.lastSyncAt).toLocaleString("ru-RU")}
               </span>
             )}
+          </div>
+
+          <div className="rounded-xl border border-border/60 bg-background/40 p-3">
+            <div className="mb-2 flex items-center gap-2 text-xs font-semibold">
+              <KeyRound className="h-3.5 w-3.5 text-pink-500" />
+              Instagram Login токен для отправки DM
+              {account.igLoginTokenPresent && <CheckCircle2 className="h-3.5 w-3.5 text-success" />}
+            </div>
+            <p className="mb-2 text-[11px] text-muted-foreground">
+              Meta App Dashboard → продукт «Instagram» → раздел с генерацией токена для этого аккаунта → «Сгенерировать маркер». Вставьте сюда — DM в Direct пойдут через него, публичный ответ на комментарий не меняется.
+            </p>
+            <div className="flex items-center gap-2">
+              <Input
+                type="password"
+                placeholder={account.igLoginTokenPresent ? "Токен сохранён — вставьте новый, чтобы заменить" : "Вставьте токен"}
+                value={loginToken}
+                onChange={(e) => setLoginTokenInput(e.target.value)}
+                className="font-mono text-xs"
+              />
+              <Button size="sm" onClick={() => void handleSaveLoginToken()} disabled={savingToken || !loginToken.trim()} className="shrink-0 gap-1">
+                {savingToken ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Сохранить"}
+              </Button>
+            </div>
           </div>
         </div>
       )}
