@@ -76,23 +76,30 @@ interface PixelCreds {
   test_event_code?: string | null;
 }
 
+// Общий Meta-токен системы: automation_settings.meta_access_token → env META_ACCESS_TOKEN.
+// Тот же, что использует синхронизация расходов — чтобы CAPI работал без отдельного ввода токена.
+async function resolveSharedMetaToken(admin: ReturnType<typeof createClient>): Promise<string | null> {
+  const { data } = await admin.from("automation_settings")
+    .select("meta_access_token").eq("id", true).maybeSingle();
+  return (data as { meta_access_token?: string } | null)?.meta_access_token
+    || Deno.env.get("META_ACCESS_TOKEN") || null;
+}
+
 async function resolvePixelCreds(
   admin: ReturnType<typeof createClient>,
   row: OutboxRow,
 ): Promise<PixelCreds | null> {
-  // 1) Через кабинет (приоритетно — у каждого кабинета свой токен/pixel)
+  // 1) Через кабинет: pixel обязателен, токен — свой ИЛИ общий системный.
   if (row.cabinet_id) {
     const { data } = await admin.from("ad_cabinets")
       .select("access_token, pixel_id, capi_test_event_code")
       .eq("id", row.cabinet_id).maybeSingle();
-    const token = (data as { access_token?: string } | null)?.access_token;
     const pixel = (data as { pixel_id?: string } | null)?.pixel_id;
-    if (token && pixel) {
-      return {
-        pixel_id: pixel,
-        access_token: token,
-        test_event_code: (data as { capi_test_event_code?: string } | null)?.capi_test_event_code ?? null,
-      };
+    const testCode = (data as { capi_test_event_code?: string } | null)?.capi_test_event_code ?? null;
+    if (pixel) {
+      const ownToken = (data as { access_token?: string } | null)?.access_token;
+      const token = ownToken || (await resolveSharedMetaToken(admin));
+      if (token) return { pixel_id: pixel, access_token: token, test_event_code: testCode };
     }
   }
   // 2) Через проект (clients_config — legacy)

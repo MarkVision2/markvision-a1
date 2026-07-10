@@ -173,11 +173,12 @@ export function CapiSettings() {
     return s;
   }, [outbox]);
 
-  // Готовность подключения: пиксель + токен есть → события могут уходить.
+  // Готовность: пиксель обязателен. Токен — свой у кабинета ИЛИ общий подключённый Meta
+  // (его наличие проверяется на сервере кнопкой «Проверить связь»), поэтому не требуем его тут.
   const pixelReady = !!(pixelId.trim() || cabinet?.pixel_id);
-  const tokenReady = tokenSet || !!tokenInput.trim();
+  const ownToken = tokenSet || !!tokenInput.trim();
   const mappedCount = useMemo(() => stages.filter((s) => s.event).length, [stages]);
-  const connectionReady = pixelReady && tokenReady;
+  const connectionReady = pixelReady;
 
   // ── Сохранение подключения ──
   const saveConnection = async () => {
@@ -217,9 +218,10 @@ export function CapiSettings() {
       const res = data as any;
       const received = res?.fb_response?.events_received;
       if (res?.sent && (received ?? 0) > 0) {
+        const src = res?.token_source === "shared" ? " Токен взят из подключённого Meta." : "";
         setCheck({
           status: "ok",
-          message: `Meta приняла событие (${received}). ${res.test_event_code ? `Смотрите в Test Events, код ${res.test_event_code}.` : "Совет: задайте Test Event Code, чтобы видеть событие в Meta Test Events."}`,
+          message: `Meta приняла событие (${received}).${src} ${res.test_event_code ? `Смотрите в Test Events, код ${res.test_event_code}.` : "Совет: задайте Test Event Code, чтобы видеть событие в Meta Test Events."}`,
         });
       } else {
         const msg = res?.fb_response?.error?.message
@@ -317,7 +319,7 @@ export function CapiSettings() {
                 : <XCircle className="h-5 w-5 text-warning" />}
               <div>
                 <div className="text-sm font-semibold">
-                  {connectionReady ? "CAPI подключён и готов отправлять" : "CAPI не настроен до конца"}
+                  {connectionReady ? "Готово — нажмите «Проверить связь»" : "Укажите Pixel ID"}
                 </div>
                 <div className="text-[11px] text-muted-foreground">
                   Кабинет: <b>{cabinet?.name ?? "—"}</b>
@@ -326,7 +328,7 @@ export function CapiSettings() {
             </div>
             <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
               <StatusChip ok={pixelReady} label={pixelReady ? `Pixel ${cabinet?.pixel_id ?? pixelId}` : "Pixel не задан"} />
-              <StatusChip ok={tokenReady} label={tokenReady ? "Токен есть" : "Токен не задан"} />
+              <StatusChip ok label={ownToken ? "Токен: свой" : "Токен: из подключённого Meta"} soft={!ownToken} />
               <StatusChip ok={!!(testCode || cabinet?.capi_test_event_code)} label={(testCode || cabinet?.capi_test_event_code) ? "Test code" : "Без test code"} soft />
               <StatusChip ok={mappedCount > 0} label={`Этапов: ${mappedCount}`} />
             </div>
@@ -340,6 +342,12 @@ export function CapiSettings() {
           <ShieldCheck className="h-4 w-4 text-primary" />
           <h3 className="text-sm font-semibold">1. Подключение</h3>
         </div>
+
+        <p className="text-xs text-muted-foreground">
+          Для CAPI нужно всего одно: <b>Pixel ID</b>. Доступ к Meta берётся из уже подключённого
+          рекламного аккаунта — <b>токен вводить не нужно</b>. Отдельный токен — только если хотите
+          использовать не тот, что стоит в проекте. Test Event Code — по желанию, для безопасной проверки.
+        </p>
 
         {cabinets.length === 0 ? (
           <Alert>
@@ -369,12 +377,12 @@ export function CapiSettings() {
               </Field>
             </div>
 
-            <Field label="Access Token" hint={tokenSet ? `Токен уже сохранён (${mask(cabinet?.access_token)}). Введите новый, чтобы заменить.` : "Системный токен Meta с доступом к CAPI."}>
+            <Field label="Access Token (необязательно)" hint={tokenSet ? `Свой токен сохранён (${mask(cabinet?.access_token)}). Введите новый, чтобы заменить.` : "Оставьте пустым — будет использован токен уже подключённого Meta-аккаунта. Заполняйте, только если нужен отдельный токен."}>
               <Input
                 type="password"
                 value={tokenInput}
                 onChange={(e) => setTokenInput(e.target.value)}
-                placeholder={tokenSet ? "•••••••• (оставьте пустым, чтобы не менять)" : "EAA..."}
+                placeholder={tokenSet ? "•••••••• (оставьте пустым, чтобы не менять)" : "оставьте пустым — возьмём из подключённого Meta"}
               />
             </Field>
 

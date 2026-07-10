@@ -53,12 +53,13 @@ Deno.serve(async (req) => {
     let token = String(tokIn || "");
     let testCode = String(codeIn || "");
 
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
     // Резолвим креды из кабинета, если явно не переданы.
     if (cabinet_id && (!pixelId || !token)) {
-      const admin = createClient(
-        Deno.env.get("SUPABASE_URL")!,
-        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-      );
       const { data: cab } = await admin
         .from("ad_cabinets")
         .select("pixel_id, access_token, capi_test_event_code")
@@ -71,12 +72,27 @@ Deno.serve(async (req) => {
       }
     }
 
-    if (!pixelId || !token) {
+    // Если у кабинета нет своего токена — переиспользуем уже подключённый Meta-токен
+    // системы (automation_settings.meta_access_token → env META_ACCESS_TOKEN), тот же,
+    // что использует синхронизация расходов. Пользователю не нужно вводить токен заново.
+    let tokenSource = token ? "cabinet" : "";
+    if (!token) {
+      const { data: settings } = await admin
+        .from("automation_settings").select("meta_access_token").eq("id", true).maybeSingle();
+      token = String((settings as { meta_access_token?: string } | null)?.meta_access_token
+        || Deno.env.get("META_ACCESS_TOKEN") || "");
+      if (token) tokenSource = "shared";
+    }
+
+    if (!pixelId) {
       return new Response(
-        JSON.stringify({
-          ok: false,
-          error: "Не хватает pixel_id или access_token. Заполните их у кабинета.",
-        }),
+        JSON.stringify({ ok: false, error: "Не задан Pixel ID у кабинета." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+    if (!token) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "Нет Meta-токена: ни у кабинета, ни подключённого в системе. Подключите Meta или вставьте токен один раз." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
     }
@@ -116,6 +132,7 @@ Deno.serve(async (req) => {
         sent: fbResp.ok,
         event_name: event.event_name,
         test_event_code: testCode || null,
+        token_source: tokenSource,
         fb_response,
       }),
       { status: fbResp.ok ? 200 : 502, headers: { ...corsHeaders, "Content-Type": "application/json" } },

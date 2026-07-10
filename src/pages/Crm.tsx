@@ -9,6 +9,7 @@ import {
   Users,
   BarChart3,
   Zap,
+  Radio,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -34,10 +35,13 @@ const AnalyticsView = lazy(() => import("@/components/crm/AnalyticsView").then((
 const AutomationsSettings = lazy(() =>
   import("@/components/crm/AutomationsSettings").then((m) => ({ default: m.AutomationsSettings })),
 );
+const CapiSettings = lazy(() =>
+  import("@/components/crm/CapiSettings").then((m) => ({ default: m.CapiSettings })),
+);
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
-type Tab = "funnel" | "chats" | "clients" | "managers" | "analytics" | "automations";
+type Tab = "funnel" | "chats" | "clients" | "managers" | "analytics" | "automations" | "capi";
 
 const Crm = () => {
   const { isAdmin } = useAuth();
@@ -80,6 +84,7 @@ const Crm = () => {
       { id: "managers", label: "Менеджеры", icon: Users },
       { id: "analytics", label: "Аналитика", icon: BarChart3 },
       { id: "automations", label: isAdmin ? "Автоматизации" : "Телефония", icon: Zap },
+      ...(isAdmin ? [{ id: "capi" as Tab, label: "Meta CAPI", icon: Radio }] : []),
     ],
     [isAdmin],
   );
@@ -383,6 +388,8 @@ const Crm = () => {
             )}
 
             {tab === "automations" && <AutomationsSettings />}
+
+            {tab === "capi" && <CapiSettings />}
           </Suspense>
         </div>
       </section>

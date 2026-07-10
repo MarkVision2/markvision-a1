@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Bell, MessageSquare, RotateCcw, Play, ShieldAlert } from "lucide-react";
 import { TelephonySettings } from "./TelephonySettings";
-import { CapiSettings } from "./CapiSettings";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { SaveStatusBadge } from "@/components/settings/SaveStatusBadge";
 
@@ -121,11 +120,7 @@ export function AutomationsSettings() {
   if (!s) return <Card className="p-8 text-center text-sm text-muted-foreground">Загрузка…</Card>;
 
   return (
-    <div className="space-y-6">
-      <CapiSettings />
-
-      <div className="border-t border-border/60 pt-4" />
-
+    <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold">Автоматизации дожима</h2>
