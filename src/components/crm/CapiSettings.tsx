@@ -16,9 +16,18 @@ import {
   Radio, Loader2, CheckCircle2, XCircle, Workflow, Activity, ShieldCheck,
 } from "lucide-react";
 
-// Meta CAPI события, доступные для маппинга (совпадают с CHECK в crm_stage_map).
+// Meta CAPI события, доступные для маппинга (значение = event_name в Meta,
+// совпадает с CHECK в crm_stage_map). В UI показываем по-русски; английское
+// имя — техническое, его требует Meta, поэтому даём мелким шрифтом.
 const CAPI_EVENTS = ["Lead", "Schedule", "Diagnostic", "Purchase"] as const;
 type CapiEvent = (typeof CAPI_EVENTS)[number];
+
+const EVENT_LABEL: Record<CapiEvent, { ru: string; hint: string }> = {
+  Lead:       { ru: "Заявка",      hint: "оставил контакт (новый лид)" },
+  Schedule:   { ru: "Запись",      hint: "назначен визит / бронь" },
+  Diagnostic: { ru: "Диагностика", hint: "пришёл на диагностику / визит" },
+  Purchase:   { ru: "Оплата",      hint: "сделка оплачена — уходит сумма" },
+};
 
 // Автоопределение события по ключу стадии — тот же принцип, что в онбординг-визарде.
 function guessEvent(key: string): CapiEvent | "" {
@@ -407,8 +416,19 @@ export function CapiSettings() {
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          Когда лид переходит на этап — в Meta летит выбранное событие. <b>Purchase</b> дополнительно передаёт сумму сделки как ценность конверсии.
+          Когда лид переходит на этап — в Meta летит выбранное событие. У <b>Оплаты</b> дополнительно уходит сумма сделки как ценность конверсии.
         </p>
+
+        {/* Легенда: что означает каждое событие */}
+        <div className="grid gap-1.5 rounded-md border border-border/60 bg-muted/30 p-2.5 sm:grid-cols-2">
+          {CAPI_EVENTS.map((e) => (
+            <div key={e} className="flex items-baseline gap-1.5 text-[11px]">
+              <span className="font-medium">{EVENT_LABEL[e].ru}</span>
+              <span className="text-muted-foreground">({e})</span>
+              <span className="text-muted-foreground">— {EVENT_LABEL[e].hint}</span>
+            </div>
+          ))}
+        </div>
 
         {stages.length === 0 ? (
           <p className="py-4 text-center text-xs text-muted-foreground">У проекта нет воронки со стадиями.</p>
@@ -425,7 +445,11 @@ export function CapiSettings() {
                   <SelectContent>
                     <SelectItem value="none">— не отправлять</SelectItem>
                     {CAPI_EVENTS.map((e) => (
-                      <SelectItem key={e} value={e}>{e}{e === "Purchase" ? " (с суммой)" : ""}</SelectItem>
+                      <SelectItem key={e} value={e}>
+                        {EVENT_LABEL[e].ru}
+                        {e === "Purchase" ? " (с суммой)" : ""}
+                        <span className="ml-1 text-[10px] text-muted-foreground">· {e}</span>
+                      </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
