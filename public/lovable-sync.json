@@ -1,7 +1,7 @@
 {
-  "git_sha": "eca66cb",
-  "git_sha_full": "eca66cb05e663610ab9119721f8a5ba1bf8a6cdf",
-  "updated_at": "2026-07-10T16:54:29Z",
-  "label": "fix(capi): target szfg, worker no-jwt, clearer settings UI",
+  "git_sha": "9d5c65d",
+  "git_sha_full": "9d5c65dd33631b610cbd6a399c72142a142764df",
+  "updated_at": "2026-07-10T17:07:31Z",
+  "label": "fix(capi): Russian-first labels for stage→event mapping",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
