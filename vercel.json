@@ -7,6 +7,10 @@
       "maxDuration": 300,
       "memory": 2048,
       "includeFiles": "api/montage/assets/**"
+    },
+    "api/autopost/normalize.ts": {
+      "maxDuration": 300,
+      "memory": 2048
     }
   },
   "rewrites": [
