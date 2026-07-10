@@ -154,23 +154,36 @@ async function sendToMeta(creds: PixelCreds, row: OutboxRow): Promise<{ ok: bool
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  // Auth: либо service-role JWT (вызов из pg_cron / других edge functions),
-  // либо shared secret в заголовке для ручного запуска извне.
+  const admin = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+
+  // Auth (любой из вариантов):
+  //   1. Authorization с service-role JWT (вызов из другой edge function).
+  //   2. x-cron-key == env CAPI_WORKER_KEY (если задан).
+  //   3. x-automation-key == automation_settings.cron_secret — единый паттерн cron,
+  //      как в crm-automations / meta-daily-sync. Так cron не зависит от env-переменной.
   const cronKey = Deno.env.get("CAPI_WORKER_KEY");
-  const provided = req.headers.get("x-cron-key");
-  const isAuthorized = (cronKey && provided === cronKey) ||
-    req.headers.get("Authorization")?.includes(Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "___");
+  const providedCron = req.headers.get("x-cron-key");
+  const providedAuto = req.headers.get("x-automation-key");
+
+  let isAuthorized =
+    (!!cronKey && providedCron === cronKey) ||
+    (req.headers.get("Authorization")?.includes(Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "___") ?? false);
+
+  if (!isAuthorized && providedAuto) {
+    const { data: settings } = await admin
+      .from("automation_settings").select("cron_secret").eq("id", true).maybeSingle();
+    const secret = (settings as { cron_secret?: string } | null)?.cron_secret;
+    if (secret && providedAuto === secret) isAuthorized = true;
+  }
 
   if (!isAuthorized) {
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
-
-  const admin = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  );
 
   let batchSize = DEFAULT_BATCH_SIZE;
   try {

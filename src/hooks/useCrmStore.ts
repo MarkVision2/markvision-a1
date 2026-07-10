@@ -6,7 +6,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { fetchPendingAdvances, markAdvanceDone } from "@/integrations/clientConfig/client";
 import { markAutoMoved } from "@/lib/autoMoveTracker";
-import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseConfig";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type {
@@ -716,41 +715,12 @@ export function useCrmStore() {
     patchLeadLocal(leadId, (l) => ({ ...l, stageId: stageKey, lastActivityAt: new Date().toISOString() }));
     await supabase.from("leads").update({ stage_id: sid }).eq("id", leadId);
 
-    // Параллельно дёргаем CAPI на нового Supabase — он сам решит, слать ли Schedule/Purchase в Meta.
-    try {
-      const NEW_URL = clientSupabaseUrl;
-      const NEW_KEY = clientSupabasePublishableKey;
-      if (!NEW_URL || !NEW_KEY) return;
-      const lead = leads.find((l) => l.id === leadId);
-      void fetch(`${NEW_URL}/functions/v1/crm-stage-capi`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${NEW_KEY}`,
-          apikey: NEW_KEY,
-        },
-        body: JSON.stringify({
-          lead_id: leadId,
-          stage_key: stageKey,
-          cabinet_id: lead?.cabinetId,
-          event_value: lead?.amount && Number(lead.amount) > 0 ? Number(lead.amount) : undefined,
-          event_source_url: lead?.landingUrl,
-          user_data: {
-            phone: lead?.phone,
-            email: lead?.email,
-            external_id: leadId,
-            fbc: (lead?.utm as { fbc?: string } | undefined)?.fbc,
-            fbp: (lead?.utm as { fbp?: string } | undefined)?.fbp,
-          },
-        }),
-        keepalive: true,
-      }).catch((err) => {
-        console.warn("[useCrmStore.moveLead] CAPI sync failed (fire-and-forget)", err);
-      });
-    } catch (err) {
-      console.warn("[useCrmStore.moveLead] CAPI sync threw", err);
-    }
-  }, [stageUuid, leads]);
+    // CAPI отправляется НЕ отсюда. Обновление stage_id ловит триггер
+    // on_lead_stage_change_capi → кладёт событие в capi_outbox → воркер
+    // (cron capi-outbox-worker-minutely) шлёт его в Meta один раз, с
+    // детерминированным event_id. Это единственный канал — прямой вызов
+    // crm-stage-capi убран, чтобы не было двойного счёта конверсий.
+  }, [stageUuid]);
 
   // ---------- chats ----------
   const sendMessage = useCallback(async (
