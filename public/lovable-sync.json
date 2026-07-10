@@ -1,7 +1,7 @@
 {
-  "git_sha": "5fc99ce",
-  "git_sha_full": "5fc99ce17ab2b22374a6bae4d9fc6673adccf0aa",
-  "updated_at": "2026-07-10T06:24:50Z",
-  "label": "Surface Instagram's real container-error reason in autopost failures",
+  "git_sha": "fb3cc1b",
+  "git_sha_full": "fb3cc1bd3b9ac78a92c9944b55211c00f263972f",
+  "updated_at": "2026-07-10T06:35:24Z",
+  "label": "Auto-normalize autopost video for Instagram to prevent silent media failures",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
