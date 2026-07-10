@@ -37,11 +37,6 @@ export interface HeygenVideoRow {
 /** С какой даты аккаунт на API-кошельке (ролики по подписке раньше — не в расход кошелька). */
 export const HEYGEN_WALLET_API_SINCE = "2026-07-07";
 
-/** Зафиксированный расход API-кошелька до точного учёта по роликам (YYYY-MM). */
-export const WALLET_SPENT_BASELINES: Record<string, number> = {
-  "2026-07": 5.28,
-};
-
 export function parseHeygenAccount(raw: RawUserProfile): HeygenAccountStats {
   const bt = raw.billing_type ?? null;
 
@@ -106,12 +101,6 @@ export function estimateHeygenVideoCost(durationSec?: number | null, mode = "age
 export function isCurrentMonth(range: ReportPeriodRange): boolean {
   const now = new Date();
   return range.from.getFullYear() === now.getFullYear() && range.from.getMonth() === now.getMonth();
-}
-
-export function periodKey(range: ReportPeriodRange): string {
-  const y = range.from.getFullYear();
-  const m = range.from.getMonth() + 1;
-  return `${y}-${String(m).padStart(2, "0")}`;
 }
 
 export function formatPeriodMonth(range: ReportPeriodRange): string {
@@ -199,15 +188,10 @@ export function resolveAccountSpent(
     account.billingType === "wallet" ? Math.max(fromTs, walletSince) : fromTs;
 
   if (account.billingType === "wallet") {
-    const baseline = WALLET_SPENT_BASELINES[periodKey(range)];
-    if (baseline != null) {
-      return {
-        amount: baseline,
-        label: `API-кошелёк · ${periodLabel}`,
-        videoCount: periodVideos.length,
-      };
-    }
-
+    // Раньше здесь был захардкоженный «слепок» расхода за июль — он не
+    // обновлялся вместе с новыми роликами и быстро разошёлся с реальным
+    // расходом (см. «В MarkVision за период» ниже). Считаем всегда динамически
+    // по тем же роликам аккаунта — так оба числа больше не расходятся.
     const amount =
       periodVideos.length > 0 ? sumEstimatedVideoSpend(periodVideos, effectiveFrom, toTs) : null;
     return {

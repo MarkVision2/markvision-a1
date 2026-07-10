@@ -5,7 +5,6 @@ import {
   resolveAccountSpent,
   sumEstimatedVideoSpend,
   videosInSpendPeriod,
-  WALLET_SPENT_BASELINES,
 } from "@/lib/heygenAccount";
 import { monthRange } from "@/components/dashboard/PeriodPicker";
 
@@ -51,16 +50,24 @@ describe("heygenAccount", () => {
     expect(total).toBe(2);
   });
 
-  it("wallet july 2026 uses baseline spend", () => {
+  it("wallet spend is a live sum of the account's own videos, not a stale snapshot", () => {
     const july = monthRange(new Date(2026, 6, 15));
     const stats = parseHeygenAccount({
       billing_type: "wallet",
       wallet: { currency: "usd", remaining_balance: 1.37 },
     });
+    const ts = Math.floor(new Date("2026-07-10T12:00:00").getTime() / 1000);
 
-    const spent = resolveAccountSpent(stats, [], july);
-    expect(spent.amount).toBe(WALLET_SPENT_BASELINES["2026-07"]);
-    expect(spent.amount).toBe(5.28);
+    const noVideos = resolveAccountSpent(stats, [], july);
+    expect(noVideos.amount).toBeNull();
+
+    const videos = [
+      { id: "a", title: "A", status: "completed", createdAt: ts, durationSec: 60, costUsd: 2 },
+      { id: "b", title: "B", status: "completed", createdAt: ts, durationSec: 30, costUsd: 1 },
+    ];
+    const spent = resolveAccountSpent(stats, videos, july);
+    expect(spent.amount).toBe(3);
+    expect(spent.videoCount).toBe(2);
   });
 
   it("wallet ignores subscription-era videos outside API window", () => {
