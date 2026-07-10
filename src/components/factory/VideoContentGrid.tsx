@@ -1,4 +1,4 @@
-import { ArrowRight, Clapperboard } from "lucide-react";
+import { ArrowRight, Clapperboard, Film } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +21,14 @@ const VIDEO_FORMATS: VideoFormat[] = [
     route: "/create/montage",
     icon: Clapperboard,
     badge: "AI",
+  },
+  {
+    id: "reels",
+    title: "Reels-видео",
+    subtitle: "Сценарий → вертикальный ролик с озвучкой, титрами и музыкой",
+    route: "/create/reels",
+    icon: Film,
+    badge: "Beta",
   },
 ];
 
