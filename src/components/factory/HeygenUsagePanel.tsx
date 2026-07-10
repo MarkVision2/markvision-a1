@@ -84,8 +84,21 @@ export function HeygenUsagePanel({ projectId }: { projectId: string }) {
     // задваивался бы в истории. ref_id у local хранит настоящий video_id
     // HeyGen (см. heygen-jobs-worker), так что сверяем именно по нему.
     const localRefIds = new Set(usageInPeriod.map((u) => u.ref_id).filter(Boolean));
+    // Записи, сделанные до перехода на настоящий video_id, всё ещё хранят
+    // старый session_id в ref_id и не совпадут с ним напрямую. Резервное
+    // сопоставление по длительности (она у HeyGen точная и совпадает для
+    // одного и того же ролика) + окну по времени — чтобы такие записи тоже
+    // не задваивались задним числом.
+    const isLikelyDuplicate = (v: (typeof remoteVideos)[number]) =>
+      usageInPeriod.some((u) => {
+        if (u.duration_sec == null || v.durationSec == null || v.createdAt == null) return false;
+        const sameDuration = Math.abs(u.duration_sec - v.durationSec) < 0.05;
+        const localTs = new Date(u.created_at).getTime() / 1000;
+        const closeInTime = Number.isFinite(localTs) && Math.abs(localTs - v.createdAt) < 30 * 60;
+        return sameDuration && closeInTime;
+      });
     const remote = remoteVideos
-      .filter((v) => !localRefIds.has(v.id))
+      .filter((v) => !localRefIds.has(v.id) && !isLikelyDuplicate(v))
       .map((v) => ({
         id: `hg-${v.id}`,
         mode: "heygen",
