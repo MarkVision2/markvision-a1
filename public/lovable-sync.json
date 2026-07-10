@@ -1,7 +1,7 @@
 {
-  "git_sha": "b8a64ae",
-  "git_sha_full": "b8a64aec036caa53a174c7c5e8233690d6bf2ca4",
-  "updated_at": "2026-07-10T04:11:28Z",
-  "label": "Fix stale spend total and retroactive duplicate history entries",
+  "git_sha": "5fc99ce",
+  "git_sha_full": "5fc99ce17ab2b22374a6bae4d9fc6673adccf0aa",
+  "updated_at": "2026-07-10T06:24:50Z",
+  "label": "Surface Instagram's real container-error reason in autopost failures",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
