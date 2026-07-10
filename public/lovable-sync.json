@@ -1,7 +1,7 @@
 {
-  "git_sha": "e5763fa",
-  "git_sha_full": "e5763fac0a5a18ac6afeea205f2b789f190a0172",
-  "updated_at": "2026-07-09T17:28:02Z",
-  "label": "Show a specific balance message when HeyGen rejects a job for insufficient credit",
+  "git_sha": "b8a64ae",
+  "git_sha_full": "b8a64aec036caa53a174c7c5e8233690d6bf2ca4",
+  "updated_at": "2026-07-10T04:11:28Z",
+  "label": "Fix stale spend total and retroactive duplicate history entries",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
