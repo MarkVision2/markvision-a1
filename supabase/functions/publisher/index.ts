@@ -31,9 +31,13 @@ function isVideo(url: string) {
 async function createContainer(igUserId: string, params: URLSearchParams) {
   return await (await fetch(`${IG}/${igUserId}/media?${params}`, { method: "POST" })).json().catch(() => ({}));
 }
-async function containerStatus(token: string, id: string): Promise<string> {
-  const j = await (await fetch(`${IG}/${id}?fields=status_code&access_token=${token}`)).json().catch(() => ({}));
-  return j.status_code ?? "";
+// status_code — машинный статус (FINISHED/ERROR/IN_PROGRESS); status — человекочитаемая
+// причина от Instagram при ERROR (например код 2207052 — медиа не подошло по формату/
+// не удалось обработать). Раньше запрашивали только status_code и на ошибке писали
+// голое "container ERROR" — реальная причина от Instagram терялась.
+async function containerStatus(token: string, id: string): Promise<{ code: string; detail: string }> {
+  const j = await (await fetch(`${IG}/${id}?fields=status_code,status&access_token=${token}`)).json().catch(() => ({}));
+  return { code: j.status_code ?? "", detail: typeof j.status === "string" ? j.status : "" };
 }
 async function publish(igUserId: string, token: string, creationId: string) {
   return await (await fetch(`${IG}/${igUserId}/media_publish?creation_id=${creationId}&access_token=${token}`, { method: "POST" })).json().catch(() => ({}));
@@ -148,8 +152,15 @@ Deno.serve(async (req) => {
       let done = false;
       for (let i = 0; i < 5; i++) {
         const st = await containerStatus(token, containerId!);
-        if (st === "ERROR") { await patch(p.id, { status: "failed", error: "container ERROR" }); out.failed++; await tg(`❌ Автопост: ошибка обработки медиа`); done = true; break; }
-        if (st === "FINISHED" || st === "") {
+        if (st.code === "ERROR") {
+          const detail = st.detail || "неизвестная причина";
+          await patch(p.id, { status: "failed", error: `container ERROR: ${detail}`.slice(0, 500) });
+          out.failed++;
+          await tg(`❌ Автопост: ошибка обработки медиа. Причина Instagram: ${detail}`);
+          done = true;
+          break;
+        }
+        if (st.code === "FINISHED" || st.code === "") {
           const pub = await publish(igUserId, token, containerId!);
           if (pub.id) { await patch(p.id, { status: "published", container_id: containerId, published_ig_media_id: pub.id, error: null }); out.published++; await tg(`✅ Опубликован: «${caption.slice(0, 60)}…»`); done = true; break; }
         }
@@ -171,8 +182,14 @@ Deno.serve(async (req) => {
     const { igUserId, token } = account;
     if (!p.container_id) { await patch(p.id, { status: "failed", error: "нет container_id" }); out.failed++; continue; }
     const st = await containerStatus(token, p.container_id);
-    if (st === "ERROR") { await patch(p.id, { status: "failed", error: "container ERROR" }); out.failed++; await tg(`❌ Автопост: ошибка обработки медиа`); continue; }
-    if (st && st !== "FINISHED") continue;
+    if (st.code === "ERROR") {
+      const detail = st.detail || "неизвестная причина";
+      await patch(p.id, { status: "failed", error: `container ERROR: ${detail}`.slice(0, 500) });
+      out.failed++;
+      await tg(`❌ Автопост: ошибка обработки медиа. Причина Instagram: ${detail}`);
+      continue;
+    }
+    if (st.code && st.code !== "FINISHED") continue;
     const pub = await publish(igUserId, token, p.container_id);
     if (pub.id) {
       await patch(p.id, { status: "published", published_ig_media_id: pub.id, error: null });
