@@ -1,5 +1,10 @@
 project_id = "szfgdruhlebfvcmlvxdk"
 
+# Воркер CAPI зовётся из pg_cron без пользовательского JWT — шлюзовую проверку
+# отключаем, авторизация внутри функции по x-automation-key = cron_secret.
+[functions.capi-outbox-worker]
+verify_jwt = false
+
 [functions.greenapi-webhook]
 verify_jwt = false
 

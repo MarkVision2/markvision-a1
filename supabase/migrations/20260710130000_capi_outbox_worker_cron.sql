@@ -25,7 +25,7 @@ SELECT cron.schedule(
   '* * * * *',
   $$
   SELECT net.http_post(
-    url     := 'https://mekwfbqmsqiborjdrjxc.supabase.co/functions/v1/capi-outbox-worker',
+    url     := 'https://szfgdruhlebfvcmlvxdk.supabase.co/functions/v1/capi-outbox-worker',
     headers := jsonb_build_object(
       'Content-Type', 'application/json',
       'x-automation-key', (SELECT cron_secret FROM public.automation_settings WHERE id = true)

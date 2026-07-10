@@ -164,6 +164,12 @@ export function CapiSettings() {
     return s;
   }, [outbox]);
 
+  // Готовность подключения: пиксель + токен есть → события могут уходить.
+  const pixelReady = !!(pixelId.trim() || cabinet?.pixel_id);
+  const tokenReady = tokenSet || !!tokenInput.trim();
+  const mappedCount = useMemo(() => stages.filter((s) => s.event).length, [stages]);
+  const connectionReady = pixelReady && tokenReady;
+
   // ── Сохранение подключения ──
   const saveConnection = async () => {
     if (!cabinetId) return;
@@ -292,6 +298,33 @@ export function CapiSettings() {
         </div>
       </div>
 
+      {/* ── Сводка статуса: что подключено прямо сейчас ── */}
+      {cabinets.length > 0 && (
+        <Card className={`p-4 ${connectionReady ? "border-success/40 bg-success/5" : "border-warning/40 bg-warning/5"}`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              {connectionReady
+                ? <CheckCircle2 className="h-5 w-5 text-success" />
+                : <XCircle className="h-5 w-5 text-warning" />}
+              <div>
+                <div className="text-sm font-semibold">
+                  {connectionReady ? "CAPI подключён и готов отправлять" : "CAPI не настроен до конца"}
+                </div>
+                <div className="text-[11px] text-muted-foreground">
+                  Кабинет: <b>{cabinet?.name ?? "—"}</b>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+              <StatusChip ok={pixelReady} label={pixelReady ? `Pixel ${cabinet?.pixel_id ?? pixelId}` : "Pixel не задан"} />
+              <StatusChip ok={tokenReady} label={tokenReady ? "Токен есть" : "Токен не задан"} />
+              <StatusChip ok={!!(testCode || cabinet?.capi_test_event_code)} label={(testCode || cabinet?.capi_test_event_code) ? "Test code" : "Без test code"} soft />
+              <StatusChip ok={mappedCount > 0} label={`Этапов: ${mappedCount}`} />
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* ── 1. Подключение ── */}
       <Card className="space-y-4 p-4">
         <div className="flex items-center gap-2">
@@ -363,6 +396,7 @@ export function CapiSettings() {
           <div className="flex items-center gap-2">
             <Workflow className="h-4 w-4 text-primary" />
             <h3 className="text-sm font-semibold">2. Какой этап → какое событие</h3>
+            {mappedCount > 0 && <Badge variant="outline" className="text-[10px]">{mappedCount} активно</Badge>}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={autofill}>Автозаполнить</Button>
@@ -444,6 +478,15 @@ export function CapiSettings() {
       </Card>
     </div>
   );
+}
+
+function StatusChip({ ok, label, soft }: { ok: boolean; label: string; soft?: boolean }) {
+  const cls = ok
+    ? "bg-success/15 text-success border-success/30"
+    : soft
+      ? "bg-muted text-muted-foreground border-border"
+      : "bg-warning/15 text-warning border-warning/30";
+  return <Badge className={`${cls} font-normal`}>{label}</Badge>;
 }
 
 function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
