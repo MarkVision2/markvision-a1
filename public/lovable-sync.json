@@ -1,7 +1,7 @@
 {
-  "git_sha": "9d5c65d",
-  "git_sha_full": "9d5c65dd33631b610cbd6a399c72142a142764df",
-  "updated_at": "2026-07-10T17:07:31Z",
-  "label": "fix(capi): Russian-first labels for stage→event mapping",
+  "git_sha": "7b78f14",
+  "git_sha_full": "7b78f14e3f310b6a4935dd494be796b7415c3d14",
+  "updated_at": "2026-07-10T17:25:40Z",
+  "label": "feat(capi): dedicated CRM section + reuse connected Meta token",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
