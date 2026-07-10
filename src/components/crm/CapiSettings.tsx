@@ -214,8 +214,13 @@ export function CapiSettings() {
       const { data, error } = await supabase.functions.invoke("capi-test-event", {
         body: { cabinet_id: cabinetId },
       });
-      if (error) throw error;
-      const res = data as any;
+      // Функция всегда отвечает 200; при сетевом сбое error читаем из тела ответа.
+      let res: any = data;
+      if (error && (error as any)?.context?.json) {
+        try { res = await (error as any).context.json(); } catch { /* keep */ }
+      } else if (error) {
+        throw error;
+      }
       const received = res?.fb_response?.events_received;
       if (res?.sent && (received ?? 0) > 0) {
         const src = res?.token_source === "shared" ? " Токен взят из подключённого Meta." : "";
@@ -225,6 +230,7 @@ export function CapiSettings() {
         });
       } else {
         const msg = res?.fb_response?.error?.message
+          ?? res?.error
           ?? (typeof res?.fb_response === "string" ? res.fb_response : JSON.stringify(res?.fb_response ?? res));
         setCheck({ status: "fail", message: msg });
       }
