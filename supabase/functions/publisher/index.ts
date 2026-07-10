@@ -31,12 +31,43 @@ function isVideo(url: string) {
 async function createContainer(igUserId: string, params: URLSearchParams) {
   return await (await fetch(`${IG}/${igUserId}/media?${params}`, { method: "POST" })).json().catch(() => ({}));
 }
-async function containerStatus(token: string, id: string): Promise<string> {
-  const j = await (await fetch(`${IG}/${id}?fields=status_code&access_token=${token}`)).json().catch(() => ({}));
-  return j.status_code ?? "";
+// status_code — машинный статус (FINISHED/ERROR/IN_PROGRESS); status — человекочитаемая
+// причина от Instagram при ERROR (например код 2207052 — медиа не подошло по формату/
+// не удалось обработать). Раньше запрашивали только status_code и на ошибке писали
+// голое "container ERROR" — реальная причина от Instagram терялась.
+async function containerStatus(token: string, id: string): Promise<{ code: string; detail: string }> {
+  const j = await (await fetch(`${IG}/${id}?fields=status_code,status&access_token=${token}`)).json().catch(() => ({}));
+  return { code: j.status_code ?? "", detail: typeof j.status === "string" ? j.status : "" };
 }
 async function publish(igUserId: string, token: string, creationId: string) {
   return await (await fetch(`${IG}/${igUserId}/media_publish?creation_id=${creationId}&access_token=${token}`, { method: "POST" })).json().catch(() => ({}));
+}
+
+function formatMetaError(raw: unknown): string {
+  if (typeof raw === "string") {
+    try {
+      return formatMetaError(JSON.parse(raw));
+    } catch {
+      if (/Invalid OAuth access token|Cannot parse access token|code.?190/i.test(raw)) {
+        return "Токен Instagram устарел или недействителен. Переподключите Facebook в Настройках → Meta.";
+      }
+      return raw.slice(0, 300);
+    }
+  }
+  if (raw && typeof raw === "object") {
+    const err = (raw as { error?: { message?: string; code?: number; type?: string } }).error;
+    if (err?.code === 190 || /Invalid OAuth access token|Cannot parse access token/i.test(err?.message ?? "")) {
+      return "Токен Instagram устарел или недействителен. Переподключите Facebook в Настройках → Meta.";
+    }
+    if (err?.message) return err.message;
+  }
+  const s = JSON.stringify(raw);
+  return s.slice(0, 300);
+}
+function ensureContainerId(j: unknown, label: string): string {
+  const id = (j as { id?: string })?.id;
+  if (id) return id;
+  throw new Error(`${label}: ${formatMetaError(j)}`);
 }
 
 interface Account { igUserId: string; token: string }
@@ -91,28 +122,24 @@ Deno.serve(async (req) => {
           const cp = new URLSearchParams({ access_token: token, is_carousel_item: "true" });
           if (isVideo(u)) { cp.set("media_type", "VIDEO"); cp.set("video_url", u); } else { cp.set("image_url", u); }
           const cj = await createContainer(igUserId, cp);
-          if (!cj.id) throw new Error("child: " + JSON.stringify(cj).slice(0, 200));
+          if (!cj.id) throw new Error("child: " + formatMetaError(cj));
           childIds.push(cj.id);
         }
         const pj = await createContainer(igUserId, new URLSearchParams({ access_token: token, media_type: "CAROUSEL", children: childIds.join(","), caption }));
-        if (!pj.id) throw new Error("carousel: " + JSON.stringify(pj).slice(0, 200));
-        containerId = pj.id;
+        containerId = ensureContainerId(pj, "carousel");
       } else if (p.media_type === "REELS") {
         const params = new URLSearchParams({ access_token: token, media_type: "REELS", video_url: p.media_url, caption });
         if (p.cover_url) params.set("cover_url", p.cover_url);
         const j = await createContainer(igUserId, params);
-        if (!j.id) throw new Error(JSON.stringify(j).slice(0, 300));
-        containerId = j.id;
+        containerId = ensureContainerId(j, "reels");
       } else if (p.media_type === "STORIES") {
         const params = new URLSearchParams({ access_token: token, media_type: "STORIES" });
         if (isVideo(p.media_url)) params.set("video_url", p.media_url); else params.set("image_url", p.media_url);
         const j = await createContainer(igUserId, params);
-        if (!j.id) throw new Error(JSON.stringify(j).slice(0, 300));
-        containerId = j.id;
+        containerId = ensureContainerId(j, "stories");
       } else {
         const j = await createContainer(igUserId, new URLSearchParams({ access_token: token, image_url: p.media_url, caption }));
-        if (!j.id) throw new Error(JSON.stringify(j).slice(0, 300));
-        containerId = j.id;
+        containerId = ensureContainerId(j, "image");
       }
 
       if (p.dry_run) {
@@ -125,8 +152,15 @@ Deno.serve(async (req) => {
       let done = false;
       for (let i = 0; i < 5; i++) {
         const st = await containerStatus(token, containerId!);
-        if (st === "ERROR") { await patch(p.id, { status: "failed", error: "container ERROR" }); out.failed++; await tg(`❌ Автопост: ошибка обработки медиа`); done = true; break; }
-        if (st === "FINISHED" || st === "") {
+        if (st.code === "ERROR") {
+          const detail = st.detail || "неизвестная причина";
+          await patch(p.id, { status: "failed", error: `container ERROR: ${detail}`.slice(0, 500) });
+          out.failed++;
+          await tg(`❌ Автопост: ошибка обработки медиа. Причина Instagram: ${detail}`);
+          done = true;
+          break;
+        }
+        if (st.code === "FINISHED" || st.code === "") {
           const pub = await publish(igUserId, token, containerId!);
           if (pub.id) { await patch(p.id, { status: "published", container_id: containerId, published_ig_media_id: pub.id, error: null }); out.published++; await tg(`✅ Опубликован: «${caption.slice(0, 60)}…»`); done = true; break; }
         }
@@ -148,8 +182,14 @@ Deno.serve(async (req) => {
     const { igUserId, token } = account;
     if (!p.container_id) { await patch(p.id, { status: "failed", error: "нет container_id" }); out.failed++; continue; }
     const st = await containerStatus(token, p.container_id);
-    if (st === "ERROR") { await patch(p.id, { status: "failed", error: "container ERROR" }); out.failed++; await tg(`❌ Автопост: ошибка обработки медиа`); continue; }
-    if (st && st !== "FINISHED") continue;
+    if (st.code === "ERROR") {
+      const detail = st.detail || "неизвестная причина";
+      await patch(p.id, { status: "failed", error: `container ERROR: ${detail}`.slice(0, 500) });
+      out.failed++;
+      await tg(`❌ Автопост: ошибка обработки медиа. Причина Instagram: ${detail}`);
+      continue;
+    }
+    if (st.code && st.code !== "FINISHED") continue;
     const pub = await publish(igUserId, token, p.container_id);
     if (pub.id) {
       await patch(p.id, { status: "published", published_ig_media_id: pub.id, error: null });
@@ -157,7 +197,10 @@ Deno.serve(async (req) => {
       await tg(`✅ Опубликован отложенный пост: «${(p.caption ?? "").slice(0, 60)}…»`);
     } else {
       const s = JSON.stringify(pub);
-      if (!s.includes("not ready") && !s.includes("Media ID is not available")) { await patch(p.id, { status: "failed", error: s.slice(0, 500) }); out.failed++; }
+      if (!s.includes("not ready") && !s.includes("Media ID is not available")) {
+        await patch(p.id, { status: "failed", error: formatMetaError(pub).slice(0, 500) });
+        out.failed++;
+      }
     }
   }
   return Response.json(out);
