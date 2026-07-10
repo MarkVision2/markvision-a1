@@ -145,22 +145,50 @@ async function schedulerApi<T = unknown>(action: string, payload: Record<string,
   if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
   return j as T;
 }
-async function uploadToR2(file: File): Promise<string> {
+async function presignR2(filename: string, contentType: string, size: number): Promise<{ uploadUrl: string; publicUrl: string }> {
   if (!CLIENT_URL) throw new Error("VITE_CLIENT_SUPABASE_URL не задан");
   const res = await fetchWithRetry(`${CLIENT_URL}/functions/v1/r2-presign-upload`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-app-key": CLIENT_KEY },
-    body: JSON.stringify({ filename: file.name, contentType: file.type || "application/octet-stream", size: file.size }),
+    body: JSON.stringify({ filename, contentType, size }),
   });
   const j = await res.json().catch(() => ({}));
   if (!res.ok || j.error) throw new Error(j.error || `Не удалось получить ссылку для загрузки (HTTP ${res.status})`);
-  const put = await fetchWithRetry(j.uploadUrl as string, {
+  return { uploadUrl: j.uploadUrl as string, publicUrl: j.publicUrl as string };
+}
+async function uploadToR2(file: File): Promise<string> {
+  const { uploadUrl, publicUrl } = await presignR2(file.name, file.type || "application/octet-stream", file.size);
+  const put = await fetchWithRetry(uploadUrl, {
     method: "PUT",
     headers: { "Content-Type": file.type || "application/octet-stream" },
     body: file,
   });
   if (!put.ok) throw new Error(`Загрузка в хранилище не удалась (HTTP ${put.status})`);
-  return j.publicUrl as string;
+  return publicUrl;
+}
+
+// Прогоняем каждое загруженное видео через ffmpeg-нормализацию (Vercel-функция
+// api/autopost/normalize) перед публикацией: самая частая причина отказа
+// Instagram "не смог обработать медиа" (код 2207052) — атом moov в конце файла
+// вместо начала, что бывает почти у любого экспорта не через ffmpeg. Это
+// защитный слой, а не обязательное условие: если нормализация не удалась
+// (сеть, экзотический формат, файл слишком большой) — публикуем исходное
+// видео как раньше, лучше без гарантии faststart, чем вообще не опубликовать.
+async function normalizeVideoForInstagram(sourceUrl: string, contentType: string, sizeHint: number): Promise<string> {
+  try {
+    const { uploadUrl, publicUrl } = await presignR2(`normalized-${Date.now()}.mp4`, contentType || "video/mp4", sizeHint);
+    const res = await fetchWithRetry("/api/autopost/normalize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source_url: sourceUrl, upload_url: uploadUrl }),
+    });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok || j?.error) throw new Error(j?.error || `HTTP ${res.status}`);
+    return publicUrl;
+  } catch (e) {
+    console.warn("normalizeVideoForInstagram failed, publishing raw upload instead", e);
+    return sourceUrl;
+  }
 }
 
 async function uploadToBucket(file: File): Promise<string> {
@@ -846,7 +874,10 @@ function AddDialog({ day, hourReach, bestHour, projectId, hasAccount, onClose, o
     setBusy(true);
     try {
       const urls: string[] = [];
-      for (const f of files) urls.push(await uploadToBucket(f));
+      for (const f of files) {
+        const rawUrl = await uploadToBucket(f);
+        urls.push(isVideoFile(f) ? await normalizeVideoForInstagram(rawUrl, f.type, f.size) : rawUrl);
+      }
       let coverUrl: string | null = null;
       if (type === "REELS" && coverFile) coverUrl = await uploadToBucket(coverFile);
       const payload: Record<string, unknown> = {
