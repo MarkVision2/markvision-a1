@@ -1,7 +1,7 @@
 {
-  "git_sha": "bbe7ef7",
-  "git_sha_full": "bbe7ef71d470682e3c471556c166710d205dd2cc",
-  "updated_at": "2026-07-11T11:25:22Z",
-  "label": "ci: re-validate SUPABASE_ACCESS_TOKEN (owner token)",
+  "git_sha": "1241244",
+  "git_sha_full": "12412442dd6c6d5b4237e60021edc04f6dfabee2",
+  "updated_at": "2026-07-11T11:29:30Z",
+  "label": "fix(meta): safe multi-token fallback in sync/insights (no regression)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
