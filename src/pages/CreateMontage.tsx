@@ -834,7 +834,7 @@ const CreateMontage = () => {
         // авторитетен) — раньше это давало бесконечный «идёт монтаж» на
         // экране даже спустя час. Доставку и учёт полностью ведёт серверный
         // воркер (heygen_jobs), эта страница просто подтверждает отправку.
-        void enqueueAgentJob(projectId, sid, effectiveAgentPrompt.trim(), aspect);
+        void enqueueAgentJob(projectId, sid, effectiveAgentPrompt.trim(), aspect, effectiveMontageBrief.trim() || undefined);
         setAgentPrompt("");
         setMontageBrief("");
         if (briefMode === "storyboard") resetStoryboard();

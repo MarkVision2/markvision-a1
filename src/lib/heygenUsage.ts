@@ -62,12 +62,15 @@ export async function recordUsage(
 }
 
 /** Ставит веб-задачу Video Agent в очередь heygen_jobs. Серверный воркер докрутит
- *  её и запишет в «Готовый контент» со статистикой — даже если закрыть вкладку. */
+ *  её и запишет в «Готовый контент» со статистикой — даже если закрыть вкладку.
+ *  montageBrief (ТЗ на монтаж) сохраняем отдельно — воркер строит по нему
+ *  обложку и описание, а не только по сценарию озвучки. */
 export async function enqueueAgentJob(
   projectId: string,
   sessionId: string,
   script: string,
   aspect?: string,
+  montageBrief?: string,
 ): Promise<void> {
   if (!projectId || !sessionId) return;
   try {
@@ -76,6 +79,7 @@ export async function enqueueAgentJob(
       session_id: sessionId,
       source: "web",
       script: script.slice(0, 2000),
+      montage_brief: montageBrief ? montageBrief.slice(0, 4000) : null,
       aspect: aspect ?? null,
     });
   } catch {
