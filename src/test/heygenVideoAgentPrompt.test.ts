@@ -35,7 +35,7 @@ describe("generateVideoAgent prompt construction", () => {
   it("still enforces Russian-language captions regardless of montageBrief", async () => {
     await generateVideoAgent({ prompt: "Текст", montageBrief: "Стиль X" });
     const body = invoke.mock.calls.at(-1)?.[1]?.body as { agent: { prompt: string } };
-    expect(body.agent.prompt).toContain("Субтитры на русском языке обязательны");
+    expect(body.agent.prompt).toContain("Субтитры на русском языке ОБЯЗАТЕЛЬНЫ");
   });
 
   it("always requires captions to sit below center, never over the speaker's face", async () => {
@@ -43,5 +43,18 @@ describe("generateVideoAgent prompt construction", () => {
     const body = invoke.mock.calls.at(-1)?.[1]?.body as { agent: { prompt: string } };
     expect(body.agent.prompt).toContain("ниже вертикального центра");
     expect(body.agent.prompt).toContain("не закрывай им лицо говорящего");
+  });
+
+  it("requires a continuous caption track, not just occasional keyword popups", async () => {
+    await generateVideoAgent({ prompt: "Сценарий ролика" });
+    const body = invoke.mock.calls.at(-1)?.[1]?.body as { agent: { prompt: string } };
+    expect(body.agent.prompt).toContain("должны идти непрерывно на протяжении всего ролика");
+    expect(body.agent.prompt).toContain("а не замена им");
+  });
+
+  it("forbids plashka/banner text from being cut off at the frame edge", async () => {
+    await generateVideoAgent({ prompt: "Сценарий ролика" });
+    const body = invoke.mock.calls.at(-1)?.[1]?.body as { agent: { prompt: string } };
+    expect(body.agent.prompt).toContain("не должны обрезаться или выходить за границы экрана");
   });
 });
