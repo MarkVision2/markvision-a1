@@ -376,18 +376,27 @@ Deno.serve(async (req) => {
     const cabinetId = (cab as { id: string }).id;
     const projectId = ((cab as { project_id?: string }).project_id ?? null) as string | null;
 
-    // Токен кабинета (OAuth) в приоритете, иначе общий запасной.
-    const token = String((cab as { access_token?: string | null }).access_token || "").trim() || fallbackToken;
-    if (!token) {
+    // Токены: кабинетный (OAuth) → общий запасной. Дешёвым пробингом (currency)
+    // выбираем один рабочий токен на кабинет — плохой токен кабинета не ломает синк.
+    const cabTok = String((cab as { access_token?: string | null }).access_token || "").trim();
+    const candidateTokens = [...new Set([cabTok, fallbackToken].filter((t): t is string => !!t))];
+    if (candidateTokens.length === 0) {
       results.push({ cabinet_id: cabinetId, cabinet: cabName, ok: false, error: "нет Meta-токена — подключите кабинет через Facebook" });
       continue;
     }
 
     try {
-      // ---- 1. Account currency ----
-      const accountRes = await fetch(
+      // ---- 1. Account currency (+ выбор рабочего токена) ----
+      let token = candidateTokens[0];
+      let accountRes = await fetch(
         `https://graph.facebook.com/${META_API_VERSION}/${actId}?fields=currency&access_token=${encodeURIComponent(token)}`,
       );
+      for (let ti = 1; ti < candidateTokens.length && !accountRes.ok; ti++) {
+        token = candidateTokens[ti];
+        accountRes = await fetch(
+          `https://graph.facebook.com/${META_API_VERSION}/${actId}?fields=currency&access_token=${encodeURIComponent(token)}`,
+        );
+      }
       const accountJson = await accountRes.json().catch(() => ({}));
       const accountCurrency: string = (accountJson?.currency as string) ?? "USD";
 

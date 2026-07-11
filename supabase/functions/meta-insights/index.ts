@@ -149,9 +149,10 @@ Deno.serve(async (req) => {
       .or(`external_id.eq.${actId},ad_account_id.eq.${actId}`)
       .limit(1)
       .maybeSingle();
-    const token = String((cab as { access_token?: string | null } | null)?.access_token || "").trim()
-      || (await resolveMetaAccessToken({ admin }));
-    if (!token) {
+    const cabTok = String((cab as { access_token?: string | null } | null)?.access_token || "").trim();
+    const fallbackTok = await resolveMetaAccessToken({ admin });
+    const tokens = [...new Set([cabTok, fallbackTok].filter((t): t is string => !!t))];
+    if (tokens.length === 0) {
       return new Response(
         JSON.stringify({ error: "Нет Meta-токена для кабинета. Подключите его через Facebook." }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
@@ -170,24 +171,22 @@ Deno.serve(async (req) => {
       JSON.stringify({ since: range.since, until: range.until }),
     );
 
-    const apiUrl =
+    const insightsUrl = (tk: string) =>
       `https://graph.facebook.com/${META_API_VERSION}/${actId}/insights` +
-      `?fields=${fields}` +
-      `&time_range=${timeRange}` +
-      `&time_increment=1` +
-      `&level=account` +
-      `&limit=500` +
-      `&access_token=${encodeURIComponent(token)}`;
-
-    // Fetch insights + account currency in parallel
-    const accountUrl =
+      `?fields=${fields}&time_range=${timeRange}&time_increment=1&level=account&limit=500` +
+      `&access_token=${encodeURIComponent(tk)}`;
+    const currencyUrl = (tk: string) =>
       `https://graph.facebook.com/${META_API_VERSION}/${actId}` +
-      `?fields=currency&access_token=${encodeURIComponent(token)}`;
+      `?fields=currency&access_token=${encodeURIComponent(tk)}`;
 
-    const [metaResp, accountResp] = await Promise.all([
-      fetch(apiUrl),
-      fetch(accountUrl),
-    ]);
+    // Перебор токенов: кабинетный → общий запасной, берём первый рабочий.
+    let metaResp = await fetch(insightsUrl(tokens[0]));
+    let usedTok = tokens[0];
+    for (let ti = 1; ti < tokens.length && !metaResp.ok; ti++) {
+      usedTok = tokens[ti];
+      metaResp = await fetch(insightsUrl(usedTok));
+    }
+    const accountResp = await fetch(currencyUrl(usedTok));
     const metaJson = await metaResp.json();
     const accountJson = await accountResp.json().catch(() => ({}));
     if (!metaResp.ok) {

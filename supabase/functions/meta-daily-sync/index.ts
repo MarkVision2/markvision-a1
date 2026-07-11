@@ -280,25 +280,35 @@ Deno.serve(async (req) => {
       }
       const actId = normalizeActId(ext);
 
-      // Токен кабинета (OAuth) в приоритете, иначе общий запасной.
-      const token = String((cab as { access_token?: string | null }).access_token || "").trim() || fallbackToken;
-      if (!token) {
+      // Токены: сначала OAuth-токен кабинета, затем общий запасной — перебор,
+      // как в meta-creative-refresh. Плохой токен кабинета не ломает синк:
+      // берём первый, который реально отвечает.
+      const cabTok = String((cab as { access_token?: string | null }).access_token || "").trim();
+      const tokens = [...new Set([cabTok, fallbackToken].filter((t): t is string => !!t))];
+      if (tokens.length === 0) {
         results.push({ cabinet_id: cab.id, cabinet: cabName, ok: false, error: "нет Meta-токена — подключите кабинет через Facebook" });
         continue;
       }
 
       const fields = ["date_start", "spend", "impressions", "clicks", "actions", "action_values"].join(",");
       const timeRange = encodeURIComponent(JSON.stringify({ since, until }));
-      const apiUrl =
+      const insightsUrl = (tk: string) =>
         `https://graph.facebook.com/${META_API_VERSION}/${actId}/insights` +
         `?fields=${fields}&time_range=${timeRange}&time_increment=1&level=account&limit=500` +
-        `&access_token=${encodeURIComponent(token)}`;
-      const accountUrl =
+        `&access_token=${encodeURIComponent(tk)}`;
+      const currencyUrl = (tk: string) =>
         `https://graph.facebook.com/${META_API_VERSION}/${actId}` +
-        `?fields=currency&access_token=${encodeURIComponent(token)}`;
+        `?fields=currency&access_token=${encodeURIComponent(tk)}`;
 
       try {
-        const [iRes, aRes] = await Promise.all([fetchWithRetry(apiUrl), fetchWithRetry(accountUrl)]);
+        // Перебираем токены на основном запросе — первый рабочий выигрывает.
+        let iRes = await fetchWithRetry(insightsUrl(tokens[0]));
+        let usedTok = tokens[0];
+        for (let ti = 1; ti < tokens.length && !iRes.ok; ti++) {
+          usedTok = tokens[ti];
+          iRes = await fetchWithRetry(insightsUrl(usedTok));
+        }
+        const aRes = await fetchWithRetry(currencyUrl(usedTok));
         const iJson = await iRes.json();
         const aJson = await aRes.json().catch(() => ({}));
         if (!iRes.ok) {
