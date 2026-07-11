@@ -1,7 +1,7 @@
 {
-  "git_sha": "4282527",
-  "git_sha_full": "4282527ec2e576cf04cb37c0100da7aa6980b7a5",
-  "updated_at": "2026-07-11T05:29:39Z",
-  "label": "fix(creatives): persist Meta videos to Storage, try both tokens",
+  "git_sha": "9c5d587",
+  "git_sha_full": "9c5d58734622c172368ab46dc5ef6759f2e25384",
+  "updated_at": "2026-07-11T05:32:51Z",
+  "label": "fix(creatives): fall back to cover when video is unavailable",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
