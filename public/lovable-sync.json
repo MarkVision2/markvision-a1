@@ -1,7 +1,7 @@
 {
-  "git_sha": "5077cd3",
-  "git_sha_full": "5077cd3143d9e17324a9d13f59f01e9281ebff78",
-  "updated_at": "2026-07-11T10:32:02Z",
-  "label": "security(rls): scope capi_outbox and crm_stage_map to project (P0)",
+  "git_sha": "1c3ffa1",
+  "git_sha_full": "1c3ffa1bbb0a4647e3550784332ecd542921b3a0",
+  "updated_at": "2026-07-11T10:36:46Z",
+  "label": "security(db): pin search_path on public functions (P0.8)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
