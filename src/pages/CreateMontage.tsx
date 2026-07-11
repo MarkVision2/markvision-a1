@@ -549,6 +549,42 @@ function VoicePicker({
   );
 }
 
+// ── Раскадровка по кадрам для «ТЗ на монтаж» ────────────────────────────────
+// Структурированный конструктор, собирающий тот же формат markdown-раскадровки
+// (кадр → тайминг/реплика/b-roll/монтаж/текст на экране), что пользователи уже
+// присылают вручную одним куском текста — только по полям, без ручного markdown.
+interface StoryboardFrame {
+  key: string;
+  timing: string;
+  line: string; // реплика (текст для озвучки в этом кадре)
+  broll: string; // видео / b-roll
+  montage: string; // монтаж/переходы/эффекты
+  onscreen: string; // текст на экране / графика
+}
+
+function buildStoryboardBrief(theme: string, style: string, frames: StoryboardFrame[]): string {
+  const header: string[] = [];
+  if (theme.trim()) header.push(`**Тема:** ${theme.trim()}`);
+  if (style.trim()) header.push(`**Стиль:** ${style.trim()}`);
+
+  const blocks = frames.map((f, i) => {
+    const heading = `## Кадр ${i + 1}${f.timing.trim() ? ` (${f.timing.trim()})` : ""}`;
+    const parts = [heading];
+    if (f.line.trim()) parts.push(`### Текст\n> ${f.line.trim()}`);
+    if (f.broll.trim()) parts.push(`### Видео / B-roll\n${f.broll.trim()}`);
+    if (f.montage.trim()) parts.push(`### Монтаж\n${f.montage.trim()}`);
+    if (f.onscreen.trim()) parts.push(`### Текст на экране\n${f.onscreen.trim()}`);
+    return parts.join("\n\n");
+  }).filter((b) => b.split("\n\n").length > 1); // кадр без единого заполненного поля не имеет смысла
+
+  return [...header, ...blocks].join("\n\n---\n\n");
+}
+
+/** Реплики кадров по порядку — это и есть полный сценарий для озвучки. */
+function buildStoryboardScript(frames: StoryboardFrame[]): string {
+  return frames.map((f) => f.line.trim()).filter(Boolean).join("\n\n");
+}
+
 interface ClipItem {
   key: string;
   name: string;
@@ -639,6 +675,32 @@ const CreateMontage = () => {
   // не ждёт результат. agentSubmitted просто держит подтверждение на экране,
   // пока не начнут печатать новый бриф.
   const [agentSubmitted, setAgentSubmitted] = useState(false);
+
+  // ── Раскадровка по кадрам (альтернатива свободному тексту ТЗ) ──────────────
+  const [briefMode, setBriefMode] = useState<"text" | "storyboard">("text");
+  const [storyboardTheme, setStoryboardTheme] = useState("");
+  const [storyboardStyle, setStoryboardStyle] = useState("");
+  const frameKeyRef = useRef(0);
+  const newFrame = (): StoryboardFrame => ({ key: `f${frameKeyRef.current++}`, timing: "", line: "", broll: "", montage: "", onscreen: "" });
+  const [frames, setFrames] = useState<StoryboardFrame[]>(() => [newFrame()]);
+  const updateFrame = (key: string, patch: Partial<StoryboardFrame>) => {
+    setFrames((prev) => prev.map((f) => (f.key === key ? { ...f, ...patch } : f)));
+    setAgentSubmitted(false);
+  };
+  const addFrame = () => setFrames((prev) => [...prev, newFrame()]);
+  const removeFrame = (key: string) => setFrames((prev) => (prev.length > 1 ? prev.filter((f) => f.key !== key) : prev));
+  const resetStoryboard = () => { setStoryboardTheme(""); setStoryboardStyle(""); setFrames([newFrame()]); };
+
+  // Собранные из раскадровки текст-сценарий и ТЗ на монтаж — источник истины,
+  // когда briefMode === "storyboard"; в режиме свободного текста работают
+  // обычные agentPrompt/montageBrief без изменений.
+  const storyboardScript = useMemo(() => buildStoryboardScript(frames), [frames]);
+  const storyboardBrief = useMemo(
+    () => buildStoryboardBrief(storyboardTheme, storyboardStyle, frames),
+    [storyboardTheme, storyboardStyle, frames],
+  );
+  const effectiveAgentPrompt = briefMode === "storyboard" ? storyboardScript : agentPrompt;
+  const effectiveMontageBrief = briefMode === "storyboard" ? storyboardBrief : montageBrief;
 
   // Каталог аватаров/голосов нужен всем режимам кроме «шаблона».
   const needsCatalog = mode !== "template";
@@ -788,9 +850,9 @@ const CreateMontage = () => {
   // директивы (язык/субтитры/формат) добавляют ~450 — оставляем запас, чтобы
   // не упереться в 400 от HeyGen на длинной раскадровке (ТЗ + сценарий).
   const MAX_AGENT_INPUT_CHARS = 9000;
-  const agentInputLength = agentPrompt.trim().length + montageBrief.trim().length;
+  const agentInputLength = effectiveAgentPrompt.trim().length + effectiveMontageBrief.trim().length;
   const agentInputTooLong = agentInputLength > MAX_AGENT_INPUT_CHARS;
-  const canSubmitAgent = agentPrompt.trim().length > 0 && !agentInputTooLong;
+  const canSubmitAgent = effectiveAgentPrompt.trim().length > 0 && !agentInputTooLong;
   const canSubmitTemplate = !!templateId;
   const canSubmitClips =
     !!avatarRef && !!voiceId && clips.length > 0 &&
@@ -808,20 +870,21 @@ const CreateMontage = () => {
     try {
       if (mode === "agent") {
         const sid = await generateVideoAgent({
-          prompt: agentPrompt.trim(),
+          prompt: effectiveAgentPrompt.trim(),
           avatar: avatarRef ?? undefined,
           voiceId: voiceId || undefined,
           aspect,
-          montageBrief: montageBrief.trim() || undefined,
+          montageBrief: effectiveMontageBrief.trim() || undefined,
         });
         // Fire-and-forget: HeyGen-сессия статуса session-level ненадёжна
         // (бывает «failed», пока видео ещё рендерится, и только видео-статус
         // авторитетен) — раньше это давало бесконечный «идёт монтаж» на
         // экране даже спустя час. Доставку и учёт полностью ведёт серверный
         // воркер (heygen_jobs), эта страница просто подтверждает отправку.
-        void enqueueAgentJob(projectId, sid, agentPrompt.trim(), aspect);
+        void enqueueAgentJob(projectId, sid, effectiveAgentPrompt.trim(), aspect);
         setAgentPrompt("");
         setMontageBrief("");
+        if (briefMode === "storyboard") resetStoryboard();
         setAgentSubmitted(true);
         toast.success("ТЗ отправлено в HeyGen. Готовое видео появится во вкладке «Готовые».");
       } else if (mode === "template") {
@@ -951,32 +1014,137 @@ const CreateMontage = () => {
               </div>
             )}
 
-            <section>
-              <label className="mb-2 block text-sm font-semibold">
-                ТЗ на монтаж <span className="text-xs font-normal text-muted-foreground">— необязательно</span>
-              </label>
-              <Textarea
-                value={montageBrief}
-                onChange={(e) => { setMontageBrief(e.target.value); setAgentSubmitted(false); }}
-                rows={3}
-                placeholder="Напр.: футбольная тематика — набор учеников на футбол, вставки с тренировками и матчами, динамичный монтаж в стиле спортивных роликов…"
-                className="resize-y"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Опишите тему/стиль/вставки для монтажа. Пусто — используется монтаж по умолчанию (как сейчас); если заполнено — это ТЗ в приоритете.
-                Поддерживается развёрнутая раскадровка markdown (кадры, тайминги, реплики, b-roll, эффекты) — можно вставлять целиком.
-              </p>
-            </section>
-            <section>
-              <label className="mb-2 block text-sm font-semibold">Текст / сценарий</label>
-              <Textarea
-                value={agentPrompt}
-                onChange={(e) => { setAgentPrompt(e.target.value); setAgentSubmitted(false); }}
-                rows={7}
-                placeholder="Напр.: Сделай ролик на 45 секунд о запуске нашего продукта, дружелюбный тон, вертикальный формат для Reels…"
-                className="resize-y"
-              />
-              <p className={cn("mt-1 text-xs", agentInputTooLong ? "font-medium text-destructive" : "text-muted-foreground")}>
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-semibold">ТЗ на монтаж и сценарий</label>
+                <div className="flex items-center gap-1 rounded-lg border border-border/60 p-0.5 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setBriefMode("text")}
+                    className={cn("rounded-md px-2 py-1 font-medium transition", briefMode === "text" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+                  >
+                    Свободный текст
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBriefMode("storyboard")}
+                    className={cn("rounded-md px-2 py-1 font-medium transition", briefMode === "storyboard" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}
+                  >
+                    По кадрам
+                  </button>
+                </div>
+              </div>
+
+              {briefMode === "text" ? (
+                <>
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold">
+                      ТЗ на монтаж <span className="text-xs font-normal text-muted-foreground">— необязательно</span>
+                    </label>
+                    <Textarea
+                      value={montageBrief}
+                      onChange={(e) => { setMontageBrief(e.target.value); setAgentSubmitted(false); }}
+                      rows={3}
+                      placeholder="Напр.: футбольная тематика — набор учеников на футбол, вставки с тренировками и матчами, динамичный монтаж в стиле спортивных роликов…"
+                      className="resize-y"
+                    />
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Опишите тему/стиль/вставки для монтажа. Пусто — используется монтаж по умолчанию (как сейчас); если заполнено — это ТЗ в приоритете.
+                      Поддерживается развёрнутая раскадровка markdown (кадры, тайминги, реплики, b-roll, эффекты) — можно вставлять целиком.
+                    </p>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-semibold">Текст / сценарий</label>
+                    <Textarea
+                      value={agentPrompt}
+                      onChange={(e) => { setAgentPrompt(e.target.value); setAgentSubmitted(false); }}
+                      rows={7}
+                      placeholder="Напр.: Сделай ролик на 45 секунд о запуске нашего продукта, дружелюбный тон, вертикальный формат для Reels…"
+                      className="resize-y"
+                    />
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-4">
+                  <p className="rounded-lg border border-border/50 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
+                    Опишите ролик по кадрам: тема/стиль — один раз сверху, дальше каждый кадр — реплика для озвучки, видеоряд/b-roll, монтаж, текст на экране.
+                    Сценарий и ТЗ на монтаж соберутся из этих полей автоматически.
+                  </p>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <Input
+                      value={storyboardTheme}
+                      onChange={(e) => { setStoryboardTheme(e.target.value); setAgentSubmitted(false); }}
+                      placeholder="Тема ролика (напр.: набор учеников на футбол)"
+                    />
+                    <Input
+                      value={storyboardStyle}
+                      onChange={(e) => { setStoryboardStyle(e.target.value); setAgentSubmitted(false); }}
+                      placeholder="Стиль/темп (напр.: динамичный, премиальный)"
+                    />
+                  </div>
+
+                  <div className="space-y-3">
+                    {frames.map((f, i) => (
+                      <div key={f.key} className="space-y-2 rounded-xl border border-border/60 bg-card/40 p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Кадр {i + 1}</span>
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={f.timing}
+                              onChange={(e) => updateFrame(f.key, { timing: e.target.value })}
+                              placeholder="0:00–0:03"
+                              className="h-7 w-28 text-xs"
+                            />
+                            {frames.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeFrame(f.key)}
+                                title="Удалить кадр"
+                                className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        <Textarea
+                          value={f.line}
+                          onChange={(e) => updateFrame(f.key, { line: e.target.value })}
+                          rows={2}
+                          placeholder="Реплика — текст для озвучки в этом кадре"
+                          className="resize-y text-sm"
+                        />
+                        <Textarea
+                          value={f.broll}
+                          onChange={(e) => updateFrame(f.key, { broll: e.target.value })}
+                          rows={2}
+                          placeholder="Видео / b-roll в этом кадре"
+                          className="resize-y text-sm"
+                        />
+                        <Textarea
+                          value={f.montage}
+                          onChange={(e) => updateFrame(f.key, { montage: e.target.value })}
+                          rows={2}
+                          placeholder="Монтаж / переходы / эффекты"
+                          className="resize-y text-sm"
+                        />
+                        <Input
+                          value={f.onscreen}
+                          onChange={(e) => updateFrame(f.key, { onscreen: e.target.value })}
+                          placeholder="Текст на экране / графика"
+                          className="text-sm"
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={addFrame}>
+                    <Plus className="h-4 w-4" /> Добавить кадр
+                  </Button>
+                </div>
+              )}
+
+              <p className={cn("text-xs", agentInputTooLong ? "font-medium text-destructive" : "text-muted-foreground")}>
                 Сценарий + ТЗ на монтаж: {agentInputLength} / {MAX_AGENT_INPUT_CHARS} символов
                 {agentInputTooLong && " — слишком длинно, HeyGen отклонит запрос. Сократите текст."}
               </p>
