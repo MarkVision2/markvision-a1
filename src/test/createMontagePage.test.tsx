@@ -155,4 +155,34 @@ describe("CreateMontage page", () => {
     // Поле ТЗ на монтаж тоже очищается после отправки, как и сценарий.
     await waitFor(() => expect(screen.getByPlaceholderText(/футбольная тематика/)).toHaveValue(""));
   });
+
+  it("принимает длинную раскадровку в ТЗ на монтаж (в пределах лимита HeyGen)", async () => {
+    renderPage();
+    // Реальная раскадровка на несколько кадров с таймингами, репликами и
+    // b-roll — HeyGen Video Agent допускает промпт до 10 000 символов, наш
+    // запас — 9000 на сценарий+ТЗ, чтобы не упереться в отказ HeyGen.
+    const storyboard = "# ТЗ на монтаж Reels\n" + "Кадр: реплика, b-roll, монтаж, эффект.\n".repeat(150);
+    expect(storyboard.length).toBeGreaterThan(3000);
+    expect(storyboard.length).toBeLessThan(9000);
+
+    fireEvent.change(screen.getByPlaceholderText(/футбольная тематика/), { target: { value: storyboard } });
+    fireEvent.change(screen.getByPlaceholderText(/45 секунд/), { target: { value: "Сценарий" } });
+    const submit = screen.getByRole("button", { name: /Собрать видео/ });
+    expect(submit).not.toBeDisabled();
+
+    fireEvent.click(submit);
+    await waitFor(() =>
+      expect(generateVideoAgent).toHaveBeenCalledWith(
+        expect.objectContaining({ prompt: "Сценарий", montageBrief: storyboard.trim() }),
+      ),
+    );
+  });
+
+  it("блокирует отправку и предупреждает, если сценарий + ТЗ превышают лимит", async () => {
+    renderPage();
+    const tooLong = "x".repeat(9500);
+    fireEvent.change(screen.getByPlaceholderText(/45 секунд/), { target: { value: tooLong } });
+    expect(screen.getByText(/слишком длинно, HeyGen отклонит запрос/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Собрать видео/ })).toBeDisabled();
+  });
 });
