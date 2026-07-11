@@ -1,7 +1,7 @@
 {
-  "git_sha": "897c0fe",
-  "git_sha_full": "897c0febc2308ebb08f27ed9301dab596e114217",
-  "updated_at": "2026-07-11T11:13:16Z",
-  "label": "ci: re-run supabase deploy to validate access token",
+  "git_sha": "bbe7ef7",
+  "git_sha_full": "bbe7ef71d470682e3c471556c166710d205dd2cc",
+  "updated_at": "2026-07-11T11:25:22Z",
+  "label": "ci: re-validate SUPABASE_ACCESS_TOKEN (owner token)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
