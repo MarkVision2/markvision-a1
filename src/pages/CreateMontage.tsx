@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import {
-  AlertTriangle, Check, CheckCircle2, Clapperboard, Download, Film, Loader2, Pause, Play, Plus, Search,
-  Sparkles, Star, Upload, UserRound, Video, Volume2, X, Zap,
+  AlertTriangle, Check, CheckCircle2, Clapperboard, Download, Film, Lock, Loader2, Pause, Play, Plus, Search,
+  Sparkles, Star, Unlock, Upload, UserRound, Video, Volume2, X, Zap,
 } from "lucide-react";
 import Header from "@/components/factory/Header";
 import { AspectRatioPicker } from "@/components/factory/AspectRatioPicker";
@@ -27,6 +27,7 @@ import {
   type HeygenAvatar, type HeygenTemplate, type HeygenVideoStatus, type HeygenVoice,
   type TemplateVariable,
 } from "@/hooks/useHeygen";
+import { assignAvatarToProject, fetchAllAvatarAssignments, unassignAvatar, type AvatarKind } from "@/lib/heygenAvatarAssignments";
 
 // Кнопка «по умолчанию» для аватара / голоса / шаблона.
 function DefaultStar({ on, onClick }: { on: boolean; onClick: () => void }) {
@@ -60,8 +61,10 @@ const DIMENSIONS: Record<AspectId, { width: number; height: number }> = {
 const isTerminal = (s?: string) => s === "completed" || s === "failed";
 
 // ── Карточка аватара (видео при наведении) ──────────────────────────────────
+type AvatarAssignState = "none" | "mine" | "other";
+
 function AvatarCard({
-  a, active, onSelect, manage, hidden, onToggleHide,
+  a, active, onSelect, manage, hidden, onToggleHide, assignState, onToggleAssign,
 }: {
   a: HeygenAvatar;
   active: boolean;
@@ -69,6 +72,8 @@ function AvatarCard({
   manage?: boolean;
   hidden?: boolean;
   onToggleHide?: () => void;
+  assignState?: AvatarAssignState;
+  onToggleAssign?: () => void;
 }) {
   const [hover, setHover] = useState(false);
   return (
@@ -97,6 +102,14 @@ function AvatarCard({
               <Check className="h-3.5 w-3.5" />
             </span>
           )}
+          {!manage && assignState === "mine" && (
+            <span
+              title="Закреплён только за этим проектом"
+              className="absolute left-1.5 top-1.5 grid h-5 w-5 place-items-center rounded-full bg-primary/90 text-primary-foreground"
+            >
+              <Lock className="h-3 w-3" />
+            </span>
+          )}
         </div>
         <div className="truncate p-2 text-xs font-medium">{a.name}</div>
       </button>
@@ -111,6 +124,25 @@ function AvatarCard({
           )}
         >
           {hidden ? <Plus className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+        </button>
+      )}
+      {manage && onToggleAssign && (
+        <button
+          type="button"
+          onClick={onToggleAssign}
+          title={
+            assignState === "mine" ? "Открепить от этого проекта (снова станет общим)"
+              : assignState === "other" ? "Закреплён за другим проектом — нажмите, чтобы перепривязать сюда"
+                : "Закрепить только за этим проектом (скроется у остальных)"
+          }
+          className={cn(
+            "absolute left-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full border text-white shadow",
+            assignState === "mine" ? "border-primary bg-primary/80"
+              : assignState === "other" ? "border-warning/60 bg-warning/80"
+                : "border-white/30 bg-black/60 hover:bg-primary",
+          )}
+        >
+          {assignState === "mine" ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
         </button>
       )}
     </div>
@@ -144,7 +176,7 @@ function SelectedAvatar({ a }: { a: HeygenAvatar }) {
 
 // ── Пикер аватара ───────────────────────────────────────────────────────────
 function AvatarPicker({
-  query, selected, onSelect, optional, isDefault, onToggleDefault, projectId,
+  query, selected, onSelect, optional, isDefault, onToggleDefault, projectId, assignments,
 }: {
   query: UseQueryResult<HeygenAvatar[]>;
   selected: HeygenAvatar | null;
@@ -153,16 +185,43 @@ function AvatarPicker({
   isDefault?: boolean;
   onToggleDefault?: () => void;
   projectId: string;
+  // avatar_kind:avatar_id → project_id, по всем проектам, видимым пользователю.
+  assignments: Map<string, string>;
 }) {
+  const queryClient = useQueryClient();
   const [manage, setManage] = useState(false);
   const [hidden, setHidden] = useState<string[]>(() => loadHidden("avatars", projectId));
   useEffect(() => { setHidden(loadHidden("avatars", projectId)); }, [projectId]);
   const hiddenSet = new Set(hidden);
   const toggleHide = (id: string) => setHidden(toggleHidden("avatars", projectId, id));
 
+  const assignStateOf = (a: HeygenAvatar): AvatarAssignState => {
+    const owner = assignments.get(`${a.kind}:${a.id}`);
+    if (!owner) return "none";
+    return owner === projectId ? "mine" : "other";
+  };
+  const invalidateAssignments = () => queryClient.invalidateQueries({ queryKey: ["project-avatar-assignments"] });
+  const handleToggleAssign = async (a: HeygenAvatar) => {
+    const state = assignStateOf(a);
+    try {
+      if (state === "mine") {
+        await unassignAvatar(a.id, a.kind);
+        toast.success("Аватар откреплён — снова общий для всех проектов");
+      } else {
+        if (state === "other" && !confirm("Этот аватар сейчас закреплён за другим проектом. Перепривязать его к текущему проекту?")) return;
+        await assignAvatarToProject(projectId, a.id, a.kind as AvatarKind);
+        toast.success("Аватар закреплён только за этим проектом");
+      }
+      invalidateAssignments();
+    } catch (e) {
+      toast.error((e as Error).message || "Не удалось изменить привязку аватара");
+    }
+  };
+
   const raw = query.data ?? [];
-  // В обычном режиме скрытые не показываем; в «Управлять» — показываем все.
-  const all = manage ? raw : raw.filter((a) => !hiddenSet.has(a.id));
+  // В обычном режиме скрытые и закреплённые за другим проектом не показываем;
+  // в «Управлять» — показываем всё (там же можно перепривязать чужой аватар).
+  const all = manage ? raw : raw.filter((a) => !hiddenSet.has(a.id) && assignStateOf(a) !== "other");
   const mine = all.filter((a) => a.mine);
   const heygenAvatars = all.filter((a) => !a.mine);
   const hiddenCount = raw.filter((a) => hiddenSet.has(a.id)).length;
@@ -176,6 +235,8 @@ function AvatarPicker({
       manage={manage}
       hidden={hiddenSet.has(a.id)}
       onToggleHide={() => toggleHide(a.id)}
+      assignState={assignStateOf(a)}
+      onToggleAssign={() => void handleToggleAssign(a)}
     />
   );
 
@@ -205,7 +266,8 @@ function AvatarPicker({
 
       {manage && (
         <p className="rounded-lg border border-border/50 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
-          Нажмите ✕ на карточке, чтобы скрыть аватар из списка, или + чтобы вернуть. Из HeyGen ничего не удаляется.
+          ✕ — скрыть аватар из списка, + — вернуть (из HeyGen ничего не удаляется).
+          🔒 слева — закрепить аватар только за этим проектом (исчезнет у остальных); 🔓 — открепить обратно в общий список.
         </p>
       )}
 
@@ -571,6 +633,14 @@ const CreateMontage = () => {
   // Каталог аватаров/голосов нужен всем режимам кроме «шаблона».
   const needsCatalog = mode !== "template";
   const avatarsQ = useQuery({ queryKey: ["heygen-avatars"], queryFn: fetchAvatars, staleTime: 300_000, enabled: needsCatalog });
+  // Эксклюзивные привязки аватар→проект (project_avatars) — общие для всех
+  // проектов, видимых пользователю, не зависят от активного projectId.
+  const avatarAssignmentsQ = useQuery({
+    queryKey: ["project-avatar-assignments"],
+    queryFn: fetchAllAvatarAssignments,
+    staleTime: 60_000,
+    enabled: needsCatalog,
+  });
   const voicesQ = useQuery({ queryKey: ["heygen-voices"], queryFn: fetchVoices, staleTime: 300_000, enabled: needsCatalog });
   const templatesQ = useQuery({
     queryKey: ["heygen-templates"], queryFn: fetchTemplates, staleTime: 300_000, enabled: mode === "template",
@@ -861,7 +931,7 @@ const CreateMontage = () => {
                 {agentInputTooLong && " — слишком длинно, HeyGen отклонит запрос. Сократите текст."}
               </p>
             </section>
-            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} optional isDefault={avatarIsDefault} onToggleDefault={toggleDefaultAvatar} projectId={projectId} />
+            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} optional isDefault={avatarIsDefault} onToggleDefault={toggleDefaultAvatar} projectId={projectId} assignments={avatarAssignmentsQ.data ?? new Map()} />
             <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} optional isDefault={voiceIsDefault} onToggleDefault={toggleDefaultVoice} projectId={projectId} />
           </TabsContent>
 
@@ -965,7 +1035,7 @@ const CreateMontage = () => {
 
           {/* Готовые клипы */}
           <TabsContent value="clips" className="mt-6 space-y-6 focus-visible:outline-none">
-            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} isDefault={avatarIsDefault} onToggleDefault={toggleDefaultAvatar} projectId={projectId} />
+            <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} isDefault={avatarIsDefault} onToggleDefault={toggleDefaultAvatar} projectId={projectId} assignments={avatarAssignmentsQ.data ?? new Map()} />
             <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} isDefault={voiceIsDefault} onToggleDefault={toggleDefaultVoice} projectId={projectId} />
 
             <section>
