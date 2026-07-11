@@ -76,3 +76,4 @@ jobs:
         run: echo "::warning::SUPABASE_DB_PASSWORD not set — edge functions deployed, DB migrations skipped. Add the secret in GitHub → Settings → Secrets → Actions to enable migrations."
 
 # redeploy trigger: validate SUPABASE_ACCESS_TOKEN privileges
+# retry after owner-token update
