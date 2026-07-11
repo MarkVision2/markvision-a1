@@ -1,7 +1,7 @@
 {
-  "git_sha": "c12ad0c",
-  "git_sha_full": "c12ad0cc6907f7846ecb4185e4ce2b84633006ab",
-  "updated_at": "2026-07-11T12:26:12Z",
-  "label": "Let a project exclusively claim a HeyGen avatar, hidden from other projects",
+  "git_sha": "12407eb",
+  "git_sha_full": "12407eb36d08a8d3b8789152c19e8f1452037de7",
+  "updated_at": "2026-07-11T15:34:02Z",
+  "label": "Add a structured frame-by-frame storyboard builder for the montage brief",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
