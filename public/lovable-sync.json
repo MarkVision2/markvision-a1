@@ -1,7 +1,7 @@
 {
-  "git_sha": "622efad",
-  "git_sha_full": "622efad4bdae4ef9c339d2edec1ecf98e5e12c90",
-  "updated_at": "2026-07-11T16:09:38Z",
-  "label": "Guarantee HeyGen Telegram delivery and stop captions covering the face",
+  "git_sha": "7772525",
+  "git_sha_full": "77725251bc19b997d14ac11c78ccb4db431a5473",
+  "updated_at": "2026-07-11T16:26:37Z",
+  "label": "Base cover + description on the montage brief (TZ), not just the script",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
