@@ -134,4 +134,25 @@ describe("CreateMontage page", () => {
     expect(screen.getByPlaceholderText(/45 секунд/)).toHaveValue("");
     expect(screen.queryByText("Готово")).not.toBeInTheDocument();
   });
+
+  it("передаёт отдельное ТЗ на монтаж в generateVideoAgent, не смешивая со сценарием", async () => {
+    renderPage();
+    fireEvent.change(screen.getByPlaceholderText(/футбольная тематика/), {
+      target: { value: "футбольная тематика, вставки с тренировками" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/45 секунд/), {
+      target: { value: "Набор учеников на футбол" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /Собрать видео/ }));
+    await waitFor(() =>
+      expect(generateVideoAgent).toHaveBeenCalledWith(
+        expect.objectContaining({
+          prompt: "Набор учеников на футбол",
+          montageBrief: "футбольная тематика, вставки с тренировками",
+        }),
+      ),
+    );
+    // Поле ТЗ на монтаж тоже очищается после отправки, как и сценарий.
+    await waitFor(() => expect(screen.getByPlaceholderText(/футбольная тематика/)).toHaveValue(""));
+  });
 });

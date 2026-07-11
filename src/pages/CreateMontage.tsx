@@ -530,6 +530,7 @@ const CreateMontage = () => {
   const [aspect, setAspect] = useState<AspectId>("9:16");
 
   const [agentPrompt, setAgentPrompt] = useState("");
+  const [montageBrief, setMontageBrief] = useState("");
   const [selectedAvatar, setSelectedAvatar] = useState<HeygenAvatar | null>(null);
   const [voiceId, setVoiceId] = useState("");
   const [templateId, setTemplateId] = useState("");
@@ -735,6 +736,7 @@ const CreateMontage = () => {
           avatar: avatarRef ?? undefined,
           voiceId: voiceId || undefined,
           aspect,
+          montageBrief: montageBrief.trim() || undefined,
         });
         // Fire-and-forget: HeyGen-сессия статуса session-level ненадёжна
         // (бывает «failed», пока видео ещё рендерится, и только видео-статус
@@ -743,6 +745,7 @@ const CreateMontage = () => {
         // воркер (heygen_jobs), эта страница просто подтверждает отправку.
         void enqueueAgentJob(projectId, sid, agentPrompt.trim(), aspect);
         setAgentPrompt("");
+        setMontageBrief("");
         setAgentSubmitted(true);
         toast.success("ТЗ отправлено в HeyGen. Готовое видео появится во вкладке «Готовые».");
       } else if (mode === "template") {
@@ -856,6 +859,7 @@ const CreateMontage = () => {
           <TabsContent value="agent" className="mt-6 space-y-6 focus-visible:outline-none">
             <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
               Вставьте текст или бриф — HeyGen сам соберёт сцены, б-ролл, субтитры и смонтирует видео.
+              «ТЗ на монтаж» ниже — по желанию: опишите тему/стиль/вставки, если хотите не дефолтный монтаж, а под конкретную тематику.
               Аватар и голос ниже — по желанию: не выберете, агент подберёт сам.
             </div>
 
@@ -871,6 +875,21 @@ const CreateMontage = () => {
               </div>
             )}
 
+            <section>
+              <label className="mb-2 block text-sm font-semibold">
+                ТЗ на монтаж <span className="text-xs font-normal text-muted-foreground">— необязательно</span>
+              </label>
+              <Textarea
+                value={montageBrief}
+                onChange={(e) => { setMontageBrief(e.target.value); setAgentSubmitted(false); }}
+                rows={3}
+                placeholder="Напр.: футбольная тематика — набор учеников на футбол, вставки с тренировками и матчами, динамичный монтаж в стиле спортивных роликов…"
+                className="resize-y"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Опишите тему/стиль/вставки для монтажа. Пусто — используется монтаж по умолчанию (как сейчас); если заполнено — это ТЗ в приоритете.
+              </p>
+            </section>
             <section>
               <label className="mb-2 block text-sm font-semibold">Текст / сценарий</label>
               <Textarea
