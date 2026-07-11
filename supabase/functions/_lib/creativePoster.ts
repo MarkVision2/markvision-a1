@@ -50,6 +50,61 @@ export function isSupabasePosterUrl(url: string): boolean {
   return /creative-posters/i.test(url) || /supabase\.co\/storage/i.test(url);
 }
 
+export function isSupabaseVideoUrl(url: string): boolean {
+  return /creative-videos/i.test(url);
+}
+
+/**
+ * Скачивает mp4 с Meta CDN (fbcdn) и кладёт в бакет creative-videos, возвращает
+ * постоянный публичный URL. fbcdn-ссылки истекают и режутся по Referer в браузере —
+ * поэтому храним видео у себя, как постеры. Большие файлы (>200MB) пропускаем.
+ */
+export async function uploadVideoFromUrl(
+  admin: SupabaseClient,
+  adId: string,
+  cabinetId: string | null | undefined,
+  videoUrl: string,
+): Promise<string | null> {
+  try {
+    const head = await fetch(videoUrl, { method: "GET", redirect: "follow" });
+    if (!head.ok) return null;
+    const lenHeader = head.headers.get("content-length");
+    const declared = lenHeader ? Number(lenHeader) : 0;
+    if (declared && declared > 200_000_000) return null; // >200MB — не тянем в память
+
+    const contentType = head.headers.get("content-type") ?? "video/mp4";
+    const buf = new Uint8Array(await head.arrayBuffer());
+    if (buf.byteLength < 10_000 || buf.byteLength > 200_000_000) return null;
+
+    const ext = contentType.includes("quicktime") ? "mov" : contentType.includes("webm") ? "webm" : "mp4";
+    const path = `${cabinetId ?? "shared"}/${adId}.${ext}`;
+    const { error: upErr } = await admin.storage.from("creative-videos").upload(path, buf, {
+      contentType: contentType.startsWith("video/") ? contentType : "video/mp4",
+      cacheControl: "604800",
+      upsert: true,
+    });
+    if (upErr) return null;
+
+    const { data: pub } = admin.storage.from("creative-videos").getPublicUrl(path);
+    return pub.publicUrl;
+  } catch {
+    return null;
+  }
+}
+
+/** Если video_url ещё не в нашем Storage — заливает и возвращает постоянный URL. */
+export async function ensureVideoInStorage(
+  admin: SupabaseClient,
+  adId: string,
+  cabinetId: string | null | undefined,
+  existingVideoUrl: string | null | undefined,
+  remoteVideoUrl: string | null | undefined,
+): Promise<string | null> {
+  if (existingVideoUrl && isSupabaseVideoUrl(existingVideoUrl)) return existingVideoUrl;
+  if (!remoteVideoUrl) return null;
+  return await uploadVideoFromUrl(admin, adId, cabinetId, remoteVideoUrl);
+}
+
 /** Скачивает изображение с Meta CDN и кладёт в creative-posters. */
 export async function uploadPosterFromUrl(
   admin: SupabaseClient,
