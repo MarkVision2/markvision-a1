@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { useCapiHealth } from "@/hooks/useCapiHealth";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -89,9 +90,17 @@ interface Props {
 
 export function ProjectSwitcher({ collapsed }: Props) {
   const { projects, active, activeId, loadError, setActive, removeProject } = useProjectsStore();
+  const capi = useCapiHealth(activeId);
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
+
+  // Статус CAPI: сбой (красный) > работает (зелёный) > не подключён (без точки).
+  const capiDot = capi.failed > 0
+    ? { cls: "bg-destructive", ping: true, title: `CAPI: ${capi.failed} событий не ушло в Meta — проверьте токен` }
+    : capi.configured
+      ? { cls: "bg-success", ping: true, title: "CAPI подключён и активен" }
+      : null;
 
   return (
     <>
@@ -101,8 +110,19 @@ export function ProjectSwitcher({ collapsed }: Props) {
             type="button"
             className="flex w-full items-center gap-3 rounded-xl border border-border/60 bg-card/60 p-2.5 text-left transition-colors hover:bg-card"
           >
-            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-success/20 text-base font-bold text-success ring-1 ring-success/40">
+            <span className="relative grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-success/20 text-base font-bold text-success ring-1 ring-success/40">
               {active?.initials ?? "PR"}
+              {capiDot && (
+                <span
+                  title={capiDot.title}
+                  className="absolute -right-0.5 -top-0.5 flex h-2.5 w-2.5"
+                >
+                  {capiDot.ping && (
+                    <span className={cn("absolute inline-flex h-full w-full animate-ping rounded-full opacity-75", capiDot.cls)} />
+                  )}
+                  <span className={cn("relative inline-flex h-2.5 w-2.5 rounded-full ring-2 ring-card", capiDot.cls)} />
+                </span>
+              )}
             </span>
             {!collapsed && (
               <>

@@ -194,6 +194,8 @@ export function CapiSettings() {
     (statusFilter === "all" || r.status === statusFilter)
   ), [outbox, eventFilter, statusFilter]);
 
+  const failedError = useMemo(() => outbox.find((r) => r.status === "failed")?.last_error ?? null, [outbox]);
+
   // Готовность: пиксель обязателен. Токен — свой у кабинета ИЛИ общий подключённый Meta
   // (его наличие проверяется на сервере кнопкой «Проверить связь»), поэтому не требуем его тут.
   const pixelReady = !!(pixelId.trim() || cabinet?.pixel_id);
@@ -361,6 +363,17 @@ export function CapiSettings() {
             </div>
           </div>
         </Card>
+      )}
+
+      {/* Предупреждение о сбоях доставки (например, протух токен) */}
+      {outboxStats.failed > 0 && (
+        <Alert variant="destructive">
+          <AlertDescription className="text-xs">
+            <b>{outboxStats.failed} событий не ушло в Meta.</b>{" "}
+            {failedError ? `Причина: ${failedError}.` : ""} Обычно это истёкший или неверный токен —
+            проверьте подключение и нажмите «Проверить связь». После починки события переотправятся автоматически.
+          </AlertDescription>
+        </Alert>
       )}
 
       {/* ── 1. Подключение ── */}
