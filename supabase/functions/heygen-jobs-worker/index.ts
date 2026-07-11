@@ -118,7 +118,7 @@ Deno.serve(async (req) => {
 
   const { data: jobs } = await admin
     .from("heygen_jobs")
-    .select("id, project_id, chat_id, session_id, script, source, created_at, updated_at, video_url")
+    .select("id, project_id, chat_id, session_id, script, montage_brief, source, created_at, updated_at, video_url")
     .eq("delivered", false)
     .order("created_at", { ascending: true })
     .limit(BATCH);
@@ -133,15 +133,26 @@ Deno.serve(async (req) => {
     return (link?.chat_id as string | undefined) ?? null;
   }
 
-  // Обложка + описание по сценарию через n8n Clony. В чат шлём, только если он есть —
-  // но cover/desc всё равно возвращаем для записи в галерею.
-  async function sendAssets(chatId: string | null, script: string | null, projectId: string | null) {
-    if (!script) return { cover: null, desc: null };
+  // Обложка + описание по ТЗ на монтаж (не только по сценарию озвучки) через
+  // n8n Clony. ТЗ описывает тему/стиль ролика — обложка и описание должны
+  // строиться именно по нему, сценарий сам по себе часто нейтрален. В чат
+  // шлём, только если он есть — но cover/desc всё равно возвращаем для записи
+  // в галерею.
+  async function sendAssets(
+    chatId: string | null, script: string | null, projectId: string | null, montageBrief: string | null,
+  ) {
+    if (!script && !montageBrief) return { cover: null, desc: null };
+    const briefedScript = montageBrief
+      ? `${script ?? ""}\n\nТЗ на монтаж (тема и стиль ролика — используй это как основу для обложки и описания): ${montageBrief}`
+      : (script ?? "");
     try {
       const res = await fetch(N8N_WEBHOOK, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ source: "heygen_montage", type: "video_assets", script, project_id: projectId }),
+        body: JSON.stringify({
+          source: "heygen_montage", type: "video_assets",
+          script: briefedScript, montage_brief: montageBrief ?? null, project_id: projectId,
+        }),
         signal: AbortSignal.timeout(60_000),
       });
       const a = await res.json().catch(() => ({}));
@@ -226,7 +237,7 @@ Deno.serve(async (req) => {
           // Первый раз видим это видео — обложка/описание и списание расхода
           // фиксируются один раз, независимо от исхода отправки в Telegram
           // (при неудаче ниже повторяем только саму отправку, не задваивая это).
-          const assets = await sendAssets(chatId, job.script, job.project_id);
+          const assets = await sendAssets(chatId, job.script, job.project_id, job.montage_brief ?? null);
           const durRaw = (meta.duration ?? meta.duration_sec) as number | undefined;
           const durationSec = typeof durRaw === "number" ? durRaw : null;
           const cost = durationSec ? Math.round((durationSec / 60) * 2 * 100) / 100 : null;

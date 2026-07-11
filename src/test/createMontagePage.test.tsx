@@ -50,6 +50,7 @@ vi.mock("@/lib/heygenAvatarAssignments", () => ({
 
 import CreateMontage from "@/pages/CreateMontage";
 import { generateVideoAgent } from "@/hooks/useHeygen";
+import { enqueueAgentJob } from "@/lib/heygenUsage";
 import { assignAvatarToProject, fetchAllAvatarAssignments, unassignAvatar } from "@/lib/heygenAvatarAssignments";
 
 const renderPage = () => {
@@ -260,5 +261,10 @@ describe("CreateMontage page", () => {
     expect(call?.montageBrief).toContain("**Стиль:** динамичный, премиальный");
     expect(call?.montageBrief).toContain("## Кадр 1");
     expect(call?.montageBrief).toContain("Быстрые склейки, zoom-in.");
+
+    // ТЗ на монтаж обязано доехать и до серверной очереди (heygen_jobs) — иначе
+    // воркер строит обложку/описание только по сценарию, вообще не видя ТЗ.
+    const jobCall = vi.mocked(enqueueAgentJob).mock.calls.at(-1);
+    expect(jobCall?.[4]).toContain("**Тема:** Набор учеников на футбол");
   });
 });
