@@ -13,6 +13,7 @@ vi.mock("@/hooks/useHeygen", () => ({
   fetchAvatars: vi.fn(async () => [
     { id: "av1", name: "Anna", kind: "avatar", mine: false, preview_image_url: "http://x/anna.png" },
     { id: "tp1", name: "Мой аватар", kind: "talking_photo", mine: true, preview_image_url: "http://x/me.png" },
+    { id: "av2", name: "Bob", kind: "avatar", mine: false, preview_image_url: "http://x/bob.png" },
   ]),
   fetchVoices: vi.fn(async () => [
     { voice_id: "v-ru", name: "Ivan", language: "Russian", gender: "Male", preview_audio: "http://x/ivan.mp3" },
@@ -39,8 +40,17 @@ vi.mock("@/lib/heygenUsage", async (importOriginal) => {
   return { ...actual, enqueueAgentJob: vi.fn(async () => {}) };
 });
 
+// Эксклюзивная привязка аватар→проект — по умолчанию ничего не закреплено
+// (пустая карта), конкретные тесты переопределяют fetchAllAvatarAssignments.
+vi.mock("@/lib/heygenAvatarAssignments", () => ({
+  fetchAllAvatarAssignments: vi.fn(async () => new Map()),
+  assignAvatarToProject: vi.fn(async () => {}),
+  unassignAvatar: vi.fn(async () => {}),
+}));
+
 import CreateMontage from "@/pages/CreateMontage";
 import { generateVideoAgent } from "@/hooks/useHeygen";
+import { assignAvatarToProject, fetchAllAvatarAssignments, unassignAvatar } from "@/lib/heygenAvatarAssignments";
 
 const renderPage = () => {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -54,7 +64,12 @@ const renderPage = () => {
 };
 
 describe("CreateMontage page", () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    vi.mocked(fetchAllAvatarAssignments).mockReset().mockResolvedValue(new Map());
+    vi.mocked(assignAvatarToProject).mockReset().mockResolvedValue(undefined);
+    vi.mocked(unassignAvatar).mockReset().mockResolvedValue(undefined);
+  });
 
   it("монтируется, показывает режимы + «Готовые», «Быстро» — по умолчанию", () => {
     renderPage();
@@ -184,5 +199,28 @@ describe("CreateMontage page", () => {
     fireEvent.change(screen.getByPlaceholderText(/45 секунд/), { target: { value: tooLong } });
     expect(screen.getByText(/слишком длинно, HeyGen отклонит запрос/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Собрать видео/ })).toBeDisabled();
+  });
+
+  it("скрывает аватар, закреплённый за другим проектом, но показывает его в «Управлять»", async () => {
+    vi.mocked(fetchAllAvatarAssignments).mockResolvedValue(new Map([["avatar:av2", "other-project"]]));
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Anna")).toBeInTheDocument());
+    expect(screen.queryByText("Bob")).not.toBeInTheDocument();
+
+    // Аватар и голос оба имеют кнопку «Управлять» на этой же вкладке —
+    // AvatarPicker рендерится первым.
+    fireEvent.click(screen.getAllByRole("button", { name: /Управлять/ })[0]);
+    expect(screen.getByText("Bob")).toBeInTheDocument();
+  });
+
+  it("закрепляет аватар за текущим проектом из режима «Управлять»", async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText("Anna")).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole("button", { name: /Управлять/ })[0]);
+
+    const lockButtons = screen.getAllByTitle("Закрепить только за этим проектом (скроется у остальных)");
+    fireEvent.click(lockButtons[0]);
+
+    await waitFor(() => expect(assignAvatarToProject).toHaveBeenCalledWith("proj-1", expect.any(String), expect.stringMatching(/^(avatar|talking_photo)$/)));
   });
 });
