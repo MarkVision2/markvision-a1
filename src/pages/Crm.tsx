@@ -15,6 +15,8 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCrmStore } from "@/hooks/useCrmStore";
+import { useCapiStageMap } from "@/hooks/useCapiStageMap";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type { Lead } from "@/types/crm";
 import { useTeamStore } from "@/hooks/useTeamStore";
 import { useCrmAnalytics } from "@/hooks/useCrmAnalytics";
@@ -75,6 +77,8 @@ const Crm = () => {
     removeTask,
   } = useCrmStore();
   const { members } = useTeamStore();
+  const { activeId: projectId } = useProjectsStore();
+  const capiStageMap = useCapiStageMap(projectId);
 
   const TABS: { id: Tab; label: string; icon: typeof Columns3 }[] = useMemo(
     () => [
@@ -314,6 +318,7 @@ const Crm = () => {
                       onDropLead={handleDropLead}
                       onOpenLead={handleOpenLead}
                       onTogglePin={togglePin}
+                      capiEvent={capiStageMap.get(String(stage.id).toLowerCase()) ?? null}
                     />
                   </div>
                 ))}

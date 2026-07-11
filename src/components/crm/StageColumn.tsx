@@ -49,7 +49,17 @@ interface StageColumnProps {
   onDropLead: (leadId: string, stageId: string) => void;
   onOpenLead: (lead: Lead) => void;
   onTogglePin: (leadId: string) => void;
+  /** Если этап передаёт конверсию в Meta CAPI — имя события (Lead/Schedule/Diagnostic/Purchase). */
+  capiEvent?: string | null;
 }
+
+// Русские подписи Meta-событий для подсказки на значке CAPI.
+const CAPI_EVENT_RU: Record<string, string> = {
+  Lead: "Заявка",
+  Schedule: "Запись",
+  Diagnostic: "Диагностика",
+  Purchase: "Оплата (с суммой)",
+};
 
 function fmtMin(m: number | null) {
   if (m === null || m === 0) return "—";
@@ -74,6 +84,7 @@ function StageColumnImpl({
   onDropLead,
   onOpenLead,
   onTogglePin,
+  capiEvent,
 }: StageColumnProps) {
   const [editing, setEditing] = useState(false);
   const [draftTitle, setDraftTitle] = useState(stage.title);
@@ -222,6 +233,18 @@ function StageColumnImpl({
             >
               {leads.length}
             </span>
+            {capiEvent && (
+              <span
+                title={`CAPI активен: при попадании лида сюда в Meta уходит «${CAPI_EVENT_RU[capiEvent] ?? capiEvent}»`}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full border border-success/30 bg-success/15 px-1.5 py-0.5 text-[9px] font-semibold text-success"
+              >
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
+                </span>
+                CAPI
+              </span>
+            )}
           </button>
         )}
 

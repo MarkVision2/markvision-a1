@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
@@ -57,6 +58,7 @@ type StageRow = { id: string; key: string; title: string; event: CapiEvent | "" 
 
 type OutboxRow = {
   id: string;
+  lead_id: string | null;
   event_name: string;
   status: string;
   value: number | null;
@@ -91,8 +93,21 @@ export function CapiSettings() {
   const [savingMap, setSavingMap] = useState(false);
 
   const [outbox, setOutbox] = useState<OutboxRow[]>([]);
+  const [eventFilter, setEventFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [, setSearchParams] = useSearchParams();
 
   const cabinet = useMemo(() => cabinets.find((c) => c.id === cabinetId), [cabinets, cabinetId]);
+
+  // Открыть карточку лида: ставим ?lead=<id> — CRM подхватывает и открывает карточку.
+  const openLead = useCallback((leadId: string | null) => {
+    if (!leadId) return;
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set("lead", leadId);
+      return next;
+    });
+  }, [setSearchParams]);
 
   // ── Загрузка кабинетов проекта ──
   const loadCabinets = useCallback(async () => {
@@ -154,7 +169,7 @@ export function CapiSettings() {
   const loadOutbox = useCallback(async () => {
     if (!projectId) { setOutbox([]); return; }
     const { data } = await (supabase.from("capi_outbox" as any) as any)
-      .select("id, event_name, status, value, currency, created_at, last_error, raw_user_data")
+      .select("id, lead_id, event_name, status, value, currency, created_at, last_error, raw_user_data")
       .eq("project_id", projectId)
       .order("created_at", { ascending: false })
       .limit(30);
@@ -173,6 +188,11 @@ export function CapiSettings() {
     }
     return s;
   }, [outbox]);
+
+  const filteredOutbox = useMemo(() => outbox.filter((r) =>
+    (eventFilter === "all" || r.event_name === eventFilter) &&
+    (statusFilter === "all" || r.status === statusFilter)
+  ), [outbox, eventFilter, statusFilter]);
 
   // Готовность: пиксель обязателен. Токен — свой у кабинета ИЛИ общий подключённый Meta
   // (его наличие проверяется на сервере кнопкой «Проверить связь»), поэтому не требуем его тут.
@@ -488,23 +508,50 @@ export function CapiSettings() {
           </div>
         </div>
 
-        <p className="text-xs text-muted-foreground">
-          Каждая строка — конкретный лид и что по нему ушло в Meta. Один лид может пройти несколько
-          событий (например, Диагностика, а затем Оплата с суммой).
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs text-muted-foreground">
+            Каждая строка — лид и что по нему ушло в Meta. Клик — открыть карточку лида.
+          </p>
+          <div className="flex items-center gap-1.5">
+            <Select value={eventFilter} onValueChange={setEventFilter}>
+              <SelectTrigger className="h-8 w-[150px] text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Все события</SelectItem>
+                {CAPI_EVENTS.map((e) => <SelectItem key={e} value={e}>{EVENT_LABEL[e].ru} · {e}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="h-8 w-[130px] text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Любой статус</SelectItem>
+                <SelectItem value="sent">Ушло</SelectItem>
+                <SelectItem value="pending">В очереди</SelectItem>
+                <SelectItem value="failed">Ошибка</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
 
-        {outbox.length === 0 ? (
+        {filteredOutbox.length === 0 ? (
           <p className="py-6 text-center text-xs text-muted-foreground">
-            Пока пусто. События появятся, как только лиды начнут менять этапы.
+            {outbox.length === 0
+              ? "Пока пусто. События появятся, как только лиды начнут менять этапы."
+              : "Нет событий под выбранный фильтр."}
           </p>
         ) : (
           <ul className="divide-y divide-border/40">
-            {outbox.map((r) => {
+            {filteredOutbox.map((r) => {
               const b = STATUS_BADGE[r.status] ?? { label: r.status, cls: "bg-muted text-muted-foreground border-border" };
               const ev = EVENT_LABEL[r.event_name as CapiEvent];
               const lead = r.raw_user_data?.name?.trim() || r.raw_user_data?.phone?.trim() || "Лид без имени";
+              const clickable = !!r.lead_id;
               return (
-                <li key={r.id} className="flex items-center justify-between gap-2 py-2 text-xs">
+                <li
+                  key={r.id}
+                  onClick={clickable ? () => openLead(r.lead_id) : undefined}
+                  className={`flex items-center justify-between gap-2 py-2 text-xs ${clickable ? "cursor-pointer hover:bg-secondary/40 -mx-2 px-2 rounded" : ""}`}
+                  title={clickable ? "Открыть карточку лида" : undefined}
+                >
                   <div className="flex min-w-0 flex-col gap-0.5">
                     <div className="flex min-w-0 items-center gap-1.5">
                       <span className="truncate font-medium" title={lead}>{lead}</span>
