@@ -1,7 +1,7 @@
 {
-  "git_sha": "3f53825",
-  "git_sha_full": "3f53825f95d4d37d8cca6605070a86115324b5cb",
-  "updated_at": "2026-07-11T16:32:50Z",
-  "label": "Require continuous subtitles, not just keyword popups; stop plashka text overflow",
+  "git_sha": "ad6d8ac",
+  "git_sha_full": "ad6d8ac1407a13ac9375742dbedbac922cf7b6d2",
+  "updated_at": "2026-07-11T16:36:29Z",
+  "label": "Make energetic pacing + dynamic music a permanent baseline, not conditional",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
