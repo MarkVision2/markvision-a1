@@ -9,7 +9,13 @@ vi.mock("@/hooks/useProjectsStore", () => ({
 }));
 
 // Моки HeyGen-хука: аватары (обычный + видео-аватар) и голоса с превью.
-vi.mock("@/hooks/useHeygen", () => ({
+// estimateAgentPromptOverheadChars/HEYGEN_AGENT_PROMPT_LIMIT — чистые функции
+// без сети, используем настоящие (нужны странице для лимита символов).
+vi.mock("@/hooks/useHeygen", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/hooks/useHeygen")>();
+  return {
+  estimateAgentPromptOverheadChars: actual.estimateAgentPromptOverheadChars,
+  HEYGEN_AGENT_PROMPT_LIMIT: actual.HEYGEN_AGENT_PROMPT_LIMIT,
   fetchAvatars: vi.fn(async () => [
     { id: "av1", name: "Anna", kind: "avatar", mine: false, preview_image_url: "http://x/anna.png" },
     { id: "tp1", name: "Мой аватар", kind: "talking_photo", mine: true, preview_image_url: "http://x/me.png" },
@@ -31,7 +37,8 @@ vi.mock("@/hooks/useHeygen", () => ({
   // Нужны HeygenUsagePanel, который рендерится на этой же странице ниже формы.
   fetchAccountStats: vi.fn(async () => ({})),
   fetchRecentVideos: vi.fn(async () => []),
-}));
+  };
+});
 
 // enqueueAgentJob шлётся fire-and-forget при отправке брифа — воркер сам
 // доставит готовое видео (heygen_jobs), эта страница его не ждёт и не поллит.

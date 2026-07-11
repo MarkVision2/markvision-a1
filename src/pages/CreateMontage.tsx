@@ -22,8 +22,8 @@ import { toast } from "sonner";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { cacheDefaults, fetchServerDefaults, loadDefaults, patchDefaults, type HeygenDefaults } from "@/lib/heygenDefaults";
 import {
-  fetchAvatars, fetchTemplateDetail, fetchTemplates, fetchVideoStatus, fetchVoices,
-  generateFromClips, generateTemplateVideo, generateVideoAgent, uploadClip,
+  estimateAgentPromptOverheadChars, fetchAvatars, fetchTemplateDetail, fetchTemplates, fetchVideoStatus, fetchVoices,
+  generateFromClips, generateTemplateVideo, generateVideoAgent, HEYGEN_AGENT_PROMPT_LIMIT, uploadClip,
   type HeygenAvatar, type HeygenTemplate, type HeygenVideoStatus, type HeygenVoice,
   type TemplateVariable,
 } from "@/hooks/useHeygen";
@@ -799,10 +799,16 @@ const CreateMontage = () => {
     toast.success(templateIsDefault ? "Шаблон убран из «по умолчанию»" : "Шаблон сохранён по умолчанию");
   };
 
-  // HeyGen Video Agent ограничивает prompt 10 000 символами; наши фиксированные
-  // директивы (язык/субтитры/формат) добавляют ~450 — оставляем запас, чтобы
-  // не упереться в 400 от HeyGen на длинной раскадровке (ТЗ + сценарий).
-  const MAX_AGENT_INPUT_CHARS = 9000;
+  // HeyGen Video Agent ограничивает prompt 10 000 символами и режет лишнее С
+  // КОНЦА строки — а наши фиксированные директивы (язык/субтитры/энергичность)
+  // именно в конце. Раньше overhead был захардкожен на глаз (~450 симв.) и один
+  // раз уже разошёлся с реальным текстом директив, когда их несколько раз
+  // дополняли — из-за этого на длинных сценариях HeyGen тихо обрезал директивы
+  // о субтитрах, и они переставали появляться в видео. Теперь оверхед — реальная
+  // длина директив (см. estimateAgentPromptOverheadChars), а не оценка.
+  const AGENT_PROMPT_SAFETY_MARGIN = 200;
+  const agentPromptOverhead = estimateAgentPromptOverheadChars(aspect, effectiveMontageBrief.trim().length > 0);
+  const MAX_AGENT_INPUT_CHARS = HEYGEN_AGENT_PROMPT_LIMIT - agentPromptOverhead - AGENT_PROMPT_SAFETY_MARGIN;
   const agentInputLength = effectiveAgentPrompt.trim().length + effectiveMontageBrief.trim().length;
   const agentInputTooLong = agentInputLength > MAX_AGENT_INPUT_CHARS;
   const canSubmitAgent = effectiveAgentPrompt.trim().length > 0 && !agentInputTooLong;
