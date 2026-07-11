@@ -223,4 +223,36 @@ describe("CreateMontage page", () => {
 
     await waitFor(() => expect(assignAvatarToProject).toHaveBeenCalledWith("proj-1", expect.any(String), expect.stringMatching(/^(avatar|talking_photo)$/)));
   });
+
+  it("собирает раскадровку по кадрам в сценарий и ТЗ на монтаж", async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "По кадрам" }));
+
+    fireEvent.change(screen.getByPlaceholderText(/Тема ролика/), { target: { value: "Набор учеников на футбол" } });
+    fireEvent.change(screen.getByPlaceholderText(/Стиль\/темп/), { target: { value: "динамичный, премиальный" } });
+
+    fireEvent.change(screen.getByPlaceholderText("Реплика — текст для озвучки в этом кадре"), {
+      target: { value: "Ваш ребёнок никогда не станет футболистом без агента." },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Видео / b-roll в этом кадре"), { target: { value: "Крупный план ребёнка с мячом." } });
+    fireEvent.change(screen.getByPlaceholderText("Монтаж / переходы / эффекты"), { target: { value: "Быстрые склейки, zoom-in." } });
+
+    // Второй кадр — проверяем, что «Добавить кадр» реально добавляет блок.
+    fireEvent.click(screen.getByRole("button", { name: /Добавить кадр/ }));
+    expect(screen.getByText("Кадр 2")).toBeInTheDocument();
+    const lines = screen.getAllByPlaceholderText("Реплика — текст для озвучки в этом кадре");
+    fireEvent.change(lines[1], { target: { value: "Европейские клубы не ищут игроков сами." } });
+
+    fireEvent.click(screen.getByRole("button", { name: /Собрать видео/ }));
+    await waitFor(() => expect(generateVideoAgent).toHaveBeenCalled());
+
+    const call = vi.mocked(generateVideoAgent).mock.calls.at(-1)?.[0];
+    expect(call?.prompt).toBe(
+      "Ваш ребёнок никогда не станет футболистом без агента.\n\nЕвропейские клубы не ищут игроков сами.",
+    );
+    expect(call?.montageBrief).toContain("**Тема:** Набор учеников на футбол");
+    expect(call?.montageBrief).toContain("**Стиль:** динамичный, премиальный");
+    expect(call?.montageBrief).toContain("## Кадр 1");
+    expect(call?.montageBrief).toContain("Быстрые склейки, zoom-in.");
+  });
 });
