@@ -63,6 +63,7 @@ type OutboxRow = {
   currency: string | null;
   created_at: string;
   last_error: string | null;
+  raw_user_data: { name?: string; phone?: string; email?: string } | null;
 };
 
 type CheckState = { status: "idle" | "loading" | "ok" | "fail"; message?: string };
@@ -153,7 +154,7 @@ export function CapiSettings() {
   const loadOutbox = useCallback(async () => {
     if (!projectId) { setOutbox([]); return; }
     const { data } = await (supabase.from("capi_outbox" as any) as any)
-      .select("id, event_name, status, value, currency, created_at, last_error")
+      .select("id, event_name, status, value, currency, created_at, last_error, raw_user_data")
       .eq("project_id", projectId)
       .order("created_at", { ascending: false })
       .limit(30);
@@ -487,6 +488,11 @@ export function CapiSettings() {
           </div>
         </div>
 
+        <p className="text-xs text-muted-foreground">
+          Каждая строка — конкретный лид и что по нему ушло в Meta. Один лид может пройти несколько
+          событий (например, Диагностика, а затем Оплата с суммой).
+        </p>
+
         {outbox.length === 0 ? (
           <p className="py-6 text-center text-xs text-muted-foreground">
             Пока пусто. События появятся, как только лиды начнут менять этапы.
@@ -495,18 +501,28 @@ export function CapiSettings() {
           <ul className="divide-y divide-border/40">
             {outbox.map((r) => {
               const b = STATUS_BADGE[r.status] ?? { label: r.status, cls: "bg-muted text-muted-foreground border-border" };
+              const ev = EVENT_LABEL[r.event_name as CapiEvent];
+              const lead = r.raw_user_data?.name?.trim() || r.raw_user_data?.phone?.trim() || "Лид без имени";
               return (
                 <li key={r.id} className="flex items-center justify-between gap-2 py-2 text-xs">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Badge variant="outline" className="shrink-0">{r.event_name}</Badge>
-                    {r.value != null && r.value > 0 && (
-                      <span className="shrink-0 font-medium">{Number(r.value).toLocaleString("ru-RU")} {r.currency ?? ""}</span>
-                    )}
-                    {r.last_error && <span className="truncate text-destructive" title={r.last_error}>{r.last_error}</span>}
+                  <div className="flex min-w-0 flex-col gap-0.5">
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="truncate font-medium" title={lead}>{lead}</span>
+                      {r.raw_user_data?.phone && r.raw_user_data?.name && (
+                        <span className="shrink-0 text-muted-foreground">{r.raw_user_data.phone}</span>
+                      )}
+                    </div>
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <Badge variant="outline" className="shrink-0">{ev ? ev.ru : r.event_name}</Badge>
+                      {r.value != null && r.value > 0 && (
+                        <span className="shrink-0 font-medium text-success">{Number(r.value).toLocaleString("ru-RU")} {r.currency ?? ""}</span>
+                      )}
+                      {r.last_error && <span className="truncate text-destructive" title={r.last_error}>{r.last_error}</span>}
+                    </div>
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex shrink-0 flex-col items-end gap-0.5">
                     <Badge className={b.cls}>{b.label}</Badge>
-                    <span className="text-muted-foreground">{new Date(r.created_at).toLocaleString("ru-RU")}</span>
+                    <span className="text-[10px] text-muted-foreground">{new Date(r.created_at).toLocaleString("ru-RU")}</span>
                   </div>
                 </li>
               );
