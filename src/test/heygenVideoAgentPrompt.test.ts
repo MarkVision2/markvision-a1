@@ -37,4 +37,11 @@ describe("generateVideoAgent prompt construction", () => {
     const body = invoke.mock.calls.at(-1)?.[1]?.body as { agent: { prompt: string } };
     expect(body.agent.prompt).toContain("Субтитры на русском языке обязательны");
   });
+
+  it("always requires captions to sit below center, never over the speaker's face", async () => {
+    await generateVideoAgent({ prompt: "Сценарий ролика" });
+    const body = invoke.mock.calls.at(-1)?.[1]?.body as { agent: { prompt: string } };
+    expect(body.agent.prompt).toContain("ниже вертикального центра");
+    expect(body.agent.prompt).toContain("не закрывай им лицо говорящего");
+  });
 });

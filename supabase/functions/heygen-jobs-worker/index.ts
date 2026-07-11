@@ -6,6 +6,7 @@ const HEYGEN_BASE = "https://api.heygen.com";
 const N8N_WEBHOOK = Deno.env.get("N8N_CONTENT_WEBHOOK_URL") ?? "https://n8n.zapoinov.com/webhook/clony-yurii";
 const BATCH = 20;
 const MAX_AGE_MIN = 30; // задачи старше — помечаем ошибкой, чтобы не висели вечно
+const MAX_TG_RETRY_MIN = 20; // сколько повторяем именно отправку в Telegram, когда видео уже готово
 
 const TERMINAL_OK = ["completed", "success", "done"];
 const TERMINAL_FAIL = ["failed", "error"];
@@ -117,7 +118,7 @@ Deno.serve(async (req) => {
 
   const { data: jobs } = await admin
     .from("heygen_jobs")
-    .select("id, project_id, chat_id, session_id, script, source, created_at")
+    .select("id, project_id, chat_id, session_id, script, source, created_at, updated_at, video_url")
     .eq("delivered", false)
     .order("created_at", { ascending: true })
     .limit(BATCH);
@@ -157,74 +158,118 @@ Deno.serve(async (req) => {
 
   for (const job of jobs ?? []) {
     try {
-      const res = await fetch(`${HEYGEN_BASE}/v3/video-agents/${encodeURIComponent(job.session_id)}`, {
-        headers: { "X-Api-Key": apiKey, Accept: "application/json" },
-      });
-      const body = await res.json().catch(() => ({}));
-      const d = (body?.data ?? body ?? {}) as Record<string, unknown>;
-      const vid = pickVideoId(d);
-      let url = pickUrl(d);
-      let meta: Record<string, unknown> = d; // источник длительности/обложки
-      let status = String(d.status ?? ""); // статус сессии агента (пока нет video_id)
+      // Если видео уже было опознано как готовое на прошлом проходе (video_url
+      // сохранён), но доставить в Telegram тогда не удалось — не спрашиваем
+      // HeyGen заново, а сразу повторяем именно отправку, ничего не задваивая.
+      const alreadyReady = Boolean(job.video_url);
+      let vid: string | undefined;
+      let url: string | undefined = (job.video_url as string | null) ?? undefined;
+      let meta: Record<string, unknown> = {};
+      let status = "";
       let failMsg = "";
 
-      // Как только у сессии есть video_id — авторитетен статус самого ВИДЕО
-      // (GET /v3/videos/{id}), а не сессии агента: сессия бывает «failed», пока
-      // видео ещё рендерится и затем успешно завершается (docs: Video Agent).
-      if (vid) {
-        let vd: Record<string, unknown> = {};
-        try {
-          const vr = await fetch(`${HEYGEN_BASE}/v3/videos/${encodeURIComponent(vid)}`, {
-            headers: { "X-Api-Key": apiKey, Accept: "application/json" },
-          });
-          vd = ((await vr.json().catch(() => ({})))?.data ?? {}) as Record<string, unknown>;
-        } catch { /* ignore */ }
-        // Запасной путь — классический /v1, если v3 ничего не вернул.
-        if (!pickUrl(vd) && !vd.status) {
+      if (!alreadyReady) {
+        const res = await fetch(`${HEYGEN_BASE}/v3/video-agents/${encodeURIComponent(job.session_id)}`, {
+          headers: { "X-Api-Key": apiKey, Accept: "application/json" },
+        });
+        const body = await res.json().catch(() => ({}));
+        const d = (body?.data ?? body ?? {}) as Record<string, unknown>;
+        vid = pickVideoId(d);
+        url = pickUrl(d);
+        meta = d; // источник длительности/обложки
+        status = String(d.status ?? ""); // статус сессии агента (пока нет video_id)
+
+        // Как только у сессии есть video_id — авторитетен статус самого ВИДЕО
+        // (GET /v3/videos/{id}), а не сессии агента: сессия бывает «failed», пока
+        // видео ещё рендерится и затем успешно завершается (docs: Video Agent).
+        if (vid) {
+          let vd: Record<string, unknown> = {};
           try {
-            const vr1 = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${encodeURIComponent(vid)}`, {
+            const vr = await fetch(`${HEYGEN_BASE}/v3/videos/${encodeURIComponent(vid)}`, {
               headers: { "X-Api-Key": apiKey, Accept: "application/json" },
             });
-            vd = ((await vr1.json().catch(() => ({})))?.data ?? vd) as Record<string, unknown>;
+            vd = ((await vr.json().catch(() => ({})))?.data ?? {}) as Record<string, unknown>;
           } catch { /* ignore */ }
+          // Запасной путь — классический /v1, если v3 ничего не вернул.
+          if (!pickUrl(vd) && !vd.status) {
+            try {
+              const vr1 = await fetch(`${HEYGEN_BASE}/v1/video_status.get?video_id=${encodeURIComponent(vid)}`, {
+                headers: { "X-Api-Key": apiKey, Accept: "application/json" },
+              });
+              vd = ((await vr1.json().catch(() => ({})))?.data ?? vd) as Record<string, unknown>;
+            } catch { /* ignore */ }
+          }
+          const vs = String(vd.status ?? "");
+          if (vs) status = vs; // статус видео важнее статуса сессии
+          const vurl = pickUrl(vd);
+          if (vurl) { url = vurl; meta = vd; }
+          failMsg = String(vd.failure_message ?? vd.error ?? "");
         }
-        const vs = String(vd.status ?? "");
-        if (vs) status = vs; // статус видео важнее статуса сессии
-        const vurl = pickUrl(vd);
-        if (vurl) { url = vurl; meta = vd; }
-        failMsg = String(vd.failure_message ?? vd.error ?? "");
       }
 
       const chatId = await resolveChatId(job); // Telegram-чат для доставки (у веб-задач — привязанный к проекту)
       const ageMin = (Date.now() - new Date(job.created_at).getTime()) / 60000;
 
       if (url) {
+        // Сначала грузим файл сами (надёжнее), затем пробуем через ссылку силами
+        // самого Telegram, и только если оба варианта не удались — шлём голую
+        // ссылку текстом (например, если файл больше 50 МБ). tgOk=true, если чата
+        // нет вовсе (веб-задача без привязанного Telegram) — слать было некуда.
+        let tgOk = true;
         if (chatId) {
-          // Сначала грузим файл сами (надёжнее), затем пробуем через ссылку
-          // силами самого Telegram, и только если оба варианта не удались —
-          // шлём голую ссылку текстом (например, если файл больше 50 МБ).
           const okVideo = await sendVideoFile(botToken, chatId, url, "Готово ✅")
             || await tg(botToken, "sendVideo", { chat_id: chatId, video: url, caption: "Готово ✅" });
-          if (!okVideo) await tg(botToken, "sendMessage", { chat_id: chatId, text: `Видео готово: ${url}` });
+          tgOk = okVideo || await tg(botToken, "sendMessage", { chat_id: chatId, text: `Видео готово: ${url}` });
         }
-        await admin.from("heygen_jobs").update({ delivered: true, status: "done", video_url: url, updated_at: new Date().toISOString() }).eq("id", job.id);
-        const assets = await sendAssets(chatId, job.script, job.project_id); // обложка + описание (в чат, если он есть)
-        // Учёт расхода + запись в галерею «Готовый контент».
-        const durRaw = (meta.duration ?? meta.duration_sec) as number | undefined;
-        const durationSec = typeof durRaw === "number" ? durRaw : null;
-        const cost = durationSec ? Math.round((durationSec / 60) * 2 * 100) / 100 : null;
-        const thumb = (meta.thumbnail_url ?? (meta.video as Record<string, unknown> | undefined)?.thumbnail_url) as string | null ?? null;
-        const renderTimeSec = Math.round((Date.now() - new Date(job.created_at).getTime()) / 1000);
-        // ref_id = настоящий video_id HeyGen (vid), а не session_id агента — так
-        // локальная запись совпадает с id того же ролика в списке аккаунта HeyGen
-        // (там же ключ для upsert-идемпотентности ниже: heygen_usage_project_ref_unique).
-        await admin.from("heygen_usage").upsert({
-          project_id: job.project_id, source: job.source ?? (job.chat_id ? "telegram" : "web"), mode: "agent",
-          ref_id: vid ?? job.session_id, duration_sec: durationSec, cost_usd: cost, status: "completed",
-          title: (job.script ?? "").slice(0, 80) || "Видео", render_time_sec: renderTimeSec,
-          video_url: url, thumbnail_url: thumb, cover_url: assets.cover, description: assets.desc,
-        }, { onConflict: "project_id,ref_id", ignoreDuplicates: true });
-        delivered++;
+
+        if (!alreadyReady) {
+          // Первый раз видим это видео — обложка/описание и списание расхода
+          // фиксируются один раз, независимо от исхода отправки в Telegram
+          // (при неудаче ниже повторяем только саму отправку, не задваивая это).
+          const assets = await sendAssets(chatId, job.script, job.project_id);
+          const durRaw = (meta.duration ?? meta.duration_sec) as number | undefined;
+          const durationSec = typeof durRaw === "number" ? durRaw : null;
+          const cost = durationSec ? Math.round((durationSec / 60) * 2 * 100) / 100 : null;
+          const thumb = (meta.thumbnail_url ?? (meta.video as Record<string, unknown> | undefined)?.thumbnail_url) as string | null ?? null;
+          const renderTimeSec = Math.round((Date.now() - new Date(job.created_at).getTime()) / 1000);
+          // ref_id = настоящий video_id HeyGen (vid), а не session_id агента — так
+          // локальная запись совпадает с id того же ролика в списке аккаунта HeyGen
+          // (там же ключ для upsert-идемпотентности ниже: heygen_usage_project_ref_unique).
+          await admin.from("heygen_usage").upsert({
+            project_id: job.project_id, source: job.source ?? (job.chat_id ? "telegram" : "web"), mode: "agent",
+            ref_id: vid ?? job.session_id, duration_sec: durationSec, cost_usd: cost, status: "completed",
+            title: (job.script ?? "").slice(0, 80) || "Видео", render_time_sec: renderTimeSec,
+            video_url: url, thumbnail_url: thumb, cover_url: assets.cover, description: assets.desc,
+          }, { onConflict: "project_id,ref_id", ignoreDuplicates: true });
+        }
+
+        if (tgOk) {
+          await admin.from("heygen_jobs").update({
+            delivered: true, status: "done", video_url: url, error: null, updated_at: new Date().toISOString(),
+          }).eq("id", job.id);
+          delivered++;
+        } else {
+          // Видео готово, но ни один способ доставки в Telegram сейчас не сработал.
+          // Не считаем задачу выполненной — на следующем проходе (см. alreadyReady
+          // выше) повторяем именно отправку. Даём на это отдельный запас времени
+          // (MAX_TG_RETRY_MIN от момента готовности), а не общий таймаут генерации.
+          const readySinceMin = alreadyReady && job.updated_at
+            ? (Date.now() - new Date(job.updated_at).getTime()) / 60000
+            : 0;
+          if (readySinceMin > MAX_TG_RETRY_MIN) {
+            await admin.from("heygen_jobs").update({
+              delivered: true, status: "done", video_url: url,
+              error: "Видео готово, но отправить в Telegram не удалось — заберите его на сайте.",
+              updated_at: new Date().toISOString(),
+            }).eq("id", job.id);
+            failed++;
+          } else {
+            await admin.from("heygen_jobs").update({
+              status: "video_ready", video_url: url, error: "tg_pending", updated_at: new Date().toISOString(),
+            }).eq("id", job.id);
+            pending++;
+          }
+        }
       } else if (TERMINAL_FAIL.includes(status)) {
         // Статус видео (или сессии без video_id) — терминальный провал.
         const failText = failMsg || JSON.stringify(meta);
