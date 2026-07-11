@@ -359,19 +359,27 @@ export interface VideoAgentInput {
   montageBrief?: string;
 }
 
-/** Быстрое создание (Video Agent v3): промпт/сценарий → session_id.
- *  avatar/voice — необязательные подсказки; без них агент подбирает сам.
- *  У v3 нет параметров раскладки/языка/субтитров в теле запроса (HeyGen
- *  отдаёт 400 "Extra inputs are not permitted" на любое лишнее поле,
- *  включая aspect_ratio) — все такие настройки передаём только директивой
- *  в тексте промпта, это единственный документированный канал влияния на
- *  Video Agent. Без явного указания языка агент по умолчанию тянет
- *  англоязычный b-roll/оверлеи и не всегда прожигает субтитры. */
-export async function generateVideoAgent(input: VideoAgentInput): Promise<string> {
-  const orient = input.aspect === "16:9" ? "горизонтальное" : input.aspect === "9:16" ? "вертикальное" : "";
-  const montageBrief = input.montageBrief?.trim();
-  const directives = [
-    input.aspect ? `Формат ролика: ${input.aspect} (${orient}).` : null,
+// HeyGen Video Agent v3 ограничивает prompt 1–10 000 символами (см. Video Agent
+// Prompting Guide) и на превышении режет строку С КОНЦА — а наши фиксированные
+// директивы (язык/субтитры/позиционирование/энергичность) добавляются именно в
+// конце промпта. Это уже один раз стреляло вживую: клиентский лимит на ввод
+// пользователя (MAX_AGENT_INPUT_CHARS в CreateMontage.tsx) был откалиброван под
+// старую, гораздо более короткую версию директив (~450 симв.), и когда мы
+// несколько раз подряд дописывали в них новые правила, реальный оверхед вырос
+// почти в 4 раза (~1900 симв.) — лимит на ввод не обновили, и на длинном
+// пользовательском тексте директивы с субтитрами стали тихо обрезаться самим
+// HeyGen ещё до модели. Поэтому overhead теперь не оценка на глаз, а РЕАЛЬНАЯ
+// длина собранных директив — buildAgentDirectives одна на generateVideoAgent и
+// estimateAgentPromptOverhead, разойтись они не могут.
+export const HEYGEN_AGENT_PROMPT_LIMIT = 10_000;
+
+const MONTAGE_BRIEF_PREFIX =
+  "ТЗ на монтаж (приоритетно для темы и стиля — следуй строго, но это дополняет, а не отменяет требование энергичного монтажа и музыки выше): ";
+
+function buildAgentDirectives(aspect: string | undefined, montageBrief: string | undefined): string[] {
+  const orient = aspect === "16:9" ? "горизонтальное" : aspect === "9:16" ? "вертикальное" : "";
+  return [
+    aspect ? `Формат ролика: ${aspect} (${orient}).` : null,
     // Раньше формулировка "с акцентом на ключевых словах" приводила к тому, что
     // агент вместо сплошных субтитров вставлял только редкие всплывающие плашки
     // с парой ключевых слов, а сама речь оставалась без подписи. Явно разделяем:
@@ -396,10 +404,35 @@ export async function generateVideoAgent(input: VideoAgentInput): Promise<string
     "Монтаж обязан быть энергичным и динамичным без исключений: смена кадра/плана каждые 2-3 секунды, много b-roll в такт сценарию, motion-дизайн (анимированные акценты, переходы, инфографика-элементы) — никаких длинных статичных кадров с одной картинкой. Обязательно добавь энергичную, динамичную фоновую музыку на весь ролик, которая держит темп и создаёт ощущение движения — не тихую, не медленную, не эмбиент.",
     // Явное ТЗ на монтаж (тема/стиль/вставки) — приоритетно для контента,
     // но не отменяет требование энергичного монтажа и музыки выше.
-    montageBrief
-      ? `ТЗ на монтаж (приоритетно для темы и стиля — следуй строго, но это дополняет, а не отменяет требование энергичного монтажа и музыки выше): ${montageBrief}`
-      : null,
-  ].filter(Boolean);
+    montageBrief ? `${MONTAGE_BRIEF_PREFIX}${montageBrief}` : null,
+  ].filter((d): d is string => Boolean(d));
+}
+
+/** Реальный размер служебной "обвязки" промпта (всё, кроме собственно текста
+ *  пользователя prompt/montageBrief) — используется клиентом (CreateMontage),
+ *  чтобы честно вычесть overhead из лимита HeyGen вместо устаревшей оценки.
+ *  Длина самого брифа уже учитывается отдельно на стороне вызова
+ *  (effectiveMontageBrief.length) — здесь нужен только фиксированный текст
+ *  вокруг него, поэтому brief-строка в buildAgentDirectives не участвует
+ *  напрямую (пустая строка там была бы falsy и просто исчезла бы). */
+export function estimateAgentPromptOverheadChars(aspect: string | undefined, hasMontageBrief: boolean): number {
+  const directives = buildAgentDirectives(aspect, undefined);
+  const base = directives.join("\n").length + 2; // +2 — "\n\n" между prompt и директивами
+  if (!hasMontageBrief) return base;
+  return base + 1 + MONTAGE_BRIEF_PREFIX.length; // +1 — "\n" перед строкой ТЗ
+}
+
+/** Быстрое создание (Video Agent v3): промпт/сценарий → session_id.
+ *  avatar/voice — необязательные подсказки; без них агент подбирает сам.
+ *  У v3 нет параметров раскладки/языка/субтитров в теле запроса (HeyGen
+ *  отдаёт 400 "Extra inputs are not permitted" на любое лишнее поле,
+ *  включая aspect_ratio) — все такие настройки передаём только директивой
+ *  в тексте промпта, это единственный документированный канал влияния на
+ *  Video Agent. Без явного указания языка агент по умолчанию тянет
+ *  англоязычный b-roll/оверлеи и не всегда прожигает субтитры. */
+export async function generateVideoAgent(input: VideoAgentInput): Promise<string> {
+  const montageBrief = input.montageBrief?.trim();
+  const directives = buildAgentDirectives(input.aspect, montageBrief);
   const prompt = `${input.prompt}\n\n${directives.join("\n")}`;
   const agent: Record<string, unknown> = { prompt };
   // avatar_id имеет смысл только для обычного аватара; talking_photo агент не примет.

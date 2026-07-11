@@ -10,7 +10,7 @@ vi.mock("@/integrations/supabase/client", () => ({
   supabase: { functions: { invoke } },
 }));
 
-import { generateVideoAgent } from "@/hooks/useHeygen";
+import { estimateAgentPromptOverheadChars, generateVideoAgent, HEYGEN_AGENT_PROMPT_LIMIT } from "@/hooks/useHeygen";
 
 describe("generateVideoAgent prompt construction", () => {
   it("uses the default energetic-editing + music directive when no montageBrief is given", async () => {
@@ -60,5 +60,34 @@ describe("generateVideoAgent prompt construction", () => {
     await generateVideoAgent({ prompt: "Сценарий ролика" });
     const body = invoke.mock.calls.at(-1)?.[1]?.body as { agent: { prompt: string } };
     expect(body.agent.prompt).toContain("не должны обрезаться или выходить за границы экрана");
+  });
+
+  it("estimates the real directive overhead so a maxed-out user prompt can never push HeyGen over its 10k limit", async () => {
+    // Регрессия: клиентский лимит на ввод пользователя был захардкожен под
+    // старую, гораздо более короткую версию директив — когда их несколько раз
+    // подряд расширяли (субтитры/позиционирование/энергичность), реальный
+    // оверхед вырос почти в 4 раза, а лимит не обновили. HeyGen режет prompt по
+    // своему хардлимиту С КОНЦА — там как раз наши директивы — и субтитры
+    // тихо переставали появляться. Проверяем, что оценка всегда совпадает с
+    // РЕАЛЬНОЙ длиной директив, а не с оценкой на глаз.
+    const overheadNoBrief = estimateAgentPromptOverheadChars("9:16", false);
+    await generateVideoAgent({ prompt: "X", aspect: "9:16" });
+    const bodyNoBrief = invoke.mock.calls.at(-1)?.[1]?.body as { agent: { prompt: string } };
+    // "X" + "\n\n" + directives — overhead уже включает эти +2, так что
+    // фактическая длина промпта = длина пользовательского текста + overhead.
+    expect(bodyNoBrief.agent.prompt.length).toBe("X".length + overheadNoBrief);
+
+    const overheadWithBrief = estimateAgentPromptOverheadChars("9:16", true);
+    expect(overheadWithBrief).toBeGreaterThan(overheadNoBrief);
+
+    // Реалистичный «потолок» пользовательского ввода (как в CreateMontage.tsx)
+    // с запасом — итоговый prompt не должен превышать хардлимит HeyGen.
+    const SAFETY_MARGIN = 200;
+    const maxUserChars = HEYGEN_AGENT_PROMPT_LIMIT - overheadWithBrief - SAFETY_MARGIN;
+    const userPrompt = "п".repeat(Math.floor(maxUserChars * 0.6));
+    const montageBrief = "б".repeat(Math.ceil(maxUserChars * 0.4));
+    await generateVideoAgent({ prompt: userPrompt, aspect: "9:16", montageBrief });
+    const body = invoke.mock.calls.at(-1)?.[1]?.body as { agent: { prompt: string } };
+    expect(body.agent.prompt.length).toBeLessThan(HEYGEN_AGENT_PROMPT_LIMIT);
   });
 });
