@@ -714,7 +714,13 @@ const CreateMontage = () => {
     toast.success(templateIsDefault ? "Шаблон убран из «по умолчанию»" : "Шаблон сохранён по умолчанию");
   };
 
-  const canSubmitAgent = agentPrompt.trim().length > 0;
+  // HeyGen Video Agent ограничивает prompt 10 000 символами; наши фиксированные
+  // директивы (язык/субтитры/формат) добавляют ~450 — оставляем запас, чтобы
+  // не упереться в 400 от HeyGen на длинной раскадровке (ТЗ + сценарий).
+  const MAX_AGENT_INPUT_CHARS = 9000;
+  const agentInputLength = agentPrompt.trim().length + montageBrief.trim().length;
+  const agentInputTooLong = agentInputLength > MAX_AGENT_INPUT_CHARS;
+  const canSubmitAgent = agentPrompt.trim().length > 0 && !agentInputTooLong;
   const canSubmitTemplate = !!templateId;
   const canSubmitClips =
     !!avatarRef && !!voiceId && clips.length > 0 &&
@@ -888,6 +894,7 @@ const CreateMontage = () => {
               />
               <p className="mt-1 text-xs text-muted-foreground">
                 Опишите тему/стиль/вставки для монтажа. Пусто — используется монтаж по умолчанию (как сейчас); если заполнено — это ТЗ в приоритете.
+                Поддерживается развёрнутая раскадровка markdown (кадры, тайминги, реплики, b-roll, эффекты) — можно вставлять целиком.
               </p>
             </section>
             <section>
@@ -899,7 +906,10 @@ const CreateMontage = () => {
                 placeholder="Напр.: Сделай ролик на 45 секунд о запуске нашего продукта, дружелюбный тон, вертикальный формат для Reels…"
                 className="resize-y"
               />
-              <p className="mt-1 text-xs text-muted-foreground">{agentPrompt.trim().length} символов</p>
+              <p className={cn("mt-1 text-xs", agentInputTooLong ? "font-medium text-destructive" : "text-muted-foreground")}>
+                Сценарий + ТЗ на монтаж: {agentInputLength} / {MAX_AGENT_INPUT_CHARS} символов
+                {agentInputTooLong && " — слишком длинно, HeyGen отклонит запрос. Сократите текст."}
+              </p>
             </section>
             <AvatarPicker query={avatarsQ} selected={selectedAvatar} onSelect={setSelectedAvatar} optional isDefault={avatarIsDefault} onToggleDefault={toggleDefaultAvatar} projectId={projectId} />
             <VoicePicker query={voicesQ} value={voiceId} onChange={setVoiceId} optional isDefault={voiceIsDefault} onToggleDefault={toggleDefaultVoice} projectId={projectId} />
