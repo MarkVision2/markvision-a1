@@ -1,7 +1,7 @@
 {
-  "git_sha": "1241244",
-  "git_sha_full": "12412442dd6c6d5b4237e60021edc04f6dfabee2",
-  "updated_at": "2026-07-11T11:29:30Z",
-  "label": "fix(meta): safe multi-token fallback in sync/insights (no regression)",
+  "git_sha": "d604b1b",
+  "git_sha_full": "d604b1be36354e2e375e815e11c924b31d8a34ee",
+  "updated_at": "2026-07-11T16:53:51+05:00",
+  "label": "Merge: Reels-видео в Контент-завод (#125)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
