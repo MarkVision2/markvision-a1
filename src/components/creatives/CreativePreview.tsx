@@ -284,7 +284,8 @@ export function CreativePreview({
           </button>
         )}
 
-        {inlineVideoError && (
+        {/* Видео недоступно, но обложка есть → показываем её как есть, без ошибки. */}
+        {inlineVideoError && !imageSrc && !displaySrc && (
           <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-background/90 p-2 text-xs backdrop-blur">
             <span className="text-muted-foreground">Не удалось загрузить видео</span>
             <button
