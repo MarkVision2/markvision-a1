@@ -1,7 +1,7 @@
 {
-  "git_sha": "69a9ae4",
-  "git_sha_full": "69a9ae4c1246e7676fc9b0607bef8c326757a6a1",
-  "updated_at": "2026-07-11T12:11:56Z",
-  "label": "Support long storyboard-style briefs in \"ТЗ на монтаж\" with a safety limit",
+  "git_sha": "c12ad0c",
+  "git_sha_full": "c12ad0cc6907f7846ecb4185e4ce2b84633006ab",
+  "updated_at": "2026-07-11T12:26:12Z",
+  "label": "Let a project exclusively claim a HeyGen avatar, hidden from other projects",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
