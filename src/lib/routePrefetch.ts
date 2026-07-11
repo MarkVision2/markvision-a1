@@ -9,6 +9,7 @@ export const routeImports = {
   CreateStep3: () => import("@/pages/CreateStep3"),
   CreateNeuroPhoto: () => import("@/pages/CreateNeuroPhoto"),
   CreateMontage: () => import("@/pages/CreateMontage"),
+  CreateReels: () => import("@/pages/CreateReels"),
   Ads: () => import("@/pages/Ads"),
   Dashboard: () => import("@/pages/Dashboard"),
   Metrics: () => import("@/pages/Metrics"),

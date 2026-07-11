@@ -18,6 +18,7 @@ const CreateStep2 = lazy(routeImports.CreateStep2);
 const CreateStep3 = lazy(routeImports.CreateStep3);
 const CreateNeuroPhoto = lazy(routeImports.CreateNeuroPhoto);
 const CreateMontage = lazy(routeImports.CreateMontage);
+const CreateReels = lazy(routeImports.CreateReels);
 const Ads = lazy(routeImports.Ads);
 const Dashboard = lazy(routeImports.Dashboard);
 const Metrics = lazy(routeImports.Metrics);
@@ -95,6 +96,7 @@ const App = () => (
               <Route path="/create/step-3" element={<RequireAuth><AppLayout><CreateStep3 /></AppLayout></RequireAuth>} />
               <Route path="/create/neuro-photo" element={<RequireAuth><AppLayout><CreateNeuroPhoto /></AppLayout></RequireAuth>} />
               <Route path="/create/montage" element={<RequireAuth><AppLayout><CreateMontage /></AppLayout></RequireAuth>} />
+              <Route path="/create/reels" element={<RequireAuth><AppLayout><CreateReels /></AppLayout></RequireAuth>} />
               <Route path="/projects/new" element={<RequireAuth><AppLayout><ProjectIntegrationWizard /></AppLayout></RequireAuth>} />
               <Route path="/projects/:id/strategy" element={<RequireAuth><AppLayout><ProjectStrategy /></AppLayout></RequireAuth>} />
               <Route path="*" element={<NotFound />} />
