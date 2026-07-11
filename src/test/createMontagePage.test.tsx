@@ -237,6 +237,12 @@ describe("CreateMontage page", () => {
     fireEvent.change(screen.getByPlaceholderText("Видео / b-roll в этом кадре"), { target: { value: "Крупный план ребёнка с мячом." } });
     fireEvent.change(screen.getByPlaceholderText("Монтаж / переходы / эффекты"), { target: { value: "Быстрые склейки, zoom-in." } });
 
+    // Предпросмотр показывает собранный текст ещё до отправки — именно это
+    // и было непонятно пользователю («где посмотреть, что ты собрал»).
+    expect(screen.getByText("Показать, что соберётся (сценарий + ТЗ на монтаж)")).toBeInTheDocument();
+    expect(screen.getByTestId("storyboard-script-preview")).toHaveTextContent("Ваш ребёнок никогда не станет футболистом без агента.");
+    expect(screen.getByTestId("storyboard-brief-preview")).toHaveTextContent("Быстрые склейки, zoom-in.");
+
     // Второй кадр — проверяем, что «Добавить кадр» реально добавляет блок.
     fireEvent.click(screen.getByRole("button", { name: /Добавить кадр/ }));
     expect(screen.getByText("Кадр 2")).toBeInTheDocument();

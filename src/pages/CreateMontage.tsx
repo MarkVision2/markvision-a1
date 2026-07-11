@@ -1141,6 +1141,28 @@ const CreateMontage = () => {
                   <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={addFrame}>
                     <Plus className="h-4 w-4" /> Добавить кадр
                   </Button>
+
+                  {(storyboardScript || storyboardBrief) && (
+                    <details className="rounded-lg border border-border/50 bg-background/40 px-3 py-2 text-xs">
+                      <summary className="cursor-pointer select-none font-medium text-foreground">
+                        Показать, что соберётся (сценарий + ТЗ на монтаж)
+                      </summary>
+                      <div className="mt-3 space-y-3">
+                        <div>
+                          <div className="mb-1 font-semibold text-muted-foreground">Сценарий (озвучка)</div>
+                          <pre data-testid="storyboard-script-preview" className="whitespace-pre-wrap rounded-md bg-secondary/40 p-2 text-[11px] text-foreground">
+                            {storyboardScript || "—"}
+                          </pre>
+                        </div>
+                        <div>
+                          <div className="mb-1 font-semibold text-muted-foreground">ТЗ на монтаж</div>
+                          <pre data-testid="storyboard-brief-preview" className="whitespace-pre-wrap rounded-md bg-secondary/40 p-2 text-[11px] text-foreground">
+                            {storyboardBrief || "—"}
+                          </pre>
+                        </div>
+                      </div>
+                    </details>
+                  )}
                 </div>
               )}
 
