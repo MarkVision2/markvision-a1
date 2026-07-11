@@ -124,15 +124,15 @@ Deno.serve(async (req) => {
 
   const cabinetId = (row as { cabinet_id?: string | null }).cabinet_id ?? null;
 
-  // Список токенов: системный (обычно есть ads_read) + токен кабинета.
-  const systemToken = await resolveMetaAccessToken();
+  // Токен кабинета (OAuth) в приоритете; общий запасной — вторым.
   let cabinetToken: string | null = null;
   if (cabinetId) {
     const { data: cab } = await admin.from("ad_cabinets").select("access_token").eq("id", cabinetId).maybeSingle();
     const ct = (cab as { access_token?: string | null } | null)?.access_token;
     if (ct && ct.trim()) cabinetToken = ct.trim();
   }
-  const tokens = [...new Set([systemToken, cabinetToken].filter((t): t is string => !!t))];
+  const fallbackToken = await resolveMetaAccessToken({ admin });
+  const tokens = [...new Set([cabinetToken, fallbackToken].filter((t): t is string => !!t))];
   if (tokens.length === 0) return json({ ok: false, error: "META_ACCESS_TOKEN missing" }, 500);
 
   const existingPoster = ((row as { poster_url?: string | null }).poster_url ?? "").trim();

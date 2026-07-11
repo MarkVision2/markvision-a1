@@ -207,18 +207,11 @@ Deno.serve(async (req) => {
         });
       }
     }
-    const META_ACCESS_TOKEN = await resolveMetaAccessToken(
-      typeof body.access_token === "string" ? body.access_token : null,
-    );
-    if (!META_ACCESS_TOKEN) {
-      return new Response(JSON.stringify({
-        error: "Meta access token не настроен. Укажите токен в Настройках → Автоматизация.",
-      }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const admin = adminPre;
+    // Токен резолвим ПО КАЖДОМУ кабинету (его OAuth-токен). Общий — только запасной
+    // для ещё не переподключённых кабинетов; поэтому здесь не падаем, если его нет.
+    const bodyToken = typeof body.access_token === "string" ? body.access_token : null;
+    const fallbackToken = await resolveMetaAccessToken({ bodyToken, admin });
 
     // Read params: date | since/until | cabinet_id (from query OR JSON body).
     // `body` уже распарсен выше (строка 151), здесь только новые поля.
@@ -246,7 +239,7 @@ Deno.serve(async (req) => {
 
     let cabQuery = admin
       .from("ad_cabinets")
-      .select("id, external_id, ad_account_id, project_id, name, provider")
+      .select("id, external_id, ad_account_id, project_id, name, provider, access_token")
       .or("provider.eq.meta,provider.is.null");
     if (qpCabinetId) cabQuery = cabQuery.eq("id", qpCabinetId);
     const { data: cabinets, error: cabErr } = await cabQuery;
@@ -287,15 +280,22 @@ Deno.serve(async (req) => {
       }
       const actId = normalizeActId(ext);
 
+      // Токен кабинета (OAuth) в приоритете, иначе общий запасной.
+      const token = String((cab as { access_token?: string | null }).access_token || "").trim() || fallbackToken;
+      if (!token) {
+        results.push({ cabinet_id: cab.id, cabinet: cabName, ok: false, error: "нет Meta-токена — подключите кабинет через Facebook" });
+        continue;
+      }
+
       const fields = ["date_start", "spend", "impressions", "clicks", "actions", "action_values"].join(",");
       const timeRange = encodeURIComponent(JSON.stringify({ since, until }));
       const apiUrl =
         `https://graph.facebook.com/${META_API_VERSION}/${actId}/insights` +
         `?fields=${fields}&time_range=${timeRange}&time_increment=1&level=account&limit=500` +
-        `&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`;
+        `&access_token=${encodeURIComponent(token)}`;
       const accountUrl =
         `https://graph.facebook.com/${META_API_VERSION}/${actId}` +
-        `?fields=currency&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`;
+        `?fields=currency&access_token=${encodeURIComponent(token)}`;
 
       try {
         const [iRes, aRes] = await Promise.all([fetchWithRetry(apiUrl), fetchWithRetry(accountUrl)]);

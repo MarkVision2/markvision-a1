@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireUser, requireMetaAdAccountAccess } from "../_lib/auth.ts";
+import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -107,17 +108,6 @@ Deno.serve(async (req) => {
     const auth = await requireUser(req);
     if (!auth.ok) return auth.response;
 
-    const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN");
-    if (!META_ACCESS_TOKEN) {
-      return new Response(
-        JSON.stringify({ error: "META_ACCESS_TOKEN is not configured" }),
-        {
-          status: 500,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        },
-      );
-    }
-
     const url = new URL(req.url);
     const rawActId = url.searchParams.get("actId");
     const month = url.searchParams.get("month"); // YYYY-MM
@@ -148,6 +138,26 @@ Deno.serve(async (req) => {
     const acctAccess = await requireMetaAdAccountAccess(auth.authHeader, actId);
     if (!acctAccess.ok) return acctAccess.response;
 
+    // Токен кабинета (OAuth) в приоритете; общий — запасной.
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+    const { data: cab } = await admin
+      .from("ad_cabinets")
+      .select("access_token")
+      .or(`external_id.eq.${actId},ad_account_id.eq.${actId}`)
+      .limit(1)
+      .maybeSingle();
+    const token = String((cab as { access_token?: string | null } | null)?.access_token || "").trim()
+      || (await resolveMetaAccessToken({ admin }));
+    if (!token) {
+      return new Response(
+        JSON.stringify({ error: "Нет Meta-токена для кабинета. Подключите его через Facebook." }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
     const fields = [
       "date_start",
       "spend",
@@ -167,12 +177,12 @@ Deno.serve(async (req) => {
       `&time_increment=1` +
       `&level=account` +
       `&limit=500` +
-      `&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`;
+      `&access_token=${encodeURIComponent(token)}`;
 
     // Fetch insights + account currency in parallel
     const accountUrl =
       `https://graph.facebook.com/${META_API_VERSION}/${actId}` +
-      `?fields=currency&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`;
+      `?fields=currency&access_token=${encodeURIComponent(token)}`;
 
     const [metaResp, accountResp] = await Promise.all([
       fetch(apiUrl),

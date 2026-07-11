@@ -28,34 +28,49 @@ jobs:
         with:
           version: latest
 
-      - name: Verify required secrets
-        run: |
-          set -e
-          test -n "$SUPABASE_ACCESS_TOKEN" || (echo "::error::Secret SUPABASE_ACCESS_TOKEN is missing"; exit 1)
-          test -n "$SUPABASE_DB_PASSWORD" || (echo "::error::Secret SUPABASE_DB_PASSWORD is missing"; exit 1)
+      # Функции деплоятся только по ACCESS_TOKEN + project ref (без пароля БД).
+      # Пароль нужен только для db push, поэтому его отсутствие не должно блокировать
+      # деплой функций — иначе весь бэкенд не выкатывается из-за одного секрета.
+      - name: Verify access token
+        run: test -n "$SUPABASE_ACCESS_TOKEN" || (echo "::error::Secret SUPABASE_ACCESS_TOKEN is missing"; exit 1)
 
       - name: Normalize project ref
         id: ref
         run: bash .github/scripts/normalize-supabase-ref.sh
 
-      - name: Link project
-        env:
-          SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
-        run: supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
-
-      - name: Apply database migrations
-        run: supabase db push --password "$SUPABASE_DB_PASSWORD"
-
+      # 1) Edge functions — сначала и всегда (не зависят от пароля БД).
+      #    Одна упавшая функция не роняет остальные: собираем список ошибок и
+      #    падаем в конце, чтобы деплой был виден как красный, но выкатил максимум.
       - name: Deploy edge functions
         env:
           SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
         run: |
-          set -e
-          # Discover top-level function dirs (skip helpers prefixed with "_")
           FUNCS=$(ls supabase/functions | grep -v '^_' | tr '\n' ' ')
           echo "Deploying: $FUNCS"
+          FAILED=""
           for fn in $FUNCS; do
             echo "::group::Deploying $fn"
-            supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"
+            if ! supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"; then
+              echo "::warning::Failed to deploy $fn"
+              FAILED="$FAILED $fn"
+            fi
             echo "::endgroup::"
           done
+          if [ -n "$FAILED" ]; then
+            echo "::error::Some functions failed to deploy:$FAILED"
+            exit 1
+          fi
+
+      # 2) Миграции БД — только если задан пароль. Без него шаг пропускается
+      #    (функции уже выкачены выше), а не валит весь пайплайн.
+      - name: Apply database migrations
+        if: ${{ env.SUPABASE_DB_PASSWORD != '' }}
+        env:
+          SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
+        run: |
+          supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+          supabase db push --password "$SUPABASE_DB_PASSWORD"
+
+      - name: Note about skipped migrations
+        if: ${{ env.SUPABASE_DB_PASSWORD == '' }}
+        run: echo "::warning::SUPABASE_DB_PASSWORD not set — edge functions deployed, DB migrations skipped. Add the secret in GitHub → Settings → Secrets → Actions to enable migrations."

@@ -318,19 +318,13 @@ Deno.serve(async (req) => {
     }
   }
 
-  const META_ACCESS_TOKEN = await resolveMetaAccessToken(
-    typeof body.access_token === "string" ? body.access_token : null,
-  );
-  if (!META_ACCESS_TOKEN) {
-    return json({
-      ok: false,
-      error: "Meta access token не настроен. Укажите токен в Настройках → Автоматизация.",
-    }, 400);
-  }
   const admin = createClient(
     Deno.env.get("SUPABASE_URL")!,
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
+  // Токен резолвим по каждому кабинету (его OAuth-токен); общий — запасной.
+  const bodyToken = typeof body.access_token === "string" ? body.access_token : null;
+  const fallbackToken = await resolveMetaAccessToken({ bodyToken, admin });
 
   // ---- params ----
   const qpSince = url.searchParams.get("since") ?? (body.since as string | undefined) ?? null;
@@ -354,7 +348,7 @@ Deno.serve(async (req) => {
   // ---- cabinets ----
   let cabQuery = admin
     .from("ad_cabinets")
-    .select("id, external_id, ad_account_id, project_id, provider, name")
+    .select("id, external_id, ad_account_id, project_id, provider, name, access_token")
     .or("provider.eq.meta,provider.is.null");
   if (qpCabinetId) cabQuery = cabQuery.eq("id", qpCabinetId);
   const { data: cabinets, error: cabErr } = await cabQuery;
@@ -382,10 +376,17 @@ Deno.serve(async (req) => {
     const cabinetId = (cab as { id: string }).id;
     const projectId = ((cab as { project_id?: string }).project_id ?? null) as string | null;
 
+    // Токен кабинета (OAuth) в приоритете, иначе общий запасной.
+    const token = String((cab as { access_token?: string | null }).access_token || "").trim() || fallbackToken;
+    if (!token) {
+      results.push({ cabinet_id: cabinetId, cabinet: cabName, ok: false, error: "нет Meta-токена — подключите кабинет через Facebook" });
+      continue;
+    }
+
     try {
       // ---- 1. Account currency ----
       const accountRes = await fetch(
-        `https://graph.facebook.com/${META_API_VERSION}/${actId}?fields=currency&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`,
+        `https://graph.facebook.com/${META_API_VERSION}/${actId}?fields=currency&access_token=${encodeURIComponent(token)}`,
       );
       const accountJson = await accountRes.json().catch(() => ({}));
       const accountCurrency: string = (accountJson?.currency as string) ?? "USD";
@@ -397,13 +398,13 @@ Deno.serve(async (req) => {
       // ---- 2. Campaigns ----
       const campFields = ["id", "name", "objective", "status", "effective_status", "daily_budget", "lifetime_budget", "start_time", "stop_time"].join(",");
       const campaigns = await fetchAllPages<Record<string, unknown>>(
-        `https://graph.facebook.com/${META_API_VERSION}/${actId}/campaigns?fields=${campFields}&limit=200&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`,
+        `https://graph.facebook.com/${META_API_VERSION}/${actId}/campaigns?fields=${campFields}&limit=200&access_token=${encodeURIComponent(token)}`,
       );
 
       // destination_type — отдельный запрос на уровне adset (наследуется кампанией для CBO).
       // Берём представительный adset на каждую кампанию, чтобы не дёргать API лишний раз.
       const adsetMap = await fetchAllPages<Record<string, unknown>>(
-        `https://graph.facebook.com/${META_API_VERSION}/${actId}/adsets?fields=campaign_id,destination_type,optimization_goal&limit=200&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`,
+        `https://graph.facebook.com/${META_API_VERSION}/${actId}/adsets?fields=campaign_id,destination_type,optimization_goal&limit=200&access_token=${encodeURIComponent(token)}`,
       );
       const destByCampaign = new Map<string, string>();
       for (const a of adsetMap) {
@@ -440,7 +441,7 @@ Deno.serve(async (req) => {
         "creative{thumbnail_url,image_url,video_id,object_story_spec,asset_feed_spec,body,title,call_to_action_type,object_url}",
       ].join(",");
       const ads = await fetchAllPages<Record<string, unknown>>(
-        `https://graph.facebook.com/${META_API_VERSION}/${actId}/ads?fields=${adFields}&limit=200&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`,
+        `https://graph.facebook.com/${META_API_VERSION}/${actId}/ads?fields=${adFields}&limit=200&access_token=${encodeURIComponent(token)}`,
       );
       // Pre-extract creative metadata.
       const adsMeta = ads.map((a) => {
@@ -458,7 +459,7 @@ Deno.serve(async (req) => {
       for (let i = 0; i < videoIds.length; i += 50) {
         const chunk = videoIds.slice(i, i + 50);
         try {
-          const url = `https://graph.facebook.com/${META_API_VERSION}/?ids=${encodeURIComponent(chunk.join(","))}&fields=source,picture,thumbnails{uri,width,height,is_preferred}&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`;
+          const url = `https://graph.facebook.com/${META_API_VERSION}/?ids=${encodeURIComponent(chunk.join(","))}&fields=source,picture,thumbnails{uri,width,height,is_preferred}&access_token=${encodeURIComponent(token)}`;
           const r = await fetch(url);
           if (!r.ok) continue;
           const body = await r.json() as Record<string, {
@@ -529,7 +530,7 @@ Deno.serve(async (req) => {
         const tr = encodeURIComponent(JSON.stringify({ since: from, until: to }));
         try {
           return await fetchAllPagesSafe<Record<string, unknown>>(
-            (limit) => `https://graph.facebook.com/${META_API_VERSION}/${actId}/insights?fields=${insightFields},${idField}&time_range=${tr}&time_increment=1&level=${level}&limit=${limit}&access_token=${encodeURIComponent(META_ACCESS_TOKEN)}`,
+            (limit) => `https://graph.facebook.com/${META_API_VERSION}/${actId}/insights?fields=${insightFields},${idField}&time_range=${tr}&time_increment=1&level=${level}&limit=${limit}&access_token=${encodeURIComponent(token)}`,
             200,
             25,
           );
