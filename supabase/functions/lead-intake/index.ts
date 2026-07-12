@@ -62,6 +62,11 @@ const Schema = z.object({
   ad_id: z.string().trim().max(40).optional().nullable(),
   adset_id: z.string().trim().max(40).optional().nullable(),
   campaign_id: z.string().trim().max(40).optional().nullable(),
+  // Атрибуция Google Ads (gclid + структура кабинета из auto-tagging / ValueTrack)
+  gclid: z.string().trim().max(255).optional().nullable(),
+  google_campaign_id: z.string().trim().max(40).optional().nullable(),
+  google_ad_group_id: z.string().trim().max(40).optional().nullable(),
+  google_ad_id: z.string().trim().max(40).optional().nullable(),
   cw: z.string().trim().max(80).optional().nullable(),
   codeword: z.string().trim().max(80).optional().nullable(),
   ig_user: z.string().trim().max(120).optional().nullable(),
@@ -349,10 +354,14 @@ Deno.serve(async (req) => {
     normalizeCodeword(v.codeword) ||
     (v.utm_source?.toLowerCase() === "instagram" ? normalizeCodeword(v.utm_campaign) : null);
 
+  // Наличие gclid = клик по объявлению Google Ads (auto-tagging), даже если на
+  // лендинге не проставлен utm_source. Тогда источник по умолчанию — google.
+  const hasGclid = !!(v.gclid && v.gclid.trim());
   const rawSource =
     (organicCodeword ? "instagram" : null) ||
     (v.source && v.source.trim()) ||
     (v.utm_source && v.utm_source.trim()) ||
+    (hasGclid ? "google" : null) ||
     detectFromReferrer(v.referrer) ||
     (v.channel && v.channel.trim() !== "web" ? v.channel.trim() : null) ||
     "site";
@@ -424,6 +433,11 @@ Deno.serve(async (req) => {
     const metaAdsetId = (v.adset_id && v.adset_id.trim()) || numericId(v.utm_term);
     const metaCampaignId = (v.campaign_id && v.campaign_id.trim()) || numericId(v.utm_campaign);
     const clickId = (v.fbclid && v.fbclid.trim()) || null;
+    // Google Ads: gclid + id структуры (из ValueTrack {campaignid}/{adgroupid}/{creative}).
+    const gclid = (v.gclid && v.gclid.trim()) || null;
+    const googleCampaignId = (v.google_campaign_id && v.google_campaign_id.trim()) || null;
+    const googleAdGroupId = (v.google_ad_group_id && v.google_ad_group_id.trim()) || null;
+    const googleAdId = (v.google_ad_id && v.google_ad_id.trim()) || null;
 
     // Dedupe by phone — scoped to the resolved project.
     const existingId = await findExistingLeadByPhone(phoneE164, projectId);
@@ -434,6 +448,10 @@ Deno.serve(async (req) => {
       if (metaAdsetId) patch.meta_adset_id = metaAdsetId;
       if (metaCampaignId) patch.meta_campaign_id = metaCampaignId;
       if (clickId) patch.click_id = clickId;
+      if (gclid) patch.gclid = gclid;
+      if (googleCampaignId) patch.google_campaign_id = googleCampaignId;
+      if (googleAdGroupId) patch.google_ad_group_id = googleAdGroupId;
+      if (googleAdId) patch.google_ad_id = googleAdId;
       await admin
         .from("leads")
         .update(patch)
@@ -492,6 +510,10 @@ Deno.serve(async (req) => {
         meta_adset_id: metaAdsetId,
         meta_campaign_id: metaCampaignId,
         click_id: clickId,
+        gclid,
+        google_campaign_id: googleCampaignId,
+        google_ad_group_id: googleAdGroupId,
+        google_ad_id: googleAdId,
       })
       .select("id")
       .single();

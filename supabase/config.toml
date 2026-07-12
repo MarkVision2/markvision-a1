@@ -55,6 +55,17 @@ verify_jwt = false
 [functions.content-center]
 verify_jwt = false
 
+# Google Ads OAuth: start/finish проверяют JWT + доступ к проекту внутри;
+# callback публичный (Google редиректит без JWT, доверие — одноразовый state).
+[functions.google-oauth-start]
+verify_jwt = false
+
+[functions.google-oauth-callback]
+verify_jwt = false
+
+[functions.google-oauth-finish]
+verify_jwt = false
+
 [functions.content-factory-proxy]
 verify_jwt = true
 

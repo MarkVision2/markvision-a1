@@ -26,6 +26,7 @@ import { ClientDashTokensSettings } from "@/components/settings/ClientDashTokens
 import { InstagramOrganicSettings } from "@/components/settings/InstagramOrganicSettings";
 import { MetaTokensSettings } from "@/components/settings/MetaTokensSettings";
 import { FacebookConnect } from "@/components/settings/FacebookConnect";
+import { GoogleAdsConnect } from "@/components/settings/GoogleAdsConnect";
 import { SiteIntakeCard } from "@/pages/SettingsConnection";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -482,6 +483,7 @@ export default function Settings() {
           {activeTab === "meta-tokens" && (
             <div className="space-y-6">
               <FacebookConnect />
+              <GoogleAdsConnect />
               <MetaTokensSettings />
             </div>
           )}

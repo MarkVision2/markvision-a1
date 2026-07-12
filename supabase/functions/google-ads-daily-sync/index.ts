@@ -145,13 +145,15 @@ Deno.serve(async (req) => {
 
 
   const developerToken = Deno.env.get("GOOGLE_ADS_DEVELOPER_TOKEN");
-  const refreshToken = Deno.env.get("GOOGLE_ADS_OAUTH_REFRESH_TOKEN");
-  if (!developerToken || !refreshToken) {
+  // refresh-токен теперь берётся per-project из google_ads_connections
+  // (подключение через google-oauth-*). Env оставлен как глобальный fallback.
+  const envRefreshToken = Deno.env.get("GOOGLE_ADS_OAUTH_REFRESH_TOKEN") || null;
+  if (!developerToken) {
     return json(
       {
         ok: false,
         error: "google_ads_not_configured",
-        hint: "Set GOOGLE_ADS_DEVELOPER_TOKEN, GOOGLE_ADS_OAUTH_CLIENT_ID/SECRET, GOOGLE_ADS_OAUTH_REFRESH_TOKEN in edge function secrets. Or POST aggregated daily rows to /functions/v1/google-ads-intake.",
+        hint: "Set GOOGLE_ADS_DEVELOPER_TOKEN (+ GOOGLE_OAUTH_CLIENT_ID/SECRET) in edge function secrets and connect a project via google-oauth-start. Or POST aggregated daily rows to /functions/v1/google-ads-intake.",
       },
       503,
     );
@@ -193,12 +195,32 @@ Deno.serve(async (req) => {
     return json({ ok: true, since, until, results: [], note: "no Google Ads cabinets configured" });
   }
 
-  const loginCustomerId = Deno.env.get("GOOGLE_ADS_LOGIN_CUSTOMER_ID") || null;
-  let accessToken: string;
-  try {
-    accessToken = await getAccessToken(refreshToken);
-  } catch (e) {
-    return json({ ok: false, error: (e as Error).message }, 500);
+  const envLoginCustomerId = Deno.env.get("GOOGLE_ADS_LOGIN_CUSTOMER_ID") || null;
+
+  // Подключения проектов: refresh-токен + login-customer-id на проект.
+  const projectIds = Array.from(new Set(cabinets.map((c) => (c as { project_id?: string }).project_id).filter(Boolean))) as string[];
+  const connByProject = new Map<string, { refresh_token: string; login_customer_id: string | null }>();
+  if (projectIds.length > 0) {
+    const { data: conns } = await admin
+      .from("google_ads_connections")
+      .select("project_id, refresh_token, login_customer_id")
+      .in("project_id", projectIds);
+    for (const c of conns ?? []) {
+      connByProject.set((c as { project_id: string }).project_id, {
+        refresh_token: (c as { refresh_token: string }).refresh_token,
+        login_customer_id: (c as { login_customer_id: string | null }).login_customer_id,
+      });
+    }
+  }
+
+  // Кэш access-токенов по refresh-токену, чтобы не дёргать oauth на каждый кабинет.
+  const accessTokenCache = new Map<string, string>();
+  async function accessTokenFor(refreshToken: string): Promise<string> {
+    const cached = accessTokenCache.get(refreshToken);
+    if (cached) return cached;
+    const at = await getAccessToken(refreshToken);
+    accessTokenCache.set(refreshToken, at);
+    return at;
   }
 
   const gaql = `
@@ -218,7 +240,16 @@ Deno.serve(async (req) => {
     const ext = (cab.external_id ?? "").trim();
     if (!ext) { results.push({ cabinet: ext, ok: false, error: "external_id missing" }); continue; }
     const customerId = normalizeCustomerId(ext);
+    const projId = (cab as { project_id?: string }).project_id ?? "";
+    const conn = projId ? connByProject.get(projId) : undefined;
+    const refreshToken = conn?.refresh_token ?? envRefreshToken;
+    const loginCustomerId = conn?.login_customer_id ?? envLoginCustomerId;
+    if (!refreshToken) {
+      results.push({ cabinet: ext, ok: false, error: "no refresh token — connect project via google-oauth-start" });
+      continue;
+    }
     try {
+      const accessToken = await accessTokenFor(refreshToken);
       const rows = await runGaql(accessToken, developerToken, loginCustomerId, customerId, gaql);
       const upserts: Array<Record<string, unknown>> = [];
       let totSpend = 0, totLeads = 0, totClicks = 0, totRevenue = 0;
