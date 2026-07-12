@@ -126,8 +126,34 @@ Google Ads и на сайте клиента (см. «Что нужно сдел
 
 ---
 
-## 5. Дальнейшие шаги (не реализовано, на будущее)
-- `google-ads-offline-conversions` — отгрузка `gclid → продажа/диагностика` обратно в Google Ads (uploadClickConversions) для оптимизации.
-- Синк структуры кампаний (campaign/adgroup/ad) как у Meta (`meta-structure-sync`) — для отчёта «воронка по объявлениям Google».
-- `google-list-accounts` как отдельный эндпоинт (сейчас перечисление внутри callback).
-- Единая вкладка «Реклама» в Настройках, объединяющая Facebook + Google + другие источники.
+## 5. Структура кампаний и офлайн-конверсии (реализовано, задеплоено)
+
+### 5.1 Синк структуры кампаний — `google-ads-structure-sync`
+Тянет кампании и их дневную статистику в `google_campaigns` / `google_campaign_daily`
+(паритет с `meta_campaigns` / `meta_campaign_daily`; RLS — члены проекта читают своё).
+- Настроить cron (как `google-ads-daily-sync`): `POST .../functions/v1/google-ads-structure-sync`, заголовок `x-cron-secret: <CAPI_WORKER_KEY>`. Тело — пусто (вчера) или `{since,until}`.
+
+### 5.2 Офлайн-конверсии CRM → Google — `google-ads-offline-conversions`
+Отгружает реальные продажи (и опц. заявки) из CRM обратно в Google Ads по `gclid`
+(`uploadClickConversions`), чтобы Smart Bidding оптимизировался на деньги. Идемпотентно
+через `google_offline_conversions`.
+
+Что нужно настроить вручную:
+1. В Google Ads создать **конверсионное действие типа Import** (например «CRM — Продажа», категория Purchase; опц. «CRM — Заявка»).
+2. Взять его **resource name** `customers/{cid}/conversionActions/{id}` (через API `conversionActions` или из URL действия) и записать в подключение проекта:
+   ```sql
+   update public.google_ads_connections
+     set conversion_action_sale = 'customers/1234567890/conversionActions/111',
+         conversion_action_lead = 'customers/1234567890/conversionActions/222'  -- опц.
+   where project_id = '<project-uuid>';
+   ```
+3. Настроить cron: `POST .../functions/v1/google-ads-offline-conversions` с `x-cron-secret`.
+   Берёт оплаченные лиды (`leads.paid=true`, `gclid` не пуст, `amount`), не отгруженные ранее.
+
+> Требует включённого **enhanced conversions for leads / consent** и не старше 63 дней от клика (ограничение Google по gclid).
+
+## 6. Дальнейшие шаги (на будущее)
+- Ad-group / ad-level синк Google (сейчас только campaign-level).
+- Фронтовый отчёт «Воронка по кампаниям Google» поверх `google_campaign_daily` (данные уже пишутся).
+- UI для ввода `conversion_action_*` в карточке подключения (сейчас — SQL).
+- Единая вкладка «Реклама» в Настройках (Facebook + Google + прочее).

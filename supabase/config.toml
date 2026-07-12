@@ -66,6 +66,14 @@ verify_jwt = false
 [functions.google-oauth-finish]
 verify_jwt = false
 
+# Google Ads: синк структуры и офлайн-конверсии — авторизация внутри
+# (cron secret x-cron-secret или админский JWT).
+[functions.google-ads-structure-sync]
+verify_jwt = false
+
+[functions.google-ads-offline-conversions]
+verify_jwt = false
+
 [functions.content-factory-proxy]
 verify_jwt = true
 
