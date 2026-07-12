@@ -26,6 +26,7 @@ import { CHANNELS, resolveChannel, type ChannelKey } from "@/lib/channelAttribut
 import { isLeadPaid } from "@/lib/leadStageFlags";
 import { ChannelCard, type ChannelStat } from "@/components/analytics/ChannelCard";
 import { UtmTable, type UtmRow } from "@/components/analytics/UtmTable";
+import { GoogleCampaignsCard } from "@/components/analytics/GoogleCampaignsCard";
 import type { TrendPoint } from "@/components/analytics/TrendChart";
 const TrendChart = lazy(() =>
   import("@/components/analytics/TrendChart").then((m) => ({ default: m.TrendChart })),
@@ -598,6 +599,8 @@ const Analytics = () => {
           <UtmTable rows={utmRows} />
         </div>
       </section>
+
+      <GoogleCampaignsCard range={period} />
     </PageContainer>
   );
 };

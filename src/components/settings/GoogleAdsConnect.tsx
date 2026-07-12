@@ -14,11 +14,18 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 type PendingAccount = { id: string; name: string };
 type PendingSelection = { selectionId: string; accounts: PendingAccount[] };
 type ConnectedCabinet = { name: string; external_id: string | null; currency: string | null };
+type GoogleConfig = {
+  connected: boolean;
+  google_email: string | null;
+  conversion_action_sale: string | null;
+  conversion_action_lead: string | null;
+};
 
 type OAuthMessage = {
   source?: string;
@@ -43,12 +50,17 @@ export function GoogleAdsConnect() {
   const [selection, setSelection] = useState<PendingSelection | null>(null);
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
   const [cabinets, setCabinets] = useState<ConnectedCabinet[]>([]);
+  const [config, setConfig] = useState<GoogleConfig | null>(null);
+  const [saleAction, setSaleAction] = useState("");
+  const [leadAction, setLeadAction] = useState("");
+  const [savingCfg, setSavingCfg] = useState(false);
   const [params, setParams] = useSearchParams();
   const pollRef = useRef<number | null>(null);
 
   const refreshConnected = useCallback(async () => {
     if (!projectId) {
       setCabinets([]);
+      setConfig(null);
       return;
     }
     const { data } = await supabase
@@ -58,7 +70,44 @@ export function GoogleAdsConnect() {
       .eq("provider", "google")
       .order("updated_at", { ascending: false });
     setCabinets((data as ConnectedCabinet[] | null) ?? []);
+
+    // Статус подключения + конверсионные действия (через edge-функцию, т.к.
+    // google_ads_connections закрыта RLS).
+    try {
+      const { data: cfg } = await supabase.functions.invoke<GoogleConfig>("google-ads-config", {
+        body: { project_id: projectId },
+      });
+      if (cfg) {
+        setConfig(cfg);
+        setSaleAction(cfg.conversion_action_sale ?? "");
+        setLeadAction(cfg.conversion_action_lead ?? "");
+      }
+    } catch {
+      /* подключения ещё нет — не критично */
+    }
   }, [projectId]);
+
+  const saveConversionActions = async () => {
+    if (!projectId) return;
+    setSavingCfg(true);
+    try {
+      const { data, error } = await supabase.functions.invoke<GoogleConfig>("google-ads-config", {
+        body: {
+          project_id: projectId,
+          action: "save",
+          conversion_action_sale: saleAction.trim() || null,
+          conversion_action_lead: leadAction.trim() || null,
+        },
+      });
+      if (error) throw new Error(error.message);
+      if (data) setConfig(data);
+      toast.success("Конверсионные действия сохранены");
+    } catch (e) {
+      toast.error("Не удалось сохранить", { description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setSavingCfg(false);
+    }
+  };
 
   useEffect(() => { refreshConnected(); }, [refreshConnected]);
 
@@ -212,6 +261,12 @@ export function GoogleAdsConnect() {
           {cabinets.length > 0 ? "Переподключить Google" : "Войти через Google"}
         </Button>
 
+        {config?.google_email && (
+          <div className="mt-3 text-xs text-muted-foreground">
+            Google-аккаунт: <span className="font-medium text-foreground">{config.google_email}</span>
+          </div>
+        )}
+
         {cabinets.length > 0 && (
           <div className="mt-4 space-y-3 rounded-xl border border-border/60 bg-secondary/40 p-3">
             {cabinets.map((c) => (
@@ -230,6 +285,40 @@ export function GoogleAdsConnect() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {config?.connected && (
+          <div className="mt-4 space-y-3 rounded-xl border border-border/60 bg-background p-3">
+            <div>
+              <h4 className="text-sm font-semibold">Конверсионные действия (офлайн-конверсии)</h4>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Resource name действия из Google Ads («customers/&#123;cid&#125;/conversionActions/&#123;id&#125;»).
+                Продажи из CRM с gclid будут отгружаться в это действие, чтобы Google оптимизировался на деньги.
+              </p>
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Продажа</label>
+              <Input
+                value={saleAction}
+                onChange={(e) => setSaleAction(e.target.value)}
+                placeholder="customers/1234567890/conversionActions/111"
+                className="h-9 font-mono text-xs"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-muted-foreground">Заявка (необязательно)</label>
+              <Input
+                value={leadAction}
+                onChange={(e) => setLeadAction(e.target.value)}
+                placeholder="customers/1234567890/conversionActions/222"
+                className="h-9 font-mono text-xs"
+              />
+            </div>
+            <Button size="sm" variant="outline" onClick={saveConversionActions} disabled={savingCfg} className="gap-2">
+              {savingCfg && <Loader2 className="h-4 w-4 animate-spin" />}
+              Сохранить
+            </Button>
           </div>
         )}
       </div>

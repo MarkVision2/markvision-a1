@@ -74,6 +74,11 @@ verify_jwt = false
 [functions.google-ads-offline-conversions]
 verify_jwt = false
 
+# Конфиг Google Ads для UI (статус + конверсионные действия) — auth + доступ к
+# проекту проверяются внутри.
+[functions.google-ads-config]
+verify_jwt = false
+
 [functions.content-factory-proxy]
 verify_jwt = true
 
