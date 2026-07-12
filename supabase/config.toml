@@ -50,6 +50,11 @@ verify_jwt = false
 [functions.instagram-sync]
 verify_jwt = false
 
+# Контент-центр: auth + доступ к проекту проверяются внутри (requireUser +
+# requireProjectAccess), данные считает RPC под service role строго по project_id.
+[functions.content-center]
+verify_jwt = false
+
 [functions.content-factory-proxy]
 verify_jwt = true
 

@@ -13,7 +13,8 @@ import { Input } from "@/components/ui/input";
 import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPicker";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { fmtKzt, fmtNum } from "@/lib/format";
-import { clientSupabaseUrl } from "@/lib/supabaseConfig";
+import { supabase } from "@/integrations/supabase/client";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { cn } from "@/lib/utils";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import {
@@ -28,8 +29,10 @@ import { useIsMobile } from "@/hooks/use-mobile";
 
 // Раздел «Контент-центр» — аналитика Instagram-автоворонки (cf_*), которая живёт
 // в клиентском Supabase (szfgdruhlebfvcmlvxdk). Данные считает edge-функция
-// content-center одним запросом (посты + KPI + воронка за период).
-const CLIENT_URL = clientSupabaseUrl;
+// content-center одним запросом (посты + KPI + воронка за период) СТРОГО по
+// активному проекту: project_id передаётся вместе с JWT, а функция проверяет
+// доступ пользователя к проекту. Без project_id раздел показывал бы контент
+// чужих Instagram-аккаунтов (других проектов).
 
 interface CCPost {
   ig_media_id: string;
@@ -62,15 +65,26 @@ const ymd = (d: Date) =>
 const fmtDate = (s: string | null) =>
   s ? new Date(s).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "—";
 
-async function fetchContentCenter(from: string, to: string): Promise<CCResp> {
-  if (!CLIENT_URL) throw new Error("VITE_CLIENT_SUPABASE_URL не задан — раздел недоступен");
-  const r = await fetch(`${CLIENT_URL}/functions/v1/content-center`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to }),
+async function fetchContentCenter(projectId: string, from: string, to: string): Promise<CCResp> {
+  // supabase.functions.invoke сам подставляет Authorization (JWT пользователя)
+  // и apikey — edge-функция по ним проверяет доступ к project_id.
+  const { data: d, error } = await supabase.functions.invoke<CCResp>("content-center", {
+    body: { project_id: projectId, from, to },
   });
-  if (!r.ok) throw new Error(`content-center: HTTP ${r.status}`);
-  const d = (await r.json()) as CCResp;
+  if (error) {
+    let message = error.message;
+    try {
+      const ctx = (error as { context?: Response }).context;
+      if (ctx && typeof ctx.json === "function") {
+        const body = await ctx.json();
+        if (body?.error) message = String(body.error);
+      }
+    } catch {
+      /* ignore */
+    }
+    throw new Error(message);
+  }
+  if (!d) throw new Error("content-center: пустой ответ");
   return {
     from: d.from, to: d.to,
     posts: Array.isArray(d.posts) ? d.posts : [],
@@ -340,6 +354,7 @@ const TOP5_MODES: { key: Top5Mode; label: string }[] = [
 
 const ContentCenter = () => {
   const isMobile = useIsMobile();
+  const { activeId: projectId, active } = useProjectsStore();
   const [range, setRange] = useState<ReportPeriodRange>(() => currentMonthRange());
   const [data, setData] = useState<CCResp | null>(null);
   const [loading, setLoading] = useState(true);
@@ -360,15 +375,20 @@ const ContentCenter = () => {
   const to = ymd(range.to);
 
   useEffect(() => {
+    if (!projectId) {
+      setData(null);
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchContentCenter(from, to)
+    fetchContentCenter(projectId, from, to)
       .then((d) => { if (!cancelled) setData(d); })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [from, to, refreshTick]);
+  }, [projectId, from, to, refreshTick]);
 
   const posts = useMemo(() => (data?.posts ?? []).map(enrich), [data]);
   const totals = data?.totals;
@@ -505,6 +525,7 @@ const ContentCenter = () => {
             </Link>
             .{" "}
             <span className="text-pink-500 font-medium">Instagram</span>
+            {active?.name ? <> проекта «{active.name}»</> : null}
             {" · "}охват → код-слово → заявка → диагностика → продажа · {rangeLabel}
           </span>
         }
