@@ -103,8 +103,8 @@ const CONNECTION_NAV: Array<{
   },
   {
     tab: "meta-tokens",
-    title: "Meta",
-    desc: "Вход через Facebook и токены Meta API для рекламы и автопостинга.",
+    title: "Реклама",
+    desc: "Рекламные кабинеты: вход через Facebook (Meta) и Google Ads — авторизация, токены, синхронизация расходов в сквозную аналитику.",
     icon: KeyRound,
   },
   {
