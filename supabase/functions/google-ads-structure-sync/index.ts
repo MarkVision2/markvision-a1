@@ -146,7 +146,48 @@ Deno.serve(async (req) => {
       })).filter((r) => r.campaign_id && r.date);
       if (dayUpserts.length) await admin.from("google_campaign_daily").upsert(dayUpserts, { onConflict: "campaign_id,date" });
 
-      results.push({ cabinet: ext, ok: true, campaigns: campUpserts.length, days: dayUpserts.length });
+      // Группы объявлений
+      const agRows = await gaql(at, devToken, login, customerId,
+        "SELECT ad_group.id, ad_group.name, ad_group.status, campaign.id FROM ad_group");
+      const agUpserts = agRows.map((r) => ({
+        ad_group_id: String(r.adGroup?.id ?? ""), campaign_id: r.campaign?.id ? String(r.campaign.id) : null,
+        project_id: projId || null, cabinet_id: cab.id,
+        name: r.adGroup?.name ?? null, status: r.adGroup?.status ?? null,
+        last_synced_at: new Date().toISOString(),
+      })).filter((r) => r.ad_group_id);
+      if (agUpserts.length) await admin.from("google_ad_groups").upsert(agUpserts, { onConflict: "ad_group_id" });
+
+      // Объявления (креативы)
+      const adRows = await gaql(at, devToken, login, customerId,
+        "SELECT ad_group_ad.ad.id, ad_group_ad.ad.name, ad_group_ad.ad.type, ad_group_ad.status, ad_group.id, campaign.id FROM ad_group_ad");
+      const adUpserts = adRows.map((r) => ({
+        ad_id: String(r.adGroupAd?.ad?.id ?? ""),
+        ad_group_id: r.adGroup?.id ? String(r.adGroup.id) : null,
+        campaign_id: r.campaign?.id ? String(r.campaign.id) : null,
+        project_id: projId || null, cabinet_id: cab.id,
+        name: r.adGroupAd?.ad?.name ?? null, type: r.adGroupAd?.ad?.type ?? null, status: r.adGroupAd?.status ?? null,
+        last_synced_at: new Date().toISOString(),
+      })).filter((r) => r.ad_id);
+      if (adUpserts.length) await admin.from("google_creatives").upsert(adUpserts, { onConflict: "ad_id" });
+
+      // Дневная статистика по объявлениям
+      const adDayRows = await gaql(at, devToken, login, customerId,
+        `SELECT ad_group_ad.ad.id, ad_group.id, campaign.id, segments.date, metrics.cost_micros, metrics.impressions, metrics.clicks, metrics.conversions, metrics.conversions_value FROM ad_group_ad WHERE segments.date BETWEEN '${since}' AND '${until}'`);
+      const adDayUpserts = adDayRows.map((r) => ({
+        ad_id: String(r.adGroupAd?.ad?.id ?? ""),
+        ad_group_id: r.adGroup?.id ? String(r.adGroup.id) : null,
+        campaign_id: r.campaign?.id ? String(r.campaign.id) : null,
+        project_id: projId || null, cabinet_id: cab.id, date: r.segments?.date,
+        spend: Number(r.metrics?.costMicros ?? 0) / 1_000_000,
+        impressions: Number(r.metrics?.impressions ?? 0),
+        clicks: Number(r.metrics?.clicks ?? 0),
+        leads: Number(r.metrics?.conversions ?? 0),
+        revenue: Number(r.metrics?.conversionsValue ?? 0),
+        currency: "KZT", synced_at: new Date().toISOString(),
+      })).filter((r) => r.ad_id && r.date);
+      if (adDayUpserts.length) await admin.from("google_creative_daily").upsert(adDayUpserts, { onConflict: "ad_id,date" });
+
+      results.push({ cabinet: ext, ok: true, campaigns: campUpserts.length, days: dayUpserts.length, adGroups: agUpserts.length, ads: adUpserts.length, adDays: adDayUpserts.length });
     } catch (e) {
       results.push({ cabinet: ext, ok: false, error: (e as Error).message });
     }
