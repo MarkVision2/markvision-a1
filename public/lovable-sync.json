@@ -1,7 +1,7 @@
 {
-  "git_sha": "27b217c",
-  "git_sha_full": "27b217cefa067b88cdbd60e7007e02ef27334769",
-  "updated_at": "2026-07-13T10:02:50Z",
-  "label": "fix(settings): split ad connections back into separate Meta and Google Ads tabs",
+  "git_sha": "fb82050",
+  "git_sha_full": "fb8205051854faf1d07837755f72c455eac94cb7",
+  "updated_at": "2026-07-13T10:06:07Z",
+  "label": "fix(google-ads): show real reason when connect fails (e.g. missing secret)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
