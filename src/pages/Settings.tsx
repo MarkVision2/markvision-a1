@@ -52,7 +52,7 @@ const ROLE_COLOR: Record<string, string> = {
 
 const SETTINGS_TABS = [
   "team", "profile", "pipelines", "loss",
-  "telephony", "whatsapp", "site", "inbound", "ig-organic", "meta-tokens", "clientview",
+  "telephony", "whatsapp", "site", "inbound", "ig-organic", "meta-tokens", "google-ads", "clientview",
 ] as const;
 
 type SettingsTab = (typeof SETTINGS_TABS)[number];
@@ -103,9 +103,15 @@ const CONNECTION_NAV: Array<{
   },
   {
     tab: "meta-tokens",
-    title: "Реклама",
-    desc: "Рекламные кабинеты: вход через Facebook (Meta) и Google Ads — авторизация, токены, синхронизация расходов в сквозную аналитику.",
+    title: "Meta",
+    desc: "Вход через Facebook и токены Meta API для рекламы и автопостинга.",
     icon: KeyRound,
+  },
+  {
+    tab: "google-ads",
+    title: "Google Ads",
+    desc: "Вход через Google: рекламный кабинет, расходы и конверсии в сквозную аналитику проекта.",
+    icon: Search,
   },
   {
     tab: "clientview",
@@ -158,6 +164,7 @@ export default function Settings() {
     inbound: "checking",
     "ig-organic": "checking",
     "meta-tokens": "checking",
+    "google-ads": "checking",
     clientview: "checking",
   });
 
@@ -196,6 +203,7 @@ export default function Settings() {
             inbound: "disconnected",
             "ig-organic": "disconnected",
             "meta-tokens": "disconnected",
+            "google-ads": "disconnected",
             clientview: "disconnected",
           }));
         }
@@ -210,10 +218,11 @@ export default function Settings() {
         inbound: "checking",
         "ig-organic": "checking",
         "meta-tokens": "checking",
+        "google-ads": "checking",
         clientview: "checking",
       }));
 
-      const [telephonyRes, waRes, igRes, metaRes, inboundRes, clientViewRes] = await Promise.all([
+      const [telephonyRes, waRes, igRes, metaRes, googleRes, inboundRes, clientViewRes] = await Promise.all([
         supabase
           .from("automation_settings" as never)
           .select("sipuni_enabled,sipuni_token_present")
@@ -234,6 +243,12 @@ export default function Settings() {
           .select("id")
           .eq("project_id", activeId)
           .eq("is_active", true)
+          .limit(1),
+        supabase
+          .from("ad_cabinets_safe" as never)
+          .select("id")
+          .eq("project_id", activeId)
+          .eq("provider", "google")
           .limit(1),
         clientConfigSupabase
           ? clientConfigSupabase
@@ -259,6 +274,7 @@ export default function Settings() {
       const siteConnected = !!active?.intakeToken;
       const igConnected = !!(igRes.data?.ig_user_id && igRes.data?.active);
       const metaConnected = !!(metaRes.data && metaRes.data.length > 0);
+      const googleConnected = !!((googleRes.data as unknown[] | null) && (googleRes.data as unknown[]).length > 0);
       const inboundConnected = !!(inboundRes.data && inboundRes.data.length > 0);
       const clientViewConnected = !!(clientViewRes.data && clientViewRes.data.length > 0);
 
@@ -270,6 +286,7 @@ export default function Settings() {
         inbound: inboundConnected ? "connected" : "disconnected",
         "ig-organic": igConnected ? "connected" : "disconnected",
         "meta-tokens": metaConnected ? "connected" : "disconnected",
+        "google-ads": googleConnected ? "connected" : "disconnected",
         clientview: clientViewConnected ? "connected" : "disconnected",
       }));
     };
@@ -483,10 +500,11 @@ export default function Settings() {
           {activeTab === "meta-tokens" && (
             <div className="space-y-6">
               <FacebookConnect />
-              <GoogleAdsConnect />
               <MetaTokensSettings />
             </div>
           )}
+
+          {activeTab === "google-ads" && <GoogleAdsConnect />}
 
           {activeTab === "inbound" && <InboundTokensSettings />}
 
