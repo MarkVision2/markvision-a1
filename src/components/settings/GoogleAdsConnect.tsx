@@ -197,7 +197,20 @@ export function GoogleAdsConnect() {
       const { data, error } = await supabase.functions.invoke("google-oauth-start", {
         body: { project_id: projectId, return_url: window.location.href },
       });
-      if (error) throw new Error(error.message);
+      if (error) {
+        // Вытаскиваем реальную причину/подсказку из тела ответа (напр. 503
+        // «не задан GOOGLE_OAUTH_CLIENT_ID»), иначе supabase-js отдаёт общее
+        // «Edge Function returned a non-2xx status code».
+        let message = error.message;
+        try {
+          const ctx = (error as { context?: Response }).context;
+          if (ctx && typeof ctx.json === "function") {
+            const body = await ctx.json();
+            if (body?.hint || body?.error) message = String(body.hint || body.error);
+          }
+        } catch { /* ignore */ }
+        throw new Error(message);
+      }
       if (data?.error) throw new Error(data.hint || data.error);
       if (!data?.url) throw new Error("Не удалось получить ссылку авторизации");
 
