@@ -52,13 +52,14 @@
 
 ## E. Подключение и конфигурация в приложении
 - [ ] E1. **Приложение → Настройки → вкладка «Реклама» → «Войти через Google»** → выбрать проект → выбрать рекламный аккаунт. Появится карточка подключённого Google-кабинета.
-- [ ] E2. Прописать конверсионные действия проекту (пока через SQL; UI — позже). Взять `project_id` из адресной строки/`projects`:
-  ```sql
-  update public.google_ads_connections
-     set conversion_action_sale = 'customers/1234567890/conversionActions/111',
-         conversion_action_lead  = 'customers/1234567890/conversionActions/222'  -- опц.
-   where project_id = '<project-uuid>';
-  ```
+- [ ] E2. Прописать конверсионные действия проекту — **прямо в приложении**: Настройки → «Реклама» → блок «Конверсионные действия» → вставить resource name действия «Продажа» (и опц. «Заявка») → «Сохранить».
+  - Альтернатива через SQL:
+    ```sql
+    update public.google_ads_connections
+       set conversion_action_sale = 'customers/1234567890/conversionActions/111',
+           conversion_action_lead  = 'customers/1234567890/conversionActions/222'  -- опц.
+     where project_id = '<project-uuid>';
+    ```
 
 ## F. Сайт / Google Tag / GA4 (атрибуция заявок к Google)
 Делает Cowork на сайте клиента:
@@ -82,7 +83,11 @@
 - Сквозная аналитика и дашборд **уже** показывают Google отдельным каналом (по `cabinet_daily_insights.provider='google'`) — как только появятся кабинет и данные синка.
 - Настройки: вкладка переименована в «Реклама», карточка подключения Google рядом с Facebook.
 
+## Уже готово дополнительно (в этой итерации)
+- UI конверсионных действий в Настройках (шаг E2) — без SQL.
+- Отчёт «Кампании Google Ads» на странице «Сквозная аналитика» (расход/клики/конверсии/CPL/выручка/ROAS).
+- Синк на уровне групп объявлений и объявлений (`google_ad_groups`, `google_creatives`, `google_creative_daily`) — данные пишутся `google-ads-structure-sync`.
+
 ## Опционально на будущее (не блокирует запуск)
-- Синк на уровне групп объявлений/объявлений (сейчас — уровень кампаний).
-- Отдельный фронтовый отчёт «Кампании Google» поверх `google_campaign_daily`.
-- UI-поле для `conversion_action_*` (сейчас — SQL, шаг E2).
+- Отдельный фронтовый отчёт на уровне объявлений Google (данные уже есть в `google_creative_daily`).
+- Единая вкладка «Реклама», объединяющая все источники в одном месте.
