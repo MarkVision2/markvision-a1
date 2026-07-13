@@ -1,7 +1,7 @@
 {
-  "git_sha": "6c7bf44",
-  "git_sha_full": "6c7bf44641d8076d03b713d98c751abdda9f9eac",
-  "updated_at": "2026-07-13T06:03:34Z",
-  "label": "fix(content-center): exclude preview-crawler hits from clicks",
+  "git_sha": "27b217c",
+  "git_sha_full": "27b217cefa067b88cdbd60e7007e02ef27334769",
+  "updated_at": "2026-07-13T10:02:50Z",
+  "label": "fix(settings): split ad connections back into separate Meta and Google Ads tabs",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
