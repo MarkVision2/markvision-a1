@@ -1,7 +1,7 @@
 {
-  "git_sha": "d51f50c",
-  "git_sha_full": "d51f50c4d6d964e478a962807c42710a94391484",
-  "updated_at": "2026-07-13T10:09:58Z",
-  "label": "docs(google-ads): clear Cowork TZ for external setup",
+  "git_sha": "3d427aa",
+  "git_sha_full": "3d427aae2869aa76165dd0938123c2bbb3af3457",
+  "updated_at": "2026-07-14T10:02:14Z",
+  "label": "feat(lab): AI Marketing Lab webinar landing at /lab",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
