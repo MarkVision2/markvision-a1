@@ -169,16 +169,6 @@ const SectionTag = ({ children }: { children: ReactNode }) => (
 /* Данные секций                                                       */
 /* ------------------------------------------------------------------ */
 
-const heroTools = [
-  { icon: Target, label: "Таргетолог" },
-  { icon: Factory, label: "Контент-завод" },
-  { icon: BarChart3, label: "Аналитика" },
-  { icon: LayoutDashboard, label: "CRM" },
-  { icon: FileText, label: "Отчётность" },
-  { icon: Bot, label: "Приложения" },
-  { icon: Globe, label: "Сайты" },
-];
-
 const forWhom = [
   "Работаешь таргетологом или маркетологом",
   "Ведёшь несколько клиентов одновременно",
@@ -362,59 +352,66 @@ const Lab = () => {
               "radial-gradient(ellipse 80% 55% at 50% -5%, hsl(210 90% 55% / 0.16), transparent), radial-gradient(ellipse 40% 35% at 85% 25%, hsl(197 92% 61% / 0.08), transparent)",
           }}
         />
-        <div className="mx-auto max-w-5xl px-4 pb-16 pt-14 text-center sm:px-6 sm:pb-20 sm:pt-20">
-          <Reveal>
-            <div className="mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-xs font-semibold text-primary sm:text-sm">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
-              </span>
-              Бесплатный онлайн-практикум для digital-специалистов
-            </div>
-          </Reveal>
+        <div className="mx-auto max-w-6xl px-4 pb-16 pt-10 sm:px-6 sm:pb-20 sm:pt-16">
+          <div className="grid items-center gap-10 lg:grid-cols-[1fr_360px] lg:gap-16">
+            <div className="text-center lg:text-left">
+              <Reveal>
+                <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-xs font-semibold text-primary sm:text-sm">
+                  <span className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
+                  </span>
+                  Бесплатный практикум · 1 августа · Zoom
+                </div>
+              </Reveal>
 
-          <Reveal delay={80}>
-            <h1 className="mx-auto max-w-3xl text-balance text-3xl font-extrabold leading-[1.15] tracking-tight sm:text-5xl sm:leading-[1.08]">
-              Через 5 недель ты перестанешь быть обычным маркетологом.{" "}
-              <span className="text-gradient-primary">Ты станешь специалистом, который управляет собственной AI-командой</span>
-            </h1>
-          </Reveal>
+              <Reveal delay={80}>
+                <h1 className="text-balance text-3xl font-extrabold leading-[1.15] tracking-tight sm:text-4xl sm:leading-[1.1] lg:text-5xl">
+                  Как маркетологу и таргетологу выйти на{" "}
+                  <span className="text-gradient-primary whitespace-nowrap">5 000 000+ ₸</span> в месяц и при этом работать
+                  меньше
+                </h1>
+              </Reveal>
 
-          <Reveal delay={160}>
-            <p className="mx-auto mt-6 max-w-xl text-pretty text-sm leading-relaxed text-muted-foreground sm:text-lg">
-              На практикуме вживую покажу платформу, которая каждый день ведёт мои проекты. А потом расскажу, как собрать
-              такую же под себя. Без знаний кода и программирования.
-            </p>
-          </Reveal>
+              <Reveal delay={160}>
+                <p className="mx-auto mt-5 max-w-xl text-pretty text-sm leading-relaxed text-muted-foreground sm:text-lg lg:mx-0">
+                  Покажу систему, которая сама собирает стратегию, креативы и сайт и сама ведёт рекламу. Запуск клиента,
+                  который раньше занимал несколько дней, теперь занимает пару часов.
+                </p>
+              </Reveal>
 
-          <Reveal delay={240}>
-            <div className="mt-8 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Твоя будущая AI-команда
+              <Reveal delay={240}>
+                <div className="mt-8">
+                  <CtaButton size="xl" id="cta-hero">Забронировать место</CtaButton>
+                  <p className="mt-3 text-xs font-medium text-warning">Количество мест в Zoom ограничено</p>
+                  <EventMeta className="mt-4 lg:justify-start" />
+                </div>
+              </Reveal>
             </div>
-            <div className="mx-auto mt-3 flex max-w-3xl flex-wrap items-center justify-center gap-2">
-              {heroTools.map(({ icon: Icon, label }) => (
-                <span
-                  key={label}
-                  className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-medium text-foreground/90 sm:text-sm"
-                >
-                  <Icon className="h-3.5 w-3.5 text-primary" />
-                  {label}
-                </span>
-              ))}
-            </div>
-          </Reveal>
 
-          <Reveal delay={320}>
-            <div className="mt-10">
-              <CtaButton size="xl" id="cta-hero">Забронировать место</CtaButton>
-              <p className="mt-3 text-xs font-medium text-warning">Количество мест в Zoom ограничено</p>
-              <EventMeta className="mt-4" />
-            </div>
-          </Reveal>
+            <Reveal delay={200} className="hidden lg:block">
+              <div className="relative">
+                <div
+                  aria-hidden
+                  className="absolute -inset-4 -z-10 rounded-3xl"
+                  style={{ background: "radial-gradient(ellipse at 50% 40%, hsl(210 90% 55% / 0.25), transparent 70%)" }}
+                />
+                <img
+                  src="/lab-author.jpg"
+                  alt="Юрий, создатель MarkVision AI"
+                  className="w-full rounded-3xl border border-primary/20 shadow-elevated"
+                />
+                <div className="absolute bottom-4 left-4 right-4 rounded-xl border border-border/60 bg-background/85 px-4 py-2.5 backdrop-blur-md">
+                  <div className="text-sm font-bold">Юрий</div>
+                  <div className="text-xs text-muted-foreground">Маркетолог · Создатель MarkVision AI</div>
+                </div>
+              </div>
+            </Reveal>
+          </div>
 
           {/* Social proof */}
           <Reveal delay={400}>
-            <div className="mx-auto mt-12 grid max-w-3xl grid-cols-2 gap-4 border-t border-border/60 pt-8 sm:grid-cols-4">
+            <div className="mt-12 grid grid-cols-2 gap-4 border-t border-border/60 pt-8 text-center sm:grid-cols-4">
               {[
                 ["6+ лет", "в маркетинге"],
                 ["100+", "проектов"],
