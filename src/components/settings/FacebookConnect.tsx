@@ -94,7 +94,7 @@ export function FacebookConnect() {
       .limit(1);
     if (ig?.page_id) adQuery = adQuery.eq("page_id", ig.page_id);
     const { data: adRows } = await adQuery;
-    const ad = (adRows as Array<{ name: string; ad_account_id: string; currency: string; page_name: string; page_id: string }> | null)?.[0] ?? null;
+    const ad = (adRows as unknown as Array<{ name: string; ad_account_id: string; currency: string; page_name: string; page_id: string }> | null)?.[0] ?? null;
 
     if (!ig && !ad) {
       setConnected(null);

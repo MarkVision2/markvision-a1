@@ -45,12 +45,13 @@ export function useInstagramAccount() {
       .select("ig_user_id, username, name, profile_picture_url, page_id, page_name, followers_count, follows_count, media_count, active, last_sync_at, last_error, ig_login_token_present")
       .eq("project_id", projectId)
       .maybeSingle();
-    if (!data) {
+    if (!data || (data as any).error === true) {
       setAccount(null);
       return;
     }
+    const row = data as any;
     setAccount({
-      igUserId: data.ig_user_id,
+      igUserId: row.ig_user_id,
       username: data.username,
       name: data.name,
       profilePictureUrl: data.profile_picture_url,
