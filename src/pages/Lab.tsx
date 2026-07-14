@@ -152,7 +152,7 @@ const AuthorPhoto = () => {
     <img
       src="/lab-author.jpg"
       alt="Юрий, создатель MarkVision AI"
-      className="mx-auto aspect-square w-full max-w-[260px] rounded-2xl object-cover"
+      className="mx-auto w-full max-w-[280px] rounded-2xl"
       onError={() => setImgOk(false)}
     />
   );
