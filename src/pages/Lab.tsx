@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/accordion";
 
 /* ------------------------------------------------------------------ */
-/* Конфигурация лендинга — правится в одном месте                      */
+/* Конфигурация лендинга: правится в одном месте                      */
 /* ------------------------------------------------------------------ */
 
 // TODO: заменить на реальную ссылку WhatsApp-группы
@@ -119,6 +119,28 @@ const EventMeta = ({ className = "" }: { className?: string }) => (
   </div>
 );
 
+/** Логотип бренда: public/lab-logo.png, при отсутствии файла — фирменная «M» */
+const BrandLogo = () => {
+  const [imgOk, setImgOk] = useState(true);
+  if (!imgOk) {
+    return (
+      <div className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-primary text-sm font-extrabold text-primary-foreground">
+        M
+      </div>
+    );
+  }
+  return (
+    <span className="inline-flex items-center rounded-lg bg-white px-1.5 py-1">
+      <img
+        src="/lab-logo.png"
+        alt="MarkVision AI"
+        className="h-7 w-auto"
+        onError={() => setImgOk(false)}
+      />
+    </span>
+  );
+};
+
 const SectionTag = ({ children }: { children: ReactNode }) => (
   <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-primary/25 bg-primary/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
     <Sparkles className="h-3.5 w-3.5" />
@@ -131,13 +153,13 @@ const SectionTag = ({ children }: { children: ReactNode }) => (
 /* ------------------------------------------------------------------ */
 
 const heroTools = [
-  { icon: Target, label: "AI-Таргетолог" },
-  { icon: Factory, label: "AI-Контент-завод" },
-  { icon: BarChart3, label: "AI-Аналитика" },
-  { icon: LayoutDashboard, label: "AI-CRM" },
-  { icon: FileText, label: "AI-Отчётность" },
-  { icon: Bot, label: "AI-приложения" },
-  { icon: Globe, label: "AI-сайты" },
+  { icon: Target, label: "Таргетолог" },
+  { icon: Factory, label: "Контент-завод" },
+  { icon: BarChart3, label: "Аналитика" },
+  { icon: LayoutDashboard, label: "CRM" },
+  { icon: FileText, label: "Отчётность" },
+  { icon: Bot, label: "Приложения" },
+  { icon: Globe, label: "Сайты" },
 ];
 
 const forWhom = [
@@ -147,7 +169,7 @@ const forWhom = [
   "Каждый день сидишь в Ads Manager",
   "Не успеваешь брать новых клиентов",
   "Хочешь увеличить доход и продавать дороже",
-  "Хочешь создавать собственные AI-инструменты",
+  "Хочешь создавать собственные инструменты и ботов",
   "Хочешь перестать зависеть от дизайнеров и программистов",
   "Чувствуешь, что рынок уходит вперёд, а времени разбираться нет",
 ];
@@ -164,59 +186,56 @@ const oldWay = [
 ];
 
 const newWay = [
-  "AI делает сайты",
-  "AI пишет тексты",
-  "AI делает баннеры и креативы",
-  "AI собирает отчёты",
-  "AI ведёт CRM",
-  "AI анализирует рекламу",
+  "Сайты собирает система",
+  "Тексты пишет нейросеть",
+  "Баннеры и креативы генерируются сами",
+  "Отчёты складываются автоматически",
+  "CRM ведёт ассистент",
+  "Рекламу анализирует алгоритм",
   "Вечера снова свободны",
   "Берёт больше клиентов без найма команды",
 ];
 
 const webinarShow = [
-  { icon: Target, text: "Как работает мой AI-Таргетолог: анализ кампаний и рекомендации без ручного копания в Ads Manager" },
+  { icon: Target, text: "Таргетолог на автопилоте: анализ кампаний и рекомендации без ручного копания в Ads Manager" },
   { icon: Globe, text: "Как создаются сайты за минуты, а не за недели" },
-  { icon: Sparkles, text: "Как AI делает креативы и баннеры под разные офферы" },
-  { icon: Video, text: "Как AI пишет сценарии для видео и рилсов" },
+  { icon: Sparkles, text: "Как генерируются креативы и баннеры под разные офферы" },
+  { icon: Video, text: "Как пишутся сценарии для видео и рилсов без копирайтера" },
   { icon: FileText, text: "Как отчёты для клиентов собираются автоматически" },
-  { icon: LayoutDashboard, text: "Как AI собирает и ведёт CRM" },
-  { icon: Bot, text: "Как создаются собственные AI-приложения" },
-  { icon: Workflow, text: "Как собрать всю эту систему самостоятельно — по шагам" },
+  { icon: LayoutDashboard, text: "Как CRM наполняется и ведётся без ручного труда" },
+  { icon: Bot, text: "Как создаются собственные приложения" },
+  { icon: Workflow, text: "Как собрать всю эту систему самостоятельно, по шагам" },
 ];
 
 const resultCards = [
-  { icon: Target, label: "AI-Таргетолог" },
-  { icon: Zap, label: "AI-Маркетолог" },
+  { icon: Target, label: "Таргетолог" },
+  { icon: Zap, label: "Маркетолог" },
   { icon: Factory, label: "Контент-завод" },
-  { icon: BarChart3, label: "AI-Аналитика" },
-  { icon: LayoutDashboard, label: "AI-CRM" },
-  { icon: FileText, label: "AI-Отчётность" },
-  { icon: Bot, label: "AI-Ассистент" },
-  { icon: Monitor, label: "AI-приложения" },
-  { icon: Globe, label: "AI-сайты" },
+  { icon: BarChart3, label: "Аналитика" },
+  { icon: LayoutDashboard, label: "CRM" },
+  { icon: FileText, label: "Отчётность" },
+  { icon: Bot, label: "Ассистент" },
+  { icon: Monitor, label: "Приложения" },
+  { icon: Globe, label: "Сайты" },
   { icon: Workflow, label: "Автоматизации" },
 ];
 
 const bonuses = [
   { title: "Готовые сайты", desc: "Шаблоны под стоматологию, медицину, автосервис, услуги и другие ниши" },
-  { title: "Готовые CRM", desc: "Настроенные под маркетинговые задачи, разворачиваются за вечер" },
   { title: "Готовые автоматизации", desc: "Сценарии, которые забирают рутину сразу после установки" },
   { title: "Готовые AI-агенты", desc: "Рабочие агенты, которых можно адаптировать под своих клиентов" },
-  { title: "Библиотека промптов", desc: "Проверенные промпты под маркетинговые задачи" },
   { title: "Шаблоны продаж", desc: "Скрипты и структуры, по которым продаются услуги дороже" },
   { title: "Шаблоны диагностик", desc: "Готовый формат аудита, с которого начинается работа с клиентом" },
-  { title: "Шаблоны КП", desc: "Коммерческие предложения, которые закрывают сделку" },
 ];
 
 const afterCourse = [
   { bold: "Запускать клиента за несколько часов", rest: " вместо нескольких дней" },
   { bold: "Брать больше проектов", rest: " без расширения команды" },
-  { bold: "Поднимать средний чек", rest: " — ты продаёшь систему, а не часы" },
-  { bold: "Продавать AI-внедрение", rest: " как отдельную услугу" },
+  { bold: "Поднимать средний чек", rest: ": ты продаёшь систему, а не часы" },
+  { bold: "Продавать внедрение автоматизации", rest: " как отдельную услугу" },
   { bold: "Создавать сайты", rest: " без разработчиков" },
   { bold: "Создавать CRM", rest: " без программистов" },
-  { bold: "Создавать собственные AI-приложения", rest: " под задачи клиентов" },
+  { bold: "Создавать собственные приложения", rest: " под задачи клиентов" },
   { bold: "Автоматизировать большую часть работы", rest: " и заняться стратегией" },
 ];
 
@@ -225,7 +244,7 @@ const steps = [
   { title: "Попадаешь в группу", desc: "Там уже ждут материалы и инструкции" },
   { title: "Получаешь подготовку", desc: "Короткие видео и разборы до эфира" },
   { title: "Приходишь в Zoom", desc: "В назначенные дату и время" },
-  { title: "Смотришь демонстрацию", desc: "Живой экран, живая система — не слайды" },
+  { title: "Смотришь демонстрацию", desc: "Живой экран и живая система, а не слайды" },
   { title: "Задаёшь вопросы", desc: "Разбираем твою ситуацию в прямом эфире" },
   { title: "Получаешь предложение", desc: "Возможность попасть в AI Marketing Lab" },
 ];
@@ -241,7 +260,7 @@ const whatsappInside = [
 const faq = [
   {
     q: "Это бесплатно?",
-    a: "Да. Практикум полностью бесплатный. В конце я расскажу про программу AI Marketing Lab для тех, кто захочет пойти дальше, — но сам практикум ни к чему не обязывает.",
+    a: "Да. Практикум полностью бесплатный. В конце я расскажу про программу AI Marketing Lab для тех, кто захочет пойти дальше. Сам практикум ни к чему не обязывает.",
   },
   {
     q: "Будет ли запись?",
@@ -249,11 +268,11 @@ const faq = [
   },
   {
     q: "Нужен ли опыт в маркетинге?",
-    a: "Базовое понимание маркетинга будет плюсом: ты быстрее поймёшь, куда встраивать инструменты. Но отдельные инструменты можно освоить и без глубоких технических знаний — программировать не нужно.",
+    a: "Базовое понимание маркетинга будет плюсом: ты быстрее поймёшь, куда встраивать инструменты. Но освоить их можно и без глубоких технических знаний, программировать не нужно.",
   },
   {
     q: "Это курс по ChatGPT?",
-    a: "Нет. Мы говорим о построении целостной системы автоматизации маркетинга: сайты, CRM, аналитика, отчёты, контент. ChatGPT — лишь один из инструментов внутри этой системы.",
+    a: "Нет. Мы говорим о построении целостной системы автоматизации маркетинга: сайты, CRM, аналитика, отчёты, контент. ChatGPT лишь один из инструментов внутри этой системы.",
   },
   {
     q: "Это только для таргетологов?",
@@ -273,12 +292,12 @@ const Lab = () => {
   const [showStickyCta, setShowStickyCta] = useState(false);
 
   useEffect(() => {
-    document.title = "AI Marketing Lab — собери AI-команду, которая работает вместо тебя | MarkVision AI";
+    document.title = "AI Marketing Lab: практикум по автоматизации маркетинга | MarkVision AI";
     const meta = document.querySelector('meta[name="description"]');
     const prev = meta?.getAttribute("content") ?? "";
     meta?.setAttribute(
       "content",
-      "Бесплатный онлайн-практикум: как за 5 недель собрать собственную AI-команду для маркетинга — сайты, креативы, CRM, аналитика и отчёты без программирования.",
+      "Бесплатный онлайн-практикум: как за 5 недель собрать систему, которая делает сайты, креативы, CRM, аналитику и отчёты без программирования.",
     );
     return () => {
       meta?.setAttribute("content", prev);
@@ -298,9 +317,7 @@ const Lab = () => {
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
           <div className="flex items-center gap-2.5">
-            <div className="grid h-8 w-8 place-items-center rounded-lg bg-gradient-primary text-sm font-extrabold text-primary-foreground">
-              M
-            </div>
+            <BrandLogo />
             <div className="leading-tight">
               <div className="text-sm font-bold">AI Marketing Lab</div>
               <div className="text-[11px] text-muted-foreground">by MarkVision AI</div>
@@ -335,29 +352,29 @@ const Lab = () => {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-60" />
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-primary" />
               </span>
-              Бесплатный онлайн-практикум для маркетологов и таргетологов
+              Бесплатный онлайн-практикум для digital-специалистов
             </div>
           </Reveal>
 
           <Reveal delay={80}>
-            <h1 className="text-balance text-4xl font-extrabold leading-[1.08] tracking-tight sm:text-5xl lg:text-6xl">
-              Перестань продавать своё время.{" "}
-              <span className="text-gradient-primary">
-                За 5 недель собери AI&#8209;команду
-              </span>
-              , которая работает вместо тебя 24/7
+            <h1 className="mx-auto max-w-3xl text-balance text-3xl font-extrabold leading-[1.15] tracking-tight sm:text-5xl sm:leading-[1.08]">
+              Через 5 недель ты перестанешь быть обычным маркетологом.{" "}
+              <span className="text-gradient-primary">Ты станешь специалистом, который управляет собственной AI-командой</span>
             </h1>
           </Reveal>
 
           <Reveal delay={160}>
-            <p className="mx-auto mt-6 max-w-2xl text-pretty text-base leading-relaxed text-muted-foreground sm:text-lg">
-              На практикуме я вживую покажу свою AI-платформу для маркетинга — ту, что каждый день ведёт мои проекты. А потом
-              расскажу, как ты соберёшь такую же под себя. Без классического программирования.
+            <p className="mx-auto mt-6 max-w-xl text-pretty text-sm leading-relaxed text-muted-foreground sm:text-lg">
+              На практикуме вживую покажу платформу, которая каждый день ведёт мои проекты. А потом расскажу, как собрать
+              такую же под себя. Без знаний кода и программирования.
             </p>
           </Reveal>
 
           <Reveal delay={240}>
-            <div className="mx-auto mt-8 flex max-w-3xl flex-wrap items-center justify-center gap-2">
+            <div className="mt-8 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Твоя будущая AI-команда
+            </div>
+            <div className="mx-auto mt-3 flex max-w-3xl flex-wrap items-center justify-center gap-2">
               {heroTools.map(({ icon: Icon, label }) => (
                 <span
                   key={label}
@@ -372,8 +389,9 @@ const Lab = () => {
 
           <Reveal delay={320}>
             <div className="mt-10">
-              <CtaButton size="xl" id="cta-hero">Вступить в WhatsApp-группу</CtaButton>
-              <EventMeta className="mt-5" />
+              <CtaButton size="xl" id="cta-hero">Забронировать место</CtaButton>
+              <p className="mt-3 text-xs font-medium text-warning">Количество мест в Zoom ограничено</p>
+              <EventMeta className="mt-4" />
             </div>
           </Reveal>
 
@@ -404,7 +422,7 @@ const Lab = () => {
             <h2 className="text-balance text-3xl font-extrabold tracking-tight sm:text-4xl">Для кого этот практикум</h2>
             <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
               Пройдись по списку. Если узнаёшь себя{" "}
-              <span className="font-semibold text-foreground">хотя бы в трёх пунктах</span> — тебе обязательно стоит прийти.
+              <span className="font-semibold text-foreground">хотя бы в трёх пунктах</span>, тебе обязательно стоит прийти.
             </p>
           </Reveal>
 
@@ -434,7 +452,7 @@ const Lab = () => {
               Почему большинство маркетологов никогда не выйдет на высокий доход
             </h2>
             <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
-              Дело не в таланте и не в опыте. Дело в том, что один человек физически не может делать всё руками. Дальше —
+              Дело не в таланте и не в опыте. Дело в том, что один человек физически не может делать всё руками. Дальше
               два пути.
             </p>
           </Reveal>
@@ -460,7 +478,7 @@ const Lab = () => {
                   ))}
                 </ul>
                 <div className="mt-6 rounded-xl bg-muted/60 p-4 text-sm text-muted-foreground">
-                  Потолок: сколько часов в сутках — столько и заработал.
+                  Потолок: сколько часов в сутках, столько и заработал.
                 </div>
               </div>
             </Reveal>
@@ -507,8 +525,8 @@ const Lab = () => {
                 Не теория. Не слайды. <span className="text-primary">Мой экран и моя рабочая система.</span>
               </p>
               <p className="mt-3 leading-relaxed text-muted-foreground">
-                Ты увидишь, как реальная AI-платформа ведёт маркетинг каждый день: от креатива до отчёта клиенту. И главное —
-                поймёшь, из каких блоков она собирается и как повторить это самому.
+                Ты увидишь, как реальная AI-платформа ведёт маркетинг каждый день: от креатива и запуска рекламы до отчёта
+                клиенту. И главное, поймёшь, как повторить это самому.
               </p>
               <div className="mt-8 hidden lg:block">
                 <CtaButton id="cta-demo">Хочу увидеть систему</CtaButton>
@@ -576,8 +594,8 @@ const Lab = () => {
                   руками: сайты, тексты, креативы, отчёты, аналитику.
                 </p>
                 <p>
-                  Когда клиентов стало больше, я упёрся в потолок: масштабироваться дальше было физически невозможно. Нанимать —
-                  дорого и медленно. Тогда я начал строить собственную AI-платформу.
+                  Когда клиентов стало больше, я упёрся в потолок: масштабироваться дальше было физически невозможно.
+                  Нанимать дорого и медленно. Тогда я начал строить собственную платформу.
                 </p>
                 <p>
                   Сегодня <span className="font-semibold text-foreground">MarkVision AI</span> заменяет большую часть моей
@@ -634,7 +652,7 @@ const Lab = () => {
             </p>
           </Reveal>
 
-          <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="mx-auto mt-12 grid max-w-4xl gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {bonuses.map(({ title, desc }, i) => (
               <Reveal key={title} delay={i * 50}>
                 <div className="h-full rounded-2xl border border-border bg-card p-5 transition-colors duration-300 hover:border-primary/40 hover:bg-gradient-card-hover sm:p-6">
@@ -685,8 +703,8 @@ const Lab = () => {
             </h2>
             <div className="mx-auto mt-6 max-w-2xl space-y-4 text-base leading-relaxed text-muted-foreground sm:text-lg">
               <p>
-                Специалисты, которые уже работают с AI-системами, берут больше проектов, продают дороже и тратят меньше времени
-                на рутину. Разрыв с теми, кто продолжает работать полностью вручную, растёт с каждым месяцем.
+                Специалисты, которые уже автоматизировали рутину, берут больше проектов, продают дороже и тратят меньше
+                времени на ручную работу. Разрыв с теми, кто продолжает делать всё вручную, растёт с каждым месяцем.
               </p>
               <p>
                 Компании всё чаще ожидают, что маркетолог умеет автоматизировать процессы. Освоить эти навыки сейчас проще, чем
@@ -738,7 +756,7 @@ const Lab = () => {
               <h2 className="mt-5 text-balance text-2xl font-extrabold tracking-tight sm:text-3xl">
                 Что будет внутри WhatsApp-группы
               </h2>
-              <p className="mt-3 text-muted-foreground">Группа — не просто «ссылка на эфир». Ещё до практикума ты получишь:</p>
+              <p className="mt-3 text-muted-foreground">Группа не просто «ссылка на эфир». Ещё до практикума ты получишь:</p>
             </Reveal>
 
             <div className="mt-8 space-y-3">
@@ -800,7 +818,7 @@ const Lab = () => {
               Через год ты можешь работать так же, как сейчас.
             </h2>
             <p className="mx-auto mt-6 max-w-2xl text-balance text-lg text-muted-foreground sm:text-xl">
-              Или уже сегодня начать строить собственную AI-команду —{" "}
+              Или уже сегодня начать строить собственную AI-команду{" "}
               <span className="font-semibold text-foreground">и продавать системы, которые работают вместе с тобой</span>.
             </p>
             <p className="mt-4 text-muted-foreground">Я покажу, как это сделал сам. Теперь очередь за тобой.</p>
