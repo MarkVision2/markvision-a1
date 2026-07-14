@@ -1,7 +1,7 @@
 {
-  "git_sha": "3d427aa",
-  "git_sha_full": "3d427aae2869aa76165dd0938123c2bbb3af3457",
-  "updated_at": "2026-07-14T10:02:14Z",
-  "label": "feat(lab): AI Marketing Lab webinar landing at /lab",
+  "git_sha": "73a5112",
+  "git_sha_full": "73a51121f7402b35a22f5c2537a0c9bdb960464a",
+  "updated_at": "2026-07-14T14:24:25Z",
+  "label": "Merge remote-tracking branch 'origin/main' into claude/ai-marketing-lab-landing-msee61",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
