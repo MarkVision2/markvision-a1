@@ -1,7 +1,7 @@
 {
-  "git_sha": "a642adb",
-  "git_sha_full": "a642adb4e111bb6071dd5754cab2adc4573aeff6",
-  "updated_at": "2026-07-14T19:53:59+05:00",
-  "label": "Add files via upload",
+  "git_sha": "9ae8935",
+  "git_sha_full": "9ae89356992ad1e909d17980a596c153824f8242",
+  "updated_at": "2026-07-14T14:55:12Z",
+  "label": "feat(lab): speaker photo on landing",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
