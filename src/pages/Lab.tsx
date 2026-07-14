@@ -39,6 +39,87 @@ const EVENT_DATE = "1 августа";
 const EVENT_TIME = "19:00 (GMT+5)";
 
 /* ------------------------------------------------------------------ */
+/* Meta Pixel + Conversions API                                        */
+/* ------------------------------------------------------------------ */
+
+const META_PIXEL_ID = "2826237244414415";
+// Серверное дублирование событий (CAPI); токен хранится в Supabase, не в коде
+const CAPI_URL = "https://szfgdruhlebfvcmlvxdk.supabase.co/functions/v1/lab-capi";
+
+declare global {
+  interface Window {
+    fbq?: (...args: unknown[]) => void;
+    _fbq?: unknown;
+  }
+}
+
+/** Загружает Meta Pixel только на этой странице (на платформе он не нужен) */
+function loadMetaPixel() {
+  if (window.fbq) return;
+  type FbqFn = ((...args: unknown[]) => void) & {
+    callMethod?: (...args: unknown[]) => void;
+    queue: unknown[];
+    push: unknown;
+    loaded: boolean;
+    version: string;
+  };
+  const fbq = function (...args: unknown[]) {
+    if (fbq.callMethod) fbq.callMethod(...args);
+    else fbq.queue.push(args);
+  } as FbqFn;
+  fbq.queue = [];
+  fbq.push = fbq;
+  fbq.loaded = true;
+  fbq.version = "2.0";
+  window.fbq = fbq;
+  if (!window._fbq) window._fbq = fbq;
+  const script = document.createElement("script");
+  script.async = true;
+  script.src = "https://connect.facebook.net/en_US/fbevents.js";
+  document.head.appendChild(script);
+  window.fbq("init", META_PIXEL_ID);
+}
+
+function getCookie(name: string): string {
+  const match = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
+  return match ? decodeURIComponent(match[2]) : "";
+}
+
+function newEventId(): string {
+  return typeof crypto !== "undefined" && crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+/** Отправка события в Conversions API (keepalive переживает уход на WhatsApp) */
+function sendCapi(eventName: "Lead" | "PageView", eventId: string, contentName?: string) {
+  try {
+    void fetch(CAPI_URL, {
+      method: "POST",
+      keepalive: true,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        event_name: eventName,
+        event_id: eventId,
+        event_source_url: window.location.href,
+        content_name: contentName,
+        fbp: getCookie("_fbp"),
+        fbc: getCookie("_fbc"),
+      }),
+    }).catch(() => {});
+  } catch {
+    /* трекинг не должен ломать страницу */
+  }
+}
+
+/** Lead в пиксель (браузер) и CAPI (сервер) с одним event_id для дедупликации */
+function trackLead(source: string) {
+  const eventId = newEventId();
+  window.fbq?.("track", "Lead", { content_name: source }, { eventID: eventId });
+  sendCapi("Lead", eventId, source);
+}
+
+/* ------------------------------------------------------------------ */
 /* Вспомогательные компоненты                                          */
 /* ------------------------------------------------------------------ */
 
@@ -100,6 +181,7 @@ const CtaButton = ({
       href={WHATSAPP_URL}
       target="_blank"
       rel="noopener noreferrer"
+      onClick={() => trackLead(id ?? "cta")}
       className={`group inline-flex items-center justify-center gap-2.5 rounded-xl bg-gradient-primary font-semibold text-primary-foreground shadow-glow transition-all duration-300 hover:scale-[1.03] hover:shadow-elevated active:scale-[0.98] ${sizes[size]} ${className}`}
     >
       <MessageCircle className={size === "xl" ? "h-6 w-6" : "h-5 w-5"} />
@@ -318,6 +400,13 @@ const Lab = () => {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  useEffect(() => {
+    loadMetaPixel();
+    const eventId = newEventId();
+    window.fbq?.("track", "PageView", {}, { eventID: eventId });
+    sendCapi("PageView", eventId);
+  }, []);
+
   return (
     <div className="lab-theme min-h-screen overflow-x-clip bg-background text-foreground">
       {/* ---------------- Header ---------------- */}
@@ -334,6 +423,7 @@ const Lab = () => {
             href={WHATSAPP_URL}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => trackLead("cta-header")}
             className="hidden items-center gap-2 rounded-lg bg-primary/15 px-4 py-2 text-sm font-semibold text-primary transition-colors hover:bg-primary/25 sm:inline-flex"
           >
             <MessageCircle className="h-4 w-4" />
@@ -872,6 +962,7 @@ const Lab = () => {
           href={WHATSAPP_URL}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => trackLead("cta-sticky-mobile")}
           className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-primary py-3.5 font-semibold text-primary-foreground shadow-glow"
         >
           <MessageCircle className="h-5 w-5" />

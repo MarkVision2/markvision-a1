@@ -5,6 +5,10 @@ project_id = "szfgdruhlebfvcmlvxdk"
 [functions.capi-outbox-worker]
 verify_jwt = false
 
+# CAPI лендинга /lab: публичный endpoint, принимает только Lead/PageView.
+[functions.lab-capi]
+verify_jwt = false
+
 [functions.greenapi-webhook]
 verify_jwt = false
 
