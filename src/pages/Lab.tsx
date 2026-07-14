@@ -130,11 +130,11 @@ const BrandLogo = () => {
     );
   }
   return (
-    <span className="inline-flex items-center rounded-lg bg-white px-1.5 py-1">
+    <span className="inline-flex items-center rounded-lg bg-white px-2 py-1">
       <img
         src="/lab-logo.png"
         alt="MarkVision AI"
-        className="h-7 w-auto"
+        className="h-8 w-auto"
         onError={() => setImgOk(false)}
       />
     </span>
