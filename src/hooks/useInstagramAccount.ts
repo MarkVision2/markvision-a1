@@ -52,18 +52,18 @@ export function useInstagramAccount() {
     const row = data as any;
     setAccount({
       igUserId: row.ig_user_id,
-      username: data.username,
-      name: data.name,
-      profilePictureUrl: data.profile_picture_url,
-      pageId: data.page_id,
-      pageName: data.page_name,
-      followersCount: data.followers_count ?? 0,
-      followsCount: data.follows_count ?? 0,
-      mediaCount: data.media_count ?? 0,
-      active: data.active,
-      lastSyncAt: data.last_sync_at,
-      lastError: data.last_error,
-      igLoginTokenPresent: !!data.ig_login_token_present,
+      username: row.username,
+      name: row.name,
+      profilePictureUrl: row.profile_picture_url,
+      pageId: row.page_id,
+      pageName: row.page_name,
+      followersCount: row.followers_count ?? 0,
+      followsCount: row.follows_count ?? 0,
+      mediaCount: row.media_count ?? 0,
+      active: row.active,
+      lastSyncAt: row.last_sync_at,
+      lastError: row.last_error,
+      igLoginTokenPresent: !!row.ig_login_token_present,
     });
   }, [projectId]);
 
