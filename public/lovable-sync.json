@@ -1,7 +1,7 @@
 {
-  "git_sha": "823f26b",
-  "git_sha_full": "823f26b49c0ec25d08b449130819d1b964bc1f09",
-  "updated_at": "2026-07-14T17:23:55Z",
-  "label": "Fixed role-scope security bugs",
+  "git_sha": "372e4f5",
+  "git_sha_full": "372e4f52e1ab9e8d64a7eff370d8545fc8a7645d",
+  "updated_at": "2026-07-14T17:24:56Z",
+  "label": "Changes",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
