@@ -35,8 +35,7 @@ import {
 
 // TODO: заменить на реальную ссылку WhatsApp-группы
 const WHATSAPP_URL = "https://chat.whatsapp.com/REPLACE_ME";
-// TODO: заменить на реальные дату и время эфира
-const EVENT_DATE = "Дата уточняется";
+const EVENT_DATE = "1 августа";
 const EVENT_TIME = "19:00 (GMT+5)";
 
 /* ------------------------------------------------------------------ */
@@ -130,14 +129,32 @@ const BrandLogo = () => {
     );
   }
   return (
-    <span className="inline-flex items-center rounded-lg bg-white px-2 py-1">
-      <img
-        src="/lab-logo.png"
-        alt="MarkVision AI"
-        className="h-8 w-auto"
-        onError={() => setImgOk(false)}
-      />
-    </span>
+    <img
+      src="/lab-logo.png"
+      alt="MarkVision AI"
+      className="h-10 w-auto"
+      onError={() => setImgOk(false)}
+    />
+  );
+};
+
+/** Фото спикера: public/lab-author.jpg, при отсутствии файла — плейсхолдер «Ю» */
+const AuthorPhoto = () => {
+  const [imgOk, setImgOk] = useState(true);
+  if (!imgOk) {
+    return (
+      <div className="mx-auto grid aspect-square w-full max-w-[260px] place-items-center rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 text-7xl font-extrabold text-primary">
+        Ю
+      </div>
+    );
+  }
+  return (
+    <img
+      src="/lab-author.jpg"
+      alt="Юрий, создатель MarkVision AI"
+      className="mx-auto aspect-square w-full max-w-[260px] rounded-2xl object-cover"
+      onError={() => setImgOk(false)}
+    />
   );
 };
 
@@ -312,7 +329,7 @@ const Lab = () => {
   }, []);
 
   return (
-    <div className="min-h-screen overflow-x-clip bg-background text-foreground">
+    <div className="lab-theme min-h-screen overflow-x-clip bg-background text-foreground">
       {/* ---------------- Header ---------------- */}
       <header className="sticky top-0 z-40 border-b border-border/60 bg-background/80 backdrop-blur-md">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3 sm:px-6">
@@ -342,7 +359,7 @@ const Lab = () => {
           className="pointer-events-none absolute inset-0 -z-10"
           style={{
             background:
-              "radial-gradient(ellipse 80% 55% at 50% -5%, hsl(162 70% 45% / 0.14), transparent), radial-gradient(ellipse 40% 35% at 85% 25%, hsl(162 70% 45% / 0.07), transparent)",
+              "radial-gradient(ellipse 80% 55% at 50% -5%, hsl(210 90% 55% / 0.16), transparent), radial-gradient(ellipse 40% 35% at 85% 25%, hsl(197 92% 61% / 0.08), transparent)",
           }}
         />
         <div className="mx-auto max-w-5xl px-4 pb-16 pt-14 text-center sm:px-6 sm:pb-20 sm:pt-20">
@@ -559,10 +576,7 @@ const Lab = () => {
           <div className="grid items-start gap-10 lg:grid-cols-[380px_1fr] lg:gap-16">
             <Reveal>
               <div className="rounded-2xl border border-border bg-card p-6 sm:p-8">
-                {/* TODO: заменить на реальное фото Юрия */}
-                <div className="mx-auto grid aspect-square w-full max-w-[260px] place-items-center rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 text-7xl font-extrabold text-primary">
-                  Ю
-                </div>
+                <AuthorPhoto />
                 <div className="mt-6 text-center">
                   <div className="text-2xl font-extrabold">Юрий</div>
                   <div className="mt-1 text-sm text-muted-foreground">Маркетолог · Таргетолог · Создатель MarkVision AI</div>
@@ -809,7 +823,7 @@ const Lab = () => {
           aria-hidden
           className="pointer-events-none absolute inset-0 -z-10"
           style={{
-            background: "radial-gradient(ellipse 70% 60% at 50% 100%, hsl(162 70% 45% / 0.13), transparent)",
+            background: "radial-gradient(ellipse 70% 60% at 50% 100%, hsl(210 90% 55% / 0.15), transparent)",
           }}
         />
         <div className="mx-auto max-w-4xl px-4 py-20 text-center sm:px-6 sm:py-28">

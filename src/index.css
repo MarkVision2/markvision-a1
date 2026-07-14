@@ -139,6 +139,20 @@
     background-clip: text;
     color: transparent;
   }
+  /* Палитра лендинга AI Marketing Lab: сине-голубая, в цветах логотипа
+     MarkVision. Переопределяет токены только внутри страницы /lab. */
+  .lab-theme {
+    --primary: 207 90% 54%;
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 197 92% 61%;
+    --accent: 207 90% 54%;
+    --accent-foreground: 0 0% 100%;
+    --ring: 207 90% 54%;
+    --gradient-primary: linear-gradient(135deg, hsl(221 83% 53%), hsl(197 92% 61%));
+    --gradient-card-hover: linear-gradient(135deg, hsl(207 90% 54% / 0.10), hsl(197 92% 61% / 0.04));
+    --shadow-glow: 0 0 32px hsl(207 90% 54% / 0.30);
+    --shadow-elevated: 0 16px 48px -16px hsl(207 90% 54% / 0.35);
+  }
   .shadow-glow {
     box-shadow: var(--shadow-glow);
   }
