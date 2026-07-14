@@ -579,7 +579,7 @@ const Lab = () => {
                 <AuthorPhoto />
                 <div className="mt-6 text-center">
                   <div className="text-2xl font-extrabold">Юрий</div>
-                  <div className="mt-1 text-sm text-muted-foreground">Маркетолог · Таргетолог · Создатель MarkVision AI</div>
+                  <div className="mt-1 text-sm text-muted-foreground">Маркетолог · Создатель MarkVision AI</div>
                 </div>
                 <div className="mt-6 grid grid-cols-2 gap-3 text-center">
                   {[
