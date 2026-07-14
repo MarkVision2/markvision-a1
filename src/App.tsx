@@ -13,6 +13,7 @@ const AppLayout = lazy(routeImports.AppLayout);
 const NotFound = lazy(routeImports.NotFound);
 const Index = lazy(routeImports.Index);
 const Login = lazy(routeImports.Login);
+const Lab = lazy(routeImports.Lab);
 const CreateStep1 = lazy(routeImports.CreateStep1);
 const CreateStep2 = lazy(routeImports.CreateStep2);
 const CreateStep3 = lazy(routeImports.CreateStep3);
@@ -71,6 +72,7 @@ const App = () => (
           <Suspense fallback={<RouteFallback />}>
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route path="/lab" element={<Lab />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/client/:token" element={<ClientDashboard />} />
               <Route path="/" element={<RequireAuth><AppLayout><Index /></AppLayout></RequireAuth>} />

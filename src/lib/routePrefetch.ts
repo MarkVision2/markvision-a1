@@ -3,6 +3,7 @@ export const routeImports = {
   NotFound: () => import("@/pages/NotFound"),
   Index: () => import("@/pages/Index"),
   Login: () => import("@/pages/Login"),
+  Lab: () => import("@/pages/Lab"),
   ResetPassword: () => import("@/pages/ResetPassword"),
   CreateStep1: () => import("@/pages/CreateStep1"),
   CreateStep2: () => import("@/pages/CreateStep2"),

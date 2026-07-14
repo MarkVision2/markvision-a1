@@ -131,6 +131,14 @@
   .bg-gradient-primary {
     background: var(--gradient-primary);
   }
+  /* Градиентный текст акцентным цветом; шорткат background в
+     .bg-gradient-primary сбрасывает background-clip, поэтому отдельный класс */
+  .text-gradient-primary {
+    background-image: var(--gradient-primary);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
   .shadow-glow {
     box-shadow: var(--shadow-glow);
   }
