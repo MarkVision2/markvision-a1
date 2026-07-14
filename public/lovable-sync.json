@@ -1,7 +1,7 @@
 {
-  "git_sha": "9ae8935",
-  "git_sha_full": "9ae89356992ad1e909d17980a596c153824f8242",
-  "updated_at": "2026-07-14T14:55:12Z",
-  "label": "feat(lab): speaker photo on landing",
+  "git_sha": "bb613b6",
+  "git_sha_full": "bb613b6a44f45a65b484a4675ef679990b042eca",
+  "updated_at": "2026-07-14T15:01:54Z",
+  "label": "Merge remote-tracking branch 'origin/main' into claude/ai-marketing-lab-landing-msee61",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
