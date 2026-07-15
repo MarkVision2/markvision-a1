@@ -33,8 +33,7 @@ import {
 /* Конфигурация лендинга: правится в одном месте                      */
 /* ------------------------------------------------------------------ */
 
-// TODO: заменить на реальную ссылку WhatsApp-группы
-const WHATSAPP_URL = "https://chat.whatsapp.com/REPLACE_ME";
+const WHATSAPP_URL = "https://chat.whatsapp.com/JqhTdCL3koe9CaGXaCqj4e?mode=gi_t";
 const EVENT_DATE = "1 августа";
 const EVENT_TIME = "19:00 (GMT+5)";
 
