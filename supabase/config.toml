@@ -106,3 +106,8 @@ verify_jwt = false
 
 [functions.publisher]
 verify_jwt = false
+
+# Монтаж-конвейер: Claude-воркер ходит без пользовательского JWT —
+# авторизация внутри функции по x-montage-key = montage_settings.worker_key.
+[functions.montage-worker]
+verify_jwt = false

@@ -19,6 +19,8 @@ does (from `README.md`), tell them the three ways to start, and wait.
 - **Only shorts from a clip** (no full 16:9 edit) → shorts-only route: Stage 1-lite + Stage 2.
 - **Shorts factory** — тексты шортсов «перепиши под меня» / «придумай по темам» →
   `script-gen` (Shorts scripts) + shorts-only route; **ремейк чужого шортса** → Stage 2R.
+- **Заявка из Контент-завода** («разбери очередь монтажа», «есть заявки?», джоба с сайта) →
+  режим очереди, см. «Очередь Контент-завода» ниже.
 
 Do not render or push anything without an explicit user command. Preview is Studio-only.
 
@@ -106,14 +108,41 @@ process name. Bump `--concurrency` if a single stuck frame can deadlock the run.
 short Telegram post). Uses the transcript already produced — no re-transcription.
 
 **Stage 6 — Публикация в Контент-завод (only on explicit user command).** Готовый рендер
-регистрируется в приложении MarkVision (раздел «AI монтаж → Готовые» у проекта-клиента):
+публикуется в приложение MarkVision (раздел «AI монтаж → Готовые» у проекта-клиента):
 `node scripts/montage-publish.mjs --project <projectId> --video out/main169.mp4
---title "…" [--thumb …] [--description "<из work/<id>/publish.md>"]`.
-Скрипт заливает файл в Supabase Storage (`content-factory-uploads`) и upsert'ит строку в
-`heygen_usage` (source `montage-pipeline`). `<projectId>` — id проекта (клиента) в приложении;
-если пользователь его не назвал — спроси. Шортсы публикуются тем же скриптом по одному
-(`--video out/<short>.mp4 --ref montage-short-<n>`). Ключи берутся из `.env`; если upsert
-упал на RLS — нужен `SUPABASE_SERVICE_ROLE_KEY` в `.env`.
+--title "…" [--thumb …] [--description "<из work/<id>/publish.md>"] [--short out/s1.mp4 …]`.
+Скрипт заливает файлы в bucket `renders` и через edge-функцию `montage-worker` пишет строки в
+`heygen_usage` (source `montage-pipeline`); если у проекта привязан Telegram (`telegram_links`),
+видео уходит и в чат (`--no-telegram` — отключить). `<projectId>` — id проекта (клиента) в
+приложении; если пользователь его не назвал — спроси. Нужен `MONTAGE_WORKER_KEY` в `.env`.
+
+## Очередь Контент-завода (заявки с сайта)
+
+На сайте в разделе Контент-завод → Видео → «Монтаж съёмки» пользователи оставляют заявки:
+исходник «говорящей головы» + форматы (16:9 / шортсы) + пожелания. Заявки лежат в
+`montage_jobs`; их разбирает эта Claude-сессия командами:
+
+```bash
+node scripts/montage-worker.mjs next            # забрать заявку + скачать исходник в work/<jobId>/
+node scripts/montage-worker.mjs status <jobId> "транскрибируем"   # прогресс, виден на сайте
+node scripts/montage-worker.mjs status <jobId> "рендер" --state rendering
+node scripts/montage-worker.mjs complete <jobId> --video out/main169.mp4 --title "…" \
+  [--thumb …] [--description "…"] [--short out/s1.mp4 --short out/s2.mp4]
+node scripts/montage-worker.mjs fail <jobId> "причина"
+```
+
+Правила режима очереди (заявка = явная команда пользователя на монтаж И рендер):
+1. `next` уже скачал исходник → сделай прокси в `remotion/public/` (имя `source_<jobId8>` —
+   первые 8 символов id) и веди Stage 1 → 2 → 4 БЕЗ чатовых ворот: `delete.json`, `accents.json`
+   и отбор шортсов размечаешь сам; `REVIEW.md` генерируешь, но не ждёшь подтверждения.
+   `job.brief` — обязательный вход для разметки (что вырезать/акцентировать, темп).
+   `job.formats` определяет состав: `16:9` → Main169; `shorts` → `shorts_count` шортсов.
+2. На каждой стадии дёргай `status`, чтобы пользователь видел прогресс на сайте.
+3. `complete` сам заливает файлы, публикует в «Готовые» и шлёт в Telegram — Stage 6 звать не надо.
+4. Ошибка, которую не удаётся починить за разумное число попыток → `fail` с человекочитаемой
+   причиной (её увидят на сайте и в Telegram).
+5. После `complete`/`fail` — снова `next`, пока очередь не опустеет. Git-пуши по-прежнему
+   только по явной команде.
 
 ## Guardrails (from CLAUDE.md — do not violate)
 - Preview only in Studio; final render only on explicit command; no ProRes.

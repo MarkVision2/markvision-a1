@@ -12,10 +12,18 @@
 Ничего не рендерить и не пушить без явной команды пользователя.
 
 ## Связка с Контент-заводом
-Финальные рендеры пайплайна публикуются в приложение — раздел «AI монтаж → Готовые» у проекта-клиента:
-`node scripts/montage-publish.mjs --project <projectId> --video out/main169.mp4 --title "…"` —
-скрипт заливает файл в Supabase Storage (`content-factory-uploads`) и пишет строку в `heygen_usage`
-(source `montage-pipeline`). Тексты для публикации (описание, теги, ТГ-пост) — скилл **`publish-pack`** → `work/<id>/publish.md`.
+Два направления (детали — `docs/MONTAGE-LAB.md` и раздел «Очередь Контент-завода» в скилле `montage-pipeline`):
+- **Заявки с сайта**: Контент-завод → Видео → «Монтаж съёмки» (страница `/create/montage-lab`) кладёт
+  заявку в `montage_jobs` (исходник — bucket `montage-uploads`). Очередь разбирает Claude-сессия:
+  `node scripts/montage-worker.mjs next` → монтаж по скиллу (без чатовых ворот, brief заявки — вход
+  разметки) → `… status <jobId> "…"` для прогресса → `… complete <jobId> --video …` (заливка в bucket
+  `renders`, публикация в «AI монтаж → Готовые», отправка в Telegram проекта). Команда пользователя
+  «разбери очередь монтажа» = обработать все заявки.
+- **Ручной монтаж из чата**: финальный рендер публикуется командой
+  `node scripts/montage-publish.mjs --project <projectId> --video out/main169.mp4 --title "…"`.
+Обе дороги идут через edge-функцию `montage-worker` (auth: `MONTAGE_WORKER_KEY` из `.env` =
+`montage_settings.worker_key`). Тексты для публикации (описание, теги, ТГ-пост) — скилл
+**`publish-pack`** → `work/<id>/publish.md`.
 
 ## Карта (montage-часть)
 - `pipeline/` — Python-скрипты анализа (transcribe → indexed → edl → review → faces → props → audio); shorts.py (шортсы), download.py + reference.py (ремейк референса по ссылке)

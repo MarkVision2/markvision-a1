@@ -1,74 +1,74 @@
 #!/usr/bin/env node
 /**
- * Мост Montage pipeline → Контент-завод.
+ * Ручная публикация рендера Montage pipeline в Контент-завод — БЕЗ заявки с сайта
+ * (для монтажа, запущенного напрямую в чате: «смонтируй видео …»).
+ * Для заявок из приложения используйте scripts/montage-worker.mjs complete.
  *
- * Заливает финальный рендер (out/*.mp4) в Supabase Storage
- * (bucket `content-factory-uploads`, проект Контент-завода) и регистрирует
- * его в таблице `heygen_usage` — после этого ролик появляется в разделе
- * «AI монтаж → Готовые» у выбранного проекта (клиента), как и видео HeyGen.
+ * Заливает видео в bucket `renders` и через edge-функцию montage-worker
+ * (service role) регистрирует его в heygen_usage — ролик появляется в разделе
+ * «AI монтаж → Готовые» у проекта и, если у проекта привязан Telegram, уходит в чат.
  *
- * Использование (из корня репозитория, ключи берутся из .env):
+ * Использование (из корня репозитория, ключи из .env):
  *   node scripts/montage-publish.mjs \
  *     --project <projectId>            # id проекта (клиента) в приложении
- *     --video out/main169.mp4          # финальный рендер
+ *     --video out/main169.mp4
  *     [--title "Название ролика"]
- *     [--thumb work/<id>/thumb.jpg]    # обложка (опционально)
+ *     [--thumb work/<id>/thumb.jpg]
  *     [--description "Описание из publish.md"]
- *     [--ref <id>]                     # стабильный id для upsert (default: имя файла)
- *
- * По умолчанию пишет с publishable-ключом (как веб-клиент, через RLS).
- * Если RLS запрещает insert без сессии — задайте SUPABASE_SERVICE_ROLE_KEY в .env.
+ *     [--short out/short1.mp4]...      # шортсы (повторяемый флаг)
+ *     [--no-telegram]
  */
 import { createClient } from "@supabase/supabase-js";
 import { execFileSync } from "node:child_process";
-import { readFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { basename, extname, resolve } from "node:path";
 
-// ── .env (без dotenv: не тащим зависимость) ─────────────────────────────────
 function loadEnv(path) {
   if (!existsSync(path)) return {};
   const out = {};
   for (const line of readFileSync(path, "utf8").split("\n")) {
     const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
-    if (!m) continue;
-    out[m[1]] = m[2].replace(/^["']|["']$/g, "");
+    if (m) out[m[1]] = m[2].replace(/^["']|["']$/g, "");
   }
   return out;
 }
 const env = { ...loadEnv(resolve(".env")), ...process.env };
 
-// ── аргументы ────────────────────────────────────────────────────────────────
-function arg(name) {
-  const i = process.argv.indexOf(`--${name}`);
-  return i > -1 ? process.argv[i + 1] : undefined;
-}
-const projectId = arg("project");
-const videoPath = arg("video");
-if (!projectId || !videoPath) {
-  console.error("Нужно: --project <projectId> --video <path.mp4> [--title …] [--thumb …] [--description …] [--ref …]");
+const SUPABASE_URL = env.VITE_SUPABASE_URL || env.VITE_CLIENT_SUPABASE_URL;
+const ANON_KEY = env.VITE_SUPABASE_PUBLISHABLE_KEY || env.VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY;
+const WORKER_KEY = env.MONTAGE_WORKER_KEY;
+if (!SUPABASE_URL || !ANON_KEY || !WORKER_KEY) {
+  console.error("Нужны VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY и MONTAGE_WORKER_KEY в .env");
   process.exit(1);
 }
-if (!existsSync(videoPath)) {
-  console.error(`Файл не найден: ${videoPath}`);
-  process.exit(1);
-}
-const title = arg("title") ?? basename(videoPath, extname(videoPath));
-const thumbPath = arg("thumb");
-const description = arg("description");
-const refId = arg("ref") ?? `montage-${basename(videoPath)}`;
+const FN = `${SUPABASE_URL.replace(/\/+$/, "")}/functions/v1/montage-worker`;
 
-// ── клиенты: storage — проект Контент-завода, таблица — основной проект ─────
-const storageUrl = env.VITE_CLIENT_SUPABASE_URL || env.VITE_SUPABASE_URL;
-const storageKey = env.VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY;
-const dbUrl = env.VITE_SUPABASE_URL;
-const dbKey = env.SUPABASE_SERVICE_ROLE_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY;
-if (!storageUrl || !storageKey || !dbUrl || !dbKey) {
-  console.error("Не хватает VITE_SUPABASE_* в .env");
-  process.exit(1);
+async function call(body) {
+  const r = await fetch(FN, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-montage-key": WORKER_KEY,
+      apikey: ANON_KEY,
+      Authorization: `Bearer ${ANON_KEY}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error) throw new Error(j.error || `montage-worker HTTP ${r.status}`);
+  return j;
 }
-const storage = createClient(storageUrl, storageKey);
-const db = createClient(dbUrl, dbKey);
-const BUCKET = "content-factory-uploads";
+
+async function uploadRender(localPath, remoteName) {
+  const path = `montage/${Date.now()}-${remoteName.replace(/[^\w.\-]+/g, "_")}`;
+  const { token, publicUrl } = await call({ action: "sign_upload", path });
+  const sb = createClient(SUPABASE_URL, ANON_KEY);
+  const { error } = await sb.storage.from("renders").uploadToSignedUrl(path, token, readFileSync(localPath), {
+    contentType: /\.jpe?g$/.test(localPath) ? "image/jpeg" : "video/mp4",
+  });
+  if (error) throw new Error(`upload ${localPath}: ${error.message}`);
+  return publicUrl;
+}
 
 function probeDurationSec(path) {
   try {
@@ -80,45 +80,52 @@ function probeDurationSec(path) {
     const sec = Math.round(parseFloat(out.trim()));
     return Number.isFinite(sec) && sec > 0 ? sec : null;
   } catch {
-    return null; // ffprobe нет — не критично
+    return null;
   }
 }
 
-async function upload(path, contentType) {
-  const key = `montage/${projectId}/${Date.now()}-${basename(path).replace(/[^\w.\-]+/g, "_")}`;
-  const { error } = await storage.storage
-    .from(BUCKET)
-    .upload(key, readFileSync(path), { contentType, upsert: false });
-  if (error) throw new Error(`upload ${path}: ${error.message}`);
-  return storage.storage.from(BUCKET).getPublicUrl(key).data.publicUrl;
+function argVal(name) {
+  const i = process.argv.indexOf(`--${name}`);
+  return i > -1 ? process.argv[i + 1] : undefined;
+}
+function argAll(name) {
+  const out = [];
+  for (let i = 0; i < process.argv.length; i++) {
+    if (process.argv[i] === `--${name}` && process.argv[i + 1]) out.push(process.argv[i + 1]);
+  }
+  return out;
 }
 
-const videoUrl = await upload(videoPath, "video/mp4");
-console.log(`видео загружено: ${videoUrl}`);
-let thumbnailUrl = null;
-if (thumbPath && existsSync(thumbPath)) {
-  thumbnailUrl = await upload(thumbPath, "image/jpeg");
-  console.log(`обложка загружена: ${thumbnailUrl}`);
+const projectId = argVal("project");
+const videoPath = argVal("video");
+if (!projectId || !videoPath || !existsSync(videoPath)) {
+  console.error("Нужно: --project <projectId> --video <path.mp4> [--title …] [--thumb …] [--description …] [--short …] [--no-telegram]");
+  process.exit(1);
+}
+const title = argVal("title") ?? basename(videoPath, extname(videoPath));
+
+console.log("Заливаем видео…");
+const videoUrl = await uploadRender(videoPath, basename(videoPath));
+const thumb = argVal("thumb");
+const thumbnailUrl = thumb && existsSync(thumb) ? await uploadRender(thumb, basename(thumb)) : undefined;
+const shorts = [];
+for (const s of argAll("short")) {
+  if (!existsSync(s)) throw new Error(`шортс не найден: ${s}`);
+  console.log(`Заливаем шортс ${basename(s)}…`);
+  shorts.push({ url: await uploadRender(s, basename(s)), title: basename(s, extname(s)) });
 }
 
-const row = {
+const { warnings } = await call({
+  action: "publish",
   project_id: projectId,
-  source: "montage-pipeline",
-  mode: "montage",
-  ref_id: refId,
-  title: title.slice(0, 80),
   video_url: videoUrl,
+  title,
   thumbnail_url: thumbnailUrl,
+  description: argVal("description"),
   duration_sec: probeDurationSec(videoPath),
-  cost_usd: null,
-  ...(description ? { description: description.slice(0, 2000) } : {}),
-};
-const { error } = await db
-  .from("heygen_usage")
-  .upsert(row, { onConflict: "project_id,ref_id", ignoreDuplicates: false });
-if (error) {
-  console.error(`heygen_usage upsert: ${error.message}`);
-  console.error("Видео уже в Storage (URL выше). Если это RLS — добавьте SUPABASE_SERVICE_ROLE_KEY в .env и повторите.");
-  process.exit(2);
-}
-console.log(`готово: «${title}» появится в Контент-заводе → AI монтаж → Готовые (проект ${projectId})`);
+  shorts,
+  ref_id: `montage-${basename(videoPath)}`,
+  notify_telegram: !process.argv.includes("--no-telegram"),
+});
+console.log(`Готово: «${title}» в Контент-заводе → AI монтаж → Готовые (проект ${projectId})`);
+for (const w of warnings ?? []) console.warn(`⚠ ${w}`);

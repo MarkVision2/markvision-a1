@@ -1,4 +1,4 @@
-import { ArrowRight, Clapperboard, Film } from "lucide-react";
+import { ArrowRight, Clapperboard, Film, Scissors } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -20,6 +20,14 @@ const VIDEO_FORMATS: VideoFormat[] = [
     subtitle: "Аватар со сценарием или сборка по шаблону — через HeyGen",
     route: "/create/montage",
     icon: Clapperboard,
+    badge: "AI",
+  },
+  {
+    id: "montage-lab",
+    title: "Монтаж съёмки",
+    subtitle: "Загрузите запись «говорящей головы» — конвейер смонтирует ролик и шортсы",
+    route: "/create/montage-lab",
+    icon: Scissors,
     badge: "AI",
   },
   {
