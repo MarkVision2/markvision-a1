@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ArrowRight,
+  Banknote,
   BarChart3,
   Bot,
   Calendar,
@@ -11,12 +12,15 @@ import {
   FileText,
   Gift,
   Globe,
+  Handshake,
   LayoutDashboard,
   MessageCircle,
   Monitor,
   Rocket,
+  Route,
   Sparkles,
   Target,
+  TrendingUp,
   Video,
   Workflow,
   X,
@@ -314,6 +318,29 @@ const bonuses = [
   { title: "Готовые AI-агенты", desc: "Рабочие агенты, которых легко настроить под своих клиентов" },
   { title: "Шаблоны продаж", desc: "Скрипты и структуры, по которым продаются услуги дороже" },
   { title: "Шаблоны диагностик", desc: "Готовый формат разбора, с которого начинается работа с клиентом" },
+];
+
+const salesBonuses = [
+  {
+    icon: Banknote,
+    title: "Продажи на высокий чек",
+    desc: "Урок о том, как продавать свои услуги дорого: что говорить клиенту и чем обосновать цену",
+  },
+  {
+    icon: TrendingUp,
+    title: "Окупаемость рекламы",
+    desc: "Система, с которой вложения в рекламу возвращаются ещё до основных продаж",
+  },
+  {
+    icon: Handshake,
+    title: "Переговоры с клиентами",
+    desc: "Как вести встречи и закрывать сделки спокойно, без давления и скидок",
+  },
+  {
+    icon: Route,
+    title: "3 шага к клиентам",
+    desc: "Трёхшаговая система привлечения клиентов под свои услуги: от первого касания до оплаты",
+  },
 ];
 
 const afterCourse = [
@@ -759,6 +786,31 @@ const Lab = () => {
                   <Gift className="h-6 w-6 text-primary" />
                   <div className="mt-3 font-bold">{title}</div>
                   <div className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{desc}</div>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+
+          <Reveal className="mt-16 text-center">
+            <h3 className="text-balance text-2xl font-extrabold tracking-tight sm:text-3xl">
+              Плюс уроки о продажах и деньгах
+            </h3>
+            <p className="mx-auto mt-3 max-w-xl text-muted-foreground">
+              Система без продаж не работает. Поэтому внутри есть отдельный блок о том, как превращать навыки в деньги.
+            </p>
+          </Reveal>
+
+          <div className="mx-auto mt-8 grid max-w-4xl gap-4 sm:grid-cols-2">
+            {salesBonuses.map(({ icon: Icon, title, desc }, i) => (
+              <Reveal key={title} delay={i * 60}>
+                <div className="flex h-full items-start gap-4 rounded-2xl border border-primary/25 bg-card p-5 transition-colors duration-300 hover:border-primary/50 hover:bg-gradient-card-hover sm:p-6">
+                  <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/10">
+                    <Icon className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                    <div className="font-bold">{title}</div>
+                    <div className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{desc}</div>
+                  </div>
                 </div>
               </Reveal>
             ))}
