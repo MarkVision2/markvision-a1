@@ -21,6 +21,7 @@ import {
   Sparkles,
   Target,
   TrendingUp,
+  Users,
   Video,
   Workflow,
   X,
@@ -490,7 +491,7 @@ const Lab = () => {
 
               <Reveal delay={160}>
                 <p className="mx-auto mt-5 max-w-xl text-pretty text-sm leading-relaxed text-muted-foreground sm:text-lg lg:mx-0">
-                  Покажу систему, которая сама собирает стратегию, креативы и сайт и сама ведёт рекламу. Запуск клиента,
+                  Покажу систему, которая сама собирает стратегию и креативы и сама ведёт рекламу. Запуск клиента,
                   который раньше занимал несколько дней, теперь занимает пару часов.
                 </p>
               </Reveal>
@@ -845,26 +846,56 @@ const Lab = () => {
 
       {/* ---------------- Почему сейчас ---------------- */}
       <section className="border-t border-border/60">
-        <div className="mx-auto max-w-4xl px-4 py-16 text-center sm:px-6 sm:py-24">
-          <Reveal>
-            <SectionTag>Почему сейчас</SectionTag>
-            <h2 className="text-balance text-3xl font-extrabold tracking-tight sm:text-4xl">
-              AI не заменит маркетологов.{" "}
-              <span className="text-gradient-primary">
-                Их заменят маркетологи, которые используют AI
-              </span>
-            </h2>
-            <div className="mx-auto mt-6 max-w-2xl space-y-4 text-base leading-relaxed text-muted-foreground sm:text-lg">
-              <p>
-                Специалисты, которые уже автоматизировали рутину, берут больше проектов, продают дороже и тратят меньше
-                времени на ручную работу. Разрыв с теми, кто продолжает делать всё вручную, растёт с каждым месяцем.
-              </p>
-              <p>
-                Компании всё чаще ожидают, что маркетолог умеет автоматизировать процессы. Освоить эти навыки сейчас проще, чем
-                догонять рынок позже.
-              </p>
+        <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6 sm:py-24">
+          <div className="relative overflow-hidden rounded-3xl border border-primary/25 bg-card p-7 text-center shadow-card sm:p-12">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  "radial-gradient(ellipse 90% 70% at 50% -20%, hsl(210 90% 55% / 0.14), transparent), radial-gradient(ellipse 50% 50% at 100% 100%, hsl(197 92% 61% / 0.07), transparent)",
+              }}
+            />
+            <Reveal>
+              <SectionTag>Почему сейчас</SectionTag>
+              <h2 className="mx-auto max-w-2xl text-balance text-2xl font-extrabold leading-tight tracking-tight sm:text-4xl">
+                AI не заменит маркетологов.{" "}
+                <span className="text-gradient-primary">Их заменят маркетологи, которые используют AI</span>
+              </h2>
+            </Reveal>
+
+            <div className="relative mt-9 grid gap-3 text-left sm:grid-cols-3 sm:gap-4">
+              {[
+                {
+                  icon: TrendingUp,
+                  text: "Кто уже автоматизировал рутину, берёт больше проектов и продаёт дороже",
+                },
+                {
+                  icon: Users,
+                  text: "Компании всё чаще ждут, что маркетолог умеет автоматизировать процессы",
+                },
+                {
+                  icon: Zap,
+                  text: "Освоить эти навыки сейчас проще, чем догонять рынок позже",
+                },
+              ].map(({ icon: Icon, text }, i) => (
+                <Reveal key={text} delay={i * 80}>
+                  <div className="flex h-full flex-col gap-3 rounded-2xl border border-border/60 bg-background/50 p-5">
+                    <div className="grid h-10 w-10 place-items-center rounded-xl bg-primary/10">
+                      <Icon className="h-5 w-5 text-primary" />
+                    </div>
+                    <p className="text-sm leading-relaxed sm:text-[15px]">{text}</p>
+                  </div>
+                </Reveal>
+              ))}
             </div>
-          </Reveal>
+
+            <Reveal delay={260} className="relative mt-8">
+              <p className="text-sm font-medium text-muted-foreground">
+                Разрыв между первыми и вторыми растёт с каждым месяцем.
+              </p>
+            </Reveal>
+          </div>
         </div>
       </section>
 
