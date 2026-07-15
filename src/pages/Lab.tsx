@@ -47,6 +47,7 @@ const EVENT_TIME = "19:00 (GMT+5)";
 /* ------------------------------------------------------------------ */
 
 const META_PIXEL_ID = "2826237244414415";
+const GTM_ID = "GTM-T4FHTLFS";
 // Серверное дублирование событий (CAPI); токен хранится в Supabase, не в коде
 const CAPI_URL = "https://szfgdruhlebfvcmlvxdk.supabase.co/functions/v1/lab-capi";
 
@@ -54,7 +55,20 @@ declare global {
   interface Window {
     fbq?: (...args: unknown[]) => void;
     _fbq?: unknown;
+    dataLayer?: Record<string, unknown>[];
   }
+}
+
+/** Загружает Google Tag Manager только на этой странице */
+function loadGtm() {
+  if (document.getElementById("lab-gtm")) return;
+  window.dataLayer = window.dataLayer || [];
+  window.dataLayer.push({ "gtm.start": new Date().getTime(), event: "gtm.js" });
+  const script = document.createElement("script");
+  script.id = "lab-gtm";
+  script.async = true;
+  script.src = `https://www.googletagmanager.com/gtm.js?id=${GTM_ID}`;
+  document.head.appendChild(script);
 }
 
 /** Загружает Meta Pixel только на этой странице (на платформе он не нужен) */
@@ -116,11 +130,12 @@ function sendCapi(eventName: "Lead" | "PageView", eventId: string, contentName?:
   }
 }
 
-/** Lead в пиксель (браузер) и CAPI (сервер) с одним event_id для дедупликации */
+/** Lead в пиксель (браузер), CAPI (сервер) и dataLayer (GTM) */
 function trackLead(source: string) {
   const eventId = newEventId();
   window.fbq?.("track", "Lead", { content_name: source }, { eventID: eventId });
   sendCapi("Lead", eventId, source);
+  window.dataLayer?.push({ event: "lead_click", cta: source });
 }
 
 /* ------------------------------------------------------------------ */
@@ -418,6 +433,7 @@ const Lab = () => {
 
   useEffect(() => {
     loadMetaPixel();
+    loadGtm();
     const eventId = newEventId();
     window.fbq?.("track", "PageView", {}, { eventID: eventId });
     sendCapi("PageView", eventId);
