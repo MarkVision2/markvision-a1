@@ -40,3 +40,12 @@ blob-report/
 playwright/.cache/
 
 .vercel
+
+# Montage pipeline (Python + Remotion) — рабочие артефакты не коммитим
+.venv/
+__pycache__/
+work/
+out/
+remotion/public/
+remotion/out/
+remotion/.remotion/

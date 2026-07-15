@@ -1,6 +1,6 @@
 ---
 name: montage-pipeline
-description: End-to-end orchestrator for the Montage auto-editing project — the map from idea to published video. Read this FIRST when the repo is opened or someone wants to edit a video. Walks the full pipeline: onboarding (brand-intake) → script before shooting (script-gen) → analysis (transcribe → cut markup → EDL → review → faces → accents → props → declick audio) → b-roll factory (broll-gen: image generation + animation pickup) → review in Remotion Studio → final render → publish texts (publish-pack). Triggers — "запусти проект", "начать монтаж", "новое видео", "смонтируй видео", "start", "run pipeline", "с чего начать", first repo open.
+description: End-to-end orchestrator for the Montage auto-editing project — the map from idea to published video. Read this FIRST when the repo is opened or someone wants to edit a video. Walks the full pipeline: onboarding (brand-intake) → script before shooting (script-gen) → analysis (transcribe → cut markup → EDL → review → faces → accents → props → declick audio) → b-roll factory (broll-gen: image generation + animation pickup) → review in Remotion Studio → final render → publish texts (publish-pack) → публикация рендера в Контент-завод (scripts/montage-publish.mjs → «AI монтаж → Готовые»). Triggers — "запусти проект", "начать монтаж", "новое видео", "смонтируй видео", "start", "run pipeline", "с чего начать", first repo open.
 metadata:
   tags: pipeline, orchestrator, montage, remotion, workflow
 ---
@@ -104,6 +104,16 @@ process name. Bump `--concurrency` if a single stuck frame can deadlock the run.
 **Stage 5 — Publish texts.** Run skill `publish-pack` → `work/<id>/publish.md`
 (YouTube description in the author's style, timecodes from `edl.json`, `#`-tags, comma tags,
 short Telegram post). Uses the transcript already produced — no re-transcription.
+
+**Stage 6 — Публикация в Контент-завод (only on explicit user command).** Готовый рендер
+регистрируется в приложении MarkVision (раздел «AI монтаж → Готовые» у проекта-клиента):
+`node scripts/montage-publish.mjs --project <projectId> --video out/main169.mp4
+--title "…" [--thumb …] [--description "<из work/<id>/publish.md>"]`.
+Скрипт заливает файл в Supabase Storage (`content-factory-uploads`) и upsert'ит строку в
+`heygen_usage` (source `montage-pipeline`). `<projectId>` — id проекта (клиента) в приложении;
+если пользователь его не назвал — спроси. Шортсы публикуются тем же скриптом по одному
+(`--video out/<short>.mp4 --ref montage-short-<n>`). Ключи берутся из `.env`; если upsert
+упал на RLS — нужен `SUPABASE_SERVICE_ROLE_KEY` в `.env`.
 
 ## Guardrails (from CLAUDE.md — do not violate)
 - Preview only in Studio; final render only on explicit command; no ProRes.
