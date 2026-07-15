@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 // supabase.functions.invoke — mock just that call and capture the body it sends,
 // so we can assert on the exact prompt text built from prompt/montageBrief.
 const { invoke } = vi.hoisted(() => ({
-  invoke: vi.fn(async () => ({ data: { data: { session_id: "sess_1" } }, error: null })),
+  invoke: vi.fn(async (..._args: any[]) => ({ data: { data: { session_id: "sess_1" } }, error: null })),
 }));
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: { functions: { invoke } },
