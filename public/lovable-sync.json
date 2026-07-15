@@ -1,7 +1,7 @@
 {
-  "git_sha": "6a1fe12",
-  "git_sha_full": "6a1fe12a6e34b0869f825e084ac0c28f031ba473",
-  "updated_at": "2026-07-15T05:18:56Z",
+  "git_sha": "60dacfb",
+  "git_sha_full": "60dacfb4699e073643f7b596c237026913ed797b",
+  "updated_at": "2026-07-15T08:55:29Z",
   "label": "Merge remote-tracking branch 'origin/main' into claude/ai-marketing-lab-landing-msee61",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
