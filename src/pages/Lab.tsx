@@ -130,12 +130,12 @@ function sendCapi(eventName: "Lead" | "PageView", eventId: string, contentName?:
   }
 }
 
-/** Lead в пиксель (браузер), CAPI (сервер) и dataLayer (GTM) */
+/** Lead в пиксель (браузер) и CAPI (сервер); GTM-событие whatsapp_click
+ *  пушит глобальный слушатель кликов по WhatsApp-ссылкам (см. useEffect) */
 function trackLead(source: string) {
   const eventId = newEventId();
   window.fbq?.("track", "Lead", { content_name: source }, { eventID: eventId });
   sendCapi("Lead", eventId, source);
-  window.dataLayer?.push({ event: "lead_click", cta: source });
 }
 
 /* ------------------------------------------------------------------ */
@@ -437,6 +437,17 @@ const Lab = () => {
     const eventId = newEventId();
     window.fbq?.("track", "PageView", {}, { eventID: eventId });
     sendCapi("PageView", eventId);
+
+    // Конверсия Google Ads: GTM-триггер настроен на событие whatsapp_click.
+    // Ловим клик по любой WhatsApp-ссылке, включая добавленные в будущем.
+    const onWaClick = (e: MouseEvent) => {
+      const link = (e.target as HTMLElement | null)?.closest?.('a[href*="whatsapp.com"], a[href*="wa.me"]');
+      if (!link) return;
+      window.dataLayer = window.dataLayer || [];
+      window.dataLayer.push({ event: "whatsapp_click" });
+    };
+    document.addEventListener("click", onWaClick, true);
+    return () => document.removeEventListener("click", onWaClick, true);
   }, []);
 
   return (
