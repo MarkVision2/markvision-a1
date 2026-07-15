@@ -354,16 +354,6 @@ const afterCourse = [
   { bold: "Автоматизировать большую часть работы", rest: " и заняться стратегией" },
 ];
 
-const steps = [
-  { title: "Оставляешь заявку", desc: "Жмёшь кнопку и переходишь в WhatsApp" },
-  { title: "Попадаешь в группу", desc: "Там уже ждут материалы и инструкции" },
-  { title: "Получаешь подготовку", desc: "Короткие видео и разборы до эфира" },
-  { title: "Приходишь в Zoom", desc: "В назначенные дату и время" },
-  { title: "Смотришь демонстрацию", desc: "Живой экран и живая система, а не слайды" },
-  { title: "Задаёшь вопросы", desc: "Разбираем твою ситуацию в прямом эфире" },
-  { title: "Получаешь предложение", desc: "Возможность попасть в AI Marketing Lab" },
-];
-
 const whatsappInside = [
   { icon: Video, text: "Короткие видео с демонстрацией AI-инструментов" },
   { icon: FileText, text: "Полезные материалы и разборы до эфира" },
@@ -899,36 +889,6 @@ const Lab = () => {
         </div>
       </section>
 
-      {/* ---------------- Как пройдёт ---------------- */}
-      <section className="border-t border-border/60 bg-card/40">
-        <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
-          <Reveal className="text-center">
-            <SectionTag>Формат</SectionTag>
-            <h2 className="text-balance text-3xl font-extrabold tracking-tight sm:text-4xl">Как пройдёт практикум</h2>
-            <p className="mx-auto mt-4 max-w-xl text-muted-foreground">Семь простых шагов от заявки до результата.</p>
-          </Reveal>
-
-          <div className="mx-auto mt-12 max-w-2xl">
-            {steps.map(({ title, desc }, i) => (
-              <Reveal key={title} delay={i * 60}>
-                <div className="relative flex gap-5 pb-8 last:pb-0">
-                  {i < steps.length - 1 && (
-                    <span className="absolute left-[19px] top-11 h-[calc(100%-2.75rem)] w-px bg-border" aria-hidden />
-                  )}
-                  <div className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-primary/40 bg-primary/10 text-sm font-extrabold text-primary">
-                    {i + 1}
-                  </div>
-                  <div className="pt-1.5">
-                    <div className="font-bold">{title}</div>
-                    <div className="mt-0.5 text-sm text-muted-foreground">{desc}</div>
-                  </div>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* ---------------- Внутри WhatsApp-группы ---------------- */}
       <section className="border-t border-border/60">
         <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
@@ -988,37 +948,45 @@ const Lab = () => {
       </section>
 
       {/* ---------------- Финальный CTA ---------------- */}
-      <section className="relative border-t border-border/60">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 -z-10"
-          style={{
-            background: "radial-gradient(ellipse 70% 60% at 50% 100%, hsl(210 90% 55% / 0.15), transparent)",
-          }}
-        />
-        <div className="mx-auto max-w-4xl px-4 py-20 text-center sm:px-6 sm:py-28">
-          <Reveal>
-            <h2 className="text-balance text-3xl font-extrabold leading-tight tracking-tight sm:text-5xl">
-              Через год ты можешь работать так же, как сейчас.
-            </h2>
-            <p className="mx-auto mt-6 max-w-2xl text-balance text-lg text-muted-foreground sm:text-xl">
-              Или уже сегодня начать строить собственную AI-команду{" "}
-              <span className="font-semibold text-foreground">и продавать системы, которые работают вместе с тобой</span>.
-            </p>
-            <p className="mt-4 text-muted-foreground">Я покажу, как это сделал сам. Теперь очередь за тобой.</p>
-          </Reveal>
+      <section className="border-t border-border/60">
+        <div className="mx-auto max-w-5xl px-4 py-16 sm:px-6 sm:py-24">
+          <div className="relative overflow-hidden rounded-3xl border border-primary/30 bg-card p-7 text-center shadow-elevated sm:p-14">
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0"
+              style={{
+                background:
+                  "radial-gradient(ellipse 90% 70% at 50% 120%, hsl(210 90% 55% / 0.18), transparent), radial-gradient(ellipse 50% 45% at 0% 0%, hsl(197 92% 61% / 0.08), transparent)",
+              }}
+            />
+            <Reveal>
+              <div className="relative mx-auto mb-6 inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-4 py-1.5 text-xs font-semibold text-primary sm:text-sm">
+                <Calendar className="h-4 w-4" />
+                1 августа · 19:00 (GMT+5) · Zoom
+              </div>
+              <h2 className="relative mx-auto max-w-2xl text-balance text-2xl font-extrabold leading-tight tracking-tight sm:text-4xl">
+                Через год ты можешь работать так же, как сейчас
+              </h2>
+              <p className="relative mx-auto mt-5 max-w-xl text-balance text-base text-muted-foreground sm:text-lg">
+                Или уже сегодня начать строить собственную AI-команду{" "}
+                <span className="font-semibold text-foreground">и продавать системы, которые работают вместе с тобой</span>.
+              </p>
+              <p className="relative mt-3 text-sm text-muted-foreground sm:text-base">
+                Я покажу, как это сделал сам. Теперь очередь за тобой.
+              </p>
+            </Reveal>
 
-          <Reveal delay={150}>
-            <div className="mt-10">
-              <CtaButton size="xl" id="cta-final">
+            <Reveal delay={150} className="relative">
+              <CtaButton size="xl" id="cta-final" className="mt-9 w-full sm:w-auto">
                 Вступить в WhatsApp-группу
               </CtaButton>
-            </div>
-            <p className="mx-auto mt-6 max-w-xl text-sm leading-relaxed text-muted-foreground">
-              После вступления ты получишь все инструкции, материалы для подготовки, дату и время эфира, а также ссылку на
-              Zoom. Участие в практикуме бесплатное.
-            </p>
-          </Reveal>
+              <p className="mt-3 text-xs font-medium text-warning">Количество мест в Zoom ограничено</p>
+              <p className="mx-auto mt-5 max-w-md text-xs leading-relaxed text-muted-foreground sm:text-sm">
+                После вступления ты получишь все инструкции, материалы для подготовки и ссылку на Zoom. Участие в
+                практикуме бесплатное.
+              </p>
+            </Reveal>
+          </div>
         </div>
       </section>
 
