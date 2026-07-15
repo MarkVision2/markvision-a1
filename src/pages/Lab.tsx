@@ -741,13 +741,15 @@ const Lab = () => {
       <section className="border-t border-border/60 bg-card/40">
         <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
           <Reveal className="text-center">
-            <SectionTag>Результат обучения</SectionTag>
+            <SectionTag>Программа AI Marketing Lab</SectionTag>
             <h2 className="mx-auto max-w-3xl text-balance text-3xl font-extrabold tracking-tight sm:text-4xl">
               Через 5 недель у тебя будет собственная{" "}
               <span className="text-gradient-primary">AI-команда</span>
             </h2>
-            <p className="mx-auto mt-4 max-w-xl text-muted-foreground">
-              Не набор отдельных фишек, а одна система, где каждый блок усиливает остальные.
+            <p className="mx-auto mt-4 max-w-2xl text-muted-foreground">
+              На практикуме я покажу систему бесплатно. А для тех, кто захочет собрать такую же под себя, есть программа
+              AI Marketing Lab. Вот что у тебя будет внутри: не набор отдельных фишек, а одна система, где каждый блок
+              усиливает остальные.
             </p>
           </Reveal>
 
@@ -823,7 +825,7 @@ const Lab = () => {
         <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
           <Reveal className="text-center">
             <SectionTag>Что это меняет</SectionTag>
-            <h2 className="text-balance text-3xl font-extrabold tracking-tight sm:text-4xl">После курса ты сможешь</h2>
+            <h2 className="text-balance text-3xl font-extrabold tracking-tight sm:text-4xl">Что даст тебе такая система</h2>
           </Reveal>
 
           <div className="mx-auto mt-12 grid max-w-4xl gap-3 sm:grid-cols-2">
