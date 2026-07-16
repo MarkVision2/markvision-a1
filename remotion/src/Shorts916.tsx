@@ -37,6 +37,7 @@ export type ShortsProps = {
   src: string;
   previewSrc: string | null;
   fps: number;
+  videoW?: number; // media box width at height 1920 (1080 for a 9:16 source)
   segments: ShortSeg[];
   words: ShortWord[];
   punchZooms: ShortPunch[];
@@ -214,6 +215,7 @@ const Captions: React.FC<{ words: ShortWord[] }> = ({ words }) => {
 export const Shorts916: React.FC<ShortsProps> = ({
   src,
   previewSrc,
+  videoW = VIDEO_W,
   segments,
   words,
   punchZooms,
@@ -246,7 +248,7 @@ export const Shorts916: React.FC<ShortsProps> = ({
               durationInFrames={Math.max(1, s.endFrame - s.startFrame)}
               premountFor={30}
             >
-              <div style={{ position: "absolute", width: VIDEO_W, height: CANVAS_H, left: s.tx, top: 0 }}>
+              <div style={{ position: "absolute", width: videoW, height: CANVAS_H, left: s.tx, top: 0 }}>
                 <Video
                   src={staticFile(speakerSrc)}
                   trimBefore={s.startFrame}

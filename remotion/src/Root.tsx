@@ -8,9 +8,13 @@ import type { ShortsProps } from "./Shorts916";
 // pipeline (pipeline/props.py → props/main169.json, pipeline/shorts.py → props/<id>.json).
 import mainExample from "../props/main169.example.json";
 import shortExample from "../props/short.example.json";
+import shortCa6dc6b5n1 from "../props/Short-ca6dc6b5-1.json";
+import shortCa6dc6b5n2 from "../props/Short-ca6dc6b5-2.json";
 
 const defaultMainProps = mainExample as unknown as MainProps;
 const defaultShortProps = shortExample as unknown as ShortsProps;
+const shortCa6dc6b5n1Props = shortCa6dc6b5n1 as unknown as ShortsProps;
+const shortCa6dc6b5n2Props = shortCa6dc6b5n2 as unknown as ShortsProps;
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -35,6 +39,30 @@ export const RemotionRoot: React.FC = () => {
         width={1080}
         height={1920}
         defaultProps={defaultShortProps}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: props.totalDurationInFrames,
+        })}
+      />
+      <Composition
+        id="Short-ca6dc6b5-1"
+        component={Shorts916}
+        durationInFrames={shortCa6dc6b5n1Props.totalDurationInFrames}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={shortCa6dc6b5n1Props}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: props.totalDurationInFrames,
+        })}
+      />
+      <Composition
+        id="Short-ca6dc6b5-2"
+        component={Shorts916}
+        durationInFrames={shortCa6dc6b5n2Props.totalDurationInFrames}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={shortCa6dc6b5n2Props}
         calculateMetadata={({ props }) => ({
           durationInFrames: props.totalDurationInFrames,
         })}

@@ -26,6 +26,20 @@ VIDEO_W = round(CANVAS_H * 16 / 9)   # 3413: source scaled to fill height
 TX_MIN = CANVAS_W - VIDEO_W           # -2333 (clamp so no black edge)
 
 
+def probe_video_w(path: Path) -> int:
+    """Width of the media box when scaled to fill CANVAS_H (vertical sources
+    give 1080 → full-bleed, no face crop panning)."""
+    try:
+        out = subprocess.check_output(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=width,height", "-of", "csv=p=0",
+             str(path)], text=True).strip()
+        w, h = (int(x) for x in out.split(",")[:2])
+        return max(CANVAS_W, round(CANVAS_H * w / h))
+    except Exception:
+        return VIDEO_W
+
+
 def load(work: Path, name: str):
     return json.loads((work / name).read_text(encoding="utf-8"))
 
@@ -56,6 +70,8 @@ def build(work: Path, props_dir: Path, draft: bool):
     shorts = data["shorts"]
     media = data.get("media", "source")  # base media name in public/ (remakes use their own)
     preview = (props_dir.parent / "public" / f"{media}_preview.mp4").exists()
+    video_w = probe_video_w(props_dir.parent / "public" / f"{media}.mp4")
+    tx_min = CANVAS_W - video_w
 
     for sh in shorts:
         spans = sh["spans"]
@@ -89,7 +105,7 @@ def build(work: Path, props_dir: Path, draft: bool):
         segments = []
         for a, b in spans:
             fx, fy = face_center(faces, (a + b) / 2)
-            tx = max(TX_MIN, min(0, round(CANVAS_W / 2 - fx * VIDEO_W)))
+            tx = max(tx_min, min(0, round(CANVAS_W / 2 - fx * video_w)))
             segments.append({
                 "start": a, "end": b,
                 "startFrame": round(a * fps), "endFrame": round(b * fps),
@@ -156,6 +172,7 @@ def build(work: Path, props_dir: Path, draft: bool):
             "src": f"{media}.mp4",
             "previewSrc": f"{media}_preview.mp4" if preview else None,
             "fps": fps,
+            "videoW": video_w,
             "segments": segments,
             "words": kw,
             "punchZooms": punch,

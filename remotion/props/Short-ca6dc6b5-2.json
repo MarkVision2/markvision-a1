@@ -1,0 +1,345 @@
+{
+ "src": "source_ca6dc6b5.mp4",
+ "previewSrc": null,
+ "fps": 30,
+ "videoW": 1080,
+ "segments": [
+  {
+   "start": 0.1,
+   "end": 7.519,
+   "startFrame": 3,
+   "endFrame": 226,
+   "tx": 0,
+   "faceY": 46.2
+  },
+  {
+   "start": 14.48,
+   "end": 20.19,
+   "startFrame": 434,
+   "endFrame": 606,
+   "tx": 0,
+   "faceY": 42.8
+  },
+  {
+   "start": 26.35,
+   "end": 32.28,
+   "startFrame": 790,
+   "endFrame": 968,
+   "tx": 0,
+   "faceY": 41.2
+  }
+ ],
+ "words": [
+  {
+   "text": "если",
+   "from": 7,
+   "accent": false,
+   "to": 16
+  },
+  {
+   "text": "ты",
+   "from": 16,
+   "accent": false,
+   "to": 21
+  },
+  {
+   "text": "живешь",
+   "from": 21,
+   "accent": false,
+   "to": 31
+  },
+  {
+   "text": "в",
+   "from": 31,
+   "accent": false,
+   "to": 35
+  },
+  {
+   "text": "Павлодаре",
+   "from": 35,
+   "accent": true,
+   "to": 50
+  },
+  {
+   "text": "хочешь",
+   "from": 50,
+   "accent": false,
+   "to": 55
+  },
+  {
+   "text": "стать",
+   "from": 55,
+   "accent": false,
+   "to": 62
+  },
+  {
+   "text": "it-предпринимателем",
+   "from": 62,
+   "accent": false,
+   "to": 91
+  },
+  {
+   "text": "или",
+   "from": 91,
+   "accent": false,
+   "to": 103
+  },
+  {
+   "text": "научиться",
+   "from": 103,
+   "accent": false,
+   "to": 115
+  },
+  {
+   "text": "собирать",
+   "from": 115,
+   "accent": false,
+   "to": 127
+  },
+  {
+   "text": "свои",
+   "from": 127,
+   "accent": false,
+   "to": 136
+  },
+  {
+   "text": "сайты",
+   "from": 136,
+   "accent": false,
+   "to": 151
+  },
+  {
+   "text": "приложения",
+   "from": 151,
+   "accent": false,
+   "to": 163
+  },
+  {
+   "text": "и",
+   "from": 163,
+   "accent": false,
+   "to": 170
+  },
+  {
+   "text": "платформы",
+   "from": 170,
+   "accent": false,
+   "to": 187
+  },
+  {
+   "text": "то",
+   "from": 187,
+   "accent": false,
+   "to": 189
+  },
+  {
+   "text": "эта",
+   "from": 189,
+   "accent": false,
+   "to": 196
+  },
+  {
+   "text": "информация",
+   "from": 196,
+   "accent": false,
+   "to": 206
+  },
+  {
+   "text": "для",
+   "from": 206,
+   "accent": false,
+   "to": 213
+  },
+  {
+   "text": "тебя",
+   "from": 213,
+   "accent": false,
+   "to": 223
+  },
+  {
+   "text": "на",
+   "from": 223,
+   "accent": false,
+   "to": 238
+  },
+  {
+   "text": "workshop",
+   "from": 238,
+   "accent": false,
+   "to": 255
+  },
+  {
+   "text": "я",
+   "from": 255,
+   "accent": false,
+   "to": 264
+  },
+  {
+   "text": "расскажу",
+   "from": 264,
+   "accent": false,
+   "to": 281
+  },
+  {
+   "text": "как",
+   "from": 281,
+   "accent": false,
+   "to": 286
+  },
+  {
+   "text": "я",
+   "from": 286,
+   "accent": false,
+   "to": 291
+  },
+  {
+   "text": "собрал",
+   "from": 291,
+   "accent": false,
+   "to": 308
+  },
+  {
+   "text": "приложение",
+   "from": 308,
+   "accent": false,
+   "to": 327
+  },
+  {
+   "text": "заработал",
+   "from": 327,
+   "accent": false,
+   "to": 339
+  },
+  {
+   "text": "на",
+   "from": 339,
+   "accent": false,
+   "to": 346
+  },
+  {
+   "text": "этом",
+   "from": 346,
+   "accent": false,
+   "to": 351
+  },
+  {
+   "text": "больше",
+   "from": 351,
+   "accent": false,
+   "to": 360
+  },
+  {
+   "text": "5",
+   "from": 360,
+   "accent": false,
+   "to": 368
+  },
+  {
+   "text": "миллионов",
+   "from": 368,
+   "accent": true,
+   "to": 380
+  },
+  {
+   "text": "тенге",
+   "from": 380,
+   "accent": false,
+   "to": 394
+  },
+  {
+   "text": "для",
+   "from": 394,
+   "accent": false,
+   "to": 401
+  },
+  {
+   "text": "того",
+   "from": 401,
+   "accent": false,
+   "to": 406
+  },
+  {
+   "text": "чтобы",
+   "from": 406,
+   "accent": false,
+   "to": 413
+  },
+  {
+   "text": "оставить",
+   "from": 413,
+   "accent": false,
+   "to": 425
+  },
+  {
+   "text": "заявку",
+   "from": 425,
+   "accent": false,
+   "to": 440
+  },
+  {
+   "text": "переходи",
+   "from": 440,
+   "accent": false,
+   "to": 452
+  },
+  {
+   "text": "по",
+   "from": 452,
+   "accent": false,
+   "to": 456
+  },
+  {
+   "text": "ссылке",
+   "from": 456,
+   "accent": false,
+   "to": 464
+  },
+  {
+   "text": "ниже",
+   "from": 464,
+   "accent": false,
+   "to": 476
+  },
+  {
+   "text": "регистрируйся",
+   "from": 476,
+   "accent": false,
+   "to": 502
+  },
+  {
+   "text": "количество",
+   "from": 502,
+   "accent": false,
+   "to": 516
+  },
+  {
+   "text": "мест",
+   "from": 516,
+   "accent": false,
+   "to": 526
+  },
+  {
+   "text": "ограничено",
+   "from": 526,
+   "accent": true,
+   "to": 538
+  }
+ ],
+ "punchZooms": [
+  {
+   "from": 31,
+   "originY": 46.8
+  },
+  {
+   "from": 364,
+   "originY": 43.8
+  },
+  {
+   "from": 522,
+   "originY": 41.2
+  }
+ ],
+ "inserts": [],
+ "audioTrack": "audio_Short-ca6dc6b5-2.wav",
+ "totalDurationInFrames": 573
+}
