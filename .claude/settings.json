@@ -10,5 +10,23 @@
         ]
       }
     ]
+  },
+  "permissions": {
+    "allow": [
+      "Bash(bash scripts/montage-setup.sh:*)",
+      "Bash(node scripts/montage-worker.mjs:*)",
+      "Bash(node scripts/montage-publish.mjs:*)",
+      "Bash(.venv/bin/python pipeline/:*)",
+      "Bash(.venv/bin/python tests/:*)",
+      "Bash(.venv/bin/pip install:*)",
+      "Bash(python3 -m venv:*)",
+      "Bash(ffmpeg:*)",
+      "Bash(ffprobe:*)",
+      "Bash(npm ci:*)",
+      "Bash(npx remotion:*)",
+      "Bash(npx tsc:*)",
+      "Bash(curl -fL --retry 3 -o .tools/ffmpeg.tar.xz:*)",
+      "Bash(tar -xf .tools/ffmpeg.tar.xz:*)"
+    ]
   }
 }
