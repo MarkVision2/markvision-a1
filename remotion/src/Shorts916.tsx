@@ -11,6 +11,8 @@ import {
 } from "remotion";
 import { Audio, Video } from "@remotion/media";
 import { brandFontFamily } from "./fonts";
+import { BRAND } from "./brand";
+import { MotionInsertView } from "./motion";
 
 export type ShortSeg = {
   start: number;
@@ -22,16 +24,27 @@ export type ShortSeg = {
 };
 export type ShortWord = { text: string; from: number; to: number; accent: boolean };
 export type ShortPunch = { from: number; originY: number };
-export type ShortInsert = {
-  file: string;
-  type: "image" | "video";
+type InsertBase = {
   from: number;
   to: number;
   layout?: "third" | "half" | "full"; // how much of the canvas the insert takes
+};
+// File-based b-roll: a generated image or a source video clip.
+export type FileInsert = InsertBase & {
+  type: "image" | "video";
+  file: string;
   // zone of burned-in subs/watermark to hide, relative 0..1 of the insert area;
   // covered with a blur plate, our karaoke renders on top of everything anyway
   coverBox?: { x: number; y: number; w: number; h: number };
 };
+// Code-based motion-graphics b-roll (no paid generation) — see motion.tsx.
+export type MotionInsert = InsertBase & {
+  type: "motion";
+  template: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data?: Record<string, any>;
+};
+export type ShortInsert = FileInsert | MotionInsert;
 
 export type ShortsProps = {
   src: string;
@@ -56,8 +69,8 @@ const INSERT_LAYOUT = {
 } as const;
 const layoutOf = (i: ShortInsert) => INSERT_LAYOUT[i.layout ?? "third"];
 
-const PAPER = "#F5F5F5";
-const SCARLET = "#E5484D";
+const PAPER = BRAND.text; // primary caption colour
+const SCARLET = BRAND.accent; // accent colour (accent words, progress bar)
 const OUT_QUINT = Easing.bezier(0.16, 1, 0.3, 1);
 
 // Aggressive punch-zoom on accent words.
@@ -114,7 +127,7 @@ const InsertTop: React.FC<{ insert: ShortInsert | null; opacity: number }> = ({
 }) => {
   if (!insert) return null;
   const dur = insert.to - insert.from;
-  const file = staticFile(insert.file);
+  const isMotion = insert.type === "motion";
   return (
     <div
       style={{
@@ -125,12 +138,21 @@ const InsertTop: React.FC<{ insert: ShortInsert | null; opacity: number }> = ({
         height: layoutOf(insert).height,
         overflow: "hidden",
         opacity,
-        backgroundColor: "#17171A",
+        // motion templates paint their own background (opaque or transparent
+        // for annotate overlays); file inserts sit on a dark plate.
+        backgroundColor: isMotion ? "transparent" : "#17171A",
       }}
     >
-      {insert.type === "video" ? (
+      {insert.type === "motion" ? (
+        <MotionInsertView
+          template={insert.template}
+          from={insert.from}
+          to={insert.to}
+          data={insert.data}
+        />
+      ) : insert.type === "video" ? (
         <Video
-          src={file}
+          src={staticFile(insert.file)}
           trimBefore={0}
           trimAfter={dur}
           muted
@@ -139,11 +161,11 @@ const InsertTop: React.FC<{ insert: ShortInsert | null; opacity: number }> = ({
         />
       ) : (
         <Img
-          src={file}
+          src={staticFile(insert.file)}
           style={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
       )}
-      {insert.coverBox ? (
+      {insert.type !== "motion" && insert.coverBox ? (
         <div
           style={{
             position: "absolute",

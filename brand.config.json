@@ -1,0 +1,78 @@
+{
+  "brand": {
+    "preset": "hormozi-yellow",
+    "background": "#0A0A0A",
+    "accent": "#FFD400",
+    "text": "#FFFFFF",
+    "ink": "#0A0A0A",
+    "case": "upper",
+    "address": "ты"
+  },
+  "font": {
+    "family": "Manrope",
+    "weight": "800",
+    "file": null,
+    "case": "upper",
+    "note": "жирный системный гротеск ExtraBold, кириллица есть, файл не требуется (Google-шрифт). Можно позже заменить на свой .otf/.ttf."
+  },
+  "effects": {
+    "jumpcut": true,
+    "faceZoom": true,
+    "punchZoom": true,
+    "accentCaptions": true,
+    "keySfx": true,
+    "karaoke": true,
+    "inserts": true,
+    "music": true,
+    "progressBar": true,
+    "declick": true,
+    "watermarkRemove": true
+  },
+  "sfx": ["whoosh", "keyType", "ding", "memePack"],
+  "remotionEffects": ["vignette", "glow", "chromaticAberration", "filmGrain", "colorGrade"],
+  "editStyle": "native-shorts",
+  "formats": ["shorts"],
+  "inserts": {
+    "source": "motion",
+    "strategy": "motion-first",
+    "primary": ["remotion-motion", "lottie"],
+    "generateOnlyFor": ["photoreal"],
+    "style": ["on-brand", "3d", "screenshots-ui", "photoreal"],
+    "density": "medium",
+    "motionTemplates": [
+      "number-counter",
+      "vs-compare",
+      "checklist-reveal",
+      "fake-terminal",
+      "fake-dashboard-bars",
+      "kinetic-type",
+      "annotate-arrow-highlight",
+      "loading-to-done"
+    ],
+    "lottie": {
+      "source": "lottiefiles",
+      "recolor": "brand",
+      "dir": "remotion/public/lottie"
+    },
+    "note": "b-roll делаем моушн-графикой кодом (Remotion) + бесплатными Lottie; платная генерация картинок — только для фотореалистичных/атмосферных вставок"
+  },
+  "imagegen": {
+    "provider": "higgsfield",
+    "fallbackProvider": "imagine-mcp",
+    "styleRefs": "assets/style-refs",
+    "animate": "prompts",
+    "useOnlyWhen": "photoreal",
+    "note": "gemini-webapi не подключён; генерация через доступные MCP (higgsfield generate_image / Imagine generate_image), оживление — higgsfield generate_video. Использовать точечно, приоритет — motion/lottie"
+  },
+  "hyperframes": {
+    "enabled": false,
+    "note": "опционально: сложные HTML/GSAP-сцены. В Claude Code compose/render_video MCP отключены — ставить локальный скилл 'npx skills add heygen-com/hyperframes', результат mp4 подтягивать как video-вставку"
+  },
+  "profile": {
+    "who": "маркетолог, IT-предприниматель; учит пользоваться ИИ и автоматизировать работу",
+    "audience": "действующие digital-специалисты, устали от ручной работы, хотят автоматизировать и больше зарабатывать",
+    "vibe": "динамичный-энергичный",
+    "references": ["профессор Мориарти", "Alex Hormozi"],
+    "platform": "Instagram Reels 9:16"
+  }
+}
