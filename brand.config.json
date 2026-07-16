@@ -33,16 +33,40 @@
   "editStyle": "native-shorts",
   "formats": ["shorts"],
   "inserts": {
-    "source": "generate",
+    "source": "motion",
+    "strategy": "motion-first",
+    "primary": ["remotion-motion", "lottie"],
+    "generateOnlyFor": ["photoreal"],
     "style": ["on-brand", "3d", "screenshots-ui", "photoreal"],
-    "density": "medium"
+    "density": "medium",
+    "motionTemplates": [
+      "number-counter",
+      "vs-compare",
+      "checklist-reveal",
+      "fake-terminal",
+      "fake-dashboard-bars",
+      "kinetic-type",
+      "annotate-arrow-highlight",
+      "loading-to-done"
+    ],
+    "lottie": {
+      "source": "lottiefiles",
+      "recolor": "brand",
+      "dir": "remotion/public/lottie"
+    },
+    "note": "b-roll делаем моушн-графикой кодом (Remotion) + бесплатными Lottie; платная генерация картинок — только для фотореалистичных/атмосферных вставок"
   },
   "imagegen": {
     "provider": "higgsfield",
     "fallbackProvider": "imagine-mcp",
     "styleRefs": "assets/style-refs",
     "animate": "prompts",
-    "note": "gemini-webapi не подключён; генерация через доступные MCP (higgsfield generate_image / Imagine generate_image), оживление — higgsfield generate_video"
+    "useOnlyWhen": "photoreal",
+    "note": "gemini-webapi не подключён; генерация через доступные MCP (higgsfield generate_image / Imagine generate_image), оживление — higgsfield generate_video. Использовать точечно, приоритет — motion/lottie"
+  },
+  "hyperframes": {
+    "enabled": false,
+    "note": "опционально: сложные HTML/GSAP-сцены. В Claude Code compose/render_video MCP отключены — ставить локальный скилл 'npx skills add heygen-com/hyperframes', результат mp4 подтягивать как video-вставку"
   },
   "profile": {
     "who": "маркетолог, IT-предприниматель; учит пользоваться ИИ и автоматизировать работу",
