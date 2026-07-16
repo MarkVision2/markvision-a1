@@ -9,9 +9,11 @@ import { MotionDemo, MOTION_DEMO_DURATION } from "./MotionDemo";
 // pipeline (pipeline/props.py → props/main169.json, pipeline/shorts.py → props/<id>.json).
 import mainExample from "../props/main169.example.json";
 import shortExample from "../props/short.example.json";
+import short8501b3ac from "../props/Short-8501b3ac.json";
 
 const defaultMainProps = mainExample as unknown as MainProps;
 const defaultShortProps = shortExample as unknown as ShortsProps;
+const short8501b3acProps = short8501b3ac as unknown as ShortsProps;
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -47,6 +49,18 @@ export const RemotionRoot: React.FC = () => {
         fps={30}
         width={1080}
         height={1920}
+      />
+      <Composition
+        id="Short-8501b3ac"
+        component={Shorts916}
+        durationInFrames={short8501b3acProps.totalDurationInFrames}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={short8501b3acProps}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: props.totalDurationInFrames,
+        })}
       />
     </>
   );

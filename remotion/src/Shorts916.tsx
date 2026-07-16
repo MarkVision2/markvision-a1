@@ -56,10 +56,14 @@ export type ShortsProps = {
   inserts: ShortInsert[];
   audioTrack: string | null;
   totalDurationInFrames: number;
+  // Width the source occupies when scaled to fill canvas height (1920).
+  // 16:9 landscape source cropped to vertical → 3413 (default). A natively
+  // vertical 9:16 source fills the 1080-wide canvas exactly → pass 1080.
+  videoW?: number;
 };
 
 const CANVAS_H = 1920;
-const VIDEO_W = Math.round((CANVAS_H * 16) / 9); // 3413: source scaled to fill height
+const DEFAULT_VIDEO_W = Math.round((CANVAS_H * 16) / 9); // 3413: 16:9 source scaled to fill height
 // Per-layout insert height and how far the speaker shifts down to stay clear.
 // "full" covers the speaker entirely (voice keeps playing) — no shift needed.
 const INSERT_LAYOUT = {
@@ -242,6 +246,7 @@ export const Shorts916: React.FC<ShortsProps> = ({
   inserts,
   audioTrack,
   totalDurationInFrames,
+  videoW = DEFAULT_VIDEO_W,
 }) => {
   const frame = useCurrentFrame();
   const { scale, originY } = zoomAt(frame, punchZooms);
@@ -268,7 +273,7 @@ export const Shorts916: React.FC<ShortsProps> = ({
               durationInFrames={Math.max(1, s.endFrame - s.startFrame)}
               premountFor={30}
             >
-              <div style={{ position: "absolute", width: VIDEO_W, height: CANVAS_H, left: s.tx, top: 0 }}>
+              <div style={{ position: "absolute", width: videoW, height: CANVAS_H, left: s.tx, top: 0 }}>
                 <Video
                   src={staticFile(speakerSrc)}
                   trimBefore={s.startFrame}
