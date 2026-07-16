@@ -16,7 +16,9 @@ const CORS: Record<string, string> = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-app-key",
 };
 
-const MAX_BYTES = 500 * 1024 * 1024; // 500 МБ — с запасом сверх реальных нужд Reels/каруселей
+// 2 ГБ: сырые исходники «Монтажа съёмки» (говорящая голова с телефона) легко
+// перерастают прежние 500 МБ; Reels/карусели автопостинга в лимит тем более влезают.
+const MAX_BYTES = 2 * 1024 * 1024 * 1024;
 
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...CORS, "Content-Type": "application/json" } });

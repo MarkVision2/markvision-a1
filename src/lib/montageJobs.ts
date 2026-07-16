@@ -8,6 +8,7 @@
  * присылает видео в привязанный Telegram-чат проекта.
  */
 import { supabase } from "@/integrations/supabase/client";
+import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseConfig";
 
 export type MontageFormat = "16:9" | "shorts";
 
@@ -55,18 +56,64 @@ const BUCKET = "montage-uploads";
 const sanitize = (name: string): string =>
   name.toLowerCase().replace(/[^a-z0-9.\-_]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "video";
 
-/** Заливает исходник в bucket montage-uploads и возвращает публичный URL. */
+// Supabase Storage на Free-плане жёстко режет файлы больше 50 МБ (лимит
+// платформы, бакетом не поднимается). Видео со съёмки почти всегда больше,
+// поэтому крупные исходники едут напрямую в Cloudflare R2 через presigned URL
+// (та же схема и та же edge-функция r2-presign-upload, что у автопостинга).
+const SUPABASE_UPLOAD_LIMIT = 45 * 1024 * 1024;
+
+async function presignR2(filename: string, contentType: string, size: number): Promise<{ uploadUrl: string; publicUrl: string }> {
+  const res = await fetch(`${clientSupabaseUrl}/functions/v1/r2-presign-upload`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-app-key": clientSupabasePublishableKey },
+    body: JSON.stringify({ filename, contentType, size }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || j.error) throw new Error(j.error || `Не удалось получить ссылку для загрузки (HTTP ${res.status})`);
+  return { uploadUrl: j.uploadUrl as string, publicUrl: j.publicUrl as string };
+}
+
+// PUT через XHR ради onprogress: у fetch прогресса загрузки нет, а заливать
+// гигабайтное видео с голым спиннером — значит выглядеть зависшим.
+function putWithProgress(url: string, file: File, contentType: string, onProgress?: (pct: number) => void): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", url);
+    xhr.setRequestHeader("Content-Type", contentType);
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 100));
+    };
+    xhr.onload = () =>
+      xhr.status >= 200 && xhr.status < 300
+        ? resolve()
+        : reject(new Error(`Загрузка в хранилище не удалась (HTTP ${xhr.status})`));
+    xhr.onerror = () => reject(new Error("Сетевая ошибка при загрузке — проверьте соединение и попробуйте ещё раз"));
+    xhr.send(file);
+  });
+}
+
+/** Заливает исходник (мелкие — Supabase Storage, крупные — R2) и возвращает публичный URL. */
 export async function uploadMontageSource(
   projectId: string,
   file: File,
+  onProgress?: (pct: number) => void,
 ): Promise<{ url: string; path: string }> {
+  const contentType = file.type || "video/mp4";
+
+  if (file.size > SUPABASE_UPLOAD_LIMIT) {
+    const { uploadUrl, publicUrl } = await presignR2(`montage-${projectId}-${sanitize(file.name)}`, contentType, file.size);
+    await putWithProgress(uploadUrl, file, contentType, onProgress);
+    return { url: publicUrl, path: publicUrl };
+  }
+
   const path = `${projectId}/${Date.now()}-${sanitize(file.name)}`;
   const { error } = await supabase.storage.from(BUCKET).upload(path, file, {
-    contentType: file.type || "video/mp4",
+    contentType,
     cacheControl: "3600",
     upsert: false,
   });
   if (error) throw new Error(`Не удалось загрузить видео: ${error.message}`);
+  onProgress?.(100);
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(path);
   return { url: data.publicUrl, path };
 }
