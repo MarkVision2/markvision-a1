@@ -1,7 +1,7 @@
 {
-  "git_sha": "0db822e",
-  "git_sha_full": "0db822ee66268064bf7aa8ae8c90eb399d0f38d3",
-  "updated_at": "2026-07-16T05:19:12Z",
-  "label": "Улучшил монтаж-страницу",
+  "git_sha": "aea3af9",
+  "git_sha_full": "aea3af9a6e68994405ceff23bfa71d469b7f06ce",
+  "updated_at": "2026-07-16T05:27:35Z",
+  "label": "Merge branch 'claude/montage-pipeline-setup-hjhs74'",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
