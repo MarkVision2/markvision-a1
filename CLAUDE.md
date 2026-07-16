@@ -37,7 +37,7 @@
 
 ## Команды (Linux/macOS: `.venv/bin/python`; Windows: `.venv\Scripts\python.exe`)
 ```bash
-python -m venv .venv && .venv/bin/pip install -r requirements.txt   # окружение пайплайна
+python -m venv .venv && .venv/bin/pip install -r pipeline/requirements.txt   # окружение пайплайна
 
 .venv/bin/python pipeline/<script>.py ...        # анализ, детали в docs/PIPELINE.md
 

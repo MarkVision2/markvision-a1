@@ -49,3 +49,7 @@ out/
 remotion/public/
 remotion/out/
 remotion/.remotion/
+
+# Секреты не коммитим: репозиторий публичный. Публичные VITE_* значения
+# продублированы в .env.example и в fallback src/lib/supabaseConfig.ts.
+.env

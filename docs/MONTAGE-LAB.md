@@ -80,7 +80,7 @@ Claude — монтажёр, который очередь разбирает. �
 
 ## Чего не хватает для первого прогона
 
-1. На машине воркера: `python -m venv .venv && .venv/bin/pip install -r requirements.txt`,
+1. На машине воркера: `python -m venv .venv && .venv/bin/pip install -r pipeline/requirements.txt`,
    `cd remotion && npm ci`, установленный FFmpeg.
 2. Один раз прогнать реальную заявку и посмотреть на качество (стиль настраивается скиллом
    `brand-intake` → `brand.config.json`).
