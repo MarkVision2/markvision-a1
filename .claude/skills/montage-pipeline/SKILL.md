@@ -120,9 +120,10 @@ short Telegram post). Uses the transcript already produced — no re-transcripti
 
 На сайте в разделе Контент-завод → Видео → «Монтаж съёмки» пользователи оставляют заявки:
 исходник «говорящей головы» + форматы (16:9 / шортсы) + пожелания. Заявки лежат в
-`montage_jobs`; их разбирает эта Claude-сессия командами:
+`montage_jobs`; их разбирает Claude-сессия (вручную по команде или Routine по расписанию) командами:
 
 ```bash
+bash scripts/montage-setup.sh                   # подготовка воркера (ffmpeg, .venv, remotion) — идемпотентно
 node scripts/montage-worker.mjs next            # забрать заявку + скачать исходник в work/<jobId>/
 node scripts/montage-worker.mjs status <jobId> "транскрибируем"   # прогресс, виден на сайте
 node scripts/montage-worker.mjs status <jobId> "рендер" --state rendering
@@ -143,6 +144,10 @@ node scripts/montage-worker.mjs fail <jobId> "причина"
    причиной (её увидят на сайте и в Telegram).
 5. После `complete`/`fail` — снова `next`, пока очередь не опустеет. Git-пуши по-прежнему
    только по явной команде.
+6. Забор заявки атомарный (`claim_montage_job`, SKIP LOCKED) — параллельные воркеры не
+   возьмут одну заявку дважды; зависшие >3 ч processing-заявки сами возвращаются в очередь.
+   Ключи воркер берёт из env-переменных окружения или `.env` (`DEEPGRAM_API_KEY`,
+   `MONTAGE_WORKER_KEY`); setup-скрипт проверяет их и сеть до Supabase до начала работы.
 
 ## Guardrails (from CLAUDE.md — do not violate)
 - Preview only in Studio; final render only on explicit command; no ProRes.

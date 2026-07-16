@@ -154,18 +154,12 @@ Deno.serve(async (req) => {
   try {
     switch (action) {
       case "next": {
-        const { data: job } = await admin
-          .from("montage_jobs").select("*")
-          .eq("status", "queued")
-          .order("created_at", { ascending: true })
-          .limit(1).maybeSingle();
-        if (!job) return json({ job: null });
-        const { error } = await admin
-          .from("montage_jobs")
-          .update({ status: "processing", progress: "взято в работу", claimed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-          .eq("id", job.id).eq("status", "queued");
+        // Атомарный забор (FOR UPDATE SKIP LOCKED) — безопасно при нескольких
+        // параллельных воркерах; заодно RPC возвращает в очередь зависшие заявки.
+        const { data, error } = await admin.rpc("claim_montage_job");
         if (error) return json({ error: error.message }, 500);
-        return json({ job: { ...job, status: "processing" } });
+        const job = Array.isArray(data) ? data[0] : data;
+        return json({ job: job ?? null });
       }
 
       case "update": {
