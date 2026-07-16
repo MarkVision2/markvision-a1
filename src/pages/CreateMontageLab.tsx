@@ -105,6 +105,7 @@ const CreateMontageLab = () => {
 
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadPct, setUploadPct] = useState(0);
   const [uploaded, setUploaded] = useState<{ url: string; name: string } | null>(null);
   const [formats, setFormats] = useState<MontageFormat[]>(["16:9"]);
   const [shortsCount, setShortsCount] = useState(3);
@@ -131,8 +132,9 @@ const CreateMontageLab = () => {
     setFile(f);
     setUploaded(null);
     setUploading(true);
+    setUploadPct(0);
     try {
-      const { url } = await uploadMontageSource(projectId, f);
+      const { url } = await uploadMontageSource(projectId, f, setUploadPct);
       setUploaded({ url, name: f.name });
       toast.success("Видео загружено");
     } catch (e) {
@@ -235,7 +237,12 @@ const CreateMontageLab = () => {
             {uploading ? (
               <>
                 <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <span className="text-muted-foreground">Загружаем {file?.name}…</span>
+                <span className="text-muted-foreground">Загружаем {file?.name}… {uploadPct > 0 && `${uploadPct}%`}</span>
+                {uploadPct > 0 && (
+                  <span className="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-secondary">
+                    <span className="block h-full rounded-full bg-primary transition-all" style={{ width: `${uploadPct}%` }} />
+                  </span>
+                )}
               </>
             ) : uploaded ? (
               <>
@@ -247,7 +254,7 @@ const CreateMontageLab = () => {
               <>
                 <Upload className="h-6 w-6 text-muted-foreground" />
                 <span className="font-medium">Выбрать видео</span>
-                <span className="text-xs text-muted-foreground">MP4 / MOV / WebM — одна съёмка «говорящей головы»</span>
+                <span className="text-xs text-muted-foreground">MP4 / MOV / WebM до 2 ГБ — одна съёмка «говорящей головы»</span>
               </>
             )}
           </button>
