@@ -1,0 +1,54 @@
+{
+  "brand": {
+    "preset": "hormozi-yellow",
+    "background": "#0A0A0A",
+    "accent": "#FFD400",
+    "text": "#FFFFFF",
+    "ink": "#0A0A0A",
+    "case": "upper",
+    "address": "ты"
+  },
+  "font": {
+    "family": "Manrope",
+    "weight": "800",
+    "file": null,
+    "case": "upper",
+    "note": "жирный системный гротеск ExtraBold, кириллица есть, файл не требуется (Google-шрифт). Можно позже заменить на свой .otf/.ttf."
+  },
+  "effects": {
+    "jumpcut": true,
+    "faceZoom": true,
+    "punchZoom": true,
+    "accentCaptions": true,
+    "keySfx": true,
+    "karaoke": true,
+    "inserts": true,
+    "music": true,
+    "progressBar": true,
+    "declick": true,
+    "watermarkRemove": true
+  },
+  "sfx": ["whoosh", "keyType", "ding", "memePack"],
+  "remotionEffects": ["vignette", "glow", "chromaticAberration", "filmGrain", "colorGrade"],
+  "editStyle": "native-shorts",
+  "formats": ["shorts"],
+  "inserts": {
+    "source": "generate",
+    "style": ["on-brand", "3d", "screenshots-ui", "photoreal"],
+    "density": "medium"
+  },
+  "imagegen": {
+    "provider": "higgsfield",
+    "fallbackProvider": "imagine-mcp",
+    "styleRefs": "assets/style-refs",
+    "animate": "prompts",
+    "note": "gemini-webapi не подключён; генерация через доступные MCP (higgsfield generate_image / Imagine generate_image), оживление — higgsfield generate_video"
+  },
+  "profile": {
+    "who": "маркетолог, IT-предприниматель; учит пользоваться ИИ и автоматизировать работу",
+    "audience": "действующие digital-специалисты, устали от ручной работы, хотят автоматизировать и больше зарабатывать",
+    "vibe": "динамичный-энергичный",
+    "references": ["профессор Мориарти", "Alex Hormozi"],
+    "platform": "Instagram Reels 9:16"
+  }
+}
