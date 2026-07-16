@@ -1,9 +1,9 @@
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertTriangle, CheckCircle2, Clock, Download, Film, Loader2, MonitorPlay,
-  Scissors, Send, Smartphone, Upload, X,
+  AlertTriangle, CheckCircle2, Clock, Download, Film, FileVideo, Loader2,
+  MonitorPlay, Play, Scissors, Send, Smartphone, Sparkles, Upload, Wand2, X, Zap,
 } from "lucide-react";
 import Header from "@/components/factory/Header";
 import { TelegramConnect } from "@/components/factory/TelegramConnect";
@@ -18,70 +18,167 @@ import {
   uploadMontageSource, type MontageFormat, type MontageJob,
 } from "@/lib/montageJobs";
 
-// Статус заявки → цвет чипа.
+// Стадии пайплайна — совпадают со скиллом montage-pipeline.
+const STAGES = [
+  { key: "transcript", label: "Транскрипт", match: /транскр|deepgram|words/i },
+  { key: "review",     label: "Разметка",    match: /разметк|delete|review|дубл|пауз/i },
+  { key: "edit",       label: "Монтаж",      match: /монтаж|edl|faces|accent|props|audio/i },
+  { key: "render",     label: "Рендер",      match: /рендер|render|remotion|шортс|short/i },
+];
+
 const STATUS_STYLE: Record<MontageJob["status"], string> = {
-  queued: "bg-secondary text-muted-foreground",
+  queued:     "bg-muted text-muted-foreground",
   processing: "bg-primary/10 text-primary",
-  rendering: "bg-primary/10 text-primary",
-  done: "bg-success/10 text-success",
-  failed: "bg-destructive/10 text-destructive",
-  canceled: "bg-secondary text-muted-foreground",
+  rendering:  "bg-primary/10 text-primary",
+  done:       "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  failed:     "bg-destructive/10 text-destructive",
+  canceled:   "bg-muted text-muted-foreground",
 };
 
 const ACTIVE_STATUSES: MontageJob["status"][] = ["queued", "processing", "rendering"];
 
+const BRIEF_PRESETS = [
+  { icon: Zap,      label: "Динамичный темп" },
+  { icon: Scissors, label: "Убрать паразитов и паузы" },
+  { icon: Sparkles, label: "Акцент на цифрах и фактах" },
+  { icon: Wand2,    label: "Оставить только суть" },
+];
+
+function formatBytes(b: number) {
+  if (b < 1024) return `${b} Б`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} КБ`;
+  if (b < 1024 * 1024 * 1024) return `${(b / 1024 / 1024).toFixed(1)} МБ`;
+  return `${(b / 1024 / 1024 / 1024).toFixed(2)} ГБ`;
+}
+
+function formatDuration(sec: number) {
+  if (!isFinite(sec) || sec <= 0) return "—";
+  const m = Math.floor(sec / 60);
+  const s = Math.floor(sec % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function currentStageIndex(job: MontageJob): number {
+  if (job.status === "queued") return -1;
+  if (job.status === "rendering") return 3;
+  if (job.status === "done") return 4;
+  if (!job.progress) return job.status === "processing" ? 0 : -1;
+  const idx = STAGES.findIndex((s) => s.match.test(job.progress ?? ""));
+  return idx >= 0 ? idx : 0;
+}
+
 function JobCard({ job, onCancel }: { job: MontageJob; onCancel: (id: string) => void }) {
   const active = ACTIVE_STATUSES.includes(job.status);
   const shorts = job.result?.shorts ?? [];
+  const stageIdx = currentStageIndex(job);
+  const [open, setOpen] = useState(false);
+
   return (
-    <div className="space-y-2 rounded-xl border border-border/60 bg-card/50 p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-medium">{job.source_name || "Видео"}</div>
-          <div className="mt-0.5 text-xs text-muted-foreground">
-            {new Date(job.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-            {" · "}
-            {(job.formats ?? []).map((f) => (f === "shorts" ? `шортсы×${job.shorts_count ?? 3}` : "16:9")).join(" + ")}
+    <div className="group rounded-2xl border border-border/60 bg-card/40 p-4 transition hover:border-border">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className={cn(
+            "grid h-9 w-9 shrink-0 place-items-center rounded-xl",
+            job.status === "done" ? "bg-emerald-500/10 text-emerald-500"
+            : job.status === "failed" ? "bg-destructive/10 text-destructive"
+            : active ? "bg-primary/10 text-primary"
+            : "bg-muted text-muted-foreground",
+          )}>
+            {active ? <Loader2 className="h-4 w-4 animate-spin" />
+              : job.status === "done" ? <CheckCircle2 className="h-4 w-4" />
+              : job.status === "failed" ? <AlertTriangle className="h-4 w-4" />
+              : <FileVideo className="h-4 w-4" />}
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-medium">{job.source_name || "Видео"}</div>
+            <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+              <span>{new Date(job.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
+              <span>·</span>
+              <span>{(job.formats ?? []).map((f) => (f === "shorts" ? `шортсы×${job.shorts_count ?? 3}` : "16:9")).join(" + ")}</span>
+            </div>
           </div>
         </div>
-        <span className={cn("flex shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold", STATUS_STYLE[job.status])}>
-          {active && <Loader2 className="h-3 w-3 animate-spin" />}
-          {job.status === "done" && <CheckCircle2 className="h-3 w-3" />}
-          {job.status === "failed" && <AlertTriangle className="h-3 w-3" />}
+        <span className={cn("shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-wide", STATUS_STYLE[job.status])}>
           {MONTAGE_STATUS_LABEL[job.status]}
         </span>
       </div>
 
-      {active && job.progress && (
-        <p className="text-xs text-muted-foreground">Сейчас: {job.progress}</p>
+      {/* Стадии */}
+      {(active || job.status === "done") && (
+        <div className="mt-3">
+          <div className="flex items-center gap-1">
+            {STAGES.map((s, i) => {
+              const passed = i < stageIdx || job.status === "done";
+              const current = i === stageIdx && active;
+              return (
+                <div key={s.key} className="flex flex-1 flex-col items-center gap-1">
+                  <div className={cn(
+                    "h-1 w-full rounded-full transition",
+                    passed ? "bg-primary" : current ? "bg-primary/40" : "bg-muted",
+                  )}>
+                    {current && <div className="h-full w-1/2 animate-pulse rounded-full bg-primary" />}
+                  </div>
+                  <span className={cn(
+                    "text-[10px] font-medium",
+                    passed || current ? "text-foreground" : "text-muted-foreground/60",
+                  )}>{s.label}</span>
+                </div>
+              );
+            })}
+          </div>
+          {active && job.progress && (
+            <p className="mt-2 truncate text-xs text-muted-foreground">
+              <span className="text-primary">●</span> {job.progress}
+            </p>
+          )}
+        </div>
       )}
+
       {job.status === "failed" && job.error && (
-        <p className="text-xs text-destructive">{job.error}</p>
+        <p className="mt-3 rounded-lg bg-destructive/5 px-3 py-2 text-xs text-destructive">{job.error}</p>
       )}
 
       {job.status === "done" && (
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="mt-3 space-y-2">
           {job.result_video_url && (
-            <a
-              href={job.result_video_url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/10"
-            >
-              <Download className="h-3.5 w-3.5" /> Скачать видео
-            </a>
+            <>
+              {open ? (
+                <video src={job.result_video_url} controls className="w-full rounded-lg bg-black" />
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setOpen(true)}
+                  className="flex w-full items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-medium text-primary transition hover:bg-primary/10"
+                >
+                  <Play className="h-4 w-4" /> Смотреть 16:9
+                  <a
+                    href={job.result_video_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    onClick={(e) => e.stopPropagation()}
+                    className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                  >
+                    <Download className="h-3.5 w-3.5" /> Скачать
+                  </a>
+                </button>
+              )}
+            </>
           )}
-          {shorts.map((s, i) => (
-            <a
-              key={s.url}
-              href={s.url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 px-2.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-            >
-              <Smartphone className="h-3.5 w-3.5" /> {s.title || `Шортс ${i + 1}`}
-            </a>
-          ))}
+          {shorts.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {shorts.map((s, i) => (
+                <a
+                  key={s.url}
+                  href={s.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 rounded-lg border border-border/60 bg-background px-2 py-1 text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                >
+                  <Smartphone className="h-3 w-3" /> {s.title || `Шортс ${i + 1}`}
+                </a>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -89,7 +186,7 @@ function JobCard({ job, onCancel }: { job: MontageJob; onCancel: (id: string) =>
         <button
           type="button"
           onClick={() => onCancel(job.id)}
-          className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-destructive"
+          className="mt-3 inline-flex items-center gap-1 text-xs text-muted-foreground transition hover:text-destructive"
         >
           <X className="h-3.5 w-3.5" /> Отменить заявку
         </button>
@@ -107,26 +204,45 @@ const CreateMontageLab = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadPct, setUploadPct] = useState(0);
   const [uploaded, setUploaded] = useState<{ url: string; name: string } | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [duration, setDuration] = useState<number>(0);
   const [formats, setFormats] = useState<MontageFormat[]>(["16:9"]);
   const [shortsCount, setShortsCount] = useState(3);
   const [brief, setBrief] = useState("");
+  const [dragOver, setDragOver] = useState(false);
   const [notifyTelegram, setNotifyTelegram] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // локальный preview URL для видео до загрузки
+  useEffect(() => {
+    if (!file) { setPreviewUrl(null); return; }
+    const u = URL.createObjectURL(file);
+    setPreviewUrl(u);
+    return () => URL.revokeObjectURL(u);
+  }, [file]);
 
   const jobsQ = useQuery({
     queryKey: ["montage-jobs", projectId],
     queryFn: () => fetchMontageJobs(projectId),
     enabled: !!projectId,
-    // Пока есть активные заявки — поллим чаще, чтобы прогресс был живым.
     refetchInterval: (query) =>
       (query.state.data ?? []).some((j) => ACTIVE_STATUSES.includes(j.status)) ? 15_000 : 60_000,
   });
+
+  const activeCount = useMemo(
+    () => (jobsQ.data ?? []).filter((j) => ACTIVE_STATUSES.includes(j.status)).length,
+    [jobsQ.data],
+  );
 
   const handleFile = async (f: File | null) => {
     if (!f) return;
     if (!projectId) {
       toast.error("Сначала выберите проект (клиента) вверху");
+      return;
+    }
+    if (!f.type.startsWith("video/")) {
+      toast.error("Нужен видео-файл (MP4 / MOV / WebM)");
       return;
     }
     setFile(f);
@@ -146,11 +262,25 @@ const CreateMontageLab = () => {
     }
   };
 
+  const clearFile = () => {
+    setFile(null);
+    setUploaded(null);
+    setDuration(0);
+    setUploadPct(0);
+  };
+
   const toggleFormat = (f: MontageFormat) =>
     setFormats((prev) => {
       const next = prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f];
-      return next.length ? next : prev; // хотя бы один формат
+      return next.length ? next : prev;
     });
+
+  const addPreset = (text: string) => {
+    setBrief((b) => {
+      if (b.toLowerCase().includes(text.toLowerCase())) return b;
+      return b.trim() ? `${b.trim()}\n• ${text}` : `• ${text}`;
+    });
+  };
 
   const canSubmit = !!projectId && !!uploaded && formats.length > 0 && !uploading && !submitting;
 
@@ -166,8 +296,7 @@ const CreateMontageLab = () => {
         brief,
         notifyTelegram,
       });
-      setFile(null);
-      setUploaded(null);
+      clearFile();
       setBrief("");
       toast.success("Заявка в очереди — монтаж начнётся автоматически");
       void queryClient.invalidateQueries({ queryKey: ["montage-jobs", projectId] });
@@ -188,189 +317,364 @@ const CreateMontageLab = () => {
   };
 
   return (
-    <main className="min-h-screen bg-background pb-16">
+    <main className="min-h-screen bg-background pb-24">
       <Header onClose={() => navigate("/")} />
 
-      <div className="container max-w-3xl px-3 pt-6 sm:px-4">
+      <div className="container max-w-6xl px-3 pt-6 sm:px-4">
+        {/* Заголовок */}
         <div className="mb-6 flex items-start gap-3">
-          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-primary/10 text-primary">
+          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 text-primary">
             <Scissors className="h-6 w-6" strokeWidth={1.75} />
           </span>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Монтаж съёмки</h1>
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-bold tracking-tight">Монтаж съёмки</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Загрузите сырую запись «говорящей головы» — конвейер сам вырежет паузы и дубли,
-              добавит зумы и акценты, соберёт ролик и шортсы
+              Загрузите сырую «говорящую голову» — AI-конвейер вырежет паузы и дубли, добавит зумы и акценты, соберёт ролик и шортсы
             </p>
           </div>
+          {activeCount > 0 && (
+            <div className="hidden shrink-0 items-center gap-2 rounded-full border border-primary/30 bg-primary/5 px-3 py-1.5 text-xs font-medium text-primary sm:flex">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              В работе: {activeCount}
+            </div>
+          )}
         </div>
 
-        <div className="mb-5 rounded-xl border border-primary/20 bg-primary/5 p-3 text-xs text-muted-foreground">
-          Как это работает: видео уходит в очередь монтажа → AI-монтажёр (Claude + Remotion) делает
-          транскрипт, вырезает паузы/дубли/слова-паразиты, ставит зумы на лицо и акцентные слова →
-          готовый ролик появляется здесь, в разделе{" "}
-          <button type="button" onClick={() => navigate("/create/montage")} className="font-medium text-primary underline">
-            AI монтаж → Готовые
-          </button>{" "}
-          и, если подключён бот, приходит в Telegram.
-        </div>
-
-        {/* Исходник */}
-        <section className="space-y-3">
-          <label className="text-sm font-semibold">Видео для монтажа</label>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
-            className="hidden"
-            onChange={(e) => void handleFile(e.target.files?.[0] ?? null)}
-          />
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className={cn(
-              "flex w-full flex-col items-center gap-2 rounded-2xl border-2 border-dashed p-6 text-sm transition",
-              uploaded ? "border-success/40 bg-success/5" : "border-border/60 hover:border-primary/40 hover:bg-card/60",
-            )}
-          >
-            {uploading ? (
-              <>
-                <Loader2 className="h-6 w-6 animate-spin text-primary" />
-                <span className="text-muted-foreground">Загружаем {file?.name}… {uploadPct > 0 && `${uploadPct}%`}</span>
-                {uploadPct > 0 && (
-                  <span className="h-1.5 w-full max-w-xs overflow-hidden rounded-full bg-secondary">
-                    <span className="block h-full rounded-full bg-primary transition-all" style={{ width: `${uploadPct}%` }} />
-                  </span>
-                )}
-              </>
-            ) : uploaded ? (
-              <>
-                <CheckCircle2 className="h-6 w-6 text-success" />
-                <span className="font-medium">{uploaded.name}</span>
-                <span className="text-xs text-muted-foreground">Нажмите, чтобы заменить</span>
-              </>
-            ) : (
-              <>
-                <Upload className="h-6 w-6 text-muted-foreground" />
-                <span className="font-medium">Выбрать видео</span>
-                <span className="text-xs text-muted-foreground">MP4 / MOV / WebM до 2 ГБ — одна съёмка «говорящей головы»</span>
-              </>
-            )}
-          </button>
-        </section>
-
-        {/* Форматы результата */}
-        <section className="mt-6 space-y-3">
-          <label className="text-sm font-semibold">Что смонтировать</label>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            <button
-              type="button"
-              onClick={() => toggleFormat("16:9")}
-              aria-pressed={formats.includes("16:9")}
-              className={cn(
-                "flex items-center gap-3 rounded-xl border p-3 text-left transition",
-                formats.includes("16:9") ? "border-primary bg-primary/5" : "border-border/60 hover:border-primary/40",
-              )}
-            >
-              <MonitorPlay className="h-5 w-5 shrink-0 text-primary" />
-              <div>
-                <div className="text-sm font-semibold">Полный ролик 16:9</div>
-                <div className="text-xs text-muted-foreground">YouTube / сайт — чистовой монтаж всей съёмки</div>
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+          {/* ЛЕВАЯ КОЛОНКА — форма */}
+          <div className="space-y-6">
+            {/* Шаг 1. Загрузка */}
+            <section className="rounded-2xl border border-border/60 bg-card/30 p-4 sm:p-5">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">1</span>
+                <h2 className="text-sm font-semibold">Видео для монтажа</h2>
               </div>
-            </button>
-            <button
-              type="button"
-              onClick={() => toggleFormat("shorts")}
-              aria-pressed={formats.includes("shorts")}
-              className={cn(
-                "flex items-center gap-3 rounded-xl border p-3 text-left transition",
-                formats.includes("shorts") ? "border-primary bg-primary/5" : "border-border/60 hover:border-primary/40",
+
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="video/mp4,video/quicktime,video/webm,video/x-matroska"
+                className="hidden"
+                onChange={(e) => void handleFile(e.target.files?.[0] ?? null)}
+              />
+
+              {!file && !uploaded ? (
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOver(false);
+                    void handleFile(e.dataTransfer.files?.[0] ?? null);
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className={cn(
+                      "flex w-full flex-col items-center gap-3 rounded-xl border-2 border-dashed p-8 text-sm transition",
+                      dragOver
+                        ? "border-primary bg-primary/5"
+                        : "border-border/60 hover:border-primary/40 hover:bg-card/60",
+                    )}
+                  >
+                    <span className="grid h-12 w-12 place-items-center rounded-2xl bg-primary/10 text-primary">
+                      <Upload className="h-6 w-6" />
+                    </span>
+                    <span className="font-semibold text-foreground">Перетащите видео или нажмите, чтобы выбрать</span>
+                    <span className="text-xs text-muted-foreground">MP4 / MOV / WebM · до 2 ГБ · одна съёмка «говорящей головы»</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-xl border border-border/60 bg-background">
+                  <div className="relative aspect-video bg-black">
+                    {previewUrl && (
+                      <video
+                        src={previewUrl}
+                        controls
+                        className="h-full w-full object-contain"
+                        onLoadedMetadata={(e) => setDuration((e.target as HTMLVideoElement).duration)}
+                      />
+                    )}
+                    {uploading && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/70 text-white">
+                        <Loader2 className="h-6 w-6 animate-spin" />
+                        <div className="text-sm">Загружаем… {uploadPct}%</div>
+                        <div className="h-1.5 w-56 overflow-hidden rounded-full bg-white/20">
+                          <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${uploadPct}%` }} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center justify-between gap-2 border-t border-border/60 p-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        {uploaded ? (
+                          <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                        ) : (
+                          <FileVideo className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        )}
+                        <span className="truncate text-sm font-medium">{file?.name ?? uploaded?.name}</span>
+                      </div>
+                      <div className="mt-0.5 flex gap-3 text-[11px] text-muted-foreground">
+                        {file && <span>{formatBytes(file.size)}</span>}
+                        <span>{formatDuration(duration)}</span>
+                        {uploaded && <span className="text-emerald-600 dark:text-emerald-400">Готово к монтажу</span>}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="rounded-lg border border-border/60 px-2.5 py-1 text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                      >
+                        Заменить
+                      </button>
+                      <button
+                        type="button"
+                        onClick={clearFile}
+                        className="rounded-lg border border-border/60 px-2 py-1 text-muted-foreground hover:border-destructive/40 hover:text-destructive"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
               )}
-            >
-              <Smartphone className="h-5 w-5 shrink-0 text-primary" />
-              <div>
-                <div className="text-sm font-semibold">Шортсы 9:16</div>
-                <div className="text-xs text-muted-foreground">Лучшие моменты с караоке-субтитрами — Reels / Shorts</div>
+            </section>
+
+            {/* Шаг 2. Форматы */}
+            <section className="rounded-2xl border border-border/60 bg-card/30 p-4 sm:p-5">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">2</span>
+                <h2 className="text-sm font-semibold">Что смонтировать</h2>
               </div>
-            </button>
-          </div>
-          {formats.includes("shorts") && (
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Сколько шортсов:</span>
-              {[1, 2, 3, 5].map((n) => (
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 <button
-                  key={n}
                   type="button"
-                  onClick={() => setShortsCount(n)}
+                  onClick={() => toggleFormat("16:9")}
+                  aria-pressed={formats.includes("16:9")}
                   className={cn(
-                    "h-8 w-8 rounded-lg border text-sm font-semibold transition",
-                    shortsCount === n ? "border-primary bg-primary/10 text-primary" : "border-border/60 text-muted-foreground hover:text-foreground",
+                    "group flex items-center gap-3 rounded-xl border-2 p-3 text-left transition",
+                    formats.includes("16:9")
+                      ? "border-primary bg-primary/5"
+                      : "border-border/60 hover:border-primary/40",
                   )}
                 >
-                  {n}
+                  <div className={cn(
+                    "flex h-10 w-16 shrink-0 items-center justify-center rounded-md border-2 transition",
+                    formats.includes("16:9") ? "border-primary bg-primary/10" : "border-border/60",
+                  )}>
+                    <MonitorPlay className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <div className="text-sm font-semibold">Полный ролик 16:9</div>
+                      {formats.includes("16:9") && <CheckCircle2 className="h-3.5 w-3.5 text-primary" />}
+                    </div>
+                    <div className="text-xs text-muted-foreground">YouTube · чистовой монтаж всей съёмки</div>
+                  </div>
                 </button>
-              ))}
-            </div>
-          )}
-        </section>
 
-        {/* Пожелания */}
-        <section className="mt-6 space-y-2">
-          <label className="text-sm font-semibold">
-            Пожелания к монтажу <span className="text-xs font-normal text-muted-foreground">— необязательно</span>
-          </label>
-          <Textarea
-            value={brief}
-            onChange={(e) => setBrief(e.target.value)}
-            rows={3}
-            placeholder="Напр.: тема — запуск курса; вырезать всё про старую программу; акцент на цифрах; темп динамичный…"
-            className="resize-y"
-          />
-        </section>
-
-        {/* Доставка */}
-        <section className="mt-6 space-y-3">
-          <div className="flex items-center justify-between rounded-xl border border-border/60 bg-card/50 p-3">
-            <div className="flex items-center gap-2.5">
-              <Send className="h-4 w-4 text-primary" />
-              <div>
-                <div className="text-sm font-semibold">Прислать готовое видео в Telegram</div>
-                <div className="text-xs text-muted-foreground">В чат, привязанный к проекту (бот ниже)</div>
+                <button
+                  type="button"
+                  onClick={() => toggleFormat("shorts")}
+                  aria-pressed={formats.includes("shorts")}
+                  className={cn(
+                    "group flex items-center gap-3 rounded-xl border-2 p-3 text-left transition",
+                    formats.includes("shorts")
+                      ? "border-primary bg-primary/5"
+                      : "border-border/60 hover:border-primary/40",
+                  )}
+                >
+                  <div className={cn(
+                    "flex h-10 w-6 shrink-0 items-center justify-center rounded-md border-2 transition",
+                    formats.includes("shorts") ? "border-primary bg-primary/10" : "border-border/60",
+                  )}>
+                    <Smartphone className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <div className="text-sm font-semibold">Шортсы 9:16</div>
+                      {formats.includes("shorts") && <CheckCircle2 className="h-3.5 w-3.5 text-primary" />}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Лучшие моменты + караоке · Reels / Shorts</div>
+                  </div>
+                </button>
               </div>
-            </div>
-            <Switch checked={notifyTelegram} onCheckedChange={setNotifyTelegram} />
-          </div>
-          {notifyTelegram && <TelegramConnect projectId={projectId} />}
-        </section>
 
-        <Button className="mt-6 w-full gap-2" size="lg" disabled={!canSubmit} onClick={() => void submit()}>
-          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Film className="h-4 w-4" />}
-          Отправить в монтаж
-        </Button>
+              {formats.includes("shorts") && (
+                <div className="mt-3 flex items-center gap-2 rounded-lg bg-muted/40 p-2.5 text-sm">
+                  <span className="text-xs text-muted-foreground">Количество шортсов:</span>
+                  <div className="flex gap-1">
+                    {[1, 2, 3, 5].map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        onClick={() => setShortsCount(n)}
+                        className={cn(
+                          "h-7 w-8 rounded-md text-sm font-semibold transition",
+                          shortsCount === n
+                            ? "bg-primary text-primary-foreground"
+                            : "text-muted-foreground hover:bg-background hover:text-foreground",
+                        )}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
 
-        {/* Мои заявки */}
-        <section className="mt-8 space-y-3">
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4 text-muted-foreground" />
-            <h2 className="text-sm font-semibold">Заявки на монтаж</h2>
+            {/* Шаг 3. Бриф */}
+            <section className="rounded-2xl border border-border/60 bg-card/30 p-4 sm:p-5">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">3</span>
+                  <h2 className="text-sm font-semibold">Пожелания к монтажу</h2>
+                </div>
+                <span className="text-[11px] text-muted-foreground">Необязательно</span>
+              </div>
+
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {BRIEF_PRESETS.map((p) => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => addPreset(p.label)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background px-2.5 py-1 text-xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+                  >
+                    <p.icon className="h-3 w-3" /> {p.label}
+                  </button>
+                ))}
+              </div>
+
+              <Textarea
+                value={brief}
+                onChange={(e) => setBrief(e.target.value)}
+                rows={4}
+                placeholder="Тема — запуск курса; вырезать всё про старую программу; акцент на цифрах; темп динамичный…"
+                className="resize-y bg-background"
+              />
+              <div className="mt-1 text-right text-[11px] text-muted-foreground">{brief.length} / 4000</div>
+            </section>
+
+            {/* Шаг 4. Доставка */}
+            <section className="rounded-2xl border border-border/60 bg-card/30 p-4 sm:p-5">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">4</span>
+                <h2 className="text-sm font-semibold">Доставка результата</h2>
+              </div>
+
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-border/60 bg-background p-3">
+                <div className="flex items-center gap-2.5">
+                  <Send className="h-4 w-4 text-primary" />
+                  <div>
+                    <div className="text-sm font-medium">Прислать в Telegram</div>
+                    <div className="text-xs text-muted-foreground">В чат, привязанный к проекту</div>
+                  </div>
+                </div>
+                <Switch checked={notifyTelegram} onCheckedChange={setNotifyTelegram} />
+              </div>
+              {notifyTelegram && <div className="mt-3"><TelegramConnect projectId={projectId} /></div>}
+            </section>
           </div>
-          {!projectId ? (
-            <p className="text-sm text-muted-foreground">Выберите проект (клиента) вверху, чтобы видеть заявки.</p>
-          ) : jobsQ.isLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Загружаем…
+
+          {/* ПРАВАЯ КОЛОНКА — сводка + очередь */}
+          <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
+            {/* Сводка + CTA */}
+            <div className="rounded-2xl border border-border/60 bg-card/50 p-4">
+              <div className="mb-3 flex items-center gap-2">
+                <Film className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-semibold">Сводка заявки</h3>
+              </div>
+              <dl className="space-y-1.5 text-xs">
+                <div className="flex justify-between gap-2">
+                  <dt className="text-muted-foreground">Исходник</dt>
+                  <dd className={cn("truncate font-medium", uploaded ? "text-foreground" : "text-muted-foreground/60")}>
+                    {uploaded?.name ?? "не загружен"}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-muted-foreground">Форматы</dt>
+                  <dd className="font-medium">
+                    {formats.map((f) => (f === "shorts" ? `шортсы×${shortsCount}` : "16:9")).join(" + ")}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-muted-foreground">Бриф</dt>
+                  <dd className={cn("font-medium", brief ? "text-foreground" : "text-muted-foreground/60")}>
+                    {brief ? `${brief.length} симв.` : "нет"}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-muted-foreground">Telegram</dt>
+                  <dd className="font-medium">{notifyTelegram ? "да" : "нет"}</dd>
+                </div>
+              </dl>
+
+              <Button
+                className="mt-4 w-full gap-2"
+                size="lg"
+                disabled={!canSubmit}
+                onClick={() => void submit()}
+              >
+                {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Film className="h-4 w-4" />}
+                Отправить в монтаж
+              </Button>
+              {!projectId && (
+                <p className="mt-2 text-center text-[11px] text-muted-foreground">Выберите проект вверху</p>
+              )}
+              {projectId && !uploaded && (
+                <p className="mt-2 text-center text-[11px] text-muted-foreground">Сначала загрузите видео</p>
+              )}
             </div>
-          ) : (jobsQ.data ?? []).length === 0 ? (
-            <p className="text-sm text-muted-foreground">Пока пусто — загрузите первое видео выше.</p>
-          ) : (
-            <div className="space-y-2">
-              {(jobsQ.data ?? []).map((j) => (
-                <JobCard key={j.id} job={j} onCancel={(id) => void cancel(id)} />
-              ))}
+
+            {/* Очередь заявок */}
+            <div className="rounded-2xl border border-border/60 bg-card/30 p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="text-sm font-semibold">Мои заявки</h3>
+                </div>
+                {(jobsQ.data ?? []).length > 0 && (
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                    {(jobsQ.data ?? []).length}
+                  </span>
+                )}
+              </div>
+
+              {!projectId ? (
+                <p className="text-xs text-muted-foreground">Выберите проект (клиента) вверху.</p>
+              ) : jobsQ.isLoading ? (
+                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Загружаем…
+                </div>
+              ) : (jobsQ.data ?? []).length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border/60 p-4 text-center">
+                  <FileVideo className="mx-auto mb-1.5 h-5 w-5 text-muted-foreground/60" />
+                  <p className="text-xs text-muted-foreground">Пока пусто — загрузите первое видео</p>
+                </div>
+              ) : (
+                <div className="max-h-[70vh] space-y-2 overflow-y-auto pr-1">
+                  {(jobsQ.data ?? []).map((j) => (
+                    <JobCard key={j.id} job={j} onCancel={(id) => void cancel(id)} />
+                  ))}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={() => navigate("/create/montage")}
+                className="mt-3 flex w-full items-center justify-center gap-1 rounded-lg border border-border/60 py-2 text-xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+              >
+                Открыть все готовые видео →
+              </button>
             </div>
-          )}
-        </section>
+          </aside>
+        </div>
       </div>
     </main>
   );
