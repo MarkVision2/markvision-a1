@@ -1,7 +1,7 @@
 {
-  "git_sha": "696ce3d",
-  "git_sha_full": "696ce3d308af2ed3d4b6bd1ea493ac318945dc35",
-  "updated_at": "2026-07-16T04:40:13Z",
-  "label": "Merge remote-tracking branch 'origin/main' into claude/montage-pipeline-setup-hjhs74",
+  "git_sha": "de2f26d",
+  "git_sha_full": "de2f26d5725e21af7b4224174abf972f7828c920",
+  "updated_at": "2026-07-16T04:44:05Z",
+  "label": "Merge branch 'main' of http://127.0.0.1:41729/git/MarkVision2/markvision-a1",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
