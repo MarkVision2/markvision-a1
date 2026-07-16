@@ -78,7 +78,7 @@ Maps to the zoom/pause constants in `pipeline/props.py`.
 
 ### 6. Remotion visual effects (`remotionEffects`, multiSelect)
 Пост-эффекты картинки из библиотеки Remotion effects (`@remotion/effects`, см.
-`.claude/skills/remotion/rules/effects.md`). Применяются в `Main169.tsx`/`Shorts916.tsx`.
+`.claude/skills/remotion/remotion-markup/effects.md`). Применяются в `Main169.tsx`/`Shorts916.tsx`.
 Предупреди: тяжёлые эффекты удорожают рендер, дозируй.
 - `filmGrain` — плёночное зерно/шум для киношной фактуры (`noise()` / `speckle()`).
 - `vignette` — виньетка по краям, взгляд собирается в центр (`vignette()`).

@@ -17,7 +17,7 @@
 `brandFontFamily` в `remotion/src/fonts.ts` (websafe стек). Свой шрифт:
 положи `.otf/.ttf` в `remotion/public` и подключи через `@font-face` в `fonts.ts`
 (пример закомментирован там же), либо возьми Google-шрифт
-(см. `.claude/skills/remotion/rules/google-fonts.md`).
+(см. `.claude/skills/remotion/remotion-markup/google-fonts.md`).
 
 ## Тон текста в кадре
 - Акцентные слова — КАПСОМ, коротко (1–3 слова на карточку).
