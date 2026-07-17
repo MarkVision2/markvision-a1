@@ -115,8 +115,18 @@ if (cmd === "next") {
   const res = await fetch(job.source_url);
   if (!res.ok || !res.body) throw new Error(`не скачался исходник: HTTP ${res.status}`);
   await pipeline(Readable.fromWeb(res.body), createWriteStream(dst));
+  // Монтаж 50/50: второй исходник (запись экрана) — качаем в screen_raw.<ext>
+  let dst2 = null;
+  if (job.source2_url) {
+    const ext2 = (extname(new URL(job.source2_url).pathname) || ".mp4").toLowerCase();
+    dst2 = resolve(dir, `screen_raw${ext2}`);
+    const res2 = await fetch(job.source2_url);
+    if (!res2.ok || !res2.body) throw new Error(`не скачалось второе видео: HTTP ${res2.status}`);
+    await pipeline(Readable.fromWeb(res2.body), createWriteStream(dst2));
+  }
   console.log(JSON.stringify(job, null, 2));
   console.log(`\nИсходник: ${dst}`);
+  if (dst2) console.log(`Второе видео (экран): ${dst2}`);
   console.log(`Дальше: монтаж по скиллу montage-pipeline (work/${job.id}), статус — montage-worker.mjs status ${job.id} "…"`);
 } else if (cmd === "status") {
   const [, , , id, progress] = process.argv;

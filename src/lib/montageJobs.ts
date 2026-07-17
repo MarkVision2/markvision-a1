@@ -12,6 +12,10 @@ import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseC
 
 export type MontageFormat = "16:9" | "shorts";
 
+// "standard" — обычный монтаж; "5050" — сплит-скрин (спикер + запись экрана
+// в важных моментах), требует второго видео (source2).
+export type MontageMode = "standard" | "5050";
+
 export type MontageJobStatus =
   | "queued"
   | "processing"
@@ -30,6 +34,9 @@ export interface MontageJob {
   brief: string | null;
   source_url: string;
   source_name: string | null;
+  mode: MontageMode;
+  source2_url: string | null;
+  source2_name: string | null;
   notify_telegram: boolean;
   result_video_url: string | null;
   result: { shorts?: { url: string; title?: string }[]; warnings?: string[] } | null;
@@ -127,10 +134,17 @@ export async function createMontageJob(
     shortsCount?: number | null;
     brief?: string;
     notifyTelegram: boolean;
+    mode?: MontageMode;
+    source2Url?: string | null;
+    source2Name?: string | null;
   },
 ): Promise<void> {
   if (!projectId) throw new Error("Сначала выберите проект (клиента) вверху");
-  const { error } = await db.from("montage_jobs").insert({
+  const mode: MontageMode = params.mode ?? "standard";
+  if (mode === "5050" && !params.source2Url) {
+    throw new Error("Для режима 50/50 загрузите второе видео (запись экрана)");
+  }
+  const row: Record<string, unknown> = {
     project_id: projectId,
     source_url: params.sourceUrl,
     source_name: params.sourceName.slice(0, 120),
@@ -138,7 +152,15 @@ export async function createMontageJob(
     shorts_count: params.formats.includes("shorts") ? params.shortsCount ?? 3 : null,
     brief: params.brief?.trim() ? params.brief.trim().slice(0, 4000) : null,
     notify_telegram: params.notifyTelegram,
-  });
+  };
+  // Поля 50/50 добавляем только для этого режима — стандартный монтаж не зависит
+  // от наличия миграции (mode/source2_*) в БД.
+  if (mode === "5050") {
+    row.mode = mode;
+    row.source2_url = params.source2Url ?? null;
+    row.source2_name = params.source2Name ? params.source2Name.slice(0, 120) : null;
+  }
+  const { error } = await db.from("montage_jobs").insert(row);
   if (error) throw new Error(`Не удалось создать заявку: ${error.message}`);
 }
 
