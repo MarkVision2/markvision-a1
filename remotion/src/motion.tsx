@@ -440,6 +440,283 @@ export const QuoteCard: React.FC<MotionBaseProps & { text?: string; accent?: str
   );
 };
 
+// ── big-statement — full-screen headline + underline (hook / CTA) ────────────
+export const BigStatement: React.FC<MotionBaseProps & { lines?: string[]; accent?: string; cover?: boolean }> = ({
+  localFrame,
+  lines = ["БОЛЬШОЕ", "ЗАЯВЛЕНИЕ"],
+  accent = BRAND.accent,
+  cover = false,
+}) => {
+  const { fps } = useVideoConfig();
+  return (
+    <Frame center={cover}>
+      <div style={{ maxWidth: 940, textAlign: "center" }}>
+        {lines.map((ln, i) => {
+          const s = enter(localFrame, fps, i * 5, 13);
+          const fs = Math.min(128, Math.floor(940 / (Math.max(ln.length, 1) * 0.62)));
+          return (
+            <div key={i} style={{ fontSize: fs, fontWeight: 900, color: i === lines.length - 1 ? accent : BRAND.text, lineHeight: 1.02, textTransform: "uppercase", transform: `translateY(${(1 - s) * 30}px) scale(${0.9 + s * 0.1})`, opacity: s, textShadow: "0 6px 30px rgba(0,0,0,0.6)" }}>{ln}</div>
+          );
+        })}
+        <div style={{ height: 10, width: `${enter(localFrame, fps, lines.length * 5, 16) * 66}%`, background: accent, margin: "20px auto 0", borderRadius: 6, boxShadow: `0 0 24px ${accent}66` }} />
+      </div>
+    </Frame>
+  );
+};
+
+// ── lower-third — name/role chip, lower-left (speaker intro) ──────────────────
+export const LowerThird: React.FC<MotionBaseProps & { name?: string; role?: string; accent?: string; icon?: string }> = ({
+  localFrame,
+  name = "ЮРИЙ",
+  role = "IT-предприниматель",
+  accent = BRAND.accent,
+  icon,
+}) => {
+  const { fps } = useVideoConfig();
+  const s = enter(localFrame, fps, 0, 15);
+  return (
+    <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "flex-start", padding: "0 0 300px 60px", fontFamily: displayFontFamily }}>
+      <div style={{ ...glass, padding: "20px 30px", display: "flex", alignItems: "center", gap: 18, borderLeft: `5px solid ${accent}`, transform: `translateX(${(1 - s) * -40}px)`, opacity: s }}>
+        {icon ? <IconTile name={icon} accent={accent} s={s} /> : null}
+        <div>
+          <div style={{ fontSize: 56, fontWeight: 900, color: BRAND.text, textTransform: "uppercase" }}>{name}</div>
+          <div style={{ fontSize: 30, fontWeight: 700, color: accent, textTransform: "uppercase", letterSpacing: "0.06em" }}>{role}</div>
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// ── pill-row — row of keyword/tool pills ─────────────────────────────────────
+export const PillRow: React.FC<MotionBaseProps & { items?: string[]; accent?: string; cover?: boolean }> = ({
+  localFrame,
+  items = ["ChatGPT", "Claude", "Midjourney"],
+  accent = BRAND.accent,
+  cover = false,
+}) => {
+  const { fps } = useVideoConfig();
+  return (
+    <Frame center={cover}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 18, justifyContent: "center", maxWidth: 900 }}>
+        {items.map((it, i) => {
+          const s = enter(localFrame, fps, i * 5, 14);
+          return <div key={i} style={{ ...glass, padding: "16px 34px", fontSize: 46, fontWeight: 800, color: BRAND.text, border: `2px solid ${accent}`, borderRadius: 100, transform: `scale(${0.7 + s * 0.3})`, opacity: s }}>{it}</div>;
+        })}
+      </div>
+    </Frame>
+  );
+};
+
+// ── metric-callout — one big KPI with a delta arrow ──────────────────────────
+export const MetricCallout: React.FC<MotionBaseProps & { value?: string; label?: string; up?: boolean; accent?: string; cover?: boolean }> = ({
+  localFrame,
+  value = "+300%",
+  label = "",
+  up = true,
+  accent = BRAND.accent,
+  cover = false,
+}) => {
+  const { fps } = useVideoConfig();
+  const s = enter(localFrame, fps, 0, 14);
+  return (
+    <Frame center={cover}>
+      <div style={{ ...glass, padding: "34px 48px", textAlign: "center", transform: `translateY(${(1 - s) * 40}px) scale(${0.9 + s * 0.1})`, opacity: s }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14 }}>
+          <span style={{ fontSize: 150, fontWeight: 900, color: accent, textShadow: `0 0 40px ${accent}66` }}>{value}</span>
+          <span style={{ fontSize: 90, color: up ? accent : BRAND.textDim }}>{up ? "▲" : "▼"}</span>
+        </div>
+        {label ? <div style={{ fontSize: 38, fontWeight: 800, color: BRAND.textDim, textTransform: "uppercase", letterSpacing: "0.1em" }}>{label}</div> : null}
+      </div>
+    </Frame>
+  );
+};
+
+// ── phone-mockup — a phone frame showing an app UI ───────────────────────────
+export const PhoneMockup: React.FC<MotionBaseProps & { title?: string; lines?: string[]; accent?: string; cover?: boolean }> = ({
+  localFrame,
+  title = "APP",
+  lines = ["Главная", "Профиль", "Настройки"],
+  accent = BRAND.accent,
+  cover = false,
+}) => {
+  const { fps } = useVideoConfig();
+  const s = enter(localFrame, fps, 0, 15);
+  return (
+    <Frame center={cover}>
+      <div style={{ width: 380, height: 760, borderRadius: 52, background: "#0E121C", border: `3px solid ${BRAND.glassBorder}`, boxShadow: BRAND.glassShadow, padding: 20, transform: `translateY(${(1 - s) * 50}px) scale(${0.9 + s * 0.1})`, opacity: s, overflow: "hidden" }}>
+        <div style={{ height: 60, background: accent, borderRadius: "20px 20px 6px 6px", display: "flex", alignItems: "center", justifyContent: "center", color: BRAND.accentInk, fontWeight: 900, fontSize: 34, fontFamily: displayFontFamily }}>{title}</div>
+        {lines.map((ln, i) => {
+          const ls = enter(localFrame, fps, 10 + i * 7, 16);
+          return <div key={i} style={{ marginTop: 16, height: 70, background: "rgba(255,255,255,0.06)", borderRadius: 14, display: "flex", alignItems: "center", padding: "0 20px", fontSize: 34, fontWeight: 700, color: BRAND.text, opacity: ls, transform: `translateX(${(1 - ls) * 20}px)` }}>{ln}</div>;
+        })}
+      </div>
+    </Frame>
+  );
+};
+
+// ── chat-bubbles — messenger dialog (prompt → AI answer) ──────────────────────
+export const ChatBubbles: React.FC<MotionBaseProps & { messages?: { from: "user" | "ai"; text: string }[]; accent?: string; cover?: boolean }> = ({
+  localFrame,
+  messages = [{ from: "user", text: "Собери мне лендинг" }, { from: "ai", text: "Готово ✅" }],
+  accent = BRAND.accent,
+  cover = false,
+}) => {
+  const { fps } = useVideoConfig();
+  return (
+    <Frame center={cover}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 18, width: 720 }}>
+        {messages.map((m, i) => {
+          const s = enter(localFrame, fps, i * 12, 15);
+          const ai = m.from === "ai";
+          return <div key={i} style={{ alignSelf: ai ? "flex-end" : "flex-start", maxWidth: "82%", padding: "20px 28px", borderRadius: 26, fontSize: 40, fontWeight: 700, color: ai ? BRAND.accentInk : BRAND.text, background: ai ? accent : "rgba(255,255,255,0.1)", opacity: s, transform: `translateY(${(1 - s) * 20}px)` }}>{m.text}</div>;
+        })}
+      </div>
+    </Frame>
+  );
+};
+
+// ── notification-toast — a toast popup from the top ──────────────────────────
+export const NotificationToast: React.FC<MotionBaseProps & { title?: string; text?: string; accent?: string; icon?: string }> = ({
+  localFrame,
+  title = "Уведомление",
+  text = "",
+  accent = BRAND.accent,
+  icon = "bolt",
+}) => {
+  const { fps } = useVideoConfig();
+  const s = enter(localFrame, fps, 0, 15);
+  return (
+    <AbsoluteFill style={{ justifyContent: "flex-start", alignItems: "center", paddingTop: 200, fontFamily: displayFontFamily }}>
+      <div style={{ ...glass, padding: "22px 30px", display: "flex", alignItems: "center", gap: 18, width: 760, transform: `translateY(${(1 - s) * -60}px)`, opacity: s }}>
+        <IconTile name={icon} accent={accent} s={s} />
+        <div>
+          <div style={{ fontSize: 40, fontWeight: 900, color: BRAND.text }}>{title}</div>
+          {text ? <div style={{ fontSize: 30, fontWeight: 600, color: BRAND.textDim }}>{text}</div> : null}
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// ── rating-stars — star rating (reviews / social proof) ──────────────────────
+export const RatingStars: React.FC<MotionBaseProps & { rating?: number; label?: string; accent?: string; cover?: boolean }> = ({
+  localFrame,
+  rating = 5,
+  label = "",
+  accent = "#FFC53D",
+  cover = false,
+}) => {
+  const { fps } = useVideoConfig();
+  return (
+    <Frame center={cover}>
+      <div style={{ ...glass, padding: "30px 44px", textAlign: "center" }}>
+        <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+          {Array.from({ length: 5 }).map((_, i) => {
+            const s = enter(localFrame, fps, i * 6, 14);
+            const on = i < rating;
+            return <span key={i} style={{ fontSize: 80, color: on ? accent : "rgba(255,255,255,0.15)", transform: `scale(${s})`, textShadow: on ? `0 0 24px ${accent}66` : "none" }}>★</span>;
+          })}
+        </div>
+        {label ? <div style={{ marginTop: 12, fontSize: 40, fontWeight: 800, color: BRAND.text, textTransform: "uppercase" }}>{label}</div> : null}
+      </div>
+    </Frame>
+  );
+};
+
+// ── countdown — a number ticking down (urgency) ──────────────────────────────
+export const Countdown: React.FC<MotionBaseProps & { from?: number; label?: string; accent?: string; cover?: boolean }> = ({
+  localFrame,
+  from = 3,
+  label = "ОСТАЛОСЬ",
+  accent = "#FB7185",
+  cover = false,
+}) => {
+  const { fps } = useVideoConfig();
+  const s = enter(localFrame, fps, 0, 14);
+  const n = Math.max(0, from - Math.floor(localFrame / fps));
+  return (
+    <Frame center={cover}>
+      <div style={{ ...glass, padding: "34px 60px", textAlign: "center", transform: `scale(${0.9 + s * 0.1})`, opacity: s }}>
+        <div style={{ fontSize: 200, fontWeight: 900, color: accent, lineHeight: 1, textShadow: `0 0 40px ${accent}66` }}>{n}</div>
+        {label ? <div style={{ fontSize: 36, fontWeight: 800, color: BRAND.textDim, textTransform: "uppercase", letterSpacing: "0.14em" }}>{label}</div> : null}
+      </div>
+    </Frame>
+  );
+};
+
+// ── gauge — semicircle meter (score / level) ─────────────────────────────────
+export const Gauge: React.FC<MotionBaseProps & { value?: number; label?: string; accent?: string; cover?: boolean }> = ({
+  localFrame,
+  value = 80,
+  label = "",
+  accent = BRAND.accent,
+  cover = false,
+}) => {
+  const { fps } = useVideoConfig();
+  const g = spring({ frame: localFrame, fps, config: { damping: 200 }, durationInFrames: 30 });
+  const R = 150;
+  const C = Math.PI * R;
+  const p = (value / 100) * g;
+  return (
+    <Frame center={cover}>
+      <div style={{ ...glass, padding: "40px 50px 30px", textAlign: "center" }}>
+        <svg width={380} height={210} viewBox="0 0 380 210">
+          <path d="M40 190 A150 150 0 0 1 340 190" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={26} strokeLinecap="round" />
+          <path d="M40 190 A150 150 0 0 1 340 190" fill="none" stroke={accent} strokeWidth={26} strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - p)} />
+        </svg>
+        <div style={{ fontSize: 96, fontWeight: 900, color: accent, marginTop: -40 }}>{Math.round(value * g)}<span style={{ fontSize: 50 }}>%</span></div>
+        {label ? <div style={{ fontSize: 34, fontWeight: 800, color: BRAND.textDim, textTransform: "uppercase" }}>{label}</div> : null}
+      </div>
+    </Frame>
+  );
+};
+
+// ── arrow-flow — A → B → C flow ──────────────────────────────────────────────
+export const ArrowFlow: React.FC<MotionBaseProps & { steps?: string[]; accent?: string; cover?: boolean }> = ({
+  localFrame,
+  steps = ["Идея", "ИИ", "Результат"],
+  accent = BRAND.accent,
+  cover = false,
+}) => {
+  const { fps } = useVideoConfig();
+  return (
+    <Frame center={cover}>
+      <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap", justifyContent: "center", maxWidth: 960 }}>
+        {steps.map((st, i) => (
+          <React.Fragment key={i}>
+            <div style={{ ...glass, padding: "22px 30px", fontSize: 44, fontWeight: 800, color: BRAND.text, opacity: enter(localFrame, fps, i * 8, 15), transform: `scale(${0.8 + enter(localFrame, fps, i * 8, 15) * 0.2})` }}>{st}</div>
+            {i < steps.length - 1 ? <span style={{ fontSize: 60, color: accent, opacity: enter(localFrame, fps, i * 8 + 4, 16) }}>→</span> : null}
+          </React.Fragment>
+        ))}
+      </div>
+    </Frame>
+  );
+};
+
+// ── price-tag — offer / price card (with optional strikethrough) ─────────────
+export const PriceTag: React.FC<MotionBaseProps & { price?: string; old?: string; label?: string; accent?: string; cover?: boolean }> = ({
+  localFrame,
+  price = "0 ₽",
+  old,
+  label = "",
+  accent = "#34D399",
+  cover = false,
+}) => {
+  const { fps } = useVideoConfig();
+  const s = enter(localFrame, fps, 0, 14);
+  return (
+    <Frame center={cover}>
+      <div style={{ ...glass, padding: "34px 52px", textAlign: "center", transform: `translateY(${(1 - s) * 40}px) scale(${0.9 + s * 0.1})`, opacity: s }}>
+        {label ? <div style={{ fontSize: 38, fontWeight: 800, color: BRAND.textDim, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>{label}</div> : null}
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 20 }}>
+          {old ? <span style={{ fontSize: 64, fontWeight: 800, color: BRAND.textDim, textDecoration: "line-through" }}>{old}</span> : null}
+          <span style={{ fontSize: 150, fontWeight: 900, color: accent, textShadow: `0 0 40px ${accent}66` }}>{price}</span>
+        </div>
+      </div>
+    </Frame>
+  );
+};
+
 // ── SceneBackground — opaque premium backdrop for "cover" moments ────────────
 export const SceneBackground: React.FC<{ localFrame?: number; accent?: string }> = ({ localFrame = 0, accent = BRAND.accent }) => {
   const drift = Math.sin(localFrame / 40) * 20;
@@ -481,6 +758,18 @@ export const MOTION_TEMPLATES: Record<string, React.FC<any>> = {
   "stat-grid": StatGrid,
   "timeline-steps": TimelineSteps,
   "quote-card": QuoteCard,
+  "big-statement": BigStatement,
+  "lower-third": LowerThird,
+  "pill-row": PillRow,
+  "metric-callout": MetricCallout,
+  "phone-mockup": PhoneMockup,
+  "chat-bubbles": ChatBubbles,
+  "notification-toast": NotificationToast,
+  "rating-stars": RatingStars,
+  "countdown": Countdown,
+  "gauge": Gauge,
+  "arrow-flow": ArrowFlow,
+  "price-tag": PriceTag,
 };
 
 export const MotionInsertView: React.FC<{
