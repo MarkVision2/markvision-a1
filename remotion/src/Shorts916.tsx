@@ -210,6 +210,15 @@ const InsertTop: React.FC<{ insert: ShortInsert | null; opacity: number }> = ({
 const CREAM = "#F4EFE0";
 const CAP_YELLOW = "#F5E14B";
 
+// Anchors the dynamic caption block cycles through between phrases (runs), so
+// the titles move around the frame (left / lower / upper / right) like the ref.
+const CAP_POS: React.CSSProperties[] = [
+  { justifyContent: "flex-end", alignItems: "flex-start", padding: "0 0 380px 60px" }, // lower-left
+  { justifyContent: "center", alignItems: "flex-start", padding: "0 0 0 60px" },        // mid-left
+  { justifyContent: "flex-end", alignItems: "flex-end", padding: "0 60px 440px 0", textAlign: "right" }, // lower-right
+  { justifyContent: "center", alignItems: "flex-start", padding: "220px 0 0 60px" },    // upper-left
+];
+
 const Captions: React.FC<{
   words: ShortWord[];
   inserts: ShortInsert[];
@@ -230,38 +239,65 @@ const Captions: React.FC<{
   }
   if (ci < 0) return null;
 
-  // ── left-stack: words stacked bottom-up on the left, cream + yellow accent ──
+  // Captions must not read across an insert: an overlay in the gap means the
+  // phrase was interrupted, so start a fresh caption "run" after it. This stops
+  // stranded words from opposite ends gluing into nonsense ("чтобы …ЖМИ… регистрируйся").
+  let runStart = ci;
+  while (runStart > 0) {
+    const prev = vis[runStart - 1];
+    const cur = vis[runStart];
+    const insertBetween = inserts.some(
+      (i) => i.type === "motion" && i.from >= prev.from && i.to <= cur.from + 1,
+    );
+    if (insertBetween) break;
+    runStart--;
+  }
+
+  // ── left-stack (dynamic): running words that pop in and hop position per run ──
   if (style === "left-stack") {
-    const stack = vis.slice(Math.max(0, ci - 3), ci + 1);
+    // how many runs (phrases) have started up to now → cycles the anchor position
+    let runIndex = 0;
+    for (let i = 1; i <= ci; i++) {
+      const brk = inserts.some(
+        (ins) => ins.type === "motion" && ins.from >= vis[i - 1].from && ins.to <= vis[i].from + 1,
+      );
+      if (brk) runIndex++;
+    }
+    const pos = CAP_POS[runIndex % CAP_POS.length];
+    const runWords = vis.slice(runStart, ci + 1).slice(-6); // current phrase, last ≤6 words
+    const firstIdx = ci - runWords.length + 1;
     return (
-      <AbsoluteFill
-        style={{ justifyContent: "center", alignItems: "flex-start", padding: "0 0 0 60px" }}
-      >
+      <AbsoluteFill style={{ ...pos }}>
         <div
           style={{
             display: "flex",
-            flexDirection: "column",
-            alignItems: "flex-start",
+            flexWrap: "wrap",
+            justifyContent: pos.textAlign === "right" ? "flex-end" : "flex-start",
+            gap: "0.08em 0.22em",
+            maxWidth: 640,
             fontFamily: displayFontFamily,
             fontWeight: 900,
             textTransform: "uppercase",
-            lineHeight: 0.98,
-            textShadow: "0 4px 26px rgba(0,0,0,0.75), 0 2px 6px rgba(0,0,0,0.7)",
+            lineHeight: 1.0,
+            textAlign: (pos.textAlign as "left" | "right") ?? "left",
+            textShadow: "0 4px 26px rgba(0,0,0,0.8), 0 2px 6px rgba(0,0,0,0.75)",
           }}
         >
-          {stack.map((w, k) => {
-            const isCurrent = k === stack.length - 1;
-            const big = w.accent;
+          {runWords.map((w, k) => {
+            const p = interpolate(frame, [w.from, w.from + 7], [0, 1], {
+              extrapolateLeft: "clamp",
+              extrapolateRight: "clamp",
+            });
             return (
               <span
-                key={ci - (stack.length - 1) + k}
+                key={firstIdx + k}
                 style={{
                   color: w.accent ? CAP_YELLOW : CREAM,
-                  fontSize: big ? 108 : 60,
+                  fontSize: w.accent ? 100 : 58,
                   letterSpacing: "0.01em",
-                  transform: isCurrent ? "scale(1.04)" : "none",
-                  transformOrigin: "left center",
-                  opacity: isCurrent ? 1 : 0.92,
+                  transform: `translateY(${(1 - p) * 22}px) scale(${0.85 + p * 0.15})`,
+                  transformOrigin: "left bottom",
+                  opacity: p,
                 }}
               >
                 {w.text}
@@ -273,7 +309,8 @@ const Captions: React.FC<{
     );
   }
 
-  const start = Math.floor(ci / CHUNK) * CHUNK;
+  // group in 3s but never cross a run boundary (keeps phrases meaningful)
+  const start = Math.max(runStart, Math.floor(ci / CHUNK) * CHUNK);
   // only words already spoken (no dim/gray look-ahead)
   const chunk = vis.slice(start, ci + 1);
 
