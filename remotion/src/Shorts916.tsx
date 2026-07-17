@@ -60,6 +60,9 @@ export type ShortsProps = {
   // 16:9 landscape source cropped to vertical → 3413 (default). A natively
   // vertical 9:16 source fills the 1080-wide canvas exactly → pass 1080.
   videoW?: number;
+  // Caption look: "pill" (bottom-centre, accent pill) or "left-stack"
+  // (left-aligned, word-stacked, cream + accent, no pill).
+  captionStyle?: "pill" | "left-stack";
 };
 
 const CANVAS_H = 1920;
@@ -204,7 +207,14 @@ const InsertTop: React.FC<{ insert: ShortInsert | null; opacity: number }> = ({
   );
 };
 
-const Captions: React.FC<{ words: ShortWord[]; inserts: ShortInsert[] }> = ({ words, inserts }) => {
+const CREAM = "#F4EFE0";
+const CAP_YELLOW = "#F5E14B";
+
+const Captions: React.FC<{
+  words: ShortWord[];
+  inserts: ShortInsert[];
+  style?: "pill" | "left-stack";
+}> = ({ words, inserts, style = "pill" }) => {
   const frame = useCurrentFrame();
   // A word spoken while a motion insert is on screen is carried by that overlay
   // — drop it from the captions entirely so it never echoes top-and-bottom.
@@ -219,6 +229,50 @@ const Captions: React.FC<{ words: ShortWord[]; inserts: ShortInsert[] }> = ({ wo
     else break;
   }
   if (ci < 0) return null;
+
+  // ── left-stack: words stacked bottom-up on the left, cream + yellow accent ──
+  if (style === "left-stack") {
+    const stack = vis.slice(Math.max(0, ci - 3), ci + 1);
+    return (
+      <AbsoluteFill
+        style={{ justifyContent: "center", alignItems: "flex-start", padding: "0 0 0 60px" }}
+      >
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "flex-start",
+            fontFamily: displayFontFamily,
+            fontWeight: 900,
+            textTransform: "uppercase",
+            lineHeight: 0.98,
+            textShadow: "0 4px 26px rgba(0,0,0,0.75), 0 2px 6px rgba(0,0,0,0.7)",
+          }}
+        >
+          {stack.map((w, k) => {
+            const isCurrent = k === stack.length - 1;
+            const big = w.accent;
+            return (
+              <span
+                key={ci - (stack.length - 1) + k}
+                style={{
+                  color: w.accent ? CAP_YELLOW : CREAM,
+                  fontSize: big ? 108 : 60,
+                  letterSpacing: "0.01em",
+                  transform: isCurrent ? "scale(1.04)" : "none",
+                  transformOrigin: "left center",
+                  opacity: isCurrent ? 1 : 0.92,
+                }}
+              >
+                {w.text}
+              </span>
+            );
+          })}
+        </div>
+      </AbsoluteFill>
+    );
+  }
+
   const start = Math.floor(ci / CHUNK) * CHUNK;
   // only words already spoken (no dim/gray look-ahead)
   const chunk = vis.slice(start, ci + 1);
@@ -283,6 +337,7 @@ export const Shorts916: React.FC<ShortsProps> = ({
   audioTrack,
   totalDurationInFrames,
   videoW = DEFAULT_VIDEO_W,
+  captionStyle = "pill",
 }) => {
   const frame = useCurrentFrame();
   const { scale, originY } = zoomAt(frame, punchZooms);
@@ -329,7 +384,7 @@ export const Shorts916: React.FC<ShortsProps> = ({
       </AbsoluteFill>
 
       <InsertTop insert={activeInsert} opacity={insertAmount} />
-      <Captions words={words} inserts={inserts} />
+      <Captions words={words} inserts={inserts} style={captionStyle} />
 
       {/* progress bar */}
       <div style={{ position: "absolute", top: 0, left: 0, height: 8, width: `${progress}%`, backgroundColor: SCARLET }} />
