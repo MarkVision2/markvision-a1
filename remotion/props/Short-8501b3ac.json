@@ -528,9 +528,9 @@
    "data": {
     "value": 5,
     "suffix": "млн ₸",
-    "label": "ЗАРАБОТАЛ"
-   },
-   "layout": "full"
+    "label": "ЗАРАБОТАЛ",
+    "cover": true
+   }
   },
   {
    "type": "motion",
@@ -556,9 +556,9 @@
      "МЕСТА",
      "ОГРАНИЧЕНЫ"
     ],
-    "accentIndex": 1
-   },
-   "layout": "third"
+    "accentIndex": 1,
+    "cover": true
+   }
   }
  ],
  "audioTrack": "audio_Short-8501b3ac.wav",

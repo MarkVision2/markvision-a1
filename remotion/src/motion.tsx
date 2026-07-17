@@ -28,12 +28,17 @@ const enter = (local: number, fps: number, delay = 0, damping = 18) =>
 
 // Upper-zone frame: centres content horizontally, anchors near the top so the
 // speaker's face (lower-centre) and the bottom captions stay visible.
-const Frame: React.FC<{ children: React.ReactNode; top?: number }> = ({ children, top = 210 }) => (
+// top-anchored over the speaker (default) or vertically centred for cover scenes.
+const Frame: React.FC<{ children: React.ReactNode; top?: number; center?: boolean }> = ({
+  children,
+  top = 210,
+  center = false,
+}) => (
   <AbsoluteFill
     style={{
       alignItems: "center",
-      justifyContent: "flex-start",
-      paddingTop: top,
+      justifyContent: center ? "center" : "flex-start",
+      paddingTop: center ? 0 : top,
       paddingLeft: 56,
       paddingRight: 56,
       fontFamily: displayFontFamily,
@@ -54,14 +59,14 @@ const glass: React.CSSProperties = {
 
 // ── number-counter — a stat chip: key figure rolls up ────────────────────────
 export const NumberCounter: React.FC<
-  MotionBaseProps & { value?: number; prefix?: string; suffix?: string; label?: string; decimals?: number }
-> = ({ localFrame, value = 100, prefix = "", suffix = "", label = "", decimals = 0 }) => {
+  MotionBaseProps & { value?: number; prefix?: string; suffix?: string; label?: string; decimals?: number; cover?: boolean }
+> = ({ localFrame, value = 100, prefix = "", suffix = "", label = "", decimals = 0, cover = false }) => {
   const { fps } = useVideoConfig();
   const roll = spring({ frame: localFrame, fps, config: { damping: 200 }, durationInFrames: 30 });
   const pop = enter(localFrame, fps, 0, 14);
   const shown = (value * roll).toFixed(decimals);
   return (
-    <Frame>
+    <Frame center={cover}>
       <div style={{ ...glass, padding: "34px 48px", transform: `translateY(${(1 - pop) * 40}px) scale(${0.9 + pop * 0.1})`, opacity: pop, textAlign: "center" }}>
         <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 12 }}>
           <span style={{ fontSize: 168, fontWeight: 900, lineHeight: 0.9, color: BRAND.accent, letterSpacing: "-0.02em", textShadow: `0 0 40px ${BRAND.accent}66` }}>
@@ -173,14 +178,15 @@ export const FakeDashboardBars: React.FC<
 };
 
 // ── kinetic-type — a punchy phrase stamps in word by word ────────────────────
-export const KineticType: React.FC<MotionBaseProps & { words?: string[]; accentIndex?: number }> = ({
+export const KineticType: React.FC<MotionBaseProps & { words?: string[]; accentIndex?: number; cover?: boolean }> = ({
   localFrame,
   words = ["АВТОМАТИЗИРУЙ", "ВСЁ", "СЕЙЧАС"],
   accentIndex = 1,
+  cover = false,
 }) => {
   const { fps } = useVideoConfig();
   return (
-    <Frame top={190}>
+    <Frame top={190} center={cover}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
         {words.map((w, i) => {
           const s = spring({ frame: localFrame - i * 6, fps, config: { damping: 13, mass: 0.6 }, durationInFrames: 18 });
@@ -264,6 +270,37 @@ export const VsCompare: React.FC<
         <Col title={rightTitle} items={rightItems} good />
       </div>
     </Frame>
+  );
+};
+
+// ── SceneBackground — opaque premium backdrop for "cover" moments ────────────
+// Used when a motion insert has data.cover=true: the speaker is replaced by this
+// backdrop and the template's info is shown big on it (voice keeps playing).
+export const SceneBackground: React.FC<{ localFrame?: number }> = ({ localFrame = 0 }) => {
+  const drift = Math.sin(localFrame / 40) * 20;
+  return (
+    <AbsoluteFill
+      style={{
+        background:
+          "radial-gradient(120% 85% at 22% 14%, #142544 0%, #0A0C14 55%)," +
+          "radial-gradient(100% 70% at 82% 92%, #241605 0%, rgba(10,12,20,0) 60%)",
+      }}
+    >
+      {/* fine grid, faded towards edges */}
+      <AbsoluteFill
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px)," +
+            "linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)",
+          backgroundSize: "68px 68px",
+          maskImage: "radial-gradient(75% 60% at 50% 42%, black, transparent)",
+          WebkitMaskImage: "radial-gradient(75% 60% at 50% 42%, black, transparent)",
+        }}
+      />
+      {/* accent glow */}
+      <div style={{ position: "absolute", top: `${16 + drift / 20}%`, left: "14%", width: 560, height: 560, borderRadius: "50%", background: `radial-gradient(circle, ${BRAND.accent}2E, transparent 70%)`, filter: "blur(24px)" }} />
+      <div style={{ position: "absolute", bottom: "10%", right: "10%", width: 480, height: 480, borderRadius: "50%", background: "radial-gradient(circle, #1E3A6633, transparent 70%)", filter: "blur(24px)" }} />
+    </AbsoluteFill>
   );
 };
 

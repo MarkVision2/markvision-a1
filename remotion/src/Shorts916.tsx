@@ -12,7 +12,7 @@ import {
 import { Audio, Video } from "@remotion/media";
 import { displayFontFamily } from "./fonts";
 import { BRAND } from "./brand";
-import { MotionInsertView } from "./motion";
+import { MotionInsertView, SceneBackground } from "./motion";
 
 export type ShortSeg = {
   start: number;
@@ -129,13 +129,17 @@ const InsertTop: React.FC<{ insert: ShortInsert | null; opacity: number }> = ({
   insert,
   opacity,
 }) => {
+  const frame = useCurrentFrame();
   if (!insert) return null;
 
   // Motion inserts overlay the WHOLE canvas on a transparent layer (glass cards
-  // in the upper zone) — no black band, no speaker shift.
+  // in the upper zone) — no black band, no speaker shift. When data.cover is set,
+  // an opaque premium backdrop replaces the speaker and the info is shown big.
   if (insert.type === "motion") {
+    const cover = Boolean((insert.data as { cover?: boolean } | undefined)?.cover);
     return (
       <AbsoluteFill style={{ opacity }}>
+        {cover ? <SceneBackground localFrame={frame - insert.from} /> : null}
         <MotionInsertView
           template={insert.template}
           from={insert.from}
@@ -193,8 +197,13 @@ const InsertTop: React.FC<{ insert: ShortInsert | null; opacity: number }> = ({
   );
 };
 
-const Captions: React.FC<{ words: ShortWord[] }> = ({ words }) => {
+const Captions: React.FC<{ words: ShortWord[]; inserts: ShortInsert[] }> = ({ words, inserts }) => {
   const frame = useCurrentFrame();
+  // Hide captions while a motion insert is on screen — the overlay already
+  // carries the message, so no duplicated text at the bottom.
+  if (inserts.some((i) => i.type === "motion" && frame >= i.from && frame < i.to)) {
+    return null;
+  }
   let ci = -1;
   for (let i = 0; i < words.length; i++) {
     if (words[i].from <= frame) ci = i;
@@ -307,7 +316,7 @@ export const Shorts916: React.FC<ShortsProps> = ({
       </AbsoluteFill>
 
       <InsertTop insert={activeInsert} opacity={insertAmount} />
-      <Captions words={words} />
+      <Captions words={words} inserts={inserts} />
 
       {/* progress bar */}
       <div style={{ position: "absolute", top: 0, left: 0, height: 8, width: `${progress}%`, backgroundColor: SCARLET }} />
