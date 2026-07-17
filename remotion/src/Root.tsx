@@ -10,10 +10,14 @@ import { MotionDemo, MOTION_DEMO_DURATION } from "./MotionDemo";
 import mainExample from "../props/main169.example.json";
 import shortExample from "../props/short.example.json";
 import short8501b3ac from "../props/Short-8501b3ac.json";
+import shortD312Full from "../props/Short-d312-full.json";
+import shortD312Punch from "../props/Short-d312-punch.json";
 
 const defaultMainProps = mainExample as unknown as MainProps;
 const defaultShortProps = shortExample as unknown as ShortsProps;
 const short8501b3acProps = short8501b3ac as unknown as ShortsProps;
+const shortD312FullProps = shortD312Full as unknown as ShortsProps;
+const shortD312PunchProps = shortD312Punch as unknown as ShortsProps;
 
 export const RemotionRoot: React.FC = () => {
   return (
@@ -58,6 +62,30 @@ export const RemotionRoot: React.FC = () => {
         width={1080}
         height={1920}
         defaultProps={short8501b3acProps}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: props.totalDurationInFrames,
+        })}
+      />
+      <Composition
+        id="Short-d312-full"
+        component={Shorts916}
+        durationInFrames={shortD312FullProps.totalDurationInFrames}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={shortD312FullProps}
+        calculateMetadata={({ props }) => ({
+          durationInFrames: props.totalDurationInFrames,
+        })}
+      />
+      <Composition
+        id="Short-d312-punch"
+        component={Shorts916}
+        durationInFrames={shortD312PunchProps.totalDurationInFrames}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={shortD312PunchProps}
         calculateMetadata={({ props }) => ({
           durationInFrames: props.totalDurationInFrames,
         })}

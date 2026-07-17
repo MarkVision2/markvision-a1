@@ -1,0 +1,269 @@
+{
+ "src": "source_d312d3ee.mp4",
+ "previewSrc": null,
+ "fps": 30,
+ "segments": [
+  {
+   "start": 8.36,
+   "end": 14.72,
+   "startFrame": 251,
+   "endFrame": 442,
+   "tx": 0,
+   "faceY": 43.3
+  },
+  {
+   "start": 18.05,
+   "end": 20.4,
+   "startFrame": 542,
+   "endFrame": 612,
+   "tx": 0,
+   "faceY": 42.2
+  },
+  {
+   "start": 28.0,
+   "end": 31.44,
+   "startFrame": 840,
+   "endFrame": 943,
+   "tx": 0,
+   "faceY": 42.7
+  }
+ ],
+ "words": [
+  {
+   "text": "за",
+   "from": 1,
+   "accent": false,
+   "to": 4
+  },
+  {
+   "text": "последние",
+   "from": 4,
+   "accent": false,
+   "to": 16
+  },
+  {
+   "text": "полгода",
+   "from": 16,
+   "accent": false,
+   "to": 28
+  },
+  {
+   "text": "я",
+   "from": 28,
+   "accent": false,
+   "to": 35
+  },
+  {
+   "text": "разработал",
+   "from": 35,
+   "accent": false,
+   "to": 49
+  },
+  {
+   "text": "несколько",
+   "from": 49,
+   "accent": false,
+   "to": 64
+  },
+  {
+   "text": "it-приложений",
+   "from": 64,
+   "accent": true,
+   "to": 102
+  },
+  {
+   "text": "стал",
+   "from": 102,
+   "accent": false,
+   "to": 112
+  },
+  {
+   "text": "it-предпринимателем",
+   "from": 112,
+   "accent": false,
+   "to": 140
+  },
+  {
+   "text": "и",
+   "from": 140,
+   "accent": false,
+   "to": 148
+  },
+  {
+   "text": "резидентом",
+   "from": 148,
+   "accent": false,
+   "to": 162
+  },
+  {
+   "text": "Astana Hub",
+   "from": 162,
+   "accent": true,
+   "to": 188
+  },
+  {
+   "text": "на",
+   "from": 188,
+   "accent": false,
+   "to": 193
+  },
+  {
+   "text": "заработал",
+   "from": 193,
+   "accent": false,
+   "to": 205
+  },
+  {
+   "text": "на",
+   "from": 205,
+   "accent": false,
+   "to": 210
+  },
+  {
+   "text": "этом",
+   "from": 210,
+   "accent": false,
+   "to": 217
+  },
+  {
+   "text": "больше",
+   "from": 217,
+   "accent": false,
+   "to": 224
+  },
+  {
+   "text": "5 000 000",
+   "from": 224,
+   "accent": false,
+   "to": 246
+  },
+  {
+   "text": "тенге",
+   "from": 246,
+   "accent": true,
+   "to": 258
+  },
+  {
+   "text": "и",
+   "from": 258,
+   "accent": false,
+   "to": 262
+  },
+  {
+   "text": "переходи",
+   "from": 262,
+   "accent": false,
+   "to": 272
+  },
+  {
+   "text": "по",
+   "from": 272,
+   "accent": false,
+   "to": 277
+  },
+  {
+   "text": "ссылке",
+   "from": 277,
+   "accent": false,
+   "to": 284
+  },
+  {
+   "text": "ниже",
+   "from": 284,
+   "accent": false,
+   "to": 296
+  },
+  {
+   "text": "регистрируйся",
+   "from": 296,
+   "accent": false,
+   "to": 323
+  },
+  {
+   "text": "количество",
+   "from": 323,
+   "accent": false,
+   "to": 338
+  },
+  {
+   "text": "мест",
+   "from": 338,
+   "accent": false,
+   "to": 347
+  },
+  {
+   "text": "ограничено",
+   "from": 347,
+   "accent": true,
+   "to": 359
+  }
+ ],
+ "punchZooms": [
+  {
+   "from": 60,
+   "originY": 43.2
+  },
+  {
+   "from": 158,
+   "originY": 43.3
+  },
+  {
+   "from": 242,
+   "originY": 44.4
+  },
+  {
+   "from": 343,
+   "originY": 42.0
+  }
+ ],
+ "inserts": [
+  {
+   "type": "motion",
+   "template": "kinetic-type",
+   "from": 148,
+   "to": 188,
+   "data": {
+    "words": [
+     "РЕЗИДЕНТ",
+     "ASTANA HUB"
+    ],
+    "accentIndex": 1,
+    "accent": "#8B5CF6",
+    "icon": "award"
+   }
+  },
+  {
+   "type": "motion",
+   "template": "number-counter",
+   "from": 193,
+   "to": 258,
+   "data": {
+    "value": 5,
+    "suffix": "млн ₸",
+    "label": "ЗАРАБОТАЛ",
+    "accent": "#34D399",
+    "icon": "coin",
+    "cover": true
+   }
+  },
+  {
+   "type": "motion",
+   "template": "kinetic-type",
+   "from": 323,
+   "to": 364,
+   "data": {
+    "words": [
+     "МЕСТА",
+     "ОГРАНИЧЕНЫ"
+    ],
+    "accentIndex": 1,
+    "accent": "#FB7185",
+    "icon": "fire",
+    "cover": true
+   }
+  }
+ ],
+ "audioTrack": "audio_Short-d312-punch.wav",
+ "totalDurationInFrames": 364,
+ "videoW": 1080
+}
