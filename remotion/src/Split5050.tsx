@@ -1,0 +1,136 @@
+import React from "react";
+import { AbsoluteFill, interpolate, staticFile, useCurrentFrame } from "remotion";
+import { Audio, Video } from "@remotion/media";
+import { displayFontFamily } from "./fonts";
+import { BRAND } from "./brand";
+import type { ShortWord } from "./Shorts916";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// "Монтаж 50/50" — split-screen: speaker in one half, a second video (screen
+// recording) in the other, captions on the seam. Meant for the KEY moments when
+// the author demonstrates something on screen; outside those the normal
+// full-frame edit (Shorts916) plays. This composition renders the split look.
+//
+// splits: time ranges (frames) when the screen half is shown. Outside them the
+// speaker fills the frame. `screen` = base media name in public/ (the uploaded
+// screen recording); null → a placeholder panel so the layout is previewable.
+// `speaker` = "bottom" (default, author below) or "top".
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type SplitEvent = { from: number; to: number; screenFrom?: number };
+
+export type SplitProps = {
+  src: string;
+  previewSrc: string | null;
+  fps: number;
+  speakerStartFrame: number;
+  words: ShortWord[];
+  audioTrack: string | null;
+  screen: string | null;
+  speaker: "top" | "bottom";
+  splits: SplitEvent[];
+  totalDurationInFrames: number;
+};
+
+const CANVAS_H = 1920;
+const HALF = CANVAS_H / 2;
+const PAPER = BRAND.text;
+const SCARLET = BRAND.accent;
+
+const ScreenPlaceholder: React.FC = () => (
+  <AbsoluteFill style={{ background: "radial-gradient(120% 90% at 30% 20%, #16233E 0%, #0A0C14 60%)", alignItems: "center", justifyContent: "center", fontFamily: displayFontFamily }}>
+    <div style={{ width: "82%", height: "72%", borderRadius: 22, background: "#0F131C", border: `1px solid ${BRAND.glassBorder}`, boxShadow: BRAND.glassShadow, overflow: "hidden" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "16px 20px", borderBottom: `1px solid ${BRAND.glassBorder}` }}>
+        {["#FF5F57", "#FEBC2E", "#28C840"].map((c) => <div key={c} style={{ width: 16, height: 16, borderRadius: "50%", background: c }} />)}
+        <span style={{ marginLeft: 8, fontSize: 24, color: BRAND.textDim, fontFamily: "ui-monospace,monospace" }}>screen.rec</span>
+      </div>
+      <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+        {[0.9, 0.6, 0.75, 0.4].map((w, i) => <div key={i} style={{ height: 26, width: `${w * 100}%`, borderRadius: 8, background: "rgba(255,255,255,0.07)" }} />)}
+      </div>
+    </div>
+    <div style={{ position: "absolute", bottom: 24, fontSize: 26, fontWeight: 800, letterSpacing: "0.12em", color: BRAND.textDim, textTransform: "uppercase" }}>Запись экрана</div>
+  </AbsoluteFill>
+);
+
+const SpeakerPane: React.FC<{ src: string; startFrame: number; audioMuted: boolean }> = ({ src, startFrame, audioMuted }) => (
+  // full 9:16 speaker cropped into a half-height pane, biased to the face (top)
+  <AbsoluteFill style={{ overflow: "hidden" }}>
+    <Video
+      src={staticFile(src)}
+      trimBefore={startFrame}
+      muted={audioMuted}
+      objectFit="cover"
+      style={{ width: "100%", height: "100%", objectPosition: "50% 22%" }}
+    />
+  </AbsoluteFill>
+);
+
+const Screen: React.FC<{ screen: string | null; from: number }> = ({ screen, from }) =>
+  screen ? (
+    <AbsoluteFill style={{ overflow: "hidden", background: "#0A0C14" }}>
+      <Video src={staticFile(screen)} trimBefore={from} muted objectFit="cover" style={{ width: "100%", height: "100%" }} />
+    </AbsoluteFill>
+  ) : (
+    <ScreenPlaceholder />
+  );
+
+const Captions: React.FC<{ words: ShortWord[]; seamY: number }> = ({ words, seamY }) => {
+  const frame = useCurrentFrame();
+  let ci = -1;
+  for (let i = 0; i < words.length; i++) {
+    if (words[i].from <= frame) ci = i;
+    else break;
+  }
+  if (ci < 0) return null;
+  const start = Math.floor(ci / 3) * 3;
+  const chunk = words.slice(start, ci + 1);
+  return (
+    <AbsoluteFill style={{ justifyContent: "flex-start", alignItems: "center" }}>
+      <div style={{ position: "absolute", top: seamY - 60, display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "0.24em", maxWidth: "92%", fontFamily: displayFontFamily, fontWeight: 800, fontSize: 60, lineHeight: 1.0, textTransform: "uppercase", textAlign: "center" }}>
+        {chunk.map((w, k) => {
+          const cur = start + k === ci;
+          return (
+            <span key={start + k} style={{ color: w.accent || cur ? BRAND.accentInk : PAPER, background: w.accent || cur ? SCARLET : "transparent", padding: w.accent || cur ? "0 0.12em" : 0, borderRadius: 8, textShadow: w.accent || cur ? "none" : "0 4px 20px rgba(0,0,0,0.9)" }}>{w.text}</span>
+          );
+        })}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+export const Split5050: React.FC<SplitProps> = ({ src, previewSrc, speakerStartFrame, words, audioTrack, screen, speaker, splits }) => {
+  const frame = useCurrentFrame();
+  const active = splits.find((s) => frame >= s.from && frame < s.to) ?? null;
+  // 0..1 how open the split is (slide the screen half in/out)
+  const amt = active
+    ? interpolate(frame, [active.from, active.from + 10, active.to - 10, active.to], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })
+    : 0;
+  const speakerBottom = speaker === "bottom";
+  const seamY = HALF; // captions sit on the seam
+  const src0 = previewSrc ?? src;
+
+  return (
+    <AbsoluteFill style={{ backgroundColor: "#0A0C14" }}>
+      {/* Speaker: full-frame when closed, shifts into its half as the split opens */}
+      <AbsoluteFill style={{ top: 0, height: CANVAS_H }}>
+        <div style={{ position: "absolute", left: 0, right: 0, top: speakerBottom ? amt * HALF : 0, height: CANVAS_H - amt * HALF, overflow: "hidden" }}>
+          <SpeakerPane src={src0} startFrame={speakerStartFrame} audioMuted={audioTrack != null} />
+        </div>
+      </AbsoluteFill>
+
+      {/* Screen half slides in from the edge */}
+      {amt > 0 ? (
+        <div style={{ position: "absolute", left: 0, right: 0, height: HALF, top: speakerBottom ? -(1 - amt) * HALF : CANVAS_H - amt * HALF, overflow: "hidden", boxShadow: "0 0 40px rgba(0,0,0,0.6)" }}>
+          <Screen screen={screen} from={active?.screenFrom ?? 0} />
+        </div>
+      ) : null}
+
+      {/* accent seam line */}
+      {amt > 0.3 ? <div style={{ position: "absolute", left: 0, right: 0, top: seamY - 3, height: 6, background: SCARLET, opacity: amt, boxShadow: `0 0 20px ${SCARLET}` }} /> : null}
+
+      <Captions words={words} seamY={seamY} />
+
+      {audioTrack ? <Audio src={staticFile(audioTrack)} /> : null}
+    </AbsoluteFill>
+  );
+};
