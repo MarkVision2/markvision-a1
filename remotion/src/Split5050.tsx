@@ -43,6 +43,7 @@ export type SplitProps = {
   totalDurationInFrames: number;
   music?: string | null;
   musicVolume?: number;
+  voiceBoost?: number;
 };
 
 const CANVAS_H = 1920;
@@ -65,15 +66,16 @@ const ScreenPlaceholder: React.FC = () => (
   </AbsoluteFill>
 );
 
-const SpeakerPane: React.FC<{ src: string; startFrame: number; audioMuted: boolean }> = ({ src, startFrame, audioMuted }) => (
+const SpeakerPane: React.FC<{ src: string; startFrame: number; audioMuted: boolean; voiceBoost: number }> = ({ src, startFrame, audioMuted, voiceBoost }) => (
   // full 9:16 speaker cropped into a half-height pane, biased to the face (top)
   <AbsoluteFill style={{ overflow: "hidden" }}>
     <Video
       src={staticFile(src)}
       trimBefore={startFrame}
       muted={audioMuted}
+      volume={voiceBoost}
       objectFit="cover"
-      style={{ width: "100%", height: "100%", objectPosition: "50% 22%" }}
+      style={{ width: "100%", height: "100%", objectPosition: "50% 38%" }}
     />
   </AbsoluteFill>
 );
@@ -101,7 +103,9 @@ const Screen: React.FC<{ screen: string | null; event: SplitEvent | null; localF
   return <ScreenPlaceholder />;
 };
 
-const Captions: React.FC<{ words: ShortWord[]; seamY: number }> = ({ words, seamY }) => {
+// Captions live in the LOWER part of the speaker's half (clear of the face,
+// which sits near the seam), like normal Reels — never centred on the face.
+const Captions: React.FC<{ words: ShortWord[]; speakerBottom: boolean }> = ({ words, speakerBottom }) => {
   const frame = useCurrentFrame();
   let ci = -1;
   for (let i = 0; i < words.length; i++) {
@@ -111,9 +115,11 @@ const Captions: React.FC<{ words: ShortWord[]; seamY: number }> = ({ words, seam
   if (ci < 0) return null;
   const start = Math.floor(ci / 3) * 3;
   const chunk = words.slice(start, ci + 1);
+  // speaker bottom → captions near the bottom edge; speaker top → just above centre
+  const bottomPad = speakerBottom ? 150 : 1090;
   return (
-    <AbsoluteFill style={{ justifyContent: "flex-start", alignItems: "center" }}>
-      <div style={{ position: "absolute", top: seamY - 60, display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "0.24em", maxWidth: "92%", fontFamily: displayFontFamily, fontWeight: 800, fontSize: 60, lineHeight: 1.0, textTransform: "uppercase", textAlign: "center" }}>
+    <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", padding: `0 44px ${bottomPad}px` }}>
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "0.24em", maxWidth: "94%", fontFamily: displayFontFamily, fontWeight: 800, fontSize: 62, lineHeight: 1.0, textTransform: "uppercase", textAlign: "center" }}>
         {chunk.map((w, k) => {
           const cur = start + k === ci;
           return (
@@ -125,7 +131,7 @@ const Captions: React.FC<{ words: ShortWord[]; seamY: number }> = ({ words, seam
   );
 };
 
-export const Split5050: React.FC<SplitProps> = ({ src, previewSrc, speakerStartFrame, words, audioTrack, screen, speaker, splits, music = null, musicVolume = 0.14 }) => {
+export const Split5050: React.FC<SplitProps> = ({ src, previewSrc, speakerStartFrame, words, audioTrack, screen, speaker, splits, music = null, musicVolume = 0.09, voiceBoost = 3.2 }) => {
   const frame = useCurrentFrame();
   const active = splits.find((s) => frame >= s.from && frame < s.to) ?? null;
   // 0..1 how open the split is (slide the screen half in/out)
@@ -133,7 +139,7 @@ export const Split5050: React.FC<SplitProps> = ({ src, previewSrc, speakerStartF
     ? interpolate(frame, [active.from, active.from + 10, active.to - 10, active.to], [0, 1, 1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })
     : 0;
   const speakerBottom = speaker === "bottom";
-  const seamY = HALF; // captions sit on the seam
+  const seamY = HALF;
   const src0 = previewSrc ?? src;
 
   return (
@@ -141,7 +147,7 @@ export const Split5050: React.FC<SplitProps> = ({ src, previewSrc, speakerStartF
       {/* Speaker: full-frame when closed, shifts into its half as the split opens */}
       <AbsoluteFill style={{ top: 0, height: CANVAS_H }}>
         <div style={{ position: "absolute", left: 0, right: 0, top: speakerBottom ? amt * HALF : 0, height: CANVAS_H - amt * HALF, overflow: "hidden" }}>
-          <SpeakerPane src={src0} startFrame={speakerStartFrame} audioMuted={audioTrack != null} />
+          <SpeakerPane src={src0} startFrame={speakerStartFrame} audioMuted={audioTrack != null} voiceBoost={voiceBoost} />
         </div>
       </AbsoluteFill>
 
@@ -155,7 +161,7 @@ export const Split5050: React.FC<SplitProps> = ({ src, previewSrc, speakerStartF
       {/* accent seam line */}
       {amt > 0.3 ? <div style={{ position: "absolute", left: 0, right: 0, top: seamY - 3, height: 6, background: SCARLET, opacity: amt, boxShadow: `0 0 20px ${SCARLET}` }} /> : null}
 
-      <Captions words={words} seamY={seamY} />
+      <Captions words={words} speakerBottom={speakerBottom} />
 
       {audioTrack ? <Audio src={staticFile(audioTrack)} /> : null}
       {music ? <Audio src={staticFile(music)} volume={musicVolume} /> : null}

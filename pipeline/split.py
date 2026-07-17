@@ -70,7 +70,7 @@ def build(work: Path, props_dir: Path, media: str, screen: str | None):
             ev["data"] = s["data"]
         if s.get("screenFrom") is not None:
             ev["screenFrom"] = s["screenFrom"]
-        ev["to"] = max(ev["to"], ev["from"] + 30)  # keep a split on screen ≥1s
+        ev["to"] = max(ev["to"], ev["from"] + 210)  # keep a split on screen ≥7s (no flicker)
         splits.append(ev)
     splits.sort(key=lambda e: e["from"])
 
