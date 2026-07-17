@@ -111,3 +111,8 @@ verify_jwt = false
 # авторизация внутри функции по x-montage-key = montage_settings.worker_key.
 [functions.montage-worker]
 verify_jwt = false
+
+# Reels TTS: озвучка ElevenLabs (VPS-воркер мёртв). Та же авторизация
+# x-montage-key; секрет ELEVENLABS_API_KEY в Supabase Edge Secrets.
+[functions.reels-tts]
+verify_jwt = false
