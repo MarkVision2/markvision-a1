@@ -113,9 +113,9 @@ const CreateReels = () => {
             <Film className="h-6 w-6" strokeWidth={1.75} />
           </span>
           <div>
-            <h1 className="text-lg font-bold">Reels-видео</h1>
+            <h1 className="text-lg font-bold">Видео с озвучкой</h1>
             <p className="text-xs text-muted-foreground">
-              Сценарий → вертикальный ролик с озвучкой, титрами и музыкой. Рендер на сервере — можно закрыть вкладку.
+              Только сценарий → ИИ-озвучка, графика, б-роллы и титры (без камеры). Рендер на сервере — можно закрыть вкладку.
             </p>
           </div>
         </div>

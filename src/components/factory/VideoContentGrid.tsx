@@ -1,4 +1,4 @@
-import { ArrowRight, Clapperboard, Film, Scissors } from "lucide-react";
+import { ArrowRight, Bot, Mic, Scissors } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
@@ -7,36 +7,36 @@ interface VideoFormat {
   title: string;
   subtitle: string;
   route: string;
-  icon: typeof Clapperboard;
+  icon: typeof Bot;
   badge?: string;
 }
 
-// Форматы видео-контента. Пока один — AI монтаж через HeyGen; сюда же добавятся
-// следующие видео-инструменты фабрики.
+// Три инструмента видео — по тому, что даёт пользователь на входе:
+// только сценарий → сценарий + аватар → своя съёмка.
 const VIDEO_FORMATS: VideoFormat[] = [
   {
-    id: "ai-montage",
-    title: "AI монтаж",
-    subtitle: "Аватар со сценарием или сборка по шаблону — через HeyGen",
-    route: "/create/montage",
-    icon: Clapperboard,
+    id: "voiceover",
+    title: "Видео с озвучкой",
+    subtitle: "Только сценарий → ИИ-озвучка + графика, б-роллы и титры (без камеры)",
+    route: "/create/reels",
+    icon: Mic,
     badge: "AI",
   },
   {
-    id: "montage-lab",
-    title: "Монтаж съёмки",
-    subtitle: "Загрузите запись «говорящей головы» — конвейер смонтирует ролик и шортсы",
+    id: "avatar",
+    title: "Видео с аватаром",
+    subtitle: "Сценарий → говорящий AI-аватар (HeyGen)",
+    route: "/create/montage",
+    icon: Bot,
+    badge: "AI",
+  },
+  {
+    id: "footage-edit",
+    title: "Монтаж моей съёмки",
+    subtitle: "Загрузи своё видео — соберём динамичный ролик и шортсы",
     route: "/create/montage-lab",
     icon: Scissors,
     badge: "AI",
-  },
-  {
-    id: "reels",
-    title: "Reels-видео",
-    subtitle: "Сценарий → вертикальный ролик с озвучкой, титрами и музыкой",
-    route: "/create/reels",
-    icon: Film,
-    badge: "Beta",
   },
 ];
 
@@ -46,7 +46,7 @@ const VideoContentGrid = () => {
     <section className="space-y-3 pb-2" aria-label="Выбор формата видео">
       <div className="mb-3 flex items-baseline gap-2 px-0.5">
         <h3 className="text-sm font-bold uppercase tracking-wider text-foreground">Видео</h3>
-        <span className="truncate text-xs text-muted-foreground">· аватары, монтаж, HeyGen</span>
+        <span className="truncate text-xs text-muted-foreground">· озвучка, аватар, монтаж съёмки</span>
       </div>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {VIDEO_FORMATS.map((f) => {
