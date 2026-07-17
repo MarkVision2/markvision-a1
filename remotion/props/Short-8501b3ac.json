@@ -502,9 +502,14 @@
      "Сайты",
      "Приложения",
      "Платформы"
-    ]
-   },
-   "layout": "third"
+    ],
+    "icons": [
+     "globe",
+     "apps",
+     "layers"
+    ],
+    "accent": "#22D3EE"
+   }
   },
   {
    "type": "motion",
@@ -516,9 +521,10 @@
      "РЕЗИДЕНТ",
      "ASTANA HUB"
     ],
-    "accentIndex": 1
-   },
-   "layout": "third"
+    "accentIndex": 1,
+    "accent": "#8B5CF6",
+    "icon": "award"
+   }
   },
   {
    "type": "motion",
@@ -529,6 +535,8 @@
     "value": 5,
     "suffix": "млн ₸",
     "label": "ЗАРАБОТАЛ",
+    "accent": "#34D399",
+    "icon": "coin",
     "cover": true
    }
   },
@@ -542,9 +550,10 @@
      "ВАЙБ",
      "КОДИНГ"
     ],
-    "accentIndex": 1
-   },
-   "layout": "third"
+    "accentIndex": 1,
+    "accent": "#FF7A18",
+    "icon": "code"
+   }
   },
   {
    "type": "motion",
@@ -557,6 +566,8 @@
      "ОГРАНИЧЕНЫ"
     ],
     "accentIndex": 1,
+    "accent": "#FB7185",
+    "icon": "fire",
     "cover": true
    }
   }
