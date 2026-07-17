@@ -293,24 +293,6 @@
    "text": "больше",
    "from": 554,
    "accent": false,
-   "to": 563
-  },
-  {
-   "text": "5",
-   "from": 563,
-   "accent": false,
-   "to": 570
-  },
-  {
-   "text": "000 000",
-   "from": 570,
-   "accent": false,
-   "to": 582
-  },
-  {
-   "text": "тенге",
-   "from": 582,
-   "accent": true,
    "to": 597
   },
   {
