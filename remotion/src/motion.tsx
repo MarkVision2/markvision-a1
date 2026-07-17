@@ -281,13 +281,17 @@ export const KineticType: React.FC<MotionBaseProps & { words?: string[]; accentI
   const pop = enter(localFrame, fps, 0, 14);
   return (
     <Frame top={190} center={cover}>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10 }}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, maxWidth: "100%" }}>
         {icon ? <div style={{ marginBottom: 10 }}><IconTile name={icon} accent={accent} s={pop} /></div> : null}
         {words.map((w, i) => {
           const s = spring({ frame: localFrame - i * 6, fps, config: { damping: 13, mass: 0.6 }, durationInFrames: 18 });
           const acc = i === accentIndex;
+          const base = acc ? 118 : 94;
+          // shrink long words so the (padded) pill never exceeds the 1080 canvas
+          // (Montserrat 900 is wide — budget ~0.72em per glyph, leave margin)
+          const fs = Math.min(base, Math.floor(860 / (Math.max(w.length, 1) * 0.72)));
           return (
-            <div key={i} style={{ fontSize: acc ? 128 : 100, fontWeight: 900, lineHeight: 0.98, color: acc ? BRAND.accentInk : BRAND.text, background: acc ? accent : "transparent", padding: acc ? "2px 24px" : 0, borderRadius: 16, boxShadow: acc ? `0 12px 40px ${accent}55` : "none", textShadow: acc ? "none" : "0 6px 30px rgba(0,0,0,0.65)", transform: `scale(${s})`, opacity: interpolate(s, [0, 0.4], [0, 1], { extrapolateRight: "clamp" }) }}>
+            <div key={i} style={{ fontSize: fs, fontWeight: 900, lineHeight: 1.0, whiteSpace: "nowrap", maxWidth: "100%", color: acc ? BRAND.accentInk : BRAND.text, background: acc ? accent : "transparent", padding: acc ? "4px 24px" : 0, borderRadius: 16, boxShadow: acc ? `0 12px 40px ${accent}55` : "none", textShadow: acc ? "none" : "0 6px 30px rgba(0,0,0,0.65)", transform: `scale(${s})`, opacity: interpolate(s, [0, 0.4], [0, 1], { extrapolateRight: "clamp" }) }}>
               {w}
             </div>
           );

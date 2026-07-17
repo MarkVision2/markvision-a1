@@ -206,20 +206,22 @@ const InsertTop: React.FC<{ insert: ShortInsert | null; opacity: number }> = ({
 
 const Captions: React.FC<{ words: ShortWord[]; inserts: ShortInsert[] }> = ({ words, inserts }) => {
   const frame = useCurrentFrame();
-  // Hide captions while a motion insert is on screen — the overlay already
-  // carries the message, so no duplicated text at the bottom.
-  if (inserts.some((i) => i.type === "motion" && frame >= i.from && frame < i.to)) {
-    return null;
-  }
+  // A word spoken while a motion insert is on screen is carried by that overlay
+  // — drop it from the captions entirely so it never echoes top-and-bottom.
+  const covered = (f: number) =>
+    inserts.some((i) => i.type === "motion" && f >= i.from && f < i.to);
+  // Hide captions outright while an insert is on screen.
+  if (covered(frame)) return null;
+  const vis = words.filter((w) => !covered(w.from));
   let ci = -1;
-  for (let i = 0; i < words.length; i++) {
-    if (words[i].from <= frame) ci = i;
+  for (let i = 0; i < vis.length; i++) {
+    if (vis[i].from <= frame) ci = i;
     else break;
   }
   if (ci < 0) return null;
   const start = Math.floor(ci / CHUNK) * CHUNK;
   // only words already spoken (no dim/gray look-ahead)
-  const chunk = words.slice(start, ci + 1);
+  const chunk = vis.slice(start, ci + 1);
 
   return (
     <AbsoluteFill
