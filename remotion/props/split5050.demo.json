@@ -443,15 +443,43 @@
  "splits": [
   {
    "from": 120,
-   "to": 300
+   "to": 300,
+   "template": "fake-terminal",
+   "data": {
+    "title": "claude code",
+    "lines": [
+     "$ claude build app",
+     "→ пишу код...",
+     "→ собираю UI...",
+     "✓ готово"
+    ],
+    "accent": "#22D3EE"
+   }
   },
   {
    "from": 470,
-   "to": 690
+   "to": 690,
+   "template": "timeline-steps",
+   "data": {
+    "steps": [
+     "Диктуешь идею",
+     "ИИ пишет код",
+     "Готовый ролик"
+    ],
+    "accent": "#34D399"
+   }
   },
   {
    "from": 760,
-   "to": 870
+   "to": 870,
+   "template": "number-counter",
+   "data": {
+    "value": 5,
+    "suffix": "млн ₸",
+    "label": "ЗАРАБОТАЛ",
+    "accent": "#FF7A18",
+    "icon": "coin"
+   }
   }
  ],
  "totalDurationInFrames": 887

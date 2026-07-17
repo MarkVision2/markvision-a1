@@ -3,6 +3,7 @@ import { AbsoluteFill, interpolate, staticFile, useCurrentFrame } from "remotion
 import { Audio, Video } from "@remotion/media";
 import { displayFontFamily } from "./fonts";
 import { BRAND } from "./brand";
+import { MOTION_TEMPLATES, SceneBackground } from "./motion";
 import type { ShortWord } from "./Shorts916";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -17,7 +18,17 @@ import type { ShortWord } from "./Shorts916";
 // `speaker` = "bottom" (default, author below) or "top".
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type SplitEvent = { from: number; to: number; screenFrom?: number };
+// A split moment shows the "screen" half as either the uploaded recording
+// (screenFrom trim), or — when there is no recording — a Remotion motion scene
+// from the library (template + data), so everything is animated in Remotion.
+export type SplitEvent = {
+  from: number;
+  to: number;
+  screenFrom?: number;
+  template?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data?: Record<string, any>;
+};
 
 export type SplitProps = {
   src: string;
@@ -65,14 +76,28 @@ const SpeakerPane: React.FC<{ src: string; startFrame: number; audioMuted: boole
   </AbsoluteFill>
 );
 
-const Screen: React.FC<{ screen: string | null; from: number }> = ({ screen, from }) =>
-  screen ? (
-    <AbsoluteFill style={{ overflow: "hidden", background: "#0A0C14" }}>
-      <Video src={staticFile(screen)} trimBefore={from} muted objectFit="cover" style={{ width: "100%", height: "100%" }} />
-    </AbsoluteFill>
-  ) : (
-    <ScreenPlaceholder />
-  );
+const Screen: React.FC<{ screen: string | null; event: SplitEvent | null; localFrame: number }> = ({ screen, event, localFrame }) => {
+  // 1) real screen recording, if uploaded
+  if (screen) {
+    return (
+      <AbsoluteFill style={{ overflow: "hidden", background: "#0A0C14" }}>
+        <Video src={staticFile(screen)} trimBefore={event?.screenFrom ?? 0} muted objectFit="cover" style={{ width: "100%", height: "100%" }} />
+      </AbsoluteFill>
+    );
+  }
+  // 2) Remotion motion scene from the library (everything animated in Remotion)
+  if (event?.template && MOTION_TEMPLATES[event.template]) {
+    const Comp = MOTION_TEMPLATES[event.template];
+    return (
+      <AbsoluteFill style={{ overflow: "hidden" }}>
+        <SceneBackground localFrame={localFrame} accent={event.data?.accent} />
+        <Comp localFrame={localFrame} duration={event.to - event.from} {...(event.data ?? {})} />
+      </AbsoluteFill>
+    );
+  }
+  // 3) fallback placeholder
+  return <ScreenPlaceholder />;
+};
 
 const Captions: React.FC<{ words: ShortWord[]; seamY: number }> = ({ words, seamY }) => {
   const frame = useCurrentFrame();
@@ -121,7 +146,7 @@ export const Split5050: React.FC<SplitProps> = ({ src, previewSrc, speakerStartF
       {/* Screen half slides in from the edge */}
       {amt > 0 ? (
         <div style={{ position: "absolute", left: 0, right: 0, height: HALF, top: speakerBottom ? -(1 - amt) * HALF : CANVAS_H - amt * HALF, overflow: "hidden", boxShadow: "0 0 40px rgba(0,0,0,0.6)" }}>
-          <Screen screen={screen} from={active?.screenFrom ?? 0} />
+          <Screen screen={screen} event={active} localFrame={active ? frame - active.from : 0} />
         </div>
       ) : null}
 
