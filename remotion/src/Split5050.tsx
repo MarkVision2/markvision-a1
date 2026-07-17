@@ -92,10 +92,13 @@ const Screen: React.FC<{ screen: string | null; event: SplitEvent | null; localF
   // 2) Remotion motion scene from the library (everything animated in Remotion)
   if (event?.template && MOTION_TEMPLATES[event.template]) {
     const Comp = MOTION_TEMPLATES[event.template];
+    const floatY = Math.sin(localFrame / 28) * 7; // gentle continuous breathe
     return (
       <AbsoluteFill style={{ overflow: "hidden" }}>
         <SceneBackground localFrame={localFrame} accent={event.data?.accent} />
-        <Comp localFrame={localFrame} duration={event.to - event.from} {...(event.data ?? {})} />
+        <AbsoluteFill style={{ transform: `translateY(${floatY}px)` }}>
+          <Comp localFrame={localFrame} duration={event.to - event.from} {...(event.data ?? {})} />
+        </AbsoluteFill>
       </AbsoluteFill>
     );
   }
@@ -115,8 +118,9 @@ const Captions: React.FC<{ words: ShortWord[]; speakerBottom: boolean }> = ({ wo
   if (ci < 0) return null;
   const start = Math.floor(ci / 3) * 3;
   const chunk = words.slice(start, ci + 1);
-  // speaker bottom → captions near the bottom edge; speaker top → just above centre
-  const bottomPad = speakerBottom ? 150 : 1090;
+  // Reels safe zone: keep text out of the bottom ~320px (UI) — sit in the
+  // "место для текста" band above it. Speaker top → just above centre.
+  const bottomPad = speakerBottom ? 360 : 1090;
   return (
     <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", padding: `0 44px ${bottomPad}px` }}>
       <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "0.24em", maxWidth: "94%", fontFamily: displayFontFamily, fontWeight: 800, fontSize: 62, lineHeight: 1.0, textTransform: "uppercase", textAlign: "center" }}>

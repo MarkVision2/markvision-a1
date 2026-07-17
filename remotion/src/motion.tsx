@@ -718,8 +718,15 @@ export const PriceTag: React.FC<MotionBaseProps & { price?: string; old?: string
 };
 
 // ── SceneBackground — opaque premium backdrop for "cover" moments ────────────
+// Continuously alive backdrop: scrolling grid + orbiting glows + a light sweep,
+// so a "cover"/split scene keeps moving the whole time (never static "silence").
 export const SceneBackground: React.FC<{ localFrame?: number; accent?: string }> = ({ localFrame = 0, accent = BRAND.accent }) => {
-  const drift = Math.sin(localFrame / 40) * 20;
+  const f = localFrame;
+  const gx = (f * 0.35) % 68;
+  const gy = (f * 0.55) % 68;
+  const ox = Math.cos(f / 55) * 60;
+  const oy = Math.sin(f / 42) * 50;
+  const sweep = ((f * 0.6) % 160) - 30; // -30..130 %
   return (
     <AbsoluteFill
       style={{
@@ -728,18 +735,23 @@ export const SceneBackground: React.FC<{ localFrame?: number; accent?: string }>
           "radial-gradient(100% 70% at 82% 92%, #10182B 0%, rgba(10,12,20,0) 60%)",
       }}
     >
+      {/* scrolling grid */}
       <AbsoluteFill
         style={{
           backgroundImage:
             "linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px)," +
             "linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)",
           backgroundSize: "68px 68px",
-          maskImage: "radial-gradient(75% 60% at 50% 42%, black, transparent)",
-          WebkitMaskImage: "radial-gradient(75% 60% at 50% 42%, black, transparent)",
+          backgroundPosition: `${gx}px ${gy}px`,
+          maskImage: "radial-gradient(78% 62% at 50% 42%, black, transparent)",
+          WebkitMaskImage: "radial-gradient(78% 62% at 50% 42%, black, transparent)",
         }}
       />
-      <div style={{ position: "absolute", top: `${16 + drift / 20}%`, left: "14%", width: 560, height: 560, borderRadius: "50%", background: `radial-gradient(circle, ${accent}2E, transparent 70%)`, filter: "blur(24px)" }} />
-      <div style={{ position: "absolute", bottom: "10%", right: "10%", width: 480, height: 480, borderRadius: "50%", background: "radial-gradient(circle, #1E3A6633, transparent 70%)", filter: "blur(24px)" }} />
+      {/* orbiting glows */}
+      <div style={{ position: "absolute", top: `calc(14% + ${oy}px)`, left: `calc(14% + ${ox}px)`, width: 560, height: 560, borderRadius: "50%", background: `radial-gradient(circle, ${accent}30, transparent 70%)`, filter: "blur(26px)" }} />
+      <div style={{ position: "absolute", bottom: `calc(10% + ${-oy}px)`, right: `calc(10% + ${-ox}px)`, width: 480, height: 480, borderRadius: "50%", background: "radial-gradient(circle, #1E3A6636, transparent 70%)", filter: "blur(26px)" }} />
+      {/* diagonal light sweep travelling across */}
+      <div style={{ position: "absolute", top: "-20%", bottom: "-20%", left: `${sweep}%`, width: "26%", transform: "rotate(12deg)", background: `linear-gradient(90deg, transparent, ${accent}12, transparent)`, filter: "blur(8px)" }} />
     </AbsoluteFill>
   );
 };
