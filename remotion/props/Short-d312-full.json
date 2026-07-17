@@ -475,6 +475,21 @@
  "inserts": [
   {
    "type": "motion",
+   "template": "kinetic-type",
+   "from": 6,
+   "to": 40,
+   "data": {
+    "words": [
+     "IT-",
+     "ПРЕДПРИНИМАТЕЛЬ"
+    ],
+    "accentIndex": 1,
+    "accent": "#8B5CF6",
+    "icon": "rocket"
+   }
+  },
+  {
+   "type": "motion",
    "template": "checklist-reveal",
    "from": 85,
    "to": 136,
@@ -496,6 +511,37 @@
   {
    "type": "motion",
    "template": "kinetic-type",
+   "from": 172,
+   "to": 202,
+   "data": {
+    "words": [
+     "МЕНЯ ЗОВУТ",
+     "ЮРИЙ"
+    ],
+    "accentIndex": 1,
+    "accent": "#FFC53D",
+    "icon": "award"
+   }
+  },
+  {
+   "type": "motion",
+   "template": "kinetic-type",
+   "from": 229,
+   "to": 296,
+   "data": {
+    "words": [
+     "РАЗРАБОТАЛ",
+     "IT-ПРИЛОЖЕНИЯ"
+    ],
+    "accentIndex": 1,
+    "accent": "#3B82F6",
+    "icon": "apps",
+    "cover": true
+   }
+  },
+  {
+   "type": "motion",
+   "template": "kinetic-type",
    "from": 342,
    "to": 383,
    "data": {
@@ -506,6 +552,23 @@
     "accentIndex": 1,
     "accent": "#8B5CF6",
     "icon": "award"
+   }
+  },
+  {
+   "type": "motion",
+   "template": "fake-terminal",
+   "from": 389,
+   "to": 468,
+   "data": {
+    "title": "claude code",
+    "lines": [
+     "$ claude build app",
+     "→ пишу код...",
+     "→ собираю интерфейс...",
+     "✓ приложение готово"
+    ],
+    "accent": "#22D3EE",
+    "cover": true
    }
   },
   {
@@ -525,16 +588,57 @@
   {
    "type": "motion",
    "template": "kinetic-type",
-   "from": 648,
-   "to": 678,
+   "from": 629,
+   "to": 677,
    "data": {
     "words": [
-     "ВАЙБ",
+     "ВАЙБ-",
      "КОДИНГ"
     ],
     "accentIndex": 1,
     "accent": "#FF7A18",
-    "icon": "code"
+    "icon": "code",
+    "cover": true
+   }
+  },
+  {
+   "type": "motion",
+   "template": "fake-dashboard-bars",
+   "from": 693,
+   "to": 737,
+   "data": {
+    "title": "НАБИРАЕТ ХОД",
+    "bars": [
+     {
+      "label": "2023",
+      "value": 20
+     },
+     {
+      "label": "2024",
+      "value": 55
+     },
+     {
+      "label": "2025",
+      "value": 100
+     }
+    ],
+    "accent": "#38BDF8",
+    "cover": true
+   }
+  },
+  {
+   "type": "motion",
+   "template": "kinetic-type",
+   "from": 758,
+   "to": 818,
+   "data": {
+    "words": [
+     "ЖМИ",
+     "ССЫЛКУ НИЖЕ"
+    ],
+    "accentIndex": 1,
+    "accent": "#FFC53D",
+    "icon": "target"
    }
   },
   {

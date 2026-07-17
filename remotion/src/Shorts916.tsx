@@ -138,9 +138,15 @@ const InsertTop: React.FC<{ insert: ShortInsert | null; opacity: number }> = ({
   if (insert.type === "motion") {
     const meta = insert.data as { cover?: boolean; accent?: string } | undefined;
     const cover = Boolean(meta?.cover);
+    const local = frame - insert.from;
+    const dur = insert.to - insert.from;
+    // Cover scenes swipe in from the right and out to the left (transition feel).
+    const enterX = interpolate(local, [0, 8], [240, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+    const exitX = interpolate(local, [dur - 8, dur], [0, -240], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+    const tx = cover ? enterX + exitX : 0;
     return (
-      <AbsoluteFill style={{ opacity }}>
-        {cover ? <SceneBackground localFrame={frame - insert.from} accent={meta?.accent} /> : null}
+      <AbsoluteFill style={{ opacity, transform: `translateX(${tx}px)` }}>
+        {cover ? <SceneBackground localFrame={local} accent={meta?.accent} /> : null}
         <MotionInsertView
           template={insert.template}
           from={insert.from}
@@ -228,8 +234,8 @@ const Captions: React.FC<{ words: ShortWord[]; inserts: ShortInsert[] }> = ({ wo
           gap: "0.28em",
           fontFamily: displayFontFamily,
           fontWeight: 800,
-          fontSize: 64,
-          lineHeight: 1.02,
+          fontSize: 74,
+          lineHeight: 1.0,
           letterSpacing: "0.005em",
           textTransform: "uppercase",
           textAlign: "center",
@@ -246,7 +252,7 @@ const Captions: React.FC<{ words: ShortWord[]; inserts: ShortInsert[] }> = ({ wo
                 background: w.accent || isCurrent ? BRAND.accent : "transparent",
                 padding: w.accent || isCurrent ? "0 0.14em" : 0,
                 borderRadius: 10,
-                transform: w.accent ? "scale(1.06)" : "none",
+                transform: isCurrent ? "scale(1.12)" : "none",
                 transformOrigin: "center bottom",
                 overflowWrap: "anywhere",
                 boxShadow: w.accent || isCurrent ? `0 8px 30px ${BRAND.accent}55` : "none",
@@ -278,6 +284,10 @@ export const Shorts916: React.FC<ShortsProps> = ({
 }) => {
   const frame = useCurrentFrame();
   const { scale, originY } = zoomAt(frame, punchZooms);
+  // Constant slow ken-burns so the speaker shot is never static; punch zooms
+  // stack on top of it.
+  const baseZoom = 1.06 + 0.035 * Math.sin(frame / 42);
+  const finalScale = baseZoom * scale;
   const { insert: activeInsert, amount: insertAmount } = activeInsertAt(frame, inserts);
   const speakerSrc =
     previewSrc && !getRemotionEnvironment().isRendering ? previewSrc : src;
@@ -290,7 +300,7 @@ export const Shorts916: React.FC<ShortsProps> = ({
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
       <AbsoluteFill
         style={{
-          transform: `translateY(${insertAmount * (activeInsert && activeInsert.type !== "motion" ? layoutOf(activeInsert).shift : 0)}px) scale(${scale})`,
+          transform: `translateY(${insertAmount * (activeInsert && activeInsert.type !== "motion" ? layoutOf(activeInsert).shift : 0)}px) scale(${finalScale})`,
           transformOrigin: `50% ${originY}%`,
         }}
       >

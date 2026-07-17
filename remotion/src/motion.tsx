@@ -198,17 +198,18 @@ export const ChecklistReveal: React.FC<
 };
 
 // ── fake-terminal — floating glass terminal, code types out ──────────────────
-export const FakeTerminal: React.FC<MotionBaseProps & { title?: string; lines?: string[]; accent?: string }> = ({
+export const FakeTerminal: React.FC<MotionBaseProps & { title?: string; lines?: string[]; accent?: string; cover?: boolean }> = ({
   localFrame,
   title = "claude code",
   lines = ["$ ai automate --task inbox", "→ анализирую письма...", "→ пишу ответы...", "✓ готово за 4 сек"],
   accent = BRAND.accent,
+  cover = false,
 }) => {
   const { fps } = useVideoConfig();
   const card = enter(localFrame, fps, 0, 16);
   const perLine = 16;
   return (
-    <Frame top={230}>
+    <Frame top={230} center={cover}>
       <div style={{ ...glass, width: 720, padding: 0, overflow: "hidden", transform: `translateY(${(1 - card) * 40}px) scale(${0.94 + card * 0.06})`, opacity: card, fontFamily: "'SF Mono','JetBrains Mono',ui-monospace,monospace" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "18px 24px", borderBottom: `1px solid ${BRAND.glassBorder}` }}>
           {["#FF5F57", "#FEBC2E", "#28C840"].map((c) => <div key={c} style={{ width: 18, height: 18, borderRadius: "50%", background: c }} />)}
@@ -236,13 +237,13 @@ export const FakeTerminal: React.FC<MotionBaseProps & { title?: string; lines?: 
 
 // ── fake-dashboard-bars — glass card, metric bars grow ───────────────────────
 export const FakeDashboardBars: React.FC<
-  MotionBaseProps & { title?: string; bars?: { label: string; value: number }[]; accent?: string }
-> = ({ localFrame, title = "РЕЗУЛЬТАТ", bars = [{ label: "До", value: 30 }, { label: "После", value: 92 }], accent = BRAND.accent }) => {
+  MotionBaseProps & { title?: string; bars?: { label: string; value: number }[]; accent?: string; cover?: boolean }
+> = ({ localFrame, title = "РЕЗУЛЬТАТ", bars = [{ label: "До", value: 30 }, { label: "После", value: 92 }], accent = BRAND.accent, cover = false }) => {
   const { fps } = useVideoConfig();
   const card = enter(localFrame, fps, 0, 16);
   const max = Math.max(...bars.map((b) => b.value), 1);
   return (
-    <Frame>
+    <Frame center={cover}>
       <div style={{ ...glass, padding: "30px 40px", width: 720, borderLeft: `5px solid ${accent}`, transform: `translateY(${(1 - card) * 40}px)`, opacity: card }}>
         <div style={{ fontSize: 34, fontWeight: 800, letterSpacing: "0.14em", color: accent, textTransform: "uppercase", marginBottom: 24 }}>{title}</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>

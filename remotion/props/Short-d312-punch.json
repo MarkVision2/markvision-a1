@@ -220,6 +220,22 @@
   {
    "type": "motion",
    "template": "kinetic-type",
+   "from": 35,
+   "to": 102,
+   "data": {
+    "words": [
+     "РАЗРАБОТАЛ",
+     "IT-ПРИЛОЖЕНИЯ"
+    ],
+    "accentIndex": 1,
+    "accent": "#3B82F6",
+    "icon": "apps",
+    "cover": true
+   }
+  },
+  {
+   "type": "motion",
+   "template": "kinetic-type",
    "from": 148,
    "to": 188,
    "data": {
