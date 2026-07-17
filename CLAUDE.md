@@ -21,6 +21,14 @@
   «разбери очередь монтажа» = обработать все заявки.
 - **Ручной монтаж из чата**: финальный рендер публикуется командой
   `node scripts/montage-publish.mjs --project <projectId> --video out/main169.mp4 --title "…"`.
+- **Reels-видео (faceless графика под ИИ-озвучку)**: сайт (Контент-завод → «Reels-видео»)
+  кладёт заявку (сценарий/ТЗ + голос ElevenLabs + опции) в `reels_jobs`. VPS-воркер мёртв —
+  очередь разбирает Claude-сессия (команда «разбери очередь reels») по скиллу/доке
+  `docs/REELS-PIPELINE.md`: озвучка `scripts/reels-worker.mjs tts` (edge `reels-tts`,
+  ключ `ELEVENLABS_API_KEY` в секретах Supabase) → `transcribe.py` → разметка сцен
+  `work/<id>/reels.json` → `pipeline/reels.py` → рендер `ReelsExplainer` →
+  `scripts/reels-worker.mjs publish` (в `reels_usage` + Telegram). Голоса — `src/lib/elevenVoices.ts`
+  (клон «Юрий» по умолчанию).
 Обе дороги идут через edge-функцию `montage-worker` (auth: `MONTAGE_WORKER_KEY` из `.env` =
 `montage_settings.worker_key`). Тексты для публикации (описание, теги, ТГ-пост) — скилл
 **`publish-pack`** → `work/<id>/publish.md`.

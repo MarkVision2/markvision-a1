@@ -1,0 +1,565 @@
+{
+ "audioTrack": "reels/vo_ca32ac59.mp3",
+ "words": [
+  {
+   "text": "Если",
+   "from": 2,
+   "to": 14,
+   "accent": false
+  },
+  {
+   "text": "проекты",
+   "from": 14,
+   "to": 29,
+   "accent": false
+  },
+  {
+   "text": "по",
+   "from": 29,
+   "to": 34,
+   "accent": false
+  },
+  {
+   "text": "таргету",
+   "from": 34,
+   "to": 48,
+   "accent": false
+  },
+  {
+   "text": "там",
+   "from": 48,
+   "to": 53,
+   "accent": false
+  },
+  {
+   "text": "твой",
+   "from": 53,
+   "to": 60,
+   "accent": false
+  },
+  {
+   "text": "доход",
+   "from": 60,
+   "to": 74,
+   "accent": false
+  },
+  {
+   "text": "слушай",
+   "from": 74,
+   "to": 86,
+   "accent": false
+  },
+  {
+   "text": "внимательно",
+   "from": 86,
+   "to": 113,
+   "accent": false
+  },
+  {
+   "text": "Теперь",
+   "from": 113,
+   "to": 122,
+   "accent": false
+  },
+  {
+   "text": "ты",
+   "from": 122,
+   "to": 130,
+   "accent": false
+  },
+  {
+   "text": "можешь",
+   "from": 130,
+   "to": 137,
+   "accent": false
+  },
+  {
+   "text": "вести",
+   "from": 137,
+   "to": 144,
+   "accent": false
+  },
+  {
+   "text": "в",
+   "from": 144,
+   "to": 151,
+   "accent": false
+  },
+  {
+   "text": "10",
+   "from": 151,
+   "to": 158,
+   "accent": true
+  },
+  {
+   "text": "раз",
+   "from": 158,
+   "to": 166,
+   "accent": false
+  },
+  {
+   "text": "больше",
+   "from": 166,
+   "to": 175,
+   "accent": false
+  },
+  {
+   "text": "проектов",
+   "from": 175,
+   "to": 190,
+   "accent": false
+  },
+  {
+   "text": "без",
+   "from": 190,
+   "to": 199,
+   "accent": false
+  },
+  {
+   "text": "потери",
+   "from": 199,
+   "to": 211,
+   "accent": false
+  },
+  {
+   "text": "качества",
+   "from": 211,
+   "to": 242,
+   "accent": true
+  },
+  {
+   "text": "Реально",
+   "from": 250,
+   "to": 262,
+   "accent": false
+  },
+  {
+   "text": "я",
+   "from": 262,
+   "to": 266,
+   "accent": false
+  },
+  {
+   "text": "не",
+   "from": 266,
+   "to": 271,
+   "accent": false
+  },
+  {
+   "text": "шучу",
+   "from": 271,
+   "to": 286,
+   "accent": false
+  },
+  {
+   "text": "Всего",
+   "from": 286,
+   "to": 295,
+   "accent": false
+  },
+  {
+   "text": "1",
+   "from": 295,
+   "to": 305,
+   "accent": false
+  },
+  {
+   "text": "инструмент",
+   "from": 305,
+   "to": 322,
+   "accent": false
+  },
+  {
+   "text": "сам",
+   "from": 322,
+   "to": 331,
+   "accent": false
+  },
+  {
+   "text": "изучит",
+   "from": 331,
+   "to": 346,
+   "accent": false
+  },
+  {
+   "text": "рынок",
+   "from": 346,
+   "to": 360,
+   "accent": false
+  },
+  {
+   "text": "сам",
+   "from": 360,
+   "to": 365,
+   "accent": false
+  },
+  {
+   "text": "создаст",
+   "from": 365,
+   "to": 377,
+   "accent": false
+  },
+  {
+   "text": "контент",
+   "from": 377,
+   "to": 391,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 391,
+   "to": 398,
+   "accent": false
+  },
+  {
+   "text": "сам",
+   "from": 398,
+   "to": 406,
+   "accent": false
+  },
+  {
+   "text": "запустит",
+   "from": 406,
+   "to": 422,
+   "accent": false
+  },
+  {
+   "text": "рекламу",
+   "from": 422,
+   "to": 444,
+   "accent": false
+  },
+  {
+   "text": "Я",
+   "from": 451,
+   "to": 460,
+   "accent": false
+  },
+  {
+   "text": "понимаю",
+   "from": 460,
+   "to": 470,
+   "accent": false
+  },
+  {
+   "text": "возможно",
+   "from": 470,
+   "to": 482,
+   "accent": false
+  },
+  {
+   "text": "это",
+   "from": 482,
+   "to": 489,
+   "accent": false
+  },
+  {
+   "text": "звучит",
+   "from": 489,
+   "to": 499,
+   "accent": false
+  },
+  {
+   "text": "как",
+   "from": 499,
+   "to": 506,
+   "accent": false
+  },
+  {
+   "text": "магия",
+   "from": 506,
+   "to": 518,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 518,
+   "to": 523,
+   "accent": false
+  },
+  {
+   "text": "лучше",
+   "from": 523,
+   "to": 530,
+   "accent": false
+  },
+  {
+   "text": "я",
+   "from": 530,
+   "to": 535,
+   "accent": false
+  },
+  {
+   "text": "сделаю",
+   "from": 535,
+   "to": 544,
+   "accent": false
+  },
+  {
+   "text": "сам",
+   "from": 544,
+   "to": 556,
+   "accent": false
+  },
+  {
+   "text": "но",
+   "from": 556,
+   "to": 561,
+   "accent": false
+  },
+  {
+   "text": "поверь",
+   "from": 561,
+   "to": 578,
+   "accent": false
+  },
+  {
+   "text": "сейчас",
+   "from": 578,
+   "to": 583,
+   "accent": false
+  },
+  {
+   "text": "еще",
+   "from": 583,
+   "to": 592,
+   "accent": false
+  },
+  {
+   "text": "не",
+   "from": 592,
+   "to": 597,
+   "accent": false
+  },
+  {
+   "text": "поздно",
+   "from": 597,
+   "to": 607,
+   "accent": false
+  },
+  {
+   "text": "стать",
+   "from": 607,
+   "to": 616,
+   "accent": false
+  },
+  {
+   "text": "тем",
+   "from": 616,
+   "to": 631,
+   "accent": false
+  },
+  {
+   "text": "кто",
+   "from": 631,
+   "to": 633,
+   "accent": false
+  },
+  {
+   "text": "заменит",
+   "from": 633,
+   "to": 657,
+   "accent": false
+  },
+  {
+   "text": "90%",
+   "from": 657,
+   "to": 667,
+   "accent": false
+  },
+  {
+   "text": "рынка",
+   "from": 684,
+   "to": 705,
+   "accent": false
+  },
+  {
+   "text": "Выбор",
+   "from": 705,
+   "to": 717,
+   "accent": false
+  },
+  {
+   "text": "за",
+   "from": 717,
+   "to": 724,
+   "accent": false
+  },
+  {
+   "text": "тобой",
+   "from": 724,
+   "to": 741,
+   "accent": false
+  },
+  {
+   "text": "Пиши",
+   "from": 746,
+   "to": 758,
+   "accent": false
+  },
+  {
+   "text": "хаб",
+   "from": 758,
+   "to": 768,
+   "accent": false
+  },
+  {
+   "text": "в",
+   "from": 768,
+   "to": 775,
+   "accent": false
+  },
+  {
+   "text": "комментариях",
+   "from": 775,
+   "to": 789,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 789,
+   "to": 796,
+   "accent": false
+  },
+  {
+   "text": "внедряй",
+   "from": 796,
+   "to": 813,
+   "accent": false
+  },
+  {
+   "text": "готовую",
+   "from": 813,
+   "to": 828,
+   "accent": false
+  },
+  {
+   "text": "систему",
+   "from": 828,
+   "to": 847,
+   "accent": false
+  },
+  {
+   "text": "Места",
+   "from": 847,
+   "to": 864,
+   "accent": false
+  },
+  {
+   "text": "ограничены",
+   "from": 864,
+   "to": 885,
+   "accent": false
+  }
+ ],
+ "scenes": [
+  {
+   "from": 0,
+   "to": 113,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ТАРГЕТ —",
+     "ТВОЙ ДОХОД?"
+    ],
+    "accent": "#FF7A18",
+    "cover": true
+   }
+  },
+  {
+   "from": 113,
+   "to": 286,
+   "template": "number-counter",
+   "data": {
+    "value": 10,
+    "suffix": "×",
+    "label": "БОЛЬШЕ ПРОЕКТОВ · БЕЗ ПОТЕРИ КАЧЕСТВА",
+    "icon": "rocket",
+    "accent": "#22D3EE"
+   }
+  },
+  {
+   "from": 286,
+   "to": 451,
+   "template": "checklist-reveal",
+   "data": {
+    "title": "ОДИН ИНСТРУМЕНТ",
+    "items": [
+     "Изучит рынок",
+     "Создаст контент",
+     "Запустит рекламу"
+    ],
+    "icons": [
+     "target",
+     "apps",
+     "rocket"
+    ],
+    "accent": "#8B5CF6",
+    "cover": true,
+    "caption": false
+   }
+  },
+  {
+   "from": 451,
+   "to": 556,
+   "template": "kinetic-type",
+   "data": {
+    "words": [
+     "ЗВУЧИТ",
+     "КАК",
+     "МАГИЯ?"
+    ],
+    "accentIndex": 2,
+    "accent": "#FB7185",
+    "cover": true
+   }
+  },
+  {
+   "from": 556,
+   "to": 705,
+   "template": "number-counter",
+   "data": {
+    "value": 90,
+    "suffix": "%",
+    "label": "РЫНКА ТЫ ЗАМЕНИШЬ",
+    "icon": "chart",
+    "accent": "#FFC53D",
+    "cover": true,
+    "caption": false
+   }
+  },
+  {
+   "from": 705,
+   "to": 746,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ВЫБОР",
+     "ЗА ТОБОЙ"
+    ],
+    "accent": "#34D399",
+    "cover": true
+   }
+  },
+  {
+   "from": 746,
+   "to": 885,
+   "template": "arrow-flow",
+   "data": {
+    "steps": [
+     "Пиши «Хаб»",
+     "Внедряй систему",
+     "Места ограничены"
+    ],
+    "accent": "#FF7A18",
+    "cover": true,
+    "caption": false
+   }
+  }
+ ],
+ "totalDurationInFrames": 885,
+ "fps": 30,
+ "music": "reels/beat_ca32ac59.wav",
+ "musicVolume": 0.08,
+ "captions": true
+}

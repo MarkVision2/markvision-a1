@@ -1,0 +1,395 @@
+{
+ "audioTrack": "reels/vo_009fc34b.mp3",
+ "words": [
+  {
+   "text": "Тестовая",
+   "from": 2,
+   "to": 22,
+   "accent": false
+  },
+  {
+   "text": "неделя",
+   "from": 22,
+   "to": 34,
+   "accent": false
+  },
+  {
+   "text": "маркетинга",
+   "from": 34,
+   "to": 50,
+   "accent": false
+  },
+  {
+   "text": "для",
+   "from": 50,
+   "to": 58,
+   "accent": false
+  },
+  {
+   "text": "медицинских",
+   "from": 58,
+   "to": 77,
+   "accent": false
+  },
+  {
+   "text": "клиник",
+   "from": 77,
+   "to": 86,
+   "accent": false
+  },
+  {
+   "text": "всего",
+   "from": 86,
+   "to": 98,
+   "accent": false
+  },
+  {
+   "text": "за",
+   "from": 98,
+   "to": 106,
+   "accent": false
+  },
+  {
+   "text": "50 000",
+   "from": 106,
+   "to": 132,
+   "accent": true
+  },
+  {
+   "text": "тенге",
+   "from": 132,
+   "to": 158,
+   "accent": false
+  },
+  {
+   "text": "За",
+   "from": 158,
+   "to": 166,
+   "accent": false
+  },
+  {
+   "text": "7",
+   "from": 166,
+   "to": 173,
+   "accent": true
+  },
+  {
+   "text": "дней",
+   "from": 173,
+   "to": 180,
+   "accent": false
+  },
+  {
+   "text": "мы",
+   "from": 180,
+   "to": 185,
+   "accent": false
+  },
+  {
+   "text": "полностью",
+   "from": 185,
+   "to": 197,
+   "accent": false
+  },
+  {
+   "text": "погружаемся",
+   "from": 197,
+   "to": 221,
+   "accent": false
+  },
+  {
+   "text": "в",
+   "from": 221,
+   "to": 226,
+   "accent": false
+  },
+  {
+   "text": "работу",
+   "from": 226,
+   "to": 235,
+   "accent": false
+  },
+  {
+   "text": "вашей",
+   "from": 235,
+   "to": 245,
+   "accent": false
+  },
+  {
+   "text": "клиники",
+   "from": 245,
+   "to": 262,
+   "accent": false
+  },
+  {
+   "text": "анализируем",
+   "from": 262,
+   "to": 278,
+   "accent": false
+  },
+  {
+   "text": "рекламу",
+   "from": 278,
+   "to": 295,
+   "accent": false
+  },
+  {
+   "text": "конкурентов",
+   "from": 295,
+   "to": 314,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 314,
+   "to": 322,
+   "accent": false
+  },
+  {
+   "text": "путь",
+   "from": 322,
+   "to": 329,
+   "accent": false
+  },
+  {
+   "text": "пациента",
+   "from": 329,
+   "to": 396,
+   "accent": false
+  },
+  {
+   "text": "Подготавливаем",
+   "from": 358,
+   "to": 382,
+   "accent": false
+  },
+  {
+   "text": "новые",
+   "from": 382,
+   "to": 394,
+   "accent": false
+  },
+  {
+   "text": "офферы",
+   "from": 394,
+   "to": 411,
+   "accent": true
+  },
+  {
+   "text": "создаем",
+   "from": 411,
+   "to": 425,
+   "accent": false
+  },
+  {
+   "text": "рекламные",
+   "from": 425,
+   "to": 439,
+   "accent": false
+  },
+  {
+   "text": "креативы",
+   "from": 439,
+   "to": 459,
+   "accent": true
+  },
+  {
+   "text": "запускаем",
+   "from": 459,
+   "to": 473,
+   "accent": false
+  },
+  {
+   "text": "рекламу",
+   "from": 473,
+   "to": 485,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 485,
+   "to": 490,
+   "accent": false
+  },
+  {
+   "text": "настраиваем",
+   "from": 490,
+   "to": 507,
+   "accent": false
+  },
+  {
+   "text": "аналитику",
+   "from": 507,
+   "to": 526,
+   "accent": false
+  },
+  {
+   "text": "Количество",
+   "from": 526,
+   "to": 540,
+   "accent": false
+  },
+  {
+   "text": "мест",
+   "from": 540,
+   "to": 550,
+   "accent": false
+  },
+  {
+   "text": "ограничено",
+   "from": 550,
+   "to": 569,
+   "accent": false
+  },
+  {
+   "text": "Жмите",
+   "from": 569,
+   "to": 583,
+   "accent": false
+  },
+  {
+   "text": "кнопку",
+   "from": 583,
+   "to": 595,
+   "accent": false
+  },
+  {
+   "text": "подробнее",
+   "from": 595,
+   "to": 610,
+   "accent": true
+  },
+  {
+   "text": "и",
+   "from": 610,
+   "to": 617,
+   "accent": false
+  },
+  {
+   "text": "оставляйте",
+   "from": 617,
+   "to": 631,
+   "accent": false
+  },
+  {
+   "text": "заявку",
+   "from": 631,
+   "to": 659,
+   "accent": true
+  }
+ ],
+ "scenes": [
+  {
+   "from": 0,
+   "to": 158,
+   "template": "price-tag",
+   "data": {
+    "price": "50 000 ₸",
+    "label": "ТЕСТОВАЯ НЕДЕЛЯ · МЕДКЛИНИКИ",
+    "accent": "#34D399"
+   }
+  },
+  {
+   "from": 158,
+   "to": 262,
+   "template": "number-counter",
+   "data": {
+    "value": 7,
+    "suffix": " ДНЕЙ",
+    "label": "ПОЛНЫЙ ЦИКЛ МАРКЕТИНГА",
+    "icon": "clock",
+    "accent": "#22D3EE"
+   }
+  },
+  {
+   "from": 262,
+   "to": 358,
+   "template": "checklist-reveal",
+   "data": {
+    "title": "АНАЛИЗ",
+    "items": [
+     "Реклама",
+     "Конкуренты",
+     "Путь пациента"
+    ],
+    "icons": [
+     "chart",
+     "target",
+     "globe"
+    ],
+    "accent": "#8B5CF6",
+    "cover": true,
+    "caption": false
+   }
+  },
+  {
+   "from": 358,
+   "to": 459,
+   "template": "pill-row",
+   "data": {
+    "items": [
+     "Новые офферы",
+     "Рекламные креативы"
+    ],
+    "accent": "#FB7185",
+    "cover": true,
+    "caption": false
+   }
+  },
+  {
+   "from": 459,
+   "to": 526,
+   "template": "stat-grid",
+   "data": {
+    "items": [
+     {
+      "icon": "rocket",
+      "value": "Старт",
+      "label": "Реклама"
+     },
+     {
+      "icon": "chart",
+      "value": "24/7",
+      "label": "Аналитика"
+     }
+    ],
+    "accent": "#FFC53D",
+    "cover": true,
+    "caption": false
+   }
+  },
+  {
+   "from": 526,
+   "to": 569,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "МЕСТ",
+     "ОГРАНИЧЕНО"
+    ],
+    "accent": "#FF7A18",
+    "cover": true
+   }
+  },
+  {
+   "from": 569,
+   "to": 659,
+   "template": "arrow-flow",
+   "data": {
+    "steps": [
+     "Жми «Подробнее»",
+     "Оставь заявку",
+     "Тестовая неделя"
+    ],
+    "accent": "#FF7A18",
+    "cover": true,
+    "caption": false
+   }
+  }
+ ],
+ "totalDurationInFrames": 659,
+ "fps": 30,
+ "music": "reels/beat_009fc34b.wav",
+ "musicVolume": 0.08,
+ "captions": true
+}

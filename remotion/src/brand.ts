@@ -1,12 +1,16 @@
-// Brand tokens — applied from brand.config.json (brand-intake onboarding).
-// Hormozi-style vertical Reels: yellow accent on black, bold grotesque.
-// Single source of truth for colours used by captions and motion inserts.
+// Brand tokens — premium dark "AI content factory" look (refs A/B/C).
+// Overlays sit ON TOP of the speaker video: dark glass panels + a vivid accent,
+// no full-screen black plates, no speaker shift.
 export const BRAND = {
-  bg: "#0A0A0A", // near-black background
-  ink: "#0A0A0A", // dark plates
-  text: "#FFFFFF", // primary caption / label text
-  textDim: "#9A9AA2", // secondary / inactive text
-  accent: "#FFD400", // yellow accent (accent words, key numbers, bars)
-  accentInk: "#0A0A0A", // text drawn on top of the accent colour
+  bg: "#0A0C14", // deep near-black (used only for optional intro/outro)
+  text: "#FFFFFF", // primary text
+  textDim: "#AEB4C2", // secondary text
+  accent: "#FF7A18", // vivid orange accent (numbers, key words, glows)
+  accentSoft: "#FFB068", // lighter accent for gradients
+  accentInk: "#0A0C14", // text on top of the accent colour
+  // Glassmorphism panel over live footage.
+  glassBg: "rgba(12, 14, 22, 0.72)",
+  glassBorder: "rgba(255, 255, 255, 0.14)",
+  glassShadow: "0 24px 60px rgba(0,0,0,0.55)",
   fontWeight: 800 as const,
 } as const;

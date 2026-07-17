@@ -17,6 +17,7 @@ export type GenProvider = "none" | "fal";
 export interface ReelsConfig {
   voiceProvider: VoiceProvider;
   freedomVoice?: string; // голос Freedom Speech (каз/рус), если voiceProvider=freedom
+  elevenVoice?: string; // voice_id ElevenLabs (из ELEVEN_VOICES), если voiceProvider=elevenlabs
   videoMode: VideoMode;
   format?: string; // творческий формат (auto/testimonial/expert…) → template движка
   music: boolean; // подкладывать музыку

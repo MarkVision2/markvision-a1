@@ -6,6 +6,15 @@ import Header from "@/components/factory/Header";
 import { ReelsGallery } from "@/components/factory/ReelsGallery";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -15,6 +24,7 @@ import {
   type ReelsConfig,
   type VoiceProvider,
 } from "@/lib/reelsQueue";
+import { ELEVEN_VOICES, DEFAULT_ELEVEN_VOICE } from "@/lib/elevenVoices";
 
 const VOICE_OPTIONS: { id: VoiceProvider; label: string; hint: string }[] = [
   { id: "elevenlabs", label: "ElevenLabs", hint: "естественная озвучка + точные титры" },
@@ -54,6 +64,7 @@ const CreateReels = () => {
 
   const [script, setScript] = useState("");
   const [voiceProvider, setVoiceProvider] = useState<VoiceProvider>("elevenlabs");
+  const [elevenVoice, setElevenVoice] = useState<string>(DEFAULT_ELEVEN_VOICE);
   const [format, setFormat] = useState("auto");
   const [music, setMusic] = useState(true);
   const [genProvider, setGenProvider] = useState<GenProvider>("none");
@@ -73,6 +84,7 @@ const CreateReels = () => {
     setSubmitting(true);
     const config: ReelsConfig = {
       voiceProvider,
+      elevenVoice: voiceProvider === "elevenlabs" ? elevenVoice : undefined,
       videoMode: "faceless",
       format,
       music,
@@ -138,6 +150,48 @@ const CreateReels = () => {
             <p className="mt-1.5 text-[11px] text-muted-foreground">
               {VOICE_OPTIONS.find((v) => v.id === voiceProvider)?.hint}
             </p>
+
+            {/* Выбор конкретного голоса ElevenLabs (доступные по API) */}
+            {voiceProvider === "elevenlabs" && (
+              <div className="mt-3">
+                <Select value={elevenVoice} onValueChange={setElevenVoice}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Выбери голос" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ELEVEN_VOICES.some((v) => v.cloned) && (
+                      <SelectGroup>
+                        <SelectLabel>Твои голоса (клон)</SelectLabel>
+                        {ELEVEN_VOICES.filter((v) => v.cloned).map((v) => (
+                          <SelectItem key={v.id} value={v.id}>
+                            {v.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    )}
+                    <SelectGroup>
+                      <SelectLabel>Мужские</SelectLabel>
+                      {ELEVEN_VOICES.filter((v) => !v.cloned && v.gender === "male").map((v) => (
+                        <SelectItem key={v.id} value={v.id}>
+                          {v.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Женские</SelectLabel>
+                      {ELEVEN_VOICES.filter((v) => !v.cloned && v.gender === "female").map((v) => (
+                        <SelectItem key={v.id} value={v.id}>
+                          {v.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <p className="mt-1.5 text-[11px] text-muted-foreground">
+                  {ELEVEN_VOICES.find((v) => v.id === elevenVoice)?.vibe}
+                </p>
+              </div>
+            )}
           </div>
 
           {/* Формат */}

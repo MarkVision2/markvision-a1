@@ -1,0 +1,578 @@
+{
+ "src": "source_8501b3ac.mp4",
+ "previewSrc": null,
+ "fps": 30,
+ "segments": [
+  {
+   "start": 0.3,
+   "end": 31.9,
+   "startFrame": 9,
+   "endFrame": 957,
+   "tx": 0,
+   "faceY": 42.0
+  }
+ ],
+ "words": [
+  {
+   "text": "если",
+   "from": 1,
+   "accent": false,
+   "to": 10
+  },
+  {
+   "text": "ты",
+   "from": 10,
+   "accent": false,
+   "to": 15
+  },
+  {
+   "text": "живешь",
+   "from": 15,
+   "accent": false,
+   "to": 44
+  },
+  {
+   "text": "хочешь",
+   "from": 44,
+   "accent": false,
+   "to": 49
+  },
+  {
+   "text": "стать",
+   "from": 49,
+   "accent": false,
+   "to": 56
+  },
+  {
+   "text": "it-предпринимателем",
+   "from": 56,
+   "accent": true,
+   "to": 85
+  },
+  {
+   "text": "или",
+   "from": 85,
+   "accent": false,
+   "to": 97
+  },
+  {
+   "text": "научиться",
+   "from": 97,
+   "accent": false,
+   "to": 109
+  },
+  {
+   "text": "собирать",
+   "from": 109,
+   "accent": false,
+   "to": 121
+  },
+  {
+   "text": "свои",
+   "from": 121,
+   "accent": false,
+   "to": 130
+  },
+  {
+   "text": "сайты",
+   "from": 130,
+   "accent": false,
+   "to": 145
+  },
+  {
+   "text": "приложения",
+   "from": 145,
+   "accent": false,
+   "to": 157
+  },
+  {
+   "text": "и",
+   "from": 157,
+   "accent": false,
+   "to": 164
+  },
+  {
+   "text": "платформы",
+   "from": 164,
+   "accent": false,
+   "to": 181
+  },
+  {
+   "text": "то",
+   "from": 181,
+   "accent": false,
+   "to": 183
+  },
+  {
+   "text": "эта",
+   "from": 183,
+   "accent": false,
+   "to": 190
+  },
+  {
+   "text": "информация",
+   "from": 190,
+   "accent": false,
+   "to": 200
+  },
+  {
+   "text": "для",
+   "from": 200,
+   "accent": false,
+   "to": 207
+  },
+  {
+   "text": "тебя",
+   "from": 207,
+   "accent": false,
+   "to": 217
+  },
+  {
+   "text": "меня",
+   "from": 217,
+   "accent": false,
+   "to": 221
+  },
+  {
+   "text": "зовут",
+   "from": 221,
+   "accent": false,
+   "to": 229
+  },
+  {
+   "text": "юрий",
+   "from": 229,
+   "accent": false,
+   "to": 238
+  },
+  {
+   "text": "за",
+   "from": 238,
+   "accent": false,
+   "to": 243
+  },
+  {
+   "text": "последние",
+   "from": 243,
+   "accent": false,
+   "to": 253
+  },
+  {
+   "text": "полгода",
+   "from": 253,
+   "accent": false,
+   "to": 267
+  },
+  {
+   "text": "я",
+   "from": 267,
+   "accent": false,
+   "to": 274
+  },
+  {
+   "text": "разработал",
+   "from": 274,
+   "accent": false,
+   "to": 289
+  },
+  {
+   "text": "несколько",
+   "from": 289,
+   "accent": false,
+   "to": 301
+  },
+  {
+   "text": "it-приложений",
+   "from": 301,
+   "accent": true,
+   "to": 339
+  },
+  {
+   "text": "стал",
+   "from": 339,
+   "accent": false,
+   "to": 349
+  },
+  {
+   "text": "it-предпринимателем",
+   "from": 349,
+   "accent": false,
+   "to": 380
+  },
+  {
+   "text": "и",
+   "from": 380,
+   "accent": false,
+   "to": 385
+  },
+  {
+   "text": "резидентом",
+   "from": 385,
+   "accent": false,
+   "to": 401
+  },
+  {
+   "text": "astana",
+   "from": 401,
+   "accent": false,
+   "to": 413
+  },
+  {
+   "text": "hub",
+   "from": 413,
+   "accent": true,
+   "to": 425
+  },
+  {
+   "text": "на",
+   "from": 425,
+   "accent": false,
+   "to": 441
+  },
+  {
+   "text": "workshop",
+   "from": 441,
+   "accent": false,
+   "to": 458
+  },
+  {
+   "text": "я",
+   "from": 458,
+   "accent": false,
+   "to": 467
+  },
+  {
+   "text": "расскажу",
+   "from": 467,
+   "accent": false,
+   "to": 484
+  },
+  {
+   "text": "как",
+   "from": 484,
+   "accent": false,
+   "to": 489
+  },
+  {
+   "text": "я",
+   "from": 489,
+   "accent": false,
+   "to": 494
+  },
+  {
+   "text": "собрал",
+   "from": 494,
+   "accent": false,
+   "to": 510
+  },
+  {
+   "text": "приложение",
+   "from": 510,
+   "accent": false,
+   "to": 530
+  },
+  {
+   "text": "заработал",
+   "from": 530,
+   "accent": false,
+   "to": 542
+  },
+  {
+   "text": "на",
+   "from": 542,
+   "accent": false,
+   "to": 549
+  },
+  {
+   "text": "этом",
+   "from": 549,
+   "accent": false,
+   "to": 554
+  },
+  {
+   "text": "больше",
+   "from": 554,
+   "accent": false,
+   "to": 597
+  },
+  {
+   "text": "и",
+   "from": 597,
+   "accent": false,
+   "to": 623
+  },
+  {
+   "text": "как",
+   "from": 623,
+   "accent": false,
+   "to": 633
+  },
+  {
+   "text": "погрузиться",
+   "from": 633,
+   "accent": false,
+   "to": 650
+  },
+  {
+   "text": "в",
+   "from": 650,
+   "accent": false,
+   "to": 657
+  },
+  {
+   "text": "тему",
+   "from": 657,
+   "accent": false,
+   "to": 664
+  },
+  {
+   "text": "и",
+   "from": 664,
+   "accent": false,
+   "to": 669
+  },
+  {
+   "text": "в",
+   "from": 669,
+   "accent": false,
+   "to": 674
+  },
+  {
+   "text": "новую",
+   "from": 674,
+   "accent": false,
+   "to": 681
+  },
+  {
+   "text": "профессию",
+   "from": 681,
+   "accent": false,
+   "to": 693
+  },
+  {
+   "text": "вайб-кодинга",
+   "from": 693,
+   "accent": true,
+   "to": 722
+  },
+  {
+   "text": "которая",
+   "from": 722,
+   "accent": false,
+   "to": 729
+  },
+  {
+   "text": "сейчас",
+   "from": 729,
+   "accent": false,
+   "to": 736
+  },
+  {
+   "text": "только",
+   "from": 736,
+   "accent": false,
+   "to": 743
+  },
+  {
+   "text": "набирает",
+   "from": 743,
+   "accent": false,
+   "to": 755
+  },
+  {
+   "text": "популярность",
+   "from": 755,
+   "accent": false,
+   "to": 782
+  },
+  {
+   "text": "для",
+   "from": 782,
+   "accent": false,
+   "to": 789
+  },
+  {
+   "text": "того",
+   "from": 789,
+   "accent": false,
+   "to": 794
+  },
+  {
+   "text": "чтобы",
+   "from": 794,
+   "accent": false,
+   "to": 801
+  },
+  {
+   "text": "оставить",
+   "from": 801,
+   "accent": false,
+   "to": 813
+  },
+  {
+   "text": "заявку",
+   "from": 813,
+   "accent": false,
+   "to": 827
+  },
+  {
+   "text": "переходи",
+   "from": 827,
+   "accent": false,
+   "to": 839
+  },
+  {
+   "text": "по",
+   "from": 839,
+   "accent": false,
+   "to": 844
+  },
+  {
+   "text": "ссылке",
+   "from": 844,
+   "accent": false,
+   "to": 851
+  },
+  {
+   "text": "ниже",
+   "from": 851,
+   "accent": false,
+   "to": 863
+  },
+  {
+   "text": "регистрируйся",
+   "from": 863,
+   "accent": false,
+   "to": 889
+  },
+  {
+   "text": "количество",
+   "from": 889,
+   "accent": false,
+   "to": 904
+  },
+  {
+   "text": "мест",
+   "from": 904,
+   "accent": false,
+   "to": 913
+  },
+  {
+   "text": "ограничено",
+   "from": 913,
+   "accent": true,
+   "to": 925
+  }
+ ],
+ "punchZooms": [
+  {
+   "from": 52,
+   "originY": 44.9
+  },
+  {
+   "from": 297,
+   "originY": 43.3
+  },
+  {
+   "from": 409,
+   "originY": 43.3
+  },
+  {
+   "from": 578,
+   "originY": 43.8
+  },
+  {
+   "from": 689,
+   "originY": 43.9
+  },
+  {
+   "from": 909,
+   "originY": 42.1
+  }
+ ],
+ "inserts": [
+  {
+   "type": "motion",
+   "template": "checklist-reveal",
+   "from": 130,
+   "to": 181,
+   "data": {
+    "title": "",
+    "items": [
+     "Сайты",
+     "Приложения",
+     "Платформы"
+    ],
+    "icons": [
+     "globe",
+     "apps",
+     "layers"
+    ],
+    "accent": "#22D3EE"
+   }
+  },
+  {
+   "type": "motion",
+   "template": "kinetic-type",
+   "from": 385,
+   "to": 425,
+   "data": {
+    "words": [
+     "РЕЗИДЕНТ",
+     "ASTANA HUB"
+    ],
+    "accentIndex": 1,
+    "accent": "#8B5CF6",
+    "icon": "award"
+   }
+  },
+  {
+   "type": "motion",
+   "template": "number-counter",
+   "from": 554,
+   "to": 597,
+   "data": {
+    "value": 5,
+    "suffix": "млн ₸",
+    "label": "ЗАРАБОТАЛ",
+    "accent": "#34D399",
+    "icon": "coin",
+    "cover": true
+   }
+  },
+  {
+   "type": "motion",
+   "template": "kinetic-type",
+   "from": 693,
+   "to": 723,
+   "data": {
+    "words": [
+     "ВАЙБ",
+     "КОДИНГ"
+    ],
+    "accentIndex": 1,
+    "accent": "#FF7A18",
+    "icon": "code"
+   }
+  },
+  {
+   "type": "motion",
+   "template": "kinetic-type",
+   "from": 889,
+   "to": 944,
+   "data": {
+    "words": [
+     "МЕСТА",
+     "ОГРАНИЧЕНЫ"
+    ],
+    "accentIndex": 1,
+    "accent": "#FB7185",
+    "icon": "fire",
+    "cover": true
+   }
+  }
+ ],
+ "audioTrack": "audio_Short-8501b3ac.wav",
+ "totalDurationInFrames": 948,
+ "videoW": 1080
+}

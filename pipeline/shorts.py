@@ -37,6 +37,15 @@ def probe_frames(path: Path, fps: float) -> int:
     return int(round(float(dur) * fps))
 
 
+def probe_dims(path: Path):
+    out = subprocess.check_output(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", str(path)],
+        text=True).strip()
+    w, h = out.split("x")[:2]
+    return int(w), int(h)
+
+
 def face_center(faces, t):
     best = min((f for f in faces if f.get("found")),
                key=lambda f: abs(f["t"] - t), default=None)
@@ -56,6 +65,14 @@ def build(work: Path, props_dir: Path, draft: bool):
     shorts = data["shorts"]
     media = data.get("media", "source")  # base media name in public/ (remakes use their own)
     preview = (props_dir.parent / "public" / f"{media}_preview.mp4").exists()
+
+    # Source aspect → width when scaled to fill canvas height. A 16:9 landscape
+    # source is cropped to vertical (video_w 3413); a natively vertical 9:16
+    # source fills the 1080-wide canvas exactly (video_w 1080), tx clamped to 0.
+    src_path = props_dir.parent / "public" / f"{media}.mp4"
+    sw, sh_dim = probe_dims(src_path) if src_path.exists() else (16, 9)
+    video_w = round(CANVAS_H * sw / sh_dim)
+    tx_min = CANVAS_W - video_w
 
     for sh in shorts:
         spans = sh["spans"]
@@ -89,7 +106,7 @@ def build(work: Path, props_dir: Path, draft: bool):
         segments = []
         for a, b in spans:
             fx, fy = face_center(faces, (a + b) / 2)
-            tx = max(TX_MIN, min(0, round(CANVAS_W / 2 - fx * VIDEO_W)))
+            tx = max(tx_min, min(0, round(CANVAS_W / 2 - fx * video_w)))
             segments.append({
                 "start": a, "end": b,
                 "startFrame": round(a * fps), "endFrame": round(b * fps),
@@ -133,6 +150,20 @@ def build(work: Path, props_dir: Path, draft: bool):
                     continue
                 f0 = round(out_t(w0["start"]) * fps)
                 f1 = round(out_t(min(w1["end"], span[1])) * fps)
+                # Code-based motion-graphics insert (no file) — see remotion/src/motion.tsx
+                if it.get("template"):
+                    f1 = max(f1, f0 + 30)              # motion needs room to animate (>=1s)
+                    ev = {
+                        "type": "motion",
+                        "template": it["template"],
+                        "from": f0, "to": min(f1, total),
+                    }
+                    if it.get("data"):
+                        ev["data"] = it["data"]
+                    if it.get("layout"):
+                        ev["layout"] = it["layout"]
+                    insert_events.append(ev)
+                    continue
                 is_video = it["file"].lower().endswith((".mp4", ".mov", ".webm"))
                 if is_video:                           # cap to the clip's own length
                     p = public / "inserts" / it["file"]
@@ -162,6 +193,8 @@ def build(work: Path, props_dir: Path, draft: bool):
             "inserts": insert_events,
             "audioTrack": None,
             "totalDurationInFrames": total,
+            "videoW": video_w,
+            "captionStyle": sh.get("captionStyle", "pill"),
         }
         out = props_dir / f"{sh['id']}.json"
         out.parent.mkdir(parents=True, exist_ok=True)
