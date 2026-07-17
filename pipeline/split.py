@@ -85,6 +85,7 @@ def build(work: Path, props_dir: Path, media: str, screen: str | None):
         "speaker": speaker,
         "splits": splits,
         "totalDurationInFrames": total,
+        "music": cfg.get("music"),
     }
     out = props_dir / f"{cfg['id']}.json"
     out.parent.mkdir(parents=True, exist_ok=True)

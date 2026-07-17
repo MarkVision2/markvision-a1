@@ -41,6 +41,8 @@ export type SplitProps = {
   speaker: "top" | "bottom";
   splits: SplitEvent[];
   totalDurationInFrames: number;
+  music?: string | null;
+  musicVolume?: number;
 };
 
 const CANVAS_H = 1920;
@@ -123,7 +125,7 @@ const Captions: React.FC<{ words: ShortWord[]; seamY: number }> = ({ words, seam
   );
 };
 
-export const Split5050: React.FC<SplitProps> = ({ src, previewSrc, speakerStartFrame, words, audioTrack, screen, speaker, splits }) => {
+export const Split5050: React.FC<SplitProps> = ({ src, previewSrc, speakerStartFrame, words, audioTrack, screen, speaker, splits, music = null, musicVolume = 0.14 }) => {
   const frame = useCurrentFrame();
   const active = splits.find((s) => frame >= s.from && frame < s.to) ?? null;
   // 0..1 how open the split is (slide the screen half in/out)
@@ -156,6 +158,7 @@ export const Split5050: React.FC<SplitProps> = ({ src, previewSrc, speakerStartF
       <Captions words={words} seamY={seamY} />
 
       {audioTrack ? <Audio src={staticFile(audioTrack)} /> : null}
+      {music ? <Audio src={staticFile(music)} volume={musicVolume} /> : null}
     </AbsoluteFill>
   );
 };
