@@ -373,6 +373,73 @@ export const VsCompare: React.FC<
   );
 };
 
+// ── stat-grid — a row of icon + big-number tiles (multiple stats/benefits) ───
+export const StatGrid: React.FC<
+  MotionBaseProps & { items?: { icon?: string; value: string; label: string }[]; accent?: string; cover?: boolean }
+> = ({ localFrame, items = [{ value: "10x", label: "Быстрее" }, { value: "0₽", label: "Дизайнер" }], accent = BRAND.accent, cover = false }) => {
+  const { fps } = useVideoConfig();
+  return (
+    <Frame center={cover}>
+      <div style={{ display: "flex", gap: 24, flexWrap: "wrap", justifyContent: "center", maxWidth: 940 }}>
+        {items.map((it, i) => {
+          const s = enter(localFrame, fps, i * 6, 16);
+          return (
+            <div key={i} style={{ ...glass, padding: "26px 32px", minWidth: 250, textAlign: "center", transform: `translateY(${(1 - s) * 30}px) scale(${0.9 + s * 0.1})`, opacity: s }}>
+              {it.icon ? <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}><IconTile name={it.icon} accent={accent} s={s} /></div> : null}
+              <div style={{ fontSize: 84, fontWeight: 900, color: accent, lineHeight: 1, textShadow: `0 0 30px ${accent}55` }}>{it.value}</div>
+              <div style={{ fontSize: 32, fontWeight: 800, color: BRAND.textDim, textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 4 }}>{it.label}</div>
+            </div>
+          );
+        })}
+      </div>
+    </Frame>
+  );
+};
+
+// ── timeline-steps — numbered steps (process / "как это работает") ────────────
+export const TimelineSteps: React.FC<MotionBaseProps & { steps?: string[]; accent?: string; cover?: boolean }> = ({
+  localFrame,
+  steps = ["Диктуешь идею", "ИИ пишет код", "Готовый ролик"],
+  accent = BRAND.accent,
+  cover = false,
+}) => {
+  const { fps } = useVideoConfig();
+  return (
+    <Frame center={cover}>
+      <div style={{ ...glass, padding: "34px 42px", minWidth: 660 }}>
+        {steps.map((st, i) => {
+          const s = enter(localFrame, fps, i * 8, 16);
+          return (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 22, marginTop: i ? 26 : 0, opacity: s, transform: `translateX(${(1 - s) * 26}px)` }}>
+              <div style={{ width: 62, height: 62, borderRadius: "50%", background: accent, color: BRAND.accentInk, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34, fontWeight: 900, boxShadow: `0 0 22px ${accent}55`, flexShrink: 0 }}>{i + 1}</div>
+              <span style={{ fontSize: 46, fontWeight: 800, color: BRAND.text }}>{st}</span>
+            </div>
+          );
+        })}
+      </div>
+    </Frame>
+  );
+};
+
+// ── quote-card — a big quoted statement (hook / key claim) ────────────────────
+export const QuoteCard: React.FC<MotionBaseProps & { text?: string; accent?: string; cover?: boolean }> = ({
+  localFrame,
+  text = "",
+  accent = BRAND.accent,
+  cover = false,
+}) => {
+  const { fps } = useVideoConfig();
+  const s = enter(localFrame, fps, 0, 16);
+  return (
+    <Frame center={cover}>
+      <div style={{ ...glass, padding: "38px 48px", maxWidth: 840, borderLeft: `6px solid ${accent}`, transform: `translateY(${(1 - s) * 40}px)`, opacity: s }}>
+        <div style={{ fontSize: 90, fontWeight: 900, color: accent, lineHeight: 0.5, marginBottom: 10 }}>“</div>
+        <div style={{ fontSize: 54, fontWeight: 800, color: BRAND.text, lineHeight: 1.12, textTransform: "uppercase" }}>{text}</div>
+      </div>
+    </Frame>
+  );
+};
+
 // ── SceneBackground — opaque premium backdrop for "cover" moments ────────────
 export const SceneBackground: React.FC<{ localFrame?: number; accent?: string }> = ({ localFrame = 0, accent = BRAND.accent }) => {
   const drift = Math.sin(localFrame / 40) * 20;
@@ -411,6 +478,9 @@ export const MOTION_TEMPLATES: Record<string, React.FC<any>> = {
   "kinetic-type": KineticType,
   "annotate-arrow-highlight": AnnotateArrowHighlight,
   "loading-to-done": LoadingToDone,
+  "stat-grid": StatGrid,
+  "timeline-steps": TimelineSteps,
+  "quote-card": QuoteCard,
 };
 
 export const MotionInsertView: React.FC<{
