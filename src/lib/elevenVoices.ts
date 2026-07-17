@@ -13,9 +13,14 @@ export interface ElevenVoice {
   label: string; // подпись в UI (рус.)
   gender: "male" | "female";
   vibe: string; // короткая характеристика тембра/подачи
+  cloned?: boolean; // клон твоего голоса (аккаунтный) — не premade
 }
 
 export const ELEVEN_VOICES: ElevenVoice[] = [
+  // — Твои голоса (клоны в аккаунте) — лучший выбор для русской озвучки —
+  { id: "cVZnQMhhdT61ndLV3YEK", name: "Юрий Катаева", label: "Юрий — твой голос (клон)", gender: "male", vibe: "твой клонированный голос, русский — родная подача бренда", cloned: true },
+  { id: "B2rcpdU3qbTVXFEoJRhT", name: "Юрий Катаева", label: "Юрий — твой голос (клон 2)", gender: "male", vibe: "второй вариант твоего клона — сравни, какой звучит лучше", cloned: true },
+
   // — Мужские: уверенные, для оффера/эксперта —
   { id: "onwK4e9ZLuTAKqWW03F9", name: "Daniel", label: "Daniel — уверенный, ведущий", gender: "male", vibe: "глубокий, авторитетный — под экспертный/новостной тон" },
   { id: "nPczCjzI2devNBz1zQrb", name: "Brian", label: "Brian — глубокий, солидный", gender: "male", vibe: "низкий и спокойный — доверие, премиум" },
@@ -31,7 +36,7 @@ export const ELEVEN_VOICES: ElevenVoice[] = [
   { id: "XrExE9yKIg1WjnnlVkGX", name: "Matilda", label: "Matilda — тёплая, дружелюбная", gender: "female", vibe: "лёгкая, живая подача" },
 ];
 
-export const DEFAULT_ELEVEN_VOICE = ELEVEN_VOICES[0].id; // Daniel
+export const DEFAULT_ELEVEN_VOICE = ELEVEN_VOICES[0].id; // Юрий (твой клон)
 
 export function elevenVoiceById(id: string | undefined): ElevenVoice | undefined {
   if (!id) return undefined;

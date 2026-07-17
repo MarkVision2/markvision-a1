@@ -159,9 +159,19 @@ const CreateReels = () => {
                     <SelectValue placeholder="Выбери голос" />
                   </SelectTrigger>
                   <SelectContent>
+                    {ELEVEN_VOICES.some((v) => v.cloned) && (
+                      <SelectGroup>
+                        <SelectLabel>Твои голоса (клон)</SelectLabel>
+                        {ELEVEN_VOICES.filter((v) => v.cloned).map((v) => (
+                          <SelectItem key={v.id} value={v.id}>
+                            {v.label}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    )}
                     <SelectGroup>
                       <SelectLabel>Мужские</SelectLabel>
-                      {ELEVEN_VOICES.filter((v) => v.gender === "male").map((v) => (
+                      {ELEVEN_VOICES.filter((v) => !v.cloned && v.gender === "male").map((v) => (
                         <SelectItem key={v.id} value={v.id}>
                           {v.label}
                         </SelectItem>
@@ -169,7 +179,7 @@ const CreateReels = () => {
                     </SelectGroup>
                     <SelectGroup>
                       <SelectLabel>Женские</SelectLabel>
-                      {ELEVEN_VOICES.filter((v) => v.gender === "female").map((v) => (
+                      {ELEVEN_VOICES.filter((v) => !v.cloned && v.gender === "female").map((v) => (
                         <SelectItem key={v.id} value={v.id}>
                           {v.label}
                         </SelectItem>

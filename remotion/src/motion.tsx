@@ -173,12 +173,12 @@ export const NumberCounter: React.FC<
 
 // ── checklist-reveal — glass card, icon tiles tick in one by one ─────────────
 export const ChecklistReveal: React.FC<
-  MotionBaseProps & { title?: string; items?: string[]; icons?: string[]; accent?: string }
-> = ({ localFrame, title = "", items = ["Пункт один", "Пункт два", "Пункт три"], icons = [], accent = BRAND.accent }) => {
+  MotionBaseProps & { title?: string; items?: string[]; icons?: string[]; accent?: string; cover?: boolean }
+> = ({ localFrame, title = "", items = ["Пункт один", "Пункт два", "Пункт три"], icons = [], accent = BRAND.accent, cover = false }) => {
   const { fps } = useVideoConfig();
   const card = enter(localFrame, fps, 0, 16);
   return (
-    <Frame>
+    <Frame center={cover}>
       <div style={{ ...glass, padding: "30px 40px", minWidth: 620, borderLeft: `5px solid ${accent}`, transform: `translateY(${(1 - card) * 40}px)`, opacity: card }}>
         {title ? <div style={{ fontSize: 34, fontWeight: 800, letterSpacing: "0.14em", color: accent, textTransform: "uppercase", marginBottom: 22 }}>{title}</div> : null}
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
