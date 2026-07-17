@@ -10,7 +10,7 @@ import {
   useCurrentFrame,
 } from "remotion";
 import { Audio, Video } from "@remotion/media";
-import { brandFontFamily } from "./fonts";
+import { displayFontFamily } from "./fonts";
 import { BRAND } from "./brand";
 import { MotionInsertView } from "./motion";
 
@@ -130,8 +130,24 @@ const InsertTop: React.FC<{ insert: ShortInsert | null; opacity: number }> = ({
   opacity,
 }) => {
   if (!insert) return null;
+
+  // Motion inserts overlay the WHOLE canvas on a transparent layer (glass cards
+  // in the upper zone) — no black band, no speaker shift.
+  if (insert.type === "motion") {
+    return (
+      <AbsoluteFill style={{ opacity }}>
+        <MotionInsertView
+          template={insert.template}
+          from={insert.from}
+          to={insert.to}
+          data={insert.data}
+        />
+      </AbsoluteFill>
+    );
+  }
+
+  // File inserts (image/video) sit in a top band on a dark plate.
   const dur = insert.to - insert.from;
-  const isMotion = insert.type === "motion";
   return (
     <div
       style={{
@@ -142,19 +158,10 @@ const InsertTop: React.FC<{ insert: ShortInsert | null; opacity: number }> = ({
         height: layoutOf(insert).height,
         overflow: "hidden",
         opacity,
-        // motion templates paint their own background (opaque or transparent
-        // for annotate overlays); file inserts sit on a dark plate.
-        backgroundColor: isMotion ? "transparent" : "#17171A",
+        backgroundColor: "#17171A",
       }}
     >
-      {insert.type === "motion" ? (
-        <MotionInsertView
-          template={insert.template}
-          from={insert.from}
-          to={insert.to}
-          data={insert.data}
-        />
-      ) : insert.type === "video" ? (
+      {insert.type === "video" ? (
         <Video
           src={staticFile(insert.file)}
           trimBefore={0}
@@ -169,7 +176,7 @@ const InsertTop: React.FC<{ insert: ShortInsert | null; opacity: number }> = ({
           style={{ width: "100%", height: "100%", objectFit: "cover" }}
         />
       )}
-      {insert.type !== "motion" && insert.coverBox ? (
+      {insert.coverBox ? (
         <div
           style={{
             position: "absolute",
@@ -208,30 +215,41 @@ const Captions: React.FC<{ words: ShortWord[] }> = ({ words }) => {
           flexWrap: "wrap",
           justifyContent: "center",
           alignItems: "flex-end",
-          gap: "0.26em",
-          fontFamily: brandFontFamily,
-          fontSize: 58,
-          lineHeight: 1.04,
-          letterSpacing: "0.01em",
+          gap: "0.28em",
+          fontFamily: displayFontFamily,
+          fontWeight: 800,
+          fontSize: 64,
+          lineHeight: 1.02,
+          letterSpacing: "0.005em",
           textTransform: "uppercase",
           textAlign: "center",
           maxWidth: "100%",
         }}
       >
-        {chunk.map((w, k) => (
-          <span
-            key={start + k}
-            style={{
-              color: w.accent ? SCARLET : PAPER,
-              transform: w.accent ? "scale(1.14)" : "none",
-              transformOrigin: "center bottom",
-              overflowWrap: "anywhere",
-              textShadow: "0 6px 30px rgba(0,0,0,0.7), 0 2px 6px rgba(0,0,0,0.6)",
-            }}
-          >
-            {w.text}
-          </span>
-        ))}
+        {chunk.map((w, k) => {
+          const isCurrent = start + k === ci; // the word being spoken right now
+          return (
+            <span
+              key={start + k}
+              style={{
+                color: w.accent || isCurrent ? BRAND.accentInk : PAPER,
+                background: w.accent || isCurrent ? BRAND.accent : "transparent",
+                padding: w.accent || isCurrent ? "0 0.14em" : 0,
+                borderRadius: 10,
+                transform: w.accent ? "scale(1.06)" : "none",
+                transformOrigin: "center bottom",
+                overflowWrap: "anywhere",
+                boxShadow: w.accent || isCurrent ? `0 8px 30px ${BRAND.accent}55` : "none",
+                textShadow:
+                  w.accent || isCurrent
+                    ? "none"
+                    : "0 4px 22px rgba(0,0,0,0.85), 0 2px 5px rgba(0,0,0,0.8)",
+              }}
+            >
+              {w.text}
+            </span>
+          );
+        })}
       </div>
     </AbsoluteFill>
   );
@@ -262,7 +280,7 @@ export const Shorts916: React.FC<ShortsProps> = ({
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
       <AbsoluteFill
         style={{
-          transform: `translateY(${insertAmount * (activeInsert ? layoutOf(activeInsert).shift : 0)}px) scale(${scale})`,
+          transform: `translateY(${insertAmount * (activeInsert && activeInsert.type !== "motion" ? layoutOf(activeInsert).shift : 0)}px) scale(${scale})`,
           transformOrigin: `50% ${originY}%`,
         }}
       >

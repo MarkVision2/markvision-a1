@@ -6,223 +6,173 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { brandFontFamily } from "./fonts";
+import { displayFontFamily } from "./fonts";
 import { BRAND } from "./brand";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Code-based motion-graphics b-roll (no paid image generation).
-// Each template fills its InsertTop box (100% w/h) and paints its own
-// background — opaque templates cover the speaker, "annotate" stays transparent
-// and overlays the speaker. Templates receive `localFrame` (frames since the
-// insert started) and `duration`, so animation is relative to the insert.
+// Code-based motion-graphics b-roll — premium "AI content factory" overlays.
+// Each template renders on a TRANSPARENT full-canvas layer and positions its
+// content in the UPPER zone, ON TOP of the speaker (no black bands, no shift;
+// bottom karaoke stays clear). Receives `localFrame` (frames since the insert
+// started) and `duration`.
 //
-// Insert usage (in props inserts[]):
-//   { type: "motion", template: "number-counter", from, to, layout: "full",
-//     data: { value: 10, suffix: "часов", label: "экономит в неделю" } }
+// Insert usage (props inserts[]): { type:"motion", template:"number-counter",
+//   from, to, data:{ value:5, suffix:"млн ₸", label:"ЗАРАБОТАЛ" } }
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type MotionBaseProps = { localFrame: number; duration: number };
 
-const FONT = brandFontFamily;
+// Pure springy 0→1 entrance (NOT a hook — safe to call in loops).
+const enter = (local: number, fps: number, delay = 0, damping = 18) =>
+  spring({ frame: local - delay, fps, config: { damping, mass: 0.7 }, durationInFrames: 20 });
 
-// Shared: springy 0→1 entrance, clamped.
-const enter = (local: number, fps: number, delay = 0, damping = 200) =>
-  spring({ frame: local - delay, fps, config: { damping }, durationInFrames: 22 });
-
-// Shared full-bleed opaque stage for "cover" templates.
-const Stage: React.FC<{ children: React.ReactNode; pad?: number }> = ({
-  children,
-  pad = 90,
-}) => (
+// Upper-zone frame: centres content horizontally, anchors near the top so the
+// speaker's face (lower-centre) and the bottom captions stay visible.
+const Frame: React.FC<{ children: React.ReactNode; top?: number }> = ({ children, top = 210 }) => (
   <AbsoluteFill
     style={{
-      backgroundColor: BRAND.bg,
-      fontFamily: FONT,
-      color: BRAND.text,
-      padding: pad,
-      display: "flex",
-      flexDirection: "column",
-      justifyContent: "center",
-      textTransform: "uppercase",
+      alignItems: "center",
+      justifyContent: "flex-start",
+      paddingTop: top,
+      paddingLeft: 56,
+      paddingRight: 56,
+      fontFamily: displayFontFamily,
     }}
   >
     {children}
   </AbsoluteFill>
 );
 
-// ── number-counter — a key figure rolls up ──────────────────────────────────
+const glass: React.CSSProperties = {
+  background: BRAND.glassBg,
+  border: `1px solid ${BRAND.glassBorder}`,
+  borderRadius: 30,
+  boxShadow: BRAND.glassShadow,
+  backdropFilter: "blur(20px)",
+  WebkitBackdropFilter: "blur(20px)",
+};
+
+// ── number-counter — a stat chip: key figure rolls up ────────────────────────
 export const NumberCounter: React.FC<
   MotionBaseProps & { value?: number; prefix?: string; suffix?: string; label?: string; decimals?: number }
 > = ({ localFrame, value = 100, prefix = "", suffix = "", label = "", decimals = 0 }) => {
   const { fps } = useVideoConfig();
-  const p = spring({ frame: localFrame, fps, config: { damping: 200 }, durationInFrames: 34 });
-  const shown = (value * p).toFixed(decimals);
-  const pop = enter(localFrame, fps, 6);
+  const roll = spring({ frame: localFrame, fps, config: { damping: 200 }, durationInFrames: 30 });
+  const pop = enter(localFrame, fps, 0, 14);
+  const shown = (value * roll).toFixed(decimals);
   return (
-    <Stage>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 18, transform: `scale(${0.9 + pop * 0.1})`, transformOrigin: "left" }}>
-        <span style={{ fontSize: 300, fontWeight: 800, lineHeight: 0.9, color: BRAND.accent, letterSpacing: "-0.02em" }}>
-          {prefix}
-          {shown}
-        </span>
-        {suffix ? <span style={{ fontSize: 96, fontWeight: 800 }}>{suffix}</span> : null}
+    <Frame>
+      <div style={{ ...glass, padding: "34px 48px", transform: `translateY(${(1 - pop) * 40}px) scale(${0.9 + pop * 0.1})`, opacity: pop, textAlign: "center" }}>
+        <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 12 }}>
+          <span style={{ fontSize: 168, fontWeight: 900, lineHeight: 0.9, color: BRAND.accent, letterSpacing: "-0.02em", textShadow: `0 0 40px ${BRAND.accent}66` }}>
+            {prefix}{shown}
+          </span>
+          {suffix ? <span style={{ fontSize: 68, fontWeight: 800, color: BRAND.text }}>{suffix}</span> : null}
+        </div>
+        {label ? <div style={{ marginTop: 6, fontSize: 40, fontWeight: 800, letterSpacing: "0.14em", color: BRAND.textDim, textTransform: "uppercase" }}>{label}</div> : null}
       </div>
-      {label ? (
-        <div style={{ marginTop: 30, fontSize: 74, fontWeight: 800, opacity: enter(localFrame, fps, 12) }}>{label}</div>
-      ) : null}
-    </Stage>
+    </Frame>
   );
 };
 
-// ── vs-compare — "вручную" vs "автоматизировано" split ───────────────────────
-export const VsCompare: React.FC<
-  MotionBaseProps & { leftTitle?: string; rightTitle?: string; leftItems?: string[]; rightItems?: string[] }
-> = ({
-  localFrame,
-  leftTitle = "ВРУЧНУЮ",
-  rightTitle = "С ИИ",
-  leftItems = ["Медленно", "Дорого", "Ошибки"],
-  rightItems = ["Быстро", "Дёшево", "Точно"],
-}) => {
-  const { fps } = useVideoConfig();
-  const Col: React.FC<{ title: string; items: string[]; good: boolean; base: number }> = ({ title, items, good, base }) => (
-    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 26 }}>
-      <div
-        style={{
-          fontSize: 66,
-          fontWeight: 800,
-          padding: "18px 0",
-          textAlign: "center",
-          color: good ? BRAND.accentInk : BRAND.text,
-          backgroundColor: good ? BRAND.accent : "#1C1C22",
-          borderRadius: 20,
-          opacity: enter(localFrame, fps, base),
-        }}
-      >
-        {title}
-      </div>
-      {items.map((it, i) => {
-        const o = enter(localFrame, fps, base + 6 + i * 6);
-        return (
-          <div key={i} style={{ display: "flex", alignItems: "center", gap: 20, fontSize: 52, fontWeight: 800, opacity: o, transform: `translateX(${(1 - o) * (good ? 40 : -40)}px)` }}>
-            <span style={{ fontSize: 60, color: good ? BRAND.accent : BRAND.textDim }}>{good ? "✓" : "✕"}</span>
-            <span style={{ color: good ? BRAND.text : BRAND.textDim }}>{it}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-  return (
-    <Stage>
-      <div style={{ display: "flex", gap: 60, alignItems: "flex-start" }}>
-        <Col title={leftTitle} items={leftItems} good={false} base={0} />
-        <Col title={rightTitle} items={rightItems} good base={10} />
-      </div>
-    </Stage>
-  );
-};
-
-// ── checklist-reveal — items tick in one by one ──────────────────────────────
+// ── checklist-reveal — glass card, items tick in one by one ──────────────────
 export const ChecklistReveal: React.FC<MotionBaseProps & { title?: string; items?: string[] }> = ({
   localFrame,
   title = "",
   items = ["Пункт один", "Пункт два", "Пункт три"],
 }) => {
   const { fps } = useVideoConfig();
+  const card = enter(localFrame, fps, 0, 16);
   return (
-    <Stage>
-      {title ? <div style={{ fontSize: 78, fontWeight: 800, color: BRAND.accent, marginBottom: 44 }}>{title}</div> : null}
-      <div style={{ display: "flex", flexDirection: "column", gap: 40 }}>
-        {items.map((it, i) => {
-          const s = enter(localFrame, fps, 8 + i * 12);
-          const checked = enter(localFrame, fps, 14 + i * 12);
-          return (
-            <div key={i} style={{ display: "flex", alignItems: "center", gap: 30, opacity: s, transform: `translateY(${(1 - s) * 30}px)` }}>
-              <div style={{ width: 78, height: 78, borderRadius: 18, backgroundColor: checked > 0.5 ? BRAND.accent : "#1C1C22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 54, fontWeight: 800, color: BRAND.accentInk, transform: `scale(${0.7 + checked * 0.3})` }}>
-                {checked > 0.5 ? "✓" : ""}
+    <Frame>
+      <div style={{ ...glass, padding: "30px 40px", minWidth: 620, transform: `translateY(${(1 - card) * 40}px)`, opacity: card }}>
+        {title ? <div style={{ fontSize: 34, fontWeight: 800, letterSpacing: "0.14em", color: BRAND.accent, textTransform: "uppercase", marginBottom: 22 }}>{title}</div> : null}
+        <div style={{ display: "flex", flexDirection: "column", gap: 22 }}>
+          {items.map((it, i) => {
+            const s = enter(localFrame, fps, 6 + i * 6, 18);
+            return (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 22, opacity: s, transform: `translateX(${(1 - s) * 26}px)` }}>
+                <div style={{ width: 54, height: 54, borderRadius: 14, background: BRAND.accent, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 34, fontWeight: 900, color: BRAND.accentInk, boxShadow: `0 0 24px ${BRAND.accent}55`, transform: `scale(${s})` }}>✓</div>
+                <span style={{ fontSize: 48, fontWeight: 800, color: BRAND.text }}>{it}</span>
               </div>
-              <span style={{ fontSize: 58, fontWeight: 800 }}>{it}</span>
-            </div>
-          );
-        })}
-      </div>
-    </Stage>
-  );
-};
-
-// ── fake-terminal — commands type out, then "done" ───────────────────────────
-export const FakeTerminal: React.FC<MotionBaseProps & { lines?: string[]; done?: string }> = ({
-  localFrame,
-  lines = ["$ ai automate --task inbox", "→ анализирую письма...", "→ пишу ответы...", "✓ готово за 4 секунды"],
-}) => {
-  const perLine = 18;
-  return (
-    <AbsoluteFill style={{ backgroundColor: BRAND.bg, padding: 70, justifyContent: "center", fontFamily: "'SF Mono','JetBrains Mono',ui-monospace,monospace" }}>
-      <div style={{ backgroundColor: "#111117", borderRadius: 28, border: "2px solid #26262E", padding: "40px 44px", boxShadow: "0 30px 80px rgba(0,0,0,0.6)" }}>
-        <div style={{ display: "flex", gap: 14, marginBottom: 34 }}>
-          {["#FF5F57", "#FEBC2E", "#28C840"].map((c) => (
-            <div key={c} style={{ width: 26, height: 26, borderRadius: "50%", backgroundColor: c }} />
-          ))}
+            );
+          })}
         </div>
-        {lines.map((ln, i) => {
-          const start = i * perLine;
-          const chars = Math.max(0, Math.floor((localFrame - start) * 2.2));
-          if (localFrame < start) return <div key={i} style={{ height: 68 }} />;
-          const text = ln.slice(0, chars);
-          const typing = chars < ln.length;
-          const accent = ln.startsWith("✓");
-          return (
-            <div key={i} style={{ fontSize: 46, lineHeight: 1.5, color: accent ? BRAND.accent : BRAND.text, fontWeight: 600 }}>
-              {text}
-              {typing && Math.floor(localFrame / 8) % 2 === 0 ? <span style={{ color: BRAND.accent }}>▋</span> : null}
-            </div>
-          );
-        })}
       </div>
-    </AbsoluteFill>
+    </Frame>
   );
 };
 
-// ── fake-dashboard-bars — animated metric bars grow ──────────────────────────
-export const FakeDashboardBars: React.FC<
-  MotionBaseProps & { title?: string; bars?: { label: string; value: number }[] }
-> = ({
+// ── fake-terminal — floating glass terminal, code types out ──────────────────
+export const FakeTerminal: React.FC<MotionBaseProps & { title?: string; lines?: string[] }> = ({
   localFrame,
-  title = "РЕЗУЛЬТАТ",
-  bars = [
-    { label: "До", value: 30 },
-    { label: "Через месяц", value: 72 },
-    { label: "Через 3 мес", value: 100 },
-  ],
+  title = "claude code",
+  lines = ["$ ai automate --task inbox", "→ анализирую письма...", "→ пишу ответы...", "✓ готово за 4 сек"],
 }) => {
   const { fps } = useVideoConfig();
-  const max = Math.max(...bars.map((b) => b.value), 1);
+  const card = enter(localFrame, fps, 0, 16);
+  const perLine = 16;
   return (
-    <Stage>
-      <div style={{ fontSize: 74, fontWeight: 800, color: BRAND.accent, marginBottom: 50 }}>{title}</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 46 }}>
-        {bars.map((b, i) => {
-          const g = spring({ frame: localFrame - 8 - i * 8, fps, config: { damping: 200 }, durationInFrames: 30 });
-          const w = (b.value / max) * 100 * g;
-          const last = i === bars.length - 1;
-          return (
-            <div key={i}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 44, fontWeight: 800, marginBottom: 14 }}>
-                <span style={{ color: BRAND.textDim }}>{b.label}</span>
-                <span style={{ color: last ? BRAND.accent : BRAND.text }}>{Math.round(b.value * g)}%</span>
+    <Frame top={230}>
+      <div style={{ ...glass, width: 720, padding: 0, overflow: "hidden", transform: `translateY(${(1 - card) * 40}px) scale(${0.94 + card * 0.06})`, opacity: card, fontFamily: "'SF Mono','JetBrains Mono',ui-monospace,monospace" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "18px 24px", borderBottom: `1px solid ${BRAND.glassBorder}` }}>
+          {["#FF5F57", "#FEBC2E", "#28C840"].map((c) => <div key={c} style={{ width: 18, height: 18, borderRadius: "50%", background: c }} />)}
+          <span style={{ marginLeft: 8, fontSize: 26, color: BRAND.textDim, letterSpacing: "0.06em" }}>{title}</span>
+        </div>
+        <div style={{ padding: "24px 28px" }}>
+          {lines.map((ln, i) => {
+            const start = i * perLine;
+            if (localFrame < start) return <div key={i} style={{ height: 46 }} />;
+            const chars = Math.floor((localFrame - start) * 2.4);
+            const text = ln.slice(0, chars);
+            const typing = chars < ln.length;
+            const done = ln.startsWith("✓");
+            return (
+              <div key={i} style={{ fontSize: 32, lineHeight: 1.45, color: done ? BRAND.accent : BRAND.text, fontWeight: 500 }}>
+                {text}{typing && Math.floor(localFrame / 8) % 2 === 0 ? <span style={{ color: BRAND.accent }}>▋</span> : null}
               </div>
-              <div style={{ height: 60, borderRadius: 14, backgroundColor: "#1C1C22", overflow: "hidden" }}>
-                <div style={{ height: "100%", width: `${w}%`, backgroundColor: last ? BRAND.accent : "#3A3A44", borderRadius: 14 }} />
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
-    </Stage>
+    </Frame>
   );
 };
 
-// ── kinetic-type — a punchy phrase snaps in word by word ─────────────────────
+// ── fake-dashboard-bars — glass card, metric bars grow ───────────────────────
+export const FakeDashboardBars: React.FC<
+  MotionBaseProps & { title?: string; bars?: { label: string; value: number }[] }
+> = ({ localFrame, title = "РЕЗУЛЬТАТ", bars = [{ label: "До", value: 30 }, { label: "После", value: 92 }] }) => {
+  const { fps } = useVideoConfig();
+  const card = enter(localFrame, fps, 0, 16);
+  const max = Math.max(...bars.map((b) => b.value), 1);
+  return (
+    <Frame>
+      <div style={{ ...glass, padding: "30px 40px", width: 720, transform: `translateY(${(1 - card) * 40}px)`, opacity: card }}>
+        <div style={{ fontSize: 34, fontWeight: 800, letterSpacing: "0.14em", color: BRAND.accent, textTransform: "uppercase", marginBottom: 24 }}>{title}</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 26 }}>
+          {bars.map((b, i) => {
+            const g = spring({ frame: localFrame - 8 - i * 8, fps, config: { damping: 200 }, durationInFrames: 28 });
+            const last = i === bars.length - 1;
+            return (
+              <div key={i}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 34, fontWeight: 800, marginBottom: 10 }}>
+                  <span style={{ color: BRAND.textDim }}>{b.label}</span>
+                  <span style={{ color: last ? BRAND.accent : BRAND.text }}>{Math.round(b.value * g)}%</span>
+                </div>
+                <div style={{ height: 40, borderRadius: 12, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
+                  <div style={{ height: "100%", width: `${(b.value / max) * 100 * g}%`, background: last ? BRAND.accent : "rgba(255,255,255,0.35)", borderRadius: 12, boxShadow: last ? `0 0 24px ${BRAND.accent}66` : "none" }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </Frame>
+  );
+};
+
+// ── kinetic-type — a punchy phrase stamps in word by word ────────────────────
 export const KineticType: React.FC<MotionBaseProps & { words?: string[]; accentIndex?: number }> = ({
   localFrame,
   words = ["АВТОМАТИЗИРУЙ", "ВСЁ", "СЕЙЧАС"],
@@ -230,47 +180,39 @@ export const KineticType: React.FC<MotionBaseProps & { words?: string[]; accentI
 }) => {
   const { fps } = useVideoConfig();
   return (
-    <AbsoluteFill style={{ backgroundColor: BRAND.bg, justifyContent: "center", alignItems: "center", fontFamily: FONT, textTransform: "uppercase", padding: 80 }}>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+    <Frame top={190}>
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
         {words.map((w, i) => {
-          const s = spring({ frame: localFrame - i * 7, fps, config: { damping: 14, mass: 0.6 }, durationInFrames: 20 });
+          const s = spring({ frame: localFrame - i * 6, fps, config: { damping: 13, mass: 0.6 }, durationInFrames: 18 });
           const acc = i === accentIndex;
           return (
-            <div key={i} style={{ fontSize: acc ? 168 : 128, fontWeight: 800, lineHeight: 0.95, color: acc ? BRAND.accentInk : BRAND.text, backgroundColor: acc ? BRAND.accent : "transparent", padding: acc ? "6px 30px" : 0, borderRadius: 18, transform: `scale(${s})`, opacity: interpolate(s, [0, 0.4], [0, 1], { extrapolateRight: "clamp" }) }}>
+            <div key={i} style={{ fontSize: acc ? 128 : 100, fontWeight: 900, lineHeight: 0.98, color: acc ? BRAND.accentInk : BRAND.text, background: acc ? BRAND.accent : "transparent", padding: acc ? "2px 24px" : 0, borderRadius: 16, boxShadow: acc ? `0 12px 40px ${BRAND.accent}55` : "none", textShadow: acc ? "none" : "0 6px 30px rgba(0,0,0,0.65)", transform: `scale(${s})`, opacity: interpolate(s, [0, 0.4], [0, 1], { extrapolateRight: "clamp" }) }}>
               {w}
             </div>
           );
         })}
       </div>
-    </AbsoluteFill>
+    </Frame>
   );
 };
 
-// ── annotate-arrow-highlight — transparent overlay over the speaker ──────────
-// Use layout "full"; paints nothing but the arrow + highlight ring, so the
-// speaker shows through. Point at a spot with data.x/data.y (0..1 of canvas).
+// ── annotate-arrow-highlight — transparent ring + label over the speaker ─────
 export const AnnotateArrowHighlight: React.FC<
   MotionBaseProps & { x?: number; y?: number; label?: string; ring?: boolean }
-> = ({ localFrame, x = 0.5, y = 0.4, label = "", ring = true }) => {
+> = ({ localFrame, x = 0.5, y = 0.42, label = "", ring = true }) => {
   const { fps, width, height } = useVideoConfig();
-  const s = enter(localFrame, fps, 2, 16);
+  const s = enter(localFrame, fps, 2, 15);
   const px = x * width;
   const py = y * height;
   return (
-    <AbsoluteFill style={{ fontFamily: FONT, textTransform: "uppercase" }}>
-      {ring ? (
-        <div style={{ position: "absolute", left: px - 130, top: py - 130, width: 260, height: 260, border: `10px solid ${BRAND.accent}`, borderRadius: "50%", transform: `scale(${s})`, opacity: s, boxShadow: `0 0 40px ${BRAND.accent}66` }} />
-      ) : null}
-      {label ? (
-        <div style={{ position: "absolute", left: px - 30, top: py + 150, transform: `translateY(${(1 - s) * 20}px)`, opacity: s, fontSize: 62, fontWeight: 800, color: BRAND.accentInk, backgroundColor: BRAND.accent, padding: "10px 26px", borderRadius: 14 }}>
-          {label}
-        </div>
-      ) : null}
+    <AbsoluteFill style={{ fontFamily: displayFontFamily }}>
+      {ring ? <div style={{ position: "absolute", left: px - 130, top: py - 130, width: 260, height: 260, border: `10px solid ${BRAND.accent}`, borderRadius: "50%", transform: `scale(${s})`, opacity: s, boxShadow: `0 0 40px ${BRAND.accent}66` }} /> : null}
+      {label ? <div style={{ position: "absolute", left: px - 40, top: py + 150, transform: `translateY(${(1 - s) * 20}px)`, opacity: s, fontSize: 54, fontWeight: 900, color: BRAND.accentInk, background: BRAND.accent, padding: "10px 26px", borderRadius: 14, boxShadow: `0 0 30px ${BRAND.accent}66` }}>{label}</div> : null}
     </AbsoluteFill>
   );
 };
 
-// ── loading-to-done — a progress ring fills then flips to a check ────────────
+// ── loading-to-done — compact glass ring chip ────────────────────────────────
 export const LoadingToDone: React.FC<MotionBaseProps & { label?: string; doneLabel?: string }> = ({
   localFrame,
   duration,
@@ -278,33 +220,54 @@ export const LoadingToDone: React.FC<MotionBaseProps & { label?: string; doneLab
   doneLabel = "ГОТОВО",
 }) => {
   const { fps } = useVideoConfig();
-  const fillEnd = Math.max(20, duration - 18);
+  const card = enter(localFrame, fps, 0, 16);
+  const fillEnd = Math.max(20, duration - 16);
   const prog = interpolate(localFrame, [4, fillEnd], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const done = prog >= 0.999;
-  const R = 150;
-  const C = 2 * Math.PI * R;
-  const pop = done ? enter(localFrame, fps, fillEnd - 2, 12) : 0;
+  const R = 90, C = 2 * Math.PI * 90;
   return (
-    <Stage pad={0}>
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 50 }}>
-        <div style={{ position: "relative", width: 360, height: 360, transform: `scale(${done ? 1 + pop * 0.06 : 1})` }}>
-          <svg width={360} height={360} style={{ transform: "rotate(-90deg)" }}>
-            <circle cx={180} cy={180} r={R} stroke="#1C1C22" strokeWidth={26} fill="none" />
-            <circle cx={180} cy={180} r={R} stroke={BRAND.accent} strokeWidth={26} fill="none" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - prog)} />
+    <Frame>
+      <div style={{ ...glass, padding: "28px 40px", display: "flex", alignItems: "center", gap: 28, transform: `translateY(${(1 - card) * 40}px)`, opacity: card }}>
+        <div style={{ position: "relative", width: 200, height: 200 }}>
+          <svg width={200} height={200} style={{ transform: "rotate(-90deg)" }}>
+            <circle cx={100} cy={100} r={R} stroke="rgba(255,255,255,0.12)" strokeWidth={18} fill="none" />
+            <circle cx={100} cy={100} r={R} stroke={BRAND.accent} strokeWidth={18} fill="none" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - prog)} />
           </svg>
-          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: done ? 150 : 92, fontWeight: 800, color: BRAND.accent }}>
-            {done ? "✓" : `${Math.round(prog * 100)}`}
-          </div>
+          <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: done ? 90 : 56, fontWeight: 900, color: BRAND.accent }}>{done ? "✓" : Math.round(prog * 100)}</div>
         </div>
-        <div style={{ fontSize: 70, fontWeight: 800, color: done ? BRAND.accent : BRAND.text }}>{done ? doneLabel : label}</div>
+        <div style={{ fontSize: 46, fontWeight: 800, color: done ? BRAND.accent : BRAND.text }}>{done ? doneLabel : label}</div>
       </div>
-    </Stage>
+    </Frame>
   );
 };
 
-// ── registry ────────────────────────────────────────────────────────────────
-// Keys match brand.config.json → inserts.motionTemplates and the `template`
-// field on a motion insert.
+// ── vs-compare — two compact glass columns ───────────────────────────────────
+export const VsCompare: React.FC<
+  MotionBaseProps & { leftTitle?: string; rightTitle?: string; leftItems?: string[]; rightItems?: string[] }
+> = ({ localFrame, leftTitle = "ВРУЧНУЮ", rightTitle = "С ИИ", leftItems = ["Медленно", "Дорого"], rightItems = ["Быстро", "Дёшево"] }) => {
+  const { fps } = useVideoConfig();
+  const card = enter(localFrame, fps, 0, 16);
+  const Col: React.FC<{ title: string; items: string[]; good: boolean }> = ({ title, items, good }) => (
+    <div style={{ ...glass, flex: 1, padding: "24px 28px" }}>
+      <div style={{ fontSize: 40, fontWeight: 900, textAlign: "center", marginBottom: 18, color: good ? BRAND.accent : BRAND.textDim }}>{title}</div>
+      {items.map((it, i) => (
+        <div key={i} style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 38, fontWeight: 800, marginTop: 12, color: good ? BRAND.text : BRAND.textDim }}>
+          <span style={{ color: good ? BRAND.accent : "#5A6070" }}>{good ? "✓" : "✕"}</span>{it}
+        </div>
+      ))}
+    </div>
+  );
+  return (
+    <Frame>
+      <div style={{ display: "flex", gap: 24, width: 800, transform: `translateY(${(1 - card) * 40}px)`, opacity: card }}>
+        <Col title={leftTitle} items={leftItems} good={false} />
+        <Col title={rightTitle} items={rightItems} good />
+      </div>
+    </Frame>
+  );
+};
+
+// ── registry ─────────────────────────────────────────────────────────────────
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const MOTION_TEMPLATES: Record<string, React.FC<any>> = {
   "number-counter": NumberCounter,
@@ -317,7 +280,6 @@ export const MOTION_TEMPLATES: Record<string, React.FC<any>> = {
   "loading-to-done": LoadingToDone,
 };
 
-// View wrapper: resolves the template and feeds it insert-local timing.
 export const MotionInsertView: React.FC<{
   template: string;
   from: number;

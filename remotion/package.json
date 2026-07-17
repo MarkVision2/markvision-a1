@@ -8,6 +8,8 @@
     "upgrade": "remotion upgrade"
   },
   "dependencies": {
+    "@fontsource-variable/manrope": "^5.2.8",
+    "@fontsource/montserrat": "^5.2.8",
     "@remotion/cli": "4.0.487",
     "@remotion/fonts": "^4.0.487",
     "@remotion/media": "^4.0.487",
