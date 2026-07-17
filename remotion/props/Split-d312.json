@@ -1,0 +1,438 @@
+{
+ "src": "source_d312d3ee.mp4",
+ "previewSrc": null,
+ "fps": 30,
+ "speakerStartFrame": 55,
+ "words": [
+  {
+   "text": "хочешь",
+   "from": 0,
+   "accent": false
+  },
+  {
+   "text": "стать",
+   "from": 7,
+   "accent": false
+  },
+  {
+   "text": "IT-предпринимателем",
+   "from": 12,
+   "accent": true
+  },
+  {
+   "text": "или",
+   "from": 41,
+   "accent": false
+  },
+  {
+   "text": "научиться",
+   "from": 53,
+   "accent": false
+  },
+  {
+   "text": "собирать",
+   "from": 67,
+   "accent": false
+  },
+  {
+   "text": "свои",
+   "from": 77,
+   "accent": false
+  },
+  {
+   "text": "сайты",
+   "from": 86,
+   "accent": false
+  },
+  {
+   "text": "приложения",
+   "from": 101,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 113,
+   "accent": false
+  },
+  {
+   "text": "платформы",
+   "from": 120,
+   "accent": false
+  },
+  {
+   "text": "то",
+   "from": 137,
+   "accent": false
+  },
+  {
+   "text": "эта",
+   "from": 142,
+   "accent": false
+  },
+  {
+   "text": "информация",
+   "from": 146,
+   "accent": false
+  },
+  {
+   "text": "для",
+   "from": 158,
+   "accent": false
+  },
+  {
+   "text": "тебя",
+   "from": 166,
+   "accent": false
+  },
+  {
+   "text": "Меня",
+   "from": 173,
+   "accent": false
+  },
+  {
+   "text": "зовут",
+   "from": 178,
+   "accent": false
+  },
+  {
+   "text": "Юрий",
+   "from": 185,
+   "accent": false
+  },
+  {
+   "text": "За",
+   "from": 197,
+   "accent": false
+  },
+  {
+   "text": "последние",
+   "from": 199,
+   "accent": false
+  },
+  {
+   "text": "полгода",
+   "from": 211,
+   "accent": false
+  },
+  {
+   "text": "я",
+   "from": 223,
+   "accent": false
+  },
+  {
+   "text": "разработал",
+   "from": 230,
+   "accent": false
+  },
+  {
+   "text": "несколько",
+   "from": 245,
+   "accent": false
+  },
+  {
+   "text": "IT-приложений",
+   "from": 259,
+   "accent": true
+  },
+  {
+   "text": "стал",
+   "from": 298,
+   "accent": false
+  },
+  {
+   "text": "IT-предпринимателем",
+   "from": 307,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 336,
+   "accent": false
+  },
+  {
+   "text": "резидентом",
+   "from": 343,
+   "accent": false
+  },
+  {
+   "text": "Astana Hub",
+   "from": 358,
+   "accent": true
+  },
+  {
+   "text": "На",
+   "from": 384,
+   "accent": false
+  },
+  {
+   "text": "workshop",
+   "from": 390,
+   "accent": false
+  },
+  {
+   "text": "я",
+   "from": 416,
+   "accent": false
+  },
+  {
+   "text": "расскажу",
+   "from": 423,
+   "accent": false
+  },
+  {
+   "text": "как",
+   "from": 440,
+   "accent": false
+  },
+  {
+   "text": "я",
+   "from": 443,
+   "accent": false
+  },
+  {
+   "text": "собрал",
+   "from": 450,
+   "accent": false
+  },
+  {
+   "text": "приложение",
+   "from": 469,
+   "accent": false
+  },
+  {
+   "text": "заработал",
+   "from": 488,
+   "accent": false
+  },
+  {
+   "text": "на",
+   "from": 500,
+   "accent": false
+  },
+  {
+   "text": "этом",
+   "from": 505,
+   "accent": false
+  },
+  {
+   "text": "больше",
+   "from": 512,
+   "accent": false
+  },
+  {
+   "text": "5 000 000",
+   "from": 519,
+   "accent": false
+  },
+  {
+   "text": "тенге",
+   "from": 541,
+   "accent": true
+  },
+  {
+   "text": "и",
+   "from": 553,
+   "accent": false
+  },
+  {
+   "text": "как",
+   "from": 582,
+   "accent": false
+  },
+  {
+   "text": "погрузиться",
+   "from": 589,
+   "accent": false
+  },
+  {
+   "text": "в",
+   "from": 606,
+   "accent": false
+  },
+  {
+   "text": "тему",
+   "from": 613,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 623,
+   "accent": false
+  },
+  {
+   "text": "в",
+   "from": 627,
+   "accent": false
+  },
+  {
+   "text": "новую",
+   "from": 630,
+   "accent": false
+  },
+  {
+   "text": "профессию",
+   "from": 637,
+   "accent": false
+  },
+  {
+   "text": "вайб-кодинга",
+   "from": 649,
+   "accent": true
+  },
+  {
+   "text": "которая",
+   "from": 678,
+   "accent": false
+  },
+  {
+   "text": "сейчас",
+   "from": 687,
+   "accent": false
+  },
+  {
+   "text": "только",
+   "from": 695,
+   "accent": false
+  },
+  {
+   "text": "набирает",
+   "from": 702,
+   "accent": false
+  },
+  {
+   "text": "популярность",
+   "from": 714,
+   "accent": false
+  },
+  {
+   "text": "Для",
+   "from": 738,
+   "accent": false
+  },
+  {
+   "text": "того",
+   "from": 745,
+   "accent": false
+  },
+  {
+   "text": "чтобы",
+   "from": 750,
+   "accent": false
+  },
+  {
+   "text": "оставить",
+   "from": 759,
+   "accent": false
+  },
+  {
+   "text": "заявку",
+   "from": 769,
+   "accent": false
+  },
+  {
+   "text": "переходи",
+   "from": 786,
+   "accent": false
+  },
+  {
+   "text": "по",
+   "from": 795,
+   "accent": false
+  },
+  {
+   "text": "ссылке",
+   "from": 800,
+   "accent": false
+  },
+  {
+   "text": "ниже",
+   "from": 807,
+   "accent": false
+  },
+  {
+   "text": "регистрируйся",
+   "from": 819,
+   "accent": false
+  },
+  {
+   "text": "Количество",
+   "from": 847,
+   "accent": false
+  },
+  {
+   "text": "мест",
+   "from": 861,
+   "accent": false
+  },
+  {
+   "text": "ограничено",
+   "from": 871,
+   "accent": true
+  }
+ ],
+ "audioTrack": null,
+ "screen": null,
+ "speaker": "bottom",
+ "splits": [
+  {
+   "from": 53,
+   "to": 263,
+   "template": "checklist-reveal",
+   "data": {
+    "title": "ЧТО СОБИРАЕШЬ",
+    "items": [
+     "Сайты",
+     "Приложения",
+     "Платформы"
+    ],
+    "icons": [
+     "globe",
+     "apps",
+     "layers"
+    ],
+    "accent": "#22D3EE"
+   }
+  },
+  {
+   "from": 384,
+   "to": 594,
+   "template": "fake-terminal",
+   "data": {
+    "title": "claude code",
+    "lines": [
+     "$ claude build app",
+     "→ пишу код...",
+     "→ собираю интерфейс...",
+     "✓ приложение готово",
+     "→ заработал 5 000 000 ₸"
+    ],
+    "accent": "#34D399"
+   }
+  },
+  {
+   "from": 678,
+   "to": 888,
+   "template": "fake-dashboard-bars",
+   "data": {
+    "title": "НАБИРАЕТ ХОД",
+    "bars": [
+     {
+      "label": "2023",
+      "value": 20
+     },
+     {
+      "label": "2024",
+      "value": 55
+     },
+     {
+      "label": "2025",
+      "value": 100
+     }
+    ],
+    "accent": "#38BDF8"
+   }
+  }
+ ],
+ "totalDurationInFrames": 948,
+ "music": "beat_d312.wav"
+}

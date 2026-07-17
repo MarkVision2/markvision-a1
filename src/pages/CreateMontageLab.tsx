@@ -15,7 +15,7 @@ import { toast } from "sonner";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
   cancelMontageJob, createMontageJob, fetchMontageJobs, MONTAGE_STATUS_LABEL,
-  uploadMontageSource, type MontageFormat, type MontageJob,
+  uploadMontageSource, type MontageFormat, type MontageJob, type MontageMode,
 } from "@/lib/montageJobs";
 
 // Стадии пайплайна — совпадают со скиллом montage-pipeline.
@@ -214,6 +214,14 @@ const CreateMontageLab = () => {
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Режим монтажа + второе видео (запись экрана) для 50/50
+  const [mode, setMode] = useState<MontageMode>("standard");
+  const [file2, setFile2] = useState<File | null>(null);
+  const [uploading2, setUploading2] = useState(false);
+  const [uploadPct2, setUploadPct2] = useState(0);
+  const [uploaded2, setUploaded2] = useState<{ url: string; name: string } | null>(null);
+  const file2InputRef = useRef<HTMLInputElement>(null);
+
   // локальный preview URL для видео до загрузки
   useEffect(() => {
     if (!file) { setPreviewUrl(null); return; }
@@ -269,6 +277,40 @@ const CreateMontageLab = () => {
     setUploadPct(0);
   };
 
+  // Второе видео (запись экрана) для режима 50/50
+  const handleFile2 = async (f: File | null) => {
+    if (!f) return;
+    if (!projectId) {
+      toast.error("Сначала выберите проект (клиента) вверху");
+      return;
+    }
+    if (!f.type.startsWith("video/")) {
+      toast.error("Нужен видео-файл (MP4 / MOV / WebM)");
+      return;
+    }
+    setFile2(f);
+    setUploaded2(null);
+    setUploading2(true);
+    setUploadPct2(0);
+    try {
+      const { url } = await uploadMontageSource(projectId, f, setUploadPct2);
+      setUploaded2({ url, name: f.name });
+      toast.success("Видео экрана загружено");
+    } catch (e) {
+      setFile2(null);
+      toast.error((e as Error).message);
+    } finally {
+      setUploading2(false);
+      if (file2InputRef.current) file2InputRef.current.value = "";
+    }
+  };
+
+  const clearFile2 = () => {
+    setFile2(null);
+    setUploaded2(null);
+    setUploadPct2(0);
+  };
+
   const toggleFormat = (f: MontageFormat) =>
     setFormats((prev) => {
       const next = prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f];
@@ -282,7 +324,10 @@ const CreateMontageLab = () => {
     });
   };
 
-  const canSubmit = !!projectId && !!uploaded && formats.length > 0 && !uploading && !submitting;
+  const needsSecond = mode === "5050";
+  const canSubmit =
+    !!projectId && !!uploaded && formats.length > 0 && !uploading && !submitting &&
+    (!needsSecond || (!!uploaded2 && !uploading2));
 
   const submit = async () => {
     if (!canSubmit || !uploaded) return;
@@ -295,8 +340,12 @@ const CreateMontageLab = () => {
         shortsCount,
         brief,
         notifyTelegram,
+        mode,
+        source2Url: uploaded2?.url ?? null,
+        source2Name: uploaded2?.name ?? null,
       });
       clearFile();
+      clearFile2();
       setBrief("");
       toast.success("Заявка в очереди — монтаж начнётся автоматически");
       void queryClient.invalidateQueries({ queryKey: ["montage-jobs", projectId] });
@@ -443,10 +492,99 @@ const CreateMontageLab = () => {
               )}
             </section>
 
-            {/* Шаг 2. Форматы */}
+            {/* Режим монтажа */}
             <section className="rounded-2xl border border-border/60 bg-card/30 p-4 sm:p-5">
               <div className="mb-3 flex items-center gap-2">
                 <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">2</span>
+                <h2 className="text-sm font-semibold">Режим монтажа</h2>
+              </div>
+
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setMode("standard")}
+                  aria-pressed={mode === "standard"}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl border-2 p-3 text-left transition",
+                    mode === "standard" ? "border-primary bg-primary/5" : "border-border/60 hover:border-primary/40",
+                  )}
+                >
+                  <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-md border-2 transition", mode === "standard" ? "border-primary bg-primary/10" : "border-border/60")}>
+                    <MonitorPlay className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <div className="text-sm font-semibold">Стандарт</div>
+                      {mode === "standard" && <CheckCircle2 className="h-3.5 w-3.5 text-primary" />}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Ты на весь экран + вставки и моушн</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setMode("5050")}
+                  aria-pressed={mode === "5050"}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl border-2 p-3 text-left transition",
+                    mode === "5050" ? "border-primary bg-primary/5" : "border-border/60 hover:border-primary/40",
+                  )}
+                >
+                  <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-md border-2 transition", mode === "5050" ? "border-primary bg-primary/10" : "border-border/60")}>
+                    <Smartphone className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <div className="text-sm font-semibold">Монтаж 50/50</div>
+                      {mode === "5050" && <CheckCircle2 className="h-3.5 w-3.5 text-primary" />}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Ты снизу + запись экрана сверху в моментах показа</div>
+                  </div>
+                </button>
+              </div>
+
+              {mode === "5050" && (
+                <div className="mt-3 rounded-xl border-2 border-dashed border-border/60 p-3">
+                  <div className="mb-2 text-xs font-medium text-muted-foreground">Второе видео — запись экрана</div>
+                  <input
+                    ref={file2InputRef}
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
+                    onChange={(e) => void handleFile2(e.target.files?.[0] ?? null)}
+                  />
+                  {!uploaded2 && !uploading2 && (
+                    <button
+                      type="button"
+                      onClick={() => file2InputRef.current?.click()}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-border/60 bg-card/40 px-3 py-3 text-sm font-medium transition hover:border-primary/40"
+                    >
+                      <Upload className="h-4 w-4" /> Загрузить запись экрана
+                    </button>
+                  )}
+                  {uploading2 && (
+                    <div className="text-xs text-muted-foreground">
+                      Загрузка… {uploadPct2}%
+                      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-border/60">
+                        <div className="h-full bg-primary transition-all" style={{ width: `${uploadPct2}%` }} />
+                      </div>
+                    </div>
+                  )}
+                  {uploaded2 && (
+                    <div className="flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-sm">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
+                      <span className="min-w-0 flex-1 truncate">{uploaded2.name}</span>
+                      <button type="button" onClick={clearFile2} className="text-muted-foreground hover:text-foreground"><X className="h-4 w-4" /></button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+
+            {/* Шаг 3. Форматы */}
+            <section className="rounded-2xl border border-border/60 bg-card/30 p-4 sm:p-5">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">3</span>
                 <h2 className="text-sm font-semibold">Что смонтировать</h2>
               </div>
 
@@ -532,7 +670,7 @@ const CreateMontageLab = () => {
             <section className="rounded-2xl border border-border/60 bg-card/30 p-4 sm:p-5">
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">3</span>
+                  <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">4</span>
                   <h2 className="text-sm font-semibold">Пожелания к монтажу</h2>
                 </div>
                 <span className="text-[11px] text-muted-foreground">Необязательно</span>
@@ -564,7 +702,7 @@ const CreateMontageLab = () => {
             {/* Шаг 4. Доставка */}
             <section className="rounded-2xl border border-border/60 bg-card/30 p-4 sm:p-5">
               <div className="mb-3 flex items-center gap-2">
-                <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">4</span>
+                <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">5</span>
                 <h2 className="text-sm font-semibold">Доставка результата</h2>
               </div>
 
