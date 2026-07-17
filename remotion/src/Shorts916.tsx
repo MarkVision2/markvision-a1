@@ -136,10 +136,11 @@ const InsertTop: React.FC<{ insert: ShortInsert | null; opacity: number }> = ({
   // in the upper zone) — no black band, no speaker shift. When data.cover is set,
   // an opaque premium backdrop replaces the speaker and the info is shown big.
   if (insert.type === "motion") {
-    const cover = Boolean((insert.data as { cover?: boolean } | undefined)?.cover);
+    const meta = insert.data as { cover?: boolean; accent?: string } | undefined;
+    const cover = Boolean(meta?.cover);
     return (
       <AbsoluteFill style={{ opacity }}>
-        {cover ? <SceneBackground localFrame={frame - insert.from} /> : null}
+        {cover ? <SceneBackground localFrame={frame - insert.from} accent={meta?.accent} /> : null}
         <MotionInsertView
           template={insert.template}
           from={insert.from}
