@@ -1,6 +1,6 @@
 import React from "react";
-import { AbsoluteFill, interpolate, staticFile, useCurrentFrame } from "remotion";
-import { Audio } from "@remotion/media";
+import { AbsoluteFill, Img, interpolate, staticFile, useCurrentFrame } from "remotion";
+import { Audio, Video } from "@remotion/media";
 import { displayFontFamily } from "./fonts";
 import { BRAND } from "./brand";
 import { MOTION_TEMPLATES, SceneBackground } from "./motion";
@@ -18,6 +18,11 @@ export type ReelsScene = {
   from: number;
   to: number;
   template: string;
+  // Живой б-ролл на весь кадр (по смыслу фразы). image → ИИ-картинка + ken-burns;
+  // clip → короткий ИИ-видеоклип (для хуков). Поверх — титры и опционально карточка.
+  image?: string;
+  clip?: string;
+  clipFrom?: number;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data?: Record<string, any>;
 };
@@ -75,6 +80,30 @@ const Particles: React.FC<{ frame: number; accent: string }> = ({ frame, accent 
           />
         );
       })}
+    </AbsoluteFill>
+  );
+};
+
+// Живой б-ролл на весь кадр: ИИ-картинка (ken-burns — медленный зум+пан) или
+// короткий видеоклип. Сверху — тёмные градиенты (сверху для читаемости UI,
+// снизу под титры) + акцентная виньетка, чтобы кадр «сидел» в бренде.
+const BrollMedia: React.FC<{ scene: ReelsScene; localFrame: number; duration: number; accent: string }> = ({ scene, localFrame, duration, accent }) => {
+  const p = duration > 1 ? localFrame / duration : 0;
+  // ken-burns: плавный зум 1.12→1.24 + лёгкий диагональный пан
+  const scale = 1.12 + p * 0.12;
+  const tx = interpolate(p, [0, 1], [-14, 14]);
+  const ty = interpolate(p, [0, 1], [10, -10]);
+  const kb: React.CSSProperties = { width: "100%", height: "100%", objectFit: "cover", transform: `scale(${scale}) translate(${tx}px, ${ty}px)` };
+  return (
+    <AbsoluteFill style={{ backgroundColor: BRAND.bg, overflow: "hidden" }}>
+      {scene.clip ? (
+        <Video src={staticFile(scene.clip)} trimBefore={scene.clipFrom ?? 0} muted style={kb} />
+      ) : scene.image ? (
+        <Img src={staticFile(scene.image)} style={kb} />
+      ) : null}
+      {/* градиенты: сверху лёгкий, снизу плотный под титры + акцентная виньетка */}
+      <AbsoluteFill style={{ background: "linear-gradient(180deg, rgba(10,12,20,0.55) 0%, rgba(10,12,20,0) 22%, rgba(10,12,20,0) 55%, rgba(10,12,20,0.82) 100%)" }} />
+      <AbsoluteFill style={{ boxShadow: `inset 0 0 340px 40px ${accent}22, inset 0 0 200px 0 rgba(0,0,0,0.5)` }} />
     </AbsoluteFill>
   );
 };
@@ -159,6 +188,14 @@ export const ReelsExplainer: React.FC<ReelsExplainerProps> = ({
   return (
     <AbsoluteFill style={{ backgroundColor: BRAND.bg }}>
       <SceneBackground localFrame={frame} accent={accent} />
+
+      {/* живой б-ролл на весь кадр (если у сцены есть image/clip) — крестфейд */}
+      {active && (active.image || active.clip) ? (
+        <AbsoluteFill style={{ opacity: inAmt * (1 - outAmt * 0.7) }}>
+          <BrollMedia scene={active} localFrame={localFrame} duration={dur} accent={accent} />
+        </AbsoluteFill>
+      ) : null}
+
       <Particles frame={frame} accent={accent} />
 
       {/* top progress line */}

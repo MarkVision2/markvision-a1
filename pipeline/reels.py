@@ -62,12 +62,20 @@ def build(work: Path, props_dir: Path, audio_dur: float):
         data = dict(s.get("data") or {})
         if "caption" not in data and not cap_default:
             data["caption"] = False
-        scenes.append({
+        ev = {
             "from": round(w0["start"] * FPS),
             "to": round(min(w1["end"], audio_dur) * FPS),
-            "template": s["template"],
+            "template": s.get("template", "captions"),
             "data": data,
-        })
+        }
+        # живой б-ролл на весь кадр (по смыслу): ИИ-картинка или видеоклип
+        if s.get("image"):
+            ev["image"] = f"reels/{s['image']}" if "/" not in s["image"] else s["image"]
+        if s.get("clip"):
+            ev["clip"] = f"reels/{s['clip']}" if "/" not in s["clip"] else s["clip"]
+        if s.get("clipFrom") is not None:
+            ev["clipFrom"] = s["clipFrom"]
+        scenes.append(ev)
     scenes.sort(key=lambda e: e["from"])
     # стыкуем встык: конец сцены = начало следующей; последняя тянется до конца аудио
     for i in range(len(scenes)):
