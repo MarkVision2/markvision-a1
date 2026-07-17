@@ -660,5 +660,6 @@
  ],
  "audioTrack": "audio_Short-d312-full.wav",
  "totalDurationInFrames": 887,
- "videoW": 1080
+ "videoW": 1080,
+ "captionStyle": "mixed"
 }

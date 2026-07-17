@@ -194,6 +194,7 @@ def build(work: Path, props_dir: Path, draft: bool):
             "audioTrack": None,
             "totalDurationInFrames": total,
             "videoW": video_w,
+            "captionStyle": sh.get("captionStyle", "pill"),
         }
         out = props_dir / f"{sh['id']}.json"
         out.parent.mkdir(parents=True, exist_ok=True)

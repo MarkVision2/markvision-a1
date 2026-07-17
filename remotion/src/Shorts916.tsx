@@ -60,9 +60,13 @@ export type ShortsProps = {
   // 16:9 landscape source cropped to vertical → 3413 (default). A natively
   // vertical 9:16 source fills the 1080-wide canvas exactly → pass 1080.
   videoW?: number;
-  // Caption look: "pill" (bottom-centre, accent pill) or "left-stack"
-  // (left-aligned, word-stacked, cream + accent, no pill).
-  captionStyle?: "pill" | "left-stack";
+  // Caption look: "pill" (bottom-centre, accent pill), "left-stack" (left,
+  // word-stacked, cream + accent, hops position) or "mixed" (alternates the two
+  // per phrase for variety).
+  captionStyle?: "pill" | "left-stack" | "mixed";
+  // Background music file in public/ (played quietly under the voice), or null.
+  music?: string | null;
+  musicVolume?: number;
 };
 
 const CANVAS_H = 1920;
@@ -222,7 +226,7 @@ const CAP_POS: React.CSSProperties[] = [
 const Captions: React.FC<{
   words: ShortWord[];
   inserts: ShortInsert[];
-  style?: "pill" | "left-stack";
+  style?: "pill" | "left-stack" | "mixed";
 }> = ({ words, inserts, style = "pill" }) => {
   const frame = useCurrentFrame();
   // A word spoken while a motion insert is on screen is carried by that overlay
@@ -253,16 +257,19 @@ const Captions: React.FC<{
     runStart--;
   }
 
+  // how many runs (phrases) have started up to now → cycles positions and,
+  // in "mixed" mode, alternates the caption style between phrases.
+  let runIndex = 0;
+  for (let i = 1; i <= ci; i++) {
+    const brk = inserts.some(
+      (ins) => ins.type === "motion" && ins.from >= vis[i - 1].from && ins.to <= vis[i].from + 1,
+    );
+    if (brk) runIndex++;
+  }
+  const eff = style === "mixed" ? (runIndex % 2 === 1 ? "left-stack" : "pill") : style;
+
   // ── left-stack (dynamic): running words that pop in and hop position per run ──
-  if (style === "left-stack") {
-    // how many runs (phrases) have started up to now → cycles the anchor position
-    let runIndex = 0;
-    for (let i = 1; i <= ci; i++) {
-      const brk = inserts.some(
-        (ins) => ins.type === "motion" && ins.from >= vis[i - 1].from && ins.to <= vis[i].from + 1,
-      );
-      if (brk) runIndex++;
-    }
+  if (eff === "left-stack") {
     const pos = CAP_POS[runIndex % CAP_POS.length];
     const runWords = vis.slice(runStart, ci + 1).slice(-6); // current phrase, last ≤6 words
     const firstIdx = ci - runWords.length + 1;
@@ -375,6 +382,8 @@ export const Shorts916: React.FC<ShortsProps> = ({
   totalDurationInFrames,
   videoW = DEFAULT_VIDEO_W,
   captionStyle = "pill",
+  music = null,
+  musicVolume = 0.12,
 }) => {
   const frame = useCurrentFrame();
   const { scale, originY } = zoomAt(frame, punchZooms);
@@ -427,6 +436,7 @@ export const Shorts916: React.FC<ShortsProps> = ({
       <div style={{ position: "absolute", top: 0, left: 0, height: 8, width: `${progress}%`, backgroundColor: SCARLET }} />
 
       {audioTrack ? <Audio src={staticFile(audioTrack)} /> : null}
+      {music ? <Audio src={staticFile(music)} volume={musicVolume} /> : null}
     </AbsoluteFill>
   );
 };
