@@ -1,7 +1,7 @@
 {
-  "git_sha": "11b6712",
-  "git_sha_full": "11b671294c837628b15f6c41bbabdb96a45fe9e7",
-  "updated_at": "2026-07-18T11:58:02+05:00",
-  "label": "feat: add Reels project media sources",
+  "git_sha": "b25de72",
+  "git_sha_full": "b25de727418767c0a63f5f330b677101e48506e7",
+  "updated_at": "2026-07-18T13:03:17+05:00",
+  "label": "security: enable RLS on legacy worker tables",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
