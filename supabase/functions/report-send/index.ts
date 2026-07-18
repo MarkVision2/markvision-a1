@@ -13,13 +13,17 @@ Deno.serve(async (req) => {
   try {
     const auth = await requireUser(req);
     if (!auth.ok) return auth.response;
+    // Приоритет — собственный бот (TELEGRAM_BOT_TOKEN); Lovable-коннектор
+    // остался с прошлого проекта и используется, только если задан.
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     const TELEGRAM_API_KEY = Deno.env.get("TELEGRAM_API_KEY");
+    const TELEGRAM_BOT_TOKEN = Deno.env.get("TELEGRAM_BOT_TOKEN");
+    const useConnector = Boolean(LOVABLE_API_KEY && TELEGRAM_API_KEY);
 
     const body = await req.json();
     const { subscription_id, test } = body ?? {};
 
-    if (!LOVABLE_API_KEY || !TELEGRAM_API_KEY) {
+    if (!useConnector && !TELEGRAM_BOT_TOKEN) {
       return new Response(
         JSON.stringify({
           ok: false,
@@ -53,19 +57,29 @@ Deno.serve(async (req) => {
       ? `🧪 *Тестовое сообщение*\nПодписка «${sub.name}» подключена. Отчёты будут приходить в ${String(sub.send_hour).padStart(2, "0")}:00.`
       : `📊 *Отчёт «${sub.name}»*\nПериод: ${sub.period}\n\nОткройте полный отчёт в приложении.`;
 
-    const tg = await fetch(`${GATEWAY_URL}/sendMessage`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "X-Connection-Api-Key": TELEGRAM_API_KEY,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        chat_id: sub.chat_id,
-        text,
-        parse_mode: "Markdown",
-      }),
-    });
+    const tg = useConnector
+      ? await fetch(`${GATEWAY_URL}/sendMessage`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${LOVABLE_API_KEY}`,
+            "X-Connection-Api-Key": TELEGRAM_API_KEY!,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            chat_id: sub.chat_id,
+            text,
+            parse_mode: "Markdown",
+          }),
+        })
+      : await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chat_id: sub.chat_id,
+            text,
+            parse_mode: "Markdown",
+          }),
+        });
     const tgJson = await tg.json();
     if (!tg.ok) {
       return new Response(JSON.stringify({ ok: false, error: tgJson?.description ?? "Telegram error" }), {

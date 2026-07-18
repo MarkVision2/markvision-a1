@@ -14,8 +14,13 @@ Deno.serve(async (req) => {
   } catch { return new Response(JSON.stringify({error:"Unauthorized"}),{status:401,headers:{...corsHeaders,"Content-Type":"application/json"}}); }
 
   try {
+    // Lovable gateway остался на старом проекте; после миграции на szfg
+    // основной провайдер — OpenAI, Lovable используется только если ключ задан.
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+    if (!LOVABLE_API_KEY && !OPENAI_API_KEY) {
+      throw new Error("Не настроен AI-ключ (LOVABLE_API_KEY или OPENAI_API_KEY)");
+    }
 
     const body = await req.json();
     const {
@@ -46,20 +51,26 @@ AI-скоринг: ${JSON.stringify(scoring)}
       ? `Дай краткое резюме отчёта.\n${ctx}`
       : `Вопрос: ${question}\n\nДанные отчёта:\n${ctx}`;
 
-    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
+    const useLovable = Boolean(LOVABLE_API_KEY);
+    const resp = await fetch(
+      useLovable
+        ? "https://ai.gateway.lovable.dev/v1/chat/completions"
+        : "https://api.openai.com/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${useLovable ? LOVABLE_API_KEY : OPENAI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: useLovable ? "google/gemini-2.5-flash" : "gpt-4o-mini",
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content: userMsg },
+          ],
+        }),
       },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: userMsg },
-        ],
-      }),
-    });
+    );
 
     if (resp.status === 429) {
       return new Response(JSON.stringify({ error: "Превышен лимит запросов, попробуйте позже." }), {
@@ -67,7 +78,7 @@ AI-скоринг: ${JSON.stringify(scoring)}
       });
     }
     if (resp.status === 402) {
-      return new Response(JSON.stringify({ error: "Закончились кредиты Lovable AI." }), {
+      return new Response(JSON.stringify({ error: "Закончились кредиты AI-провайдера." }), {
         status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
