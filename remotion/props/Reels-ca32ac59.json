@@ -459,12 +459,13 @@
    "template": "big-statement",
    "data": {
     "lines": [
-     "ТАРГЕТ —",
-     "ТВОЙ ДОХОД?"
+     "ТАРГЕТ",
+     "= ТВОЙ ДОХОД?"
     ],
     "accent": "#FF7A18",
     "cover": true
-   }
+   },
+   "clip": "broll/ca32ac59/futuristic-technology-interface-4358802.mp4"
   },
   {
    "from": 113,
@@ -476,7 +477,8 @@
     "label": "БОЛЬШЕ ПРОЕКТОВ · БЕЗ ПОТЕРИ КАЧЕСТВА",
     "icon": "rocket",
     "accent": "#22D3EE"
-   }
+   },
+   "clip": "broll/ca32ac59/business-growth-chart-data-7687749.mp4"
   },
   {
    "from": 286,
@@ -497,7 +499,8 @@
     "accent": "#8B5CF6",
     "cover": true,
     "caption": false
-   }
+   },
+   "clip": "broll/ca32ac59/content-creation-workspace-laptop-30837847.mp4"
   },
   {
    "from": 451,
@@ -512,7 +515,8 @@
     "accentIndex": 2,
     "accent": "#FB7185",
     "cover": true
-   }
+   },
+   "clip": "broll/ca32ac59/artificial-intelligence-abstract-network-35163081.mp4"
   },
   {
    "from": 556,
@@ -526,7 +530,8 @@
     "accent": "#FFC53D",
     "cover": true,
     "caption": false
-   }
+   },
+   "clip": "broll/ca32ac59/digital-marketing-dashboard-screen-36950917.mp4"
   },
   {
    "from": 705,
@@ -539,7 +544,8 @@
     ],
     "accent": "#34D399",
     "cover": true
-   }
+   },
+   "clip": "broll/ca32ac59/team-scaling-business-office-3256768.mp4"
   },
   {
    "from": 746,
