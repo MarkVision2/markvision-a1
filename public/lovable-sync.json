@@ -1,7 +1,7 @@
 {
-  "git_sha": "a119d5b",
-  "git_sha_full": "a119d5b2186933a3f2f912b89781edd83724a12e",
-  "updated_at": "2026-07-18T14:24:21+05:00",
-  "label": "feat(analytics): insights strip, lead sources breakdown and best creatives",
+  "git_sha": "fe7d576",
+  "git_sha_full": "fe7d5767cd330e4e926d6cba009c358dcceaaf22",
+  "updated_at": "2026-07-18T14:38:50+05:00",
+  "label": "feat: turn creative funnel into decision dashboard",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
