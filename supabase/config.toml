@@ -112,7 +112,12 @@ verify_jwt = false
 [functions.montage-worker]
 verify_jwt = false
 
-# Reels TTS: озвучка ElevenLabs (VPS-воркер мёртв). Та же авторизация
+# AI-разметка для автономного VPS-воркера (delete/accents/shorts/reels).
+# Auth: x-montage-key. Секреты OPENAI_API_KEY / DEEPGRAM_API_KEY уже в Edge Secrets.
+[functions.montage-ai]
+verify_jwt = false
+
+# Reels TTS: озвучка ElevenLabs. Та же авторизация
 # x-montage-key; секрет ELEVENLABS_API_KEY в Supabase Edge Secrets.
 [functions.reels-tts]
 verify_jwt = false

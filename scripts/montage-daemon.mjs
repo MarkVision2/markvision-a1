@@ -1,0 +1,359 @@
+#!/usr/bin/env node
+/**
+ * Автономный воркер монтаж-очереди (VPS).
+ * Крутится в цикле: next → пайплайн → render → complete/fail.
+ *
+ *   node scripts/montage-daemon.mjs            # бесконечный цикл
+ *   node scripts/montage-daemon.mjs once       # одна заявка (или выход если пусто)
+ *   node scripts/montage-daemon.mjs bootstrap  # скачать ключи в .env
+ */
+import { execFileSync, spawnSync } from "node:child_process";
+import {
+  existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, unlinkSync,
+} from "node:fs";
+import { basename, dirname, extname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createWriteStream } from "node:fs";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import { createClient } from "@supabase/supabase-js";
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+process.chdir(ROOT);
+
+function loadEnv(path) {
+  if (!existsSync(path)) return {};
+  const out = {};
+  for (const line of readFileSync(path, "utf8").split("\n")) {
+    const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+    if (m) out[m[1]] = m[2].replace(/^["']|["']$/g, "");
+  }
+  return out;
+}
+function saveEnvKey(path, key, value) {
+  let text = existsSync(path) ? readFileSync(path, "utf8") : "";
+  const re = new RegExp(`^${key}=.*$`, "m");
+  const line = `${key}=${value}`;
+  text = re.test(text) ? text.replace(re, line) : `${text.trimEnd()}\n${line}\n`;
+  writeFileSync(path, text, { mode: 0o600 });
+}
+
+const env = { ...loadEnv(resolve(".env")), ...process.env };
+const SUPABASE_URL = env.VITE_SUPABASE_URL || env.VITE_CLIENT_SUPABASE_URL;
+const ANON_KEY = env.VITE_SUPABASE_PUBLISHABLE_KEY || env.VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY;
+const WORKER_KEY = env.MONTAGE_WORKER_KEY;
+const PY = resolve(".venv/bin/python");
+const CHROME = env.REMOTION_BROWSER_EXECUTABLE
+  || "/root/.cache/hyperframes/chrome/chrome-headless-shell/linux-152.0.7928.2/chrome-headless-shell-linux64/chrome-headless-shell";
+
+if (!SUPABASE_URL || !ANON_KEY || !WORKER_KEY) {
+  console.error("Нужны VITE_SUPABASE_URL, VITE_SUPABASE_PUBLISHABLE_KEY, MONTAGE_WORKER_KEY в .env");
+  process.exit(1);
+}
+
+const MW = `${SUPABASE_URL.replace(/\/+$/, "")}/functions/v1/montage-worker`;
+const AI = `${SUPABASE_URL.replace(/\/+$/, "")}/functions/v1/montage-ai`;
+
+async function call(url, body) {
+  const r = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-montage-key": WORKER_KEY,
+      apikey: ANON_KEY,
+      Authorization: `Bearer ${ANON_KEY}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
+  return j;
+}
+
+function sh(cmd, args, opts = {}) {
+  console.log(`$ ${cmd} ${args.join(" ")}`);
+  const r = spawnSync(cmd, args, {
+    stdio: "inherit",
+    env: { ...process.env, ...env },
+    ...opts,
+  });
+  if (r.status !== 0) throw new Error(`${cmd} exit ${r.status}`);
+}
+
+function py(args) {
+  if (!existsSync(PY)) throw new Error("Нет .venv — сначала bash scripts/montage-setup.sh");
+  sh(PY, args);
+}
+
+function status(id, progress, state) {
+  return call(MW, { action: "update", id, progress, ...(state ? { status: state } : {}) });
+}
+
+async function download(url, dst) {
+  mkdirSync(dirname(dst), { recursive: true });
+  const res = await fetch(url);
+  if (!res.ok || !res.body) throw new Error(`download HTTP ${res.status}: ${url}`);
+  await pipeline(Readable.fromWeb(res.body), createWriteStream(dst));
+}
+
+function makeProxy(src, mediaBase) {
+  const publicDir = resolve("remotion/public");
+  mkdirSync(publicDir, { recursive: true });
+  const dst = resolve(publicDir, `${mediaBase}.mp4`);
+  if (existsSync(dst)) {
+    console.log(`прокси уже есть: ${dst}`);
+    return dst;
+  }
+  // all-intra H.264, звук copy
+  sh("ffmpeg", [
+    "-y", "-i", src,
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-g", "1", "-bf", "0",
+    "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart",
+    dst,
+  ]);
+  return dst;
+}
+
+function probeDurationSec(path) {
+  try {
+    const out = execFileSync(
+      "ffprobe",
+      ["-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", path],
+      { encoding: "utf8" },
+    );
+    const sec = Math.round(parseFloat(out.trim()));
+    return Number.isFinite(sec) && sec > 0 ? sec : null;
+  } catch {
+    return null;
+  }
+}
+
+async function uploadRender(localPath, remoteName) {
+  const path = `montage/${Date.now()}-${remoteName.replace(/[^\w.\-]+/g, "_")}`;
+  const { token, publicUrl } = await call(MW, { action: "sign_upload", path });
+  const sb = createClient(SUPABASE_URL, ANON_KEY);
+  const { error } = await sb.storage.from("renders").uploadToSignedUrl(
+    path,
+    token,
+    readFileSync(localPath),
+    {
+      contentType: localPath.endsWith(".jpg") || localPath.endsWith(".jpeg")
+        ? "image/jpeg"
+        : "video/mp4",
+    },
+  );
+  if (error) throw new Error(`upload ${localPath}: ${error.message}`);
+  return publicUrl;
+}
+
+async function bootstrap() {
+  const keys = await call(AI, { action: "bootstrap_env" });
+  const envPath = resolve(".env");
+  for (const k of ["DEEPGRAM_API_KEY", "OPENAI_API_KEY", "ELEVENLABS_API_KEY"]) {
+    if (keys[k]) {
+      saveEnvKey(envPath, k, keys[k]);
+      console.log(`✓ ${k}`);
+    } else {
+      console.warn(`⚠ ${k} пуст в секретах Supabase`);
+    }
+  }
+  console.log("bootstrap ok");
+}
+
+async function processJob(job) {
+  const id = job.id;
+  const work = resolve("work", id);
+  mkdirSync(work, { recursive: true });
+  writeFileSync(resolve(work, "job.json"), JSON.stringify(job, null, 2));
+
+  const formats = Array.isArray(job.formats) ? job.formats : ["16:9"];
+  const wantMain = formats.includes("16:9");
+  const wantShorts = formats.includes("shorts");
+  const shortsCount = job.shorts_count || 3;
+  const brief = job.brief || "";
+  const mediaBase = `source_${id.slice(0, 8)}`;
+
+  await status(id, "скачиваем исходник");
+  const ext = (extname(new URL(job.source_url).pathname) || ".mp4").toLowerCase();
+  const raw = resolve(work, `source_raw${ext}`);
+  if (!existsSync(raw)) await download(job.source_url, raw);
+
+  await status(id, "прокси + аудио");
+  const proxy = makeProxy(raw, mediaBase);
+  const wav = resolve(work, "audio.wav");
+  if (!existsSync(wav)) {
+    sh("ffmpeg", ["-y", "-i", proxy, "-vn", "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le", wav]);
+  }
+
+  await status(id, "транскрибируем");
+  if (!existsSync(resolve(work, "words.json"))) {
+    py(["pipeline/transcribe.py", wav, work, "ru"]);
+  }
+  if (!existsSync(resolve(work, "indexed.txt"))) {
+    py(["pipeline/indexed.py", work]);
+  }
+
+  await status(id, "ищем лицо");
+  if (!existsSync(resolve(work, "faces.json"))) {
+    py(["pipeline/faces.py", proxy, resolve(work, "faces.json"), "5"]);
+  }
+
+  const indexed = readFileSync(resolve(work, "indexed.txt"), "utf8");
+  const utterances = existsSync(resolve(work, "utterances.txt"))
+    ? readFileSync(resolve(work, "utterances.txt"), "utf8")
+    : "";
+  const words = JSON.parse(readFileSync(resolve(work, "words.json"), "utf8"));
+
+  const outDir = resolve("out");
+  mkdirSync(outDir, { recursive: true });
+  const shortPaths = [];
+  let mainPath = null;
+
+  if (wantMain) {
+    await status(id, "размечаем вырезки");
+    if (!existsSync(resolve(work, "delete.json"))) {
+      const del = await call(AI, { action: "markup_delete", indexed, utterances, brief });
+      writeFileSync(resolve(work, "delete.json"), JSON.stringify(del, null, 2));
+    }
+    if (!existsSync(resolve(work, "edl.json"))) {
+      py(["pipeline/edl.py", work, wav, "30"]);
+    }
+    if (!existsSync(resolve(work, "accents.json"))) {
+      await status(id, "акцентные слова");
+      const acc = await call(AI, { action: "markup_accents", indexed, brief });
+      writeFileSync(resolve(work, "accents.json"), JSON.stringify(acc, null, 2));
+    }
+    // props.py ждёт media-имя без расширения; файл должен быть в public/
+    // Если mediaBase != source — копируем/симлинк или передаём 3-й аргумент.
+    const propsPath = resolve("remotion/props", `main169_${id.slice(0, 8)}.json`);
+    await status(id, "собираем пропсы 16:9");
+    py(["pipeline/props.py", work, propsPath, mediaBase]);
+    py(["pipeline/audio.py", propsPath]);
+
+    await status(id, "рендер 16:9", "rendering");
+    mainPath = resolve(outDir, `main169_${id.slice(0, 8)}.mp4`);
+    const browserArgs = existsSync(CHROME) ? ["--browser-executable", CHROME] : [];
+    sh("npx", [
+      "remotion", "render", "src/index.ts", "Main169", mainPath,
+      `--props=${propsPath}`,
+      "--image-format=png", "--crf=18", "--x264-preset=veryfast",
+      "--concurrency=1",
+      ...browserArgs,
+    ], { cwd: resolve("remotion") });
+  }
+
+  if (wantShorts) {
+    await status(id, "отбираем шортсы");
+    if (!existsSync(resolve(work, "shorts.json"))) {
+      const shorts = await call(AI, {
+        action: "markup_shorts",
+        indexed,
+        utterances,
+        words,
+        brief,
+        count: shortsCount,
+        media: mediaBase,
+      });
+      writeFileSync(resolve(work, "shorts.json"), JSON.stringify(shorts, null, 2));
+    }
+    await status(id, "пропсы шортсов");
+    py(["pipeline/shorts.py", work, resolve("remotion/props")]);
+
+    const shortsData = JSON.parse(readFileSync(resolve(work, "shorts.json"), "utf8"));
+    for (const shItem of shortsData.shorts || []) {
+      const propsFile = resolve("remotion/props", `${shItem.id}.json`);
+      if (!existsSync(propsFile)) {
+        console.warn(`нет props для ${shItem.id}, пропуск`);
+        continue;
+      }
+      py(["pipeline/audio.py", propsFile]);
+      await status(id, `рендер ${shItem.id}`, "rendering");
+      const out = resolve(outDir, `${shItem.id}.mp4`);
+      const browserArgs = existsSync(CHROME) ? ["--browser-executable", CHROME] : [];
+      // Переиспользуем зарегистрированную композицию Short-Example + свои props
+      sh("npx", [
+        "remotion", "render", "src/index.ts", "Short-Example", out,
+        `--props=${propsFile}`,
+        "--image-format=png", "--crf=18", "--x264-preset=veryfast",
+        "--concurrency=1",
+        ...browserArgs,
+      ], { cwd: resolve("remotion") });
+      shortPaths.push({ path: out, title: shItem.title || shItem.id });
+    }
+  }
+
+  if (!mainPath && shortPaths.length === 0) {
+    throw new Error("Нечего публиковать: ни 16:9, ни шортсов");
+  }
+
+  await status(id, "публикуем");
+  const title = (job.source_name || "Монтаж").replace(/\.[^.]+$/, "").slice(0, 80);
+  let videoUrl;
+  let primary;
+  const shorts = [];
+
+  if (mainPath) {
+    primary = mainPath;
+    videoUrl = await uploadRender(mainPath, basename(mainPath));
+    for (const s of shortPaths) {
+      shorts.push({ url: await uploadRender(s.path, basename(s.path)), title: s.title });
+    }
+  } else {
+    primary = shortPaths[0].path;
+    videoUrl = await uploadRender(primary, basename(primary));
+    for (const s of shortPaths.slice(1)) {
+      shorts.push({ url: await uploadRender(s.path, basename(s.path)), title: s.title });
+    }
+  }
+
+  const { warnings } = await call(MW, {
+    action: "complete",
+    id,
+    video_url: videoUrl,
+    title,
+    duration_sec: probeDurationSec(primary),
+    shorts,
+  });
+
+  console.log(`✓ job ${id} done`);
+  for (const w of warnings ?? []) console.warn(`⚠ ${w}`);
+}
+
+async function once() {
+  const { job } = await call(MW, { action: "next" });
+  if (!job) {
+    console.log("Очередь пуста.");
+    return false;
+  }
+  console.log(`→ job ${job.id} formats=${JSON.stringify(job.formats)} name=${job.source_name}`);
+  try {
+    await processJob(job);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("FAIL", msg);
+    try {
+      await call(MW, { action: "fail", id: job.id, error: msg.slice(0, 500) });
+    } catch (fe) {
+      console.error("fail-report error", fe);
+    }
+  }
+  return true;
+}
+
+async function loop() {
+  console.log("montage-daemon started", new Date().toISOString());
+  for (;;) {
+    try {
+      const had = await once();
+      await new Promise((r) => setTimeout(r, had ? 2_000 : 30_000));
+    } catch (e) {
+      console.error("loop error", e);
+      await new Promise((r) => setTimeout(r, 15_000));
+    }
+  }
+}
+
+const cmd = process.argv[2] || "loop";
+if (cmd === "bootstrap") await bootstrap();
+else if (cmd === "once") await once();
+else await loop();
