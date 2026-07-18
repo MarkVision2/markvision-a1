@@ -40,15 +40,37 @@ export async function decryptProviderKey(value: string): Promise<string> {
 }
 
 export async function testProviderKey(provider: ReelsProvider, apiKey: string): Promise<void> {
-  const target = provider === "pexels"
-    ? "https://api.pexels.com/v1/videos/search?query=business&orientation=portrait&per_page=1"
-    : "https://api.kie.ai/api/v1/user/credits";
-  const headers = provider === "pexels"
-    ? { Authorization: apiKey }
-    : { Authorization: `Bearer ${apiKey}` };
-  const response = await fetch(target, { headers });
+  if (provider === "pexels") {
+    const response = await fetch(
+      "https://api.pexels.com/v1/videos/search?query=business&orientation=portrait&per_page=1",
+      { headers: { Authorization: apiKey } },
+    );
+    if (!response.ok) {
+      const detail = (await response.text()).slice(0, 300);
+      throw new Error(`Pexels: ключ не принят (${response.status})${detail ? ` — ${detail}` : ""}`);
+    }
+    return;
+  }
+
+  // Kie.ai: проверка баланса. Гейт отвечает HTTP 200 даже при неверном ключе,
+  // фактический статус лежит в поле `code` тела ответа.
+  const response = await fetch("https://api.kie.ai/api/v1/chat/credit", {
+    headers: { Authorization: `Bearer ${apiKey}` },
+  });
+  const raw = (await response.text()).slice(0, 300);
   if (!response.ok) {
-    const detail = (await response.text()).slice(0, 300);
-    throw new Error(`${provider === "pexels" ? "Pexels" : "Kie.ai"}: ключ не принят (${response.status})${detail ? ` — ${detail}` : ""}`);
+    throw new Error(`Kie.ai: ключ не принят (${response.status})${raw ? ` — ${raw}` : ""}`);
+  }
+  let code = 0;
+  let msg = "";
+  try {
+    const parsed = JSON.parse(raw) as { code?: number; msg?: string };
+    code = Number(parsed.code ?? 0);
+    msg = String(parsed.msg ?? "");
+  } catch {
+    throw new Error(`Kie.ai: неожиданный ответ сервиса — ${raw}`);
+  }
+  if (code !== 200) {
+    throw new Error(`Kie.ai: ключ не принят (${code})${msg ? ` — ${msg}` : ""}`);
   }
 }
