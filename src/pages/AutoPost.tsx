@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertCircle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Film, FlaskConical,
-  Camera, Flame, Images, Instagram, ListChecks, Loader2, Pencil, Plus, RefreshCw, RotateCcw, Send, Sparkles, Trash2, Upload, X, Zap,
+  AlertCircle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, Film, Flame, Images, Instagram, ListChecks, Loader2, Plus, RefreshCw, Sparkles, Trash2, Zap,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
@@ -10,15 +9,15 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { useInstagramAccount } from "@/hooks/useInstagramAccount";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { clientConfigSupabase } from "@/integrations/clientConfig/client";
 import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseConfig";
 import { fmtNum } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { AutopostComposerDialog } from "@/components/autopost/AutopostComposerDialog";
+import { AutopostEditDialog } from "@/components/autopost/AutopostEditDialog";
+import { STATUS_META, TYPE_META, type PostType } from "@/components/autopost/constants";
 
 // Раздел «Автопостинг» — календарь + очередь публикаций Instagram (cf_scheduled_posts,
 // клиентский Supabase). Медиа → публичный бакет autopost, публикует publisher по крону
@@ -39,7 +38,6 @@ const WD_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 const WD_FROM_DOW = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
 const MONTHS = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
 
-type PostType = "IMAGE" | "REELS" | "CAROUSEL" | "STORIES";
 type ViewMode = "calendar" | "queue";
 type StatusFilter = "all" | "queued" | "processing" | "published" | "tested" | "failed";
 
@@ -57,19 +55,6 @@ interface Stats {
   best_slots: { dow: number; hour: number; posts: number; avg_reach: number }[];
 }
 
-const TYPE_META: Record<PostType, { label: string; icon: typeof Images; accept: string; multiple: boolean; hint: string }> = {
-  IMAGE: { label: "Пост", icon: Images, accept: "image/jpeg,image/png,image/webp", multiple: false, hint: "JPEG/PNG, 1:1 или 4:5." },
-  REELS: { label: "Reels", icon: Film, accept: "video/mp4,video/quicktime", multiple: false, hint: "9:16, 5–90 сек, MP4." },
-  CAROUSEL: { label: "Карусель", icon: Images, accept: "image/jpeg,image/png,image/webp,video/mp4", multiple: true, hint: "2–10 фото/видео." },
-  STORIES: { label: "Сторис", icon: Clock, accept: "image/jpeg,image/png,image/webp,video/mp4", multiple: false, hint: "9:16, фото или видео." },
-};
-const STATUS_META: Record<string, { label: string; dot: string; cls: string; icon: typeof Clock }> = {
-  queued: { label: "В очереди", dot: "bg-sky-500", cls: "bg-sky-500/10 text-sky-600", icon: Clock },
-  processing: { label: "Обрабатывается", dot: "bg-amber-500", cls: "bg-amber-500/10 text-amber-600", icon: Loader2 },
-  published: { label: "Опубликовано", dot: "bg-emerald-500", cls: "bg-emerald-500/10 text-emerald-600", icon: CheckCircle2 },
-  tested: { label: "Проверено (тест)", dot: "bg-violet-500", cls: "bg-violet-500/10 text-violet-600", icon: FlaskConical },
-  failed: { label: "Ошибка", dot: "bg-destructive", cls: "bg-destructive/10 text-destructive", icon: AlertCircle },
-};
 const STATUS_FILTERS: { key: StatusFilter; label: string }[] = [
   { key: "all", label: "Все" },
   { key: "queued", label: "В очереди" },
@@ -94,13 +79,6 @@ const timeUntil = (iso: string) => {
   if (h < 24) return m ? `через ${h} ч ${m} мин` : `через ${h} ч`;
   return `через ${Math.floor(h / 24)} дн`;
 };
-const fmtDuration = (s: number) => {
-  const total = Math.max(0, Math.floor(s));
-  const m = Math.floor(total / 60);
-  const sec = total % 60;
-  return `${m}:${String(sec).padStart(2, "0")}`;
-};
-
 function formatPublishError(raw: string | null | undefined): string {
   if (!raw) return "Неизвестная ошибка публикации";
   try {
@@ -344,7 +322,7 @@ const AutoPost = () => {
             Загружаем аккаунт Instagram…
           </div>
         ) : account ? (
-          <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-pink-500/25 bg-pink-500/5 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-4 overflow-hidden rounded-2xl border border-pink-500/20 bg-gradient-to-r from-pink-500/[0.08] via-card/80 to-primary/[0.05] px-5 py-4 shadow-sm">
             {account.profilePictureUrl ? (
               <img src={account.profilePictureUrl} alt="" className="h-12 w-12 rounded-full object-cover ring-2 ring-pink-500/40" />
             ) : (
@@ -738,17 +716,241 @@ function QueueRow({ post, busy, onEdit, onPublishNow, onDelete }: {
   );
 }
 
-// ——— Заголовок секции формы (единый стиль вместо голых полей без подписи) ———
-function SectionLabel({ icon: Icon, children, className }: { icon?: typeof Images; children: React.ReactNode; className?: string }) {
+// ——— Диалог добавления публикации ———
+function AddDialog({ day, hourReach, bestHour, projectId, hasAccount, onClose, onDone }: {
+  day: string; hourReach: Map<number, number>; bestHour: number | null; projectId: string | null; hasAccount: boolean;
+  onClose: () => void; onDone: () => void;
+}) {
+  const [type, setType] = useState<PostType>("IMAGE");
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
+  const [caption, setCaption] = useState("");
+  const [hour, setHour] = useState(12);
+  const [minute, setMinute] = useState(0);
+  const [dryRun, setDryRun] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [uploadLabel, setUploadLabel] = useState<string>();
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const [videoSrc, setVideoSrc] = useState<string | null>(null);
+  const [seek, setSeek] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const coverRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const meta = TYPE_META[type];
+
+  useEffect(() => () => { if (videoSrc) URL.revokeObjectURL(videoSrc); if (coverPreview) URL.revokeObjectURL(coverPreview); }, [videoSrc, coverPreview]);
+  useEffect(() => {
+    const urls = files.map((f) => URL.createObjectURL(f));
+    setPreviews(urls);
+    return () => { urls.forEach((u) => URL.revokeObjectURL(u)); };
+  }, [files]);
+
+  const resetTypeMedia = (t: PostType) => {
+    setType(t);
+    setFiles([]);
+    setCoverFile(null);
+    setCoverPreview((p) => { if (p) URL.revokeObjectURL(p); return null; });
+    setVideoSrc((p) => { if (p) URL.revokeObjectURL(p); return null; });
+    if (fileRef.current) fileRef.current.value = "";
+    setSeek(0);
+    setDuration(0);
+  };
+
+  const clearCover = () => { setCoverFile(null); setCoverPreview((p) => { if (p) URL.revokeObjectURL(p); return null; }); };
+  const applyCover = (fl: File) => { setCoverPreview((p) => { if (p) URL.revokeObjectURL(p); return URL.createObjectURL(fl); }); setCoverFile(fl); };
+
+  const pick = (list: FileList | null) => {
+    if (!list || list.length === 0) return;
+    const a = Array.from(list);
+    const tooBig = a.find((f) => f.size > MAX_FILE_BYTES);
+    if (tooBig) {
+      toast.error(`Файл «${tooBig.name}» слишком большой (${(tooBig.size / 1024 / 1024).toFixed(0)} МБ)`, {
+        description: `Максимум ${MAX_FILE_MB} МБ на файл.`,
+      });
+      return;
+    }
+    const next = meta.multiple ? a.slice(0, 10) : a.slice(0, 1);
+    setFiles(next);
+    clearCover();
+    setVideoSrc((prev) => { if (prev) URL.revokeObjectURL(prev); return (type === "REELS" && next[0]?.type.startsWith("video/")) ? URL.createObjectURL(next[0]) : null; });
+    setSeek(0);
+    setDuration(0);
+  };
+
+  const moveFile = (idx: number, dir: -1 | 1) => {
+    setFiles((prev) => {
+      const j = idx + dir;
+      if (j < 0 || j >= prev.length) return prev;
+      const next = [...prev];
+      [next[idx], next[j]] = [next[j], next[idx]];
+      return next;
+    });
+  };
+
+  const captureFrame = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    const cvs = document.createElement("canvas");
+    cvs.width = v.videoWidth || 720;
+    cvs.height = v.videoHeight || 1280;
+    const ctx = cvs.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(v, 0, 0, cvs.width, cvs.height);
+    cvs.toBlob((blob) => { if (blob) applyCover(new File([blob], `cover-${Date.now()}.jpg`, { type: "image/jpeg" })); }, "image/jpeg", 0.92);
+  };
+
+  const validate = (): string | null => {
+    if (files.length === 0) return "Добавьте медиа";
+    if (type === "CAROUSEL" && files.length < 2) return "Карусель: минимум 2 файла";
+    if (type === "REELS" && !isVideoFile(files[0])) return "Reels — только видео";
+    if (type === "IMAGE" && isVideoFile(files[0])) return "Пост — только фото (видео → Reels)";
+    return null;
+  };
+
+  const submit = async (now: boolean) => {
+    if (!projectId) { toast.error("Сначала выберите проект"); return; }
+    if (!hasAccount) { toast.error("Подключите Instagram к проекту", { description: "Настройки → Meta / Facebook" }); return; }
+    const err = validate();
+    if (err) { toast.error(err); return; }
+    setBusy(true);
+    try {
+      const urls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        setUploadLabel(`Загрузка ${i + 1} из ${files.length}…`);
+        const f = files[i];
+        const rawUrl = await uploadToBucket(f);
+        urls.push(isVideoFile(f) ? await normalizeVideoForInstagram(rawUrl, f.type, f.size) : rawUrl);
+      }
+      let coverUrl: string | null = null;
+      if (type === "REELS" && coverFile) {
+        setUploadLabel("Загрузка обложки…");
+        coverUrl = await uploadToBucket(coverFile);
+      }
+      setUploadLabel("Сохраняем в очередь…");
+      const payload: Record<string, unknown> = {
+        media_type: type,
+        caption: type === "STORIES" ? "" : caption,
+        scheduled_at: now ? new Date().toISOString() : buildISO(day, hour, minute),
+        dry_run: now ? false : dryRun,
+      };
+      if (type === "CAROUSEL") {
+        payload.child_urls = urls;
+        payload.thumbnail_url = urls.find((_, i) => !isVideoFile(files[i])) ?? urls[0];
+      } else {
+        payload.media_url = urls[0];
+        if (type === "REELS") {
+          if (coverUrl) { payload.cover_url = coverUrl; payload.thumbnail_url = coverUrl; }
+        } else {
+          payload.thumbnail_url = isVideoFile(files[0]) ? null : urls[0];
+        }
+      }
+      const res = await schedulerApi<{ post: QueuePost }>("create", payload, projectId);
+      if (now && res.post?.id) await schedulerApi("publish_now", { id: res.post.id }, projectId);
+      toast.success(now ? "Публикуем сейчас…" : dryRun ? "Добавлено в пробном режиме" : "Запланировано");
+      onDone();
+    } catch (e) {
+      toast.error("Не удалось", { description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setBusy(false);
+      setUploadLabel(undefined);
+    }
+  };
+
   return (
-    <div className={cn("mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground", className)}>
-      {Icon && <Icon className="h-3.5 w-3.5 shrink-0" />}
-      {children}
-    </div>
+    <AutopostComposerDialog
+      day={day}
+      dayLabel={prettyDay(day)}
+      hourReach={hourReach}
+      bestHour={bestHour}
+      hasAccount={hasAccount}
+      busy={busy}
+      uploadLabel={uploadLabel}
+      onClose={onClose}
+      onSubmitNow={() => void submit(true)}
+      onSubmitSchedule={() => void submit(false)}
+      type={type}
+      onTypeChange={resetTypeMedia}
+      files={files}
+      previews={previews}
+      onPickFiles={pick}
+      onRemoveFile={(idx) => setFiles((x) => x.filter((_, i) => i !== idx))}
+      onMoveFile={moveFile}
+      caption={caption}
+      onCaptionChange={setCaption}
+      hour={hour}
+      minute={minute}
+      onHourChange={setHour}
+      onMinuteChange={setMinute}
+      dryRun={dryRun}
+      onDryRunChange={setDryRun}
+      videoSrc={videoSrc}
+      coverPreview={coverPreview}
+      seek={seek}
+      duration={duration}
+      onSeekChange={setSeek}
+      onDurationChange={setDuration}
+      onCaptureFrame={captureFrame}
+      onPickCover={applyCover}
+      onClearCover={clearCover}
+      videoRef={videoRef}
+      fileInputRef={fileRef}
+      coverInputRef={coverRef}
+    />
   );
 }
 
-// ——— Теплокарта день × час ———
+// ——— Диалог просмотра/редактирования ———
+function EditDialog({ post, projectId, onClose, onDone }: { post: QueuePost; projectId: string | null; onClose: () => void; onDone: () => void }) {
+  const editable = post.status === "queued" || post.status === "failed" || post.status === "tested";
+  const alm = new Date(new Date(post.scheduled_at).toLocaleString("en-US", { timeZone: "Asia/Almaty" }));
+  const [caption, setCaption] = useState(post.caption ?? "");
+  const [ymd, setYmd] = useState(almatyYmd(post.scheduled_at));
+  const [hour, setHour] = useState(alm.getHours());
+  const [minute, setMinute] = useState(alm.getMinutes() - (alm.getMinutes() % 5));
+  const [busy, setBusy] = useState(false);
+
+  const act = async (fn: () => Promise<unknown>, okMsg?: string) => {
+    setBusy(true);
+    try {
+      await fn();
+      if (okMsg) toast.success(okMsg);
+      onDone();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const errorText = post.status === "failed" && post.error ? formatPublishError(post.error) : null;
+
+  return (
+    <AutopostEditDialog
+      post={post}
+      busy={busy}
+      editable={editable}
+      caption={caption}
+      ymd={ymd}
+      hour={hour}
+      minute={minute}
+      timeLabel={almatyHm(post.scheduled_at)}
+      dayLabel={prettyDay(almatyYmd(post.scheduled_at))}
+      errorText={errorText}
+      showReconnectLink={!!post.error && /токен|token|OAuth|190/i.test(post.error)}
+      onClose={onClose}
+      onCaptionChange={setCaption}
+      onYmdChange={setYmd}
+      onHourChange={setHour}
+      onMinuteChange={setMinute}
+      onDelete={() => void act(() => schedulerApi("delete", { id: post.id }, projectId))}
+      onRetry={() => void act(() => schedulerApi("retry", { id: post.id }, projectId), "Повторяем")}
+      onPublishNow={() => void act(() => schedulerApi("publish_now", { id: post.id }, projectId), "Публикуем сейчас…")}
+      onSave={() => void act(() => schedulerApi("update", { id: post.id, caption, scheduled_at: buildISO(ymd, hour, minute) }, projectId), "Сохранено")}
+    />
+  );
+}
 function Heatmap({ cells, bestDow, bestHour }: { cells: { dow: number; hour: number; posts: number; avg_reach: number }[]; bestDow: number | null; bestHour: number | null }) {
   const map = new Map<string, { posts: number; avg_reach: number }>();
   let max = 1;
@@ -790,351 +992,6 @@ function Heatmap({ cells, bestDow, bestHour }: { cells: { dow: number; hour: num
         </div>
       </div>
     </div>
-  );
-}
-
-// ——— Диалог добавления публикации на конкретный день ———
-function AddDialog({ day, hourReach, bestHour, projectId, hasAccount, onClose, onDone }: {
-  day: string; hourReach: Map<number, number>; bestHour: number | null; projectId: string | null; hasAccount: boolean;
-  onClose: () => void; onDone: () => void;
-}) {
-  const [type, setType] = useState<PostType>("IMAGE");
-  const [files, setFiles] = useState<File[]>([]);
-  const [previews, setPreviews] = useState<string[]>([]);
-  const [caption, setCaption] = useState("");
-  const [hour, setHour] = useState(12);
-  const [minute, setMinute] = useState(0);
-  const [dryRun, setDryRun] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [dragActive, setDragActive] = useState(false);
-  const [coverFile, setCoverFile] = useState<File | null>(null);
-  const [coverPreview, setCoverPreview] = useState<string | null>(null);
-  const [videoSrc, setVideoSrc] = useState<string | null>(null);
-  const [seek, setSeek] = useState(0);
-  const [duration, setDuration] = useState(0);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const coverRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const meta = TYPE_META[type];
-
-  useEffect(() => () => { if (videoSrc) URL.revokeObjectURL(videoSrc); if (coverPreview) URL.revokeObjectURL(coverPreview); }, [videoSrc, coverPreview]);
-  useEffect(() => {
-    const urls = files.map((f) => URL.createObjectURL(f));
-    setPreviews(urls);
-    return () => { urls.forEach((u) => URL.revokeObjectURL(u)); };
-  }, [files]);
-
-  const clearCover = () => { setCoverFile(null); setCoverPreview((p) => { if (p) URL.revokeObjectURL(p); return null; }); };
-  const applyCover = (fl: File) => { setCoverPreview((p) => { if (p) URL.revokeObjectURL(p); return URL.createObjectURL(fl); }); setCoverFile(fl); };
-
-  const pick = (list: FileList | null) => {
-    if (!list || list.length === 0) return;
-    const a = Array.from(list);
-    const tooBig = a.find((f) => f.size > MAX_FILE_BYTES);
-    if (tooBig) {
-      toast.error(`Файл «${tooBig.name}» слишком большой (${(tooBig.size / 1024 / 1024).toFixed(0)} МБ)`, {
-        description: `Максимум ${MAX_FILE_MB} МБ на файл. Сожмите видео или уменьшите разрешение/битрейт.`,
-      });
-      return;
-    }
-    const next = meta.multiple ? a.slice(0, 10) : a.slice(0, 1);
-    setFiles(next); clearCover();
-    setVideoSrc((prev) => { if (prev) URL.revokeObjectURL(prev); return (type === "REELS" && next[0]?.type.startsWith("video/")) ? URL.createObjectURL(next[0]) : null; });
-    setSeek(0); setDuration(0);
-  };
-  const moveFile = (idx: number, dir: -1 | 1) => {
-    setFiles((prev) => {
-      const j = idx + dir;
-      if (j < 0 || j >= prev.length) return prev;
-      const next = [...prev];
-      [next[idx], next[j]] = [next[j], next[idx]];
-      return next;
-    });
-  };
-  const captureFrame = () => {
-    const v = videoRef.current; if (!v) return;
-    const cvs = document.createElement("canvas");
-    cvs.width = v.videoWidth || 720; cvs.height = v.videoHeight || 1280;
-    const ctx = cvs.getContext("2d"); if (!ctx) return;
-    ctx.drawImage(v, 0, 0, cvs.width, cvs.height);
-    cvs.toBlob((blob) => { if (blob) applyCover(new File([blob], `cover-${Date.now()}.jpg`, { type: "image/jpeg" })); }, "image/jpeg", 0.92);
-  };
-
-  const validate = (): string | null => {
-    if (files.length === 0) return "Добавьте медиа";
-    if (type === "CAROUSEL" && files.length < 2) return "Карусель: минимум 2 файла";
-    if (type === "REELS" && !isVideoFile(files[0])) return "Reels — только видео";
-    if (type === "IMAGE" && isVideoFile(files[0])) return "Пост — только фото (видео → Reels)";
-    return null;
-  };
-  const submit = async (now: boolean) => {
-    if (!projectId) { toast.error("Сначала выберите проект"); return; }
-    if (!hasAccount) { toast.error("Подключите Instagram к проекту", { description: "Настройки → Meta / Facebook" }); return; }
-    const err = validate(); if (err) { toast.error(err); return; }
-    setBusy(true);
-    try {
-      const urls: string[] = [];
-      for (const f of files) {
-        const rawUrl = await uploadToBucket(f);
-        urls.push(isVideoFile(f) ? await normalizeVideoForInstagram(rawUrl, f.type, f.size) : rawUrl);
-      }
-      let coverUrl: string | null = null;
-      if (type === "REELS" && coverFile) coverUrl = await uploadToBucket(coverFile);
-      const payload: Record<string, unknown> = {
-        media_type: type, caption: type === "STORIES" ? "" : caption,
-        scheduled_at: now ? new Date().toISOString() : buildISO(day, hour, minute), dry_run: now ? false : dryRun,
-      };
-      if (type === "CAROUSEL") { payload.child_urls = urls; payload.thumbnail_url = urls.find((_, i) => !isVideoFile(files[i])) ?? urls[0]; }
-      else {
-        payload.media_url = urls[0];
-        if (type === "REELS") { if (coverUrl) { payload.cover_url = coverUrl; payload.thumbnail_url = coverUrl; } }
-        else payload.thumbnail_url = isVideoFile(files[0]) ? null : urls[0];
-      }
-      const res = await schedulerApi<{ post: QueuePost }>("create", payload, projectId);
-      if (now && res.post?.id) await schedulerApi("publish_now", { id: res.post.id }, projectId);
-      toast.success(now ? "Публикуем сейчас…" : dryRun ? "Добавлено в пробном режиме" : "Запланировано");
-      onDone();
-    } catch (e) { toast.error("Не удалось", { description: e instanceof Error ? e.message : String(e) }); }
-    finally { setBusy(false); }
-  };
-
-  const reachHint = hourReach.get(hour);
-
-  const progressPct = duration > 0 ? Math.min(100, (seek / duration) * 100) : 0;
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-xl">
-        <DialogHeader><DialogTitle>Публикация на {prettyDay(day)}</DialogTitle></DialogHeader>
-        <div className="space-y-5">
-          <div>
-            <SectionLabel>Тип публикации</SectionLabel>
-            <div className="grid grid-cols-4 gap-2">
-              {(Object.keys(TYPE_META) as PostType[]).map((t) => {
-                const M = TYPE_META[t]; const Icon = M.icon;
-                return (
-                  <button key={t} type="button" onClick={() => { setType(t); setFiles([]); clearCover(); setVideoSrc((p) => { if (p) URL.revokeObjectURL(p); return null; }); if (fileRef.current) fileRef.current.value = ""; }}
-                    className={cn("flex flex-col items-center gap-1.5 rounded-xl border px-2 py-2.5 text-[11px] font-medium transition",
-                      type === t ? "border-primary/60 bg-primary/10 text-primary shadow-sm" : "border-border/60 bg-background hover:bg-secondary/40")}>
-                    <Icon className="h-4 w-4" /> {M.label}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="mt-1.5 text-[11px] text-muted-foreground">{meta.hint}</p>
-          </div>
-
-          <div>
-            <SectionLabel icon={Upload}>Медиа <span className="normal-case font-normal tracking-normal text-muted-foreground/70">· до {MAX_FILE_MB} МБ на файл</span></SectionLabel>
-            <input ref={fileRef} type="file" accept={meta.accept} multiple={meta.multiple} onChange={(e) => pick(e.target.files)} className="hidden" id="add-file" />
-            <label
-              htmlFor="add-file"
-              onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
-              onDragLeave={() => setDragActive(false)}
-              onDrop={(e) => { e.preventDefault(); setDragActive(false); pick(e.dataTransfer.files); }}
-              className={cn(
-                "flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed px-3 py-6 text-xs transition",
-                dragActive ? "border-primary bg-primary/5 text-primary" : "border-border/70 bg-background text-muted-foreground hover:bg-secondary/30",
-              )}
-            >
-              <Upload className="h-5 w-5" />
-              {meta.multiple ? "Перетащите файлы сюда или выберите (2–10)" : "Перетащите файл сюда или выберите"}
-            </label>
-
-            {files.length > 0 && (
-              <div className={cn("mt-2 grid gap-2", meta.multiple ? "grid-cols-3 sm:grid-cols-4" : "grid-cols-1")}>
-                {files.map((f, i) => (
-                  <div key={i} className="group relative overflow-hidden rounded-lg border border-border/60 bg-secondary/30">
-                    {isVideoFile(f) ? (
-                      <video src={previews[i]} className={cn("w-full object-cover", meta.multiple ? "h-24" : "h-40")} muted />
-                    ) : (
-                      <img src={previews[i]} alt="" className={cn("w-full object-cover", meta.multiple ? "h-24" : "h-40")} />
-                    )}
-                    <button type="button" onClick={() => setFiles((x) => x.filter((_, idx) => idx !== i))} className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-black/60 text-white opacity-0 transition group-hover:opacity-100">
-                      <X className="h-3 w-3" />
-                    </button>
-                    {meta.multiple && files.length > 1 && (
-                      <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-black/50 px-1 py-0.5">
-                        <button type="button" disabled={i === 0} onClick={() => moveFile(i, -1)} className="text-white disabled:opacity-30"><ChevronLeft className="h-3 w-3" /></button>
-                        <span className="text-[9px] text-white/80">{i + 1}</span>
-                        <button type="button" disabled={i === files.length - 1} onClick={() => moveFile(i, 1)} className="text-white disabled:opacity-30"><ChevronRight className="h-3 w-3" /></button>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {type === "REELS" && videoSrc && (
-            <div className="rounded-2xl border border-border/60 bg-secondary/20 p-4">
-              <div className="mb-3 flex items-center justify-between">
-                <SectionLabel icon={Camera} className="mb-0">Обложка Reels</SectionLabel>
-                <span className="text-[11px] font-medium tabular-nums text-muted-foreground">{fmtDuration(seek)} / {fmtDuration(duration)}</span>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <div className="relative aspect-[9/16] overflow-hidden rounded-xl bg-black ring-1 ring-border/50">
-                    <video ref={videoRef} src={videoSrc} onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || 0)} className="h-full w-full object-cover" muted playsInline />
-                  </div>
-                  <div className="mt-1.5 text-center text-[10px] font-medium text-muted-foreground">Видео</div>
-                </div>
-                <div>
-                  <div className={cn(
-                    "relative aspect-[9/16] overflow-hidden rounded-xl",
-                    coverPreview ? "ring-2 ring-primary/60" : "border border-dashed border-border/60",
-                  )}>
-                    {coverPreview ? (
-                      <img src={coverPreview} alt="обложка" className="h-full w-full object-cover" />
-                    ) : (
-                      <div className="grid h-full place-items-center px-2 text-center text-[10px] text-muted-foreground">Кадр не выбран</div>
-                    )}
-                  </div>
-                  <div className="mt-1.5 text-center text-[10px] font-medium text-muted-foreground">Обложка</div>
-                </div>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={duration || 0}
-                step={0.1}
-                value={seek}
-                onChange={(e) => { const t = Number(e.target.value); setSeek(t); if (videoRef.current) videoRef.current.currentTime = t; }}
-                style={{ background: `linear-gradient(to right, hsl(var(--primary)) ${progressPct}%, hsl(var(--secondary)) ${progressPct}%)` }}
-                className="mt-3 h-1.5 w-full cursor-pointer appearance-none rounded-full outline-none [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:cursor-pointer [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-primary [&::-moz-range-thumb]:shadow-md [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-md [&::-webkit-slider-thumb]:ring-2 [&::-webkit-slider-thumb]:ring-background"
-              />
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button size="sm" variant="secondary" className="gap-1.5 rounded-lg" onClick={captureFrame}><Camera className="h-3.5 w-3.5" /> Взять этот кадр</Button>
-                <input ref={coverRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) applyCover(f); }} />
-                <Button size="sm" variant="outline" className="gap-1.5 rounded-lg" onClick={() => coverRef.current?.click()}><Upload className="h-3.5 w-3.5" /> Своя картинка</Button>
-                {coverPreview && <Button size="sm" variant="ghost" className="gap-1.5 rounded-lg text-muted-foreground hover:text-destructive" onClick={clearCover}><X className="h-3.5 w-3.5" /> Убрать</Button>}
-              </div>
-              <p className="mt-2 text-[10px] text-muted-foreground">Двигайте ползунок и нажмите «Взять этот кадр», либо загрузите свою картинку. Без обложки Instagram выберет кадр сам.</p>
-            </div>
-          )}
-
-          {type !== "STORIES" && (
-            <div>
-              <SectionLabel>Текст публикации</SectionLabel>
-              <Textarea value={caption} onChange={(e) => setCaption(e.target.value.slice(0, 2200))} placeholder="Текст публикации, хэштеги…" className="min-h-[80px] rounded-xl border-border/60 text-sm" />
-              <div className="mt-1 text-right text-[10px] text-muted-foreground">{caption.length} / 2200</div>
-            </div>
-          )}
-
-          <div>
-            <SectionLabel icon={Clock}>Когда опубликовать</SectionLabel>
-            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-secondary/20 p-3">
-              <select value={hour} onChange={(e) => setHour(Number(e.target.value))} className="h-9 rounded-lg border border-border/60 bg-background px-2 text-sm">
-                {Array.from({ length: 24 }, (_, i) => i).map((h) => <option key={h} value={h}>{pad(h)}</option>)}
-              </select>
-              <span>:</span>
-              <select value={minute} onChange={(e) => setMinute(Number(e.target.value))} className="h-9 rounded-lg border border-border/60 bg-background px-2 text-sm">
-                {Array.from({ length: 12 }, (_, i) => i * 5).map((m) => <option key={m} value={m}>{pad(m)}</option>)}
-              </select>
-              {bestHour != null && (
-                <button
-                  type="button"
-                  onClick={() => { setHour(bestHour); setMinute(0); }}
-                  className="inline-flex items-center gap-1 rounded-lg border border-primary/40 bg-primary/5 px-2 py-1 text-[10px] font-medium text-primary transition hover:bg-primary/10"
-                >
-                  <Sparkles className="h-3 w-3" /> Лучшее ({pad(bestHour)}:00)
-                </button>
-              )}
-              <label className="ml-auto flex items-center gap-1.5 text-xs">
-                <Switch checked={dryRun} onCheckedChange={setDryRun} />
-                <FlaskConical className="h-3.5 w-3.5 text-violet-500" /> Пробный
-              </label>
-            </div>
-            {reachHint ? <p className="mt-1.5 text-[10px] text-muted-foreground">≈ средний охват в это время по прошлым постам: <b className="text-foreground">{fmtNum(reachHint)}</b></p> : null}
-          </div>
-        </div>
-        <DialogFooter className="gap-2">
-          <Button variant="outline" className="rounded-xl border-primary/40 text-primary hover:bg-primary/10" onClick={() => void submit(true)} disabled={busy || dryRun}><Zap className="mr-1.5 h-4 w-4" /> Сейчас</Button>
-          <Button className="rounded-xl" onClick={() => void submit(false)} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Send className="mr-1.5 h-4 w-4" /> Запланировать</>}</Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// ——— Диалог просмотра/редактирования поста ———
-function EditDialog({ post, projectId, onClose, onDone }: { post: QueuePost; projectId: string | null; onClose: () => void; onDone: () => void }) {
-  const s = STATUS_META[post.status] ?? STATUS_META.queued;
-  const editable = post.status === "queued" || post.status === "failed" || post.status === "tested";
-  const alm = new Date(new Date(post.scheduled_at).toLocaleString("en-US", { timeZone: "Asia/Almaty" }));
-  const [caption, setCaption] = useState(post.caption ?? "");
-  const [ymd, setYmd] = useState(almatyYmd(post.scheduled_at));
-  const [hour, setHour] = useState(alm.getHours());
-  const [minute, setMinute] = useState(alm.getMinutes() - (alm.getMinutes() % 5));
-  const [busy, setBusy] = useState(false);
-
-  const act = async (fn: () => Promise<unknown>, okMsg?: string) => {
-    setBusy(true);
-    try { await fn(); if (okMsg) toast.success(okMsg); onDone(); }
-    catch (e) { toast.error(e instanceof Error ? e.message : String(e)); }
-    finally { setBusy(false); }
-  };
-
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader><DialogTitle className="flex items-center gap-2">
-          <span className={cn("inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-semibold", s.cls)}><s.icon className={cn("h-3 w-3", post.status === "processing" && "animate-spin")} /> {s.label}</span>
-          <span className="text-sm font-normal text-muted-foreground">{TYPE_META[post.media_type as PostType]?.label ?? post.media_type}</span>
-        </DialogTitle></DialogHeader>
-
-        <div className="space-y-3">
-          {post.thumbnail_url && (
-            <img src={post.thumbnail_url} alt="" className="max-h-52 w-full rounded-xl object-cover ring-1 ring-border/40" />
-          )}
-          {post.status === "failed" && post.error && (
-            <div className="space-y-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
-              <div>{formatPublishError(post.error)}</div>
-              {/токен|token|OAuth|190/i.test(post.error) && (
-                <Link to="/settings?tab=meta-tokens" className="inline-block font-medium text-primary hover:underline">
-                  Переподключить Instagram →
-                </Link>
-              )}
-            </div>
-          )}
-
-          {editable ? (
-            <>
-              {post.media_type !== "STORIES" && (
-                <Textarea value={caption} onChange={(e) => setCaption(e.target.value.slice(0, 2200))} className="min-h-[90px] rounded-xl border-border/60 text-sm" />
-              )}
-              <div className="flex items-center gap-2">
-                <input type="date" value={ymd} onChange={(e) => setYmd(e.target.value)} className="h-9 rounded-lg border border-border/60 bg-background px-2 text-sm" />
-                <select value={hour} onChange={(e) => setHour(Number(e.target.value))} className="h-9 rounded-lg border border-border/60 bg-background px-2 text-sm">
-                  {Array.from({ length: 24 }, (_, i) => i).map((h) => <option key={h} value={h}>{pad(h)}</option>)}
-                </select><span>:</span>
-                <select value={minute} onChange={(e) => setMinute(Number(e.target.value))} className="h-9 rounded-lg border border-border/60 bg-background px-2 text-sm">
-                  {Array.from({ length: 12 }, (_, i) => i * 5).map((m) => <option key={m} value={m}>{pad(m)}</option>)}
-                </select>
-                <span className="text-[10px] text-muted-foreground">Алматы</span>
-              </div>
-            </>
-          ) : (
-            <div className="text-sm">
-              <div className="text-muted-foreground">{almatyHm(post.scheduled_at)} · {prettyDay(almatyYmd(post.scheduled_at))}</div>
-              {post.caption && <div className="mt-1 whitespace-pre-wrap">{post.caption}</div>}
-            </div>
-          )}
-        </div>
-
-        <DialogFooter className="flex-wrap gap-2 sm:justify-between">
-          <div className="flex gap-2">
-            {post.status !== "published" && <Button variant="ghost" size="sm" className="rounded-lg text-destructive hover:bg-destructive/10" onClick={() => void act(() => schedulerApi("delete", { id: post.id }, projectId))} disabled={busy}><Trash2 className="mr-1 h-4 w-4" /> Удалить</Button>}
-            {post.status === "failed" && <Button variant="ghost" size="sm" className="rounded-lg" onClick={() => void act(() => schedulerApi("retry", { id: post.id }, projectId), "Повторяем")} disabled={busy}><RotateCcw className="mr-1 h-4 w-4" /> Повторить</Button>}
-          </div>
-          <div className="flex gap-2">
-            {editable && <Button variant="outline" size="sm" className="rounded-lg border-primary/40 text-primary hover:bg-primary/10" onClick={() => void act(() => schedulerApi("publish_now", { id: post.id }, projectId), "Публикуем сейчас…")} disabled={busy}><Zap className="mr-1 h-4 w-4" /> Сейчас</Button>}
-            {editable && <Button size="sm" className="rounded-lg" onClick={() => void act(() => schedulerApi("update", { id: post.id, caption, scheduled_at: buildISO(ymd, hour, minute) }, projectId), "Сохранено")} disabled={busy}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Pencil className="mr-1 h-4 w-4" /> Сохранить</>}</Button>}
-            {!editable && <Button size="sm" className="rounded-lg" onClick={onClose}>Закрыть</Button>}
-          </div>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 
