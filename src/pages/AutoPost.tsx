@@ -17,6 +17,7 @@ import { fmtNum } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { AutopostComposerDialog } from "@/components/autopost/AutopostComposerDialog";
 import { AutopostEditDialog } from "@/components/autopost/AutopostEditDialog";
+import { AutopostUpcomingRail } from "@/components/autopost/AutopostUpcomingRail";
 import { STATUS_META, TYPE_META, type PostType } from "@/components/autopost/constants";
 
 // Раздел «Автопостинг» — календарь + очередь публикаций Instagram (cf_scheduled_posts,
@@ -71,14 +72,6 @@ const buildISO = (ymd: string, hour: number, minute: number) => new Date(`${ymd}
 const todayAlmatyYmd = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Almaty" });
 const ymdOf = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const prettyDay = (ymd: string) => { const [y, m, d] = ymd.split("-").map(Number); return `${d} ${MONTHS[m - 1]} ${y}`; };
-const timeUntil = (iso: string) => {
-  const diffMin = Math.round((new Date(iso).getTime() - Date.now()) / 60000);
-  if (diffMin <= 0) return "прямо сейчас";
-  if (diffMin < 60) return `через ${diffMin} мин`;
-  const h = Math.floor(diffMin / 60), m = diffMin % 60;
-  if (h < 24) return m ? `через ${h} ч ${m} мин` : `через ${h} ч`;
-  return `через ${Math.floor(h / 24)} дн`;
-};
 function formatPublishError(raw: string | null | undefined): string {
   if (!raw) return "Неизвестная ошибка публикации";
   try {
@@ -416,7 +409,7 @@ const AutoPost = () => {
         ))}
       </div>
 
-      {!initialLoading && <NextUpRail posts={posts} onEdit={setEditing} />}
+      {!initialLoading && <AutopostUpcomingRail posts={posts} onEdit={setEditing} />}
 
       {/* Тулбар: вид + фильтры + действие */}
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">
@@ -615,49 +608,6 @@ function CalendarSkeleton() {
             <Skeleton className="mt-3 h-3 w-3/4" />
           </div>
         ))}
-      </div>
-    </div>
-  );
-}
-
-// ——— Ближайшие публикации (горизонтальная лента) ———
-function NextUpRail({ posts, onEdit }: { posts: QueuePost[]; onEdit: (p: QueuePost) => void }) {
-  const upcoming = useMemo(() => posts
-    .filter((p) => (p.status === "queued" || p.status === "processing") && new Date(p.scheduled_at).getTime() > Date.now())
-    .sort((a, b) => a.scheduled_at.localeCompare(b.scheduled_at))
-    .slice(0, 8), [posts]);
-  if (upcoming.length === 0) return null;
-  return (
-    <div className="mt-4">
-      <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-        <Clock className="h-3.5 w-3.5" /> Ближайшие публикации
-      </div>
-      <div className="flex gap-2.5 overflow-x-auto pb-1">
-        {upcoming.map((p) => {
-          const M = TYPE_META[p.media_type as PostType];
-          const Icon = M?.icon ?? Images;
-          return (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => onEdit(p)}
-              className="flex w-[168px] shrink-0 flex-col overflow-hidden rounded-xl border border-border/60 bg-card/60 text-left transition hover:border-primary/40 hover:shadow-sm"
-            >
-              <div className="relative h-24 w-full bg-secondary/40">
-                {p.thumbnail_url ? (
-                  <img src={p.thumbnail_url} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <div className="grid h-full w-full place-items-center text-muted-foreground"><Icon className="h-6 w-6" /></div>
-                )}
-                <span className="absolute left-1.5 top-1.5 rounded-md bg-black/60 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">{M?.label ?? p.media_type}</span>
-              </div>
-              <div className="p-2">
-                <div className="text-xs font-semibold">{timeUntil(p.scheduled_at)}</div>
-                <div className="truncate text-[10px] text-muted-foreground">{almatyHm(p.scheduled_at)} · {prettyDay(almatyYmd(p.scheduled_at))}</div>
-              </div>
-            </button>
-          );
-        })}
       </div>
     </div>
   );
