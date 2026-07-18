@@ -1,7 +1,7 @@
 {
-  "git_sha": "3bf93ba",
-  "git_sha_full": "3bf93ba0ab665f4da590f556420e778d62dbf980",
-  "updated_at": "2026-07-18T10:37:55+05:00",
-  "label": "Add multi-variant Instagram codewords with funnel analytics.",
+  "git_sha": "8f3260a",
+  "git_sha_full": "8f3260ae8276a8c33bd4e4682e6702a7db2d24c1",
+  "updated_at": "2026-07-18T10:39:27+05:00",
+  "label": "Fix Autopost composer dialog not opening on add.",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
