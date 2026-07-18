@@ -46,20 +46,23 @@ interface StorageShape {
   cache: Record<string, CachedGalleryItem[]>;
   /** Все session/batch id проекта — для подгрузки results после перезагрузки */
   sessions: Record<string, string[]>;
+  /** Локальные tombstones: request_id → список slide_index (или [-1] = все слайды) */
+  hidden: Record<string, Record<string, number[]>>;
 }
 
 function readStorage(): StorageShape {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { batches: {}, cache: {}, sessions: {} };
+    if (!raw) return { batches: {}, cache: {}, sessions: {}, hidden: {} };
     const parsed = JSON.parse(raw) as StorageShape;
     return {
       batches: parsed.batches ?? {},
       cache: parsed.cache ?? {},
       sessions: parsed.sessions ?? {},
+      hidden: parsed.hidden ?? {},
     };
   } catch {
-    return { batches: {}, cache: {}, sessions: {} };
+    return { batches: {}, cache: {}, sessions: {}, hidden: {} };
   }
 }
 
@@ -170,5 +173,60 @@ export function markRequestSaved(projectId: string, requestId: string): void {
   const data = readStorage();
   const cached = data.cache[projectId] ?? [];
   data.cache[projectId] = cached.filter((i) => i.request_id !== requestId);
+  writeStorage(data);
+}
+
+/** Скрыть креатив локально (переживает reload до/параллельно с серверным tombstone). */
+export function hideGalleryRequest(
+  projectId: string,
+  requestId: string,
+  slideIndex: number | null = null,
+): void {
+  if (!projectId || !requestId) return;
+  const data = readStorage();
+  const byReq = data.hidden[projectId] ?? {};
+  const prev = byReq[requestId] ?? [];
+  if (slideIndex == null) {
+    byReq[requestId] = [-1];
+  } else if (!prev.includes(-1) && !prev.includes(slideIndex)) {
+    byReq[requestId] = [...prev, slideIndex];
+  }
+  data.hidden[projectId] = byReq;
+  data.cache[projectId] = (data.cache[projectId] ?? []).filter((i) => {
+    if (i.request_id !== requestId) return true;
+    if (slideIndex == null) return false;
+    return Number(i.metadata?.slide_index ?? 0) !== slideIndex;
+  });
+  writeStorage(data);
+}
+
+export function isGalleryRequestHidden(
+  projectId: string,
+  requestId: string,
+  slideIndex = 0,
+): boolean {
+  if (!projectId || !requestId) return false;
+  const slides = readStorage().hidden[projectId]?.[requestId];
+  if (!slides?.length) return false;
+  return slides.includes(-1) || slides.includes(slideIndex);
+}
+
+export function getHiddenGalleryRequests(projectId: string): Map<string, Set<number>> {
+  const out = new Map<string, Set<number>>();
+  if (!projectId) return out;
+  const byReq = readStorage().hidden[projectId] ?? {};
+  for (const [requestId, slides] of Object.entries(byReq)) {
+    out.set(requestId, new Set(slides));
+  }
+  return out;
+}
+
+export function clearProjectGalleryLocal(projectId: string): void {
+  if (!projectId) return;
+  const data = readStorage();
+  data.cache[projectId] = [];
+  data.batches[projectId] = [];
+  data.sessions[projectId] = [];
+  data.hidden[projectId] = {};
   writeStorage(data);
 }

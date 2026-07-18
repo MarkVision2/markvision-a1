@@ -16,7 +16,9 @@ import {
   collectKnownSessionIds,
   findBatchItemMeta,
   getCachedGalleryItems,
-  getGalleryBatches,
+  getHiddenGalleryRequests,
+  hideGalleryRequest,
+  isGalleryRequestHidden,
   markRequestSaved,
   type CachedGalleryItem,
 } from "@/lib/contentFactoryGalleryStore";
@@ -68,6 +70,26 @@ function isTableMissingError(message: string, code?: string): boolean {
 
 function isUnknownColumnError(message: string): boolean {
   return /column.*does not exist/i.test(message) || /42703/.test(message);
+}
+
+function isHiddenTableMissingError(message: string, code?: string): boolean {
+  return isTableMissingError(message, code) || /content_factory_gallery_hidden/i.test(message);
+}
+
+function itemSlideIndex(item: GalleryItem): number {
+  return Number(item.metadata?.slide_index ?? 0);
+}
+
+function isItemHidden(
+  item: GalleryItem,
+  serverHidden: Map<string, Set<number>>,
+): boolean {
+  if (!item.request_id) return false;
+  const local = isGalleryRequestHidden(item.project_id, item.request_id, itemSlideIndex(item));
+  if (local) return true;
+  const slides = serverHidden.get(item.request_id);
+  if (!slides) return false;
+  return slides.has(-1) || slides.has(itemSlideIndex(item));
 }
 
 function rowToGalleryItem(row: Record<string, unknown>, source: GalleryItem["source"] = "db"): GalleryItem {
@@ -154,9 +176,70 @@ export function ContentFactoryGalleryProvider({ children }: { children: ReactNod
   const [needsMigration, setNeedsMigration] = useState(false);
   const [lastError, setLastError] = useState<string | null>(null);
   const savedRequestIdsRef = useRef<Set<string>>(new Set());
+  const hiddenRef = useRef<Map<string, Set<number>>>(new Map());
   const saveItemRef = useRef<(input: SaveGalleryInput) => Promise<boolean>>(async () => false);
 
   const sb = getContentFactoryDb();
+
+  const fetchHiddenMap = useCallback(async (): Promise<Map<string, Set<number>>> => {
+    const local = getHiddenGalleryRequests(projectId ?? "");
+    if (!sb || !projectId) return local;
+
+    const { data, error } = await sb
+      .from("content_factory_gallery_hidden")
+      .select("request_id, slide_index")
+      .eq("project_id", projectId);
+
+    if (error) {
+      if (!isHiddenTableMissingError(error.message, error.code)) {
+        console.warn("[gallery] hidden load", error.message);
+      }
+      return local;
+    }
+
+    const merged = new Map(local);
+    for (const row of (data ?? []) as { request_id: string; slide_index: number }[]) {
+      const set = merged.get(row.request_id) ?? new Set<number>();
+      set.add(Number(row.slide_index ?? 0));
+      merged.set(row.request_id, set);
+    }
+    return merged;
+  }, [sb, projectId]);
+
+  const persistHidden = useCallback(
+    async (
+      entries: { requestId: string; slideIndex: number | null }[],
+    ): Promise<void> => {
+      if (!projectId || !entries.length) return;
+
+      for (const e of entries) {
+        hideGalleryRequest(projectId, e.requestId, e.slideIndex);
+        const set = hiddenRef.current.get(e.requestId) ?? new Set<number>();
+        if (e.slideIndex == null) set.add(-1);
+        else set.add(e.slideIndex);
+        hiddenRef.current.set(e.requestId, set);
+      }
+
+      if (!sb) return;
+
+      const rows = entries.map((e) => ({
+        project_id: projectId,
+        request_id: e.requestId,
+        slide_index: e.slideIndex ?? 0,
+        hidden_by: user?.id ?? null,
+      }));
+
+      const { error } = await sb
+        .from("content_factory_gallery_hidden")
+        .upsert(rows, { onConflict: "project_id,request_id,slide_index", ignoreDuplicates: true });
+
+      if (error && !isHiddenTableMissingError(error.message, error.code)) {
+        console.warn("[gallery] hidden upsert", error.message);
+        // Локальный tombstone уже записан — не блокируем UI из‑за RLS/сети.
+      }
+    },
+    [projectId, sb, user?.id],
+  );
 
   const resultRowToItem = useCallback(
     (row: Record<string, unknown>, knownSessions: Set<string>): GalleryItem | null => {
@@ -318,6 +401,9 @@ export function ContentFactoryGalleryProvider({ children }: { children: ReactNod
       setLastError(e instanceof Error ? e.message : "Ошибка загрузки галереи");
     }
 
+    const hiddenMap = await fetchHiddenMap();
+    hiddenRef.current = hiddenMap;
+
     const savedIds = new Set(
       dbItems.map((i) => i.request_id).filter((id): id is string => Boolean(id)),
     );
@@ -336,12 +422,15 @@ export function ContentFactoryGalleryProvider({ children }: { children: ReactNod
 
     const resultItems = await fetchAllProjectResults(dbItems, knownSessions);
     const cacheItems = getCachedGalleryItems(projectId).map(cachedToGalleryItem);
-    const merged = mergeGalleryItems(dbItems, resultItems, cacheItems);
+    const merged = mergeGalleryItems(dbItems, resultItems, cacheItems).filter(
+      (item) => !isItemHidden(item, hiddenMap),
+    );
     setItems(merged);
     setLoading(false);
 
     for (const item of resultItems) {
       if (!item.request_id || savedIds.has(item.request_id)) continue;
+      if (isItemHidden(item, hiddenMap)) continue;
       const meta = findBatchItemMeta(projectId, item.request_id);
       const parsed = parseContentFactoryRequestId(item.request_id);
       void saveItemRef.current({
@@ -357,11 +446,18 @@ export function ContentFactoryGalleryProvider({ children }: { children: ReactNod
         metadata: { source: "backfill", slide_index: item.metadata?.slide_index },
       });
     }
-  }, [projectId, sb, fetchAllProjectResults]);
+  }, [projectId, sb, fetchAllProjectResults, fetchHiddenMap]);
 
   const saveItemInternal = useCallback(
     async (input: SaveGalleryInput): Promise<boolean> => {
       if (!projectId || !input.imageUrl) return false;
+
+      const slideIndex = Number(input.metadata?.slide_index ?? 0);
+      if (isGalleryRequestHidden(projectId, input.requestId, slideIndex)) return false;
+      const serverHidden = hiddenRef.current.get(input.requestId);
+      if (serverHidden && (serverHidden.has(-1) || serverHidden.has(slideIndex))) {
+        return false;
+      }
 
       const typeCategory =
         CONTENT_TYPES.find((t) => t.id === input.typeId)?.category ?? null;
@@ -517,30 +613,26 @@ export function ContentFactoryGalleryProvider({ children }: { children: ReactNod
     return () => window.clearInterval(interval);
   }, [projectId, sb, load]);
 
-  const removeItem = useCallback(
-    async (id: string) => {
-      const item = items.find((i) => i.id === id);
-      if (item?.source === "cache" || item?.source === "results") {
-        if (item.request_id) markRequestSaved(projectId!, item.request_id);
-        setItems((prev) => prev.filter((i) => i.id !== id));
-        return;
-      }
-
-      if (!sb) throw new Error("Clony Supabase не настроен");
-
-      const { error } = await sb.from("content_factory_gallery").delete().eq("id", id);
-      if (error) throw new Error(error.message);
-      if (item?.request_id) markRequestSaved(projectId!, item.request_id);
-      setItems((prev) => prev.filter((i) => i.id !== id));
-    },
-    [items, projectId, sb],
-  );
-
   const removeItems = useCallback(
     async (ids: string[]) => {
       if (!ids.length) return;
       const toRemove = items.filter((i) => ids.includes(i.id));
-      const dbIds = toRemove.filter((i) => i.source === "db").map((i) => i.id);
+      if (!toRemove.length) return;
+
+      const dbIds = toRemove
+        .filter((i) => i.source === "db" || /^[0-9a-f-]{36}$/i.test(i.id))
+        .map((i) => i.id);
+      const hiddenEntries = toRemove
+        .filter((i) => Boolean(i.request_id))
+        .map((i) => ({
+          requestId: i.request_id as string,
+          slideIndex: itemSlideIndex(i),
+        }));
+
+      // Сначала tombstone — иначе reload/backfill вернёт креатив из results.
+      if (hiddenEntries.length > 0) {
+        await persistHidden(hiddenEntries);
+      }
 
       for (const item of toRemove) {
         if (item.request_id && projectId) markRequestSaved(projectId, item.request_id);
@@ -553,9 +645,16 @@ export function ContentFactoryGalleryProvider({ children }: { children: ReactNod
       }
 
       const removeSet = new Set(ids);
-      setItems((prev) => prev.filter((i) => !removeSet.has(i.id)));
+      setItems((prev) => prev.filter((i) => !removeSet.has(i.id) && !isItemHidden(i, hiddenRef.current)));
     },
-    [items, projectId, sb],
+    [items, projectId, sb, persistHidden],
+  );
+
+  const removeItem = useCallback(
+    async (id: string) => {
+      await removeItems([id]);
+    },
+    [removeItems],
   );
 
   const value: GalleryContextValue = {
