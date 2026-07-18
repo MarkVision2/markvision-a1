@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
-  Camera, ChevronLeft, ChevronRight, Clock, Film, FlaskConical, Images, Loader2, Send, Sparkles, Upload, X, Zap,
+  Camera, ChevronLeft, ChevronRight, Film, FlaskConical, Loader2, Pause, Play, Plus, Send, Sparkles, Trash2, Upload, Volume2, VolumeX, X, Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -51,12 +51,11 @@ export interface AutopostComposerDialogProps {
   onClose: () => void;
   onSubmitNow: () => void;
   onSubmitSchedule: () => void;
-  // controlled-ish state via render props would be overkill — parent owns submit logic
   type: PostType;
   onTypeChange: (t: PostType) => void;
   files: File[];
   previews: string[];
-  onPickFiles: (list: FileList | null) => void;
+  onPickFiles: (list: FileList | null, mode?: "replace" | "append") => void;
   onRemoveFile: (idx: number) => void;
   onMoveFile: (idx: number, dir: -1 | 1) => void;
   caption: string;
@@ -67,7 +66,6 @@ export interface AutopostComposerDialogProps {
   onMinuteChange: (m: number) => void;
   dryRun: boolean;
   onDryRunChange: (v: boolean) => void;
-  // reels cover
   videoSrc: string | null;
   coverPreview: string | null;
   seek: number;
@@ -95,16 +93,71 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
 
   const [dragActive, setDragActive] = useState(false);
   const [previewMode, setPreviewMode] = useState<"media" | "cover">("media");
+  const [carouselIndex, setCarouselIndex] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [muted, setMuted] = useState(true);
+  const [pickMode, setPickMode] = useState<"replace" | "append">("replace");
+
   const meta = TYPE_META[type];
   const reachHint = hourReach.get(hour);
   const progressPct = duration > 0 ? Math.min(100, (seek / duration) * 100) : 0;
   const hasMedia = files.length > 0;
+  const isCarousel = type === "CAROUSEL";
+  const isReels = type === "REELS";
+  const activeCarouselIdx = Math.min(carouselIndex, Math.max(0, files.length - 1));
+  const activeFile = files[isCarousel ? activeCarouselIdx : 0];
+  const activePreview = previews[isCarousel ? activeCarouselIdx : 0];
 
   useEffect(() => {
     if (type !== "REELS" || !videoSrc) setPreviewMode("media");
   }, [type, videoSrc]);
 
-  const openFilePicker = () => fileInputRef.current?.click();
+  useEffect(() => {
+    setCarouselIndex(0);
+    setPlaying(false);
+  }, [type]);
+
+  useEffect(() => {
+    if (files.length === 0) {
+      setCarouselIndex(0);
+      setPlaying(false);
+    } else if (carouselIndex >= files.length) {
+      setCarouselIndex(files.length - 1);
+    }
+  }, [files.length, carouselIndex]);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.muted = muted;
+  }, [muted, videoRef]);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !isReels) return;
+    if (playing) {
+      void v.play().catch(() => setPlaying(false));
+    } else {
+      v.pause();
+    }
+  }, [playing, isReels, videoSrc, videoRef]);
+
+  const openFilePicker = (mode: "replace" | "append" = "replace") => {
+    setPickMode(mode);
+    // reset so same file can be re-selected
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    fileInputRef.current?.click();
+  };
+
+  const togglePlay = () => {
+    if (!isReels || !videoSrc) return;
+    setPlaying((p) => !p);
+    setPreviewMode("media");
+  };
+
+  const goSlide = (dir: -1 | 1) => {
+    setCarouselIndex((i) => Math.max(0, Math.min(files.length - 1, i + dir)));
+  };
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
@@ -129,17 +182,17 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
         <div className="relative flex min-h-0 flex-1 flex-col">
         <ScrollArea className="min-h-0 max-h-[calc(95vh-10rem)]">
           <div className="grid gap-6 p-6 lg:grid-cols-[minmax(220px,260px)_1fr]">
-            {/* —— Превью (мобильный макет) —— */}
+            {/* —— Превью —— */}
             <div className="space-y-3">
               <FieldLabel hint={meta.aspect}>Предпросмотр</FieldLabel>
-              <PhoneFrame label={hasMedia ? "Так увидят в ленте" : "Загрузите медиа"}>
+              <PhoneFrame label={hasMedia ? (isCarousel ? `Слайд ${activeCarouselIdx + 1} из ${files.length}` : "Так увидят в ленте") : "Загрузите медиа"}>
                 {!hasMedia ? (
                   <button
                     type="button"
-                    onClick={openFilePicker}
+                    onClick={() => openFilePicker("replace")}
                     onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
                     onDragLeave={() => setDragActive(false)}
-                    onDrop={(e) => { e.preventDefault(); setDragActive(false); onPickFiles(e.dataTransfer.files); }}
+                    onDrop={(e) => { e.preventDefault(); setDragActive(false); onPickFiles(e.dataTransfer.files, "replace"); }}
                     className={cn(
                       "flex h-full w-full flex-col items-center justify-center gap-2 px-4 text-center transition",
                       dragActive ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-white/[0.03]",
@@ -150,36 +203,125 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
                     </span>
                     <span className="text-xs font-medium">Нажмите или перетащите файл</span>
                   </button>
-                ) : type === "REELS" && videoSrc && previewMode === "cover" && coverPreview ? (
+                ) : isReels && videoSrc && previewMode === "cover" && coverPreview ? (
                   <img src={coverPreview} alt="" className="h-full w-full object-cover" />
-                ) : isVideoFile(files[0]) ? (
-                  <video
-                    ref={videoRef}
-                    src={videoSrc ?? previews[0]}
-                    onLoadedMetadata={(e) => onDurationChange(e.currentTarget.duration || 0)}
-                    className="h-full w-full object-cover"
-                    muted
-                    playsInline
-                  />
-                ) : meta.multiple && files.length > 1 ? (
-                  <div className="grid h-full grid-cols-2 gap-0.5 bg-black p-0.5">
-                    {previews.slice(0, 4).map((src, i) => (
-                      <img key={i} src={src} alt="" className="h-full w-full object-cover" />
-                    ))}
+                ) : isReels && videoSrc ? (
+                  <div className="relative h-full w-full">
+                    <video
+                      ref={videoRef}
+                      src={videoSrc}
+                      onLoadedMetadata={(e) => onDurationChange(e.currentTarget.duration || 0)}
+                      onTimeUpdate={(e) => {
+                        if (!playing) return;
+                        onSeekChange(e.currentTarget.currentTime);
+                      }}
+                      onEnded={() => setPlaying(false)}
+                      className="h-full w-full object-cover"
+                      muted={muted}
+                      playsInline
+                      loop={false}
+                    />
+                    <button
+                      type="button"
+                      onClick={togglePlay}
+                      className="absolute inset-0 grid place-items-center bg-black/0 transition hover:bg-black/20"
+                      aria-label={playing ? "Пауза" : "Смотреть видео"}
+                    >
+                      <span className={cn(
+                        "grid h-14 w-14 place-items-center rounded-full bg-black/55 text-white shadow-lg ring-1 ring-white/20 backdrop-blur-sm transition",
+                        playing && "opacity-0 hover:opacity-100",
+                      )}>
+                        {playing ? <Pause className="h-6 w-6" /> : <Play className="ml-0.5 h-6 w-6" />}
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setMuted((m) => !m); }}
+                      className="absolute bottom-3 right-3 grid h-8 w-8 place-items-center rounded-full bg-black/55 text-white ring-1 ring-white/15 backdrop-blur-sm"
+                      aria-label={muted ? "Включить звук" : "Выключить звук"}
+                    >
+                      {muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                    </button>
+                    {duration > 0 && (
+                      <div className="absolute bottom-3 left-3 rounded-md bg-black/55 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white backdrop-blur-sm">
+                        {fmtDuration(playing ? seek : 0)} / {fmtDuration(duration)}
+                      </div>
+                    )}
                   </div>
+                ) : isCarousel && activePreview ? (
+                  <div className="relative h-full w-full">
+                    {activeFile && isVideoFile(activeFile) ? (
+                      <video src={activePreview} className="h-full w-full object-cover" muted playsInline />
+                    ) : (
+                      <img src={activePreview} alt="" className="h-full w-full object-cover" />
+                    )}
+                    {files.length > 1 && (
+                      <>
+                        <button
+                          type="button"
+                          disabled={activeCarouselIdx === 0}
+                          onClick={() => goSlide(-1)}
+                          className="absolute left-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white disabled:opacity-30"
+                          aria-label="Предыдущий слайд"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={activeCarouselIdx === files.length - 1}
+                          onClick={() => goSlide(1)}
+                          className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full bg-black/50 text-white disabled:opacity-30"
+                          aria-label="Следующий слайд"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                        <div className="absolute bottom-3 inset-x-0 flex justify-center gap-1">
+                          {files.map((_, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              onClick={() => setCarouselIndex(i)}
+                              className={cn(
+                                "h-1.5 rounded-full transition",
+                                i === activeCarouselIdx ? "w-4 bg-white" : "w-1.5 bg-white/40",
+                              )}
+                              aria-label={`Слайд ${i + 1}`}
+                            />
+                          ))}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                ) : activeFile && isVideoFile(activeFile) ? (
+                  <video src={activePreview} className="h-full w-full object-cover" muted playsInline />
                 ) : (
-                  <img src={previews[0]} alt="" className="h-full w-full object-cover" />
+                  <img src={activePreview} alt="" className="h-full w-full object-cover" />
                 )}
               </PhoneFrame>
 
               {hasMedia && (
                 <div className="flex flex-wrap justify-center gap-2">
-                  <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg text-xs" onClick={openFilePicker}>
-                    Заменить
-                  </Button>
-                  <Button type="button" variant="ghost" size="sm" className="h-8 rounded-lg text-xs text-muted-foreground hover:text-destructive" onClick={() => onRemoveFile(0)}>
-                    Убрать
-                  </Button>
+                  {isCarousel ? (
+                    <>
+                      {files.length < 10 && (
+                        <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg text-xs" onClick={() => openFilePicker("append")}>
+                          <Plus className="mr-1 h-3.5 w-3.5" /> Добавить
+                        </Button>
+                      )}
+                      <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg text-xs" onClick={() => openFilePicker("replace")}>
+                        Заменить все
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg text-xs" onClick={() => openFilePicker("replace")}>
+                        Заменить
+                      </Button>
+                      <Button type="button" variant="ghost" size="sm" className="h-8 rounded-lg text-xs text-muted-foreground hover:text-destructive" onClick={() => { setPlaying(false); onRemoveFile(0); }}>
+                        Убрать
+                      </Button>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -189,7 +331,7 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
                 accept={meta.accept}
                 multiple={meta.multiple}
                 className="hidden"
-                onChange={(e) => onPickFiles(e.target.files)}
+                onChange={(e) => onPickFiles(e.target.files, pickMode)}
               />
             </div>
 
@@ -223,36 +365,126 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
                 <p className="mt-2 text-[11px] text-muted-foreground">{meta.hint}</p>
               </div>
 
-              {meta.multiple && files.length > 0 && (
+              {isCarousel && (
                 <div>
                   <FieldLabel hint={`${files.length} из 10`}>Порядок слайдов</FieldLabel>
-                  <div className="flex gap-2 overflow-x-auto pb-1">
-                    {files.map((f, i) => (
-                      <div key={i} className="group relative shrink-0 w-16">
-                        {isVideoFile(f) ? (
-                          <video src={previews[i]} className="h-16 w-16 rounded-lg object-cover ring-1 ring-border/50" muted />
-                        ) : (
-                          <img src={previews[i]} alt="" className="h-16 w-16 rounded-lg object-cover ring-1 ring-border/50" />
+                  {files.length === 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => openFilePicker("replace")}
+                      className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border/70 bg-secondary/20 px-4 py-8 text-center transition hover:border-primary/40 hover:bg-primary/5"
+                    >
+                      <Upload className="h-5 w-5 text-muted-foreground" />
+                      <span className="text-sm font-medium">Загрузите 2–10 фото или видео</span>
+                      <span className="text-[11px] text-muted-foreground">Можно выбрать несколько файлов сразу</span>
+                    </button>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                        {files.map((f, i) => (
+                          <div
+                            key={`${f.name}-${i}-${f.size}`}
+                            className={cn(
+                              "group relative overflow-hidden rounded-xl border bg-card/60 transition",
+                              i === activeCarouselIdx ? "border-primary/60 ring-2 ring-primary/25" : "border-border/60",
+                            )}
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setCarouselIndex(i)}
+                              className="block w-full text-left"
+                            >
+                              <div className="relative aspect-[4/5] bg-zinc-900">
+                                {isVideoFile(f) ? (
+                                  <>
+                                    <video src={previews[i]} className="h-full w-full object-cover" muted />
+                                    <span className="absolute inset-0 grid place-items-center">
+                                      <span className="grid h-8 w-8 place-items-center rounded-full bg-black/55 text-white">
+                                        <Film className="h-3.5 w-3.5" />
+                                      </span>
+                                    </span>
+                                  </>
+                                ) : (
+                                  <img src={previews[i]} alt="" className="h-full w-full object-cover" />
+                                )}
+                                <span className="absolute left-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-black/70 text-[11px] font-bold text-white">
+                                  {i + 1}
+                                </span>
+                              </div>
+                              <div className="truncate px-2 py-1.5 text-[10px] text-muted-foreground">
+                                {f.name}
+                              </div>
+                            </button>
+                            <div className="absolute right-1.5 top-1.5 flex gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+                              <button
+                                type="button"
+                                disabled={i === 0}
+                                onClick={() => onMoveFile(i, -1)}
+                                className="grid h-7 w-7 place-items-center rounded-md bg-black/65 text-white disabled:opacity-30"
+                                aria-label="Сдвинуть влево"
+                              >
+                                <ChevronLeft className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                disabled={i === files.length - 1}
+                                onClick={() => onMoveFile(i, 1)}
+                                className="grid h-7 w-7 place-items-center rounded-md bg-black/65 text-white disabled:opacity-30"
+                                aria-label="Сдвинуть вправо"
+                              >
+                                <ChevronRight className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  onRemoveFile(i);
+                                  if (activeCarouselIdx >= i && activeCarouselIdx > 0) setCarouselIndex(activeCarouselIdx - 1);
+                                }}
+                                className="grid h-7 w-7 place-items-center rounded-md bg-black/65 text-white hover:bg-destructive/80"
+                                aria-label="Удалить слайд"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                        {files.length < 10 && (
+                          <button
+                            type="button"
+                            onClick={() => openFilePicker("append")}
+                            className="flex aspect-[4/5] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-border/70 bg-secondary/15 text-muted-foreground transition hover:border-primary/40 hover:text-primary"
+                          >
+                            <Plus className="h-5 w-5" />
+                            <span className="text-[11px] font-medium">Ещё слайд</span>
+                          </button>
                         )}
-                        <span className="absolute left-1 top-1 rounded bg-black/60 px-1 text-[9px] font-bold text-white">{i + 1}</span>
-                        <div className="absolute inset-x-0 bottom-0 flex justify-between rounded-b-lg bg-black/55 px-0.5 opacity-0 transition group-hover:opacity-100">
-                          <button type="button" disabled={i === 0} onClick={() => onMoveFile(i, -1)} className="p-0.5 text-white disabled:opacity-30"><ChevronLeft className="h-3 w-3" /></button>
-                          <button type="button" disabled={i === files.length - 1} onClick={() => onMoveFile(i, 1)} className="p-0.5 text-white disabled:opacity-30"><ChevronRight className="h-3 w-3" /></button>
-                        </div>
                       </div>
-                    ))}
-                  </div>
+                      <p className="text-[11px] text-muted-foreground">
+                        Клик по слайду — превью. Стрелки меняют порядок, как увидят подписчики.
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {type === "REELS" && videoSrc && (
+              {isReels && videoSrc && (
                 <div className="rounded-2xl border border-border/60 bg-card/50 p-4">
                   <div className="mb-3 flex items-center justify-between">
                     <FieldLabel hint="необязательно">Обложка Reels</FieldLabel>
                     <div className="flex rounded-lg border border-border/60 bg-background p-0.5 text-[10px] font-medium">
-                      <button type="button" onClick={() => setPreviewMode("media")} className={cn("rounded-md px-2 py-1 transition", previewMode === "media" ? "bg-secondary text-foreground" : "text-muted-foreground")}>Видео</button>
-                      <button type="button" onClick={() => setPreviewMode("cover")} className={cn("rounded-md px-2 py-1 transition", previewMode === "cover" ? "bg-secondary text-foreground" : "text-muted-foreground")}>Обложка</button>
+                      <button type="button" onClick={() => { setPreviewMode("media"); }} className={cn("rounded-md px-2 py-1 transition", previewMode === "media" ? "bg-secondary text-foreground" : "text-muted-foreground")}>Видео</button>
+                      <button type="button" onClick={() => { setPlaying(false); setPreviewMode("cover"); }} className={cn("rounded-md px-2 py-1 transition", previewMode === "cover" ? "bg-secondary text-foreground" : "text-muted-foreground")}>Обложка</button>
                     </div>
+                  </div>
+                  <div className="mb-3 flex items-center gap-2">
+                    <Button type="button" size="sm" variant="secondary" className="h-8 gap-1.5 rounded-lg text-xs" onClick={togglePlay}>
+                      {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+                      {playing ? "Пауза" : "Смотреть видео"}
+                    </Button>
+                    <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5 rounded-lg text-xs" onClick={() => setMuted((m) => !m)}>
+                      {muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                      {muted ? "Без звука" : "Со звуком"}
+                    </Button>
                   </div>
                   <input
                     type="range"
@@ -262,6 +494,7 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
                     value={seek}
                     onChange={(e) => {
                       const t = Number(e.target.value);
+                      setPlaying(false);
                       onSeekChange(t);
                       if (videoRef.current) videoRef.current.currentTime = t;
                     }}
@@ -273,7 +506,7 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
                     <span>{fmtDuration(duration)}</span>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Button type="button" size="sm" variant="secondary" className="h-8 gap-1.5 rounded-lg text-xs" onClick={onCaptureFrame}>
+                    <Button type="button" size="sm" variant="secondary" className="h-8 gap-1.5 rounded-lg text-xs" onClick={() => { setPlaying(false); onCaptureFrame(); }}>
                       <Camera className="h-3.5 w-3.5" /> Кадр с видео
                     </Button>
                     <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5 rounded-lg text-xs" onClick={() => coverInputRef.current?.click()}>

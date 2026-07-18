@@ -752,7 +752,7 @@ function AddDialog({ day, hourReach, bestHour, projectId, hasAccount, onClose, o
   const clearCover = () => { setCoverFile(null); setCoverPreview((p) => { if (p) URL.revokeObjectURL(p); return null; }); };
   const applyCover = (fl: File) => { setCoverPreview((p) => { if (p) URL.revokeObjectURL(p); return URL.createObjectURL(fl); }); setCoverFile(fl); };
 
-  const pick = (list: FileList | null) => {
+  const pick = (list: FileList | null, mode: "replace" | "append" = "replace") => {
     if (!list || list.length === 0) return;
     const a = Array.from(list);
     const tooBig = a.find((f) => f.size > MAX_FILE_BYTES);
@@ -762,12 +762,22 @@ function AddDialog({ day, hourReach, bestHour, projectId, hasAccount, onClose, o
       });
       return;
     }
-    const next = meta.multiple ? a.slice(0, 10) : a.slice(0, 1);
-    setFiles(next);
-    clearCover();
-    setVideoSrc((prev) => { if (prev) URL.revokeObjectURL(prev); return (type === "REELS" && next[0]?.type.startsWith("video/")) ? URL.createObjectURL(next[0]) : null; });
-    setSeek(0);
-    setDuration(0);
+    setFiles((prev) => {
+      let next: File[];
+      if (meta.multiple && mode === "append") {
+        next = [...prev, ...a].slice(0, 10);
+      } else {
+        next = meta.multiple ? a.slice(0, 10) : a.slice(0, 1);
+      }
+      clearCover();
+      setVideoSrc((old) => {
+        if (old) URL.revokeObjectURL(old);
+        return (type === "REELS" && next[0]?.type.startsWith("video/")) ? URL.createObjectURL(next[0]) : null;
+      });
+      setSeek(0);
+      setDuration(0);
+      return next;
+    });
   };
 
   const moveFile = (idx: number, dir: -1 | 1) => {
