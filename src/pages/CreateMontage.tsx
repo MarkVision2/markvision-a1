@@ -11,7 +11,7 @@ import { TelegramConnect } from "@/components/factory/TelegramConnect";
 import { HeygenUsagePanel } from "@/components/factory/HeygenUsagePanel";
 import { enqueueAgentJob, estimateCost, loadRecentVoices, pushRecentVoice, recordUsage } from "@/lib/heygenUsage";
 import { HeygenGallery } from "@/components/factory/HeygenGallery";
-import { loadHidden, toggleHidden } from "@/lib/heygenHidden";
+import { loadHidden, syncHidden, toggleHidden } from "@/lib/heygenHidden";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -63,6 +63,41 @@ const isTerminal = (s?: string) => s === "completed" || s === "failed";
 // ── Карточка аватара (видео при наведении) ──────────────────────────────────
 type AvatarAssignState = "none" | "mine" | "other";
 
+// Превью аватара с fallback-цепочкой: hover-видео → картинка → иконка.
+// Ссылки HeyGen подписанные и протухают — битую картинку не показываем.
+function AvatarMedia({ a, hover, className }: { a: HeygenAvatar; hover?: boolean; className?: string }) {
+  const [imgBroken, setImgBroken] = useState(false);
+  const [videoBroken, setVideoBroken] = useState(false);
+  useEffect(() => { setImgBroken(false); setVideoBroken(false); }, [a.id, a.preview_image_url, a.preview_video_url]);
+
+  if (hover && a.preview_video_url && !videoBroken) {
+    return (
+      <video
+        src={a.preview_video_url}
+        className={className}
+        autoPlay muted loop playsInline
+        onError={() => setVideoBroken(true)}
+      />
+    );
+  }
+  if (a.preview_image_url && !imgBroken) {
+    return (
+      <img
+        src={a.preview_image_url}
+        alt={a.name}
+        className={className}
+        loading="lazy"
+        onError={() => setImgBroken(true)}
+      />
+    );
+  }
+  return (
+    <div className="grid h-full w-full place-items-center text-muted-foreground">
+      <UserRound className="h-7 w-7" />
+    </div>
+  );
+}
+
 function AvatarCard({
   a, active, onSelect, manage, hidden, onToggleHide, assignState, onToggleAssign,
 }: {
@@ -79,27 +114,24 @@ function AvatarCard({
   return (
     <div
       className={cn(
-        "group relative overflow-hidden rounded-xl border border-border/60 bg-card/60 text-left transition hover:border-primary/40",
+        "group relative overflow-hidden rounded-xl border border-border/60 bg-card/60 text-left transition hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5",
         active && "border-primary ring-2 ring-primary/40",
-        hidden && "opacity-50",
+        hidden && "opacity-60 saturate-50",
       )}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
     >
       <button type="button" onClick={onSelect} disabled={manage} className="block w-full text-left">
         <div className="relative aspect-[3/4] w-full bg-secondary/50">
-          {hover && a.preview_video_url ? (
-            <video src={a.preview_video_url} className="h-full w-full object-cover" autoPlay muted loop playsInline />
-          ) : a.preview_image_url ? (
-            <img src={a.preview_image_url} alt={a.name} className="h-full w-full object-cover" loading="lazy" />
-          ) : (
-            <div className="grid h-full w-full place-items-center text-muted-foreground">
-              <UserRound className="h-7 w-7" />
-            </div>
-          )}
+          <AvatarMedia a={a} hover={hover && !manage} className="h-full w-full object-cover" />
+          {/* Имя — поверх превью, градиент снизу */}
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/40 to-transparent px-2 pb-1.5 pt-6">
+            <div className="truncate text-xs font-semibold text-white drop-shadow">{a.name}</div>
+            {a.gender && <div className="text-[10px] text-white/70">{a.gender}</div>}
+          </div>
           {active && !manage && (
-            <span className="absolute right-1.5 top-1.5 grid h-5 w-5 place-items-center rounded-full bg-primary text-primary-foreground">
-              <Check className="h-3.5 w-3.5" />
+            <span className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-primary text-primary-foreground shadow">
+              <Check className="h-4 w-4" />
             </span>
           )}
           {!manage && assignState === "mine" && (
@@ -111,7 +143,6 @@ function AvatarCard({
             </span>
           )}
         </div>
-        <div className="truncate p-2 text-xs font-medium">{a.name}</div>
       </button>
       {manage && onToggleHide && (
         <button
@@ -119,11 +150,11 @@ function AvatarCard({
           onClick={onToggleHide}
           title={hidden ? "Вернуть в список" : "Скрыть из списка"}
           className={cn(
-            "absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full border text-white shadow",
-            hidden ? "border-primary bg-primary/80" : "border-white/30 bg-black/60 hover:bg-destructive",
+            "absolute right-1.5 top-1.5 z-10 grid h-7 w-7 place-items-center rounded-full border text-white shadow",
+            hidden ? "border-primary bg-primary/90 hover:bg-primary" : "border-white/30 bg-black/60 hover:bg-destructive",
           )}
         >
-          {hidden ? <Plus className="h-3.5 w-3.5" /> : <X className="h-3.5 w-3.5" />}
+          {hidden ? <Plus className="h-4 w-4" /> : <X className="h-4 w-4" />}
         </button>
       )}
       {manage && onToggleAssign && (
@@ -136,13 +167,13 @@ function AvatarCard({
                 : "Закрепить только за этим проектом (скроется у остальных)"
           }
           className={cn(
-            "absolute left-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full border text-white shadow",
-            assignState === "mine" ? "border-primary bg-primary/80"
+            "absolute left-1.5 top-1.5 z-10 grid h-7 w-7 place-items-center rounded-full border text-white shadow",
+            assignState === "mine" ? "border-primary bg-primary/90"
               : assignState === "other" ? "border-warning/60 bg-warning/80"
                 : "border-white/30 bg-black/60 hover:bg-primary",
           )}
         >
-          {assignState === "mine" ? <Unlock className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+          {assignState === "mine" ? <Unlock className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
         </button>
       )}
     </div>
@@ -150,19 +181,13 @@ function AvatarCard({
 }
 
 // ── Панель выбранного аватара ───────────────────────────────────────────────
-function SelectedAvatar({ a }: { a: HeygenAvatar }) {
+function SelectedAvatar({ a, onReset }: { a: HeygenAvatar; onReset?: () => void }) {
   return (
     <div className="flex items-center gap-3 rounded-2xl border border-primary/30 bg-primary/5 p-3">
-      <div className="aspect-[3/4] w-16 shrink-0 overflow-hidden rounded-lg bg-secondary/50">
-        {a.preview_video_url ? (
-          <video src={a.preview_video_url} className="h-full w-full object-cover" autoPlay muted loop playsInline />
-        ) : a.preview_image_url ? (
-          <img src={a.preview_image_url} alt={a.name} className="h-full w-full object-cover" />
-        ) : (
-          <div className="grid h-full w-full place-items-center text-muted-foreground"><UserRound className="h-6 w-6" /></div>
-        )}
+      <div className="aspect-[3/4] w-16 shrink-0 overflow-hidden rounded-xl bg-secondary/50">
+        <AvatarMedia a={a} hover className="h-full w-full object-cover" />
       </div>
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <div className="text-[10px] font-bold uppercase tracking-wider text-primary">Выбранный аватар</div>
         <div className="truncate text-sm font-semibold">{a.name}</div>
         <div className="text-xs text-muted-foreground">
@@ -170,6 +195,16 @@ function SelectedAvatar({ a }: { a: HeygenAvatar }) {
           {a.gender ? ` · ${a.gender}` : ""}
         </div>
       </div>
+      {onReset && (
+        <button
+          type="button"
+          onClick={onReset}
+          title="Сбросить выбор"
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-full border border-border/60 text-muted-foreground transition hover:border-destructive/50 hover:text-destructive"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
     </div>
   );
 }
@@ -190,8 +225,14 @@ function AvatarPicker({
 }) {
   const queryClient = useQueryClient();
   const [manage, setManage] = useState(false);
+  const [search, setSearch] = useState("");
   const [hidden, setHidden] = useState<string[]>(() => loadHidden("avatars", projectId));
-  useEffect(() => { setHidden(loadHidden("avatars", projectId)); }, [projectId]);
+  useEffect(() => {
+    setHidden(loadHidden("avatars", projectId));
+    let cancelled = false;
+    void syncHidden("avatars", projectId).then((ids) => { if (!cancelled) setHidden(ids); });
+    return () => { cancelled = true; };
+  }, [projectId]);
   const hiddenSet = new Set(hidden);
   const toggleHide = (id: string) => setHidden(toggleHidden("avatars", projectId, id));
 
@@ -219,12 +260,24 @@ function AvatarPicker({
   };
 
   const raw = query.data ?? [];
+  const q = search.trim().toLowerCase();
+  const matches = (a: HeygenAvatar) => !q || `${a.name} ${a.gender ?? ""}`.toLowerCase().includes(q);
   // В обычном режиме скрытые и закреплённые за другим проектом не показываем;
-  // в «Управлять» — показываем всё (там же можно перепривязать чужой аватар).
-  const all = manage ? raw : raw.filter((a) => !hiddenSet.has(a.id) && assignStateOf(a) !== "other");
+  // в «Управлять» — показываем всё (там же можно перепривязать чужой аватар),
+  // но скрытые выносим в отдельную секцию внизу.
+  const visibleRaw = manage
+    ? raw.filter((a) => !hiddenSet.has(a.id))
+    : raw.filter((a) => !hiddenSet.has(a.id) && assignStateOf(a) !== "other");
+  const all = visibleRaw.filter(matches);
   const mine = all.filter((a) => a.mine);
   const heygenAvatars = all.filter((a) => !a.mine);
+  const hiddenAvatars = raw.filter((a) => hiddenSet.has(a.id) && matches(a));
   const hiddenCount = raw.filter((a) => hiddenSet.has(a.id)).length;
+
+  // Выбранный аватар мог сохраниться в дефолтах со старыми (протухшими) URL —
+  // подменяем на свежие данные из каталога по id.
+  const selectedFresh =
+    selected ? raw.find((a) => a.id === selected.id && a.kind === selected.kind) ?? selected : null;
 
   const card = (a: HeygenAvatar) => (
     <AvatarCard
@@ -246,27 +299,25 @@ function AvatarPicker({
         <label className="text-sm font-semibold">
           Аватар {optional && <span className="text-xs font-normal text-muted-foreground">— необязательно</span>}
         </label>
-        <div className="flex items-center gap-3">
-          {selected && optional && !manage && (
-            <button type="button" onClick={() => onSelect(null)} className="text-xs text-muted-foreground hover:text-foreground">
-              Сбросить
-            </button>
-          )}
-          {raw.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setManage((m) => !m)}
-              className={cn("text-xs font-medium", manage ? "text-primary" : "text-muted-foreground hover:text-foreground")}
-            >
-              {manage ? "Готово" : `Управлять${hiddenCount ? ` (${hiddenCount} скрыто)` : ""}`}
-            </button>
-          )}
-        </div>
+        {raw.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setManage((m) => !m)}
+            className={cn(
+              "rounded-lg border px-2.5 py-1 text-xs font-medium transition",
+              manage
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border/60 text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {manage ? "Готово" : `Управлять${hiddenCount ? ` (${hiddenCount} скрыто)` : ""}`}
+          </button>
+        )}
       </div>
 
       {manage && (
         <p className="rounded-lg border border-border/50 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
-          ✕ — скрыть аватар из списка, + — вернуть (из HeyGen ничего не удаляется).
+          ✕ — скрыть аватар из списка, + — вернуть (из HeyGen ничего не удаляется, скрытие сохраняется для проекта на всех устройствах).
           🔒 слева — закрепить аватар только за этим проектом (исчезнет у остальных); 🔓 — открепить обратно в общий список.
         </p>
       )}
@@ -279,14 +330,26 @@ function AvatarPicker({
         <p className="text-sm text-warning">Аватары недоступны: {(query.error as Error).message}</p>
       ) : (
         <>
-          {selected && !manage && (
+          {selectedFresh && !manage && (
             <div className="space-y-2">
-              <SelectedAvatar a={selected} />
+              <SelectedAvatar a={selectedFresh} onReset={optional ? () => onSelect(null) : undefined} />
               {onToggleDefault && (
                 <div className="flex justify-end">
                   <DefaultStar on={!!isDefault} onClick={onToggleDefault} />
                 </div>
               )}
+            </div>
+          )}
+
+          {raw.length > 6 && (
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Поиск аватара по имени…"
+                className="pl-9"
+              />
             </div>
           )}
 
@@ -314,6 +377,17 @@ function AvatarPicker({
             </div>
           )}
 
+          {manage && hiddenAvatars.length > 0 && (
+            <div>
+              <div className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                <X className="h-3.5 w-3.5" /> Скрытые ({hiddenAvatars.length})
+              </div>
+              <div className="grid max-h-60 grid-cols-3 gap-3 overflow-y-auto pr-1 sm:grid-cols-4">
+                {hiddenAvatars.map(card)}
+              </div>
+            </div>
+          )}
+
           {raw.length === 0 && (
             <p className="text-sm text-muted-foreground">
               Свои аватары не найдены. Создайте аватар в HeyGen — он появится здесь.
@@ -321,7 +395,7 @@ function AvatarPicker({
           )}
           {raw.length > 0 && all.length === 0 && !manage && (
             <p className="text-sm text-muted-foreground">
-              Все аватары скрыты. Нажмите «Управлять», чтобы вернуть нужные.
+              {q ? "Ничего не найдено по поиску." : "Все аватары скрыты. Нажмите «Управлять», чтобы вернуть нужные."}
             </p>
           )}
         </>
@@ -346,7 +420,12 @@ function VoicePicker({
   const [playing, setPlaying] = useState<string | null>(null);
   const [manage, setManage] = useState(false);
   const [hidden, setHidden] = useState<string[]>(() => loadHidden("voices", projectId));
-  useEffect(() => { setHidden(loadHidden("voices", projectId)); }, [projectId]);
+  useEffect(() => {
+    setHidden(loadHidden("voices", projectId));
+    let cancelled = false;
+    void syncHidden("voices", projectId).then((ids) => { if (!cancelled) setHidden(ids); });
+    return () => { cancelled = true; };
+  }, [projectId]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => () => { audioRef.current?.pause(); }, []);
@@ -354,8 +433,9 @@ function VoicePicker({
   const hiddenSet = new Set(hidden);
   const toggleHide = (id: string) => setHidden(toggleHidden("voices", projectId, id));
   const raw = query.data ?? [];
-  const all = manage ? raw : raw.filter((v) => !hiddenSet.has(v.voice_id));
-  const hiddenCount = raw.filter((v) => hiddenSet.has(v.voice_id)).length;
+  const all = raw.filter((v) => !hiddenSet.has(v.voice_id));
+  const hiddenVoices = raw.filter((v) => hiddenSet.has(v.voice_id));
+  const hiddenCount = hiddenVoices.length;
   const selectedVoice = raw.find((v) => v.voice_id === value) ?? null;
   const q = search.trim().toLowerCase();
 
@@ -438,8 +518,10 @@ function VoicePicker({
   const mine = all.filter((v) => v.mine);
   const usedIds = new Set<string>([...recent.map((v) => v.voice_id), ...mine.map((v) => v.voice_id)]);
   const rest = all.filter((v) => !usedIds.has(v.voice_id));
+  // В режиме управления поиск идёт и по скрытым — чтобы вернуть нужный голос.
+  const searchPool = manage ? raw : all;
   const filtered = q
-    ? all.filter((v) => `${v.name} ${v.language ?? ""} ${v.gender ?? ""}`.toLowerCase().includes(q)).slice(0, 80)
+    ? searchPool.filter((v) => `${v.name} ${v.language ?? ""} ${v.gender ?? ""}`.toLowerCase().includes(q)).slice(0, 80)
     : [];
 
   return (
@@ -461,7 +543,8 @@ function VoicePicker({
 
       {manage && (
         <p className="rounded-lg border border-border/50 bg-background/40 px-3 py-2 text-xs text-muted-foreground">
-          Нажмите ✕, чтобы скрыть голос из списка, или +, чтобы вернуть. Из HeyGen ничего не удаляется.
+          Нажмите ✕, чтобы скрыть голос из списка, или +, чтобы вернуть. Из HeyGen ничего не удаляется,
+          скрытие сохраняется для проекта на всех устройствах.
         </p>
       )}
 
@@ -537,6 +620,14 @@ function VoicePicker({
                         …ещё {rest.length - 40}. Найдите нужный через поиск выше.
                       </p>
                     )}
+                  </>
+                )}
+                {manage && hiddenVoices.length > 0 && (
+                  <>
+                    <div className="px-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      Скрытые ({hiddenVoices.length})
+                    </div>
+                    {hiddenVoices.map(row)}
                   </>
                 )}
               </>
