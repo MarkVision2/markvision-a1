@@ -448,7 +448,7 @@
    "to": 846
   },
   {
-   "text": "HUB",
+   "text": "ХАБ",
    "from": 846,
    "accent": true,
    "to": 860
@@ -634,7 +634,7 @@
    "data": {
     "lines": [
      "ПИШИ",
-     "HUB"
+     "ХАБ"
     ],
     "accent": "#FF7A18",
     "cover": true
