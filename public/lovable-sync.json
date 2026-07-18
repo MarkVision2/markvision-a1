@@ -1,7 +1,7 @@
 {
-  "git_sha": "abeae8c",
-  "git_sha_full": "abeae8c46c0c29fdfce84108b9cf8831152cd907",
-  "updated_at": "2026-07-18T20:25:58+05:00",
-  "label": "feat: upgrade AI ROP and CRM command centers",
+  "git_sha": "f80bc1d",
+  "git_sha_full": "f80bc1d9af5f9d4e9090c292451114d43ccfbbde",
+  "updated_at": "2026-07-18T20:34:27+05:00",
+  "label": "fix(reels): validate Kie.ai key via chat/credit endpoint and surface real error text",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
