@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { requireUser } from "../_lib/auth.ts";
+import { aiChatCompletion } from "../_lib/aiProvider.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,14 +19,6 @@ serve(async (req) => {
   } catch { return new Response(JSON.stringify({error:"Unauthorized"}),{status:401,headers:{...corsHeaders,"Content-Type":"application/json"}}); }
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) {
-      return new Response(JSON.stringify({ error: "LOVABLE_API_KEY is not configured" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
     const body = await req.json().catch(() => ({}));
     const mode: "reply" | "improve" | "objection" =
       body.mode === "improve" || body.mode === "objection" ? body.mode : "reply";
@@ -81,43 +74,12 @@ serve(async (req) => {
         `Предложи 3 коротких варианта ответа менеджера. Каждый — отдельной строкой, без нумерации, без кавычек.`;
     }
 
-    const aiResp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-      }),
+    const data = await aiChatCompletion({
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
     });
-
-    if (!aiResp.ok) {
-      if (aiResp.status === 429) {
-        return new Response(JSON.stringify({ error: "Слишком много запросов, повторите позже." }), {
-          status: 429,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (aiResp.status === 402) {
-        return new Response(JSON.stringify({ error: "Закончились кредиты Lovable AI. Пополните в Settings → Workspace → Usage." }), {
-          status: 402,
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const t = await aiResp.text();
-      console.error("AI gateway error", aiResp.status, t);
-      return new Response(JSON.stringify({ error: "AI недоступен" }), {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const data = await aiResp.json();
     const raw: string = data?.choices?.[0]?.message?.content ?? "";
     const suggestions = raw
       .split("\n")

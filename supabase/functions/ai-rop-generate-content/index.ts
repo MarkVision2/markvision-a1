@@ -7,6 +7,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { requireProjectAccess } from "../_lib/auth.ts";
+import { aiChatCompletion } from "../_lib/aiProvider.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,9 +17,6 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY")!;
-const MODEL = "google/gemini-2.5-flash";
-
 const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
@@ -52,27 +50,14 @@ async function authorize(req: Request): Promise<{ ok: true } | { ok: false; resp
 }
 
 async function callLLM(prompt: string, systemPrompt: string): Promise<string> {
-  const r = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${LOVABLE_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: prompt },
-      ],
-      temperature: 0.8,
-    }),
+  const result = await aiChatCompletion({
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: prompt },
+    ],
+    temperature: 0.8,
   });
-  if (!r.ok) {
-    const t = await r.text();
-    throw new Error(`LLM ${r.status}: ${t.slice(0, 200)}`);
-  }
-  const j = await r.json();
-  return j?.choices?.[0]?.message?.content ?? "";
+  return result?.choices?.[0]?.message?.content ?? "";
 }
 
 function parseIdea(raw: string): {

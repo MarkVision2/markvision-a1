@@ -29,6 +29,7 @@ import { ConnectWhatsAppDialog } from "@/components/crm/ConnectWhatsAppDialog";
 import { CrmKpiBar } from "@/components/crm/CrmKpiBar";
 import { SlaAlerts } from "@/components/crm/SlaAlerts";
 import { CrmFilters, type CrmFilterState } from "@/components/crm/CrmFilters";
+import { CrmTodayView } from "@/components/crm/CrmTodayView";
 import { RejectReasonDialog } from "@/components/crm/RejectReasonDialog";
 import { PaymentAmountDialog } from "@/components/crm/PaymentAmountDialog";
 import { DiagnosticAmountDialog } from "@/components/crm/DiagnosticAmountDialog";
@@ -43,7 +44,7 @@ const CapiSettings = lazy(() =>
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 
-type Tab = "funnel" | "chats" | "clients" | "managers" | "analytics" | "automations" | "capi";
+type Tab = "today" | "funnel" | "chats" | "clients" | "managers" | "analytics" | "automations" | "capi";
 
 const Crm = () => {
   const { isAdmin } = useAuth();
@@ -82,6 +83,7 @@ const Crm = () => {
 
   const TABS: { id: Tab; label: string; icon: typeof Columns3 }[] = useMemo(
     () => [
+      { id: "today", label: "Сегодня", icon: Sparkles },
       { id: "funnel", label: "Воронка", icon: Columns3 },
       { id: "chats", label: "Чаты", icon: MessageCircle },
       { id: "clients", label: "База", icon: Database },
@@ -93,7 +95,7 @@ const Crm = () => {
     [isAdmin],
   );
 
-  const [tab, setTab] = useState<Tab>("funnel");
+  const [tab, setTab] = useState<Tab>("today");
   const [newOpen, setNewOpen] = useState(false);
   const [waOpen, setWaOpen] = useState(false);
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null);
@@ -282,6 +284,20 @@ const Crm = () => {
       {/* Tab content — fills remaining viewport */}
       <section className="flex min-h-0 flex-1 flex-col px-4 py-4 sm:px-6">
         <div className="mx-auto flex min-h-0 w-full max-w-[1600px] flex-1 flex-col">
+          {tab === "today" && (
+            <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+              <CrmTodayView
+                leads={leads}
+                managerStats={analytics.managerStats}
+                paidPct={analytics.kpi.paidPct}
+                rejectedPct={analytics.kpi.rejectedPct}
+                avgResponseMin={analytics.kpi.avgResponseMin}
+                onOpenLead={handleOpenLead}
+                onOpenFunnel={() => setTab("funnel")}
+              />
+            </div>
+          )}
+
           {tab === "funnel" && (
             <div className="flex min-h-0 flex-1 flex-col gap-3">
               <CrmFilters
@@ -515,7 +531,7 @@ const Crm = () => {
           await updateLead(diagFor.leadId, { diagnosticAmount: amount, stageId: diagFor.stageId });
           toast.success(
             amount > 0
-              ? `Диагностика на $${amount} зафиксирована`
+              ? `Диагностика на ${Math.round(amount).toLocaleString("ru-RU")} ₸ зафиксирована`
               : "Бесплатная диагностика зафиксирована",
           );
           setDiagFor(null);

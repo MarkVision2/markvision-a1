@@ -10,6 +10,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { requireLeadAccess, validateRecordingUrl } from "../_lib/auth.ts";
+import { aiChatCompletion, aiModelName, aiTranscription } from "../_lib/aiProvider.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,10 +20,6 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-const LLM_MODEL = "google/gemini-2.5-flash";
-const STT_MODEL = "openai/whisper-1";
-const LOVABLE_BASE = "https://ai.gateway.lovable.dev/v1";
 const MAX_AUDIO_BYTES = 50 * 1024 * 1024; // 50 МБ
 
 const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
@@ -86,28 +83,13 @@ async function downloadAudio(url: string): Promise<{ blob: Blob; filename: strin
 }
 
 async function transcribe(audio: Blob, filename: string) {
-  if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
   const fd = new FormData();
   fd.append("file", audio, filename);
-  fd.append("model", STT_MODEL);
   fd.append("response_format", "verbose_json");
   fd.append("language", "ru");
 
-  // Whisper для 5-минутного звонка ~10с, для 30-минутного — до минуты. 90с с запасом.
-  const resp = await fetchWithTimeout(
-    `${LOVABLE_BASE}/audio/transcriptions`,
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${LOVABLE_API_KEY}` },
-      body: fd,
-    },
-    90_000,
-  );
-  if (!resp.ok) {
-    const t = await resp.text();
-    throw new Error(`whisper HTTP ${resp.status}: ${t.slice(0, 400)}`);
-  }
-  const j = await resp.json();
+  // Whisper для 5-минутного звонка ~10с, для 30-минутного — до минуты.
+  const j = await aiTranscription(fd, 90_000);
   const text: string = j?.text ?? "";
   const segments: WhisperSegment[] = Array.isArray(j?.segments) ? j.segments : [];
   return { text, segments };
@@ -202,33 +184,14 @@ ${transcript}`;
 }
 
 async function callLLM(system: string, user: string) {
-  if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
-  // Gemini обычно укладывается в 5-15с. 60с с запасом на лёгкие лаги/ретраи
-  // на стороне gateway. Без timeout висящий запрос убьёт весь бюджет функции.
-  const resp = await fetchWithTimeout(
-    `${LOVABLE_BASE}/chat/completions`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: LLM_MODEL,
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-        response_format: { type: "json_object" },
-      }),
-    },
-    60_000,
-  );
-  if (!resp.ok) {
-    const t = await resp.text();
-    throw new Error(`LLM HTTP ${resp.status}: ${t.slice(0, 400)}`);
-  }
-  const j = await resp.json();
+  const j = await aiChatCompletion({
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+    responseFormat: { type: "json_object" },
+    timeoutMs: 60_000,
+  });
   const text = j?.choices?.[0]?.message?.content ?? "{}";
   try {
     return JSON.parse(text);
@@ -406,7 +369,7 @@ Deno.serve(async (req) => {
       main_mistake: parsed.main_mistake ? String(parsed.main_mistake) : null,
       topics: Array.isArray(parsed.topics) ? parsed.topics : [],
       objections: Array.isArray(parsed.objections) ? parsed.objections : [],
-      ai_model: LLM_MODEL,
+      ai_model: aiModelName(),
       processed_at: new Date().toISOString(),
     };
 
