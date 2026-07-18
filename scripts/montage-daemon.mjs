@@ -54,20 +54,30 @@ if (!SUPABASE_URL || !ANON_KEY || !WORKER_KEY) {
 const MW = `${SUPABASE_URL.replace(/\/+$/, "")}/functions/v1/montage-worker`;
 const AI = `${SUPABASE_URL.replace(/\/+$/, "")}/functions/v1/montage-ai`;
 
-async function call(url, body) {
-  const r = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-montage-key": WORKER_KEY,
-      apikey: ANON_KEY,
-      Authorization: `Bearer ${ANON_KEY}`,
-    },
-    body: JSON.stringify(body),
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
-  return j;
+async function call(url, body, retries = 5) {
+  let last;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-montage-key": WORKER_KEY,
+          apikey: ANON_KEY,
+          Authorization: `Bearer ${ANON_KEY}`,
+        },
+        body: JSON.stringify(body),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
+      return j;
+    } catch (e) {
+      last = e;
+      console.warn(`call attempt ${attempt}/${retries}:`, e instanceof Error ? e.message : e);
+      if (attempt < retries) await new Promise((r) => setTimeout(r, 1500 * attempt));
+    }
+  }
+  throw last;
 }
 
 function sh(cmd, args, opts = {}) {
@@ -132,18 +142,21 @@ async function uploadRender(localPath, remoteName) {
   const path = `montage/${Date.now()}-${remoteName.replace(/[^\w.\-]+/g, "_")}`;
   const { token, publicUrl } = await call(MW, { action: "sign_upload", path });
   const sb = createClient(SUPABASE_URL, ANON_KEY);
-  const { error } = await sb.storage.from("renders").uploadToSignedUrl(
-    path,
-    token,
-    readFileSync(localPath),
-    {
-      contentType: localPath.endsWith(".jpg") || localPath.endsWith(".jpeg")
-        ? "image/jpeg"
-        : "video/mp4",
-    },
-  );
-  if (error) throw new Error(`upload ${localPath}: ${error.message}`);
-  return publicUrl;
+  const body = readFileSync(localPath);
+  const contentType = localPath.endsWith(".jpg") || localPath.endsWith(".jpeg")
+    ? "image/jpeg"
+    : "video/mp4";
+  let last;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const { error } = await sb.storage.from("renders").uploadToSignedUrl(path, token, body, {
+      contentType,
+    });
+    if (!error) return publicUrl;
+    last = error;
+    console.warn(`upload attempt ${attempt}/5:`, error.message);
+    await new Promise((r) => setTimeout(r, 1500 * attempt));
+  }
+  throw new Error(`upload ${localPath}: ${last?.message || "failed"}`);
 }
 
 async function bootstrap() {

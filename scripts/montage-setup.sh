@@ -22,8 +22,11 @@ need_key DEEPGRAM_API_KEY
 need_key MONTAGE_WORKER_KEY
 
 # ── Сеть: без доступа к Supabase/R2/Deepgram воркер бесполезен ──────────────
-if curl -fsS --max-time 10 -o /dev/null "https://szfgdruhlebfvcmlvxdk.supabase.co/auth/v1/health" 2>/dev/null; then
-  echo "✓ Сеть до Supabase есть"
+# /auth/v1/health без apikey отвечает 401 — это нормально, главное что TLS/DNS живы.
+_code=$(curl -sS --max-time 10 -o /dev/null -w "%{http_code}" \
+  "https://szfgdruhlebfvcmlvxdk.supabase.co/auth/v1/health" 2>/dev/null || echo "000")
+if [ "$_code" != "000" ]; then
+  echo "✓ Сеть до Supabase есть (HTTP $_code)"
 else
   echo "✗ Нет сети до szfgdruhlebfvcmlvxdk.supabase.co — откройте сетевую политику окружения"
   fail=1
