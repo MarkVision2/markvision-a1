@@ -1,7 +1,7 @@
 {
-  "git_sha": "7c4d74e",
-  "git_sha_full": "7c4d74ea2d19be908ae2308ff48988888789329a",
-  "updated_at": "2026-07-18T10:49:37+05:00",
-  "label": "Improve carousel slide order and Reels video playback preview.",
+  "git_sha": "f14600b",
+  "git_sha_full": "f14600b23a4c40ceb10194a9bf21e2fb0bd81102",
+  "updated_at": "2026-07-18T11:00:46+05:00",
+  "label": "Play dashboard creatives via Meta preview iframe fallback.",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
