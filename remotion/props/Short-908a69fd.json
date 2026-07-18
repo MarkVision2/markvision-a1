@@ -519,6 +519,78 @@
  "inserts": [
   {
    "type": "motion",
+   "template": "pill-row",
+   "from": 55,
+   "to": 137,
+   "data": {
+    "items": [
+     "Отчёты",
+     "Реклама",
+     "Вручную"
+    ],
+    "accent": "#FB7185"
+   },
+   "layout": "third"
+  },
+  {
+   "type": "motion",
+   "template": "big-statement",
+   "from": 142,
+   "to": 214,
+   "data": {
+    "lines": [
+     "ТЫ",
+     "АССИСТЕНТ"
+    ],
+    "accent": "#FF7A18",
+    "cover": true
+   },
+   "layout": "full"
+  },
+  {
+   "type": "motion",
+   "template": "lower-third",
+   "from": 214,
+   "to": 262,
+   "data": {
+    "name": "СТРАТЕГИЯ",
+    "role": "работа маркетолога",
+    "icon": "target",
+    "accent": "#22D3EE"
+   },
+   "layout": "third"
+  },
+  {
+   "type": "motion",
+   "template": "kinetic-type",
+   "from": 262,
+   "to": 329,
+   "data": {
+    "words": [
+     "ОСТАЛЬНОЕ",
+     "АВТОМАТИЗИРУЙ"
+    ],
+    "accentIndex": 1,
+    "accent": "#34D399",
+    "cover": true
+   },
+   "layout": "full"
+  },
+  {
+   "type": "motion",
+   "template": "lower-third",
+   "from": 346,
+   "to": 435,
+   "data": {
+    "name": "ЗАКРЫТЫЙ ПРАКТИКУМ",
+    "role": "бесплатно · онлайн",
+    "icon": "award",
+    "accent": "#FFC53D"
+   },
+   "layout": "third"
+  },
+  {
+   "type": "motion",
    "template": "checklist-reveal",
    "from": 457,
    "to": 625,
@@ -537,7 +609,53 @@
      "chart"
     ],
     "accent": "#22D3EE"
-   }
+   },
+   "layout": "half"
+  },
+  {
+   "type": "motion",
+   "template": "pill-row",
+   "from": 632,
+   "to": 690,
+   "data": {
+    "items": [
+     "Отчёты клиентам",
+     "Каждый день"
+    ],
+    "accent": "#34D399"
+   },
+   "layout": "third"
+  },
+  {
+   "type": "motion",
+   "template": "big-statement",
+   "from": 807,
+   "to": 860,
+   "data": {
+    "lines": [
+     "ПИШИ",
+     "HUB"
+    ],
+    "accent": "#FF7A18",
+    "cover": true
+   },
+   "layout": "full"
+  },
+  {
+   "type": "motion",
+   "template": "kinetic-type",
+   "from": 899,
+   "to": 950,
+   "data": {
+    "words": [
+     "МЕСТ",
+     "ОГРАНИЧЕНО"
+    ],
+    "accentIndex": 1,
+    "accent": "#FB7185",
+    "cover": true
+   },
+   "layout": "full"
   }
  ],
  "audioTrack": "audio_Short-908a69fd.wav",

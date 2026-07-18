@@ -116,3 +116,8 @@ verify_jwt = false
 # x-montage-key; секрет ELEVENLABS_API_KEY в Supabase Edge Secrets.
 [functions.reels-tts]
 verify_jwt = false
+
+# Reels b-roll: бесплатный сток Pexels (наша сеть его не пускает напрямую).
+# Та же авторизация x-montage-key; секрет PEXELS_API_KEY в Supabase Edge Secrets.
+[functions.reels-broll]
+verify_jwt = false
