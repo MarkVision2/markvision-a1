@@ -20,13 +20,18 @@ import {
 } from "@/components/ui/select";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useMultiMetaInsights } from "@/hooks/useMetaInsights";
+import { useMetaCreatives } from "@/hooks/useMetaStructure";
 import { useDestinationSplit } from "@/hooks/useDestinationSplit";
 import { useLeadsLite, type LeadLite } from "@/hooks/useLeadsLite";
 import { CHANNELS, resolveChannel, type ChannelKey } from "@/lib/channelAttribution";
 import { isLeadPaid } from "@/lib/leadStageFlags";
+import { buildAnalyticsInsights, buildSourceBreakdown } from "@/lib/analyticsBreakdowns";
 import { ChannelCard, type ChannelStat } from "@/components/analytics/ChannelCard";
+import { InsightsStrip } from "@/components/analytics/InsightsStrip";
+import { SourcesTable } from "@/components/analytics/SourcesTable";
 import { UtmTable, type UtmRow } from "@/components/analytics/UtmTable";
 import { GoogleCampaignsCard } from "@/components/analytics/GoogleCampaignsCard";
+import { CreativesGrid } from "@/components/dashboard/CreativesGrid";
 import type { TrendPoint } from "@/components/analytics/TrendChart";
 const TrendChart = lazy(() =>
   import("@/components/analytics/TrendChart").then((m) => ({ default: m.TrendChart })),
@@ -183,6 +188,13 @@ const Analytics = () => {
   const { data: splitData } = useDestinationSplit(cabinetIdsForSplit, monthParam, cabinetIdsForSplit.length > 0);
 
   const { leads, loading: leadsLoading, refetch } = useLeadsLite();
+
+  // Креативы Meta со сквозными CRM-метриками — для блока «Лучшие креативы».
+  const { rows: allCreatives } = useMetaCreatives(period);
+  const creatives = useMemo(
+    () => (cabinetId === "all" ? allCreatives : allCreatives.filter((c) => c.cabinetId === cabinetId)),
+    [allCreatives, cabinetId],
+  );
 
   // Filter leads by month
   const monthStart = monthCursor.getTime();
@@ -399,6 +411,22 @@ const Analytics = () => {
     return points;
   }, [data, filteredLeads, monthCursor]);
 
+  // Срез по источникам CRM (WhatsApp, Instagram, сайт, вручную…).
+  const sources = useMemo(
+    () => buildSourceBreakdown(leads, {
+      from: monthStart,
+      to: monthEnd,
+      cabinetId,
+    }),
+    [leads, monthStart, monthEnd, cabinetId],
+  );
+
+  // Автовыводы за период: лучший канал / источник / креатив + точка роста.
+  const insights = useMemo(
+    () => buildAnalyticsInsights({ channels, sources, creatives }),
+    [channels, sources, creatives],
+  );
+
   const hasLinkedData = actIds.length > 0;
   const hasMonthData = !!data?.daily.length || filteredLeads.length > 0;
   const funnelBase = Math.max(impressions, clicks, leadCount, diagnosticsCount, salesCount, 1);
@@ -445,6 +473,13 @@ const Analytics = () => {
         <KpiCard icon={Target} label="Средний чек" value={avgCheck > 0 ? fmtMoney(avgCheck) : "—"} sub={salesCount > 0 ? `по ${salesCount} продажам` : "нет продаж"} />
         <KpiCard icon={Zap} label="Конв. лид→визит" value={fmtPct(crLeadVisit)} sub={`визит→продажа ${fmtPct(crVisitSale)}`} />
       </div>
+
+      {/* Инсайты периода: лучший канал / источник / креатив + точка роста */}
+      {insights.length > 0 && (
+        <div className="mt-4">
+          <InsightsStrip insights={insights} />
+        </div>
+      )}
 
       {!loading && !leadsLoading && !hasMonthData && (
         <div className="mt-6 rounded-2xl border border-warning/30 bg-warning/10 p-4 text-sm text-warning">
@@ -572,6 +607,43 @@ const Analytics = () => {
           {channels.map((c) => (
             <ChannelCard key={c.meta.key} stat={c} />
           ))}
+        </div>
+      </section>
+
+      {/* Sources breakdown */}
+      <section className="mt-8">
+        <div className="flex items-end justify-between">
+          <div>
+            <h2 className="text-lg font-bold tracking-tight">Источники лидов</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Детальный срез по полю «источник» из CRM: доля лидов, горячие (AI-скоринг), продажи и выручка.
+              Лиды — по дате создания, продажи — по дате оплаты.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 rounded-2xl border border-border/60 bg-card/40 p-4">
+          <SourcesTable rows={sources} />
+        </div>
+      </section>
+
+      {/* Best creatives */}
+      <section className="mt-8">
+        <div className="flex items-end justify-between">
+          <div>
+            <h2 className="text-lg font-bold tracking-tight">Лучшие креативы</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Объявления Meta за период со сквозной выручкой из CRM — что реально приносит деньги
+            </p>
+          </div>
+        </div>
+        <div className="mt-4">
+          <CreativesGrid
+            rows={creatives}
+            topMode
+            topLimit={4}
+            periodLabel={monthLabel}
+            viewAllHref="/ads?tab=creatives"
+          />
         </div>
       </section>
 
