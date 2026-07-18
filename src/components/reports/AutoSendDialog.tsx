@@ -78,7 +78,7 @@ export function AutoSendDialog() {
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant="outline" className="h-12 gap-2 rounded-2xl border-border/60 bg-card/40">
+        <Button variant="outline" className="h-10 gap-2 rounded-xl border-border/60 bg-card/40">
           <Send className="h-4 w-4" /> Авто-отправка
         </Button>
       </DialogTrigger>

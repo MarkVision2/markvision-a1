@@ -18,17 +18,29 @@ Deno.serve(async (req) => {
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
     const body = await req.json();
-    const { mode, question, rangeLabel, totals, prev, scoring, channels } = body ?? {};
+    const {
+      mode,
+      question,
+      rangeLabel,
+      totals,
+      prev,
+      scoring,
+      channels,
+      creatives,
+      daily,
+    } = body ?? {};
 
     const ctx = `Период: ${rangeLabel}
 Метрики: ${JSON.stringify(totals)}
 Пред. период: ${JSON.stringify(prev)}
 AI-скоринг: ${JSON.stringify(scoring)}
-Каналы: ${JSON.stringify(channels)}`;
+Каналы: ${JSON.stringify(channels)}
+Креативы: ${JSON.stringify(creatives)}
+Динамика по дням: ${JSON.stringify(daily)}`;
 
     const system = mode === "summary"
-      ? "Ты — AI-аналитик маркетинга. На основе данных дай краткий вывод в 3-4 предложения по-русски: что выросло, что упало, на что обратить внимание. Не используй markdown."
-      : "Ты — AI-аналитик маркетинга. Отвечай по-русски кратко и по существу, опираясь только на переданные данные.";
+      ? "Ты — AI-аналитик маркетинга для владельца бизнеса. Дай по-русски короткий управленческий разбор: 1) итог периода, 2) главное узкое место, 3) лучший актив или канал, 4) одно конкретное следующее действие. Учитывай только переданные данные, не выдумывай причины и не называй ростом изменение без данных прошлого периода. Денежные значения указывай в тенге. Не используй markdown."
+      : "Ты — AI-аналитик маркетинга для владельца бизнеса. Отвечай по-русски кратко и конкретно, опираясь только на переданные Meta, CRM, платёжные и атрибуционные данные. Если данных для вывода нет — прямо скажи, каких именно данных не хватает. Не выдумывай причины. Денежные значения указывай в тенге.";
 
     const userMsg = mode === "summary"
       ? `Дай краткое резюме отчёта.\n${ctx}`
