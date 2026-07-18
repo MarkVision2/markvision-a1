@@ -12,6 +12,7 @@ Usage: python shorts_refine.py <work_dir>
 """
 import json
 import sys
+import wave
 from pathlib import Path
 
 MAX_GAP_S = 0.42   # пауза длиннее — режем (джамп-кат)
@@ -21,11 +22,23 @@ MIN_SUB_S = 0.25   # сегменты короче — сливаем/выкид
 MERGE_GAP_S = 0.10 # если между сегментами почти нет выреза — склеить
 
 
+def media_duration(work: Path) -> float:
+    """Фактическая длительность исходника по work/audio.wav (16k mono PCM)."""
+    wav = work / "audio.wav"
+    if not wav.exists():
+        return float("inf")
+    with wave.open(str(wav), "rb") as f:
+        return f.getnframes() / f.getframerate()
+
+
 def refine(work: Path):
     words = json.loads((work / "words.json").read_text(encoding="utf-8"))
     raw_text = (work / "shorts.json").read_text(encoding="utf-8")
     (work / "shorts.raw.json").write_text(raw_text, encoding="utf-8")
     data = json.loads(raw_text)
+    # AI может назначить конец спана за пределами реального медиа —
+    # audio.py тогда падает на ассерте длины дорожки. Жёсткий потолок.
+    hard_end = media_duration(work) - 0.15
 
     deleted = set()
     del_file = work / "delete.json"
@@ -35,7 +48,7 @@ def refine(work: Path):
 
     total_cut = 0.0
     for sh in data.get("shorts", []):
-        spans = sh.get("spans") or []
+        spans = [[a, min(b, hard_end)] for a, b in (sh.get("spans") or []) if a < hard_end]
         kept = []
         for a, b in spans:
             inside = [w for w in words
