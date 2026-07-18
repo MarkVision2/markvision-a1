@@ -39,7 +39,6 @@ export type ReelsExplainerProps = {
 };
 
 const PAPER = BRAND.text;
-const TEXT_TEMPLATES = new Set(["big-statement", "kinetic-type", "quote-card", "lower-third"]);
 const CANVAS_W = 1080;
 const CANVAS_H = 1920;
 
@@ -113,7 +112,9 @@ const BrollMedia: React.FC<{ scene: ReelsScene; localFrame: number; duration: nu
 const Captions: React.FC<{ words: ShortWord[]; scene: ReelsScene | null }> = ({ words, scene }) => {
   const frame = useCurrentFrame();
   if (!scene) return null;
-  if (scene.data?.caption === false || TEXT_TEMPLATES.has(scene.template)) return null;
+  // Субтитры голоса — на всех сценах (в безопасной зоне снизу). Скрыть можно
+  // только явным data.caption=false на конкретной сцене.
+  if (scene.data?.caption === false) return null;
   const inScene = words.filter((w) => w.from >= scene.from - 1 && w.from < scene.to);
   let ci = -1;
   for (let i = 0; i < inScene.length; i++) {

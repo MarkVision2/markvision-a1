@@ -5,7 +5,7 @@
    "text": "3",
    "from": 2,
    "to": 12,
-   "accent": false
+   "accent": true
   },
   {
    "text": "вещи",
@@ -89,7 +89,7 @@
    "text": "5-10",
    "from": 202,
    "to": 216,
-   "accent": false
+   "accent": true
   },
   {
    "text": "креативов",
@@ -383,7 +383,7 @@
    "text": "хаб",
    "from": 901,
    "to": 913,
-   "accent": false
+   "accent": true
   },
   {
    "text": "в",
@@ -439,8 +439,7 @@
      "АВТОМАТИЗАЦИИ"
     ],
     "accent": "#FF7A18",
-    "cover": true,
-    "caption": false
+    "cover": true
    },
    "clip": "broll/70d761da/futuristic-data-network-motion-34337855.mp4"
   },
@@ -462,8 +461,7 @@
      }
     ],
     "accent": "#22D3EE",
-    "cover": true,
-    "caption": false
+    "cover": true
    },
    "clip": "broll/70d761da/video-editing-software-screen-29380116.mp4"
   },
@@ -478,8 +476,7 @@
      "Реклама активна"
     ],
     "accent": "#34D399",
-    "cover": true,
-    "caption": false
+    "cover": true
    },
    "clip": "broll/70d761da/digital-marketing-dashboard-screen-36950917.mp4"
   },
@@ -500,8 +497,7 @@
      "clock"
     ],
     "accent": "#8B5CF6",
-    "cover": true,
-    "caption": false
+    "cover": true
    },
    "clip": "broll/70d761da/business-analytics-chart-screen-35544540.mp4"
   },
@@ -515,8 +511,7 @@
      "AI-СИСТЕМА"
     ],
     "accent": "#FFC53D",
-    "cover": true,
-    "caption": false
+    "cover": true
    },
    "clip": "broll/70d761da/artificial-intelligence-abstract-technol-17144481.mp4"
   },
@@ -530,8 +525,7 @@
      "В КОММЕНТАРИЯХ"
     ],
     "accent": "#FF7A18",
-    "cover": true,
-    "caption": false
+    "cover": true
    }
   }
  ],

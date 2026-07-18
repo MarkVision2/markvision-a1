@@ -121,3 +121,8 @@ verify_jwt = false
 # Та же авторизация x-montage-key; секрет PEXELS_API_KEY в Supabase Edge Secrets.
 [functions.reels-broll]
 verify_jwt = false
+
+# Reels gen: ИИ-б-ролл (FLUX через kie.ai), когда стока нет под образ.
+# Та же авторизация x-montage-key; секрет KIE_API_KEY в Supabase Edge Secrets.
+[functions.reels-gen]
+verify_jwt = false
