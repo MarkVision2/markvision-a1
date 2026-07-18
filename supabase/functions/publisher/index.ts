@@ -1,4 +1,4 @@
-// Автопостинг v7: очередь cf_scheduled_posts. IMAGE, REELS (с обложкой cover_url), STORIES, CAROUSEL.
+// Автопостинг v8 (граф по типу токена): очередь cf_scheduled_posts. IMAGE, REELS (с обложкой cover_url), STORIES, CAROUSEL.
 // dry_run — пробный режим (создаём контейнер, не публикуем).
 //
 // Мультитенантность: если у поста задан project_id — токен и ig_user_id
@@ -7,7 +7,12 @@
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const H: Record<string, string> = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" };
-const IG = "https://graph.facebook.com/v21.0";
+const GRAPH_IG = "https://graph.instagram.com/v21.0";
+const GRAPH_FB = "https://graph.facebook.com/v21.0";
+// Выбор графа по типу токена: Instagram Login (IGAA/IGQV…) → graph.instagram.com,
+// Facebook Page token (EAA…) → graph.facebook.com. Без этого legacy-аккаунт с
+// Instagram-Login токеном получал 190 «Invalid OAuth» на facebook-графе.
+function graphFor(token: string) { return /^IG/i.test(token) ? GRAPH_IG : GRAPH_FB; }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 async function db(path: string, init: RequestInit = {}) {
@@ -28,19 +33,19 @@ function isVideo(url: string) {
   const u = (url || "").toLowerCase().split("?")[0];
   return u.endsWith(".mp4") || u.endsWith(".mov") || u.endsWith(".m4v");
 }
-async function createContainer(igUserId: string, params: URLSearchParams) {
-  return await (await fetch(`${IG}/${igUserId}/media?${params}`, { method: "POST" })).json().catch(() => ({}));
+async function createContainer(base: string, igUserId: string, params: URLSearchParams) {
+  return await (await fetch(`${base}/${igUserId}/media?${params}`, { method: "POST" })).json().catch(() => ({}));
 }
 // status_code — машинный статус (FINISHED/ERROR/IN_PROGRESS); status — человекочитаемая
 // причина от Instagram при ERROR (например код 2207052 — медиа не подошло по формату/
 // не удалось обработать). Раньше запрашивали только status_code и на ошибке писали
 // голое "container ERROR" — реальная причина от Instagram терялась.
-async function containerStatus(token: string, id: string): Promise<{ code: string; detail: string }> {
-  const j = await (await fetch(`${IG}/${id}?fields=status_code,status&access_token=${token}`)).json().catch(() => ({}));
+async function containerStatus(base: string, token: string, id: string): Promise<{ code: string; detail: string }> {
+  const j = await (await fetch(`${base}/${id}?fields=status_code,status&access_token=${token}`)).json().catch(() => ({}));
   return { code: j.status_code ?? "", detail: typeof j.status === "string" ? j.status : "" };
 }
-async function publish(igUserId: string, token: string, creationId: string) {
-  return await (await fetch(`${IG}/${igUserId}/media_publish?creation_id=${creationId}&access_token=${token}`, { method: "POST" })).json().catch(() => ({}));
+async function publish(base: string, igUserId: string, token: string, creationId: string) {
+  return await (await fetch(`${base}/${igUserId}/media_publish?creation_id=${creationId}&access_token=${token}`, { method: "POST" })).json().catch(() => ({}));
 }
 
 function formatMetaError(raw: unknown): string {
@@ -70,14 +75,14 @@ function ensureContainerId(j: unknown, label: string): string {
   throw new Error(`${label}: ${formatMetaError(j)}`);
 }
 
-interface Account { igUserId: string; token: string }
+interface Account { igUserId: string; token: string; graph: string }
 const legacyAccount: { value: Account | null } = { value: null };
 async function getLegacyAccount(): Promise<Account | null> {
   if (legacyAccount.value) return legacyAccount.value;
   const igUserId = await setting("ig_user_id");
   const token = await setting("ig_access_token");
   if (!igUserId || !token) return null;
-  legacyAccount.value = { igUserId, token };
+  legacyAccount.value = { igUserId, token, graph: graphFor(token) };
   return legacyAccount.value;
 }
 const projectAccounts = new Map<string, Account | null>();
@@ -85,7 +90,7 @@ async function getProjectAccount(projectId: string): Promise<Account | null> {
   if (projectAccounts.has(projectId)) return projectAccounts.get(projectId)!;
   const rows = await db(`instagram_accounts?project_id=eq.${projectId}&active=eq.true&select=ig_user_id,page_access_token&limit=1`);
   const row = rows?.[0];
-  const acc = row?.ig_user_id && row?.page_access_token ? { igUserId: row.ig_user_id, token: row.page_access_token } : null;
+  const acc = row?.ig_user_id && row?.page_access_token ? { igUserId: row.ig_user_id, token: row.page_access_token, graph: graphFor(row.page_access_token) } : null;
   projectAccounts.set(projectId, acc);
   return acc;
 }
@@ -109,7 +114,7 @@ Deno.serve(async (req) => {
       out.failed++;
       continue;
     }
-    const { igUserId, token } = account;
+    const { igUserId, token, graph } = account;
     try {
       const caption = p.caption ?? "";
       let containerId: string | null = null;
@@ -121,24 +126,24 @@ Deno.serve(async (req) => {
         for (const u of urls) {
           const cp = new URLSearchParams({ access_token: token, is_carousel_item: "true" });
           if (isVideo(u)) { cp.set("media_type", "VIDEO"); cp.set("video_url", u); } else { cp.set("image_url", u); }
-          const cj = await createContainer(igUserId, cp);
+          const cj = await createContainer(graph, igUserId, cp);
           if (!cj.id) throw new Error("child: " + formatMetaError(cj));
           childIds.push(cj.id);
         }
-        const pj = await createContainer(igUserId, new URLSearchParams({ access_token: token, media_type: "CAROUSEL", children: childIds.join(","), caption }));
+        const pj = await createContainer(graph, igUserId, new URLSearchParams({ access_token: token, media_type: "CAROUSEL", children: childIds.join(","), caption }));
         containerId = ensureContainerId(pj, "carousel");
       } else if (p.media_type === "REELS") {
         const params = new URLSearchParams({ access_token: token, media_type: "REELS", video_url: p.media_url, caption });
         if (p.cover_url) params.set("cover_url", p.cover_url);
-        const j = await createContainer(igUserId, params);
+        const j = await createContainer(graph, igUserId, params);
         containerId = ensureContainerId(j, "reels");
       } else if (p.media_type === "STORIES") {
         const params = new URLSearchParams({ access_token: token, media_type: "STORIES" });
         if (isVideo(p.media_url)) params.set("video_url", p.media_url); else params.set("image_url", p.media_url);
-        const j = await createContainer(igUserId, params);
+        const j = await createContainer(graph, igUserId, params);
         containerId = ensureContainerId(j, "stories");
       } else {
-        const j = await createContainer(igUserId, new URLSearchParams({ access_token: token, image_url: p.media_url, caption }));
+        const j = await createContainer(graph, igUserId, new URLSearchParams({ access_token: token, image_url: p.media_url, caption }));
         containerId = ensureContainerId(j, "image");
       }
 
@@ -151,7 +156,7 @@ Deno.serve(async (req) => {
 
       let done = false;
       for (let i = 0; i < 5; i++) {
-        const st = await containerStatus(token, containerId!);
+        const st = await containerStatus(graph, token, containerId!);
         if (st.code === "ERROR") {
           const detail = st.detail || "неизвестная причина";
           await patch(p.id, { status: "failed", error: `container ERROR: ${detail}`.slice(0, 500) });
@@ -161,7 +166,7 @@ Deno.serve(async (req) => {
           break;
         }
         if (st.code === "FINISHED" || st.code === "") {
-          const pub = await publish(igUserId, token, containerId!);
+          const pub = await publish(graph, igUserId, token, containerId!);
           if (pub.id) { await patch(p.id, { status: "published", container_id: containerId, published_ig_media_id: pub.id, error: null }); out.published++; await tg(`✅ Опубликован: «${caption.slice(0, 60)}…»`); done = true; break; }
         }
         await sleep(1500);
@@ -179,9 +184,9 @@ Deno.serve(async (req) => {
   for (const p of processing) {
     const account = await resolveAccount(p.project_id ?? null);
     if (!account) { await patch(p.id, { status: "failed", error: "instagram account not connected for this project" }); out.failed++; continue; }
-    const { igUserId, token } = account;
+    const { igUserId, token, graph } = account;
     if (!p.container_id) { await patch(p.id, { status: "failed", error: "нет container_id" }); out.failed++; continue; }
-    const st = await containerStatus(token, p.container_id);
+    const st = await containerStatus(graph, token, p.container_id);
     if (st.code === "ERROR") {
       const detail = st.detail || "неизвестная причина";
       await patch(p.id, { status: "failed", error: `container ERROR: ${detail}`.slice(0, 500) });
@@ -190,7 +195,7 @@ Deno.serve(async (req) => {
       continue;
     }
     if (st.code && st.code !== "FINISHED") continue;
-    const pub = await publish(igUserId, token, p.container_id);
+    const pub = await publish(graph, igUserId, token, p.container_id);
     if (pub.id) {
       await patch(p.id, { status: "published", published_ig_media_id: pub.id, error: null });
       out.published++;
