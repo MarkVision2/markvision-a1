@@ -154,3 +154,161 @@ export function sumCreativeTableTotals(rows: MetaCreativeRow[]): CreativeTableTo
     },
   );
 }
+
+export type CreativeDecisionKey =
+  | "scale"
+  | "unprofitable"
+  | "funnel_leak"
+  | "attribution_gap"
+  | "no_results"
+  | "learning";
+
+export interface CreativeDecision {
+  key: CreativeDecisionKey;
+  label: string;
+  action: string;
+  tone: "success" | "danger" | "warning" | "info" | "muted";
+}
+
+/**
+ * Диагноз опирается только на факты выбранного периода. Не называем это
+ * «выгоранием»: без частоты и сравнения с предыдущим окном такой вывод неверен.
+ */
+export function classifyCreativeDecision(row: MetaCreativeRow): CreativeDecision {
+  const metaLeads = metaLeadCount(row);
+  const hasPositiveProfit = row.spend > 0 && row.crmRevenue > row.spend && row.crmSales > 0;
+
+  if (hasPositiveProfit) {
+    return {
+      key: "scale",
+      label: "Победитель",
+      action: "Проверить масштабирование",
+      tone: "success",
+    };
+  }
+  if (row.crmSales > 0 && row.spend > 0 && row.crmRevenue <= row.spend) {
+    return {
+      key: "unprofitable",
+      label: "Не окупается",
+      action: "Снизить стоимость продажи",
+      tone: "danger",
+    };
+  }
+  if (row.crmLeads > 0 && row.crmSales === 0) {
+    return {
+      key: "funnel_leak",
+      label: "Потеря после лида",
+      action: "Проверить обработку в CRM",
+      tone: "warning",
+    };
+  }
+  if (metaLeads > 0 && row.crmLeads === 0) {
+    return {
+      key: "attribution_gap",
+      label: "Нет связи с CRM",
+      action: "Проверить ad.id и UTM",
+      tone: "info",
+    };
+  }
+  if (row.spend > 0 && metaLeads === 0 && row.crmLeads === 0) {
+    return {
+      key: "no_results",
+      label: "Расход без лидов",
+      action: "Проверить или заменить",
+      tone: "danger",
+    };
+  }
+  return {
+    key: "learning",
+    label: "Мало данных",
+    action: row.spend > 0 ? "Наблюдать" : "Нет доставки за период",
+    tone: "muted",
+  };
+}
+
+export interface CreativeDecisionSummary {
+  spend: number;
+  revenue: number;
+  profit: number;
+  sales: number;
+  winners: number;
+  riskSpend: number;
+  attributedCrmLeads: number;
+  unattributedCrmLeads: number;
+  attributionCoverage: number;
+  bestCreative: MetaCreativeRow | null;
+}
+
+export function buildCreativeDecisionSummary(
+  rows: MetaCreativeRow[],
+  totalProjectCrmLeads: number,
+): CreativeDecisionSummary {
+  const totals = sumCreativeTableTotals(rows);
+  const decisions = rows.map((row) => ({ row, decision: classifyCreativeDecision(row) }));
+  const riskKeys = new Set<CreativeDecisionKey>([
+    "unprofitable",
+    "funnel_leak",
+    "attribution_gap",
+    "no_results",
+  ]);
+  const winners = decisions.filter(({ decision }) => decision.key === "scale");
+  const bestCreative = winners
+    .map(({ row }) => row)
+    .sort((a, b) => b.crmProfit - a.crmProfit || b.crmRevenue - a.crmRevenue)[0] ?? null;
+  const unattributedCrmLeads = Math.max(0, totalProjectCrmLeads - totals.crmLeads);
+
+  return {
+    spend: totals.spend,
+    revenue: totals.crmRevenue,
+    profit: totals.crmRevenue - totals.spend,
+    sales: totals.crmSales,
+    winners: winners.length,
+    riskSpend: decisions.reduce(
+      (sum, { row, decision }) => sum + (riskKeys.has(decision.key) ? row.spend : 0),
+      0,
+    ),
+    attributedCrmLeads: totals.crmLeads,
+    unattributedCrmLeads,
+    attributionCoverage: totalProjectCrmLeads > 0
+      ? Math.min(100, (totals.crmLeads / totalProjectCrmLeads) * 100)
+      : 0,
+    bestCreative,
+  };
+}
+
+export type CreativeSortKey =
+  | "crmRevenue"
+  | "crmRomi"
+  | "crmSales"
+  | "crmLeads"
+  | "leads"
+  | "spend"
+  | "ctr"
+  | "cpl"
+  | "name";
+export type CreativeSortDir = "asc" | "desc";
+
+export function sortCreativeRows(
+  rows: MetaCreativeRow[],
+  sortKey: CreativeSortKey,
+  sortDir: CreativeSortDir,
+): MetaCreativeRow[] {
+  const direction = sortDir === "asc" ? 1 : -1;
+  return [...rows].sort((a, b) => {
+    if (sortKey === "name") return a.name.localeCompare(b.name, "ru") * direction;
+
+    const value = (row: MetaCreativeRow) => {
+      if (sortKey === "leads") return metaLeadCount(row);
+      if (sortKey === "cpl") return row.crmCpl;
+      return Number(row[sortKey]) || 0;
+    };
+    const av = value(a);
+    const bv = value(b);
+    // Нулевой CPL означает отсутствие результата, а не лучший CPL.
+    if (sortKey === "cpl") {
+      if (av === 0 && bv !== 0) return 1;
+      if (bv === 0 && av !== 0) return -1;
+    }
+    return (av - bv) * direction;
+  });
+}

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowDown, ArrowDownRight, ArrowUp, ArrowUpDown, ArrowUpRight, Filter, ImageDown, Info, Loader2, RefreshCw, Search, Zap } from "lucide-react";
+import { ArrowDown, ArrowDownRight, ArrowRight, ArrowUp, ArrowUpDown, ArrowUpRight, Filter, ImageDown, Info, Loader2, RefreshCw, Search, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -16,6 +16,7 @@ import { Input } from "@/components/ui/input";
 import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPicker";
 import { CreativePreview } from "@/components/creatives/CreativePreview";
 import { CreativeDetailDrawer } from "@/components/creatives/CreativeDetailDrawer";
+import { CreativeFunnelOverview } from "@/components/analytics/CreativeFunnelOverview";
 import { useMetaCreatives, type MetaCreativeRow } from "@/hooks/useMetaStructure";
 import { META_STRUCTURE_QUERY_KEY } from "@/hooks/useMetaDashboard";
 import { refreshMetaCreative } from "@/lib/metaCreativeRefresh";
@@ -24,27 +25,34 @@ import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { LEADS_LITE_QUERY_KEY, useLeadsLite } from "@/hooks/useLeadsLite";
 import { supabase } from "@/integrations/supabase/client";
 import { formatMetaSyncMessages, syncMetaFull } from "@/lib/metaSync";
-import { supabaseProjectId } from "@/lib/supabaseConfig";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import {
   buildAdToCabinetMap,
+  classifyCreativeDecision,
   computeProjectCrmTotals,
   dedupMetaCreatives,
   filterRowsByCabinet,
   metaLeadCount,
+  sortCreativeRows,
   sumCreativeTableTotals,
+  type CreativeDecisionKey,
+  type CreativeDecision,
+  type CreativeSortDir,
+  type CreativeSortKey,
   type CreativeTableTotals,
 } from "@/lib/creativeFunnelUtils";
+import { pickCreativeTitle } from "@/lib/creativeDisplay";
 import { fetchCdiRows } from "@/lib/cdiFetch";
 import { cn } from "@/lib/utils";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")}\u00a0₸`;
 
-type SortKey = "crmRevenue" | "crmRomi" | "crmSales" | "crmLeads" | "leads" | "spend" | "ctr" | "cpl" | "name";
-type SortDir = "asc" | "desc";
+type SortKey = CreativeSortKey;
+type SortDir = CreativeSortDir;
 type StatusFilter = "all" | "active" | "paused";
 type TypeFilter = "all" | "video" | "image" | "carousel";
+type DecisionFilter = "all" | CreativeDecisionKey;
 
 function SortableTh({
   label, sortKey, current, dir, onSort, align = "right",
@@ -76,6 +84,35 @@ function SortableTh({
   );
 }
 
+function DecisionBadge({ decision }: { decision: CreativeDecision }) {
+  return (
+    <div className="min-w-[150px]">
+      <span
+        className={cn(
+          "inline-flex rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wide",
+          decision.tone === "success" && "bg-success/15 text-success",
+          decision.tone === "danger" && "bg-destructive/15 text-destructive",
+          decision.tone === "warning" && "bg-warning/15 text-warning",
+          decision.tone === "info" && "bg-primary/15 text-primary",
+          decision.tone === "muted" && "bg-secondary text-muted-foreground",
+        )}
+      >
+        {decision.label}
+      </span>
+      <div className="mt-1 text-[10px] leading-snug text-muted-foreground">{decision.action}</div>
+    </div>
+  );
+}
+
+function MobileMetric({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
+  return (
+    <div className="min-w-0">
+      <div className="text-muted-foreground">{label}</div>
+      <div className={cn("mt-0.5 truncate font-bold tabular-nums", accent && "text-success")}>{value}</div>
+    </div>
+  );
+}
+
 const CreativeFunnel = () => {
   const [range, setRange] = useState<ReportPeriodRange>(() => currentMonthRange());
   const [cabinetId, setCabinetId] = useState<string>("all");
@@ -84,9 +121,7 @@ const CreativeFunnel = () => {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<StatusFilter>("all");
   const [type, setType] = useState<TypeFilter>("all");
-  const [hasSpend, setHasSpend] = useState(false);
-  const [hasLeads, setHasLeads] = useState(false);
-  const [hasSales, setHasSales] = useState(false);
+  const [decision, setDecision] = useState<DecisionFilter>("all");
   const [drawerRow, setDrawerRow] = useState<MetaCreativeRow | null>(null);
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 10;
@@ -118,6 +153,14 @@ const CreativeFunnel = () => {
     () => dedupMetaCreatives(filterRowsByCabinet(rawRows, cabinetId)),
     [rawRows, cabinetId],
   );
+  const decisionCounts = useMemo(() => {
+    const counts = new Map<CreativeDecisionKey, number>();
+    for (const row of scopedRows) {
+      const key = classifyCreativeDecision(row).key;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+  }, [scopedRows]);
 
   const crmTotals = useMemo(
     () => computeProjectCrmTotals(allLeads, range, projectId, cabinetId, adToCabinet),
@@ -228,31 +271,17 @@ const CreativeFunnel = () => {
     if (status === "active") r = r.filter((x) => x.effectiveStatus === "ACTIVE");
     if (status === "paused") r = r.filter((x) => x.effectiveStatus && x.effectiveStatus !== "ACTIVE");
     if (type !== "all") r = r.filter((x) => x.creativeType === type);
-    if (hasSpend) r = r.filter((x) => x.spend > 0);
-    if (hasLeads) r = r.filter((x) => x.crmLeads > 0 || metaLeadCount(x) > 0);
-    if (hasSales) r = r.filter((x) => x.crmSales > 0);
-    if (q) r = r.filter((x) => x.name.toLowerCase().includes(q) || x.adId.includes(q));
-
-    const sorted = [...r];
-    const dir = sortDir === "asc" ? 1 : -1;
-    sorted.sort((a, b) => {
-      if (sortKey === "name") return a.name.localeCompare(b.name) * dir;
-      if (sortKey === "leads") {
-        return (metaLeadCount(b) - metaLeadCount(a)) * dir;
-      }
-      if (sortKey === "cpl") {
-        const av = a.crmCpl > 0 ? a.crmCpl : a.cpl;
-        const bv = b.crmCpl > 0 ? b.crmCpl : b.cpl;
-        if (av === 0) return 1;
-        if (bv === 0) return -1;
-        return (av - bv) * dir;
-      }
-      const va = (a as unknown as Record<string, number>)[sortKey] ?? 0;
-      const vb = (b as unknown as Record<string, number>)[sortKey] ?? 0;
-      return (vb - va) * dir;
-    });
-    return sorted;
-  }, [scopedRows, sortKey, sortDir, search, status, type, hasSpend, hasLeads, hasSales]);
+    if (decision !== "all") r = r.filter((x) => classifyCreativeDecision(x).key === decision);
+    if (q) {
+      r = r.filter((x) => {
+        const title = pickCreativeTitle({ name: x.name, headline: x.headline }).title;
+        return `${title} ${x.name} ${x.headline ?? ""} ${x.primaryText ?? ""} ${x.adId}`
+          .toLowerCase()
+          .includes(q);
+      });
+    }
+    return sortCreativeRows(r, sortKey, sortDir);
+  }, [scopedRows, sortKey, sortDir, search, status, type, decision]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -260,17 +289,12 @@ const CreativeFunnel = () => {
     () => filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
     [filtered, safePage],
   );
-  useEffect(() => { setPage(1); }, [search, status, type, hasSpend, hasLeads, hasSales, range.from, range.to, cabinetId]);
+  useEffect(() => { setPage(1); }, [search, status, type, decision, range.from, range.to, cabinetId]);
 
-  const tableTotals = useMemo(() => sumCreativeTableTotals(filtered), [filtered]);
   const kpiTotals = useMemo(() => sumCreativeTableTotals(scopedRows), [scopedRows]);
   const displaySpend = kpiTotals.spend > 0 ? kpiTotals.spend : cdiTotals.spend;
   const displayMetaLeads = kpiTotals.metaLeads > 0 ? kpiTotals.metaLeads : cdiTotals.metaLeads;
   const spendFromCdi = kpiTotals.spend === 0 && cdiTotals.spend > 0;
-  const totalsRomi = displaySpend > 0
-    ? ((crmTotals.revenue - displaySpend) / displaySpend) * 100
-    : 0;
-
   const refreshAllPosters = async () => {
     const adIds = Array.from(new Set(filtered.flatMap((r) => r.mergedAdIds ?? [r.adId]).filter(Boolean)));
     if (adIds.length === 0 || refreshingPosters) return;
@@ -300,8 +324,6 @@ const CreativeFunnel = () => {
     const t = range.to.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
     return `${f} — ${t}`;
   }, [range]);
-
-  const attributedCrmLeads = tableTotals.crmLeads;
 
   return (
     <PageContainer>
@@ -377,36 +399,13 @@ const CreativeFunnel = () => {
         }
       />
 
-      <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-        {[
-          {
-            label: spendFromCdi ? "Расход (CDI)" : "Расход",
-            value: fmtTenge(displaySpend),
-          },
-          { label: "Лиды Meta", value: fmtNum(displayMetaLeads) },
-          { label: "Лиды CRM", value: fmtNum(crmTotals.leads) },
-          { label: "Диагностики", value: fmtNum(crmTotals.diagnostics) },
-          { label: "Продажи", value: fmtNum(crmTotals.sales) },
-          { label: "Выручка", value: fmtTenge(crmTotals.revenue) },
-          {
-            label: "ROMI",
-            value: displaySpend > 0 ? `${totalsRomi >= 0 ? "+" : ""}${Math.round(totalsRomi)}%` : "—",
-            cls: displaySpend > 0 ? (totalsRomi >= 0 ? "text-success" : "text-destructive") : "",
-          },
-        ].map((k) => (
-          <div key={k.label} className="rounded-2xl border border-border/60 bg-card/60 p-3">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{k.label}</div>
-            <div className={cn("mt-1 whitespace-nowrap text-lg font-bold tabular-nums", k.cls)}>{k.value}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-2 text-[11px] text-muted-foreground">
-        По креативам в таблице: CRM-лиды {fmtNum(attributedCrmLeads)}
-        {orphanLeads > 0 ? ` · без креатива ${fmtNum(orphanLeads)}` : ""}
-        {cabinetId !== "all" ? " · выбран один кабинет" : ""}
-        {" · "}
-        БД <code className="text-[10px]">{supabaseProjectId}</code>
+      <div className="mt-6">
+        <CreativeFunnelOverview
+          rows={scopedRows}
+          totalProjectCrmLeads={crmTotals.leads}
+          displayMetaLeads={displayMetaLeads}
+          onOpenCreative={setDrawerRow}
+        />
       </div>
 
       {!loading && scopedRows.length > 0 && kpiTotals.spend === 0 && spendFromCdi && (
@@ -462,59 +461,124 @@ const CreativeFunnel = () => {
         </div>
       )}
 
-      <div className="mt-6 flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[220px] flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Поиск по названию или ad.id"
-            className="h-10 rounded-xl border-border/60 pl-9"
-          />
-        </div>
-        <select
-          value={status}
-          onChange={(e) => setStatus(e.target.value as StatusFilter)}
-          className="h-10 rounded-xl border border-border/60 bg-background px-2 text-xs font-medium"
-        >
-          <option value="all">Все статусы</option>
-          <option value="active">Только активные</option>
-          <option value="paused">На паузе / архив</option>
-        </select>
-        <select
-          value={type}
-          onChange={(e) => setType(e.target.value as TypeFilter)}
-          className="h-10 rounded-xl border border-border/60 bg-background px-2 text-xs font-medium"
-        >
-          <option value="all">Все типы</option>
-          <option value="video">Видео</option>
-          <option value="image">Картинка</option>
-          <option value="carousel">Карусель</option>
-        </select>
-        {[
-          { label: "Есть расход", v: hasSpend, set: setHasSpend },
-          { label: "Есть лиды", v: hasLeads, set: setHasLeads },
-          { label: "Есть продажи", v: hasSales, set: setHasSales },
-        ].map((f) => (
-          <button
-            key={f.label}
-            type="button"
-            onClick={() => f.set(!f.v)}
-            className={cn(
-              "h-10 rounded-xl border px-3 text-xs font-medium transition",
-              f.v ? "border-primary/60 bg-primary/10 text-primary" : "border-border/60 bg-background hover:bg-secondary/40",
-            )}
+      <section className="mt-6 space-y-3 rounded-2xl border border-border/60 bg-card/40 p-3">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <div className="relative min-w-[220px] flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Поиск: название, текст, ad.id"
+              className="h-10 rounded-xl border-border/60 bg-background pl-9"
+            />
+          </div>
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value as StatusFilter)}
+            className="h-10 rounded-xl border border-border/60 bg-background px-3 text-xs font-medium"
           >
-            {f.label}
-          </button>
-        ))}
+            <option value="all">Все статусы</option>
+            <option value="active">Только активные</option>
+            <option value="paused">На паузе / архив</option>
+          </select>
+          <select
+            value={type}
+            onChange={(e) => setType(e.target.value as TypeFilter)}
+            className="h-10 rounded-xl border border-border/60 bg-background px-3 text-xs font-medium"
+          >
+            <option value="all">Все типы</option>
+            <option value="video">Видео</option>
+            <option value="image">Картинка</option>
+            <option value="carousel">Карусель</option>
+          </select>
+        </div>
+
+        <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1 scrollbar-none">
+          {([
+            ["all", "Все решения"],
+            ["scale", "Победители"],
+            ["funnel_leak", "Потери после лида"],
+            ["attribution_gap", "Нет связи с CRM"],
+            ["no_results", "Расход без лидов"],
+            ["unprofitable", "Не окупаются"],
+            ["learning", "Мало данных"],
+          ] as Array<[DecisionFilter, string]>).map(([key, label]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setDecision(key)}
+              className={cn(
+                "shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition",
+                decision === key
+                  ? "border-primary bg-primary/10 text-primary"
+                  : "border-border/60 bg-background text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {label}
+              <span className="ml-1.5 opacity-70">
+                {key === "all" ? scopedRows.length : decisionCounts.get(key) ?? 0}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="text-[11px] text-muted-foreground">
+          Показано {filtered.length} из {scopedRows.length} креативов после объединения дублей.
+          Нажмите строку или карточку, чтобы открыть полную воронку и список лидов.
+        </div>
+      </section>
+
+      <div className="mt-3 space-y-3 md:hidden">
+        {filtered.length === 0 && (
+          <div className="rounded-2xl border border-dashed border-border/60 bg-card/30 p-8 text-center text-sm text-muted-foreground">
+            {loading ? "Загружаем креативы…" : "Под фильтр ничего не попало. Снимите фильтры или расширьте период."}
+          </div>
+        )}
+        {paged.map((row) => {
+          const title = pickCreativeTitle({ name: row.name, headline: row.headline }).title;
+          const rowDecision = classifyCreativeDecision(row);
+          const metaLeads = metaLeadCount(row);
+          return (
+            <button
+              key={row.id}
+              type="button"
+              onClick={() => setDrawerRow(row)}
+              className="w-full rounded-2xl border border-border/60 bg-card/60 p-3 text-left transition active:scale-[0.99]"
+            >
+              <div className="flex gap-3">
+                <CreativePreview row={row} compact className="h-24 w-16 shrink-0 rounded-lg ring-1 ring-border/40" />
+                <div className="min-w-0 flex-1">
+                  <div className="line-clamp-2 text-sm font-semibold">{title}</div>
+                  <div className="mt-2"><DecisionBadge decision={rowDecision} /></div>
+                </div>
+              </div>
+              <div className="mt-3 flex items-center gap-1 overflow-x-auto text-[10px] tabular-nums scrollbar-none">
+                <span className="shrink-0 rounded bg-secondary px-1.5 py-1">Meta {fmtNum(metaLeads)}</span>
+                <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <span className="shrink-0 rounded bg-primary/10 px-1.5 py-1 text-primary">CRM {fmtNum(row.crmLeads)}</span>
+                <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <span className="shrink-0 rounded bg-violet-500/10 px-1.5 py-1 text-violet-400">Квал {fmtNum(row.crmQualified)}</span>
+                <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <span className="shrink-0 rounded bg-warning/10 px-1.5 py-1 text-warning">Диаг {fmtNum(row.crmDiagnostics)}</span>
+                <ArrowRight className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <span className="shrink-0 rounded bg-success/10 px-1.5 py-1 text-success">Продажи {fmtNum(row.crmSales)}</span>
+              </div>
+              <div className="mt-3 grid grid-cols-4 gap-2 border-t border-border/40 pt-3 text-[10px]">
+                <MobileMetric label="Расход" value={row.spend > 0 ? fmtTenge(row.spend) : "—"} />
+                <MobileMetric label="CPL CRM" value={row.crmCpl > 0 ? fmtTenge(row.crmCpl) : "—"} />
+                <MobileMetric label="Выручка" value={row.crmRevenue > 0 ? fmtTenge(row.crmRevenue) : "—"} accent={row.crmRevenue > 0} />
+                <MobileMetric
+                  label="ROMI"
+                  value={row.spend > 0 && row.crmRevenue > 0 ? `${row.crmRomi >= 0 ? "+" : ""}${Math.round(row.crmRomi)}%` : "—"}
+                  accent={row.crmRevenue > row.spend}
+                />
+              </div>
+            </button>
+          );
+        })}
       </div>
 
-      <div className="mt-2 text-[11px] text-muted-foreground">
-        Показано {filtered.length} из {scopedRows.length} креативов (после объединения дублей)
-      </div>
-
-      <div className="mt-3 overflow-hidden rounded-2xl border border-border/60 bg-card/60">
+      <div className="mt-3 hidden overflow-hidden rounded-2xl border border-border/60 bg-card/60 md:block">
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-secondary/40 text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -523,14 +587,8 @@ const CreativeFunnel = () => {
                   if (sortKey === k) setSortDir(sortDir === "asc" ? "desc" : "asc");
                   else { setSortKey(k); setSortDir("asc"); }
                 }} align="left" />
-                <SortableTh label="Лиды Meta" sortKey="leads" current={sortKey} dir={sortDir} onSort={(k) => {
-                  if (sortKey === k) setSortDir(sortDir === "asc" ? "desc" : "asc");
-                  else { setSortKey(k); setSortDir("desc"); }
-                }} />
-                <SortableTh label="Лиды CRM" sortKey="crmLeads" current={sortKey} dir={sortDir} onSort={(k) => {
-                  if (sortKey === k) setSortDir(sortDir === "asc" ? "desc" : "asc");
-                  else { setSortKey(k); setSortDir("desc"); }
-                }} />
+                <th className="px-4 py-3 text-left font-semibold">Решение</th>
+                <th className="px-4 py-3 text-left font-semibold">Воронка Meta → CRM</th>
                 <SortableTh label="Продажи" sortKey="crmSales" current={sortKey} dir={sortDir} onSort={(k) => {
                   if (sortKey === k) setSortDir(sortDir === "asc" ? "desc" : "asc");
                   else { setSortKey(k); setSortDir("desc"); }
@@ -539,7 +597,7 @@ const CreativeFunnel = () => {
                   if (sortKey === k) setSortDir(sortDir === "asc" ? "desc" : "asc");
                   else { setSortKey(k); setSortDir("desc"); }
                 }} />
-                <SortableTh label="CPL" sortKey="cpl" current={sortKey} dir={sortDir} onSort={(k) => {
+                <SortableTh label="CPL CRM" sortKey="cpl" current={sortKey} dir={sortDir} onSort={(k) => {
                   if (sortKey === k) setSortDir(sortDir === "asc" ? "desc" : "asc");
                   else { setSortKey(k); setSortDir("asc"); }
                 }} />
@@ -588,9 +646,12 @@ const CreativeFunnel = () => {
               {paged.map((row) => {
                 const romiPositive = row.crmRomi >= 0;
                 const RomiIcon = romiPositive ? ArrowUpRight : ArrowDownRight;
-                const cplValue = row.crmCpl > 0 ? row.crmCpl : row.cpl;
+                const cplValue = row.crmCpl;
                 const metaLeads = metaLeadCount(row);
                 const mergedCount = row.mergedAdIds?.length ?? 1;
+                const rowDecision = classifyCreativeDecision(row);
+                const title = pickCreativeTitle({ name: row.name, headline: row.headline }).title;
+                const metaToCrm = metaLeads > 0 ? (row.crmLeads / metaLeads) * 100 : null;
                 return (
                   <tr
                     key={row.id}
@@ -601,8 +662,8 @@ const CreativeFunnel = () => {
                       <div className="flex items-center gap-3">
                         <CreativePreview row={row} compact className="h-12 w-12 ring-1 ring-border/40" />
                         <div className="min-w-0 max-w-[280px]">
-                          <div className="line-clamp-1 text-sm font-semibold" title={row.name}>
-                            {row.name || "Без названия"}
+                          <div className="line-clamp-2 text-sm font-semibold" title={title}>
+                            {title}
                           </div>
                           <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
                             <code className="rounded bg-secondary/60 px-1 tabular-nums">{row.adId}</code>
@@ -623,9 +684,20 @@ const CreativeFunnel = () => {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums font-semibold">{fmtNum(metaLeads)}</td>
-                    <td className={cn("px-4 py-3 text-right tabular-nums font-semibold", row.crmLeads > 0 ? "text-primary" : "text-muted-foreground")}>
-                      {fmtNum(row.crmLeads)}
+                    <td className="px-4 py-3"><DecisionBadge decision={rowDecision} /></td>
+                    <td className="min-w-[230px] px-4 py-3">
+                      <div className="flex items-center gap-1.5 text-[10px] tabular-nums">
+                        <span className="rounded bg-secondary px-1.5 py-0.5">Meta {fmtNum(metaLeads)}</span>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-primary">CRM {fmtNum(row.crmLeads)}</span>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                        <span className="rounded bg-violet-500/10 px-1.5 py-0.5 text-violet-400">Квал {fmtNum(row.crmQualified)}</span>
+                        <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                        <span className="rounded bg-warning/10 px-1.5 py-0.5 text-warning">Диаг {fmtNum(row.crmDiagnostics)}</span>
+                      </div>
+                      <div className="mt-1 text-[10px] text-muted-foreground">
+                        {metaToCrm != null ? `Meta → CRM ${Math.round(metaToCrm)}%` : "Нет результатов Meta"}
+                      </div>
                     </td>
                     <td className={cn("px-4 py-3 text-right tabular-nums", row.crmSales > 0 ? "font-semibold text-success" : "text-muted-foreground")}>
                       {fmtNum(row.crmSales)}
