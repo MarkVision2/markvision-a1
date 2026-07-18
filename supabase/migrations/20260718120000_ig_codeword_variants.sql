@@ -27,7 +27,9 @@ ALTER TABLE public.instagram_organic_events
   ADD CONSTRAINT instagram_organic_events_event_type_check
   CHECK (event_type IN ('codeword_dm', 'codeword_comment', 'link_click', 'lead'));
 
-CREATE OR REPLACE VIEW public.instagram_codeword_stats AS
+-- CREATE OR REPLACE VIEW cannot insert a column mid-list — drop and recreate.
+DROP VIEW IF EXISTS public.instagram_codeword_stats;
+CREATE VIEW public.instagram_codeword_stats AS
 SELECT
   w.id                                                          AS codeword_id,
   w.project_id,
@@ -56,7 +58,8 @@ GROUP BY w.id, w.project_id, w.codeword, w.short_id, w.reel_url, w.thumbnail_url
 COMMENT ON VIEW public.instagram_codeword_stats IS
   'Воронка по код-слову: комментарий/DM → клики → лиды → продажи.';
 
-CREATE OR REPLACE VIEW public.instagram_reel_daily AS
+DROP VIEW IF EXISTS public.instagram_reel_daily;
+CREATE VIEW public.instagram_reel_daily AS
 SELECT
   e.project_id,
   e.codeword_id,
