@@ -1,7 +1,7 @@
 {
-  "git_sha": "f227f8d",
-  "git_sha_full": "f227f8dee1fcaefa860b5bfcff80aa37904c40de",
-  "updated_at": "2026-07-18T11:35:50+05:00",
-  "label": "Improve montage request history and Telegram delivery",
+  "git_sha": "11b6712",
+  "git_sha_full": "11b671294c837628b15f6c41bbabdb96a45fe9e7",
+  "updated_at": "2026-07-18T11:58:02+05:00",
+  "label": "feat: add Reels project media sources",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
