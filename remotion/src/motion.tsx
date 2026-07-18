@@ -287,9 +287,11 @@ export const KineticType: React.FC<MotionBaseProps & { words?: string[]; accentI
           const s = spring({ frame: localFrame - i * 6, fps, config: { damping: 13, mass: 0.6 }, durationInFrames: 18 });
           const acc = i === accentIndex;
           const base = acc ? 118 : 94;
-          // shrink long words so the (padded) pill never exceeds the 1080 canvas
-          // (Montserrat 900 is wide — budget ~0.72em per glyph, leave margin)
-          const fs = Math.min(base, Math.floor(860 / (Math.max(w.length, 1) * 0.72)));
+          // shrink long words so the (padded) pill never exceeds the 1080 canvas.
+          // Montserrat 900 uppercase ≈ 0.85em/glyph; accent word has pill padding,
+          // so it gets a smaller width budget. Guarantees no right-edge clipping.
+          const budget = acc ? 800 : 880;
+          const fs = Math.min(base, Math.floor(budget / (Math.max(w.length, 1) * 0.85)));
           return (
             <div key={i} style={{ fontSize: fs, fontWeight: 900, lineHeight: 1.0, whiteSpace: "nowrap", maxWidth: "100%", color: acc ? BRAND.accentInk : BRAND.text, background: acc ? accent : "transparent", padding: acc ? "4px 24px" : 0, borderRadius: 16, boxShadow: acc ? `0 12px 40px ${accent}55` : "none", textShadow: acc ? "none" : "0 6px 30px rgba(0,0,0,0.65)", transform: `scale(${s})`, opacity: interpolate(s, [0, 0.4], [0, 1], { extrapolateRight: "clamp" }) }}>
               {w}
@@ -450,12 +452,14 @@ export const BigStatement: React.FC<MotionBaseProps & { lines?: string[]; accent
   const { fps } = useVideoConfig();
   return (
     <Frame center={cover}>
-      <div style={{ maxWidth: 940, textAlign: "center" }}>
+      <div style={{ maxWidth: 940, width: "100%", textAlign: "center", overflow: "hidden" }}>
         {lines.map((ln, i) => {
           const s = enter(localFrame, fps, i * 5, 13);
-          const fs = Math.min(128, Math.floor(940 / (Math.max(ln.length, 1) * 0.62)));
+          // Montserrat 900 uppercase ≈ 0.85em/char; size each line so the whole
+          // word always fits the 9:16 frame (no right-edge clipping).
+          const fs = Math.min(120, Math.floor(900 / (Math.max(ln.length, 1) * 0.85)));
           return (
-            <div key={i} style={{ fontSize: fs, fontWeight: 900, color: i === lines.length - 1 ? accent : BRAND.text, lineHeight: 1.02, textTransform: "uppercase", transform: `translateY(${(1 - s) * 30}px) scale(${0.9 + s * 0.1})`, opacity: s, textShadow: "0 6px 30px rgba(0,0,0,0.6)" }}>{ln}</div>
+            <div key={i} style={{ fontSize: fs, fontWeight: 900, whiteSpace: "nowrap", color: i === lines.length - 1 ? accent : BRAND.text, lineHeight: 1.06, textTransform: "uppercase", transform: `translateY(${(1 - s) * 30}px) scale(${0.9 + s * 0.1})`, opacity: s, textShadow: "0 6px 30px rgba(0,0,0,0.6)" }}>{ln}</div>
           );
         })}
         <div style={{ height: 10, width: `${enter(localFrame, fps, lines.length * 5, 16) * 66}%`, background: accent, margin: "20px auto 0", borderRadius: 6, boxShadow: `0 0 24px ${accent}66` }} />
