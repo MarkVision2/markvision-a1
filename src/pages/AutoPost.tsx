@@ -260,6 +260,39 @@ const AutoPost = () => {
     return c;
   }, [posts]);
 
+  const stuckCount = useMemo(
+    () => posts.filter((p) => p.status !== "published").length,
+    [posts],
+  );
+
+  const clearStuckPosts = async () => {
+    if (!projectId || stuckCount === 0) return;
+    const failed = statusCounts.failed ?? 0;
+    const queued = statusCounts.queued ?? 0;
+    const other = stuckCount - failed - queued;
+    const msg = [
+      `Удалить ${stuckCount} зависших публикаций этого проекта?`,
+      "",
+      "Будут удалены посты в очереди, с ошибкой и неопубликованные — они уже не выйдут в старый Instagram.",
+      "Опубликованные записи останутся.",
+      "",
+      failed ? `· с ошибкой: ${failed}` : null,
+      queued ? `· в очереди: ${queued}` : null,
+      other ? `· прочие: ${other}` : null,
+    ].filter(Boolean).join("\n");
+    if (!confirm(msg)) return;
+    setLoading(true);
+    try {
+      const res = await schedulerApi<{ deleted: number }>("clear_stuck", { mode: "unpublished", include_legacy: true }, projectId);
+      toast.success(`Очищено: ${res.deleted ?? stuckCount} публикаций`);
+      await loadAll(view);
+    } catch (e) {
+      toast.error("Не удалось очистить", { description: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Сетка месяца (недели с понедельника)
   const cells = useMemo(() => {
     const first = new Date(view.getFullYear(), view.getMonth(), 1);
@@ -393,7 +426,15 @@ const AutoPost = () => {
             <TabsTrigger value="queue" className="gap-1.5"><ListChecks className="h-4 w-4" /> Очередь</TabsTrigger>
           </TabsList>
         </Tabs>
-        <Button className="rounded-xl" onClick={() => openAdd(todayAlmatyYmd())}><Plus className="mr-1.5 h-4 w-4" /> Новая публикация</Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {stuckCount > 0 && (
+            <Button variant="outline" className="rounded-xl border-destructive/40 text-destructive hover:bg-destructive/10" onClick={() => void clearStuckPosts()} disabled={loading || !projectId}>
+              <Trash2 className="mr-1.5 h-4 w-4" />
+              Очистить зависшие ({stuckCount})
+            </Button>
+          )}
+          <Button className="rounded-xl" onClick={() => openAdd(todayAlmatyYmd())}><Plus className="mr-1.5 h-4 w-4" /> Новая публикация</Button>
+        </div>
       </div>
 
       {viewMode === "calendar" ? (

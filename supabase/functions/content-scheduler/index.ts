@@ -38,7 +38,9 @@ Deno.serve(async (req) => {
   const projectId = typeof b.project_id === "string" && b.project_id ? b.project_id : null;
 
   if (action === "list") {
-    const filter = projectId ? `&project_id=eq.${projectId}` : "";
+    const filter = projectId
+      ? `&or=(project_id.eq.${projectId},project_id.is.null)`
+      : "";
     const { body } = await db(`cf_scheduled_posts?select=*${filter}&order=scheduled_at.desc&limit=200`);
     return json({ ok: true, posts: body ?? [] });
   }
@@ -138,6 +140,27 @@ Deno.serve(async (req) => {
     if (!id) return json({ ok: false, error: "id" }, 400);
     await db(`cf_scheduled_posts?id=eq.${id}`, { method: "DELETE" });
     return json({ ok: true });
+  }
+
+  // Удалить всё, что не опубликовано (failed / queued / processing / tested) —
+  // например после смены Instagram-аккаунта, когда старые посты уже не выйдут.
+  if (action === "clear_stuck") {
+    const mode = String(b.mode ?? "unpublished");
+    const statuses = mode === "failed_only" ? ["failed"] : ["failed", "queued", "processing", "tested"];
+    let path = `cf_scheduled_posts?status=in.(${statuses.join(",")})`;
+    const includeLegacy = b.include_legacy !== false;
+    if (projectId) {
+      path += includeLegacy
+        ? `&or=(project_id.eq.${projectId},project_id.is.null)`
+        : `&project_id=eq.${projectId}`;
+    }
+    const { ok, body, status } = await db(path, {
+      method: "DELETE",
+      headers: { Prefer: "return=representation" },
+    });
+    if (!ok) return json({ ok: false, error: "db", detail: body }, status);
+    const deleted = Array.isArray(body) ? body.length : 0;
+    return json({ ok: true, deleted });
   }
 
   return json({ ok: false, error: "unknown action" }, 400);
