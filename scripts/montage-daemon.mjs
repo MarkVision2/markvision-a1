@@ -256,6 +256,12 @@ async function processJob(job) {
   }
 
   if (wantShorts) {
+    // Паразиты/дубли нужны и для шортсов — иначе выйдет «исходник с титрами».
+    if (!existsSync(resolve(work, "delete.json"))) {
+      await status(id, "размечаем паразитов");
+      const del = await call(AI, { action: "markup_delete", indexed, utterances, brief });
+      writeFileSync(resolve(work, "delete.json"), JSON.stringify(del, null, 2));
+    }
     await status(id, "отбираем шортсы");
     if (!existsSync(resolve(work, "shorts.json"))) {
       const shorts = await call(AI, {
@@ -269,6 +275,9 @@ async function processJob(job) {
       });
       writeFileSync(resolve(work, "shorts.json"), JSON.stringify(shorts, null, 2));
     }
+    // Jump-cut: режем паузы и вырезанные слова внутри спанов.
+    await status(id, "монтируем (джамп-каты)");
+    py(["pipeline/shorts_refine.py", work]);
     await status(id, "пропсы шортсов");
     py(["pipeline/shorts.py", work, resolve("remotion/props")]);
 
