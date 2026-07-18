@@ -1,7 +1,7 @@
 {
-  "git_sha": "14f26bd",
-  "git_sha_full": "14f26bd8b2768b97b1ea4951317f91f611d81a35",
-  "updated_at": "2026-07-18T22:22:31+05:00",
-  "label": "fix(montage): real jump-cut editing for shorts (delete markup + refine + more accents)",
+  "git_sha": "3cfd77e",
+  "git_sha_full": "3cfd77ec1cc4f8bc9046262c13ea0731e9056227",
+  "updated_at": "2026-07-18T22:28:28+05:00",
+  "label": "fix(montage): clamp shorts spans to real media duration",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
