@@ -108,7 +108,7 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="relative flex max-h-[95vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+      <DialogContent className="flex max-h-[95vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
         <DialogHeader className="shrink-0 border-b border-border/60 bg-gradient-to-r from-primary/[0.07] via-background to-pink-500/[0.06] px-6 py-4 text-left">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -126,7 +126,8 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
           </div>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0">
+        <div className="relative flex min-h-0 flex-1 flex-col">
+        <ScrollArea className="min-h-0 max-h-[calc(95vh-10rem)]">
           <div className="grid gap-6 p-6 lg:grid-cols-[minmax(220px,260px)_1fr]">
             {/* —— Превью (мобильный макет) —— */}
             <div className="space-y-3">
@@ -343,6 +344,7 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
             <p className="mt-3 text-sm font-medium">{uploadLabel ?? "Загружаем и планируем…"}</p>
           </div>
         )}
+        </div>
 
         <DialogFooter className="shrink-0 gap-2 border-t border-border/60 bg-muted/20 px-6 py-4 sm:justify-between">
           <Button type="button" variant="ghost" className="rounded-xl" onClick={onClose} disabled={busy}>
