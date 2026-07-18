@@ -65,10 +65,21 @@ export function AdsCreativesPanel() {
   const PAGE_SIZE = 48;
   const [searchParams, setSearchParams] = useSearchParams();
   const focusAdId = searchParams.get("ad");
+  const focusQuery = searchParams.get("q");
 
   const { rows: creatives, loading } = useMetaCreatives(range);
   const { rows: campaigns } = useMetaCampaigns(range);
   const { cabinets } = useCabinetsStore();
+
+  // Deep-link from campaigns tab: ?q=<campaign name> pre-fills search.
+  useEffect(() => {
+    if (!focusQuery) return;
+    setQuery(focusQuery);
+    setSearchParams((sp) => {
+      sp.delete("q");
+      return sp;
+    }, { replace: true });
+  }, [focusQuery, setSearchParams]);
 
   // Deep-link: ?ad=<meta ad_id> opens the matching creative drawer once loaded.
   useEffect(() => {
@@ -95,7 +106,7 @@ export function AdsCreativesPanel() {
         const meta = classifyCampaignWa(camp);
         return { row, campaign: camp, ...meta };
       })
-      .filter(({ row, isWhatsApp }) => {
+      .filter(({ row, campaign, isWhatsApp }) => {
         if (typeF !== "all" && row.creativeType !== typeF) return false;
         const eff = (row.effectiveStatus ?? "").toUpperCase();
         if (status === "active" && eff !== "ACTIVE") return false;
@@ -104,7 +115,7 @@ export function AdsCreativesPanel() {
         if (goalF === "whatsapp" && !isWhatsApp) return false;
         if (goalF === "site" && isWhatsApp) return false;
         if (q) {
-          const hay = `${row.name} ${row.headline ?? ""} ${row.primaryText ?? ""} ${row.adId}`.toLowerCase();
+          const hay = `${row.name} ${row.headline ?? ""} ${row.primaryText ?? ""} ${row.adId} ${campaign?.name ?? ""} ${campaign?.campaignId ?? ""}`.toLowerCase();
           if (!hay.includes(q)) return false;
         }
         return true;

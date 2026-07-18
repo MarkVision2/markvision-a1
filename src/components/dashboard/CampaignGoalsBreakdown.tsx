@@ -67,9 +67,10 @@ const successLabelOf = (m: GoalBucket["successMetric"]) =>
 
 interface Props {
   rows: MetaCampaignRow[];
+  onOpenCreatives?: (campaignName?: string) => void;
 }
 
-export function CampaignGoalsBreakdown({ rows }: Props) {
+export function CampaignGoalsBreakdown({ rows, onOpenCreatives }: Props) {
   const goals = useMemo<GoalBucket[]>(() => {
     const map = new Map<GoalKey, GoalBucket>();
     for (const r of rows) {
@@ -102,7 +103,7 @@ export function CampaignGoalsBreakdown({ rows }: Props) {
     return (
       <div className="rounded-2xl border border-border/60 bg-card/60 p-6 text-center text-sm text-muted-foreground">
         <Target className="mx-auto mb-2 h-5 w-5" />
-        Кампании с целями появятся после первого запуска <code className="rounded bg-secondary px-1 text-[11px]">meta-structure-sync</code>.
+        Кампании с целями появятся после синхронизации Meta за выбранный период.
       </div>
     );
   }
@@ -110,13 +111,19 @@ export function CampaignGoalsBreakdown({ rows }: Props) {
   return (
     <div className="space-y-4">
       {goals.map((g) => (
-        <GoalCard key={g.key} goal={g} />
+        <GoalCard key={g.key} goal={g} onOpenCreatives={onOpenCreatives} />
       ))}
     </div>
   );
 }
 
-function GoalCard({ goal: g }: { goal: GoalBucket }) {
+function GoalCard({
+  goal: g,
+  onOpenCreatives,
+}: {
+  goal: GoalBucket;
+  onOpenCreatives?: (campaignName?: string) => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   const Icon = GOAL_ICONS[g.key];
   const accent = GOAL_ACCENT[g.key];
@@ -284,7 +291,15 @@ function GoalCard({ goal: g }: { goal: GoalBucket }) {
           </div>
           <ul className="space-y-2">
             {visible.map((c) => (
-              <CampaignRow key={c.id} campaign={c} maxSpend={maxSpend} successMetric={g.successMetric} dotClass={accent.dot} ringClass={accent.ring} />
+              <CampaignRow
+                key={c.id}
+                campaign={c}
+                maxSpend={maxSpend}
+                successMetric={g.successMetric}
+                dotClass={accent.dot}
+                ringClass={accent.ring}
+                onOpenCreatives={onOpenCreatives}
+              />
             ))}
           </ul>
         </div>
@@ -342,12 +357,14 @@ function CampaignRow({
   successMetric,
   dotClass,
   ringClass,
+  onOpenCreatives,
 }: {
   campaign: MetaCampaignRow;
   maxSpend: number;
   successMetric: GoalBucket["successMetric"];
   dotClass: string;
   ringClass: string;
+  onOpenCreatives?: (campaignName?: string) => void;
 }) {
   const success = successMetric === "leads" ? c.leads
     : successMetric === "messages" ? c.messages
@@ -366,7 +383,17 @@ function CampaignRow({
         isActive
           ? "border-success/20 bg-gradient-to-r from-success/[0.06] via-card/40 to-card/20 hover:border-success/35 hover:from-success/[0.10] hover:shadow-[0_8px_24px_-12px_hsl(var(--success)/0.25)]"
           : "border-border/40 bg-gradient-to-r from-card/40 to-card/10 hover:border-border/70 hover:from-card/60",
+        onOpenCreatives && "cursor-pointer",
       )}
+      onClick={onOpenCreatives ? () => onOpenCreatives(c.name || c.campaignId) : undefined}
+      onKeyDown={onOpenCreatives ? (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onOpenCreatives(c.name || c.campaignId);
+        }
+      } : undefined}
+      role={onOpenCreatives ? "button" : undefined}
+      tabIndex={onOpenCreatives ? 0 : undefined}
     >
       {/* spend share progress bar */}
       <span
@@ -428,6 +455,12 @@ function CampaignRow({
                   <Wallet className="h-2.5 w-2.5" />
                   {fmtNum(c.crmSales)} × {fmtTengeCompact(c.crmRevenue)}
                 </span>
+              </>
+            )}
+            {onOpenCreatives && (
+              <>
+                <span className="h-1 w-1 rounded-full bg-border" />
+                <span className="text-primary/80">креативы →</span>
               </>
             )}
           </div>

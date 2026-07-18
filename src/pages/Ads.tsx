@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import {
   Film,
@@ -20,9 +21,9 @@ import AddCabinetDialog from "@/components/ads/AddCabinetDialog";
 import CreateCampaignDialog from "@/components/ads/CreateCampaignDialog";
 import CabinetRow from "@/components/ads/CabinetRow";
 import { AdsCreativesPanel } from "@/components/ads/AdsCreativesPanel";
-import { CampaignGoalsBreakdown } from "@/components/dashboard/CampaignGoalsBreakdown";
-import { PeriodPicker, monthRange, currentMonthRange } from "@/components/dashboard/PeriodPicker";
-import { useMetaCampaigns } from "@/hooks/useMetaStructure";
+import { CampaignsWorkspace } from "@/components/ads/CampaignsWorkspace";
+import { PeriodPicker, monthRange } from "@/components/dashboard/PeriodPicker";
+import { META_STRUCTURE_QUERY_KEY } from "@/hooks/useMetaDashboard";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -30,6 +31,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 
 const SEARCH_THRESHOLD = 3;
 
@@ -57,13 +59,9 @@ const StatChip = ({
   </div>
 );
 
-function CampaignsTabContent() {
-  const [range] = useState(() => currentMonthRange());
-  const { rows } = useMetaCampaigns(range);
-  return <CampaignGoalsBreakdown rows={rows} />;
-}
-
 const Ads = () => {
+  const queryClient = useQueryClient();
+  const { activeId: projectId } = useProjectsStore();
   const { cabinets, addCabinet, updateCabinet, removeCabinet } = useCabinetsStore();
   const [searchParams, setSearchParams] = useSearchParams();
   const tab = searchParams.get("tab") ?? "cabinets";
@@ -93,7 +91,17 @@ const Ads = () => {
 
   const handleRefresh = () => {
     setRefreshKey((k) => k + 1);
+    void queryClient.invalidateQueries({ queryKey: [META_STRUCTURE_QUERY_KEY, projectId] });
     toast.success("Данные обновлены");
+  };
+
+  const openCreatives = (campaignName?: string) => {
+    setSearchParams((sp) => {
+      sp.set("tab", "creatives");
+      if (campaignName) sp.set("q", campaignName);
+      else sp.delete("q");
+      return sp;
+    }, { replace: true });
   };
 
   const handleToggleOnline = (id: string) => {
@@ -270,7 +278,11 @@ const Ads = () => {
         </TabsContent>
 
         <TabsContent value="campaigns" className="mt-5">
-          <CampaignsTabContent />
+          <CampaignsWorkspace
+            range={period}
+            onCreateCampaign={() => setCampaignOpen(true)}
+            onOpenCreatives={openCreatives}
+          />
         </TabsContent>
       </Tabs>
 
