@@ -83,3 +83,5 @@ node scripts/montage-publish.mjs --project <projectId> --video out/main169.mp4 -
 - Правка монтажа = правка `work/<id>/delete.json` → edl.py → props.py → **audio.py** (не руками в edl.json).
 - Deepgram filler_words не работает для русского — паразиты/дубли размечает Claude в `delete.json`.
 - Стиль текста в кадре — по `docs/brandbook.md` (свой бренд — через `brand-intake` → `brand.config.json`).
+- **Тексты (титры/плашки/описания): НИКОГДА не использовать длинное тире «—»** — заменять на запятую, двоеточие или дефис. **CTA пишем «Хаб» кириллицей**, не «Hub»/«HUB».
+- Б-роллы — по `docs/broll-rules.md` (когда живой б-ролл vs графика, карта «смысл→запрос Pexels», ревью). **Не фильтровать людей по цвету кожи/этничности.** Сток — edge `reels-broll` (`PEXELS_API_KEY`), ИИ — kie.ai/FLUX.
