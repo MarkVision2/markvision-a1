@@ -1,7 +1,7 @@
 {
-  "git_sha": "73b0213",
-  "git_sha_full": "73b02133fe6523c81ea2f99d4f6946f8b800fffd",
-  "updated_at": "2026-07-18T10:29:54+05:00",
-  "label": "Redesign Autopost composer with professional two-column layout.",
+  "git_sha": "48efc0f",
+  "git_sha_full": "48efc0f2989fdca33f763f597d5f681672a4a1be",
+  "updated_at": "2026-07-18T10:31:50+05:00",
+  "label": "Add bulk clear for stuck Autopost queue entries.",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
