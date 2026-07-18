@@ -141,10 +141,14 @@ word = индекс из indexed. Не дублируй соседние сло�
         if (!indexed) return json({ error: "indexed required" }, 400);
         const result = await chatJson(
           `Ты режиссёр faceless Reels. Верни JSON:
-{"scenes":[{"anchorWord":<i>,"endWord":<i>,"template":"<имя>","data":{...}}]}
-Сцены непрерывны по словам (без дыр). Шаблоны: BigNumber, Quote, Checklist, BeforeAfter,
-Steps, Comparison, Warning, Tip, LogoOutro, KineticLine. data — поля шаблона (title/value/items…).
-Цвета разнообразные. Короткие сцены оставляют караоке.`,
+{"scenes":[{"anchorWord":<i>,"endWord":<i>,"template":"<slug>","data":{...}}],"accents":[<i>],"fixes":{}}
+Сцены непрерывны по словам (без дыр). template — ТОЛЬКО из списка:
+number-counter, vs-compare, checklist-reveal, fake-terminal, fake-dashboard-bars,
+kinetic-type, annotate-arrow-highlight, loading-to-done, stat-grid, timeline-steps,
+quote-card, big-statement, lower-third, pill-row, metric-callout, phone-mockup,
+chat-bubbles, notification-toast, rating-stars, countdown, gauge, arrow-flow, price-tag.
+data — поля шаблона (price/label/value/items/lines/steps/accent="#hex"/cover/caption).
+Чередуй шаблоны и цвета. На ключевых цифрах — accents.`,
           `BRIEF:\n${brief || "(нет)"}\n\nTRANSCRIPT:\n${transcript.slice(0, 8000)}\n\nINDEXED:\n${indexed.slice(0, 35000)}`,
           150_000,
         );

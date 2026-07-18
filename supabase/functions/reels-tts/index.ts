@@ -93,6 +93,59 @@ Deno.serve(async (req) => {
 
   try {
     switch (action) {
+      case "next": {
+        // Атомарный забор: queued → rendering (одна заявка).
+        const { data: queued } = await admin
+          .from("reels_jobs")
+          .select("*")
+          .eq("status", "queued")
+          .order("created_at", { ascending: true })
+          .limit(1)
+          .maybeSingle();
+        if (!queued) return json({ job: null });
+        const { data: claimed, error } = await admin
+          .from("reels_jobs")
+          .update({
+            status: "rendering",
+            stage: "взято в работу",
+            progress: 1,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", queued.id)
+          .eq("status", "queued")
+          .select("*")
+          .maybeSingle();
+        if (error) return json({ error: error.message }, 500);
+        return json({ job: claimed ?? null });
+      }
+
+      case "update": {
+        const id = String(body.id ?? body.jobId ?? "");
+        if (!id) return json({ error: "id required" }, 400);
+        const patch: Json = { updated_at: new Date().toISOString() };
+        if (typeof body.status === "string") patch.status = body.status;
+        if (typeof body.stage === "string") patch.stage = body.stage;
+        if (typeof body.progress === "number") patch.progress = body.progress;
+        if (typeof body.error === "string") patch.error = body.error;
+        const { error } = await admin.from("reels_jobs").update(patch).eq("id", id);
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
+      }
+
+      case "fail": {
+        const id = String(body.id ?? body.jobId ?? "");
+        if (!id) return json({ error: "id required" }, 400);
+        const message = String(body.error ?? "reels не удался");
+        const { error } = await admin.from("reels_jobs").update({
+          status: "failed",
+          stage: "ошибка",
+          error: message,
+          updated_at: new Date().toISOString(),
+        }).eq("id", id);
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true });
+      }
+
       case "voices":
       case "tts": {
         const apiKey = Deno.env.get("ELEVENLABS_API_KEY");
