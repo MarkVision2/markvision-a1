@@ -4,17 +4,21 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import {
+  allTimeRange,
   formatPeriodLabel,
   lastMonthRange,
+  lastYearRange,
   thisMonthRange,
 } from "@/lib/metricsPeriod";
 import { cn } from "@/lib/utils";
 
-export type ContentPeriodPreset = "this_month" | "last_month" | "custom";
+export type ContentPeriodPreset = "this_month" | "last_month" | "last_year" | "all_time" | "custom";
 
 const PRESETS: { id: ContentPeriodPreset; label: string }[] = [
   { id: "this_month", label: "Этот месяц" },
   { id: "last_month", label: "Прошлый месяц" },
+  { id: "last_year", label: "За год" },
+  { id: "all_time", label: "Всё время" },
   { id: "custom", label: "Выбрать период" },
 ];
 
@@ -43,6 +47,8 @@ export function ContentPeriodPicker({
   const applyPreset = (id: ContentPeriodPreset) => {
     if (id === "this_month") onPresetChange("this_month", thisMonthRange());
     else if (id === "last_month") onPresetChange("last_month", lastMonthRange());
+    else if (id === "last_year") onPresetChange("last_year", lastYearRange());
+    else if (id === "all_time") onPresetChange("all_time", allTimeRange());
     else {
       setDraft({ from: range.from, to: range.to });
       onPresetChange("custom", range);

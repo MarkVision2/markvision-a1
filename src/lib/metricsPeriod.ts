@@ -41,6 +41,19 @@ export function lastMonthRange(now = new Date()): ReportPeriodRange {
   return { from, to };
 }
 
+/** Последние 12 месяцев по сегодня. */
+export function lastYearRange(now = new Date()): ReportPeriodRange {
+  const to = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const from = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+  return { from, to };
+}
+
+/** Всё время (условный старт 2020-01-01) по сегодня. */
+export function allTimeRange(now = new Date()): ReportPeriodRange {
+  const to = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return { from: new Date(2020, 0, 1), to };
+}
+
 /** Предыдущий отрезок той же длины (для сравнения KPI). */
 export function previousEqualRange(range: ReportPeriodRange): ReportPeriodRange {
   const fromMs = new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate()).getTime();
