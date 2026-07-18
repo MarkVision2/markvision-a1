@@ -9,9 +9,17 @@
 
 ## Как заказывается (сайт)
 `/create/reels` (`src/pages/CreateReels.tsx`) → сценарий + **голос** (`ReelsConfig.elevenVoice`,
-voice_id из `ELEVEN_VOICES`) + формат/музыка/ИИ-кадры → `enqueueReelsJob` кладёт заявку
-в **`reels_jobs`** (`status='queued'`, `config`). Прогресс и готовые ролики видны в
-галерее раздела (`reels_usage`).
+voice_id из `ELEVEN_VOICES`) + формат/музыка + источник B-roll → `enqueueReelsJob` кладёт
+заявку в **`reels_jobs`** (`status='queued'`, `config`). Источники:
+- `auto` — моушн-база/автогенерация;
+- `library` — случайная подборка из выбранных `reels_asset_folders` проекта;
+- `pexels` — вертикальные стоковые видео через проектный Pexels API key;
+- `kie` — генерация 9:16 через Kie.ai, модель Kling 2.1 Master.
+
+Ключи Pexels/Kie.ai сохраняются через `reels-project-settings` зашифрованными в
+`reels_provider_credentials`; в браузер и `reels_jobs.config` они не возвращаются.
+Файлы медиатеки лежат в bucket `reels-assets`, метаданные — `reels_assets`.
+Прогресс и готовые ролики видны в галерее раздела (`reels_usage`).
 
 ## Как разбирается (Claude-сессия)
 VPS-воркер Reels Factory **мёртв**, поэтому очередь разбирает Claude-сессия по этому
@@ -19,7 +27,13 @@ VPS-воркер Reels Factory **мёртв**, поэтому очередь р�
 секретах Supabase (edge-функция `reels-tts`), а не в браузере/воркере.
 
 1. **Взять заявку.** `reels_jobs` (queued) — через Supabase (MCP/SQL): прочитать
-   `script` + `config` (в т.ч. `elevenVoice`), пометить `status='rendering'`.
+   `script` + `config` (в т.ч. `elevenVoice`, `brollMode`, `assetFolderIds`), пометить
+   `status='rendering'`. Затем `node scripts/reels-worker.mjs sources <jobId>` →
+   `work/<id>/reels-sources.json`: случайный пул файлов выбранных папок или fallback
+   `auto`. Для внешних источников:
+   - `node scripts/reels-worker.mjs pexels <jobId> --query "..."`;
+   - `node scripts/reels-worker.mjs kie-create <jobId> --prompt "..."`, затем
+     `kie-status <jobId> --task <taskId>`.
 2. **Озвучка.** `node scripts/reels-worker.mjs tts <jobId> --voice <voiceId>` →
    edge `reels-tts` синтезит mp3 (`eleven_multilingual_v2`, русский), кладёт в bucket
    `renders` и качает в `remotion/public/reels/vo_<id>.mp3`.

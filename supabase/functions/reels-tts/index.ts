@@ -16,6 +16,7 @@
 //   publish {jobId, videoUrl, title?, description?, durationSec?, coverUrl?, notifyTelegram?}
 //                                        → reels_usage + reels_jobs=done + Telegram
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { decryptProviderKey, type ReelsProvider } from "../_lib/reelsCredentials.ts";
 
 type Json = Record<string, unknown>;
 const json = (body: Json, status = 200) =>
@@ -52,6 +53,28 @@ async function sendVideo(token: string, chatId: string, url: string, caption: st
     }
   } catch { /* fall through to link */ }
   await tg(token, "sendMessage", { chat_id: chatId, text: `${caption}\n${url}` });
+}
+
+async function projectProviderKey(
+  admin: ReturnType<typeof createClient>,
+  jobId: string,
+  provider: ReelsProvider,
+): Promise<string> {
+  const { data: job } = await admin
+    .from("reels_jobs")
+    .select("project_id")
+    .eq("id", jobId)
+    .maybeSingle();
+  if (!job?.project_id) throw new Error("job not found");
+  const { data: credential } = await admin
+    .from("reels_provider_credentials")
+    .select("encrypted_key")
+    .eq("project_id", job.project_id)
+    .eq("provider", provider)
+    .eq("enabled", true)
+    .maybeSingle();
+  if (!credential?.encrypted_key) throw new Error(`${provider === "pexels" ? "Pexels" : "Kie.ai"} key not configured`);
+  return decryptProviderKey(String(credential.encrypted_key));
 }
 
 Deno.serve(async (req) => {
@@ -106,6 +129,107 @@ Deno.serve(async (req) => {
         if (error) return json({ error: error.message }, 500);
         const { data: pub } = admin.storage.from("renders").getPublicUrl(path);
         return json({ path, token: data.token, publicUrl: pub.publicUrl });
+      }
+
+      case "job_sources": {
+        const jobId = String(body.jobId ?? "");
+        if (!jobId) return json({ error: "jobId required" }, 400);
+        const { data: job } = await admin
+          .from("reels_jobs")
+          .select("project_id,config")
+          .eq("id", jobId)
+          .maybeSingle();
+        if (!job) return json({ error: "job not found" }, 404);
+        const config = (job.config ?? {}) as Json;
+        const mode = String(config.brollMode ?? "auto");
+        const requestedFolders = Array.isArray(config.assetFolderIds)
+          ? config.assetFolderIds.map(String).filter(Boolean).slice(0, 20)
+          : [];
+        let assets: Json[] = [];
+        if (mode === "library" && requestedFolders.length) {
+          const { data } = await admin
+            .from("reels_assets")
+            .select("id,folder_id,name,media_type,public_url,metadata")
+            .eq("project_id", job.project_id)
+            .in("folder_id", requestedFolders)
+            .limit(500);
+          assets = [...(data ?? [])]
+            .sort(() => Math.random() - 0.5)
+            .slice(0, 60);
+        }
+        return json({
+          projectId: job.project_id,
+          brollMode: mode,
+          assetFolderIds: requestedFolders,
+          assets,
+          fallbackToAuto: mode === "library" && assets.length === 0,
+        });
+      }
+
+      case "pexels_search": {
+        const jobId = String(body.jobId ?? "");
+        const query = String(body.query ?? "").trim().slice(0, 120);
+        const perPage = Math.min(20, Math.max(1, Number(body.perPage ?? 8)));
+        if (!jobId || !query) return json({ error: "jobId and query required" }, 400);
+        const apiKey = await projectProviderKey(admin, jobId, "pexels");
+        const url = new URL("https://api.pexels.com/v1/videos/search");
+        url.searchParams.set("query", query);
+        url.searchParams.set("orientation", "portrait");
+        url.searchParams.set("per_page", String(perPage));
+        const response = await fetch(url, { headers: { Authorization: apiKey } });
+        if (!response.ok) return json({ error: `Pexels ${response.status}`, detail: (await response.text()).slice(0, 300) }, 502);
+        const payload = await response.json();
+        const videos = (payload.videos ?? []).map((video: Json) => {
+          const files = Array.isArray(video.video_files) ? video.video_files as Json[] : [];
+          const mp4 = files
+            .filter((file) => String(file.file_type ?? "") === "video/mp4")
+            .sort((a, b) => Number(b.height ?? 0) - Number(a.height ?? 0))[0];
+          const user = video.user as Json | undefined;
+          return {
+            id: video.id,
+            duration: video.duration,
+            page_url: video.url,
+            preview_url: video.image,
+            video_url: mp4?.link ?? null,
+            width: mp4?.width ?? null,
+            height: mp4?.height ?? null,
+            author: user?.name ?? null,
+          };
+        }).filter((video: Json) => Boolean(video.video_url));
+        return json({ videos });
+      }
+
+      case "kie_create": {
+        const jobId = String(body.jobId ?? "");
+        const prompt = String(body.prompt ?? "").trim().slice(0, 2500);
+        if (!jobId || !prompt) return json({ error: "jobId and prompt required" }, 400);
+        const apiKey = await projectProviderKey(admin, jobId, "kie");
+        const response = await fetch("https://api.kie.ai/api/v1/jobs/createTask", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "kling/v2-1-master-text-to-video",
+            input: { prompt, aspect_ratio: "9:16" },
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.code !== 200) {
+          return json({ error: `Kie.ai ${response.status}`, detail: payload.msg ?? payload }, 502);
+        }
+        return json({ taskId: payload.data?.taskId });
+      }
+
+      case "kie_status": {
+        const jobId = String(body.jobId ?? "");
+        const taskId = String(body.taskId ?? "").trim();
+        if (!jobId || !taskId) return json({ error: "jobId and taskId required" }, 400);
+        const apiKey = await projectProviderKey(admin, jobId, "kie");
+        const url = new URL("https://api.kie.ai/api/v1/jobs/recordInfo");
+        url.searchParams.set("taskId", taskId);
+        const response = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) return json({ error: `Kie.ai ${response.status}`, detail: payload }, 502);
+        return json({ task: payload.data ?? payload });
       }
 
       case "publish": {

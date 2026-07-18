@@ -4,6 +4,7 @@
 // даже если закрыть вкладку. Ключи (ElevenLabs/Pexels/FAL) в config НЕ кладём —
 // их подставляет воркер из секретов. См. docs/TZ-reels-factory-integration.md.
 import { supabase } from "@/integrations/supabase/client";
+import type { ReelsBrollMode } from "@/lib/reelsAssets";
 
 // Таблиц нет в сгенерированных типах — нетипизированный клиент (как в heygenUsage).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -11,7 +12,7 @@ const db = supabase as any;
 
 export type VoiceProvider = "elevenlabs" | "freedom";
 export type VideoMode = "faceless" | "avatar";
-export type GenProvider = "none" | "fal";
+export type GenProvider = "none" | "fal" | "kie";
 
 // Настройки рендера БЕЗ ключей — то, что задаёт пользователь в форме.
 export interface ReelsConfig {
@@ -23,6 +24,8 @@ export interface ReelsConfig {
   music: boolean; // подкладывать музыку
   genProvider: GenProvider; // ИИ-генерация кадров (fal) или только сток/локальные (none)
   genMax?: number; // лимит ИИ-клипов на ролик
+  brollMode?: ReelsBrollMode; // auto | library | pexels | kie
+  assetFolderIds?: string[]; // случайный пул ассетов проекта; ключи в config не попадают
 }
 
 export interface ReelsJobRow {

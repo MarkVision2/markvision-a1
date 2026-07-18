@@ -16,10 +16,16 @@
  *       [--title "…"] [--description "…"] [--no-telegram]
  *       Залить рендер в bucket `renders`, записать в «Готовые» (reels_usage),
  *       закрыть заявку (status=done) и отправить в Telegram проекта.
+ *   node scripts/reels-worker.mjs sources <jobId>
+ *       Сохранить конфигурацию B-roll и случайную подборку файлов выбранных
+ *       папок в work/<jobId>/reels-sources.json.
+ *   node scripts/reels-worker.mjs pexels <jobId> --query "business meeting"
+ *   node scripts/reels-worker.mjs kie-create <jobId> --prompt "vertical cinematic..."
+ *   node scripts/reels-worker.mjs kie-status <jobId> --task <taskId>
  */
 import { createClient } from "@supabase/supabase-js";
 import { execFileSync } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { dirname, resolve } from "node:path";
@@ -85,7 +91,32 @@ const cmd = process.argv[2];
 const jobId = process.argv[3];
 
 try {
-  if (cmd === "tts") {
+  if (cmd === "sources") {
+    if (!jobId) throw new Error("usage: sources <jobId>");
+    const sources = await call({ action: "job_sources", jobId });
+    const out = argVal("out") || `work/${jobId}/reels-sources.json`;
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, JSON.stringify(sources, null, 2));
+    console.log(`OK sources → ${out} (${sources.assets?.length ?? 0} файлов, режим ${sources.brollMode})`);
+  } else if (cmd === "pexels") {
+    const query = argVal("query");
+    if (!jobId || !query) throw new Error("usage: pexels <jobId> --query \"...\"");
+    const result = await call({ action: "pexels_search", jobId, query, perPage: Number(argVal("limit") || 8) });
+    const out = argVal("out") || `work/${jobId}/pexels-${Date.now()}.json`;
+    mkdirSync(dirname(out), { recursive: true });
+    writeFileSync(out, JSON.stringify(result, null, 2));
+    console.log(`OK pexels → ${out} (${result.videos?.length ?? 0} видео)`);
+  } else if (cmd === "kie-create") {
+    const prompt = argVal("prompt");
+    if (!jobId || !prompt) throw new Error("usage: kie-create <jobId> --prompt \"...\"");
+    const result = await call({ action: "kie_create", jobId, prompt });
+    console.log(JSON.stringify(result, null, 2));
+  } else if (cmd === "kie-status") {
+    const taskId = argVal("task");
+    if (!jobId || !taskId) throw new Error("usage: kie-status <jobId> --task <taskId>");
+    const result = await call({ action: "kie_status", jobId, taskId });
+    console.log(JSON.stringify(result, null, 2));
+  } else if (cmd === "tts") {
     const voiceId = argVal("voice");
     const out = argVal("out") || `remotion/public/reels/vo_${jobId}.mp3`;
     if (!jobId || !voiceId) throw new Error("usage: tts <jobId> --voice <voiceId> [--out path]");
@@ -108,7 +139,7 @@ try {
     console.log(`OK publish ${jobId}: ${videoUrl}`);
     if (res.warnings?.length) console.log("warnings:", res.warnings.join("; "));
   } else {
-    console.error("Команды: tts | publish (см. шапку файла)");
+    console.error("Команды: sources | pexels | kie-create | kie-status | tts | publish (см. шапку файла)");
     process.exit(1);
   }
 } catch (e) {
