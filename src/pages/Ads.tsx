@@ -274,7 +274,7 @@ const Ads = () => {
         </TabsContent>
 
         <TabsContent value="creatives" className="mt-5">
-          <AdsCreativesPanel />
+          <AdsCreativesPanel range={period} />
         </TabsContent>
 
         <TabsContent value="campaigns" className="mt-5">

@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Download, Filter, LayoutGrid, List, Loader2, Search, Sparkles } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import {
+  AlertCircle, CheckCircle2, Coins, Crown, Film, Filter, Info,
+  LayoutGrid, List, Loader2, RefreshCw, Search, Sparkles, Target, Wallet,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -14,9 +18,12 @@ import {
   useMetaCreatives,
   type MetaCampaignRow,
 } from "@/hooks/useMetaStructure";
+import { META_STRUCTURE_QUERY_KEY } from "@/hooks/useMetaDashboard";
+import { buildCreativesSummary } from "@/lib/creativesOverview";
+import { pickCreativeTitle } from "@/lib/creativeDisplay";
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
-import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPicker";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 type StatusFilter = "active" | "active_or_spent" | "all";
@@ -37,6 +44,15 @@ const SORT_LABELS: Record<SortKey, string> = {
   messages: "Сообщения",
 };
 
+const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
+  { id: "active_or_spent", label: "Рабочие" },
+  { id: "active", label: "Активные" },
+  { id: "all", label: "Все" },
+];
+
+const fmtTenge = (n: number) =>
+  `${Math.round(n).toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}\u00A0₸`;
+
 function ymd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
@@ -47,9 +63,10 @@ function classifyCampaignWa(camp: MetaCampaignRow | undefined): { isWhatsApp: bo
   return { isWhatsApp: goal.key === "whatsapp", goalLabel: goal.label };
 }
 
-export function AdsCreativesPanel() {
+export function AdsCreativesPanel({ range }: { range: ReportPeriodRange }) {
   const isMobile = useIsMobile();
-  const [range, setRange] = useState<ReportPeriodRange>(() => currentMonthRange());
+  const queryClient = useQueryClient();
+  const { activeId: projectId } = useProjectsStore();
   const [status, setStatus] = useState<StatusFilter>("active_or_spent");
   const [typeF, setTypeF] = useState<TypeFilter>("all");
   const [goalF, setGoalF] = useState<"all" | "whatsapp" | "site">("all");
@@ -139,7 +156,14 @@ export function AdsCreativesPanel() {
     [filtered, visibleCount],
   );
 
-  const activeCount = creatives.filter((c) => (c.effectiveStatus ?? "").toUpperCase() === "ACTIVE").length;
+  const summary = useMemo(
+    () => buildCreativesSummary(filtered.map((f) => f.row)),
+    [filtered],
+  );
+  const bestTitle = summary.best
+    ? pickCreativeTitle({ name: summary.best.name, headline: summary.best.headline }).title
+    : null;
+
   const openCreative = useMemo(
     () => (openId ? filtered.find((f) => f.row.id === openId) ?? null : null),
     [filtered, openId],
@@ -157,7 +181,8 @@ export function AdsCreativesPanel() {
         body: { since: ymd(range.from), until: ymd(range.to) },
       });
       if (error) throw new Error(error.message);
-      toast.success("Синхронизация запущена. Новые данные подтянутся через несколько секунд.");
+      await queryClient.invalidateQueries({ queryKey: [META_STRUCTURE_QUERY_KEY, projectId] });
+      toast.success("Синхронизация запущена. Креативы и CRM-метрики обновятся через несколько секунд.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось синхронизировать");
     } finally {
@@ -169,12 +194,107 @@ export function AdsCreativesPanel() {
     "h-11 shrink-0 rounded-xl border border-border/60 bg-background px-3 text-sm font-medium sm:h-9 sm:rounded-lg sm:px-2 sm:text-xs";
 
   return (
-    <div className="space-y-3 sm:space-y-4">
+    <div className="space-y-4">
+      {/* Overview */}
+      <section className="rounded-2xl border border-border/60 bg-card/50 p-4 sm:p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary">
+              <Film className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <h2 className="text-base font-semibold">Креативы за период</h2>
+              <p className="text-xs text-muted-foreground">
+                Каждая карточка — объявление из Meta с расходом, заявками и реальной выручкой из CRM. Нажмите на карточку, чтобы увидеть воронку.
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 gap-1.5 rounded-xl"
+            disabled={syncing}
+            onClick={() => void handleSync()}
+          >
+            {syncing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+            Обновить из Meta
+          </Button>
+        </div>
+
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <SummaryCard
+            icon={Wallet}
+            label="Расход за период"
+            value={summary.spend > 0 ? fmtTenge(summary.spend) : "—"}
+            hint={`${summary.active} активных из ${summary.total}`}
+          />
+          <SummaryCard
+            icon={Target}
+            label="Заявки и сообщения"
+            value={summary.results > 0 ? summary.results.toLocaleString("ru-RU") : "—"}
+            hint="По данным Meta за период"
+          />
+          <SummaryCard
+            icon={Coins}
+            label="Выручка CRM"
+            value={summary.hasCrm ? fmtTenge(summary.crmRevenue) : "—"}
+            hint={summary.hasCrm ? `${summary.crmSales} продаж` : "Нужны оплаты в CRM"}
+          />
+          <SummaryCard
+            icon={summary.hasCrm && summary.crmProfit >= 0 ? CheckCircle2 : AlertCircle}
+            label="Прибыль · ROMI CRM"
+            value={summary.hasCrm ? fmtTenge(summary.crmProfit) : "—"}
+            hint={summary.hasCrm && summary.spend > 0
+              ? `ROMI ${Math.round(((summary.crmRevenue - summary.spend) / summary.spend) * 100)}%`
+              : "Появится после продаж"}
+            tone={summary.hasCrm ? (summary.crmProfit >= 0 ? "success" : "danger") : undefined}
+          />
+        </div>
+
+        {summary.best && (
+          <button
+            type="button"
+            onClick={() => setOpenId(summary.best!.id)}
+            className="mt-3 flex w-full items-center gap-3 rounded-xl border border-success/30 bg-success/5 px-3 py-2.5 text-left transition hover:bg-success/10"
+          >
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-success/15 text-success">
+              <Crown className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[10px] font-bold uppercase tracking-wider text-success">
+                Лучший креатив по ROMI CRM
+              </span>
+              <span className="block truncate text-sm font-semibold">{bestTitle}</span>
+            </span>
+            <span className="shrink-0 text-sm font-bold tabular-nums text-success">
+              +{Math.round(summary.best.crmRomi)}%
+            </span>
+          </button>
+        )}
+
+        {!summary.hasCrm && summary.spend > 0 && (
+          <div className="mt-3 flex items-start gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 text-xs text-muted-foreground">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
+            <p>
+              Расход за период есть, а выручки из CRM пока нет: либо оплаты по этим креативам ещё не прошли,
+              либо лиды не привязаны к объявлениям. Как только в CRM появятся продажи, здесь появится ROMI по каждому креативу.
+            </p>
+          </div>
+        )}
+      </section>
+
       {/* Toolbar */}
-      <div className="space-y-3 rounded-2xl border border-border/60 bg-card/50 p-3">
+      <section className="space-y-3 rounded-2xl border border-border/60 bg-card/40 p-3">
         <div className="flex items-center gap-2">
-          <div className="min-w-0 flex-1">
-            <PeriodPicker range={range} onChange={setRange} />
+          <div className="relative min-w-0 flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Поиск: название, текст, кампания, ID"
+              className="h-11 rounded-xl border-border/60 bg-background pl-10 text-sm sm:h-10"
+            />
           </div>
           <div className="flex shrink-0 rounded-xl border border-border/60 bg-background p-0.5">
             <button
@@ -202,35 +322,26 @@ export function AdsCreativesPanel() {
               <List className="h-4 w-4" />
             </button>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            className="h-10 w-10 shrink-0 px-0 sm:h-9 sm:w-auto sm:px-3"
-            onClick={handleSync}
-            disabled={syncing}
-            aria-label="Обновить из Meta"
-          >
-            {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-            <span className="hidden sm:inline sm:ml-2">Обновить из Meta</span>
-          </Button>
         </div>
 
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Поиск: название, текст, ID"
-            className="h-11 rounded-xl border-border/60 bg-background pl-10 text-sm sm:h-9 sm:rounded-lg sm:text-xs"
-          />
-        </div>
-
-        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none touch-pan-x">
-          <select value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)} className={filterSelectClass}>
-            <option value="active">Активные</option>
-            <option value="active_or_spent">Активные + расход</option>
-            <option value="all">Все</option>
-          </select>
+        <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1 scrollbar-none touch-pan-x">
+          <div className="flex shrink-0 gap-1.5">
+            {STATUS_FILTERS.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setStatus(item.id)}
+                className={cn(
+                  "shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition",
+                  status === item.id
+                    ? "border-primary bg-primary/10 text-primary"
+                    : "border-border/60 text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {item.label}
+              </button>
+            ))}
+          </div>
           <select value={typeF} onChange={(e) => setTypeF(e.target.value as TypeFilter)} className={filterSelectClass}>
             <option value="all">Все типы</option>
             <option value="video">Видео</option>
@@ -256,41 +367,45 @@ export function AdsCreativesPanel() {
           )}
           <select value={sort} onChange={(e) => setSort(e.target.value as SortKey)} className={filterSelectClass}>
             {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
-              <option key={k} value={k}>{SORT_LABELS[k]}</option>
+              <option key={k} value={k}>Сортировка: {SORT_LABELS[k]}</option>
             ))}
           </select>
         </div>
 
-        {isMobile && (
-          <p className="text-[11px] text-muted-foreground">
-            На телефоне удобнее режим «Список» — креатив крупнее, метрики под ним.
-          </p>
-        )}
-      </div>
-
-      {/* Stats line */}
-      <div className="flex flex-wrap items-center gap-3 px-1 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1.5">
-          <Filter className="h-3.5 w-3.5" />
-          Показано: <span className="font-bold text-foreground">{filtered.length}</span> из {creatives.length}
-        </span>
-        <span>·</span>
-        <span>Активных в кабинете: <span className="font-bold text-success">{activeCount}</span></span>
-        {loading && (
-          <span className="inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> загрузка</span>
-        )}
-      </div>
+        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5">
+            <Filter className="h-3.5 w-3.5" />
+            Показано: <span className="font-bold text-foreground">{filtered.length}</span> из {creatives.length}
+          </span>
+          {loading && (
+            <span className="inline-flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> загрузка</span>
+          )}
+          {isMobile && <span>На телефоне удобнее режим «Список».</span>}
+        </div>
+      </section>
 
       {/* Empty state */}
-      {filtered.length === 0 && (
+      {filtered.length === 0 && !loading && (
         <div className="rounded-2xl border border-dashed border-border/60 bg-card/30 p-12 text-center">
           <Sparkles className="mx-auto h-7 w-7 text-muted-foreground/60" />
           <h3 className="mt-3 text-base font-semibold">Креативов не найдено</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             {creatives.length === 0
               ? "Нажмите «Обновить из Meta», чтобы подтянуть объявления из подключённых кабинетов."
-              : "Измените фильтры или период."}
+              : "Измените фильтры, поисковый запрос или период."}
           </p>
+          {creatives.length === 0 && (
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-4 gap-1.5"
+              disabled={syncing}
+              onClick={() => void handleSync()}
+            >
+              {syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              Обновить из Meta
+            </Button>
+          )}
         </div>
       )}
 
@@ -347,6 +462,45 @@ export function AdsCreativesPanel() {
         campaignName={openCreative?.campaign?.name ?? null}
         isWhatsApp={openCreative?.isWhatsApp ?? false}
       />
+    </div>
+  );
+}
+
+function SummaryCard({
+  icon: Icon,
+  label,
+  value,
+  hint,
+  tone,
+}: {
+  icon: typeof Wallet;
+  label: string;
+  value: string;
+  hint: string;
+  tone?: "success" | "danger";
+}) {
+  return (
+    <div
+      className={cn(
+        "rounded-xl border border-border/50 bg-background/50 px-3 py-3",
+        tone === "success" && "border-success/30 bg-success/5",
+        tone === "danger" && "border-destructive/30 bg-destructive/5",
+      )}
+    >
+      <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" />
+        {label}
+      </div>
+      <div
+        className={cn(
+          "mt-1 text-lg font-bold tabular-nums",
+          tone === "success" && "text-success",
+          tone === "danger" && "text-destructive",
+        )}
+      >
+        {value}
+      </div>
+      <div className="mt-0.5 text-[11px] text-muted-foreground">{hint}</div>
     </div>
   );
 }
