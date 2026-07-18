@@ -53,7 +53,8 @@ const Metrics = () => {
   const { cabinets } = usePersonalCabinets();
   const { activeId: projectId } = useProjectsStore();
   const [resyncing, setResyncing] = useState(false);
-  const [showAllDays, setShowAllDays] = useState(true);
+  // По умолчанию показываем только дни с данными — меньше пустых строк «—».
+  const [showAllDays, setShowAllDays] = useState(false);
   const [tableMode, setTableMode] = useState<"business" | "detailed">("business");
   const [cdiFactRows, setCdiFactRows] = useState<CdiFactRow[]>([]);
   const [cdiTick, setCdiTick] = useState(0);

@@ -164,7 +164,7 @@ function monthRange(month: string): { since: string; until: string } | null {
   return { since: fmt(first), until: fmt(last) };
 }
 
-interface CdiRow {
+export interface CdiRow {
   date: string;
   spend: number | string;
   impressions: number;
@@ -182,6 +182,11 @@ interface CdiRow {
   manual_revenue?: number | string;
   crm_diagnostic_revenue?: number | string;
   manual_diagnostic_revenue?: number | string;
+}
+
+/** Экспорт для тестов: агрегация CDI-строк в daily/totals. */
+export function aggregateCdiRows(rows: CdiRow[]): InsightsData {
+  return aggregate(rows);
 }
 
 function aggregate(rows: CdiRow[]): InsightsData {
@@ -282,6 +287,9 @@ function aggregate(rows: CdiRow[]): InsightsData {
       }
     } else {
       dailyMap.set(r.date, {
+        // RNP_DAY_ZERO идёт первым: иначе его нулевые autoSpend/autoLeads
+        // затирают реальные значения Meta и таблица показателей пустеет.
+        ...RNP_DAY_ZERO,
         date: r.date, spend, autoSpend: autoSpendVal, manualSpend: 0,
         manualSpendRaw: isManualOverrideActive(r.manual_spend) ? Number(r.manual_spend) : null,
         impressions, clicks, leads, autoLeads: autoLeadsVal, manualLeads: 0,
@@ -298,7 +306,6 @@ function aggregate(rows: CdiRow[]): InsightsData {
         crmRevenue: totalRevenue,
         crmRevenueOnly: crmSalesRev + crmDiagRev,
         manualRevenue: manSalesRev + manDiagRev,
-        ...RNP_DAY_ZERO,
       });
     }
   }
