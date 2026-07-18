@@ -102,7 +102,24 @@ Deno.serve(async (req) => {
       await send(chat.id, "Код неверный или истёк. Получите новый код в приложении.");
       return ok();
     }
-    await admin.from("telegram_links").upsert({ chat_id: chatId, project_id: row.project_id, username: from?.username ?? null });
+    // У проекта должен быть ровно один чат доставки. Сначала сохраняем новый,
+    // и только после успешного upsert удаляем остальные чаты проекта: при сбое
+    // переподключения прежний канал доставки не потеряется.
+    const { error: linkError } = await admin.from("telegram_links").upsert({
+      chat_id: chatId,
+      project_id: row.project_id,
+      username: from?.username ?? null,
+      linked_at: new Date().toISOString(),
+    });
+    if (linkError) {
+      await send(chat.id, "Не удалось сохранить подключение. Получите новый код и попробуйте ещё раз.");
+      return ok();
+    }
+    await admin
+      .from("telegram_links")
+      .delete()
+      .eq("project_id", row.project_id)
+      .neq("chat_id", chatId);
     await admin.from("telegram_link_codes").update({ used: true }).eq("code", code);
     await send(chat.id, "Готово! Этот чат привязан к проекту. Теперь пришлите сценарий текстом — соберу видео и отправлю сюда. Формат и длительность можно указать прямо в тексте.\n\nПример:\n" + SCRIPT_EXAMPLE);
     return ok();

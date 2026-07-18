@@ -2,11 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertTriangle, CheckCircle2, Clock, Download, Film, FileVideo, Loader2,
+  AlertTriangle, Archive, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, Film, FileVideo, Loader2,
   MonitorPlay, Play, Scissors, Send, Smartphone, Sparkles, Upload, Wand2, X, Zap,
 } from "lucide-react";
 import Header from "@/components/factory/Header";
-import { TelegramConnect } from "@/components/factory/TelegramConnect";
+import { TelegramConnect, type TelegramConnectionStatus } from "@/components/factory/TelegramConnect";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
@@ -14,7 +14,8 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
-  cancelMontageJob, createMontageJob, fetchMontageJobs, MONTAGE_STATUS_LABEL,
+  archiveCompletedMontageJobs, archiveMontageJob, cancelMontageJob, createMontageJob,
+  fetchMontageJobs, MONTAGE_STATUS_LABEL, partitionMontageJobs,
   uploadMontageSource, type MontageFormat, type MontageJob, type MontageMode,
 } from "@/lib/montageJobs";
 
@@ -67,7 +68,15 @@ function currentStageIndex(job: MontageJob): number {
   return idx >= 0 ? idx : 0;
 }
 
-function JobCard({ job, onCancel }: { job: MontageJob; onCancel: (id: string) => void }) {
+function JobCard({
+  job,
+  onCancel,
+  onArchive,
+}: {
+  job: MontageJob;
+  onCancel: (id: string) => void;
+  onArchive: (id: string) => void;
+}) {
   const active = ACTIVE_STATUSES.includes(job.status);
   const shorts = job.result?.shorts ?? [];
   const stageIdx = currentStageIndex(job);
@@ -191,6 +200,16 @@ function JobCard({ job, onCancel }: { job: MontageJob; onCancel: (id: string) =>
           <X className="h-3.5 w-3.5" /> Отменить заявку
         </button>
       )}
+
+      {!active && (
+        <button
+          type="button"
+          onClick={() => onArchive(job.id)}
+          className="mt-3 inline-flex items-center gap-1 text-xs text-muted-foreground transition hover:text-foreground"
+        >
+          <Archive className="h-3.5 w-3.5" /> Убрать из списка
+        </button>
+      )}
     </div>
   );
 }
@@ -211,6 +230,9 @@ const CreateMontageLab = () => {
   const [brief, setBrief] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [notifyTelegram, setNotifyTelegram] = useState(true);
+  const [telegramStatus, setTelegramStatus] = useState<TelegramConnectionStatus | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -238,10 +260,8 @@ const CreateMontageLab = () => {
       (query.state.data ?? []).some((j) => ACTIVE_STATUSES.includes(j.status)) ? 15_000 : 60_000,
   });
 
-  const activeCount = useMemo(
-    () => (jobsQ.data ?? []).filter((j) => ACTIVE_STATUSES.includes(j.status)).length,
-    [jobsQ.data],
-  );
+  const jobGroups = useMemo(() => partitionMontageJobs(jobsQ.data ?? []), [jobsQ.data]);
+  const activeCount = jobGroups.active.length;
 
   const handleFile = async (f: File | null) => {
     if (!f) return;
@@ -362,6 +382,32 @@ const CreateMontageLab = () => {
       void queryClient.invalidateQueries({ queryKey: ["montage-jobs", projectId] });
     } catch (e) {
       toast.error((e as Error).message);
+    }
+  };
+
+  const archive = async (id: string) => {
+    try {
+      await archiveMontageJob(id);
+      toast.success("Заявка убрана в архив");
+      void queryClient.invalidateQueries({ queryKey: ["montage-jobs", projectId] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  };
+
+  const clearHistory = async () => {
+    if (!projectId || !jobGroups.history.length) return;
+    if (!confirm(`Убрать завершённые заявки (${jobGroups.history.length}) из списка? Готовые видео останутся в разделе «Готовые».`)) return;
+    setArchiving(true);
+    try {
+      await archiveCompletedMontageJobs(projectId);
+      setHistoryOpen(false);
+      toast.success("История заявок очищена");
+      await queryClient.invalidateQueries({ queryKey: ["montage-jobs", projectId] });
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setArchiving(false);
     }
   };
 
@@ -711,12 +757,26 @@ const CreateMontageLab = () => {
                   <Send className="h-4 w-4 text-primary" />
                   <div>
                     <div className="text-sm font-medium">Прислать в Telegram</div>
-                    <div className="text-xs text-muted-foreground">В чат, привязанный к проекту</div>
+                    <div className="text-xs text-muted-foreground">
+                      {telegramStatus?.connected
+                        ? telegramStatus.destination?.username
+                          ? `В @${telegramStatus.destination.username}`
+                          : `В чат ••••${telegramStatus.destination?.chat_id_last4}`
+                        : "Telegram пока не подключён"}
+                    </div>
                   </div>
                 </div>
                 <Switch checked={notifyTelegram} onCheckedChange={setNotifyTelegram} />
               </div>
-              {notifyTelegram && <div className="mt-3"><TelegramConnect projectId={projectId} /></div>}
+              {notifyTelegram && (
+                <div className="mt-3">
+                  <TelegramConnect
+                    projectId={projectId}
+                    compact
+                    onStatusChange={setTelegramStatus}
+                  />
+                </div>
+              )}
             </section>
           </div>
 
@@ -749,7 +809,15 @@ const CreateMontageLab = () => {
                 </div>
                 <div className="flex justify-between gap-2">
                   <dt className="text-muted-foreground">Telegram</dt>
-                  <dd className="font-medium">{notifyTelegram ? "да" : "нет"}</dd>
+                  <dd className={cn("font-medium", notifyTelegram && !telegramStatus?.connected && "text-amber-600 dark:text-amber-400")}>
+                    {!notifyTelegram
+                      ? "отключён"
+                      : telegramStatus?.connected
+                        ? telegramStatus.destination?.username
+                          ? `@${telegramStatus.destination.username}`
+                          : "подключён"
+                        : "не подключён"}
+                  </dd>
                 </div>
               </dl>
 
@@ -775,11 +843,14 @@ const CreateMontageLab = () => {
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <Clock className="h-4 w-4 text-muted-foreground" />
-                  <h3 className="text-sm font-semibold">Мои заявки</h3>
+                  <div>
+                    <h3 className="text-sm font-semibold">Заявки в работе</h3>
+                    <p className="text-[11px] text-muted-foreground">Готовые автоматически уходят в историю</p>
+                  </div>
                 </div>
-                {(jobsQ.data ?? []).length > 0 && (
-                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
-                    {(jobsQ.data ?? []).length}
+                {activeCount > 0 && (
+                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                    {activeCount}
                   </span>
                 )}
               </div>
@@ -790,16 +861,59 @@ const CreateMontageLab = () => {
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <Loader2 className="h-3 w-3 animate-spin" /> Загружаем…
                 </div>
-              ) : (jobsQ.data ?? []).length === 0 ? (
+              ) : jobGroups.active.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-border/60 p-4 text-center">
-                  <FileVideo className="mx-auto mb-1.5 h-5 w-5 text-muted-foreground/60" />
-                  <p className="text-xs text-muted-foreground">Пока пусто — загрузите первое видео</p>
+                  <CheckCircle2 className="mx-auto mb-1.5 h-5 w-5 text-emerald-500/70" />
+                  <p className="text-xs font-medium">Активных заявок нет</p>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground">Загрузите видео — оно появится здесь с прогрессом</p>
                 </div>
               ) : (
-                <div className="max-h-[70vh] space-y-2 overflow-y-auto pr-1">
-                  {(jobsQ.data ?? []).map((j) => (
-                    <JobCard key={j.id} job={j} onCancel={(id) => void cancel(id)} />
+                <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
+                  {jobGroups.active.map((j) => (
+                    <JobCard
+                      key={j.id}
+                      job={j}
+                      onCancel={(id) => void cancel(id)}
+                      onArchive={(id) => void archive(id)}
+                    />
                   ))}
+                </div>
+              )}
+
+              {jobGroups.history.length > 0 && (
+                <div className="mt-3 border-t border-border/50 pt-3">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setHistoryOpen((value) => !value)}
+                      className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-1 py-1.5 text-left text-xs font-medium text-muted-foreground transition hover:text-foreground"
+                    >
+                      {historyOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                      История результатов
+                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px]">{jobGroups.history.length}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void clearHistory()}
+                      disabled={archiving}
+                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-[11px] text-muted-foreground transition hover:bg-secondary hover:text-destructive disabled:opacity-50"
+                    >
+                      {archiving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
+                      Очистить
+                    </button>
+                  </div>
+                  {historyOpen && (
+                    <div className="mt-2 max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+                      {jobGroups.history.map((j) => (
+                        <JobCard
+                          key={j.id}
+                          job={j}
+                          onCancel={(id) => void cancel(id)}
+                          onArchive={(id) => void archive(id)}
+                        />
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
 

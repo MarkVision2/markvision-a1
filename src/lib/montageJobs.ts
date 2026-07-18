@@ -43,6 +43,7 @@ export interface MontageJob {
   error: string | null;
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
 }
 
 export const MONTAGE_STATUS_LABEL: Record<MontageJobStatus, string> = {
@@ -59,6 +60,22 @@ export const MONTAGE_STATUS_LABEL: Record<MontageJobStatus, string> = {
 const db = supabase as any;
 
 const BUCKET = "montage-uploads";
+const ACTIVE_MONTAGE_STATUSES: MontageJobStatus[] = ["queued", "processing", "rendering"];
+const TERMINAL_MONTAGE_STATUSES: MontageJobStatus[] = ["done", "failed", "canceled"];
+
+export function canArchiveMontageJob(job: Pick<MontageJob, "status">): boolean {
+  return TERMINAL_MONTAGE_STATUSES.includes(job.status);
+}
+
+export function partitionMontageJobs(jobs: MontageJob[]): {
+  active: MontageJob[];
+  history: MontageJob[];
+} {
+  return {
+    active: jobs.filter((job) => ACTIVE_MONTAGE_STATUSES.includes(job.status)),
+    history: jobs.filter((job) => TERMINAL_MONTAGE_STATUSES.includes(job.status)),
+  };
+}
 
 const sanitize = (name: string): string =>
   name.toLowerCase().replace(/[^a-z0-9.\-_]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 80) || "video";
@@ -170,8 +187,9 @@ export async function fetchMontageJobs(projectId: string): Promise<MontageJob[]>
     .from("montage_jobs")
     .select("*")
     .eq("project_id", projectId)
+    .is("archived_at", null)
     .order("created_at", { ascending: false })
-    .limit(20);
+    .limit(50);
   if (error) throw new Error(error.message);
   return (data ?? []) as MontageJob[];
 }
@@ -183,5 +201,31 @@ export async function cancelMontageJob(id: string): Promise<void> {
     .update({ status: "canceled", updated_at: new Date().toISOString() })
     .eq("id", id)
     .eq("status", "queued");
+  if (error) throw new Error(error.message);
+}
+
+/** Убирает завершённую заявку из интерфейса, сохраняя запись и результат для аудита. */
+export async function archiveMontageJob(id: string): Promise<void> {
+  const { data, error } = await db
+    .from("montage_jobs")
+    .update({ archived_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .in("status", TERMINAL_MONTAGE_STATUSES)
+    .is("archived_at", null)
+    .select("id")
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) throw new Error("Можно убрать только завершённую заявку");
+}
+
+/** Убирает всю завершённую историю проекта одним действием. */
+export async function archiveCompletedMontageJobs(projectId: string): Promise<void> {
+  if (!projectId) return;
+  const { error } = await db
+    .from("montage_jobs")
+    .update({ archived_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq("project_id", projectId)
+    .in("status", TERMINAL_MONTAGE_STATUSES)
+    .is("archived_at", null);
   if (error) throw new Error(error.message);
 }
