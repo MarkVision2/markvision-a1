@@ -120,7 +120,7 @@
   {
    "text": "маркетологом",
    "from": 190,
-   "accent": true,
+   "accent": false,
    "to": 214
   },
   {
@@ -138,7 +138,7 @@
   {
    "text": "стратегия",
    "from": 238,
-   "accent": false,
+   "accent": true,
    "to": 262
   },
   {
@@ -300,7 +300,7 @@
   {
    "text": "отчеты",
    "from": 606,
-   "accent": false,
+   "accent": true,
    "to": 625
   },
   {
@@ -450,7 +450,7 @@
   {
    "text": "ХАБ",
    "from": 846,
-   "accent": true,
+   "accent": false,
    "to": 860
   },
   {
@@ -496,8 +496,8 @@
    "originY": 49.2
   },
   {
-   "from": 186,
-   "originY": 44.5
+   "from": 234,
+   "originY": 45.1
   },
   {
    "from": 294,
@@ -508,29 +508,44 @@
    "originY": 43.0
   },
   {
-   "from": 671,
-   "originY": 42.7
+   "from": 602,
+   "originY": 42.3
   },
   {
-   "from": 842,
-   "originY": 39.1
+   "from": 671,
+   "originY": 42.7
   }
  ],
  "inserts": [
   {
    "type": "motion",
-   "template": "pill-row",
+   "template": "spec-card",
    "from": 55,
-   "to": 137,
+   "to": 142,
    "data": {
+    "tag": "ТЫ",
+    "title": "РАБОТАЕШЬ САМ",
+    "icon": "clock",
+    "accent": "#FB7185",
     "items": [
-     "Отчёты",
-     "Реклама",
-     "Вручную"
-    ],
-    "accent": "#FB7185"
-   },
-   "layout": "third"
+     {
+      "icon": "chart",
+      "text": "Собираешь отчёты",
+      "at": 5
+     },
+     {
+      "icon": "rocket",
+      "text": "Запускаешь рекламу",
+      "at": 29
+     },
+     {
+      "type": "check",
+      "icon": "check",
+      "text": "Всё вручную",
+      "at": 58
+     }
+    ]
+   }
   },
   {
    "type": "motion",
@@ -549,82 +564,65 @@
   },
   {
    "type": "motion",
-   "template": "lower-third",
+   "template": "spec-card",
    "from": 214,
-   "to": 262,
-   "data": {
-    "name": "СТРАТЕГИЯ",
-    "role": "работа маркетолога",
-    "icon": "target",
-    "accent": "#22D3EE"
-   },
-   "layout": "third"
-  },
-  {
-   "type": "motion",
-   "template": "kinetic-type",
-   "from": 262,
    "to": 329,
    "data": {
-    "words": [
-     "ОСТАЛЬНОЕ",
-     "АВТОМАТИЗИРУЙ"
-    ],
-    "accentIndex": 1,
-    "accent": "#34D399",
-    "cover": true
-   },
-   "layout": "full"
+    "tag": "СУТЬ",
+    "title": "МАРКЕТОЛОГ",
+    "icon": "target",
+    "accent": "#22D3EE",
+    "items": [
+     {
+      "icon": "target",
+      "text": "Это стратегия",
+      "at": 24
+     },
+     {
+      "icon": "bolt",
+      "text": "Остальное автоматизируй",
+      "at": 84
+     }
+    ]
+   }
   },
   {
    "type": "motion",
-   "template": "lower-third",
-   "from": 346,
-   "to": 435,
-   "data": {
-    "name": "ЗАКРЫТЫЙ ПРАКТИКУМ",
-    "role": "бесплатно · онлайн",
-    "icon": "award",
-    "accent": "#FFC53D"
-   },
-   "layout": "third"
-  },
-  {
-   "type": "motion",
-   "template": "checklist-reveal",
+   "template": "spec-card",
    "from": 457,
    "to": 625,
    "data": {
-    "title": "СИСТЕМА ДЕЛАЕТ САМА",
+    "tag": "СИСТЕМА",
+    "title": "ДЕЛАЕТ САМА",
+    "icon": "apps",
+    "accent": "#34D399",
     "items": [
-     "Контент",
-     "Реклама",
-     "Сайты · CRM",
-     "Отчёты"
-    ],
-    "icons": [
-     "apps",
-     "rocket",
-     "layers",
-     "chart"
-    ],
-    "accent": "#22D3EE"
-   },
-   "layout": "half"
-  },
-  {
-   "type": "motion",
-   "template": "pill-row",
-   "from": 632,
-   "to": 690,
-   "data": {
-    "items": [
-     "Отчёты клиентам",
-     "Каждый день"
-    ],
-    "accent": "#34D399"
-   },
-   "layout": "third"
+     {
+      "type": "toggle",
+      "icon": "apps",
+      "text": "Контент",
+      "at": 5
+     },
+     {
+      "type": "toggle",
+      "icon": "rocket",
+      "text": "Реклама",
+      "at": 19
+     },
+     {
+      "type": "toggle",
+      "icon": "layers",
+      "text": "Сайты, CRM",
+      "at": 58
+     },
+     {
+      "type": "toggle",
+      "icon": "chart",
+      "text": "Отчёты",
+      "at": 127
+     }
+    ]
+   }
   },
   {
    "type": "motion",
@@ -661,5 +659,5 @@
  "audioTrack": "audio_Short-908a69fd.wav",
  "totalDurationInFrames": 950,
  "videoW": 1080,
- "captionStyle": "pill"
+ "captionStyle": "highlight"
 }

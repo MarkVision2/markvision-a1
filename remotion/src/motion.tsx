@@ -721,6 +721,56 @@ export const PriceTag: React.FC<MotionBaseProps & { price?: string; old?: string
   );
 };
 
+// ── spec-card — persistent top card (overlay-reels style, docs/style-overlay-reels.md)
+// A dark rounded card pinned to the top over the speaker: tag chip + title +
+// icon, and a list that ACCUMULATES items line-by-line synced to speech.
+// Item types: bullet (icon + text), toggle (iOS switch, turns on), check
+// (highlighted accent row). Used as a Shorts916 insert with layout "full" so the
+// speaker stays fully visible below.
+const Toggle: React.FC<{ accent: string; on: boolean }> = ({ accent, on }) => (
+  <div style={{ width: 78, height: 44, borderRadius: 22, background: on ? accent : "rgba(255,255,255,0.18)", position: "relative", flexShrink: 0, transition: "none", boxShadow: on ? `0 0 16px ${accent}88` : "none" }}>
+    <div style={{ position: "absolute", top: 5, left: on ? 39 : 5, width: 34, height: 34, borderRadius: "50%", background: "#fff" }} />
+  </div>
+);
+
+type SpecItem = { type?: "bullet" | "toggle" | "check"; icon?: string; text: string; at?: number };
+export const SpecCard: React.FC<
+  MotionBaseProps & { tag?: string; title?: string; icon?: string; accent?: string; items?: SpecItem[] }
+> = ({ localFrame, tag = "", title = "", icon, accent = BRAND.accent, items = [] }) => {
+  const { fps } = useVideoConfig();
+  const card = enter(localFrame, fps, 0, 16);
+  return (
+    <AbsoluteFill style={{ padding: "150px 40px 0", alignItems: "stretch", justifyContent: "flex-start", fontFamily: displayFontFamily }}>
+      <div style={{ background: "#0E0F13", border: `2px solid ${accent}`, borderRadius: 30, boxShadow: `0 0 34px ${accent}55, 0 24px 60px rgba(0,0,0,0.55)`, padding: "24px 28px", transform: `translateY(${(1 - card) * -40}px)`, opacity: card }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 18 }}>
+          {tag ? <span style={{ background: accent, color: BRAND.accentInk, fontWeight: 900, fontSize: 32, lineHeight: 1, padding: "8px 18px", borderRadius: 12 }}>{tag}</span> : null}
+          {icon ? <IconTile name={icon} accent={accent} s={0.85} /> : null}
+          <span style={{ fontSize: 40, fontWeight: 900, color: "#fff", textTransform: "uppercase", letterSpacing: "0.01em", lineHeight: 1.05 }}>{title}</span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {items.map((it, i) => {
+            const at = it.at ?? 10 + i * 12;
+            const s = enter(localFrame, fps, at, 18);
+            if (s < 0.02) return null;
+            const isCheck = it.type === "check";
+            return (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 16, opacity: s, transform: `translateX(${(1 - s) * 26}px)`, background: isCheck ? accent : "transparent", borderRadius: 14, padding: isCheck ? "12px 16px" : "0 2px" }}>
+                {it.icon ? (
+                  <div style={{ width: 44, height: 44, borderRadius: 12, background: isCheck ? "rgba(10,12,20,0.15)" : `${accent}22`, display: "flex", alignItems: "center", justifyContent: "center", color: isCheck ? BRAND.accentInk : accent, flexShrink: 0 }}>
+                    <Icon name={it.icon} size={26} />
+                  </div>
+                ) : null}
+                <span style={{ flex: 1, fontSize: 38, fontWeight: isCheck ? 900 : 600, color: isCheck ? BRAND.accentInk : "#E8ECF4", textTransform: isCheck ? "uppercase" : "none", lineHeight: 1.1 }}>{it.text}</span>
+                {it.type === "toggle" ? <Toggle accent={accent} on={s > 0.55} /> : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 // ── SceneBackground — opaque premium backdrop, continuously alive ────────────
 // Orbiting accent glows, a travelling diagonal light sweep, slow-drifting rings
 // and a parallax grid — so the frame never reads as static or empty.
@@ -792,6 +842,7 @@ export const MOTION_TEMPLATES: Record<string, React.FC<any>> = {
   "gauge": Gauge,
   "arrow-flow": ArrowFlow,
   "price-tag": PriceTag,
+  "spec-card": SpecCard,
 };
 
 export const MotionInsertView: React.FC<{

@@ -63,7 +63,7 @@ export type ShortsProps = {
   // Caption look: "pill" (bottom-centre, accent pill), "left-stack" (left,
   // word-stacked, cream + accent, hops position) or "mixed" (alternates the two
   // per phrase for variety).
-  captionStyle?: "pill" | "left-stack" | "mixed";
+  captionStyle?: "pill" | "left-stack" | "mixed" | "highlight";
   // Background music file in public/ (played quietly under the voice), or null.
   music?: string | null;
   musicVolume?: number;
@@ -226,14 +226,14 @@ const CAP_POS: React.CSSProperties[] = [
 const Captions: React.FC<{
   words: ShortWord[];
   inserts: ShortInsert[];
-  style?: "pill" | "left-stack" | "mixed";
+  style?: "pill" | "left-stack" | "mixed" | "highlight";
 }> = ({ words, inserts, style = "pill" }) => {
   const frame = useCurrentFrame();
-  // A word spoken while a motion insert is on screen is carried by that overlay
-  // — drop it from the captions entirely so it never echoes top-and-bottom.
-  const covered = (f: number) =>
-    inserts.some((i) => i.type === "motion" && f >= i.from && f < i.to);
-  // Hide captions outright while an insert is on screen.
+  // Only FULL-SCREEN (cover) motion inserts carry the words themselves and hide
+  // the captions. Top overlays (spec-card, upper cards) keep captions below —
+  // the overlay-reels style shows the top card AND the subtitle together.
+  const isCover = (i: ShortInsert) => i.type === "motion" && Boolean((i.data as { cover?: boolean } | undefined)?.cover);
+  const covered = (f: number) => inserts.some((i) => isCover(i) && f >= i.from && f < i.to);
   if (covered(frame)) return null;
   const vis = words.filter((w) => !covered(w.from));
   let ci = -1;
@@ -251,7 +251,7 @@ const Captions: React.FC<{
     const prev = vis[runStart - 1];
     const cur = vis[runStart];
     const insertBetween = inserts.some(
-      (i) => i.type === "motion" && i.from >= prev.from && i.to <= cur.from + 1,
+      (i) => isCover(i) && i.from >= prev.from && i.to <= cur.from + 1,
     );
     if (insertBetween) break;
     runStart--;
@@ -262,7 +262,7 @@ const Captions: React.FC<{
   let runIndex = 0;
   for (let i = 1; i <= ci; i++) {
     const brk = inserts.some(
-      (ins) => ins.type === "motion" && ins.from >= vis[i - 1].from && ins.to <= vis[i].from + 1,
+      (ins) => isCover(ins) && ins.from >= vis[i - 1].from && ins.to <= vis[i].from + 1,
     );
     if (brk) runIndex++;
   }
@@ -320,6 +320,22 @@ const Captions: React.FC<{
   const start = Math.max(runStart, Math.floor(ci / CHUNK) * CHUNK);
   // only words already spoken (no dim/gray look-ahead)
   const chunk = vis.slice(start, ci + 1);
+
+  // ── highlight (overlay-reels): one dark pill, key (accent) words coloured
+  // inline, no per-word boxes. See docs/style-overlay-reels.md.
+  if (eff === "highlight") {
+    return (
+      <AbsoluteFill style={{ justifyContent: "flex-end", alignItems: "center", padding: "0 44px 300px" }}>
+        <div style={{ background: "rgba(14,15,19,0.92)", borderRadius: 18, padding: "14px 28px", maxWidth: "94%", boxShadow: "0 12px 40px rgba(0,0,0,0.6)" }}>
+          <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", gap: "0.22em", fontFamily: displayFontFamily, fontWeight: 800, fontSize: 66, lineHeight: 1.08, textTransform: "uppercase", textAlign: "center" }}>
+            {chunk.map((w, k) => (
+              <span key={start + k} style={{ color: w.accent ? BRAND.accent : PAPER }}>{w.text}</span>
+            ))}
+          </div>
+        </div>
+      </AbsoluteFill>
+    );
+  }
 
   return (
     <AbsoluteFill
