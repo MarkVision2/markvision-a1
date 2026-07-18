@@ -1,6 +1,6 @@
 import React from "react";
-import { AbsoluteFill, Img, interpolate, staticFile, useCurrentFrame } from "remotion";
-import { Audio, Video } from "@remotion/media";
+import { AbsoluteFill, Img, interpolate, OffthreadVideo, Sequence, staticFile, useCurrentFrame } from "remotion";
+import { Audio } from "@remotion/media";
 import { displayFontFamily } from "./fonts";
 import { BRAND } from "./brand";
 import { MOTION_TEMPLATES, SceneBackground } from "./motion";
@@ -96,7 +96,13 @@ const BrollMedia: React.FC<{ scene: ReelsScene; localFrame: number; duration: nu
   return (
     <AbsoluteFill style={{ backgroundColor: BRAND.bg, overflow: "hidden" }}>
       {scene.clip ? (
-        <Video src={staticFile(scene.clip)} trimBefore={scene.clipFrom ?? 0} muted style={kb} />
+        // OffthreadVideo (ffmpeg per-frame extraction) — надёжно проигрывается в
+        // headless-рендере, в отличие от @remotion/media Video (замерзал на 1 кадре).
+        // Sequence сдвигает таймлайн клипа к началу сцены: клип идёт со своего старта
+        // (или clipFrom) ровно когда начинается сцена, а не с глобального времени.
+        <Sequence from={scene.from} durationInFrames={Math.max(1, Math.ceil(duration) + 2)}>
+          <OffthreadVideo src={staticFile(scene.clip)} trimBefore={scene.clipFrom ?? 0} muted style={kb} />
+        </Sequence>
       ) : scene.image ? (
         <Img src={staticFile(scene.image)} style={kb} />
       ) : null}
