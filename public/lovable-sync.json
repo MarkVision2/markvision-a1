@@ -1,7 +1,7 @@
 {
-  "git_sha": "fd5bb9c",
-  "git_sha_full": "fd5bb9c92a560f1b080a63e990084b15c017cab9",
-  "updated_at": "2026-07-18T14:11:24+05:00",
-  "label": "fix(metrics): stop RNP_DAY_ZERO from wiping Meta spend/leads in daily table",
+  "git_sha": "a119d5b",
+  "git_sha_full": "a119d5b2186933a3f2f912b89781edd83724a12e",
+  "updated_at": "2026-07-18T14:24:21+05:00",
+  "label": "feat(analytics): insights strip, lead sources breakdown and best creatives",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
