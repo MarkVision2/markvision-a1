@@ -1,7 +1,7 @@
 {
-  "git_sha": "4492192",
-  "git_sha_full": "44921927bb73ab03a67beae7b09693b0c6565bce",
-  "updated_at": "2026-07-17T21:33:56+05:00",
-  "label": "Монтаж 50/50: сплит-экран спикер + запись экрана/моушн (#128)",
+  "git_sha": "fce446a",
+  "git_sha_full": "fce446a7dbff37ed077389205f23a91503d11959",
+  "updated_at": "2026-07-18T10:12:08+05:00",
+  "label": "fix(publisher): выбор графа по типу токена — Instagram Login через graph.instagram.com",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
