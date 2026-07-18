@@ -93,6 +93,29 @@ async function resolveVideoSource(videoId: string, tokens: string[]) {
   return { source: null as string | null, thumb: bestThumb };
 }
 
+/** Meta часто не отдаёт mp4 source — тогда берём официальный playable-превью
+ * объявления (signed iframe с business.facebook.com, работает без логина). */
+async function resolvePreviewIframe(adId: string, tokens: string[]): Promise<string | null> {
+  const formats = ["INSTAGRAM_REELS", "MOBILE_FEED_STANDARD", "DESKTOP_FEED_STANDARD"];
+  for (const token of tokens) {
+    for (const fmt of formats) {
+      try {
+        const r = await fetch(
+          `https://graph.facebook.com/${META_API_VERSION}/${adId}/previews?ad_format=${fmt}&access_token=${encodeURIComponent(token)}`,
+        );
+        if (!r.ok) continue;
+        const j = await r.json() as { data?: Array<{ body?: string }> };
+        const body = j.data?.[0]?.body ?? "";
+        const m = body.match(/src="([^"]+)"/);
+        if (m?.[1]) return m[1].replace(/&amp;/g, "&");
+      } catch {
+        // пробуем следующий формат/токен
+      }
+    }
+  }
+  return null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -204,12 +227,15 @@ Deno.serve(async (req) => {
         if (posterUrl) patch.poster_url = posterUrl;
         await admin.from("meta_creatives").update(patch).eq("ad_id", adId);
       }
+      // mp4 недоступен — отдаём официальный playable-превью Meta (iframe).
+      const previewIframe = refreshVideo ? await resolvePreviewIframe(adId, tokens) : null;
       return json({
-        ok: Boolean(posterUrl),
-        error: "no source url (token has no access to this video)",
-        fallback: true,
+        ok: Boolean(posterUrl ?? previewIframe),
+        error: previewIframe ? undefined : "no source url (token has no access to this video)",
+        fallback: !previewIframe,
         thumbnail_url: posterUrl ?? bestThumb,
         poster_url: posterUrl,
+        preview_iframe_url: previewIframe,
       }, 200);
     }
 

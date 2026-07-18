@@ -51,6 +51,7 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
   const [refreshedPoster, setRefreshedPoster] = useState<string | null>(null);
   const [refreshedThumb, setRefreshedThumb] = useState<string | null>(null);
   const [previewVideoUrl, setPreviewVideoUrl] = useState<string | null>(row.videoUrl);
+  const [previewIframeUrl, setPreviewIframeUrl] = useState<string | null>(null);
   const [loadingHq, setLoadingHq] = useState(() => needsVisualRefresh(row, row.posterUrl));
   const [hqFailed, setHqFailed] = useState(false);
 
@@ -85,6 +86,7 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
 
   useEffect(() => {
     setPreviewVideoUrl(row.videoUrl);
+    setPreviewIframeUrl(null);
     setRefreshedPoster(null);
     setRefreshedThumb(null);
     setCapturedPoster(null);
@@ -179,6 +181,8 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
     const visuals = applyRefreshVisuals(data);
     if (visuals.poster) setRefreshedPoster(visuals.poster);
     else if (visuals.thumb) setRefreshedThumb(visuals.thumb);
+    const iframeUrl = data?.preview_iframe_url?.trim() || null;
+    if (iframeUrl) setPreviewIframeUrl(iframeUrl);
     const videoUrl = isVideo
       ? (visuals.video ?? null)
       : (visuals.video ?? previewVideoUrl ?? row.videoUrl ?? null);
@@ -217,6 +221,7 @@ export function useCreativeHqPreview(row: CreativePreviewSource, opts: Options =
     imageSrc,
     hqSrc,
     previewVideoUrl,
+    previewIframeUrl,
     loadingHq,
     isHqReady,
     isLowRes,

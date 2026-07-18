@@ -10,6 +10,8 @@ export interface RefreshResult {
   video_url?: string | null;
   thumbnail_url?: string | null;
   poster_url?: string | null;
+  /** Официальный playable-превью Meta (iframe) — когда mp4 source недоступен токену. */
+  preview_iframe_url?: string | null;
   fallback?: boolean;
   rate_limited?: boolean;
   retry_after_seconds?: number;
@@ -51,8 +53,8 @@ export function refreshMetaCreative(
   const cached = cache.get(adId);
   if (cached) {
     const needsVideo = !!opts?.refreshVideo;
-    // Кеш без video_url не подходит для воспроизведения — запрашиваем заново.
-    if (!needsVideo || cached.video_url) return Promise.resolve(cached);
+    // Кеш без video_url/preview_iframe_url не подходит для воспроизведения — запрашиваем заново.
+    if (!needsVideo || cached.video_url || cached.preview_iframe_url) return Promise.resolve(cached);
   }
   const exists = inflight.get(adId);
   if (exists) return exists;
@@ -89,7 +91,8 @@ export function refreshMetaCreative(
         const hasVisual =
           isHighQualityCreativeUrl(res.poster_url)
           || Boolean(res.thumbnail_url)
-          || Boolean(res.video_url);
+          || Boolean(res.video_url)
+          || Boolean(res.preview_iframe_url);
         if (hasVisual) cache.set(adId, res);
         return res;
       } finally {

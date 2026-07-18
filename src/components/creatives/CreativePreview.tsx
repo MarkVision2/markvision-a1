@@ -63,6 +63,7 @@ export function CreativePreview({
     displaySrc,
     imageSrc,
     previewVideoUrl,
+    previewIframeUrl,
     loadingHq,
     isHqReady,
     isLowRes,
@@ -75,6 +76,7 @@ export function CreativePreview({
   const [playerOpen, setPlayerOpen] = useState(false);
   const [playerVideoUrl, setPlayerVideoUrl] = useState<string | null>(null);
   const [inlineVideoUrl, setInlineVideoUrl] = useState<string | null>(null);
+  const [showIframePlayer, setShowIframePlayer] = useState(false);
   const [loadingFullVideo, setLoadingFullVideo] = useState(false);
   const [inlineVideoError, setInlineVideoError] = useState(false);
   const [mediaError, setMediaError] = useState(false);
@@ -92,6 +94,7 @@ export function CreativePreview({
   useEffect(() => {
     setInlineVideoUrl(null);
     setInlineVideoError(false);
+    setShowIframePlayer(false);
   }, [row.adId, row.videoUrl]);
 
   const loadFullVideo = async (): Promise<string | null> => {
@@ -103,29 +106,13 @@ export function CreativePreview({
     return freshUrl;
   };
 
+  // Инлайн-плеер: mp4 не тянем заранее (тяжело и Meta лимитирует) — только
+  // подхватываем уже сохранённый URL. Полная загрузка — по клику ▶.
   useEffect(() => {
     if (!useInlinePlayer || !inView) return;
-    let cancelled = false;
-    void (async () => {
-      setLoadingFullVideo(true);
-      const cached = previewVideoUrl ?? row.videoUrl;
-      if (cached) {
-        if (!cancelled) {
-          setInlineVideoUrl(cached);
-          setLoadingFullVideo(false);
-        }
-      }
-      const freshUrl = await forceRefresh();
-      if (!cancelled) {
-        setInlineVideoUrl(freshUrl ?? cached ?? null);
-        setLoadingFullVideo(false);
-        if (!freshUrl && !cached) setInlineVideoError(true);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [useInlinePlayer, inView, row.adId, row.videoUrl, previewVideoUrl, forceRefresh]);
+    const cached = previewVideoUrl ?? row.videoUrl;
+    if (cached) setInlineVideoUrl(cached);
+  }, [useInlinePlayer, inView, row.adId, row.videoUrl, previewVideoUrl]);
 
   useEffect(() => {
     setVideoFrameReady(false);
@@ -166,12 +153,18 @@ export function CreativePreview({
   const handlePlayClick = async (e?: React.MouseEvent) => {
     e?.stopPropagation();
     if (useInlinePlayer) {
-      if (inlineVideoUrl && inlineVideoRef.current) {
+      if (inlineVideoUrl && !inlineVideoError && inlineVideoRef.current) {
         void inlineVideoRef.current.play().catch(() => {});
         return;
       }
       const url = await loadFullVideo();
-      if (url) requestAnimationFrame(() => inlineVideoRef.current?.play().catch(() => {}));
+      if (url) {
+        setInlineVideoError(false);
+        requestAnimationFrame(() => inlineVideoRef.current?.play().catch(() => {}));
+        return;
+      }
+      // mp4 недоступен токену — играем официальное превью Meta в iframe.
+      setShowIframePlayer(true);
       return;
     }
     setPlayerOpen(true);
@@ -187,8 +180,12 @@ export function CreativePreview({
       setInlineVideoUrl(null);
       setInlineVideoError(false);
       const url = await loadFullVideo();
-      if (!url) setInlineVideoError(true);
-      else requestAnimationFrame(() => inlineVideoRef.current?.load());
+      if (url) {
+        requestAnimationFrame(() => inlineVideoRef.current?.load());
+      } else {
+        setShowIframePlayer(true);
+        setInlineVideoError(true);
+      }
       return;
     }
     setPlayerVideoUrl(null);
@@ -240,6 +237,24 @@ export function CreativePreview({
               void handleRetryVideo();
             }}
           />
+        ) : showIframePlayer && previewIframeUrl ? (
+          <div className="relative h-full w-full bg-black">
+            <iframe
+              src={previewIframeUrl}
+              title={row.name ?? "Превью объявления Meta"}
+              className="h-full w-full border-0"
+              scrolling="no"
+              allow="autoplay; encrypted-media"
+            />
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); setShowIframePlayer(false); }}
+              className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-full bg-black/70 text-white ring-1 ring-white/20"
+              aria-label="Закрыть превью"
+            >
+              ✕
+            </button>
+          </div>
         ) : (
           <button
             type="button"
@@ -285,7 +300,7 @@ export function CreativePreview({
         )}
 
         {/* Видео недоступно, но обложка есть → показываем её как есть, без ошибки. */}
-        {inlineVideoError && !imageSrc && !displaySrc && (
+        {inlineVideoError && !showIframePlayer && !imageSrc && !displaySrc && (
           <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-background/90 p-2 text-xs backdrop-blur">
             <span className="text-muted-foreground">Не удалось загрузить видео</span>
             <button
@@ -515,6 +530,14 @@ export function CreativePreview({
               <div className="grid aspect-[9/16] place-items-center bg-black text-sm text-white/70">
                 <Loader2 className="h-8 w-8 animate-spin" />
               </div>
+            ) : previewIframeUrl ? (
+              <iframe
+                src={previewIframeUrl}
+                title={row.name ?? "Превью объявления Meta"}
+                className="aspect-[9/16] h-auto max-h-[92dvh] w-full border-0 bg-black"
+                scrolling="no"
+                allow="autoplay; encrypted-media"
+              />
             ) : (
               <div
                 className="relative aspect-[9/16] w-full bg-cover bg-center"
