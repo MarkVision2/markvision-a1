@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
+import { normalizeVariantList } from "@/lib/codewordVariants";
 
 export interface InstagramOrganicEvent {
   id: string;
@@ -33,6 +34,7 @@ export interface CodewordStat {
   thumbnailUrl: string | null;
   active: boolean;
   codewordDms: number;
+  codewordComments?: number;
   uniqueUsers?: number;
   linkClicks: number;
   leads: number;
@@ -151,7 +153,7 @@ export function useCodewordStats() {
     void (async () => {
       const { data, error } = await supabase
         .from("instagram_codeword_stats")
-        .select("codeword_id, codeword, reel_url, thumbnail_url, active, codeword_dms, link_clicks, leads, last_event_at")
+        .select("codeword_id, codeword, short_id, reel_url, thumbnail_url, active, codeword_dms, codeword_comments, unique_users, link_clicks, leads, sales, revenue, last_event_at")
         .eq("project_id", projectId);
       if (cancelled) return;
       if (error) {
@@ -166,6 +168,7 @@ export function useCodewordStats() {
             thumbnailUrl: (r.thumbnail_url as string | null) ?? null,
             active: !!r.active,
             codewordDms: Number(r.codeword_dms ?? 0),
+            codewordComments: Number(r.codeword_comments ?? 0),
             uniqueUsers: Number(r.unique_users ?? 0),
             linkClicks: Number(r.link_clicks ?? 0),
             leads: Number(r.leads ?? 0),
@@ -194,6 +197,9 @@ export interface InstagramCodeword {
   caption: string | null;
   publishedAt: string | null;
   targetUrl: string | null;
+  commentReplies: string[];
+  dmMessages: string[];
+  targetUrls: string[];
   active: boolean;
 }
 
@@ -220,18 +226,26 @@ export function useInstagramCodewords() {
         .order("created_at", { ascending: false });
       if (cancelled) return;
       setItems(
-        (data ?? []).map((r: Record<string, unknown>) => ({
-          id: String(r.id),
-          projectId: String(r.project_id),
-          codeword: String(r.codeword ?? ""),
-          reelId: (r.reel_id as string | null) ?? null,
-          reelUrl: (r.reel_url as string | null) ?? null,
-          thumbnailUrl: (r.thumbnail_url as string | null) ?? null,
-          caption: (r.caption as string | null) ?? null,
-          publishedAt: (r.published_at as string | null) ?? null,
-          targetUrl: (r.target_url as string | null) ?? null,
-          active: !!r.active,
-        })),
+        (data ?? []).map((r: Record<string, unknown>) => {
+          const targetUrls = normalizeVariantList(r.target_urls as string[] | null);
+          const legacyTarget = (r.target_url as string | null) ?? null;
+          return {
+            id: String(r.id),
+            projectId: String(r.project_id),
+            codeword: String(r.codeword ?? ""),
+            shortId: (r.short_id as string | null) ?? null,
+            reelId: (r.reel_id as string | null) ?? null,
+            reelUrl: (r.reel_url as string | null) ?? null,
+            thumbnailUrl: (r.thumbnail_url as string | null) ?? null,
+            caption: (r.caption as string | null) ?? null,
+            publishedAt: (r.published_at as string | null) ?? null,
+            targetUrl: legacyTarget ?? targetUrls[0] ?? null,
+            commentReplies: normalizeVariantList(r.comment_replies as string[] | null),
+            dmMessages: normalizeVariantList(r.dm_messages as string[] | null),
+            targetUrls: targetUrls.length > 0 ? targetUrls : legacyTarget ? [legacyTarget] : [],
+            active: !!r.active,
+          };
+        }),
       );
       setLoading(false);
     })();
@@ -240,6 +254,7 @@ export function useInstagramCodewords() {
 
   const add = async (input: Omit<InstagramCodeword, "id" | "projectId">) => {
     if (!projectId) throw new Error("Сначала выберите проект");
+    const targetUrls = normalizeVariantList(input.targetUrls);
     const { error } = await supabase.from("instagram_codewords").insert({
       project_id: projectId,
       codeword: input.codeword.trim().toLowerCase(),
@@ -248,7 +263,10 @@ export function useInstagramCodewords() {
       thumbnail_url: input.thumbnailUrl,
       caption: input.caption,
       published_at: input.publishedAt,
-      target_url: input.targetUrl,
+      target_url: targetUrls[0] ?? input.targetUrl,
+      comment_replies: normalizeVariantList(input.commentReplies),
+      dm_messages: normalizeVariantList(input.dmMessages),
+      target_urls: targetUrls,
       active: input.active,
     });
     if (error) throw error;
@@ -262,7 +280,15 @@ export function useInstagramCodewords() {
     if (patch.thumbnailUrl !== undefined) payload.thumbnail_url = patch.thumbnailUrl;
     if (patch.caption !== undefined) payload.caption = patch.caption;
     if (patch.publishedAt !== undefined) payload.published_at = patch.publishedAt;
-    if (patch.targetUrl !== undefined) payload.target_url = patch.targetUrl;
+    if (patch.commentReplies !== undefined) payload.comment_replies = normalizeVariantList(patch.commentReplies);
+    if (patch.dmMessages !== undefined) payload.dm_messages = normalizeVariantList(patch.dmMessages);
+    if (patch.targetUrls !== undefined) {
+      const urls = normalizeVariantList(patch.targetUrls);
+      payload.target_urls = urls;
+      payload.target_url = urls[0] ?? null;
+    } else if (patch.targetUrl !== undefined) {
+      payload.target_url = patch.targetUrl;
+    }
     if (patch.active !== undefined) payload.active = patch.active;
     const { error } = await supabase.from("instagram_codewords").update(payload as never).eq("id", id);
     if (error) throw error;

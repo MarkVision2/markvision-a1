@@ -4,7 +4,9 @@ export const IG_ORGANIC_INTAKE_URL = `${supabaseUrl}/functions/v1/instagram-orga
 export const IG_ORGANIC_REDIRECT_BASE = `${supabaseUrl}/functions/v1/ig-organic-redirect`;
 
 /** Короткая ссылка для ответа бота в DM (фиксирует link_click). */
-export function igOrganicBotLink(shortId: string, username = "user") {
+export function igOrganicBotLink(shortId: string, username = "user", linkIndex?: number) {
   const u = encodeURIComponent(username.replace(/^@/, ""));
-  return `${IG_ORGANIC_REDIRECT_BASE}?c=${encodeURIComponent(shortId)}&u=${u}`;
+  const params = new URLSearchParams({ c: shortId, u });
+  if (linkIndex != null && linkIndex >= 0) params.set("v", String(linkIndex));
+  return `${IG_ORGANIC_REDIRECT_BASE}?${params.toString()}`;
 }

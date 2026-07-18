@@ -1,27 +1,9 @@
 // Public webhook for Instagram organic funnel events.
 // Source: n8n, GreenAPI, or any other automation that watches
-// Instagram Direct conversations / link clicks / form submissions.
+// Instagram Direct conversations / comments / link clicks.
 //
-// Events tracked:
-//   1. codeword_dm — user sent a DM containing a known code-word
-//   2. link_click  — user clicked the link the bot sent back
-//   3. lead        — user filled a form and became a lead (lead_id reference)
-//
-// Example payload:
-//   POST /functions/v1/instagram-organic-intake
-//   {
-//     "project_id": "uuid",
-//     "event_type": "codeword_dm",
-//     "codeword": "smile",
-//     "username": "@maria_kz",
-//     "contact": "+7700...",          // optional
-//     "reel_url": "https://www.instagram.com/reel/...",
-//     "payload": { "raw": "..." }
-//   }
-//
-// Auth: requires header `x-intake-token` matching project token
-// (issued via SettingsConnection), so any public webhook source can call this
-// without service-role credentials.
+// On codeword_dm / codeword_comment the API picks random variants from
+// comment_replies, dm_messages, target_urls and returns them for the bot.
 
 import { corsHeaders } from "https://esm.sh/@supabase/supabase-js@2.95.0/cors";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
@@ -44,7 +26,7 @@ function json(body: unknown, status = 200) {
 const Schema = z.object({
   project_id: z.string().uuid().optional().nullable(),
   token: z.string().trim().max(120).optional().nullable(),
-  event_type: z.enum(["codeword_dm", "link_click", "lead"]),
+  event_type: z.enum(["codeword_dm", "codeword_comment", "link_click", "lead"]),
   codeword: z.string().trim().max(80).optional().nullable(),
   reel_id: z.string().trim().max(120).optional().nullable(),
   reel_url: z.string().trim().max(500).optional().nullable(),
@@ -57,6 +39,17 @@ const Schema = z.object({
 
 type IntakePayload = z.infer<typeof Schema>;
 
+interface CodewordRow {
+  id: string;
+  reel_id: string | null;
+  reel_url: string | null;
+  target_url: string | null;
+  short_id: string | null;
+  comment_replies: unknown;
+  dm_messages: unknown;
+  target_urls: unknown;
+}
+
 function normalizeCodeword(raw: string | null | undefined): string | null {
   if (!raw) return null;
   const t = raw.trim().toLowerCase();
@@ -64,9 +57,46 @@ function normalizeCodeword(raw: string | null | undefined): string | null {
   return t;
 }
 
+function asStringArray(raw: unknown, max = 10): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((v) => String(v).trim()).filter(Boolean).slice(0, max);
+}
+
+function pickRandom(items: string[]): { value: string; index: number } | null {
+  if (items.length === 0) return null;
+  const index = Math.floor(Math.random() * items.length);
+  return { value: items[index], index };
+}
+
+function resolveTargetUrls(row: CodewordRow | null): string[] {
+  if (!row) return [];
+  const urls = asStringArray(row.target_urls);
+  if (urls.length > 0) return urls;
+  if (row.target_url?.trim()) return [row.target_url.trim()];
+  return [];
+}
+
+function buildVariants(row: CodewordRow | null) {
+  const commentReplies = asStringArray(row?.comment_replies);
+  const dmMessages = asStringArray(row?.dm_messages);
+  const targetUrls = resolveTargetUrls(row);
+  const comment = pickRandom(commentReplies);
+  const dm = pickRandom(dmMessages);
+  const link = pickRandom(targetUrls);
+  return {
+    comment_reply: comment?.value ?? null,
+    comment_reply_index: comment?.index ?? null,
+    dm_message: dm?.value ?? null,
+    dm_message_index: dm?.index ?? null,
+    target_url: link?.value ?? row?.target_url ?? null,
+    target_url_index: link?.index ?? null,
+    comment_replies_count: commentReplies.length,
+    dm_messages_count: dmMessages.length,
+    target_urls_count: targetUrls.length,
+  };
+}
+
 async function resolveProjectId(req: Request, body: IntakePayload): Promise<string | null> {
-  // Always require a valid intake token. Do NOT trust body.project_id alone,
-  // since project UUIDs may be discoverable by other authenticated users.
   const headerToken = req.headers.get("x-intake-token") || body.token || null;
   if (!headerToken) return null;
   const { data } = await admin
@@ -76,7 +106,6 @@ async function resolveProjectId(req: Request, body: IntakePayload): Promise<stri
     .maybeSingle();
   const tokenProject = (data as { id?: string } | null)?.id ?? null;
   if (!tokenProject) return null;
-  // If body also provides project_id, it must match the token's project.
   if (body.project_id && body.project_id !== tokenProject) return null;
   return tokenProject;
 }
@@ -85,11 +114,12 @@ async function resolveCodeword(projectId: string, codeword: string | null) {
   if (!codeword) return null;
   const { data } = await admin
     .from("instagram_codewords")
-    .select("id, reel_id, reel_url, target_url, short_id")
+    .select("id, reel_id, reel_url, target_url, short_id, comment_replies, dm_messages, target_urls")
     .eq("project_id", projectId)
     .eq("codeword", codeword)
+    .eq("active", true)
     .maybeSingle();
-  return data as { id: string; reel_id: string | null; reel_url: string | null; target_url: string | null; short_id: string | null } | null;
+  return data as CodewordRow | null;
 }
 
 async function parseBody(req: Request): Promise<Record<string, unknown>> {
@@ -111,6 +141,15 @@ async function parseBody(req: Request): Promise<Record<string, unknown>> {
   }
 }
 
+function buildRedirectUrl(shortId: string, username: string | null | undefined, linkIndex: number | null) {
+  const base = SUPABASE_URL.replace(/\/$/, "");
+  const params = new URLSearchParams({ c: shortId });
+  const u = (username ?? "").trim().replace(/^@/, "");
+  if (u) params.set("u", u);
+  if (linkIndex != null && linkIndex >= 0) params.set("v", String(linkIndex));
+  return `${base}/functions/v1/ig-organic-redirect?${params.toString()}`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
@@ -127,6 +166,7 @@ Deno.serve(async (req) => {
   if (!projectId) return json({ ok: false, error: "project_not_resolved" }, 401);
 
   const codewordRow = await resolveCodeword(projectId, codeword);
+  const variants = buildVariants(codewordRow);
 
   const occurredAt = body.occurred_at ? new Date(body.occurred_at) : new Date();
   const dateKey = new Intl.DateTimeFormat("en-CA", {
@@ -146,7 +186,10 @@ Deno.serve(async (req) => {
     lead_id: body.lead_id ?? null,
     date: dateKey,
     occurred_at: occurredAt.toISOString(),
-    payload: body.payload ?? {},
+    payload: {
+      ...(body.payload ?? {}),
+      variants,
+    },
   };
 
   const { data, error } = await admin
@@ -160,14 +203,23 @@ Deno.serve(async (req) => {
     return json({ ok: false, error: "Internal server error" }, 500);
   }
 
-  const base = SUPABASE_URL.replace(/\/$/, "");
-  const shortId = (codewordRow as { short_id?: string } | null)?.short_id ?? null;
+  const shortId = codewordRow?.short_id ?? null;
+  const redirectUrl = shortId
+    ? buildRedirectUrl(shortId, body.username, variants.target_url_index)
+    : null;
+
   return json({
     ok: true,
     event_id: (data as { id: string }).id,
     codeword_id: codewordRow?.id ?? null,
-    target_url: codewordRow?.target_url ?? null,
     short_id: shortId,
-    redirect_url: shortId ? `${base}/functions/v1/ig-organic-redirect?c=${encodeURIComponent(shortId)}` : null,
+    target_url: variants.target_url,
+    redirect_url: redirectUrl,
+    comment_reply: variants.comment_reply,
+    comment_reply_index: variants.comment_reply_index,
+    dm_message: variants.dm_message,
+    dm_message_index: variants.dm_message_index,
+    target_url_index: variants.target_url_index,
+    variants,
   });
 });

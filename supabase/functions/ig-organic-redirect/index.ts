@@ -1,8 +1,9 @@
 // Public redirect for Instagram organic short links.
-// GET /functions/v1/ig-organic-redirect?c=<short_id>&u=<username>
+// GET /functions/v1/ig-organic-redirect?c=<short_id>&u=<username>&v=<link_index>
 // 1) Resolves codeword by short_id
-// 2) Inserts link_click into instagram_organic_events
-// 3) 302 → target_url with utm_source=instagram, utm_campaign=<codeword>, cw=<codeword>
+// 2) Picks target URL by ?v= index (random variant from intake)
+// 3) Inserts link_click into instagram_organic_events
+// 4) 302 → target_url with utm_source=instagram, utm_campaign=<codeword>, cw=<codeword>
 
 import { corsHeaders } from "https://esm.sh/@supabase/supabase-js@2.95.0/cors";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
@@ -23,6 +24,23 @@ function almatyDateKey(d: Date): string {
   }).format(d);
 }
 
+function asStringArray(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((v) => String(v).trim()).filter(Boolean);
+}
+
+function resolveTargetUrl(row: {
+  target_url: string | null;
+  target_urls: unknown;
+}, linkIndex: number | null): string | null {
+  const urls = asStringArray(row.target_urls);
+  if (urls.length > 0) {
+    if (linkIndex != null && linkIndex >= 0 && linkIndex < urls.length) return urls[linkIndex];
+    return urls[0];
+  }
+  return row.target_url?.trim() || null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "GET" && req.method !== "HEAD") {
@@ -32,6 +50,8 @@ Deno.serve(async (req) => {
   const url = new URL(req.url);
   const shortId = (url.searchParams.get("c") ?? "").trim();
   const username = (url.searchParams.get("u") ?? "").trim() || null;
+  const vRaw = url.searchParams.get("v");
+  const linkIndex = vRaw != null && vRaw !== "" ? Number.parseInt(vRaw, 10) : null;
 
   if (!shortId) {
     return new Response("Missing ?c=short_id", { status: 400, headers: corsHeaders });
@@ -39,12 +59,14 @@ Deno.serve(async (req) => {
 
   const { data: row, error } = await admin
     .from("instagram_codewords")
-    .select("id, project_id, codeword, target_url, reel_id, reel_url, active")
+    .select("id, project_id, codeword, target_url, target_urls, reel_id, reel_url, active")
     .eq("short_id", shortId)
     .eq("active", true)
     .maybeSingle();
 
-  if (error || !row?.target_url) {
+  const targetUrl = row ? resolveTargetUrl(row as { target_url: string | null; target_urls: unknown }, linkIndex) : null;
+
+  if (error || !row || !targetUrl) {
     return new Response("Link not found", { status: 404, headers: corsHeaders });
   }
 
@@ -62,14 +84,19 @@ Deno.serve(async (req) => {
       username,
       date: dateKey,
       occurred_at: occurredAt.toISOString(),
-      payload: { short_id: shortId, user_agent: req.headers.get("user-agent") ?? null },
+      payload: {
+        short_id: shortId,
+        target_url_index: linkIndex,
+        target_url: targetUrl,
+        user_agent: req.headers.get("user-agent") ?? null,
+      },
     });
     if (insErr) console.error("[ig-organic-redirect] link_click insert", insErr);
   }
 
   let target: URL;
   try {
-    target = new URL(row.target_url);
+    target = new URL(targetUrl);
   } catch {
     return new Response("Invalid target URL", { status: 500, headers: corsHeaders });
   }
