@@ -19,6 +19,8 @@ vi.mock("@/hooks/useContentPlan", () => ({
       paid: 0,
       revenue: 0,
     },
+    upcomingQueue: [],
+    queueCount: 0,
     loading: false,
     error: null,
     tableMissing: false,
@@ -28,12 +30,15 @@ vi.mock("@/hooks/useContentPlan", () => ({
   }),
 }));
 
-vi.mock("@/hooks/useProjectsStore", () => ({
-  useProjectsStore: () => ({ activeId: "proj-1" }),
+vi.mock("@/hooks/useInstagramAccount", () => ({
+  useInstagramAccount: () => ({
+    account: { username: "test" },
+    sync: vi.fn().mockResolvedValue(undefined),
+  }),
 }));
 
-vi.mock("@/hooks/useInstagramAccount", () => ({
-  useInstagramAccount: () => ({ account: { username: "test" } }),
+vi.mock("@/hooks/useProjectsStore", () => ({
+  useProjectsStore: () => ({ activeId: "proj-1" }),
 }));
 
 const addDialog = vi.fn((_props: unknown) => (
@@ -75,7 +80,7 @@ describe("ContentPlan uses AutopostAddDialog", () => {
     );
   });
 
-  it("shows from-today period and planning list (no KPI wall)", () => {
+  it("shows from-today period, upcoming queue rail, and planning list (no KPI wall)", () => {
     render(
       <MemoryRouter>
         <ContentPlan />
@@ -84,6 +89,8 @@ describe("ContentPlan uses AutopostAddDialog", () => {
 
     expect(screen.getByRole("button", { name: /С сегодня/i })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: /Сводка за период/i })).toBeNull();
-    expect(screen.getByText(/План ·/i)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /Ближайшие в очереди MarkVision/i })).toBeTruthy();
+    expect(screen.getByText(/В очереди пусто/i)).toBeTruthy();
+    expect(screen.getByText(/Список ·/i)).toBeTruthy();
   });
 });
