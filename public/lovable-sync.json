@@ -1,7 +1,7 @@
 {
-  "git_sha": "4e80a16",
-  "git_sha_full": "4e80a16cce970c35d6e662aa25a5b613630765e2",
-  "updated_at": "2026-07-19T14:45:17Z",
-  "label": "Merge branch 'cursor/content-plan-from-tomorrow-84cc'",
+  "git_sha": "2b43bf2",
+  "git_sha_full": "2b43bf2eec6b101ab754bb8b0522496ad732fef9",
+  "updated_at": "2026-07-19T14:47:30Z",
+  "label": "Merge branch 'cursor/ig-codeword-ux-84cc'",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
