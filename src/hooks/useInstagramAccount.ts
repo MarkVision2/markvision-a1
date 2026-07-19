@@ -137,12 +137,15 @@ export function useInstagramAccount() {
   }, [refetch]);
   useRealtimeTable("instagram_accounts", refetch, !!projectId, 800);
 
-  const listAvailable = useCallback(async (): Promise<{ accounts: AvailableIgAccount[]; error?: string }> => {
+  const listAvailable = useCallback(async (metaToken?: string): Promise<{ accounts: AvailableIgAccount[]; error?: string }> => {
     if (!projectId) return { accounts: [], error: "no project" };
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke("instagram-list-accounts", {
-        body: { project_id: projectId },
+        body: {
+          project_id: projectId,
+          ...(metaToken?.trim() ? { meta_token: metaToken.trim() } : {}),
+        },
       });
       if (error) {
         let message = error.message;
@@ -167,10 +170,15 @@ export function useInstagramAccount() {
     }
   }, [projectId]);
 
-  const connect = useCallback(async (selected: AvailableIgAccount) => {
+  const connect = useCallback(async (selected: AvailableIgAccount, metaToken?: string) => {
     if (!projectId) throw new Error("no project");
     const { data, error } = await supabase.functions.invoke("instagram-connect", {
-      body: { project_id: projectId, page_id: selected.page_id, ig_user_id: selected.ig_user_id },
+      body: {
+        project_id: projectId,
+        page_id: selected.page_id,
+        ig_user_id: selected.ig_user_id,
+        ...(metaToken?.trim() ? { meta_token: metaToken.trim() } : {}),
+      },
     });
     if (error) throw new Error(error.message);
     if (data?.error) throw new Error(data.error);
