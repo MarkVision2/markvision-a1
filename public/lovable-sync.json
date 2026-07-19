@@ -1,7 +1,7 @@
 {
-  "git_sha": "2b43bf2",
-  "git_sha_full": "2b43bf2eec6b101ab754bb8b0522496ad732fef9",
-  "updated_at": "2026-07-19T14:47:30Z",
-  "label": "Merge branch 'cursor/ig-codeword-ux-84cc'",
+  "git_sha": "48383e6",
+  "git_sha_full": "48383e6593474596f4d7fe336b0495e86277f0ec",
+  "updated_at": "2026-07-19T15:03:57Z",
+  "label": "Merge branch 'cursor/reset-ig-stats-84cc' — reset IG codeword test stats",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
