@@ -3,6 +3,7 @@ import {
 } from "lucide-react";
 
 import { resolveLeadSource } from "@/lib/leadSource";
+import { siteDomain } from "@/lib/analyticsBreakdowns";
 import {
   Popover, PopoverContent, PopoverTrigger,
 } from "@/components/ui/popover";
@@ -181,32 +182,45 @@ function UtmStrip({ lead }: { lead: Lead }) {
         </div>
       )}
 
-      {hasAny && (lead.referrer || lead.landingUrl) && (
-        <div className="mt-1.5 grid gap-0.5 border-t border-border/60 pt-1.5 text-[10px] text-muted-foreground">
-          {lead.landingUrl && (
-            <div className="flex items-start gap-1">
-              <Globe className="mt-0.5 h-3 w-3 shrink-0" />
-              <a
-                href={lead.landingUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="truncate text-foreground/80 hover:underline"
-                title={lead.landingUrl}
-              >
-                {lead.landingUrl}
-              </a>
-            </div>
-          )}
-          {lead.referrer && (
-            <div className="flex items-start gap-1">
-              <Link2 className="mt-0.5 h-3 w-3 shrink-0" />
-              <span className="truncate text-foreground/80" title={lead.referrer}>
-                {lead.referrer}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
+      {hasAny && (lead.referrer || lead.landingUrl) && (() => {
+        const landingDomain = lead.landingUrl ? siteDomain(lead.landingUrl) : null;
+        const referrerDomain = lead.referrer ? siteDomain(lead.referrer) : null;
+        // Реферер показываем только когда он информативен: есть, распознан
+        // и отличается от домена самого сайта.
+        const showReferrer =
+          referrerDomain
+          && referrerDomain !== "Сайт не определён"
+          && referrerDomain !== landingDomain;
+        return (
+          <div className="mt-1.5 grid gap-0.5 border-t border-border/60 pt-1.5 text-[10px] text-muted-foreground">
+            {lead.landingUrl && landingDomain && (
+              <div className="flex items-start gap-1">
+                <Globe className="mt-0.5 h-3 w-3 shrink-0" />
+                <span className="truncate">
+                  Сайт:{" "}
+                  <a
+                    href={lead.landingUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-semibold text-foreground/80 hover:underline"
+                    title={lead.landingUrl}
+                  >
+                    {landingDomain}
+                  </a>
+                </span>
+              </div>
+            )}
+            {showReferrer && (
+              <div className="flex items-start gap-1">
+                <Link2 className="mt-0.5 h-3 w-3 shrink-0" />
+                <span className="truncate" title={lead.referrer ?? undefined}>
+                  Переход с: <span className="font-semibold text-foreground/80">{referrerDomain}</span>
+                </span>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
