@@ -34,6 +34,14 @@ export function thisMonthRange(now = new Date()): ReportPeriodRange {
   return { from, to };
 }
 
+/** С сегодня → +60 дней (план вперёд). */
+export function fromTodayRange(now = new Date()): ReportPeriodRange {
+  const from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const to = new Date(from);
+  to.setDate(to.getDate() + 60);
+  return { from, to };
+}
+
 /** Прошлый календарный месяц целиком. */
 export function lastMonthRange(now = new Date()): ReportPeriodRange {
   const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);

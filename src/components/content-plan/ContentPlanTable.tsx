@@ -112,11 +112,14 @@ export function ContentPlanTable({
   loading,
   onTogglePlatform,
   onAdopt,
+  showFunnelStats = true,
 }: {
   items: ContentPlanItem[];
   loading: boolean;
   onTogglePlatform?: (id: string, key: keyof ContentPlanItem["platforms"], value: boolean) => void;
   onAdopt?: (item: ContentPlanItem) => void;
+  /** На контент-плане скрываем воронку — статистика в Контент-центре. */
+  showFunnelStats?: boolean;
 }) {
   const [descItem, setDescItem] = useState<ContentPlanItem | null>(null);
 
@@ -132,8 +135,8 @@ export function ContentPlanTable({
   if (items.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-border/70 px-6 py-16 text-center text-sm text-muted-foreground">
-        Пока нет публикаций. Нажмите «Новая публикация» — загрузите медиа и сразу поставьте в автопостинг.
-        Статистика появится после публикации и привязки код-слова.
+        Пока нет публикаций за выбранный период. Нажмите «Новая публикация» — выберите дату
+        (в том числе завтра), обрежьте кадр 4:5 и поставьте в очередь.
       </div>
     );
   }
@@ -260,7 +263,8 @@ export function ContentPlanTable({
                   </div>
                 </div>
 
-                {/* Per-publication stats — primary signal */}
+                {/* Per-publication stats — optional; plan view hides them */}
+                {showFunnelStats && (
                 <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3 lg:w-[420px] lg:shrink-0 xl:w-[480px] xl:grid-cols-5">
                   <StatCell label="Охват" value={f.reach} />
                   <StatCell label="Код-слов" value={f.codewordHits} />
@@ -268,6 +272,7 @@ export function ContentPlanTable({
                   <StatCell label="Оплаты" value={f.paid} />
                   <StatCell label="Выручка" value={f.revenue} money emphasize />
                 </div>
+                )}
               </div>
             </article>
           );

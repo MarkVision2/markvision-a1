@@ -3,9 +3,9 @@ import { AlertCircle, CheckCircle2, Clock, Film, FlaskConical, Images, Loader2 }
 export type PostType = "IMAGE" | "REELS" | "CAROUSEL" | "STORIES";
 
 export const TYPE_META: Record<PostType, { label: string; icon: typeof Images; accept: string; multiple: boolean; hint: string; aspect: string }> = {
-  IMAGE: { label: "Пост", icon: Images, accept: "image/jpeg,image/png,image/webp", multiple: false, hint: "JPEG или PNG · соотношение 1:1 или 4:5", aspect: "1:1" },
+  IMAGE: { label: "Пост", icon: Images, accept: "image/jpeg,image/png,image/webp", multiple: false, hint: "JPEG/PNG · кадр ленты 4:5 (обрежете перед публикацией)", aspect: "4:5" },
   REELS: { label: "Reels", icon: Film, accept: "video/mp4,video/quicktime", multiple: false, hint: "MP4 · вертикальное 9:16 · 5–90 сек", aspect: "9:16" },
-  CAROUSEL: { label: "Карусель", icon: Images, accept: "image/jpeg,image/png,image/webp,video/mp4", multiple: true, hint: "2–10 фото или видео в одной публикации", aspect: "1:1" },
+  CAROUSEL: { label: "Карусель", icon: Images, accept: "image/jpeg,image/png,image/webp,video/mp4", multiple: true, hint: "2–10 слайдов · каждый фото-кадр 4:5", aspect: "4:5" },
   STORIES: { label: "Сторис", icon: Clock, accept: "image/jpeg,image/png,image/webp,video/mp4", multiple: false, hint: "Вертикальное фото или видео 9:16", aspect: "9:16" },
 };
 

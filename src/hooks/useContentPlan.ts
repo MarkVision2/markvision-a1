@@ -82,7 +82,17 @@ type LeadLite = {
 
 type CodewordRow = { id: string; codeword: string; reel_id: string | null };
 
-type AutopostLite = { id: string; published_ig_media_id: string | null };
+type AutopostLite = {
+  id: string;
+  published_ig_media_id: string | null;
+  media_type?: string | null;
+  caption?: string | null;
+  media_url?: string | null;
+  thumbnail_url?: string | null;
+  child_urls?: unknown;
+  scheduled_at?: string | null;
+  status?: string | null;
+};
 
 function asStringArray(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
@@ -208,9 +218,11 @@ export function useContentPlan() {
             .eq("active", true),
           supabase
             .from("cf_scheduled_posts")
-            .select("id, published_ig_media_id")
+            .select(
+              "id, published_ig_media_id, media_type, caption, media_url, thumbnail_url, child_urls, scheduled_at, status",
+            )
             .eq("project_id", projectId)
-            .not("published_ig_media_id", "is", null)
+            .order("scheduled_at", { ascending: false })
             .limit(500),
         ]);
 
@@ -325,12 +337,71 @@ export function useContentPlan() {
         }
       }
 
-      // 2) Импорт ручных (и любых) IG-постов, которых ещё нет в плане.
+      // 2) Подтянуть очередь автопоста в план (в т.ч. завтрашние queued) + IG только с сегодня.
       if (!planRes.error && !missingTable) {
+        const linkedAutopost = new Set(
+          planDbRows.map((r) => r.autopost_id).filter((x): x is string => !!x),
+        );
+        const queueMissing = autoposts.filter((p) => p.id && !linkedAutopost.has(String(p.id)));
+        if (queueMissing.length > 0) {
+          const queueInserts = queueMissing.map((p) => {
+            const mediaType = String(p.media_type ?? "IMAGE").toUpperCase();
+            const contentType = ["REELS", "CAROUSEL", "IMAGE", "STORIES"].includes(mediaType)
+              ? mediaType
+              : "IMAGE";
+            const status =
+              p.status === "published"
+                ? "published"
+                : p.status === "failed"
+                  ? "error"
+                  : "scheduled";
+            const title =
+              (p.caption ?? "").trim().split("\n")[0]?.slice(0, 80) ||
+              `${contentType} ${p.scheduled_at ?? ""}`;
+            const childUrls = Array.isArray(p.child_urls) ? p.child_urls : [];
+            return {
+              project_id: projectId,
+              title,
+              category: "content",
+              content_type: contentType,
+              status,
+              description: p.caption ?? null,
+              media_url: p.media_url ?? null,
+              thumbnail_url: p.thumbnail_url ?? null,
+              child_urls: childUrls,
+              scheduled_at: p.scheduled_at ?? null,
+              published_at: p.status === "published" ? p.scheduled_at ?? null : null,
+              autopost_id: String(p.id),
+              ig_media_id: p.published_ig_media_id ?? null,
+              post_instagram: true,
+            };
+          });
+          const { error: qErr } = await supabase
+            .from("content_plan_items" as never)
+            .insert(queueInserts as never);
+          if (!qErr || /duplicate|unique/i.test(qErr.message)) {
+            const refreshed = await supabase
+              .from("content_plan_items" as never)
+              .select("*")
+              .eq("project_id", projectId)
+              .order("scheduled_at", { ascending: false, nullsFirst: false })
+              .order("created_at", { ascending: false });
+            if (!refreshed.error) {
+              planDbRows = (refreshed.data ?? []) as unknown as DbRow[];
+            }
+          }
+        }
+
+        // Ручные IG-посты — только с начала сегодняшнего дня (Алматы), без старой стены.
+        const todayYmd = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Almaty" });
+        const todayStart = new Date(`${todayYmd}T00:00:00+05:00`).getTime();
         const linked = new Set(
           planDbRows.map((r) => r.ig_media_id).filter((x): x is string => !!x),
         );
-        const orphans = mediaNotLinkedToPlan(media, linked);
+        const orphans = mediaNotLinkedToPlan(media, linked).filter((m) => {
+          if (!m.timestamp) return false;
+          return new Date(m.timestamp).getTime() >= todayStart;
+        });
         if (orphans.length > 0) {
           const inserts = orphans.map((m) => {
             const d = draftFromIgMedia(m, codewords);

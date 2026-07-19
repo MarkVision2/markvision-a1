@@ -75,15 +75,15 @@ describe("ContentPlan uses AutopostAddDialog", () => {
     );
   });
 
-  it("shows period picker and labeled summary", () => {
+  it("shows from-today period and planning list (no KPI wall)", () => {
     render(
       <MemoryRouter>
         <ContentPlan />
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("button", { name: /За год/i })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: /Сводка за период/i })).toBeTruthy();
-    expect(screen.getByText(/Считаем публикации за выбранный отрезок/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /С сегодня/i })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: /Сводка за период/i })).toBeNull();
+    expect(screen.getByText(/План ·/i)).toBeTruthy();
   });
 });

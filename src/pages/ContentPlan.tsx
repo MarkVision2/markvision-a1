@@ -9,23 +9,19 @@ import {
   ContentPeriodPicker,
   type ContentPeriodPreset,
 } from "@/components/content/ContentPeriodPicker";
-import { ContentPlanKpis } from "@/components/content-plan/ContentPlanKpis";
 import { ContentPlanTable } from "@/components/content-plan/ContentPlanTable";
 import { useContentPlan } from "@/hooks/useContentPlan";
 import { useInstagramAccount } from "@/hooks/useInstagramAccount";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
-import {
-  filterContentPlanByPeriod,
-  summarizeContentPlan,
-  type ContentPlanItem,
-} from "@/lib/contentPlan";
-import { formatPeriodLabel, lastYearRange } from "@/lib/metricsPeriod";
+import { filterContentPlanByPeriod, type ContentPlanItem } from "@/lib/contentPlan";
+import { formatPeriodLabel, fromTodayRange } from "@/lib/metricsPeriod";
 import AutoPost, { AutopostAddDialog } from "@/pages/AutoPost";
 
 const todayAlmatyYmd = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Almaty" });
 
 const PRESET_LABELS: Record<ContentPeriodPreset, string> = {
+  from_today: "С сегодня",
   this_month: "Этот месяц",
   last_month: "Прошлый месяц",
   last_year: "За год",
@@ -40,8 +36,8 @@ export default function ContentPlan() {
   const { activeId: projectId } = useProjectsStore();
   const { account } = useInstagramAccount();
   const [addDay, setAddDay] = useState<string | null>(null);
-  const [preset, setPreset] = useState<ContentPeriodPreset>("last_year");
-  const [range, setRange] = useState<ReportPeriodRange>(() => lastYearRange());
+  const [preset, setPreset] = useState<ContentPeriodPreset>("from_today");
+  const [range, setRange] = useState<ReportPeriodRange>(() => fromTodayRange());
 
   const setShowCalendar = (on: boolean) => {
     const p = new URLSearchParams(params);
@@ -52,7 +48,6 @@ export default function ContentPlan() {
   };
 
   const periodItems = useMemo(() => filterContentPlanByPeriod(items, range), [items, range]);
-  const summary = useMemo(() => summarizeContentPlan(periodItems), [periodItems]);
   const periodLabel = useMemo(() => formatPeriodLabel(range), [range]);
 
   const onTogglePlatform = async (
@@ -83,7 +78,7 @@ export default function ContentPlan() {
         icon={ClipboardList}
         iconAccent="pink"
         title="Контент-план"
-        description="Новая публикация — через систему или вручную в Instagram: статистика подтягивается с IG по media_id (охват, код-слова, клики, лиды)."
+        description="Планируйте публикации здесь (карусель 4:5 с обрезкой). Расписание из Instagram-приложения Meta не отдаёт — только через MarkVision или уже вышедшие посты."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" className="gap-1" onClick={() => void refetch()}>
@@ -97,7 +92,7 @@ export default function ContentPlan() {
               onClick={() => setShowCalendar(!showCalendar)}
             >
               <CalendarClock className="h-3.5 w-3.5" />
-              {showCalendar ? "К плану" : "Календарь"}
+              {showCalendar ? "К плану" : "Календарь / очередь"}
             </Button>
             <Button size="sm" className="gap-1" onClick={() => setAddDay(todayAlmatyYmd())}>
               <Plus className="h-3.5 w-3.5" />
@@ -112,9 +107,7 @@ export default function ContentPlan() {
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             Таблица <code className="font-mono text-xs">content_plan_items</code> ещё не применена.
-            Выполните миграцию{" "}
-            <code className="font-mono text-xs">20260719150000_content_plan_items.sql</code> в
-            Supabase SQL Editor. Пока показываем синтетические строки из Instagram и код-слов.
+            Выполните миграцию в Supabase SQL Editor.
           </div>
         </div>
       )}
@@ -138,14 +131,6 @@ export default function ContentPlan() {
         />
       </div>
 
-      <div className="mt-4">
-        <ContentPlanKpis
-          summary={summary}
-          periodLabel={periodLabel}
-          presetLabel={PRESET_LABELS[preset]}
-        />
-      </div>
-
       {showCalendar ? (
         <div className="mt-6">
           <AutoPost embedded />
@@ -154,7 +139,7 @@ export default function ContentPlan() {
         <div className="mt-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
             <span>
-              Список за {PRESET_LABELS[preset].toLowerCase()}
+              План · {PRESET_LABELS[preset].toLowerCase()}
               <span className="mx-1 text-border">·</span>
               <span className="tabular-nums">{periodLabel}</span>
               {items.length !== periodItems.length ? (
@@ -163,16 +148,15 @@ export default function ContentPlan() {
                   {periodItems.length} из {items.length}
                 </>
               ) : null}
-              <span className="mx-1 text-border">·</span>
-              Посты из Instagram (вручную и автопост) подтягиваются автоматически
             </span>
             <Link to="/marketing/content-center" className="text-primary hover:underline">
-              Контент-центр →
+              Контент-центр (статистика) →
             </Link>
           </div>
           <ContentPlanTable
             items={periodItems}
             loading={loading}
+            showFunnelStats={false}
             onTogglePlatform={onTogglePlatform}
             onAdopt={onAdopt}
           />
