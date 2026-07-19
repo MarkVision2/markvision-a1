@@ -75,11 +75,35 @@ def build_edl(work_dir: Path, wav_path: Path, fps: float = 30.0):
     words = json.loads((work_dir / "words.json").read_text(encoding="utf-8"))
     spec = json.loads((work_dir / "delete.json").read_text(encoding="utf-8"))
 
+    times, rms, total = rms_curve(wav_path)
+
+    # keep_full: цельный исходник без jump-cut / сжатия пауз / обрезки головы-хвоста.
+    # Нужен для очереди «Монтаж съёмки», когда клиент прислал готовое видео целиком.
+    if spec.get("keep_full"):
+        out = {
+            "fps": fps,
+            "source_duration": round(total, 3),
+            "kept_duration": round(total, 3),
+            "keep_full": True,
+            "segments": [
+                {
+                    "start": 0.0,
+                    "end": round(total, 3),
+                    "startFrame": 0,
+                    "endFrame": int(round(total * fps)),
+                }
+            ],
+        }
+        (work_dir / "edl.json").write_text(
+            json.dumps(out, ensure_ascii=False, indent=1), encoding="utf-8"
+        )
+        print(f"OK keep_full segments=1 kept={out['kept_duration']:.1f}s removed=0.0s (0.0%)")
+        return
+
     deleted = set()
-    for d in spec["delete"]:
+    for d in spec.get("delete") or []:
         deleted.update(range(d["from"], d["to"] + 1))
 
-    times, rms, total = rms_curve(wav_path)
     kept_words = [w for w in words if w["i"] not in deleted]
 
     cut_intervals = []
