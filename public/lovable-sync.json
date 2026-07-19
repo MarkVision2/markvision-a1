@@ -1,7 +1,7 @@
 {
-  "git_sha": "c72314f",
-  "git_sha_full": "c72314f3f3b06e03ef2fa3d7ca488dbe6d227bd9",
-  "updated_at": "2026-07-19T11:23:50Z",
-  "label": "Merge content-plan carousel slide editor",
+  "git_sha": "110a8d7",
+  "git_sha_full": "110a8d7c0fcf26a85b56b6f2c9ee5799ef0c1497",
+  "updated_at": "2026-07-19T11:28:55Z",
+  "label": "Merge content-plan composer schedule UX",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
