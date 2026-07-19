@@ -90,7 +90,7 @@ export default function ContentPlan() {
         icon={ClipboardList}
         iconAccent="pink"
         title="Контент-план"
-        description="Очередь MarkVision и вышедшие посты Instagram с метриками. Календарь — отдельно."
+        description="План и метрики после выхода. Очередь MarkVision — в общем списке (без отдельного блока «Ближайшие»)."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button
