@@ -12,6 +12,7 @@ import {
 } from "remotion";
 import { Audio, Video } from "@remotion/media";
 import { brandFontFamily } from "./fonts";
+import { MotionInsertView, SceneBackground } from "./motion";
 
 export type Seg = {
   start: number;
@@ -36,12 +37,21 @@ export type Push = {
   originX: number;
   originY: number;
 };
-export type Insert = {
-  file: string;
+export type FileInsert = {
   type: "image" | "video";
+  file: string;
   startFrame: number;
   endFrame: number;
 };
+export type MotionInsert = {
+  type: "motion";
+  template: string;
+  startFrame: number;
+  endFrame: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  data?: Record<string, any>;
+};
+export type Insert = FileInsert | MotionInsert;
 export type PipWindow = { start: number; end: number };
 
 export type MainProps = {
@@ -93,13 +103,30 @@ const pipProgressAt = (frame: number, windows: PipWindow[]) => {
 
 const InsertLayer: React.FC<{ insert: Insert }> = ({ insert }) => {
   const frame = useCurrentFrame();
-  const dur = insert.endFrame - insert.startFrame;
+  const dur = Math.max(1, insert.endFrame - insert.startFrame);
   const opacity = interpolate(
     frame,
-    [0, PIP_FLIGHT_F, dur - 8, dur],
+    [0, PIP_FLIGHT_F, Math.max(PIP_FLIGHT_F + 1, dur - 8), dur],
     [0, 1, 1, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
+
+  if (insert.type === "motion") {
+    const meta = insert.data as { cover?: boolean; accent?: string } | undefined;
+    const cover = Boolean(meta?.cover);
+    return (
+      <AbsoluteFill style={{ opacity }}>
+        {cover ? <SceneBackground localFrame={frame} accent={meta?.accent} /> : null}
+        <MotionInsertView
+          template={insert.template}
+          from={0}
+          to={dur}
+          data={insert.data}
+        />
+      </AbsoluteFill>
+    );
+  }
+
   const file = staticFile(insert.file);
   return (
     <AbsoluteFill style={{ backgroundColor: "#17171A", opacity }}>

@@ -5,6 +5,7 @@
 //   bootstrap_env              → ключи для VPS (.env) — Deepgram/OpenAI/ElevenLabs
 //   markup_delete              → delete.json из indexed/utterances + brief
 //   markup_accents             → accents.json
+//   markup_inserts             → inserts.json (motion b-roll по docs/motion-library.md)
 //   markup_shorts              → shorts.json (отбор моментов)
 //   markup_reels               → reels.json сцены
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
@@ -37,6 +38,32 @@ async function chatJson(system: string, user: string, timeoutMs = 120_000): Prom
   return JSON.parse(content) as Json;
 }
 
+const MOTION_TEMPLATES = [
+  "kinetic-type",
+  "checklist-reveal",
+  "number-counter",
+  "stat-grid",
+  "fake-terminal",
+  "fake-dashboard-bars",
+  "timeline-steps",
+  "quote-card",
+  "loading-to-done",
+  "annotate-arrow-highlight",
+  "vs-compare",
+  "big-statement",
+  "lower-third",
+  "pill-row",
+  "metric-callout",
+  "phone-mockup",
+  "chat-bubbles",
+  "notification-toast",
+  "rating-stars",
+  "countdown",
+  "gauge",
+  "arrow-flow",
+  "price-tag",
+].join(", ");
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
@@ -66,7 +93,6 @@ Deno.serve(async (req) => {
   try {
     switch (action) {
       case "bootstrap_env": {
-        // Одноразовая выдача секретов воркеру (он уже авторизован worker-ключом).
         return json({
           DEEPGRAM_API_KEY: Deno.env.get("DEEPGRAM_API_KEY") ?? "",
           OPENAI_API_KEY: Deno.env.get("OPENAI_API_KEY") ?? "",
@@ -81,10 +107,13 @@ Deno.serve(async (req) => {
         if (!indexed) return json({ error: "indexed required" }, 400);
         const result = await chatJson(
           `Ты монтажёр русскоязычных «говорящих голов». Верни JSON:
-{"delete":[{"from":<int>,"to":<int>,"reason":"..."}]}
-Индексы слов включительные из indexed.txt. Вырежи: дубли фраз (оставь лучшую/последнюю версию),
-слова-паразиты (ну/типа/как бы/эээ/вот), фальстарты, длинные паузы-бормотания, оффтоп.
-Не вырезай смысл и цифры. Если brief задан — учти его. Пустой delete допустим.`,
+{"delete":[{"from":<int>,"to":<int>,"reason":"..."}],"keep_full":false}
+Индексы слов включительные из indexed.txt.
+ЖЁСТКИЕ ПРАВИЛА (очередь Контент-завода):
+- Режь ТОЛЬКО явные слова-паразиты (ну/типа/как бы/эээ), фальстарты из 1–3 слов и дословные дубли фраз.
+- НЕ вырезай смысловые абзацы, паузы «для воздуха», вступления, концовки, оффтоп «чуть в сторону».
+- Если сомневаешься — НЕ режь. Пустой delete допустим.
+- Если brief явно просит «не резать / целиком / keep full» — верни {"delete":[],"keep_full":true}.`,
           `BRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
         );
         return json(result);
@@ -96,10 +125,39 @@ Deno.serve(async (req) => {
         if (!indexed) return json({ error: "indexed required" }, 400);
         const result = await chatJson(
           `Ты монтажёр. Верни JSON {"accents":[{"word":<индекс>,"text":"ТЕКСТ КАПСОМ"}]}.
-Выбери 5–15 ключевых слов/цифр для экранных акцентов (капс, можно → и ₸/$/%).
-word = индекс из indexed. Не дублируй соседние слова.`,
+Плотность: МИНИМУМ 1 акцент на каждые 6–8 секунд речи (цифры, ключевые слова, панчи, CTA).
+word = индекс из indexed. text — короткий капс (1–3 слова, можно → ₸/$/%). Не дублируй соседние.`,
           `BRIEF:\n${brief || "(нет)"}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
         );
+        return json(result);
+      }
+
+      case "markup_inserts": {
+        const indexed = String(body.indexed ?? "");
+        const utterances = String(body.utterances ?? "");
+        const brief = String(body.brief ?? "");
+        const durationSec = Number(body.durationSec ?? 0);
+        if (!indexed) return json({ error: "indexed required" }, 400);
+        const target = durationSec > 0
+          ? Math.max(6, Math.min(24, Math.round(durationSec / 12)))
+          : 10;
+        const result = await chatJson(
+          `Ты режиссёр motion-графики поверх «говорящей головы». Верни JSON:
+{"inserts":[{"anchorWord":<i>,"endWord":<i>,"template":"<slug>","data":{...},"note":"..."}]}
+Это code-based b-roll (НЕ картинки). template — ТОЛЬКО: ${MOTION_TEMPLATES}.
+Правила:
+- Сделай примерно ${target} вставок (плотность ~1 на 10–15 сек), равномерно по ролику.
+- Подбирай шаблон ПО СМЫСЛУ фразы (цифры→number-counter/metric-callout; списки→checklist-reveal;
+  процесс→timeline-steps/arrow-flow; оффер→price-tag/big-statement; ИИ/код→fake-terminal/chat-bubbles).
+- Не повторяй один template подряд. Чередуй цвета accent: #FF7A18 #22D3EE #8B5CF6 #34D399 #FFC53D #FB7185 #38BDF8.
+- ~половину вставок с data.cover=true (полный экран на премиум-фоне), остальные — оверлей.
+- data обязателен и заполнен под шаблон (см. поля value/label/items/words/steps/lines/…).
+- anchorWord/endWord — индексы из indexed, endWord > anchorWord, окно 2–6 сек речи.
+- Учитывай brief.`,
+          `DURATION_SEC=${durationSec || "?"}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
+          150_000,
+        );
+        if (!Array.isArray(result.inserts)) result.inserts = [];
         return json(result);
       }
 

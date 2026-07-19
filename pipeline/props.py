@@ -187,14 +187,38 @@ def build(work: Path, out_path: Path, media: str = "source"):
             w0 = words.get(ins["anchorWord"])
             w1 = words.get(ins["endWord"])
             if not w0 or not w1:
-                print(f"WARN insert {ins['file']}: anchor/end word missing, skipped")
+                print(f"WARN insert {ins.get('file') or ins.get('template')}: anchor/end word missing, skipped")
                 continue
             f0 = nearest_output_frame(w0["start"])
             f1 = nearest_output_frame(w1["end"])
             if f1 <= f0:
-                print(f"WARN insert {ins['file']}: empty span after cuts, skipped")
+                print(f"WARN insert {ins.get('file') or ins.get('template')}: empty span after cuts, skipped")
                 continue
-            is_video = ins["file"].lower().endswith((".mp4", ".mov", ".webm"))
+
+            # Code-based motion-graphics (no file) — remotion/src/motion.tsx
+            if ins.get("template"):
+                f1 = max(f1, f0 + 30)  # >=1s to animate
+                pieces = [p for p in subtract_blocks((f0, f1), accent_blocks)
+                          if p[1] - p[0] >= MIN_INSERT_F]
+                if not pieces:
+                    print(f"WARN motion {ins['template']}: fully covered by accents, skipped")
+                    continue
+                s0, s1 = max(pieces, key=lambda p: p[1] - p[0])
+                ev = {
+                    "type": "motion",
+                    "template": ins["template"],
+                    "startFrame": s0,
+                    "endFrame": s1,
+                }
+                if ins.get("data"):
+                    ev["data"] = ins["data"]
+                insert_events.append(ev)
+                # cover:true → speaker goes to PiP while motion fills canvas
+                if isinstance(ins.get("data"), dict) and ins["data"].get("cover"):
+                    pip_base.append((s0, s1))
+                continue
+
+            is_video = str(ins.get("file", "")).lower().endswith((".mp4", ".mov", ".webm"))
             if is_video:
                 path = public_inserts / ins["file"]
                 if not path.exists():

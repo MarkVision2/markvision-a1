@@ -223,10 +223,14 @@ async function processJob(job) {
   let mainPath = null;
 
   if (wantMain) {
-    await status(id, "размечаем вырезки");
+    await status(id, "сохраняем ролик целиком");
+    // Очередь Контент-завода: клиент прислал готовое видео — НЕ режем половину
+    // через jump-cut/паузы. keep_full → один сегмент 0..duration в edl.py.
     if (!existsSync(resolve(work, "delete.json"))) {
-      const del = await call(AI, { action: "markup_delete", indexed, utterances, brief });
-      writeFileSync(resolve(work, "delete.json"), JSON.stringify(del, null, 2));
+      writeFileSync(
+        resolve(work, "delete.json"),
+        JSON.stringify({ delete: [], keep_full: true, reason: "queue: keep source intact" }, null, 2),
+      );
     }
     if (!existsSync(resolve(work, "edl.json"))) {
       py(["pipeline/edl.py", work, wav, "30"]);
@@ -235,6 +239,18 @@ async function processJob(job) {
       await status(id, "акцентные слова");
       const acc = await call(AI, { action: "markup_accents", indexed, brief });
       writeFileSync(resolve(work, "accents.json"), JSON.stringify(acc, null, 2));
+    }
+    if (!existsSync(resolve(work, "inserts.json"))) {
+      await status(id, "motion-вставки / b-roll");
+      const durationSec = Number(words?.[words.length - 1]?.end ?? probeDurationSec(proxy) ?? 0);
+      const inserts = await call(AI, {
+        action: "markup_inserts",
+        indexed,
+        utterances,
+        brief,
+        durationSec,
+      });
+      writeFileSync(resolve(work, "inserts.json"), JSON.stringify(inserts, null, 2));
     }
     // props.py ждёт media-имя без расширения; файл должен быть в public/
     // Если mediaBase != source — копируем/симлинк или передаём 3-й аргумент.
@@ -256,11 +272,25 @@ async function processJob(job) {
   }
 
   if (wantShorts) {
-    // Паразиты/дубли нужны и для шортсов — иначе выйдет «исходник с титрами».
+    // Для шортсов keep_full delete не мешает (refine режет spans сам),
+    // но агрессивный delete по словам всё равно не делаем без явного brief.
     if (!existsSync(resolve(work, "delete.json"))) {
-      await status(id, "размечаем паразитов");
-      const del = await call(AI, { action: "markup_delete", indexed, utterances, brief });
-      writeFileSync(resolve(work, "delete.json"), JSON.stringify(del, null, 2));
+      writeFileSync(
+        resolve(work, "delete.json"),
+        JSON.stringify({ delete: [], keep_full: true, reason: "queue: keep source intact" }, null, 2),
+      );
+    }
+    if (!existsSync(resolve(work, "inserts.json"))) {
+      await status(id, "motion-вставки для шортсов");
+      const durationSec = Number(words?.[words.length - 1]?.end ?? probeDurationSec(proxy) ?? 0);
+      const inserts = await call(AI, {
+        action: "markup_inserts",
+        indexed,
+        utterances,
+        brief,
+        durationSec,
+      });
+      writeFileSync(resolve(work, "inserts.json"), JSON.stringify(inserts, null, 2));
     }
     await status(id, "отбираем шортсы");
     if (!existsSync(resolve(work, "shorts.json"))) {
