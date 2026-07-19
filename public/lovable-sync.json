@@ -1,7 +1,7 @@
 {
-  "git_sha": "103ebef",
-  "git_sha_full": "103ebef1121bd1e379e011196bb707cda7d76abc",
-  "updated_at": "2026-07-19T16:15:01Z",
-  "label": "Merge branch 'cursor/montage-full-video-broll-84cc' — full video + motion b-roll [vercel-deploy]",
+  "git_sha": "a0123d2",
+  "git_sha_full": "a0123d28ed868f79a7841ff83f3251b59a0b3faf",
+  "updated_at": "2026-07-19T17:14:13Z",
+  "label": "Merge pull request #147 from MarkVision2/cursor/montage-broll-source-84cc",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
