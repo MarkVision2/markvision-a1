@@ -155,6 +155,48 @@ Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
 
   const raw = await parseBody(req);
+
+  // One-shot wipe of test funnel stats (codeword writes + button clicks + organic leads).
+  // Gated by x-confirm / body.confirm — does not touch codewords or CRM leads rows.
+  const RESET_CONFIRM = "mv-reset-ig-stats-20260719";
+  const action = typeof (raw as Record<string, unknown>).action === "string"
+    ? String((raw as Record<string, unknown>).action)
+    : "";
+  if (action === "reset_stats") {
+    const confirm =
+      req.headers.get("x-confirm") ||
+      (typeof (raw as Record<string, unknown>).confirm === "string"
+        ? String((raw as Record<string, unknown>).confirm)
+        : "");
+    if (confirm !== RESET_CONFIRM) return json({ ok: false, error: "forbidden" }, 403);
+
+    const types = ["codeword_comment", "codeword_dm", "link_click", "lead"];
+    const { count: before, error: countErr } = await admin
+      .from("instagram_organic_events")
+      .select("id", { count: "exact", head: true })
+      .in("event_type", types);
+    if (countErr) return json({ ok: false, error: countErr.message }, 500);
+
+    const { error: delErr } = await admin
+      .from("instagram_organic_events")
+      .delete()
+      .in("event_type", types);
+    if (delErr) return json({ ok: false, error: delErr.message }, 500);
+
+    const { count: after } = await admin
+      .from("instagram_organic_events")
+      .select("id", { count: "exact", head: true })
+      .in("event_type", types);
+
+    return json({
+      ok: true,
+      reset: true,
+      deleted_approx: before ?? null,
+      remaining: after ?? 0,
+      event_types: types,
+    });
+  }
+
   const parsed = Schema.safeParse(raw);
   if (!parsed.success) {
     return json({ ok: false, error: "invalid_payload", issues: parsed.error.issues }, 400);
