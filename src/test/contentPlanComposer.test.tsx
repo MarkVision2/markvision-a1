@@ -99,6 +99,25 @@ describe("ContentPlanComposerDialog unified publish", () => {
     });
   });
 
+  it("uses quick schedule presets and hides unused fields", () => {
+    render(<ContentPlanComposerDialog open onOpenChange={() => {}} />);
+
+    expect(screen.queryByText(/Код-слово/i)).toBeNull();
+    expect(screen.queryByText(/^Хэштеги$/i)).toBeNull();
+    expect(screen.queryByText(/^Промпты$/i)).toBeNull();
+
+    expect(screen.getByLabelText("Дата публикации")).toBeTruthy();
+    expect(screen.getByLabelText("Час")).toBeTruthy();
+    expect(screen.getByLabelText("Минуты")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /Завтра 10:00/i }));
+    expect(screen.getByText(/Завтра · 10:00 Алматы/i)).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Час"), { target: { value: "15" } });
+    fireEvent.change(screen.getByLabelText("Минуты"), { target: { value: "30" } });
+    expect(screen.getByText(/Завтра · 15:30 Алматы/i)).toBeTruthy();
+  });
+
   it("previews and reorders carousel slides", async () => {
     render(
       <ContentPlanComposerDialog
