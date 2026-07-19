@@ -80,7 +80,7 @@ describe("ContentPlan uses AutopostAddDialog", () => {
     );
   });
 
-  it("shows from-tomorrow period, KPI summary, and upcoming queue rail", () => {
+  it("shows from-tomorrow period and KPI summary without duplicate queue rail", () => {
     render(
       <MemoryRouter>
         <ContentPlan />
@@ -89,8 +89,7 @@ describe("ContentPlan uses AutopostAddDialog", () => {
 
     expect(screen.getByRole("button", { name: /С завтра/i })).toBeTruthy();
     expect(screen.getByRole("heading", { name: /Сводка за период/i })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: /Ближайшие в очереди MarkVision/i })).toBeTruthy();
-    expect(screen.getByText(/В очереди пусто/i)).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: /Ближайшие в очереди MarkVision/i })).toBeNull();
     expect(screen.getByText(/Список ·/i)).toBeTruthy();
   });
 });
