@@ -196,8 +196,14 @@ export function useInstagramAccount() {
     if (!projectId) return;
     setLoading(true);
     try {
-      await supabase.functions.invoke("instagram-sync", { body: { project_id: projectId } });
+      const { data, error } = await supabase.functions.invoke("instagram-sync", { body: { project_id: projectId } });
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(String(data.error));
       await refetch();
+      return data as {
+        ok?: boolean;
+        results?: Array<{ webhook?: { attempted?: boolean; ok?: boolean; error?: string } }>;
+      };
     } finally {
       setLoading(false);
     }

@@ -102,12 +102,19 @@ function resolveTargetUrl(kw: Codeword): string | null {
 }
 
 async function matchCodeword(projectId: string, mediaId: string | null, text: string): Promise<Codeword | null> {
-  const rows: Codeword[] = (await db(
+  // Сначала полный select (legacy reply_text/dm_text). Если колонок нет — без них.
+  let rows: Codeword[] = (await db(
     `instagram_codewords?project_id=eq.${projectId}&active=eq.true&select=id,codeword,reel_id,reel_url,target_url,short_id,reply_text,dm_text,comment_replies,dm_messages,target_urls`,
   )) ?? [];
+  if (!Array.isArray(rows)) {
+    rows = (await db(
+      `instagram_codewords?project_id=eq.${projectId}&active=eq.true&select=id,codeword,reel_id,reel_url,target_url,short_id,comment_replies,dm_messages,target_urls`,
+    )) ?? [];
+  }
+  if (!Array.isArray(rows)) return null;
   const low = text.toLowerCase();
   return rows.find((k) =>
-    low.includes(k.codeword.toLowerCase()) && (!k.reel_id || k.reel_id === mediaId)
+    low.includes(String(k.codeword ?? "").toLowerCase()) && (!k.reel_id || k.reel_id === mediaId)
   ) ?? null;
 }
 
@@ -136,6 +143,35 @@ async function claimEvent(
     }),
   });
   if (status === 409) return null;
+  if (status >= 400) {
+    // Фоллбек: колонка external_id ещё не применена на проде — всё равно отвечаем.
+    const msg = JSON.stringify(json ?? {});
+    if (/external_id|schema cache|PGRST204/i.test(msg)) {
+      const retry = await dbRaw("instagram_organic_events", {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({
+          project_id: projectId,
+          codeword_id: kw.id,
+          codeword: kw.codeword,
+          reel_id: mediaId,
+          reel_url: kw.reel_url,
+          event_type: "codeword_comment",
+          username,
+          date: ymd(new Date()),
+          occurred_at: new Date().toISOString(),
+          payload: { stage: "claimed", comment_id: commentId, missing_external_id: true },
+        }),
+      });
+      if (retry.status === 409) return null;
+      const row = Array.isArray(retry.json) ? (retry.json[0] as { id?: string } | undefined) : undefined;
+      if (row?.id) return row.id;
+      console.error("[ig-webhook] claim fallback failed", retry.status, retry.json);
+      return null;
+    }
+    console.error("[ig-webhook] claim failed", status, json);
+    return null;
+  }
   const row = Array.isArray(json) ? (json[0] as { id?: string } | undefined) : undefined;
   return row?.id ?? null;
 }
