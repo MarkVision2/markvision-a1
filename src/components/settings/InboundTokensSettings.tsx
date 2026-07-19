@@ -48,7 +48,7 @@ function snippet(token: string): string {
     body.fbc = cookie('_fbc');
     body.fbp = cookie('_fbp');
     const p = new URLSearchParams(location.search);
-    ['utm_source','utm_medium','utm_campaign','utm_content','utm_term'].forEach(k => {
+    ['utm_source','utm_medium','utm_campaign','utm_content','utm_term','cw','ig_user'].forEach(k => {
       if (p.get(k)) body[k] = p.get(k);
     });
     const res = await fetch(ENDPOINT, {

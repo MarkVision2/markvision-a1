@@ -276,7 +276,7 @@ export function InstagramOrganicSettings() {
                         <span>{it.dmMessages.length} DM</span>
                         <span>{it.targetUrls.length} ссыл.</span>
                         <span>
-                          {wrote} написали · {clicks} кликов · {conv}
+                          {wrote} написали · {clicks} кликов · {st?.leads ?? 0} лидов · {conv}
                         </span>
                       </div>
                     </div>

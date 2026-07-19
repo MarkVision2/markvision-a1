@@ -222,11 +222,12 @@ async function recordInstagramOrganicLead(
   leadId: string,
   username: string | null,
 ): Promise<void> {
+  // Код-слово в URL может отличаться регистром от строки в БД — матчим без учёта регистра.
   const { data: cw } = await admin
     .from("instagram_codewords")
-    .select("id, reel_id, reel_url")
+    .select("id, codeword, reel_id, reel_url")
     .eq("project_id", projectId)
-    .eq("codeword", codeword)
+    .ilike("codeword", codeword)
     .maybeSingle();
 
   const occurredAt = new Date();
@@ -240,7 +241,7 @@ async function recordInstagramOrganicLead(
   const { error } = await admin.from("instagram_organic_events").insert({
     project_id: projectId,
     codeword_id: cw?.id ?? null,
-    codeword,
+    codeword: cw?.codeword ?? codeword,
     reel_id: cw?.reel_id ?? null,
     reel_url: cw?.reel_url ?? null,
     event_type: "lead",
@@ -251,6 +252,16 @@ async function recordInstagramOrganicLead(
     payload: { via: "lead-intake" },
   });
   if (error) console.error("[lead-intake] instagram organic lead event", error);
+}
+
+/** Fallback: cw / utm / ig_user иногда есть только в landing_url, а не в теле формы. */
+function paramsFromLandingUrl(landingUrl: string | null | undefined): URLSearchParams {
+  if (!landingUrl) return new URLSearchParams();
+  try {
+    return new URL(landingUrl).searchParams;
+  } catch {
+    return new URLSearchParams();
+  }
 }
 
 async function projectFromToken(token: string): Promise<string | null> {
@@ -349,10 +360,20 @@ Deno.serve(async (req) => {
   // Если канал явно whatsapp/telegram/phone — это важнее, чем неявный source.
   // Решает кейс: лид с сайта по клику на WhatsApp-кнопку должен быть source=whatsapp,
   // а не site, потому что менеджер дальше пишет ему в WhatsApp.
+  const landingParams = paramsFromLandingUrl(v.landing_url || v.page || null);
+  const cwFromLanding = normalizeCodeword(landingParams.get("cw") || landingParams.get("codeword"));
+  const utmSource =
+    v.utm_source?.trim() || landingParams.get("utm_source") || null;
+  const utmCampaign =
+    v.utm_campaign?.trim() || landingParams.get("utm_campaign") || null;
+  if (!utm.source && utmSource) utm.source = utmSource;
+  if (!utm.campaign && utmCampaign) utm.campaign = utmCampaign;
+
   const organicCodeword =
     normalizeCodeword(v.cw) ||
     normalizeCodeword(v.codeword) ||
-    (v.utm_source?.toLowerCase() === "instagram" ? normalizeCodeword(v.utm_campaign) : null);
+    cwFromLanding ||
+    (utmSource?.toLowerCase() === "instagram" ? normalizeCodeword(utmCampaign) : null);
 
   // Наличие gclid = клик по объявлению Google Ads (auto-tagging), даже если на
   // лендинге не проставлен utm_source. Тогда источник по умолчанию — google.
@@ -537,7 +558,11 @@ Deno.serve(async (req) => {
     }
 
     if (projectId && organicCodeword) {
-      const igUser = v.ig_user?.trim() || (typeof raw.ig_user === "string" ? raw.ig_user.trim() : null) || null;
+      const igUser =
+        v.ig_user?.trim() ||
+        (typeof raw.ig_user === "string" ? raw.ig_user.trim() : null) ||
+        landingParams.get("ig_user")?.trim() ||
+        null;
       await recordInstagramOrganicLead(projectId, organicCodeword, created.id, igUser);
     }
 
