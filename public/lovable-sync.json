@@ -1,7 +1,7 @@
 {
-  "git_sha": "3b2438c",
-  "git_sha_full": "3b2438cb77b5dbe7bd7536517fa6eab07afe2ed0",
-  "updated_at": "2026-07-19T13:10:03+05:00",
-  "label": "fix(crm): show clean site domain instead of raw landing/referrer URLs on lead card",
+  "git_sha": "e5d4516",
+  "git_sha_full": "e5d451671071c5209132babb14eb146181d183d8",
+  "updated_at": "2026-07-19T13:24:48+05:00",
+  "label": "feat(crm): richer lead card — contact row, compact source strip, WhatsApp write action",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
