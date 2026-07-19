@@ -1,7 +1,7 @@
 {
-  "git_sha": "151b14f",
-  "git_sha_full": "151b14f0d936285c895f73a0b528535d84e370f6",
-  "updated_at": "2026-07-19T14:36:02Z",
-  "label": "chore(deploy): redeploy IG organic + attempt Vercel CLI and SQL",
+  "git_sha": "871c4a1",
+  "git_sha_full": "871c4a1ac55c853feaf91af72c58a41bdb673bc1",
+  "updated_at": "2026-07-19T14:40:50Z",
+  "label": "fix(content-plan): measure from tomorrow, hide past posts",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
