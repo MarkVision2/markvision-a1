@@ -214,6 +214,26 @@ export interface InstagramCodeword {
   active: boolean;
 }
 
+const isMissingDmButtonColumn = (message: string | undefined | null) =>
+  !!message &&
+  /dm_button_title/i.test(message) &&
+  /column|schema cache|schema|PGRST204|does not exist/i.test(message);
+
+/** null = unknown; false after PostgREST says column missing on prod. */
+let dmButtonTitleColumnOk: boolean | null = null;
+
+async function canWriteDmButtonTitle(): Promise<boolean> {
+  if (dmButtonTitleColumnOk != null) return dmButtonTitleColumnOk;
+  const { error } = await supabase.from("instagram_codewords").select("dm_button_title").limit(1);
+  if (error) {
+    // Missing column → skip field. Other errors → also skip to avoid blocking saves.
+    dmButtonTitleColumnOk = false;
+    return false;
+  }
+  dmButtonTitleColumnOk = true;
+  return true;
+}
+
 export function useInstagramCodewords() {
   const { activeId: projectId } = useProjectsStore();
   const [items, setItems] = useState<InstagramCodeword[]>([]);
@@ -267,7 +287,8 @@ export function useInstagramCodewords() {
   const add = async (input: Omit<InstagramCodeword, "id" | "projectId">) => {
     if (!projectId) throw new Error("Сначала выберите проект");
     const targetUrls = normalizeVariantList(input.targetUrls);
-    const base = {
+    const writeBtn = await canWriteDmButtonTitle();
+    const base: Record<string, unknown> = {
       project_id: projectId,
       codeword: input.codeword.trim().toLowerCase(),
       reel_id: input.reelId,
@@ -279,10 +300,10 @@ export function useInstagramCodewords() {
       comment_replies: normalizeVariantList(input.commentReplies),
       dm_messages: normalizeVariantList(input.dmMessages),
       target_urls: targetUrls,
-      dm_button_title: input.dmButtonTitle?.trim() || null,
       active: input.active,
       short_id: genClientShortId(),
     };
+    if (writeBtn) base.dm_button_title = input.dmButtonTitle?.trim() || null;
     let { error } = await supabase.from("instagram_codewords").insert(base as never);
     // If short_id column somehow absent on older DBs, retry without it.
     if (error && /short_id/i.test(error.message) && /column|schema|does not exist/i.test(error.message)) {
@@ -290,18 +311,24 @@ export function useInstagramCodewords() {
       const retry = await supabase.from("instagram_codewords").insert(withoutShort as never);
       error = retry.error;
     }
-    if (error && /dm_button_title/i.test(error.message) && /column|schema|PGRST204/i.test(error.message)) {
+    if (error && isMissingDmButtonColumn(error.message)) {
+      dmButtonTitleColumnOk = false;
       const { dm_button_title: _drop, ...withoutBtn } = base;
       const retry = await supabase.from("instagram_codewords").insert(withoutBtn as never);
       error = retry.error;
     }
     // Legacy DEFAULT may still fire on empty short_id — retry once with another id if unique collision.
     if (error && isShortIdGeneratorBroken(error.message)) {
-      const retry = await supabase.from("instagram_codewords").insert({
-        ...base,
-        short_id: genClientShortId(),
-      } as never);
+      const retryPayload: Record<string, unknown> = { ...base, short_id: genClientShortId() };
+      if (!writeBtn || dmButtonTitleColumnOk === false) delete retryPayload.dm_button_title;
+      const retry = await supabase.from("instagram_codewords").insert(retryPayload as never);
       error = retry.error;
+      if (error && isMissingDmButtonColumn(error.message)) {
+        dmButtonTitleColumnOk = false;
+        const { dm_button_title: _drop, ...withoutBtn } = retryPayload;
+        const retry2 = await supabase.from("instagram_codewords").insert(withoutBtn as never);
+        error = retry2.error;
+      }
     }
     if (error) throw new Error(error.message || "Не удалось добавить код-слово");
   };
@@ -316,7 +343,9 @@ export function useInstagramCodewords() {
     if (patch.publishedAt !== undefined) payload.published_at = patch.publishedAt;
     if (patch.commentReplies !== undefined) payload.comment_replies = normalizeVariantList(patch.commentReplies);
     if (patch.dmMessages !== undefined) payload.dm_messages = normalizeVariantList(patch.dmMessages);
-    if (patch.dmButtonTitle !== undefined) payload.dm_button_title = patch.dmButtonTitle?.trim() || null;
+    if (patch.dmButtonTitle !== undefined && (await canWriteDmButtonTitle())) {
+      payload.dm_button_title = patch.dmButtonTitle?.trim() || null;
+    }
     if (patch.targetUrls !== undefined) {
       const urls = normalizeVariantList(patch.targetUrls);
       payload.target_urls = urls;
@@ -326,12 +355,8 @@ export function useInstagramCodewords() {
     }
     if (patch.active !== undefined) payload.active = patch.active;
     let { error } = await supabase.from("instagram_codewords").update(payload as never).eq("id", id);
-    if (
-      error &&
-      payload.dm_button_title !== undefined &&
-      /dm_button_title/i.test(error.message) &&
-      /column|schema|PGRST204/i.test(error.message)
-    ) {
+    if (error && payload.dm_button_title !== undefined && isMissingDmButtonColumn(error.message)) {
+      dmButtonTitleColumnOk = false;
       const { dm_button_title: _drop, ...withoutBtn } = payload;
       const retry = await supabase.from("instagram_codewords").update(withoutBtn as never).eq("id", id);
       error = retry.error;
