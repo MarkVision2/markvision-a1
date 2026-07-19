@@ -9,7 +9,7 @@
  */
 import { execFileSync, spawnSync } from "node:child_process";
 import {
-  existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, unlinkSync,
+  existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync, unlinkSync, statSync,
 } from "node:fs";
 import { basename, dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -124,6 +124,37 @@ function makeProxy(src, mediaBase) {
   return dst;
 }
 
+/** Main169/Shorts печатают акценты с staticFile("key.wav") — без файла рендер падает 404/EPIPE. */
+function ensureKeyWav() {
+  const publicDir = resolve("remotion/public");
+  mkdirSync(publicDir, { recursive: true });
+  const dst = resolve(publicDir, "key.wav");
+  if (existsSync(dst) && (statSize(dst) ?? 0) > 100) return dst;
+  const bundled = resolve("assets/sfx/key.wav");
+  if (existsSync(bundled)) {
+    copyFileSync(bundled, dst);
+    console.log(`✓ key.wav → remotion/public (из assets/sfx)`);
+    return dst;
+  }
+  // Фоллбэк: короткий клик через ffmpeg sine (если бандл потеряли).
+  sh("ffmpeg", [
+    "-y", "-f", "lavfi", "-i", "sine=frequency=1200:duration=0.04",
+    "-af", "afade=t=out:st=0.02:d=0.02",
+    "-ac", "1", "-ar", "44100",
+    dst,
+  ]);
+  console.log(`✓ key.wav сгенерирован через ffmpeg`);
+  return dst;
+}
+
+function statSize(path) {
+  try {
+    return Number(execFileSync("stat", ["-c", "%s", path], { encoding: "utf8" }).trim());
+  } catch {
+    return null;
+  }
+}
+
 function probeDurationSec(path) {
   try {
     const out = execFileSync(
@@ -211,6 +242,7 @@ async function processJob(job) {
   if (!existsSync(raw)) await download(job.source_url, raw);
 
   await status(id, "прокси + аудио");
+  ensureKeyWav();
   const proxy = makeProxy(raw, mediaBase);
   const wav = resolve(work, "audio.wav");
   if (!existsSync(wav)) {
