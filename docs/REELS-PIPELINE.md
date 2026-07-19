@@ -43,6 +43,8 @@ VPS-воркер Reels Factory **мёртв**, поэтому очередь р�
    `pipeline/reels.py`): непрерывная лента сцен `{anchorWord,endWord,template,data}`,
    шаблоны из `docs/motion-library.md` подбираются по смыслу фразы, цвета — разные;
    короткие карточки оставляют караоке-строку, «текстовые» шаблоны её прячут.
+   Плюс **тема ролика** `"theme"` — по настроению текста (см. «Темы» ниже);
+   если не указана, `reels.py` выберет детерминированно по id.
 5. **Пропсы.** `.venv/bin/python pipeline/reels.py work/<id> remotion/props <audio_dur_sec>`
    → `remotion/props/Reels-<id>.json`. Плюс тихий бит в `remotion/public/reels/beat_<id>.wav`.
 6. **Рендер** (композиция `ReelsExplainer`, 1080×1920, из `./remotion`):
@@ -60,9 +62,24 @@ VPS-воркер Reels Factory **мёртв**, поэтому очередь р�
 ## Композиция `remotion/src/ReelsExplainer.tsx`
 Пропсы `ReelsExplainerProps`: `audioTrack`, `words` (караоке), `scenes[]`
 (`{from,to,template,data}`), `totalDurationInFrames`, `music?`, `musicVolume?`,
-`captions?`. Кадр всегда живой: анимированный `SceneBackground` (орбитящие
-свечения, световой свип, вращающиеся кольца, параллакс-сетка) + слой частиц +
-дыхание/дрейф контента + слайд-переходы + полоса прогресса сверху.
+`captions?`, `theme?`, `themeSeed?`. Кадр всегда живой: анимированный
+`SceneBackground` (орбитящие свечения, световой свип, вращающиеся кольца,
+параллакс-сетка — набор зависит от темы) + слой частиц + дыхание/дрейф
+контента + слайд-переходы + полоса прогресса сверху.
+
+## Темы (`remotion/src/themes.ts`)
+Чтобы ролики не выглядели «под копирку», у каждого — своя тема: фон (слои
+градиентов), палитра титров/стекла, тип частиц (`dots`/`sparks`/`none`),
+вкл/выкл свип и кольца. 8 тем: `midnight-orange` (прежний вид), `neon-violet`,
+`ocean-cyan`, `ember-red`, `mint-fresh`, `gold-noir`, `paper-ink` (светлая),
+`aurora-green`. Список id продублирован в `THEMES` в `pipeline/reels.py` —
+менять синхронно.
+
+Выбор: AI-разметка (`montage-ai` → `markup_reels`) возвращает `theme` по
+настроению текста → `reels.json` → `reels.py` кладёт в пропсы. Без поля
+`theme` reels.py детерминированно выбирает по id ролика (повторный рендер
+той же заявки даст тот же вид) и дописывает выбор обратно в `reels.json`.
+Акценты сцен (`data.accent`) подбираются разными, но в гамме темы.
 
 ## Edge-функция `supabase/functions/reels-tts` (verify_jwt off, x-montage-key)
 - `voices` — список голосов аккаунта (`GET /v1/voices`).
