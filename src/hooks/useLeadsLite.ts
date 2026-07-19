@@ -21,7 +21,7 @@ export interface LeadLite {
   source: string;
   channel: string | null;
   referrer: string | null;
-  landingUrl: string | null;
+  landingUrl?: string | null;
   utm: LeadLiteUtm | null;
   metaAdId: string | null;
   cabinetId: string | null;

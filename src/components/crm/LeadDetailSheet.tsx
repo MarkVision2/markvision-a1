@@ -113,6 +113,7 @@ export function LeadDetailSheet({
                   onScheduleVisit={(iso) => onSetVisit(lead.id, iso)}
                   onMarkPaid={(method, amount, opts) => onMarkPaid(lead.id, method, amount, opts)}
                   onClose={() => onRequestReject(lead.id)}
+                  onWrite={(text) => { if (text.trim()) onSendMessage(lead.id, text); }}
                   busySlots={busySlots}
                 />
               </div>

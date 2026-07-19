@@ -1,11 +1,12 @@
 import { forwardRef } from "react";
-import { Phone, Calendar, Wallet, XCircle, AlertTriangle } from "lucide-react";
+import { Phone, Calendar, Wallet, XCircle, AlertTriangle, MessageCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Lead, PaymentMethod } from "@/types/crm";
 import { leadSlaMinutes } from "@/hooks/useCrmAnalytics";
 import { PaymentPopover } from "./PaymentPopover";
 import { VisitSlotPopover } from "./VisitSlotPopover";
 import { CallDialPopover, type CallResult } from "./CallDialPopover";
+import { WriteWhatsAppPopover } from "./WriteWhatsAppPopover";
 
 interface Props {
   lead: Lead;
@@ -14,6 +15,8 @@ interface Props {
   onScheduleVisit: (iso: string) => void;
   onMarkPaid: (method: PaymentMethod, amount: number, opts?: { note?: string }) => void;
   onClose: () => void;
+  /** Called after a WhatsApp message is launched, so the parent can log it in the chat. */
+  onWrite?: (text: string, templateKey?: string) => void;
   /** Other leads' booked visits (ISO timestamps) — used to mark slots as busy. */
   busySlots?: { iso: string; leadName?: string }[];
 }
@@ -54,20 +57,25 @@ const ActionButton = forwardRef<HTMLButtonElement, ActionButtonProps & React.Com
 );
 
 export function LeadActionPanel({
-  lead, onCall, onCallAttempt, onScheduleVisit, onMarkPaid, onClose, busySlots,
+  lead, onCall, onCallAttempt, onScheduleVisit, onMarkPaid, onClose, onWrite, busySlots,
 }: Props) {
   const sla = leadSlaMinutes(lead);
   const slaHint = sla > 5 && !lead.firstResponseAt ? `Связаться немедленно — ждёт ${sla} мин` : null;
 
   return (
     <div className="border-b border-border/60 bg-background py-3">
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-5">
         <CallDialPopover
           phone={lead.phone}
           leadId={lead.id}
           onConfirm={(r: CallResult) => onCall(r)}
           onAttempt={onCallAttempt}
           trigger={<ActionButton icon={Phone} label="Позвонить" />}
+        />
+        <WriteWhatsAppPopover
+          lead={lead}
+          onSent={onWrite}
+          trigger={<ActionButton icon={MessageCircle} label="Написать" />}
         />
         <VisitSlotPopover
           current={lead.nextVisitAt}
