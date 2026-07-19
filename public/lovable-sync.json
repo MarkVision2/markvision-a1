@@ -1,7 +1,7 @@
 {
-  "git_sha": "2e5a129",
-  "git_sha_full": "2e5a129ad3eabd897efd12397959553841a7dbfb",
-  "updated_at": "2026-07-19T11:52:00+05:00",
-  "label": "docs(reels): describe per-video theme system",
+  "git_sha": "4f9c3e7",
+  "git_sha_full": "4f9c3e77e70e0e6a2e4ea5a643ead45ccdd961e3",
+  "updated_at": "2026-07-19T12:46:28+05:00",
+  "label": "feat(analytics): add per-site lead breakdown",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
