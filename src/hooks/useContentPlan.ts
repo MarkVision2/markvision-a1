@@ -8,8 +8,8 @@ import {
   type ContentPlanFunnel,
   type ContentPlanItem,
   type ContentPlanStatus,
-  type ContentPlanSummary,
   type ContentPlanType,
+  summarizeContentPlan,
 } from "@/lib/contentPlan";
 
 type DbRow = {
@@ -350,34 +350,7 @@ export function useContentPlan() {
     void refetch();
   }, [refetch, tick]);
 
-  const summary = useMemo<ContentPlanSummary>(() => {
-    const total = items.length;
-    const scheduled = items.filter((i) => i.status === "scheduled").length;
-    const awaitingCreation = items.filter((i) =>
-      ["idea", "in_progress", "ready"].includes(i.status),
-    ).length;
-    const published = items.filter((i) => i.status === "published").length;
-    const pub = items.filter((i) => i.status === "published");
-    const avgReach =
-      pub.length > 0 ? Math.round(pub.reduce((s, i) => s + i.funnel.reach, 0) / pub.length) : 0;
-    const avgCodewordComments =
-      pub.length > 0
-        ? Math.round(pub.reduce((s, i) => s + i.funnel.codewordHits, 0) / pub.length)
-        : 0;
-    return {
-      total,
-      scheduled,
-      awaitingCreation,
-      published,
-      avgReach,
-      avgCodewordComments,
-      leads: items.reduce((s, i) => s + i.funnel.linkClicks, 0),
-      registrations: items.reduce((s, i) => s + i.funnel.registrations, 0),
-      webinarAttended: items.reduce((s, i) => s + i.funnel.webinarAttended, 0),
-      paid: items.reduce((s, i) => s + i.funnel.paid, 0),
-      revenue: items.reduce((s, i) => s + i.funnel.revenue, 0),
-    };
-  }, [items]);
+  const summary = useMemo(() => summarizeContentPlan(items), [items]);
 
   const create = useCallback(
     async (draft: ContentPlanDraft) => {
