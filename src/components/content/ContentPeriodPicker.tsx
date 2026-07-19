@@ -6,15 +6,23 @@ import type { ReportPeriodRange } from "@/hooks/useReportData";
 import {
   allTimeRange,
   formatPeriodLabel,
+  fromTodayRange,
   lastMonthRange,
   lastYearRange,
   thisMonthRange,
 } from "@/lib/metricsPeriod";
 import { cn } from "@/lib/utils";
 
-export type ContentPeriodPreset = "this_month" | "last_month" | "last_year" | "all_time" | "custom";
+export type ContentPeriodPreset =
+  | "from_today"
+  | "this_month"
+  | "last_month"
+  | "last_year"
+  | "all_time"
+  | "custom";
 
 const PRESETS: { id: ContentPeriodPreset; label: string }[] = [
+  { id: "from_today", label: "С сегодня" },
   { id: "this_month", label: "Этот месяц" },
   { id: "last_month", label: "Прошлый месяц" },
   { id: "last_year", label: "За год" },
@@ -48,7 +56,8 @@ export function ContentPeriodPicker({
   const [draft, setDraft] = useState<{ from?: Date; to?: Date }>({});
 
   const applyPreset = (id: ContentPeriodPreset) => {
-    if (id === "this_month") onPresetChange("this_month", thisMonthRange());
+    if (id === "from_today") onPresetChange("from_today", fromTodayRange());
+    else if (id === "this_month") onPresetChange("this_month", thisMonthRange());
     else if (id === "last_month") onPresetChange("last_month", lastMonthRange());
     else if (id === "last_year") onPresetChange("last_year", lastYearRange());
     else if (id === "all_time") onPresetChange("all_time", allTimeRange());

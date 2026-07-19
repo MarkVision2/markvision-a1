@@ -18,8 +18,10 @@ import { cn } from "@/lib/utils";
 import { AutopostComposerDialog } from "@/components/autopost/AutopostComposerDialog";
 import { AutopostEditDialog } from "@/components/autopost/AutopostEditDialog";
 import { AutopostUpcomingRail } from "@/components/autopost/AutopostUpcomingRail";
+import { defaultFeed45View, fileCropKey } from "@/components/autopost/Feed45Crop";
 import { STATUS_META, TYPE_META, type PostType } from "@/components/autopost/constants";
 import { upsertContentPlanFromAutopost } from "@/lib/contentPlanAutopostBridge";
+import { cropImageFile, type ViewParams } from "@/lib/cropMedia";
 
 // Раздел «Автопостинг» — календарь + очередь публикаций Instagram (cf_scheduled_posts,
 // клиентский Supabase). Медиа → публичный бакет autopost, публикует publisher по крону
@@ -725,6 +727,7 @@ export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAcco
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [caption, setCaption] = useState("");
+  const [ymd, setYmd] = useState(day);
   const [hour, setHour] = useState(12);
   const [minute, setMinute] = useState(0);
   const [dryRun, setDryRun] = useState(false);
@@ -735,6 +738,7 @@ export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAcco
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [seek, setSeek] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [cropByKey, setCropByKey] = useState<Record<string, ViewParams>>({});
   const fileRef = useRef<HTMLInputElement>(null);
   const coverRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -750,6 +754,7 @@ export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAcco
   const resetTypeMedia = (t: PostType) => {
     setType(t);
     setFiles([]);
+    setCropByKey({});
     setCoverFile(null);
     setCoverPreview((p) => { if (p) URL.revokeObjectURL(p); return null; });
     setVideoSrc((p) => { if (p) URL.revokeObjectURL(p); return null; });
@@ -830,7 +835,13 @@ export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAcco
       for (let i = 0; i < files.length; i++) {
         setUploadLabel(`Загрузка ${i + 1} из ${files.length}…`);
         const f = files[i];
-        const rawUrl = await uploadToBucket(f);
+        let uploadFile = f;
+        if ((type === "IMAGE" || type === "CAROUSEL") && !isVideoFile(f)) {
+          setUploadLabel(`Обрезка 4:5 · ${i + 1} из ${files.length}…`);
+          const view = cropByKey[fileCropKey(f)] ?? defaultFeed45View();
+          uploadFile = await cropImageFile(f, view);
+        }
+        const rawUrl = await uploadToBucket(uploadFile);
         urls.push(isVideoFile(f) ? await normalizeVideoForInstagram(rawUrl, f.type, f.size) : rawUrl);
       }
       let coverUrl: string | null = null;
@@ -842,7 +853,7 @@ export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAcco
       const payload: Record<string, unknown> = {
         media_type: type,
         caption: type === "STORIES" ? "" : caption,
-        scheduled_at: now ? new Date().toISOString() : buildISO(day, hour, minute),
+        scheduled_at: now ? new Date().toISOString() : buildISO(ymd, hour, minute),
         dry_run: now ? false : dryRun,
       };
       if (type === "CAROUSEL") {
@@ -883,8 +894,9 @@ export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAcco
 
   return (
     <AutopostComposerDialog
-      day={day}
-      dayLabel={prettyDay(day)}
+      day={ymd}
+      dayLabel={prettyDay(ymd)}
+      onDayChange={setYmd}
       hourReach={hourReach}
       bestHour={bestHour}
       hasAccount={hasAccount}
@@ -920,6 +932,8 @@ export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAcco
       videoRef={videoRef}
       fileInputRef={fileRef}
       coverInputRef={coverRef}
+      cropByKey={cropByKey}
+      onCropChange={(key, view) => setCropByKey((prev) => ({ ...prev, [key]: view }))}
     />
   );
 }
