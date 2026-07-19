@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { ExternalLink, FileText, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -111,13 +110,11 @@ function StatCell({
 export function ContentPlanTable({
   items,
   loading,
-  onTogglePlatform,
   onAdopt,
   showFunnelStats = true,
 }: {
   items: ContentPlanItem[];
   loading: boolean;
-  onTogglePlatform?: (id: string, key: keyof ContentPlanItem["platforms"], value: boolean) => void;
   onAdopt?: (item: ContentPlanItem) => void;
   /** Показывать воронку по посту (охват, код-слова, лиды…). */
   showFunnelStats?: boolean;
@@ -233,28 +230,6 @@ export function ContentPlanTable({
                           В план
                         </button>
                       )}
-                    </div>
-
-                    <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
-                      {(
-                        [
-                          ["instagram", "IG"],
-                          ["facebook", "FB"],
-                          ["threads", "Threads"],
-                          ["telegram", "TG"],
-                          ["linkedin", "LI"],
-                        ] as const
-                      ).map(([key, label]) => (
-                        <label key={key} className="inline-flex items-center gap-1 text-muted-foreground">
-                          <Switch
-                            checked={item.platforms[key]}
-                            disabled={!!item.synthetic || !onTogglePlatform}
-                            onCheckedChange={(v) => onTogglePlatform?.(item.id, key, v)}
-                            className="scale-75"
-                          />
-                          {label}
-                        </label>
-                      ))}
                     </div>
                   </div>
                 </div>
