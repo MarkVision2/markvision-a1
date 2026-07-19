@@ -1,7 +1,7 @@
 {
-  "git_sha": "8f773ec",
-  "git_sha_full": "8f773ec54b9017aa7b73d865801b96fab0f0289c",
-  "updated_at": "2026-07-19T13:03:31Z",
-  "label": "Merge composer schedule + AI caption visibility",
+  "git_sha": "1881204",
+  "git_sha_full": "1881204ce28e7b353d81eabee4d5cc2838929e88",
+  "updated_at": "2026-07-19T13:31:40Z",
+  "label": "Merge Instagram codeword webhook fix",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
