@@ -144,33 +144,71 @@ Deno.serve(async (req) => {
     if (!scheduled_at || isNaN(Date.parse(scheduled_at))) return json({ ok: false, error: "bad scheduled_at" }, 400);
     if (caption.length > 2200) return json({ ok: false, error: "caption > 2200" }, 400);
 
-    const row: Record<string, unknown> = { media_type, caption, scheduled_at, status: "queued", dry_run: b.dry_run === true, project_id: projectId };
-    if (media_type === "CAROUSEL") {
-      const urls = Array.isArray(b.child_urls) ? (b.child_urls as string[]).filter((u) => typeof u === "string" && u) : [];
-      if (urls.length < 2 || urls.length > 10) return json({ ok: false, error: "карусель: 2–10 элементов" }, 400);
-      row.child_urls = urls; row.media_url = urls[0]; row.thumbnail_url = b.thumbnail_url ?? urls[0];
-    } else {
-      if (!b.media_url || typeof b.media_url !== "string") return json({ ok: false, error: "media_url обязателен" }, 400);
-      row.media_url = b.media_url;
-      if (media_type === "REELS" && typeof b.cover_url === "string" && b.cover_url) {
-        row.cover_url = b.cover_url; row.thumbnail_url = b.cover_url;
+    const buildRow = (storedType: string) => {
+      const row: Record<string, unknown> = {
+        media_type: storedType,
+        caption,
+        scheduled_at,
+        status: "queued",
+        dry_run: b.dry_run === true,
+        project_id: projectId,
+      };
+      if (media_type === "CAROUSEL") {
+        const urls = Array.isArray(b.child_urls) ? (b.child_urls as string[]).filter((u) => typeof u === "string" && u) : [];
+        if (urls.length < 2 || urls.length > 10) return { error: "карусель: 2–10 элементов" as const };
+        row.child_urls = urls;
+        row.media_url = urls[0];
+        row.thumbnail_url = b.thumbnail_url ?? urls[0];
       } else {
-        row.thumbnail_url = b.thumbnail_url ?? (media_type === "IMAGE" ? b.media_url : null);
+        if (!b.media_url || typeof b.media_url !== "string") return { error: "media_url обязателен" as const };
+        row.media_url = b.media_url;
+        if (media_type === "REELS" && typeof b.cover_url === "string" && b.cover_url) {
+          row.cover_url = b.cover_url;
+          row.thumbnail_url = b.cover_url;
+        } else {
+          row.thumbnail_url = b.thumbnail_url ?? (media_type === "IMAGE" ? b.media_url : null);
+        }
+      }
+      return { row };
+    };
+
+    const primary = buildRow(media_type);
+    if ("error" in primary) return json({ ok: false, error: primary.error }, 400);
+
+    let { ok, body, status } = await db(`cf_scheduled_posts`, {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(primary.row),
+    });
+
+    // Prod check constraint historically allowed only IMAGE/REELS. Until migration
+    // lands, persist carousel as IMAGE + child_urls (publisher detects by child_urls).
+    const failMsg = typeof body === "object" && body && "message" in (body as object)
+      ? String((body as { message?: string }).message ?? "")
+      : "";
+    if (!ok && media_type === "CAROUSEL" && /media_type_check/i.test(failMsg)) {
+      const fallback = buildRow("IMAGE");
+      if ("row" in fallback) {
+        const retry = await db(`cf_scheduled_posts`, {
+          method: "POST",
+          headers: { Prefer: "return=representation" },
+          body: JSON.stringify(fallback.row),
+        });
+        ok = retry.ok;
+        body = retry.body;
+        status = retry.status;
       }
     }
-    const { ok, body, status } = await db(`cf_scheduled_posts`, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(row) });
+
     if (!ok) {
-      const msg = typeof body === "object" && body && "message" in (body as object)
-        ? String((body as { message?: string }).message ?? "")
-        : "";
-      if (/media_type_check/i.test(msg)) {
+      if (/media_type_check/i.test(failMsg)) {
         return json({
           ok: false,
           error: "Тип публикации не разрешён в базе (нужен CAROUSEL/STORIES в check constraint)",
           detail: body,
         }, status);
       }
-      return json({ ok: false, error: msg || "db", detail: body }, status);
+      return json({ ok: false, error: failMsg || "db", detail: body }, status);
     }
     return json({ ok: true, post: Array.isArray(body) ? body[0] : body });
   }
