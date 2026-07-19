@@ -101,6 +101,21 @@ function asStringArray(raw: unknown): string[] {
   return raw.map((x) => String(x)).filter(Boolean);
 }
 
+function planRowAnchorIso(row: Pick<DbRow, "published_at" | "scheduled_at" | "created_at">): string | null {
+  return row.published_at ?? row.scheduled_at ?? row.created_at ?? null;
+}
+
+/** Unix ms начала «завтра» в Алматы — всё раньше выкидываем из плана. */
+function contentPlanMeasureStartMs(): number {
+  return new Date(`${tomorrowAlmatyYmd()}T00:00:00+05:00`).getTime();
+}
+
+function isBeforeMeasureStart(iso: string | null | undefined, measureStart: number): boolean {
+  if (!iso) return false;
+  const t = new Date(iso).getTime();
+  return !Number.isNaN(t) && t < measureStart;
+}
+
 /** Очередь → строка плана в памяти (если ещё не записали в content_plan_items). */
 export function queuePostToPlanItem(p: AutopostLite, projectId: string): ContentPlanItem {
   const mediaType = String(p.media_type ?? "IMAGE").toUpperCase();
@@ -171,8 +186,11 @@ export function queuePostToPlanItem(p: AutopostLite, projectId: string): Content
 
 function mergePlanWithQueue(planRows: ContentPlanItem[], queue: AutopostLite[], projectId: string): ContentPlanItem[] {
   const linked = new Set(planRows.map((r) => r.autopostId).filter((x): x is string => !!x));
+  const measureStart = contentPlanMeasureStartMs();
   const extras = queue
     .filter((p) => p.id && !linked.has(String(p.id)))
+    // Не тащим в список прошлые публикации из очереди — измерение с завтра.
+    .filter((p) => !isBeforeMeasureStart(p.scheduled_at, measureStart))
     .map((p) => queuePostToPlanItem(p, projectId));
   return [...extras, ...planRows];
 }
@@ -346,6 +364,30 @@ export function useContentPlan() {
 
       let planDbRows = ((planRes.data ?? []) as unknown as DbRow[]) ?? [];
 
+      // Жёстко убрать публикации до завтра (Алматы) — прошлые тестовые посты не должны
+      // всплывать при «Этот месяц» / «Всё время». SQL-скрипт на прод мог не примениться.
+      if (!missingTable && planDbRows.length > 0) {
+        const measureStart = contentPlanMeasureStartMs();
+        const pastIds = planDbRows
+          .filter((row) => isBeforeMeasureStart(planRowAnchorIso(row), measureStart))
+          .map((row) => row.id);
+        if (pastIds.length > 0) {
+          const chunk = 80;
+          for (let i = 0; i < pastIds.length; i += chunk) {
+            const slice = pastIds.slice(i, i + chunk);
+            const { error: delErr } = await supabase
+              .from("content_plan_items" as never)
+              .delete()
+              .in("id", slice);
+            if (delErr) {
+              console.warn("[content-plan] trim past failed", delErr.message);
+              break;
+            }
+          }
+          planDbRows = planDbRows.filter((row) => !pastIds.includes(row.id));
+        }
+      }
+
       // 1) Привязать существующие строки плана к IG media (автопост / caption).
       if (!planRes.error) {
         const claimed = new Set(
@@ -477,6 +519,8 @@ export function useContentPlan() {
           if (!m.timestamp) return false;
           return new Date(m.timestamp).getTime() >= measureStart;
         });
+        // Также не импортируем в план посты из очереди/медиа, которые уже были
+        // удалены как «прошлые» в этой же загрузке — measureStart уже отрезает.
         if (orphans.length > 0) {
           const inserts = orphans.map((m) => {
             const d = draftFromIgMedia(m, codewords);

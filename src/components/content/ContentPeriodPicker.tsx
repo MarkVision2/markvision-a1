@@ -26,10 +26,6 @@ export type ContentPeriodPreset =
 const PRESETS: { id: ContentPeriodPreset; label: string }[] = [
   { id: "from_tomorrow", label: "С завтра" },
   { id: "from_today", label: "С сегодня" },
-  { id: "this_month", label: "Этот месяц" },
-  { id: "last_month", label: "Прошлый месяц" },
-  { id: "last_year", label: "За год" },
-  { id: "all_time", label: "Всё время" },
   { id: "custom", label: "Выбрать период" },
 ];
 
