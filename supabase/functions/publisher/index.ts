@@ -118,9 +118,12 @@ Deno.serve(async (req) => {
     try {
       const caption = p.caption ?? "";
       let containerId: string | null = null;
+      const childUrls: string[] = Array.isArray(p.child_urls) ? p.child_urls : [];
+      // IMAGE + child_urls is a temporary store format while DB check lacks CAROUSEL.
+      const asCarousel = p.media_type === "CAROUSEL" || childUrls.length >= 2;
 
-      if (p.media_type === "CAROUSEL") {
-        const urls: string[] = Array.isArray(p.child_urls) ? p.child_urls : [];
+      if (asCarousel) {
+        const urls = childUrls;
         if (urls.length < 2) throw new Error("карусели нужно ≥ 2 элементов");
         const childIds: string[] = [];
         for (const u of urls) {
