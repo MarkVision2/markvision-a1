@@ -1,7 +1,7 @@
 {
-  "git_sha": "778de1b",
-  "git_sha_full": "778de1bf52b90e09025cd3cd9e828a0a1215f5db",
-  "updated_at": "2026-07-19T13:36:47Z",
-  "label": "Merge Reels queue preview fix",
+  "git_sha": "09827f4",
+  "git_sha_full": "09827f4aa8322506cbbe0e92194545c306aaa6b5",
+  "updated_at": "2026-07-19T13:40:23Z",
+  "label": "Merge composer caption-first UX",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
