@@ -30,6 +30,17 @@ vi.mock("@/lib/contentPlanAutopostBridge", () => ({
   upsertContentPlanFromAutopost: (...args: unknown[]) => upsertPlan(...args),
 }));
 
+const generateCaption = vi.fn();
+vi.mock("@/lib/autopostAiCaption", () => ({
+  generateAutopostCaption: (...args: unknown[]) => generateCaption(...args),
+  captureFrameFromVideoFile: vi.fn(async () => ({
+    dataUrl: "data:image/jpeg;base64,xx",
+    blob: new Blob(["x"], { type: "image/jpeg" }),
+    file: new File(["x"], "cover.jpg", { type: "image/jpeg" }),
+  })),
+  fileToJpegDataUrl: vi.fn(async () => "data:image/jpeg;base64,xx"),
+}));
+
 function makeFileList(files: File[]): FileList {
   const list = {
     length: files.length,
@@ -48,6 +59,7 @@ describe("ContentPlanComposerDialog unified publish", () => {
   beforeEach(() => {
     createAutopost.mockReset();
     upsertPlan.mockReset();
+    generateCaption.mockReset();
     createAutopost.mockResolvedValue({
       id: "ap-1",
       scheduledAt: "2026-07-20T07:00:00.000Z",
@@ -59,6 +71,7 @@ describe("ContentPlanComposerDialog unified publish", () => {
       mediaType: "REELS",
     });
     upsertPlan.mockResolvedValue(undefined);
+    generateCaption.mockResolvedValue("AI описание из слайдов\n\n#marketing");
   });
 
   it("requires media before scheduling", async () => {
@@ -121,6 +134,38 @@ describe("ContentPlanComposerDialog unified publish", () => {
 
     fireEvent.change(screen.getByLabelText("Минуты"), { target: { value: "30" } });
     expect(screen.getByText(/Завтра · 15:30 Алматы/i)).toBeTruthy();
+  });
+
+  it("generates description from media via AI button", async () => {
+    render(
+      <ContentPlanComposerDialog
+        open
+        onOpenChange={() => {}}
+        initialType="CAROUSEL"
+      />,
+    );
+
+    const files = [
+      new File(["a"], "slide-a.png", { type: "image/png" }),
+      new File(["b"], "slide-b.png", { type: "image/png" }),
+    ];
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, { target: { files: makeFileList(files) } });
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Сгенерировать описание/i })).toBeEnabled();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /Сгенерировать описание/i }));
+
+    await waitFor(() => {
+      expect(generateCaption).toHaveBeenCalledWith(
+        expect.objectContaining({ mediaType: "CAROUSEL", files: expect.any(Array) }),
+      );
+    });
+    await waitFor(() => {
+      expect(screen.getByDisplayValue(/AI описание из слайдов/i)).toBeTruthy();
+    });
   });
 
   it("previews and reorders carousel slides", async () => {
