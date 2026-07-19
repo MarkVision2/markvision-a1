@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { ContentPlanComposerDialog } from "@/components/content-plan/ContentPlanComposerDialog";
 
 vi.stubGlobal("URL", {
-  createObjectURL: vi.fn(() => "blob:mock"),
+  createObjectURL: vi.fn((file: File) => `blob:${file.name}`),
   revokeObjectURL: vi.fn(),
 });
 
@@ -29,6 +29,20 @@ vi.mock("@/lib/autopostClient", async (importOriginal) => {
 vi.mock("@/lib/contentPlanAutopostBridge", () => ({
   upsertContentPlanFromAutopost: (...args: unknown[]) => upsertPlan(...args),
 }));
+
+function makeFileList(files: File[]): FileList {
+  const list = {
+    length: files.length,
+    item: (i: number) => files[i] ?? null,
+    [Symbol.iterator]: function* () {
+      for (const f of files) yield f;
+    },
+  } as FileList;
+  files.forEach((f, i) => {
+    Object.defineProperty(list, i, { value: f, enumerable: true });
+  });
+  return list;
+}
 
 describe("ContentPlanComposerDialog unified publish", () => {
   beforeEach(() => {
@@ -65,10 +79,10 @@ describe("ContentPlanComposerDialog unified publish", () => {
     });
     const file = new File(["x"], "clip.mp4", { type: "video/mp4" });
     const input = document.querySelector('input[type="file"]') as HTMLInputElement;
-    fireEvent.change(input, { target: { files: [file] } });
+    fireEvent.change(input, { target: { files: makeFileList([file]) } });
 
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /Заменить/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /^Заменить$/i })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: /автопост/i }));
@@ -83,5 +97,40 @@ describe("ContentPlanComposerDialog unified publish", () => {
         }),
       );
     });
+  });
+
+  it("previews and reorders carousel slides", async () => {
+    render(
+      <ContentPlanComposerDialog
+        open
+        onOpenChange={() => {}}
+        initialType="CAROUSEL"
+      />,
+    );
+
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(input.multiple).toBe(true);
+
+    const files = [
+      new File(["a"], "slide-a.png", { type: "image/png" }),
+      new File(["b"], "slide-b.png", { type: "image/png" }),
+      new File(["c"], "slide-c.png", { type: "image/png" }),
+    ];
+    fireEvent.change(input, { target: { files: makeFileList(files) } });
+
+    expect(await screen.findByText(/Слайд 1 из 3/i)).toBeTruthy();
+    expect(screen.getByText("Порядок слайдов")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Заменить слайд/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Ещё слайд/i })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Следующий слайд" }));
+    expect(screen.getByText(/Слайд 2 из 3/i)).toBeTruthy();
+
+    const orderSection = screen.getByText("Порядок слайдов").parentElement!;
+    const leftButtons = within(orderSection).getAllByLabelText("Левее");
+    fireEvent.click(leftButtons[1]);
+
+    expect(screen.getByText(/Слайд 1 из 3/i)).toBeTruthy();
+    expect(screen.getByAltText("Слайд 1")).toHaveAttribute("src", "blob:slide-b.png");
   });
 });
