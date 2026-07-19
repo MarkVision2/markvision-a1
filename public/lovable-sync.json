@@ -1,7 +1,7 @@
 {
-  "git_sha": "fd1d23c",
-  "git_sha_full": "fd1d23c404a9ceae11b095cfbcd91153e09fb175",
-  "updated_at": "2026-07-19T11:42:00Z",
-  "label": "Merge AI caption + Reels cover for content-plan",
+  "git_sha": "7b3ead5",
+  "git_sha_full": "7b3ead5cf7dca73ad6ccbd844cb1e297e73ef57d",
+  "updated_at": "2026-07-19T11:45:57Z",
+  "label": "Merge AI caption via content-scheduler",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
