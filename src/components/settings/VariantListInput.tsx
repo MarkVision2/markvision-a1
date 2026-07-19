@@ -7,14 +7,32 @@ import { CODEWORD_MAX_VARIANTS, normalizeVariantList } from "@/lib/codewordVaria
 
 interface VariantListInputProps {
   label: string;
-  hint: string;
+  hint?: string;
   placeholder: string;
   items: string[];
   onChange: (items: string[]) => void;
   multiline?: boolean;
+  /** Компактный вид без тяжёлого хинта. */
+  compact?: boolean;
 }
 
-export function VariantListInput({ label, hint, placeholder, items, onChange, multiline }: VariantListInputProps) {
+function splitPaste(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, CODEWORD_MAX_VARIANTS);
+}
+
+export function VariantListInput({
+  label,
+  hint,
+  placeholder,
+  items,
+  onChange,
+  multiline,
+  compact,
+}: VariantListInputProps) {
   const rows = items.length > 0 ? items : [""];
 
   const setRow = (index: number, value: string) => {
@@ -33,14 +51,27 @@ export function VariantListInput({ label, hint, placeholder, items, onChange, mu
     onChange(next.length > 0 ? next : [""]);
   };
 
+  const applyPaste = (index: number, text: string) => {
+    const parts = splitPaste(text);
+    if (parts.length <= 1) {
+      setRow(index, text);
+      return;
+    }
+    const before = rows.slice(0, index);
+    const after = rows.slice(index + 1);
+    onChange([...before, ...parts, ...after].slice(0, CODEWORD_MAX_VARIANTS));
+  };
+
   const filled = normalizeVariantList(rows).length;
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <div>
+        <div className="min-w-0">
           <Label>{label}</Label>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>
+          {hint && !compact ? (
+            <p className="mt-0.5 text-[11px] text-muted-foreground">{hint}</p>
+          ) : null}
         </div>
         <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
           {filled}/{CODEWORD_MAX_VARIANTS}
@@ -57,14 +88,40 @@ export function VariantListInput({ label, hint, placeholder, items, onChange, mu
                 placeholder={placeholder}
                 value={row}
                 onChange={(e) => setRow(i, e.target.value)}
-                rows={2}
-                className="min-h-[60px] resize-none text-sm"
+                onPaste={(e) => {
+                  const text = e.clipboardData.getData("text");
+                  if (text.includes("\n")) {
+                    e.preventDefault();
+                    applyPaste(i, text);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                    e.preventDefault();
+                    addRow();
+                  }
+                }}
+                rows={compact ? 2 : 2}
+                className="min-h-[52px] resize-none text-sm"
               />
             ) : (
               <Input
                 placeholder={placeholder}
                 value={row}
                 onChange={(e) => setRow(i, e.target.value)}
+                onPaste={(e) => {
+                  const text = e.clipboardData.getData("text");
+                  if (text.includes("\n")) {
+                    e.preventDefault();
+                    applyPaste(i, text);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (row.trim() && rows.length < CODEWORD_MAX_VARIANTS) addRow();
+                  }
+                }}
                 className="text-sm"
               />
             )}
@@ -85,9 +142,14 @@ export function VariantListInput({ label, hint, placeholder, items, onChange, mu
       {rows.length < CODEWORD_MAX_VARIANTS && (
         <Button type="button" variant="outline" size="sm" className="gap-1.5 rounded-lg" onClick={addRow}>
           <Plus className="h-3.5 w-3.5" />
-          Добавить вариант
+          Ещё вариант
         </Button>
       )}
+      {compact ? (
+        <p className="text-[10px] text-muted-foreground">
+          Enter — новый ряд · вставь несколько строк сразу
+        </p>
+      ) : null}
     </div>
   );
 }
