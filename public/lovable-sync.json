@@ -1,7 +1,7 @@
 {
-  "git_sha": "f939bbe",
-  "git_sha_full": "f939bbe229699d2f5f54cf5e81275b8b5ac20e33",
-  "updated_at": "2026-07-19T09:14:02Z",
-  "label": "Merge pull request #129 from MarkVision2/cursor/cloud-agent-1784451629614-p88hq",
+  "git_sha": "f4a9119",
+  "git_sha_full": "f4a911987706429236c56368e0efc66b700dab7b",
+  "updated_at": "2026-07-19T09:21:52Z",
+  "label": "ci: Management API migration fallback",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
