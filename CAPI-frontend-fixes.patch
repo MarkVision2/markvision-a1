@@ -1,0 +1,50 @@
+diff --git a/src/pages/ProjectIntegrationWizard.tsx b/src/pages/ProjectIntegrationWizard.tsx
+index 30665a7..375be40 100644
+--- a/src/pages/ProjectIntegrationWizard.tsx
++++ b/src/pages/ProjectIntegrationWizard.tsx
+@@ -37,7 +37,7 @@ const STEPS = [
+ const CURRENCIES = ["KZT", "USD", "RUB", "EUR"] as const;
+ const TIMEZONES = ["Asia/Almaty", "Europe/Moscow", "Europe/Kiev", "Asia/Tashkent", "Asia/Bishkek"] as const;
+ const PIXEL_EVENTS = ["Lead", "CompleteRegistration", "Contact", "SubmitApplication"] as const;
+-const CAPI_EVENTS = ["", "Schedule", "Diagnostic", "Purchase"] as const;
++const CAPI_EVENTS = ["", "Lead", "Schedule", "Diagnostic", "Purchase"] as const;
+
+ function normalizeAct(id: string) {
+   const t = id.trim();
+@@ -368,6 +368,7 @@ export default function ProjectIntegrationWizard() {
+         if (low.includes("paid") || low.includes("оплач")) return "Purchase";
+         if (low.includes("visit") || low.includes("диагност") || low.includes("визит")) return "Diagnostic";
+         if (low.includes("schedule") || low.includes("invoice") || low.includes("запис") || low.includes("счёт") || low.includes("счет")) return "Schedule";
++        if (low.includes("new") || low.includes("lead") || low.includes("заяв") || low.includes("нов")) return "Lead";
+         return "";
+       };
+       setStages(
+@@ -397,7 +398,7 @@ export default function ProjectIntegrationWizard() {
+               is_paid: isPaid,
+               project_id: projectId,
+             },
+-            { onConflict: "status_key" },
++            { onConflict: "status_key,project_id" },
+           );
+         if (error && !/relation .* does not exist/i.test(error.message)) {
+           throw error;
+@@ -650,6 +651,19 @@ export default function ProjectIntegrationWizard() {
+                   <Input value={capiTestCode} onChange={(e) => setCapiTestCode(e.target.value)} placeholder="TEST12345" />
+                 </Field>
+               </div>
++              {capiTestCode.trim() ? (
++                <Alert variant="destructive">
++                  <AlertDescription className="text-xs">
++                    Пока Test Event Code задан, <strong>все</strong> события уходят как тестовые
++                    (вкладка Test Events в Events Manager) и не засчитываются как реальные конверсии.
++                    Очистите поле для боевого режима.
++                  </AlertDescription>
++                </Alert>
++              ) : (
++                <p className="text-xs text-muted-foreground">
++                  Только для проверки: пока код задан, реальные конверсии не засчитываются. Для боевого режима оставьте поле пустым.
++                </p>
++              )}
+               <div className="flex items-center gap-3">
+                 <Button variant="outline" onClick={checkMeta} disabled={!adAccountId || !accessToken || metaCheck.status === "loading"}>
+                   {metaCheck.status === "loading" && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}

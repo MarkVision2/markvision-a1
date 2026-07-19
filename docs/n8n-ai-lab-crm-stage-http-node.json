@@ -1,0 +1,136 @@
+{
+  "name": "AI Marketing Lab — CRM stages",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ai-lab-wa-inbound",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "name": "WA Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [260, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const b = $json.body || $json;\nconst phone = String(b.phone || b.senderData?.sender || b.from || '').replace(/\\D/g,'');\nconst text = String(b.text || b.messageData?.textMessageData?.textMessage || b.message || '').trim();\nconst messageId = String(b.idMessage || b.messageId || b.id || Date.now());\nreturn [{ json: { phone, text, messageId, project_id: 'cceb9a86-687b-4417-9b4e-d106bd8cc79c' } }];"
+      },
+      "name": "Normalize",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://szfgdruhlebfvcmlvxdk.supabase.co/functions/v1/crm-stage-update",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-automation-key", "value": "={{$env.MARKVISION_AUTOMATION_KEY}}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"project_id\": \"{{$json.project_id}}\",\n  \"phone\": \"{{$json.phone}}\",\n  \"event\": \"whatsapp_messaged\",\n  \"idempotency_key\": \"wa-msg-{{$json.messageId}}\"\n}",
+        "options": {}
+      },
+      "name": "Stage: WhatsApp",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [700, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.text.toLowerCase()}}",
+              "operation": "regex",
+              "value2": "(^|\\b)(да|буду|подтверждаю|буду на эфире)(\\b|$)"
+            }
+          ]
+        }
+      },
+      "name": "IF confirmed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [920, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://szfgdruhlebfvcmlvxdk.supabase.co/functions/v1/crm-stage-update",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-automation-key", "value": "={{$env.MARKVISION_AUTOMATION_KEY}}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"project_id\": \"{{$('Normalize').item.json.project_id}}\",\n  \"phone\": \"{{$('Normalize').item.json.phone}}\",\n  \"event\": \"attendance_confirmed\",\n  \"idempotency_key\": \"confirm-{{$('Normalize').item.json.messageId}}\"\n}",
+        "options": {}
+      },
+      "name": "Stage: Confirmed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1140, 120]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$('Normalize').item.json.text.toLowerCase()}}",
+              "operation": "regex",
+              "value2": "цена|тариф|программ|разбор|хочу купить|сколько стоит"
+            }
+          ]
+        }
+      },
+      "name": "IF interest",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [920, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://szfgdruhlebfvcmlvxdk.supabase.co/functions/v1/crm-stage-update",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-automation-key", "value": "={{$env.MARKVISION_AUTOMATION_KEY}}" },
+            { "name": "Content-Type", "value": "application/json" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"project_id\": \"{{$('Normalize').item.json.project_id}}\",\n  \"phone\": \"{{$('Normalize').item.json.phone}}\",\n  \"event\": \"interest_detected\",\n  \"temperature\": \"hot\",\n  \"tags\": [\"интерес\"],\n  \"idempotency_key\": \"interest-{{$('Normalize').item.json.messageId}}\"\n}",
+        "options": {}
+      },
+      "name": "Stage: Interest",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [1140, 420]
+    }
+  ],
+  "connections": {
+    "WA Webhook": { "main": [[{ "node": "Normalize", "type": "main", "index": 0 }]] },
+    "Normalize": { "main": [[{ "node": "Stage: WhatsApp", "type": "main", "index": 0 }]] },
+    "Stage: WhatsApp": {
+      "main": [[
+        { "node": "IF confirmed", "type": "main", "index": 0 },
+        { "node": "IF interest", "type": "main", "index": 0 }
+      ]]
+    },
+    "IF confirmed": { "main": [[{ "node": "Stage: Confirmed", "type": "main", "index": 0 }], []] },
+    "IF interest": { "main": [[{ "node": "Stage: Interest", "type": "main", "index": 0 }], []] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

@@ -14,8 +14,8 @@ export interface LeadFlagsInput {
 }
 
 const PAID_STAGE_KEYS = new Set([
-  "paid", "completed", "done", "success", "won",
-  "оплачено", "оплата", "продажа", "оплачен",
+  "paid", "completed", "done", "success", "won", "student",
+  "оплачено", "оплата", "продажа", "оплачен", "студент",
 ]);
 
 // Стадии диагностики: все, что в БД помечены is_diagnostic=true в pipeline_stages.

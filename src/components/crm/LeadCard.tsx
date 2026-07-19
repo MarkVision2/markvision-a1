@@ -206,6 +206,26 @@ function LeadCardImpl({
         </div>
       )}
 
+      {((lead.tags && lead.tags.length > 0) || lead.temperature || lead.webinarStatus) && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {lead.temperature && (
+            <span className="rounded bg-warning/15 px-1 py-0.5 text-[9px] font-semibold text-warning">
+              {lead.temperature === "hot" ? "🔥" : lead.temperature === "warm" ? "🙂" : "❄️"}
+            </span>
+          )}
+          {lead.webinarStatus && (
+            <span className="rounded bg-primary/10 px-1 py-0.5 text-[9px] font-medium text-primary">
+              {lead.webinarStatus}
+            </span>
+          )}
+          {(lead.tags ?? []).slice(0, 2).map((t) => (
+            <span key={t} className="max-w-[90px] truncate rounded bg-secondary/70 px-1 py-0.5 text-[9px]">
+              {t}
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="mt-2 flex items-center justify-between text-[10px] text-muted-foreground">
         <span>Активность: {timeAgo(lead.lastActivityAt)}</span>
         {assigneeName ? (

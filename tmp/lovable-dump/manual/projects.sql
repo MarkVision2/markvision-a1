@@ -1,0 +1,1 @@
+INSERT INTO public.projects (id, name, domain, initials, is_primary, created_by, created_at, updated_at, intake_token, creative_username) VALUES ('cceb9a86-687b-4417-9b4e-d106bd8cc79c', 'MarkVision AI', NULL, 'MV', TRUE, 'f2be79d8-2d06-474d-9343-4b3e6ebba19f', '2026-05-05T07:02:06.554146+00:00', '2026-06-23T06:40:29.512142+00:00', 'MkcXbUBfd7ObDBy7', NULL);

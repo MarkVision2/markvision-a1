@@ -26,6 +26,7 @@ export interface LeadLite {
   metaAdId: string | null;
   cabinetId: string | null;
   stageKey: string;
+  stageRole?: string | null;
   amount: number;
   diagnosticAmount: number;
   createdAt: string;
@@ -41,6 +42,10 @@ export interface LeadLite {
   stageId: string | null;
   nextVisitAt: string | null;
   paymentMethod: string | null;
+  tags?: string[] | null;
+  temperature?: string | null;
+  webinarStatus?: string | null;
+  depositAmount?: number | null;
 }
 
 export const LEADS_LITE_QUERY_KEY = "leads-lite";
@@ -49,7 +54,7 @@ export async function fetchLeadsLite(activeId: string | null): Promise<LeadLite[
   let leadsQuery = supabase
     .from("leads")
     .select(
-      "id,source,channel,referrer,landing_url,utm,meta_ad_id,cabinet_id,stage_id,amount,diagnostic_amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,reject_reason,rejected_at,next_visit_at,payment_method",
+      "id,source,channel,referrer,landing_url,utm,meta_ad_id,cabinet_id,stage_id,amount,diagnostic_amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,reject_reason,rejected_at,next_visit_at,payment_method,tags,temperature,webinar_status,deposit_amount",
     )
     .eq("is_personal", false)
     .order("created_at", { ascending: false })
@@ -58,11 +63,17 @@ export async function fetchLeadsLite(activeId: string | null): Promise<LeadLite[
     leadsQuery = leadsQuery.or(`project_id.eq.${activeId},project_id.is.null`);
   }
   const [stagesRes, leadsRes] = await Promise.all([
-    supabase.from("pipeline_stages").select("id,key"),
+    supabase.from("pipeline_stages").select("id,key,stage_role"),
     leadsQuery,
   ]);
   const idToKey = new Map<string, string>();
-  for (const s of stagesRes.data ?? []) idToKey.set(s.id, s.key);
+  const idToRole = new Map<string, string>();
+  for (const s of stagesRes.data ?? []) {
+    idToKey.set(s.id, s.key);
+    if ((s as { stage_role?: string }).stage_role) {
+      idToRole.set(s.id, (s as { stage_role: string }).stage_role);
+    }
+  }
 
   return (leadsRes.data ?? []).map((r) => ({
     id: r.id as string,
@@ -75,6 +86,7 @@ export async function fetchLeadsLite(activeId: string | null): Promise<LeadLite[
     metaAdId: (r.meta_ad_id as string | null) ?? null,
     cabinetId: (r.cabinet_id as string | null) ?? null,
     stageKey: idToKey.get(r.stage_id as string) ?? "new",
+    stageRole: idToRole.get(r.stage_id as string) ?? null,
     amount: Number(r.amount ?? 0),
     diagnosticAmount: Number((r as { diagnostic_amount?: number | null }).diagnostic_amount ?? 0),
     createdAt: r.created_at as string,
@@ -90,6 +102,10 @@ export async function fetchLeadsLite(activeId: string | null): Promise<LeadLite[
     stageId: (r.stage_id as string | null) ?? null,
     nextVisitAt: (r.next_visit_at as string | null) ?? null,
     paymentMethod: (r.payment_method as string | null) ?? null,
+    tags: Array.isArray((r as { tags?: string[] }).tags) ? (r as { tags: string[] }).tags : [],
+    temperature: ((r as { temperature?: string | null }).temperature ?? null) as string | null,
+    webinarStatus: ((r as { webinar_status?: string | null }).webinar_status ?? null) as string | null,
+    depositAmount: Number((r as { deposit_amount?: number | null }).deposit_amount ?? 0) || null,
   }));
 }
 

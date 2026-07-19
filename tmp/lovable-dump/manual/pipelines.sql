@@ -1,0 +1,1 @@
+INSERT INTO public.pipelines (id, name, is_default, created_at, updated_at, project_id) VALUES ('3f6f3900-e6d1-427f-ab62-0d2cd6f6e4de', 'Основная воронка', TRUE, '2026-05-11T06:30:59.516567+00:00', '2026-05-11T06:30:59.516567+00:00', 'cceb9a86-687b-4417-9b4e-d106bd8cc79c');

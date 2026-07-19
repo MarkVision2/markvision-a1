@@ -18,6 +18,7 @@ import { useCrmStore } from "@/hooks/useCrmStore";
 import { useCapiStageMap } from "@/hooks/useCapiStageMap";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type { Lead } from "@/types/crm";
+import { requiresDiagnosticDialog, requiresPaymentDialog, requiresRejectDialog, stageRoleOf } from "@/lib/stageRoles";
 import { useTeamStore } from "@/hooks/useTeamStore";
 import { useCrmAnalytics } from "@/hooks/useCrmAnalytics";
 import { StageColumn } from "@/components/crm/StageColumn";
@@ -73,6 +74,8 @@ const Crm = () => {
     logCallAttempt,
     markPaid,
     setVisit,
+    applyLaunchAction,
+    pipelineTemplateKey,
     addTask,
     toggleTask,
     removeTask,
@@ -168,28 +171,29 @@ const Crm = () => {
   };
 
   const handleDropLead = useCallback((leadId: string, stageId: string) => {
-    if (stageId === "rejected") {
+    const stage = stages.find((s) => s.id === stageId);
+    const role = stageRoleOf(stage);
+    if (requiresRejectDialog(role) || stageId === "rejected") {
       const current = leads.find((l) => l.id === leadId);
       const prev = current?.stageId;
       moveLead(leadId, stageId);
       setRejectFor({ leadId, prevStageId: prev, viaDrag: true });
       return;
     }
-    if (stageId === "paid") {
-      // Перевод на «Оплачен» только через ввод суммы — этап не двигаем заранее,
-      // markPaid внутри подтверждения переведёт его сам.
+    if (requiresPaymentDialog(role) || stageId === "paid") {
       const current = leads.find((l) => l.id === leadId);
       setPayFor({ leadId, prevStageId: current?.stageId });
       return;
     }
-    if (stageId === "scheduled") {
-      // Запись на диагностику: сначала спрашиваем сумму, чтобы триггер
-      // учёл и +1 диагностику, и выручку за неё.
+    if (requiresDiagnosticDialog(role, {
+      isDiagnostic: stage?.isDiagnostic,
+      templateKey: pipelineTemplateKey,
+    })) {
       setDiagFor({ leadId, stageId });
       return;
     }
     moveLead(leadId, stageId);
-  }, [leads, moveLead]);
+  }, [leads, moveLead, stages, pipelineTemplateKey]);
 
   const handleOpenLead = useCallback((l: Lead) => setActiveLeadId(l.id), []);
   const handleDeleteStage = useCallback((id: string) => {
@@ -485,7 +489,15 @@ const Crm = () => {
           const current = leads.find((l) => l.id === id);
           setPayFor({ leadId: id, prevStageId: current?.stageId });
         }}
-        onRequestDiagnostic={(id) => setDiagFor({ leadId: id, stageId: "scheduled" })}
+        onRequestDiagnostic={(id) => {
+          const scheduled = stages.find((s) => s.stageRole === "call_scheduled")?.id ?? "scheduled";
+          setDiagFor({ leadId: id, stageId: scheduled });
+        }}
+        onLaunchAction={(id, action, opts) => {
+          void applyLaunchAction(id, action, opts);
+          toast.success("Статус обновлён");
+        }}
+        pipelineTemplateKey={pipelineTemplateKey}
         busySlots={busySlots}
       />
 
