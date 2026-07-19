@@ -1,5 +1,4 @@
 # One-off: dump recent heygen/montage/reels jobs for MarkVision AI project.
-# Uses SUPABASE_ACCESS_TOKEN → project API keys → service_role REST.
 name: Diagnose HeyGen queue
 
 on:
@@ -10,6 +9,7 @@ on:
     paths:
       - ".github/workflows/diagnose-heygen-queue.yml"
       - "scripts/diagnose-heygen-queue.py"
+      - "scripts/diagnose-heygen-queue-fallback.py"
 
 concurrency:
   group: diagnose-heygen-queue
@@ -19,6 +19,7 @@ env:
   SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
   SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF || 'szfgdruhlebfvcmlvxdk' }}
   SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
   PROJECT_ID: cceb9a86-687b-4417-9b4e-d106bd8cc79c
 
 jobs:
@@ -87,12 +88,9 @@ jobs:
           echo "==== reels_jobs ===="; cat /tmp/diag-out/reels_jobs.csv
           echo "==== search ===="; cat /tmp/diag-out/heygen_search.csv
 
-      - name: Fallback Management API api-keys
+      - name: Fallback service role / Management API
         if: ${{ env.SUPABASE_DB_PASSWORD == '' }}
-        run: |
-          set -euo pipefail
-          test -n "$SUPABASE_ACCESS_TOKEN" || (echo "::error::No DB password and no ACCESS_TOKEN"; exit 1)
-          python3 scripts/diagnose-heygen-queue.py
+        run: python3 scripts/diagnose-heygen-queue-fallback.py
 
       - name: Upload dump
         if: always()
