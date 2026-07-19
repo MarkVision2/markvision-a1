@@ -158,6 +158,73 @@ async function syncOne(supa: any, account: any) {
     }, { onConflict: "media_id" });
   }
 
+  // 3b) Опубликованные медиа → content_plan_items (чтобы native IG / ручные посты
+  // попали в статистику плана сразу после sync, без ожидания открытия UI).
+  let planOrphans = { inserted: 0, skipped: 0 };
+  try {
+    const almatyToday = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Almaty",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    const cutoffMs = new Date(`${almatyToday}T00:00:00+05:00`).getTime();
+    const { data: existingPlan } = await supa
+      .from("content_plan_items")
+      .select("ig_media_id")
+      .eq("project_id", account.project_id)
+      .not("ig_media_id", "is", null);
+    const linked = new Set(
+      (existingPlan ?? []).map((r: { ig_media_id?: string | null }) => r.ig_media_id).filter(Boolean),
+    );
+    for (const m of items) {
+      if (!m?.id || !m.timestamp) {
+        planOrphans.skipped += 1;
+        continue;
+      }
+      if (linked.has(m.id)) {
+        planOrphans.skipped += 1;
+        continue;
+      }
+      if (new Date(m.timestamp).getTime() < cutoffMs) {
+        planOrphans.skipped += 1;
+        continue;
+      }
+      const mediaType = String(m.media_type ?? "IMAGE").toUpperCase();
+      const product = String(m.media_product_type ?? "").toUpperCase();
+      let contentType = "IMAGE";
+      if (product === "REELS" || mediaType === "VIDEO") contentType = "REELS";
+      else if (mediaType === "CAROUSEL_ALBUM") contentType = "CAROUSEL";
+      else if (product === "STORY") contentType = "STORIES";
+      const caption = typeof m.caption === "string" ? m.caption : "";
+      const title = caption.trim().split("\n")[0]?.slice(0, 80) || `${contentType} Instagram`;
+      const { error: insErr } = await supa.from("content_plan_items").insert({
+        project_id: account.project_id,
+        title,
+        category: "content",
+        content_type: contentType,
+        status: "published",
+        description: caption || null,
+        media_url: m.media_url ?? null,
+        thumbnail_url: pickThumbnail(m),
+        scheduled_at: m.timestamp,
+        published_at: m.timestamp,
+        ig_media_id: m.id,
+        post_instagram: true,
+      });
+      if (!insErr) {
+        planOrphans.inserted += 1;
+        linked.add(m.id);
+      } else if (!/duplicate|unique/i.test(String(insErr.message ?? ""))) {
+        console.warn("[instagram-sync] plan orphan insert", insErr.message);
+      } else {
+        planOrphans.skipped += 1;
+      }
+    }
+  } catch (e: any) {
+    console.warn("[instagram-sync] plan orphans", e?.message ?? e);
+  }
+
   // 4) Account daily insights (last 30 days) — reach only (other day metrics need metric_type=total_value).
   try {
     const since = Math.floor((Date.now() - 30 * 86400_000) / 1000);
@@ -322,7 +389,7 @@ async function syncOne(supa: any, account: any) {
     webhook.error = e instanceof Error ? e.message : "unknown";
   }
 
-  return { pageSched, webhook };
+  return { pageSched, webhook, planOrphans };
 }
 
 Deno.serve(async (req) => {

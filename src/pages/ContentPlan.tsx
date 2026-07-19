@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertCircle, CalendarClock, ClipboardList, Plus, RefreshCw } from "lucide-react";
+import { AlertCircle, CalendarClock, ClipboardList, Info, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -90,7 +90,7 @@ export default function ContentPlan() {
         icon={ClipboardList}
         iconAccent="pink"
         title="Контент-план"
-        description="Один список: очередь MarkVision и метрики после выхода (охват, код-слова, лиды). Календарь — отдельно."
+        description="Очередь MarkVision и вышедшие посты Instagram с метриками. Календарь — отдельно."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button
@@ -119,6 +119,22 @@ export default function ContentPlan() {
           </div>
         }
       />
+
+      {!showCalendar && (
+        <div className="mt-4 flex items-start gap-2 rounded-xl border border-border/50 bg-card/40 p-3 text-sm text-muted-foreground">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+          <div>
+            <p>
+              Посты, запланированные <span className="text-foreground">прямо в приложении Instagram</span>, Meta
+              не отдаёт до выхода — в списке их не будет заранее.
+            </p>
+            <p className="mt-1">
+              Чтобы слот был виден до публикации: планируй здесь («Новая публикация») или в Meta Business Suite.
+              После выхода нажми «Обновить» — пост и статистика подтянутся автоматически.
+            </p>
+          </div>
+        </div>
+      )}
 
       {tableMissing && (
         <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100">

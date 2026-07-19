@@ -19,7 +19,7 @@ import {
   type ContentPlanOrganicEvent,
 } from "@/lib/contentPlanIgLink";
 import { schedulerApi } from "@/lib/autopostClient";
-import { tomorrowAlmatyYmd } from "@/lib/metricsPeriod";
+import { todayAlmatyYmd } from "@/lib/metricsPeriod";
 
 type DbRow = {
   id: string;
@@ -101,13 +101,13 @@ function asStringArray(raw: unknown): string[] {
   return raw.map((x) => String(x)).filter(Boolean);
 }
 
-function planRowAnchorIso(row: Pick<DbRow, "published_at" | "scheduled_at" | "created_at">): string | null {
-  return row.published_at ?? row.scheduled_at ?? row.created_at ?? null;
+/** Для очереди MarkVision / импорта опубликованных: порог «сегодня» Алматы. */
+function contentPlanPublishImportStartMs(): number {
+  return new Date(`${todayAlmatyYmd()}T00:00:00+05:00`).getTime();
 }
 
-/** Unix ms начала «завтра» в Алматы — всё раньше выкидываем из плана. */
-function contentPlanMeasureStartMs(): number {
-  return new Date(`${tomorrowAlmatyYmd()}T00:00:00+05:00`).getTime();
+function contentPlanQueueStartMs(): number {
+  return contentPlanPublishImportStartMs();
 }
 
 function isBeforeMeasureStart(iso: string | null | undefined, measureStart: number): boolean {
@@ -186,11 +186,11 @@ export function queuePostToPlanItem(p: AutopostLite, projectId: string): Content
 
 function mergePlanWithQueue(planRows: ContentPlanItem[], queue: AutopostLite[], projectId: string): ContentPlanItem[] {
   const linked = new Set(planRows.map((r) => r.autopostId).filter((x): x is string => !!x));
-  const measureStart = contentPlanMeasureStartMs();
+  const queueStart = contentPlanQueueStartMs();
   const extras = queue
     .filter((p) => p.id && !linked.has(String(p.id)))
-    // Не тащим в список прошлые публикации из очереди — измерение с завтра.
-    .filter((p) => !isBeforeMeasureStart(p.scheduled_at, measureStart))
+    // Не тащим в список совсем старые слоты очереди.
+    .filter((p) => !isBeforeMeasureStart(p.scheduled_at, queueStart))
     .map((p) => queuePostToPlanItem(p, projectId));
   return [...extras, ...planRows];
 }
@@ -364,29 +364,8 @@ export function useContentPlan() {
 
       let planDbRows = ((planRes.data ?? []) as unknown as DbRow[]) ?? [];
 
-      // Жёстко убрать публикации до завтра (Алматы) — прошлые тестовые посты не должны
-      // всплывать при «Этот месяц» / «Всё время». SQL-скрипт на прод мог не примениться.
-      if (!missingTable && planDbRows.length > 0) {
-        const measureStart = contentPlanMeasureStartMs();
-        const pastIds = planDbRows
-          .filter((row) => isBeforeMeasureStart(planRowAnchorIso(row), measureStart))
-          .map((row) => row.id);
-        if (pastIds.length > 0) {
-          const chunk = 80;
-          for (let i = 0; i < pastIds.length; i += chunk) {
-            const slice = pastIds.slice(i, i + chunk);
-            const { error: delErr } = await supabase
-              .from("content_plan_items" as never)
-              .delete()
-              .in("id", slice);
-            if (delErr) {
-              console.warn("[content-plan] trim past failed", delErr.message);
-              break;
-            }
-          }
-          planDbRows = planDbRows.filter((row) => !pastIds.includes(row.id));
-        }
-      }
+      // Не удаляем строки при каждой загрузке: уже опубликованные (с ig_media_id)
+      // должны оставаться для статистики. Прошлый one-shot trim — отдельно.
 
       // 1) Привязать существующие строки плана к IG media (автопост / caption).
       if (!planRes.error) {
@@ -509,8 +488,9 @@ export function useContentPlan() {
           }
         }
 
-        // Ручные IG-посты — только с завтрашнего дня (Алматы): измерение воронки со старта «с завтра».
-        const measureYmd = tomorrowAlmatyYmd();
+        // Ручные / native IG-посты после выхода: тянем в план с сегодня (Алматы).
+        // До публикации Meta не отдаёт native-расписание — только MarkVision queue / Page schedule.
+        const measureYmd = todayAlmatyYmd();
         const measureStart = new Date(`${measureYmd}T00:00:00+05:00`).getTime();
         const linked = new Set(
           planDbRows.map((r) => r.ig_media_id).filter((x): x is string => !!x),
@@ -519,8 +499,6 @@ export function useContentPlan() {
           if (!m.timestamp) return false;
           return new Date(m.timestamp).getTime() >= measureStart;
         });
-        // Также не импортируем в план посты из очереди/медиа, которые уже были
-        // удалены как «прошлые» в этой же загрузке — measureStart уже отрезает.
         if (orphans.length > 0) {
           const inserts = orphans.map((m) => {
             const d = draftFromIgMedia(m, codewords);
