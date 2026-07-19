@@ -210,6 +210,7 @@ export interface InstagramCodeword {
   commentReplies: string[];
   dmMessages: string[];
   targetUrls: string[];
+  dmButtonTitle: string | null;
   active: boolean;
 }
 
@@ -253,6 +254,7 @@ export function useInstagramCodewords() {
             commentReplies: normalizeVariantList(r.comment_replies as string[] | null),
             dmMessages: normalizeVariantList(r.dm_messages as string[] | null),
             targetUrls: targetUrls.length > 0 ? targetUrls : legacyTarget ? [legacyTarget] : [],
+            dmButtonTitle: (r.dm_button_title as string | null) ?? null,
             active: !!r.active,
           };
         }),
@@ -277,6 +279,7 @@ export function useInstagramCodewords() {
       comment_replies: normalizeVariantList(input.commentReplies),
       dm_messages: normalizeVariantList(input.dmMessages),
       target_urls: targetUrls,
+      dm_button_title: input.dmButtonTitle?.trim() || null,
       active: input.active,
       short_id: genClientShortId(),
     };
@@ -285,6 +288,11 @@ export function useInstagramCodewords() {
     if (error && /short_id/i.test(error.message) && /column|schema|does not exist/i.test(error.message)) {
       const { short_id: _drop, ...withoutShort } = base;
       const retry = await supabase.from("instagram_codewords").insert(withoutShort as never);
+      error = retry.error;
+    }
+    if (error && /dm_button_title/i.test(error.message) && /column|schema|PGRST204/i.test(error.message)) {
+      const { dm_button_title: _drop, ...withoutBtn } = base;
+      const retry = await supabase.from("instagram_codewords").insert(withoutBtn as never);
       error = retry.error;
     }
     // Legacy DEFAULT may still fire on empty short_id — retry once with another id if unique collision.
@@ -308,6 +316,7 @@ export function useInstagramCodewords() {
     if (patch.publishedAt !== undefined) payload.published_at = patch.publishedAt;
     if (patch.commentReplies !== undefined) payload.comment_replies = normalizeVariantList(patch.commentReplies);
     if (patch.dmMessages !== undefined) payload.dm_messages = normalizeVariantList(patch.dmMessages);
+    if (patch.dmButtonTitle !== undefined) payload.dm_button_title = patch.dmButtonTitle?.trim() || null;
     if (patch.targetUrls !== undefined) {
       const urls = normalizeVariantList(patch.targetUrls);
       payload.target_urls = urls;

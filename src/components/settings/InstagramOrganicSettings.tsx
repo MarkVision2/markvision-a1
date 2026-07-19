@@ -31,6 +31,7 @@ interface CodewordDraft {
   commentReplies: string[];
   dmMessages: string[];
   targetUrls: string[];
+  dmButtonTitle: string;
 }
 
 const EMPTY_DRAFT: CodewordDraft = {
@@ -41,6 +42,7 @@ const EMPTY_DRAFT: CodewordDraft = {
   commentReplies: [""],
   dmMessages: [""],
   targetUrls: [""],
+  dmButtonTitle: "Зарегистрироваться",
 };
 
 function draftFromItem(item: InstagramCodeword): CodewordDraft {
@@ -52,6 +54,7 @@ function draftFromItem(item: InstagramCodeword): CodewordDraft {
     commentReplies: item.commentReplies.length > 0 ? item.commentReplies : [""],
     dmMessages: item.dmMessages.length > 0 ? item.dmMessages : [""],
     targetUrls: item.targetUrls.length > 0 ? item.targetUrls : [""],
+    dmButtonTitle: item.dmButtonTitle?.trim() || "Зарегистрироваться",
   };
 }
 
@@ -67,6 +70,7 @@ function draftToPayload(draft: CodewordDraft) {
     dmMessages: normalizeVariantList(draft.dmMessages),
     targetUrls: normalizeVariantList(draft.targetUrls),
     targetUrl: normalizeVariantList(draft.targetUrls)[0] ?? null,
+    dmButtonTitle: draft.dmButtonTitle.trim() || "Зарегистрироваться",
     active: true,
   };
 }
@@ -242,13 +246,26 @@ export function InstagramOrganicSettings() {
       <div className="rounded-xl border border-border/60 bg-secondary/20 p-4">
         <div className="mb-3 text-sm font-semibold">Сообщение в Direct</div>
         <VariantListInput
-          label="Текст сообщения"
-          hint="До 10 вариантов. Случайный текст приходит в ответе webhook вместе со ссылкой."
-          placeholder="Вот ссылка на бесплатный разбор 👇"
+          label="Текст над кнопкой"
+          hint="До 10 вариантов. В Direct уходит текст + кнопка (без длинной supabase-ссылки)."
+          placeholder="Готово! Жми кнопку ниже и регистрируйся 👇"
           items={value.dmMessages}
           onChange={(dmMessages) => onChange({ dmMessages })}
           multiline
         />
+        <div className="mt-4 space-y-1.5">
+          <Label htmlFor="ig-dm-button">Текст кнопки</Label>
+          <Input
+            id="ig-dm-button"
+            maxLength={20}
+            placeholder="Зарегистрироваться"
+            value={value.dmButtonTitle}
+            onChange={(e) => onChange({ dmButtonTitle: e.target.value.slice(0, 20) })}
+          />
+          <p className="text-[11px] text-muted-foreground">
+            Instagram показывает кнопку (до 20 символов). Ссылка внутри — короткая markvision.kz/r/… с трекингом.
+          </p>
+        </div>
       </div>
 
       <div className="rounded-xl border border-border/60 bg-secondary/20 p-4">
