@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { STATUS_META, TYPE_META, type PostType } from "@/components/autopost/constants";
+import { MediaThumb } from "@/components/autopost/MediaThumb";
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -14,6 +15,7 @@ export interface AutopostEditDialogProps {
   post: {
     id: string;
     media_type: string;
+    media_url?: string | null;
     thumbnail_url: string | null;
     caption: string | null;
     scheduled_at: string;
@@ -49,87 +51,123 @@ export function AutopostEditDialog(props: AutopostEditDialogProps) {
   } = props;
 
   const s = STATUS_META[post.status] ?? STATUS_META.queued;
-  const typeLabel = TYPE_META[post.media_type as PostType]?.label ?? post.media_type;
+  const type = (post.media_type ?? "IMAGE") as PostType;
+  const typeLabel = TYPE_META[type]?.label ?? post.media_type;
+  const isVertical = type === "REELS" || type === "STORIES";
+  const hasMedia = !!(post.thumbnail_url || post.media_url);
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="flex max-h-[92vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-lg">
-        {post.thumbnail_url && (
-          <div className="relative h-44 shrink-0 overflow-hidden bg-zinc-900">
-            <img src={post.thumbnail_url} alt="" className="h-full w-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-background via-background/20 to-transparent" />
-            <div className="absolute bottom-3 left-4 right-4 flex flex-wrap items-end justify-between gap-2">
-              <div>
-                <Badge className={cn("mb-1.5 border-0", s.cls)}>
-                  <s.icon className={cn("mr-1 h-3 w-3", post.status === "processing" && "animate-spin")} />
-                  {s.label}
-                </Badge>
-                <div className="text-sm font-semibold text-foreground">{typeLabel}</div>
-                <div className="text-xs text-muted-foreground">{timeLabel} · {dayLabel}</div>
-              </div>
-            </div>
+      <DialogContent className="flex max-h-[92vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
+        <DialogHeader className="shrink-0 border-b border-border/60 px-5 py-4 text-left">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge className={cn("border-0", s.cls)}>
+              <s.icon className={cn("mr-1 h-3 w-3", post.status === "processing" && "animate-spin")} />
+              {s.label}
+            </Badge>
+            <span className="text-sm font-medium text-foreground">{typeLabel}</span>
+            <span className="text-xs text-muted-foreground">{timeLabel} · {dayLabel}</span>
           </div>
-        )}
-
-        <DialogHeader className={cn("px-6 pt-4 text-left", !post.thumbnail_url && "border-b border-border/60 pb-4")}>
-          {!post.thumbnail_url && (
-            <>
-              <div className="flex items-center gap-2">
-                <Badge className={cn("border-0", s.cls)}>
-                  <s.icon className={cn("mr-1 h-3 w-3", post.status === "processing" && "animate-spin")} />
-                  {s.label}
-                </Badge>
-                <span className="text-sm text-muted-foreground">{typeLabel}</span>
-              </div>
-              <DialogTitle className="mt-2 text-base">Публикация</DialogTitle>
-              <DialogDescription>{timeLabel} · {dayLabel}</DialogDescription>
-            </>
-          )}
-          {post.thumbnail_url && <DialogTitle className="sr-only">Редактирование публикации</DialogTitle>}
+          <DialogTitle className="mt-1 text-base">Публикация</DialogTitle>
+          <DialogDescription className="sr-only">Редактирование запланированной публикации</DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0 max-h-[50vh]">
-          <div className="space-y-4 px-6 py-2 pb-4">
-            {errorText && (
-              <div className="space-y-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-3 text-sm text-destructive">
-                <p>{errorText}</p>
-                {showReconnectLink && (
-                  <Link to="/settings?tab=meta-tokens" className="inline-flex text-xs font-semibold text-primary hover:underline">
-                    Переподключить Instagram →
-                  </Link>
+        <ScrollArea className="min-h-0 flex-1 max-h-[calc(92vh-9rem)]">
+          <div className="grid gap-5 p-5 sm:grid-cols-[minmax(140px,200px)_1fr]">
+            {/* Полный кадр, без широкой «шапки» object-cover */}
+            <div className="mx-auto w-full max-w-[200px]">
+              <div
+                data-testid="edit-preview-frame"
+                data-aspect={isVertical ? "9/16" : "4/5"}
+                className={cn(
+                  "overflow-hidden rounded-2xl border border-border/60 bg-zinc-950 shadow-lg ring-1 ring-white/5",
+                  isVertical ? "aspect-[9/16]" : "aspect-[4/5]",
+                )}
+              >
+                {hasMedia ? (
+                  <MediaThumb
+                    thumbnailUrl={post.thumbnail_url}
+                    mediaUrl={post.media_url}
+                    mediaType={post.media_type}
+                    className="h-full w-full"
+                  />
+                ) : (
+                  <div className="grid h-full place-items-center text-xs text-muted-foreground">Нет превью</div>
                 )}
               </div>
-            )}
+              <p className="mt-2 text-center text-[11px] text-muted-foreground">
+                {isVertical ? "Кадр 9:16 · как в Reels" : "Кадр 4:5 · как в ленте"}
+              </p>
+            </div>
 
-            {editable ? (
-              <>
-                {post.media_type !== "STORIES" && (
-                  <Textarea
-                    value={caption}
-                    onChange={(e) => onCaptionChange(e.target.value.slice(0, 2200))}
-                    className="min-h-[96px] resize-none rounded-xl border-border/60 text-sm"
-                    placeholder="Текст публикации"
-                  />
-                )}
-                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-card/40 p-3">
-                  <input type="date" value={ymd} onChange={(e) => onYmdChange(e.target.value)} className="h-9 rounded-lg border border-border/60 bg-background px-2 text-sm" />
-                  <select value={hour} onChange={(e) => onHourChange(Number(e.target.value))} className="h-9 rounded-lg border border-border/60 bg-background px-2 text-sm tabular-nums">
-                    {Array.from({ length: 24 }, (_, i) => i).map((h) => <option key={h} value={h}>{pad(h)}</option>)}
-                  </select>
-                  <span className="text-muted-foreground">:</span>
-                  <select value={minute} onChange={(e) => onMinuteChange(Number(e.target.value))} className="h-9 rounded-lg border border-border/60 bg-background px-2 text-sm tabular-nums">
-                    {Array.from({ length: 12 }, (_, i) => i * 5).map((m) => <option key={m} value={m}>{pad(m)}</option>)}
-                  </select>
-                  <span className="text-[10px] text-muted-foreground">Алматы</span>
+            <div className="space-y-4">
+              {errorText && (
+                <div className="space-y-2 rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-3 text-sm text-destructive">
+                  <p>{errorText}</p>
+                  {showReconnectLink && (
+                    <Link to="/settings?tab=meta-tokens" className="inline-flex text-xs font-semibold text-primary hover:underline">
+                      Переподключить Instagram →
+                    </Link>
+                  )}
                 </div>
-              </>
-            ) : (
-              post.caption && <p className="whitespace-pre-wrap text-sm leading-relaxed">{post.caption}</p>
-            )}
+              )}
+
+              {editable ? (
+                <>
+                  {post.media_type !== "STORIES" && (
+                    <div>
+                      <div className="mb-1.5 text-xs font-semibold text-foreground">Подпись</div>
+                      <Textarea
+                        value={caption}
+                        onChange={(e) => onCaptionChange(e.target.value.slice(0, 2200))}
+                        className="min-h-[120px] resize-y rounded-xl border-border/60 text-sm"
+                        placeholder="Текст публикации"
+                      />
+                    </div>
+                  )}
+                  <div>
+                    <div className="mb-1.5 text-xs font-semibold text-foreground">Когда</div>
+                    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-card/40 p-3">
+                      <input
+                        type="date"
+                        value={ymd}
+                        onChange={(e) => onYmdChange(e.target.value)}
+                        className="h-9 rounded-lg border border-border/60 bg-background px-2 text-sm"
+                        aria-label="Дата"
+                      />
+                      <select
+                        value={hour}
+                        onChange={(e) => onHourChange(Number(e.target.value))}
+                        className="h-9 rounded-lg border border-border/60 bg-background px-2 text-sm tabular-nums"
+                        aria-label="Час"
+                      >
+                        {Array.from({ length: 24 }, (_, i) => i).map((h) => (
+                          <option key={h} value={h}>{pad(h)}</option>
+                        ))}
+                      </select>
+                      <span className="text-muted-foreground">:</span>
+                      <select
+                        value={minute}
+                        onChange={(e) => onMinuteChange(Number(e.target.value))}
+                        className="h-9 rounded-lg border border-border/60 bg-background px-2 text-sm tabular-nums"
+                        aria-label="Минуты"
+                      >
+                        {Array.from({ length: 12 }, (_, i) => i * 5).map((m) => (
+                          <option key={m} value={m}>{pad(m)}</option>
+                        ))}
+                      </select>
+                      <span className="text-[10px] text-muted-foreground">Алматы</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                post.caption && <p className="whitespace-pre-wrap text-sm leading-relaxed">{post.caption}</p>
+              )}
+            </div>
           </div>
         </ScrollArea>
 
-        <DialogFooter className="shrink-0 gap-2 border-t border-border/60 bg-muted/20 px-6 py-4 sm:justify-between">
+        <DialogFooter className="shrink-0 gap-2 border-t border-border/60 bg-muted/20 px-5 py-4 sm:justify-between">
           <div className="flex gap-2">
             {post.status !== "published" && (
               <Button variant="ghost" size="sm" className="rounded-lg text-destructive hover:bg-destructive/10" onClick={onDelete} disabled={busy}>
