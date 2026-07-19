@@ -149,6 +149,7 @@ async function processJob(job) {
       id: `Reels-${id.slice(0, 8)}`,
       audio: `vo_${id}`,
       music: null,
+      theme: scenes.theme || undefined,
       captionsDefault: true,
       accents: scenes.accents || [],
       fixes: scenes.fixes || {},

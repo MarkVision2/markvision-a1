@@ -143,14 +143,19 @@ word = индекс из indexed. Не дублируй соседние сло�
         if (!indexed) return json({ error: "indexed required" }, 400);
         const result = await chatJson(
           `Ты режиссёр faceless Reels. Верни JSON:
-{"scenes":[{"anchorWord":<i>,"endWord":<i>,"template":"<slug>","data":{...}}],"accents":[<i>],"fixes":{}}
+{"theme":"<slug>","scenes":[{"anchorWord":<i>,"endWord":<i>,"template":"<slug>","data":{...}}],"accents":[<i>],"fixes":{}}
+theme — ОБЯЗАТЕЛЬНО один из: midnight-orange, neon-violet, ocean-cyan, ember-red,
+mint-fresh, gold-noir, paper-ink, aurora-green. Выбирай по настроению текста
+(энергия/деньги → gold-noir или ember-red; спокойный эксперт → ocean-cyan или mint-fresh;
+провокация → neon-violet; светлый бренд → paper-ink).
 Сцены непрерывны по словам (без дыр). template — ТОЛЬКО из списка:
 number-counter, vs-compare, checklist-reveal, fake-terminal, fake-dashboard-bars,
 kinetic-type, annotate-arrow-highlight, loading-to-done, stat-grid, timeline-steps,
 quote-card, big-statement, lower-third, pill-row, metric-callout, phone-mockup,
 chat-bubbles, notification-toast, rating-stars, countdown, gauge, arrow-flow, price-tag.
 data — поля шаблона (price/label/value/items/lines/steps/accent="#hex"/cover/caption).
-Чередуй шаблоны и цвета. На ключевых цифрах — accents.`,
+Чередуй шаблоны. Цвета accent в data — РАЗНЫЕ между соседними сценами, но в одной
+гамме с выбранной theme. На ключевых цифрах — accents.`,
           `BRIEF:\n${brief || "(нет)"}\n\nTRANSCRIPT:\n${transcript.slice(0, 8000)}\n\nINDEXED:\n${indexed.slice(0, 35000)}`,
           150_000,
         );

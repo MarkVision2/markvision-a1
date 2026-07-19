@@ -8,6 +8,8 @@ import {
 } from "remotion";
 import { displayFontFamily } from "./fonts";
 import { BRAND } from "./brand";
+import type { ReelsTheme } from "./themes";
+import { resolveTheme } from "./themes";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Code-based motion-graphics b-roll — premium "AI content factory" overlays.
@@ -717,10 +719,17 @@ export const PriceTag: React.FC<MotionBaseProps & { price?: string; old?: string
   );
 };
 
-// ── SceneBackground — opaque premium backdrop, continuously alive ────────────
-// Orbiting accent glows, a travelling diagonal light sweep, slow-drifting rings
-// and a parallax grid — so the frame never reads as static or empty.
-export const SceneBackground: React.FC<{ localFrame?: number; accent?: string }> = ({ localFrame = 0, accent = BRAND.accent }) => {
+// ── SceneBackground — themed opaque backdrop, continuously alive ─────────────
+// Orbiting accent glows, optional light sweep / rings / parallax grid — look
+// varies per ReelsTheme so consecutive videos don't clone each other.
+export const SceneBackground: React.FC<{
+  localFrame?: number;
+  accent?: string;
+  theme?: ReelsTheme | string | null;
+  seed?: string;
+}> = ({ localFrame = 0, accent, theme, seed }) => {
+  const t = typeof theme === "string" || theme == null ? resolveTheme(theme, seed) : theme;
+  const a = accent || t.accent;
   const f = localFrame;
   const gx = (f * 0.35) % 68;
   const gy = (f * 0.55) % 68;
@@ -728,36 +737,33 @@ export const SceneBackground: React.FC<{ localFrame?: number; accent?: string }>
   const orb1y = 12 + Math.sin(f / 48) * 5;
   const orb2x = 74 + Math.sin(f / 62) * 7;
   const orb2y = 74 + Math.cos(f / 58) * 6;
-  const sweep = ((f * 6) % 1600) - 400; // diagonal light bar travelling across
-  const ring = { borderRadius: "50%", border: `1px solid ${accent}22`, position: "absolute" as const };
+  const sweep = ((f * 6) % 1600) - 400;
+  const ring = { borderRadius: "50%", border: `1px solid ${a}22`, position: "absolute" as const };
   return (
-    <AbsoluteFill
-      style={{
-        background:
-          "radial-gradient(120% 85% at 22% 14%, #142544 0%, #0A0C14 55%)," +
-          "radial-gradient(100% 70% at 82% 92%, #10182B 0%, rgba(10,12,20,0) 60%)",
-      }}
-    >
-      {/* parallax grid — slowly scrolls */}
+    <AbsoluteFill style={{ background: t.bgLayers.join(",") }}>
       <AbsoluteFill
         style={{
           backgroundImage:
-            "linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px)," +
-            "linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px)",
+            `linear-gradient(${t.grid} 1px, transparent 1px),` +
+            `linear-gradient(90deg, ${t.grid} 1px, transparent 1px)`,
           backgroundSize: "68px 68px",
           backgroundPosition: `${gx}px ${gy}px`,
           maskImage: "radial-gradient(85% 70% at 50% 44%, black, transparent)",
           WebkitMaskImage: "radial-gradient(85% 70% at 50% 44%, black, transparent)",
+          opacity: t.id === "paper-ink" ? 0.7 : 1,
         }}
       />
-      {/* drifting concentric rings for depth */}
-      <div style={{ ...ring, top: "8%", left: "50%", width: 1200, height: 1200, transform: `translate(-50%,0) rotate(${f * 0.15}deg)` }} />
-      <div style={{ ...ring, top: "20%", left: "50%", width: 820, height: 820, transform: `translate(-50%,0) rotate(${-f * 0.22}deg)`, borderStyle: "dashed" }} />
-      {/* orbiting accent glows */}
-      <div style={{ position: "absolute", top: `${orb1y}%`, left: `${orb1x}%`, width: 620, height: 620, borderRadius: "50%", background: `radial-gradient(circle, ${accent}33, transparent 70%)`, filter: "blur(26px)" }} />
-      <div style={{ position: "absolute", top: `${orb2y}%`, left: `${orb2x}%`, width: 520, height: 520, borderRadius: "50%", background: "radial-gradient(circle, #1E3A6640, transparent 70%)", filter: "blur(26px)" }} />
-      {/* travelling diagonal light sweep */}
-      <div style={{ position: "absolute", top: -200, left: sweep, width: 260, height: 2400, transform: "rotate(18deg)", background: `linear-gradient(90deg, transparent, ${accent}12, transparent)`, filter: "blur(8px)" }} />
+      {t.rings ? (
+        <>
+          <div style={{ ...ring, top: "8%", left: "50%", width: 1200, height: 1200, transform: `translate(-50%,0) rotate(${f * 0.15}deg)` }} />
+          <div style={{ ...ring, top: "20%", left: "50%", width: 820, height: 820, transform: `translate(-50%,0) rotate(${-f * 0.22}deg)`, borderStyle: "dashed" }} />
+        </>
+      ) : null}
+      <div style={{ position: "absolute", top: `${orb1y}%`, left: `${orb1x}%`, width: 620, height: 620, borderRadius: "50%", background: `radial-gradient(circle, ${a}33, transparent 70%)`, filter: "blur(26px)" }} />
+      <div style={{ position: "absolute", top: `${orb2y}%`, left: `${orb2x}%`, width: 520, height: 520, borderRadius: "50%", background: `radial-gradient(circle, ${a}18, transparent 70%)`, filter: "blur(26px)" }} />
+      {t.sweep ? (
+        <div style={{ position: "absolute", top: -200, left: sweep, width: 260, height: 2400, transform: "rotate(18deg)", background: `linear-gradient(90deg, transparent, ${a}14, transparent)`, filter: "blur(8px)" }} />
+      ) : null}
     </AbsoluteFill>
   );
 };

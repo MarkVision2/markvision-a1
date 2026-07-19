@@ -9,6 +9,7 @@ reels.json:
   "id": "Reels-<id>",
   "audio": "vo_<id>",               // базовое имя mp3 в public/reels
   "music": "beat_<id>.wav" | null,  // подложка (в public), тихо
+  "theme": "neon-violet",           // опционально — иначе выбирается по id
   "accents": [8, 11],               // акцентные слова в титрах
   "fixes": {"8": "50 000"},         // правки текста титра ("" — убрать слово)
   "captionsDefault": true,          // показывать караоке-строку (по сцене можно data.caption=false)
@@ -27,6 +28,25 @@ from pathlib import Path
 
 FPS = 30
 
+# Должны совпадать с remotion/src/themes.ts — REELS_THEME_IDS.
+THEMES = [
+    "midnight-orange",
+    "neon-violet",
+    "ocean-cyan",
+    "ember-red",
+    "mint-fresh",
+    "gold-noir",
+    "paper-ink",
+    "aurora-green",
+]
+
+
+def pick_theme(seed: str) -> str:
+    h = 0
+    for ch in seed:
+        h = (h * 31 + ord(ch)) & 0xFFFFFFFF
+    return THEMES[h % len(THEMES)]
+
 
 def build(work: Path, props_dir: Path, audio_dur: float):
     words = json.loads((work / "words.json").read_text(encoding="utf-8"))
@@ -37,8 +57,8 @@ def build(work: Path, props_dir: Path, audio_dur: float):
     cap_default = cfg.get("captionsDefault", True)
     wbi = {w["i"]: w for w in words}
     total = round(audio_dur * FPS)
+    theme = cfg.get("theme") or pick_theme(str(cfg.get("id") or work.name))
 
-    # karaoke words (в кадрах, только в пределах аудио)
     kw = []
     for w in words:
         if w["start"] > audio_dur:
@@ -53,7 +73,6 @@ def build(work: Path, props_dir: Path, audio_dur: float):
             "accent": w["i"] in accents,
         })
 
-    # сцены (стык в стык)
     scenes = []
     for s in cfg.get("scenes", []):
         w0, w1 = wbi.get(s["anchorWord"]), wbi.get(s["endWord"])
@@ -69,7 +88,6 @@ def build(work: Path, props_dir: Path, audio_dur: float):
             "data": data,
         })
     scenes.sort(key=lambda e: e["from"])
-    # стыкуем встык: конец сцены = начало следующей; последняя тянется до конца аудио
     for i in range(len(scenes)):
         scenes[i]["to"] = scenes[i + 1]["from"] if i + 1 < len(scenes) else total
     if scenes:
@@ -84,12 +102,19 @@ def build(work: Path, props_dir: Path, audio_dur: float):
         "music": f"reels/{cfg['music']}" if cfg.get("music") else None,
         "musicVolume": cfg.get("musicVolume", 0.1),
         "captions": True,
+        "theme": theme,
+        "themeSeed": str(cfg.get("id") or work.name),
     }
     out = props_dir / f"{cfg['id']}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(props, ensure_ascii=False, indent=1), encoding="utf-8")
+    if not cfg.get("theme"):
+        cfg["theme"] = theme
+        (work / "reels.json").write_text(
+            json.dumps(cfg, ensure_ascii=False, indent=1), encoding="utf-8",
+        )
     print(f"OK {cfg['id']}: {total}f ({total/FPS:.1f}s) words={len(kw)} scenes={len(scenes)} "
-          f"music={'yes' if cfg.get('music') else 'no'}")
+          f"theme={theme} music={'yes' if cfg.get('music') else 'no'}")
 
 
 if __name__ == "__main__":
