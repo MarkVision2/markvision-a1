@@ -1,7 +1,7 @@
 {
-  "git_sha": "3cfd77e",
-  "git_sha_full": "3cfd77ec1cc4f8bc9046262c13ea0731e9056227",
-  "updated_at": "2026-07-18T22:28:28+05:00",
-  "label": "fix(montage): clamp shorts spans to real media duration",
+  "git_sha": "f980dc6",
+  "git_sha_full": "f980dc60ebf5982cddc77175d438e65bf38b7f6b",
+  "updated_at": "2026-07-19T11:45:11+05:00",
+  "label": "feat(reels): per-video visual themes so the feed isn't one clone",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
