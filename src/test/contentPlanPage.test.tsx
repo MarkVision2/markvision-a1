@@ -82,8 +82,8 @@ describe("ContentPlan uses AutopostAddDialog", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("button", { name: /Этот месяц/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /За год/i })).toBeTruthy();
     expect(screen.getByRole("heading", { name: /Сводка за период/i })).toBeTruthy();
-    expect(screen.getByText(/Считаем публикации/i)).toBeTruthy();
+    expect(screen.getByText(/Считаем публикации за выбранный отрезок/i)).toBeTruthy();
   });
 });

@@ -71,9 +71,10 @@ export function ContentPlanKpis({
             <span className="tabular-nums">{periodLabel}</span>
           </p>
         </div>
-        <p className="max-w-md text-[11px] leading-relaxed text-muted-foreground">
-          Считаем публикации, у которых дата выхода, плана или создания попадает в выбранный
-          отрезок.
+        <p className="max-w-lg text-[11px] leading-relaxed text-muted-foreground">
+          Считаем публикации за выбранный отрезок. Статистика — с Instagram (не важно, пост
+          вышел вручную или через автопост): охват из media, воронка по событиям на этот
+          media_id.
         </p>
       </div>
 

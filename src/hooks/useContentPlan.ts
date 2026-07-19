@@ -3,7 +3,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import {
-  emptyFunnel,
   type ContentPlanCategory,
   type ContentPlanFunnel,
   type ContentPlanItem,
@@ -11,6 +10,14 @@ import {
   type ContentPlanType,
   summarizeContentPlan,
 } from "@/lib/contentPlan";
+import {
+  buildContentPlanFunnel,
+  draftFromIgMedia,
+  mediaNotLinkedToPlan,
+  resolveIgMediaIdForPlan,
+  type ContentPlanIgMedia,
+  type ContentPlanOrganicEvent,
+} from "@/lib/contentPlanIgLink";
 
 type DbRow = {
   id: string;
@@ -60,24 +67,7 @@ type CodewordStatRow = {
   revenue: number;
 };
 
-type IgMediaRow = {
-  media_id: string;
-  caption: string | null;
-  media_type: string | null;
-  media_product_type: string | null;
-  permalink: string | null;
-  thumbnail_url: string | null;
-  media_url: string | null;
-  timestamp: string | null;
-  like_count: number | null;
-  comments_count: number | null;
-  shares_count: number | null;
-  saved_count: number | null;
-  reach: number | null;
-  impressions: number | null;
-  video_views: number | null;
-  plays: number | null;
-};
+type IgMediaRow = ContentPlanIgMedia;
 
 type LeadLite = {
   id: string;
@@ -89,6 +79,10 @@ type LeadLite = {
   utm: { content?: string | null; campaign?: string | null } | null;
   source: string | null;
 };
+
+type CodewordRow = { id: string; codeword: string; reel_id: string | null };
+
+type AutopostLite = { id: string; published_ig_media_id: string | null };
 
 function asStringArray(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
@@ -162,6 +156,7 @@ export function useContentPlan() {
   useRealtimeTable("content_plan_items", () => setTick((t) => t + 1), !!projectId, 800);
   useRealtimeTable("instagram_organic_events", () => setTick((t) => t + 1), !!projectId, 1500);
   useRealtimeTable("instagram_codewords", () => setTick((t) => t + 1), !!projectId, 1200);
+  useRealtimeTable("instagram_media", () => setTick((t) => t + 1), !!projectId, 2000);
 
   const refetch = useCallback(async () => {
     if (!projectId) {
@@ -172,43 +167,57 @@ export function useContentPlan() {
     setLoading(true);
     setError(null);
     try {
-      const [planRes, statsRes, mediaRes, leadsRes, stagesRes, eventsRes] = await Promise.all([
-        supabase
-          .from("content_plan_items" as never)
-          .select("*")
-          .eq("project_id", projectId)
-          .order("scheduled_at", { ascending: false, nullsFirst: false })
-          .order("created_at", { ascending: false }),
-        supabase
-          .from("instagram_codeword_stats")
-          .select(
-            "codeword_id, codeword, short_id, reel_url, thumbnail_url, active, codeword_dms, codeword_comments, unique_users, link_clicks, leads, sales, revenue",
-          )
-          .eq("project_id", projectId),
-        supabase
-          .from("instagram_media")
-          .select(
-            "media_id, caption, media_type, media_product_type, permalink, thumbnail_url, media_url, timestamp, like_count, comments_count, shares_count, saved_count, reach, impressions, video_views, plays",
-          )
-          .eq("project_id", projectId)
-          .order("timestamp", { ascending: false })
-          .limit(200),
-        supabase
-          .from("leads")
-          .select("id, paid, amount, deposit_amount, utm, source, stage_id, webinar_status")
-          .eq("project_id", projectId)
-          .eq("is_personal", false)
-          .limit(5000),
-        supabase.from("pipeline_stages").select("id, key, stage_role"),
-        supabase
-          .from("instagram_organic_events")
-          .select("id, codeword_id, codeword, event_type, lead_id, reel_id")
-          .eq("project_id", projectId)
-          .limit(5000),
-      ]);
+      const [planRes, statsRes, mediaRes, leadsRes, stagesRes, eventsRes, codewordsRes, autopostRes] =
+        await Promise.all([
+          supabase
+            .from("content_plan_items" as never)
+            .select("*")
+            .eq("project_id", projectId)
+            .order("scheduled_at", { ascending: false, nullsFirst: false })
+            .order("created_at", { ascending: false }),
+          supabase
+            .from("instagram_codeword_stats")
+            .select(
+              "codeword_id, codeword, short_id, reel_url, thumbnail_url, active, codeword_dms, codeword_comments, unique_users, link_clicks, leads, sales, revenue",
+            )
+            .eq("project_id", projectId),
+          supabase
+            .from("instagram_media")
+            .select(
+              "media_id, caption, media_type, media_product_type, permalink, thumbnail_url, media_url, timestamp, like_count, comments_count, shares_count, saved_count, reach, impressions, video_views, plays",
+            )
+            .eq("project_id", projectId)
+            .order("timestamp", { ascending: false })
+            .limit(200),
+          supabase
+            .from("leads")
+            .select("id, paid, amount, deposit_amount, utm, source, stage_id, webinar_status")
+            .eq("project_id", projectId)
+            .eq("is_personal", false)
+            .limit(5000),
+          supabase.from("pipeline_stages").select("id, key, stage_role"),
+          supabase
+            .from("instagram_organic_events")
+            .select("id, codeword_id, codeword, event_type, lead_id, reel_id, payload")
+            .eq("project_id", projectId)
+            .limit(8000),
+          supabase
+            .from("instagram_codewords")
+            .select("id, codeword, reel_id")
+            .eq("project_id", projectId)
+            .eq("active", true),
+          supabase
+            .from("cf_scheduled_posts")
+            .select("id, published_ig_media_id")
+            .eq("project_id", projectId)
+            .not("published_ig_media_id", "is", null)
+            .limit(500),
+        ]);
 
+      let missingTable = false;
       if (planRes.error) {
         if (/relation .*content_plan_items.* does not exist|Could not find the table/i.test(planRes.error.message)) {
+          missingTable = true;
           setTableMissing(true);
         } else {
           setError(planRes.error.message);
@@ -219,14 +228,9 @@ export function useContentPlan() {
 
       const stats = (statsRes.data ?? []) as unknown as CodewordStatRow[];
       const media = (mediaRes.data ?? []) as unknown as IgMediaRow[];
-      const events = (eventsRes.data ?? []) as Array<{
-        id: string;
-        codeword_id: string | null;
-        codeword: string | null;
-        event_type: string;
-        lead_id: string | null;
-        reel_id: string | null;
-      }>;
+      const codewords = (!codewordsRes.error ? codewordsRes.data ?? [] : []) as unknown as CodewordRow[];
+      const autoposts = (!autopostRes.error ? autopostRes.data ?? [] : []) as unknown as AutopostLite[];
+      const events = (eventsRes.data ?? []) as unknown as ContentPlanOrganicEvent[];
 
       const stageRoleById = new Map<string, string>();
       for (const s of stagesRes.data ?? []) {
@@ -247,96 +251,152 @@ export function useContentPlan() {
 
       const statsByCodewordId = new Map(stats.map((s) => [s.codeword_id, s]));
       const mediaById = new Map(media.map((m) => [m.media_id, m]));
+      const publishedByAutopost = new Map(
+        autoposts
+          .filter((p) => p.published_ig_media_id)
+          .map((p) => [String(p.id), String(p.published_ig_media_id)]),
+      );
 
-      const leadIdsByCodeword = new Map<string, Set<string>>();
-      for (const e of events) {
-        if (!e.codeword_id || !e.lead_id) continue;
-        if (e.event_type !== "lead") continue;
-        const set = leadIdsByCodeword.get(e.codeword_id) ?? new Set();
-        set.add(e.lead_id);
-        leadIdsByCodeword.set(e.codeword_id, set);
-      }
+      let planDbRows = ((planRes.data ?? []) as unknown as DbRow[]) ?? [];
 
-      const buildFunnelForCodeword = (
-        codewordId: string | null,
-        igMediaId: string | null,
-        adSpend: number,
-      ): ContentPlanFunnel => {
-        const f = emptyFunnel(adSpend);
-        const st = codewordId ? statsByCodewordId.get(codewordId) : undefined;
-        const m = igMediaId ? mediaById.get(igMediaId) : undefined;
-        if (m) {
-          f.reach = Number(m.reach ?? 0);
-          f.views = Number(m.plays ?? m.video_views ?? m.impressions ?? 0);
-          f.likes = Number(m.like_count ?? 0);
-          f.saves = Number(m.saved_count ?? 0);
-          f.shares = Number(m.shares_count ?? 0);
-          f.comments = Number(m.comments_count ?? 0);
+      // 1) Привязать существующие строки плана к IG media (автопост / caption).
+      if (!planRes.error) {
+        const claimed = new Set(
+          planDbRows.map((r) => r.ig_media_id).filter((x): x is string => !!x),
+        );
+        const linkPatches: Array<{ id: string; ig_media_id: string; published_at: string | null }> = [];
+        for (const row of planDbRows) {
+          if (row.ig_media_id) continue;
+          const itemLite = {
+            igMediaId: row.ig_media_id,
+            autopostId: row.autopost_id,
+            description: row.description,
+            title: row.title,
+            publishedAt: row.published_at,
+            scheduledAt: row.scheduled_at,
+            createdAt: row.created_at,
+          };
+          const resolved = resolveIgMediaIdForPlan({
+            plan: itemLite,
+            media,
+            publishedByAutopost,
+            claimedMediaIds: claimed,
+          });
+          if (!resolved) continue;
+          claimed.add(resolved);
+          const m = mediaById.get(resolved);
+          linkPatches.push({
+            id: row.id,
+            ig_media_id: resolved,
+            published_at: row.published_at ?? m?.timestamp ?? new Date().toISOString(),
+          });
         }
-        if (st) {
-          // Код-слова = люди, написавшие слово (DM + comment events in stats).
-          f.codewordHits = Number(st.codeword_dms ?? 0) + Number(st.codeword_comments ?? 0);
-          f.messagesSent = Number(st.codeword_dms ?? 0) || f.codewordHits;
-          f.messagesOpened = f.messagesSent; // нет отдельного open-трекинга — берём sent как proxy V1
-          f.linkClicks = Number(st.link_clicks ?? 0);
-          f.registrations = Number(st.leads ?? 0);
-          f.paid = Number(st.sales ?? 0);
-          f.revenue = Number(st.revenue ?? 0);
-        }
-        if (codewordId) {
-          const ids = leadIdsByCodeword.get(codewordId);
-          if (ids && ids.size > 0) {
-            let whatsapp = 0;
-            let webinar = 0;
-            let deposits = 0;
-            let paidN = 0;
-            let revenue = 0;
-            for (const id of ids) {
-              const lead = leads.find((l) => l.id === id);
-              if (!lead) continue;
-              const role = lead.stage_role ?? "";
-              if (
-                ["whatsapp", "warming", "confirmed", "attended", "interest", "call_scheduled", "call_done", "offer", "deposit", "paid", "student"].includes(
-                  role,
-                )
-              ) {
-                whatsapp += 1;
-              }
-              if (
-                lead.webinar_status === "attended" ||
-                lead.webinar_status === "late" ||
-                ["attended", "interest", "call_scheduled", "call_done", "offer", "deposit", "paid", "student"].includes(role)
-              ) {
-                webinar += 1;
-              }
-              if (["deposit", "paid", "student"].includes(role) || (lead.deposit_amount ?? 0) > 0) {
-                deposits += 1;
-              }
-              if (lead.paid || role === "paid" || role === "student") {
-                paidN += 1;
-                revenue += Number(lead.amount ?? 0);
-              }
+
+        if (linkPatches.length > 0) {
+          await Promise.all(
+            linkPatches.map((p) =>
+              supabase
+                .from("content_plan_items" as never)
+                .update({
+                  ig_media_id: p.ig_media_id,
+                  status: "published",
+                  published_at: p.published_at,
+                } as never)
+                .eq("id", p.id),
+            ),
+          );
+          const refreshed = await supabase
+            .from("content_plan_items" as never)
+            .select("*")
+            .eq("project_id", projectId)
+            .order("scheduled_at", { ascending: false, nullsFirst: false })
+            .order("created_at", { ascending: false });
+          if (!refreshed.error) {
+            planDbRows = (refreshed.data ?? []) as unknown as DbRow[];
+          } else {
+            for (const p of linkPatches) {
+              const row = planDbRows.find((r) => r.id === p.id);
+              if (!row) continue;
+              row.ig_media_id = p.ig_media_id;
+              row.published_at = p.published_at;
+              row.status = "published";
             }
-            f.whatsappJoined = whatsapp;
-            f.webinarAttended = webinar;
-            f.deposits = deposits;
-            if (paidN > 0) {
-              f.paid = paidN;
-              f.revenue = revenue || f.revenue;
-            }
-            if (f.registrations < ids.size) f.registrations = ids.size;
           }
         }
-        return f;
-      };
+      }
 
-      const planRows = ((planRes.data ?? []) as unknown as DbRow[]).map((row) => {
-        const funnel = buildFunnelForCodeword(row.codeword_id, row.ig_media_id, Number(row.ad_spend ?? 0));
-        return fromDb(row, funnel);
+      // 2) Импорт ручных (и любых) IG-постов, которых ещё нет в плане.
+      if (!planRes.error && !missingTable) {
+        const linked = new Set(
+          planDbRows.map((r) => r.ig_media_id).filter((x): x is string => !!x),
+        );
+        const orphans = mediaNotLinkedToPlan(media, linked);
+        if (orphans.length > 0) {
+          const inserts = orphans.map((m) => {
+            const d = draftFromIgMedia(m, codewords);
+            return {
+              project_id: projectId,
+              title: d.title,
+              category: "content",
+              content_type: d.contentType,
+              status: d.status,
+              description: d.description,
+              media_url: d.mediaUrl,
+              thumbnail_url: d.thumbnailUrl,
+              scheduled_at: d.scheduledAt,
+              published_at: d.publishedAt,
+              ig_media_id: d.igMediaId,
+              codeword_id: d.codewordId,
+              codeword: d.codeword,
+              post_instagram: true,
+              post_facebook: false,
+              post_threads: false,
+              post_telegram: false,
+              post_linkedin: false,
+            };
+          });
+          const { error: importErr } = await supabase
+            .from("content_plan_items" as never)
+            .insert(inserts as never);
+          if (!importErr || /duplicate|unique/i.test(importErr.message)) {
+            const refreshed = await supabase
+              .from("content_plan_items" as never)
+              .select("*")
+              .eq("project_id", projectId)
+              .order("scheduled_at", { ascending: false, nullsFirst: false })
+              .order("created_at", { ascending: false });
+            if (!refreshed.error) {
+              planDbRows = (refreshed.data ?? []) as unknown as DbRow[];
+            }
+          }
+        }
+      }
+
+      const leadLite = leads.map((l) => ({
+        id: l.id,
+        stage_role: l.stage_role,
+        paid: l.paid,
+        amount: l.amount,
+        deposit_amount: l.deposit_amount,
+        webinar_status: l.webinar_status,
+      }));
+
+      const planRows = planDbRows.map((row) => {
+        const funnel = buildContentPlanFunnel({
+          adSpend: Number(row.ad_spend ?? 0),
+          media: row.ig_media_id ? mediaById.get(row.ig_media_id) ?? null : null,
+          igMediaId: row.ig_media_id,
+          codewordId: row.codeword_id,
+          events,
+          leads: leadLite,
+          codewordStats: row.codeword_id ? statsByCodewordId.get(row.codeword_id) ?? null : null,
+        });
+        const item = fromDb(row, funnel);
+        if (row.ig_media_id && !row.autopost_id) item.source = "ig_media";
+        else if (row.autopost_id) item.source = "autopost";
+        return item;
       });
 
-      // Только реальные строки плана. Синтетику «из Instagram / код-слово» больше
-      // не подмешиваем — она засоряла таблицу нулевой статистикой и чужими Reels.
       setItems(planRows);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка загрузки контент-плана");

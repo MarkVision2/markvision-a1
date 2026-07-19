@@ -473,3 +473,10 @@ ALTER TABLE public.cf_scheduled_posts
     'STORIES'::text,
     'CAROUSEL'::text
   ]));
+
+-- ---------------------------------------------------------------------------
+-- F) content_plan_items: один IG media_id = одна строка (ручной + автопост)
+-- ---------------------------------------------------------------------------
+CREATE UNIQUE INDEX IF NOT EXISTS content_plan_items_project_ig_media_uidx
+  ON public.content_plan_items (project_id, ig_media_id)
+  WHERE ig_media_id IS NOT NULL AND length(btrim(ig_media_id)) > 0;

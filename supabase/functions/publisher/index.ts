@@ -29,6 +29,18 @@ async function tg(text: string) {
 async function patch(id: string, data: Record<string, unknown>) {
   await db(`cf_scheduled_posts?id=eq.${id}`, { method: "PATCH", body: JSON.stringify({ ...data, updated_at: new Date().toISOString() }) });
 }
+
+/** После публикации в IG — закрываем петлю с контент-планом (ручной импорт потом тоже идёт по ig_media_id). */
+async function linkContentPlan(autopostId: string, igMediaId: string) {
+  await db(`content_plan_items?autopost_id=eq.${encodeURIComponent(autopostId)}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      ig_media_id: igMediaId,
+      status: "published",
+      published_at: new Date().toISOString(),
+    }),
+  });
+}
 function isVideo(url: string) {
   const u = (url || "").toLowerCase().split("?")[0];
   return u.endsWith(".mp4") || u.endsWith(".mov") || u.endsWith(".m4v");
@@ -170,7 +182,7 @@ Deno.serve(async (req) => {
         }
         if (st.code === "FINISHED" || st.code === "") {
           const pub = await publish(graph, igUserId, token, containerId!);
-          if (pub.id) { await patch(p.id, { status: "published", container_id: containerId, published_ig_media_id: pub.id, error: null }); out.published++; await tg(`✅ Опубликован: «${caption.slice(0, 60)}…»`); done = true; break; }
+          if (pub.id) { await patch(p.id, { status: "published", container_id: containerId, published_ig_media_id: pub.id, error: null }); await linkContentPlan(p.id, pub.id); out.published++; await tg(`✅ Опубликован: «${caption.slice(0, 60)}…»`); done = true; break; }
         }
         await sleep(1500);
       }
@@ -201,6 +213,7 @@ Deno.serve(async (req) => {
     const pub = await publish(graph, igUserId, token, p.container_id);
     if (pub.id) {
       await patch(p.id, { status: "published", published_ig_media_id: pub.id, error: null });
+      await linkContentPlan(p.id, pub.id);
       out.published++;
       await tg(`✅ Опубликован отложенный пост: «${(p.caption ?? "").slice(0, 60)}…»`);
     } else {
