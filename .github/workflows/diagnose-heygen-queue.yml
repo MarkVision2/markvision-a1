@@ -4,6 +4,11 @@ name: Diagnose HeyGen queue
 
 on:
   workflow_dispatch: {}
+  push:
+    branches:
+      - cursor/diagnose-heygen-queue-84cc
+    paths:
+      - ".github/workflows/diagnose-heygen-queue.yml"
 
 concurrency:
   group: diagnose-heygen-queue
@@ -17,6 +22,9 @@ env:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
     steps:
       - name: Verify access token
         run: test -n "$SUPABASE_ACCESS_TOKEN" || (echo "::error::SUPABASE_ACCESS_TOKEN missing"; exit 1)
