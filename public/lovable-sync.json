@@ -1,7 +1,7 @@
 {
-  "git_sha": "0e2b9eb",
-  "git_sha_full": "0e2b9ebc4b66e90732826d826d43ee8fb5540da9",
-  "updated_at": "2026-07-19T11:30:56Z",
-  "label": "Merge drop category from content-plan composer",
+  "git_sha": "ab10f5c",
+  "git_sha_full": "ab10f5c583761010a06292ad7cdeab93ec3a5475",
+  "updated_at": "2026-07-19T11:35:45Z",
+  "label": "Merge content-plan calendar date picker",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
