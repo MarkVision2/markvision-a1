@@ -19,6 +19,9 @@ export async function upsertContentPlanFromAutopost(input: {
   hashtags?: string | null;
   description?: string | null;
   prompts?: string | null;
+  /** If already published to IG — bind stats immediately. */
+  igMediaId?: string | null;
+  publishedAt?: string | null;
 }): Promise<void> {
   const contentType = (["REELS", "CAROUSEL", "IMAGE", "STORIES"].includes(input.mediaType)
     ? input.mediaType
@@ -34,12 +37,26 @@ export async function upsertContentPlanFromAutopost(input: {
   const codeword = (input.codeword ?? "").trim().toLowerCase() || null;
   const hashtags = (input.hashtags ?? "").trim() || null;
   const prompts = (input.prompts ?? "").trim() || null;
+  const igMediaId = (input.igMediaId ?? "").trim() || null;
 
-  const row = {
+  let codewordId: string | null = null;
+  if (codeword) {
+    const { data } = await supabase
+      .from("instagram_codewords")
+      .select("id")
+      .eq("project_id", input.projectId)
+      .ilike("codeword", codeword)
+      .eq("active", true)
+      .limit(1)
+      .maybeSingle();
+    codewordId = (data as { id?: string } | null)?.id ?? null;
+  }
+
+  const row: Record<string, unknown> = {
     title,
     category,
     content_type: contentType,
-    status: input.status ?? "scheduled",
+    status: input.status ?? (igMediaId ? "published" : "scheduled"),
     media_url: input.mediaUrl ?? null,
     thumbnail_url: input.thumbnailUrl ?? null,
     child_urls: input.childUrls ?? [],
@@ -48,8 +65,14 @@ export async function upsertContentPlanFromAutopost(input: {
     hashtags,
     prompts,
     codeword,
+    codeword_id: codewordId,
     post_instagram: true,
   };
+
+  if (igMediaId) {
+    row.ig_media_id = igMediaId;
+    row.published_at = input.publishedAt ?? new Date().toISOString();
+  }
 
   // If already linked — update
   const existing = await supabase
@@ -73,7 +96,7 @@ export async function upsertContentPlanFromAutopost(input: {
     ...row,
   } as never);
 
-  // Table may not exist yet — ignore silently; UI shows synthetic rows anyway.
+  // Table may not exist yet — ignore silently.
   if (error && !/content_plan_items|does not exist|schema cache/i.test(error.message)) {
     console.warn("[content-plan] upsert from autopost:", error.message);
   }

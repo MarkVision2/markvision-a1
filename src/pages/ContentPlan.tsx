@@ -20,7 +20,7 @@ import {
   summarizeContentPlan,
   type ContentPlanItem,
 } from "@/lib/contentPlan";
-import { formatPeriodLabel, thisMonthRange } from "@/lib/metricsPeriod";
+import { formatPeriodLabel, lastYearRange } from "@/lib/metricsPeriod";
 import AutoPost, { AutopostAddDialog } from "@/pages/AutoPost";
 
 const todayAlmatyYmd = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Almaty" });
@@ -40,8 +40,8 @@ export default function ContentPlan() {
   const { activeId: projectId } = useProjectsStore();
   const { account } = useInstagramAccount();
   const [addDay, setAddDay] = useState<string | null>(null);
-  const [preset, setPreset] = useState<ContentPeriodPreset>("this_month");
-  const [range, setRange] = useState<ReportPeriodRange>(() => thisMonthRange());
+  const [preset, setPreset] = useState<ContentPeriodPreset>("last_year");
+  const [range, setRange] = useState<ReportPeriodRange>(() => lastYearRange());
 
   const setShowCalendar = (on: boolean) => {
     const p = new URLSearchParams(params);
@@ -83,7 +83,7 @@ export default function ContentPlan() {
         icon={ClipboardList}
         iconAccent="pink"
         title="Контент-план"
-        description="Новая публикация — то же окно, что в автопостинге: медиа, подпись, время → сразу в план и очередь."
+        description="Новая публикация — через систему или вручную в Instagram: статистика подтягивается с IG по media_id (охват, код-слова, клики, лиды)."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" className="gap-1" onClick={() => void refetch()}>
@@ -163,6 +163,8 @@ export default function ContentPlan() {
                   {periodItems.length} из {items.length}
                 </>
               ) : null}
+              <span className="mx-1 text-border">·</span>
+              Посты из Instagram (вручную и автопост) подтягиваются автоматически
             </span>
             <Link to="/marketing/content-center" className="text-primary hover:underline">
               Контент-центр →
