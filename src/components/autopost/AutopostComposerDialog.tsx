@@ -261,7 +261,7 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
 
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
-      <DialogContent className="flex max-h-[95vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
+      <DialogContent className="flex max-h-[95vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-4xl">
         <DialogHeader className="shrink-0 border-b border-border/60 bg-gradient-to-r from-primary/[0.07] via-background to-pink-500/[0.06] px-6 py-4 text-left">
           <div className="flex items-start justify-between gap-3">
             <div>
@@ -283,7 +283,7 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
         <ScrollArea className="min-h-0 max-h-[calc(95vh-10rem)]">
           <div className="grid gap-6 p-6 lg:grid-cols-[minmax(220px,260px)_1fr]">
             {/* —— Превью —— */}
-            <div className="space-y-3">
+            <div className="space-y-3 lg:sticky lg:top-0 lg:self-start">
               <FieldLabel hint={meta.aspect}>
                 {(type === "IMAGE" || type === "CAROUSEL") ? "Кадр 4:5" : "Предпросмотр"}
               </FieldLabel>
@@ -459,8 +459,8 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
               />
             </div>
 
-            {/* —— Форма —— */}
-            <div className="space-y-5">
+            {/* —— Форма: подпись и дата сверху, медиа ниже —— */}
+            <div className="space-y-4">
               <div>
                 <FieldLabel>Формат</FieldLabel>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -474,7 +474,7 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
                         type="button"
                         onClick={() => onTypeChange(t)}
                         className={cn(
-                          "flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-medium transition",
+                          "flex items-center gap-2 rounded-xl border px-3 py-2 text-left text-sm font-medium transition",
                           active
                             ? "border-primary/50 bg-primary/10 text-primary shadow-sm ring-1 ring-primary/20"
                             : "border-border/60 bg-card/40 hover:border-border hover:bg-secondary/30",
@@ -486,13 +486,59 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
                     );
                   })}
                 </div>
-                <p className="mt-2 text-[11px] text-muted-foreground">{meta.hint}</p>
               </div>
+
+              {type !== "STORIES" && (
+                <div className="rounded-2xl border border-primary/25 bg-primary/[0.04] p-3.5 shadow-sm">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-semibold text-foreground">Подпись к публикации</div>
+                      <p className="text-[11px] text-muted-foreground">
+                        {caption.length} / 2200 · сюда пишете текст или жмите AI
+                      </p>
+                    </div>
+                    {onGenerateCaption && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-9 gap-1.5 rounded-xl"
+                        disabled={captionBusy || busy || files.length === 0}
+                        onClick={onGenerateCaption}
+                      >
+                        {captionBusy ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-3.5 w-3.5" />
+                        )}
+                        Сгенерировать описание
+                      </Button>
+                    )}
+                  </div>
+                  <Textarea
+                    value={caption}
+                    onChange={(e) => onCaptionChange(e.target.value.slice(0, 2200))}
+                    placeholder={
+                      files.length === 0
+                        ? "Сначала загрузите фото слева — потом напишите или сгенерируйте текст"
+                        : isCarousel || isReels
+                          ? "Текст, хэштеги, CTA… или «Сгенерировать» — AI прочитает слайды/кадр"
+                          : "Текст, хэштеги, призыв к действию…"
+                    }
+                    className="min-h-[120px] resize-y rounded-xl border-border/60 bg-background text-sm leading-relaxed"
+                    aria-label="Подпись к публикации"
+                  />
+                  {onGenerateCaption && files.length === 0 && (
+                    <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">
+                      Кнопка AI станет активной после загрузки медиа.
+                    </p>
+                  )}
+                </div>
+              )}
 
               <div>
                 <div className="mb-2 flex items-baseline justify-between gap-2">
-                  <FieldLabel>Когда публиковать</FieldLabel>
-                  <span className="text-[11px] text-muted-foreground">{scheduleLabel}</span>
+                  <span className="text-xs font-semibold text-foreground">Когда публиковать</span>
+                  <span className="text-[11px] tabular-nums text-muted-foreground">{scheduleLabel}</span>
                 </div>
                 <div className="space-y-2 rounded-xl border border-border/60 bg-card/40 p-3">
                   <div className="flex flex-wrap gap-1.5">
@@ -634,25 +680,24 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
 
               {isCarousel && (
                 <div>
-                  <FieldLabel hint={`${files.length} из 10`}>Порядок слайдов</FieldLabel>
+                  <FieldLabel hint={`${files.length} из 10`}>Слайды · порядок</FieldLabel>
                   {files.length === 0 ? (
                     <button
                       type="button"
                       onClick={() => openFilePicker("replace")}
-                      className="flex w-full flex-col items-center justify-center gap-2 rounded-2xl border border-dashed border-border/70 bg-secondary/20 px-4 py-8 text-center transition hover:border-primary/40 hover:bg-primary/5"
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/70 bg-secondary/20 px-4 py-4 text-center transition hover:border-primary/40 hover:bg-primary/5"
                     >
-                      <Upload className="h-5 w-5 text-muted-foreground" />
-                      <span className="text-sm font-medium">Загрузите 2–10 фото или видео</span>
-                      <span className="text-[11px] text-muted-foreground">Можно выбрать несколько файлов сразу</span>
+                      <Upload className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Загрузить 2–10 фото</span>
                     </button>
                   ) : (
                     <div className="space-y-2">
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                      <div className="flex gap-2 overflow-x-auto pb-1">
                         {files.map((f, i) => (
                           <div
                             key={`${f.name}-${i}-${f.size}`}
                             className={cn(
-                              "group relative overflow-hidden rounded-xl border bg-card/60 transition",
+                              "group relative w-16 shrink-0 overflow-hidden rounded-lg border bg-card/60 transition",
                               i === activeCarouselIdx ? "border-primary/60 ring-2 ring-primary/25" : "border-border/60",
                             )}
                           >
@@ -666,40 +711,37 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
                                   <>
                                     <video src={previews[i]} className="h-full w-full object-cover" muted />
                                     <span className="absolute inset-0 grid place-items-center">
-                                      <span className="grid h-8 w-8 place-items-center rounded-full bg-black/55 text-white">
-                                        <Film className="h-3.5 w-3.5" />
+                                      <span className="grid h-6 w-6 place-items-center rounded-full bg-black/55 text-white">
+                                        <Film className="h-3 w-3" />
                                       </span>
                                     </span>
                                   </>
                                 ) : (
                                   <img src={previews[i]} alt="" className="h-full w-full object-cover" />
                                 )}
-                                <span className="absolute left-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-black/70 text-[11px] font-bold text-white">
+                                <span className="absolute left-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-black/70 text-[10px] font-bold text-white">
                                   {i + 1}
                                 </span>
                               </div>
-                              <div className="truncate px-2 py-1.5 text-[10px] text-muted-foreground">
-                                {f.name}
-                              </div>
                             </button>
-                            <div className="absolute right-1.5 top-1.5 flex gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+                            <div className="absolute inset-x-0 bottom-0 flex justify-center gap-0.5 bg-black/55 p-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
                               <button
                                 type="button"
                                 disabled={i === 0}
                                 onClick={() => onMoveFile(i, -1)}
-                                className="grid h-7 w-7 place-items-center rounded-md bg-black/65 text-white disabled:opacity-30"
+                                className="grid h-5 w-5 place-items-center rounded text-white disabled:opacity-30"
                                 aria-label="Сдвинуть влево"
                               >
-                                <ChevronLeft className="h-3.5 w-3.5" />
+                                <ChevronLeft className="h-3 w-3" />
                               </button>
                               <button
                                 type="button"
                                 disabled={i === files.length - 1}
                                 onClick={() => onMoveFile(i, 1)}
-                                className="grid h-7 w-7 place-items-center rounded-md bg-black/65 text-white disabled:opacity-30"
+                                className="grid h-5 w-5 place-items-center rounded text-white disabled:opacity-30"
                                 aria-label="Сдвинуть вправо"
                               >
-                                <ChevronRight className="h-3.5 w-3.5" />
+                                <ChevronRight className="h-3 w-3" />
                               </button>
                               <button
                                 type="button"
@@ -707,10 +749,10 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
                                   onRemoveFile(i);
                                   if (activeCarouselIdx >= i && activeCarouselIdx > 0) setCarouselIndex(activeCarouselIdx - 1);
                                 }}
-                                className="grid h-7 w-7 place-items-center rounded-md bg-black/65 text-white hover:bg-destructive/80"
+                                className="grid h-5 w-5 place-items-center rounded text-white hover:bg-destructive/80"
                                 aria-label="Удалить слайд"
                               >
-                                <Trash2 className="h-3.5 w-3.5" />
+                                <Trash2 className="h-3 w-3" />
                               </button>
                             </div>
                           </div>
@@ -719,15 +761,15 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
                           <button
                             type="button"
                             onClick={() => openFilePicker("append")}
-                            className="flex aspect-[4/5] flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-border/70 bg-secondary/15 text-muted-foreground transition hover:border-primary/40 hover:text-primary"
+                            className="flex aspect-[4/5] w-16 shrink-0 flex-col items-center justify-center gap-1 rounded-lg border border-dashed border-border/70 bg-secondary/15 text-muted-foreground transition hover:border-primary/40 hover:text-primary"
                           >
-                            <Plus className="h-5 w-5" />
-                            <span className="text-[11px] font-medium">Ещё слайд</span>
+                            <Plus className="h-4 w-4" />
+                            <span className="text-[10px] font-medium">Ещё</span>
                           </button>
                         )}
                       </div>
                       <p className="text-[11px] text-muted-foreground">
-                        Клик по слайду — превью. Стрелки меняют порядок, как увидят подписчики.
+                        Полоска слайдов не прячет подпись. Клик — превью слева, стрелки — порядок.
                       </p>
                     </div>
                   )}
@@ -735,23 +777,30 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
               )}
 
               {isReels && videoSrc && (
-                <div className="rounded-2xl border border-border/60 bg-card/50 p-4">
-                  <div className="mb-3 flex items-center justify-between">
+                <div className="rounded-2xl border border-border/60 bg-card/50 p-3">
+                  <div className="mb-2 flex items-center justify-between">
                     <FieldLabel hint="необязательно">Обложка Reels</FieldLabel>
                     <div className="flex rounded-lg border border-border/60 bg-background p-0.5 text-[10px] font-medium">
                       <button type="button" onClick={() => { setPreviewMode("media"); }} className={cn("rounded-md px-2 py-1 transition", previewMode === "media" ? "bg-secondary text-foreground" : "text-muted-foreground")}>Видео</button>
                       <button type="button" onClick={() => { setPlaying(false); setPreviewMode("cover"); }} className={cn("rounded-md px-2 py-1 transition", previewMode === "cover" ? "bg-secondary text-foreground" : "text-muted-foreground")}>Обложка</button>
                     </div>
                   </div>
-                  <div className="mb-3 flex items-center gap-2">
+                  <div className="mb-2 flex flex-wrap gap-2">
                     <Button type="button" size="sm" variant="secondary" className="h-8 gap-1.5 rounded-lg text-xs" onClick={togglePlay}>
                       {playing ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-                      {playing ? "Пауза" : "Смотреть видео"}
+                      {playing ? "Пауза" : "Смотреть"}
                     </Button>
-                    <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5 rounded-lg text-xs" onClick={() => setMuted((m) => !m)}>
-                      {muted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
-                      {muted ? "Без звука" : "Со звуком"}
+                    <Button type="button" size="sm" variant="secondary" className="h-8 gap-1.5 rounded-lg text-xs" onClick={() => { setPlaying(false); onCaptureFrame(); }}>
+                      <Camera className="h-3.5 w-3.5" /> Кадр
                     </Button>
+                    <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5 rounded-lg text-xs" onClick={() => coverInputRef.current?.click()}>
+                      <Upload className="h-3.5 w-3.5" /> Своя
+                    </Button>
+                    {coverPreview && (
+                      <Button type="button" size="sm" variant="ghost" className="h-8 gap-1 text-xs text-muted-foreground" onClick={onClearCover}>
+                        <X className="h-3.5 w-3.5" /> Сбросить
+                      </Button>
+                    )}
                   </div>
                   <input
                     type="range"
@@ -768,64 +817,7 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
                     style={{ background: `linear-gradient(to right, hsl(var(--primary)) ${progressPct}%, hsl(var(--secondary)) ${progressPct}%)` }}
                     className="h-1.5 w-full cursor-pointer appearance-none rounded-full [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-md"
                   />
-                  <div className="mt-1 flex justify-between text-[10px] tabular-nums text-muted-foreground">
-                    <span>{fmtDuration(seek)}</span>
-                    <span>{fmtDuration(duration)}</span>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button type="button" size="sm" variant="secondary" className="h-8 gap-1.5 rounded-lg text-xs" onClick={() => { setPlaying(false); onCaptureFrame(); }}>
-                      <Camera className="h-3.5 w-3.5" /> Кадр с видео
-                    </Button>
-                    <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5 rounded-lg text-xs" onClick={() => coverInputRef.current?.click()}>
-                      <Upload className="h-3.5 w-3.5" /> Своя картинка
-                    </Button>
-                    {coverPreview && (
-                      <Button type="button" size="sm" variant="ghost" className="h-8 gap-1 text-xs text-muted-foreground" onClick={onClearCover}>
-                        <X className="h-3.5 w-3.5" /> Сбросить
-                      </Button>
-                    )}
-                  </div>
                   <input ref={coverInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onPickCover(f); }} />
-                </div>
-              )}
-
-              {type !== "STORIES" && (
-                <div>
-                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                    <FieldLabel hint={`${caption.length} / 2200`}>Подпись</FieldLabel>
-                    {onGenerateCaption && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        className="h-8 gap-1.5"
-                        disabled={captionBusy || busy || files.length === 0}
-                        onClick={onGenerateCaption}
-                      >
-                        {captionBusy ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Sparkles className="h-3.5 w-3.5" />
-                        )}
-                        Сгенерировать описание
-                      </Button>
-                    )}
-                  </div>
-                  <Textarea
-                    value={caption}
-                    onChange={(e) => onCaptionChange(e.target.value.slice(0, 2200))}
-                    placeholder={
-                      isCarousel || isReels
-                        ? "Или нажмите «Сгенерировать» — AI прочитает текст на слайдах/кадре"
-                        : "Текст, хэштеги, призыв к действию…"
-                    }
-                    className="min-h-[100px] resize-none rounded-xl border-border/60 bg-background/80 text-sm leading-relaxed"
-                  />
-                  {onGenerateCaption && (
-                    <p className="mt-1.5 text-[11px] text-muted-foreground">
-                      AI смотрит на загруженные картинки (карусель) или кадр из видео и пишет короткую подпись.
-                    </p>
-                  )}
                 </div>
               )}
             </div>

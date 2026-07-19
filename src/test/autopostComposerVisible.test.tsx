@@ -67,15 +67,20 @@ describe("AutopostComposerDialog schedule + AI caption", () => {
     coverInputRef: createRef<HTMLInputElement>(),
   });
 
-  it("shows schedule presets and calendar trigger above the fold", () => {
+  it("shows caption and AI generate above the fold, before slides", () => {
     render(<AutopostComposerDialog {...baseProps()} />);
 
+    expect(screen.getByLabelText("Подпись к публикации")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Сгенерировать описание/i })).toBeDisabled();
     expect(screen.getByText(/Когда публиковать/i)).toBeTruthy();
     expect(screen.getByRole("button", { name: /Завтра 10:00/i })).toBeTruthy();
     expect(screen.getByLabelText("Дата публикации")).toBeTruthy();
-    expect(screen.getByLabelText("Час")).toBeTruthy();
-    expect(screen.getByLabelText("Минуты")).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Сгенерировать описание/i })).toBeDisabled();
+
+    const caption = screen.getByLabelText("Подпись к публикации");
+    const slides = screen.getByText(/Слайды · порядок/i);
+    expect(
+      caption.compareDocumentPosition(slides) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("applies tomorrow morning preset", () => {
