@@ -1,7 +1,7 @@
 {
-  "git_sha": "8a59ca7",
-  "git_sha_full": "8a59ca7e2d4b7497c17337daa1fd4c46eb2427c2",
-  "updated_at": "2026-07-19T12:11:42Z",
-  "label": "Merge content-plan period UI",
+  "git_sha": "5bd288d",
+  "git_sha_full": "5bd288da4a4e0fc7a2549f19eef19df7b81a810f",
+  "updated_at": "2026-07-19T12:23:20Z",
+  "label": "Merge content-plan IG stats by media_id",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
