@@ -392,11 +392,14 @@ const CreateMontageLab = () => {
     setUploadPct2(0);
   };
 
-  const toggleFormat = (f: MontageFormat) =>
+  const toggleFormat = (f: MontageFormat) => {
+    // 16:9 всегда обязателен — очередь монтирует исходник целиком.
+    if (f === "16:9") return;
     setFormats((prev) => {
       const next = prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f];
-      return next.length ? next : prev;
+      return next.includes("16:9") ? next : ["16:9", ...next];
     });
+  };
 
   const addPreset = (text: string) => {
     setBrief((b) => {
@@ -711,23 +714,20 @@ const CreateMontageLab = () => {
                   aria-pressed={formats.includes("16:9")}
                   className={cn(
                     "group flex items-center gap-3 rounded-xl border-2 p-3 text-left transition",
-                    formats.includes("16:9")
-                      ? "border-primary bg-primary/5"
-                      : "border-border/60 hover:border-primary/40",
+                    "border-primary bg-primary/5",
                   )}
                 >
-                  <div className={cn(
-                    "flex h-10 w-16 shrink-0 items-center justify-center rounded-md border-2 transition",
-                    formats.includes("16:9") ? "border-primary bg-primary/10" : "border-border/60",
-                  )}>
+                  <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded-md border-2 border-primary bg-primary/10 transition">
                     <MonitorPlay className="h-4 w-4 text-primary" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <div className="text-sm font-semibold">Полный ролик 16:9</div>
-                      {formats.includes("16:9") && <CheckCircle2 className="h-3.5 w-3.5 text-primary" />}
+                      <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
                     </div>
-                    <div className="text-xs text-muted-foreground">YouTube · чистовой монтаж всей съёмки</div>
+                    <div className="text-xs text-muted-foreground">
+                      Исходник целиком + монтаж (вставки, акценты). Без нарезки.
+                    </div>
                   </div>
                 </button>
 
@@ -750,10 +750,12 @@ const CreateMontageLab = () => {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <div className="text-sm font-semibold">Шортсы 9:16</div>
+                      <div className="text-sm font-semibold">+ Шортсы 9:16</div>
                       {formats.includes("shorts") && <CheckCircle2 className="h-3.5 w-3.5 text-primary" />}
                     </div>
-                    <div className="text-xs text-muted-foreground">Лучшие моменты + караоке · Reels / Shorts</div>
+                    <div className="text-xs text-muted-foreground">
+                      Опционально: доп. нарезка лучших моментов (основной ролик не режется)
+                    </div>
                   </div>
                 </button>
               </div>

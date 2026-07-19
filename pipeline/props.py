@@ -6,10 +6,8 @@ onto the OUTPUT timeline (after cuts) and generates:
 - the zoom plan (slow push-ins on long segments, punch-ins on accents);
 - the insert plan: each insert (b-roll png/mp4) shown fullscreen while its
   anchor phrase sounds, with the speaker shrunk into a bottom-left PiP card.
-  Accents always win: insert windows are trimmed around accent blocks, so the
-  speaker returns to centre for the accent. mp4 inserts are capped at their own
-  length. Adjacent insert windows are merged into single PiP windows so the
-  speaker card stays up while the fullscreen graphic swaps.
+  Accents and motion inserts coexist (cover motion is never dropped for accents).
+  File inserts are trimmed around accent punch-zooms when possible.
 
 Usage: python props.py <work_dir> <out_props.json>
 """
@@ -198,12 +196,20 @@ def build(work: Path, out_path: Path, media: str = "source"):
             # Code-based motion-graphics (no file) — remotion/src/motion.tsx
             if ins.get("template"):
                 f1 = max(f1, f0 + 30)  # >=1s to animate
-                pieces = [p for p in subtract_blocks((f0, f1), accent_blocks)
-                          if p[1] - p[0] >= MIN_INSERT_F]
-                if not pieces:
-                    print(f"WARN motion {ins['template']}: fully covered by accents, skipped")
-                    continue
-                s0, s1 = max(pieces, key=lambda p: p[1] - p[0])
+                cover = isinstance(ins.get("data"), dict) and bool(ins["data"].get("cover"))
+                # Титры (accents) и motion-графика должны жить вместе.
+                # Раньше accents «съедали» почти все вставки → на выходе одни капсы.
+                # cover=true: оставляем окно как есть; оверлей: слегка режем вокруг punch.
+                if cover:
+                    s0, s1 = f0, f1
+                else:
+                    pieces = [p for p in subtract_blocks((f0, f1), accent_blocks)
+                              if p[1] - p[0] >= MIN_INSERT_F]
+                    if not pieces:
+                        # Не выкидываем вставку целиком — ужимаем, но показываем.
+                        s0, s1 = f0, f1
+                    else:
+                        s0, s1 = max(pieces, key=lambda p: p[1] - p[0])
                 ev = {
                     "type": "motion",
                     "template": ins["template"],
@@ -214,7 +220,7 @@ def build(work: Path, out_path: Path, media: str = "source"):
                     ev["data"] = ins["data"]
                 insert_events.append(ev)
                 # cover:true → speaker goes to PiP while motion fills canvas
-                if isinstance(ins.get("data"), dict) and ins["data"].get("cover"):
+                if cover:
                     pip_base.append((s0, s1))
                 continue
 

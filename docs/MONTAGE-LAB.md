@@ -43,9 +43,9 @@ Claude — монтажёр, который очередь разбирает. �
 
 1. Прокси исходника (all-intra H.264) → `remotion/public/`.
 2. Deepgram-транскрипт (`DEEPGRAM_API_KEY` из `.env`) → `words.json`.
-3. Очередь сайта: исходник **цельный** (`delete.json` = `{"delete":[],"keep_full":true}` —
-   без jump-cut половины ролика). Claude → `accents.json` + **motion-вставки**
-   (`inserts.json`, шаблоны `docs/motion-library.md`). `brief` заявки — вход разметки.
+3. Очередь сайта: исходник **всегда цельный** (`delete.json` = `{"delete":[],"keep_full":true}` —
+   без jump-cut). Полный **16:9 обязателен**; шортсы — только опциональная доп. нарезка.
+   Claude → `accents.json` + **motion-вставки** (`inserts.json`). `brief` + `broll_mode` — вход разметки.
 4. `edl.py` → монтажный лист; `faces.py` → позиция лица (зумы/кроп).
 5. `props.py` + `audio.py` → пропсы Remotion + declick-дорожка голоса.
 6. Шортсы (если заказаны): отбор моментов → `shorts.json` → карaоке-субтитры 9:16.
