@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { ExternalLink, FileText, Instagram, Loader2 } from "lucide-react";
+import { ExternalLink, FileText, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import {
@@ -16,6 +16,7 @@ import {
   CONTENT_PLAN_TYPE_META,
   type ContentPlanItem,
 } from "@/lib/contentPlan";
+import { MediaThumb } from "@/components/autopost/MediaThumb";
 import { fmtKzt, fmtNum } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -160,22 +161,17 @@ export function ContentPlanTable({
               <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
                 {/* Media + meta */}
                 <div className="flex min-w-0 flex-1 gap-3">
-                  {item.thumbnailUrl || item.mediaUrl ? (
-                    <Link
-                      to={detailPath}
-                      className="h-20 w-14 shrink-0 overflow-hidden rounded-xl border border-border/60 bg-muted sm:h-24 sm:w-16"
-                    >
-                      <img
-                        src={item.thumbnailUrl || item.mediaUrl || ""}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    </Link>
-                  ) : (
-                    <div className="grid h-20 w-14 shrink-0 place-items-center rounded-xl border border-dashed border-border/60 text-muted-foreground sm:h-24 sm:w-16">
-                      <Instagram className="h-5 w-5" />
-                    </div>
-                  )}
+                  <Link
+                    to={detailPath}
+                    className="h-20 w-14 shrink-0 overflow-hidden rounded-xl border border-border/60 bg-muted sm:h-24 sm:w-16"
+                  >
+                    <MediaThumb
+                      thumbnailUrl={item.thumbnailUrl}
+                      mediaUrl={item.mediaUrl}
+                      mediaType={item.contentType}
+                      className="h-full w-full"
+                    />
+                  </Link>
 
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">

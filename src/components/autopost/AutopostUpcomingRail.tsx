@@ -3,12 +3,14 @@ import { Clock, Images, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { STATUS_META, TYPE_META, type PostType } from "@/components/autopost/constants";
+import { MediaThumb } from "@/components/autopost/MediaThumb";
 
 const MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
 
 export interface UpcomingPost {
   id: string;
   media_type: string;
+  media_url?: string | null;
   thumbnail_url: string | null;
   child_urls: string[] | null;
   caption: string | null;
@@ -55,8 +57,13 @@ function UpcomingCard({ post, onEdit }: { post: UpcomingPost; onEdit: () => void
             isVertical ? "aspect-[9/16] w-[118px]" : "aspect-[4/5] w-[168px]",
           )}
         >
-          {post.thumbnail_url ? (
-            <img src={post.thumbnail_url} alt="" className="h-full w-full object-cover" />
+          {post.thumbnail_url || post.media_url || post.media_type === "REELS" || post.media_type === "STORIES" ? (
+            <MediaThumb
+              thumbnailUrl={post.thumbnail_url}
+              mediaUrl={post.media_url}
+              mediaType={post.media_type}
+              className="h-full w-full"
+            />
           ) : (
             <div className="grid h-full w-full place-items-center text-muted-foreground">
               <Icon className="h-9 w-9 opacity-60" />

@@ -18,10 +18,11 @@ import { cn } from "@/lib/utils";
 import { AutopostComposerDialog } from "@/components/autopost/AutopostComposerDialog";
 import { AutopostEditDialog } from "@/components/autopost/AutopostEditDialog";
 import { AutopostUpcomingRail } from "@/components/autopost/AutopostUpcomingRail";
+import { MediaThumb } from "@/components/autopost/MediaThumb";
 import { defaultFeed45View, fileCropKey } from "@/components/autopost/Feed45Crop";
 import { STATUS_META, TYPE_META, type PostType } from "@/components/autopost/constants";
 import { upsertContentPlanFromAutopost } from "@/lib/contentPlanAutopostBridge";
-import { generateAutopostCaption } from "@/lib/autopostAiCaption";
+import { captureFrameFromVideoFile, generateAutopostCaption } from "@/lib/autopostAiCaption";
 import { cropImageFile, type ViewParams } from "@/lib/cropMedia";
 
 // Раздел «Автопостинг» — календарь + очередь публикаций Instagram (cf_scheduled_posts,
@@ -498,8 +499,13 @@ const AutoPost = ({ embedded = false }: { embedded?: boolean } = {}) => {
                               className={cn("flex w-full items-center gap-1 rounded-md px-1.5 py-1 text-left text-[10px] transition hover:brightness-95", s.cls)}
                               title={`${s.label} · ${almatyHm(p.scheduled_at)}`}
                             >
-                              {p.thumbnail_url ? (
-                                <img src={p.thumbnail_url} alt="" className="h-4 w-4 shrink-0 rounded object-cover" />
+                              {p.thumbnail_url || p.media_url ? (
+                                <MediaThumb
+                                  thumbnailUrl={p.thumbnail_url}
+                                  mediaUrl={p.media_url}
+                                  mediaType={p.media_type}
+                                  className="h-4 w-4 shrink-0 rounded"
+                                />
                               ) : (
                                 <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", s.dot)} />
                               )}
@@ -685,8 +691,13 @@ function QueueRow({ post, busy, onEdit, onPublishNow, onDelete }: {
   return (
     <div className="flex items-center gap-3 rounded-xl border border-border/50 bg-card/50 p-2.5 transition hover:border-border">
       <button type="button" onClick={onEdit} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-        {post.thumbnail_url ? (
-          <img src={post.thumbnail_url} alt="" className="h-11 w-11 shrink-0 rounded-lg object-cover" />
+        {post.thumbnail_url || post.media_url ? (
+          <MediaThumb
+            thumbnailUrl={post.thumbnail_url}
+            mediaUrl={post.media_url}
+            mediaType={post.media_type}
+            className="h-11 w-11 shrink-0 rounded-lg"
+          />
         ) : (
           <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-secondary/60 text-muted-foreground"><Icon className="h-4 w-4" /></div>
         )}
@@ -868,9 +879,22 @@ export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAcco
         urls.push(isVideoFile(f) ? await normalizeVideoForInstagram(rawUrl, f.type, f.size) : rawUrl);
       }
       let coverUrl: string | null = null;
-      if (type === "REELS" && coverFile) {
-        setUploadLabel("Загрузка обложки…");
-        coverUrl = await uploadToBucket(coverFile);
+      if (type === "REELS") {
+        let cover = coverFile;
+        if (!cover && files[0] && isVideoFile(files[0])) {
+          setUploadLabel("Снимаем обложку с видео…");
+          try {
+            const frame = await captureFrameFromVideoFile(files[0], 0.22);
+            cover = frame.file;
+            applyCover(frame.file);
+          } catch {
+            /* без обложки превью в UI возьмёт кадр из video */
+          }
+        }
+        if (cover) {
+          setUploadLabel("Загрузка обложки…");
+          coverUrl = await uploadToBucket(cover);
+        }
       }
       setUploadLabel("Сохраняем в очередь…");
       const payload: Record<string, unknown> = {
