@@ -201,7 +201,7 @@ const monthRangeYmd = (view: Date) => {
   return { from, to: ymdOf(last) };
 };
 
-const AutoPost = () => {
+const AutoPost = ({ embedded = false }: { embedded?: boolean } = {}) => {
   const { active, activeId: projectId } = useProjectsStore();
   const { account, loading: accountLoading } = useInstagramAccount();
   const [view, setView] = useState(() => new Date());
@@ -321,8 +321,9 @@ const AutoPost = () => {
     finally { setBusyIds((s) => { const n = new Set(s); n.delete(id); return n; }); }
   };
 
-  return (
-    <PageContainer wide>
+  const body = (
+    <>
+      {!embedded && (
       <PageHeader
         icon={CalendarDays}
         title="Автопостинг"
@@ -340,6 +341,7 @@ const AutoPost = () => {
           </Button>
         }
       />
+      )}
 
       <div className="mt-4">
         {accountLoading && !account ? (
@@ -590,9 +592,14 @@ const AutoPost = () => {
           onDone={() => { setEditing(null); void loadAll(view); }}
         />
       )}
-    </PageContainer>
+    </>
   );
+
+  if (embedded) return body;
+  return <PageContainer wide>{body}</PageContainer>;
 };
+
+// ——— Скелетон
 
 // ——— Скелетон календаря на время первой загрузки ———
 function CalendarSkeleton() {
@@ -996,4 +1003,5 @@ function Heatmap({ cells, bestDow, bestHour }: { cells: { dow: number; hour: num
   );
 }
 
+export { AutoPost };
 export default AutoPost;

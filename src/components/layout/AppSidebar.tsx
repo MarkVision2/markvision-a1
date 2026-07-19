@@ -15,7 +15,7 @@ import {
   Bot,
   Send,
   Instagram,
-  CalendarClock,
+  ClipboardList,
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -50,7 +50,7 @@ const marketing: NavItem[] = [
   { title: "Управление рекламой", url: "/ads", icon: Target },
   { title: "Контент-завод", url: "/", icon: Wand2 },
   { title: "Контент-центр", url: "/marketing/content-center", icon: Instagram },
-  { title: "Автопостинг", url: "/marketing/autopost", icon: CalendarClock },
+  { title: "Контент-план", url: "/marketing/content-plan", icon: ClipboardList },
 ];
 
 // Marketing OS — собирается динамически в компоненте, т.к. URL зависит от активного проекта
