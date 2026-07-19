@@ -1,0 +1,35 @@
+# One-shot: обнулить статистику код-слов / кликов на проде.
+name: Reset IG codeword stats
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/reset-ig-codeword-stats.sql"
+      - ".github/workflows/reset-ig-codeword-stats.yml"
+  workflow_dispatch: {}
+
+env:
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF || 'szfgdruhlebfvcmlvxdk' }}
+
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify access token
+        run: test -n "$SUPABASE_ACCESS_TOKEN" || (echo "::error::SUPABASE_ACCESS_TOKEN missing"; exit 1)
+
+      - name: Normalize project ref
+        id: ref
+        run: bash .github/scripts/normalize-supabase-ref.sh
+
+      - name: Delete organic funnel events
+        env:
+          SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
+          SQL_FILE: scripts/reset-ig-codeword-stats.sql
+        run: |
+          chmod +x .github/scripts/apply-sql-via-management-api.sh
+          SQL_FILE="$SQL_FILE" .github/scripts/apply-sql-via-management-api.sh
