@@ -1610,6 +1610,7 @@ export type Database = {
           comment_replies: Json
           created_at: string
           created_by: string | null
+          dm_button_title: string | null
           dm_messages: Json
           id: string
           project_id: string
@@ -1629,6 +1630,7 @@ export type Database = {
           comment_replies?: Json
           created_at?: string
           created_by?: string | null
+          dm_button_title?: string | null
           dm_messages?: Json
           id?: string
           project_id: string
@@ -1648,6 +1650,7 @@ export type Database = {
           comment_replies?: Json
           created_at?: string
           created_by?: string | null
+          dm_button_title?: string | null
           dm_messages?: Json
           id?: string
           project_id?: string

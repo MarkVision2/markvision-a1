@@ -325,7 +325,17 @@ export function useInstagramCodewords() {
       payload.target_url = patch.targetUrl;
     }
     if (patch.active !== undefined) payload.active = patch.active;
-    const { error } = await supabase.from("instagram_codewords").update(payload as never).eq("id", id);
+    let { error } = await supabase.from("instagram_codewords").update(payload as never).eq("id", id);
+    if (
+      error &&
+      payload.dm_button_title !== undefined &&
+      /dm_button_title/i.test(error.message) &&
+      /column|schema|PGRST204/i.test(error.message)
+    ) {
+      const { dm_button_title: _drop, ...withoutBtn } = payload;
+      const retry = await supabase.from("instagram_codewords").update(withoutBtn as never).eq("id", id);
+      error = retry.error;
+    }
     if (error) throw new Error(error.message || "Не удалось сохранить код-слово");
   };
 

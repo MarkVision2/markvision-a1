@@ -40,9 +40,11 @@ jobs:
         run: bash .github/scripts/normalize-supabase-ref.sh
 
       # 1) Edge functions — сначала и всегда (не зависят от пароля БД).
-      #    Одна упавшая функция не роняет остальные: собираем список ошибок и
-      #    падаем в конце, чтобы деплой был виден как красный, но выкатил максимум.
+      #    Одна упавшая функция не роняет остальные и НЕ блокирует SQL ниже:
+      #    раньше exit 1 здесь пропускал миграции (dm_button_title и т.п.).
       - name: Deploy edge functions
+        id: functions
+        continue-on-error: true
         env:
           SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
         run: |
@@ -58,13 +60,18 @@ jobs:
             echo "::endgroup::"
           done
           if [ -n "$FAILED" ]; then
+            echo "failed=$FAILED" >> "$GITHUB_OUTPUT"
             echo "::error::Some functions failed to deploy:$FAILED"
             exit 1
           fi
+          echo "failed=" >> "$GITHUB_OUTPUT"
 
       # 2) Миграции БД — через db push если есть пароль.
+      #    КРИТИЧНО: шаг идёт даже если functions упали (колонки вроде dm_button_title).
       - name: Apply database migrations
-        if: ${{ env.SUPABASE_DB_PASSWORD != '' }}
+        id: db_push
+        if: ${{ always() && env.SUPABASE_DB_PASSWORD != '' }}
+        continue-on-error: true
         env:
           SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
         run: |
@@ -73,7 +80,7 @@ jobs:
 
       # 2b) Fallback: без пароля пробуем Management API (нужен scope database_write).
       - name: Apply critical SQL via Management API
-        if: ${{ env.SUPABASE_DB_PASSWORD == '' }}
+        if: ${{ always() && env.SUPABASE_DB_PASSWORD == '' }}
         continue-on-error: true
         id: mgmt_sql
         env:
@@ -82,7 +89,8 @@ jobs:
           chmod +x .github/scripts/apply-sql-via-management-api.sh
           FAILED=""
           for SQL_FILE in \
-            scripts/apply-prod-pending-20260719.sql
+            scripts/apply-prod-pending-20260719.sql \
+            supabase/migrations/20260719190000_ig_dm_button_title.sql
           do
             echo "::group::Apply $SQL_FILE"
             if ! SQL_FILE="$SQL_FILE" .github/scripts/apply-sql-via-management-api.sh; then
@@ -97,13 +105,32 @@ jobs:
           fi
 
       - name: Note about DB migration status
-        if: ${{ env.SUPABASE_DB_PASSWORD == '' }}
+        if: ${{ always() }}
         run: |
-          if [ "${{ steps.mgmt_sql.outcome }}" = "success" ]; then
-            echo "::notice::Critical SQL applied via Management API."
+          if [ "${{ steps.db_push.outcome }}" = "success" ] || [ "${{ steps.mgmt_sql.outcome }}" = "success" ]; then
+            echo "::notice::Database SQL applied."
           else
             echo "::warning::Could not apply DB migration automatically (need SUPABASE_DB_PASSWORD or ACCESS_TOKEN with database_write). Apply scripts/apply-prod-pending-20260719.sql in Supabase SQL Editor."
           fi
 
-# redeploy trigger: content-plan + instagram meta token + combined SQL
+      - name: Fail if functions or SQL did not succeed
+        if: ${{ always() }}
+        run: |
+          FAIL=0
+          if [ "${{ steps.functions.outcome }}" != "success" ]; then
+            echo "::error::Edge function deploy had failures:${{ steps.functions.outputs.failed }}"
+            FAIL=1
+          fi
+          SQL_OK=0
+          if [ "${{ steps.db_push.outcome }}" = "success" ] || [ "${{ steps.mgmt_sql.outcome }}" = "success" ]; then
+            SQL_OK=1
+          fi
+          # Нет пароля и Management API упал — красный; нет обоих шагов (оба skipped) — тоже красный.
+          if [ "$SQL_OK" != "1" ]; then
+            echo "::error::Database migration did not apply."
+            FAIL=1
+          fi
+          exit $FAIL
+
+# redeploy trigger: dm_button_title must apply even when some functions fail
 # retry after owner-token update
