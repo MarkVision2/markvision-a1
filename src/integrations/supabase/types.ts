@@ -1544,13 +1544,15 @@ export type Database = {
           followers_count: number | null
           follows_count: number | null
           id: string
+          ig_login_access_token: string | null
+          ig_login_token_present: boolean | null
           ig_user_id: string
           last_error: string | null
           last_sync_at: string | null
           media_count: number | null
           name: string | null
-          page_access_token: string
-          page_id: string
+          page_access_token: string | null
+          page_id: string | null
           page_name: string | null
           page_token_present: boolean | null
           profile_picture_url: string | null
@@ -1564,15 +1566,15 @@ export type Database = {
           followers_count?: number | null
           follows_count?: number | null
           id?: string
+          ig_login_access_token?: string | null
           ig_user_id: string
           last_error?: string | null
           last_sync_at?: string | null
           media_count?: number | null
           name?: string | null
-          page_access_token: string
-          page_id: string
+          page_access_token?: string | null
+          page_id?: string | null
           page_name?: string | null
-          page_token_present?: boolean | null
           profile_picture_url?: string | null
           project_id: string
           updated_at?: string
@@ -1584,15 +1586,15 @@ export type Database = {
           followers_count?: number | null
           follows_count?: number | null
           id?: string
+          ig_login_access_token?: string | null
           ig_user_id?: string
           last_error?: string | null
           last_sync_at?: string | null
           media_count?: number | null
           name?: string | null
-          page_access_token?: string
-          page_id?: string
+          page_access_token?: string | null
+          page_id?: string | null
           page_name?: string | null
-          page_token_present?: boolean | null
           profile_picture_url?: string | null
           project_id?: string
           updated_at?: string
@@ -1605,14 +1607,18 @@ export type Database = {
           active: boolean
           caption: string | null
           codeword: string
+          comment_replies: Json
           created_at: string
           created_by: string | null
+          dm_messages: Json
           id: string
           project_id: string
           published_at: string | null
           reel_id: string | null
           reel_url: string | null
+          short_id: string
           target_url: string | null
+          target_urls: Json
           thumbnail_url: string | null
           updated_at: string
         }
@@ -1620,14 +1626,18 @@ export type Database = {
           active?: boolean
           caption?: string | null
           codeword: string
+          comment_replies?: Json
           created_at?: string
           created_by?: string | null
+          dm_messages?: Json
           id?: string
           project_id: string
           published_at?: string | null
           reel_id?: string | null
           reel_url?: string | null
+          short_id?: string
           target_url?: string | null
+          target_urls?: Json
           thumbnail_url?: string | null
           updated_at?: string
         }
@@ -1635,14 +1645,18 @@ export type Database = {
           active?: boolean
           caption?: string | null
           codeword?: string
+          comment_replies?: Json
           created_at?: string
           created_by?: string | null
+          dm_messages?: Json
           id?: string
           project_id?: string
           published_at?: string | null
           reel_id?: string | null
           reel_url?: string | null
+          short_id?: string
           target_url?: string | null
+          target_urls?: Json
           thumbnail_url?: string | null
           updated_at?: string
         }
@@ -3691,6 +3705,7 @@ export type Database = {
           followers_count: number | null
           follows_count: number | null
           id: string | null
+          ig_login_token_present: boolean | null
           ig_user_id: string | null
           last_error: string | null
           last_sync_at: string | null

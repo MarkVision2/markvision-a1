@@ -54,6 +54,13 @@ verify_jwt = false
 [functions.instagram-sync]
 verify_jwt = false
 
+[functions.instagram-set-login-token]
+verify_jwt = false
+
+# Meta Instagram webhook verification + events (hub.challenge / POST).
+[functions.ig-webhook]
+verify_jwt = false
+
 # Контент-центр: auth + доступ к проекту проверяются внутри (requireUser +
 # requireProjectAccess), данные считает RPC под service role строго по project_id.
 [functions.content-center]

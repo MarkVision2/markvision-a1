@@ -8,7 +8,7 @@ export interface InstagramAccount {
   username: string | null;
   name: string | null;
   profilePictureUrl: string | null;
-  pageId: string;
+  pageId: string | null;
   pageName: string | null;
   followersCount: number;
   followsCount: number;
@@ -17,6 +17,7 @@ export interface InstagramAccount {
   lastSyncAt: string | null;
   lastError: string | null;
   igLoginTokenPresent: boolean;
+  pageTokenPresent: boolean;
 }
 
 export interface AvailableIgAccount {
@@ -30,44 +31,110 @@ export interface AvailableIgAccount {
   page_name: string;
 }
 
+function describeErr(err: unknown, fallback: string): string {
+  if (err instanceof Error && err.message) return err.message;
+  if (err && typeof err === "object") {
+    const o = err as { message?: unknown; error?: unknown; details?: unknown };
+    if (typeof o.message === "string" && o.message.trim()) return o.message;
+    if (typeof o.error === "string" && o.error.trim()) return o.error;
+    if (typeof o.details === "string" && o.details.trim()) return o.details;
+  }
+  return fallback;
+}
+
 export function useInstagramAccount() {
   const { activeId: projectId } = useProjectsStore();
   const [account, setAccount] = useState<InstagramAccount | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refetch = useCallback(async () => {
     if (!projectId) {
       setAccount(null);
+      setLoadError(null);
       return;
     }
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("instagram_accounts_safe")
-      .select("ig_user_id, username, name, profile_picture_url, page_id, page_name, followers_count, follows_count, media_count, active, last_sync_at, last_error, ig_login_token_present")
+      .select(
+        "ig_user_id, username, name, profile_picture_url, page_id, page_name, followers_count, follows_count, media_count, active, last_sync_at, last_error, ig_login_token_present, page_token_present",
+      )
       .eq("project_id", projectId)
       .maybeSingle();
-    if (!data || (data as any).error === true) {
+
+    if (error) {
+      // Older view without ig_login_token_present — retry without that column.
+      if (/ig_login_token_present|column/i.test(error.message)) {
+        const legacy = await supabase
+          .from("instagram_accounts_safe")
+          .select(
+            "ig_user_id, username, name, profile_picture_url, page_id, page_name, followers_count, follows_count, media_count, active, last_sync_at, last_error, page_token_present",
+          )
+          .eq("project_id", projectId)
+          .maybeSingle();
+        if (legacy.error) {
+          setLoadError(legacy.error.message);
+          setAccount(null);
+          return;
+        }
+        if (!legacy.data) {
+          setAccount(null);
+          setLoadError(null);
+          return;
+        }
+        const row = legacy.data as Record<string, unknown>;
+        setAccount({
+          igUserId: String(row.ig_user_id),
+          username: (row.username as string | null) ?? null,
+          name: (row.name as string | null) ?? null,
+          profilePictureUrl: (row.profile_picture_url as string | null) ?? null,
+          pageId: (row.page_id as string | null) ?? null,
+          pageName: (row.page_name as string | null) ?? null,
+          followersCount: Number(row.followers_count ?? 0),
+          followsCount: Number(row.follows_count ?? 0),
+          mediaCount: Number(row.media_count ?? 0),
+          active: !!row.active,
+          lastSyncAt: (row.last_sync_at as string | null) ?? null,
+          lastError: (row.last_error as string | null) ?? null,
+          igLoginTokenPresent: false,
+          pageTokenPresent: !!row.page_token_present,
+        });
+        setLoadError(null);
+        return;
+      }
+      setLoadError(error.message);
       setAccount(null);
       return;
     }
-    const row = data as any;
+
+    if (!data) {
+      setAccount(null);
+      setLoadError(null);
+      return;
+    }
+    const row = data as Record<string, unknown>;
     setAccount({
-      igUserId: row.ig_user_id,
-      username: row.username,
-      name: row.name,
-      profilePictureUrl: row.profile_picture_url,
-      pageId: row.page_id,
-      pageName: row.page_name,
-      followersCount: row.followers_count ?? 0,
-      followsCount: row.follows_count ?? 0,
-      mediaCount: row.media_count ?? 0,
-      active: row.active,
-      lastSyncAt: row.last_sync_at,
-      lastError: row.last_error,
+      igUserId: String(row.ig_user_id),
+      username: (row.username as string | null) ?? null,
+      name: (row.name as string | null) ?? null,
+      profilePictureUrl: (row.profile_picture_url as string | null) ?? null,
+      pageId: (row.page_id as string | null) ?? null,
+      pageName: (row.page_name as string | null) ?? null,
+      followersCount: Number(row.followers_count ?? 0),
+      followsCount: Number(row.follows_count ?? 0),
+      mediaCount: Number(row.media_count ?? 0),
+      active: !!row.active,
+      lastSyncAt: (row.last_sync_at as string | null) ?? null,
+      lastError: (row.last_error as string | null) ?? null,
       igLoginTokenPresent: !!row.ig_login_token_present,
+      pageTokenPresent: !!row.page_token_present,
     });
+    setLoadError(null);
   }, [projectId]);
 
-  useEffect(() => { void refetch(); }, [refetch]);
+  useEffect(() => {
+    void refetch();
+  }, [refetch]);
   useRealtimeTable("instagram_accounts", refetch, !!projectId, 800);
 
   const listAvailable = useCallback(async (): Promise<{ accounts: AvailableIgAccount[]; error?: string }> => {
@@ -128,15 +195,39 @@ export function useInstagramAccount() {
     }
   }, [projectId, refetch]);
 
+  /** Connect or refresh account via Instagram Login token (no Facebook Page required). */
+  const connectWithLoginToken = useCallback(async (token: string) => {
+    if (!projectId) throw new Error("no project");
+    const { data, error } = await supabase.functions.invoke("instagram-set-login-token", {
+      body: { project_id: projectId, token, connect: true },
+    });
+    if (error) throw new Error(describeErr(error, error.message || "Не удалось подключить"));
+    if (data?.error) throw new Error(String(data.error));
+    await refetch();
+    return { username: (data?.username as string | null) ?? null };
+  }, [projectId, refetch]);
+
+  /** Legacy: only set DM token on already-connected account. */
   const setLoginToken = useCallback(async (token: string) => {
     if (!projectId) throw new Error("no project");
     const { data, error } = await supabase.functions.invoke("instagram-set-login-token", {
-      body: { project_id: projectId, token },
+      body: { project_id: projectId, token, connect: false },
     });
-    if (error) throw new Error(error.message);
-    if (data?.error) throw new Error(data.error);
+    if (error) throw new Error(describeErr(error, error.message || "Не удалось сохранить токен"));
+    if (data?.error) throw new Error(String(data.error));
     await refetch();
   }, [projectId, refetch]);
 
-  return { account, loading, listAvailable, connect, disconnect, sync, setLoginToken, refetch };
+  return {
+    account,
+    loading,
+    loadError,
+    listAvailable,
+    connect,
+    connectWithLoginToken,
+    disconnect,
+    sync,
+    setLoginToken,
+    refetch,
+  };
 }
