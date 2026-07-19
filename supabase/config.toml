@@ -128,7 +128,3 @@ verify_jwt = false
 # x-montage-key; секрет ELEVENLABS_API_KEY в Supabase Edge Secrets.
 [functions.reels-tts]
 verify_jwt = false
-
-# OCR/vision caption for Content Plan / Autopost (user JWT inside function).
-[functions.autopost-ai-caption]
-verify_jwt = false

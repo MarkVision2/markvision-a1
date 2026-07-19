@@ -322,6 +322,7 @@ export function ContentPlanComposerDialog({
         mediaType: contentType,
         title,
         files,
+        projectId,
       });
       setDescription(caption);
       toast.success("Описание готово — можно поправить перед публикацией");
