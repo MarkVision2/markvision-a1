@@ -105,6 +105,7 @@ describe("ContentPlanComposerDialog unified publish", () => {
     expect(screen.queryByText(/Код-слово/i)).toBeNull();
     expect(screen.queryByText(/^Хэштеги$/i)).toBeNull();
     expect(screen.queryByText(/^Промпты$/i)).toBeNull();
+    expect(screen.queryByText(/^Категория$/i)).toBeNull();
 
     expect(screen.getByLabelText("Дата публикации")).toBeTruthy();
     expect(screen.getByLabelText("Час")).toBeTruthy();

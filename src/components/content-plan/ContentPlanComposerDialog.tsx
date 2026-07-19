@@ -23,9 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  CONTENT_PLAN_CATEGORY_META,
   CONTENT_PLAN_TYPE_META,
-  type ContentPlanCategory,
   type ContentPlanType,
 } from "@/lib/contentPlan";
 import {
@@ -112,7 +110,6 @@ export function ContentPlanComposerDialog({
   const { account } = useInstagramAccount();
 
   const [title, setTitle] = useState("");
-  const [category, setCategory] = useState<ContentPlanCategory>("content");
   const [contentType, setContentType] = useState<ContentPlanType>(initialType);
   const [description, setDescription] = useState("");
   const [schedule, setSchedule] = useState<ScheduleParts>(() => almatyParts());
@@ -133,7 +130,6 @@ export function ContentPlanComposerDialog({
 
   const reset = () => {
     setTitle("");
-    setCategory("content");
     setContentType(initialType);
     setDescription("");
     setSchedule(almatyParts());
@@ -306,7 +302,6 @@ export function ContentPlanComposerDialog({
         scheduledAt: created.scheduledAt,
         status: created.status,
         title: title.trim(),
-        category,
         description: description.trim() || null,
       });
 
@@ -363,31 +358,18 @@ export function ContentPlanComposerDialog({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1.5">
-              <Label>Тип</Label>
-              <Select value={contentType} onValueChange={(v) => onTypeChange(v as ContentPlanType)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(CONTENT_PLAN_TYPE_META) as ContentPlanType[]).map((k) => (
-                    <SelectItem key={k} value={k}>
-                      {CONTENT_PLAN_TYPE_META[k].emoji} {CONTENT_PLAN_TYPE_META[k].label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Категория</Label>
-              <Select value={category} onValueChange={(v) => setCategory(v as ContentPlanCategory)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(CONTENT_PLAN_CATEGORY_META) as ContentPlanCategory[]).map((k) => (
-                    <SelectItem key={k} value={k}>{CONTENT_PLAN_CATEGORY_META[k].label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+          <div className="space-y-1.5">
+            <Label>Тип</Label>
+            <Select value={contentType} onValueChange={(v) => onTypeChange(v as ContentPlanType)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {(Object.keys(CONTENT_PLAN_TYPE_META) as ContentPlanType[]).map((k) => (
+                  <SelectItem key={k} value={k}>
+                    {CONTENT_PLAN_TYPE_META[k].emoji} {CONTENT_PLAN_TYPE_META[k].label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="space-y-1.5">
