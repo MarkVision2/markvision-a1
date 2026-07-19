@@ -1,7 +1,7 @@
 {
-  "git_sha": "654382a",
-  "git_sha_full": "654382a873e3429829f777d25718d465b305010a",
-  "updated_at": "2026-07-19T14:01:15Z",
-  "label": "fix(content-plan): restore funnel stats and KPI summary",
+  "git_sha": "66a53ab",
+  "git_sha_full": "66a53ab71185d180fafbebaabf265a9ca4b6fb60",
+  "updated_at": "2026-07-19T14:19:15Z",
+  "label": "fix(supabase): apply dm_button_title even when functions fail",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
