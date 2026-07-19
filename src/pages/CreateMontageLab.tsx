@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertTriangle, Archive, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, Film, FileVideo, Loader2,
+  AlertTriangle, Archive, Bot, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, Film, FileVideo, FolderOpen, Loader2,
   MonitorPlay, Play, Scissors, Send, Smartphone, Sparkles, Upload, Wand2, X, Zap,
 } from "lucide-react";
 import Header from "@/components/factory/Header";
@@ -18,6 +18,41 @@ import {
   fetchMontageJobs, MONTAGE_STATUS_LABEL, partitionMontageJobs,
   uploadMontageSource, type MontageFormat, type MontageJob, type MontageMode,
 } from "@/lib/montageJobs";
+import {
+  buildReelsSourceConfig,
+  fetchReelsAssetFolders,
+  type ReelsBrollMode,
+} from "@/lib/reelsAssets";
+import { fetchReelsProviderStatus } from "@/lib/reelsProviderSettings";
+
+const BROLL_OPTIONS: {
+  id: ReelsBrollMode;
+  title: string;
+  description: string;
+  icon: typeof Sparkles;
+}[] = [
+  { id: "auto", title: "Автоматически", description: "Система сама подберёт графику и вставки", icon: Sparkles },
+  { id: "library", title: "Папки проекта", description: "Случайно брать ваши B-roll и нарезки", icon: FolderOpen },
+  { id: "pexels", title: "Pexels", description: "Стоковые видео по смыслу сценария", icon: Film },
+  { id: "kie", title: "Kie.ai", description: "Сгенерировать уникальные видео через Kling", icon: Bot },
+];
+
+function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "rounded-full border px-3 py-1.5 text-xs font-medium transition",
+        active
+          ? "border-primary bg-primary/10 text-primary"
+          : "border-border/60 text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
 
 // Стадии пайплайна — совпадают со скиллом montage-pipeline.
 const STAGES = [
@@ -227,6 +262,8 @@ const CreateMontageLab = () => {
   const [duration, setDuration] = useState<number>(0);
   const [formats, setFormats] = useState<MontageFormat[]>(["16:9"]);
   const [brief, setBrief] = useState("");
+  const [brollMode, setBrollMode] = useState<ReelsBrollMode>("auto");
+  const [selectedFolderIds, setSelectedFolderIds] = useState<string[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [notifyTelegram, setNotifyTelegram] = useState(true);
   const [telegramStatus, setTelegramStatus] = useState<TelegramConnectionStatus | null>(null);
@@ -258,6 +295,31 @@ const CreateMontageLab = () => {
     refetchInterval: (query) =>
       (query.state.data ?? []).some((j) => ACTIVE_STATUSES.includes(j.status)) ? 15_000 : 60_000,
   });
+
+  const foldersQ = useQuery({
+    queryKey: ["reels-asset-folders", projectId],
+    queryFn: () => fetchReelsAssetFolders(projectId),
+    enabled: !!projectId,
+  });
+  const providersQ = useQuery({
+    queryKey: ["reels-provider-status", projectId],
+    queryFn: () => fetchReelsProviderStatus(projectId),
+    enabled: !!projectId,
+  });
+
+  useEffect(() => {
+    setSelectedFolderIds([]);
+    setBrollMode("auto");
+  }, [projectId]);
+
+  const effectiveProviderStatus = providersQ.data ?? {};
+  const sourceConfig = useMemo(
+    () => buildReelsSourceConfig(brollMode, selectedFolderIds),
+    [brollMode, selectedFolderIds],
+  );
+  const sourceReady =
+    (brollMode !== "pexels" || !!effectiveProviderStatus.pexels?.connected) &&
+    (brollMode !== "kie" || !!effectiveProviderStatus.kie?.connected);
 
   const jobGroups = useMemo(() => partitionMontageJobs(jobsQ.data ?? []), [jobsQ.data]);
   const activeCount = jobGroups.active.length;
@@ -346,10 +408,16 @@ const CreateMontageLab = () => {
   const needsSecond = mode === "5050";
   const canSubmit =
     !!projectId && !!uploaded && formats.length > 0 && !uploading && !submitting &&
+    sourceReady &&
     (!needsSecond || (!!uploaded2 && !uploading2));
 
   const submit = async () => {
     if (!canSubmit || !uploaded) return;
+    if (!sourceReady) {
+      toast.error(`Сначала подключите ${brollMode === "pexels" ? "Pexels" : "Kie.ai"} в Reels → Источники`);
+      navigate("/create/reels?tab=providers");
+      return;
+    }
     setSubmitting(true);
     try {
       await createMontageJob(projectId, {
@@ -361,10 +429,14 @@ const CreateMontageLab = () => {
         mode,
         source2Url: uploaded2?.url ?? null,
         source2Name: uploaded2?.name ?? null,
+        brollMode: sourceConfig.brollMode,
+        assetFolderIds: sourceConfig.assetFolderIds,
       });
       clearFile();
       clearFile2();
       setBrief("");
+      setBrollMode("auto");
+      setSelectedFolderIds([]);
       toast.success("Заявка в очереди — монтаж начнётся автоматически");
       void queryClient.invalidateQueries({ queryKey: ["montage-jobs", projectId] });
     } catch (e) {
@@ -688,11 +760,114 @@ const CreateMontageLab = () => {
 
             </section>
 
-            {/* Шаг 3. Бриф */}
+            {/* Шаг 4. B-roll — как в Reels-видео */}
+            <section className="rounded-2xl border border-border/60 bg-card/30 p-4 sm:p-5">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">4</span>
+                <div>
+                  <h2 className="text-sm font-semibold">Откуда брать B-roll</h2>
+                  <p className="text-[11px] text-muted-foreground">Выберите один источник визуальных вставок</p>
+                </div>
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                {BROLL_OPTIONS.map((option) => {
+                  const connected = option.id === "pexels"
+                    ? effectiveProviderStatus.pexels?.connected
+                    : option.id === "kie"
+                      ? effectiveProviderStatus.kie?.connected
+                      : true;
+                  const active = brollMode === option.id;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      onClick={() => {
+                        if (!connected) {
+                          toast.info(`Сначала подключите ${option.title} в Reels → Источники`);
+                          navigate("/create/reels?tab=providers");
+                          return;
+                        }
+                        setBrollMode(option.id);
+                      }}
+                      className={cn(
+                        "relative flex items-start gap-3 rounded-xl border-2 p-3 text-left transition",
+                        active ? "border-primary bg-primary/5" : "border-border/60 hover:border-primary/30",
+                      )}
+                    >
+                      <span className={cn(
+                        "grid h-10 w-10 shrink-0 place-items-center rounded-xl",
+                        active ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground",
+                      )}>
+                        <option.icon className="h-5 w-5" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5 text-sm font-semibold">
+                          {option.title}
+                          {!connected && (
+                            <span className="rounded bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-600">нужен ключ</span>
+                          )}
+                        </span>
+                        <span className="mt-0.5 block text-[11px] leading-snug text-muted-foreground">{option.description}</span>
+                      </span>
+                      {active && <Check className="h-4 w-4 shrink-0 text-primary" />}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {brollMode === "library" && (
+                <div className="mt-3 rounded-xl border border-border/60 bg-background p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="text-xs font-semibold">Папки для случайного выбора</span>
+                    <button
+                      type="button"
+                      onClick={() => navigate("/create/reels?tab=library")}
+                      className="text-[11px] font-medium text-primary hover:underline"
+                    >
+                      Управлять медиатекой
+                    </button>
+                  </div>
+                  {(foldersQ.data ?? []).length === 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => navigate("/create/reels?tab=library")}
+                      className="w-full rounded-lg border border-dashed border-border/60 py-3 text-xs text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                    >
+                      Создать папку и загрузить B-roll
+                    </button>
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {(foldersQ.data ?? []).map((folder) => (
+                        <Chip
+                          key={folder.id}
+                          active={selectedFolderIds.includes(folder.id)}
+                          onClick={() => setSelectedFolderIds((current) =>
+                            current.includes(folder.id)
+                              ? current.filter((id) => id !== folder.id)
+                              : [...current, folder.id])}
+                        >
+                          <span className="inline-flex items-center gap-1">
+                            <FolderOpen className="h-3 w-3" /> {folder.name} · {folder.asset_count ?? 0}
+                          </span>
+                        </Chip>
+                      ))}
+                    </div>
+                  )}
+                  {selectedFolderIds.length === 0 && (
+                    <p className="mt-2 text-[11px] text-muted-foreground">
+                      Папка не выбрана — для этой заявки система автоматически создаст визуальные вставки.
+                    </p>
+                  )}
+                </div>
+              )}
+            </section>
+
+            {/* Шаг 5. Бриф */}
             <section className="rounded-2xl border border-border/60 bg-card/30 p-4 sm:p-5">
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">4</span>
+                  <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">5</span>
                   <h2 className="text-sm font-semibold">Пожелания к монтажу</h2>
                 </div>
                 <span className="text-[11px] text-muted-foreground">Необязательно</span>
@@ -721,10 +896,10 @@ const CreateMontageLab = () => {
               <div className="mt-1 text-right text-[11px] text-muted-foreground">{brief.length} / 4000</div>
             </section>
 
-            {/* Шаг 4. Доставка */}
+            {/* Шаг 6. Доставка */}
             <section className="rounded-2xl border border-border/60 bg-card/30 p-4 sm:p-5">
               <div className="mb-3 flex items-center gap-2">
-                <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">5</span>
+                <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">6</span>
                 <h2 className="text-sm font-semibold">Доставка результата</h2>
               </div>
 
@@ -778,6 +953,18 @@ const CreateMontageLab = () => {
                   </dd>
                 </div>
                 <div className="flex justify-between gap-2">
+                  <dt className="text-muted-foreground">B-roll</dt>
+                  <dd className="font-medium">
+                    {BROLL_OPTIONS.find((item) => item.id === sourceConfig.brollMode)?.title ?? "Авто"}
+                  </dd>
+                </div>
+                {sourceConfig.brollMode === "library" && (
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-muted-foreground">Папки</dt>
+                    <dd className="font-medium">{sourceConfig.assetFolderIds.length}</dd>
+                  </div>
+                )}
+                <div className="flex justify-between gap-2">
                   <dt className="text-muted-foreground">Бриф</dt>
                   <dd className={cn("font-medium", brief ? "text-foreground" : "text-muted-foreground/60")}>
                     {brief ? `${brief.length} симв.` : "нет"}
@@ -811,6 +998,15 @@ const CreateMontageLab = () => {
               )}
               {projectId && !uploaded && (
                 <p className="mt-2 text-center text-[11px] text-muted-foreground">Сначала загрузите видео</p>
+              )}
+              {projectId && uploaded && !sourceReady && (
+                <button
+                  type="button"
+                  onClick={() => navigate("/create/reels?tab=providers")}
+                  className="mt-2 w-full text-center text-[11px] text-amber-600 hover:underline"
+                >
+                  Подключите ключ выбранного источника B-roll
+                </button>
               )}
             </div>
 

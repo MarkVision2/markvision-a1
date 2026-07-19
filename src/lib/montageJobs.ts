@@ -16,6 +16,9 @@ export type MontageFormat = "16:9" | "shorts";
 // в важных моментах), требует второго видео (source2).
 export type MontageMode = "standard" | "5050";
 
+/** Источник B-roll — те же режимы, что у Reels-видео. */
+export type MontageBrollMode = "auto" | "library" | "pexels" | "kie";
+
 export type MontageJobStatus =
   | "queued"
   | "processing"
@@ -32,6 +35,8 @@ export interface MontageJob {
   formats: MontageFormat[];
   shorts_count: number | null;
   brief: string | null;
+  broll_mode: MontageBrollMode | null;
+  asset_folder_ids: string[] | null;
   source_url: string;
   source_name: string | null;
   mode: MontageMode;
@@ -154,6 +159,8 @@ export async function createMontageJob(
     mode?: MontageMode;
     source2Url?: string | null;
     source2Name?: string | null;
+    brollMode?: MontageBrollMode;
+    assetFolderIds?: string[];
   },
 ): Promise<void> {
   if (!projectId) throw new Error("Сначала выберите проект (клиента) вверху");
@@ -161,6 +168,10 @@ export async function createMontageJob(
   if (mode === "5050" && !params.source2Url) {
     throw new Error("Для режима 50/50 загрузите второе видео (запись экрана)");
   }
+  const brollMode: MontageBrollMode = params.brollMode ?? "auto";
+  const folderIds = Array.from(
+    new Set((params.assetFolderIds ?? []).map(String).filter(Boolean)),
+  ).slice(0, 20);
   const row: Record<string, unknown> = {
     project_id: projectId,
     source_url: params.sourceUrl,
@@ -169,6 +180,8 @@ export async function createMontageJob(
     shorts_count: params.formats.includes("shorts") ? params.shortsCount ?? 3 : null,
     brief: params.brief?.trim() ? params.brief.trim().slice(0, 4000) : null,
     notify_telegram: params.notifyTelegram,
+    broll_mode: brollMode,
+    asset_folder_ids: brollMode === "library" ? folderIds : [],
   };
   // Поля 50/50 добавляем только для этого режима — стандартный монтаж не зависит
   // от наличия миграции (mode/source2_*) в БД.
@@ -178,7 +191,17 @@ export async function createMontageJob(
     row.source2_name = params.source2Name ? params.source2Name.slice(0, 120) : null;
   }
   const { error } = await db.from("montage_jobs").insert(row);
-  if (error) throw new Error(`Не удалось создать заявку: ${error.message}`);
+  if (error) {
+    // Фоллбек: колонки broll_* ещё не на проде — заявка всё равно уходит.
+    if (/broll_mode|asset_folder_ids|schema cache|PGRST204/i.test(error.message)) {
+      delete row.broll_mode;
+      delete row.asset_folder_ids;
+      const retry = await db.from("montage_jobs").insert(row);
+      if (retry.error) throw new Error(`Не удалось создать заявку: ${retry.error.message}`);
+      return;
+    }
+    throw new Error(`Не удалось создать заявку: ${error.message}`);
+  }
 }
 
 export async function fetchMontageJobs(projectId: string): Promise<MontageJob[]> {

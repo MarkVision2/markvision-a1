@@ -184,6 +184,23 @@ async function processJob(job) {
   const wantShorts = formats.includes("shorts");
   const shortsCount = job.shorts_count || 3;
   const brief = job.brief || "";
+  const brollMode = ["auto", "library", "pexels", "kie"].includes(job.broll_mode)
+    ? job.broll_mode
+    : "auto";
+  const assetFolderIds = Array.isArray(job.asset_folder_ids)
+    ? job.asset_folder_ids.map(String).filter(Boolean).slice(0, 20)
+    : [];
+  const brollHint = {
+    auto: "B-roll: автоматически — motion-графика и вставки по смыслу.",
+    library: "B-roll: папки проекта — случайные клипы/нарезки из медиатеки.",
+    pexels: "B-roll: Pexels — стоковые видео по смыслу реплик.",
+    kie: "B-roll: Kie.ai / Kling — сгенерировать уникальные видео-вставки.",
+  }[brollMode];
+  const insertBrief = [brief, brollHint].filter(Boolean).join("\n");
+  writeFileSync(
+    resolve(work, "broll.json"),
+    JSON.stringify({ brollMode, assetFolderIds }, null, 2),
+  );
   const mediaBase = `source_${id.slice(0, 8)}`;
 
   await status(id, "скачиваем исходник");
@@ -247,8 +264,10 @@ async function processJob(job) {
         action: "markup_inserts",
         indexed,
         utterances,
-        brief,
+        brief: insertBrief,
         durationSec,
+        brollMode,
+        assetFolderIds,
       });
       writeFileSync(resolve(work, "inserts.json"), JSON.stringify(inserts, null, 2));
     }
@@ -287,8 +306,10 @@ async function processJob(job) {
         action: "markup_inserts",
         indexed,
         utterances,
-        brief,
+        brief: insertBrief,
         durationSec,
+        brollMode,
+        assetFolderIds,
       });
       writeFileSync(resolve(work, "inserts.json"), JSON.stringify(inserts, null, 2));
     }

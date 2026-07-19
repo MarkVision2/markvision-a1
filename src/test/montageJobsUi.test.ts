@@ -13,6 +13,8 @@ const job = (status: MontageJob["status"], id: string): MontageJob => ({
   formats: ["16:9"],
   shorts_count: null,
   brief: null,
+  broll_mode: "auto",
+  asset_folder_ids: [],
   source_url: "https://example.com/source.mp4",
   source_name: `${id}.mov`,
   mode: "standard",
