@@ -75,6 +75,7 @@ interface Codeword {
   comment_replies: unknown;
   dm_messages: unknown;
   target_urls: unknown;
+  dm_button_title: string | null;
 }
 
 function asStringArray(raw: unknown, max = 10): string[] {
@@ -102,9 +103,9 @@ function resolveTargetUrl(kw: Codeword): string | null {
 }
 
 async function matchCodeword(projectId: string, mediaId: string | null, text: string): Promise<Codeword | null> {
-  // Сначала полный select (legacy reply_text/dm_text). Если колонок нет — без них.
+  // Сначала полный select (legacy reply_text/dm_text + button). Если колонок нет — без них.
   let rows: Codeword[] = (await db(
-    `instagram_codewords?project_id=eq.${projectId}&active=eq.true&select=id,codeword,reel_id,reel_url,target_url,short_id,reply_text,dm_text,comment_replies,dm_messages,target_urls`,
+    `instagram_codewords?project_id=eq.${projectId}&active=eq.true&select=id,codeword,reel_id,reel_url,target_url,short_id,reply_text,dm_text,comment_replies,dm_messages,target_urls,dm_button_title`,
   )) ?? [];
   if (!Array.isArray(rows)) {
     rows = (await db(
@@ -207,21 +208,77 @@ async function postPublicReply(commentId: string, account: ProjectAccount, text:
   }).catch(() => {});
 }
 
+const PUBLIC_LINK_ORIGIN = Deno.env.get("IG_PUBLIC_LINK_ORIGIN") ?? "https://www.markvision.kz";
+const DEFAULT_DM_TEXT = "Готово! Жми кнопку ниже и регистрируйся 👇";
+const DEFAULT_BUTTON_TITLE = "Зарегистрироваться";
+
+function buildTrackingLink(shortId: string, username: string | null): string {
+  const params = new URLSearchParams();
+  if (username) params.set("u", username);
+  const q = params.toString();
+  return `${PUBLIC_LINK_ORIGIN}/r/${encodeURIComponent(shortId)}${q ? `?${q}` : ""}`;
+}
+
+function clampButtonTitle(raw: string | null | undefined): string {
+  const t = (raw ?? "").trim() || DEFAULT_BUTTON_TITLE;
+  // Meta: до 20 символов на кнопку.
+  return Array.from(t).slice(0, 20).join("");
+}
+
 async function sendPrivateDm(
   igUserId: string,
   account: ProjectAccount,
   commentId: string,
-  text: string,
+  opts: { text: string; buttonTitle: string; buttonUrl: string },
 ) {
   const token = bearer(account, true);
-  if (!token) return { ok: false, body: { error: "no token" } };
+  if (!token) return { ok: false, body: { error: "no token" }, mode: "none" as const };
   const host = graphHost(account, true);
-  const resp = await fetch(`${host}/${igUserId}/messages`, {
+
+  const buttonBody = {
+    recipient: { comment_id: commentId },
+    message: {
+      attachment: {
+        type: "template",
+        payload: {
+          template_type: "button",
+          text: opts.text.slice(0, 640),
+          buttons: [
+            {
+              type: "web_url",
+              url: opts.buttonUrl,
+              title: opts.buttonTitle,
+            },
+          ],
+        },
+      },
+    },
+  };
+
+  const buttonResp = await fetch(`${host}/${igUserId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ recipient: { comment_id: commentId }, message: { text } }),
+    body: JSON.stringify(buttonBody),
   });
-  return { ok: resp.ok, body: await resp.json().catch(() => ({})) };
+  const buttonJson = await buttonResp.json().catch(() => ({}));
+  if (buttonResp.ok) return { ok: true, body: buttonJson, mode: "button" as const };
+
+  // Фоллбек: короткий markvision-линк в тексте (без supabase URL).
+  const textBody = {
+    recipient: { comment_id: commentId },
+    message: { text: `${opts.text}\n${opts.buttonUrl}`.slice(0, 1000) },
+  };
+  const textResp = await fetch(`${host}/${igUserId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(textBody),
+  });
+  const textJson = await textResp.json().catch(() => ({}));
+  return {
+    ok: textResp.ok,
+    body: textResp.ok ? textJson : { button_error: buttonJson, text_error: textJson },
+    mode: textResp.ok ? ("text_fallback" as const) : ("failed" as const),
+  };
 }
 
 function ymd(d: Date) {
@@ -277,19 +334,22 @@ Deno.serve(async (req) => {
           await postPublicReply(commentId, account, replyText);
         }
 
-        const link = `${SB_URL}/functions/v1/ig-organic-redirect?c=${encodeURIComponent(kw.short_id)}${
-          username ? `&u=${encodeURIComponent(username)}` : ""
-        }`;
-        const dmPrefix = resolveDmText(kw);
-        // target_urls used by redirect; DM still carries short tracking link
+        const link = buildTrackingLink(kw.short_id, username);
+        const dmPrefix = resolveDmText(kw) || DEFAULT_DM_TEXT;
+        // target_urls используются redirect'ом; в DM — кнопка, не сырой URL.
         void resolveTargetUrl(kw);
-        const dmMessage = dmPrefix ? `${dmPrefix} ${link}` : link;
-        const sent = await sendPrivateDm(igUserId, account, commentId, dmMessage);
+        const sent = await sendPrivateDm(igUserId, account, commentId, {
+          text: dmPrefix,
+          buttonTitle: clampButtonTitle(kw.dm_button_title),
+          buttonUrl: link,
+        });
 
         await finalizeEvent(eventId, {
           comment_id: commentId,
           media_id: mediaId,
           dm_status: sent.ok ? "sent" : "failed",
+          dm_mode: sent.mode,
+          dm_button_url: link,
           dm_error: sent.ok ? null : sent.body,
         });
       }

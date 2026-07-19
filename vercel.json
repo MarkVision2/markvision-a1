@@ -10,6 +10,10 @@
   },
   "rewrites": [
     {
+      "source": "/r/:code",
+      "destination": "https://szfgdruhlebfvcmlvxdk.supabase.co/functions/v1/ig-organic-redirect?c=:code"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
