@@ -1,7 +1,7 @@
 {
-  "git_sha": "c127f94",
-  "git_sha_full": "c127f945f69b86d251b141d0d81bb7d4ab0ea813",
-  "updated_at": "2026-07-19T11:56:00Z",
-  "label": "Merge fix cf_scheduled_posts CAROUSEL constraint",
+  "git_sha": "e60402c",
+  "git_sha_full": "e60402c3795c2df05bec433157425148d89d5083",
+  "updated_at": "2026-07-19T11:59:48Z",
+  "label": "Merge carousel schedule workaround",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
