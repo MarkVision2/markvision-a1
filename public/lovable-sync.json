@@ -1,7 +1,7 @@
 {
-  "git_sha": "8a14bc9",
-  "git_sha_full": "8a14bc93b0792cb5296286d7bfed946e0226e102",
-  "updated_at": "2026-07-19T09:25:13Z",
-  "label": "ci(supabase): soft-fail Management API SQL when token lacks database_write",
+  "git_sha": "eff0ffb",
+  "git_sha_full": "eff0ffb647889809c2cdeabbd8c1fc0d81673997",
+  "updated_at": "2026-07-19T10:10:37Z",
+  "label": "Merge branch cursor/cloud-agent: content-plan, IG Meta connect, SQL bundle",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
