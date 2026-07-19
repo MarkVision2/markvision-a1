@@ -1,4 +1,4 @@
-import { Tag, Globe, ExternalLink } from "lucide-react";
+import { Tag, Globe } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { siteDomain } from "@/lib/analyticsBreakdowns";
@@ -112,40 +112,26 @@ export function LeadProfileTab({ lead, onUpdate }: Props) {
         ) : (
           <div className="mt-3 text-[11px] text-muted-foreground">UTM-метки не зафиксированы</div>
         )}
-        {(lead.referrer || lead.landingUrl) && (() => {
-          const landingDomain = lead.landingUrl ? siteDomain(lead.landingUrl) : null;
-          const referrerDomain = lead.referrer ? siteDomain(lead.referrer) : null;
-          const showReferrer =
-            referrerDomain
-            && referrerDomain !== "Сайт не определён"
-            && referrerDomain !== landingDomain;
+        {lead.landingUrl && (() => {
+          const landingDomain = siteDomain(lead.landingUrl);
+          if (landingDomain === "Сайт не определён") return null;
           return (
             <div className="mt-3 space-y-1.5 border-t border-border/60 pt-2 text-[11px]">
-              {lead.landingUrl && landingDomain && (
-                <div className="flex items-start gap-1.5 text-muted-foreground">
-                  <Globe className="mt-0.5 h-3 w-3 shrink-0" />
-                  <span className="truncate">
-                    Сайт:{" "}
-                    <a
-                      href={lead.landingUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-semibold text-foreground hover:underline"
-                      title={lead.landingUrl}
-                    >
-                      {landingDomain}
-                    </a>
-                  </span>
-                </div>
-              )}
-              {showReferrer && (
-                <div className="flex items-start gap-1.5 text-muted-foreground">
-                  <ExternalLink className="mt-0.5 h-3 w-3 shrink-0" />
-                  <span className="truncate" title={lead.referrer ?? undefined}>
-                    Переход с: <span className="font-semibold text-foreground">{referrerDomain}</span>
-                  </span>
-                </div>
-              )}
+              <div className="flex items-start gap-1.5 text-muted-foreground">
+                <Globe className="mt-0.5 h-3 w-3 shrink-0" />
+                <span className="truncate">
+                  Сайт:{" "}
+                  <a
+                    href={lead.landingUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-semibold text-foreground hover:underline"
+                    title={lead.landingUrl}
+                  >
+                    {landingDomain}
+                  </a>
+                </span>
+              </div>
             </div>
           );
         })()}

@@ -1,5 +1,5 @@
 import {
-  Star, Tag, Link2, Globe, Copy, MessageCircle, Mail, MapPin, Clock,
+  Star, Tag, Globe, Copy, MessageCircle, Mail, MapPin, Clock,
   Phone as PhoneIcon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -244,17 +244,10 @@ function UtmStrip({ lead }: { lead: Lead }) {
     ? (Object.entries(lead.utm).filter(([, v]) => !!v) as Array<[string, string]>)
     : [];
   const landingDomain = lead.landingUrl ? siteDomain(lead.landingUrl) : null;
-  const referrerDomain = lead.referrer ? siteDomain(lead.referrer) : null;
-  // Реферер показываем только когда он информативен: распознан и отличается
-  // от домена самого сайта.
-  const showReferrer =
-    referrerDomain
-    && referrerDomain !== "Сайт не определён"
-    && referrerDomain !== landingDomain;
   const showLanding = !!lead.landingUrl && !!landingDomain && landingDomain !== "Сайт не определён";
 
   // Совсем нет данных об источнике — не занимаем место пустой плашкой.
-  if (entries.length === 0 && !showLanding && !showReferrer) return null;
+  if (entries.length === 0 && !showLanding) return null;
 
   return (
     <div className="mt-3 rounded-lg border border-border/60 bg-card/40 p-2">
@@ -275,17 +268,6 @@ function UtmStrip({ lead }: { lead: Lead }) {
             <Globe className="h-3 w-3 shrink-0 text-muted-foreground" />
             <span className="truncate">{landingDomain}</span>
           </a>
-        )}
-
-        {showReferrer && (
-          <span
-            className="inline-flex max-w-full items-center gap-1 rounded-md bg-secondary/60 px-1.5 py-0.5 text-[10px]"
-            title={`Посетитель перешёл на сайт с: ${lead.referrer}`}
-          >
-            <Link2 className="h-3 w-3 shrink-0 text-muted-foreground" />
-            <span className="text-muted-foreground">с</span>
-            <span className="truncate font-semibold">{referrerDomain}</span>
-          </span>
         )}
 
         {entries.map(([k, v]) => (
