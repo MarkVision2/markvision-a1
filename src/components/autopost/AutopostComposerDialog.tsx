@@ -1,12 +1,14 @@
 import { useEffect, useState, type ReactNode } from "react";
 import {
-  Camera, ChevronLeft, ChevronRight, Film, FlaskConical, Loader2, Pause, Play, Plus, Send, Sparkles, Trash2, Upload, Volume2, VolumeX, X, Zap,
+  CalendarClock, Camera, ChevronLeft, ChevronRight, Film, FlaskConical, Loader2, Pause, Play, Plus, Send, Sparkles, Trash2, Upload, Volume2, VolumeX, X, Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { fmtNum } from "@/lib/format";
@@ -20,6 +22,49 @@ const fmtDuration = (s: number) => {
   const total = Math.max(0, Math.floor(s));
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 };
+
+function almatyYmdNow(d = new Date()): string {
+  return d.toLocaleDateString("en-CA", { timeZone: "Asia/Almaty" });
+}
+
+function addYmdDays(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}`;
+}
+
+function ymdToDate(ymd: string): Date {
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function dateToYmd(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function startOfLocalDay(d = new Date()) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function formatDayShort(ymd: string): string {
+  const today = almatyYmdNow();
+  const tomorrow = addYmdDays(today, 1);
+  if (ymd === today) return "Сегодня";
+  if (ymd === tomorrow) return "Завтра";
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Intl.DateTimeFormat("ru-RU", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(new Date(y, m - 1, d));
+}
+
+const TIME_SLOTS: { hour: number; minute: number }[] = Array.from({ length: 24 * 2 }, (_, i) => ({
+  hour: Math.floor(i / 2),
+  minute: (i % 2) * 30,
+}));
 
 function PhoneFrame({ children, label }: { children: ReactNode; label?: string }) {
   return (
@@ -63,6 +108,8 @@ export interface AutopostComposerDialogProps {
   onMoveFile: (idx: number, dir: -1 | 1) => void;
   caption: string;
   onCaptionChange: (v: string) => void;
+  captionBusy?: boolean;
+  onGenerateCaption?: () => void;
   hour: number;
   minute: number;
   onHourChange: (h: number) => void;
@@ -91,7 +138,7 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
     day, dayLabel, onDayChange, hourReach, bestHour, hasAccount, busy, uploadLabel, onClose,
     onSubmitNow, onSubmitSchedule,
     type, onTypeChange, files, previews, onPickFiles, onRemoveFile, onMoveFile,
-    caption, onCaptionChange, hour, minute, onHourChange, onMinuteChange,
+    caption, onCaptionChange, captionBusy = false, onGenerateCaption, hour, minute, onHourChange, onMinuteChange,
     dryRun, onDryRunChange,
     videoSrc, coverPreview, seek, duration, onSeekChange, onDurationChange,
     onCaptureFrame, onPickCover, onClearCover, videoRef, fileInputRef, coverInputRef,
@@ -104,6 +151,7 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(true);
   const [pickMode, setPickMode] = useState<"replace" | "append">("replace");
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   const meta = TYPE_META[type];
   const reachHint = hourReach.get(hour);
@@ -166,6 +214,51 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
     setCarouselIndex((i) => Math.max(0, Math.min(files.length - 1, i + dir)));
   };
 
+  const applyPreset = (kind: "now" | "plus1h" | "today-evening" | "tomorrow-morning") => {
+    const today = almatyYmdNow();
+    if (kind === "now") {
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Almaty",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).formatToParts(new Date());
+      const h = Number(parts.find((p) => p.type === "hour")?.value ?? "12");
+      const m = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+      onDayChange?.(today);
+      onHourChange(h);
+      onMinuteChange(Math.min(55, Math.round(m / 5) * 5));
+      return;
+    }
+    if (kind === "plus1h") {
+      const next = new Date(Date.now() + 60 * 60 * 1000);
+      const ymd = next.toLocaleDateString("en-CA", { timeZone: "Asia/Almaty" });
+      const parts = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Almaty",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).formatToParts(next);
+      const h = Number(parts.find((p) => p.type === "hour")?.value ?? "12");
+      const m = Number(parts.find((p) => p.type === "minute")?.value ?? "0");
+      onDayChange?.(ymd);
+      onHourChange(h);
+      onMinuteChange(Math.min(55, Math.round(m / 5) * 5));
+      return;
+    }
+    if (kind === "today-evening") {
+      onDayChange?.(today);
+      onHourChange(19);
+      onMinuteChange(0);
+      return;
+    }
+    onDayChange?.(addYmdDays(today, 1));
+    onHourChange(10);
+    onMinuteChange(0);
+  };
+
+  const scheduleLabel = `${formatDayShort(day)} · ${pad(hour)}:${pad(minute)} Алматы`;
+
   return (
     <Dialog open onOpenChange={(o) => !o && !busy && onClose()}>
       <DialogContent className="flex max-h-[95vh] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl">
@@ -174,7 +267,7 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
             <div>
               <DialogTitle className="text-lg">Новая публикация</DialogTitle>
               <DialogDescription className="mt-1">
-                {dayLabel} · время по Алматы
+                {scheduleLabel}
                 {!hasAccount && (
                   <span className="ml-2 text-amber-600">· Instagram не подключён</span>
                 )}
@@ -396,6 +489,149 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
                 <p className="mt-2 text-[11px] text-muted-foreground">{meta.hint}</p>
               </div>
 
+              <div>
+                <div className="mb-2 flex items-baseline justify-between gap-2">
+                  <FieldLabel>Когда публиковать</FieldLabel>
+                  <span className="text-[11px] text-muted-foreground">{scheduleLabel}</span>
+                </div>
+                <div className="space-y-2 rounded-xl border border-border/60 bg-card/40 p-3">
+                  <div className="flex flex-wrap gap-1.5">
+                    {(
+                      [
+                        ["now", "Сейчас"],
+                        ["plus1h", "+1 час"],
+                        ["today-evening", "Сегодня 19:00"],
+                        ["tomorrow-morning", "Завтра 10:00"],
+                      ] as const
+                    ).map(([kind, label]) => (
+                      <button
+                        key={kind}
+                        type="button"
+                        onClick={() => applyPreset(kind)}
+                        className="rounded-lg border border-border/60 bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <Popover open={calendarOpen} onOpenChange={setCalendarOpen} modal>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="h-11 w-full justify-start gap-2 rounded-xl border-border/60 bg-background px-3 text-left font-normal"
+                        aria-label="Дата публикации"
+                      >
+                        <CalendarClock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                        <span className="min-w-0 flex-1 truncate">
+                          <span className="font-medium text-foreground">{formatDayShort(day)}</span>
+                          <span className="text-muted-foreground">
+                            {" · "}
+                            {pad(hour)}:{pad(minute)} Алматы
+                          </span>
+                        </span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="start"
+                      className="w-auto max-w-[calc(100vw-2rem)] p-0"
+                      onOpenAutoFocus={(e) => e.preventDefault()}
+                    >
+                      <div className="flex flex-col sm:flex-row">
+                        <div className="border-b border-border/60 sm:border-b-0 sm:border-r">
+                          <Calendar
+                            mode="single"
+                            selected={ymdToDate(day)}
+                            onSelect={(d) => {
+                              if (!d || !onDayChange) return;
+                              onDayChange(dateToYmd(d));
+                            }}
+                            disabled={(d) => d < startOfLocalDay()}
+                            initialFocus
+                            className="pointer-events-auto p-3"
+                          />
+                        </div>
+                        <div className="flex w-full flex-col p-3 sm:w-[148px]">
+                          <div className="mb-2 text-xs font-semibold text-muted-foreground">
+                            Время · {formatDayShort(day)}
+                          </div>
+                          <div className="grid max-h-[260px] grid-cols-3 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-1">
+                            {TIME_SLOTS.map((slot) => {
+                              const active = hour === slot.hour && minute === slot.minute;
+                              const label = `${pad(slot.hour)}:${pad(slot.minute)}`;
+                              return (
+                                <button
+                                  key={label}
+                                  type="button"
+                                  onClick={() => {
+                                    onHourChange(slot.hour);
+                                    onMinuteChange(slot.minute);
+                                    setCalendarOpen(false);
+                                  }}
+                                  className={cn(
+                                    "rounded-lg border px-2 py-1.5 text-sm tabular-nums transition",
+                                    active
+                                      ? "border-primary bg-primary text-primary-foreground"
+                                      : "border-border/60 bg-background text-foreground hover:border-primary/40",
+                                  )}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={hour}
+                      onChange={(e) => onHourChange(Number(e.target.value))}
+                      className="h-10 rounded-lg border border-border/60 bg-background px-2 text-sm tabular-nums"
+                      aria-label="Час"
+                    >
+                      {Array.from({ length: 24 }, (_, i) => i).map((h) => (
+                        <option key={h} value={h}>{pad(h)}</option>
+                      ))}
+                    </select>
+                    <span className="text-muted-foreground">:</span>
+                    <select
+                      value={minute}
+                      onChange={(e) => onMinuteChange(Number(e.target.value))}
+                      className="h-10 rounded-lg border border-border/60 bg-background px-2 text-sm tabular-nums"
+                      aria-label="Минуты"
+                    >
+                      {Array.from({ length: 12 }, (_, i) => i * 5).map((m) => (
+                        <option key={m} value={m}>{pad(m)}</option>
+                      ))}
+                    </select>
+                    <span className="text-[11px] text-muted-foreground">Алматы</span>
+                    {bestHour != null && (
+                      <button
+                        type="button"
+                        onClick={() => { onHourChange(bestHour); onMinuteChange(0); }}
+                        className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-[11px] font-medium text-primary transition hover:bg-primary/10"
+                      >
+                        <Sparkles className="h-3 w-3" /> Лучшее · {pad(bestHour)}:00
+                      </button>
+                    )}
+                    <label className="ml-auto flex cursor-pointer items-center gap-2 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs">
+                      <Switch checked={dryRun} onCheckedChange={onDryRunChange} />
+                      <FlaskConical className="h-3.5 w-3.5 text-violet-500" />
+                      <span>Пробный</span>
+                    </label>
+                  </div>
+                </div>
+                {reachHint ? (
+                  <p className="mt-2 text-[11px] text-muted-foreground">
+                    Средний охват в это время: <span className="font-semibold text-foreground">{fmtNum(reachHint)}</span>
+                  </p>
+                ) : null}
+              </div>
+
               {isCarousel && (
                 <div>
                   <FieldLabel hint={`${files.length} из 10`}>Порядок слайдов</FieldLabel>
@@ -555,57 +791,43 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
 
               {type !== "STORIES" && (
                 <div>
-                  <FieldLabel hint={`${caption.length} / 2200`}>Подпись</FieldLabel>
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <FieldLabel hint={`${caption.length} / 2200`}>Подпись</FieldLabel>
+                    {onGenerateCaption && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1.5"
+                        disabled={captionBusy || busy || files.length === 0}
+                        onClick={onGenerateCaption}
+                      >
+                        {captionBusy ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-3.5 w-3.5" />
+                        )}
+                        Сгенерировать описание
+                      </Button>
+                    )}
+                  </div>
                   <Textarea
                     value={caption}
                     onChange={(e) => onCaptionChange(e.target.value.slice(0, 2200))}
-                    placeholder="Текст, хэштеги, призыв к действию…"
+                    placeholder={
+                      isCarousel || isReels
+                        ? "Или нажмите «Сгенерировать» — AI прочитает текст на слайдах/кадре"
+                        : "Текст, хэштеги, призыв к действию…"
+                    }
                     className="min-h-[100px] resize-none rounded-xl border-border/60 bg-background/80 text-sm leading-relaxed"
                   />
+                  {onGenerateCaption && (
+                    <p className="mt-1.5 text-[11px] text-muted-foreground">
+                      AI смотрит на загруженные картинки (карусель) или кадр из видео и пишет короткую подпись.
+                    </p>
+                  )}
                 </div>
               )}
-
-              <div>
-                <FieldLabel hint="Asia/Almaty">Дата и время публикации</FieldLabel>
-                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-card/40 p-3">
-                  {onDayChange && (
-                    <input
-                      type="date"
-                      value={day}
-                      onChange={(e) => onDayChange(e.target.value)}
-                      className="h-9 rounded-lg border border-border/60 bg-background px-3 text-sm font-medium tabular-nums"
-                    />
-                  )}
-                  <div className="flex items-center gap-1.5">
-                    <select value={hour} onChange={(e) => onHourChange(Number(e.target.value))} className="h-9 rounded-lg border border-border/60 bg-background px-3 text-sm font-medium tabular-nums">
-                      {Array.from({ length: 24 }, (_, i) => i).map((h) => <option key={h} value={h}>{pad(h)}</option>)}
-                    </select>
-                    <span className="text-muted-foreground">:</span>
-                    <select value={minute} onChange={(e) => onMinuteChange(Number(e.target.value))} className="h-9 rounded-lg border border-border/60 bg-background px-3 text-sm font-medium tabular-nums">
-                      {Array.from({ length: 12 }, (_, i) => i * 5).map((m) => <option key={m} value={m}>{pad(m)}</option>)}
-                    </select>
-                  </div>
-                  {bestHour != null && (
-                    <button
-                      type="button"
-                      onClick={() => { onHourChange(bestHour); onMinuteChange(0); }}
-                      className="inline-flex items-center gap-1 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1.5 text-[11px] font-medium text-primary transition hover:bg-primary/10"
-                    >
-                      <Sparkles className="h-3 w-3" /> Лучшее · {pad(bestHour)}:00
-                    </button>
-                  )}
-                  <label className="ml-auto flex cursor-pointer items-center gap-2 rounded-lg border border-border/50 bg-background px-2.5 py-1.5 text-xs">
-                    <Switch checked={dryRun} onCheckedChange={onDryRunChange} />
-                    <FlaskConical className="h-3.5 w-3.5 text-violet-500" />
-                    <span>Пробный режим</span>
-                  </label>
-                </div>
-                {reachHint ? (
-                  <p className="mt-2 text-[11px] text-muted-foreground">
-                    Средний охват в это время: <span className="font-semibold text-foreground">{fmtNum(reachHint)}</span>
-                  </p>
-                ) : null}
-              </div>
             </div>
           </div>
         </ScrollArea>
