@@ -20,7 +20,7 @@ import {
   summarizeContentPlan,
   type ContentPlanItem,
 } from "@/lib/contentPlan";
-import { formatPeriodLabel, fromTomorrowRange } from "@/lib/metricsPeriod";
+import { formatPeriodLabel, monthRange } from "@/lib/metricsPeriod";
 import { cn } from "@/lib/utils";
 import AutoPost, { AutopostAddDialog } from "@/pages/AutoPost";
 
@@ -36,6 +36,9 @@ const PRESET_LABELS: Record<ContentPeriodPreset, string> = {
   custom: "Свой период",
 };
 
+/** Полный календарный месяц — чтобы в плане были и будущие слоты этого месяца. */
+const contentPlanThisMonth = () => monthRange(new Date());
+
 export default function ContentPlan() {
   const [params, setParams] = useSearchParams();
   const showCalendar = params.get("view") === "calendar" || params.get("tab") === "autopost";
@@ -44,8 +47,8 @@ export default function ContentPlan() {
   const { activeId: projectId } = useProjectsStore();
   const { account, sync } = useInstagramAccount();
   const [addDay, setAddDay] = useState<string | null>(null);
-  const [preset, setPreset] = useState<ContentPeriodPreset>("from_tomorrow");
-  const [range, setRange] = useState<ReportPeriodRange>(() => fromTomorrowRange());
+  const [preset, setPreset] = useState<ContentPeriodPreset>("this_month");
+  const [range, setRange] = useState<ReportPeriodRange>(() => contentPlanThisMonth());
   const [refreshing, setRefreshing] = useState(false);
 
   const setShowCalendar = (on: boolean) => {
@@ -141,7 +144,8 @@ export default function ContentPlan() {
           showCompare={false}
           onPresetChange={(next, nextRange) => {
             setPreset(next);
-            setRange(nextRange);
+            // «Этот месяц» = весь июль (включая будущие слоты), не «по сегодня».
+            setRange(next === "this_month" ? contentPlanThisMonth() : nextRange);
           }}
         />
       </div>

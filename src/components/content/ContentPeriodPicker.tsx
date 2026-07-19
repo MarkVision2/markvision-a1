@@ -23,9 +23,9 @@ export type ContentPeriodPreset =
   | "all_time"
   | "custom";
 
-const PRESETS: { id: ContentPeriodPreset; label: string }[] = [
-  { id: "from_tomorrow", label: "С завтра" },
-  { id: "from_today", label: "С сегодня" },
+const DEFAULT_PRESETS: { id: ContentPeriodPreset; label: string }[] = [
+  { id: "this_month", label: "Этот месяц" },
+  { id: "last_month", label: "Прошлый месяц" },
   { id: "custom", label: "Выбрать период" },
 ];
 
@@ -38,6 +38,8 @@ interface Props {
   onCompareChange?: (compare: boolean) => void;
   /** Скрыть кнопку «Сравнить периоды» (например, на контент-плане). */
   showCompare?: boolean;
+  /** Какие пресеты показать. По умолчанию: этот / прошлый месяц + свой период. */
+  presets?: { id: ContentPeriodPreset; label: string }[];
   className?: string;
 }
 
@@ -49,6 +51,7 @@ export function ContentPeriodPicker({
   onPresetChange,
   onCompareChange,
   showCompare = true,
+  presets = DEFAULT_PRESETS,
   className,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -79,7 +82,7 @@ export function ContentPeriodPicker({
   return (
     <div className={cn("flex flex-wrap items-center gap-2", className)}>
       <div className="inline-flex rounded-2xl border border-border/60 bg-card/60 p-0.5">
-        {PRESETS.map(({ id, label }) => (
+        {presets.map(({ id, label }) => (
           <button
             key={id}
             type="button"
