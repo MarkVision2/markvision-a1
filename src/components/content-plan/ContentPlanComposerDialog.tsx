@@ -7,6 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Dialog,
   DialogContent,
@@ -74,23 +76,45 @@ function addAlmatyDays(ymd: string, days: number): string {
   return `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}`;
 }
 
-function formatScheduleLabel({ ymd, hour, minute }: ScheduleParts): string {
+function ymdToDate(ymd: string): Date {
   const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+function dateToYmd(d: Date): string {
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+function startOfLocalDay(d = new Date()) {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+
+function formatDayShort(ymd: string): string {
   const today = almatyParts().ymd;
   const tomorrow = addAlmatyDays(today, 1);
-  const day =
-    ymd === today ? "Сегодня"
-      : ymd === tomorrow ? "Завтра"
-        : new Intl.DateTimeFormat("ru-RU", {
-          day: "numeric",
-          month: "short",
-          weekday: "short",
-        }).format(new Date(Date.UTC(y, m - 1, d, 12)));
-  return `${day} · ${pad(hour)}:${pad(minute)} Алматы`;
+  if (ymd === today) return "Сегодня";
+  if (ymd === tomorrow) return "Завтра";
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Intl.DateTimeFormat("ru-RU", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  }).format(new Date(y, m - 1, d));
+}
+
+function formatScheduleLabel({ ymd, hour, minute }: ScheduleParts): string {
+  return `${formatDayShort(ymd)} · ${pad(hour)}:${pad(minute)} Алматы`;
 }
 
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const MINUTES = Array.from({ length: 12 }, (_, i) => i * 5);
+/** Convenient time list inside the calendar popover. */
+const TIME_SLOTS: { hour: number; minute: number }[] = Array.from({ length: 24 * 2 }, (_, i) => ({
+  hour: Math.floor(i / 2),
+  minute: (i % 2) * 30,
+}));
 
 type PickMode = "replace" | "append" | "replaceAt";
 
@@ -113,6 +137,7 @@ export function ContentPlanComposerDialog({
   const [contentType, setContentType] = useState<ContentPlanType>(initialType);
   const [description, setDescription] = useState("");
   const [schedule, setSchedule] = useState<ScheduleParts>(() => almatyParts());
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -133,6 +158,7 @@ export function ContentPlanComposerDialog({
     setContentType(initialType);
     setDescription("");
     setSchedule(almatyParts());
+    setCalendarOpen(false);
     setFiles([]);
     setActiveIdx(0);
     setUploadLabel(undefined);
@@ -623,17 +649,84 @@ export function ContentPlanComposerDialog({
                   </button>
                 ))}
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative min-w-[10.5rem] flex-1">
-                  <CalendarClock className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <input
-                    type="date"
-                    value={schedule.ymd}
-                    onChange={(e) => setSchedule((s) => ({ ...s, ymd: e.target.value }))}
-                    className="h-10 w-full rounded-lg border border-border/60 bg-background pl-8 pr-2 text-sm"
+              <Popover open={calendarOpen} onOpenChange={setCalendarOpen} modal>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 w-full justify-start gap-2 rounded-xl border-border/60 bg-background px-3 text-left font-normal"
                     aria-label="Дата публикации"
-                  />
-                </div>
+                  >
+                    <CalendarClock className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 flex-1 truncate">
+                      <span className="font-medium text-foreground">{formatDayShort(schedule.ymd)}</span>
+                      <span className="text-muted-foreground">
+                        {" · "}
+                        {pad(schedule.hour)}:{pad(schedule.minute)} Алматы
+                      </span>
+                    </span>
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="start"
+                  className="w-auto max-w-[calc(100vw-2rem)] p-0"
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                >
+                  <div className="flex flex-col sm:flex-row">
+                    <div className="border-b border-border/60 sm:border-b-0 sm:border-r">
+                      <Calendar
+                        mode="single"
+                        selected={ymdToDate(schedule.ymd)}
+                        onSelect={(d) => {
+                          if (!d) return;
+                          setSchedule((s) => ({ ...s, ymd: dateToYmd(d) }));
+                        }}
+                        disabled={(d) => d < startOfLocalDay()}
+                        initialFocus
+                        className="pointer-events-auto p-3"
+                      />
+                    </div>
+                    <div className="flex w-full flex-col p-3 sm:w-[148px]">
+                      <div className="mb-2 text-xs font-semibold text-muted-foreground">
+                        Время · {formatDayShort(schedule.ymd)}
+                      </div>
+                      <div className="grid max-h-[260px] grid-cols-3 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-1">
+                        {TIME_SLOTS.map((slot) => {
+                          const active =
+                            schedule.hour === slot.hour && schedule.minute === slot.minute;
+                          const label = `${pad(slot.hour)}:${pad(slot.minute)}`;
+                          return (
+                            <button
+                              key={label}
+                              type="button"
+                              onClick={() => {
+                                setSchedule((s) => ({
+                                  ...s,
+                                  hour: slot.hour,
+                                  minute: slot.minute,
+                                }));
+                                setCalendarOpen(false);
+                              }}
+                              className={cn(
+                                "rounded-lg border px-2 py-1.5 text-sm tabular-nums transition",
+                                active
+                                  ? "border-primary bg-primary text-primary-foreground"
+                                  : "border-border/60 bg-background text-foreground hover:border-primary/40",
+                              )}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="mt-2 text-[10px] leading-snug text-muted-foreground">
+                        Точнее — час и минуты ниже
+                      </p>
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={schedule.hour}
                   onChange={(e) => setSchedule((s) => ({ ...s, hour: Number(e.target.value) }))}
