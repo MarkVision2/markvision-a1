@@ -70,9 +70,11 @@ jobs:
           supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
           supabase db push --password "$SUPABASE_DB_PASSWORD"
 
-      # 2b) Fallback: без пароля применяем конкретные идемпотентные SQL через Management API.
+      # 2b) Fallback: без пароля пробуем Management API (нужен scope database_write).
       - name: Apply launch-funnel SQL via Management API
         if: ${{ env.SUPABASE_DB_PASSWORD == '' }}
+        continue-on-error: true
+        id: mgmt_sql
         env:
           SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
           SQL_FILE: supabase/migrations/20260719120000_ai_lab_launch_funnel.sql
@@ -80,9 +82,14 @@ jobs:
           chmod +x .github/scripts/apply-sql-via-management-api.sh
           .github/scripts/apply-sql-via-management-api.sh
 
-      - name: Note about skipped db push
+      - name: Note about DB migration status
         if: ${{ env.SUPABASE_DB_PASSWORD == '' }}
-        run: echo "::notice::SUPABASE_DB_PASSWORD not set — used Management API fallback for launch-funnel SQL. Add the DB password secret for full supabase db push."
+        run: |
+          if [ "${{ steps.mgmt_sql.outcome }}" = "success" ]; then
+            echo "::notice::Launch-funnel SQL applied via Management API."
+          else
+            echo "::warning::Could not apply DB migration automatically (need SUPABASE_DB_PASSWORD or ACCESS_TOKEN with database_write). Apply supabase/migrations/20260719120000_ai_lab_launch_funnel.sql in Supabase SQL Editor."
+          fi
 
-# redeploy trigger: apply launch funnel SQL via management API fallback
+# redeploy trigger: soft-fail management API migration when token lacks database_write
 # retry after owner-token update
