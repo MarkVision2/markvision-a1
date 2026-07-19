@@ -33,6 +33,10 @@ verify_jwt = false
 [functions.ig-organic-redirect]
 verify_jwt = false
 
+# One-shot wipe of test funnel events; gated by x-confirm header inside the function.
+[functions.ig-organic-reset-stats]
+verify_jwt = false
+
 [functions.instagram-organic-intake]
 verify_jwt = false
 
