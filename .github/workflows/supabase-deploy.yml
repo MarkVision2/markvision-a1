@@ -61,8 +61,7 @@ jobs:
             exit 1
           fi
 
-      # 2) Миграции БД — только если задан пароль. Без него шаг пропускается
-      #    (функции уже выкачены выше), а не валит весь пайплайн.
+      # 2) Миграции БД — через db push если есть пароль.
       - name: Apply database migrations
         if: ${{ env.SUPABASE_DB_PASSWORD != '' }}
         env:
@@ -71,9 +70,19 @@ jobs:
           supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
           supabase db push --password "$SUPABASE_DB_PASSWORD"
 
-      - name: Note about skipped migrations
+      # 2b) Fallback: без пароля применяем конкретные идемпотентные SQL через Management API.
+      - name: Apply launch-funnel SQL via Management API
         if: ${{ env.SUPABASE_DB_PASSWORD == '' }}
-        run: echo "::warning::SUPABASE_DB_PASSWORD not set — edge functions deployed, DB migrations skipped. Add the secret in GitHub → Settings → Secrets → Actions to enable migrations."
+        env:
+          SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
+          SQL_FILE: supabase/migrations/20260719120000_ai_lab_launch_funnel.sql
+        run: |
+          chmod +x .github/scripts/apply-sql-via-management-api.sh
+          .github/scripts/apply-sql-via-management-api.sh
 
-# redeploy trigger: validate SUPABASE_ACCESS_TOKEN privileges
+      - name: Note about skipped db push
+        if: ${{ env.SUPABASE_DB_PASSWORD == '' }}
+        run: echo "::notice::SUPABASE_DB_PASSWORD not set — used Management API fallback for launch-funnel SQL. Add the DB password secret for full supabase db push."
+
+# redeploy trigger: apply launch funnel SQL via management API fallback
 # retry after owner-token update
