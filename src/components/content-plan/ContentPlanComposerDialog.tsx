@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  ChevronLeft, ChevronRight, Film, Loader2, Plus, Send, Trash2, Upload, X,
+  CalendarClock, ChevronLeft, ChevronRight, Film, Loader2, Plus, Send, Trash2, Upload, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -43,7 +43,9 @@ function pad(n: number) {
   return String(n).padStart(2, "0");
 }
 
-function toDatetimeLocalValue(d = new Date()) {
+type ScheduleParts = { ymd: string; hour: number; minute: number };
+
+function almatyParts(d = new Date()): ScheduleParts {
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Almaty",
     year: "numeric",
@@ -54,14 +56,43 @@ function toDatetimeLocalValue(d = new Date()) {
     hour12: false,
   }).formatToParts(d);
   const get = (t: string) => parts.find((p) => p.type === t)?.value ?? "00";
-  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
+  const minute = Number(get("minute"));
+  // Snap to nearest 5 minutes for the dropdown.
+  const snapped = Math.min(55, Math.round(minute / 5) * 5);
+  return {
+    ymd: `${get("year")}-${get("month")}-${get("day")}`,
+    hour: Number(get("hour")),
+    minute: snapped,
+  };
 }
 
-function scheduledLocalToIso(local: string): string {
-  const [date, time] = local.split("T");
-  const [h, m] = (time || "12:00").split(":").map(Number);
-  return new Date(`${date}T${pad(h || 0)}:${pad(m || 0)}:00+05:00`).toISOString();
+function scheduleToIso({ ymd, hour, minute }: ScheduleParts): string {
+  return new Date(`${ymd}T${pad(hour)}:${pad(minute)}:00+05:00`).toISOString();
 }
+
+function addAlmatyDays(ymd: string, days: number): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + days));
+  return `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}`;
+}
+
+function formatScheduleLabel({ ymd, hour, minute }: ScheduleParts): string {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const today = almatyParts().ymd;
+  const tomorrow = addAlmatyDays(today, 1);
+  const day =
+    ymd === today ? "Сегодня"
+      : ymd === tomorrow ? "Завтра"
+        : new Intl.DateTimeFormat("ru-RU", {
+          day: "numeric",
+          month: "short",
+          weekday: "short",
+        }).format(new Date(Date.UTC(y, m - 1, d, 12)));
+  return `${day} · ${pad(hour)}:${pad(minute)} Алматы`;
+}
+
+const HOURS = Array.from({ length: 24 }, (_, i) => i);
+const MINUTES = Array.from({ length: 12 }, (_, i) => i * 5);
 
 type PickMode = "replace" | "append" | "replaceAt";
 
@@ -84,10 +115,7 @@ export function ContentPlanComposerDialog({
   const [category, setCategory] = useState<ContentPlanCategory>("content");
   const [contentType, setContentType] = useState<ContentPlanType>(initialType);
   const [description, setDescription] = useState("");
-  const [hashtags, setHashtags] = useState("");
-  const [prompts, setPrompts] = useState("");
-  const [codeword, setCodeword] = useState("");
-  const [scheduledLocal, setScheduledLocal] = useState(() => toDatetimeLocalValue());
+  const [schedule, setSchedule] = useState<ScheduleParts>(() => almatyParts());
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -108,10 +136,7 @@ export function ContentPlanComposerDialog({
     setCategory("content");
     setContentType(initialType);
     setDescription("");
-    setHashtags("");
-    setPrompts("");
-    setCodeword("");
-    setScheduledLocal(toDatetimeLocalValue());
+    setSchedule(almatyParts());
     setFiles([]);
     setActiveIdx(0);
     setUploadLabel(undefined);
@@ -210,8 +235,26 @@ export function ContentPlanComposerDialog({
   };
 
   const buildCaption = () => {
-    const parts = [title.trim(), description.trim(), hashtags.trim()].filter(Boolean);
+    const parts = [title.trim(), description.trim()].filter(Boolean);
     return parts.join("\n\n");
+  };
+
+  const applyPreset = (kind: "now" | "today-evening" | "tomorrow-morning" | "plus1h") => {
+    const now = almatyParts();
+    if (kind === "now") {
+      setSchedule(now);
+      return;
+    }
+    if (kind === "plus1h") {
+      const next = new Date(Date.now() + 60 * 60 * 1000);
+      setSchedule(almatyParts(next));
+      return;
+    }
+    if (kind === "today-evening") {
+      setSchedule({ ymd: now.ymd, hour: 19, minute: 0 });
+      return;
+    }
+    setSchedule({ ymd: addAlmatyDays(now.ymd, 1), hour: 10, minute: 0 });
   };
 
   const submit = async (publishNow: boolean) => {
@@ -235,7 +278,7 @@ export function ContentPlanComposerDialog({
       toast.error("Карусель: минимум 2 слайда");
       return;
     }
-    if (!publishNow && !scheduledLocal) {
+    if (!publishNow && !schedule.ymd) {
       toast.error("Укажите дату и время публикации");
       return;
     }
@@ -247,7 +290,7 @@ export function ContentPlanComposerDialog({
         mediaType: contentType,
         files,
         caption: buildCaption(),
-        scheduledAt: scheduledLocalToIso(scheduledLocal),
+        scheduledAt: scheduleToIso(schedule),
         publishNow,
         onProgress: setUploadLabel,
       });
@@ -264,10 +307,7 @@ export function ContentPlanComposerDialog({
         status: created.status,
         title: title.trim(),
         category,
-        codeword: codeword.trim() || null,
-        hashtags: hashtags.trim() || null,
         description: description.trim() || null,
-        prompts: prompts.trim() || null,
       });
 
       toast.success(publishNow ? "Публикуем сейчас…" : "Добавлено в план и автопостинг");
@@ -577,35 +617,75 @@ export function ContentPlanComposerDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Дата / время публикации (Алматы)</Label>
-            <Input
-              type="datetime-local"
-              value={scheduledLocal}
-              onChange={(e) => setScheduledLocal(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label>Код-слово (опционально)</Label>
-            <Input
-              value={codeword}
-              onChange={(e) => setCodeword(e.target.value)}
-              placeholder="хаб"
-              className="font-mono uppercase"
-            />
+            <div className="flex items-baseline justify-between gap-2">
+              <Label>Когда публиковать</Label>
+              <span className="text-[11px] text-muted-foreground">{formatScheduleLabel(schedule)}</span>
+            </div>
+            <div className="space-y-2 rounded-xl border border-border/60 bg-card/40 p-3">
+              <div className="flex flex-wrap gap-1.5">
+                {(
+                  [
+                    ["now", "Сейчас"],
+                    ["plus1h", "+1 час"],
+                    ["today-evening", "Сегодня 19:00"],
+                    ["tomorrow-morning", "Завтра 10:00"],
+                  ] as const
+                ).map(([kind, label]) => (
+                  <button
+                    key={kind}
+                    type="button"
+                    onClick={() => applyPreset(kind)}
+                    className="rounded-lg border border-border/60 bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-[10.5rem] flex-1">
+                  <CalendarClock className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    type="date"
+                    value={schedule.ymd}
+                    onChange={(e) => setSchedule((s) => ({ ...s, ymd: e.target.value }))}
+                    className="h-10 w-full rounded-lg border border-border/60 bg-background pl-8 pr-2 text-sm"
+                    aria-label="Дата публикации"
+                  />
+                </div>
+                <select
+                  value={schedule.hour}
+                  onChange={(e) => setSchedule((s) => ({ ...s, hour: Number(e.target.value) }))}
+                  className="h-10 rounded-lg border border-border/60 bg-background px-2 text-sm tabular-nums"
+                  aria-label="Час"
+                >
+                  {HOURS.map((h) => (
+                    <option key={h} value={h}>{pad(h)}</option>
+                  ))}
+                </select>
+                <span className="text-muted-foreground">:</span>
+                <select
+                  value={schedule.minute}
+                  onChange={(e) => setSchedule((s) => ({ ...s, minute: Number(e.target.value) }))}
+                  className="h-10 rounded-lg border border-border/60 bg-background px-2 text-sm tabular-nums"
+                  aria-label="Минуты"
+                >
+                  {MINUTES.map((m) => (
+                    <option key={m} value={m}>{pad(m)}</option>
+                  ))}
+                </select>
+                <span className="text-[11px] text-muted-foreground">Алматы</span>
+              </div>
+            </div>
           </div>
 
           <div className="space-y-1.5">
             <Label>Описание</Label>
-            <Textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Хэштеги</Label>
-            <Input value={hashtags} onChange={(e) => setHashtags(e.target.value)} placeholder="#marketing #ai" />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Промпты</Label>
-            <Textarea value={prompts} onChange={(e) => setPrompts(e.target.value)} rows={2} />
+            <Textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              placeholder="Текст поста / подпись к публикации"
+            />
           </div>
 
           {uploadLabel && (

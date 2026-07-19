@@ -53,12 +53,10 @@ function DescriptionDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>{item.title}</DialogTitle>
-          <DialogDescription>Описание · хэштеги · промпты · комментарии</DialogDescription>
+          <DialogDescription>Описание и комментарии</DialogDescription>
         </DialogHeader>
         <div className="space-y-4 text-sm">
           <Block label="Описание" value={item.description} />
-          <Block label="Хэштеги" value={item.hashtags} />
-          <Block label="Промпты" value={item.prompts} />
           <Block label="Комментарии" value={item.commentsNotes} />
         </div>
       </DialogContent>
