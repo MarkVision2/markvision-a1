@@ -41,8 +41,17 @@ export async function schedulerApi<T = unknown>(
     headers: { "Content-Type": "application/json", "x-app-key": CLIENT_KEY },
     body: JSON.stringify({ action, ...(projectId ? { project_id: projectId } : {}), ...payload }),
   });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok || !j.ok) throw new Error(j.error || `HTTP ${r.status}`);
+  const j = await r.json().catch(() => ({} as Record<string, unknown>));
+  if (!r.ok || !(j as { ok?: boolean }).ok) {
+    const err = (j as { error?: string }).error;
+    const detail = (j as { detail?: unknown }).detail;
+    let detailMsg = "";
+    if (typeof detail === "string") detailMsg = detail;
+    else if (detail && typeof detail === "object" && "message" in detail) {
+      detailMsg = String((detail as { message?: string }).message ?? "");
+    }
+    throw new Error([err, detailMsg].filter(Boolean).join(": ") || `HTTP ${r.status}`);
+  }
   return j as T;
 }
 

@@ -444,7 +444,32 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_content_plan_assign_utm ON public.content_plan_items;
+  DROP TRIGGER IF EXISTS trg_content_plan_assign_utm ON public.content_plan_items;
 CREATE TRIGGER trg_content_plan_assign_utm
   BEFORE INSERT ON public.content_plan_items
   FOR EACH ROW EXECUTE FUNCTION public.content_plan_assign_utm();
+
+-- ---------------------------------------------------------------------------
+-- E) cf_scheduled_posts: разрешить CAROUSEL + STORIES (фикс ошибки «db»)
+-- ---------------------------------------------------------------------------
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'cf_scheduled_posts_media_type_check'
+      AND conrelid = 'public.cf_scheduled_posts'::regclass
+  ) THEN
+    ALTER TABLE public.cf_scheduled_posts
+      DROP CONSTRAINT cf_scheduled_posts_media_type_check;
+  END IF;
+END $$;
+
+ALTER TABLE public.cf_scheduled_posts
+  ADD CONSTRAINT cf_scheduled_posts_media_type_check
+  CHECK (media_type = ANY (ARRAY[
+    'IMAGE'::text,
+    'REELS'::text,
+    'STORIES'::text,
+    'CAROUSEL'::text
+  ]));

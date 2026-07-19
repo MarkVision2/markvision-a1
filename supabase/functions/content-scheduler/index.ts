@@ -159,7 +159,19 @@ Deno.serve(async (req) => {
       }
     }
     const { ok, body, status } = await db(`cf_scheduled_posts`, { method: "POST", headers: { Prefer: "return=representation" }, body: JSON.stringify(row) });
-    if (!ok) return json({ ok: false, error: "db", detail: body }, status);
+    if (!ok) {
+      const msg = typeof body === "object" && body && "message" in (body as object)
+        ? String((body as { message?: string }).message ?? "")
+        : "";
+      if (/media_type_check/i.test(msg)) {
+        return json({
+          ok: false,
+          error: "Тип публикации не разрешён в базе (нужен CAROUSEL/STORIES в check constraint)",
+          detail: body,
+        }, status);
+      }
+      return json({ ok: false, error: msg || "db", detail: body }, status);
+    }
     return json({ ok: true, post: Array.isArray(body) ? body[0] : body });
   }
 
