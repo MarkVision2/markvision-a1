@@ -81,9 +81,7 @@ jobs:
           chmod +x .github/scripts/apply-sql-via-management-api.sh
           FAILED=""
           for SQL_FILE in \
-            supabase/migrations/20260719120000_ai_lab_launch_funnel.sql \
-            supabase/migrations/20260719140000_instagram_login_connect_and_codeword_fix.sql \
-            supabase/migrations/20260719150000_content_plan_items.sql
+            scripts/apply-prod-pending-20260719.sql
           do
             echo "::group::Apply $SQL_FILE"
             if ! SQL_FILE="$SQL_FILE" .github/scripts/apply-sql-via-management-api.sh; then
@@ -103,8 +101,8 @@ jobs:
           if [ "${{ steps.mgmt_sql.outcome }}" = "success" ]; then
             echo "::notice::Critical SQL applied via Management API."
           else
-            echo "::warning::Could not apply DB migration automatically (need SUPABASE_DB_PASSWORD or ACCESS_TOKEN with database_write). Apply supabase/migrations/20260719140000_instagram_login_connect_and_codeword_fix.sql in Supabase SQL Editor."
+            echo "::warning::Could not apply DB migration automatically (need SUPABASE_DB_PASSWORD or ACCESS_TOKEN with database_write). Apply scripts/apply-prod-pending-20260719.sql in Supabase SQL Editor."
           fi
 
-# redeploy trigger: Instagram Login connect + codeword short_id fix
+# redeploy trigger: content-plan + instagram meta token + combined SQL
 # retry after owner-token update
