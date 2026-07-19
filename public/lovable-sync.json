@@ -1,7 +1,7 @@
 {
-  "git_sha": "d8dbcd3",
-  "git_sha_full": "d8dbcd3861b929ac70c9326d1886a091b8b6e7c3",
-  "updated_at": "2026-07-19T12:43:48Z",
-  "label": "Merge schedule sync fix for content plan",
+  "git_sha": "0aba860",
+  "git_sha_full": "0aba860ddbed35a3df5f395ff45d171bfa093e63",
+  "updated_at": "2026-07-19T12:50:20Z",
+  "label": "Merge content-plan upcoming queue rail",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
