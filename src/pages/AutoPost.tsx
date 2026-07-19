@@ -21,6 +21,7 @@ import { AutopostUpcomingRail } from "@/components/autopost/AutopostUpcomingRail
 import { defaultFeed45View, fileCropKey } from "@/components/autopost/Feed45Crop";
 import { STATUS_META, TYPE_META, type PostType } from "@/components/autopost/constants";
 import { upsertContentPlanFromAutopost } from "@/lib/contentPlanAutopostBridge";
+import { generateAutopostCaption } from "@/lib/autopostAiCaption";
 import { cropImageFile, type ViewParams } from "@/lib/cropMedia";
 
 // Раздел «Автопостинг» — календарь + очередь публикаций Instagram (cf_scheduled_posts,
@@ -727,6 +728,7 @@ export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAcco
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [caption, setCaption] = useState("");
+  const [captionBusy, setCaptionBusy] = useState(false);
   const [ymd, setYmd] = useState(day);
   const [hour, setHour] = useState(12);
   const [minute, setMinute] = useState(0);
@@ -824,6 +826,27 @@ export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAcco
     return null;
   };
 
+  const generateCaption = async () => {
+    if (files.length === 0) {
+      toast.error("Сначала загрузите медиа");
+      return;
+    }
+    setCaptionBusy(true);
+    try {
+      const text = await generateAutopostCaption({
+        mediaType: type,
+        files,
+        projectId,
+      });
+      setCaption(text.slice(0, 2200));
+      toast.success("Описание готово — можно поправить перед публикацией");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось сгенерировать описание");
+    } finally {
+      setCaptionBusy(false);
+    }
+  };
+
   const submit = async (now: boolean) => {
     if (!projectId) { toast.error("Сначала выберите проект"); return; }
     if (!hasAccount) { toast.error("Подключите Instagram к проекту", { description: "Настройки → Meta / Facebook" }); return; }
@@ -914,6 +937,8 @@ export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAcco
       onMoveFile={moveFile}
       caption={caption}
       onCaptionChange={setCaption}
+      captionBusy={captionBusy}
+      onGenerateCaption={() => void generateCaption()}
       hour={hour}
       minute={minute}
       onHourChange={setHour}
