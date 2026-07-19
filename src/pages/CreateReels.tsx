@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Bot, Check, Film, FolderOpen, KeyRound, Library, Loader2, Mic2, Music,
@@ -85,8 +85,17 @@ const CreateReels = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { activeId: projectId } = useProjectsStore();
+  const [searchParams] = useSearchParams();
 
-  const [pageTab, setPageTab] = useState<"create" | "library" | "providers">("create");
+  const initialTab = (() => {
+    const t = searchParams.get("tab");
+    return t === "library" || t === "providers" || t === "create" ? t : "create";
+  })();
+  const [pageTab, setPageTab] = useState<"create" | "library" | "providers">(initialTab);
+  useEffect(() => {
+    const t = searchParams.get("tab");
+    if (t === "library" || t === "providers" || t === "create") setPageTab(t);
+  }, [searchParams]);
   const [script, setScript] = useState("");
   const [voiceProvider, setVoiceProvider] = useState<VoiceProvider>("elevenlabs");
   const [elevenVoice, setElevenVoice] = useState<string>(DEFAULT_ELEVEN_VOICE);

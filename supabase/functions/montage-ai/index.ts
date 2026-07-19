@@ -137,14 +137,24 @@ word = индекс из indexed. text — короткий капс (1–3 сл
         const utterances = String(body.utterances ?? "");
         const brief = String(body.brief ?? "");
         const durationSec = Number(body.durationSec ?? 0);
+        const brollMode = String(body.brollMode ?? "auto");
         if (!indexed) return json({ error: "indexed required" }, 400);
         const target = durationSec > 0
           ? Math.max(6, Math.min(24, Math.round(durationSec / 12)))
           : 10;
+        const sourceHint =
+          brollMode === "library"
+            ? "Источник B-roll: папки проекта — планируй окна под клипы/нарезки (cover=true чаще)."
+            : brollMode === "pexels"
+              ? "Источник B-roll: Pexels — планируй окна под стоковые видео по смыслу фразы."
+              : brollMode === "kie"
+                ? "Источник B-roll: Kie/Kling — планируй окна под сгенерированные клипы."
+                : "Источник B-roll: автоматически — motion-графика (шаблоны ниже).";
         const result = await chatJson(
           `Ты режиссёр motion-графики поверх «говорящей головы». Верни JSON:
 {"inserts":[{"anchorWord":<i>,"endWord":<i>,"template":"<slug>","data":{...},"note":"..."}]}
 Это code-based b-roll (НЕ картинки). template — ТОЛЬКО: ${MOTION_TEMPLATES}.
+${sourceHint}
 Правила:
 - Сделай примерно ${target} вставок (плотность ~1 на 10–15 сек), равномерно по ролику.
 - Подбирай шаблон ПО СМЫСЛУ фразы (цифры→number-counter/metric-callout; списки→checklist-reveal;
@@ -154,7 +164,7 @@ word = индекс из indexed. text — короткий капс (1–3 сл
 - data обязателен и заполнен под шаблон (см. поля value/label/items/words/steps/lines/…).
 - anchorWord/endWord — индексы из indexed, endWord > anchorWord, окно 2–6 сек речи.
 - Учитывай brief.`,
-          `DURATION_SEC=${durationSec || "?"}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
+          `DURATION_SEC=${durationSec || "?"}\nBROLL_MODE=${brollMode}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
           150_000,
         );
         if (!Array.isArray(result.inserts)) result.inserts = [];
