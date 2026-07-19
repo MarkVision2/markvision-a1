@@ -219,6 +219,29 @@ export function LeadHeader({
               </span>
             )}
           </div>
+
+          {((lead.tags && lead.tags.length > 0) || lead.temperature || lead.webinarStatus || (lead.depositAmount ?? 0) > 0) && (
+            <div className="mt-2 flex flex-wrap gap-1">
+              {lead.temperature && (
+                <span className="rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold text-warning">
+                  {lead.temperature === "hot" ? "🔥 Горячий" : lead.temperature === "warm" ? "🙂 Тёплый" : "❄️ Холодный"}
+                </span>
+              )}
+              {lead.webinarStatus && (
+                <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                  Вебинар: {lead.webinarStatus}
+                </span>
+              )}
+              {(lead.depositAmount ?? 0) > 0 && (
+                <span className="rounded-md bg-success/15 px-1.5 py-0.5 text-[10px] font-semibold text-success">
+                  Бронь {Number(lead.depositAmount).toLocaleString("ru-RU")} ₸
+                </span>
+              )}
+              {(lead.tags ?? []).slice(0, 4).map((t) => (
+                <span key={t} className="rounded-md bg-secondary/70 px-1.5 py-0.5 text-[10px]">{t}</span>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 

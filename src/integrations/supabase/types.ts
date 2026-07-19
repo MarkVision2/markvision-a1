@@ -1932,6 +1932,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           diagnostic_amount: number
+          deposit_amount: number | null
           email: string | null
           first_response_at: string | null
           first_touch_at: string | null
@@ -1962,6 +1963,10 @@ export type Database = {
           service: string | null
           source: string
           stage_id: string | null
+          tags: string[]
+          temperature: string | null
+          cohort: string | null
+          webinar_status: string | null
           updated_at: string
           utm: Json | null
         }
@@ -1978,6 +1983,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           diagnostic_amount?: number
+          deposit_amount?: number | null
           email?: string | null
           first_response_at?: string | null
           first_touch_at?: string | null
@@ -2008,6 +2014,10 @@ export type Database = {
           service?: string | null
           source?: string
           stage_id?: string | null
+          tags?: string[]
+          temperature?: string | null
+          cohort?: string | null
+          webinar_status?: string | null
           updated_at?: string
           utm?: Json | null
         }
@@ -2024,6 +2034,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           diagnostic_amount?: number
+          deposit_amount?: number | null
           email?: string | null
           first_response_at?: string | null
           first_touch_at?: string | null
@@ -2054,6 +2065,10 @@ export type Database = {
           service?: string | null
           source?: string
           stage_id?: string | null
+          tags?: string[]
+          temperature?: string | null
+          cohort?: string | null
+          webinar_status?: string | null
           updated_at?: string
           utm?: Json | null
         }
@@ -2639,6 +2654,7 @@ export type Database = {
           key: string
           order_index: number
           pipeline_id: string
+          stage_role: string
           title: string
           updated_at: string
         }
@@ -2652,6 +2668,7 @@ export type Database = {
           key: string
           order_index: number
           pipeline_id: string
+          stage_role?: string
           title: string
           updated_at?: string
         }
@@ -2665,6 +2682,7 @@ export type Database = {
           key?: string
           order_index?: number
           pipeline_id?: string
+          stage_role?: string
           title?: string
           updated_at?: string
         }
@@ -2685,6 +2703,7 @@ export type Database = {
           is_default: boolean
           name: string
           project_id: string | null
+          template_key: string | null
           updated_at: string
         }
         Insert: {
@@ -2693,6 +2712,7 @@ export type Database = {
           is_default?: boolean
           name: string
           project_id?: string | null
+          template_key?: string | null
           updated_at?: string
         }
         Update: {
@@ -2701,6 +2721,7 @@ export type Database = {
           is_default?: boolean
           name?: string
           project_id?: string | null
+          template_key?: string | null
           updated_at?: string
         }
         Relationships: [

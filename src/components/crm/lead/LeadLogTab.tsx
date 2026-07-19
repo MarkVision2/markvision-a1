@@ -1,5 +1,5 @@
 import {
-  CheckCircle2, FileText, MessageSquare, Phone, PhoneCall, Plus, ShoppingCart, Wallet, XCircle, Calendar, ArrowRight, Bell, RotateCcw, Zap,
+  CheckCircle2, FileText, MessageSquare, Phone, PhoneCall, Plus, ShoppingCart, Wallet, XCircle, Calendar, ArrowRight, Bell, RotateCcw, Zap, Flame, GraduationCap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { REJECT_REASONS, type Lead, type LeadEvent, type LeadEventType, type LeadStage, type RejectReason } from "@/types/crm";
@@ -24,6 +24,12 @@ const META: Record<LeadEventType, { icon: typeof Phone; label: string; tone: str
   automation_24h_sent: { icon: Zap, label: "Авто-сообщение 24ч", tone: "text-primary" },
   automation_revival_7d: { icon: RotateCcw, label: "Авто-возврат 7 дней", tone: "text-success" },
   call_attempt: { icon: PhoneCall, label: "Попытка вызова", tone: "text-muted-foreground" },
+  webinar_attendance: { icon: Calendar, label: "Вебинар", tone: "text-warning" },
+  launch_action: { icon: Zap, label: "Действие запуска", tone: "text-primary" },
+  tags_updated: { icon: FileText, label: "Теги", tone: "text-muted-foreground" },
+  temperature_updated: { icon: Flame, label: "Температура", tone: "text-warning" },
+  deposit_received: { icon: Wallet, label: "Бронь", tone: "text-success" },
+  student_created: { icon: GraduationCap, label: "Студент", tone: "text-success" },
 };
 
 export function LeadLogTab({ lead, stages }: Props) {
@@ -42,7 +48,7 @@ export function LeadLogTab({ lead, stages }: Props) {
   return (
     <ol className="relative space-y-2 border-l border-border/60 pl-4">
       {sorted.map((ev) => {
-        const m = META[ev.type];
+        const m = META[ev.type] ?? { icon: FileText, label: String(ev.type), tone: "text-muted-foreground" };
         const Icon = m.icon;
         let detail: React.ReactNode = null;
         if (ev.type === "stage_changed" && ev.payload) {

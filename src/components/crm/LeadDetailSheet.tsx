@@ -16,6 +16,13 @@ import { LeadDealTab } from "./lead/LeadDealTab";
 import { LeadTasksTab } from "./lead/LeadTasksTab";
 import { LeadProfileTab } from "./lead/LeadProfileTab";
 import { LeadLogTab } from "./lead/LeadLogTab";
+import { LaunchActionsPanel } from "./lead/LaunchActionsPanel";
+import {
+  requiresDiagnosticDialog,
+  requiresPaymentDialog,
+  requiresRejectDialog,
+  stageRoleOf,
+} from "@/lib/stageRoles";
 
 interface Props {
   lead: Lead | null;
@@ -43,6 +50,25 @@ interface Props {
   onRequestPay: (id: string) => void;
   /** Перевод в «Запись на диагностику» — диалог стоимости диагностики (можно 0). */
   onRequestDiagnostic?: (id: string) => void;
+  onLaunchAction?: (
+    id: string,
+    action:
+      | "whatsapp"
+      | "warming"
+      | "confirmed"
+      | "webinar_attended"
+      | "webinar_late"
+      | "webinar_no_show"
+      | "interest"
+      | "call_scheduled"
+      | "call_done"
+      | "offer"
+      | "deposit"
+      | "paid"
+      | "student",
+    opts?: { amount?: number },
+  ) => void;
+  pipelineTemplateKey?: string | null;
   /** Other leads' booked visits (ISO timestamps) — used by visit popover. */
   busySlots?: { iso: string; leadName?: string }[];
 }
@@ -51,6 +77,7 @@ export function LeadDetailSheet({
   lead, stages, members, chats, whatsapp, open, onOpenChange,
   onUpdate, onDelete, onMarkPersonal, onTogglePin, onAssign, onSendMessage,
   onMarkCall, onLogCallAttempt, onMarkPaid, onSetVisit, onAddTask, onToggleTask, onRemoveTask, onRequestReject, onRequestPay, onRequestDiagnostic,
+  onLaunchAction, pipelineTemplateKey,
   busySlots,
 }: Props) {
   const isMobile = useIsMobile();
@@ -60,19 +87,28 @@ export function LeadDetailSheet({
 
   const stageTitle = stages.find((s) => s.id === lead.stageId)?.title;
   const leadChats = chats.filter((c) => c.leadId === lead.id);
+  const isLaunch = pipelineTemplateKey === "launch";
 
   const handleChangeStage = (sid: string) => {
     if (sid === lead.stageId) return;
-    if (sid === "rejected") {
+    const stage = stages.find((s) => s.id === sid);
+    const role = stageRoleOf(stage);
+    if (requiresRejectDialog(role) || sid === "rejected") {
       onRequestReject(lead.id);
       onUpdate(lead.id, { stageId: sid });
       return;
     }
-    if (sid === "paid") {
+    if (requiresPaymentDialog(role) || sid === "paid") {
       onRequestPay(lead.id);
       return;
     }
-    if (sid === "scheduled" && onRequestDiagnostic) {
+    if (
+      onRequestDiagnostic
+      && requiresDiagnosticDialog(role, {
+        isDiagnostic: stage?.isDiagnostic,
+        templateKey: pipelineTemplateKey,
+      })
+    ) {
       onRequestDiagnostic(lead.id);
       return;
     }
@@ -117,6 +153,21 @@ export function LeadDetailSheet({
                   busySlots={busySlots}
                 />
               </div>
+
+              {isLaunch && onLaunchAction && (
+                <div className="px-5 pt-3">
+                  <LaunchActionsPanel
+                    lead={lead}
+                    onAction={(action, opts) => {
+                      if (action === "paid") {
+                        onRequestPay(lead.id);
+                        return;
+                      }
+                      onLaunchAction(lead.id, action, opts);
+                    }}
+                  />
+                </div>
+              )}
 
               <Tabs value={tab} onValueChange={setTab} className="flex flex-col px-5 pt-3 pb-4">
                 <TabsList className={cn("grid w-full", isMobile ? "grid-cols-5" : "grid-cols-4")}>

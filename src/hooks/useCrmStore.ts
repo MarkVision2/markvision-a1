@@ -81,6 +81,11 @@ type LeadRow = {
   meta_ad_id?: string | null; meta_adset_id?: string | null; meta_campaign_id?: string | null;
   is_personal?: boolean | null;
   project_id?: string | null;
+  tags?: string[] | null;
+  temperature?: string | null;
+  webinar_status?: string | null;
+  deposit_amount?: number | string | null;
+  cohort?: string | null;
 };
 
 
@@ -176,6 +181,11 @@ function leadRowToFrontIndexed(
     paymentMethod: (r.payment_method as PaymentMethod) ?? undefined,
     paidAt: r.paid_at ?? undefined,
     diagnosticAmount: Number((r as unknown as { diagnostic_amount?: number }).diagnostic_amount ?? 0),
+    tags: Array.isArray(r.tags) ? r.tags : [],
+    temperature: (r.temperature as Lead["temperature"]) ?? undefined,
+    webinarStatus: (r.webinar_status as Lead["webinarStatus"]) ?? undefined,
+    depositAmount: r.deposit_amount != null ? Number(r.deposit_amount) : undefined,
+    cohort: r.cohort ?? undefined,
     stageHistory: hist.map((h) => ({
       stageId: idToKey.get(h.to_stage_id) ?? "new",
       at: h.changed_at,
@@ -204,6 +214,7 @@ export function useCrmStore() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [chats, setChats] = useState<ChatMessage[]>([]);
   const [pipelineId, setPipelineId] = useState<string | null>(null);
+  const [pipelineTemplateKey, setPipelineTemplateKey] = useState<string | null>(null);
   const projectIdRef = useRef(projectId);
   const leadsRef = useRef(leads);
   leadsRef.current = leads;
@@ -239,6 +250,7 @@ export function useCrmStore() {
     }
     const pid = pipes?.[0]?.id ?? null;
     setPipelineId(pid);
+    setPipelineTemplateKey((pipes?.[0] as { template_key?: string | null } | undefined)?.template_key ?? null);
     if (!pid) return;
     const { data } = await supabase
       .from("pipeline_stages")
@@ -250,7 +262,16 @@ export function useCrmStore() {
     const list: LeadStage[] = (data ?? []).map((r: any) => {
       keyToId.set(r.key, r.id);
       idToKey.set(r.id, r.key);
-      return { id: r.key, title: r.title, color: r.color, icon: r.icon as LeadStage["icon"] };
+      return {
+        id: r.key,
+        title: r.title,
+        color: r.color,
+        icon: r.icon as LeadStage["icon"],
+        stageRole: r.stage_role ?? undefined,
+        isDiagnostic: !!r.is_diagnostic,
+        isTerminal: !!r.is_terminal,
+        orderIndex: r.order_index,
+      };
     });
     setStageIdMap({ keyToId, idToKey });
     if (list.length) setStages(list);
@@ -603,6 +624,14 @@ export function useCrmStore() {
       const sid = stageUuid(patch.stageId);
       if (sid) dbPatch.stage_id = sid;
     }
+    if (patch.tags !== undefined) (dbPatch as Record<string, unknown>).tags = patch.tags;
+    if (patch.temperature !== undefined) (dbPatch as Record<string, unknown>).temperature = patch.temperature ?? null;
+    if (patch.webinarStatus !== undefined) (dbPatch as Record<string, unknown>).webinar_status = patch.webinarStatus ?? null;
+    if (patch.depositAmount !== undefined) (dbPatch as Record<string, unknown>).deposit_amount = patch.depositAmount ?? null;
+    if (patch.cohort !== undefined) (dbPatch as Record<string, unknown>).cohort = patch.cohort ?? null;
+    if (patch.paid !== undefined) dbPatch.paid = patch.paid;
+    if (patch.paidAt !== undefined) dbPatch.paid_at = patch.paidAt ?? null;
+    if (patch.paymentMethod !== undefined) dbPatch.payment_method = patch.paymentMethod ?? null;
     if (Object.keys(dbPatch).length === 0) return;
     // Snapshot до patcha — чтобы откатить, если БД отказала.
     let prevSnapshot: Lead | undefined;
@@ -848,7 +877,8 @@ export function useCrmStore() {
     amount?: number,
     opts?: { note?: string },
   ) => {
-    const paidStageId = stageUuid("paid");
+    const paidByRole = stages.find((s) => s.stageRole === "paid")?.id ?? "paid";
+    const paidStageId = stageUuid(paidByRole) ?? stageUuid("paid");
     const lead = leads.find((l) => l.id === leadId);
     const finalAmount = amount ?? lead?.amount ?? 0;
     const note = opts?.note?.trim();
@@ -860,7 +890,7 @@ export function useCrmStore() {
       paymentMethod: method,
       paidAt: nowIso,
       amount: finalAmount,
-      stageId: paidStageId ? "paid" : l.stageId,
+      stageId: paidByRole,
       note: noteCombined,
       lastActivityAt: nowIso,
     }));
@@ -869,7 +899,7 @@ export function useCrmStore() {
       payment_method: method,
       paid_at: nowIso,
       amount: finalAmount,
-      stage_id: paidStageId ?? lead?.stageId,
+      stage_id: paidStageId ?? undefined,
       note: noteCombined ?? null,
     }).eq("id", leadId);
     await supabase.from("deals").insert({
@@ -880,15 +910,128 @@ export function useCrmStore() {
       paid_at: new Date().toISOString(),
       created_by: user?.id ?? null,
     });
-  }, [stageUuid, leads, user?.id]);
+  }, [stageUuid, stages, leads, user?.id]);
+
+  /** Launch-funnel action: move by stage_role + write structured event. */
+  const applyLaunchAction = useCallback(async (
+    leadId: string,
+    action:
+      | "confirmed"
+      | "webinar_attended"
+      | "webinar_late"
+      | "webinar_no_show"
+      | "interest"
+      | "call_scheduled"
+      | "call_done"
+      | "offer"
+      | "deposit"
+      | "paid"
+      | "student"
+      | "warming"
+      | "whatsapp",
+    opts?: { amount?: number; temperature?: Lead["temperature"]; tags?: string[] },
+  ) => {
+    const roleMap: Record<string, string> = {
+      confirmed: "confirmed",
+      webinar_attended: "attended",
+      webinar_late: "attended",
+      webinar_no_show: "rejected",
+      interest: "interest",
+      call_scheduled: "call_scheduled",
+      call_done: "call_done",
+      offer: "offer",
+      deposit: "deposit",
+      paid: "paid",
+      student: "student",
+      warming: "warming",
+      whatsapp: "whatsapp",
+    };
+    const targetRole = roleMap[action];
+    const targetStage = stages.find((s) => s.stageRole === targetRole)
+      ?? stages.find((s) => s.id === targetRole);
+    if (!targetStage) {
+      toast.error(`Этап «${targetRole}» не найден в воронке`);
+      return;
+    }
+    const sid = stageUuid(targetStage.id);
+    if (!sid) return;
+
+    const patch: Partial<Lead> = {
+      stageId: targetStage.id,
+      lastActivityAt: new Date().toISOString(),
+    };
+    const dbPatch: Record<string, unknown> = {
+      stage_id: sid,
+      last_activity_at: patch.lastActivityAt,
+    };
+
+    if (action === "webinar_attended") {
+      patch.webinarStatus = "attended";
+      dbPatch.webinar_status = "attended";
+    } else if (action === "webinar_late") {
+      patch.webinarStatus = "late";
+      dbPatch.webinar_status = "late";
+    } else if (action === "webinar_no_show") {
+      patch.webinarStatus = "no_show";
+      dbPatch.webinar_status = "no_show";
+    }
+
+    if (action === "deposit") {
+      const amount = opts?.amount ?? 10000;
+      patch.depositAmount = amount;
+      dbPatch.deposit_amount = amount;
+    }
+    if (action === "paid") {
+      patch.paid = true;
+      patch.paidAt = new Date().toISOString();
+      if (opts?.amount != null) patch.amount = opts.amount;
+      dbPatch.paid = true;
+      dbPatch.paid_at = patch.paidAt;
+      if (opts?.amount != null) dbPatch.amount = opts.amount;
+    }
+    if (opts?.temperature) {
+      patch.temperature = opts.temperature;
+      dbPatch.temperature = opts.temperature;
+    }
+    if (opts?.tags?.length) {
+      const lead = leads.find((l) => l.id === leadId);
+      const merged = Array.from(new Set([...(lead?.tags ?? []), ...opts.tags])).slice(0, 30);
+      patch.tags = merged;
+      dbPatch.tags = merged;
+    }
+    if (action === "interest" && !opts?.temperature) {
+      patch.temperature = "hot";
+      dbPatch.temperature = "hot";
+    }
+
+    patchLeadLocal(leadId, (l) => ({ ...l, ...patch }));
+    await supabase.from("leads").update(dbPatch as never).eq("id", leadId);
+    await supabase.from("events").insert({
+      lead_id: leadId,
+      event_type: action.startsWith("webinar_") ? "webinar_attendance"
+        : action === "deposit" ? "deposit_received"
+        : action === "student" ? "student_created"
+        : "launch_action",
+      payload: { action, role: targetRole, ...(opts?.amount != null ? { amount: opts.amount } : {}) },
+      actor_id: user?.id ?? null,
+    });
+  }, [stages, stageUuid, leads, user?.id, patchLeadLocal]);
 
   const setVisit = useCallback(async (leadId: string, dateIso: string, moveToScheduled = true) => {
     const lead = leads.find((l) => l.id === leadId);
     const update: TablesUpdate<"leads"> = { next_visit_at: dateIso };
     let nextStageKey: string | undefined;
-    if (moveToScheduled && lead && lead.stageId !== "scheduled" && lead.stageId !== "visit" && lead.stageId !== "paid") {
-      const sid = stageUuid("scheduled");
-      if (sid) { update.stage_id = sid; nextStageKey = "scheduled"; }
+    const scheduledKey = stages.find((s) => s.stageRole === "call_scheduled")?.id ?? "scheduled";
+    if (
+      moveToScheduled
+      && lead
+      && lead.stageId !== scheduledKey
+      && lead.stageId !== "visit"
+      && lead.stageId !== "paid"
+      && lead.stageId !== "student"
+    ) {
+      const sid = stageUuid(scheduledKey);
+      if (sid) { update.stage_id = sid; nextStageKey = scheduledKey; }
     }
     patchLeadLocal(leadId, (l) => ({
       ...l,
@@ -903,7 +1046,7 @@ export function useCrmStore() {
       payload: { at: dateIso },
       actor_id: user?.id ?? null,
     });
-  }, [leads, stageUuid, user?.id]);
+  }, [leads, stages, stageUuid, user?.id, patchLeadLocal]);
 
   const addTask = useCallback(async (leadId: string, title: string, dueAt: string) => {
     const { data } = await supabase.from("tasks").insert({
@@ -971,6 +1114,7 @@ export function useCrmStore() {
     leads,
     chats,
     whatsapp,
+    pipelineTemplateKey,
     setWhatsapp: (cfg: WhatsAppConfig) => { void setWhatsapp(cfg); },
     addStage,
     renameStage,
@@ -990,15 +1134,16 @@ export function useCrmStore() {
     logCallAttempt,
     markPaid,
     setVisit,
+    applyLaunchAction,
     addTask,
     toggleTask,
     removeTask,
   }), [
-    stages, leads, chats, whatsapp, setWhatsapp,
+    stages, leads, chats, whatsapp, pipelineTemplateKey, setWhatsapp,
     addStage, renameStage, removeStage, moveStage,
     addLead, updateLead, removeLead, removeLeads, markPersonal, moveLead, sendMessage,
     togglePin, assignLead, setRejectReason,
-    markCall, logCallAttempt, markPaid, setVisit,
+    markCall, logCallAttempt, markPaid, setVisit, applyLaunchAction,
     addTask, toggleTask, removeTask,
   ]);
 }

@@ -1,8 +1,15 @@
+import type { LeadTemperature, StageRole, WebinarStatus } from "@/lib/stageRoles";
+
 export type LeadStage = {
   id: string;
   title: string;
   color: string; // tailwind text/bg class hue (e.g. "primary", "warning")
   icon: "zap" | "bell" | "message" | "card" | "calendar" | "map" | "check" | "ban";
+  /** Semantic role for dialogs / automations (independent of display key). */
+  stageRole?: StageRole;
+  isDiagnostic?: boolean;
+  isTerminal?: boolean;
+  orderIndex?: number;
 };
 
 export type LeadStatus = "new" | "no_answer" | "in_progress" | "invoice" | "scheduled" | "visit" | "paid" | "rejected" | string;
@@ -60,7 +67,13 @@ export type LeadEventType =
   | "automation_followup_2h"
   | "automation_24h_sent"
   | "automation_revival_7d"
-  | "call_attempt";
+  | "call_attempt"
+  | "webinar_attendance"
+  | "launch_action"
+  | "tags_updated"
+  | "temperature_updated"
+  | "deposit_received"
+  | "student_created";
 
 export type LeadEvent = {
   id: string;
@@ -108,6 +121,12 @@ export type Lead = {
   paidAt?: string;
   /** Цена диагностики, фиксируется при переходе в этап «Запись на диагностику». 0 = бесплатно. */
   diagnosticAmount?: number;
+  /** Launch funnel tags (offer, content, etc.). */
+  tags?: string[];
+  temperature?: LeadTemperature;
+  webinarStatus?: WebinarStatus;
+  depositAmount?: number;
+  cohort?: string;
   tasks?: LeadTask[];
   events?: LeadEvent[];
   /**
