@@ -1,7 +1,7 @@
 {
-  "git_sha": "a9a78b6",
-  "git_sha_full": "a9a78b6a5cd17b42f9bdcfbcd42167162caef29d",
-  "updated_at": "2026-07-19T15:05:10Z",
-  "label": "Merge branch 'cursor/reset-ig-stats-84cc' — wipe IG test stats via edge",
+  "git_sha": "08aa4e7",
+  "git_sha_full": "08aa4e718b10ad43d1310ec6a909100368dc39d3",
+  "updated_at": "2026-07-19T15:06:35Z",
+  "label": "Merge branch 'cursor/reset-ig-stats-84cc' — reset stats via intake",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
