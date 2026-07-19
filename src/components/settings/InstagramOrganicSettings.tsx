@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import {
-  BarChart3, Camera, Copy, ExternalLink, Loader2, MessageCircle, Pencil, Plus, Trash2,
+  BarChart3, Camera, Copy, Loader2, MessageCircle, MousePointerClick, Pencil, Plus, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -23,38 +23,29 @@ import { VariantListInput } from "@/components/settings/VariantListInput";
 import { normalizeVariantList } from "@/lib/codewordVariants";
 import { cn } from "@/lib/utils";
 
+/** Фиксированный текст кнопки в Instagram Direct (до 20 символов Meta). */
+export const DM_ACCESS_BUTTON_TITLE = "получить доступ";
+
 interface CodewordDraft {
   codeword: string;
-  reelUrl: string;
-  thumbnailUrl: string;
-  caption: string;
   commentReplies: string[];
   dmMessages: string[];
   targetUrls: string[];
-  dmButtonTitle: string;
 }
 
 const EMPTY_DRAFT: CodewordDraft = {
   codeword: "",
-  reelUrl: "",
-  thumbnailUrl: "",
-  caption: "",
   commentReplies: [""],
   dmMessages: [""],
   targetUrls: [""],
-  dmButtonTitle: "Зарегистрироваться",
 };
 
 function draftFromItem(item: InstagramCodeword): CodewordDraft {
   return {
     codeword: item.codeword,
-    reelUrl: item.reelUrl ?? "",
-    thumbnailUrl: item.thumbnailUrl ?? "",
-    caption: item.caption ?? "",
     commentReplies: item.commentReplies.length > 0 ? item.commentReplies : [""],
     dmMessages: item.dmMessages.length > 0 ? item.dmMessages : [""],
     targetUrls: item.targetUrls.length > 0 ? item.targetUrls : [""],
-    dmButtonTitle: item.dmButtonTitle?.trim() || "Зарегистрироваться",
   };
 }
 
@@ -62,17 +53,31 @@ function draftToPayload(draft: CodewordDraft) {
   return {
     codeword: draft.codeword,
     reelId: null as string | null,
-    reelUrl: draft.reelUrl.trim() || null,
-    thumbnailUrl: draft.thumbnailUrl.trim() || null,
-    caption: draft.caption.trim() || null,
+    reelUrl: null as string | null,
+    thumbnailUrl: null as string | null,
+    caption: null as string | null,
     publishedAt: null as string | null,
     commentReplies: normalizeVariantList(draft.commentReplies),
     dmMessages: normalizeVariantList(draft.dmMessages),
     targetUrls: normalizeVariantList(draft.targetUrls),
     targetUrl: normalizeVariantList(draft.targetUrls)[0] ?? null,
-    dmButtonTitle: draft.dmButtonTitle.trim() || "Зарегистрироваться",
+    dmButtonTitle: DM_ACCESS_BUTTON_TITLE,
     active: true,
   };
+}
+
+function validateDraft(draft: CodewordDraft): string | null {
+  if (!draft.codeword.trim()) return "Введите код-слово";
+  if (normalizeVariantList(draft.commentReplies).length === 0) {
+    return "Добавьте хотя бы один ответ на комментарий";
+  }
+  if (normalizeVariantList(draft.dmMessages).length === 0) {
+    return "Добавьте хотя бы один текст сообщения в Direct";
+  }
+  if (normalizeVariantList(draft.targetUrls).length === 0) {
+    return "Добавьте хотя бы одну ссылку для кнопки «получить доступ»";
+  }
+  return null;
 }
 
 export function InstagramOrganicSettings() {
@@ -90,12 +95,9 @@ export function InstagramOrganicSettings() {
   const statsById = useMemo(() => new Map(stats.map((s) => [s.codewordId, s])), [stats]);
 
   const handleAdd = async () => {
-    if (!draft.codeword.trim()) {
-      toast.error("Введите код-слово");
-      return;
-    }
-    if (normalizeVariantList(draft.targetUrls).length === 0) {
-      toast.error("Добавьте хотя бы одну ссылку для Direct");
+    const err = validateDraft(draft);
+    if (err) {
+      toast.error(err);
       return;
     }
     setSaving(true);
@@ -117,12 +119,9 @@ export function InstagramOrganicSettings() {
 
   const handleSaveEdit = async () => {
     if (!editing || !editDraft) return;
-    if (!editDraft.codeword.trim()) {
-      toast.error("Введите код-слово");
-      return;
-    }
-    if (normalizeVariantList(editDraft.targetUrls).length === 0) {
-      toast.error("Добавьте хотя бы одну ссылку для Direct");
+    const err = validateDraft(editDraft);
+    if (err) {
+      toast.error(err);
       return;
     }
     setSaving(true);
@@ -175,7 +174,6 @@ export function InstagramOrganicSettings() {
       codeword,
       username: "@user_handle",
       contact: "+7700...",
-      reel_url: "https://www.instagram.com/reel/...",
     },
     null,
     2,
@@ -186,46 +184,18 @@ export function InstagramOrganicSettings() {
     onChange: (patch: Partial<CodewordDraft>) => void,
   ) => (
     <div className="space-y-5">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label htmlFor="ig-codeword">Код-слово</Label>
-          <Input
-            id="ig-codeword"
-            placeholder="например, Хаб"
-            value={value.codeword}
-            onChange={(e) => onChange({ codeword: e.target.value })}
-          />
-          <p className="text-[11px] text-muted-foreground">
-            Подписчик пишет это слово в комментарии или Direct — автоматизация распознаёт и запускает сценарий.
-          </p>
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="ig-reel">Ссылка на рилс</Label>
-          <Input
-            id="ig-reel"
-            placeholder="https://www.instagram.com/reel/..."
-            value={value.reelUrl}
-            onChange={(e) => onChange({ reelUrl: e.target.value })}
-          />
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="ig-thumb">Превью рилса (URL)</Label>
-          <Input
-            id="ig-thumb"
-            placeholder="https://..."
-            value={value.thumbnailUrl}
-            onChange={(e) => onChange({ thumbnailUrl: e.target.value })}
-          />
-        </div>
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label htmlFor="ig-caption">Описание рилса (для себя)</Label>
-          <Input
-            id="ig-caption"
-            placeholder="О чём рилс — видно только в MarkVision"
-            value={value.caption}
-            onChange={(e) => onChange({ caption: e.target.value })}
-          />
-        </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="ig-codeword">Код-слово</Label>
+        <Input
+          id="ig-codeword"
+          placeholder="например, хаб"
+          value={value.codeword}
+          onChange={(e) => onChange({ codeword: e.target.value })}
+          className="max-w-md font-medium"
+        />
+        <p className="text-[11px] text-muted-foreground">
+          Подписчик пишет это слово в комментарии — система отвечает и шлёт Direct с кнопкой.
+        </p>
       </div>
 
       <div className="rounded-xl border border-border/60 bg-secondary/20 p-4">
@@ -235,8 +205,8 @@ export function InstagramOrganicSettings() {
         </div>
         <VariantListInput
           label="Варианты ответа"
-          hint="До 10 вариантов. При каждом событии API случайно выберет один — n8n отправит его в комментарий."
-          placeholder="Спасибо! Проверь Direct — отправили ссылку"
+          hint="До 10 штук. На каждое событие отправляется один случайный вариант."
+          placeholder="Спасибо! Проверь Direct — отправили доступ 👇"
           items={value.commentReplies}
           onChange={(commentReplies) => onChange({ commentReplies })}
           multiline
@@ -247,33 +217,34 @@ export function InstagramOrganicSettings() {
         <div className="mb-3 text-sm font-semibold">Сообщение в Direct</div>
         <VariantListInput
           label="Текст над кнопкой"
-          hint="До 10 вариантов. В Direct уходит текст + кнопка (без длинной supabase-ссылки)."
-          placeholder="Готово! Жми кнопку ниже и регистрируйся 👇"
+          hint="До 10 вариантов. Случайный текст + кнопка «получить доступ»."
+          placeholder="Готово! Жми кнопку ниже и забирай доступ 👇"
           items={value.dmMessages}
           onChange={(dmMessages) => onChange({ dmMessages })}
           multiline
         />
-        <div className="mt-4 space-y-1.5">
-          <Label htmlFor="ig-dm-button">Текст кнопки</Label>
-          <Input
-            id="ig-dm-button"
-            maxLength={20}
-            placeholder="Зарегистрироваться"
-            value={value.dmButtonTitle}
-            onChange={(e) => onChange({ dmButtonTitle: e.target.value.slice(0, 20) })}
-          />
-          <p className="text-[11px] text-muted-foreground">
-            Instagram показывает кнопку (до 20 символов). Ссылка внутри — короткая markvision.kz/r/… с трекингом.
-          </p>
+        <div className="mt-4 rounded-lg border border-border/50 bg-background/50 px-3 py-2.5">
+          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Кнопка в Direct</div>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <span className="inline-flex rounded-md bg-pink-500/15 px-2.5 py-1 text-sm font-semibold text-pink-600 dark:text-pink-400">
+              {DM_ACCESS_BUTTON_TITLE}
+            </span>
+            <span className="text-[11px] text-muted-foreground">
+              фиксированная · клики считаем в аналитике
+            </span>
+          </div>
         </div>
       </div>
 
       <div className="rounded-xl border border-border/60 bg-secondary/20 p-4">
-        <div className="mb-3 text-sm font-semibold">Ссылки в Direct</div>
+        <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
+          <MousePointerClick className="h-4 w-4 text-emerald-500" />
+          Ссылки в Direct
+        </div>
         <VariantListInput
-          label="URL для перехода"
-          hint="До 10 ссылок. Одна выбирается случайно; клик фиксируется в аналитике."
-          placeholder="https://landing.example/?utm_source=ig_organic"
+          label="Куда ведёт «получить доступ»"
+          hint="До 10 ссылок. Одна выбирается случайно; каждый клик по кнопке пишется в статистику."
+          placeholder="https://landing.example/?utm_source=ig"
           items={value.targetUrls}
           onChange={(targetUrls) => onChange({ targetUrls })}
         />
@@ -300,12 +271,10 @@ export function InstagramOrganicSettings() {
             <Camera className="h-6 w-6" />
           </span>
           <div className="flex-1">
-            <h3 className="text-base font-semibold">Instagram organic — код-слова</h3>
+            <h3 className="text-base font-semibold">Новое код-слово</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Настройте код-слово, варианты ответов в комментарии, тексты и ссылки для Direct.
-              MarkVision сам слушает комментарии (webhook) и шлёт ответ + DM. Аналитика: написали
-              код-слово → перешли по ссылке. Если ответа нет — Настройки → Instagram → «Синхронизировать»
-              (подпишет webhook) и проверьте Instagram Login токен для DM.
+              Код-слово → случайный ответ в комментарии → Direct с кнопкой «получить доступ».
+              Клики по кнопке считаются автоматически.
             </p>
           </div>
         </div>
@@ -336,9 +305,9 @@ export function InstagramOrganicSettings() {
           <div className="space-y-3">
             {items.map((it) => {
               const st = statsById.get(it.id);
-              const dms = st?.codewordDms ?? 0;
+              const wrote = (st?.codewordDms ?? 0) + (st?.codewordComments ?? 0);
               const clicks = st?.linkClicks ?? 0;
-              const conv = formatClickConversion(dms, clicks);
+              const conv = formatClickConversion(Math.max(wrote, 1) > 0 ? wrote : 0, clicks);
               const shortLink = it.shortId ? igOrganicBotLink(it.shortId) : null;
 
               return (
@@ -347,13 +316,9 @@ export function InstagramOrganicSettings() {
                   className="rounded-xl border border-border/60 bg-background/40 p-4"
                 >
                   <div className="flex flex-wrap items-start gap-3">
-                    {it.thumbnailUrl ? (
-                      <img src={it.thumbnailUrl} alt="" className="h-14 w-14 rounded-lg object-cover" loading="lazy" />
-                    ) : (
-                      <span className="grid h-14 w-14 place-items-center rounded-lg bg-pink-500/10">
-                        <Camera className="h-5 w-5 text-pink-500" />
-                      </span>
-                    )}
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-pink-500/10 font-mono text-sm font-bold uppercase text-pink-600 dark:text-pink-400">
+                      {it.codeword.slice(0, 3)}
+                    </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-base font-semibold">«{it.codeword}»</span>
@@ -362,17 +327,14 @@ export function InstagramOrganicSettings() {
                             выкл
                           </span>
                         )}
+                        <span className="rounded-md bg-pink-500/10 px-1.5 py-0.5 text-[10px] font-medium text-pink-600 dark:text-pink-400">
+                          {DM_ACCESS_BUTTON_TITLE}
+                        </span>
                       </div>
-                      {it.caption && <p className="mt-0.5 text-xs text-muted-foreground">{it.caption}</p>}
                       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
                         <span>{it.commentReplies.length} ответов в коммент.</span>
                         <span>{it.dmMessages.length} текстов DM</span>
                         <span>{it.targetUrls.length} ссылок</span>
-                        {it.reelUrl && (
-                          <a href={it.reelUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:underline">
-                            рилс <ExternalLink className="h-3 w-3" />
-                          </a>
-                        )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
@@ -391,15 +353,15 @@ export function InstagramOrganicSettings() {
                   </div>
 
                   <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    <StatPill label="Написали код-слово" value={dms} accent="text-sky-600" />
-                    <StatPill label="Перешли по ссылке" value={clicks} accent="text-emerald-600" />
+                    <StatPill label="Написали код-слово" value={wrote} accent="text-sky-600" />
+                    <StatPill label="Нажали «получить доступ»" value={clicks} accent="text-emerald-600" />
                     <StatPill label="Конверсия в клик" value={conv} accent="text-orange-600" isText />
                     <StatPill label="Заявки" value={st?.leads ?? 0} accent="text-violet-600" />
                   </div>
 
                   {shortLink && (
                     <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-secondary/20 px-3 py-2">
-                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Короткая ссылка</span>
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Трекинг кнопки</span>
                       <code className="min-w-0 flex-1 truncate text-[11px]">{shortLink}</code>
                       <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => copyText(shortLink, "Ссылка")}>
                         <Copy className="h-3.5 w-3.5" />
@@ -419,9 +381,16 @@ export function InstagramOrganicSettings() {
           Как считается аналитика
         </h4>
         <ul className="space-y-1.5 text-xs text-muted-foreground">
-          <li><b className="text-foreground">Написали код-слово</b> — событие <code className="rounded bg-secondary px-1">codeword_dm</code> (Direct) или <code className="rounded bg-secondary px-1">codeword_comment</code> (комментарий).</li>
-          <li><b className="text-foreground">Перешли по ссылке</b> — клик по короткой ссылке из Direct (<code className="rounded bg-secondary px-1">link_click</code>).</li>
-          <li><b className="text-foreground">Конверсия</b> = клики ÷ DM с код-словом × 100%.</li>
+          <li>
+            <b className="text-foreground">Написали код-слово</b> — комментарий или Direct с код-словом.
+          </li>
+          <li>
+            <b className="text-foreground">Нажали «получить доступ»</b> — клик по кнопке в Direct
+            (короткая ссылка markvision.kz/r/… → событие <code className="rounded bg-secondary px-1">link_click</code>).
+          </li>
+          <li>
+            <b className="text-foreground">Конверсия</b> = клики по кнопке ÷ написали код-слово × 100%.
+          </li>
         </ul>
       </div>
 
@@ -451,9 +420,6 @@ export function InstagramOrganicSettings() {
             </pre>
           </div>
         </div>
-        <p className="mt-3 text-[11px] text-muted-foreground">
-          Пример ответа: <code className="rounded bg-secondary px-1">{`{ "comment_reply": "...", "dm_message": "...", "redirect_url": "...", "target_url": "..." }`}</code>
-        </p>
       </div>
 
       <Dialog open={!!editing && !!editDraft} onOpenChange={(o) => { if (!o) { setEditing(null); setEditDraft(null); } }}>
@@ -461,7 +427,7 @@ export function InstagramOrganicSettings() {
           <DialogHeader>
             <DialogTitle>Редактировать «{editing?.codeword}»</DialogTitle>
             <DialogDescription>
-              Изменения вступят в силу для новых событий. Статистика прошлых публикаций сохранится.
+              Изменения сразу для новых событий. Клики по кнопке и статистика прошлых событий сохранятся.
             </DialogDescription>
           </DialogHeader>
           {editDraft && renderFormFields(editDraft, (patch) => setEditDraft((d) => d ? { ...d, ...patch } : d))}
