@@ -78,7 +78,7 @@ export default function ContentPlan() {
         icon={ClipboardList}
         iconAccent="pink"
         title="Контент-план"
-        description="Планируйте публикации здесь (карусель 4:5 с обрезкой). Расписание из Instagram-приложения Meta не отдаёт — только через MarkVision или уже вышедшие посты."
+        description="План и очередь MarkVision. Расписание из приложения Instagram Meta в публичный API не отдаёт (официально /media = только вышедшие). Если постили через Meta Business Suite на Facebook Page — подтянем при синхронизации Instagram."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" className="gap-1" onClick={() => void refetch()}>

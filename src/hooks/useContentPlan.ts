@@ -18,6 +18,7 @@ import {
   type ContentPlanIgMedia,
   type ContentPlanOrganicEvent,
 } from "@/lib/contentPlanIgLink";
+import { schedulerApi } from "@/lib/autopostClient";
 
 type DbRow = {
   id: string;
@@ -177,7 +178,7 @@ export function useContentPlan() {
     setLoading(true);
     setError(null);
     try {
-      const [planRes, statsRes, mediaRes, leadsRes, stagesRes, eventsRes, codewordsRes, autopostRes] =
+      const [planRes, statsRes, mediaRes, leadsRes, stagesRes, eventsRes, codewordsRes, queuePack] =
         await Promise.all([
           supabase
             .from("content_plan_items" as never)
@@ -216,14 +217,9 @@ export function useContentPlan() {
             .select("id, codeword, reel_id")
             .eq("project_id", projectId)
             .eq("active", true),
-          supabase
-            .from("cf_scheduled_posts")
-            .select(
-              "id, published_ig_media_id, media_type, caption, media_url, thumbnail_url, child_urls, scheduled_at, status",
-            )
-            .eq("project_id", projectId)
-            .order("scheduled_at", { ascending: false })
-            .limit(500),
+          // Очередь MarkVision — только через content-scheduler (service role).
+          // Прямой select из cf_scheduled_posts у клиента часто пустой из‑за RLS.
+          schedulerApi<{ posts?: AutopostLite[] }>("list", {}, projectId).catch(() => ({ posts: [] })),
         ]);
 
       let missingTable = false;
@@ -241,7 +237,7 @@ export function useContentPlan() {
       const stats = (statsRes.data ?? []) as unknown as CodewordStatRow[];
       const media = (mediaRes.data ?? []) as unknown as IgMediaRow[];
       const codewords = (!codewordsRes.error ? codewordsRes.data ?? [] : []) as unknown as CodewordRow[];
-      const autoposts = (!autopostRes.error ? autopostRes.data ?? [] : []) as unknown as AutopostLite[];
+      const autoposts = (queuePack.posts ?? []) as AutopostLite[];
       const events = (eventsRes.data ?? []) as unknown as ContentPlanOrganicEvent[];
 
       const stageRoleById = new Map<string, string>();
