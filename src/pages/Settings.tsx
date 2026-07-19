@@ -98,13 +98,13 @@ const CONNECTION_NAV: Array<{
   {
     tab: "ig-organic",
     title: "Instagram",
-    desc: "Органический Instagram проекта: код-слова, вебхуки, связь с контент-аналитикой.",
+    desc: "Подключение аккаунта через Meta-токен, код-слова, автоответы и аналитика.",
     icon: Camera,
   },
   {
     tab: "meta-tokens",
     title: "Meta",
-    desc: "Вход через Facebook и токены Meta API для рекламы и автопостинга.",
+    desc: "Facebook OAuth и Meta-токены для Instagram, рекламы и автопостинга.",
     icon: KeyRound,
   },
   {

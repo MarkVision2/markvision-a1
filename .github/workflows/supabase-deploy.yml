@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "supabase/**"
+      - "scripts/apply-prod-pending-20260719.sql"
       - ".github/workflows/supabase-deploy.yml"
   workflow_dispatch: {}
 
@@ -71,25 +72,38 @@ jobs:
           supabase db push --password "$SUPABASE_DB_PASSWORD"
 
       # 2b) Fallback: без пароля пробуем Management API (нужен scope database_write).
-      - name: Apply launch-funnel SQL via Management API
+      - name: Apply critical SQL via Management API
         if: ${{ env.SUPABASE_DB_PASSWORD == '' }}
         continue-on-error: true
         id: mgmt_sql
         env:
           SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
-          SQL_FILE: supabase/migrations/20260719120000_ai_lab_launch_funnel.sql
         run: |
           chmod +x .github/scripts/apply-sql-via-management-api.sh
-          .github/scripts/apply-sql-via-management-api.sh
+          FAILED=""
+          for SQL_FILE in \
+            scripts/apply-prod-pending-20260719.sql
+          do
+            echo "::group::Apply $SQL_FILE"
+            if ! SQL_FILE="$SQL_FILE" .github/scripts/apply-sql-via-management-api.sh; then
+              echo "::warning::Failed to apply $SQL_FILE"
+              FAILED="$FAILED $SQL_FILE"
+            fi
+            echo "::endgroup::"
+          done
+          if [ -n "$FAILED" ]; then
+            echo "::warning::Some SQL files were not applied:$FAILED"
+            exit 1
+          fi
 
       - name: Note about DB migration status
         if: ${{ env.SUPABASE_DB_PASSWORD == '' }}
         run: |
           if [ "${{ steps.mgmt_sql.outcome }}" = "success" ]; then
-            echo "::notice::Launch-funnel SQL applied via Management API."
+            echo "::notice::Critical SQL applied via Management API."
           else
-            echo "::warning::Could not apply DB migration automatically (need SUPABASE_DB_PASSWORD or ACCESS_TOKEN with database_write). Apply supabase/migrations/20260719120000_ai_lab_launch_funnel.sql in Supabase SQL Editor."
+            echo "::warning::Could not apply DB migration automatically (need SUPABASE_DB_PASSWORD or ACCESS_TOKEN with database_write). Apply scripts/apply-prod-pending-20260719.sql in Supabase SQL Editor."
           fi
 
-# redeploy trigger: soft-fail management API migration when token lacks database_write
+# redeploy trigger: content-plan + instagram meta token + combined SQL
 # retry after owner-token update

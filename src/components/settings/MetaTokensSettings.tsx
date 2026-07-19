@@ -147,9 +147,9 @@ export function MetaTokensSettings() {
           <div className="flex-1">
             <h3 className="text-base font-semibold">Meta-токены</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              Добавьте один или несколько System User токенов Meta. По ним будут подключаться рекламные
-              кабинеты в разделе Ads → «Быстрое подключение Meta». Значение токена скрыто и доступно
-              только backend-функциям.
+              User / System User Access Token (EAAG…). Используется для подключения Instagram
+              (Настройки → Instagram), рекламных кабинетов в Ads и автопостинга. Значение токена
+              скрыто и доступно только backend-функциям.
             </p>
           </div>
         </div>

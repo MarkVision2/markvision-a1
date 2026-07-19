@@ -19,6 +19,7 @@ import { AutopostComposerDialog } from "@/components/autopost/AutopostComposerDi
 import { AutopostEditDialog } from "@/components/autopost/AutopostEditDialog";
 import { AutopostUpcomingRail } from "@/components/autopost/AutopostUpcomingRail";
 import { STATUS_META, TYPE_META, type PostType } from "@/components/autopost/constants";
+import { upsertContentPlanFromAutopost } from "@/lib/contentPlanAutopostBridge";
 
 // Раздел «Автопостинг» — календарь + очередь публикаций Instagram (cf_scheduled_posts,
 // клиентский Supabase). Медиа → публичный бакет autopost, публикует publisher по крону
@@ -201,7 +202,7 @@ const monthRangeYmd = (view: Date) => {
   return { from, to: ymdOf(last) };
 };
 
-const AutoPost = () => {
+const AutoPost = ({ embedded = false }: { embedded?: boolean } = {}) => {
   const { active, activeId: projectId } = useProjectsStore();
   const { account, loading: accountLoading } = useInstagramAccount();
   const [view, setView] = useState(() => new Date());
@@ -321,8 +322,9 @@ const AutoPost = () => {
     finally { setBusyIds((s) => { const n = new Set(s); n.delete(id); return n; }); }
   };
 
-  return (
-    <PageContainer wide>
+  const body = (
+    <>
+      {!embedded && (
       <PageHeader
         icon={CalendarDays}
         title="Автопостинг"
@@ -340,6 +342,7 @@ const AutoPost = () => {
           </Button>
         }
       />
+      )}
 
       <div className="mt-4">
         {accountLoading && !account ? (
@@ -590,9 +593,14 @@ const AutoPost = () => {
           onDone={() => { setEditing(null); void loadAll(view); }}
         />
       )}
-    </PageContainer>
+    </>
   );
+
+  if (embedded) return body;
+  return <PageContainer wide>{body}</PageContainer>;
 };
+
+// ——— Скелетон
 
 // ——— Скелетон календаря на время первой загрузки ———
 function CalendarSkeleton() {
@@ -849,6 +857,19 @@ function AddDialog({ day, hourReach, bestHour, projectId, hasAccount, onClose, o
       }
       const res = await schedulerApi<{ post: QueuePost }>("create", payload, projectId);
       if (now && res.post?.id) await schedulerApi("publish_now", { id: res.post.id }, projectId);
+      if (res.post?.id) {
+        await upsertContentPlanFromAutopost({
+          projectId,
+          autopostId: res.post.id,
+          mediaType: type,
+          caption: typeof payload.caption === "string" ? payload.caption : null,
+          mediaUrl: typeof payload.media_url === "string" ? payload.media_url : null,
+          thumbnailUrl: typeof payload.thumbnail_url === "string" ? payload.thumbnail_url : null,
+          childUrls: Array.isArray(payload.child_urls) ? (payload.child_urls as string[]) : null,
+          scheduledAt: String(payload.scheduled_at),
+          status: now ? "published" : "scheduled",
+        }).catch(() => {});
+      }
       toast.success(now ? "Публикуем сейчас…" : dryRun ? "Добавлено в пробном режиме" : "Запланировано");
       onDone();
     } catch (e) {
@@ -996,4 +1017,5 @@ function Heatmap({ cells, bestDow, bestHour }: { cells: { dow: number; hour: num
   );
 }
 
+export { AutoPost };
 export default AutoPost;

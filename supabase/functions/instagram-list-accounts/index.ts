@@ -33,7 +33,9 @@ Deno.serve(async (req) => {
     const { data: { user } } = await supaUser.auth.getUser();
     if (!user) return json({ error: "unauthorized" }, 401);
 
-    const { project_id } = await req.json();
+    const body = await req.json().catch(() => ({}));
+    const project_id = body?.project_id;
+    const meta_token = typeof body?.meta_token === "string" ? body.meta_token : null;
     if (!project_id) return json({ error: "project_id required" }, 400);
 
     const supa = createClient(SUPABASE_URL, SERVICE_ROLE);
@@ -49,10 +51,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    const token = await resolveMetaAccessToken(null);
+    const token = await resolveMetaAccessToken({
+      admin: supa,
+      projectId: project_id,
+      bodyToken: meta_token,
+    });
     if (!token) {
       return json({
-        error: "Meta access token не настроен. Укажите токен в Настройках → Автоматизация или Meta tokens.",
+        error:
+          "Meta-токен не найден. Добавьте его в Настройки → Meta → Meta-токены, или вставьте User Access Token прямо при подключении Instagram.",
         accounts: [],
       }, 400);
     }

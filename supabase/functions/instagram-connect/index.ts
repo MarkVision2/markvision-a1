@@ -34,7 +34,7 @@ Deno.serve(async (req) => {
     if (!user) return json({ error: "unauthorized" }, 401);
 
     const body = await req.json();
-    const { project_id, page_id, ig_user_id } = body ?? {};
+    const { project_id, page_id, ig_user_id, meta_token } = body ?? {};
     if (!project_id || !page_id || !ig_user_id) return json({ error: "project_id, page_id, ig_user_id required" }, 400);
 
     const supa = createClient(SUPABASE_URL, SERVICE_ROLE);
@@ -46,10 +46,15 @@ Deno.serve(async (req) => {
       if (!mem) return json({ error: "forbidden" }, 403);
     }
 
-    const token = await resolveMetaAccessToken(null);
+    const token = await resolveMetaAccessToken({
+      admin: supa,
+      projectId: project_id,
+      bodyToken: typeof meta_token === "string" ? meta_token : null,
+    });
     if (!token) {
       return json({
-        error: "Meta access token не настроен. Укажите токен в Настройках → Автоматизация.",
+        error:
+          "Meta-токен не найден. Добавьте его в Настройки → Meta → Meta-токены, или вставьте токен при подключении.",
       }, 400);
     }
 

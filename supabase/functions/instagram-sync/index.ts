@@ -7,7 +7,22 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
-const GRAPH = "https://graph.facebook.com/v21.0";
+const GRAPH_FB = "https://graph.facebook.com/v21.0";
+const GRAPH_IG = "https://graph.instagram.com/v21.0";
+
+/** Instagram Login tokens (IGAA…/IGQV…) must hit graph.instagram.com; Page tokens use Facebook Graph. */
+function graphFor(token: string) {
+  return /^IG/i.test(token) ? GRAPH_IG : GRAPH_FB;
+}
+
+function pickSyncToken(account: any): string | null {
+  const login = typeof account?.ig_login_access_token === "string" ? account.ig_login_access_token.trim() : "";
+  const page = typeof account?.page_access_token === "string" ? account.page_access_token.trim() : "";
+  // Prefer Instagram Login when present — works without FB Page binding.
+  if (login) return login;
+  if (page) return page;
+  return null;
+}
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -39,8 +54,16 @@ function pickThumbnail(m: any): string | null {
 }
 
 async function syncOne(supa: any, account: any) {
-  const token = account.page_access_token;
+  const token = pickSyncToken(account);
   const igId = account.ig_user_id;
+  if (!token) {
+    await supa.from("instagram_accounts").update({
+      last_error: "profile: нет access token (подключите Instagram Login или Facebook Page)",
+      active: false,
+    }).eq("project_id", account.project_id);
+    return;
+  }
+  const GRAPH = graphFor(token);
 
   // 1) Account profile fields
   try {

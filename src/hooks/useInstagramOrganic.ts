@@ -4,6 +4,16 @@ import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { normalizeVariantList } from "@/lib/codewordVariants";
 
+function genClientShortId(): string {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("").slice(0, 10);
+}
+
+function isShortIdGeneratorBroken(message: string): boolean {
+  return /gen_random_bytes|gen_codeword_short_id|short_id/i.test(message);
+}
+
 export interface InstagramOrganicEvent {
   id: string;
   projectId: string | null;
@@ -255,7 +265,7 @@ export function useInstagramCodewords() {
   const add = async (input: Omit<InstagramCodeword, "id" | "projectId">) => {
     if (!projectId) throw new Error("Сначала выберите проект");
     const targetUrls = normalizeVariantList(input.targetUrls);
-    const { error } = await supabase.from("instagram_codewords").insert({
+    const base = {
       project_id: projectId,
       codeword: input.codeword.trim().toLowerCase(),
       reel_id: input.reelId,
@@ -268,8 +278,24 @@ export function useInstagramCodewords() {
       dm_messages: normalizeVariantList(input.dmMessages),
       target_urls: targetUrls,
       active: input.active,
-    });
-    if (error) throw error;
+      short_id: genClientShortId(),
+    };
+    let { error } = await supabase.from("instagram_codewords").insert(base as never);
+    // If short_id column somehow absent on older DBs, retry without it.
+    if (error && /short_id/i.test(error.message) && /column|schema|does not exist/i.test(error.message)) {
+      const { short_id: _drop, ...withoutShort } = base;
+      const retry = await supabase.from("instagram_codewords").insert(withoutShort as never);
+      error = retry.error;
+    }
+    // Legacy DEFAULT may still fire on empty short_id — retry once with another id if unique collision.
+    if (error && isShortIdGeneratorBroken(error.message)) {
+      const retry = await supabase.from("instagram_codewords").insert({
+        ...base,
+        short_id: genClientShortId(),
+      } as never);
+      error = retry.error;
+    }
+    if (error) throw new Error(error.message || "Не удалось добавить код-слово");
   };
 
   const update = async (id: string, patch: Partial<InstagramCodeword>) => {
@@ -291,12 +317,12 @@ export function useInstagramCodewords() {
     }
     if (patch.active !== undefined) payload.active = patch.active;
     const { error } = await supabase.from("instagram_codewords").update(payload as never).eq("id", id);
-    if (error) throw error;
+    if (error) throw new Error(error.message || "Не удалось сохранить код-слово");
   };
 
   const remove = async (id: string) => {
     const { error } = await supabase.from("instagram_codewords").delete().eq("id", id);
-    if (error) throw error;
+    if (error) throw new Error(error.message || "Не удалось удалить код-слово");
   };
 
   return { items, loading, add, update, remove };

@@ -268,6 +268,15 @@ export function InstagramOrganicSettings() {
     <div className="space-y-6">
       <InstagramAccountConnect />
 
+      <div className="rounded-2xl border border-dashed border-border/70 bg-card/40 p-4 text-sm text-muted-foreground">
+        Нет Meta-токена или нужен вход через Facebook? Откройте{" "}
+        <a href="/settings?tab=meta-tokens" className="font-semibold text-primary hover:underline">
+          Настройки → Meta
+        </a>
+        : там Facebook OAuth и список Meta-токенов. После сохранения токена вернитесь сюда и нажмите
+        «Выбрать Instagram аккаунт».
+      </div>
+
       <div className="rounded-2xl border border-border bg-card p-6">
         <div className="mb-5 flex items-start gap-4">
           <span className="grid h-12 w-12 place-items-center rounded-xl bg-pink-500/15 text-pink-500">

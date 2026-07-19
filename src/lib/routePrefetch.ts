@@ -24,6 +24,8 @@ export const routeImports = {
   CreativeFunnel: () => import("@/pages/CreativeFunnel"),
   ContentAnalytics: () => import("@/pages/ContentAnalytics"),
   ContentCenter: () => import("@/pages/ContentCenter"),
+  ContentPlan: () => import("@/pages/ContentPlan"),
+  ContentPlanDetail: () => import("@/pages/ContentPlanDetail"),
   AutoPost: () => import("@/pages/AutoPost"),
   Finance: () => import("@/pages/Finance"),
   Reports: () => import("@/pages/Reports"),
@@ -76,6 +78,12 @@ export function prefetchRoute(path: string) {
       break;
     case "/marketing/content-center":
       loaders.push(routeImports.ContentCenter);
+      break;
+    case "/marketing/content-plan":
+      loaders.push(routeImports.ContentPlan);
+      break;
+    case "/marketing/autopost":
+      loaders.push(routeImports.ContentPlan);
       break;
     case "/analytics/creatives":
       loaders.push(routeImports.CreativeFunnel);

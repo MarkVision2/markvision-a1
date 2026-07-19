@@ -1,6 +1,6 @@
 import { lazy, Suspense } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
@@ -33,7 +33,8 @@ const Analytics = lazy(routeImports.Analytics);
 const CreativeFunnel = lazy(routeImports.CreativeFunnel);
 const ContentAnalytics = lazy(routeImports.ContentAnalytics);
 const ContentCenter = lazy(routeImports.ContentCenter);
-const AutoPost = lazy(routeImports.AutoPost);
+const ContentPlan = lazy(routeImports.ContentPlan);
+const ContentPlanDetail = lazy(routeImports.ContentPlanDetail);
 const Finance = lazy(routeImports.Finance);
 const Reports = lazy(routeImports.Reports);
 const Settings = lazy(routeImports.Settings);
@@ -89,7 +90,9 @@ const App = () => (
               <Route path="/analytics/creatives" element={<RequireAuth><AppLayout><CreativeFunnel /></AppLayout></RequireAuth>} />
               <Route path="/analytics/content" element={<RequireAuth><AppLayout><ContentAnalytics /></AppLayout></RequireAuth>} />
               <Route path="/marketing/content-center" element={<RequireAuth><AppLayout><ContentCenter /></AppLayout></RequireAuth>} />
-              <Route path="/marketing/autopost" element={<RequireAuth><AppLayout><AutoPost /></AppLayout></RequireAuth>} />
+              <Route path="/marketing/content-plan" element={<RequireAuth><AppLayout><ContentPlan /></AppLayout></RequireAuth>} />
+              <Route path="/marketing/content-plan/:id" element={<RequireAuth><AppLayout><ContentPlanDetail /></AppLayout></RequireAuth>} />
+              <Route path="/marketing/autopost" element={<RequireAuth><Navigate to="/marketing/content-plan?tab=autopost" replace /></RequireAuth>} />
               <Route path="/finance" element={<RequireAuth><AppLayout><Finance /></AppLayout></RequireAuth>} />
               <Route path="/reports" element={<RequireAuth><AppLayout><Reports /></AppLayout></RequireAuth>} />
               <Route path="/settings" element={<RequireAuth><AppLayout><Settings /></AppLayout></RequireAuth>} />
