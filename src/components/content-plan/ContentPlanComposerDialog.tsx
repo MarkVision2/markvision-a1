@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  CalendarClock, Camera, ChevronLeft, ChevronRight, Film, Loader2, Plus, Send, Sparkles, Trash2, Upload, X,
+  CalendarClock, Camera, ChevronLeft, ChevronRight, Film, GripVertical, Loader2, Plus, Send, Sparkles, Trash2, Upload, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -146,6 +146,8 @@ export function ContentPlanComposerDialog({
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
   const [coverBusy, setCoverBusy] = useState(false);
   const [captionBusy, setCaptionBusy] = useState(false);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploadLabel, setUploadLabel] = useState<string>();
   const [pickMode, setPickMode] = useState<PickMode>("replace");
@@ -187,6 +189,8 @@ export function ContentPlanComposerDialog({
     clearCover();
     setCaptionBusy(false);
     setCoverBusy(false);
+    setDragFrom(null);
+    setDragOver(null);
     setUploadLabel(undefined);
   };
 
@@ -295,6 +299,17 @@ export function ContentPlanComposerDialog({
       return next;
     });
     setActiveIdx(j);
+  };
+
+  const reorderSlide = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0 || from >= files.length || to >= files.length) return;
+    setFiles((prev) => {
+      const next = [...prev];
+      const [item] = next.splice(from, 1);
+      next.splice(to, 0, item);
+      return next;
+    });
+    setActiveIdx(to);
   };
 
   const removeSlide = (idx: number) => {
@@ -601,16 +616,52 @@ export function ContentPlanComposerDialog({
 
                 {/* Order grid */}
                 <div>
-                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                    Порядок слайдов
+                  <div className="mb-2 flex items-baseline justify-between gap-2">
+                    <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      Порядок слайдов
+                    </div>
+                    <div className="text-[11px] text-muted-foreground">Перетащите карточки</div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
                     {files.map((f, i) => (
                       <div
                         key={`${f.name}-${i}-${f.size}`}
+                        draggable
+                        onDragStart={(e) => {
+                          setDragFrom(i);
+                          e.dataTransfer.effectAllowed = "move";
+                          e.dataTransfer.setData("text/plain", String(i));
+                          // Soften drag ghost a bit.
+                          if (e.currentTarget instanceof HTMLElement) {
+                            e.dataTransfer.setDragImage(e.currentTarget, 40, 40);
+                          }
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                          if (dragOver !== i) setDragOver(i);
+                        }}
+                        onDragLeave={() => {
+                          if (dragOver === i) setDragOver(null);
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const raw = e.dataTransfer.getData("text/plain");
+                          const from = Number.parseInt(raw || String(dragFrom ?? -1), 10);
+                          reorderSlide(from, i);
+                          setDragFrom(null);
+                          setDragOver(null);
+                        }}
+                        onDragEnd={() => {
+                          setDragFrom(null);
+                          setDragOver(null);
+                        }}
                         className={cn(
                           "group relative overflow-hidden rounded-xl border bg-card/60 transition",
+                          "cursor-grab active:cursor-grabbing",
                           i === safeIdx ? "border-primary/60 ring-2 ring-primary/25" : "border-border/60",
+                          dragFrom === i && "opacity-50",
+                          dragOver === i && dragFrom !== i && "border-primary ring-2 ring-primary/40",
                         )}
                       >
                         <button
@@ -621,7 +672,7 @@ export function ContentPlanComposerDialog({
                           <div className="relative aspect-[4/5] bg-zinc-900">
                             {isVideoFile(f) ? (
                               <>
-                                <video src={previews[i]} className="h-full w-full object-cover" muted />
+                                <video src={previews[i]} className="pointer-events-none h-full w-full object-cover" muted />
                                 <span className="absolute inset-0 grid place-items-center">
                                   <span className="grid h-7 w-7 place-items-center rounded-full bg-black/55 text-white">
                                     <Film className="h-3.5 w-3.5" />
@@ -629,10 +680,13 @@ export function ContentPlanComposerDialog({
                                 </span>
                               </>
                             ) : (
-                              <img src={previews[i]} alt="" className="h-full w-full object-cover" />
+                              <img src={previews[i]} alt="" className="pointer-events-none h-full w-full object-cover" draggable={false} />
                             )}
                             <span className="absolute left-1.5 top-1.5 grid h-5 w-5 place-items-center rounded-full bg-black/75 text-[10px] font-bold text-white">
                               {i + 1}
+                            </span>
+                            <span className="absolute bottom-1.5 left-1.5 grid h-6 w-6 place-items-center rounded-md bg-black/55 text-white/90">
+                              <GripVertical className="h-3.5 w-3.5" />
                             </span>
                           </div>
                         </button>
@@ -640,7 +694,8 @@ export function ContentPlanComposerDialog({
                           <button
                             type="button"
                             disabled={i === 0}
-                            onClick={() => moveSlide(i, -1)}
+                            onClick={(e) => { e.stopPropagation(); moveSlide(i, -1); }}
+                            onPointerDown={(e) => e.stopPropagation()}
                             className="grid h-6 w-6 place-items-center rounded-md bg-black/70 text-white disabled:opacity-30"
                             aria-label="Левее"
                           >
@@ -649,7 +704,8 @@ export function ContentPlanComposerDialog({
                           <button
                             type="button"
                             disabled={i === files.length - 1}
-                            onClick={() => moveSlide(i, 1)}
+                            onClick={(e) => { e.stopPropagation(); moveSlide(i, 1); }}
+                            onPointerDown={(e) => e.stopPropagation()}
                             className="grid h-6 w-6 place-items-center rounded-md bg-black/70 text-white disabled:opacity-30"
                             aria-label="Правее"
                           >
@@ -657,7 +713,8 @@ export function ContentPlanComposerDialog({
                           </button>
                           <button
                             type="button"
-                            onClick={() => removeSlide(i)}
+                            onClick={(e) => { e.stopPropagation(); removeSlide(i); }}
+                            onPointerDown={(e) => e.stopPropagation()}
                             className="grid h-6 w-6 place-items-center rounded-md bg-black/70 text-white hover:bg-destructive/80"
                             aria-label="Удалить"
                           >

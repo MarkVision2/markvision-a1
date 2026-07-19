@@ -195,11 +195,26 @@ describe("ContentPlanComposerDialog unified publish", () => {
     fireEvent.click(screen.getByRole("button", { name: "Следующий слайд" }));
     expect(screen.getByText(/Слайд 2 из 3/i)).toBeTruthy();
 
-    const orderSection = screen.getByText("Порядок слайдов").parentElement!;
+    const orderSection = screen.getByText("Порядок слайдов").closest("div.mb-2")?.parentElement
+      ?? screen.getByText("Перетащите карточки").parentElement!.parentElement!;
+    expect(within(orderSection).getByText(/Перетащите карточки/i)).toBeTruthy();
+
     const leftButtons = within(orderSection).getAllByLabelText("Левее");
     fireEvent.click(leftButtons[1]);
 
     expect(screen.getByText(/Слайд 1 из 3/i)).toBeTruthy();
     expect(screen.getByAltText("Слайд 1")).toHaveAttribute("src", "blob:slide-b.png");
+
+    // Drag last slide to first position
+    const cards = orderSection.querySelectorAll("[draggable='true']");
+    expect(cards.length).toBe(3);
+    fireEvent.dragStart(cards[2], {
+      dataTransfer: { setData: vi.fn(), effectAllowed: "move", setDragImage: vi.fn() },
+    });
+    fireEvent.dragOver(cards[0], { dataTransfer: { dropEffect: "move" } });
+    fireEvent.drop(cards[0], { dataTransfer: { getData: () => "2" } });
+    fireEvent.dragEnd(cards[2]);
+
+    expect(screen.getByAltText("Слайд 1")).toHaveAttribute("src", "blob:slide-c.png");
   });
 });
