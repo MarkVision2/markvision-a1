@@ -1,7 +1,7 @@
 {
-  "git_sha": "dccf451",
-  "git_sha_full": "dccf451cd9c9d07cc7b25197323769115fcdd68a",
-  "updated_at": "2026-07-19T15:22:29Z",
-  "label": "Merge branch 'cursor/content-plan-drop-platforms-84cc' — remove platform toggles",
+  "git_sha": "c9042b7",
+  "git_sha_full": "c9042b73d71214a62938b816f05245083b576770",
+  "updated_at": "2026-07-19T15:24:06Z",
+  "label": "Merge branch 'cursor/content-plan-period-presets-84cc' — period picker presets",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
