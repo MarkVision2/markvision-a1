@@ -17,6 +17,17 @@
        │                  │                                             │
        │                  └──► wa_clicks + leads (с meta_ad_id) ────────┤
        │                                                                │
+       ├─ IG буст поста → Direct с код-словом                           │
+       │       │                                                       │
+       │       └──► [Edge: ig-webhook] ──► messaging.referral.ad_id ───┤
+       │                  │         + media/post_id                     │
+       │                  │                                             │
+       │                  └──► short link /r/…?m=&ad=                    │
+       │                           │                                    │
+       │                           └──► ig-organic-redirect             │
+       │                                    │  link_click + utm/ad_id   │
+       │                                    └──► lead-intake ───────────┤
+       │                                                                │
        └─ Сайт с UTM + Pixel                                             │
               │                                                          │
               └──► [Edge: submit-lead] ──► leads (с meta_ad_id) ─────────┤
@@ -115,7 +126,21 @@ fetch('https://<SUPABASE_PROJECT>.functions.supabase.co/lead-intake', {
 
 **Tracking template в Meta:** `?utm_source=meta&utm_medium=cpc&utm_campaign={{campaign.id}}&utm_content={{ad.id}}&utm_term={{adset.id}}&fbclid={{fbclid}}`
 
-### 3. Кнопка WhatsApp на сайте
+### 2b. Instagram: буст поста → код-слово в Direct → ссылка → лид
+
+Сценарий: существующий пост/рилс запускается в рекламу, в креативе просят написать код-слово в Direct. Бот отвечает ссылкой «получить доступ».
+
+Цепочка атрибуции:
+
+1. `ig-webhook` ловит входящий DM (`entry.messaging`) и `message.referral` / `ads_context_data`
+2. В короткую ссылку пишется `m=<ig_media_id>&ad=<meta_ad_id>`
+3. `/r/:code` → `ig-organic-redirect` пишет `link_click` с `reel_id` + `payload.meta_ad_id`
+4. Редирект на лендинг добавляет `utm_content=<ad_id>`, `ad_id`, `ig_media`, `cw`
+5. `lead-intake` сохраняет `leads.meta_ad_id` и событие `instagram_organic_events` типа `lead` с тем же постом
+
+На лендинге в `lead-intake` достаточно пробросить query-параметры формы (как для UTM): `cw`, `ig_user`, `ig_media`, `ad_id` / `utm_content`.
+
+
 
 Перед редиректом на wa.me — пишем в `wa_clicks` (через отдельный публичный endpoint или прямо из браузера через RPC). Это нужно чтобы matching работал, даже если CTWA-referral не пришёл в первое сообщение.
 

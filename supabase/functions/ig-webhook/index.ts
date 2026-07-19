@@ -1,5 +1,9 @@
-// Вебхук Instagram (мультитенантный): комментарий с код-словом →
-// публичный ответ + приватный DM с кнопкой «получить доступ», per-project.
+// Вебхук Instagram (мультитенантный):
+// 1) комментарий с код-словом → публичный ответ + Private Reply с кнопкой
+// 2) входящий DM с код-словом (в т.ч. с рекламы) → автоответ со ссылкой
+//
+// Атрибуция поста/рекламы: в короткую ссылку пишем m=<media_id>&ad=<ad_id>,
+// чтобы link_click и lead в CRM сохранили источник (пост + объявление).
 //
 // Аккаунт ищется в instagram_accounts по ig_user_id. DM предпочтительно
 // через Instagram Login токен (graph.instagram.com) — Page-токен на этом
@@ -78,6 +82,13 @@ interface Codeword {
   dm_button_title: string | null;
 }
 
+interface AdReferral {
+  adId: string | null;
+  mediaId: string | null;
+  source: string | null;
+  raw: Record<string, unknown> | null;
+}
+
 function asStringArray(raw: unknown, max = 10): string[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((v) => String(v).trim()).filter(Boolean).slice(0, max);
@@ -109,6 +120,68 @@ function resolveTargetUrlIndexed(kw: Codeword): { value: string; index: number }
   return legacy ? { value: legacy, index: 0 } : null;
 }
 
+/** Достаём ad_id / post_id из Instagram messaging.referral (CTA с рекламы). */
+function parseAdReferral(raw: unknown): AdReferral {
+  const empty: AdReferral = { adId: null, mediaId: null, source: null, raw: null };
+  if (!raw || typeof raw !== "object") return empty;
+  const ref = raw as Record<string, unknown>;
+  const adsCtx = (ref.ads_context_data ?? ref.adsContextData) as Record<string, unknown> | undefined;
+  const adIdRaw = ref.ad_id ?? ref.adId ?? adsCtx?.ad_id ?? adsCtx?.adId;
+  const mediaIdRaw =
+    adsCtx?.post_id ??
+    adsCtx?.postId ??
+    adsCtx?.media_id ??
+    adsCtx?.mediaId ??
+    ref.post_id ??
+    ref.postId ??
+    null;
+  const adId = adIdRaw != null && String(adIdRaw).trim() ? String(adIdRaw).trim() : null;
+  const mediaId = mediaIdRaw != null && String(mediaIdRaw).trim() ? String(mediaIdRaw).trim() : null;
+  const source = ref.source != null ? String(ref.source) : null;
+  return { adId, mediaId, source, raw: ref };
+}
+
+async function upsertSenderAttribution(
+  projectId: string,
+  senderId: string,
+  referral: AdReferral,
+) {
+  if (!referral.adId && !referral.mediaId) return;
+  await dbRaw("instagram_sender_attribution?on_conflict=project_id,sender_id", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
+    body: JSON.stringify({
+      project_id: projectId,
+      sender_id: senderId,
+      meta_ad_id: referral.adId,
+      media_id: referral.mediaId,
+      referral: referral.raw,
+      updated_at: new Date().toISOString(),
+      captured_at: new Date().toISOString(),
+    }),
+  });
+}
+
+async function loadSenderAttribution(
+  projectId: string,
+  senderId: string,
+): Promise<{ adId: string | null; mediaId: string | null }> {
+  const rows = await db(
+    `instagram_sender_attribution?project_id=eq.${encodeURIComponent(projectId)}&sender_id=eq.${encodeURIComponent(senderId)}&select=meta_ad_id,media_id,updated_at&limit=1`,
+  );
+  const row = Array.isArray(rows) ? rows[0] : null;
+  if (!row) return { adId: null, mediaId: null };
+  const updated = row.updated_at ? new Date(String(row.updated_at)).getTime() : 0;
+  // Окно 7 дней — как типичный цикл буста/ретаргета.
+  if (updated && Date.now() - updated > 7 * 24 * 3600 * 1000) {
+    return { adId: null, mediaId: null };
+  }
+  return {
+    adId: row.meta_ad_id ? String(row.meta_ad_id) : null,
+    mediaId: row.media_id ? String(row.media_id) : null,
+  };
+}
+
 async function matchCodeword(projectId: string, mediaId: string | null, text: string): Promise<Codeword | null> {
   // Сначала полный select (legacy reply_text/dm_text + button). Если колонок нет — без них.
   let rows: Codeword[] = (await db(
@@ -129,9 +202,13 @@ async function matchCodeword(projectId: string, mediaId: string | null, text: st
 async function claimEvent(
   projectId: string,
   kw: Codeword,
-  mediaId: string | null,
-  commentId: string,
-  username: string | null,
+  opts: {
+    eventType: "codeword_comment" | "codeword_dm";
+    mediaId: string | null;
+    externalId: string;
+    username: string | null;
+    payload?: Record<string, unknown>;
+  },
 ): Promise<string | null> {
   const { status, json } = await dbRaw("instagram_organic_events", {
     method: "POST",
@@ -140,14 +217,14 @@ async function claimEvent(
       project_id: projectId,
       codeword_id: kw.id,
       codeword: kw.codeword,
-      reel_id: mediaId,
+      reel_id: opts.mediaId ?? kw.reel_id,
       reel_url: kw.reel_url,
-      event_type: "codeword_comment",
-      username,
-      external_id: commentId,
+      event_type: opts.eventType,
+      username: opts.username,
+      external_id: opts.externalId,
       date: ymd(new Date()),
       occurred_at: new Date().toISOString(),
-      payload: { stage: "claimed" },
+      payload: { stage: "claimed", ...(opts.payload ?? {}) },
     }),
   });
   if (status === 409) return null;
@@ -162,13 +239,18 @@ async function claimEvent(
           project_id: projectId,
           codeword_id: kw.id,
           codeword: kw.codeword,
-          reel_id: mediaId,
+          reel_id: opts.mediaId ?? kw.reel_id,
           reel_url: kw.reel_url,
-          event_type: "codeword_comment",
-          username,
+          event_type: opts.eventType,
+          username: opts.username,
           date: ymd(new Date()),
           occurred_at: new Date().toISOString(),
-          payload: { stage: "claimed", comment_id: commentId, missing_external_id: true },
+          payload: {
+            stage: "claimed",
+            missing_external_id: true,
+            fallback_external_id: opts.externalId,
+            ...(opts.payload ?? {}),
+          },
         }),
       });
       if (retry.status === 409) return null;
@@ -223,10 +305,14 @@ function buildTrackingLink(
   shortId: string,
   username: string | null,
   linkIndex: number | null = null,
+  mediaId: string | null = null,
+  adId: string | null = null,
 ): string {
   const params = new URLSearchParams();
   if (username) params.set("u", username);
   if (linkIndex != null && linkIndex >= 0) params.set("v", String(linkIndex));
+  if (mediaId) params.set("m", mediaId);
+  if (adId) params.set("ad", adId);
   const q = params.toString();
   return `${PUBLIC_LINK_ORIGIN}/r/${encodeURIComponent(shortId)}${q ? `?${q}` : ""}`;
 }
@@ -236,10 +322,14 @@ function clampButtonTitle(_raw?: string | null): string {
   return DEFAULT_BUTTON_TITLE;
 }
 
+type DmRecipient =
+  | { comment_id: string }
+  | { id: string };
+
 async function sendPrivateDm(
   igUserId: string,
   account: ProjectAccount,
-  commentId: string,
+  recipient: DmRecipient,
   opts: { text: string; buttonTitle: string; buttonUrl: string },
 ) {
   const token = bearer(account, true);
@@ -247,7 +337,7 @@ async function sendPrivateDm(
   const host = graphHost(account, true);
 
   const buttonBody = {
-    recipient: { comment_id: commentId },
+    recipient,
     message: {
       attachment: {
         type: "template",
@@ -276,7 +366,7 @@ async function sendPrivateDm(
 
   // Фоллбек: короткий markvision-линк в тексте (без supabase URL).
   const textBody = {
-    recipient: { comment_id: commentId },
+    recipient,
     message: { text: `${opts.text}\n${opts.buttonUrl}`.slice(0, 1000) },
   };
   const textResp = await fetch(`${host}/${igUserId}/messages`, {
@@ -301,6 +391,67 @@ function ymd(d: Date) {
   }).format(d);
 }
 
+async function handleCodewordHit(opts: {
+  account: ProjectAccount;
+  igUserId: string;
+  kw: Codeword;
+  eventType: "codeword_comment" | "codeword_dm";
+  externalId: string;
+  username: string | null;
+  mediaId: string | null;
+  adId: string | null;
+  recipient: DmRecipient;
+  publicReply?: boolean;
+  claimPayload?: Record<string, unknown>;
+}) {
+  const eventId = await claimEvent(opts.account.project_id, opts.kw, {
+    eventType: opts.eventType,
+    mediaId: opts.mediaId,
+    externalId: opts.externalId,
+    username: opts.username,
+    payload: {
+      ...(opts.claimPayload ?? {}),
+      ...(opts.adId ? { meta_ad_id: opts.adId } : {}),
+      ...(opts.mediaId ? { media_id: opts.mediaId } : {}),
+    },
+  });
+  if (!eventId) return;
+
+  if (opts.publicReply && "comment_id" in opts.recipient) {
+    const replyText = resolveReplyText(opts.kw);
+    if (replyText) {
+      await postPublicReply(opts.recipient.comment_id, opts.account, replyText);
+    }
+  }
+
+  const pickedLink = resolveTargetUrlIndexed(opts.kw);
+  const link = buildTrackingLink(
+    opts.kw.short_id,
+    opts.username,
+    pickedLink?.index ?? null,
+    opts.mediaId,
+    opts.adId,
+  );
+  const dmPrefix = resolveDmText(opts.kw) || DEFAULT_DM_TEXT;
+  const sent = await sendPrivateDm(opts.igUserId, opts.account, opts.recipient, {
+    text: dmPrefix,
+    buttonTitle: clampButtonTitle(),
+    buttonUrl: link,
+  });
+
+  await finalizeEvent(eventId, {
+    media_id: opts.mediaId,
+    meta_ad_id: opts.adId,
+    dm_status: sent.ok ? "sent" : "failed",
+    dm_mode: sent.mode,
+    dm_button_url: link,
+    target_url: pickedLink?.value ?? null,
+    target_url_index: pickedLink?.index ?? null,
+    dm_error: sent.ok ? null : sent.body,
+    ...(opts.claimPayload ?? {}),
+  });
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   if (req.method === "GET") {
@@ -321,11 +472,12 @@ Deno.serve(async (req) => {
       const igUserId = String(entry.id ?? "");
       if (!igUserId) continue;
 
+      // ── Комментарии под постом / рилсом (в т.ч. буст) ──────────────────
       for (const change of entry.changes ?? []) {
         if (change.field !== "comments") continue;
         const v = change.value ?? {};
         const commentId = v.id;
-        const mediaId = v.media?.id ?? null;
+        const mediaId = v.media?.id ? String(v.media.id) : null;
         const text = String(v.text ?? "");
         const fromId = v.from?.id ?? null;
         const username = v.from?.username ?? null;
@@ -337,32 +489,73 @@ Deno.serve(async (req) => {
         const kw = await matchCodeword(account.project_id, mediaId, text);
         if (!kw) continue;
 
-        const eventId = await claimEvent(account.project_id, kw, mediaId, commentId, username);
-        if (!eventId) continue;
+        await handleCodewordHit({
+          account,
+          igUserId,
+          kw,
+          eventType: "codeword_comment",
+          externalId: String(commentId),
+          username,
+          mediaId,
+          adId: null,
+          recipient: { comment_id: String(commentId) },
+          publicReply: true,
+          claimPayload: { comment_id: String(commentId) },
+        });
+      }
 
-        const replyText = resolveReplyText(kw);
-        if (replyText) {
-          await postPublicReply(commentId, account, replyText);
+      // ── Входящие Direct (код-слово с рекламы / органики) ───────────────
+      for (const msgEvent of entry.messaging ?? []) {
+        const senderId = msgEvent?.sender?.id ? String(msgEvent.sender.id) : null;
+        if (!senderId || senderId === igUserId) continue;
+
+        const message = msgEvent?.message ?? null;
+        if (message?.is_echo || message?.is_deleted) continue;
+
+        const text = String(message?.text ?? "");
+        // referral может быть на message или на самом messaging-событии (OPEN_THREAD).
+        const referral = parseAdReferral(message?.referral ?? msgEvent.referral ?? null);
+        const mid = message?.mid ? String(message.mid) : null;
+
+        const account = await resolveAccount(igUserId);
+        if (!account) continue;
+
+        // OPEN_THREAD / referral без текста — запоминаем ad/post для следующего DM.
+        if (referral.adId || referral.mediaId) {
+          await upsertSenderAttribution(account.project_id, senderId, referral);
         }
 
-        const pickedLink = resolveTargetUrlIndexed(kw);
-        const link = buildTrackingLink(kw.short_id, username, pickedLink?.index ?? null);
-        const dmPrefix = resolveDmText(kw) || DEFAULT_DM_TEXT;
-        const sent = await sendPrivateDm(igUserId, account, commentId, {
-          text: dmPrefix,
-          buttonTitle: clampButtonTitle(),
-          buttonUrl: link,
-        });
+        // Без текста не матчим код-слово.
+        if (!text.trim()) continue;
 
-        await finalizeEvent(eventId, {
-          comment_id: commentId,
-          media_id: mediaId,
-          dm_status: sent.ok ? "sent" : "failed",
-          dm_mode: sent.mode,
-          dm_button_url: link,
-          target_url: pickedLink?.value ?? null,
-          target_url_index: pickedLink?.index ?? null,
-          dm_error: sent.ok ? null : sent.body,
+        const sticky = (!referral.adId && !referral.mediaId)
+          ? await loadSenderAttribution(account.project_id, senderId)
+          : { adId: null, mediaId: null };
+        const adId = referral.adId ?? sticky.adId;
+        const mediaId = referral.mediaId ?? sticky.mediaId;
+
+        const kw = await matchCodeword(account.project_id, mediaId, text);
+        if (!kw) continue;
+
+        const externalId = mid ?? `dm:${senderId}:${message?.timestamp ?? Date.now()}`;
+        await handleCodewordHit({
+          account,
+          igUserId,
+          kw,
+          eventType: "codeword_dm",
+          externalId,
+          username: null,
+          mediaId: mediaId ?? kw.reel_id,
+          adId,
+          recipient: { id: senderId },
+          publicReply: false,
+          claimPayload: {
+            sender_id: senderId,
+            referral_source: referral.source,
+            referral: referral.raw,
+            sticky_ad_id: sticky.adId,
+            sticky_media_id: sticky.mediaId,
+          },
         });
       }
     }

@@ -373,7 +373,7 @@ async function syncOne(supa: any, account: any) {
     if (pageId && pageTok) {
       webhook.attempted = true;
       const subRes = await fetch(
-        `${GRAPH_FB}/${pageId}/subscribed_apps?subscribed_fields=comments,messages&access_token=${encodeURIComponent(pageTok)}`,
+        `${GRAPH_FB}/${pageId}/subscribed_apps?subscribed_fields=comments,messages,messaging_referral&access_token=${encodeURIComponent(pageTok)}`,
         { method: "POST" },
       );
       const subJson = await subRes.json().catch(() => ({}));

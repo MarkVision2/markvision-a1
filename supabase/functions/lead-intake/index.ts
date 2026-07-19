@@ -60,6 +60,7 @@ const Schema = z.object({
   fbclid: z.string().trim().max(255).optional().nullable(),
   // Сквозная атрибуция «креатив → лид»
   ad_id: z.string().trim().max(40).optional().nullable(),
+  ad: z.string().trim().max(40).optional().nullable(),
   adset_id: z.string().trim().max(40).optional().nullable(),
   campaign_id: z.string().trim().max(40).optional().nullable(),
   // Атрибуция Google Ads (gclid + структура кабинета из auto-tagging / ValueTrack)
@@ -70,6 +71,10 @@ const Schema = z.object({
   cw: z.string().trim().max(80).optional().nullable(),
   codeword: z.string().trim().max(80).optional().nullable(),
   ig_user: z.string().trim().max(120).optional().nullable(),
+  // Пост/рилс и объявление из трекинг-ссылки /r/…?m=&ad=
+  ig_media: z.string().trim().max(80).optional().nullable(),
+  media_id: z.string().trim().max(80).optional().nullable(),
+  m: z.string().trim().max(80).optional().nullable(),
 });
 
 async function parseBody(req: Request): Promise<Record<string, unknown>> {
@@ -221,6 +226,7 @@ async function recordInstagramOrganicLead(
   codeword: string,
   leadId: string,
   username: string | null,
+  opts: { mediaId?: string | null; adId?: string | null } = {},
 ): Promise<void> {
   const { data: cw } = await admin
     .from("instagram_codewords")
@@ -237,18 +243,24 @@ async function recordInstagramOrganicLead(
     day: "2-digit",
   }).format(occurredAt);
 
+  const reelId = opts.mediaId || cw?.reel_id || null;
+
   const { error } = await admin.from("instagram_organic_events").insert({
     project_id: projectId,
     codeword_id: cw?.id ?? null,
     codeword,
-    reel_id: cw?.reel_id ?? null,
+    reel_id: reelId,
     reel_url: cw?.reel_url ?? null,
     event_type: "lead",
     username,
     lead_id: leadId,
     date: dateKey,
     occurred_at: occurredAt.toISOString(),
-    payload: { via: "lead-intake" },
+    payload: {
+      via: "lead-intake",
+      ...(opts.mediaId ? { media_id: opts.mediaId } : {}),
+      ...(opts.adId ? { meta_ad_id: opts.adId } : {}),
+    },
   });
   if (error) console.error("[lead-intake] instagram organic lead event", error);
 }
@@ -426,10 +438,13 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Сквозная атрибуция: ad_id может прийти явно или в utm_content (шаблон {{ad.id}}).
+    // Сквозная атрибуция: ad_id может прийти явно, из IG-ссылки (?ad=) или utm_content ({{ad.id}}).
     const numericId = (s: string | null | undefined) =>
       s && /^[0-9]{6,}$/.test(s.trim()) ? s.trim() : null;
-    const metaAdId = (v.ad_id && v.ad_id.trim()) || numericId(v.utm_content);
+    const metaAdId =
+      (v.ad_id && v.ad_id.trim()) ||
+      (v.ad && /^[0-9]{6,}$/.test(v.ad.trim()) ? v.ad.trim() : null) ||
+      numericId(v.utm_content);
     const metaAdsetId = (v.adset_id && v.adset_id.trim()) || numericId(v.utm_term);
     const metaCampaignId = (v.campaign_id && v.campaign_id.trim()) || numericId(v.utm_campaign);
     const clickId = (v.fbclid && v.fbclid.trim()) || null;
@@ -438,6 +453,17 @@ Deno.serve(async (req) => {
     const googleCampaignId = (v.google_campaign_id && v.google_campaign_id.trim()) || null;
     const googleAdGroupId = (v.google_ad_group_id && v.google_ad_group_id.trim()) || null;
     const googleAdId = (v.google_ad_id && v.google_ad_id.trim()) || null;
+    const igMediaId =
+      (v.ig_media && v.ig_media.trim()) ||
+      (v.media_id && v.media_id.trim()) ||
+      (v.m && v.m.trim()) ||
+      null;
+    const igUser =
+      v.ig_user?.trim() ||
+      (typeof (raw as Record<string, unknown>).ig_user === "string"
+        ? String((raw as Record<string, unknown>).ig_user).trim()
+        : null) ||
+      null;
 
     // Dedupe by phone — scoped to the resolved project.
     const existingId = await findExistingLeadByPhone(phoneE164, projectId);
@@ -464,6 +490,8 @@ Deno.serve(async (req) => {
           source,
           channel,
           ...(landingUrl ? { landing_url: landingUrl } : {}),
+          ...(igMediaId ? { ig_media: igMediaId } : {}),
+          ...(metaAdId ? { meta_ad_id: metaAdId } : {}),
         },
       });
       if (note) {
@@ -476,6 +504,12 @@ Deno.serve(async (req) => {
           status: "delivered",
           is_draft: false,
           is_auto: false,
+        });
+      }
+      if (projectId && organicCodeword) {
+        await recordInstagramOrganicLead(projectId, organicCodeword, existingId, igUser, {
+          mediaId: igMediaId,
+          adId: metaAdId,
         });
       }
       return json({ ok: true, leadId: existingId, duplicate: true });
@@ -537,8 +571,10 @@ Deno.serve(async (req) => {
     }
 
     if (projectId && organicCodeword) {
-      const igUser = v.ig_user?.trim() || (typeof raw.ig_user === "string" ? raw.ig_user.trim() : null) || null;
-      await recordInstagramOrganicLead(projectId, organicCodeword, created.id, igUser);
+      await recordInstagramOrganicLead(projectId, organicCodeword, created.id, igUser, {
+        mediaId: igMediaId,
+        adId: metaAdId,
+      });
     }
 
     return json({ ok: true, leadId: created.id });
