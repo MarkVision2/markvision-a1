@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2, QrCode, Phone, CheckCircle2, XCircle, LogOut, RefreshCw, Circle } from "lucide-react";
+import { ArrowLeft, Loader2, QrCode, Phone, CheckCircle2, XCircle, LogOut, RefreshCw, Circle, Copy, Code2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -974,14 +974,14 @@ export function SiteIntakeCard() {
 
   const onRotate = async () => {
     if (!active?.id) return;
-    if (!confirm("Перевыпустить webhook? Старый URL перестанет работать на всех сайтах этого проекта.")) {
+    if (!confirm("Перевыпустить код подключения? Старый код перестанет принимать заявки со всех сайтов этого проекта.")) {
       return;
     }
     setRotating(true);
     try {
       await rotateIntakeToken(active.id);
-      toast.success("Webhook перевыпущен", {
-        description: "Скопируйте новый URL и обновите его на всех сайтах проекта.",
+      toast.success("Код подключения перевыпущен", {
+        description: "Скопируйте новый код и обновите его на всех сайтах проекта.",
       });
     } catch (e) {
       toast.error("Не удалось перевыпустить", { description: (e as Error).message });
@@ -990,7 +990,8 @@ export function SiteIntakeCard() {
     }
   };
 
-  const htmlSnippet = `<!-- Форма заявки → CRM проекта «${projectName}», этап «Новая» -->
+  const htmlSnippet = `<!-- MarkVision CRM: вставьте этот код в сайт Lovable -->
+<!-- Новая заявка попадёт в проект «${projectName}», этап «Новая» -->
 <form id="lead-form">
   <input name="name" placeholder="Имя" required />
   <input name="phone" placeholder="+7..." required />
@@ -1037,62 +1038,95 @@ export function SiteIntakeCard() {
 })();
 </script>`;
 
-  const tildaHint = `Tilda → Настройки сайта → Формы → WebHook
-URL: ${url}
-Метод: POST (JSON)
-Проект: ${projectName}
-
-ВАЖНО: добавь в форму скрытое поле:
-  Имя поля: token
-  Значение: ${token}
-
-Для аналитики по сайтам добавь второе скрытое поле:
-  Имя поля: landing_url
-  Значение: полный адрес сайта, например https://my-site.kz/
-
-Без token заявка не привяжется к проекту. Без landing_url заявка попадёт в CRM,
-но сайт в аналитике будет отмечен как «Сайт не определён». Также сохранятся имя,
-телефон, email, комментарий и UTM-метки.`;
+  const copySnippet = async () => {
+    try {
+      await navigator.clipboard.writeText(htmlSnippet);
+      toast.success("Код скопирован", {
+        description: "Вставьте его в Lovable и попросите подключить к форме заявки.",
+      });
+    } catch {
+      toast.error("Не удалось скопировать код");
+    }
+  };
 
   return (
     <Card className="mt-6 border-border bg-card">
       <CardHeader>
-        <CardTitle className="text-lg">Webhook для заявок с сайта</CardTitle>
+        <CardTitle className="flex items-center gap-2 text-lg">
+          <Code2 className="h-5 w-5 text-primary" />
+          Подключение сайта к CRM
+        </CardTitle>
         <CardDescription>
-          Активный проект: <strong>{projectName}</strong>. На сайте используйте <strong>URL вебхука</strong> + добавьте <strong>скрытое поле <code>token</code></strong> со значением токена ниже — это привяжет заявку к нужному проекту. Заявка попадёт в этап «Новая».
+          Проект: <strong>{projectName}</strong>. Скопируйте готовый код и вставьте его в чат Lovable вашего сайта.
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-5">
         {!token && (
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
             Создайте или выберите проект — тогда здесь появится уникальный webhook.
           </div>
         )}
+
+        <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+          <p className="text-sm font-semibold">Короткая инструкция</p>
+          <div className="mt-3 space-y-2 text-sm">
+            <div className="flex items-start gap-2">
+              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">1</span>
+              <span>Нажмите <strong>«Скопировать код»</strong>.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">2</span>
+              <span>Откройте чат Lovable нужного сайта и напишите: <strong>«Подключи этот код к форме заявки»</strong>.</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">3</span>
+              <span>Вставьте скопированный код. После публикации новые заявки будут сразу появляться в CRM.</span>
+            </div>
+          </div>
+        </div>
+
         <div>
-          <p className="mb-1.5 text-xs font-medium text-muted-foreground">URL вебхука</p>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 break-all rounded-md bg-muted px-3 py-2 text-xs">{url}</code>
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold">Готовый код для Lovable</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Код уже содержит токен проекта и не требует ручной настройки.
+              </p>
+            </div>
             <Button
-              variant="outline"
-              size="sm"
               disabled={!token}
-              onClick={() => {
-                navigator.clipboard.writeText(url);
-                toast.success("URL скопирован");
-              }}
+              onClick={copySnippet}
             >
-              Копировать
+              <Copy className="h-4 w-4" />
+              Скопировать код
             </Button>
+          </div>
+          <pre className="max-h-80 overflow-auto rounded-lg border border-border/60 bg-muted/60 px-3 py-3 text-[11px] leading-relaxed">
+{htmlSnippet}
+          </pre>
+        </div>
+
+        <div className="grid gap-2 sm:grid-cols-2">
+          {[
+            "Имя и номер телефона",
+            "Домен и страница сайта",
+            "Все UTM-метки",
+            "Источник перехода",
+          ].map((item) => (
+            <div key={item} className="flex items-center gap-2 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+              {item}
+            </div>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border/60 pt-4">
+          <p className="text-xs text-muted-foreground">
+            После подключения проверьте интеграцию тестовой заявкой.
+          </p>
+          <div className="flex items-center gap-2">
             <Button
               variant="outline"
-              size="sm"
-              disabled={!token || rotating}
-              onClick={onRotate}
-              title="Перевыпустить токен (старый URL перестанет работать)"
-            >
-              {rotating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
-            </Button>
-            <Button
               size="sm"
               onClick={sendTestLead}
               disabled={!token || testing}
@@ -1100,78 +1134,17 @@ URL: ${url}
               {testing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
               Отправить тест
             </Button>
-          </div>
-          <p className="mt-1.5 text-[11px] text-muted-foreground">
-            «Отправить тест» создаст одну тестовую заявку в CRM текущего проекта.
-            «Перевыпустить» меняет токен — после этого старый токен <strong>перестаёт работать</strong> на всех сайтах.
-          </p>
-        </div>
-
-        <div>
-          <p className="mb-1.5 text-xs font-medium text-muted-foreground">
-            Токен проекта (добавьте в форму как скрытое поле <code>token</code>)
-          </p>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 break-all rounded-md bg-muted px-3 py-2 text-xs">
-              {token || "—"}
-            </code>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!token}
-              onClick={() => {
-                navigator.clipboard.writeText(token);
-                toast.success("Токен скопирован");
-              }}
-            >
-              Копировать
-            </Button>
-          </div>
-          <p className="mt-1.5 text-[11px] text-muted-foreground">
-            Без этого токена заявка попадёт в общий пул без привязки к проекту.
-          </p>
-        </div>
-
-        <div>
-          <div className="mb-1.5 flex items-center justify-between">
-            <p className="text-xs font-medium text-muted-foreground">Подключение к Tilda</p>
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => {
-                navigator.clipboard.writeText(tildaHint);
-                toast.success("Инструкция скопирована");
-              }}
+              disabled={!token || rotating}
+              onClick={onRotate}
+              title="Используйте только если токен стал известен посторонним"
             >
-              Копировать
+              {rotating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+              Перевыпустить код
             </Button>
           </div>
-          <pre className="overflow-x-auto rounded-md bg-muted px-3 py-2 text-[11px] leading-relaxed text-muted-foreground whitespace-pre-wrap">
-{tildaHint}
-          </pre>
-        </div>
-
-        <div>
-          <div className="mb-1.5 flex items-center justify-between">
-            <p className="text-xs font-medium text-muted-foreground">Готовый сниппет для любой HTML-формы (UTM подхватываются автоматически)</p>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                navigator.clipboard.writeText(htmlSnippet);
-                toast.success("Сниппет скопирован");
-              }}
-            >
-              Копировать сниппет
-            </Button>
-          </div>
-          <pre className="max-h-72 overflow-auto rounded-md bg-muted px-3 py-2 text-[11px] leading-relaxed">
-{htmlSnippet}
-          </pre>
-        </div>
-
-        <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-[11px] text-muted-foreground">
-          Поддерживаются <code>application/json</code> и <code>application/x-www-form-urlencoded</code>. CORS открыт. Поля: <code>name</code>, <code>phone</code> (обязательно), <code>email</code>, <code>message</code>, <code>service</code>, <code>city</code>, <code>utm_source/medium/campaign/content/term</code>, <code>referrer</code>, <code>landing_url</code>, <code>source</code> (необязательно — переопределит источник).
         </div>
       </CardContent>
     </Card>

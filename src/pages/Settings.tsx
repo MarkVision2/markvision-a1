@@ -86,7 +86,7 @@ const CONNECTION_NAV: Array<{
   {
     tab: "site",
     title: "Сайт",
-    desc: "Webhook для заявок с сайта и тест отправки.",
+    desc: "Готовый код для передачи заявок из Lovable в CRM.",
     icon: Globe,
   },
   {
