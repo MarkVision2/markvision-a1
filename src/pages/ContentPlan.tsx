@@ -11,6 +11,7 @@ import {
 } from "@/components/content/ContentPeriodPicker";
 import { ContentPlanTable } from "@/components/content-plan/ContentPlanTable";
 import { STATUS_META, TYPE_META, type PostType } from "@/components/autopost/constants";
+import { MediaThumb } from "@/components/autopost/MediaThumb";
 import { useContentPlan } from "@/hooks/useContentPlan";
 import { useInstagramAccount } from "@/hooks/useInstagramAccount";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -195,13 +196,12 @@ export default function ContentPlan() {
                     className="flex flex-wrap items-center gap-3 rounded-xl border border-border/50 bg-background/40 px-3 py-2.5"
                   >
                     <div className="h-12 w-10 shrink-0 overflow-hidden rounded-lg bg-muted">
-                      {p.thumbnail_url || p.media_url ? (
-                        <img
-                          src={p.thumbnail_url || p.media_url || ""}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
-                      ) : null}
+                      <MediaThumb
+                        thumbnailUrl={p.thumbnail_url}
+                        mediaUrl={p.media_url}
+                        mediaType={p.media_type}
+                        className="h-full w-full"
+                      />
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2 text-xs">
