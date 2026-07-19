@@ -1,7 +1,7 @@
 {
-  "git_sha": "eff0ffb",
-  "git_sha_full": "eff0ffb647889809c2cdeabbd8c1fc0d81673997",
-  "updated_at": "2026-07-19T10:10:37Z",
-  "label": "Merge branch cursor/cloud-agent: content-plan, IG Meta connect, SQL bundle",
+  "git_sha": "a128f3c",
+  "git_sha_full": "a128f3cecc9ec04f4de4cadaf629b9898506bbbb",
+  "updated_at": "2026-07-19T10:55:45Z",
+  "label": "feat(content-plan): new publication dialog uploads media + autopost",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
