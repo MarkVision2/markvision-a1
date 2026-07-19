@@ -1,7 +1,7 @@
 {
-  "git_sha": "1567868",
-  "git_sha_full": "15678687f3407190cd41d3c36fdfb7f185210de8",
-  "updated_at": "2026-07-19T13:30:28+05:00",
-  "label": "fix(crm): hide referrer entirely on lead card, keep only site domain",
+  "git_sha": "f939bbe",
+  "git_sha_full": "f939bbe229699d2f5f54cf5e81275b8b5ac20e33",
+  "updated_at": "2026-07-19T09:14:02Z",
+  "label": "Merge pull request #129 from MarkVision2/cursor/cloud-agent-1784451629614-p88hq",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
