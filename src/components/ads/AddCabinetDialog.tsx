@@ -280,16 +280,23 @@ const AddCabinetDialog = ({
         if (!v) reset();
       }}
     >
-      <DialogContent className="max-h-[92vh] w-[96vw] max-w-5xl overflow-hidden border-border/60 bg-card p-0">
+      <DialogContent
+        className={cn(
+          "max-h-[92vh] w-[96vw] overflow-hidden border-border/50 bg-card p-0 shadow-2xl",
+          step === "pick" ? "max-w-2xl" : "max-w-5xl",
+        )}
+      >
         <div className="flex max-h-[92vh] flex-col">
-          <DialogHeader className="border-b border-border/60 px-6 py-4">
-            <DialogTitle className="flex items-center gap-2 text-xl">
-              <Crosshair className="h-5 w-5 text-success" />
-              {step === "pick" ? "Быстрое подключение Meta" : "Настройка кабинета"}
+          <DialogHeader className="border-b border-border/50 bg-gradient-to-r from-primary/10 via-transparent to-transparent px-6 py-4">
+            <DialogTitle className="flex items-center gap-2.5 text-xl tracking-tight">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary/15 text-primary">
+                <Facebook className="h-4 w-4" />
+              </span>
+              {step === "pick" ? "Подключить Meta" : "Настройка кабинета"}
             </DialogTitle>
-            <DialogDescription className="text-xs">
+            <DialogDescription className="text-xs text-muted-foreground">
               {step === "pick"
-                ? "Выберите рекламный кабинет из списка — данные подтянутся и синхронизируются автоматически"
+                ? "Выберите рекламный кабинет — данные подтянутся автоматически"
                 : "Страницу и Instagram можно выбрать сейчас или при запуске рекламы"}
             </DialogDescription>
           </DialogHeader>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Rocket, Upload, CheckCircle2, Sparkles } from "lucide-react";
+import { Rocket, Upload, CheckCircle2, FileText, Globe, MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -70,10 +70,10 @@ interface CreateCampaignDialogProps {
 
 type Goal = "whatsapp" | "site-leads" | "meta-form";
 
-const GOALS: { id: Goal; label: string }[] = [
-  { id: "whatsapp", label: "WhatsApp" },
-  { id: "site-leads", label: "Лиды с сайта" },
-  { id: "meta-form", label: "Лид-форма Meta" },
+const GOALS: { id: Goal; label: string; hint: string; icon: typeof MessageCircle }[] = [
+  { id: "whatsapp", label: "WhatsApp", hint: "Переписки", icon: MessageCircle },
+  { id: "site-leads", label: "Сайт", hint: "Лиды с лендинга", icon: Globe },
+  { id: "meta-form", label: "Форма Meta", hint: "Lead Ads", icon: FileText },
 ];
 
 const CreativeUpload = ({
@@ -755,26 +755,28 @@ const CreateCampaignDialog = ({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] w-[96vw] max-w-6xl overflow-hidden border-border/60 bg-card p-0">
+      <DialogContent className="max-h-[92vh] w-[96vw] max-w-5xl overflow-hidden border-border/50 bg-card p-0 shadow-2xl">
         <div className="flex max-h-[92vh] flex-col">
-          <DialogHeader className="border-b border-border/60 px-6 py-4">
-            <DialogTitle className="flex items-center gap-2 text-xl">
-              <Rocket className="h-5 w-5 text-success" />
+          <DialogHeader className="border-b border-border/50 bg-gradient-to-r from-success/10 via-transparent to-transparent px-6 py-4">
+            <DialogTitle className="flex items-center gap-2.5 text-xl tracking-tight">
+              <span className="grid h-9 w-9 place-items-center rounded-xl bg-success/15 text-success">
+                <Rocket className="h-4 w-4" />
+              </span>
               Создать кампанию
             </DialogTitle>
-            <DialogDescription className="text-xs">
-              Настройте параметры и отправьте на запуск через Webhook
+            <DialogDescription className="text-xs text-muted-foreground">
+              Кабинет, цель, креативы — и отправка на запуск
             </DialogDescription>
           </DialogHeader>
 
           <div className="grid flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
-            <div className="space-y-4 overflow-y-auto border-border/60 px-6 py-5 lg:border-r">
+            <div className="space-y-4 overflow-y-auto border-border/50 px-6 py-5 lg:border-r">
               <div className="space-y-2">
-                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Клиент / Кабинет
                 </Label>
                 <Select value={cabinetId} onValueChange={setCabinetId}>
-                  <SelectTrigger className="h-11 rounded-xl bg-background/60">
+                  <SelectTrigger className="h-11 rounded-xl border-border/50 bg-background/50">
                     <SelectValue placeholder="Выберите клиента" />
                   </SelectTrigger>
                   <SelectContent>
@@ -790,7 +792,7 @@ const CreateCampaignDialog = ({
               {selectedCabinet && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                    <Label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                       Страница (от имени)
                     </Label>
                     {pagesAssets.isLoading && (
@@ -798,7 +800,7 @@ const CreateCampaignDialog = ({
                     )}
                   </div>
                   <Select value={effectivePageId} onValueChange={setPageId}>
-                    <SelectTrigger className="h-11 rounded-xl bg-background/60">
+                    <SelectTrigger className="h-11 rounded-xl border-border/50 bg-background/50">
                       <SelectValue placeholder={pagesAssets.isLoading ? "Загрузка…" : "Выберите страницу"} />
                     </SelectTrigger>
                     <SelectContent>
@@ -824,25 +826,31 @@ const CreateCampaignDialog = ({
               )}
 
               <div className="space-y-2">
-                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Цель кампании
                 </Label>
                 <div className="grid grid-cols-3 gap-2">
-                  {GOALS.map((g) => (
-                    <button
-                      key={g.id}
-                      type="button"
-                      onClick={() => setGoal(g.id)}
-                      className={cn(
-                        "rounded-xl border bg-background/60 px-3 py-2.5 text-xs font-medium transition-colors",
-                        goal === g.id
-                          ? "border-success text-foreground shadow-[inset_0_0_0_1px_hsl(var(--success))]"
-                          : "border-border/60 text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      {g.label}
-                    </button>
-                  ))}
+                  {GOALS.map((g) => {
+                    const Icon = g.icon;
+                    const active = goal === g.id;
+                    return (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() => setGoal(g.id)}
+                        className={cn(
+                          "flex flex-col items-start gap-1.5 rounded-xl border px-3 py-3 text-left transition-colors",
+                          active
+                            ? "border-success/60 bg-success/10 text-foreground"
+                            : "border-border/50 bg-background/40 text-muted-foreground hover:border-border hover:text-foreground",
+                        )}
+                      >
+                        <Icon className={cn("h-4 w-4", active ? "text-success" : "")} />
+                        <span className="text-xs font-semibold leading-none">{g.label}</span>
+                        <span className="text-[10px] opacity-70">{g.hint}</span>
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -865,7 +873,7 @@ const CreateCampaignDialog = ({
 
               {goal === "site-leads" && (
                 <div className="space-y-2">
-                  <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  <Label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                     Ссылка на сайт
                   </Label>
                   <Input
@@ -873,7 +881,7 @@ const CreateCampaignDialog = ({
                     onChange={(e) => setWebsiteUrl(e.target.value)}
                     placeholder={selectedCabinet?.websiteUrl || "https://example.com/landing"}
                     inputMode="url"
-                    className="h-11 rounded-xl bg-background/60"
+                    className="h-11 rounded-xl border-border/50 bg-background/50"
                   />
                   <p className="text-[11px] text-muted-foreground">
                     Реклама запустится на эту ссылку с выбранным пикселем.
@@ -883,7 +891,7 @@ const CreateCampaignDialog = ({
               )}
 
               <div className="space-y-2">
-                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Бюджет в день
                 </Label>
                 <div className="relative">
@@ -891,16 +899,22 @@ const CreateCampaignDialog = ({
                     value={budget}
                     onChange={(e) => setBudget(e.target.value)}
                     inputMode="numeric"
-                    className="h-11 rounded-xl bg-background/60 pr-10"
+                    className="h-11 rounded-xl border-border/50 bg-background/50 pr-12"
                   />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                    $
+                    {(selectedCabinet?.currency ?? "USD").toUpperCase() === "KZT"
+                      ? "₸"
+                      : (selectedCabinet?.currency ?? "USD").toUpperCase() === "RUB"
+                        ? "₽"
+                        : (selectedCabinet?.currency ?? "USD").toUpperCase() === "EUR"
+                          ? "€"
+                          : "$"}
                   </span>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Текст объявления
                 </Label>
                 <Textarea
@@ -908,13 +922,13 @@ const CreateCampaignDialog = ({
                   onChange={(e) => setText(e.target.value)}
                   rows={5}
                   placeholder="Краткий цепляющий текст с CTA…"
-                  className="rounded-xl bg-background/60"
+                  className="rounded-xl border-border/50 bg-background/50"
                 />
               </div>
             </div>
 
-            <div className="overflow-y-auto px-6 py-5">
-              <div className="mb-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            <div className="overflow-y-auto bg-background/20 px-6 py-5">
+              <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                 Креативы
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -936,14 +950,14 @@ const CreateCampaignDialog = ({
             </div>
           </div>
 
-          <div className="border-t border-border/60 bg-background/40 px-6 py-4">
+          <div className="border-t border-border/50 bg-background/40 px-6 py-4">
             {bakeStatus && (
-              <div className="mb-3 rounded-xl border border-border/60 bg-background/60 px-4 py-2.5 text-xs">
+              <div className="mb-3 rounded-xl border border-border/50 bg-background/60 px-4 py-2.5 text-xs">
                 <div className="mb-1.5 flex items-center justify-between gap-3">
                   <span className="text-muted-foreground">{bakeStatus}</span>
                   <span className="font-mono tabular-nums text-foreground">{bakePct}%</span>
                 </div>
-                <div className="h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                <div className="h-1.5 w-full overflow-hidden rounded-md bg-muted">
                   <div
                     className="h-full bg-success transition-[width]"
                     style={{ width: `${bakePct}%` }}
@@ -954,13 +968,14 @@ const CreateCampaignDialog = ({
             <Button
               onClick={handleSubmit}
               disabled={submitting}
-              className="h-12 w-full rounded-xl bg-success text-white hover:bg-success/90"
+              className="h-12 w-full gap-2 rounded-xl bg-success text-white hover:bg-success/90"
             >
+              <Rocket className="h-4 w-4" />
               {submitting
                 ? bakeStatus
                   ? "Готовим креатив…"
                   : "Отправляем на проверку…"
-                : "🚀 Отправить на запуск AI"}
+                : "Отправить на запуск AI"}
             </Button>
           </div>
         </div>
@@ -968,17 +983,14 @@ const CreateCampaignDialog = ({
     </Dialog>
     {successInfo && (
       <Dialog open={successOpen} onOpenChange={setSuccessOpen}>
-        <DialogContent className="max-w-md overflow-hidden border-border/60 bg-card p-0">
-          <div className="relative bg-gradient-to-br from-success/20 via-success/5 to-transparent px-6 pt-6 pb-5">
-            <div className="absolute right-4 top-4">
-              <Sparkles className="h-5 w-5 text-success/70" />
-            </div>
+        <DialogContent className="max-w-md overflow-hidden border-border/50 bg-card p-0">
+          <div className="border-b border-border/50 px-6 py-5">
             <div className="flex items-start gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-success/15 ring-1 ring-success/30">
-                <CheckCircle2 className="h-7 w-7 text-success" />
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-success/15 text-success">
+                <CheckCircle2 className="h-5 w-5" />
               </div>
               <div>
-                <DialogTitle className="text-lg leading-tight">
+                <DialogTitle className="text-lg leading-tight tracking-tight">
                   Реклама отправлена на проверку
                 </DialogTitle>
                 <DialogDescription className="mt-1 text-xs">
