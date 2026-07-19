@@ -1,7 +1,7 @@
 {
-  "git_sha": "a128f3c",
-  "git_sha_full": "a128f3cecc9ec04f4de4cadaf629b9898506bbbb",
-  "updated_at": "2026-07-19T10:55:45Z",
-  "label": "feat(content-plan): new publication dialog uploads media + autopost",
+  "git_sha": "5727a16",
+  "git_sha_full": "5727a16f057d3e157a135f73e0ce1a2a383f4be9",
+  "updated_at": "2026-07-19T10:59:31Z",
+  "label": "Merge content-plan clean stats",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
