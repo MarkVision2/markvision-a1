@@ -90,11 +90,8 @@ CREATE POLICY crm_automation_events_select_members
   TO authenticated
   USING (
     project_id IS NULL
-    OR public.is_project_member(project_id)
-    OR EXISTS (
-      SELECT 1 FROM public.user_roles ur
-      WHERE ur.user_id = auth.uid() AND ur.role = 'admin'
-    )
+    OR public.user_can_access_project(project_id)
+    OR public.has_role(auth.uid(), 'admin'::app_role)
   );
 
 -- service_role bypasses RLS; no insert policy for authenticated (edge only)
