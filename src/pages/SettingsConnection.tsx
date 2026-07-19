@@ -948,10 +948,9 @@ export function SiteIntakeCard() {
           phone: `+7700${Math.floor(1000000 + Math.random() * 8999999)}`,
           email: "test@example.com",
           message: "Это проверка вебхука с сайта",
-          source: "site",
+          source: "test",
           utm_source: "test",
           utm_campaign: "webhook_check",
-          landing_url: window.location.href,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -1047,7 +1046,13 @@ URL: ${url}
   Имя поля: token
   Значение: ${token}
 
-Без этого поля заявка не привяжется к проекту. Также сохранятся имя, телефон, email, комментарий и UTM-метки.`;
+Для аналитики по сайтам добавь второе скрытое поле:
+  Имя поля: landing_url
+  Значение: полный адрес сайта, например https://my-site.kz/
+
+Без token заявка не привяжется к проекту. Без landing_url заявка попадёт в CRM,
+но сайт в аналитике будет отмечен как «Сайт не определён». Также сохранятся имя,
+телефон, email, комментарий и UTM-метки.`;
 
   return (
     <Card className="mt-6 border-border bg-card">

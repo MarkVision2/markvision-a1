@@ -25,9 +25,10 @@ import { useDestinationSplit } from "@/hooks/useDestinationSplit";
 import { useLeadsLite, type LeadLite } from "@/hooks/useLeadsLite";
 import { CHANNELS, resolveChannel, type ChannelKey } from "@/lib/channelAttribution";
 import { isLeadPaid } from "@/lib/leadStageFlags";
-import { buildAnalyticsInsights, buildSourceBreakdown } from "@/lib/analyticsBreakdowns";
+import { buildAnalyticsInsights, buildSiteBreakdown, buildSourceBreakdown } from "@/lib/analyticsBreakdowns";
 import { ChannelCard, type ChannelStat } from "@/components/analytics/ChannelCard";
 import { InsightsStrip } from "@/components/analytics/InsightsStrip";
+import { SitesTable } from "@/components/analytics/SitesTable";
 import { SourcesTable } from "@/components/analytics/SourcesTable";
 import { UtmTable, type UtmRow } from "@/components/analytics/UtmTable";
 import { GoogleCampaignsCard } from "@/components/analytics/GoogleCampaignsCard";
@@ -421,6 +422,15 @@ const Analytics = () => {
     [leads, monthStart, monthEnd, cabinetId],
   );
 
+  const sites = useMemo(
+    () => buildSiteBreakdown(leads, {
+      from: monthStart,
+      to: monthEnd,
+      cabinetId,
+    }),
+    [leads, monthStart, monthEnd, cabinetId],
+  );
+
   // Автовыводы за период: лучший канал / источник / креатив + точка роста.
   const insights = useMemo(
     () => buildAnalyticsInsights({ channels, sources, creatives }),
@@ -623,6 +633,22 @@ const Analytics = () => {
         </div>
         <div className="mt-4 rounded-2xl border border-border/60 bg-card/40 p-4">
           <SourcesTable rows={sources} />
+        </div>
+      </section>
+
+      {/* Website breakdown */}
+      <section className="mt-8">
+        <div className="flex items-end justify-between">
+          <div>
+            <h2 className="text-lg font-bold tracking-tight">Аналитика по сайтам</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Заявки группируются по домену из landing_url. Лиды — по дате создания,
+              продажи и выручка — по дате оплаты.
+            </p>
+          </div>
+        </div>
+        <div className="mt-4 rounded-2xl border border-border/60 bg-card/40 p-4">
+          <SitesTable rows={sites} />
         </div>
       </section>
 

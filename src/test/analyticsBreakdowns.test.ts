@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAnalyticsInsights,
+  buildSiteBreakdown,
   buildSourceBreakdown,
+  siteDomain,
   sourceLabel,
 } from "@/lib/analyticsBreakdowns";
 import type { LeadLite } from "@/hooks/useLeadsLite";
@@ -15,6 +17,7 @@ function lead(partial: Partial<LeadLite> & Pick<LeadLite, "id" | "createdAt">): 
     source: "whatsapp",
     channel: null,
     referrer: null,
+    landingUrl: null,
     utm: null,
     metaAdId: null,
     cabinetId: null,
@@ -103,6 +106,68 @@ describe("buildSourceBreakdown", () => {
       { ...JULY, cabinetId: "cab-1" },
     );
     expect(scoped.reduce((s, r) => s + r.leads, 0)).toBe(1);
+  });
+});
+
+describe("siteDomain", () => {
+  it("normalizes URLs to a readable hostname", () => {
+    expect(siteDomain("https://www.clinic-a.kz/services?utm_source=meta")).toBe("clinic-a.kz");
+    expect(siteDomain("clinic-b.kz/form")).toBe("clinic-b.kz");
+    expect(siteDomain(null)).toBe("Сайт не определён");
+  });
+});
+
+describe("buildSiteBreakdown", () => {
+  const leads: LeadLite[] = [
+    lead({
+      id: "site-1",
+      createdAt: "2026-07-02T10:00:00Z",
+      landingUrl: "https://www.clinic-a.kz/form?utm_source=meta",
+      paid: true,
+      paidAt: "2026-07-10T10:00:00Z",
+      amount: 450_000,
+      stageKey: "paid",
+    }),
+    lead({
+      id: "site-2",
+      createdAt: "2026-07-03T10:00:00Z",
+      landingUrl: "https://clinic-a.kz/implant",
+    }),
+    lead({
+      id: "site-3",
+      createdAt: "2026-07-04T10:00:00Z",
+      landingUrl: "https://clinic-b.kz/",
+    }),
+    lead({
+      id: "site-4",
+      createdAt: "2026-07-05T10:00:00Z",
+      landingUrl: null,
+      source: "site",
+    }),
+    // WhatsApp-лид без landing_url не относится к сайтам и не должен попадать в таблицу.
+    lead({ id: "wa-1", createdAt: "2026-07-06T10:00:00Z", source: "whatsapp" }),
+  ];
+
+  it("groups leads by normalized site domain", () => {
+    const rows = buildSiteBreakdown(leads, JULY);
+    const clinicA = rows.find((r) => r.domain === "clinic-a.kz")!;
+    expect(clinicA.leads).toBe(2);
+    expect(clinicA.sales).toBe(1);
+    expect(clinicA.revenue).toBe(450_000);
+    expect(clinicA.cr).toBe(50);
+    expect(rows.find((r) => r.domain === "clinic-b.kz")?.leads).toBe(1);
+    expect(rows.find((r) => r.domain === "Сайт не определён")?.leads).toBe(1);
+  });
+
+  it("filters by cabinet", () => {
+    const rows = buildSiteBreakdown(
+      [
+        lead({ id: "a", createdAt: "2026-07-02T10:00:00Z", landingUrl: "https://a.kz", cabinetId: "cab-1" }),
+        lead({ id: "b", createdAt: "2026-07-02T10:00:00Z", landingUrl: "https://b.kz", cabinetId: "cab-2" }),
+      ],
+      { ...JULY, cabinetId: "cab-1" },
+    );
+    expect(rows.map((r) => r.domain)).toEqual(["a.kz"]);
   });
 });
 

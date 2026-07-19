@@ -102,6 +102,72 @@ export function buildSourceBreakdown(leads: LeadLite[], opts: PeriodOpts): Sourc
   );
 }
 
+/** Строка аналитики заявок по сайту, определённому из leads.landing_url. */
+export interface SiteBreakdownRow {
+  domain: string;
+  leads: number;
+  share: number;
+  sales: number;
+  revenue: number;
+  cr: number;
+}
+
+export function siteDomain(raw: string | null | undefined): string {
+  const value = raw?.trim();
+  if (!value) return "Сайт не определён";
+  try {
+    const url = new URL(value.includes("://") ? value : `https://${value}`);
+    return url.hostname.toLowerCase().replace(/^www\./, "") || "Сайт не определён";
+  } catch {
+    return "Сайт не определён";
+  }
+}
+
+/**
+ * Срез по доменам сайтов. Лиды считаются по createdAt, продажи и выручка —
+ * по paidAt, как в остальных блоках сквозной аналитики.
+ */
+export function buildSiteBreakdown(leads: LeadLite[], opts: PeriodOpts): SiteBreakdownRow[] {
+  const map = new Map<string, SiteBreakdownRow>();
+  const isSiteLead = (lead: LeadLite) =>
+    Boolean(lead.landingUrl) || /site|web|landing|tilda|website|form/i.test(lead.source || "");
+  const ensure = (landingUrl: string | null) => {
+    const domain = siteDomain(landingUrl);
+    let row = map.get(domain);
+    if (!row) {
+      row = { domain, leads: 0, share: 0, sales: 0, revenue: 0, cr: 0 };
+      map.set(domain, row);
+    }
+    return row;
+  };
+
+  let totalLeads = 0;
+  for (const lead of leads) {
+    if (!cabinetOk(lead, opts) || !isSiteLead(lead)) continue;
+    if (inPeriod(lead.createdAt, opts)) {
+      ensure(lead.landingUrl).leads += 1;
+      totalLeads += 1;
+    }
+    if (isLeadPaid(lead)) {
+      const paidAt = lead.paidAt ?? lead.lastActivityAt ?? lead.createdAt;
+      if (inPeriod(paidAt, opts)) {
+        const row = ensure(lead.landingUrl);
+        row.sales += 1;
+        row.revenue += lead.amount || 0;
+      }
+    }
+  }
+
+  for (const row of map.values()) {
+    row.share = totalLeads > 0 ? (row.leads / totalLeads) * 100 : 0;
+    row.cr = row.leads > 0 ? (row.sales / row.leads) * 100 : 0;
+  }
+
+  return Array.from(map.values()).sort(
+    (a, b) => b.revenue - a.revenue || b.leads - a.leads || b.sales - a.sales,
+  );
+}
+
 // ---------------- Инсайты периода ----------------
 
 export interface AnalyticsInsight {
