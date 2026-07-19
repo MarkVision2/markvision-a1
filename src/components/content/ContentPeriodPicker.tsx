@@ -25,20 +25,23 @@ const PRESETS: { id: ContentPeriodPreset; label: string }[] = [
 interface Props {
   preset: ContentPeriodPreset;
   range: ReportPeriodRange;
-  compare: boolean;
+  compare?: boolean;
   compareLabel?: string | null;
   onPresetChange: (preset: ContentPeriodPreset, range: ReportPeriodRange) => void;
-  onCompareChange: (compare: boolean) => void;
+  onCompareChange?: (compare: boolean) => void;
+  /** Скрыть кнопку «Сравнить периоды» (например, на контент-плане). */
+  showCompare?: boolean;
   className?: string;
 }
 
 export function ContentPeriodPicker({
   preset,
   range,
-  compare,
+  compare = false,
   compareLabel,
   onPresetChange,
   onCompareChange,
+  showCompare = true,
   className,
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -133,21 +136,23 @@ export function ContentPeriodPicker({
         <span className="text-xs text-muted-foreground tabular-nums">{formatPeriodLabel(range)}</span>
       )}
 
-      <button
-        type="button"
-        onClick={() => onCompareChange(!compare)}
-        className={cn(
-          "inline-flex items-center gap-1.5 rounded-2xl border px-3 py-2 text-xs font-medium transition-colors",
-          compare
-            ? "border-primary/40 bg-primary/15 text-primary"
-            : "border-border/60 bg-card/60 text-muted-foreground hover:text-foreground",
-        )}
-      >
-        <GitCompareArrows className="h-3.5 w-3.5" />
-        Сравнить периоды
-      </button>
+      {showCompare && onCompareChange && (
+        <button
+          type="button"
+          onClick={() => onCompareChange(!compare)}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-2xl border px-3 py-2 text-xs font-medium transition-colors",
+            compare
+              ? "border-primary/40 bg-primary/15 text-primary"
+              : "border-border/60 bg-card/60 text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <GitCompareArrows className="h-3.5 w-3.5" />
+          Сравнить периоды
+        </button>
+      )}
 
-      {compare && compareLabel && (
+      {showCompare && compare && compareLabel && (
         <span className="text-xs text-muted-foreground">vs {compareLabel}</span>
       )}
     </div>

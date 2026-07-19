@@ -5,24 +5,43 @@ import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
+import {
+  ContentPeriodPicker,
+  type ContentPeriodPreset,
+} from "@/components/content/ContentPeriodPicker";
 import { ContentPlanKpis } from "@/components/content-plan/ContentPlanKpis";
 import { ContentPlanTable } from "@/components/content-plan/ContentPlanTable";
 import { useContentPlan } from "@/hooks/useContentPlan";
 import { useInstagramAccount } from "@/hooks/useInstagramAccount";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
-import type { ContentPlanItem } from "@/lib/contentPlan";
+import type { ReportPeriodRange } from "@/hooks/useReportData";
+import {
+  filterContentPlanByPeriod,
+  summarizeContentPlan,
+  type ContentPlanItem,
+} from "@/lib/contentPlan";
+import { formatPeriodLabel, thisMonthRange } from "@/lib/metricsPeriod";
 import AutoPost, { AutopostAddDialog } from "@/pages/AutoPost";
 
 const todayAlmatyYmd = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Almaty" });
 
+const PRESET_LABELS: Record<ContentPeriodPreset, string> = {
+  this_month: "Этот месяц",
+  last_month: "Прошлый месяц",
+  last_year: "За год",
+  all_time: "Всё время",
+  custom: "Свой период",
+};
+
 export default function ContentPlan() {
   const [params, setParams] = useSearchParams();
   const showCalendar = params.get("view") === "calendar" || params.get("tab") === "autopost";
-  const { items, summary, loading, error, tableMissing, refetch, update, adoptSynthetic } =
-    useContentPlan();
+  const { items, loading, error, tableMissing, refetch, update, adoptSynthetic } = useContentPlan();
   const { activeId: projectId } = useProjectsStore();
   const { account } = useInstagramAccount();
   const [addDay, setAddDay] = useState<string | null>(null);
+  const [preset, setPreset] = useState<ContentPeriodPreset>("this_month");
+  const [range, setRange] = useState<ReportPeriodRange>(() => thisMonthRange());
 
   const setShowCalendar = (on: boolean) => {
     const p = new URLSearchParams(params);
@@ -32,7 +51,9 @@ export default function ContentPlan() {
     setParams(p, { replace: true });
   };
 
-  const sorted = useMemo(() => items, [items]);
+  const periodItems = useMemo(() => filterContentPlanByPeriod(items, range), [items, range]);
+  const summary = useMemo(() => summarizeContentPlan(periodItems), [periodItems]);
+  const periodLabel = useMemo(() => formatPeriodLabel(range), [range]);
 
   const onTogglePlatform = async (
     id: string,
@@ -105,8 +126,24 @@ export default function ContentPlan() {
         </div>
       )}
 
-      <div className="mt-6">
-        <ContentPlanKpis summary={summary} />
+      <div className="mt-5">
+        <ContentPeriodPicker
+          preset={preset}
+          range={range}
+          showCompare={false}
+          onPresetChange={(next, nextRange) => {
+            setPreset(next);
+            setRange(nextRange);
+          }}
+        />
+      </div>
+
+      <div className="mt-4">
+        <ContentPlanKpis
+          summary={summary}
+          periodLabel={periodLabel}
+          presetLabel={PRESET_LABELS[preset]}
+        />
       </div>
 
       {showCalendar ? (
@@ -117,14 +154,22 @@ export default function ContentPlan() {
         <div className="mt-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
             <span>
-              У каждой публикации — своя статистика. «Новая публикация» открывает окно автопостинга.
+              Список за {PRESET_LABELS[preset].toLowerCase()}
+              <span className="mx-1 text-border">·</span>
+              <span className="tabular-nums">{periodLabel}</span>
+              {items.length !== periodItems.length ? (
+                <>
+                  <span className="mx-1 text-border">·</span>
+                  {periodItems.length} из {items.length}
+                </>
+              ) : null}
             </span>
             <Link to="/marketing/content-center" className="text-primary hover:underline">
               Контент-центр →
             </Link>
           </div>
           <ContentPlanTable
-            items={sorted}
+            items={periodItems}
             loading={loading}
             onTogglePlatform={onTogglePlatform}
             onAdopt={onAdopt}

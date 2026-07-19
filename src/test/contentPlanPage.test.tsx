@@ -7,12 +7,17 @@ vi.mock("@/hooks/useContentPlan", () => ({
   useContentPlan: () => ({
     items: [],
     summary: {
-      posts: 0,
+      total: 0,
+      scheduled: 0,
+      awaitingCreation: 0,
+      published: 0,
       avgReach: 0,
       avgCodewordComments: 0,
-      avgLeads: 0,
-      avgSales: 0,
-      avgRoi: 0,
+      leads: 0,
+      registrations: 0,
+      webinarAttended: 0,
+      paid: 0,
+      revenue: 0,
     },
     loading: false,
     error: null,
@@ -68,5 +73,17 @@ describe("ContentPlan uses AutopostAddDialog", () => {
         hasAccount: true,
       }),
     );
+  });
+
+  it("shows period picker and labeled summary", () => {
+    render(
+      <MemoryRouter>
+        <ContentPlan />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("button", { name: /Этот месяц/i })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /Сводка за период/i })).toBeTruthy();
+    expect(screen.getByText(/Считаем публикации/i)).toBeTruthy();
   });
 });

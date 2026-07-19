@@ -129,6 +129,58 @@ export interface ContentPlanSummary {
   revenue: number;
 }
 
+/** Дата, по которой публикация попадает в период: выход → план → создание. */
+export function contentPlanItemAnchorAt(item: ContentPlanItem): string | null {
+  return item.publishedAt ?? item.scheduledAt ?? item.createdAt ?? null;
+}
+
+export function filterContentPlanByPeriod(
+  items: ContentPlanItem[],
+  range: { from: Date; to: Date },
+): ContentPlanItem[] {
+  const fromTs = new Date(range.from.getFullYear(), range.from.getMonth(), range.from.getDate()).getTime();
+  const toExclusive = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate());
+  toExclusive.setDate(toExclusive.getDate() + 1);
+  const toTs = toExclusive.getTime();
+
+  return items.filter((item) => {
+    const iso = contentPlanItemAnchorAt(item);
+    if (!iso) return false;
+    const t = new Date(iso).getTime();
+    if (Number.isNaN(t)) return false;
+    return t >= fromTs && t < toTs;
+  });
+}
+
+export function summarizeContentPlan(items: ContentPlanItem[]): ContentPlanSummary {
+  const total = items.length;
+  const scheduled = items.filter((i) => i.status === "scheduled").length;
+  const awaitingCreation = items.filter((i) =>
+    ["idea", "in_progress", "ready"].includes(i.status),
+  ).length;
+  const published = items.filter((i) => i.status === "published").length;
+  const pub = items.filter((i) => i.status === "published");
+  const avgReach =
+    pub.length > 0 ? Math.round(pub.reduce((s, i) => s + i.funnel.reach, 0) / pub.length) : 0;
+  const avgCodewordComments =
+    pub.length > 0
+      ? Math.round(pub.reduce((s, i) => s + i.funnel.codewordHits, 0) / pub.length)
+      : 0;
+  return {
+    total,
+    scheduled,
+    awaitingCreation,
+    published,
+    avgReach,
+    avgCodewordComments,
+    leads: items.reduce((s, i) => s + i.funnel.linkClicks, 0),
+    registrations: items.reduce((s, i) => s + i.funnel.registrations, 0),
+    webinarAttended: items.reduce((s, i) => s + i.funnel.webinarAttended, 0),
+    paid: items.reduce((s, i) => s + i.funnel.paid, 0),
+    revenue: items.reduce((s, i) => s + i.funnel.revenue, 0),
+  };
+}
+
 export function emptyFunnel(adSpend = 0): ContentPlanFunnel {
   return {
     reach: 0,
