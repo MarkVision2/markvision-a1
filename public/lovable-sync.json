@@ -1,7 +1,7 @@
 {
-  "git_sha": "55df5a1",
-  "git_sha_full": "55df5a1c5a9d2cbf5700dbf7c1f936889ee6aa17",
-  "updated_at": "2026-07-19T17:14:57Z",
-  "label": "feat(montage-lab): B-roll source picker [vercel-deploy]",
-  "publish_hint": "push main → www.markvision.kz (Vercel)"
+  "git_sha": "eca2af3",
+  "git_sha_full": "eca2af3d2997ec9c57eab416dfa86827408fb844",
+  "updated_at": "2026-07-19T17:19:28Z",
+  "label": "Merge pull request #148 from MarkVision2/cursor/montage-full-no-chop-84cc",
+  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
