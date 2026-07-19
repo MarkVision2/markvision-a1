@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertCircle, CalendarClock, ClipboardList, Lightbulb, Plus, RefreshCw } from "lucide-react";
+import { AlertCircle, CalendarClock, ClipboardList, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -9,24 +9,15 @@ import { ContentPlanKpis } from "@/components/content-plan/ContentPlanKpis";
 import { ContentPlanTable } from "@/components/content-plan/ContentPlanTable";
 import { ContentPlanComposerDialog } from "@/components/content-plan/ContentPlanComposerDialog";
 import { useContentPlan } from "@/hooks/useContentPlan";
-import { useInstagramAccount } from "@/hooks/useInstagramAccount";
-import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type { ContentPlanItem } from "@/lib/contentPlan";
-import AutoPost, { AutopostAddDialog } from "@/pages/AutoPost";
-
-function todayAlmatyYmd() {
-  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Almaty" });
-}
+import AutoPost from "@/pages/AutoPost";
 
 export default function ContentPlan() {
   const [params, setParams] = useSearchParams();
   const showCalendar = params.get("view") === "calendar" || params.get("tab") === "autopost";
-  const { activeId: projectId } = useProjectsStore();
-  const { account } = useInstagramAccount();
-  const { items, summary, loading, error, tableMissing, refetch, create, update, adoptSynthetic } =
+  const { items, summary, loading, error, tableMissing, refetch, update, adoptSynthetic } =
     useContentPlan();
-  const [publishOpen, setPublishOpen] = useState(false);
-  const [ideaOpen, setIdeaOpen] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
 
   const setShowCalendar = (on: boolean) => {
     const p = new URLSearchParams(params);
@@ -60,18 +51,13 @@ export default function ContentPlan() {
     }
   };
 
-  const onPublished = () => {
-    setPublishOpen(false);
-    void refetch();
-  };
-
   return (
     <PageContainer wide>
       <PageHeader
         icon={ClipboardList}
         iconAccent="pink"
         title="Контент-план"
-        description="Одна лента: медиа → автопостинг → статистика по каждой публикации. Сверху — итоги по всем постам."
+        description="Одна кнопка: название + медиа → сразу в план и автопостинг. Сверху итоги, у каждой публикации — своя статистика."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" className="gap-1" onClick={() => void refetch()}>
@@ -87,16 +73,7 @@ export default function ContentPlan() {
               <CalendarClock className="h-3.5 w-3.5" />
               {showCalendar ? "К плану" : "Календарь"}
             </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1"
-              onClick={() => setIdeaOpen(true)}
-            >
-              <Lightbulb className="h-3.5 w-3.5" />
-              Идея
-            </Button>
-            <Button size="sm" className="gap-1" onClick={() => setPublishOpen(true)}>
+            <Button size="sm" className="gap-1" onClick={() => setComposerOpen(true)}>
               <Plus className="h-3.5 w-3.5" />
               Новая публикация
             </Button>
@@ -135,7 +112,7 @@ export default function ContentPlan() {
         <div className="mt-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
             <span>
-              У каждой публикации — своя статистика (охват, код-слова, лиды, оплаты). Сверху — средние и суммы по всем.
+              У каждой публикации — своя статистика. «Новая публикация» = загрузка медиа + автопостинг.
             </span>
             <Link to="/marketing/content-center" className="text-primary hover:underline">
               Контент-центр →
@@ -150,22 +127,10 @@ export default function ContentPlan() {
         </div>
       )}
 
-      {publishOpen && (
-        <AutopostAddDialog
-          day={todayAlmatyYmd()}
-          hourReach={new Map()}
-          bestHour={null}
-          projectId={projectId}
-          hasAccount={!!account}
-          onClose={() => setPublishOpen(false)}
-          onDone={onPublished}
-        />
-      )}
-
       <ContentPlanComposerDialog
-        open={ideaOpen}
-        onOpenChange={setIdeaOpen}
-        onCreate={create}
+        open={composerOpen}
+        onOpenChange={setComposerOpen}
+        onDone={() => void refetch()}
       />
     </PageContainer>
   );
