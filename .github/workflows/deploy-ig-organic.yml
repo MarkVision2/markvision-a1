@@ -1,0 +1,49 @@
+# Деплой только критичных IG edge-функций (без полного цикла и без db push).
+name: Deploy IG organic edge functions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/ig-webhook/**"
+      - "supabase/functions/ig-organic-redirect/**"
+      - "supabase/functions/instagram-organic-intake/**"
+      - ".github/workflows/deploy-ig-organic.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-ig-organic
+  cancel-in-progress: false
+
+env:
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF || 'szfgdruhlebfvcmlvxdk' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Verify access token
+        run: test -n "$SUPABASE_ACCESS_TOKEN" || (echo "::error::SUPABASE_ACCESS_TOKEN missing"; exit 1)
+
+      - name: Normalize project ref
+        id: ref
+        run: bash .github/scripts/normalize-supabase-ref.sh
+
+      - name: Deploy IG organic functions
+        env:
+          SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
+        run: |
+          set -e
+          for fn in ig-webhook ig-organic-redirect instagram-organic-intake; do
+            echo "::group::$fn"
+            supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"
+            echo "::endgroup::"
+          done

@@ -1,0 +1,36 @@
+# Только колонка dm_button_title (+ schema reload). Без полного SQL-бандла.
+name: Apply dm_button_title SQL
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/apply-dm-button-title.sql"
+      - "supabase/migrations/20260719190000_ig_dm_button_title.sql"
+      - ".github/workflows/apply-dm-button-title.yml"
+  workflow_dispatch: {}
+
+env:
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF || 'szfgdruhlebfvcmlvxdk' }}
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify access token
+        run: test -n "$SUPABASE_ACCESS_TOKEN" || (echo "::error::SUPABASE_ACCESS_TOKEN missing"; exit 1)
+
+      - name: Normalize project ref
+        id: ref
+        run: bash .github/scripts/normalize-supabase-ref.sh
+
+      - name: Apply dm_button_title SQL
+        env:
+          SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
+          SQL_FILE: scripts/apply-dm-button-title.sql
+        run: |
+          chmod +x .github/scripts/apply-sql-via-management-api.sh
+          SQL_FILE="$SQL_FILE" .github/scripts/apply-sql-via-management-api.sh

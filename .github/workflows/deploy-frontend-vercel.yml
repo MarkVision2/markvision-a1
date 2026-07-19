@@ -1,0 +1,70 @@
+# Выкат фронта на Vercel Production, если в секретах есть VERCEL_TOKEN.
+# Обход, когда GitHub↔Vercel integration упёрлась в Hobby rate limit.
+name: Deploy frontend (Vercel)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/**"
+      - "public/**"
+      - "api/**"
+      - "index.html"
+      - "vite.config.*"
+      - "package.json"
+      - "package-lock.json"
+      - "vercel.json"
+      - ".github/workflows/deploy-frontend-vercel.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-frontend-vercel
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check VERCEL_TOKEN
+        id: tok
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::VERCEL_TOKEN secret missing — skip CLI deploy (GitHub Vercel app may still build)."
+            exit 0
+          fi
+          echo "present=true" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        if: steps.tok.outputs.present == 'true'
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install deps
+        if: steps.tok.outputs.present == 'true'
+        run: npm ci
+
+      - name: Pull Vercel project settings
+        if: steps.tok.outputs.present == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: npx vercel@39.4.2 pull --yes --environment=production --token "$VERCEL_TOKEN"
+
+      - name: Build
+        if: steps.tok.outputs.present == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx vercel@39.4.2 build --prod --token "$VERCEL_TOKEN"
+
+      - name: Deploy prebuilt to production
+        if: steps.tok.outputs.present == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx vercel@39.4.2 deploy --prebuilt --prod --token "$VERCEL_TOKEN"

@@ -1,6 +1,6 @@
 /**
  * Public short-link proxy: /r/:code → ig-organic-redirect with full query
- * (u=username, v=link_index). Keeps link_click analytics intact.
+ * (u=username, v=link_index). Keeps link_click analytics for «получить доступ».
  */
 const REDIRECT_FN =
   "https://szfgdruhlebfvcmlvxdk.supabase.co/functions/v1/ig-organic-redirect";
