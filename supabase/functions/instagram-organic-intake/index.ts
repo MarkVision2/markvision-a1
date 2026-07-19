@@ -159,16 +159,20 @@ Deno.serve(async (req) => {
 
   // One-shot wipe of test funnel stats (codeword writes + button clicks + organic leads).
   // Gated by x-confirm / body.confirm — does not touch codewords or CRM leads rows.
+  // NOTE: field name is mv_op (not "action") — some gateways strip "action" from JSON.
   const RESET_CONFIRM = "mv-reset-ig-stats-20260719";
-  const action =
+  const op =
+    (typeof raw.mv_op === "string" ? raw.mv_op : "") ||
+    (typeof raw.op === "string" ? raw.op : "") ||
     (typeof raw.action === "string" ? raw.action : "") ||
+    (url.searchParams.get("mv_op") ?? "") ||
     (url.searchParams.get("action") ?? "");
-  if (action === "reset_stats") {
+  if (op === "reset_stats") {
     const confirm =
       req.headers.get("x-confirm") ||
       (typeof raw.confirm === "string" ? raw.confirm : "") ||
       (url.searchParams.get("confirm") ?? "");
-    if (confirm !== RESET_CONFIRM) return json({ ok: false, error: "forbidden" }, 403);
+    if (confirm !== RESET_CONFIRM) return json({ ok: false, error: "forbidden", build: "reset-v3" }, 403);
 
     const types = ["codeword_comment", "codeword_dm", "link_click", "lead"];
     const { count: before, error: countErr } = await admin
@@ -194,7 +198,7 @@ Deno.serve(async (req) => {
       deleted_approx: before ?? null,
       remaining: after ?? 0,
       event_types: types,
-      build: "reset-v2",
+      build: "reset-v3",
     });
   }
 
