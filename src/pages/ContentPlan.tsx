@@ -7,17 +7,22 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { ContentPlanKpis } from "@/components/content-plan/ContentPlanKpis";
 import { ContentPlanTable } from "@/components/content-plan/ContentPlanTable";
-import { ContentPlanComposerDialog } from "@/components/content-plan/ContentPlanComposerDialog";
 import { useContentPlan } from "@/hooks/useContentPlan";
+import { useInstagramAccount } from "@/hooks/useInstagramAccount";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type { ContentPlanItem } from "@/lib/contentPlan";
-import AutoPost from "@/pages/AutoPost";
+import AutoPost, { AutopostAddDialog } from "@/pages/AutoPost";
+
+const todayAlmatyYmd = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Almaty" });
 
 export default function ContentPlan() {
   const [params, setParams] = useSearchParams();
   const showCalendar = params.get("view") === "calendar" || params.get("tab") === "autopost";
   const { items, summary, loading, error, tableMissing, refetch, update, adoptSynthetic } =
     useContentPlan();
-  const [composerOpen, setComposerOpen] = useState(false);
+  const { activeId: projectId } = useProjectsStore();
+  const { account } = useInstagramAccount();
+  const [addDay, setAddDay] = useState<string | null>(null);
 
   const setShowCalendar = (on: boolean) => {
     const p = new URLSearchParams(params);
@@ -57,7 +62,7 @@ export default function ContentPlan() {
         icon={ClipboardList}
         iconAccent="pink"
         title="Контент-план"
-        description="Одна кнопка: название + медиа → сразу в план и автопостинг. Сверху итоги, у каждой публикации — своя статистика."
+        description="Новая публикация — то же окно, что в автопостинге: медиа, подпись, время → сразу в план и очередь."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" className="gap-1" onClick={() => void refetch()}>
@@ -73,7 +78,7 @@ export default function ContentPlan() {
               <CalendarClock className="h-3.5 w-3.5" />
               {showCalendar ? "К плану" : "Календарь"}
             </Button>
-            <Button size="sm" className="gap-1" onClick={() => setComposerOpen(true)}>
+            <Button size="sm" className="gap-1" onClick={() => setAddDay(todayAlmatyYmd())}>
               <Plus className="h-3.5 w-3.5" />
               Новая публикация
             </Button>
@@ -112,7 +117,7 @@ export default function ContentPlan() {
         <div className="mt-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
             <span>
-              У каждой публикации — своя статистика. «Новая публикация» = загрузка медиа + автопостинг.
+              У каждой публикации — своя статистика. «Новая публикация» открывает окно автопостинга.
             </span>
             <Link to="/marketing/content-center" className="text-primary hover:underline">
               Контент-центр →
@@ -127,11 +132,20 @@ export default function ContentPlan() {
         </div>
       )}
 
-      <ContentPlanComposerDialog
-        open={composerOpen}
-        onOpenChange={setComposerOpen}
-        onDone={() => void refetch()}
-      />
+      {addDay && (
+        <AutopostAddDialog
+          day={addDay}
+          hourReach={new Map()}
+          bestHour={null}
+          projectId={projectId}
+          hasAccount={!!account}
+          onClose={() => setAddDay(null)}
+          onDone={() => {
+            setAddDay(null);
+            void refetch();
+          }}
+        />
+      )}
     </PageContainer>
   );
 }

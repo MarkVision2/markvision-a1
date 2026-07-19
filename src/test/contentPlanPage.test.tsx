@@ -1,0 +1,72 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { MemoryRouter } from "react-router-dom";
+import ContentPlan from "@/pages/ContentPlan";
+
+vi.mock("@/hooks/useContentPlan", () => ({
+  useContentPlan: () => ({
+    items: [],
+    summary: {
+      posts: 0,
+      avgReach: 0,
+      avgCodewordComments: 0,
+      avgLeads: 0,
+      avgSales: 0,
+      avgRoi: 0,
+    },
+    loading: false,
+    error: null,
+    tableMissing: false,
+    refetch: vi.fn(),
+    update: vi.fn(),
+    adoptSynthetic: vi.fn(),
+  }),
+}));
+
+vi.mock("@/hooks/useProjectsStore", () => ({
+  useProjectsStore: () => ({ activeId: "proj-1" }),
+}));
+
+vi.mock("@/hooks/useInstagramAccount", () => ({
+  useInstagramAccount: () => ({ account: { username: "test" } }),
+}));
+
+const addDialog = vi.fn((_props: unknown) => (
+  <div data-testid="autopost-add-dialog">AutopostAddDialog</div>
+));
+
+vi.mock("@/pages/AutoPost", async () => {
+  const actual = await vi.importActual<typeof import("@/pages/AutoPost")>("@/pages/AutoPost");
+  return {
+    __esModule: true,
+    default: () => <div data-testid="autopost-embedded">AutoPost</div>,
+    AutopostAddDialog: (props: unknown) => {
+      addDialog(props);
+      return <div data-testid="autopost-add-dialog">AutopostAddDialog</div>;
+    },
+  };
+});
+
+describe("ContentPlan uses AutopostAddDialog", () => {
+  beforeEach(() => {
+    addDialog.mockClear();
+  });
+
+  it("opens the same Autopost composer on Новая публикация", () => {
+    render(
+      <MemoryRouter>
+        <ContentPlan />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByTestId("autopost-add-dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Новая публикация/i }));
+    expect(screen.getByTestId("autopost-add-dialog")).toBeTruthy();
+    expect(addDialog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "proj-1",
+        hasAccount: true,
+      }),
+    );
+  });
+});
