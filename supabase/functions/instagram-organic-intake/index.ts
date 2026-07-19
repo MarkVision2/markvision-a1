@@ -202,6 +202,59 @@ Deno.serve(async (req) => {
     });
   }
 
+  if (op === "trim_content_plan_past") {
+    const confirm =
+      req.headers.get("x-confirm") ||
+      (typeof raw.confirm === "string" ? raw.confirm : "") ||
+      (url.searchParams.get("confirm") ?? "");
+    if (confirm !== RESET_CONFIRM) {
+      return json({ ok: false, error: "forbidden", build: "trim-plan-v1" }, 403);
+    }
+
+    // Удалить публикации контент-плана до завтрашнего дня (Asia/Almaty).
+    const almatyYmd = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Asia/Almaty",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(new Date());
+    const cutoffMs = new Date(`${almatyYmd}T00:00:00+05:00`).getTime() + 24 * 60 * 60 * 1000;
+
+    const { data: rows, error: listErr } = await admin
+      .from("content_plan_items")
+      .select("id, published_at, scheduled_at, created_at");
+    if (listErr) return json({ ok: false, error: listErr.message }, 500);
+
+    const pastIds = (rows ?? [])
+      .filter((r: { published_at?: string | null; scheduled_at?: string | null; created_at?: string | null }) => {
+        const iso = r.published_at ?? r.scheduled_at ?? r.created_at;
+        if (!iso) return false;
+        const t = new Date(iso).getTime();
+        return !Number.isNaN(t) && t < cutoffMs;
+      })
+      .map((r: { id: string }) => r.id);
+
+    let deleted = 0;
+    for (let i = 0; i < pastIds.length; i += 100) {
+      const slice = pastIds.slice(i, i + 100);
+      const { error: delErr, count } = await admin
+        .from("content_plan_items")
+        .delete({ count: "exact" })
+        .in("id", slice);
+      if (delErr) return json({ ok: false, error: delErr.message }, 500);
+      deleted += count ?? slice.length;
+    }
+
+    return json({
+      ok: true,
+      trim: true,
+      deleted,
+      scanned: rows?.length ?? 0,
+      cutoff_iso: new Date(cutoffMs).toISOString(),
+      build: "trim-plan-v1",
+    });
+  }
+
   const parsed = Schema.safeParse(raw);
   if (!parsed.success) {
     return json({ ok: false, error: "invalid_payload", issues: parsed.error.issues }, 400);
