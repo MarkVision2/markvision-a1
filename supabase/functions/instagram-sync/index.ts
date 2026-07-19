@@ -97,9 +97,8 @@ async function syncOne(supa: any, account: any) {
   const mediaJson = await mediaRes.json();
   if (mediaJson.error) {
     await supa.from("instagram_accounts").update({ last_error: `media: ${mediaJson.error.message}` }).eq("project_id", account.project_id);
-    return;
   }
-  const items = (mediaJson.data ?? []) as any[];
+  const items = (mediaJson.error ? [] : (mediaJson.data ?? [])) as any[];
 
   // 3) Insights per media.
   // Graph API v22+: impressions/plays are invalid for many IG media types.
@@ -220,6 +219,85 @@ async function syncOne(supa: any, account: any) {
       }
     }
   } catch (_e) { /* skip */ }
+
+  // 6) Meta Page scheduled_posts — единственный публичный Graph-список «запланировано».
+  //    Это расписание Facebook Page / Meta Business Suite, НЕ native «отложить» в Instagram app.
+  //    Instagram Content Publishing API официально не отдаёт список in-app schedules
+  //    (нет edge у IG User; /media = только уже вышедшие).
+  let pageSched: { attempted: boolean; count: number; error?: string } = { attempted: false, count: 0 };
+  try {
+    const pageId = typeof account.page_id === "string" ? account.page_id.trim() : "";
+    const pageTok = typeof account.page_access_token === "string" ? account.page_access_token.trim() : "";
+    if (pageId && pageTok) {
+      pageSched.attempted = true;
+      const sr = await fetch(
+        `${GRAPH_FB}/${pageId}/scheduled_posts?fields=id,message,created_time,scheduled_publish_time,is_published,full_picture,permalink_url,status_type&limit=50&access_token=${encodeURIComponent(pageTok)}`,
+      );
+      const sj = await sr.json();
+      if (sj.error) {
+        pageSched.error = String(sj.error.message ?? sj.error);
+      } else {
+        const rows = (sj.data ?? []) as Array<{
+          id?: string;
+          message?: string;
+          scheduled_publish_time?: number | string;
+          full_picture?: string;
+          permalink_url?: string;
+        }>;
+        pageSched.count = rows.length;
+        for (const p of rows) {
+          if (!p.id) continue;
+          const ts =
+            typeof p.scheduled_publish_time === "number"
+              ? new Date(p.scheduled_publish_time * 1000).toISOString()
+              : typeof p.scheduled_publish_time === "string" && /^\d+$/.test(p.scheduled_publish_time)
+                ? new Date(Number(p.scheduled_publish_time) * 1000).toISOString()
+                : null;
+          if (!ts) continue;
+          const title =
+            (p.message ?? "").trim().split("\n")[0]?.slice(0, 80) ||
+            `Meta Business · ${ts}`;
+          const key = `meta_page:${p.id}`;
+          const existing = await supa
+            .from("content_plan_items")
+            .select("id")
+            .eq("project_id", account.project_id)
+            .eq("autopost_id", key)
+            .maybeSingle();
+          if (existing.data?.id) {
+            await supa
+              .from("content_plan_items")
+              .update({
+                title,
+                description: p.message ?? null,
+                thumbnail_url: p.full_picture ?? null,
+                scheduled_at: ts,
+                status: "scheduled",
+              })
+              .eq("id", existing.data.id);
+          } else {
+            await supa.from("content_plan_items").insert({
+              project_id: account.project_id,
+              title,
+              category: "content",
+              content_type: "IMAGE",
+              status: "scheduled",
+              description: p.message ?? null,
+              thumbnail_url: p.full_picture ?? null,
+              scheduled_at: ts,
+              autopost_id: key,
+              post_instagram: true,
+              post_facebook: true,
+            });
+          }
+        }
+      }
+    }
+  } catch (e: any) {
+    pageSched = { attempted: true, count: 0, error: e?.message ?? "page scheduled_posts failed" };
+  }
+
+  return { pageSched };
 }
 
 Deno.serve(async (req) => {
@@ -240,8 +318,8 @@ Deno.serve(async (req) => {
     const results: any[] = [];
     for (const acc of accounts ?? []) {
       try {
-        await syncOne(supa, acc);
-        results.push({ project_id: acc.project_id, ok: true });
+        const extra = await syncOne(supa, acc);
+        results.push({ project_id: acc.project_id, ok: true, ...(extra ?? {}) });
       } catch (e: any) {
         results.push({ project_id: acc.project_id, ok: false, error: e.message });
       }
