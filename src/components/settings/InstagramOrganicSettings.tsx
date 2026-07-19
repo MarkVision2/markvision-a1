@@ -204,7 +204,8 @@ export function InstagramOrganicSettings() {
           <div>
             <h3 className="text-base font-semibold">Код-слова</h3>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Комментарий с словом → ответ → Direct с кнопкой «{DM_ACCESS_BUTTON_TITLE}».
+              Комментарий или Direct со словом → тот же ответ в личку с кнопкой «{DM_ACCESS_BUTTON_TITLE}».
+              С рекламы можно писать сразу в Direct — без комментария.
             </p>
           </div>
           <Button
@@ -429,15 +430,14 @@ export function InstagramOrganicSettings() {
               </div>
               <p>
                 Пишет <span className="font-mono font-semibold text-foreground">«{previewWord}»</span>
-                {" → "}
-                ответ в комментарии
-                {" → "}
-                Direct: «{(draft.dmMessages[0] || DEFAULT_DM).slice(0, 48)}
+                {" в комментарии или сразу в Direct → "}
+                в личке то же сообщение: «{(draft.dmMessages[0] || DEFAULT_DM).slice(0, 48)}
                 {(draft.dmMessages[0] || DEFAULT_DM).length > 48 ? "…" : ""}»
                 {" + "}
                 <span className="rounded bg-pink-500/15 px-1.5 py-0.5 font-semibold text-pink-600 dark:text-pink-400">
                   {DM_ACCESS_BUTTON_TITLE}
                 </span>
+                {" (из комментария дополнительно публичный ответ)."}
               </p>
             </div>
 

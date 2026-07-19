@@ -534,7 +534,12 @@ Deno.serve(async (req) => {
         const adId = referral.adId ?? sticky.adId;
         const mediaId = referral.mediaId ?? sticky.mediaId;
 
-        const kw = await matchCodeword(account.project_id, mediaId, text);
+        // Тот же код-слово, что и в комментариях («хаб» и т.п.).
+        // Сначала пробуем с media из рекламы; если кодворд глобальный / другой пост —
+        // матчим без привязки к reel_id (как человек просто написал в Direct).
+        const kw =
+          (await matchCodeword(account.project_id, mediaId, text)) ??
+          (mediaId ? await matchCodeword(account.project_id, null, text) : null);
         if (!kw) continue;
 
         const externalId = mid ?? `dm:${senderId}:${message?.timestamp ?? Date.now()}`;
@@ -547,6 +552,7 @@ Deno.serve(async (req) => {
           username: null,
           mediaId: mediaId ?? kw.reel_id,
           adId,
+          // Тот же button-template, что после комментария — только recipient = IGSID.
           recipient: { id: senderId },
           publicReply: false,
           claimPayload: {
@@ -555,6 +561,7 @@ Deno.serve(async (req) => {
             referral: referral.raw,
             sticky_ad_id: sticky.adId,
             sticky_media_id: sticky.mediaId,
+            channel: "direct",
           },
         });
       }
