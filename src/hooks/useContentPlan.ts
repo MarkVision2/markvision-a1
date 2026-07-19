@@ -95,28 +95,6 @@ function asStringArray(raw: unknown): string[] {
   return raw.map((x) => String(x)).filter(Boolean);
 }
 
-function mapTypeFromIg(mediaType: string | null, product: string | null): ContentPlanType {
-  const p = (product ?? "").toUpperCase();
-  const t = (mediaType ?? "").toUpperCase();
-  if (p === "REELS" || t === "REELS") return "REELS";
-  if (p === "STORY" || t === "STORY") return "STORIES";
-  if (t === "CAROUSEL_ALBUM") return "CAROUSEL";
-  return "IMAGE";
-}
-
-function titleFromCaption(caption: string | null, fallback: string): string {
-  if (!caption?.trim()) return fallback;
-  const line = caption.trim().split("\n")[0] ?? caption;
-  return line.length > 80 ? `${line.slice(0, 77)}…` : line;
-}
-
-function mergeFunnel(
-  base: ContentPlanFunnel,
-  patch: Partial<ContentPlanFunnel>,
-): ContentPlanFunnel {
-  return { ...base, ...patch };
-}
-
 function fromDb(row: DbRow, funnel: ContentPlanFunnel): ContentPlanItem {
   return {
     id: row.id,
@@ -357,94 +335,9 @@ export function useContentPlan() {
         return fromDb(row, funnel);
       });
 
-      const linkedCodewordIds = new Set(planRows.map((p) => p.codewordId).filter(Boolean) as string[]);
-      const linkedMediaIds = new Set(planRows.map((p) => p.igMediaId).filter(Boolean) as string[]);
-
-      // Синтетические строки из код-слов без записи в плане — чтобы воронка была видна сразу.
-      const syntheticFromCodewords: ContentPlanItem[] = stats
-        .filter((s) => s.active && !linkedCodewordIds.has(s.codeword_id))
-        .map((s) => {
-          const mediaMatch = media.find((m) => m.permalink === s.reel_url || m.media_id === s.reel_url);
-          const igId = mediaMatch?.media_id ?? null;
-          if (igId) linkedMediaIds.add(igId);
-          const funnel = buildFunnelForCodeword(s.codeword_id, igId, 0);
-          return {
-            id: `cw:${s.codeword_id}`,
-            projectId,
-            title: titleFromCaption(null, `Код-слово «${s.codeword}»`),
-            category: "sales" as const,
-            contentType: "REELS" as const,
-            status: "published" as const,
-            description: null,
-            hashtags: null,
-            prompts: null,
-            commentsNotes: null,
-            mediaUrl: mediaMatch?.media_url ?? null,
-            thumbnailUrl: s.thumbnail_url ?? mediaMatch?.thumbnail_url ?? null,
-            childUrls: [],
-            scheduledAt: mediaMatch?.timestamp ?? null,
-            publishedAt: mediaMatch?.timestamp ?? null,
-            platforms: { instagram: true, facebook: false, threads: false, telegram: false, linkedin: false },
-            autopostId: null,
-            igMediaId: igId,
-            codewordId: s.codeword_id,
-            codeword: s.codeword,
-            utmContent: s.short_id ? `cw_${s.short_id}` : null,
-            adSpend: 0,
-            aiAnalysis: null,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            funnel,
-            synthetic: true,
-            source: "codeword" as const,
-          };
-        });
-
-      // Свежие IG-публикации без план/код-слова — чтобы таблица не была пустой.
-      const syntheticFromMedia: ContentPlanItem[] = media
-        .filter((m) => !linkedMediaIds.has(m.media_id))
-        .slice(0, 40)
-        .map((m) => {
-          const funnel = buildFunnelForCodeword(null, m.media_id, 0);
-          return {
-            id: `ig:${m.media_id}`,
-            projectId,
-            title: titleFromCaption(m.caption, "Публикация Instagram"),
-            category: "content" as const,
-            contentType: mapTypeFromIg(m.media_type, m.media_product_type),
-            status: "published" as const,
-            description: m.caption,
-            hashtags: null,
-            prompts: null,
-            commentsNotes: null,
-            mediaUrl: m.media_url,
-            thumbnailUrl: m.thumbnail_url,
-            childUrls: [],
-            scheduledAt: m.timestamp,
-            publishedAt: m.timestamp,
-            platforms: { instagram: true, facebook: false, threads: false, telegram: false, linkedin: false },
-            autopostId: null,
-            igMediaId: m.media_id,
-            codewordId: null,
-            codeword: null,
-            utmContent: null,
-            adSpend: 0,
-            aiAnalysis: null,
-            createdAt: m.timestamp ?? new Date().toISOString(),
-            updatedAt: m.timestamp ?? new Date().toISOString(),
-            funnel,
-            synthetic: true,
-            source: "ig_media" as const,
-          };
-        });
-
-      const merged = [...planRows, ...syntheticFromCodewords, ...syntheticFromMedia].sort((a, b) => {
-        const da = a.scheduledAt || a.publishedAt || a.createdAt;
-        const db = b.scheduledAt || b.publishedAt || b.createdAt;
-        return db.localeCompare(da);
-      });
-
-      setItems(merged);
+      // Только реальные строки плана. Синтетику «из Instagram / код-слово» больше
+      // не подмешиваем — она засоряла таблицу нулевой статистикой и чужими Reels.
+      setItems(planRows);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка загрузки контент-плана");
       setItems([]);

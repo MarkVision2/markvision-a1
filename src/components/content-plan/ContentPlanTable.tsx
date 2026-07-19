@@ -135,6 +135,7 @@ export function ContentPlanTable({
     return (
       <div className="rounded-2xl border border-dashed border-border/70 px-6 py-16 text-center text-sm text-muted-foreground">
         Пока нет публикаций. Нажмите «Новая публикация» — загрузите медиа и сразу поставьте в автопостинг.
+        Статистика появится после публикации и привязки код-слова.
       </div>
     );
   }
