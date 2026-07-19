@@ -8,6 +8,7 @@ on:
       - "supabase/functions/ig-webhook/**"
       - "supabase/functions/ig-organic-redirect/**"
       - "supabase/functions/instagram-organic-intake/**"
+      - "supabase/functions/instagram-sync/**"
       - ".github/workflows/deploy-ig-organic.yml"
   workflow_dispatch: {}
 
@@ -42,7 +43,7 @@ jobs:
           SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
         run: |
           set -e
-          for fn in ig-webhook ig-organic-redirect instagram-organic-intake; do
+          for fn in ig-webhook ig-organic-redirect instagram-organic-intake instagram-sync; do
             echo "::group::$fn"
             supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"
             echo "::endgroup::"

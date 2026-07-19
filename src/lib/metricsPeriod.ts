@@ -58,6 +58,16 @@ export function tomorrowAlmatyYmd(now = new Date()): string {
   return `${almaty.getFullYear()}-${String(almaty.getMonth() + 1).padStart(2, "0")}-${String(almaty.getDate()).padStart(2, "0")}`;
 }
 
+/** Сегодняшний YMD в Asia/Almaty — порог для импорта уже вышедших IG-постов в контент-план. */
+export function todayAlmatyYmd(now = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Almaty",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}
+
 /** Прошлый календарный месяц целиком. */
 export function lastMonthRange(now = new Date()): ReportPeriodRange {
   const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
