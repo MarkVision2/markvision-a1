@@ -7,6 +7,7 @@ import {
   allTimeRange,
   formatPeriodLabel,
   fromTodayRange,
+  fromTomorrowRange,
   lastMonthRange,
   lastYearRange,
   thisMonthRange,
@@ -14,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 
 export type ContentPeriodPreset =
+  | "from_tomorrow"
   | "from_today"
   | "this_month"
   | "last_month"
@@ -22,6 +24,7 @@ export type ContentPeriodPreset =
   | "custom";
 
 const PRESETS: { id: ContentPeriodPreset; label: string }[] = [
+  { id: "from_tomorrow", label: "С завтра" },
   { id: "from_today", label: "С сегодня" },
   { id: "this_month", label: "Этот месяц" },
   { id: "last_month", label: "Прошлый месяц" },
@@ -56,7 +59,8 @@ export function ContentPeriodPicker({
   const [draft, setDraft] = useState<{ from?: Date; to?: Date }>({});
 
   const applyPreset = (id: ContentPeriodPreset) => {
-    if (id === "from_today") onPresetChange("from_today", fromTodayRange());
+    if (id === "from_tomorrow") onPresetChange("from_tomorrow", fromTomorrowRange());
+    else if (id === "from_today") onPresetChange("from_today", fromTodayRange());
     else if (id === "this_month") onPresetChange("this_month", thisMonthRange());
     else if (id === "last_month") onPresetChange("last_month", lastMonthRange());
     else if (id === "last_year") onPresetChange("last_year", lastYearRange());

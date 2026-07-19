@@ -22,13 +22,14 @@ import {
   summarizeContentPlan,
   type ContentPlanItem,
 } from "@/lib/contentPlan";
-import { formatPeriodLabel, thisMonthRange } from "@/lib/metricsPeriod";
+import { formatPeriodLabel, fromTomorrowRange } from "@/lib/metricsPeriod";
 import { cn } from "@/lib/utils";
 import AutoPost, { AutopostAddDialog } from "@/pages/AutoPost";
 
 const todayAlmatyYmd = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Almaty" });
 
 const PRESET_LABELS: Record<ContentPeriodPreset, string> = {
+  from_tomorrow: "С завтра",
   from_today: "С сегодня",
   this_month: "Этот месяц",
   last_month: "Прошлый месяц",
@@ -60,8 +61,8 @@ export default function ContentPlan() {
   const { activeId: projectId } = useProjectsStore();
   const { account, sync } = useInstagramAccount();
   const [addDay, setAddDay] = useState<string | null>(null);
-  const [preset, setPreset] = useState<ContentPeriodPreset>("this_month");
-  const [range, setRange] = useState<ReportPeriodRange>(() => thisMonthRange());
+  const [preset, setPreset] = useState<ContentPeriodPreset>("from_tomorrow");
+  const [range, setRange] = useState<ReportPeriodRange>(() => fromTomorrowRange());
   const [refreshing, setRefreshing] = useState(false);
 
   const setShowCalendar = (on: boolean) => {
@@ -115,7 +116,7 @@ export default function ContentPlan() {
         icon={ClipboardList}
         iconAccent="pink"
         title="Контент-план"
-        description="Очередь MarkVision сверху; в списке — охват, код-слова, лиды и выручка по media_id. Посты, отложенные только в приложении Instagram, Meta в API не отдаёт."
+        description="Измеряем с завтра: в списке по умолчанию только будущие публикации. Охват, код-слова, лиды — по media_id после выхода."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button

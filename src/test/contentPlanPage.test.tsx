@@ -80,14 +80,14 @@ describe("ContentPlan uses AutopostAddDialog", () => {
     );
   });
 
-  it("shows this-month period, KPI summary, and upcoming queue rail", () => {
+  it("shows from-tomorrow period, KPI summary, and upcoming queue rail", () => {
     render(
       <MemoryRouter>
         <ContentPlan />
       </MemoryRouter>,
     );
 
-    expect(screen.getByRole("button", { name: /Этот месяц/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /С завтра/i })).toBeTruthy();
     expect(screen.getByRole("heading", { name: /Сводка за период/i })).toBeTruthy();
     expect(screen.getByRole("heading", { name: /Ближайшие в очереди MarkVision/i })).toBeTruthy();
     expect(screen.getByText(/В очереди пусто/i)).toBeTruthy();

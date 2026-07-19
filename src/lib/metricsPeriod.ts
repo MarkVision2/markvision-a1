@@ -42,6 +42,22 @@ export function fromTodayRange(now = new Date()): ReportPeriodRange {
   return { from, to };
 }
 
+/** С завтра → +60 дней — старт измерения воронки (без вчерашних/сегодняшних постов). */
+export function fromTomorrowRange(now = new Date()): ReportPeriodRange {
+  const from = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  from.setDate(from.getDate() + 1);
+  const to = new Date(from);
+  to.setDate(to.getDate() + 60);
+  return { from, to };
+}
+
+/** Завтрашний YMD в таймзоне Asia/Almaty (для отсечения импорта IG). */
+export function tomorrowAlmatyYmd(now = new Date()): string {
+  const almaty = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Almaty" }));
+  almaty.setDate(almaty.getDate() + 1);
+  return `${almaty.getFullYear()}-${String(almaty.getMonth() + 1).padStart(2, "0")}-${String(almaty.getDate()).padStart(2, "0")}`;
+}
+
 /** Прошлый календарный месяц целиком. */
 export function lastMonthRange(now = new Date()): ReportPeriodRange {
   const from = new Date(now.getFullYear(), now.getMonth() - 1, 1);

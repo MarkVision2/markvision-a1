@@ -81,6 +81,23 @@ describe("filterContentPlanByPeriod", () => {
     };
     expect(filterContentPlanByPeriod(items, fromToday).map((i) => i.id)).toEqual(["tomorrow"]);
   });
+
+  it("from-tomorrow range hides already published Jul 18–19 posts", () => {
+    const items = [
+      item({ id: "jul18", status: "published", publishedAt: "2026-07-18T09:00:00+05:00" }),
+      item({ id: "jul19", status: "published", publishedAt: "2026-07-19T15:00:00+05:00" }),
+      item({
+        id: "jul20",
+        status: "scheduled",
+        scheduledAt: "2026-07-20T09:00:00+05:00",
+      }),
+    ];
+    const fromTomorrow = {
+      from: new Date(2026, 6, 20),
+      to: new Date(2026, 8, 18),
+    };
+    expect(filterContentPlanByPeriod(items, fromTomorrow).map((i) => i.id)).toEqual(["jul20"]);
+  });
 });
 
 describe("summarizeContentPlan", () => {

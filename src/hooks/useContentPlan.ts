@@ -19,6 +19,7 @@ import {
   type ContentPlanOrganicEvent,
 } from "@/lib/contentPlanIgLink";
 import { schedulerApi } from "@/lib/autopostClient";
+import { tomorrowAlmatyYmd } from "@/lib/metricsPeriod";
 
 type DbRow = {
   id: string;
@@ -466,15 +467,15 @@ export function useContentPlan() {
           }
         }
 
-        // Ручные IG-посты — только с начала сегодняшнего дня (Алматы), без старой стены.
-        const todayYmd = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Almaty" });
-        const todayStart = new Date(`${todayYmd}T00:00:00+05:00`).getTime();
+        // Ручные IG-посты — только с завтрашнего дня (Алматы): измерение воронки со старта «с завтра».
+        const measureYmd = tomorrowAlmatyYmd();
+        const measureStart = new Date(`${measureYmd}T00:00:00+05:00`).getTime();
         const linked = new Set(
           planDbRows.map((r) => r.ig_media_id).filter((x): x is string => !!x),
         );
         const orphans = mediaNotLinkedToPlan(media, linked).filter((m) => {
           if (!m.timestamp) return false;
-          return new Date(m.timestamp).getTime() >= todayStart;
+          return new Date(m.timestamp).getTime() >= measureStart;
         });
         if (orphans.length > 0) {
           const inserts = orphans.map((m) => {
