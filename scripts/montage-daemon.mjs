@@ -163,14 +163,53 @@ function probeDurationSec(path) {
   }
 }
 
+// Supabase Storage Free: жёсткий лимит ~50 МБ на объект. Большие 16:9 → Cloudflare R2
+// (тот же r2-presign-upload, что у автопоста).
+const SUPABASE_DIRECT_MAX_BYTES = 45 * 1024 * 1024;
+
+async function uploadToR2(localPath, remoteName, contentType) {
+  const size = statSync(localPath).size;
+  const filename = remoteName.replace(/[^\w.\-]+/g, "_") || basename(localPath);
+  const r2Url = `${SUPABASE_URL.replace(/\/+$/, "")}/functions/v1/r2-presign-upload`;
+  const res = await fetch(r2Url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-app-key": ANON_KEY,
+      apikey: ANON_KEY,
+      Authorization: `Bearer ${ANON_KEY}`,
+    },
+    body: JSON.stringify({ filename, contentType, size }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok || j.error || !j.uploadUrl || !j.publicUrl) {
+    throw new Error(j.error || `r2-presign HTTP ${res.status}`);
+  }
+  const body = readFileSync(localPath);
+  const put = await fetch(j.uploadUrl, {
+    method: "PUT",
+    headers: { "Content-Type": contentType },
+    body,
+  });
+  if (!put.ok) throw new Error(`r2 PUT HTTP ${put.status}`);
+  console.log(`✓ R2 upload ${(size / 1024 / 1024).toFixed(1)} MB → ${j.publicUrl}`);
+  return j.publicUrl;
+}
+
 async function uploadRender(localPath, remoteName) {
+  const contentType = localPath.endsWith(".jpg") || localPath.endsWith(".jpeg")
+    ? "image/jpeg"
+    : "video/mp4";
+  const size = existsSync(localPath) ? statSync(localPath).size : 0;
+  if (size > SUPABASE_DIRECT_MAX_BYTES) {
+    console.log(`файл ${(size / 1024 / 1024).toFixed(1)} MB > 45 MB — сразу в R2`);
+    return uploadToR2(localPath, remoteName, contentType);
+  }
+
   const path = `montage/${Date.now()}-${remoteName.replace(/[^\w.\-]+/g, "_")}`;
   const { token, publicUrl } = await call(MW, { action: "sign_upload", path });
   const sb = createClient(SUPABASE_URL, ANON_KEY);
   const body = readFileSync(localPath);
-  const contentType = localPath.endsWith(".jpg") || localPath.endsWith(".jpeg")
-    ? "image/jpeg"
-    : "video/mp4";
   let last;
   for (let attempt = 1; attempt <= 5; attempt++) {
     const { error } = await sb.storage.from("renders").uploadToSignedUrl(path, token, body, {
@@ -179,6 +218,10 @@ async function uploadRender(localPath, remoteName) {
     if (!error) return publicUrl;
     last = error;
     console.warn(`upload attempt ${attempt}/5:`, error.message);
+    if (/exceeded the maximum allowed size/i.test(error.message)) {
+      console.warn("Supabase Storage лимит — фоллбэк в R2");
+      return uploadToR2(localPath, remoteName, contentType);
+    }
     await new Promise((r) => setTimeout(r, 1500 * attempt));
   }
   throw new Error(`upload ${localPath}: ${last?.message || "failed"}`);
@@ -362,7 +405,8 @@ async function processJob(job) {
       }
       py(["pipeline/audio.py", propsFile]);
       await status(id, `рендер ${shItem.id}`, "rendering");
-      const out = resolve(outDir, `${shItem.id}.mp4`);
+      // Уникальное имя: иначе Short-1.mp4 перезапишет шортс предыдущей заявки.
+      const out = resolve(outDir, `${id.slice(0, 8)}_${shItem.id}.mp4`);
       const browserArgs = existsSync(CHROME) ? ["--browser-executable", CHROME] : [];
       // Переиспользуем зарегистрированную композицию Short-Example + свои props
       sh("npx", [
