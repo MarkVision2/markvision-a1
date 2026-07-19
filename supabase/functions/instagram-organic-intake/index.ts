@@ -154,20 +154,20 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
 
+  const url = new URL(req.url);
   const raw = await parseBody(req);
 
   // One-shot wipe of test funnel stats (codeword writes + button clicks + organic leads).
   // Gated by x-confirm / body.confirm — does not touch codewords or CRM leads rows.
   const RESET_CONFIRM = "mv-reset-ig-stats-20260719";
-  const action = typeof (raw as Record<string, unknown>).action === "string"
-    ? String((raw as Record<string, unknown>).action)
-    : "";
+  const action =
+    (typeof raw.action === "string" ? raw.action : "") ||
+    (url.searchParams.get("action") ?? "");
   if (action === "reset_stats") {
     const confirm =
       req.headers.get("x-confirm") ||
-      (typeof (raw as Record<string, unknown>).confirm === "string"
-        ? String((raw as Record<string, unknown>).confirm)
-        : "");
+      (typeof raw.confirm === "string" ? raw.confirm : "") ||
+      (url.searchParams.get("confirm") ?? "");
     if (confirm !== RESET_CONFIRM) return json({ ok: false, error: "forbidden" }, 403);
 
     const types = ["codeword_comment", "codeword_dm", "link_click", "lead"];
@@ -194,6 +194,7 @@ Deno.serve(async (req) => {
       deleted_approx: before ?? null,
       remaining: after ?? 0,
       event_types: types,
+      build: "reset-v2",
     });
   }
 
