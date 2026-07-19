@@ -1,7 +1,7 @@
 {
-  "git_sha": "ffc13c7",
-  "git_sha_full": "ffc13c7d292276226c491f0f194ba23f768513af",
-  "updated_at": "2026-07-19T16:07:24Z",
-  "label": "chore: retry production deploy after Hobby rate limit [vercel-deploy]",
+  "git_sha": "a51350a",
+  "git_sha_full": "a51350a8fdbec5b4e6b990ccac53630b7c7feb60",
+  "updated_at": "2026-07-19T16:08:16Z",
+  "label": "fix(deploy): watcher waits for definitive Vercel status before retry",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
