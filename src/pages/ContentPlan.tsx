@@ -39,7 +39,7 @@ const PRESET_LABELS: Record<ContentPeriodPreset, string> = {
 export default function ContentPlan() {
   const [params, setParams] = useSearchParams();
   const showCalendar = params.get("view") === "calendar" || params.get("tab") === "autopost";
-  const { items, loading, error, tableMissing, refetch, update, adoptSynthetic } =
+  const { items, loading, error, tableMissing, refetch, adoptSynthetic } =
     useContentPlan();
   const { activeId: projectId } = useProjectsStore();
   const { account, sync } = useInstagramAccount();
@@ -68,18 +68,6 @@ export default function ContentPlan() {
       toast.success("Обновлено");
     } finally {
       setRefreshing(false);
-    }
-  };
-
-  const onTogglePlatform = async (
-    id: string,
-    key: keyof ContentPlanItem["platforms"],
-    value: boolean,
-  ) => {
-    try {
-      await update(id, { platforms: { [key]: value } });
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Не удалось сохранить");
     }
   };
 
@@ -193,7 +181,6 @@ export default function ContentPlan() {
           <ContentPlanTable
             items={periodItems}
             loading={loading}
-            onTogglePlatform={onTogglePlatform}
             onAdopt={onAdopt}
           />
         </div>

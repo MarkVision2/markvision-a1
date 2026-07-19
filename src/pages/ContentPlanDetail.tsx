@@ -10,7 +10,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -291,7 +290,7 @@ export default function ContentPlanDetail() {
         <TabsContent value="autopost" className="mt-4 space-y-4 rounded-2xl border border-border/60 p-4">
           <div className="flex items-center gap-2 text-sm font-semibold">
             <CalendarClock className="h-4 w-4 text-pink-500" />
-            Площадки и расписание
+            Расписание
           </div>
           <div className="text-sm text-muted-foreground">
             Дата:{" "}
@@ -301,30 +300,9 @@ export default function ContentPlanDetail() {
                 : "не задана"}
             </span>
           </div>
-          <div className="grid gap-3 sm:grid-cols-2">
-            {(
-              [
-                ["instagram", "Instagram"],
-                ["facebook", "Facebook"],
-                ["threads", "Threads"],
-                ["telegram", "Telegram"],
-                ["linkedin", "LinkedIn"],
-              ] as const
-            ).map(([key, label]) => (
-              <label key={key} className="flex items-center justify-between rounded-xl border border-border/60 px-3 py-2 text-sm">
-                <span>{label}</span>
-                <Switch
-                  checked={item.platforms[key]}
-                  disabled={item.synthetic}
-                  onCheckedChange={(v) => void update(item.id, { platforms: { [key]: v } })}
-                />
-              </label>
-            ))}
-          </div>
           <p className="text-xs text-muted-foreground">
-            Фактическая публикация в Instagram идёт через вкладку «Автопостинг» на странице плана
-            (очередь <code className="font-mono">cf_scheduled_posts</code>). Facebook / Threads / TG / LI —
-            флаги готовности к мультиканалу (V2).
+            Публикация в Instagram идёт через очередь MarkVision
+            (<code className="font-mono">cf_scheduled_posts</code>).
           </p>
           <Button variant="outline" asChild>
             <Link to="/marketing/content-plan?tab=autopost">Открыть очередь автопостинга</Link>
