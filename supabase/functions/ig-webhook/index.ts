@@ -88,6 +88,12 @@ function pickRandom(items: string[]): string | null {
   return items[Math.floor(Math.random() * items.length)] ?? null;
 }
 
+function pickRandomIndexed(items: string[]): { value: string; index: number } | null {
+  if (items.length === 0) return null;
+  const index = Math.floor(Math.random() * items.length);
+  return { value: items[index]!, index };
+}
+
 function resolveReplyText(kw: Codeword): string | null {
   return pickRandom(asStringArray(kw.comment_replies)) ?? (kw.reply_text?.trim() || null);
 }
@@ -96,10 +102,11 @@ function resolveDmText(kw: Codeword): string | null {
   return pickRandom(asStringArray(kw.dm_messages)) ?? (kw.dm_text?.trim() || null);
 }
 
-function resolveTargetUrl(kw: Codeword): string | null {
+function resolveTargetUrlIndexed(kw: Codeword): { value: string; index: number } | null {
   const urls = asStringArray(kw.target_urls);
-  if (urls.length > 0) return pickRandom(urls);
-  return kw.target_url?.trim() || null;
+  if (urls.length > 0) return pickRandomIndexed(urls);
+  const legacy = kw.target_url?.trim();
+  return legacy ? { value: legacy, index: 0 } : null;
 }
 
 async function matchCodeword(projectId: string, mediaId: string | null, text: string): Promise<Codeword | null> {
@@ -209,20 +216,24 @@ async function postPublicReply(commentId: string, account: ProjectAccount, text:
 }
 
 const PUBLIC_LINK_ORIGIN = Deno.env.get("IG_PUBLIC_LINK_ORIGIN") ?? "https://www.markvision.kz";
-const DEFAULT_DM_TEXT = "Готово! Жми кнопку ниже и регистрируйся 👇";
-const DEFAULT_BUTTON_TITLE = "Зарегистрироваться";
+const DEFAULT_DM_TEXT = "Готово! Жми кнопку ниже и забирай доступ 👇";
+const DEFAULT_BUTTON_TITLE = "получить доступ";
 
-function buildTrackingLink(shortId: string, username: string | null): string {
+function buildTrackingLink(
+  shortId: string,
+  username: string | null,
+  linkIndex: number | null = null,
+): string {
   const params = new URLSearchParams();
   if (username) params.set("u", username);
+  if (linkIndex != null && linkIndex >= 0) params.set("v", String(linkIndex));
   const q = params.toString();
   return `${PUBLIC_LINK_ORIGIN}/r/${encodeURIComponent(shortId)}${q ? `?${q}` : ""}`;
 }
 
-function clampButtonTitle(raw: string | null | undefined): string {
-  const t = (raw ?? "").trim() || DEFAULT_BUTTON_TITLE;
-  // Meta: до 20 символов на кнопку.
-  return Array.from(t).slice(0, 20).join("");
+function clampButtonTitle(_raw?: string | null): string {
+  // Текст кнопки фиксирован продуктом — всегда «получить доступ».
+  return DEFAULT_BUTTON_TITLE;
 }
 
 async function sendPrivateDm(
@@ -334,13 +345,12 @@ Deno.serve(async (req) => {
           await postPublicReply(commentId, account, replyText);
         }
 
-        const link = buildTrackingLink(kw.short_id, username);
+        const pickedLink = resolveTargetUrlIndexed(kw);
+        const link = buildTrackingLink(kw.short_id, username, pickedLink?.index ?? null);
         const dmPrefix = resolveDmText(kw) || DEFAULT_DM_TEXT;
-        // target_urls используются redirect'ом; в DM — кнопка, не сырой URL.
-        void resolveTargetUrl(kw);
         const sent = await sendPrivateDm(igUserId, account, commentId, {
           text: dmPrefix,
-          buttonTitle: clampButtonTitle(kw.dm_button_title),
+          buttonTitle: clampButtonTitle(),
           buttonUrl: link,
         });
 
@@ -350,6 +360,8 @@ Deno.serve(async (req) => {
           dm_status: sent.ok ? "sent" : "failed",
           dm_mode: sent.mode,
           dm_button_url: link,
+          target_url: pickedLink?.value ?? null,
+          target_url_index: pickedLink?.index ?? null,
           dm_error: sent.ok ? null : sent.body,
         });
       }
