@@ -1,7 +1,7 @@
 {
-  "git_sha": "9c3447b",
-  "git_sha_full": "9c3447b562db9003115cc16512770c8caa3c190b",
-  "updated_at": "2026-07-19T14:27:20Z",
-  "label": "Merge branch 'cursor/simplify-codeword-form-84cc'",
+  "git_sha": "151b14f",
+  "git_sha_full": "151b14f0d936285c895f73a0b528535d84e370f6",
+  "updated_at": "2026-07-19T14:36:02Z",
+  "label": "chore(deploy): redeploy IG organic + attempt Vercel CLI and SQL",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
