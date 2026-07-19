@@ -1,6 +1,6 @@
 /** Базовые колонки projects — всегда есть в БД. */
 export const PROJECTS_BASE_COLUMNS =
-  "id, name, domain, initials, is_primary, created_by, created_at, updated_at" as const;
+  "id, name, domain, initials, is_primary, intake_token, created_by, created_at, updated_at" as const;
 
 /** Опциональная колонка (миграция 20260609190000). Без неё список проектов не должен ломаться. */
 export const PROJECTS_CREATIVE_USERNAME_COLUMN = "creative_username" as const;

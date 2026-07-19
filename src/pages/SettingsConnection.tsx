@@ -1063,7 +1063,9 @@ export function SiteIntakeCard() {
       <CardContent className="space-y-5">
         {!token && (
           <div className="rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
-            Создайте или выберите проект — тогда здесь появится уникальный webhook.
+            {active?.id
+              ? "Токен проекта ещё не загрузился. Нажмите «Перевыпустить код» или обновите страницу."
+              : "Создайте или выберите проект — тогда здесь появится уникальный код подключения."}
           </div>
         )}
 
