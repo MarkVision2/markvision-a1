@@ -40,11 +40,11 @@ vi.mock("@/hooks/useHeygen", async (importOriginal) => {
   };
 });
 
-// enqueueAgentJob шлётся fire-and-forget при отправке брифа — воркер сам
-// доставит готовое видео (heygen_jobs), эта страница его не ждёт и не поллит.
+// enqueueAgentJob шлётся при отправке брифа — воркер сам доставит готовое
+// видео (heygen_jobs); страница больше не поллит session_id.
 vi.mock("@/lib/heygenUsage", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/heygenUsage")>();
-  return { ...actual, enqueueAgentJob: vi.fn(async () => {}) };
+  return { ...actual, enqueueAgentJob: vi.fn(async () => ({ ok: true as const })) };
 });
 
 // Эксклюзивная привязка аватар→проект — по умолчанию ничего не закреплено

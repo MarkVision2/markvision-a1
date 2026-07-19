@@ -1,15 +1,8 @@
-# One-off: dump recent heygen/montage/reels jobs for MarkVision AI project.
+# Optional: dump heygen/montage/reels jobs (needs SUPABASE_DB_PASSWORD or SERVICE_ROLE).
 name: Diagnose HeyGen queue
 
 on:
   workflow_dispatch: {}
-  push:
-    branches:
-      - cursor/diagnose-heygen-queue-84cc
-    paths:
-      - ".github/workflows/diagnose-heygen-queue.yml"
-      - "scripts/diagnose-heygen-queue.py"
-      - "scripts/diagnose-heygen-queue-fallback.py"
 
 concurrency:
   group: diagnose-heygen-queue
@@ -31,8 +24,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Query queues via Postgres (preferred)
-        id: db
+      - name: Query via Postgres
         if: ${{ env.SUPABASE_DB_PASSWORD != '' }}
         env:
           PGPASSWORD: ${{ env.SUPABASE_DB_PASSWORD }}
@@ -44,49 +36,7 @@ jobs:
           set -euo pipefail
           mkdir -p /tmp/diag-out
           sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
-          PID="$PROJECT_ID"
-          psql -v ON_ERROR_STOP=1 -c "\copy (
-            select id, status, source, created_at, updated_at, delivered, left(coalesce(error,''),200) as error,
-                   left(coalesce(script,''),240) as script, left(coalesce(montage_brief,''),240) as montage_brief,
-                   aspect, session_id, video_url, project_id
-            from public.heygen_jobs
-            where project_id = '$PID'
-            order by created_at desc limit 20
-          ) TO '/tmp/diag-out/heygen_jobs.csv' CSV HEADER"
-          psql -v ON_ERROR_STOP=1 -c "\copy (
-            select id, mode, source, created_at, title, ref_id, duration_sec, cost_usd,
-                   left(coalesce(video_url,''),120) as video_url, left(coalesce(description,''),200) as description
-            from public.heygen_usage
-            where project_id = '$PID'
-            order by created_at desc limit 20
-          ) TO '/tmp/diag-out/heygen_usage.csv' CSV HEADER"
-          psql -v ON_ERROR_STOP=1 -c "\copy (
-            select id, status, created_at, updated_at, left(coalesce(error,''),200) as error,
-                   source_name, left(coalesce(brief,''),240) as brief
-            from public.montage_jobs
-            where project_id = '$PID'
-            order by created_at desc limit 20
-          ) TO '/tmp/diag-out/montage_jobs.csv' CSV HEADER"
-          psql -v ON_ERROR_STOP=1 -c "\copy (
-            select id, status, created_at, updated_at, left(coalesce(error,''),200) as error,
-                   left(coalesce(script,''),240) as script
-            from public.reels_jobs
-            where project_id = '$PID'
-            order by created_at desc limit 20
-          ) TO '/tmp/diag-out/reels_jobs.csv' CSV HEADER"
-          psql -v ON_ERROR_STOP=1 -c "\copy (
-            select id, status, source, created_at, left(coalesce(script,''),240) as script,
-                   left(coalesce(montage_brief,''),240) as montage_brief, left(coalesce(error,''),200) as error, project_id
-            from public.heygen_jobs
-            where script ilike '%маркетинг%' or montage_brief ilike '%маркетинг%'
-               or script ilike '%тишина%' or montage_brief ilike '%тишина%'
-            order by created_at desc limit 20
-          ) TO '/tmp/diag-out/heygen_search.csv' CSV HEADER"
-          echo "==== heygen_jobs ===="; cat /tmp/diag-out/heygen_jobs.csv
-          echo "==== heygen_usage ===="; cat /tmp/diag-out/heygen_usage.csv
-          echo "==== montage_jobs ===="; cat /tmp/diag-out/montage_jobs.csv
-          echo "==== reels_jobs ===="; cat /tmp/diag-out/reels_jobs.csv
-          echo "==== search ===="; cat /tmp/diag-out/heygen_search.csv
+          psql -v ON_ERROR_STOP=1 -f scripts/diagnose-video-tz.sql | tee /tmp/diag-out/query.txt
 
       - name: Fallback service role / Management API
         if: ${{ env.SUPABASE_DB_PASSWORD == '' }}
