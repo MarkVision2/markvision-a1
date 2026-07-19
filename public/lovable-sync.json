@@ -1,7 +1,7 @@
 {
-  "git_sha": "1de8113",
-  "git_sha_full": "1de811322a6caef1f50295c68ee85caa191a764f",
-  "updated_at": "2026-07-19T13:46:47Z",
-  "label": "Merge Instagram Direct CTA button",
+  "git_sha": "099de16",
+  "git_sha_full": "099de16a34066c6a6101f3dba2b93282d7856b97",
+  "updated_at": "2026-07-19T13:57:45Z",
+  "label": "Merge edit dialog preview aspect fix",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
