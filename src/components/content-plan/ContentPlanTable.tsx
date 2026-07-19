@@ -119,7 +119,7 @@ export function ContentPlanTable({
   loading: boolean;
   onTogglePlatform?: (id: string, key: keyof ContentPlanItem["platforms"], value: boolean) => void;
   onAdopt?: (item: ContentPlanItem) => void;
-  /** На контент-плане скрываем воронку — статистика в Контент-центре. */
+  /** Показывать воронку по посту (охват, код-слова, лиды…). */
   showFunnelStats?: boolean;
 }) {
   const [descItem, setDescItem] = useState<ContentPlanItem | null>(null);
@@ -259,7 +259,7 @@ export function ContentPlanTable({
                   </div>
                 </div>
 
-                {/* Per-publication stats — optional; plan view hides them */}
+                {/* Per-publication funnel stats */}
                 {showFunnelStats && (
                 <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3 lg:w-[420px] lg:shrink-0 xl:w-[480px] xl:grid-cols-5">
                   <StatCell label="Охват" value={f.reach} />

@@ -9,6 +9,7 @@ import {
   ContentPeriodPicker,
   type ContentPeriodPreset,
 } from "@/components/content/ContentPeriodPicker";
+import { ContentPlanKpis } from "@/components/content-plan/ContentPlanKpis";
 import { ContentPlanTable } from "@/components/content-plan/ContentPlanTable";
 import { STATUS_META, TYPE_META, type PostType } from "@/components/autopost/constants";
 import { MediaThumb } from "@/components/autopost/MediaThumb";
@@ -16,8 +17,12 @@ import { useContentPlan } from "@/hooks/useContentPlan";
 import { useInstagramAccount } from "@/hooks/useInstagramAccount";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
-import { filterContentPlanByPeriod, type ContentPlanItem } from "@/lib/contentPlan";
-import { formatPeriodLabel, fromTodayRange } from "@/lib/metricsPeriod";
+import {
+  filterContentPlanByPeriod,
+  summarizeContentPlan,
+  type ContentPlanItem,
+} from "@/lib/contentPlan";
+import { formatPeriodLabel, thisMonthRange } from "@/lib/metricsPeriod";
 import { cn } from "@/lib/utils";
 import AutoPost, { AutopostAddDialog } from "@/pages/AutoPost";
 
@@ -55,8 +60,8 @@ export default function ContentPlan() {
   const { activeId: projectId } = useProjectsStore();
   const { account, sync } = useInstagramAccount();
   const [addDay, setAddDay] = useState<string | null>(null);
-  const [preset, setPreset] = useState<ContentPeriodPreset>("from_today");
-  const [range, setRange] = useState<ReportPeriodRange>(() => fromTodayRange());
+  const [preset, setPreset] = useState<ContentPeriodPreset>("this_month");
+  const [range, setRange] = useState<ReportPeriodRange>(() => thisMonthRange());
   const [refreshing, setRefreshing] = useState(false);
 
   const setShowCalendar = (on: boolean) => {
@@ -68,6 +73,7 @@ export default function ContentPlan() {
   };
 
   const periodItems = useMemo(() => filterContentPlanByPeriod(items, range), [items, range]);
+  const summary = useMemo(() => summarizeContentPlan(periodItems), [periodItems]);
   const periodLabel = useMemo(() => formatPeriodLabel(range), [range]);
 
   const onRefresh = async () => {
@@ -109,7 +115,7 @@ export default function ContentPlan() {
         icon={ClipboardList}
         iconAccent="pink"
         title="Контент-план"
-        description="Ближайшие публикации — из очереди MarkVision. Посты, отложенные только в приложении Instagram, Meta в API не отдаёт."
+        description="Очередь MarkVision сверху; в списке — охват, код-слова, лиды и выручка по media_id. Посты, отложенные только в приложении Instagram, Meta в API не отдаёт."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button
@@ -237,6 +243,16 @@ export default function ContentPlan() {
         />
       </div>
 
+      {!showCalendar && (
+        <div className="mt-4">
+          <ContentPlanKpis
+            summary={summary}
+            periodLabel={periodLabel}
+            presetLabel={PRESET_LABELS[preset]}
+          />
+        </div>
+      )}
+
       {showCalendar ? (
         <div className="mt-6">
           <AutoPost embedded />
@@ -262,7 +278,6 @@ export default function ContentPlan() {
           <ContentPlanTable
             items={periodItems}
             loading={loading}
-            showFunnelStats={false}
             onTogglePlatform={onTogglePlatform}
             onAdopt={onAdopt}
           />
