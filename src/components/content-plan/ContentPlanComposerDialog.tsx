@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  CalendarClock, ChevronLeft, ChevronRight, Film, Loader2, Plus, Send, Trash2, Upload, X,
+  CalendarClock, Camera, ChevronLeft, ChevronRight, Film, Loader2, Plus, Send, Sparkles, Trash2, Upload, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ import {
   createAutopostPublication,
   isVideoFile,
 } from "@/lib/autopostClient";
+import { captureFrameFromVideoFile, generateAutopostCaption } from "@/lib/autopostAiCaption";
 import { upsertContentPlanFromAutopost } from "@/lib/contentPlanAutopostBridge";
 import { useInstagramAccount } from "@/hooks/useInstagramAccount";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -141,17 +142,39 @@ export function ContentPlanComposerDialog({
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [activeIdx, setActiveIdx] = useState(0);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  const [coverBusy, setCoverBusy] = useState(false);
+  const [captionBusy, setCaptionBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploadLabel, setUploadLabel] = useState<string>();
   const [pickMode, setPickMode] = useState<PickMode>("replace");
   const pickModeRef = useRef<PickMode>("replace");
   const replaceAtRef = useRef(0);
   const fileRef = useRef<HTMLInputElement>(null);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   const isCarousel = contentType === "CAROUSEL";
+  const isReels = contentType === "REELS";
   const safeIdx = Math.min(activeIdx, Math.max(0, files.length - 1));
   const activeFile = files[safeIdx];
   const activePreview = previews[safeIdx];
+
+  const clearCover = () => {
+    setCoverFile(null);
+    setCoverPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
+  };
+
+  const applyCover = (file: File) => {
+    setCoverFile(file);
+    setCoverPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return URL.createObjectURL(file);
+    });
+  };
 
   const reset = () => {
     setTitle("");
@@ -161,6 +184,9 @@ export function ContentPlanComposerDialog({
     setCalendarOpen(false);
     setFiles([]);
     setActiveIdx(0);
+    clearCover();
+    setCaptionBusy(false);
+    setCoverBusy(false);
     setUploadLabel(undefined);
   };
 
@@ -175,10 +201,34 @@ export function ContentPlanComposerDialog({
     else if (activeIdx >= files.length) setActiveIdx(files.length - 1);
   }, [files.length, activeIdx]);
 
+  // Auto cover for Reels: grab a mid-early frame when video changes.
+  useEffect(() => {
+    if (!isReels || !files[0] || !isVideoFile(files[0])) {
+      if (!isReels) clearCover();
+      return;
+    }
+    let cancelled = false;
+    setCoverBusy(true);
+    void captureFrameFromVideoFile(files[0], 0.22)
+      .then((frame) => {
+        if (cancelled) return;
+        applyCover(frame.file);
+      })
+      .catch(() => {
+        if (!cancelled) toast.message("Не удалось автоматически снять обложку — выберите кадр вручную");
+      })
+      .finally(() => {
+        if (!cancelled) setCoverBusy(false);
+      });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run on video identity
+  }, [isReels, files[0]?.name, files[0]?.size, files[0]?.lastModified]);
+
   const onTypeChange = (t: ContentPlanType) => {
     setContentType(t);
     setFiles([]);
     setActiveIdx(0);
+    clearCover();
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -261,6 +311,40 @@ export function ContentPlanComposerDialog({
     return parts.join("\n\n");
   };
 
+  const generateDescription = async () => {
+    if (files.length === 0) {
+      toast.error("Сначала загрузите медиа");
+      return;
+    }
+    setCaptionBusy(true);
+    try {
+      const caption = await generateAutopostCaption({
+        mediaType: contentType,
+        title,
+        files,
+      });
+      setDescription(caption);
+      toast.success("Описание готово — можно поправить перед публикацией");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось сгенерировать описание");
+    } finally {
+      setCaptionBusy(false);
+    }
+  };
+
+  const recaptureCover = async (atRatio = 0.35) => {
+    if (!files[0] || !isVideoFile(files[0])) return;
+    setCoverBusy(true);
+    try {
+      const frame = await captureFrameFromVideoFile(files[0], atRatio);
+      applyCover(frame.file);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось снять кадр");
+    } finally {
+      setCoverBusy(false);
+    }
+  };
+
   const applyPreset = (kind: "now" | "today-evening" | "tomorrow-morning" | "plus1h") => {
     const now = almatyParts();
     if (kind === "now") {
@@ -314,6 +398,7 @@ export function ContentPlanComposerDialog({
         caption: buildCaption(),
         scheduledAt: scheduleToIso(schedule),
         publishNow,
+        coverFile: isReels ? coverFile : null,
         onProgress: setUploadLabel,
       });
 
@@ -614,12 +699,73 @@ export function ContentPlanComposerDialog({
                     variant="ghost"
                     size="sm"
                     className="gap-1 text-muted-foreground"
-                    onClick={() => { setFiles([]); setActiveIdx(0); }}
+                    onClick={() => { setFiles([]); setActiveIdx(0); clearCover(); }}
                   >
                     <X className="h-3.5 w-3.5" />
                     Убрать
                   </Button>
                 </div>
+                {isReels && (
+                  <div className="space-y-2 rounded-xl border border-dashed border-border/70 bg-muted/20 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <div className="text-xs font-semibold text-foreground">Обложка Reels</div>
+                        <p className="text-[11px] text-muted-foreground">
+                          Снимаем кадр автоматически — можно переснять или загрузить свою.
+                        </p>
+                      </div>
+                      {coverBusy && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                    </div>
+                    <div className="flex flex-wrap items-start gap-3">
+                      <div className="relative h-28 w-20 overflow-hidden rounded-lg border border-border/60 bg-zinc-950">
+                        {coverPreview ? (
+                          <img src={coverPreview} alt="Обложка" className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="grid h-full place-items-center text-[10px] text-muted-foreground">нет кадра</div>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-1"
+                          disabled={coverBusy || !files[0]}
+                          onClick={() => void recaptureCover(0.35)}
+                        >
+                          <Camera className="h-3.5 w-3.5" />
+                          Другой кадр
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="gap-1"
+                          onClick={() => coverInputRef.current?.click()}
+                        >
+                          <Upload className="h-3.5 w-3.5" />
+                          Своя картинка
+                        </Button>
+                        {coverFile && (
+                          <Button type="button" variant="ghost" size="sm" onClick={clearCover}>
+                            Убрать
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                    <input
+                      ref={coverInputRef}
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(e) => {
+                        const f = e.target.files?.[0];
+                        if (f) applyCover(f);
+                        e.target.value = "";
+                      }}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -754,13 +900,33 @@ export function ContentPlanComposerDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Описание</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label>Описание</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5"
+                disabled={captionBusy || saving || files.length === 0}
+                onClick={() => void generateDescription()}
+              >
+                {captionBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                Сгенерировать описание
+              </Button>
+            </div>
             <Textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              rows={3}
-              placeholder="Текст поста / подпись к публикации"
+              rows={4}
+              placeholder={
+                isCarousel || isReels
+                  ? "Или нажмите «Сгенерировать» — AI прочитает текст на слайдах/кадре"
+                  : "Текст поста / подпись к публикации"
+              }
             />
+            <p className="text-[11px] text-muted-foreground">
+              AI смотрит на загруженные картинки (карусель) или кадр из видео (Reels) и пишет короткую подпись.
+            </p>
           </div>
 
           {uploadLabel && (
