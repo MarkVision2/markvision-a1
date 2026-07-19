@@ -1,0 +1,115 @@
+# One-off: dump recent heygen/montage/reels jobs for MarkVision AI project.
+# Uses SUPABASE_ACCESS_TOKEN → project API keys → service_role REST.
+name: Diagnose HeyGen queue
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: diagnose-heygen-queue
+  cancel-in-progress: true
+
+env:
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF || 'szfgdruhlebfvcmlvxdk' }}
+  PROJECT_ID: cceb9a86-687b-4417-9b4e-d106bd8cc79c
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify access token
+        run: test -n "$SUPABASE_ACCESS_TOKEN" || (echo "::error::SUPABASE_ACCESS_TOKEN missing"; exit 1)
+
+      - name: Query queues via service role
+        env:
+          SUPABASE_PROJECT_REF: ${{ env.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          REF="$SUPABASE_PROJECT_REF"
+          TOKEN="$SUPABASE_ACCESS_TOKEN"
+          PID="$PROJECT_ID"
+
+          KEYS_JSON=$(curl -sS -H "Authorization: Bearer $TOKEN" \
+            "https://api.supabase.com/v1/projects/${REF}/api-keys")
+          echo "$KEYS_JSON" | python3 -c 'import sys,json; d=json.load(sys.stdin); print("keys_count", len(d) if isinstance(d,list) else type(d).__name__); print("names", [x.get("name") or x.get("id") for x in d] if isinstance(d,list) else d)' 
+
+          SERVICE_KEY=$(echo "$KEYS_JSON" | python3 -c '
+import sys, json
+d = json.load(sys.stdin)
+if not isinstance(d, list):
+  print("", end=""); sys.exit(0)
+for k in d:
+  name = (k.get("name") or k.get("id") or "").lower()
+  if name in ("service_role", "service role"):
+    print(k.get("api_key") or k.get("key") or "", end="")
+    sys.exit(0)
+# fallback: first secret-looking key
+for k in d:
+  val = k.get("api_key") or k.get("key") or ""
+  if val.startswith("eyJ") or "service" in (k.get("name") or "").lower():
+    print(val, end=""); sys.exit(0)
+print("", end="")
+')
+          if [ -z "$SERVICE_KEY" ]; then
+            echo "::error::Could not resolve service_role key from Management API"
+            echo "$KEYS_JSON" | head -c 500
+            exit 1
+          fi
+          echo "Got service key (len=${#SERVICE_KEY})"
+
+          BASE="https://${REF}.supabase.co/rest/v1"
+          HDR=(-H "apikey: $SERVICE_KEY" -H "Authorization: Bearer $SERVICE_KEY" -H "Prefer: count=exact")
+
+          dump() {
+            local table="$1"
+            local select="$2"
+            local filter="$3"
+            echo "===== $table ====="
+            curl -sS "${BASE}/${table}?select=${select}&${filter}&order=created_at.desc&limit=15" \
+              "${HDR[@]}" | tee "/tmp/${table}.json" | python3 -c '
+import sys, json
+raw = sys.stdin.read()
+try:
+  d = json.loads(raw)
+except Exception as e:
+  print("parse_error", e, raw[:400]); sys.exit(0)
+if isinstance(d, dict) and d.get("message"):
+  print(json.dumps(d, ensure_ascii=False)); sys.exit(0)
+for row in (d or [])[:15]:
+  keep = {k: row.get(k) for k in row if k in (
+    "id","status","source","created_at","updated_at","delivered","error",
+    "error_message","script","montage_brief","aspect","session_id","video_url",
+    "project_id","chat_id","title","brief","prompt","mode","ref_id","duration_sec",
+    "cost_usd","description","cover_url","thumbnail_url"
+  )}
+  # trim long text
+  for k in ("script","montage_brief","brief","prompt","description","error","error_message"):
+    if isinstance(keep.get(k), str) and len(keep[k]) > 240:
+      keep[k] = keep[k][:240] + "…"
+  print(json.dumps(keep, ensure_ascii=False))
+'
+
+          dump heygen_jobs 'id,status,source,created_at,updated_at,delivered,error,script,montage_brief,aspect,session_id,video_url,project_id,chat_id' "project_id=eq.${PID}"
+          dump heygen_usage 'id,mode,source,created_at,title,ref_id,duration_sec,cost_usd,video_url,description,project_id' "project_id=eq.${PID}"
+          dump montage_jobs 'id,status,created_at,updated_at,error,project_id,source_name,brief' "project_id=eq.${PID}"
+          dump reels_jobs 'id,status,created_at,updated_at,error,project_id,script' "project_id=eq.${PID}"
+
+          # Also search recent heygen jobs containing the hook text (any project)
+          echo "===== heygen_jobs text search ====="
+          curl -sS "${BASE}/heygen_jobs?select=id,status,source,created_at,script,montage_brief,error,project_id&or=(script.ilike.*маркетинг*,montage_brief.ilike.*маркетинг*)&order=created_at.desc&limit=10" \
+            "${HDR[@]}" | python3 -c '
+import sys,json
+d=json.load(sys.stdin)
+print(json.dumps(d, ensure_ascii=False, indent=2)[:4000])
+'
+
+          mkdir -p /tmp/diag-out
+          cp /tmp/heygen_jobs.json /tmp/heygen_usage.json /tmp/montage_jobs.json /tmp/reels_jobs.json /tmp/diag-out/ 2>/dev/null || true
+
+      - name: Upload dump
+        uses: actions/upload-artifact@v4
+        with:
+          name: heygen-queue-dump
+          path: /tmp/diag-out
+          retention-days: 3
