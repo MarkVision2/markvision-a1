@@ -65,6 +65,22 @@ describe("filterContentPlanByPeriod", () => {
     ];
     expect(filterContentPlanByPeriod(items, range).map((i) => i.id)).toEqual(["sched", "created"]);
   });
+
+  it("keeps tomorrow scheduled even if publishedAt is old", () => {
+    const items = [
+      item({
+        id: "tomorrow",
+        status: "scheduled",
+        scheduledAt: "2026-07-20T09:00:00.000Z",
+        publishedAt: "2026-01-01T00:00:00.000Z",
+      }),
+    ];
+    const fromToday = {
+      from: new Date(2026, 6, 19),
+      to: new Date(2026, 6, 31),
+    };
+    expect(filterContentPlanByPeriod(items, fromToday).map((i) => i.id)).toEqual(["tomorrow"]);
+  });
 });
 
 describe("summarizeContentPlan", () => {

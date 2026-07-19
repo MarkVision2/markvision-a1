@@ -129,8 +129,12 @@ export interface ContentPlanSummary {
   revenue: number;
 }
 
-/** Дата, по которой публикация попадает в период: выход → план → создание. */
+/** Дата, по которой публикация попадает в период. */
 export function contentPlanItemAnchorAt(item: ContentPlanItem): string | null {
+  // Запланированные — по дате плана, иначе «завтра» пропадает, если есть старый publishedAt.
+  if (item.status === "scheduled" || item.status === "idea" || item.status === "in_progress" || item.status === "ready") {
+    return item.scheduledAt ?? item.createdAt ?? item.publishedAt ?? null;
+  }
   return item.publishedAt ?? item.scheduledAt ?? item.createdAt ?? null;
 }
 

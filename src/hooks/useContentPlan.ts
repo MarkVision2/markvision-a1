@@ -100,6 +100,82 @@ function asStringArray(raw: unknown): string[] {
   return raw.map((x) => String(x)).filter(Boolean);
 }
 
+/** Очередь → строка плана в памяти (если ещё не записали в content_plan_items). */
+export function queuePostToPlanItem(p: AutopostLite, projectId: string): ContentPlanItem {
+  const mediaType = String(p.media_type ?? "IMAGE").toUpperCase();
+  const contentType = (["REELS", "CAROUSEL", "IMAGE", "STORIES"].includes(mediaType)
+    ? mediaType
+    : "IMAGE") as ContentPlanType;
+  const status: ContentPlanStatus =
+    p.status === "published" ? "published" : p.status === "failed" ? "error" : "scheduled";
+  const title =
+    (p.caption ?? "").trim().split("\n")[0]?.slice(0, 80) ||
+    `${contentType} ${p.scheduled_at ?? ""}`;
+  const now = new Date().toISOString();
+  return {
+    id: `ap:${p.id}`,
+    projectId,
+    title,
+    category: "content",
+    contentType,
+    status,
+    description: p.caption ?? null,
+    hashtags: null,
+    prompts: null,
+    commentsNotes: null,
+    mediaUrl: p.media_url ?? null,
+    thumbnailUrl: p.thumbnail_url ?? null,
+    childUrls: asStringArray(p.child_urls),
+    scheduledAt: p.scheduled_at ?? null,
+    publishedAt: p.status === "published" ? p.scheduled_at ?? null : null,
+    platforms: {
+      instagram: true,
+      facebook: false,
+      threads: false,
+      telegram: false,
+      linkedin: false,
+    },
+    autopostId: String(p.id),
+    igMediaId: p.published_ig_media_id ?? null,
+    codewordId: null,
+    codeword: null,
+    utmContent: null,
+    adSpend: 0,
+    aiAnalysis: null,
+    createdAt: p.scheduled_at ?? now,
+    updatedAt: now,
+    funnel: {
+      reach: 0,
+      views: 0,
+      likes: 0,
+      saves: 0,
+      shares: 0,
+      comments: 0,
+      codewordHits: 0,
+      messagesSent: 0,
+      messagesOpened: 0,
+      linkClicks: 0,
+      registrations: 0,
+      whatsappJoined: 0,
+      webinarAttended: 0,
+      deposits: 0,
+      paid: 0,
+      revenue: 0,
+      adSpend: 0,
+    },
+    synthetic: true,
+    source: "autopost",
+  };
+}
+
+function mergePlanWithQueue(planRows: ContentPlanItem[], queue: AutopostLite[], projectId: string): ContentPlanItem[] {
+  const linked = new Set(planRows.map((r) => r.autopostId).filter((x): x is string => !!x));
+  const extras = queue
+    .filter((p) => p.id && !linked.has(String(p.id)))
+    .map((p) => queuePostToPlanItem(p, projectId));
+  return [...extras, ...planRows];
+}
+
 function fromDb(row: DbRow, funnel: ContentPlanFunnel): ContentPlanItem {
   return {
     id: row.id,
@@ -159,6 +235,7 @@ export type ContentPlanDraft = {
 export function useContentPlan() {
   const { activeId: projectId } = useProjectsStore();
   const [items, setItems] = useState<ContentPlanItem[]>([]);
+  const [queuePosts, setQueuePosts] = useState<AutopostLite[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -238,6 +315,7 @@ export function useContentPlan() {
       const media = (mediaRes.data ?? []) as unknown as IgMediaRow[];
       const codewords = (!codewordsRes.error ? codewordsRes.data ?? [] : []) as unknown as CodewordRow[];
       const autoposts = (queuePack.posts ?? []) as AutopostLite[];
+      setQueuePosts(autoposts);
       const events = (eventsRes.data ?? []) as unknown as ContentPlanOrganicEvent[];
 
       const stageRoleById = new Map<string, string>();
@@ -464,10 +542,12 @@ export function useContentPlan() {
         return item;
       });
 
-      setItems(planRows);
+      // ВСЕГДА мержим очередь в список (даже если insert в БД не прошёл).
+      setItems(mergePlanWithQueue(planRows, autoposts, projectId));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка загрузки контент-плана");
       setItems([]);
+      setQueuePosts([]);
     } finally {
       setLoading(false);
     }
@@ -523,7 +603,7 @@ export function useContentPlan() {
 
   const update = useCallback(
     async (id: string, patch: Partial<ContentPlanDraft> & { aiAnalysis?: string | null; igMediaId?: string | null; autopostId?: string | null }) => {
-      if (id.startsWith("cw:") || id.startsWith("ig:")) {
+      if (id.startsWith("cw:") || id.startsWith("ig:") || id.startsWith("ap:")) {
         throw new Error("Сначала добавьте публикацию в контент-план (кнопка «В план»)");
       }
       const payload: Record<string, unknown> = {};
@@ -563,7 +643,7 @@ export function useContentPlan() {
 
   const remove = useCallback(
     async (id: string) => {
-      if (id.startsWith("cw:") || id.startsWith("ig:")) return;
+      if (id.startsWith("cw:") || id.startsWith("ig:") || id.startsWith("ap:")) return;
       const { error: err } = await supabase.from("content_plan_items" as never).delete().eq("id", id);
       if (err) throw new Error(err.message);
       await refetch();
@@ -592,9 +672,22 @@ export function useContentPlan() {
     [create, projectId],
   );
 
+  const upcomingQueue = useMemo(() => {
+    const now = Date.now() - 60_000;
+    return queuePosts
+      .filter((p) => {
+        if (!p.scheduled_at) return false;
+        if (p.status === "published" || p.status === "failed") return false;
+        return new Date(p.scheduled_at).getTime() >= now;
+      })
+      .sort((a, b) => String(a.scheduled_at).localeCompare(String(b.scheduled_at)));
+  }, [queuePosts]);
+
   return {
     items,
     summary,
+    upcomingQueue,
+    queueCount: queuePosts.length,
     loading,
     error,
     tableMissing,
