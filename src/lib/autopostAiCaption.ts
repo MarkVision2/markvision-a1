@@ -1,6 +1,5 @@
 /** Compress local images / video frames for vision caption generation. */
-import { supabase } from "@/integrations/supabase/client";
-import { isVideoFile } from "@/lib/autopostClient";
+import { isVideoFile, schedulerApi } from "@/lib/autopostClient";
 
 const MAX_EDGE = 1280;
 const JPEG_QUALITY = 0.72;
@@ -152,25 +151,23 @@ export async function generateAutopostCaption(input: {
   mediaType: string;
   title?: string;
   files: File[];
+  projectId?: string | null;
 }): Promise<string> {
   if (!input.files.length) throw new Error("Сначала загрузите медиа");
 
   const images = await pickImagesForCaption(input.files, input.mediaType);
   if (!images.length) throw new Error("Нет кадров для анализа");
 
-  const { data, error } = await supabase.functions.invoke<{
-    ok?: boolean;
-    caption?: string;
-    error?: string;
-  }>("autopost-ai-caption", {
-    body: {
-      mediaType: input.mediaType,
+  const res = await schedulerApi<{ ok?: boolean; caption?: string; error?: string }>(
+    "ai_caption",
+    {
+      media_type: input.mediaType,
       title: input.title ?? "",
       images,
     },
-  });
+    input.projectId,
+  );
 
-  if (error) throw new Error(error.message || "Не удалось сгенерировать описание");
-  if (!data?.ok || !data.caption) throw new Error(data?.error || "Пустой ответ AI");
-  return data.caption.trim();
+  if (!res?.ok || !res.caption) throw new Error(res?.error || "Пустой ответ AI");
+  return res.caption.trim();
 }

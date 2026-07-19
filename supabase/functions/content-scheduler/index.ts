@@ -5,6 +5,8 @@
 // проекту CRM — publisher публикует такие посты через Instagram-аккаунт
 // именно этого проекта (instagram_accounts), а не через один глобальный
 // аккаунт из cf_settings. Записи без project_id — легаси, как раньше.
+import { aiChatCompletion, hasAiProvider, aiModelName } from "../_lib/aiProvider.ts";
+
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const H: Record<string, string> = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, "Content-Type": "application/json" };
@@ -26,6 +28,76 @@ async function db(path: string, init: RequestInit = {}) {
 async function setting(k: string) { return ((await db(`cf_settings?key=eq.${k}&select=value`)).body as { value: string }[] | null)?.[0]?.value; }
 
 const TYPES = ["IMAGE", "REELS", "STORIES", "CAROUSEL"];
+const MAX_CAPTION_IMAGES = 8;
+const MAX_DATA_URL_CHARS = 1_400_000;
+
+async function generateIgCaption(b: Record<string, unknown>) {
+  if (!hasAiProvider()) {
+    return json({ ok: false, error: "AI не настроен (OPENAI_API_KEY или LOVABLE_API_KEY)" }, 503);
+  }
+  const mediaType = (TYPES.includes(String(b.media_type ?? "").toUpperCase())
+    ? String(b.media_type).toUpperCase()
+    : "IMAGE");
+  const title = typeof b.title === "string" ? b.title.trim().slice(0, 200) : "";
+  const images = (Array.isArray(b.images) ? b.images : [])
+    .filter((u: unknown): u is string => typeof u === "string" && u.startsWith("data:image/"))
+    .slice(0, MAX_CAPTION_IMAGES)
+    .filter((u) => u.length <= MAX_DATA_URL_CHARS);
+  if (!images.length) return json({ ok: false, error: "Нет изображений для анализа" }, 400);
+
+  const kindHint =
+    mediaType === "CAROUSEL"
+      ? "Это карусель Instagram: несколько слайдов с текстом/иконками."
+      : mediaType === "REELS"
+        ? "Это кадр из Reels-видео."
+        : "Это изображение для поста Instagram.";
+
+  const systemPrompt =
+    `Ты — SMM-редактор Instagram в Казахстане. Пишешь короткие подписи к постам на русском. ` +
+    `Сначала прочитай весь текст на картинках (OCR), затем сделай живую подпись. ` +
+    `Правила: 2–5 коротких предложений или абзацев; без воды и клише; можно 1 эмодзи; ` +
+    `в конце 3–6 релевантных хэштегов через пробел; без кавычек вокруг всего текста; ` +
+    `не выдумывай факты, которых нет на слайдах; CTA мягкий, если уместен.`;
+
+  const userParts = [
+    {
+      type: "text" as const,
+      text:
+        `${kindHint}\n` +
+        (title ? `Рабочий заголовок автора: «${title}».\n` : "") +
+        `Слайдов/кадров: ${images.length}.\n` +
+        `Прочитай текст на изображениях и напиши короткую подпись для публикации в Instagram. ` +
+        `Верни только текст подписи, без пояснений.`,
+    },
+    ...images.map((url) => ({
+      type: "image_url" as const,
+      image_url: { url, detail: "low" as const },
+    })),
+  ];
+
+  const data = await aiChatCompletion({
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userParts },
+    ],
+    temperature: 0.55,
+    openAiModel: "gpt-4o-mini",
+    lovableModel: "google/gemini-2.5-flash",
+    timeoutMs: 90_000,
+  });
+
+  const caption = String(data?.choices?.[0]?.message?.content ?? "")
+    .replace(/^```[\s\S]*?\n/, "")
+    .replace(/```$/, "")
+    .trim()
+    .slice(0, 2200);
+  if (!caption) return json({ ok: false, error: "Модель не вернула описание" }, 502);
+  return json({
+    ok: true,
+    caption,
+    model: aiModelName("google/gemini-2.5-flash", "gpt-4o-mini"),
+  });
+}
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
@@ -36,6 +108,14 @@ Deno.serve(async (req) => {
   const b = await req.json().catch(() => ({} as Record<string, unknown>));
   const action = String(b.action ?? "list");
   const projectId = typeof b.project_id === "string" && b.project_id ? b.project_id : null;
+
+  if (action === "ai_caption") {
+    try {
+      return await generateIgCaption(b);
+    } catch (e) {
+      return json({ ok: false, error: e instanceof Error ? e.message : "Ошибка генерации" }, 500);
+    }
+  }
 
   if (action === "list") {
     const filter = projectId
