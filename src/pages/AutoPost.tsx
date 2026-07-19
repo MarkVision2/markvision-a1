@@ -716,7 +716,8 @@ function QueueRow({ post, busy, onEdit, onPublishNow, onDelete }: {
 }
 
 // ——— Диалог добавления публикации ———
-function AddDialog({ day, hourReach, bestHour, projectId, hasAccount, onClose, onDone }: {
+// Экспорт: Контент-план открывает тот же композер (медиа + расписание + зеркало в план).
+export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAccount, onClose, onDone }: {
   day: string; hourReach: Map<number, number>; bestHour: number | null; projectId: string | null; hasAccount: boolean;
   onClose: () => void; onDone: () => void;
 }) {
@@ -1017,5 +1018,6 @@ function Heatmap({ cells, bestDow, bestHour }: { cells: { dow: number; hour: num
   );
 }
 
-export { AutoPost };
+const AddDialog = AutopostAddDialog;
+
 export default AutoPost;

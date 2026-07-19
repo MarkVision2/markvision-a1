@@ -16,7 +16,7 @@ import {
   CONTENT_PLAN_TYPE_META,
   type ContentPlanItem,
 } from "@/lib/contentPlan";
-import { fmtNum } from "@/lib/format";
+import { fmtKzt, fmtNum } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 const MONTHS = [
@@ -79,6 +79,36 @@ function Block({ label, value }: { label: string; value: string | null }) {
   );
 }
 
+function StatCell({
+  label,
+  value,
+  emphasize,
+  money,
+}: {
+  label: string;
+  value: number;
+  emphasize?: boolean;
+  money?: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        "min-w-0 rounded-xl border px-2.5 py-2",
+        emphasize
+          ? "border-success/30 bg-success/5"
+          : "border-border/50 bg-background/60",
+      )}
+    >
+      <div className="truncate text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+        {label}
+      </div>
+      <div className="mt-0.5 truncate text-base font-bold tabular-nums tracking-tight sm:text-lg">
+        {money ? fmtKzt(value) : fmtNum(value)}
+      </div>
+    </div>
+  );
+}
+
 export function ContentPlanTable({
   items,
   loading,
@@ -104,98 +134,110 @@ export function ContentPlanTable({
   if (items.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-border/70 px-6 py-16 text-center text-sm text-muted-foreground">
-        Пока нет публикаций. Добавьте идею или запланируйте пост во вкладке «Автопостинг».
+        Пока нет публикаций. Нажмите «Новая публикация» — загрузите медиа и сразу поставьте в автопостинг.
       </div>
     );
   }
 
   return (
     <>
-      <div className="overflow-x-auto rounded-2xl border border-border/60">
-        <table className="w-full min-w-[1100px] text-sm">
-          <thead className="bg-muted/40 text-left text-[11px] uppercase tracking-wide text-muted-foreground">
-            <tr>
-              <th className="px-3 py-3 font-semibold">Дата</th>
-              <th className="px-3 py-3 font-semibold">Тип</th>
-              <th className="px-3 py-3 font-semibold">Статус</th>
-              <th className="px-3 py-3 font-semibold">Название</th>
-              <th className="px-3 py-3 font-semibold">Категория</th>
-              <th className="px-3 py-3 font-semibold">Описание</th>
-              <th className="px-3 py-3 font-semibold">Медиа</th>
-              <th className="px-3 py-3 font-semibold">Автопостинг</th>
-              <th className="px-3 py-3 font-semibold text-right">Воронка</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((item) => {
-              const when = formatWhen(item.scheduledAt || item.publishedAt);
-              const typeMeta = CONTENT_PLAN_TYPE_META[item.contentType];
-              const statusMeta = CONTENT_PLAN_STATUS_META[item.status];
-              const catMeta = CONTENT_PLAN_CATEGORY_META[item.category];
-              const detailPath = `/marketing/content-plan/${encodeURIComponent(item.id)}`;
-              return (
-                <tr key={item.id} className="border-t border-border/50 hover:bg-muted/20">
-                  <td className="px-3 py-3 align-top">
-                    <div className="font-medium">{when.day}</div>
-                    <div className="text-xs text-muted-foreground">{when.time}</div>
-                  </td>
-                  <td className="px-3 py-3 align-top whitespace-nowrap">
-                    <span className="mr-1">{typeMeta.emoji}</span>
-                    {typeMeta.label}
-                  </td>
-                  <td className="px-3 py-3 align-top">
-                    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold", statusMeta.cls)}>
-                      {statusMeta.label}
-                    </span>
-                  </td>
-                  <td className="px-3 py-3 align-top max-w-[220px]">
-                    <Link to={detailPath} className="font-semibold text-foreground hover:text-primary hover:underline">
+      <div className="space-y-3">
+        {items.map((item) => {
+          const when = formatWhen(item.scheduledAt || item.publishedAt);
+          const typeMeta = CONTENT_PLAN_TYPE_META[item.contentType];
+          const statusMeta = CONTENT_PLAN_STATUS_META[item.status];
+          const catMeta = CONTENT_PLAN_CATEGORY_META[item.category];
+          const detailPath = `/marketing/content-plan/${encodeURIComponent(item.id)}`;
+          const f = item.funnel;
+
+          return (
+            <article
+              key={item.id}
+              className="rounded-2xl border border-border/60 bg-card/50 p-3 sm:p-4"
+            >
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-stretch">
+                {/* Media + meta */}
+                <div className="flex min-w-0 flex-1 gap-3">
+                  {item.thumbnailUrl || item.mediaUrl ? (
+                    <Link
+                      to={detailPath}
+                      className="h-20 w-14 shrink-0 overflow-hidden rounded-xl border border-border/60 bg-muted sm:h-24 sm:w-16"
+                    >
+                      <img
+                        src={item.thumbnailUrl || item.mediaUrl || ""}
+                        alt=""
+                        className="h-full w-full object-cover"
+                      />
+                    </Link>
+                  ) : (
+                    <div className="grid h-20 w-14 shrink-0 place-items-center rounded-xl border border-dashed border-border/60 text-muted-foreground sm:h-24 sm:w-16">
+                      <Instagram className="h-5 w-5" />
+                    </div>
+                  )}
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-muted-foreground">
+                        <span className="mr-1">{typeMeta.emoji}</span>
+                        {typeMeta.label}
+                      </span>
+                      <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold", statusMeta.cls)}>
+                        {statusMeta.label}
+                      </span>
+                      <span className="text-[11px] text-muted-foreground">{catMeta.label}</span>
+                    </div>
+
+                    <Link
+                      to={detailPath}
+                      className="mt-1 block truncate text-base font-semibold text-foreground hover:text-primary hover:underline"
+                    >
                       {item.title}
                     </Link>
-                    {item.codeword && (
-                      <div className="mt-1 text-[11px] text-muted-foreground">
-                        Код-слово: <span className="font-mono uppercase text-foreground">{item.codeword}</span>
-                      </div>
-                    )}
-                    {item.synthetic && (
-                      <div className="mt-1 flex items-center gap-2">
-                        <span className="text-[10px] text-amber-700">из Instagram</span>
-                        {onAdopt && (
-                          <button
-                            type="button"
-                            className="text-[10px] font-semibold text-primary hover:underline"
-                            onClick={() => onAdopt(item)}
-                          >
-                            В план
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-3 py-3 align-top text-muted-foreground">{catMeta.label}</td>
-                  <td className="px-3 py-3 align-top">
-                    <Button variant="outline" size="sm" className="h-8 gap-1" onClick={() => setDescItem(item)}>
-                      <FileText className="h-3.5 w-3.5" />
-                      Открыть
-                    </Button>
-                  </td>
-                  <td className="px-3 py-3 align-top">
-                    {item.thumbnailUrl || item.mediaUrl ? (
-                      <Link to={detailPath} className="block h-14 w-10 overflow-hidden rounded-md border border-border/60 bg-muted">
-                        <img
-                          src={item.thumbnailUrl || item.mediaUrl || ""}
-                          alt=""
-                          className="h-full w-full object-cover"
-                        />
+
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      <span>
+                        {when.day}
+                        {when.time ? ` · ${when.time}` : ""}
+                      </span>
+                      {item.codeword && (
+                        <span>
+                          Код-слово:{" "}
+                          <span className="font-mono uppercase text-foreground">{item.codeword}</span>
+                        </span>
+                      )}
+                      {item.synthetic && (
+                        <span className="text-amber-700">из Instagram</span>
+                      )}
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1"
+                        onClick={() => setDescItem(item)}
+                      >
+                        <FileText className="h-3.5 w-3.5" />
+                        Описание
+                      </Button>
+                      <Link
+                        to={detailPath}
+                        className="inline-flex h-8 items-center gap-1 rounded-md px-2 text-[11px] font-semibold text-primary hover:underline"
+                      >
+                        Карточка <ExternalLink className="h-3 w-3" />
                       </Link>
-                    ) : (
-                      <div className="grid h-14 w-10 place-items-center rounded-md border border-dashed border-border/60 text-muted-foreground">
-                        <Instagram className="h-4 w-4" />
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-3 py-3 align-top">
-                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+                      {item.synthetic && onAdopt && (
+                        <button
+                          type="button"
+                          className="text-[11px] font-semibold text-primary hover:underline"
+                          onClick={() => onAdopt(item)}
+                        >
+                          В план
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
                       {(
                         [
                           ["instagram", "IG"],
@@ -216,26 +258,21 @@ export function ContentPlanTable({
                         </label>
                       ))}
                     </div>
-                  </td>
-                  <td className="px-3 py-3 align-top text-right">
-                    <div className="tabular-nums text-xs text-muted-foreground">
-                      <div>охват {fmtNum(item.funnel.reach)}</div>
-                      <div>код {fmtNum(item.funnel.codewordHits)}</div>
-                      <div>лиды {fmtNum(item.funnel.registrations)}</div>
-                      <div>оплаты {fmtNum(item.funnel.paid)}</div>
-                    </div>
-                    <Link
-                      to={detailPath}
-                      className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-primary hover:underline"
-                    >
-                      Открыть <ExternalLink className="h-3 w-3" />
-                    </Link>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                  </div>
+                </div>
+
+                {/* Per-publication stats — primary signal */}
+                <div className="grid w-full grid-cols-2 gap-2 sm:grid-cols-3 lg:w-[420px] lg:shrink-0 xl:w-[480px] xl:grid-cols-5">
+                  <StatCell label="Охват" value={f.reach} />
+                  <StatCell label="Код-слов" value={f.codewordHits} />
+                  <StatCell label="Лиды" value={f.registrations} />
+                  <StatCell label="Оплаты" value={f.paid} />
+                  <StatCell label="Выручка" value={f.revenue} money emphasize />
+                </div>
+              </div>
+            </article>
+          );
+        })}
       </div>
       <DescriptionDialog item={descItem} open={!!descItem} onOpenChange={(v) => !v && setDescItem(null)} />
     </>

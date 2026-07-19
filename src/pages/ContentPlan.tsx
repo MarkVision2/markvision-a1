@@ -1,29 +1,38 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertCircle, CalendarClock, ClipboardList, Plus, RefreshCw } from "lucide-react";
+import { AlertCircle, CalendarClock, ClipboardList, Lightbulb, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ContentPlanKpis } from "@/components/content-plan/ContentPlanKpis";
 import { ContentPlanTable } from "@/components/content-plan/ContentPlanTable";
 import { ContentPlanComposerDialog } from "@/components/content-plan/ContentPlanComposerDialog";
 import { useContentPlan } from "@/hooks/useContentPlan";
+import { useInstagramAccount } from "@/hooks/useInstagramAccount";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type { ContentPlanItem } from "@/lib/contentPlan";
-import { AutoPost } from "@/pages/AutoPost";
+import AutoPost, { AutopostAddDialog } from "@/pages/AutoPost";
+
+function todayAlmatyYmd() {
+  return new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Almaty" });
+}
 
 export default function ContentPlan() {
   const [params, setParams] = useSearchParams();
-  const tab = params.get("tab") === "autopost" ? "autopost" : "plan";
+  const showCalendar = params.get("view") === "calendar" || params.get("tab") === "autopost";
+  const { activeId: projectId } = useProjectsStore();
+  const { account } = useInstagramAccount();
   const { items, summary, loading, error, tableMissing, refetch, create, update, adoptSynthetic } =
     useContentPlan();
-  const [composerOpen, setComposerOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [ideaOpen, setIdeaOpen] = useState(false);
 
-  const setTab = (next: string) => {
+  const setShowCalendar = (on: boolean) => {
     const p = new URLSearchParams(params);
-    if (next === "plan") p.delete("tab");
-    else p.set("tab", next);
+    p.delete("tab");
+    if (on) p.set("view", "calendar");
+    else p.delete("view");
     setParams(p, { replace: true });
   };
 
@@ -51,20 +60,43 @@ export default function ContentPlan() {
     }
   };
 
+  const onPublished = () => {
+    setPublishOpen(false);
+    void refetch();
+  };
+
   return (
     <PageContainer wide>
       <PageHeader
         icon={ClipboardList}
         iconAccent="pink"
         title="Контент-план"
-        description="Идея → публикация → код-слово → лид → оплата. Автопостинг вшит в этот раздел."
+        description="Одна лента: медиа → автопостинг → статистика по каждой публикации. Сверху — итоги по всем постам."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" className="gap-1" onClick={() => void refetch()}>
               <RefreshCw className="h-3.5 w-3.5" />
               Обновить
             </Button>
-            <Button size="sm" className="gap-1" onClick={() => setComposerOpen(true)}>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              onClick={() => setShowCalendar(!showCalendar)}
+            >
+              <CalendarClock className="h-3.5 w-3.5" />
+              {showCalendar ? "К плану" : "Календарь"}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              onClick={() => setIdeaOpen(true)}
+            >
+              <Lightbulb className="h-3.5 w-3.5" />
+              Идея
+            </Button>
+            <Button size="sm" className="gap-1" onClick={() => setPublishOpen(true)}>
               <Plus className="h-3.5 w-3.5" />
               Новая публикация
             </Button>
@@ -95,22 +127,15 @@ export default function ContentPlan() {
         <ContentPlanKpis summary={summary} />
       </div>
 
-      <Tabs value={tab} onValueChange={setTab} className="mt-6">
-        <TabsList>
-          <TabsTrigger value="plan" className="gap-1">
-            <ClipboardList className="h-3.5 w-3.5" />
-            План
-          </TabsTrigger>
-          <TabsTrigger value="autopost" className="gap-1">
-            <CalendarClock className="h-3.5 w-3.5" />
-            Автопостинг
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="plan" className="mt-4 space-y-4">
+      {showCalendar ? (
+        <div className="mt-6">
+          <AutoPost embedded />
+        </div>
+      ) : (
+        <div className="mt-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
             <span>
-              Каждая строка = одна публикация. Клик по названию открывает карточку с воронкой.
+              У каждой публикации — своя статистика (охват, код-слова, лиды, оплаты). Сверху — средние и суммы по всем.
             </span>
             <Link to="/marketing/content-center" className="text-primary hover:underline">
               Контент-центр →
@@ -122,16 +147,24 @@ export default function ContentPlan() {
             onTogglePlatform={onTogglePlatform}
             onAdopt={onAdopt}
           />
-        </TabsContent>
+        </div>
+      )}
 
-        <TabsContent value="autopost" className="mt-4">
-          <AutoPost embedded />
-        </TabsContent>
-      </Tabs>
+      {publishOpen && (
+        <AutopostAddDialog
+          day={todayAlmatyYmd()}
+          hourReach={new Map()}
+          bestHour={null}
+          projectId={projectId}
+          hasAccount={!!account}
+          onClose={() => setPublishOpen(false)}
+          onDone={onPublished}
+        />
+      )}
 
       <ContentPlanComposerDialog
-        open={composerOpen}
-        onOpenChange={setComposerOpen}
+        open={ideaOpen}
+        onOpenChange={setIdeaOpen}
         onCreate={create}
       />
     </PageContainer>

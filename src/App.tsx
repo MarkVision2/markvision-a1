@@ -92,7 +92,7 @@ const App = () => (
               <Route path="/marketing/content-center" element={<RequireAuth><AppLayout><ContentCenter /></AppLayout></RequireAuth>} />
               <Route path="/marketing/content-plan" element={<RequireAuth><AppLayout><ContentPlan /></AppLayout></RequireAuth>} />
               <Route path="/marketing/content-plan/:id" element={<RequireAuth><AppLayout><ContentPlanDetail /></AppLayout></RequireAuth>} />
-              <Route path="/marketing/autopost" element={<RequireAuth><Navigate to="/marketing/content-plan?tab=autopost" replace /></RequireAuth>} />
+              <Route path="/marketing/autopost" element={<RequireAuth><Navigate to="/marketing/content-plan?view=calendar" replace /></RequireAuth>} />
               <Route path="/finance" element={<RequireAuth><AppLayout><Finance /></AppLayout></RequireAuth>} />
               <Route path="/reports" element={<RequireAuth><AppLayout><Reports /></AppLayout></RequireAuth>} />
               <Route path="/settings" element={<RequireAuth><AppLayout><Settings /></AppLayout></RequireAuth>} />

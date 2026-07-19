@@ -105,9 +105,10 @@ export function ContentPlanComposerDialog({
     >
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Новая публикация</DialogTitle>
+          <DialogTitle>Идея без медиа</DialogTitle>
           <DialogDescription>
-            Идея попадёт в контент-план. Автопостинг и код-слово можно привязать позже.
+            Черновик в плане без автопостинга. Чтобы сразу загрузить файл и запланировать выход —
+            закройте и нажмите «Новая публикация».
           </DialogDescription>
         </DialogHeader>
 
