@@ -180,9 +180,11 @@ async function processJob(job) {
   writeFileSync(resolve(work, "job.json"), JSON.stringify(job, null, 2));
 
   const formats = Array.isArray(job.formats) ? job.formats : ["16:9"];
-  const wantMain = formats.includes("16:9");
+  // Очередь «Монтаж съёмки»: исходник клиента всегда идёт в полный 16:9.
+  // Шортсы — только доп. продукт, никогда не заменяют цельный ролик.
+  const wantMain = true;
   const wantShorts = formats.includes("shorts");
-  const shortsCount = job.shorts_count || 3;
+  const shortsCount = Math.min(3, Math.max(1, job.shorts_count || 3));
   const brief = job.brief || "";
   const brollMode = ["auto", "library", "pexels", "kie"].includes(job.broll_mode)
     ? job.broll_mode
@@ -241,36 +243,32 @@ async function processJob(job) {
 
   if (wantMain) {
     await status(id, "сохраняем ролик целиком");
-    // Очередь Контент-завода: клиент прислал готовое видео — НЕ режем половину
-    // через jump-cut/паузы. keep_full → один сегмент 0..duration в edl.py.
-    if (!existsSync(resolve(work, "delete.json"))) {
-      writeFileSync(
-        resolve(work, "delete.json"),
-        JSON.stringify({ delete: [], keep_full: true, reason: "queue: keep source intact" }, null, 2),
-      );
-    }
-    if (!existsSync(resolve(work, "edl.json"))) {
-      py(["pipeline/edl.py", work, wav, "30"]);
-    }
+    // ВСЕГДА перезаписываем delete.json: иначе старый агрессивный delete
+    // с прошлой попытки снова нарежет исходник пополам.
+    writeFileSync(
+      resolve(work, "delete.json"),
+      JSON.stringify({ delete: [], keep_full: true, reason: "queue: keep source intact" }, null, 2),
+    );
+    // edl пересобираем под keep_full (даже если файл уже был).
+    py(["pipeline/edl.py", work, wav, "30"]);
     if (!existsSync(resolve(work, "accents.json"))) {
       await status(id, "акцентные слова");
       const acc = await call(AI, { action: "markup_accents", indexed, brief });
       writeFileSync(resolve(work, "accents.json"), JSON.stringify(acc, null, 2));
     }
-    if (!existsSync(resolve(work, "inserts.json"))) {
-      await status(id, "motion-вставки / b-roll");
-      const durationSec = Number(words?.[words.length - 1]?.end ?? probeDurationSec(proxy) ?? 0);
-      const inserts = await call(AI, {
-        action: "markup_inserts",
-        indexed,
-        utterances,
-        brief: insertBrief,
-        durationSec,
-        brollMode,
-        assetFolderIds,
-      });
-      writeFileSync(resolve(work, "inserts.json"), JSON.stringify(inserts, null, 2));
-    }
+    // Motion/B-roll обязателен для очереди — без вставок останутся одни титры.
+    await status(id, "motion-вставки / b-roll");
+    const durationSec = Number(words?.[words.length - 1]?.end ?? probeDurationSec(proxy) ?? 0);
+    const inserts = await call(AI, {
+      action: "markup_inserts",
+      indexed,
+      utterances,
+      brief: insertBrief,
+      durationSec,
+      brollMode,
+      assetFolderIds,
+    });
+    writeFileSync(resolve(work, "inserts.json"), JSON.stringify(inserts, null, 2));
     // props.py ждёт media-имя без расширения; файл должен быть в public/
     // Если mediaBase != source — копируем/симлинк или передаём 3-й аргумент.
     const propsPath = resolve("remotion/props", `main169_${id.slice(0, 8)}.json`);
@@ -291,14 +289,11 @@ async function processJob(job) {
   }
 
   if (wantShorts) {
-    // Для шортсов keep_full delete не мешает (refine режет spans сам),
-    // но агрессивный delete по словам всё равно не делаем без явного brief.
-    if (!existsSync(resolve(work, "delete.json"))) {
-      writeFileSync(
-        resolve(work, "delete.json"),
-        JSON.stringify({ delete: [], keep_full: true, reason: "queue: keep source intact" }, null, 2),
-      );
-    }
+    // Шортсы — доп. нарезка лучших моментов. На основной 16:9 не влияют.
+    writeFileSync(
+      resolve(work, "delete.json"),
+      JSON.stringify({ delete: [], keep_full: true, reason: "queue: keep source intact" }, null, 2),
+    );
     if (!existsSync(resolve(work, "inserts.json"))) {
       await status(id, "motion-вставки для шортсов");
       const durationSec = Number(words?.[words.length - 1]?.end ?? probeDurationSec(proxy) ?? 0);
