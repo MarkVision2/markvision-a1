@@ -1,6 +1,14 @@
 import { useMemo, useState } from "react";
 import {
-  BarChart3, Camera, Copy, Loader2, MessageCircle, MousePointerClick, Pencil, Plus, Trash2,
+  ChevronDown,
+  Copy,
+  Loader2,
+  MessageCircle,
+  MousePointerClick,
+  Pencil,
+  Plus,
+  Sparkles,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -16,15 +24,18 @@ import {
 } from "@/components/ui/dialog";
 import { useInstagramCodewords, useCodewordStats, type InstagramCodeword } from "@/hooks/useInstagramOrganic";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { useInstagramAccount } from "@/hooks/useInstagramAccount";
 import { IG_ORGANIC_INTAKE_URL, igOrganicBotLink } from "@/lib/igOrganicLinks";
-import { formatClickConversion } from "@/lib/codewordVariants";
+import { formatClickConversion, normalizeVariantList } from "@/lib/codewordVariants";
 import { InstagramAccountConnect } from "@/components/settings/InstagramAccountConnect";
 import { VariantListInput } from "@/components/settings/VariantListInput";
-import { normalizeVariantList } from "@/lib/codewordVariants";
 import { cn } from "@/lib/utils";
 
 /** Фиксированный текст кнопки в Instagram Direct (до 20 символов Meta). */
 export const DM_ACCESS_BUTTON_TITLE = "получить доступ";
+
+const DEFAULT_COMMENT = "Спасибо! Проверь Direct — отправили доступ 👇";
+const DEFAULT_DM = "Готово! Жми кнопку ниже и забирай доступ 👇";
 
 interface CodewordDraft {
   codeword: string;
@@ -33,18 +44,20 @@ interface CodewordDraft {
   targetUrls: string[];
 }
 
-const EMPTY_DRAFT: CodewordDraft = {
-  codeword: "",
-  commentReplies: [""],
-  dmMessages: [""],
-  targetUrls: [""],
-};
+function emptyDraft(): CodewordDraft {
+  return {
+    codeword: "",
+    commentReplies: [DEFAULT_COMMENT],
+    dmMessages: [DEFAULT_DM],
+    targetUrls: [""],
+  };
+}
 
 function draftFromItem(item: InstagramCodeword): CodewordDraft {
   return {
     codeword: item.codeword,
-    commentReplies: item.commentReplies.length > 0 ? item.commentReplies : [""],
-    dmMessages: item.dmMessages.length > 0 ? item.dmMessages : [""],
+    commentReplies: item.commentReplies.length > 0 ? item.commentReplies : [DEFAULT_COMMENT],
+    dmMessages: item.dmMessages.length > 0 ? item.dmMessages : [DEFAULT_DM],
     targetUrls: item.targetUrls.length > 0 ? item.targetUrls : [""],
   };
 }
@@ -69,13 +82,13 @@ function draftToPayload(draft: CodewordDraft) {
 function validateDraft(draft: CodewordDraft): string | null {
   if (!draft.codeword.trim()) return "Введите код-слово";
   if (normalizeVariantList(draft.commentReplies).length === 0) {
-    return "Добавьте хотя бы один ответ на комментарий";
+    return "Нужен хотя бы один ответ на комментарий";
   }
   if (normalizeVariantList(draft.dmMessages).length === 0) {
-    return "Добавьте хотя бы один текст сообщения в Direct";
+    return "Нужен хотя бы один текст в Direct";
   }
   if (normalizeVariantList(draft.targetUrls).length === 0) {
-    return "Добавьте хотя бы одну ссылку для кнопки «получить доступ»";
+    return "Вставьте ссылку для кнопки «получить доступ»";
   }
   return null;
 }
@@ -84,17 +97,44 @@ export function InstagramOrganicSettings() {
   const { items, loading, add, update, remove } = useInstagramCodewords();
   const { stats } = useCodewordStats();
   const { activeId: projectId, projects } = useProjectsStore();
+  const { account } = useInstagramAccount();
   const intakeToken = projects.find((p) => p.id === projectId)?.intakeToken ?? null;
 
-  const [draft, setDraft] = useState<CodewordDraft>(EMPTY_DRAFT);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<InstagramCodeword | null>(null);
+  const [composerOpen, setComposerOpen] = useState(false);
   const [editing, setEditing] = useState<InstagramCodeword | null>(null);
-  const [editDraft, setEditDraft] = useState<CodewordDraft | null>(null);
+  const [draft, setDraft] = useState<CodewordDraft>(emptyDraft);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showMoreTexts, setShowMoreTexts] = useState(false);
 
   const statsById = useMemo(() => new Map(stats.map((s) => [s.codewordId, s])), [stats]);
+  const isEdit = !!editing;
 
-  const handleAdd = async () => {
+  const openCreate = () => {
+    setEditing(null);
+    setDraft(emptyDraft());
+    setShowMoreTexts(false);
+    setComposerOpen(true);
+  };
+
+  const openEdit = (item: InstagramCodeword) => {
+    setEditing(item);
+    setDraft(draftFromItem(item));
+    setShowMoreTexts(
+      item.commentReplies.length > 1 || item.dmMessages.length > 1 || item.targetUrls.length > 1,
+    );
+    setComposerOpen(true);
+  };
+
+  const closeComposer = () => {
+    setComposerOpen(false);
+    setEditing(null);
+    setDraft(emptyDraft());
+    setShowMoreTexts(false);
+  };
+
+  const handleSave = async () => {
     const err = validateDraft(draft);
     if (err) {
       toast.error(err);
@@ -102,34 +142,14 @@ export function InstagramOrganicSettings() {
     }
     setSaving(true);
     try {
-      await add(draftToPayload(draft));
-      setDraft(EMPTY_DRAFT);
-      toast.success(`Код-слово «${draft.codeword.toLowerCase()}» добавлено`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : "Не удалось добавить");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const openEdit = (item: InstagramCodeword) => {
-    setEditing(item);
-    setEditDraft(draftFromItem(item));
-  };
-
-  const handleSaveEdit = async () => {
-    if (!editing || !editDraft) return;
-    const err = validateDraft(editDraft);
-    if (err) {
-      toast.error(err);
-      return;
-    }
-    setSaving(true);
-    try {
-      await update(editing.id, draftToPayload(editDraft));
-      toast.success("Код-слово обновлено");
-      setEditing(null);
-      setEditDraft(null);
+      if (editing) {
+        await update(editing.id, draftToPayload(draft));
+        toast.success("Сохранено");
+      } else {
+        await add(draftToPayload(draft));
+        toast.success(`«${draft.codeword.trim().toLowerCase()}» добавлено`);
+      }
+      closeComposer();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось сохранить");
     } finally {
@@ -157,192 +177,126 @@ export function InstagramOrganicSettings() {
     }
   };
 
-  const copyEndpoint = () => {
-    void navigator.clipboard.writeText(IG_ORGANIC_INTAKE_URL);
-    toast.success("URL скопирован");
-  };
-
   const copyText = (text: string, label: string) => {
     void navigator.clipboard.writeText(text);
     toast.success(`${label} скопирован`);
   };
 
-  const samplePayload = (codeword: string, eventType: "codeword_comment" | "codeword_dm") => JSON.stringify(
-    {
-      token: intakeToken ?? "<PROJECT_TOKEN>",
-      event_type: eventType,
-      codeword,
-      username: "@user_handle",
-      contact: "+7700...",
-    },
-    null,
-    2,
-  );
-
-  const renderFormFields = (
-    value: CodewordDraft,
-    onChange: (patch: Partial<CodewordDraft>) => void,
-  ) => (
-    <div className="space-y-5">
-      <div className="space-y-1.5">
-        <Label htmlFor="ig-codeword">Код-слово</Label>
-        <Input
-          id="ig-codeword"
-          placeholder="например, хаб"
-          value={value.codeword}
-          onChange={(e) => onChange({ codeword: e.target.value })}
-          className="max-w-md font-medium"
-        />
-        <p className="text-[11px] text-muted-foreground">
-          Подписчик пишет это слово в комментарии — система отвечает и шлёт Direct с кнопкой.
-        </p>
-      </div>
-
-      <div className="rounded-xl border border-border/60 bg-secondary/20 p-4">
-        <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
-          <MessageCircle className="h-4 w-4 text-pink-500" />
-          Ответы на комментарий
-        </div>
-        <VariantListInput
-          label="Варианты ответа"
-          hint="До 10 штук. На каждое событие отправляется один случайный вариант."
-          placeholder="Спасибо! Проверь Direct — отправили доступ 👇"
-          items={value.commentReplies}
-          onChange={(commentReplies) => onChange({ commentReplies })}
-          multiline
-        />
-      </div>
-
-      <div className="rounded-xl border border-border/60 bg-secondary/20 p-4">
-        <div className="mb-3 text-sm font-semibold">Сообщение в Direct</div>
-        <VariantListInput
-          label="Текст над кнопкой"
-          hint="До 10 вариантов. Случайный текст + кнопка «получить доступ»."
-          placeholder="Готово! Жми кнопку ниже и забирай доступ 👇"
-          items={value.dmMessages}
-          onChange={(dmMessages) => onChange({ dmMessages })}
-          multiline
-        />
-        <div className="mt-4 rounded-lg border border-border/50 bg-background/50 px-3 py-2.5">
-          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Кнопка в Direct</div>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
-            <span className="inline-flex rounded-md bg-pink-500/15 px-2.5 py-1 text-sm font-semibold text-pink-600 dark:text-pink-400">
-              {DM_ACCESS_BUTTON_TITLE}
-            </span>
-            <span className="text-[11px] text-muted-foreground">
-              фиксированная · клики считаем в аналитике
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <div className="rounded-xl border border-border/60 bg-secondary/20 p-4">
-        <div className="mb-3 flex items-center gap-2 text-sm font-semibold">
-          <MousePointerClick className="h-4 w-4 text-emerald-500" />
-          Ссылки в Direct
-        </div>
-        <VariantListInput
-          label="Куда ведёт «получить доступ»"
-          hint="До 10 ссылок. Одна выбирается случайно; каждый клик по кнопке пишется в статистику."
-          placeholder="https://landing.example/?utm_source=ig"
-          items={value.targetUrls}
-          onChange={(targetUrls) => onChange({ targetUrls })}
-        />
-      </div>
-    </div>
-  );
+  const previewWord = draft.codeword.trim() || "хаб";
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
       <InstagramAccountConnect />
 
-      <div className="rounded-2xl border border-dashed border-border/70 bg-card/40 p-4 text-sm text-muted-foreground">
-        Нет Meta-токена или нужен вход через Facebook? Откройте{" "}
-        <a href="/settings?tab=meta-tokens" className="font-semibold text-primary hover:underline">
-          Настройки → Meta
-        </a>
-        : там Facebook OAuth и список Meta-токенов. После сохранения токена вернитесь сюда и нажмите
-        «Выбрать Instagram аккаунт».
-      </div>
+      {!account && (
+        <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-950 dark:text-amber-100">
+          Сначала подключи Instagram выше. Код-слова заработают после привязки аккаунта.
+          {" "}
+          <a href="/settings?tab=meta-tokens" className="font-semibold underline-offset-2 hover:underline">
+            Meta-токены
+          </a>
+        </div>
+      )}
 
-      <div className="rounded-2xl border border-border bg-card p-6">
-        <div className="mb-5 flex items-start gap-4">
-          <span className="grid h-12 w-12 place-items-center rounded-xl bg-pink-500/15 text-pink-500">
-            <Camera className="h-6 w-6" />
-          </span>
-          <div className="flex-1">
-            <h3 className="text-base font-semibold">Новое код-слово</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              Код-слово → случайный ответ в комментарии → Direct с кнопкой «получить доступ».
-              Клики по кнопке считаются автоматически.
+      {/* Список + быстрое добавление */}
+      <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-semibold">Код-слова</h3>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Комментарий с словом → ответ → Direct с кнопкой «{DM_ACCESS_BUTTON_TITLE}».
             </p>
           </div>
-        </div>
-
-        {renderFormFields(draft, (patch) => setDraft((d) => ({ ...d, ...patch })))}
-
-        <div className="mt-5 flex justify-end">
-          <Button onClick={handleAdd} disabled={saving || !projectId} className="gap-2 rounded-xl">
-            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+          <Button
+            onClick={openCreate}
+            disabled={!projectId}
+            className="gap-2 rounded-xl"
+          >
+            <Plus className="h-4 w-4" />
             Добавить код-слово
           </Button>
         </div>
-      </div>
 
-      <div className="rounded-2xl border border-border bg-card p-6">
-        <div className="mb-3 flex items-center justify-between">
-          <h4 className="text-sm font-semibold">Активные код-слова</h4>
-          <span className="text-xs text-muted-foreground">{items.length}</span>
-        </div>
         {loading ? (
-          <div className="py-10 text-center text-sm text-muted-foreground">Загрузка…</div>
-        ) : items.length === 0 ? (
-          <div className="grid place-items-center rounded-xl border border-dashed border-border/60 py-10 text-center">
-            <Camera className="mb-2 h-6 w-6 text-muted-foreground/60" />
-            <div className="text-sm text-muted-foreground">Пока нет ни одного код-слова</div>
+          <div className="flex items-center justify-center gap-2 py-14 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Загрузка…
           </div>
+        ) : items.length === 0 ? (
+          <button
+            type="button"
+            onClick={openCreate}
+            disabled={!projectId}
+            className="flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-border/70 bg-secondary/10 px-6 py-12 text-center transition-colors hover:border-pink-500/40 hover:bg-pink-500/5"
+          >
+            <span className="grid h-11 w-11 place-items-center rounded-full bg-pink-500/15 text-pink-500">
+              <Sparkles className="h-5 w-5" />
+            </span>
+            <span className="text-sm font-semibold text-foreground">Создать первое код-слово</span>
+            <span className="max-w-sm text-xs text-muted-foreground">
+              Достаточно слова и ссылки — ответы и текст Direct подставим сами.
+            </span>
+          </button>
         ) : (
-          <div className="space-y-3">
+          <ul className="space-y-2.5">
             {items.map((it) => {
               const st = statsById.get(it.id);
               const wrote = (st?.codewordDms ?? 0) + (st?.codewordComments ?? 0);
               const clicks = st?.linkClicks ?? 0;
-              const conv = formatClickConversion(Math.max(wrote, 1) > 0 ? wrote : 0, clicks);
+              const conv = formatClickConversion(wrote, clicks);
               const shortLink = it.shortId ? igOrganicBotLink(it.shortId) : null;
+              const linkPreview = it.targetUrls[0] ?? it.targetUrl;
 
               return (
-                <div
+                <li
                   key={it.id}
-                  className="rounded-xl border border-border/60 bg-background/40 p-4"
+                  className={cn(
+                    "rounded-xl border border-border/60 bg-background/50 p-3.5 sm:p-4",
+                    !it.active && "opacity-60",
+                  )}
                 >
                   <div className="flex flex-wrap items-start gap-3">
-                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-pink-500/10 font-mono text-sm font-bold uppercase text-pink-600 dark:text-pink-400">
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-pink-500/10 font-mono text-xs font-bold uppercase text-pink-600 dark:text-pink-400">
                       {it.codeword.slice(0, 3)}
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-mono text-base font-semibold">«{it.codeword}»</span>
                         {!it.active && (
-                          <span className="rounded-md border border-border bg-secondary px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                          <span className="rounded-md border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
                             выкл
                           </span>
                         )}
-                        <span className="rounded-md bg-pink-500/10 px-1.5 py-0.5 text-[10px] font-medium text-pink-600 dark:text-pink-400">
-                          {DM_ACCESS_BUTTON_TITLE}
-                        </span>
                       </div>
-                      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
-                        <span>{it.commentReplies.length} ответов в коммент.</span>
-                        <span>{it.dmMessages.length} текстов DM</span>
-                        <span>{it.targetUrls.length} ссылок</span>
+                      {linkPreview && (
+                        <p className="mt-1 truncate text-xs text-muted-foreground">{linkPreview}</p>
+                      )}
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+                        <span>{it.commentReplies.length} ответ.</span>
+                        <span>{it.dmMessages.length} DM</span>
+                        <span>{it.targetUrls.length} ссыл.</span>
+                        <span>
+                          {wrote} написали · {clicks} кликов · {conv}
+                        </span>
                       </div>
                     </div>
                     <div className="flex items-center gap-1">
-                      <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(it)} aria-label="Редактировать">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        onClick={() => openEdit(it)}
+                        aria-label="Редактировать"
+                      >
                         <Pencil className="h-4 w-4" />
                       </Button>
-                      <Switch checked={it.active} onCheckedChange={(v) => handleToggle(it, v)} aria-label="Активность" />
+                      <Switch
+                        checked={it.active}
+                        onCheckedChange={(v) => handleToggle(it, v)}
+                        aria-label="Активность"
+                      />
                       <button
+                        type="button"
                         onClick={() => setConfirmDelete(it)}
                         className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                         aria-label="Удалить"
@@ -351,91 +305,193 @@ export function InstagramOrganicSettings() {
                       </button>
                     </div>
                   </div>
-
-                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                    <StatPill label="Написали код-слово" value={wrote} accent="text-sky-600" />
-                    <StatPill label="Нажали «получить доступ»" value={clicks} accent="text-emerald-600" />
-                    <StatPill label="Конверсия в клик" value={conv} accent="text-orange-600" isText />
-                    <StatPill label="Заявки" value={st?.leads ?? 0} accent="text-violet-600" />
-                  </div>
-
                   {shortLink && (
-                    <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-border/50 bg-secondary/20 px-3 py-2">
-                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Трекинг кнопки</span>
+                    <div className="mt-2.5 flex items-center gap-2 rounded-lg bg-secondary/30 px-2.5 py-1.5">
                       <code className="min-w-0 flex-1 truncate text-[11px]">{shortLink}</code>
-                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => copyText(shortLink, "Ссылка")}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7 shrink-0"
+                        onClick={() => copyText(shortLink, "Ссылка")}
+                      >
                         <Copy className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   )}
-                </div>
+                </li>
               );
             })}
+          </ul>
+        )}
+      </section>
+
+      {/* Advanced collapsed */}
+      <section className="rounded-2xl border border-border/60 bg-card/40">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between gap-2 px-5 py-3.5 text-left text-sm font-medium"
+          onClick={() => setShowAdvanced((v) => !v)}
+        >
+          Для разработчиков · webhook n8n
+          <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", showAdvanced && "rotate-180")} />
+        </button>
+        {showAdvanced && (
+          <div className="space-y-3 border-t border-border/50 px-5 pb-5 pt-3">
+            <p className="text-xs text-muted-foreground">
+              Обычный сценарий идёт через Instagram webhook MarkVision — n8n не обязателен.
+            </p>
+            <div className="flex items-center gap-2">
+              <Input value={IG_ORGANIC_INTAKE_URL} readOnly className="font-mono text-xs" />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => copyText(IG_ORGANIC_INTAKE_URL, "URL")}
+                aria-label="Скопировать"
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+            <pre className="overflow-x-auto rounded-lg border border-border/50 bg-secondary/20 p-3 text-[11px] leading-relaxed text-muted-foreground">
+{JSON.stringify(
+  {
+    token: intakeToken ?? "<PROJECT_TOKEN>",
+    event_type: "codeword_comment",
+    codeword: items[0]?.codeword || "хаб",
+    username: "@user",
+  },
+  null,
+  2,
+)}
+            </pre>
           </div>
         )}
-      </div>
+      </section>
 
-      <div className="rounded-2xl border border-border bg-card p-6">
-        <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold">
-          <BarChart3 className="h-4 w-4 text-primary" />
-          Как считается аналитика
-        </h4>
-        <ul className="space-y-1.5 text-xs text-muted-foreground">
-          <li>
-            <b className="text-foreground">Написали код-слово</b> — комментарий или Direct с код-словом.
-          </li>
-          <li>
-            <b className="text-foreground">Нажали «получить доступ»</b> — клик по кнопке в Direct
-            (короткая ссылка markvision.kz/r/… → событие <code className="rounded bg-secondary px-1">link_click</code>).
-          </li>
-          <li>
-            <b className="text-foreground">Конверсия</b> = клики по кнопке ÷ написали код-слово × 100%.
-          </li>
-        </ul>
-      </div>
-
-      <div className="rounded-2xl border border-border bg-card p-6">
-        <h4 className="mb-2 text-sm font-semibold">Webhook для n8n / GreenAPI</h4>
-        <p className="mb-3 text-xs text-muted-foreground">
-          При событии API возвращает случайные варианты: <code className="rounded bg-secondary px-1">comment_reply</code>, <code className="rounded bg-secondary px-1">dm_message</code>, <code className="rounded bg-secondary px-1">redirect_url</code>.
-        </p>
-        <div className="mb-4 flex items-center gap-2">
-          <Input value={IG_ORGANIC_INTAKE_URL} readOnly className="font-mono text-xs" />
-          <Button variant="outline" size="icon" onClick={copyEndpoint} aria-label="Скопировать">
-            <Copy className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <div className="grid gap-4 lg:grid-cols-2">
-          <div>
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Комментарий с код-словом</Label>
-            <pre className="mt-1.5 overflow-x-auto rounded-lg border border-border/60 bg-secondary/30 p-3 text-[11px] leading-relaxed">
-{samplePayload(items[0]?.codeword || "хаб", "codeword_comment")}
-            </pre>
-          </div>
-          <div>
-            <Label className="text-xs uppercase tracking-wider text-muted-foreground">Direct с код-словом</Label>
-            <pre className="mt-1.5 overflow-x-auto rounded-lg border border-border/60 bg-secondary/30 p-3 text-[11px] leading-relaxed">
-{samplePayload(items[0]?.codeword || "хаб", "codeword_dm")}
-            </pre>
-          </div>
-        </div>
-      </div>
-
-      <Dialog open={!!editing && !!editDraft} onOpenChange={(o) => { if (!o) { setEditing(null); setEditDraft(null); } }}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+      {/* Composer */}
+      <Dialog open={composerOpen} onOpenChange={(o) => { if (!o) closeComposer(); }}>
+        <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Редактировать «{editing?.codeword}»</DialogTitle>
+            <DialogTitle>{isEdit ? `Редактировать «${editing?.codeword}»` : "Новое код-слово"}</DialogTitle>
             <DialogDescription>
-              Изменения сразу для новых событий. Клики по кнопке и статистика прошлых событий сохранятся.
+              Минимум: слово + ссылка. Остальное уже заполнено — можно сразу сохранить.
             </DialogDescription>
           </DialogHeader>
-          {editDraft && renderFormFields(editDraft, (patch) => setEditDraft((d) => d ? { ...d, ...patch } : d))}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setEditing(null); setEditDraft(null); }}>Отмена</Button>
-            <Button onClick={handleSaveEdit} disabled={saving}>
-              {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              Сохранить
+
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="cw-word">1. Код-слово</Label>
+              <Input
+                id="cw-word"
+                autoFocus
+                placeholder="хаб"
+                value={draft.codeword}
+                onChange={(e) => setDraft((d) => ({ ...d, codeword: e.target.value }))}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    document.getElementById("cw-link")?.focus();
+                  }
+                }}
+                className="text-base font-medium"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="cw-link" className="inline-flex items-center gap-1.5">
+                <MousePointerClick className="h-3.5 w-3.5 text-emerald-500" />
+                2. Ссылка кнопки «{DM_ACCESS_BUTTON_TITLE}»
+              </Label>
+              <Input
+                id="cw-link"
+                type="url"
+                placeholder="https://…"
+                value={draft.targetUrls[0] ?? ""}
+                onChange={(e) => {
+                  const rest = draft.targetUrls.slice(1);
+                  setDraft((d) => ({ ...d, targetUrls: [e.target.value, ...rest] }));
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void handleSave();
+                  }
+                }}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Клики по кнопке считаем автоматически.
+              </p>
+            </div>
+
+            {/* Live mini-preview */}
+            <div className="rounded-xl border border-border/60 bg-secondary/20 px-3.5 py-3 text-xs leading-relaxed text-muted-foreground">
+              <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+                Как увидит подписчик
+              </div>
+              <p>
+                Пишет <span className="font-mono font-semibold text-foreground">«{previewWord}»</span>
+                {" → "}
+                ответ в комментарии
+                {" → "}
+                Direct: «{(draft.dmMessages[0] || DEFAULT_DM).slice(0, 48)}
+                {(draft.dmMessages[0] || DEFAULT_DM).length > 48 ? "…" : ""}»
+                {" + "}
+                <span className="rounded bg-pink-500/15 px-1.5 py-0.5 font-semibold text-pink-600 dark:text-pink-400">
+                  {DM_ACCESS_BUTTON_TITLE}
+                </span>
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="flex w-full items-center justify-between rounded-lg px-1 py-1 text-left text-sm font-medium text-muted-foreground hover:text-foreground"
+              onClick={() => setShowMoreTexts((v) => !v)}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <MessageCircle className="h-3.5 w-3.5" />
+                Тексты ответов и варианты
+              </span>
+              <ChevronDown className={cn("h-4 w-4 transition-transform", showMoreTexts && "rotate-180")} />
+            </button>
+
+            {showMoreTexts && (
+              <div className="space-y-4 rounded-xl border border-border/50 bg-background/40 p-3.5">
+                <VariantListInput
+                  label="Ответы на комментарий"
+                  placeholder={DEFAULT_COMMENT}
+                  items={draft.commentReplies}
+                  onChange={(commentReplies) => setDraft((d) => ({ ...d, commentReplies }))}
+                  multiline
+                  compact
+                />
+                <VariantListInput
+                  label="Текст над кнопкой в Direct"
+                  placeholder={DEFAULT_DM}
+                  items={draft.dmMessages}
+                  onChange={(dmMessages) => setDraft((d) => ({ ...d, dmMessages }))}
+                  multiline
+                  compact
+                />
+                <VariantListInput
+                  label="Дополнительные ссылки (рандом)"
+                  placeholder="https://…"
+                  items={draft.targetUrls}
+                  onChange={(targetUrls) => setDraft((d) => ({ ...d, targetUrls }))}
+                  compact
+                />
+                <div className="rounded-lg bg-pink-500/10 px-3 py-2 text-[11px] text-pink-700 dark:text-pink-300">
+                  Кнопка всегда: <b>{DM_ACCESS_BUTTON_TITLE}</b> · до 10 вариантов, каждый раз случайный
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button type="button" variant="outline" onClick={closeComposer}>
+              Отмена
+            </Button>
+            <Button type="button" onClick={() => void handleSave()} disabled={saving || !projectId} className="gap-2">
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+              {isEdit ? "Сохранить" : "Добавить"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -446,26 +502,20 @@ export function InstagramOrganicSettings() {
           <AlertDialogHeader>
             <AlertDialogTitle>Удалить код-слово?</AlertDialogTitle>
             <AlertDialogDescription>
-              «{confirmDelete?.codeword}» больше не будет распознаваться. История событий останется в аналитике.
+              «{confirmDelete?.codeword}» больше не будет срабатывать. Статистика кликов сохранится.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Отмена</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
               Удалить
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
-  );
-}
-
-function StatPill({ label, value, accent, isText }: { label: string; value: number | string; accent: string; isText?: boolean }) {
-  return (
-    <div className="rounded-lg border border-border/50 bg-card/60 px-3 py-2">
-      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{label}</div>
-      <div className={cn("mt-0.5 text-lg font-bold tabular-nums", accent, isText && "text-base")}>{value}</div>
     </div>
   );
 }
