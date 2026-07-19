@@ -226,7 +226,6 @@ const CreateMontageLab = () => {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [duration, setDuration] = useState<number>(0);
   const [formats, setFormats] = useState<MontageFormat[]>(["16:9"]);
-  const [shortsCount, setShortsCount] = useState(3);
   const [brief, setBrief] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [notifyTelegram, setNotifyTelegram] = useState(true);
@@ -357,7 +356,6 @@ const CreateMontageLab = () => {
         sourceUrl: uploaded.url,
         sourceName: uploaded.name,
         formats,
-        shortsCount,
         brief,
         notifyTelegram,
         mode,
@@ -688,28 +686,6 @@ const CreateMontageLab = () => {
                 </button>
               </div>
 
-              {formats.includes("shorts") && (
-                <div className="mt-3 flex items-center gap-2 rounded-lg bg-muted/40 p-2.5 text-sm">
-                  <span className="text-xs text-muted-foreground">Количество шортсов:</span>
-                  <div className="flex gap-1">
-                    {[1, 2, 3, 5].map((n) => (
-                      <button
-                        key={n}
-                        type="button"
-                        onClick={() => setShortsCount(n)}
-                        className={cn(
-                          "h-7 w-8 rounded-md text-sm font-semibold transition",
-                          shortsCount === n
-                            ? "bg-primary text-primary-foreground"
-                            : "text-muted-foreground hover:bg-background hover:text-foreground",
-                        )}
-                      >
-                        {n}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
             </section>
 
             {/* Шаг 3. Бриф */}
@@ -798,7 +774,7 @@ const CreateMontageLab = () => {
                 <div className="flex justify-between gap-2">
                   <dt className="text-muted-foreground">Форматы</dt>
                   <dd className="font-medium">
-                    {formats.map((f) => (f === "shorts" ? `шортсы×${shortsCount}` : "16:9")).join(" + ")}
+                    {formats.map((f) => (f === "shorts" ? "шортсы" : "16:9")).join(" + ")}
                   </dd>
                 </div>
                 <div className="flex justify-between gap-2">
