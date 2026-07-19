@@ -129,7 +129,9 @@ function ensureKeyWav() {
   const publicDir = resolve("remotion/public");
   mkdirSync(publicDir, { recursive: true });
   const dst = resolve(publicDir, "key.wav");
-  if (existsSync(dst) && (statSize(dst) ?? 0) > 100) return dst;
+  try {
+    if (existsSync(dst) && statSync(dst).size > 100) return dst;
+  } catch { /* recreate */ }
   const bundled = resolve("assets/sfx/key.wav");
   if (existsSync(bundled)) {
     copyFileSync(bundled, dst);
@@ -145,14 +147,6 @@ function ensureKeyWav() {
   ]);
   console.log(`✓ key.wav сгенерирован через ffmpeg`);
   return dst;
-}
-
-function statSize(path) {
-  try {
-    return Number(execFileSync("stat", ["-c", "%s", path], { encoding: "utf8" }).trim());
-  } catch {
-    return null;
-  }
 }
 
 function probeDurationSec(path) {
