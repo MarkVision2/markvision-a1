@@ -32,29 +32,40 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { cn } from "@/lib/utils";
 
 const SEARCH_THRESHOLD = 3;
+
+const fmtMoney = (n: number) =>
+  `${Math.round(n).toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}\u00A0₸`;
 
 const StatChip = ({
   label,
   value,
+  hint,
   accent,
   icon: Icon,
 }: {
   label: string;
   value: string;
+  hint?: string;
   accent: string;
   icon: LucideIcon;
 }) => (
-  <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-card/60 px-3 py-2">
-    <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${accent}`}>
-      <Icon className="h-4 w-4" />
-    </span>
-    <div className="min-w-0 flex-1">
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-        {label}
+  <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-gradient-to-br from-card/80 to-card/40 px-3.5 py-3">
+    <div className="flex items-start gap-3">
+      <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-xl", accent)}>
+        <Icon className="h-4 w-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+          {label}
+        </div>
+        <div className="mt-0.5 truncate text-xl font-semibold tabular-nums tracking-tight">
+          {value}
+        </div>
+        {hint && <div className="mt-0.5 text-[11px] text-muted-foreground">{hint}</div>}
       </div>
-      <div className="truncate text-lg font-bold tabular-nums leading-tight">{value}</div>
     </div>
   </div>
 );
@@ -87,7 +98,6 @@ const Ads = () => {
 
   const active = cabinets.filter((c) => c.online).length;
   const showSearch = cabinets.length > SEARCH_THRESHOLD;
-  const showAggregate = cabinets.length > 1;
 
   const handleRefresh = () => {
     setRefreshKey((k) => k + 1);
@@ -114,122 +124,152 @@ const Ads = () => {
   const totalSpend = cabinets.reduce((s, c) => s + (c.spend || 0), 0);
   const totalLeads = cabinets.reduce((s, c) => s + (c.leads || 0), 0);
   const totalSales = cabinets.reduce((s, c) => s + (c.sales || 0), 0);
+  const cpl = totalLeads > 0 ? totalSpend / totalLeads : 0;
 
   return (
     <PageContainer>
       <PageHeader
         icon={Megaphone}
+        iconAccent="primary"
         title="Управление рекламой"
         description={
           cabinets.length === 0
-            ? "Нет подключённых кабинетов"
+            ? "Подключите Meta-кабинет и запускайте кампании из одного места"
             : (
               <>
-                {cabinets.length} {cabinets.length === 1 ? "кабинет" : cabinets.length < 5 ? "кабинета" : "кабинетов"}
+                {cabinets.length}{" "}
+                {cabinets.length === 1 ? "кабинет" : cabinets.length < 5 ? "кабинета" : "кабинетов"}
                 {" · "}
-                <span className="text-success">{active} активных</span>
+                <span className="text-success">{active} активн.</span>
               </>
             )
         }
         actions={
-          <>
-            <PeriodPicker range={period} onChange={setPeriod} />
-
-            <Button
-              variant="outline"
-              size="icon"
-              className="h-10 w-10 rounded-xl border-border/60"
-              aria-label="Обновить"
-              onClick={handleRefresh}
-              title="Обновить данные"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-
-            <Button
-              onClick={() => {
-                setAddInitialStep("pick");
-                setAddOpen(true);
-              }}
-              className="h-10 gap-2 rounded-xl border border-primary/40 bg-primary/15 text-primary hover:bg-primary/25"
-            >
-              <Zap className="h-4 w-4" />
-              Быстро из Meta
-            </Button>
-
-            <Button
-              onClick={() => {
-                setAddInitialStep("configure");
-                setAddOpen(true);
-              }}
-              variant="outline"
-              className="h-10 gap-2 rounded-xl border-border/60"
-            >
-              <Plus className="h-4 w-4" />
-              Вручную
-            </Button>
-
-            <Button
-              onClick={() => setCampaignOpen(true)}
-              className="h-10 gap-2 rounded-xl bg-success text-white hover:bg-success/90"
-            >
-              <Rocket className="h-4 w-4" />
-              Создать кампанию
-            </Button>
-          </>
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <PeriodPicker range={period} onChange={setPeriod} />
+              <Button
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 rounded-xl border-border/50 bg-card/40"
+                aria-label="Обновить"
+                onClick={handleRefresh}
+                title="Обновить данные"
+              >
+                <RefreshCw className="h-4 w-4" />
+              </Button>
+              <Button
+                onClick={() => setCampaignOpen(true)}
+                className="h-10 gap-2 rounded-xl bg-success px-4 text-white hover:bg-success/90"
+              >
+                <Rocket className="h-4 w-4" />
+                Создать кампанию
+              </Button>
+            </div>
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button
+                onClick={() => {
+                  setAddInitialStep("pick");
+                  setAddOpen(true);
+                }}
+                className="h-9 gap-2 rounded-xl border border-primary/35 bg-primary/10 px-3 text-primary hover:bg-primary/20"
+              >
+                <Zap className="h-3.5 w-3.5" />
+                Подключить Meta
+              </Button>
+              <Button
+                onClick={() => {
+                  setAddInitialStep("configure");
+                  setAddOpen(true);
+                }}
+                variant="ghost"
+                className="h-9 gap-1.5 rounded-xl px-3 text-muted-foreground hover:text-foreground"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                Вручную
+              </Button>
+            </div>
+          </div>
         }
       />
 
-      {/* Aggregate KPIs — only when multiple cabinets (otherwise the row itself shows the same numbers) */}
-      {showAggregate && (
-        <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
+      {cabinets.length > 0 && (
+        <div className="mt-5 grid grid-cols-2 gap-2 lg:grid-cols-4">
           <StatChip
-            label="Расход за месяц"
-            value={`${Math.round(totalSpend).toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}\u00A0₸`}
+            label="Расход"
+            value={fmtMoney(totalSpend)}
+            hint="за выбранный период"
             accent="bg-warning/15 text-warning"
             icon={Wallet}
           />
           <StatChip
             label="Лиды"
             value={totalLeads.toLocaleString("ru-RU")}
+            hint={cpl > 0 ? `CPL ${fmtMoney(cpl)}` : "нет заявок"}
             accent="bg-success/15 text-success"
             icon={Target}
           />
           <StatChip
             label="Продажи"
             value={totalSales.toLocaleString("ru-RU")}
-            accent="bg-success/15 text-success"
+            hint="из CRM"
+            accent="bg-primary/15 text-primary"
             icon={ShoppingCart}
+          />
+          <StatChip
+            label="Активных"
+            value={`${active} / ${cabinets.length}`}
+            hint="кабинетов online"
+            accent="bg-sky-500/15 text-sky-400"
+            icon={LayoutGrid}
           />
         </div>
       )}
 
-      {/* Tabs */}
-      <Tabs value={tab} onValueChange={(v) => setSearchParams((sp) => { sp.set("tab", v); return sp; }, { replace: true })} className="mt-6">
-        <TabsList className="scrollbar-none h-10 w-full justify-start overflow-x-auto rounded-xl bg-card/60 p-1 touch-pan-x">
-          <TabsTrigger value="cabinets" className="gap-2 rounded-lg px-3 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-            <LayoutGrid className="h-3.5 w-3.5" />
-            Кабинеты
-          </TabsTrigger>
-          <TabsTrigger value="creatives" className="gap-2 rounded-lg px-3 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-            <Film className="h-3.5 w-3.5" />
-            Креативы
-          </TabsTrigger>
-          <TabsTrigger value="campaigns" className="gap-2 rounded-lg px-3 text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
-            <Target className="h-3.5 w-3.5" />
-            Кампании
-          </TabsTrigger>
-        </TabsList>
+      <Tabs
+        value={tab}
+        onValueChange={(v) =>
+          setSearchParams((sp) => {
+            sp.set("tab", v);
+            return sp;
+          }, { replace: true })
+        }
+        className="mt-6"
+      >
+        <div className="border-b border-border/50">
+          <TabsList className="scrollbar-none h-auto w-full justify-start gap-1 overflow-x-auto rounded-none bg-transparent p-0 touch-pan-x">
+            {(
+              [
+                { id: "cabinets", label: "Кабинеты", icon: LayoutGrid },
+                { id: "creatives", label: "Креативы", icon: Film },
+                { id: "campaigns", label: "Кампании", icon: Target },
+              ] as const
+            ).map((t) => (
+              <TabsTrigger
+                key={t.id}
+                value={t.id}
+                className={cn(
+                  "relative gap-2 rounded-none border-b-2 border-transparent bg-transparent px-4 py-2.5 text-sm font-medium text-muted-foreground shadow-none",
+                  "hover:text-foreground",
+                  "data-[state=active]:border-success data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none",
+                )}
+              >
+                <t.icon className="h-3.5 w-3.5" />
+                {t.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </div>
 
         <TabsContent value="cabinets" className="mt-5 space-y-3">
           {showSearch && (
-            <div className="relative">
+            <div className="relative max-w-md">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Поиск по кабинетам…"
-                className="h-10 rounded-xl border-border/60 bg-card/60 pl-10"
+                className="h-10 rounded-xl border-border/50 bg-card/50 pl-10"
               />
             </div>
           )}
@@ -245,29 +285,43 @@ const Ads = () => {
             />
           ))}
           {filtered.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-border/60 bg-card/30 p-12 text-center">
-              <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-success/10 text-success">
+            <div className="relative overflow-hidden rounded-2xl border border-dashed border-border/50 bg-gradient-to-b from-card/50 to-transparent px-6 py-14 text-center">
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-32 bg-[radial-gradient(ellipse_at_top,hsl(var(--primary)/0.12),transparent_70%)]" />
+              <div className="relative mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-primary/10 text-primary">
                 <Megaphone className="h-6 w-6" />
               </div>
-              <h3 className="mt-4 text-base font-semibold">
-                {cabinets.length === 0 ? "Пока нет кабинетов" : "Кабинеты не найдены"}
+              <h3 className="relative mt-4 text-base font-semibold">
+                {cabinets.length === 0 ? "Подключите первый кабинет" : "Кабинеты не найдены"}
               </h3>
-              <p className="mt-1 text-sm text-muted-foreground">
+              <p className="relative mx-auto mt-1.5 max-w-md text-sm text-muted-foreground">
                 {cabinets.length === 0
-                  ? "Подключите рекламный кабинет, чтобы видеть метрики и запускать кампании"
+                  ? "Выберите рекламный аккаунт Meta — метрики и запуск кампаний появятся здесь"
                   : "Попробуйте изменить поисковый запрос"}
               </p>
               {cabinets.length === 0 && (
-                <Button
-                  onClick={() => {
-                    setAddInitialStep("pick");
-                    setAddOpen(true);
-                  }}
-                  className="mt-5 h-11 rounded-xl bg-success text-white hover:bg-success/90"
-                >
-                  <Plus className="h-4 w-4" />
-                  Добавить первый кабинет
-                </Button>
+                <div className="relative mt-6 flex flex-wrap items-center justify-center gap-2">
+                  <Button
+                    onClick={() => {
+                      setAddInitialStep("pick");
+                      setAddOpen(true);
+                    }}
+                    className="h-11 gap-2 rounded-xl bg-success px-5 text-white hover:bg-success/90"
+                  >
+                    <Zap className="h-4 w-4" />
+                    Подключить из Meta
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setAddInitialStep("configure");
+                      setAddOpen(true);
+                    }}
+                    className="h-11 gap-2 rounded-xl border-border/50"
+                  >
+                    <Plus className="h-4 w-4" />
+                    Ввести вручную
+                  </Button>
+                </div>
               )}
             </div>
           )}

@@ -51,40 +51,49 @@ function AccountRow({
   badge?: string;
   onSelect?: () => void;
 }) {
+  const statusLabel = STATUS_RU[acc.status_label] ?? acc.status_label;
+  const isActive = (acc.status_label || "").toLowerCase() === "active";
+
   const inner = (
     <>
       <span
         className={cn(
-          "grid h-11 w-11 shrink-0 place-items-center rounded-xl",
-          disabled ? "bg-muted text-muted-foreground" : "bg-primary/15 text-primary",
+          "grid h-10 w-10 shrink-0 place-items-center rounded-xl",
+          disabled ? "bg-muted text-muted-foreground" : "bg-[#1877F2]/15 text-[#4B9BFF]",
         )}
       >
-        <Facebook className="h-5 w-5" />
+        <Facebook className="h-4.5 w-4.5 h-[18px] w-[18px]" />
       </span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <div className="truncate font-semibold">{acc.name}</div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <div className="truncate text-[15px] font-semibold tracking-tight">{acc.name}</div>
           {badge && (
-            <span className="shrink-0 rounded-md bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+            <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
               {badge}
             </span>
           )}
+          <span
+            className={cn(
+              "shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+              isActive ? "bg-success/15 text-success" : "bg-muted/60 text-muted-foreground",
+            )}
+          >
+            {statusLabel}
+          </span>
         </div>
-        <div className="truncate text-xs text-muted-foreground">
+        <div className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground">
           {acc.id}
           {acc.business_name ? ` · ${acc.business_name}` : ""}
         </div>
         <div className="mt-0.5 text-[11px] text-muted-foreground">
           {acc.currency}
-          {" · "}
-          {STATUS_RU[acc.status_label] ?? acc.status_label}
           {acc.timezone_name ? ` · ${acc.timezone_name}` : ""}
         </div>
       </div>
       {disabled ? (
         <CheckCircle2 className="h-5 w-5 shrink-0 text-muted-foreground" />
       ) : (
-        <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
+        <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5 group-hover:text-foreground" />
       )}
     </>
   );
@@ -92,7 +101,7 @@ function AccountRow({
   if (disabled) {
     return (
       <div
-        className="flex w-full items-center gap-3 rounded-xl border border-border/60 bg-muted/20 p-4 text-left opacity-80"
+        className="flex w-full items-center gap-3 rounded-xl border border-border/40 bg-muted/15 p-3.5 text-left opacity-75"
         aria-disabled
       >
         {inner}
@@ -104,7 +113,7 @@ function AccountRow({
     <button
       type="button"
       onClick={onSelect}
-      className="flex w-full items-center gap-3 rounded-xl border border-border/60 p-4 text-left transition hover:border-success/50 hover:bg-success/5"
+      className="group flex w-full items-center gap-3 rounded-xl border border-border/50 bg-card/40 p-3.5 text-left transition hover:border-primary/45 hover:bg-primary/5"
     >
       {inner}
     </button>
@@ -252,6 +261,11 @@ export function AddCabinetPickStep({
 
   return (
     <div className="space-y-4">
+      {newAccounts.length > 5 && (
+        <p className="text-xs text-muted-foreground">
+          Найдено {newAccounts.length} кабинетов — выберите нужный
+        </p>
+      )}
       <div className="space-y-2">
         {newAccounts.map((acc) => (
           <AccountRow key={acc.id} acc={acc} onSelect={() => onSelect(acc)} />
@@ -259,8 +273,8 @@ export function AddCabinetPickStep({
       </div>
 
       {linkedAccounts.length > 0 && (
-        <div className="space-y-2 border-t border-border/60 pt-4">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="space-y-2 border-t border-border/50 pt-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
             Уже в проекте
           </p>
           {linkedAccounts.map((acc) => (
