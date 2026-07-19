@@ -162,8 +162,14 @@ export function InstagramAccountConnect() {
 
   const handleSync = async () => {
     try {
-      await sync();
+      const res = await sync() as { results?: Array<{ webhook?: { attempted?: boolean; ok?: boolean; error?: string } }> } | void;
       toast.success("Синхронизация запущена");
+      const wh = Array.isArray(res?.results) ? res.results[0]?.webhook : undefined;
+      if (wh?.attempted && wh.ok === false) {
+        toast.warning(`Автоответ на комментарии: вебхук не подписан — ${wh.error ?? "проверьте Page-токен"}`);
+      } else if (wh?.attempted && wh.ok) {
+        toast.message("Вебхук comments/messages активен — код-слова снова слушают комментарии");
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Ошибка");
     }
@@ -329,8 +335,18 @@ export function InstagramAccountConnect() {
             </div>
           )}
 
+          {!account.igLoginTokenPresent && (
+            <div className="flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-900 dark:text-amber-100">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>
+                Нет Instagram Login токена — публичный ответ на комментарий может уйти, а Direct по код-слову
+                («хаб») чаще всего нет. Вставьте IGAA… ниже.
+              </span>
+            </div>
+          )}
+
           <div className="flex flex-wrap items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handleSync} disabled={loading} className="gap-1">
+            <Button variant="outline" size="sm" onClick={() => void handleSync()} disabled={loading} className="gap-1">
               {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
               Синхронизировать
             </Button>

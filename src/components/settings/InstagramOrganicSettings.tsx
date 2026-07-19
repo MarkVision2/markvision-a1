@@ -286,7 +286,9 @@ export function InstagramOrganicSettings() {
             <h3 className="text-base font-semibold">Instagram organic — код-слова</h3>
             <p className="mt-1 text-sm text-muted-foreground">
               Настройте код-слово, варианты ответов в комментарии, тексты и ссылки для Direct.
-              Webhook случайно выбирает варианты и возвращает их n8n / GreenAPI. Аналитика считает: написали код-слово → перешли по ссылке.
+              MarkVision сам слушает комментарии (webhook) и шлёт ответ + DM. Аналитика: написали
+              код-слово → перешли по ссылке. Если ответа нет — Настройки → Instagram → «Синхронизировать»
+              (подпишет webhook) и проверьте Instagram Login токен для DM.
             </p>
           </div>
         </div>

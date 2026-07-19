@@ -480,3 +480,20 @@ ALTER TABLE public.cf_scheduled_posts
 CREATE UNIQUE INDEX IF NOT EXISTS content_plan_items_project_ig_media_uidx
   ON public.content_plan_items (project_id, ig_media_id)
   WHERE ig_media_id IS NOT NULL AND length(btrim(ig_media_id)) > 0;
+
+-- ---------------------------------------------------------------------------
+-- G) ig-webhook: external_id + legacy reply_text/dm_text (иначе код-слова молчат)
+-- ---------------------------------------------------------------------------
+ALTER TABLE public.instagram_codewords
+  ADD COLUMN IF NOT EXISTS reply_text text,
+  ADD COLUMN IF NOT EXISTS dm_text text;
+
+CREATE INDEX IF NOT EXISTS idx_instagram_accounts_ig_user_id
+  ON public.instagram_accounts(ig_user_id);
+
+ALTER TABLE public.instagram_organic_events
+  ADD COLUMN IF NOT EXISTS external_id text;
+
+CREATE UNIQUE INDEX IF NOT EXISTS instagram_organic_events_external_id_key
+  ON public.instagram_organic_events (external_id)
+  WHERE external_id IS NOT NULL;

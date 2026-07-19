@@ -116,7 +116,26 @@ Deno.serve(async (req) => {
       body: JSON.stringify({ project_id }),
     }).catch(() => {});
 
-    return json({ ok: true });
+    // Подписка Page на comments/messages — без этого ig-webhook не получает
+    // комментарии с код-словом («хаб» и т.п.) и молчит.
+    let webhookSubscribed = true;
+    let webhookError: string | null = null;
+    try {
+      const subRes = await fetch(
+        `${GRAPH}/${page_id}/subscribed_apps?subscribed_fields=comments,messages&access_token=${page.access_token}`,
+        { method: "POST" },
+      );
+      const subJson = await subRes.json().catch(() => ({}));
+      if (!subRes.ok || subJson?.error) {
+        webhookSubscribed = false;
+        webhookError = subJson?.error?.message ?? `HTTP ${subRes.status}`;
+      }
+    } catch (e) {
+      webhookSubscribed = false;
+      webhookError = e instanceof Error ? e.message : "unknown";
+    }
+
+    return json({ ok: true, webhookSubscribed, webhookError });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "unknown" }, 500);
   }

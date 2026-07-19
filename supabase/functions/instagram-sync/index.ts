@@ -297,7 +297,32 @@ async function syncOne(supa: any, account: any) {
     pageSched = { attempted: true, count: 0, error: e?.message ?? "page scheduled_posts failed" };
   }
 
-  return { pageSched };
+  // 7) Переподписка Page на comments/messages — чинит уже подключённые аккаунты,
+  // у которых при connect забыли subscribed_apps (код-слова молчат).
+  let webhook: { attempted: boolean; ok?: boolean; error?: string } = { attempted: false };
+  try {
+    const pageId = typeof account.page_id === "string" ? account.page_id.trim() : "";
+    const pageTok = typeof account.page_access_token === "string" ? account.page_access_token.trim() : "";
+    if (pageId && pageTok) {
+      webhook.attempted = true;
+      const subRes = await fetch(
+        `${GRAPH_FB}/${pageId}/subscribed_apps?subscribed_fields=comments,messages&access_token=${encodeURIComponent(pageTok)}`,
+        { method: "POST" },
+      );
+      const subJson = await subRes.json().catch(() => ({}));
+      if (!subRes.ok || subJson?.error) {
+        webhook.ok = false;
+        webhook.error = String(subJson?.error?.message ?? `HTTP ${subRes.status}`);
+      } else {
+        webhook.ok = true;
+      }
+    }
+  } catch (e) {
+    webhook.ok = false;
+    webhook.error = e instanceof Error ? e.message : "unknown";
+  }
+
+  return { pageSched, webhook };
 }
 
 Deno.serve(async (req) => {
