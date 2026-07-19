@@ -1,7 +1,7 @@
 {
-  "git_sha": "c9042b7",
-  "git_sha_full": "c9042b73d71214a62938b816f05245083b576770",
-  "updated_at": "2026-07-19T15:24:06Z",
-  "label": "Merge branch 'cursor/content-plan-period-presets-84cc' — period picker presets",
+  "git_sha": "b67dc0e",
+  "git_sha_full": "b67dc0ee990513557438fd2f46be6217eb3cd08a",
+  "updated_at": "2026-07-19T15:30:49Z",
+  "label": "Merge branch 'cursor/content-plan-ig-schedule-84cc' — IG schedule visibility + post-publish plan orphans",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
