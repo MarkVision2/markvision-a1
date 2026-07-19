@@ -75,9 +75,9 @@ const ACTIVE_STATUSES: MontageJob["status"][] = ["queued", "processing", "render
 
 const BRIEF_PRESETS = [
   { icon: Zap,      label: "Динамичный темп" },
-  { icon: Scissors, label: "Убрать паразитов и паузы" },
   { icon: Sparkles, label: "Акцент на цифрах и фактах" },
-  { icon: Wand2,    label: "Оставить только суть" },
+  { icon: Wand2,    label: "Крупные титры на ключевые фразы" },
+  { icon: MonitorPlay, label: "Больше motion-вставок" },
 ];
 
 function formatBytes(b: number) {
@@ -138,7 +138,7 @@ function JobCard({
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
               <span>{new Date(job.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
               <span>·</span>
-              <span>{(job.formats ?? []).map((f) => (f === "shorts" ? `шортсы×${job.shorts_count ?? 3}` : "16:9")).join(" + ")}</span>
+              <span>полный ролик 16:9</span>
             </div>
           </div>
         </div>
@@ -260,7 +260,8 @@ const CreateMontageLab = () => {
   const [uploaded, setUploaded] = useState<{ url: string; name: string } | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [duration, setDuration] = useState<number>(0);
-  const [formats, setFormats] = useState<MontageFormat[]>(["16:9"]);
+  // Формат зафиксирован: только цельный 16:9, без шортсов/нарезки.
+  const formats: MontageFormat[] = ["16:9"];
   const [brief, setBrief] = useState("");
   const [brollMode, setBrollMode] = useState<ReelsBrollMode>("auto");
   const [selectedFolderIds, setSelectedFolderIds] = useState<string[]>([]);
@@ -392,15 +393,6 @@ const CreateMontageLab = () => {
     setUploadPct2(0);
   };
 
-  const toggleFormat = (f: MontageFormat) => {
-    // 16:9 всегда обязателен — очередь монтирует исходник целиком.
-    if (f === "16:9") return;
-    setFormats((prev) => {
-      const next = prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f];
-      return next.includes("16:9") ? next : ["16:9", ...next];
-    });
-  };
-
   const addPreset = (text: string) => {
     setBrief((b) => {
       if (b.toLowerCase().includes(text.toLowerCase())) return b;
@@ -497,7 +489,7 @@ const CreateMontageLab = () => {
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-bold tracking-tight">Монтаж съёмки</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Загрузите сырую «говорящую голову» — AI-конвейер вырежет паузы и дубли, добавит зумы и акценты, соберёт ролик и шортсы
+              Загрузите сырую «говорящую голову» — AI добавит зумы, акценты и motion-вставки поверх цельного ролика. Без нарезки на шортсы.
             </p>
           </div>
           {activeCount > 0 && (
@@ -700,66 +692,27 @@ const CreateMontageLab = () => {
               )}
             </section>
 
-            {/* Шаг 3. Форматы */}
+            {/* Шаг 3. Формат — только цельный ролик */}
             <section className="rounded-2xl border border-border/60 bg-card/30 p-4 sm:p-5">
               <div className="mb-3 flex items-center gap-2">
                 <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">3</span>
                 <h2 className="text-sm font-semibold">Что смонтировать</h2>
               </div>
 
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                <button
-                  type="button"
-                  onClick={() => toggleFormat("16:9")}
-                  aria-pressed={formats.includes("16:9")}
-                  className={cn(
-                    "group flex items-center gap-3 rounded-xl border-2 p-3 text-left transition",
-                    "border-primary bg-primary/5",
-                  )}
-                >
-                  <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded-md border-2 border-primary bg-primary/10 transition">
-                    <MonitorPlay className="h-4 w-4 text-primary" />
+              <div className="flex items-center gap-3 rounded-xl border-2 border-primary bg-primary/5 p-3">
+                <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded-md border-2 border-primary bg-primary/10">
+                  <MonitorPlay className="h-4 w-4 text-primary" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <div className="text-sm font-semibold">Полный ролик 16:9</div>
+                    <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <div className="text-sm font-semibold">Полный ролик 16:9</div>
-                      <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Исходник целиком + монтаж (вставки, акценты). Без нарезки.
-                    </div>
+                  <div className="text-xs text-muted-foreground">
+                    Исходник целиком: вставки и акценты поверх. Без шортсов и без нарезки на куски.
                   </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => toggleFormat("shorts")}
-                  aria-pressed={formats.includes("shorts")}
-                  className={cn(
-                    "group flex items-center gap-3 rounded-xl border-2 p-3 text-left transition",
-                    formats.includes("shorts")
-                      ? "border-primary bg-primary/5"
-                      : "border-border/60 hover:border-primary/40",
-                  )}
-                >
-                  <div className={cn(
-                    "flex h-10 w-6 shrink-0 items-center justify-center rounded-md border-2 transition",
-                    formats.includes("shorts") ? "border-primary bg-primary/10" : "border-border/60",
-                  )}>
-                    <Smartphone className="h-4 w-4 text-primary" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <div className="text-sm font-semibold">+ Шортсы 9:16</div>
-                      {formats.includes("shorts") && <CheckCircle2 className="h-3.5 w-3.5 text-primary" />}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      Опционально: доп. нарезка лучших моментов (основной ролик не режется)
-                    </div>
-                  </div>
-                </button>
+                </div>
               </div>
-
             </section>
 
             {/* Шаг 4. B-roll — как в Reels-видео */}
@@ -949,10 +902,8 @@ const CreateMontageLab = () => {
                   </dd>
                 </div>
                 <div className="flex justify-between gap-2">
-                  <dt className="text-muted-foreground">Форматы</dt>
-                  <dd className="font-medium">
-                    {formats.map((f) => (f === "shorts" ? "шортсы" : "16:9")).join(" + ")}
-                  </dd>
+                  <dt className="text-muted-foreground">Формат</dt>
+                  <dd className="font-medium">полный 16:9</dd>
                 </div>
                 <div className="flex justify-between gap-2">
                   <dt className="text-muted-foreground">B-roll</dt>

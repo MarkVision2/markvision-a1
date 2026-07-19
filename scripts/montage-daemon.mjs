@@ -247,12 +247,10 @@ async function processJob(job) {
   mkdirSync(work, { recursive: true });
   writeFileSync(resolve(work, "job.json"), JSON.stringify(job, null, 2));
 
-  const formats = Array.isArray(job.formats) ? job.formats : ["16:9"];
-  // Очередь «Монтаж съёмки»: исходник клиента всегда идёт в полный 16:9.
-  // Шортсы — только доп. продукт, никогда не заменяют цельный ролик.
+  // Очередь «Монтаж съёмки»: ТОЛЬКО цельный 16:9. Шортсы/нарезку не делаем —
+  // даже если в formats ошибочно пришло "shorts" (старый UI / повтор заявки).
   const wantMain = true;
-  const wantShorts = formats.includes("shorts");
-  const shortsCount = Math.min(3, Math.max(1, job.shorts_count || 3));
+  const wantShorts = false;
   const brief = job.brief || "";
   const brollMode = ["auto", "library", "pexels", "kie"].includes(job.broll_mode)
     ? job.broll_mode
