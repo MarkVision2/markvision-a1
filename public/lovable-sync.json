@@ -1,7 +1,7 @@
 {
-  "git_sha": "90ad559",
-  "git_sha_full": "90ad559d687234efaa98b77addbae4489f2055ac",
-  "updated_at": "2026-07-19T15:14:54Z",
-  "label": "Merge branch 'cursor/ads-ui-redesign-84cc' — Ads UI redesign",
+  "git_sha": "9835b64",
+  "git_sha_full": "9835b643e64732b960b60cb16511dda3b42293d5",
+  "updated_at": "2026-07-19T15:18:15Z",
+  "label": "Merge branch 'cursor/content-plan-trim-past-84cc' — remove past content-plan posts",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
