@@ -397,12 +397,84 @@ function stockLooksOffTopic(query, video) {
 async function fetchLibraryCatalog(job, folderIds) {
   const projectId = String(job.project_id || "");
   if (!projectId || !folderIds?.length) return [];
-  const res = await call(MW, {
-    action: "library_assets",
-    project_id: projectId,
-    folder_ids: folderIds,
-  });
-  return Array.isArray(res.assets) ? res.assets : [];
+  try {
+    const res = await call(MW, {
+      action: "library_assets",
+      project_id: projectId,
+      folder_ids: folderIds,
+    });
+    if (Array.isArray(res.assets) && res.assets.length) return res.assets;
+  } catch (e) {
+    console.warn(
+      "library_assets via edge failed, trying DB fallback:",
+      e instanceof Error ? e.message : e,
+    );
+  }
+  // Fallback until montage-worker with library_assets is deployed.
+  const dbUrl = env.DATABASE_URL || env.SUPABASE_DB_URL || "";
+  if (!dbUrl) return [];
+  try {
+    const ids = folderIds.map((id) => `'${String(id).replace(/'/g, "''")}'`).join(",");
+    const sql = `SELECT a.id, a.folder_id, a.name, a.media_type, a.public_url, a.storage_path,
+      a.metadata, a.size_bytes, f.name AS folder_name
+      FROM reels_assets a
+      JOIN reels_asset_folders f ON f.id = a.folder_id
+      WHERE a.project_id = '${projectId.replace(/'/g, "''")}'
+        AND a.folder_id IN (${ids})
+      ORDER BY a.created_at DESC
+      LIMIT 200`;
+    const r = spawnSync("psql", [dbUrl, "-v", "ON_ERROR_STOP=1", "-At", "-F", "\t", "-c", sql], {
+      encoding: "utf8",
+      env: { ...process.env, ...env },
+    });
+    if (r.status !== 0) {
+      console.warn("library DB fallback failed:", (r.stderr || r.stdout || "").slice(0, 300));
+      return [];
+    }
+    const assets = String(r.stdout || "").trim().split("\n").filter(Boolean).map((line) => {
+      const [id, folder_id, name, media_type, public_url, storage_path, metadata, size_bytes, folder_name] =
+        line.split("\t");
+      let meta = {};
+      try { meta = JSON.parse(metadata || "{}"); } catch { /* */ }
+      return {
+        id, folder_id, name, media_type, public_url, storage_path,
+        metadata: meta, size_bytes: Number(size_bytes) || null, folder_name,
+      };
+    });
+    console.log(`library catalog via DB: ${assets.length}`);
+    return assets;
+  } catch (e) {
+    console.warn("library DB fallback threw:", e instanceof Error ? e.message : e);
+    return [];
+  }
+}
+
+/** If AI (old deploy) returned only motion — place library clips on strong accents. */
+function synthesizeLibrarySlots(insertsDoc, catalog, words, durationSec) {
+  const list = Array.isArray(insertsDoc?.inserts) ? [...insertsDoc.inserts] : [];
+  const hasVideoPlan = list.some((it) => !it.template && (it.assetId || it.query || it.prompt));
+  if (hasVideoPlan || !catalog.length || !Array.isArray(words) || !words.length) {
+    return insertsDoc;
+  }
+  const target = Math.min(6, catalog.length, Math.max(2, Math.round((durationSec || 60) / 12)));
+  const step = Math.max(8, Math.floor(words.length / (target + 1)));
+  const slots = [];
+  for (let i = 0; i < target; i++) {
+    const anchor = Math.min(words.length - 2, (i + 1) * step);
+    const end = Math.min(words.length - 1, anchor + 8);
+    const spoken = words.slice(anchor, end + 1).map((w) => w.word || w.text || "").join(" ");
+    slots.push({
+      anchorWord: anchor,
+      endWord: end,
+      assetId: null,
+      query: spoken.slice(0, 80),
+      layout: "full",
+      spokenText: spoken.slice(0, 160),
+      note: spoken.slice(0, 80),
+    });
+  }
+  console.log(`library: synthesized ${slots.length} video slots (AI had no asset plan)`);
+  return { inserts: [...slots, ...list] };
 }
 
 /** Скачать клипы из папок проекта → remotion/public/inserts/<jobId>/ */
@@ -753,8 +825,9 @@ async function processJob(job) {
     });
     let inserts = insertsRaw;
     if (brollMode === "library" && libraryCatalog.length) {
+      inserts = synthesizeLibrarySlots(insertsRaw, libraryCatalog, words, durationSec);
       await status(id, "подставляем B-roll из папок");
-      const external = await materializeLibraryBroll(job, insertsRaw, libraryCatalog);
+      const external = await materializeLibraryBroll(job, inserts, libraryCatalog);
       if (external) {
         inserts = external;
       } else {
