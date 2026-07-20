@@ -38,6 +38,60 @@ function saveEnvKey(path, key, value) {
   writeFileSync(path, text, { mode: 0o600 });
 }
 
+const HOOK_INSERT_TEMPLATES = new Set(["kinetic-type", "big-statement", "quote-card"]);
+
+/** Earliest insert = short hook motion (not video / soft open). */
+function ensureHookFirstInsert(doc) {
+  const inserts = Array.isArray(doc?.inserts) ? [...doc.inserts] : [];
+  if (!inserts.length) return doc;
+  const sorted = inserts.sort(
+    (a, b) => Number(a.anchorWord ?? 0) - Number(b.anchorWord ?? 0),
+  );
+  const first = sorted[0];
+  const firstTpl = String(first.template || "");
+  if (firstTpl && HOOK_INSERT_TEMPLATES.has(firstTpl) && !first.prompt && !first.query) {
+    sorted[0] = {
+      ...first,
+      layout: "full",
+      data: { ...(first.data || {}), cover: true },
+    };
+    return { ...doc, inserts: sorted };
+  }
+  const hookIdx = sorted.findIndex(
+    (it) => it.template && HOOK_INSERT_TEMPLATES.has(String(it.template)),
+  );
+  const a0 = Number(first.anchorWord ?? 0);
+  const e0 = Math.max(a0 + 1, Number(first.endWord ?? a0 + 3));
+  if (hookIdx > 0) {
+    const hook = sorted[hookIdx];
+    sorted[hookIdx] = { ...first };
+    sorted[0] = {
+      ...hook,
+      anchorWord: a0,
+      endWord: Math.min(e0, a0 + 8),
+      layout: "full",
+      data: { ...(hook.data || {}), cover: true },
+    };
+    delete sorted[0].prompt;
+    delete sorted[0].query;
+    sorted.sort((a, b) => Number(a.anchorWord ?? 0) - Number(b.anchorWord ?? 0));
+    return { ...doc, inserts: sorted };
+  }
+  const note = String(first.note || first.spokenText || "СМОТРИ");
+  const punch = note.split(/\s+/).filter(Boolean).slice(0, 3).map((w) => w.toUpperCase());
+  sorted[0] = {
+    anchorWord: a0,
+    endWord: Math.min(e0, a0 + 8),
+    template: "kinetic-type",
+    layout: "full",
+    data: { words: punch.length ? punch : ["СМОТРИ"], cover: true, accent: "#EF4444" },
+    note: first.note || note,
+    spokenText: first.spokenText || note,
+  };
+  console.log("ensureHookFirstInsert: forced kinetic hook on first insert");
+  return { ...doc, inserts: sorted };
+}
+
 const env = { ...loadEnv(resolve(".env")), ...process.env };
 const SUPABASE_URL = env.VITE_SUPABASE_URL || env.VITE_CLIENT_SUPABASE_URL;
 const ANON_KEY = env.VITE_SUPABASE_PUBLISHABLE_KEY || env.VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY;
@@ -491,6 +545,7 @@ async function processJob(job) {
   const insertBrief = [
     brief,
     brollHint,
+    "ХУК (ОБЯЗАТЕЛЬНО): первая вставка — kinetic-type/big-statement/quote-card на первых словах, punch ≤3 слова, cover:true. Не видео и не «привет».",
     style.aiRules || "",
   ].filter(Boolean).join("\n");
   writeFileSync(
@@ -638,7 +693,10 @@ async function processJob(job) {
         console.log(`+ motion design: ${extra.length} (video=${list.length})`);
       }
     }
-    writeFileSync(resolve(work, "inserts.json"), JSON.stringify(inserts, null, 2));
+    writeFileSync(
+      resolve(work, "inserts.json"),
+      JSON.stringify(ensureHookFirstInsert(inserts), null, 2),
+    );
     // Для Kie/Pexels не дописываем regex-оффтоп поверх видео-клипов.
     // Для motion — только grounded fills (без invented kinetic-type).
     const skipEnrich = brollMode === "kie" || brollMode === "pexels" || brollMode === "library"
