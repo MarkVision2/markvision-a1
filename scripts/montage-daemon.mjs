@@ -69,7 +69,14 @@ async function call(url, body, retries = 5) {
         body: JSON.stringify(body),
       });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok || j.error) throw new Error(j.error || `HTTP ${r.status}`);
+      if (!r.ok || j.error) {
+        const detail = typeof j.detail === "string"
+          ? j.detail
+          : j.detail
+            ? JSON.stringify(j.detail).slice(0, 240)
+            : "";
+        throw new Error([j.error || `HTTP ${r.status}`, detail].filter(Boolean).join(" — "));
+      }
       return j;
     } catch (e) {
       last = e;
@@ -467,13 +474,14 @@ async function processJob(job) {
   const brollHint = {
     auto: "B-roll: motion-графика по стилю шаблона.",
     library: "B-roll: папки проекта + motion по стилю шаблона.",
-    pexels: "B-roll: Pexels-клипы + motion по стилю шаблона.",
-    kie: "B-roll: Kie/Kling клипы + motion по стилю шаблона.",
+    pexels: "B-roll: Pexels-клипы по смыслу речи (не motion-шаблоны).",
+    kie: "B-roll: Kie/Kling видео-клипы по смыслу речи (не motion-шаблоны).",
   }[brollMode];
+  // Для Kie/Pexels не подмешиваем motion-aiRules стиля — иначе ТЗ выглядит как «авто/motion».
   const insertBrief = [
     brief,
     brollHint,
-    style.aiRules || "",
+    (brollMode === "kie" || brollMode === "pexels") ? "" : (style.aiRules || ""),
   ].filter(Boolean).join("\n");
   writeFileSync(
     resolve(work, "broll.json"),
@@ -564,12 +572,18 @@ async function processJob(job) {
         inserts = external;
       } else {
         // Фоллбэк: motion, чтобы ролик не остался без вставок.
+        // Важно: в статусе явно пишем, что Kie/Pexels не сработали — иначе кажется, что ТЗ ушло как «авто».
         console.warn(`${brollMode} пуст → motion fallback`);
+        await status(id, `${brollMode} не дал клипов → motion fallback`);
         inserts = await call(AI, {
           action: "markup_inserts",
           indexed,
           utterances,
-          brief: insertBrief,
+          brief: [
+            brief,
+            "B-roll: motion-графика (fallback — внешний источник не вернул клипы).",
+            style.aiRules || "",
+          ].filter(Boolean).join("\n"),
           durationSec,
           brollMode: "auto",
           assetFolderIds,

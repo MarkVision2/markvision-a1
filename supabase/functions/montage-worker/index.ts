@@ -294,20 +294,30 @@ Deno.serve(async (req) => {
 
       case "kie_create": {
         const projectId = String(body.project_id ?? "");
-        const prompt = String(body.prompt ?? "").trim().slice(0, 2500);
+        // Kling 2.6: prompt max 1000; v2-1-master снят с маркета («Operation not found»).
+        const prompt = String(body.prompt ?? "").trim().slice(0, 1000);
         if (!projectId || !prompt) return json({ error: "project_id and prompt required" }, 400);
         const apiKey = await projectProviderKey(admin, projectId, "kie");
         const response = await fetch("https://api.kie.ai/api/v1/jobs/createTask", {
           method: "POST",
           headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
           body: JSON.stringify({
-            model: "kling/v2-1-master-text-to-video",
-            input: { prompt, aspect_ratio: "9:16" },
+            model: "kling-2.6/text-to-video",
+            input: {
+              prompt,
+              sound: false,
+              aspect_ratio: "9:16",
+              duration: "5",
+            },
           }),
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || payload.code !== 200) {
-          return json({ error: `Kie.ai ${response.status}`, detail: payload.msg ?? payload }, 502);
+          const detail = String(payload.msg ?? JSON.stringify(payload).slice(0, 300));
+          return json({
+            error: `Kie.ai ${payload.code ?? response.status}${detail ? `: ${detail}` : ""}`,
+            detail,
+          }, 502);
         }
         return json({ taskId: payload.data?.taskId });
       }
