@@ -1,7 +1,7 @@
 {
-  "git_sha": "eca2af3",
-  "git_sha_full": "eca2af3d2997ec9c57eab416dfa86827408fb844",
-  "updated_at": "2026-07-19T17:19:28Z",
-  "label": "Merge pull request #148 from MarkVision2/cursor/montage-full-no-chop-84cc",
+  "git_sha": "d268c0b",
+  "git_sha_full": "d268c0bd710cf3921d171ae0cb23cfa0c1e49ccf",
+  "updated_at": "2026-07-20T05:14:31Z",
+  "label": "Merge pull request #149 from MarkVision2/cursor/fix-key-wav-84cc",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
