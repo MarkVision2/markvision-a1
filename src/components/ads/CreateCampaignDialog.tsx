@@ -10,6 +10,8 @@ import {
   LayoutTemplate,
   Plus,
   X,
+  RefreshCw,
+  ExternalLink,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -36,7 +38,7 @@ import { DEFAULT_META_UTM_TEMPLATE } from "@/lib/utmDefaults";
 import type { AdCabinet } from "@/types/ads";
 import { saveCampaign } from "@/hooks/useCabinetsStore";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
-import { useMetaPageAssets } from "@/hooks/useMetaPageAssets";
+import { useMetaPageAssets, type IgMediaItem } from "@/hooks/useMetaPageAssets";
 import GoalAssetsPicker from "./GoalAssetsPicker";
 import { cropImageFile, computeSourceRect, type Fit } from "@/lib/cropMedia";
 
@@ -81,6 +83,8 @@ interface CreateCampaignDialogProps {
 
 type Goal = "whatsapp" | "site-leads" | "meta-form";
 type CreativeFormat = "single" | "carousel";
+/** Как в Meta Ads Manager: создать креатив или взять существующую публикацию IG. */
+type AdSetupMode = "create" | "existing";
 
 const CAROUSEL_MIN = 2;
 const CAROUSEL_MAX = 10;
@@ -477,6 +481,129 @@ const CarouselUpload = ({
   );
 };
 
+/** Выбор существующей публикации Instagram для продвижения (source_instagram_media_id). */
+const ExistingPostPicker = ({
+  items,
+  isLoading,
+  error,
+  selectedId,
+  onSelect,
+  onRefresh,
+}: {
+  items: IgMediaItem[];
+  isLoading: boolean;
+  error: string | null;
+  selectedId: string;
+  onSelect: (id: string) => void;
+  onRefresh: () => void;
+}) => (
+  <div className="space-y-3">
+    <div className="flex items-center justify-between gap-2">
+      <div className="text-xs uppercase tracking-wider text-muted-foreground">
+        Публикации Instagram
+      </div>
+      <button
+        type="button"
+        onClick={onRefresh}
+        className="inline-flex h-7 items-center gap-1 rounded-lg px-2 text-[11px] text-muted-foreground hover:text-foreground"
+      >
+        <RefreshCw className={`h-3 w-3 ${isLoading ? "animate-spin" : ""}`} />
+        Обновить
+      </button>
+    </div>
+
+    {error && (
+      <div className="rounded-xl border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
+        {error}
+      </div>
+    )}
+
+    {!error && isLoading && items.length === 0 && (
+      <div className="rounded-xl border border-border/50 bg-background/40 p-6 text-center text-xs text-muted-foreground">
+        Загружаем публикации…
+      </div>
+    )}
+
+    {!error && !isLoading && items.length === 0 && (
+      <div className="rounded-xl border border-border/50 bg-background/40 p-6 text-center text-xs text-muted-foreground">
+        Нет публикаций у этой страницы Instagram. Опубликуйте пост в IG или проверьте привязку Page ↔ Instagram.
+      </div>
+    )}
+
+    {items.length > 0 && (
+      <div className="grid max-h-[52vh] grid-cols-2 gap-2 overflow-y-auto pr-1">
+        {items.map((m) => {
+          const active = selectedId === m.id;
+          const thumb = m.thumbnail_url || m.media_url;
+          const label =
+            m.media_product_type === "REELS"
+              ? "Reels"
+              : m.media_type === "CAROUSEL_ALBUM"
+                ? "Карусель"
+                : m.media_type === "VIDEO"
+                  ? "Видео"
+                  : "Фото";
+          return (
+            <button
+              key={m.id}
+              type="button"
+              disabled={!m.eligible_to_boost}
+              onClick={() => onSelect(m.id)}
+              className={cn(
+                "group relative overflow-hidden rounded-xl border text-left transition",
+                active
+                  ? "border-success ring-2 ring-success/40"
+                  : m.eligible_to_boost
+                    ? "border-border/60 hover:border-success/50"
+                    : "cursor-not-allowed border-border/40 opacity-50",
+              )}
+              title={m.eligible_to_boost ? undefined : (m.boost_reason || "Нельзя продвигать")}
+            >
+              <div className="aspect-square bg-background/60">
+                {thumb ? (
+                  <img src={thumb} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <div className="grid h-full place-items-center text-[10px] text-muted-foreground">
+                    нет превью
+                  </div>
+                )}
+              </div>
+              <div className="space-y-0.5 p-2">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    {label}
+                  </span>
+                  {active && <CheckCircle2 className="h-3.5 w-3.5 text-success" />}
+                </div>
+                <div className="line-clamp-2 text-[11px] text-foreground/90">
+                  {m.caption?.trim() || "Без подписи"}
+                </div>
+                {!m.eligible_to_boost && (
+                  <div className="text-[10px] text-destructive">
+                    {m.boost_reason || "Нельзя продвигать"}
+                  </div>
+                )}
+              </div>
+              {m.permalink && (
+                <a
+                  href={m.permalink}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-background/85 text-foreground opacity-0 shadow transition group-hover:opacity-100"
+                  aria-label="Открыть в Instagram"
+                >
+                  <ExternalLink className="h-3 w-3" />
+                </a>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    )}
+  </div>
+);
+
 const CreateCampaignDialog = ({
   open,
   onOpenChange,
@@ -486,10 +613,12 @@ const CreateCampaignDialog = ({
   const [cabinetId, setCabinetId] = useState<string>(cabinets[0]?.id ?? "");
   const [goal, setGoal] = useState<Goal>("whatsapp");
   const [budget, setBudget] = useState("50");
+  const [adSetupMode, setAdSetupMode] = useState<AdSetupMode>("create");
   const [creativeFormat, setCreativeFormat] = useState<CreativeFormat>("single");
   const [feed, setFeed] = useState<File | null>(null);
   const [stories, setStories] = useState<File | null>(null);
   const [carouselFiles, setCarouselFiles] = useState<File[]>([]);
+  const [existingMediaId, setExistingMediaId] = useState("");
   // View-state каждого превью — обновляется коллбеком onView.
   const feedViewRef = useRef<CreativeViewState | null>(null);
   const storiesViewRef = useRef<CreativeViewState | null>(null);
@@ -518,6 +647,7 @@ const CreateCampaignDialog = ({
   useEffect(() => {
     setPageId(selectedCabinet?.pageId ?? "");
     setWebsiteUrl(selectedCabinet?.websiteUrl ?? "");
+    setExistingMediaId("");
   }, [cabinetId, selectedCabinet?.pageId, selectedCabinet?.websiteUrl]);
 
   // Если в списке доступных страниц нет текущей — но дефолт из настроек уже задан,
@@ -532,6 +662,27 @@ const CreateCampaignDialog = ({
   const effectivePageName =
     pagesAssets.data.find((p) => p.id === effectivePageId)?.name ??
     selectedCabinet?.pageName ?? "";
+  const effectivePageMeta = pagesAssets.data.find((p) => p.id === effectivePageId);
+  const effectiveIgUserId =
+    effectivePageMeta?.instagram_id ||
+    selectedCabinet?.instagramId ||
+    "";
+
+  // Сброс выбранной публикации при смене страницы / режима.
+  useEffect(() => {
+    setExistingMediaId("");
+  }, [effectivePageId, adSetupMode]);
+
+  // Organic IG posts for "use existing publication" (Meta: source_instagram_media_id).
+  const igMedia = useMetaPageAssets({
+    kind: "ig_media",
+    actId: selectedCabinet?.adAccountId,
+    pageId: effectivePageId || undefined,
+    igUserId: effectiveIgUserId || undefined,
+    enabled: adSetupMode === "existing" && !!effectivePageId,
+  });
+
+  const selectedExistingPost = igMedia.data.find((m) => m.id === existingMediaId);
 
   const [submitting, setSubmitting] = useState(false);
   const [successOpen, setSuccessOpen] = useState(false);
@@ -567,7 +718,21 @@ const CreateCampaignDialog = ({
       toast.error("Выберите лид-форму");
       return;
     }
-    if (creativeFormat === "carousel") {
+    if (adSetupMode === "existing") {
+      if (!existingMediaId) {
+        toast.error("Выберите публикацию Instagram");
+        return;
+      }
+      if (!effectiveIgUserId) {
+        toast.error("У страницы нет привязанного Instagram — выберите другую страницу");
+        return;
+      }
+      if (selectedExistingPost && !selectedExistingPost.eligible_to_boost) {
+        toast.error("Эту публикацию нельзя продвигать");
+        return;
+      }
+    }
+    if (adSetupMode === "create" && creativeFormat === "carousel") {
       if (carouselFiles.length < CAROUSEL_MIN) {
         toast.error(`Карусель: загрузите минимум ${CAROUSEL_MIN} фото`);
         return;
@@ -591,6 +756,12 @@ const CreateCampaignDialog = ({
     let feedCropMeta: Record<string, unknown> | null = null;
     let storiesCropMeta: Record<string, unknown> | null = null;
     try {
+      if (adSetupMode === "existing") {
+        // Существующая публикация — файлы не грузим, креатив через source_instagram_media_id.
+        bakedFeed = null;
+        bakedStories = null;
+        bakedCarousel = [];
+      } else {
       const bake = async (
         f: File | null,
         view: CreativeViewState | null,
@@ -665,6 +836,7 @@ const CreateCampaignDialog = ({
         bakedStories = storiesRes.file;
         storiesCropMeta = storiesRes.cropMeta;
       }
+      }
       setBakeStatus(null);
       setBakePct(0);
     } catch (e) {
@@ -697,8 +869,8 @@ const CreateCampaignDialog = ({
         ad_account_id: cab.adAccountId ?? "",
         page_id: effectivePageId || cab.pageId || "",
         page_name: effectivePageName || cab.pageName || "",
-        instagram_actor_id: cab.instagramId ?? "",
-        instagram_user_id: cab.instagramId ?? "",
+        instagram_actor_id: effectiveIgUserId || cab.instagramId || "",
+        instagram_user_id: effectiveIgUserId || cab.instagramId || "",
         fb_token: cab.accessToken ?? "",
         fb_pixel_id: goal === "site-leads" ? pixelId : (cab.pixelId ?? ""),
         pixel_event: goal === "site-leads" ? pixelEvent : (cab.pixelEvent ?? "Lead"),
@@ -760,7 +932,11 @@ const CreateCampaignDialog = ({
       budget: Number(budget) || 0,
       currency: cab?.currency ?? "USD",
       text,
-      creativeFormat,
+      adSetupMode,
+      creativeFormat: adSetupMode === "existing" ? "existing_post" : creativeFormat,
+      sourceInstagramMediaId: adSetupMode === "existing" ? existingMediaId : undefined,
+      source_instagram_media_id: adSetupMode === "existing" ? existingMediaId : undefined,
+      instagramUserId: effectiveIgUserId || cab?.instagramId || undefined,
       pageId: effectivePageId || cab?.pageId || undefined,
       pageName: effectivePageName || cab?.pageName || undefined,
       whatsappNumber: goal === "whatsapp" ? whatsappId : undefined,
@@ -792,7 +968,7 @@ const CreateCampaignDialog = ({
             }
           : null,
         carousel:
-          creativeFormat === "carousel"
+          adSetupMode === "create" && creativeFormat === "carousel"
             ? bakedCarousel.map((f) => ({
                 name: f.name,
                 type: f.type,
@@ -801,16 +977,31 @@ const CreateCampaignDialog = ({
                 baked: true,
               }))
             : null,
+        existingPost:
+          adSetupMode === "existing" && existingMediaId
+            ? {
+                media_id: existingMediaId,
+                ig_user_id: effectiveIgUserId || cab?.instagramId || null,
+                permalink: selectedExistingPost?.permalink ?? null,
+                media_type: selectedExistingPost?.media_type ?? null,
+                caption: selectedExistingPost?.caption ?? null,
+              }
+            : null,
       },
       // mediaType — чтобы n8n не угадывал по mime бинаря.
       // VIDEO если хоть один файл (feed или stories) видео, иначе PHOTO.
-      // Карусель — всегда PHOTO (только изображения).
+      // Карусель / existing post — PHOTO (или тип поста; n8n берёт из Meta).
       mediaType:
-        creativeFormat === "carousel"
-          ? "PHOTO"
-          : ((bakedFeed?.type || bakedStories?.type || "").startsWith("video/"))
-            ? "VIDEO"
-            : "PHOTO",
+        adSetupMode === "existing"
+          ? (selectedExistingPost?.media_type === "VIDEO" ||
+              selectedExistingPost?.media_product_type === "REELS"
+              ? "VIDEO"
+              : "PHOTO")
+          : creativeFormat === "carousel"
+            ? "PHOTO"
+            : ((bakedFeed?.type || bakedStories?.type || "").startsWith("video/"))
+              ? "VIDEO"
+              : "PHOTO",
       submittedAt: new Date().toISOString(),
       // launchId генерируется фронтом, чтобы и edge, и БД, и n8n работали
       // с одним идентификатором запуска (для callback статусов).
@@ -822,12 +1013,14 @@ const CreateCampaignDialog = ({
 
     const fd = new FormData();
     fd.append("payload", JSON.stringify(payload));
-    if (bakedFeed) fd.append("creative_feed", bakedFeed, bakedFeed.name);
-    if (bakedStories) fd.append("creative_stories", bakedStories, bakedStories.name);
-    if (creativeFormat === "carousel") {
-      bakedCarousel.forEach((f, i) => {
-        fd.append(`creative_carousel_${i}`, f, f.name);
-      });
+    if (adSetupMode === "create") {
+      if (bakedFeed) fd.append("creative_feed", bakedFeed, bakedFeed.name);
+      if (bakedStories) fd.append("creative_stories", bakedStories, bakedStories.name);
+      if (creativeFormat === "carousel") {
+        bakedCarousel.forEach((f, i) => {
+          fd.append(`creative_carousel_${i}`, f, f.name);
+        });
+      }
     }
 
     // Жёсткий фронт-таймаут 12с: edge-функция отвечает за ≤8с, плюс запас на сеть.
@@ -907,12 +1100,26 @@ const CreateCampaignDialog = ({
     const rows: { label: string; value: string }[] = [];
     rows.push({ label: "Цель", value: goalLabel });
     rows.push({
-      label: "Креатив",
+      label: "Настройка",
       value:
-        creativeFormat === "carousel"
-          ? `Карусель · ${bakedCarousel.length} слайдов`
-          : "Один креатив",
+        adSetupMode === "existing"
+          ? "Существующая публикация"
+          : "Создать объявление",
     });
+    if (adSetupMode === "existing" && existingMediaId) {
+      rows.push({
+        label: "Публикация",
+        value: selectedExistingPost?.caption?.slice(0, 48) || existingMediaId,
+      });
+    } else {
+      rows.push({
+        label: "Креатив",
+        value:
+          creativeFormat === "carousel"
+            ? `Карусель · ${bakedCarousel.length} слайдов`
+            : "Один креатив",
+      });
+    }
     if (goal === "site-leads") {
       if (pixelId) rows.push({ label: "Пиксель", value: pixelId });
       if (pixelEvent) rows.push({ label: "Событие", value: pixelEvent });
@@ -939,6 +1146,8 @@ const CreateCampaignDialog = ({
     setStories(null);
     setCarouselFiles([]);
     setCreativeFormat("single");
+    setAdSetupMode("create");
+    setExistingMediaId("");
     setSubmitting(false);
   };
 
@@ -1014,6 +1223,34 @@ const CreateCampaignDialog = ({
                   )}
                 </div>
               )}
+
+              <div className="space-y-2">
+                <Label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Настройка рекламы
+                </Label>
+                <Select
+                  value={adSetupMode}
+                  onValueChange={(v) => {
+                    setAdSetupMode(v as AdSetupMode);
+                    if (v === "create") setExistingMediaId("");
+                  }}
+                >
+                  <SelectTrigger className="h-11 rounded-xl border-border/50 bg-background/50">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="create">Создать объявление</SelectItem>
+                    <SelectItem value="existing">
+                      Использовать существующие публикации
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {adSetupMode === "existing" && !effectiveIgUserId && (
+                  <p className="text-[11px] text-warning">
+                    У выбранной страницы нет Instagram Business. Выберите другую страницу или привяжите IG в Meta.
+                  </p>
+                )}
+              </div>
 
               <div className="space-y-2">
                 <Label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
@@ -1097,70 +1334,91 @@ const CreateCampaignDialog = ({
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  Текст объявления
-                </Label>
-                <Textarea
-                  value={text}
-                  onChange={(e) => setText(e.target.value)}
-                  rows={5}
-                  placeholder="Краткий цепляющий текст с CTA…"
-                  className="rounded-xl border-border/50 bg-background/50"
-                />
-              </div>
+              {adSetupMode === "create" && (
+                <div className="space-y-2">
+                  <Label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    Текст объявления
+                  </Label>
+                  <Textarea
+                    value={text}
+                    onChange={(e) => setText(e.target.value)}
+                    rows={5}
+                    placeholder="Краткий цепляющий текст с CTA…"
+                    className="rounded-xl border-border/50 bg-background/50"
+                  />
+                </div>
+              )}
+              {adSetupMode === "existing" && (
+                <p className="rounded-xl border border-border/50 bg-background/40 px-3 py-2.5 text-[11px] text-muted-foreground">
+                  Текст и креатив берутся из выбранной публикации Instagram.
+                  Цель продвижения (WhatsApp / сайт / форма) задаёт CTA объявления.
+                </p>
+              )}
             </div>
 
             <div className="overflow-y-auto bg-background/20 px-6 py-5">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                  Креативы
-                </div>
-              </div>
-
-              <div className="mb-3 grid grid-cols-2 gap-1.5 rounded-xl border border-border/50 bg-background/40 p-1">
-                {(
-                  [
-                    { id: "single" as const, label: "Один", icon: LayoutTemplate },
-                    { id: "carousel" as const, label: "Карусель", icon: Images },
-                  ] as const
-                ).map((opt) => (
-                  <button
-                    key={opt.id}
-                    type="button"
-                    onClick={() => setCreativeFormat(opt.id)}
-                    className={cn(
-                      "flex h-9 items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-colors",
-                      creativeFormat === opt.id
-                        ? "bg-success/15 text-success"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    <opt.icon className="h-3.5 w-3.5" />
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-
-              {creativeFormat === "carousel" ? (
-                <CarouselUpload files={carouselFiles} onChange={setCarouselFiles} />
+              {adSetupMode === "existing" ? (
+                <ExistingPostPicker
+                  items={igMedia.data}
+                  isLoading={igMedia.isLoading}
+                  error={igMedia.error}
+                  selectedId={existingMediaId}
+                  onSelect={setExistingMediaId}
+                  onRefresh={() => void igMedia.refetch()}
+                />
               ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  <CreativeUpload
-                    label="Лента (4:5)"
-                    ratio="4:5"
-                    file={feed}
-                    onFile={setFeed}
-                    onView={(s) => { feedViewRef.current = s; }}
-                  />
-                  <CreativeUpload
-                    label="Stories (9:16)"
-                    ratio="9:16"
-                    file={stories}
-                    onFile={setStories}
-                    onView={(s) => { storiesViewRef.current = s; }}
-                  />
-                </div>
+                <>
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                      Креативы
+                    </div>
+                  </div>
+
+                  <div className="mb-3 grid grid-cols-2 gap-1.5 rounded-xl border border-border/50 bg-background/40 p-1">
+                    {(
+                      [
+                        { id: "single" as const, label: "Один", icon: LayoutTemplate },
+                        { id: "carousel" as const, label: "Карусель", icon: Images },
+                      ] as const
+                    ).map((opt) => (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        onClick={() => setCreativeFormat(opt.id)}
+                        className={cn(
+                          "flex h-9 items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-colors",
+                          creativeFormat === opt.id
+                            ? "bg-success/15 text-success"
+                            : "text-muted-foreground hover:text-foreground",
+                        )}
+                      >
+                        <opt.icon className="h-3.5 w-3.5" />
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {creativeFormat === "carousel" ? (
+                    <CarouselUpload files={carouselFiles} onChange={setCarouselFiles} />
+                  ) : (
+                    <div className="grid grid-cols-2 gap-3">
+                      <CreativeUpload
+                        label="Лента (4:5)"
+                        ratio="4:5"
+                        file={feed}
+                        onFile={setFeed}
+                        onView={(s) => { feedViewRef.current = s; }}
+                      />
+                      <CreativeUpload
+                        label="Stories (9:16)"
+                        ratio="9:16"
+                        file={stories}
+                        onFile={setStories}
+                        onView={(s) => { storiesViewRef.current = s; }}
+                      />
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

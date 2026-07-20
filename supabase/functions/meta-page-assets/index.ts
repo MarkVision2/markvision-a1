@@ -68,6 +68,7 @@ Deno.serve(async (req) => {
     const actId = url.searchParams.get("actId");
     const pageId = url.searchParams.get("pageId");
     const pixelId = url.searchParams.get("pixelId");
+    const igUserIdParam = url.searchParams.get("igUserId");
 
     if (!kind) return jsonResponse({ error: "kind is required" }, 400);
 
@@ -82,6 +83,9 @@ Deno.serve(async (req) => {
     // pixel from the discovery list — that pixel is often NOT yet saved as
     // ad_cabinets.pixel_id. Authorize via the ad account instead of requiring
     // a matching pixel_id row (old check returned 403 → UI "non-2xx").
+    //
+    // 'ig_media' lists organic IG posts for "use existing publication" —
+    // authorize via actId (preferred) or pageId cabinet match.
     const isDiscovery = kind === "pages" || kind === "pixels";
     if (kind === "pixel_events") {
       if (!actId) {
@@ -89,6 +93,22 @@ Deno.serve(async (req) => {
       }
       const actAccess = await requireMetaAdAccountAccess(auth.authHeader, actId);
       if (!actAccess.ok) return actAccess.response;
+    } else if (kind === "ig_media") {
+      if (actId) {
+        const actAccess = await requireMetaAdAccountAccess(auth.authHeader, actId);
+        if (!actAccess.ok) return actAccess.response;
+      } else if (pageId) {
+        const client = createUserClient(auth.authHeader);
+        const { data: cab } = await client
+          .from("ad_cabinets")
+          .select("id")
+          .eq("page_id", pageId)
+          .limit(1)
+          .maybeSingle();
+        if (!cab) return jsonResponse({ error: "Forbidden" }, 403);
+      } else {
+        return jsonResponse({ error: "actId or pageId is required for ig_media" }, 400);
+      }
     } else if (actId && !isDiscovery) {
       const actAccess = await requireMetaAdAccountAccess(auth.authHeader, actId);
       if (!actAccess.ok) return actAccess.response;
@@ -406,6 +426,91 @@ Deno.serve(async (req) => {
         leads_count: Number(f.leads_count ?? 0),
       }));
       return jsonResponse({ items });
+    }
+
+    // ============ IG MEDIA (organic posts to boost) ============
+    // Meta docs: Use Posts as Instagram Ads —
+    // source_instagram_media_id + boost_eligibility_info on /{ig-user}/media
+    if (kind === "ig_media") {
+      let igId = (igUserIdParam || "").trim();
+      if (!igId && pageId) {
+        const pageResp = await metaGet(
+          `/${pageId}?fields=instagram_business_account{id,username}`,
+          META_ACCESS_TOKEN,
+        );
+        igId = String(pageResp.body?.instagram_business_account?.id || "");
+      }
+      if (!igId) {
+        return jsonResponse(
+          {
+            error:
+              "Instagram не привязан к странице. Подключите IG Business к Facebook Page.",
+          },
+          400,
+        );
+      }
+
+      const fields = [
+        "id",
+        "caption",
+        "media_type",
+        "media_product_type",
+        "permalink",
+        "thumbnail_url",
+        "media_url",
+        "timestamp",
+        "like_count",
+        "comments_count",
+        "boost_eligibility_info",
+      ].join(",");
+
+      const r = await metaGet(
+        `/${igId}/media?fields=${fields}&limit=50`,
+        META_ACCESS_TOKEN,
+      );
+      if (!r.ok) {
+        const warning = r.body?.error?.message ??
+          "Не удалось получить публикации Instagram (проверьте права токена: instagram_basic, pages_read_engagement).";
+        return jsonResponse({ items: [], warning, ig_user_id: igId });
+      }
+
+      const items = (r.body?.data ?? []).map((m: any) => {
+        const boost = m?.boost_eligibility_info;
+        let eligible = true;
+        let reason: string | null = null;
+        if (boost && typeof boost === "object") {
+          if (boost.eligible_to_boost === false || boost.is_eligible_for_boost === false) {
+            eligible = false;
+          }
+          if (Array.isArray(boost.eligibility_errors) && boost.eligibility_errors.length > 0) {
+            eligible = false;
+            reason = String(boost.eligibility_errors[0]);
+          }
+          reason =
+            reason ||
+            (boost.reason ? String(boost.reason) : null) ||
+            (boost.ineligibility_reason ? String(boost.ineligibility_reason) : null);
+          if (boost.eligible_to_boost === true || boost.is_eligible_for_boost === true) {
+            eligible = true;
+          }
+        }
+        return {
+          id: String(m.id),
+          caption: m.caption ?? null,
+          media_type: m.media_type ?? "IMAGE",
+          media_product_type: m.media_product_type ?? null,
+          permalink: m.permalink ?? null,
+          thumbnail_url: m.thumbnail_url ?? m.media_url ?? null,
+          media_url: m.media_url ?? null,
+          timestamp: m.timestamp ?? null,
+          like_count: Number(m.like_count ?? 0),
+          comments_count: Number(m.comments_count ?? 0),
+          eligible_to_boost: eligible,
+          boost_reason: eligible ? null : reason,
+        };
+      });
+
+      return jsonResponse({ items, ig_user_id: igId });
     }
 
     return jsonResponse({ error: `Unknown kind: ${kind}` }, 400);
