@@ -1,7 +1,7 @@
-import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, Copy, Download, Film, Loader2 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertTriangle, Copy, Download, Film, Loader2, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { fetchActiveReelsJobs, fetchFinishedReels } from "@/lib/reelsQueue";
+import { deleteFinishedReel, fetchActiveReelsJobs, fetchFinishedReels } from "@/lib/reelsQueue";
 import { toast } from "sonner";
 
 const STATUS_LABEL: Record<string, string> = {
@@ -13,6 +13,7 @@ const STATUS_LABEL: Record<string, string> = {
 // Готовые Reels проекта + активные задачи с прогрессом.
 // Поллит, пока есть незавершённые задачи (воркер докручивает их на VPS).
 export function ReelsGallery({ projectId }: { projectId: string }) {
+  const qc = useQueryClient();
   const jobs = useQuery({
     queryKey: ["reels-jobs", projectId],
     queryFn: () => fetchActiveReelsJobs(projectId),
@@ -31,6 +32,16 @@ export function ReelsGallery({ projectId }: { projectId: string }) {
     refetchInterval: () =>
       (jobs.data ?? []).some((j) => j.status === "queued" || j.status === "rendering") ? 8_000 : false,
   });
+
+  const remove = useMutation({
+    mutationFn: (id: string) => deleteFinishedReel(projectId, id),
+    onSuccess: async () => {
+      toast.success("Видео удалено");
+      await qc.invalidateQueries({ queryKey: ["reels-finished", projectId] });
+    },
+    onError: (e: Error) => toast.error(e.message || "Не удалось удалить"),
+  });
+  const deletingId = remove.isPending ? String(remove.variables ?? "") : "";
 
   const active = (jobs.data ?? []).filter((j) => j.status === "queued" || j.status === "rendering");
   const failed = (jobs.data ?? []).filter((j) => j.status === "error");
@@ -90,13 +101,29 @@ export function ReelsGallery({ projectId }: { projectId: string }) {
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {videos.map((v) => (
           <div key={v.id} className="overflow-hidden rounded-xl border border-border/60 bg-background/40">
-            <video
-              src={v.video_url ?? undefined}
-              poster={v.cover_url ?? v.thumbnail_url ?? undefined}
-              controls
-              playsInline
-              className="aspect-[9/16] w-full bg-black object-contain"
-            />
+            <div className="relative">
+              <video
+                src={v.video_url ?? undefined}
+                poster={v.cover_url ?? v.thumbnail_url ?? undefined}
+                controls
+                playsInline
+                className="aspect-[9/16] w-full bg-black object-contain"
+              />
+              <Button
+                type="button"
+                variant="destructive"
+                size="icon"
+                className="absolute right-2 top-2 h-8 w-8 rounded-lg bg-black/60 hover:bg-destructive"
+                disabled={remove.isPending}
+                aria-label="Удалить видео"
+                onClick={() => {
+                  if (!confirm("Удалить это видео из готовых?")) return;
+                  remove.mutate(v.id);
+                }}
+              >
+                {deletingId === v.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+              </Button>
+            </div>
             <div className="space-y-2 p-3">
               <div className="flex items-center gap-2 text-xs">
                 <span className="rounded-md bg-secondary px-1.5 py-0.5 font-semibold">Reels</span>
