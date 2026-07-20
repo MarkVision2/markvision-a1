@@ -12,6 +12,9 @@ import {
   X,
   RefreshCw,
   ExternalLink,
+  ChevronLeft,
+  ChevronRight,
+  GripVertical,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -374,6 +377,8 @@ const CarouselUpload = ({
 }) => {
   const ref = useRef<HTMLInputElement>(null);
   const [urls, setUrls] = useState<string[]>([]);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
 
   useEffect(() => {
     const next = files.map((f) => URL.createObjectURL(f));
@@ -397,6 +402,22 @@ const CarouselUpload = ({
 
   const removeAt = (idx: number) => {
     onChange(files.filter((_, i) => i !== idx));
+  };
+
+  const moveSlide = (idx: number, dir: -1 | 1) => {
+    const j = idx + dir;
+    if (j < 0 || j >= files.length) return;
+    const next = [...files];
+    [next[idx], next[j]] = [next[j], next[idx]];
+    onChange(next);
+  };
+
+  const reorderSlide = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0 || from >= files.length || to >= files.length) return;
+    const next = [...files];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    onChange(next);
   };
 
   return (
@@ -426,44 +447,127 @@ const CarouselUpload = ({
           </span>
         </button>
       ) : (
-        <div className="grid grid-cols-2 gap-2">
-          {files.map((f, i) => (
-            <div
-              key={`${f.name}-${f.size}-${f.lastModified}-${i}`}
-              className="relative aspect-[4/5] overflow-hidden rounded-xl border border-border/60 bg-background/40"
-            >
-              {urls[i] && (
-                <img
-                  src={urls[i]}
-                  alt={f.name}
-                  className="h-full w-full object-cover"
-                  draggable={false}
-                />
-              )}
-              <span className="absolute left-1.5 top-1.5 rounded-md bg-background/85 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-foreground">
-                {i + 1}
-              </span>
+        <>
+          {files.length > 1 && (
+            <div className="flex items-baseline justify-between gap-2">
+              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Порядок слайдов
+              </div>
+              <div className="text-[11px] text-muted-foreground">Перетащите или стрелками</div>
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            {files.map((f, i) => (
+              <div
+                key={`${f.name}-${f.size}-${f.lastModified}-${i}`}
+                draggable={files.length > 1}
+                onDragStart={(e) => {
+                  setDragFrom(i);
+                  e.dataTransfer.effectAllowed = "move";
+                  e.dataTransfer.setData("text/plain", String(i));
+                  if (e.currentTarget instanceof HTMLElement) {
+                    e.dataTransfer.setDragImage(e.currentTarget, 40, 40);
+                  }
+                }}
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (dragOver !== i) setDragOver(i);
+                }}
+                onDragLeave={() => {
+                  if (dragOver === i) setDragOver(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  const raw = e.dataTransfer.getData("text/plain");
+                  const from = Number.parseInt(raw || String(dragFrom ?? -1), 10);
+                  reorderSlide(from, i);
+                  setDragFrom(null);
+                  setDragOver(null);
+                }}
+                onDragEnd={() => {
+                  setDragFrom(null);
+                  setDragOver(null);
+                }}
+                className={cn(
+                  "group relative aspect-[4/5] overflow-hidden rounded-xl border bg-background/40 transition",
+                  files.length > 1 && "cursor-grab active:cursor-grabbing",
+                  dragFrom === i && "opacity-50",
+                  dragOver === i && dragFrom !== i
+                    ? "border-primary ring-2 ring-primary/40"
+                    : "border-border/60",
+                )}
+              >
+                {urls[i] && (
+                  <img
+                    src={urls[i]}
+                    alt={`Слайд ${i + 1}`}
+                    className="pointer-events-none h-full w-full object-cover"
+                    draggable={false}
+                  />
+                )}
+                <span className="absolute left-1.5 top-1.5 rounded-md bg-background/85 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-foreground">
+                  {i + 1}
+                </span>
+                {files.length > 1 && (
+                  <span className="absolute bottom-1.5 left-1.5 grid h-6 w-6 place-items-center rounded-md bg-background/75 text-muted-foreground">
+                    <GripVertical className="h-3.5 w-3.5" />
+                  </span>
+                )}
+                <div className="absolute right-1.5 top-1.5 flex gap-0.5">
+                  {files.length > 1 && (
+                    <>
+                      <button
+                        type="button"
+                        disabled={i === 0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          moveSlide(i, -1);
+                        }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        className="grid h-6 w-6 place-items-center rounded-full bg-background/85 text-foreground shadow hover:bg-background disabled:opacity-30"
+                        aria-label="Левее"
+                      >
+                        <ChevronLeft className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={i === files.length - 1}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          moveSlide(i, 1);
+                        }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                        className="grid h-6 w-6 place-items-center rounded-full bg-background/85 text-foreground shadow hover:bg-background disabled:opacity-30"
+                        aria-label="Правее"
+                      >
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => removeAt(i)}
+                    className="grid h-6 w-6 place-items-center rounded-full bg-background/85 text-foreground shadow hover:bg-background"
+                    aria-label="Удалить слайд"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {files.length < CAROUSEL_MAX && (
               <button
                 type="button"
-                onClick={() => removeAt(i)}
-                className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-background/85 text-foreground shadow hover:bg-background"
-                aria-label="Удалить слайд"
+                onClick={() => ref.current?.click()}
+                className="flex aspect-[4/5] flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-border/70 bg-background/30 text-muted-foreground transition-colors hover:text-foreground"
               >
-                <X className="h-3.5 w-3.5" />
+                <Plus className="h-4 w-4" />
+                <span className="text-[11px]">Ещё</span>
               </button>
-            </div>
-          ))}
-          {files.length < CAROUSEL_MAX && (
-            <button
-              type="button"
-              onClick={() => ref.current?.click()}
-              className="flex aspect-[4/5] flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-border/70 bg-background/30 text-muted-foreground transition-colors hover:text-foreground"
-            >
-              <Plus className="h-4 w-4" />
-              <span className="text-[11px]">Ещё</span>
-            </button>
-          )}
-        </div>
+            )}
+          </div>
+        </>
       )}
 
       <input
