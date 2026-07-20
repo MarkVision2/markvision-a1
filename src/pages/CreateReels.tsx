@@ -59,7 +59,7 @@ const BROLL_OPTIONS: {
   icon: typeof Sparkles;
 }[] = [
   { id: "auto", title: "Автоматически", description: "Система сама подберёт графику и вставки", icon: Sparkles },
-  { id: "library", title: "Папки проекта", description: "Случайно брать ваши B-roll и нарезки", icon: FolderOpen },
+  { id: "library", title: "Папки проекта", description: "Ваши B-roll по смыслу фразы + motion", icon: FolderOpen },
   { id: "pexels", title: "Pexels", description: "Стоковые видео по смыслу сценария", icon: Film },
   { id: "kie", title: "Kie.ai", description: "Сгенерировать уникальные видео через Kling", icon: Bot },
 ];
@@ -372,7 +372,7 @@ const CreateReels = () => {
                 {brollMode === "library" && (
                   <div className="mt-3 rounded-xl border border-border/60 bg-background p-3">
                     <div className="mb-2 flex items-center justify-between gap-2">
-                      <span className="text-xs font-semibold">Папки для случайного выбора</span>
+                      <span className="text-xs font-semibold">Папки для вставок по смыслу</span>
                       <button type="button" onClick={() => setPageTab("library")} className="text-[11px] font-medium text-primary hover:underline">
                         Управлять медиатекой
                       </button>

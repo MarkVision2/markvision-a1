@@ -171,7 +171,10 @@ word = индекс из indexed. text — короткий капс (1–3 сл
 {"anchorWord":<i>,"endWord":<i>,"prompt":"<english>","query":"<search>","layout":"full","note":"<ru quote>","spokenText":"<ru quote>"}
 - layout ВСЕГДА "full" (cutaway на весь кадр).
 - prompt — cinematic EN 1–2 предложения по смыслу фразы; vertical 9:16; no text/logos/faces/celebrities.
-- query — 2–5 EN слов (точный noun из фразы).
+- query — 2–5 EN слов: КОНКРЕТНЫЕ существительные из spokenText (дословный перевод смысла).
+  Примеры: фраза про «отчёты/рекламу» → "laptop analytics dashboard"; про «деньги» → "counting cash desk".
+  ЗАПРЕЩЕНО: generic business/office/people/success/motivation; еда/рыба/фрукты/животные/природа — ТОЛЬКО если это сказано в фразе.
+  Если нет конкретного визуала из речи — НЕ делай видео-слот (оставь окно под motion).
 - На самые сильные мысли, равномерно по ролику.
 
 2) MOTION Remotion — ровно ${motionTarget} шт. (код-графика, НЕ картинки):
@@ -187,7 +190,7 @@ word = индекс из indexed. text — короткий капс (1–3 сл
 - Видео и motion НЕ на одних и тех же словах (окна не пересекаются).
 - endWord > anchorWord; видео 3–6 сек, motion 2–5 сек.
 - note/spokenText = цитата фразы.
-- ЗАПРЕЩЕНО: оффтоп, >${videoTarget} видео, пустые prompt/template, зум лица.`,
+- ЗАПРЕЩЕНО: оффтоп (рыба/мандарины/еда без речи о них), >${videoTarget} видео, пустые prompt/template, зум лица.`,
             `DURATION_SEC=${durationSec || "?"}\nBROLL_MODE=${brollMode}\nSTYLE=${styleId}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
             150_000,
           );
@@ -202,16 +205,78 @@ word = индекс из indexed. text — короткий капс (1–3 сл
           return json(result);
         }
 
-        const sourceHint =
-          brollMode === "library"
-            ? "Источник B-roll: папки проекта — планируй окна под клипы/нарезки."
-            : "Источник B-roll: motion-графика (шаблоны ниже).";
+        // Library — клипы из папок проекта + motion. Каталог приходит от воркера.
+        if (brollMode === "library") {
+          const catalog = Array.isArray(body.assetCatalog) ? body.assetCatalog as Json[] : [];
+          const videoTarget = Math.max(
+            2,
+            Math.min(8, catalog.length || 4, Math.round(target / 3)),
+          );
+          const motionTarget = Math.max(4, Math.min(14, target - videoTarget));
+          const catalogLines = catalog.slice(0, 80).map((a) => {
+            const id = String(a.id ?? "");
+            const name = String(a.name ?? "");
+            const folder = String(a.folder_name ?? a.folderName ?? "");
+            const kind = String(a.media_type ?? a.mediaType ?? "video");
+            return `- ${id} | ${kind} | folder="${folder}" | name="${name}"`;
+          }).join("\n");
+          const result = await chatJson(
+            `Ты режиссёр вертикального 9:16 «говорящая голова» в стиле ${styleId}.
+Источник видео: МЕДИАТЕКА проекта (свои B-roll). Плюс Remotion motion.
+Верни JSON: {"inserts":[ ... ]}
+
+ДВА ТИПА:
+
+1) ВИДЕО из медиатеки — до ${videoTarget} шт. (не больше числа клипов в каталоге):
+{"anchorWord":<i>,"endWord":<i>,"assetId":"<uuid|null>","query":"<need>","layout":"full","note":"<ru quote>","spokenText":"<ru quote>"}
+- layout ВСЕГДА "full".
+- Сначала прочитай фразу. Подбери клип ИЗ КАТАЛОГА, чьё имя/папка по смыслу бьётся с фразой → assetId.
+- Имена вроде IMG_9190 / RPReplay_* / UUID — «немые»: assetId=null, query=краткое описание нужного визуала из фразы; воркер разложит пул сам.
+- НЕ выдумывай assetId вне каталога. Один клип — максимум один раз.
+- Если фраза абстрактная (цифры, «важно») — лучше MOTION, не видео.
+
+2) MOTION Remotion — ровно ${motionTarget} шт.:
+{"anchorWord":<i>,"endWord":<i>,"template":"<slug>","layout":"third"|"half","data":{...},"note":"<ru quote>","spokenText":"<ru quote>"}
+- template ТОЛЬКО: ${MOTION_TEMPLATES}.
+- ~${coverPct}% cover:true. data только из слов фразы.
+- Accent: ${accentColor}. Чередуй #EF4444 #34D399 #22D3EE #FB7185.
+
+ОБЩЕЕ: окна не пересекаются; spokenText=цитата; без оффтопа и без стока Pexels.`,
+            `DURATION_SEC=${durationSec || "?"}\nBROLL_MODE=library\nSTYLE=${styleId}\nBRIEF:\n${brief || "(нет)"}\n\nLIBRARY_ASSETS (${catalog.length}):\n${catalogLines || "(пусто — только motion)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
+            150_000,
+          );
+          if (!Array.isArray(result.inserts)) result.inserts = [];
+          const allowedIds = new Set(catalog.map((a) => String(a.id ?? "")).filter(Boolean));
+          const usedIds = new Set<string>();
+          const videos: Json[] = [];
+          const motions: Json[] = [];
+          for (const it of result.inserts) {
+            if (it?.template) {
+              motions.push(it);
+              continue;
+            }
+            const aid = it?.assetId != null ? String(it.assetId) : "";
+            if (aid && allowedIds.has(aid) && !usedIds.has(aid)) {
+              usedIds.add(aid);
+              videos.push({ ...it, assetId: aid, layout: "full" });
+            } else if (!it?.template) {
+              // Слот без валидного assetId — воркер подберёт из пула по query/spokenText.
+              videos.push({ ...it, assetId: null, layout: "full" });
+            }
+          }
+          result.inserts = [
+            ...videos.slice(0, videoTarget),
+            ...motions.slice(0, motionTarget),
+          ];
+          return json(result);
+        }
+
         const result = await chatJson(
           `Ты режиссёр motion-графики для вертикального 9:16 «говорящая голова».
 Стиль шаблона: ${styleId}. Верни JSON:
 {"inserts":[{"anchorWord":<i>,"endWord":<i>,"template":"<slug>","layout":"third"|"half"|"full","data":{...},"note":"<ru quote>","spokenText":"<ru quote>"}]}
 Это code-based b-roll (НЕ картинки). template — ТОЛЬКО: ${MOTION_TEMPLATES}.
-${sourceHint}
+Источник B-roll: motion-графика (шаблоны ниже).
 ГЛАВНОЕ: каждая мысль = ВИЗУАЛЬНАЯ СЦЕНА по ИМЕННО этой фразе (не декор, не оффтоп).
 GROUNDING (ЖЁСТКО):
 - Прочитай слова anchorWord..endWord ДО выбора template.
