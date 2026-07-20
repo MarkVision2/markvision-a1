@@ -1,7 +1,7 @@
 {
-  "git_sha": "81691dc",
-  "git_sha_full": "81691dc87a2ad6a09b1d75a809e9e8e63ac8d37a",
-  "updated_at": "2026-07-20T12:07:02Z",
-  "label": "Merge pull request #174 from MarkVision2/cursor/kie-cost-cap-84cc",
+  "git_sha": "814ca20",
+  "git_sha_full": "814ca200e3f9532dc86dd3d1abfc0e4c7c07f8b7",
+  "updated_at": "2026-07-20T12:27:18Z",
+  "label": "Merge pull request #175 from MarkVision2/cursor/fix-kie-insert-render-84cc",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
