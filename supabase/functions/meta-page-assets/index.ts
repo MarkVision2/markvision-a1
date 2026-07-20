@@ -77,8 +77,19 @@ Deno.serve(async (req) => {
     // the "Quick add from Meta" flow BEFORE a cabinet row exists. They
     // only expose metadata for accounts the shared META token can already
     // see, so authenticated users may call them without an existing cabinet.
+    //
+    // 'pixel_events' is used in the campaign wizard right after picking a
+    // pixel from the discovery list — that pixel is often NOT yet saved as
+    // ad_cabinets.pixel_id. Authorize via the ad account instead of requiring
+    // a matching pixel_id row (old check returned 403 → UI "non-2xx").
     const isDiscovery = kind === "pages" || kind === "pixels";
-    if (actId && !isDiscovery) {
+    if (kind === "pixel_events") {
+      if (!actId) {
+        return jsonResponse({ error: "actId is required for pixel_events" }, 400);
+      }
+      const actAccess = await requireMetaAdAccountAccess(auth.authHeader, actId);
+      if (!actAccess.ok) return actAccess.response;
+    } else if (actId && !isDiscovery) {
       const actAccess = await requireMetaAdAccountAccess(auth.authHeader, actId);
       if (!actAccess.ok) return actAccess.response;
     } else if (pageId) {
@@ -87,15 +98,6 @@ Deno.serve(async (req) => {
         .from("ad_cabinets")
         .select("id")
         .eq("page_id", pageId)
-        .limit(1)
-        .maybeSingle();
-      if (!cab) return jsonResponse({ error: "Forbidden" }, 403);
-    } else if (pixelId) {
-      const client = createUserClient(auth.authHeader);
-      const { data: cab } = await client
-        .from("ad_cabinets")
-        .select("id")
-        .eq("pixel_id", pixelId)
         .limit(1)
         .maybeSingle();
       if (!cab) return jsonResponse({ error: "Forbidden" }, 403);

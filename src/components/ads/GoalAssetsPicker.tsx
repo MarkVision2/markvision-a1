@@ -97,8 +97,9 @@ const GoalAssetsPicker = ({
   });
   const events = useMetaPageAssets({
     kind: "pixel_events",
+    actId,
     pixelId,
-    enabled: goal === "site-leads" && !!pixelId,
+    enabled: goal === "site-leads" && !!pixelId && !!actId,
   });
 
   // ===== Lead Forms =====
