@@ -9,11 +9,8 @@ import {
   RefreshCw,
   Rocket,
   Search,
-  ShoppingCart,
   Target,
-  Wallet,
   Zap,
-  type LucideIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -35,40 +32,6 @@ import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { cn } from "@/lib/utils";
 
 const SEARCH_THRESHOLD = 3;
-
-const fmtMoney = (n: number) =>
-  `${Math.round(n).toLocaleString("ru-RU").replace(/\s/g, "\u00A0")}\u00A0₸`;
-
-const StatChip = ({
-  label,
-  value,
-  hint,
-  accent,
-  icon: Icon,
-}: {
-  label: string;
-  value: string;
-  hint?: string;
-  accent: string;
-  icon: LucideIcon;
-}) => (
-  <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-gradient-to-br from-card/80 to-card/40 px-3.5 py-3">
-    <div className="flex items-start gap-3">
-      <span className={cn("grid h-9 w-9 shrink-0 place-items-center rounded-xl", accent)}>
-        <Icon className="h-4 w-4" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-          {label}
-        </div>
-        <div className="mt-0.5 truncate text-xl font-semibold tabular-nums tracking-tight">
-          {value}
-        </div>
-        {hint && <div className="mt-0.5 text-[11px] text-muted-foreground">{hint}</div>}
-      </div>
-    </div>
-  </div>
-);
 
 const Ads = () => {
   const queryClient = useQueryClient();
@@ -120,11 +83,6 @@ const Ads = () => {
     updateCabinet(id, { online: !c.online });
     toast.success(c.online ? "Кабинет на паузе" : "Кабинет запущен");
   };
-
-  const totalSpend = cabinets.reduce((s, c) => s + (c.spend || 0), 0);
-  const totalLeads = cabinets.reduce((s, c) => s + (c.leads || 0), 0);
-  const totalSales = cabinets.reduce((s, c) => s + (c.sales || 0), 0);
-  const cpl = totalLeads > 0 ? totalSpend / totalLeads : 0;
 
   return (
     <PageContainer>
@@ -192,39 +150,6 @@ const Ads = () => {
           </div>
         }
       />
-
-      {cabinets.length > 0 && (
-        <div className="mt-5 grid grid-cols-2 gap-2 lg:grid-cols-4">
-          <StatChip
-            label="Расход"
-            value={fmtMoney(totalSpend)}
-            hint="за выбранный период"
-            accent="bg-warning/15 text-warning"
-            icon={Wallet}
-          />
-          <StatChip
-            label="Лиды"
-            value={totalLeads.toLocaleString("ru-RU")}
-            hint={cpl > 0 ? `CPL ${fmtMoney(cpl)}` : "нет заявок"}
-            accent="bg-success/15 text-success"
-            icon={Target}
-          />
-          <StatChip
-            label="Продажи"
-            value={totalSales.toLocaleString("ru-RU")}
-            hint="из CRM"
-            accent="bg-primary/15 text-primary"
-            icon={ShoppingCart}
-          />
-          <StatChip
-            label="Активных"
-            value={`${active} / ${cabinets.length}`}
-            hint="кабинетов online"
-            accent="bg-sky-500/15 text-sky-400"
-            icon={LayoutGrid}
-          />
-        </div>
-      )}
 
       <Tabs
         value={tab}
