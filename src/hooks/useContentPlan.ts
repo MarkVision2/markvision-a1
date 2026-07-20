@@ -8,6 +8,7 @@ import {
   type ContentPlanItem,
   type ContentPlanStatus,
   type ContentPlanType,
+  contentPlanMeasureStartMs,
   summarizeContentPlan,
 } from "@/lib/contentPlan";
 import {
@@ -19,7 +20,6 @@ import {
   type ContentPlanOrganicEvent,
 } from "@/lib/contentPlanIgLink";
 import { schedulerApi } from "@/lib/autopostClient";
-import { todayAlmatyYmd } from "@/lib/metricsPeriod";
 
 type DbRow = {
   id: string;
@@ -101,9 +101,9 @@ function asStringArray(raw: unknown): string[] {
   return raw.map((x) => String(x)).filter(Boolean);
 }
 
-/** Для очереди MarkVision / импорта опубликованных: порог «сегодня» Алматы. */
+/** Для очереди MarkVision / импорта опубликованных: порог max(сегодня, 20.07.2026) Алматы. */
 function contentPlanPublishImportStartMs(): number {
-  return new Date(`${todayAlmatyYmd()}T00:00:00+05:00`).getTime();
+  return contentPlanMeasureStartMs();
 }
 
 function contentPlanQueueStartMs(): number {
@@ -488,10 +488,9 @@ export function useContentPlan() {
           }
         }
 
-        // Ручные / native IG-посты после выхода: тянем в план с сегодня (Алматы).
+        // Ручные / native IG-посты после выхода: тянем в план с порога измерения.
         // До публикации Meta не отдаёт native-расписание — только MarkVision queue / Page schedule.
-        const measureYmd = todayAlmatyYmd();
-        const measureStart = new Date(`${measureYmd}T00:00:00+05:00`).getTime();
+        const measureStart = contentPlanMeasureStartMs();
         const linked = new Set(
           planDbRows.map((r) => r.ig_media_id).filter((x): x is string => !!x),
         );

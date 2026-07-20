@@ -1,4 +1,24 @@
 import { Film, Images, Clock, type LucideIcon } from "lucide-react";
+import { todayAlmatyYmd } from "@/lib/metricsPeriod";
+
+/** Старт измерения контент-плана (Алматы): публикации раньше не показываем и не считаем. */
+export const CONTENT_PLAN_STATS_START_YMD = "2026-07-20";
+
+export function contentPlanStatsStartMs(): number {
+  return new Date(`${CONTENT_PLAN_STATS_START_YMD}T00:00:00+05:00`).getTime();
+}
+
+/** Порог импорта/отображения: max(сегодня Алматы, фиксированный старт). */
+export function contentPlanMeasureStartMs(now = new Date()): number {
+  const todayMs = new Date(`${todayAlmatyYmd(now)}T00:00:00+05:00`).getTime();
+  return Math.max(todayMs, contentPlanStatsStartMs());
+}
+
+export function isBeforeContentPlanStatsStart(iso: string | null | undefined): boolean {
+  if (!iso) return false;
+  const t = new Date(iso).getTime();
+  return !Number.isNaN(t) && t < contentPlanStatsStartMs();
+}
 
 export type ContentPlanType = "REELS" | "CAROUSEL" | "IMAGE" | "STORIES";
 
@@ -146,12 +166,15 @@ export function filterContentPlanByPeriod(
   const toExclusive = new Date(range.to.getFullYear(), range.to.getMonth(), range.to.getDate());
   toExclusive.setDate(toExclusive.getDate() + 1);
   const toTs = toExclusive.getTime();
+  const floorTs = contentPlanStatsStartMs();
 
   return items.filter((item) => {
     const iso = contentPlanItemAnchorAt(item);
     if (!iso) return false;
     const t = new Date(iso).getTime();
     if (Number.isNaN(t)) return false;
+    // Жёсткий пол: до 20.07.2026 не показываем и не считаем в KPI.
+    if (t < floorTs) return false;
     return t >= fromTs && t < toTs;
   });
 }

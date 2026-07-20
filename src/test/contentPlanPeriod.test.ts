@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CONTENT_PLAN_STATS_START_YMD,
   emptyFunnel,
   filterContentPlanByPeriod,
   summarizeContentPlan,
@@ -45,13 +46,13 @@ function item(partial: Partial<ContentPlanItem> & { id: string }): ContentPlanIt
 
 describe("filterContentPlanByPeriod", () => {
   const range = {
-    from: new Date(2026, 6, 1),
-    to: new Date(2026, 6, 19),
+    from: new Date(2026, 6, 20),
+    to: new Date(2026, 6, 31),
   };
 
   it("keeps items by publishedAt inside range", () => {
     const items = [
-      item({ id: "in", publishedAt: "2026-07-10T12:00:00.000Z" }),
+      item({ id: "in", publishedAt: "2026-07-21T12:00:00+05:00" }),
       item({ id: "out", publishedAt: "2026-06-10T12:00:00.000Z" }),
     ];
     expect(filterContentPlanByPeriod(items, range).map((i) => i.id)).toEqual(["in"]);
@@ -59,8 +60,8 @@ describe("filterContentPlanByPeriod", () => {
 
   it("falls back to scheduledAt then createdAt", () => {
     const items = [
-      item({ id: "sched", scheduledAt: "2026-07-05T09:00:00.000Z" }),
-      item({ id: "created", createdAt: "2026-07-18T09:00:00.000Z" }),
+      item({ id: "sched", status: "scheduled", scheduledAt: "2026-07-22T09:00:00+05:00" }),
+      item({ id: "created", createdAt: "2026-07-25T09:00:00+05:00" }),
       item({ id: "old", createdAt: "2026-05-01T09:00:00.000Z" }),
     ];
     expect(filterContentPlanByPeriod(items, range).map((i) => i.id)).toEqual(["sched", "created"]);
@@ -71,15 +72,24 @@ describe("filterContentPlanByPeriod", () => {
       item({
         id: "tomorrow",
         status: "scheduled",
-        scheduledAt: "2026-07-20T09:00:00.000Z",
+        scheduledAt: "2026-07-21T09:00:00+05:00",
         publishedAt: "2026-01-01T00:00:00.000Z",
       }),
     ];
-    const fromToday = {
-      from: new Date(2026, 6, 19),
+    expect(filterContentPlanByPeriod(items, range).map((i) => i.id)).toEqual(["tomorrow"]);
+  });
+
+  it(`hard-hides everything before ${CONTENT_PLAN_STATS_START_YMD} even if period includes them`, () => {
+    const items = [
+      item({ id: "jul18", status: "published", publishedAt: "2026-07-18T09:00:00+05:00" }),
+      item({ id: "jul19", status: "published", publishedAt: "2026-07-19T20:21:00+05:00" }),
+      item({ id: "jul20", status: "published", publishedAt: "2026-07-20T01:00:00+05:00" }),
+    ];
+    const wholeJuly = {
+      from: new Date(2026, 6, 1),
       to: new Date(2026, 6, 31),
     };
-    expect(filterContentPlanByPeriod(items, fromToday).map((i) => i.id)).toEqual(["tomorrow"]);
+    expect(filterContentPlanByPeriod(items, wholeJuly).map((i) => i.id)).toEqual(["jul20"]);
   });
 
   it("from-tomorrow range hides already published Jul 18–19 posts", () => {

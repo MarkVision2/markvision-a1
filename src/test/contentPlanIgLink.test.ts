@@ -135,6 +135,17 @@ describe("contentPlanIgLink helpers", () => {
     expect(isBotUserAgent("facebookexternalhit/1.1")).toBe(true);
   });
 
+  it("uses views/impressions as reach when Meta returns reach=0", () => {
+    const f = buildContentPlanFunnel({
+      media: media({ media_id: "m2", reach: 0, plays: 98, impressions: 98 }),
+      igMediaId: "m2",
+      events: [],
+      leads: [],
+    });
+    expect(f.reach).toBe(98);
+    expect(f.views).toBe(98);
+  });
+
   it("draftFromIgMedia picks codeword from caption", () => {
     const d = draftFromIgMedia(media({ media_id: "m9", caption: "Пиши слово КЕЙС в комменты" }), [
       { id: "cw1", codeword: "кейс", reel_id: null },
