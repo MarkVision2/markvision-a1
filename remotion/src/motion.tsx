@@ -271,23 +271,36 @@ export const FakeDashboardBars: React.FC<
 };
 
 // ── kinetic-type — a punchy phrase stamps in word by word ────────────────────
-export const KineticType: React.FC<MotionBaseProps & { words?: string[]; accentIndex?: number; accent?: string; icon?: string; cover?: boolean }> = ({
+export const KineticType: React.FC<MotionBaseProps & {
+  words?: string[];
+  text?: string;
+  accentIndex?: number;
+  accent?: string;
+  icon?: string;
+  cover?: boolean;
+}> = ({
   localFrame,
-  words = ["АВТОМАТИЗИРУЙ", "ВСЁ", "СЕЙЧАС"],
+  words,
+  text,
   accentIndex = 1,
   accent = BRAND.accent,
   icon,
   cover = false,
 }) => {
   const { fps } = useVideoConfig();
+  const resolved = (words && words.length
+    ? words
+    : String(text || "").trim().split(/\s+/).filter(Boolean)
+  ).slice(0, 5);
+  if (!resolved.length) return null;
   const pop = enter(localFrame, fps, 0, 14);
   return (
     <Frame top={190} center={cover}>
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 10, maxWidth: "100%" }}>
         {icon ? <div style={{ marginBottom: 10 }}><IconTile name={icon} accent={accent} s={pop} /></div> : null}
-        {words.map((w, i) => {
+        {resolved.map((w, i) => {
           const s = spring({ frame: localFrame - i * 6, fps, config: { damping: 13, mass: 0.6 }, durationInFrames: 18 });
-          const acc = i === accentIndex;
+          const acc = i === Math.min(accentIndex, resolved.length - 1);
           const base = acc ? 118 : 94;
           // shrink long words so the (padded) pill never exceeds the 1080 canvas
           // (Montserrat 900 is wide — budget ~0.72em per glyph, leave margin)
@@ -443,24 +456,48 @@ export const QuoteCard: React.FC<MotionBaseProps & { text?: string; accent?: str
 };
 
 // ── big-statement — full-screen headline + underline (hook / CTA) ────────────
-export const BigStatement: React.FC<MotionBaseProps & { lines?: string[]; accent?: string; cover?: boolean }> = ({
+export const BigStatement: React.FC<MotionBaseProps & {
+  lines?: string[];
+  text?: string;
+  accent?: string;
+  cover?: boolean;
+}> = ({
   localFrame,
-  lines = ["БОЛЬШОЕ", "ЗАЯВЛЕНИЕ"],
+  lines,
+  text,
   accent = BRAND.accent,
   cover = false,
 }) => {
   const { fps } = useVideoConfig();
+  // AI often sends `text` (one phrase); Studio demos use `lines`.
+  // Never fall back to placeholder «БОЛЬШОЕ / ЗАЯВЛЕНИЕ» on real renders.
+  const resolved = (lines && lines.length
+    ? lines
+    : String(text || "")
+        .split(/\n|(?<=[.!?…])\s+/)
+        .flatMap((chunk) => chunk.trim().split(/\s+/))
+        .filter(Boolean)
+        .reduce<string[]>((acc, word) => {
+          const last = acc[acc.length - 1];
+          if (!last || last.split(" ").length >= 3) acc.push(word);
+          else acc[acc.length - 1] = `${last} ${word}`;
+          return acc;
+        }, [])
+  ).map((ln) => ln.trim()).filter(Boolean).slice(0, 4);
+
+  if (!resolved.length) return null;
+
   return (
     <Frame center={cover}>
       <div style={{ maxWidth: 940, textAlign: "center" }}>
-        {lines.map((ln, i) => {
+        {resolved.map((ln, i) => {
           const s = enter(localFrame, fps, i * 5, 13);
-          const fs = Math.min(128, Math.floor(940 / (Math.max(ln.length, 1) * 0.62)));
+          const fs = Math.min(96, Math.floor(940 / (Math.max(ln.length, 1) * 0.62)));
           return (
-            <div key={i} style={{ fontSize: fs, fontWeight: 900, color: i === lines.length - 1 ? accent : BRAND.text, lineHeight: 1.02, textTransform: "uppercase", transform: `translateY(${(1 - s) * 30}px) scale(${0.9 + s * 0.1})`, opacity: s, textShadow: "0 6px 30px rgba(0,0,0,0.6)" }}>{ln}</div>
+            <div key={i} style={{ fontSize: fs, fontWeight: 900, color: i === resolved.length - 1 ? accent : BRAND.text, lineHeight: 1.02, textTransform: "uppercase", transform: `translateY(${(1 - s) * 30}px) scale(${0.9 + s * 0.1})`, opacity: s, textShadow: "0 6px 30px rgba(0,0,0,0.6)" }}>{ln}</div>
           );
         })}
-        <div style={{ height: 10, width: `${enter(localFrame, fps, lines.length * 5, 16) * 66}%`, background: accent, margin: "20px auto 0", borderRadius: 6, boxShadow: `0 0 24px ${accent}66` }} />
+        <div style={{ height: 10, width: `${enter(localFrame, fps, resolved.length * 5, 16) * 66}%`, background: accent, margin: "20px auto 0", borderRadius: 6, boxShadow: `0 0 24px ${accent}66` }} />
       </div>
     </Frame>
   );
