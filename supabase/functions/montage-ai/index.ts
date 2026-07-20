@@ -151,34 +151,54 @@ word = индекс из indexed. text — короткий капс (1–3 сл
           : 14;
         const coverPct = Math.round(Math.max(0.1, Math.min(0.7, coverRatio)) * 100);
 
-        // Kie / Pexels — реальные видео-клипы (не motion-шаблоны).
+        // Kie / Pexels — видео-клипы + Remotion motion-дизайн (не только сток).
         if (brollMode === "kie" || brollMode === "pexels") {
           const kind = brollMode === "kie" ? "Kie/Kling" : "Pexels";
-          // Kie платный (~$0.28 / 5с клип) — жёсткий потолок 3; Pexels бесплатный — до 8.
+          // Kie платный (~$0.28 / 5с) — макс 3 клипа; Pexels — до 6.
           const videoTarget = brollMode === "kie"
             ? Math.max(2, Math.min(3, Math.round(target / 4)))
-            : Math.max(4, Math.min(8, Math.round(target / 2)));
+            : Math.max(3, Math.min(6, Math.round(target / 3)));
+          const motionTarget = Math.max(4, Math.min(14, target - videoTarget));
           const result = await chatJson(
-            `Ты режиссёр B-roll для вертикального 9:16 «говорящая голова».
-Источник: ${kind}. Стиль: ${styleId}. Верни JSON:
-{"inserts":[{"anchorWord":<i>,"endWord":<i>,"prompt":"<english>","query":"<search>","layout":"full"|"half"|"third","note":"<ru quote>","spokenText":"<ru quote>"}]}
-ЖЁСТКИЕ ПРАВИЛА:
-- Ровно ${videoTarget} видео-вставок (не больше), на самые сильные мысли, равномерно по ролику.
-- СНАЧАЛА прочитай слова между anchorWord..endWord. Клип ОБЯЗАН иллюстрировать ЭТУ фразу.
-- prompt — АНГЛИЙСКИЙ cinematic 1–2 предложения: конкретный subject из смысла фразы (не абстрактный «business success»), vertical 9:16, no text/logos/watermarks, no celebrity faces.
-- query — 2–5 английских слов, точный noun из смысла (не generic «marketing»).
-- note/spokenText — русская цитата фразы (для проверки grounding).
-- layout: для видео-вставок предпочитай "full" (cutaway на весь кадр). "third"/"half" только если явно нужен PiP.
-- endWord > anchorWord, окно речи 3–6 сек.
-- ЗАПРЕЩЕНО: оффтоп, декоративные клипы не по теме, пустые prompt, больше ${videoTarget} вставок.`,
+            `Ты режиссёр вертикального 9:16 «говорящая голова» в стиле ${styleId}.
+Источник видео: ${kind}. Плюс ОБЯЗАТЕЛЬНО Remotion motion-дизайн.
+Верни JSON:
+{"inserts":[ ...видео ИЛИ motion... ]}
+
+ДВА ТИПА вставок (оба обязательны):
+
+1) ВИДЕО (${kind}) — ровно ${videoTarget} шт.:
+{"anchorWord":<i>,"endWord":<i>,"prompt":"<english>","query":"<search>","layout":"full","note":"<ru quote>","spokenText":"<ru quote>"}
+- layout ВСЕГДА "full" (cutaway на весь кадр).
+- prompt — cinematic EN 1–2 предложения по смыслу фразы; vertical 9:16; no text/logos/faces/celebrities.
+- query — 2–5 EN слов (точный noun из фразы).
+- На самые сильные мысли, равномерно по ролику.
+
+2) MOTION Remotion — ровно ${motionTarget} шт. (код-графика, НЕ картинки):
+{"anchorWord":<i>,"endWord":<i>,"template":"<slug>","layout":"third"|"half","data":{...},"note":"<ru quote>","spokenText":"<ru quote>"}
+- template ТОЛЬКО: ${MOTION_TEMPLATES}.
+- ~${coverPct}% с data.cover=true (тёмный фон + мысль в центре); остальные cover:false (big-statement/metric поверх спикера).
+- data.text/label/lines/items/value — ТОЛЬКО из слов фразы; цифры только если сказаны.
+- МАППИНГ: боль→metric+checklist; успех→gauge; раньше/сейчас→vs-compare/bars; процесс→timeline-steps; тезис→big-statement #EF4444; деньги→number-counter.
+- Accent: ${accentColor}. Чередуй #EF4444 #34D399 #22D3EE #FB7185.
+
+ОБЩИЕ ПРАВИЛА:
+- Сначала прочитай anchorWord..endWord. Вставка иллюстрирует ЭТУ фразу.
+- Видео и motion НЕ на одних и тех же словах (окна не пересекаются).
+- endWord > anchorWord; видео 3–6 сек, motion 2–5 сек.
+- note/spokenText = цитата фразы.
+- ЗАПРЕЩЕНО: оффтоп, >${videoTarget} видео, пустые prompt/template, зум лица.`,
             `DURATION_SEC=${durationSec || "?"}\nBROLL_MODE=${brollMode}\nSTYLE=${styleId}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
             150_000,
           );
           if (!Array.isArray(result.inserts)) result.inserts = [];
-          // Страховка: обрезаем, если модель всё же нагенерила лишнее.
-          if (result.inserts.length > videoTarget) {
-            result.inserts = result.inserts.slice(0, videoTarget);
-          }
+          // Страховка: не больше videoTarget видео-слотов (с prompt/query без template).
+          const videos = result.inserts.filter((it: Json) => !it.template && (it.prompt || it.query));
+          const motions = result.inserts.filter((it: Json) => it.template);
+          result.inserts = [
+            ...videos.slice(0, videoTarget),
+            ...motions.slice(0, motionTarget),
+          ];
           return json(result);
         }
 
