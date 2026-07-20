@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertCircle, CalendarClock, ClipboardList, Info, Plus, RefreshCw } from "lucide-react";
+import { AlertCircle, CalendarClock, ClipboardList, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -20,7 +20,7 @@ import {
   summarizeContentPlan,
   type ContentPlanItem,
 } from "@/lib/contentPlan";
-import { formatPeriodLabel, fromTodayRange, monthRange, todayAlmatyYmd } from "@/lib/metricsPeriod";
+import { formatPeriodLabel, monthRange, todayAlmatyYmd } from "@/lib/metricsPeriod";
 import { cn } from "@/lib/utils";
 import AutoPost, { AutopostAddDialog } from "@/pages/AutoPost";
 
@@ -38,7 +38,6 @@ const PRESET_LABELS: Record<ContentPeriodPreset, string> = {
 const contentPlanThisMonth = () => monthRange(new Date());
 
 const CONTENT_PLAN_PERIOD_PRESETS: { id: ContentPeriodPreset; label: string }[] = [
-  { id: "from_today", label: "С сегодня" },
   { id: "this_month", label: "Этот месяц" },
   { id: "last_month", label: "Прошлый месяц" },
   { id: "custom", label: "Выбрать период" },
@@ -52,8 +51,8 @@ export default function ContentPlan() {
   const { activeId: projectId } = useProjectsStore();
   const { account, sync } = useInstagramAccount();
   const [addDay, setAddDay] = useState<string | null>(null);
-  const [preset, setPreset] = useState<ContentPeriodPreset>("from_today");
-  const [range, setRange] = useState<ReportPeriodRange>(() => fromTodayRange());
+  const [preset, setPreset] = useState<ContentPeriodPreset>("this_month");
+  const [range, setRange] = useState<ReportPeriodRange>(() => contentPlanThisMonth());
   const [refreshing, setRefreshing] = useState(false);
 
   const setShowCalendar = (on: boolean) => {
@@ -124,23 +123,6 @@ export default function ContentPlan() {
           </div>
         }
       />
-
-      {!showCalendar && (
-        <div className="mt-4 flex items-start gap-2 rounded-xl border border-border/50 bg-card/40 p-3 text-sm text-muted-foreground">
-          <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-          <div>
-            <p>
-              Статистика считается с <span className="text-foreground">20 июля 2026</span> (Алматы).
-              Более ранние публикации скрыты и в KPI не входят.
-            </p>
-            <p className="mt-1">
-              Посты, запланированные <span className="text-foreground">прямо в приложении Instagram</span>, Meta
-              не отдаёт до выхода — в списке их не будет заранее. После выхода нажми «Обновить» —
-              пост, охват и воронка подтянутся автоматически.
-            </p>
-          </div>
-        </div>
-      )}
 
       {tableMissing && (
         <div className="mt-4 flex items-start gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-900 dark:text-amber-100">
