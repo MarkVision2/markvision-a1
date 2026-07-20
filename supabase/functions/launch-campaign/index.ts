@@ -268,151 +268,197 @@ Deno.serve(async (req) => {
       ? (websiteUrl || pickStr(client.landing_url) || "https://facebook.com/")
       : "https://facebook.com/";
 
-    // ===== 6. ЗАГРУЖАЕМ КРЕАТИВЫ В META → получаем image_hash =====
-    const creativeFeedFile = incoming.get("creative_feed");
-    const creativeStoriesFile = incoming.get("creative_stories");
+    const ctaValue = isWebsiteGoal
+      ? { link: linkUrl }
+      : isWhatsApp
+        ? { app_destination: "WHATSAPP" }
+        : {};
+    const callToAction = { type: ctaType, value: ctaValue };
 
-    // Карусель: creative_carousel_0 … creative_carousel_N
-    const carouselEntries: { idx: number; file: File }[] = [];
-    for (const [key, value] of incoming.entries()) {
-      const m = /^creative_carousel_(\d+)$/.exec(key);
-      if (!m || !(value instanceof File)) continue;
-      if (!value.type.startsWith("image/")) continue;
-      carouselEntries.push({ idx: Number(m[1]), file: value });
-    }
-    carouselEntries.sort((a, b) => a.idx - b.idx);
-    const isCarousel =
-      payload.creativeFormat === "carousel" || carouselEntries.length >= 2;
+    // ===== 6–7. Креатив =====
+    // Режим «существующая публикация IG» (как в Meta Ads Manager):
+    // https://developers.facebook.com/docs/instagram/ads-api/guides/use-posts-as-ads/
+    // creative = { object_id, instagram_user_id, source_instagram_media_id, call_to_action? }
+    const sourceIgMediaId = pickStr(
+      payload.sourceInstagramMediaId,
+      payload.source_instagram_media_id,
+    );
+    const adSetupMode = pickStr(payload.adSetupMode, payload.ad_setup_mode) ||
+      (sourceIgMediaId ? "existing" : "create");
+    const igUserForCreative = pickStr(
+      payload.instagramUserId,
+      instagramId,
+      client.instagram_actor_id,
+      client.instagram_user_id,
+    );
 
     let feedImageHash: string | null = null;
     let feedImageUrl: string | null = null;
     let storiesImageHash: string | null = null;
     let storiesImageUrl: string | null = null;
     const orderedCarouselHashes: { hash: string; url: string }[] = [];
+    let creativeBody: Record<string, unknown>;
+    let storiesCreativeBody: Record<string, unknown> | null = null;
 
-    if (isCarousel && carouselEntries.length >= 2) {
-      // По порядку, чтобы child_attachments совпали со слайдами в UI
-      for (const { file } of carouselEntries) {
-        const r = await uploadImageToMeta(adAccount, accessToken, file);
-        if (r) orderedCarouselHashes.push(r);
+    if (adSetupMode === "existing" && sourceIgMediaId) {
+      if (!pageId) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: "Для продвижения публикации нужна Facebook Page (page_id).",
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
       }
-      if (orderedCarouselHashes[0]) {
-        feedImageHash = orderedCarouselHashes[0].hash;
-        feedImageUrl = orderedCarouselHashes[0].url;
+      if (!igUserForCreative) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error:
+              "Нет Instagram User ID у страницы. Привяжите Instagram Business к Page.",
+          }),
+          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
       }
+
+      creativeBody = {
+        access_token: accessToken,
+        name: `creative_existing_${Date.now()}`,
+        object_id: pageId,
+        instagram_user_id: igUserForCreative,
+        source_instagram_media_id: sourceIgMediaId,
+        call_to_action: callToAction,
+      };
+      payload.creativeFormat = "existing_post";
+      payload.adSetupMode = "existing";
+      payload.sourceInstagramMediaId = sourceIgMediaId;
+      payload.source_instagram_media_id = sourceIgMediaId;
+      payload.feedImageHash = null;
+      payload.storiesImageHash = null;
+      payload.carouselImageHashes = [];
+      payload.carouselImageUrls = [];
     } else {
-      const uploadTasks: Promise<void>[] = [];
-      if (creativeFeedFile instanceof File && creativeFeedFile.type.startsWith("image/")) {
-        uploadTasks.push(
-          uploadImageToMeta(adAccount, accessToken, creativeFeedFile).then((r) => {
-            if (r) { feedImageHash = r.hash; feedImageUrl = r.url; }
-          }),
-        );
+      // ===== Создать объявление: загружаем файлы → image_hash / carousel =====
+      const creativeFeedFile = incoming.get("creative_feed");
+      const creativeStoriesFile = incoming.get("creative_stories");
+
+      // Карусель: creative_carousel_0 … creative_carousel_N
+      const carouselEntries: { idx: number; file: File }[] = [];
+      for (const [key, value] of incoming.entries()) {
+        const m = /^creative_carousel_(\d+)$/.exec(key);
+        if (!m || !(value instanceof File)) continue;
+        if (!value.type.startsWith("image/")) continue;
+        carouselEntries.push({ idx: Number(m[1]), file: value });
       }
-      if (creativeStoriesFile instanceof File && creativeStoriesFile.type.startsWith("image/")) {
-        uploadTasks.push(
-          uploadImageToMeta(adAccount, accessToken, creativeStoriesFile).then((r) => {
-            if (r) { storiesImageHash = r.hash; storiesImageUrl = r.url; }
-          }),
-        );
+      carouselEntries.sort((a, b) => a.idx - b.idx);
+      const isCarousel =
+        payload.creativeFormat === "carousel" || carouselEntries.length >= 2;
+
+      if (isCarousel && carouselEntries.length >= 2) {
+        for (const { file } of carouselEntries) {
+          const r = await uploadImageToMeta(adAccount, accessToken, file);
+          if (r) orderedCarouselHashes.push(r);
+        }
+        if (orderedCarouselHashes[0]) {
+          feedImageHash = orderedCarouselHashes[0].hash;
+          feedImageUrl = orderedCarouselHashes[0].url;
+        }
+      } else {
+        const uploadTasks: Promise<void>[] = [];
+        if (creativeFeedFile instanceof File && creativeFeedFile.type.startsWith("image/")) {
+          uploadTasks.push(
+            uploadImageToMeta(adAccount, accessToken, creativeFeedFile).then((r) => {
+              if (r) { feedImageHash = r.hash; feedImageUrl = r.url; }
+            }),
+          );
+        }
+        if (creativeStoriesFile instanceof File && creativeStoriesFile.type.startsWith("image/")) {
+          uploadTasks.push(
+            uploadImageToMeta(adAccount, accessToken, creativeStoriesFile).then((r) => {
+              if (r) { storiesImageHash = r.hash; storiesImageUrl = r.url; }
+            }),
+          );
+        }
+        if (uploadTasks.length > 0) await Promise.all(uploadTasks);
       }
-      if (uploadTasks.length > 0) await Promise.all(uploadTasks);
-    }
 
-    // Добавляем image_hash в payload для n8n и в creativeBody
-    payload.feedImageHash = feedImageHash;
-    payload.feedImageUrl = feedImageUrl;
-    payload.storiesImageHash = storiesImageHash;
-    payload.storiesImageUrl = storiesImageUrl;
-    payload.creativeFormat = isCarousel && orderedCarouselHashes.length >= 2
-      ? "carousel"
-      : (payload.creativeFormat ?? "single");
-    payload.carouselImageHashes = orderedCarouselHashes.map((h) => h.hash);
-    payload.carouselImageUrls = orderedCarouselHashes.map((h) => h.url);
+      payload.feedImageHash = feedImageHash;
+      payload.feedImageUrl = feedImageUrl;
+      payload.storiesImageHash = storiesImageHash;
+      payload.storiesImageUrl = storiesImageUrl;
+      payload.creativeFormat = isCarousel && orderedCarouselHashes.length >= 2
+        ? "carousel"
+        : (payload.creativeFormat ?? "single");
+      payload.carouselImageHashes = orderedCarouselHashes.map((h) => h.hash);
+      payload.carouselImageUrls = orderedCarouselHashes.map((h) => h.url);
+      payload.adSetupMode = "create";
 
-    // ===== 7. Строим creativeBody с image_hash =====
-    const linkData: Record<string, unknown> = {
-      link: linkUrl,
-      message: pickStr(payload.text),
-      name: pickStr(payload.text).slice(0, 60) || goalLabel,
-      call_to_action: {
-        type: ctaType,
-        value: isWebsiteGoal
-          ? { link: linkUrl }
-          : isWhatsApp
-            ? { app_destination: "WHATSAPP" }
-            : {},
-      },
-    };
-
-    if (isCarousel && orderedCarouselHashes.length >= 2) {
-      // Meta carousel: child_attachments, без top-level image_hash
-      const ctaValue = isWebsiteGoal
-        ? { link: linkUrl }
-        : isWhatsApp
-          ? { app_destination: "WHATSAPP" }
-          : {};
-      linkData.child_attachments = orderedCarouselHashes.map((h) => ({
+      const linkData: Record<string, unknown> = {
         link: linkUrl,
-        image_hash: h.hash,
-        name: pickStr(payload.text).slice(0, 40) || goalLabel,
-        call_to_action: { type: ctaType, value: ctaValue },
-      }));
-      payload.creativeFormat = "carousel";
-    } else if (feedImageHash) {
-      // Одиночный креатив ленты (feed 4:5)
-      linkData.image_hash = feedImageHash;
-    }
+        message: pickStr(payload.text),
+        name: pickStr(payload.text).slice(0, 60) || goalLabel,
+        call_to_action: callToAction,
+      };
 
-    const creativeBody: Record<string, unknown> = {
-      access_token: accessToken,
-      name: `creative_${Date.now()}`,
-      object_story_spec: {
-        page_id: pageId,
-        link_data: linkData,
-      },
-    };
+      if (isCarousel && orderedCarouselHashes.length >= 2) {
+        linkData.child_attachments = orderedCarouselHashes.map((h) => ({
+          link: linkUrl,
+          image_hash: h.hash,
+          name: pickStr(payload.text).slice(0, 40) || goalLabel,
+          call_to_action: callToAction,
+        }));
+        payload.creativeFormat = "carousel";
+      } else if (feedImageHash) {
+        linkData.image_hash = feedImageHash;
+      }
 
-    // Для видео — n8n получит файл и сам загрузит через video upload API
-    // Флаги помогают n8n понять, что нужно сделать
-    if (
-      creativeFeedFile instanceof File &&
-      creativeFeedFile.type.startsWith("video/")
-    ) {
-      payload.feedIsVideo = true;
-      payload.feedVideoFileName = creativeFeedFile.name;
-    }
-    if (
-      creativeStoriesFile instanceof File &&
-      creativeStoriesFile.type.startsWith("video/")
-    ) {
-      payload.storiesIsVideo = true;
-      payload.storiesVideoFileName = creativeStoriesFile.name;
-    }
+      creativeBody = {
+        access_token: accessToken,
+        name: `creative_${Date.now()}`,
+        object_story_spec: {
+          page_id: pageId,
+          ...(igUserForCreative ? { instagram_user_id: igUserForCreative } : {}),
+          link_data: linkData,
+        },
+      };
 
-    // Stories creativeBody (9:16) — отдельный объект для n8n
-    // Для карусели stories не используем: убираем child_attachments, оставляем
-    // одиночный image_hash первого слайда как fallback для n8n.
-    const storiesLinkData: Record<string, unknown> = {
-      link: linkUrl,
-      message: pickStr(payload.text),
-      name: pickStr(payload.text).slice(0, 60) || goalLabel,
-      call_to_action: linkData.call_to_action,
-    };
-    if (storiesImageHash) {
-      storiesLinkData.image_hash = storiesImageHash;
-    } else if (feedImageHash) {
-      storiesLinkData.image_hash = feedImageHash;
-    }
+      if (
+        creativeFeedFile instanceof File &&
+        creativeFeedFile.type.startsWith("video/")
+      ) {
+        payload.feedIsVideo = true;
+        payload.feedVideoFileName = creativeFeedFile.name;
+      }
+      if (
+        creativeStoriesFile instanceof File &&
+        creativeStoriesFile.type.startsWith("video/")
+      ) {
+        payload.storiesIsVideo = true;
+        payload.storiesVideoFileName = creativeStoriesFile.name;
+      }
 
-    const storiesCreativeBody: Record<string, unknown> = {
-      access_token: accessToken,
-      name: `creative_stories_${Date.now()}`,
-      object_story_spec: {
-        page_id: pageId,
-        link_data: storiesLinkData,
-      },
-    };
+      const storiesLinkData: Record<string, unknown> = {
+        link: linkUrl,
+        message: pickStr(payload.text),
+        name: pickStr(payload.text).slice(0, 60) || goalLabel,
+        call_to_action: callToAction,
+      };
+      if (storiesImageHash) {
+        storiesLinkData.image_hash = storiesImageHash;
+      } else if (feedImageHash) {
+        storiesLinkData.image_hash = feedImageHash;
+      }
+
+      storiesCreativeBody = {
+        access_token: accessToken,
+        name: `creative_stories_${Date.now()}`,
+        object_story_spec: {
+          page_id: pageId,
+          ...(igUserForCreative ? { instagram_user_id: igUserForCreative } : {}),
+          link_data: storiesLinkData,
+        },
+      };
+    }
 
     payload.campaignBody = campaignBody;
     payload.adSetBody = adSetBody;
@@ -482,6 +528,8 @@ Deno.serve(async (req) => {
         storiesImageHash,
         carouselImageHashes: orderedCarouselHashes.map((h) => h.hash),
         creativeFormat: payload.creativeFormat,
+        adSetupMode: payload.adSetupMode,
+        sourceInstagramMediaId: payload.sourceInstagramMediaId ?? null,
         response: ackBody,
       }),
       {
