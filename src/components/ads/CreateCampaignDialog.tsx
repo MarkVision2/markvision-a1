@@ -712,17 +712,9 @@ const CreateCampaignDialog = ({
         : goal === "meta-form"
           ? "Лид-форма Meta"
           : "WhatsApp";
-    const currency = (cab?.currency ?? "USD").toUpperCase();
-    const currencySymbol =
-      currency === "USD"
-        ? "$"
-        : currency === "EUR"
-          ? "€"
-          : currency === "RUB"
-            ? "₽"
-            : currency === "KZT"
-              ? "₸"
-              : currency;
+    // Бюджет в мастере всегда в $ (валюта ввода для Meta), независимо от
+    // currency кабинета в CRM — иначе у KZT-кабинетов показывался ₸.
+    const currencySymbol = "$";
     const rows: { label: string; value: string }[] = [];
     rows.push({ label: "Цель", value: goalLabel });
     if (goal === "site-leads") {
@@ -902,13 +894,7 @@ const CreateCampaignDialog = ({
                     className="h-11 rounded-xl border-border/50 bg-background/50 pr-12"
                   />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                    {(selectedCabinet?.currency ?? "USD").toUpperCase() === "KZT"
-                      ? "₸"
-                      : (selectedCabinet?.currency ?? "USD").toUpperCase() === "RUB"
-                        ? "₽"
-                        : (selectedCabinet?.currency ?? "USD").toUpperCase() === "EUR"
-                          ? "€"
-                          : "$"}
+                    $
                   </span>
                 </div>
               </div>
