@@ -1,7 +1,7 @@
 {
-  "git_sha": "2c19e43",
-  "git_sha_full": "2c19e43ae5958b131d7060431290752e6d4653a9",
-  "updated_at": "2026-07-20T11:33:32Z",
-  "label": "fix(montage): no zoom, grounded inserts, reliable Kie b-roll",
+  "git_sha": "581c322",
+  "git_sha_full": "581c32271eff104dd21396627ffd873afdd3c809",
+  "updated_at": "2026-07-20T11:53:24Z",
+  "label": "Merge pull request #171 from MarkVision2/cursor/fix-kie-model-84cc",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
