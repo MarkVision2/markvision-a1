@@ -84,7 +84,7 @@ def _merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
     return out
 
 
-def enrich(work: Path, gap_sec: float = 4.5) -> dict:
+def enrich(work: Path, gap_sec: float = 4.5, cover_ratio: float = 0.0) -> dict:
     words_path = work / "words.json"
     if not words_path.exists():
         raise SystemExit(f"missing {words_path}")
@@ -118,6 +118,7 @@ def enrich(work: Path, gap_sec: float = 4.5) -> dict:
     t = float(words[0].get("start") or 0)
     color_i = 0
     auto_added = 0
+    cover_ratio = max(0.0, min(0.85, float(cover_ratio or 0)))
 
     while t < duration - 0.5:
         window_end = min(duration, t + gap_sec)
@@ -134,15 +135,17 @@ def enrich(work: Path, gap_sec: float = 4.5) -> dict:
         template, data = _pick_template(text)
         accent = ACCENTS[color_i % len(ACCENTS)]
         color_i += 1
-        data = {**data, "accent": accent, "cover": False}
+        # Для кейс-стиля чередуем cover-сцены (мысль на весь экран) и оверлеи.
+        use_cover = cover_ratio > 0 and (auto_added % max(1, round(1 / cover_ratio))) == 0
+        data = {**data, "accent": accent, "cover": bool(use_cover)}
 
         merged.append({
             "anchorWord": i0,
             "endWord": max(i0 + 1, min(i1, i0 + 8)),
             "template": template,
             "data": data,
-            "layout": "third",
-            "note": f"auto:{template}",
+            "layout": "third" if not use_cover else "full",
+            "note": f"auto:{template}{'/cover' if use_cover else ''}",
         })
         ranges.append((i0, i1))
         auto_added += 1
@@ -151,11 +154,12 @@ def enrich(work: Path, gap_sec: float = 4.5) -> dict:
     merged.sort(key=lambda x: int(x["anchorWord"]))
     out = {"inserts": merged}
     ins_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(f"OK inserts={len(merged)} auto_added={auto_added} gap={gap_sec}s")
+    print(f"OK inserts={len(merged)} auto_added={auto_added} gap={gap_sec}s cover_ratio={cover_ratio}")
     return out
 
 
 if __name__ == "__main__":
     work_dir = Path(sys.argv[1])
     gap = float(sys.argv[2]) if len(sys.argv) > 2 else 4.5
-    enrich(work_dir, gap)
+    cover = float(sys.argv[3]) if len(sys.argv) > 3 else 0.0
+    enrich(work_dir, gap, cover)

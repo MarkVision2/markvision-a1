@@ -558,7 +558,7 @@ async function processJob(job) {
     }
     writeFileSync(resolve(work, "inserts.json"), JSON.stringify(inserts, null, 2));
     await status(id, "уплотняем motion-вставки");
-    py(["pipeline/inserts_enrich.py", work, String(style.insertEverySec || 4.5)]);
+    py(["pipeline/inserts_enrich.py", work, String(style.insertEverySec || 4.5), String(style.coverRatio ?? 0)]);
 
     // Один вертикальный клип на ВСЮ длину — не «шортсы из лучших моментов».
     const accents = JSON.parse(readFileSync(resolve(work, "accents.json"), "utf8"));
@@ -577,6 +577,8 @@ async function processJob(job) {
           accents: accentIdx,
           fixes: {},
           captionStyle: style.captionStyle || "karaoke-box",
+          keepCaptionsOnCover: style.keepCaptionsOnCover !== false
+            && (style.captionStyle === "karaoke-box" || style.keepCaptionsOnCover === true),
         }],
       }, null, 2),
     );

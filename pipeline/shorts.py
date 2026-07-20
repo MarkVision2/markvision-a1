@@ -223,6 +223,10 @@ def build(work: Path, props_dir: Path, draft: bool):
             "totalDurationInFrames": total,
             "videoW": video_w,
             "captionStyle": sh.get("captionStyle", "pill"),
+            "keepCaptionsOnCover": bool(
+                sh.get("keepCaptionsOnCover")
+                or sh.get("captionStyle") == "karaoke-box"
+            ),
         }
         out = props_dir / f"{sh['id']}.json"
         out.parent.mkdir(parents=True, exist_ok=True)

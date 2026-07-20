@@ -61,9 +61,12 @@ export type ShortsProps = {
   // vertical 9:16 source fills the 1080-wide canvas exactly → pass 1080.
   videoW?: number;
   // Caption look: "pill" (bottom-centre, accent pill), "left-stack" (left,
-  // word-stacked, cream + accent, hops position) or "mixed" (alternates the two
-  // per phrase for variety).
+  // word-stacked, cream + accent, hops position), "mixed" (alternates the two
+  // per phrase), "karaoke-box" (dark plate + yellow active word, keeps captions
+  // visible during cover motion — expert-explainer style).
   captionStyle?: "pill" | "left-stack" | "mixed" | "karaoke-box";
+  /** When true, karaoke captions stay on screen during motion cover scenes. */
+  keepCaptionsOnCover?: boolean;
   // Background music file in public/ (played quietly under the voice), or null.
   music?: string | null;
   musicVolume?: number;
@@ -227,13 +230,15 @@ const Captions: React.FC<{
   words: ShortWord[];
   inserts: ShortInsert[];
   style?: "pill" | "left-stack" | "mixed" | "karaoke-box";
-}> = ({ words, inserts, style = "pill" }) => {
+  keepCaptionsOnCover?: boolean;
+}> = ({ words, inserts, style = "pill", keepCaptionsOnCover = false }) => {
   const frame = useCurrentFrame();
-  // A word spoken while a motion insert is on screen is carried by that overlay
-  // — drop it from the captions entirely so it never echoes top-and-bottom.
+  // Expert-explainer keeps karaoke visible on cover scenes (reference does).
+  // Other styles hide captions while a motion insert carries the thought.
   const covered = (f: number) =>
+    !keepCaptionsOnCover &&
     inserts.some((i) => i.type === "motion" && f >= i.from && f < i.to);
-  // Hide captions outright while an insert is on screen.
+  // Hide captions outright while a covering insert is on screen (unless keepCaptionsOnCover).
   if (covered(frame)) return null;
   const vis = words.filter((w) => !covered(w.from));
   let ci = -1;
@@ -399,6 +404,7 @@ export const Shorts916: React.FC<ShortsProps> = ({
   totalDurationInFrames,
   videoW = DEFAULT_VIDEO_W,
   captionStyle = "pill",
+  keepCaptionsOnCover = false,
   music = null,
   musicVolume = 0.12,
 }) => {
@@ -415,6 +421,8 @@ export const Shorts916: React.FC<ShortsProps> = ({
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
+  const captionsStay =
+    keepCaptionsOnCover || captionStyle === "karaoke-box";
 
   return (
     <AbsoluteFill style={{ backgroundColor: "#000" }}>
@@ -447,7 +455,12 @@ export const Shorts916: React.FC<ShortsProps> = ({
       </AbsoluteFill>
 
       <InsertTop insert={activeInsert} opacity={insertAmount} />
-      <Captions words={words} inserts={inserts} style={captionStyle} />
+      <Captions
+        words={words}
+        inserts={inserts}
+        style={captionStyle}
+        keepCaptionsOnCover={captionsStay}
+      />
 
       {/* progress bar */}
       <div style={{ position: "absolute", top: 0, left: 0, height: 8, width: `${progress}%`, backgroundColor: SCARLET }} />

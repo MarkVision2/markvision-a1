@@ -21,6 +21,8 @@ export interface MontageStyleTemplate {
   /** Акцент каждые N секунд */
   accentEverySec: number;
   accentColor: string;
+  /** Титры остаются видимы на cover-сценах */
+  keepCaptionsOnCover?: boolean;
   /** Короткие правила для montage-ai */
   aiRules: string;
   recommended?: boolean;
@@ -30,24 +32,35 @@ export const MONTAGE_STYLE_TEMPLATES: MontageStyleTemplate[] = [
   {
     id: "expert-explainer",
     title: "Кейс-эксперт",
-    subtitle: "Как в референсе",
+    subtitle: "Каждая мысль = сцена",
     description:
-      "Жёлтые метрики сверху, караоке-титры, частые cover-сцены с карточками/схемами/графиками. Каждая мысль — визуал.",
+      "Как в референсе: мысль → визуал (%, схема, раньше/сейчас, чеклист). Спикер в углу на cover, караоке всегда снизу.",
     thumb: "/montage-templates/expert-explainer.jpg",
     captionStyle: "karaoke-box",
-    insertEverySec: 4,
-    coverRatio: 0.45,
-    accentEverySec: 4,
+    insertEverySec: 3.5,
+    coverRatio: 0.6,
+    accentEverySec: 3.5,
     accentColor: "#F5E14B",
+    keepCaptionsOnCover: true,
     recommended: true,
     aiRules: [
-      "СТИЛЬ «Кейс-эксперт» (референс expert-explainer):",
-      "- Титры: karaoke-box — тёмная плашка снизу, текущее слово жёлтым (#F5E14B) на чёрном.",
-      "- Поверх спикера (cover:false, layout:third): жёлтый бейдж метрики + чёрная pill-подпись (metric-callout / number-counter / kinetic-type).",
-      "- ~45% мыслей — cover:true на тёмном фоне: карточка, схема arrow-flow, график fake-dashboard-bars, чеклист проблем, phone-mockup/квиз.",
-      "- Плотность ~1 вставка на 3–5 сек, без дыр >5 сек. Чередуй full-speaker и cover.",
-      "- Акцент-цвет #F5E14B; теги контекста (год/клиент) — pill-row или notification-toast.",
-      "- Каждая мысль/цифра/вопрос сопровождается визуалом (не только титры).",
+      "СТИЛЬ «Кейс-эксперт» — ГЛАВНОЕ ПРАВИЛО:",
+      "Каждая мысль = отдельная ВИЗУАЛЬНАЯ СЦЕНА, которая иллюстрирует сказанное (не декоративный оверлей на лице).",
+      "",
+      "ДВА РЕЖИМА:",
+      "A) cover:true (~60%): тёмный фон, спикер в PiP, по центру мысль (цифра/схема/сравнение/чеклист/flowchart/карточка), слева-сверху цветной тег контекста, титры снизу остаются.",
+      "B) cover:false (~40%): спикер полный кадр + крупный заголовок/метрика (big-statement красным на тезис; metric-callout жёлтым на цифру).",
+      "",
+      "МАППИНГ:",
+      "- боль → number-counter/metric-callout + checklist-reveal (красные теги)",
+      "- успех «после нас» → gauge + checklist-reveal (зелёный ✓)",
+      "- раньше/сейчас → fake-dashboard-bars / vs-compare",
+      "- процесс → timeline-steps / arrow-flow",
+      "- углы креативов → checklist-reveal / pill-row",
+      "- цель/тезис → big-statement accent #EF4444",
+      "- выручка → number-counter крупно",
+      "",
+      "ТИТРЫ karaoke-box (#F5E14B на текущем слове). Плотность 1 сцена / 3–5 сек. Чередуй cover↔speaker.",
     ].join("\n"),
   },
   {
@@ -62,6 +75,7 @@ export const MONTAGE_STYLE_TEMPLATES: MontageStyleTemplate[] = [
     coverRatio: 0.15,
     accentEverySec: 5,
     accentColor: "#FF7A18",
+    keepCaptionsOnCover: false,
     aiRules: [
       "СТИЛЬ «Плотный motion»:",
       "- layout:third, cover:false ≥85%, анимации сверху на каждую мысль.",
@@ -80,6 +94,7 @@ export const MONTAGE_STYLE_TEMPLATES: MontageStyleTemplate[] = [
     coverRatio: 0.2,
     accentEverySec: 10,
     accentColor: "#FF7A18",
+    keepCaptionsOnCover: false,
     aiRules: [
       "СТИЛЬ «Классика»:",
       "- Вставки реже (~1 на 10–12 сек), спокойный темп.",

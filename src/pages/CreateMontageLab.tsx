@@ -729,7 +729,7 @@ const CreateMontageLab = () => {
                 <div>
                   <h2 className="text-sm font-semibold">Стиль монтажа</h2>
                   <p className="text-[11px] text-muted-foreground">
-                    Шаблон задаёт ритм вставок, титры и cover-сцены
+                    «Кейс-эксперт»: каждая мысль = визуальная сцена (не только титры)
                   </p>
                 </div>
               </div>

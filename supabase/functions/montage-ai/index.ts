@@ -181,18 +181,19 @@ word = индекс из indexed. text — короткий капс (1–3 сл
         const result = await chatJson(
           `Ты режиссёр motion-графики для вертикального 9:16 «говорящая голова».
 Стиль шаблона: ${styleId}. Верни JSON:
-{"inserts":[{"anchorWord":<i>,"endWord":<i>,"template":"<slug>","layout":"third"|"half","data":{...},"note":"..."}]}
+{"inserts":[{"anchorWord":<i>,"endWord":<i>,"template":"<slug>","layout":"third"|"half"|"full","data":{...},"note":"..."}]}
 Это code-based b-roll (НЕ картинки). template — ТОЛЬКО: ${MOTION_TEMPLATES}.
 ${sourceHint}
+ГЛАВНОЕ: каждая мысль = ВИЗУАЛЬНАЯ СЦЕНА, иллюстрирующая сказанное (не декор поверх лица).
 Правила (ЖЁСТКО):
 - Минимум ${target} вставок — плотность ~1 на каждые ${every} сек, БЕЗ дыр >${every + 1} сек.
-- ~${coverPct}% вставок с data.cover=true (тёмный фон + центральная карточка/схема/график — спикер уходит в PiP-зону композиции).
-- Остальные — cover:false + layout:third: жёлтый/цветной бейдж СВЕРХУ поверх спикера (metric-callout, number-counter, kinetic-type, notification-toast).
-- Подбор по смыслу: цифры→number-counter/metric-callout; рост→fake-dashboard-bars/stat-grid;
-  процесс/воронка→arrow-flow/timeline-steps; проблемы→checklist-reveal; UI/квиз→phone-mockup;
-  тезис→quote-card/big-statement; время→countdown+icon:clock.
-- Основной accent в data: ${accentColor}. Чередуй также #22D3EE #34D399 #FB7185 #8B5CF6.
-- data обязателен под шаблон. endWord > anchorWord, окно 2–5 сек.
+- ~${coverPct}% с data.cover=true: тёмный фон + ЦЕНТР = мысль (цифра/схема/сравнение/чеклист/flowchart/карточка). Тег контекста — notification-toast/pill-row в data или соседней вставке.
+- Остальные cover:false: спикер полный кадр + big-statement (тезис, accent #EF4444) или metric-callout/number-counter сверху (layout:third).
+- МАППИНГ: боль→metric-callout+checklist-reveal(красные теги); успех→gauge+checklist-reveal(зелёный ✓);
+  раньше/сейчас→fake-dashboard-bars/vs-compare; процесс→timeline-steps/arrow-flow; углы→pill-row;
+  оффер→price-tag; выручка→number-counter крупно.
+- Основной accent слова в титрах: ${accentColor}. Чередуй #EF4444 #34D399 #22D3EE #FB7185.
+- data обязателен. endWord > anchorWord, окно 2–5 сек.
 - Учитывай brief (там полные правила стиля).`,
           `DURATION_SEC=${durationSec || "?"}\nBROLL_MODE=${brollMode}\nSTYLE=${styleId}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
           150_000,
