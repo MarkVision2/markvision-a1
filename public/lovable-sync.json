@@ -1,7 +1,7 @@
 {
-  "git_sha": "207e27c",
-  "git_sha_full": "207e27c1faca899fc5420e6573e00eab2f11a8db",
-  "updated_at": "2026-07-20T10:09:53Z",
-  "label": "feat(montage): dense top motion overlays and semantic b-roll",
+  "git_sha": "30ecfe6",
+  "git_sha_full": "30ecfe63e492ff05c93f4ff9e4faf790db24e02c",
+  "updated_at": "2026-07-20T10:17:12Z",
+  "label": "Merge branch 'main' of https://github.com/markvision2/markvision-a1",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
