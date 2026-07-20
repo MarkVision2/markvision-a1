@@ -1,7 +1,7 @@
 {
-  "git_sha": "0a9e1ef",
-  "git_sha_full": "0a9e1ef41c02695ef8b5f043c5298821e71cd6c6",
-  "updated_at": "2026-07-20T05:43:35Z",
-  "label": "fix(content-plan): from Jul 20 + reach fallback [vercel-deploy]",
-  "publish_hint": "push main → www.markvision.kz"
+  "git_sha": "85d2956",
+  "git_sha_full": "85d295601ffe3ceb7cdf79325a6b86c0dc382029",
+  "updated_at": "2026-07-20T05:51:29Z",
+  "label": "Merge pull request #151 from MarkVision2/cursor/montage-kie-broll-84cc",
+  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
