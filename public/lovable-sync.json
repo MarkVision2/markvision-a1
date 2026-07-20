@@ -1,7 +1,7 @@
 {
-  "git_sha": "8534d92",
-  "git_sha_full": "8534d92adeb0a5845a2cef1e56fd52e2d5d90b9a",
-  "updated_at": "2026-07-20T10:45:32Z",
-  "label": "chore(deploy): skip Vercel Git builds; CLI deploy on Node 22",
+  "git_sha": "0e28fb0",
+  "git_sha_full": "0e28fb070b53bdd099d742bcd7c94ad866a60590",
+  "updated_at": "2026-07-20T10:58:18Z",
+  "label": "fix(ui): distinct montage style thumbs without speaker face",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
