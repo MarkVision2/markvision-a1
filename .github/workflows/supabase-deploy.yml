@@ -90,7 +90,8 @@ jobs:
           FAILED=""
           for SQL_FILE in \
             scripts/apply-prod-pending-20260719.sql \
-            supabase/migrations/20260719190000_ig_dm_button_title.sql
+            supabase/migrations/20260719190000_ig_dm_button_title.sql \
+            supabase/migrations/20260719193000_montage_jobs_broll_source.sql
           do
             echo "::group::Apply $SQL_FILE"
             if ! SQL_FILE="$SQL_FILE" .github/scripts/apply-sql-via-management-api.sh; then
