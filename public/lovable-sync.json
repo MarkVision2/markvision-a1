@@ -1,7 +1,7 @@
 {
-  "git_sha": "30ecfe6",
-  "git_sha_full": "30ecfe63e492ff05c93f4ff9e4faf790db24e02c",
-  "updated_at": "2026-07-20T10:17:12Z",
-  "label": "Merge branch 'main' of https://github.com/markvision2/markvision-a1",
+  "git_sha": "073fda1",
+  "git_sha_full": "073fda17b4ee65e4852b8973a36542dad63fd504",
+  "updated_at": "2026-07-20T10:24:32Z",
+  "label": "feat(montage): expert-explainer style template from reference video",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
