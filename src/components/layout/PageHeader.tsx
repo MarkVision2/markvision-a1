@@ -58,7 +58,7 @@ export function PageHeader({
       </div>
 
       {(actions || meta) && (
-        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:gap-3">
+        <div className="flex w-full min-w-0 flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end sm:gap-3">
           {meta}
           {actions}
         </div>
