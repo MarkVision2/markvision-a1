@@ -1,7 +1,7 @@
 {
-  "git_sha": "094f4a5",
-  "git_sha_full": "094f4a500d5445c64ae6545bc2725341d6fd5de3",
-  "updated_at": "2026-07-20T06:18:26Z",
-  "label": "fix(ads): allow pixel event list without saved cabinet pixel_id (#154)",
+  "git_sha": "8d2938f",
+  "git_sha_full": "8d2938f5e17ab575cdffc093a0ef8a1e1d6917eb",
+  "updated_at": "2026-07-20T06:24:06Z",
+  "label": "fix(ads): show $ for daily budget in create-campaign dialog (#156)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
