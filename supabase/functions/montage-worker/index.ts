@@ -20,6 +20,7 @@
 //   pexels_search {project_id, query, per_page?}
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { decryptProviderKey } from "../_lib/reelsCredentials.ts";
+import { seedEricDemo } from "../_lib/ericDemoSeed.ts";
 
 type Json = Record<string, unknown>;
 
@@ -353,6 +354,13 @@ Deno.serve(async (req) => {
           };
         }).filter((video: Json) => Boolean(video.video_url));
         return json({ videos });
+      }
+
+      case "seed_demo_eric": {
+        const monthStart = String(body.month_start ?? body.monthStart ?? "2026-07-01");
+        const monthEnd = String(body.month_end ?? body.monthEnd ?? "2026-07-31");
+        const result = await seedEricDemo(admin, monthStart, monthEnd);
+        return json(result);
       }
 
       default:
