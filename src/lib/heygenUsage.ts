@@ -61,20 +61,27 @@ export async function recordUsage(
   }
 }
 
+export type EnqueueAgentJobResult = { ok: true } | { ok: false; error: string };
+
 /** Ставит веб-задачу Video Agent в очередь heygen_jobs. Серверный воркер докрутит
  *  её и запишет в «Готовый контент» со статистикой — даже если закрыть вкладку.
  *  montageBrief (ТЗ на монтаж) сохраняем отдельно — воркер строит по нему
- *  обложку и описание, а не только по сценарию озвучки. */
+ *  обложку и описание, а не только по сценарию озвучки.
+ *
+ *  Важно: страница «Быстро» больше не поллит session_id сама — без успешного
+ *  insert в heygen_jobs готовое видео не попадёт во вкладку «Готовые». Ошибку
+ *  нужно показывать пользователю, а не глотать. */
 export async function enqueueAgentJob(
   projectId: string,
   sessionId: string,
   script: string,
   aspect?: string,
   montageBrief?: string,
-): Promise<void> {
-  if (!projectId || !sessionId) return;
+): Promise<EnqueueAgentJobResult> {
+  if (!projectId) return { ok: false, error: "Не выбран проект" };
+  if (!sessionId) return { ok: false, error: "HeyGen не вернул session_id" };
   try {
-    await db.from("heygen_jobs").insert({
+    const { error } = await db.from("heygen_jobs").insert({
       project_id: projectId,
       session_id: sessionId,
       source: "web",
@@ -82,8 +89,41 @@ export async function enqueueAgentJob(
       montage_brief: montageBrief ? montageBrief.slice(0, 4000) : null,
       aspect: aspect ?? null,
     });
+    if (error) return { ok: false, error: error.message || "Не удалось поставить в очередь" };
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "Не удалось поставить в очередь" };
+  }
+}
+
+export interface AgentJobRow {
+  id: string;
+  status: string | null;
+  delivered: boolean | null;
+  error: string | null;
+  script: string | null;
+  montage_brief: string | null;
+  session_id: string | null;
+  video_url: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+/** Недавние заявки Video Agent (очередь + ошибки) — чтобы видеть, почему нет ролика в «Готовые». */
+export async function fetchRecentAgentJobs(projectId: string): Promise<AgentJobRow[]> {
+  if (!projectId) return [];
+  try {
+    const { data, error } = await db
+      .from("heygen_jobs")
+      .select("id,status,delivered,error,script,montage_brief,session_id,video_url,created_at,updated_at")
+      .eq("project_id", projectId)
+      .eq("source", "web")
+      .order("created_at", { ascending: false })
+      .limit(15);
+    if (error) return [];
+    return (data ?? []) as AgentJobRow[];
   } catch {
-    /* очередь не критична: клиент всё равно опрашивает статус сам */
+    return [];
   }
 }
 

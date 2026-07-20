@@ -919,6 +919,10 @@ const CreateMontage = () => {
     setVideoId(null);
     try {
       if (mode === "agent") {
+        if (!projectId) {
+          toast.error("Сначала выберите проект (клиента) вверху");
+          return;
+        }
         const sid = await generateVideoAgent({
           prompt: effectiveAgentPrompt.trim(),
           avatar: avatarRef ?? undefined,
@@ -926,12 +930,19 @@ const CreateMontage = () => {
           aspect,
           montageBrief: effectiveMontageBrief.trim() || undefined,
         });
-        // Fire-and-forget: HeyGen-сессия статуса session-level ненадёжна
-        // (бывает «failed», пока видео ещё рендерится, и только видео-статус
-        // авторитетен) — раньше это давало бесконечный «идёт монтаж» на
-        // экране даже спустя час. Доставку и учёт полностью ведёт серверный
-        // воркер (heygen_jobs), эта страница просто подтверждает отправку.
-        void enqueueAgentJob(projectId, sid, effectiveAgentPrompt.trim(), aspect, effectiveMontageBrief.trim() || undefined);
+        // Доставку ведёт серверный воркер по heygen_jobs — без успешного insert
+        // ролик не появится в «Готовые» (страница больше не поллит session_id).
+        const queued = await enqueueAgentJob(
+          projectId,
+          sid,
+          effectiveAgentPrompt.trim(),
+          aspect,
+          effectiveMontageBrief.trim() || undefined,
+        );
+        if (!queued.ok) {
+          toast.error(`HeyGen принял ТЗ, но очередь не записалась: ${queued.error}`);
+          return;
+        }
         setAgentPrompt("");
         setMontageBrief("");
         if (briefMode === "storyboard") resetStoryboard();

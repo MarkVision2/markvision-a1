@@ -1,0 +1,52 @@
+# Optional: dump heygen/montage/reels jobs (needs SUPABASE_DB_PASSWORD or SERVICE_ROLE).
+name: Diagnose HeyGen queue
+
+on:
+  workflow_dispatch: {}
+
+concurrency:
+  group: diagnose-heygen-queue
+  cancel-in-progress: true
+
+env:
+  SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+  SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF || 'szfgdruhlebfvcmlvxdk' }}
+  SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+  SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+  PROJECT_ID: cceb9a86-687b-4417-9b4e-d106bd8cc79c
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Query via Postgres
+        if: ${{ env.SUPABASE_DB_PASSWORD != '' }}
+        env:
+          PGPASSWORD: ${{ env.SUPABASE_DB_PASSWORD }}
+          PGHOST: db.${{ env.SUPABASE_PROJECT_REF }}.supabase.co
+          PGUSER: postgres
+          PGDATABASE: postgres
+          PGSSLMODE: require
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/diag-out
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+          psql -v ON_ERROR_STOP=1 -f scripts/diagnose-video-tz.sql | tee /tmp/diag-out/query.txt
+
+      - name: Fallback service role / Management API
+        if: ${{ env.SUPABASE_DB_PASSWORD == '' }}
+        run: python3 scripts/diagnose-heygen-queue-fallback.py
+
+      - name: Upload dump
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: heygen-queue-dump
+          path: /tmp/diag-out
+          retention-days: 3
+          if-no-files-found: warn
