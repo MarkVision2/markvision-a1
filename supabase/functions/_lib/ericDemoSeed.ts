@@ -64,6 +64,22 @@ export async function seedEricDemo(
 
   await admin.rpc("ensure_project_pipeline", { p_project_id: projectId });
 
+  // Доступ: всем admin + владельцам других проектов (как в SQL seed)
+  const { data: admins } = await admin.from("user_roles").select("user_id").eq("role", "admin");
+  if (admins?.length) {
+    await admin.from("project_members").upsert(
+      admins.map((a) => ({ project_id: projectId, user_id: a.user_id as string, role: "owner" })),
+      { onConflict: "project_id,user_id" },
+    );
+  }
+  const { data: owners } = await admin.from("project_members").select("user_id").eq("role", "owner");
+  if (owners?.length) {
+    await admin.from("project_members").upsert(
+      owners.map((o) => ({ project_id: projectId, user_id: o.user_id as string, role: "member" })),
+      { onConflict: "project_id,user_id" },
+    );
+  }
+
   const { data: pipeline } = await admin.from("pipelines")
     .select("id").eq("project_id", projectId).eq("is_default", true).maybeSingle();
   if (!pipeline?.id) throw new Error("pipeline missing");
@@ -98,6 +114,7 @@ export async function seedEricDemo(
     await admin.from("ad_cabinets").update({
       name: "Meta Ads — Эрик (демо)",
       online: true,
+      type: "Личный",
       spend: 0, leads: 0, sales: 0, revenue: 0,
     }).eq("id", cabinetId);
   } else {
@@ -106,7 +123,7 @@ export async function seedEricDemo(
       name: "Meta Ads — Эрик (демо)",
       external_id: EXTERNAL_ID,
       online: true,
-      type: "Демо",
+      type: "Личный",
       provider: "meta",
       spend: 0, leads: 0, sales: 0, revenue: 0,
     }).select("id").single();

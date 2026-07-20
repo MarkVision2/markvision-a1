@@ -201,11 +201,12 @@ export function useCabinetsStore() {
  * Кабинеты, которые попадают во все аналитические разделы проекта
  * (Дашборд, Сквозная аналитика, Таблица показателей, Отчётность, CRM).
  * Агентские кабинеты исключаются — они видны только в списке /ads.
+ * Личные и демо-кабинеты (type !== «Агентский») учитываются в KPI.
  */
 export function usePersonalCabinets() {
   const { cabinets, ...rest } = useCabinetsStore();
   const personal = useMemo(
-    () => cabinets.filter((c) => c.type === "Личный"),
+    () => cabinets.filter((c) => c.type !== "Агентский"),
     [cabinets],
   );
   return { cabinets: personal, ...rest };

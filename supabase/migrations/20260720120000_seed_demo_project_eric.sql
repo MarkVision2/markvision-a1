@@ -115,7 +115,7 @@ BEGIN
       'Meta Ads — Эрик (демо)',
       v_external_id,
       true,
-      'Демо',
+      'Личный',
       'meta',
       0, 0, 0, 0
     )
@@ -124,6 +124,7 @@ BEGIN
     UPDATE public.ad_cabinets SET
       name = 'Meta Ads — Эрик (демо)',
       online = true,
+      type = 'Личный',
       spend = 0, leads = 0, sales = 0, revenue = 0
     WHERE id = v_cabinet_id;
   END IF;
