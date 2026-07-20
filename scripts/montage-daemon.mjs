@@ -641,7 +641,9 @@ async function processJob(job) {
     writeFileSync(resolve(work, "inserts.json"), JSON.stringify(inserts, null, 2));
     // Для Kie/Pexels не дописываем regex-оффтоп поверх видео-клипов.
     // Для motion — только grounded fills (без invented kinetic-type).
-    const skipEnrich = brollMode === "kie" || brollMode === "pexels" ? "skip" : "0";
+    const skipEnrich = brollMode === "kie" || brollMode === "pexels" || brollMode === "library"
+      ? "skip"
+      : "0";
     await status(id, skipEnrich === "skip" ? "B-roll готов" : "уплотняем motion-вставки");
     py([
       "pipeline/inserts_enrich.py",
@@ -650,6 +652,8 @@ async function processJob(job) {
       String(skipEnrich === "skip" ? 0 : (style.coverRatio ?? 0)),
       skipEnrich,
     ]);
+    // Убрать «БОЛЬШОЕ ЗАЯВЛЕНИЕ» / длинные цитаты речи поверх караоке.
+    py(["pipeline/inserts_sanitize.py", work]);
 
     // Один вертикальный клип на ВСЮ длину — не «шортсы из лучших моментов».
     const accents = JSON.parse(readFileSync(resolve(work, "accents.json"), "utf8"));
