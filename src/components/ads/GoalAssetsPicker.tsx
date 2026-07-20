@@ -360,7 +360,7 @@ const GoalAssetsPicker = ({
   leadFormId,
   setLeadFormId,
 }: Props) => {
-  const actId = cabinet?.adAccountId;
+  const actId = cabinet?.adAccountId || cabinet?.externalId;
   const pageId = cabinet?.pageId;
 
   const wa = useMetaPageAssets({
@@ -384,8 +384,9 @@ const GoalAssetsPicker = ({
 
   const forms = useMetaPageAssets({
     kind: "lead_forms",
+    actId,
     pageId,
-    enabled: goal === "meta-form" && !!pageId,
+    enabled: goal === "meta-form" && !!pageId && !!actId,
   });
 
   if (!cabinet) return null;
@@ -486,7 +487,14 @@ const GoalAssetsPicker = ({
   if (!pageId) {
     return (
       <div className="rounded-xl border border-warning/40 bg-warning/5 p-3 text-xs text-warning">
-        Заполните Page ID в настройках кабинета.
+        Выберите Facebook-страницу выше — без неё нельзя загрузить лид-формы.
+      </div>
+    );
+  }
+  if (!actId) {
+    return (
+      <div className="rounded-xl border border-warning/40 bg-warning/5 p-3 text-xs text-warning">
+        Заполните Ad Account ID в настройках кабинета.
       </div>
     );
   }

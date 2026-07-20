@@ -84,6 +84,9 @@ Deno.serve(async (req) => {
     // ad_cabinets.pixel_id. Authorize via the ad account instead of requiring
     // a matching pixel_id row (old check returned 403 → UI "non-2xx").
     //
+    // 'lead_forms' — менеджер выбирает FB-страницу из promote_pages в мастере
+    // запуска; она часто ≠ ad_cabinets.page_id. Достаточно доступа к actId.
+    //
     // 'ig_media' lists organic IG posts for "use existing publication" —
     // authorize via actId (preferred) or pageId cabinet match.
     const isDiscovery = kind === "pages" || kind === "pixels";
@@ -93,6 +96,23 @@ Deno.serve(async (req) => {
       }
       const actAccess = await requireMetaAdAccountAccess(auth.authHeader, actId);
       if (!actAccess.ok) return actAccess.response;
+    } else if (kind === "lead_forms") {
+      if (!pageId) {
+        return jsonResponse({ error: "pageId is required for lead_forms" }, 400);
+      }
+      if (actId) {
+        const actAccess = await requireMetaAdAccountAccess(auth.authHeader, actId);
+        if (!actAccess.ok) return actAccess.response;
+      } else {
+        const client = createUserClient(auth.authHeader);
+        const { data: cab } = await client
+          .from("ad_cabinets")
+          .select("id")
+          .eq("page_id", pageId)
+          .limit(1)
+          .maybeSingle();
+        if (!cab) return jsonResponse({ error: "Forbidden" }, 403);
+      }
     } else if (kind === "ig_media") {
       if (actId) {
         const actAccess = await requireMetaAdAccountAccess(auth.authHeader, actId);
