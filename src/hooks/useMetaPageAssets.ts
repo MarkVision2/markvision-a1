@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
 export type AssetKind = "whatsapp" | "pixels" | "pixel_events" | "lead_forms" | "pages" | "instagram";
@@ -36,6 +37,40 @@ export interface InstagramItem {
   id: string;
   username?: string;
   name?: string;
+}
+
+const FALLBACK_PIXEL_EVENTS: PixelEventItem[] = [
+  "Lead",
+  "Purchase",
+  "Contact",
+  "CompleteRegistration",
+  "Subscribe",
+  "SubmitApplication",
+  "AddToCart",
+  "InitiateCheckout",
+  "ViewContent",
+  "Schedule",
+].map((name) => ({ name, count: 0 }));
+
+async function parseInvokeError(error: unknown): Promise<string> {
+  if (error instanceof FunctionsHttpError) {
+    try {
+      const body = await (error.context as Response).json();
+      if (body && typeof body === "object") {
+        const detail =
+          (body as { details?: { message?: string } }).details?.message ??
+          (body as { error?: unknown }).error;
+        if (detail) return String(detail);
+      }
+    } catch {
+      /* ignore */
+    }
+    return error.message;
+  }
+  if (error && typeof error === "object" && "message" in error) {
+    return String((error as { message: unknown }).message);
+  }
+  return "Ошибка запроса";
 }
 
 type ItemMap = {
@@ -79,7 +114,7 @@ export function useMetaPageAssets<K extends AssetKind>({
       // Validate required params per kind
       if (kind === "whatsapp" && !pageId) return;
       if (kind === "pixels" && !actId) return;
-      if (kind === "pixel_events" && !pixelId) return;
+      if (kind === "pixel_events" && (!pixelId || !actId)) return;
       if (kind === "lead_forms" && !pageId) return;
       if (kind === "pages" && !actId) return;
 
@@ -106,15 +141,29 @@ export function useMetaPageAssets<K extends AssetKind>({
       if (myId !== reqIdRef.current) return;
 
       if (invokeErr) {
-        setError(invokeErr.message ?? "Ошибка запроса");
+        // Events list is optional UX: show standard Meta events so the wizard
+        // stays usable even if the edge call fails (auth/Meta/network).
+        if (kind === "pixel_events") {
+          setError(null);
+          setData(FALLBACK_PIXEL_EVENTS as ItemMap[K][]);
+          setLoading(false);
+          return;
+        }
+        setError(await parseInvokeError(invokeErr));
         setData([]);
         setLoading(false);
         return;
       }
       if (resp?.error) {
+        if (kind === "pixel_events") {
+          setError(null);
+          setData(FALLBACK_PIXEL_EVENTS as ItemMap[K][]);
+          setLoading(false);
+          return;
+        }
         const detail =
           resp.details?.message ?? resp.error ?? "Ошибка Meta API";
-        setError(detail);
+        setError(String(detail));
         setData([]);
         setLoading(false);
         return;
