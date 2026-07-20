@@ -1,7 +1,7 @@
 {
-  "git_sha": "0e28fb0",
-  "git_sha_full": "0e28fb070b53bdd099d742bcd7c94ad866a60590",
-  "updated_at": "2026-07-20T10:58:18Z",
-  "label": "fix(ui): distinct montage style thumbs without speaker face",
+  "git_sha": "2188342",
+  "git_sha_full": "218834248b8fe9868af41c725677df8e3ebd6def",
+  "updated_at": "2026-07-20T11:21:19Z",
+  "label": "feat(crm): Launch Funnel v2 — path-to-purchase stages + journey",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
