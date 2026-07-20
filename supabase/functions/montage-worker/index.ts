@@ -244,12 +244,14 @@ Deno.serve(async (req) => {
         const id = String(body.id ?? "");
         if (!id) return json({ error: "id required" }, 400);
         const message = String(body.error ?? "монтаж не удался");
+        // silent:true — служебный fail перед requeue, без Telegram-спама
+        const notify = body.notify !== false && body.silent !== true;
         const { data: job } = await admin.from("montage_jobs").select("project_id, notify_telegram").eq("id", id).maybeSingle();
         const { error } = await admin.from("montage_jobs").update({
           status: "failed", error: message, updated_at: new Date().toISOString(),
         }).eq("id", id);
         if (error) return json({ error: error.message }, 500);
-        if (job?.notify_telegram && botToken) {
+        if (notify && job?.notify_telegram && botToken) {
           const chatId = await chatIdOf(String(job.project_id));
           if (chatId) await tg(botToken, "sendMessage", { chat_id: chatId, text: `⚠️ Монтаж не удался: ${message}` });
         }
@@ -261,6 +263,7 @@ Deno.serve(async (req) => {
         if (!id) return json({ error: "id required" }, 400);
         const { data: job } = await admin.from("montage_jobs").select("id, status").eq("id", id).maybeSingle();
         if (!job) return json({ error: "job not found" }, 404);
+        // Работает из любого статуса (processing/rendering/failed) — без предварительного fail/Telegram.
         const { error } = await admin.from("montage_jobs").update({
           status: "queued",
           progress: "повтор в очереди",
@@ -268,6 +271,7 @@ Deno.serve(async (req) => {
           result: null,
           result_video_url: null,
           done_at: null,
+          claimed_at: null,
           updated_at: new Date().toISOString(),
         }).eq("id", id);
         if (error) return json({ error: error.message }, 500);
