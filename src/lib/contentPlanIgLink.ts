@@ -226,7 +226,10 @@ export function buildContentPlanFunnel(input: {
   const m = input.media ?? null;
 
   if (m) {
-    f.reach = Number(m.reach ?? 0);
+    // Meta иногда отдаёт reach=0 при ненулевых views/impressions (особенно Reels).
+    const reach = Number(m.reach ?? 0);
+    const viewsProxy = Number(m.impressions ?? 0) || Number(m.plays ?? 0) || Number(m.video_views ?? 0);
+    f.reach = reach > 0 ? reach : viewsProxy;
     f.views = Number(m.plays ?? m.video_views ?? m.impressions ?? 0);
     f.likes = Number(m.like_count ?? 0);
     f.saves = Number(m.saved_count ?? 0);

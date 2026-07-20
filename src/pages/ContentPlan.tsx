@@ -20,11 +20,9 @@ import {
   summarizeContentPlan,
   type ContentPlanItem,
 } from "@/lib/contentPlan";
-import { formatPeriodLabel, monthRange } from "@/lib/metricsPeriod";
+import { formatPeriodLabel, fromTodayRange, monthRange, todayAlmatyYmd } from "@/lib/metricsPeriod";
 import { cn } from "@/lib/utils";
 import AutoPost, { AutopostAddDialog } from "@/pages/AutoPost";
-
-const todayAlmatyYmd = () => new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Almaty" });
 
 const PRESET_LABELS: Record<ContentPeriodPreset, string> = {
   from_tomorrow: "С завтра",
@@ -39,6 +37,13 @@ const PRESET_LABELS: Record<ContentPeriodPreset, string> = {
 /** Полный календарный месяц — чтобы в плане были и будущие слоты этого месяца. */
 const contentPlanThisMonth = () => monthRange(new Date());
 
+const CONTENT_PLAN_PERIOD_PRESETS: { id: ContentPeriodPreset; label: string }[] = [
+  { id: "from_today", label: "С сегодня" },
+  { id: "this_month", label: "Этот месяц" },
+  { id: "last_month", label: "Прошлый месяц" },
+  { id: "custom", label: "Выбрать период" },
+];
+
 export default function ContentPlan() {
   const [params, setParams] = useSearchParams();
   const showCalendar = params.get("view") === "calendar" || params.get("tab") === "autopost";
@@ -47,8 +52,8 @@ export default function ContentPlan() {
   const { activeId: projectId } = useProjectsStore();
   const { account, sync } = useInstagramAccount();
   const [addDay, setAddDay] = useState<string | null>(null);
-  const [preset, setPreset] = useState<ContentPeriodPreset>("this_month");
-  const [range, setRange] = useState<ReportPeriodRange>(() => contentPlanThisMonth());
+  const [preset, setPreset] = useState<ContentPeriodPreset>("from_today");
+  const [range, setRange] = useState<ReportPeriodRange>(() => fromTodayRange());
   const [refreshing, setRefreshing] = useState(false);
 
   const setShowCalendar = (on: boolean) => {
@@ -125,12 +130,13 @@ export default function ContentPlan() {
           <Info className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
           <div>
             <p>
-              Посты, запланированные <span className="text-foreground">прямо в приложении Instagram</span>, Meta
-              не отдаёт до выхода — в списке их не будет заранее.
+              Статистика считается с <span className="text-foreground">20 июля 2026</span> (Алматы).
+              Более ранние публикации скрыты и в KPI не входят.
             </p>
             <p className="mt-1">
-              Чтобы слот был виден до публикации: планируй здесь («Новая публикация») или в Meta Business Suite.
-              После выхода нажми «Обновить» — пост и статистика подтянутся автоматически.
+              Посты, запланированные <span className="text-foreground">прямо в приложении Instagram</span>, Meta
+              не отдаёт до выхода — в списке их не будет заранее. После выхода нажми «Обновить» —
+              пост, охват и воронка подтянутся автоматически.
             </p>
           </div>
         </div>
@@ -158,6 +164,7 @@ export default function ContentPlan() {
           preset={preset}
           range={range}
           showCompare={false}
+          presets={CONTENT_PLAN_PERIOD_PRESETS}
           onPresetChange={(next, nextRange) => {
             setPreset(next);
             // «Этот месяц» = весь июль (включая будущие слоты), не «по сегодня».

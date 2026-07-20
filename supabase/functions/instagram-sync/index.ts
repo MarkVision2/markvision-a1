@@ -162,13 +162,15 @@ async function syncOne(supa: any, account: any) {
   // попали в статистику плана сразу после sync, без ожидания открытия UI).
   let planOrphans = { inserted: 0, skipped: 0 };
   try {
+    const STATS_START_YMD = "2026-07-20";
     const almatyToday = new Intl.DateTimeFormat("en-CA", {
       timeZone: "Asia/Almaty",
       year: "numeric",
       month: "2-digit",
       day: "2-digit",
     }).format(new Date());
-    const cutoffMs = new Date(`${almatyToday}T00:00:00+05:00`).getTime();
+    const cutoffYmd = almatyToday > STATS_START_YMD ? almatyToday : STATS_START_YMD;
+    const cutoffMs = new Date(`${cutoffYmd}T00:00:00+05:00`).getTime();
     const { data: existingPlan } = await supa
       .from("content_plan_items")
       .select("ig_media_id")
