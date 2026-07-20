@@ -1,7 +1,7 @@
 {
-  "git_sha": "586c99a",
-  "git_sha_full": "586c99aa9662577482c81391df9493fd4d276e82",
-  "updated_at": "2026-07-20T06:31:35Z",
-  "label": "feat(ads): carousel creatives in create-campaign wizard (#158)",
+  "git_sha": "f738fd8",
+  "git_sha_full": "f738fd8b8a4f3ae1259c27916a302d0075c05221",
+  "updated_at": "2026-07-20T06:44:56Z",
+  "label": "feat(ads): use existing Instagram publications in campaign wizard (#160)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
