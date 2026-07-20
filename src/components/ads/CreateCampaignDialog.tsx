@@ -1,5 +1,16 @@
 import { useEffect, useRef, useState } from "react";
-import { Rocket, Upload, CheckCircle2, FileText, Globe, MessageCircle } from "lucide-react";
+import {
+  Rocket,
+  Upload,
+  CheckCircle2,
+  FileText,
+  Globe,
+  MessageCircle,
+  Images,
+  LayoutTemplate,
+  Plus,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -69,12 +80,25 @@ interface CreateCampaignDialogProps {
 }
 
 type Goal = "whatsapp" | "site-leads" | "meta-form";
+type CreativeFormat = "single" | "carousel";
+
+const CAROUSEL_MIN = 2;
+const CAROUSEL_MAX = 10;
 
 const GOALS: { id: Goal; label: string; hint: string; icon: typeof MessageCircle }[] = [
   { id: "whatsapp", label: "WhatsApp", hint: "Переписки", icon: MessageCircle },
   { id: "site-leads", label: "Сайт", hint: "Лиды с лендинга", icon: Globe },
   { id: "meta-form", label: "Форма Meta", hint: "Lead Ads", icon: FileText },
 ];
+
+/** Дефолтный кадр 4:5 для слайдов карусели (cover по центру). */
+const DEFAULT_CAROUSEL_VIEW: CreativeViewState = {
+  ratio: "4:5",
+  fit: "cover",
+  zoom: 1,
+  pos: { x: 0, y: 0 },
+  frame: { w: 400, h: 500 },
+};
 
 const CreativeUpload = ({
   label,
@@ -336,6 +360,123 @@ const CreativeUpload = ({
   );
 };
 
+/** Мультизагрузка слайдов карусели (2–10 фото · 4:5). */
+const CarouselUpload = ({
+  files,
+  onChange,
+}: {
+  files: File[];
+  onChange: (next: File[]) => void;
+}) => {
+  const ref = useRef<HTMLInputElement>(null);
+  const [urls, setUrls] = useState<string[]>([]);
+
+  useEffect(() => {
+    const next = files.map((f) => URL.createObjectURL(f));
+    setUrls(next);
+    return () => next.forEach((u) => URL.revokeObjectURL(u));
+  }, [files]);
+
+  const addFiles = (list: FileList | null) => {
+    if (!list?.length) return;
+    const images = Array.from(list).filter((f) => f.type.startsWith("image/"));
+    if (images.length === 0) {
+      toast.error("Для карусели нужны изображения (не видео)");
+      return;
+    }
+    const merged = [...files, ...images].slice(0, CAROUSEL_MAX);
+    if (files.length + images.length > CAROUSEL_MAX) {
+      toast.message(`Максимум ${CAROUSEL_MAX} слайдов — лишние отброшены`);
+    }
+    onChange(merged);
+  };
+
+  const removeAt = (idx: number) => {
+    onChange(files.filter((_, i) => i !== idx));
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs uppercase tracking-wider text-muted-foreground">
+          Карусель · 4:5
+        </div>
+        <div className="text-[11px] tabular-nums text-muted-foreground">
+          {files.length}/{CAROUSEL_MAX}
+          {files.length > 0 && files.length < CAROUSEL_MIN
+            ? ` · ещё мин. ${CAROUSEL_MIN - files.length}`
+            : ""}
+        </div>
+      </div>
+
+      {files.length === 0 ? (
+        <button
+          type="button"
+          onClick={() => ref.current?.click()}
+          className="flex aspect-[4/5] w-full flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-border/70 bg-background/40 text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <Images className="h-5 w-5" />
+          <span className="text-sm">Загрузить слайды</span>
+          <span className="text-[11px] text-muted-foreground">
+            2–{CAROUSEL_MAX} фото · можно сразу несколько
+          </span>
+        </button>
+      ) : (
+        <div className="grid grid-cols-2 gap-2">
+          {files.map((f, i) => (
+            <div
+              key={`${f.name}-${f.size}-${f.lastModified}-${i}`}
+              className="relative aspect-[4/5] overflow-hidden rounded-xl border border-border/60 bg-background/40"
+            >
+              {urls[i] && (
+                <img
+                  src={urls[i]}
+                  alt={f.name}
+                  className="h-full w-full object-cover"
+                  draggable={false}
+                />
+              )}
+              <span className="absolute left-1.5 top-1.5 rounded-md bg-background/85 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-foreground">
+                {i + 1}
+              </span>
+              <button
+                type="button"
+                onClick={() => removeAt(i)}
+                className="absolute right-1.5 top-1.5 grid h-6 w-6 place-items-center rounded-full bg-background/85 text-foreground shadow hover:bg-background"
+                aria-label="Удалить слайд"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+          {files.length < CAROUSEL_MAX && (
+            <button
+              type="button"
+              onClick={() => ref.current?.click()}
+              className="flex aspect-[4/5] flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed border-border/70 bg-background/30 text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <Plus className="h-4 w-4" />
+              <span className="text-[11px]">Ещё</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      <input
+        ref={ref}
+        type="file"
+        accept="image/*"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          addFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
+    </div>
+  );
+};
+
 const CreateCampaignDialog = ({
   open,
   onOpenChange,
@@ -345,8 +486,10 @@ const CreateCampaignDialog = ({
   const [cabinetId, setCabinetId] = useState<string>(cabinets[0]?.id ?? "");
   const [goal, setGoal] = useState<Goal>("whatsapp");
   const [budget, setBudget] = useState("50");
+  const [creativeFormat, setCreativeFormat] = useState<CreativeFormat>("single");
   const [feed, setFeed] = useState<File | null>(null);
   const [stories, setStories] = useState<File | null>(null);
+  const [carouselFiles, setCarouselFiles] = useState<File[]>([]);
   // View-state каждого превью — обновляется коллбеком onView.
   const feedViewRef = useRef<CreativeViewState | null>(null);
   const storiesViewRef = useRef<CreativeViewState | null>(null);
@@ -424,6 +567,16 @@ const CreateCampaignDialog = ({
       toast.error("Выберите лид-форму");
       return;
     }
+    if (creativeFormat === "carousel") {
+      if (carouselFiles.length < CAROUSEL_MIN) {
+        toast.error(`Карусель: загрузите минимум ${CAROUSEL_MIN} фото`);
+        return;
+      }
+      if (carouselFiles.some((f) => !f.type.startsWith("image/"))) {
+        toast.error("Карусель поддерживает только изображения");
+        return;
+      }
+    }
 
     const cab = selectedCabinet;
 
@@ -433,6 +586,7 @@ const CreateCampaignDialog = ({
     setSubmitting(true);
     let bakedFeed: File | null = feed;
     let bakedStories: File | null = stories;
+    let bakedCarousel: File[] = [];
     // Метаданные кропа для видео (n8n обрежет ffmpeg-ом за пару секунд).
     let feedCropMeta: Record<string, unknown> | null = null;
     let storiesCropMeta: Record<string, unknown> | null = null;
@@ -486,16 +640,31 @@ const CreateCampaignDialog = ({
         return { file: f, cropMeta: null };
       };
 
-      // Параллелим feed и stories — обычно это два независимых файла.
-      setBakePct(50);
-      const [feedRes, storiesRes] = await Promise.all([
-        bake(feed, feedViewRef.current, "ленту 4:5"),
-        bake(stories, storiesViewRef.current, "сторис 9:16"),
-      ]);
-      bakedFeed = feedRes.file;
-      feedCropMeta = feedRes.cropMeta;
-      bakedStories = storiesRes.file;
-      storiesCropMeta = storiesRes.cropMeta;
+      if (creativeFormat === "carousel") {
+        setBakePct(20);
+        bakedCarousel = [];
+        for (let i = 0; i < carouselFiles.length; i++) {
+          setBakeStatus(`Готовим слайд ${i + 1}/${carouselFiles.length}…`);
+          setBakePct(20 + Math.round(((i + 1) / carouselFiles.length) * 70));
+          const res = await bake(carouselFiles[i], DEFAULT_CAROUSEL_VIEW, `слайд ${i + 1}`);
+          if (res.file) bakedCarousel.push(res.file);
+        }
+        bakedFeed = bakedCarousel[0] ?? null;
+        bakedStories = null;
+        feedCropMeta = null;
+        storiesCropMeta = null;
+      } else {
+        // Параллелим feed и stories — обычно это два независимых файла.
+        setBakePct(50);
+        const [feedRes, storiesRes] = await Promise.all([
+          bake(feed, feedViewRef.current, "ленту 4:5"),
+          bake(stories, storiesViewRef.current, "сторис 9:16"),
+        ]);
+        bakedFeed = feedRes.file;
+        feedCropMeta = feedRes.cropMeta;
+        bakedStories = storiesRes.file;
+        storiesCropMeta = storiesRes.cropMeta;
+      }
       setBakeStatus(null);
       setBakePct(0);
     } catch (e) {
@@ -591,6 +760,7 @@ const CreateCampaignDialog = ({
       budget: Number(budget) || 0,
       currency: cab?.currency ?? "USD",
       text,
+      creativeFormat,
       pageId: effectivePageId || cab?.pageId || undefined,
       pageName: effectivePageName || cab?.pageName || undefined,
       whatsappNumber: goal === "whatsapp" ? whatsappId : undefined,
@@ -621,12 +791,26 @@ const CreateCampaignDialog = ({
               cropMeta: storiesCropMeta,
             }
           : null,
+        carousel:
+          creativeFormat === "carousel"
+            ? bakedCarousel.map((f) => ({
+                name: f.name,
+                type: f.type,
+                size: f.size,
+                ratio: "4:5" as const,
+                baked: true,
+              }))
+            : null,
       },
       // mediaType — чтобы n8n не угадывал по mime бинаря.
       // VIDEO если хоть один файл (feed или stories) видео, иначе PHOTO.
-      mediaType: ((bakedFeed?.type || bakedStories?.type || "").startsWith("video/"))
-        ? "VIDEO"
-        : "PHOTO",
+      // Карусель — всегда PHOTO (только изображения).
+      mediaType:
+        creativeFormat === "carousel"
+          ? "PHOTO"
+          : ((bakedFeed?.type || bakedStories?.type || "").startsWith("video/"))
+            ? "VIDEO"
+            : "PHOTO",
       submittedAt: new Date().toISOString(),
       // launchId генерируется фронтом, чтобы и edge, и БД, и n8n работали
       // с одним идентификатором запуска (для callback статусов).
@@ -640,6 +824,11 @@ const CreateCampaignDialog = ({
     fd.append("payload", JSON.stringify(payload));
     if (bakedFeed) fd.append("creative_feed", bakedFeed, bakedFeed.name);
     if (bakedStories) fd.append("creative_stories", bakedStories, bakedStories.name);
+    if (creativeFormat === "carousel") {
+      bakedCarousel.forEach((f, i) => {
+        fd.append(`creative_carousel_${i}`, f, f.name);
+      });
+    }
 
     // Жёсткий фронт-таймаут 12с: edge-функция отвечает за ≤8с, плюс запас на сеть.
     // Если n8n тормозит — мы всё равно покажем «принято» и не вешаем UI.
@@ -717,6 +906,13 @@ const CreateCampaignDialog = ({
     const currencySymbol = "$";
     const rows: { label: string; value: string }[] = [];
     rows.push({ label: "Цель", value: goalLabel });
+    rows.push({
+      label: "Креатив",
+      value:
+        creativeFormat === "carousel"
+          ? `Карусель · ${bakedCarousel.length} слайдов`
+          : "Один креатив",
+    });
     if (goal === "site-leads") {
       if (pixelId) rows.push({ label: "Пиксель", value: pixelId });
       if (pixelEvent) rows.push({ label: "Событие", value: pixelEvent });
@@ -741,6 +937,8 @@ const CreateCampaignDialog = ({
     setText("");
     setFeed(null);
     setStories(null);
+    setCarouselFiles([]);
+    setCreativeFormat("single");
     setSubmitting(false);
   };
 
@@ -914,25 +1112,56 @@ const CreateCampaignDialog = ({
             </div>
 
             <div className="overflow-y-auto bg-background/20 px-6 py-5">
-              <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
-                Креативы
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                  Креативы
+                </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <CreativeUpload
-                  label="Лента (4:5)"
-                  ratio="4:5"
-                  file={feed}
-                  onFile={setFeed}
-                  onView={(s) => { feedViewRef.current = s; }}
-                />
-                <CreativeUpload
-                  label="Stories (9:16)"
-                  ratio="9:16"
-                  file={stories}
-                  onFile={setStories}
-                  onView={(s) => { storiesViewRef.current = s; }}
-                />
+
+              <div className="mb-3 grid grid-cols-2 gap-1.5 rounded-xl border border-border/50 bg-background/40 p-1">
+                {(
+                  [
+                    { id: "single" as const, label: "Один", icon: LayoutTemplate },
+                    { id: "carousel" as const, label: "Карусель", icon: Images },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setCreativeFormat(opt.id)}
+                    className={cn(
+                      "flex h-9 items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-colors",
+                      creativeFormat === opt.id
+                        ? "bg-success/15 text-success"
+                        : "text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    <opt.icon className="h-3.5 w-3.5" />
+                    {opt.label}
+                  </button>
+                ))}
               </div>
+
+              {creativeFormat === "carousel" ? (
+                <CarouselUpload files={carouselFiles} onChange={setCarouselFiles} />
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  <CreativeUpload
+                    label="Лента (4:5)"
+                    ratio="4:5"
+                    file={feed}
+                    onFile={setFeed}
+                    onView={(s) => { feedViewRef.current = s; }}
+                  />
+                  <CreativeUpload
+                    label="Stories (9:16)"
+                    ratio="9:16"
+                    file={stories}
+                    onFile={setStories}
+                    onView={(s) => { storiesViewRef.current = s; }}
+                  />
+                </div>
+              )}
             </div>
           </div>
 
