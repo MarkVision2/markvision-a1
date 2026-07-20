@@ -104,8 +104,8 @@ const Ads = () => {
         }
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              <PeriodPicker range={period} onChange={setPeriod} />
+            <div className="flex w-full flex-wrap items-center gap-2 sm:justify-end">
+              <PeriodPicker range={period} onChange={setPeriod} className="w-full justify-between sm:w-auto sm:justify-start" />
               <Button
                 variant="outline"
                 size="icon"

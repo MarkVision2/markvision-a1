@@ -108,8 +108,8 @@ const Dashboard = () => {
         title="Дашборд"
         description={rangeLabel}
         actions={
-          <>
-            <PeriodPicker range={range} onChange={setRange} />
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap sm:items-center sm:justify-end">
+            <PeriodPicker range={range} onChange={setRange} className="w-full justify-between sm:w-auto sm:justify-start" />
             <Button
               variant="outline"
               className="h-10 gap-2 rounded-xl border-border/60"
@@ -131,7 +131,7 @@ const Dashboard = () => {
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             </Button>
-          </>
+          </div>
         }
       />
 

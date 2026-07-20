@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { mobileDialogFooterPad } from "@/lib/dialogClasses";
 import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseConfig";
 import { DEFAULT_META_UTM_TEMPLATE } from "@/lib/utmDefaults";
 import type { AdCabinet } from "@/types/ads";
@@ -531,7 +532,7 @@ const ExistingPostPicker = ({
     )}
 
     {items.length > 0 && (
-      <div className="grid max-h-[52vh] grid-cols-2 gap-2 overflow-y-auto pr-1">
+      <div className="grid max-h-[40vh] grid-cols-1 gap-2 overflow-y-auto pr-1 sm:max-h-[52vh] sm:grid-cols-2">
         {items.map((m) => {
           const active = selectedId === m.id;
           const thumb = m.thumbnail_url || m.media_url;
@@ -1154,10 +1155,10 @@ const CreateCampaignDialog = ({
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[92vh] w-[96vw] max-w-5xl overflow-hidden border-border/50 bg-card p-0 shadow-2xl">
-        <div className="flex max-h-[92vh] flex-col">
-          <DialogHeader className="border-b border-border/50 bg-gradient-to-r from-success/10 via-transparent to-transparent px-6 py-4">
-            <DialogTitle className="flex items-center gap-2.5 text-xl tracking-tight">
+      <DialogContent className="flex max-h-[92vh] w-[96vw] max-w-5xl flex-col overflow-hidden border-border/50 bg-card p-0 shadow-2xl max-sm:max-h-[100dvh] max-sm:w-full">
+        <div className="flex min-h-0 flex-1 flex-col max-sm:max-h-[100dvh] sm:max-h-[92vh]">
+          <DialogHeader className="shrink-0 border-b border-border/50 bg-gradient-to-r from-success/10 via-transparent to-transparent px-4 py-3 sm:px-6 sm:py-4">
+            <DialogTitle className="flex items-center gap-2.5 pr-10 text-lg tracking-tight sm:text-xl">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-success/15 text-success">
                 <Rocket className="h-4 w-4" />
               </span>
@@ -1168,8 +1169,8 @@ const CreateCampaignDialog = ({
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
-            <div className="space-y-4 overflow-y-auto border-border/50 px-6 py-5 lg:border-r">
+          <div className="grid min-h-0 flex-1 grid-cols-1 gap-0 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+            <div className="min-h-0 space-y-4 overflow-y-auto border-border/50 px-4 py-4 sm:px-6 sm:py-5 lg:border-r">
               <div className="space-y-2">
                 <Label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Клиент / Кабинет
@@ -1256,7 +1257,7 @@ const CreateCampaignDialog = ({
                 <Label className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                   Цель кампании
                 </Label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                   {GOALS.map((g) => {
                     const Icon = g.icon;
                     const active = goal === g.id;
@@ -1356,7 +1357,7 @@ const CreateCampaignDialog = ({
               )}
             </div>
 
-            <div className="overflow-y-auto bg-background/20 px-6 py-5">
+            <div className="min-h-0 overflow-y-auto bg-background/20 px-4 py-4 sm:px-6 sm:py-5">
               {adSetupMode === "existing" ? (
                 <ExistingPostPicker
                   items={igMedia.data}
@@ -1423,7 +1424,10 @@ const CreateCampaignDialog = ({
             </div>
           </div>
 
-          <div className="border-t border-border/50 bg-background/40 px-6 py-4">
+          <div className={cn(
+            "sticky bottom-0 shrink-0 border-t border-border/50 bg-background/95 px-4 py-3 backdrop-blur-xl sm:px-6 sm:py-4",
+            mobileDialogFooterPad,
+          )}>
             {bakeStatus && (
               <div className="mb-3 rounded-xl border border-border/50 bg-background/60 px-4 py-2.5 text-xs">
                 <div className="mb-1.5 flex items-center justify-between gap-3">

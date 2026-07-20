@@ -189,4 +189,13 @@
       padding-bottom: 0;
     }
   }
+
+  /* Мобилка: не даём случайным блокам вылезать за экран. */
+  @media (max-width: 767px) {
+    html,
+    body,
+    #root {
+      overflow-x: clip;
+    }
+  }
 }
