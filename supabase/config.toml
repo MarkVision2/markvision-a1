@@ -128,3 +128,7 @@ verify_jwt = false
 # x-montage-key; секрет ELEVENLABS_API_KEY в Supabase Edge Secrets.
 [functions.reels-tts]
 verify_jwt = false
+
+# Демо-наполнение проекта «Эрик» (июль). Auth: x-montage-key.
+[functions.seed-demo-eric]
+verify_jwt = false
