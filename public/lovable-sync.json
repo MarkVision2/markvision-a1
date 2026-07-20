@@ -1,7 +1,7 @@
 {
-  "git_sha": "ea68a9d",
-  "git_sha_full": "ea68a9d18bc598500513031c71849c957fe607c2",
-  "updated_at": "2026-07-20T05:15:01Z",
-  "label": "fix(montage): full 9:16 only — no dual format [vercel-deploy]",
+  "git_sha": "0a9e1ef",
+  "git_sha_full": "0a9e1ef41c02695ef8b5f043c5298821e71cd6c6",
+  "updated_at": "2026-07-20T05:43:35Z",
+  "label": "fix(content-plan): from Jul 20 + reach fallback [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz"
 }
