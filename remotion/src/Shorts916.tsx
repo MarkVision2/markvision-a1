@@ -3,6 +3,7 @@ import {
   AbsoluteFill,
   Easing,
   Img,
+  Sequence,
   Series,
   getRemotionEnvironment,
   interpolate,
@@ -85,6 +86,17 @@ const INSERT_LAYOUT = {
 } as const;
 const layoutOf = (i: ShortInsert) => INSERT_LAYOUT[i.layout ?? "third"];
 
+/** Fade envelope for an insert Sequence (frame is relative to Sequence start). */
+const InsertFade: React.FC<{ insert: ShortInsert }> = ({ insert }) => {
+  const frame = useCurrentFrame();
+  const dur = Math.max(1, insert.to - insert.from);
+  const opacity = interpolate(frame, [0, 7, Math.max(8, dur - 7), dur], [0, 1, 1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  return <InsertTop insert={insert} opacity={opacity} />;
+};
+
 const PAPER = BRAND.text; // primary caption colour
 const SCARLET = BRAND.accent; // accent colour (accent words, progress bar)
 const OUT_QUINT = Easing.bezier(0.16, 1, 0.3, 1);
@@ -137,12 +149,15 @@ const activeInsertAt = (
 
 // b-roll fills the top of the canvas edge-to-edge (no card, no border);
 // height comes from the insert's layout: third / half / full-screen.
-const InsertTop: React.FC<{ insert: ShortInsert | null; opacity: number }> = ({
+// IMPORTANT: must be rendered inside <Sequence from={insert.from}> so
+// @remotion/media <Video> timeline starts at 0. Without Sequence the Video
+// seeks to the absolute composition frame, overshoots trimAfter → grey plate.
+const InsertTop: React.FC<{ insert: ShortInsert; opacity: number }> = ({
   insert,
   opacity,
 }) => {
-  const frame = useCurrentFrame();
-  if (!insert) return null;
+  const frame = useCurrentFrame(); // relative to wrapping Sequence → 0 at insert start
+  const dur = Math.max(1, insert.to - insert.from);
 
   // Motion inserts overlay the WHOLE canvas on a transparent layer (glass cards
   // in the upper zone) — no black band, no speaker shift. When data.cover is set,
@@ -150,8 +165,7 @@ const InsertTop: React.FC<{ insert: ShortInsert | null; opacity: number }> = ({
   if (insert.type === "motion") {
     const meta = insert.data as { cover?: boolean; accent?: string } | undefined;
     const cover = Boolean(meta?.cover);
-    const local = frame - insert.from;
-    const dur = insert.to - insert.from;
+    const local = frame;
     // Cover scenes swipe in from the right and out to the left (transition feel).
     const enterX = interpolate(local, [0, 8], [240, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
     const exitX = interpolate(local, [dur - 8, dur], [0, -240], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
@@ -161,16 +175,17 @@ const InsertTop: React.FC<{ insert: ShortInsert | null; opacity: number }> = ({
         {cover ? <SceneBackground localFrame={local} accent={meta?.accent} /> : null}
         <MotionInsertView
           template={insert.template}
-          from={insert.from}
-          to={insert.to}
+          from={0}
+          to={dur}
           data={insert.data}
         />
       </AbsoluteFill>
     );
   }
 
-  // File inserts (image/video) sit in a top band on a dark plate.
-  const dur = insert.to - insert.from;
+  // File inserts (image/video). Video b-roll = full cutaway by default height;
+  // third/half leave a grey band + speaker crushed at the bottom if Video fails
+  // or looks like a broken 50/50.
   return (
     <div
       style={{
@@ -187,8 +202,6 @@ const InsertTop: React.FC<{ insert: ShortInsert | null; opacity: number }> = ({
       {insert.type === "video" ? (
         <Video
           src={staticFile(insert.file)}
-          trimBefore={0}
-          trimAfter={dur}
           muted
           objectFit="cover"
           style={{ width: "100%", height: "100%" }}
@@ -457,7 +470,20 @@ export const Shorts916: React.FC<ShortsProps> = ({
         </Series>
       </AbsoluteFill>
 
-      <InsertTop insert={activeInsert} opacity={insertAmount} />
+      {inserts.map((ins, i) => {
+        const dur = Math.max(1, ins.to - ins.from);
+        return (
+          <Sequence
+            key={`ins-${i}-${ins.from}`}
+            from={ins.from}
+            durationInFrames={dur}
+            premountFor={20}
+            layout="none"
+          >
+            <InsertFade insert={ins} />
+          </Sequence>
+        );
+      })}
       <Captions
         words={words}
         inserts={inserts}

@@ -168,7 +168,7 @@ word = индекс из indexed. text — короткий капс (1–3 сл
 - prompt — АНГЛИЙСКИЙ cinematic 1–2 предложения: конкретный subject из смысла фразы (не абстрактный «business success»), vertical 9:16, no text/logos/watermarks, no celebrity faces.
 - query — 2–5 английских слов, точный noun из смысла (не generic «marketing»).
 - note/spokenText — русская цитата фразы (для проверки grounding).
-- layout: чередуй "third" и "half"/"full".
+- layout: для видео-вставок предпочитай "full" (cutaway на весь кадр). "third"/"half" только если явно нужен PiP.
 - endWord > anchorWord, окно речи 3–6 сек.
 - ЗАПРЕЩЕНО: оффтоп, декоративные клипы не по теме, пустые prompt, больше ${videoTarget} вставок.`,
             `DURATION_SEC=${durationSec || "?"}\nBROLL_MODE=${brollMode}\nSTYLE=${styleId}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
