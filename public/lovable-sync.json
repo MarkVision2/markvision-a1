@@ -1,7 +1,7 @@
 {
-  "git_sha": "e7fdba4",
-  "git_sha_full": "e7fdba40cba3638cf55d1a779f11842f18b23265",
-  "updated_at": "2026-07-20T10:33:33Z",
-  "label": "fix(montage): lock expert-explainer as thought=scene from 2nd ref",
+  "git_sha": "8534d92",
+  "git_sha_full": "8534d92adeb0a5845a2cef1e56fd52e2d5d90b9a",
+  "updated_at": "2026-07-20T10:45:32Z",
+  "label": "chore(deploy): skip Vercel Git builds; CLI deploy on Node 22",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
