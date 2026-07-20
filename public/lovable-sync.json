@@ -1,7 +1,7 @@
 {
-  "git_sha": "8d2938f",
-  "git_sha_full": "8d2938f5e17ab575cdffc093a0ef8a1e1d6917eb",
-  "updated_at": "2026-07-20T06:24:06Z",
-  "label": "fix(ads): show $ for daily budget in create-campaign dialog (#156)",
+  "git_sha": "586c99a",
+  "git_sha_full": "586c99aa9662577482c81391df9493fd4d276e82",
+  "updated_at": "2026-07-20T06:31:35Z",
+  "label": "feat(ads): carousel creatives in create-campaign wizard (#158)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
