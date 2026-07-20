@@ -1,7 +1,7 @@
 {
-  "git_sha": "248e727",
-  "git_sha_full": "248e72778e6879ea6348916ad1ef1320c0b50a55",
-  "updated_at": "2026-07-20T08:27:17Z",
-  "label": "fix(ui): improve mobile layout across dialogs and key pages",
+  "git_sha": "5f72eca",
+  "git_sha_full": "5f72eca64b7c434735cfe9c6710cf5daf9895633",
+  "updated_at": "2026-07-20T08:34:27Z",
+  "label": "fix(montage): tolerate AAC audio length drift in audio.py",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
