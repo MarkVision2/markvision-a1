@@ -34,7 +34,7 @@ export const MONTAGE_STYLE_TEMPLATES: MontageStyleTemplate[] = [
     title: "Кейс-эксперт",
     subtitle: "Каждая мысль = сцена",
     description:
-      "Как в референсе: мысль → визуал (%, схема, раньше/сейчас, чеклист). Спикер в углу на cover, караоке всегда снизу.",
+      "Мысль → визуал (%, схема, раньше/сейчас, чеклист). Cover-сцены с графикой по центру, караоке всегда снизу.",
     thumb: "/montage-templates/expert-explainer.jpg",
     captionStyle: "karaoke-box",
     insertEverySec: 3.5,
@@ -69,7 +69,7 @@ export const MONTAGE_STYLE_TEMPLATES: MontageStyleTemplate[] = [
     subtitle: "Анимации сверху",
     description:
       "Спикер почти всегда в кадре, в верхней трети — плотные motion-оверлеи по смыслу фраз.",
-    thumb: "/montage-templates/expert-explainer-cover.jpg",
+    thumb: "/montage-templates/dense-motion.jpg",
     captionStyle: "pill",
     insertEverySec: 4.5,
     coverRatio: 0.15,
@@ -88,7 +88,7 @@ export const MONTAGE_STYLE_TEMPLATES: MontageStyleTemplate[] = [
     subtitle: "Реже и спокойнее",
     description:
       "Умеренные акценты и вставки: больше «говорящей головы», меньше графики.",
-    thumb: "/montage-templates/expert-explainer-chart.jpg",
+    thumb: "/montage-templates/classic.jpg",
     captionStyle: "pill",
     insertEverySec: 10,
     coverRatio: 0.2,
