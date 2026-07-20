@@ -23,6 +23,8 @@ export interface MontageStyleTemplate {
   accentColor: string;
   /** Титры остаются видимы на cover-сценах */
   keepCaptionsOnCover?: boolean;
+  /** Без punch/ken-burns зума (по умолчанию true) */
+  disableZoom?: boolean;
   /** Короткие правила для montage-ai */
   aiRules: string;
   recommended?: boolean;
@@ -42,25 +44,32 @@ export const MONTAGE_STYLE_TEMPLATES: MontageStyleTemplate[] = [
     accentEverySec: 3.5,
     accentColor: "#F5E14B",
     keepCaptionsOnCover: true,
+    disableZoom: true,
     recommended: true,
     aiRules: [
       "СТИЛЬ «Кейс-эксперт» — ГЛАВНОЕ ПРАВИЛО:",
-      "Каждая мысль = отдельная ВИЗУАЛЬНАЯ СЦЕНА, которая иллюстрирует сказанное (не декоративный оверлей на лице).",
+      "Каждая мысль = отдельная ВИЗУАЛЬНАЯ СЦЕНА, которая иллюстрирует ИМЕННО сказанное в этом окне слов.",
+      "ЗАПРЕЩЕНО: оффтоп-оверлеи, выдуманные цифры/тезисы, декор не по смыслу фразы, зум/приближение лица.",
+      "",
+      "GROUNDING (обязательно):",
+      "- Перед выбором template прочитай слова anchorWord..endWord.",
+      "- data.text / data.label / data.lines / data.items / data.value — только из этой фразы (дословно или минимальная нормализация).",
+      "- Цифры/% в data обязаны совпадать с речью. Нет цифры в речи → не ставь number-counter/metric-callout.",
+      "- note = краткая цитата фразы (spokenText).",
       "",
       "ДВА РЕЖИМА:",
-      "A) cover:true (~60%): тёмный фон, спикер в PiP, по центру мысль (цифра/схема/сравнение/чеклист/flowchart/карточка), слева-сверху цветной тег контекста, титры снизу остаются.",
-      "B) cover:false (~40%): спикер полный кадр + крупный заголовок/метрика (big-statement красным на тезис; metric-callout жёлтым на цифру).",
+      "A) cover:true (~60%): тёмный фон, спикер PiP, ЦЕНТР = мысль из фразы, тег контекста слева-сверху, титры снизу.",
+      "B) cover:false (~40%): спикер полный кадр + big-statement/metric из той же фразы сверху.",
       "",
-      "МАППИНГ:",
-      "- боль → number-counter/metric-callout + checklist-reveal (красные теги)",
-      "- успех «после нас» → gauge + checklist-reveal (зелёный ✓)",
+      "МАППИНГ (только если фраза реально про это):",
+      "- боль/% → metric-callout + checklist-reveal",
+      "- успех → gauge + checklist-reveal",
       "- раньше/сейчас → fake-dashboard-bars / vs-compare",
       "- процесс → timeline-steps / arrow-flow",
-      "- углы креативов → checklist-reveal / pill-row",
-      "- цель/тезис → big-statement accent #EF4444",
-      "- выручка → number-counter крупно",
+      "- тезис → big-statement #EF4444",
+      "- выручка/деньги → number-counter",
       "",
-      "ТИТРЫ karaoke-box (#F5E14B на текущем слове). Плотность 1 сцена / 3–5 сек. Чередуй cover↔speaker.",
+      "ТИТРЫ karaoke-box. Плотность 1 сцена / 3–5 сек. Без зума.",
     ].join("\n"),
   },
   {
@@ -76,10 +85,11 @@ export const MONTAGE_STYLE_TEMPLATES: MontageStyleTemplate[] = [
     accentEverySec: 5,
     accentColor: "#FF7A18",
     keepCaptionsOnCover: false,
+    disableZoom: true,
     aiRules: [
       "СТИЛЬ «Плотный motion»:",
-      "- layout:third, cover:false ≥85%, анимации сверху на каждую мысль.",
-      "- Плотность ~1 на 4–6 сек. cover:true только 1–2 ключевых момента.",
+      "- layout:third, cover:false ≥85%, оверлей СТРОГО по словам окна (не оффтоп).",
+      "- data из речи. Плотность ~1 на 4–6 сек. Без зума.",
     ].join("\n"),
   },
   {
@@ -95,10 +105,11 @@ export const MONTAGE_STYLE_TEMPLATES: MontageStyleTemplate[] = [
     accentEverySec: 10,
     accentColor: "#FF7A18",
     keepCaptionsOnCover: false,
+    disableZoom: true,
     aiRules: [
       "СТИЛЬ «Классика»:",
-      "- Вставки реже (~1 на 10–12 сек), спокойный темп.",
-      "- Акценты только на цифрах и панчах.",
+      "- Вставки реже (~1 на 10–12 сек), только по смыслу фразы, без зума.",
+      "- Акценты только на цифрах и панчах из речи.",
     ].join("\n"),
   },
 ];

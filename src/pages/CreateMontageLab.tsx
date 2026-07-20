@@ -496,7 +496,7 @@ const CreateMontageLab = () => {
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-bold tracking-tight">Монтаж съёмки</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Загрузите сырую «говорящую голову» — AI сделает цельный вертикальный ролик 9:16: зумы, акценты и motion-вставки. Без нарезки на куски.
+              Загрузите сырую «говорящую голову» — AI сделает цельный вертикальный ролик 9:16: акценты, титры и motion/B-roll по смыслу речи. Без нарезки на куски.
             </p>
           </div>
           {activeCount > 0 && (

@@ -6,7 +6,8 @@
     "accentEverySec": 3.5,
     "accentColor": "#F5E14B",
     "keepCaptionsOnCover": true,
-    "aiRules": "СТИЛЬ «Кейс-эксперт» — ГЛАВНОЕ ПРАВИЛО:\nКаждая мысль = отдельная ВИЗУАЛЬНАЯ СЦЕНА, которая иллюстрирует сказанное (не декоративный оверлей на лице).\n\nДВА РЕЖИМА:\nA) cover:true (~60%): тёмный фон, спикер уходит в PiP, по центру мысль (цифра/схема/сравнение/чеклист/flowchart/карточка), слева-сверху цветной тег контекста (notification-toast/pill-row), титры снизу остаются.\nB) cover:false (~40%): спикер полный кадр + крупный заголовок/метрика (big-statement красным на тезис; metric-callout/number-counter жёлтым на цифру).\n\nМАППИНГ СМЫСЛ→TEMPLATE:\n- боль/проблема → metric-callout/number-counter + checklist-reveal (красные теги)\n- успех «после нас» → gauge + checklist-reveal (зелёный, icons:check)\n- раньше/сейчас деньги → fake-dashboard-bars или vs-compare\n- процесс/что сделали → timeline-steps / arrow-flow (активный шаг)\n- углы креативов → checklist-reveal / pill-row (разные accent)\n- плохой оффер → price-tag + pill-row тегов\n- цель/тезис → big-statement (accent #EF4444)\n- итог/выручка → number-counter огромный + label\n\nТИТРЫ: karaoke-box (тёмная плашка, текущее слово #F5E14B).\nПлотность ~1 сцена на 3–5 сек, без дыр >5 сек. Чередуй cover и speaker. Не повторяй один template подряд."
+    "disableZoom": true,
+    "aiRules": "СТИЛЬ «Кейс-эксперт» — ГЛАВНОЕ: каждая мысль = ВИЗУАЛЬНАЯ СЦЕНА по ИМЕННО этой фразе.\nЗАПРЕЩЕНО: оффтоп, выдуманные цифры, зум лица.\nGROUNDING: data/text/label/items/value только из слов anchorWord..endWord; note=цитата.\nA) cover:true (~60%): тёмный фон, PiP, центр=мысль.\nB) cover:false (~40%): спикер + big-statement/metric из фразы.\nМАППИНГ только если фраза про это: боль→%+теги; успех→gauge; раньше/сейчас→bars; процесс→flowchart; тезис→big-statement #EF4444; деньги→number-counter.\nТитры karaoke-box #F5E14B. 1 сцена / 3–5 сек."
   },
   "dense-motion": {
     "captionStyle": "pill",
@@ -15,7 +16,8 @@
     "accentEverySec": 5,
     "accentColor": "#FF7A18",
     "keepCaptionsOnCover": false,
-    "aiRules": "СТИЛЬ «Плотный motion»:\n- layout:third, cover:false ≥85%, анимации сверху на каждую мысль.\n- Плотность ~1 на 4–6 сек. cover:true только 1–2 ключевых момента."
+    "disableZoom": true,
+    "aiRules": "СТИЛЬ «Плотный motion»: layout:third, оверлей СТРОГО по словам окна (не оффтоп). Без зума."
   },
   "classic": {
     "captionStyle": "pill",
@@ -24,6 +26,7 @@
     "accentEverySec": 10,
     "accentColor": "#FF7A18",
     "keepCaptionsOnCover": false,
-    "aiRules": "СТИЛЬ «Классика»:\n- Вставки реже (~1 на 10–12 сек), спокойный темп.\n- Акценты только на цифрах и панчах."
+    "disableZoom": true,
+    "aiRules": "СТИЛЬ «Классика»: вставки редко, только по смыслу фразы, без зума."
   }
 }

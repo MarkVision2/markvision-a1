@@ -67,6 +67,8 @@ export type ShortsProps = {
   captionStyle?: "pill" | "left-stack" | "mixed" | "karaoke-box";
   /** When true, karaoke captions stay on screen during motion cover scenes. */
   keepCaptionsOnCover?: boolean;
+  /** Disable punch + ken-burns zoom (default true for montage lab — no creepy zoom). */
+  disableZoom?: boolean;
   // Background music file in public/ (played quietly under the voice), or null.
   music?: string | null;
   musicVolume?: number;
@@ -405,14 +407,15 @@ export const Shorts916: React.FC<ShortsProps> = ({
   videoW = DEFAULT_VIDEO_W,
   captionStyle = "pill",
   keepCaptionsOnCover = false,
+  disableZoom = true,
   music = null,
   musicVolume = 0.12,
 }) => {
   const frame = useCurrentFrame();
-  const { scale, originY } = zoomAt(frame, punchZooms);
-  // Constant slow ken-burns so the speaker shot is never static; punch zooms
-  // stack on top of it.
-  const baseZoom = 1.06 + 0.035 * Math.sin(frame / 42);
+  // По умолчанию зум выключен: постоянный ken-burns + punch выглядят «стремно»
+  // на говорящей голове. Включается только явным disableZoom={false}.
+  const { scale, originY } = zoomAt(frame, disableZoom ? [] : punchZooms);
+  const baseZoom = disableZoom ? 1 : 1.06 + 0.035 * Math.sin(frame / 42);
   const finalScale = baseZoom * scale;
   const { insert: activeInsert, amount: insertAmount } = activeInsertAt(frame, inserts);
   const speakerSrc =

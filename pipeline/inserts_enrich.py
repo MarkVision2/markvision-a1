@@ -46,21 +46,50 @@ def _phrase(words: list[dict], i0: int, i1: int, max_words: int = 6) -> str:
     return _norm(" ".join(w.get("pw") or w.get("w", "") for w in chunk))
 
 
-def _pick_template(text: str) -> tuple[str, dict]:
+def _pick_template(text: str) -> tuple[str, dict] | None:
+    """Return template+data grounded in spoken text, or None if no clear match.
+    Never invent off-topic generic overlays.
+    """
     for pat, template, data in RULES:
-        if pat.search(text):
-            d = dict(data)
-            if template == "notification-toast":
-                d["text"] = text[:48] or d.get("text", "!")
-            elif template == "kinetic-type":
-                pass
-            elif template in ("quote-card", "big-statement"):
-                d["text"] = text[:80]
-            return template, d
-    words = [w for w in re.split(r"[^\wа-яёА-ЯЁ]+", text, flags=re.I) if len(w) > 2][:4]
-    if not words:
-        words = text.split()[:3] or ["мысль"]
-    return "kinetic-type", {"words": words[:3], "accentIndex": 0, "icon": "bolt"}
+        if not pat.search(text):
+            continue
+        d = dict(data)
+        # Ground labels/items in the actual spoken phrase when possible.
+        if template == "notification-toast":
+            d["text"] = (text[:48] or d.get("text", "!")).strip()
+            d["title"] = d.get("title") or "Важно"
+        elif template == "metric-callout":
+            m = re.search(r"(\d+[.,]?\d*)\s*(%|процент)?", text, re.I)
+            if m:
+                val = m.group(1).replace(",", ".")
+                d["value"] = f"+{val}%" if m.group(2) else val
+            d["label"] = text[:36].strip() or d.get("label", "Метрика")
+        elif template == "number-counter":
+            m = re.search(r"(\d+[.,]?\d*)", text)
+            if m:
+                try:
+                    d["value"] = float(m.group(1).replace(",", "."))
+                except ValueError:
+                    pass
+            d["label"] = text[:36].strip() or d.get("label", "Цифра")
+        elif template == "checklist-reveal":
+            # Don't invent fake checklist — use the phrase itself as one item.
+            d["items"] = [text[:48].strip() or "Пункт"]
+            d["icons"] = ["check"]
+        elif template == "timeline-steps":
+            d["steps"] = [text[:40].strip() or "Шаг"]
+        elif template == "fake-terminal":
+            # Skip generic AI-build terminal unless phrase is clearly about code/AI.
+            d["lines"] = [f"> {text[:40].strip()}", "✓"]
+            d["title"] = "AI"
+        elif template == "loading-to-done":
+            d["label"] = text[:32].strip() or d.get("label", "Обработка")
+            d["doneLabel"] = "Готово"
+        elif template in ("quote-card", "big-statement"):
+            d["text"] = text[:80]
+        return template, d
+    # No clear semantic match → skip (do NOT invent kinetic-type noise).
+    return None
 
 
 def _covered(ranges: list[tuple[int, int]], i0: int, i1: int) -> bool:
@@ -84,7 +113,7 @@ def _merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
     return out
 
 
-def enrich(work: Path, gap_sec: float = 4.5, cover_ratio: float = 0.0) -> dict:
+def enrich(work: Path, gap_sec: float = 4.5, cover_ratio: float = 0.0, skip: bool = False) -> dict:
     words_path = work / "words.json"
     if not words_path.exists():
         raise SystemExit(f"missing {words_path}")
@@ -97,6 +126,10 @@ def enrich(work: Path, gap_sec: float = 4.5, cover_ratio: float = 0.0) -> dict:
     if ins_path.exists():
         base_doc = json.loads(ins_path.read_text(encoding="utf-8"))
     existing = list(base_doc.get("inserts") or [])
+
+    if skip:
+        print(f"OK inserts={len(existing)} enrich=skipped")
+        return base_doc
 
     ranges: list[tuple[int, int]] = []
     merged: list[dict] = []
@@ -132,12 +165,15 @@ def enrich(work: Path, gap_sec: float = 4.5, cover_ratio: float = 0.0) -> dict:
             continue
 
         text = _phrase(words, i0, i1)
-        template, data = _pick_template(text)
+        picked = _pick_template(text)
+        if not picked:
+            t = window_end
+            continue
+        template, data = picked
         accent = ACCENTS[color_i % len(ACCENTS)]
         color_i += 1
-        # Для кейс-стиля чередуем cover-сцены (мысль на весь экран) и оверлеи.
         use_cover = cover_ratio > 0 and (auto_added % max(1, round(1 / cover_ratio))) == 0
-        data = {**data, "accent": accent, "cover": bool(use_cover)}
+        data = {**data, "accent": accent, "cover": bool(use_cover), "spokenText": text}
 
         merged.append({
             "anchorWord": i0,
@@ -162,4 +198,5 @@ if __name__ == "__main__":
     work_dir = Path(sys.argv[1])
     gap = float(sys.argv[2]) if len(sys.argv) > 2 else 4.5
     cover = float(sys.argv[3]) if len(sys.argv) > 3 else 0.0
-    enrich(work_dir, gap, cover)
+    skip = len(sys.argv) > 4 and str(sys.argv[4]).lower() in ("1", "true", "skip")
+    enrich(work_dir, gap, cover, skip=skip)

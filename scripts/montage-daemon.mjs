@@ -288,9 +288,10 @@ function resolveMontageStyle(job) {
     coverRatio: 0.45,
     accentEverySec: 4,
     accentColor: "#F5E14B",
+    disableZoom: true,
     aiRules: "",
   };
-  return { id, ...base };
+  return { id, ...base, disableZoom: base.disableZoom !== false };
 }
 
 function resolveAssetFolderIds(job) {
@@ -331,30 +332,48 @@ async function materializeExternalBroll(job, insertsDoc, brollMode) {
   const projectId = String(job.project_id || "");
   const id = job.id;
   const list = Array.isArray(insertsDoc?.inserts) ? insertsDoc.inserts : [];
-  if (!projectId || !list.length) return insertsDoc;
+  if (!projectId || !list.length) {
+    console.warn(`${brollMode}: пустой plan inserts — нечего генерировать`);
+    return null;
+  }
   if (brollMode !== "kie" && brollMode !== "pexels") return insertsDoc;
 
   const outDir = resolve("remotion/public/inserts", id);
   mkdirSync(outDir, { recursive: true });
-  const materialized = [];
+  const debug = { mode: brollMode, planned: list.length, attempted: 0, ok: 0, failed: [], noPrompt: 0 };
   const maxClips = Math.min(12, list.length);
+  const merged = [];
 
-  for (let i = 0; i < maxClips; i++) {
+  for (let i = 0; i < list.length; i++) {
     const it = list[i];
+    // Preserve motion templates / already-file inserts as-is.
+    if (it.template || (it.file && it.type)) {
+      merged.push(it);
+      continue;
+    }
+    if (i >= maxClips) {
+      // Beyond clip budget — drop empty video slots (don't invent motion here).
+      continue;
+    }
+
     const prompt = String(it.prompt || "").trim();
     const query = String(it.query || prompt || "").trim().slice(0, 120);
-    if (!prompt && !query) continue;
+    if (!prompt && !query) {
+      debug.noPrompt += 1;
+      continue;
+    }
 
-    const fileName = `${String(i + 1).padStart(2, "0")}_broll.mp4`;
+    debug.attempted += 1;
+    const fileName = `${String(debug.attempted).padStart(2, "0")}_broll.mp4`;
     const abs = resolve(outDir, fileName);
     const rel = `${id}/${fileName}`;
 
     try {
       if (brollMode === "kie") {
-        await status(id, `Kie/Kling ${i + 1}/${maxClips}`);
+        await status(id, `Kie/Kling ${debug.attempted}/${maxClips}`);
         const created = await call(MW, { action: "kie_create", project_id: projectId, prompt: prompt || query });
         const taskId = created.taskId;
-        if (!taskId) throw new Error("kie_create: нет taskId");
+        if (!taskId) throw new Error("kie_create: нет taskId (проверь ключ Kie в проекте)");
         let videoUrl = null;
         for (let tick = 0; tick < 72; tick++) {
           await new Promise((r) => setTimeout(r, 5000));
@@ -373,7 +392,7 @@ async function materializeExternalBroll(job, insertsDoc, brollMode) {
         if (!videoUrl) throw new Error("Kie timeout — нет video url");
         await download(videoUrl, abs);
       } else {
-        await status(id, `Pexels ${i + 1}/${maxClips}`);
+        await status(id, `Pexels ${debug.attempted}/${maxClips}`);
         const found = await call(MW, {
           action: "pexels_search",
           project_id: projectId,
@@ -402,25 +421,30 @@ async function materializeExternalBroll(job, insertsDoc, brollMode) {
         console.warn("broll proxy failed, using original", e instanceof Error ? e.message : e);
       }
 
-      materialized.push({
+      merged.push({
         file: rel,
         type: "video",
         anchorWord: it.anchorWord,
         endWord: it.endWord,
         layout: it.layout || "full",
         note: it.note || prompt || query,
+        spokenText: it.spokenText || it.note || null,
       });
+      debug.ok += 1;
     } catch (e) {
-      console.warn(`broll clip ${i + 1} failed:`, e instanceof Error ? e.message : e);
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`broll clip ${i + 1} failed:`, msg);
+      debug.failed.push({ i, prompt: (prompt || query).slice(0, 80), error: msg.slice(0, 200) });
     }
   }
 
-  if (!materialized.length) {
-    console.warn(`⚠ ${brollMode}: не удалось скачать клипы — фоллбэк на motion`);
+    writeFileSync(resolve("work", id, "broll-debug.json"), JSON.stringify(debug, null, 2));
+  if (!debug.ok) {
+    console.warn(`⚠ ${brollMode}: 0 клипов (attempted=${debug.attempted}, noPrompt=${debug.noPrompt}) → motion fallback`);
     return null;
   }
-  console.log(`✓ ${brollMode} inserts: ${materialized.length}`);
-  return { inserts: materialized };
+  console.log(`✓ ${brollMode} inserts: ${debug.ok}/${debug.attempted} (planned=${debug.planned})`);
+  return { inserts: merged };
 }
 
 async function processJob(job) {
@@ -557,8 +581,17 @@ async function processJob(job) {
       }
     }
     writeFileSync(resolve(work, "inserts.json"), JSON.stringify(inserts, null, 2));
-    await status(id, "уплотняем motion-вставки");
-    py(["pipeline/inserts_enrich.py", work, String(style.insertEverySec || 4.5), String(style.coverRatio ?? 0)]);
+    // Для Kie/Pexels не дописываем regex-оффтоп поверх видео-клипов.
+    // Для motion — только grounded fills (без invented kinetic-type).
+    const skipEnrich = brollMode === "kie" || brollMode === "pexels" ? "skip" : "0";
+    await status(id, skipEnrich === "skip" ? "B-roll готов" : "уплотняем motion-вставки");
+    py([
+      "pipeline/inserts_enrich.py",
+      work,
+      String(style.insertEverySec || 4.5),
+      String(skipEnrich === "skip" ? 0 : (style.coverRatio ?? 0)),
+      skipEnrich,
+    ]);
 
     // Один вертикальный клип на ВСЮ длину — не «шортсы из лучших моментов».
     const accents = JSON.parse(readFileSync(resolve(work, "accents.json"), "utf8"));
@@ -579,6 +612,7 @@ async function processJob(job) {
           captionStyle: style.captionStyle || "karaoke-box",
           keepCaptionsOnCover: style.keepCaptionsOnCover !== false
             && (style.captionStyle === "karaoke-box" || style.keepCaptionsOnCover === true),
+          disableZoom: style.disableZoom !== false, // default ON — без зума
         }],
       }, null, 2),
     );

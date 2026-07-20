@@ -154,13 +154,15 @@ def build(work: Path, props_dir: Path, draft: bool):
             nxt = kw[idx + 1]["from"] if idx + 1 < len(kw) else k["from"] + 12
             k["to"] = max(k["from"] + 2, min(nxt, k["from"] + 45))
 
-        # punch zooms on accent words (origin at the face, centred horizontally)
+        # punch zooms — выключены по умолчанию (disableZoom), иначе «стремный» зум
         punch = []
-        for w in wlist:
-            if w["i"] in accents:
-                _, fy = face_center(faces, w["start"])
-                punch.append({"from": round(out_t(w["start"]) * fps) - 4,
-                              "originY": round(fy * 100, 1)})
+        disable_zoom = bool(sh.get("disableZoom", True))
+        if not disable_zoom:
+            for w in wlist:
+                if w["i"] in accents:
+                    _, fy = face_center(faces, w["start"])
+                    punch.append({"from": round(out_t(w["start"]) * fps) - 4,
+                                  "originY": round(fy * 100, 1)})
 
         # b-roll inserts anchored inside this short; layout: third (default) / half / full
         insert_events = []
@@ -227,6 +229,7 @@ def build(work: Path, props_dir: Path, draft: bool):
                 sh.get("keepCaptionsOnCover")
                 or sh.get("captionStyle") == "karaoke-box"
             ),
+            "disableZoom": disable_zoom,
         }
         out = props_dir / f"{sh['id']}.json"
         out.parent.mkdir(parents=True, exist_ok=True)

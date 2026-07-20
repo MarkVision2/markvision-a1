@@ -156,17 +156,18 @@ word = индекс из indexed. text — короткий капс (1–3 сл
           const kind = brollMode === "kie" ? "Kie/Kling" : "Pexels";
           const videoTarget = Math.max(6, Math.min(16, Math.round(target / 2)));
           const result = await chatJson(
-            `Ты режиссёр B-roll для вертикального 9:16 ролика «говорящая голова».
+            `Ты режиссёр B-roll для вертикального 9:16 «говорящая голова».
 Источник: ${kind}. Стиль: ${styleId}. Верни JSON:
-{"inserts":[{"anchorWord":<i>,"endWord":<i>,"prompt":"<english>","query":"<search>","layout":"full"|"half"|"third","note":"..."}]}
-Правила:
+{"inserts":[{"anchorWord":<i>,"endWord":<i>,"prompt":"<english>","query":"<search>","layout":"full"|"half"|"third","note":"<ru quote>","spokenText":"<ru quote>"}]}
+ЖЁСТКИЕ ПРАВИЛА:
 - Ровно ${videoTarget} видео-вставок, равномерно (~1 на ${every}–${every + 4} сек).
-- prompt — АНГЛИЙСКИЙ cinematic video prompt 1–2 предложения, vertical 9:16, no text/logos/watermarks, no faces of celebrities.
-- query — короткий английский поисковый запрос.
+- СНАЧАЛА прочитай слова между anchorWord..endWord. Клип ОБЯЗАН иллюстрировать ЭТУ фразу.
+- prompt — АНГЛИЙСКИЙ cinematic 1–2 предложения: конкретный subject из смысла фразы (не абстрактный «business success»), vertical 9:16, no text/logos/watermarks, no celebrity faces.
+- query — 2–5 английских слов, точный noun из смысла (не generic «marketing»).
+- note/spokenText — русская цитата фразы (для проверки grounding).
 - layout: чередуй "third" и "half"/"full".
-- anchorWord/endWord — индексы из indexed, endWord > anchorWord, окно речи 3–6 сек.
-- Подбирай клип ПО СМЫСЛУ фразы.
-- Без template/motion — только видео-промпты.`,
+- endWord > anchorWord, окно речи 3–6 сек.
+- ЗАПРЕЩЕНО: оффтоп, декоративные клипы не по теме, пустые prompt.`,
             `DURATION_SEC=${durationSec || "?"}\nBROLL_MODE=${brollMode}\nSTYLE=${styleId}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
             150_000,
           );
@@ -181,20 +182,22 @@ word = индекс из indexed. text — короткий капс (1–3 сл
         const result = await chatJson(
           `Ты режиссёр motion-графики для вертикального 9:16 «говорящая голова».
 Стиль шаблона: ${styleId}. Верни JSON:
-{"inserts":[{"anchorWord":<i>,"endWord":<i>,"template":"<slug>","layout":"third"|"half"|"full","data":{...},"note":"..."}]}
+{"inserts":[{"anchorWord":<i>,"endWord":<i>,"template":"<slug>","layout":"third"|"half"|"full","data":{...},"note":"<ru quote>","spokenText":"<ru quote>"}]}
 Это code-based b-roll (НЕ картинки). template — ТОЛЬКО: ${MOTION_TEMPLATES}.
 ${sourceHint}
-ГЛАВНОЕ: каждая мысль = ВИЗУАЛЬНАЯ СЦЕНА, иллюстрирующая сказанное (не декор поверх лица).
-Правила (ЖЁСТКО):
-- Минимум ${target} вставок — плотность ~1 на каждые ${every} сек, БЕЗ дыр >${every + 1} сек.
-- ~${coverPct}% с data.cover=true: тёмный фон + ЦЕНТР = мысль (цифра/схема/сравнение/чеклист/flowchart/карточка). Тег контекста — notification-toast/pill-row в data или соседней вставке.
-- Остальные cover:false: спикер полный кадр + big-statement (тезис, accent #EF4444) или metric-callout/number-counter сверху (layout:third).
-- МАППИНГ: боль→metric-callout+checklist-reveal(красные теги); успех→gauge+checklist-reveal(зелёный ✓);
-  раньше/сейчас→fake-dashboard-bars/vs-compare; процесс→timeline-steps/arrow-flow; углы→pill-row;
-  оффер→price-tag; выручка→number-counter крупно.
-- Основной accent слова в титрах: ${accentColor}. Чередуй #EF4444 #34D399 #22D3EE #FB7185.
-- data обязателен. endWord > anchorWord, окно 2–5 сек.
-- Учитывай brief (там полные правила стиля).`,
+ГЛАВНОЕ: каждая мысль = ВИЗУАЛЬНАЯ СЦЕНА по ИМЕННО этой фразе (не декор, не оффтоп).
+GROUNDING (ЖЁСТКО):
+- Прочитай слова anchorWord..endWord ДО выбора template.
+- data.text/label/lines/items/value — только из этой фразы (дословно или лёгкая нормализация).
+- Цифры/% в data = цифры из речи. Нет цифры → не используй number-counter/metric-callout.
+- note и spokenText = цитата фразы. Если не можешь grounded-визуал — ПРОПУСТИ слот (лучше дыра, чем оффтоп).
+Правила плотности:
+- Цель ~${target} вставок (~1 на ${every} сек), без дыр >${every + 2} сек где есть смысл.
+- ~${coverPct}% с data.cover=true: тёмный фон + ЦЕНТР = мысль из фразы. Тег контекста из той же мысли.
+- Остальные cover:false: big-statement/metric-callout сверху (layout:third) — текст из фразы.
+- МАППИНГ только если фраза реально про это: боль→metric+checklist; успех→gauge; раньше/сейчас→bars; процесс→timeline; тезис→big-statement #EF4444; деньги→number-counter.
+- Accent: ${accentColor}. Чередуй #EF4444 #34D399 #22D3EE #FB7185.
+- endWord > anchorWord, окно 2–5 сек. Без зума/приближения лица.`,
           `DURATION_SEC=${durationSec || "?"}\nBROLL_MODE=${brollMode}\nSTYLE=${styleId}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
           150_000,
         );
