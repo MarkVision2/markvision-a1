@@ -1,7 +1,7 @@
 {
-  "git_sha": "17ee4f2",
-  "git_sha_full": "17ee4f2f239c478e058dd5961f5263a77fa46c26",
-  "updated_at": "2026-07-20T05:55:54Z",
-  "label": "chore(ci): apply montage broll_mode migration via management API list",
+  "git_sha": "0a9ffdd",
+  "git_sha_full": "0a9ffdd81f3052fb5db4403d513bb1b2e43108f0",
+  "updated_at": "2026-07-20T06:13:02Z",
+  "label": "fix(ads): remove duplicate top summary stats on Ads page (#152)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
