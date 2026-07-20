@@ -154,24 +154,31 @@ word = индекс из indexed. text — короткий капс (1–3 сл
         // Kie / Pexels — реальные видео-клипы (не motion-шаблоны).
         if (brollMode === "kie" || brollMode === "pexels") {
           const kind = brollMode === "kie" ? "Kie/Kling" : "Pexels";
-          const videoTarget = Math.max(6, Math.min(16, Math.round(target / 2)));
+          // Kie платный (~$0.28 / 5с клип) — жёсткий потолок 3; Pexels бесплатный — до 8.
+          const videoTarget = brollMode === "kie"
+            ? Math.max(2, Math.min(3, Math.round(target / 4)))
+            : Math.max(4, Math.min(8, Math.round(target / 2)));
           const result = await chatJson(
             `Ты режиссёр B-roll для вертикального 9:16 «говорящая голова».
 Источник: ${kind}. Стиль: ${styleId}. Верни JSON:
 {"inserts":[{"anchorWord":<i>,"endWord":<i>,"prompt":"<english>","query":"<search>","layout":"full"|"half"|"third","note":"<ru quote>","spokenText":"<ru quote>"}]}
 ЖЁСТКИЕ ПРАВИЛА:
-- Ровно ${videoTarget} видео-вставок, равномерно (~1 на ${every}–${every + 4} сек).
+- Ровно ${videoTarget} видео-вставок (не больше), на самые сильные мысли, равномерно по ролику.
 - СНАЧАЛА прочитай слова между anchorWord..endWord. Клип ОБЯЗАН иллюстрировать ЭТУ фразу.
 - prompt — АНГЛИЙСКИЙ cinematic 1–2 предложения: конкретный subject из смысла фразы (не абстрактный «business success»), vertical 9:16, no text/logos/watermarks, no celebrity faces.
 - query — 2–5 английских слов, точный noun из смысла (не generic «marketing»).
 - note/spokenText — русская цитата фразы (для проверки grounding).
 - layout: чередуй "third" и "half"/"full".
 - endWord > anchorWord, окно речи 3–6 сек.
-- ЗАПРЕЩЕНО: оффтоп, декоративные клипы не по теме, пустые prompt.`,
+- ЗАПРЕЩЕНО: оффтоп, декоративные клипы не по теме, пустые prompt, больше ${videoTarget} вставок.`,
             `DURATION_SEC=${durationSec || "?"}\nBROLL_MODE=${brollMode}\nSTYLE=${styleId}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
             150_000,
           );
           if (!Array.isArray(result.inserts)) result.inserts = [];
+          // Страховка: обрезаем, если модель всё же нагенерила лишнее.
+          if (result.inserts.length > videoTarget) {
+            result.inserts = result.inserts.slice(0, videoTarget);
+          }
           return json(result);
         }
 

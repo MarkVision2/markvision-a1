@@ -355,7 +355,9 @@ async function materializeExternalBroll(job, insertsDoc, brollMode) {
   const outDir = resolve("remotion/public/inserts", id);
   mkdirSync(outDir, { recursive: true });
   const debug = { mode: brollMode, planned: list.length, attempted: 0, ok: 0, failed: [], noPrompt: 0 };
-  const maxClips = Math.min(12, list.length);
+  const maxClips = brollMode === "kie"
+    ? Math.min(3, list.length)   // ~$0.28/клип Kling 2.6 — не жечь бюджет
+    : Math.min(8, list.length);
   const merged = [];
 
   for (let i = 0; i < list.length; i++) {
