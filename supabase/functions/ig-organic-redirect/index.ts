@@ -1,9 +1,9 @@
 // Public redirect for Instagram organic short links.
-// GET /functions/v1/ig-organic-redirect?c=<short_id>&u=<username>&v=<link_index>
+// GET /functions/v1/ig-organic-redirect?c=<short_id>&u=<username>&v=<link_index>&m=<media_id>&ad=<ad_id>
 // 1) Resolves codeword by short_id
 // 2) Picks target URL by ?v= index (random variant from intake)
-// 3) Inserts link_click into instagram_organic_events
-// 4) 302 → target_url with utm_source=instagram, utm_campaign=<codeword>, cw=<codeword>
+// 3) Inserts link_click into instagram_organic_events (с media_id/ad_id из ссылки)
+// 4) 302 → target_url with utm + cw + ig_media + ad_id для lead-intake
 
 import { corsHeaders } from "https://esm.sh/@supabase/supabase-js@2.95.0/cors";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
@@ -41,6 +41,11 @@ function resolveTargetUrl(row: {
   return row.target_url?.trim() || null;
 }
 
+function cleanParam(raw: string | null): string | null {
+  const t = (raw ?? "").trim();
+  return t || null;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "GET" && req.method !== "HEAD") {
@@ -49,9 +54,11 @@ Deno.serve(async (req) => {
 
   const url = new URL(req.url);
   const shortId = (url.searchParams.get("c") ?? "").trim();
-  const username = (url.searchParams.get("u") ?? "").trim() || null;
+  const username = cleanParam(url.searchParams.get("u"));
   const vRaw = url.searchParams.get("v");
   const linkIndex = vRaw != null && vRaw !== "" ? Number.parseInt(vRaw, 10) : null;
+  const mediaId = cleanParam(url.searchParams.get("m")) ?? cleanParam(url.searchParams.get("ig_media"));
+  const adId = cleanParam(url.searchParams.get("ad")) ?? cleanParam(url.searchParams.get("ad_id"));
 
   if (!shortId) {
     return new Response("Missing ?c=short_id", { status: 400, headers: corsHeaders });
@@ -72,13 +79,15 @@ Deno.serve(async (req) => {
 
   const occurredAt = new Date();
   const dateKey = almatyDateKey(occurredAt);
+  // Пост из трекинг-ссылки важнее привязки кодворда (один код на несколько постов/реклам).
+  const resolvedMediaId = mediaId ?? row.reel_id ?? null;
 
   if (req.method === "GET") {
     const { error: insErr } = await admin.from("instagram_organic_events").insert({
       project_id: row.project_id,
       codeword_id: row.id,
       codeword: row.codeword,
-      reel_id: row.reel_id,
+      reel_id: resolvedMediaId,
       reel_url: row.reel_url,
       event_type: "link_click",
       username,
@@ -88,6 +97,8 @@ Deno.serve(async (req) => {
         short_id: shortId,
         target_url_index: linkIndex,
         target_url: targetUrl,
+        media_id: resolvedMediaId,
+        meta_ad_id: adId,
         user_agent: req.headers.get("user-agent") ?? null,
       },
     });
@@ -107,9 +118,19 @@ Deno.serve(async (req) => {
   if (!target.searchParams.has("utm_campaign")) {
     target.searchParams.set("utm_campaign", row.codeword);
   }
+  // ad_id → utm_content, чтобы lead-intake подхватил meta_ad_id существующей логикой.
+  if (adId && !target.searchParams.has("utm_content")) {
+    target.searchParams.set("utm_content", adId);
+  }
+  if (adId && !target.searchParams.has("ad_id")) {
+    target.searchParams.set("ad_id", adId);
+  }
   target.searchParams.set("cw", row.codeword);
   if (username && !target.searchParams.has("ig_user")) {
     target.searchParams.set("ig_user", username);
+  }
+  if (resolvedMediaId && !target.searchParams.has("ig_media")) {
+    target.searchParams.set("ig_media", resolvedMediaId);
   }
 
   return new Response(null, {

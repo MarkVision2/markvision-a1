@@ -1,6 +1,7 @@
 /**
  * Public short-link proxy: /r/:code → ig-organic-redirect with full query
- * (u=username, v=link_index). Keeps link_click analytics for «получить доступ».
+ * (u=username, v=link_index, m=media_id, ad=ad_id). Keeps link_click analytics
+ * and post/ad attribution for «получить доступ».
  */
 const REDIRECT_FN =
   "https://szfgdruhlebfvcmlvxdk.supabase.co/functions/v1/ig-organic-redirect";
@@ -27,7 +28,7 @@ export default async function handler(req: { method?: string; query?: Record<str
 
   const params = new URLSearchParams();
   params.set("c", code);
-  for (const key of ["u", "v"] as const) {
+  for (const key of ["u", "v", "m", "ad", "ig_media", "ad_id"] as const) {
     const raw = q[key];
     const val = Array.isArray(raw) ? raw[0] : raw;
     if (val != null && String(val).trim() !== "") params.set(key, String(val));

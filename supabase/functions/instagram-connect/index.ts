@@ -116,13 +116,13 @@ Deno.serve(async (req) => {
       body: JSON.stringify({ project_id }),
     }).catch(() => {});
 
-    // Подписка Page на comments/messages — без этого ig-webhook не получает
-    // комментарии с код-словом («хаб» и т.п.) и молчит.
+    // Подписка Page на comments/messages (+ referral с рекламы) — без этого
+    // ig-webhook не получает код-слова из комментов/Direct и молчит.
     let webhookSubscribed = true;
     let webhookError: string | null = null;
     try {
       const subRes = await fetch(
-        `${GRAPH}/${page_id}/subscribed_apps?subscribed_fields=comments,messages&access_token=${page.access_token}`,
+        `${GRAPH}/${page_id}/subscribed_apps?subscribed_fields=comments,messages,messaging_referral&access_token=${page.access_token}`,
         { method: "POST" },
       );
       const subJson = await subRes.json().catch(() => ({}));
