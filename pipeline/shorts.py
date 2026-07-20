@@ -37,6 +37,26 @@ def probe_frames(path: Path, fps: float) -> int:
     return int(round(float(dur) * fps))
 
 
+def probe_audio_duration(path: Path) -> float | None:
+    """Audio stream duration in seconds (falls back to container duration)."""
+    if not path.exists():
+        return None
+    for args in (
+        ["-select_streams", "a:0", "-show_entries", "stream=duration"],
+        ["-show_entries", "format=duration"],
+    ):
+        try:
+            dur = subprocess.check_output(
+                ["ffprobe", "-v", "error", *args, "-of", "csv=p=0", str(path)],
+                text=True,
+            ).strip()
+            if dur and dur != "N/A":
+                return float(dur)
+        except (subprocess.CalledProcessError, ValueError):
+            continue
+    return None
+
+
 def probe_dims(path: Path):
     out = subprocess.check_output(
         ["ffprobe", "-v", "error", "-select_streams", "v:0",
@@ -73,6 +93,8 @@ def build(work: Path, props_dir: Path, draft: bool):
     sw, sh_dim = probe_dims(src_path) if src_path.exists() else (16, 9)
     video_w = round(CANVAS_H * sw / sh_dim)
     tx_min = CANVAS_W - video_w
+    src_audio_dur = probe_audio_duration(src_path)
+    max_end_frame = int(src_audio_dur * fps) if src_audio_dur else None
 
     for sh in shorts:
         spans = sh["spans"]
@@ -105,11 +127,17 @@ def build(work: Path, props_dir: Path, draft: bool):
         # segments with face crop offset
         segments = []
         for a, b in spans:
+            if src_audio_dur is not None:
+                b = min(b, src_audio_dur)
             fx, fy = face_center(faces, (a + b) / 2)
             tx = max(tx_min, min(0, round(CANVAS_W / 2 - fx * video_w)))
+            end_f = round(b * fps)
+            if max_end_frame is not None:
+                end_f = min(end_f, max_end_frame)
+            start_f = min(round(a * fps), end_f)
             segments.append({
                 "start": a, "end": b,
-                "startFrame": round(a * fps), "endFrame": round(b * fps),
+                "startFrame": start_f, "endFrame": end_f,
                 "tx": tx, "faceY": round(fy * 100, 1),
             })
         total = sum(s["endFrame"] - s["startFrame"] for s in segments)
