@@ -1,7 +1,7 @@
 {
-  "git_sha": "c2b2ca5",
-  "git_sha_full": "c2b2ca5a99e7b5386f74cccd32013ff5836d8baa",
-  "updated_at": "2026-07-20T06:53:34Z",
-  "label": "ci: deploy launch-campaign via Meta edge workflow (#162)",
+  "git_sha": "3791db4",
+  "git_sha_full": "3791db4e5bb915b202817d83339bda78c013d583",
+  "updated_at": "2026-07-20T07:36:39Z",
+  "label": "feat(demo): seed project Эрик with July 2026 showcase data (#167)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
