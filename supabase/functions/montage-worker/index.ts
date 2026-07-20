@@ -13,6 +13,7 @@
 //   complete {id, video_url, title?, thumbnail_url?, description?, duration_sec?, shorts?}
 //            → job done + heygen_usage (Готовые) + Telegram (если включён)
 //   fail     {id, error}          → job failed + Telegram-уведомление
+//   requeue  {id}                 → вернуть failed/processing в queued (повтор)
 //   publish  {project_id, video_url, title?, ...} → регистрация без заявки
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 
@@ -230,6 +231,24 @@ Deno.serve(async (req) => {
           if (chatId) await tg(botToken, "sendMessage", { chat_id: chatId, text: `⚠️ Монтаж не удался: ${message}` });
         }
         return json({ ok: true });
+      }
+
+      case "requeue": {
+        const id = String(body.id ?? "");
+        if (!id) return json({ error: "id required" }, 400);
+        const { data: job } = await admin.from("montage_jobs").select("id, status").eq("id", id).maybeSingle();
+        if (!job) return json({ error: "job not found" }, 404);
+        const { error } = await admin.from("montage_jobs").update({
+          status: "queued",
+          progress: "повтор в очереди",
+          error: null,
+          result: null,
+          result_video_url: null,
+          done_at: null,
+          updated_at: new Date().toISOString(),
+        }).eq("id", id);
+        if (error) return json({ error: error.message }, 500);
+        return json({ ok: true, previous_status: job.status });
       }
 
       case "publish": {

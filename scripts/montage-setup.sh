@@ -72,4 +72,17 @@ if [ ! -d remotion/node_modules ]; then
 fi
 echo "✓ Remotion готов"
 
+# ── SFX для рендера (key.wav обязателен для акцентов в Main169) ──────────────
+mkdir -p remotion/public
+if [ -f assets/sfx/key.wav ]; then
+  cp -f assets/sfx/key.wav remotion/public/key.wav
+  echo "✓ key.wav скопирован в remotion/public"
+elif [ ! -f remotion/public/key.wav ]; then
+  ffmpeg -y -f lavfi -i sine=frequency=1200:duration=0.04 \
+    -af "afade=t=out:st=0.02:d=0.02" -ac 1 -ar 44100 \
+    remotion/public/key.wav >/dev/null 2>&1 \
+    && echo "✓ key.wav сгенерирован" \
+    || echo "⚠ не удалось создать key.wav — рендер акцентов упадёт"
+fi
+
 echo "-- Воркер готов. Очередь: node scripts/montage-worker.mjs next"
