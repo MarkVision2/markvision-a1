@@ -18,5 +18,5 @@
       "destination": "/index.html"
     }
   ],
-  "ignoreCommand": "git log -1 --pretty=%B | grep -q '\\[vercel-deploy\\]'; exit $((1-$?))"
+  "ignoreCommand": "exit 0"
 }
