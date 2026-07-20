@@ -247,10 +247,9 @@ async function processJob(job) {
   mkdirSync(work, { recursive: true });
   writeFileSync(resolve(work, "job.json"), JSON.stringify(job, null, 2));
 
-  // Очередь «Монтаж съёмки»: ТОЛЬКО цельный 16:9. Шортсы/нарезку не делаем —
-  // даже если в formats ошибочно пришло "shorts" (старый UI / повтор заявки).
-  const wantMain = true;
-  const wantShorts = false;
+  // Очередь «Монтаж съёмки»: ОДИН цельный ролик 9:16 (весь исходник).
+  // Не режем на шортсы и не делаем jump-cut — даже если formats со старого UI.
+  const wantFull916 = true;
   const brief = job.brief || "";
   const brollMode = ["auto", "library", "pexels", "kie"].includes(job.broll_mode)
     ? job.broll_mode
@@ -305,16 +304,15 @@ async function processJob(job) {
 
   const outDir = resolve("out");
   mkdirSync(outDir, { recursive: true });
-  const shortPaths = [];
   let mainPath = null;
 
-  if (wantMain) {
-    await status(id, "сохраняем ролик целиком");
+  if (wantFull916) {
+    await status(id, "сохраняем ролик целиком (9:16)");
     // ВСЕГДА перезаписываем delete.json: иначе старый агрессивный delete
     // с прошлой попытки снова нарежет исходник пополам.
     writeFileSync(
       resolve(work, "delete.json"),
-      JSON.stringify({ delete: [], keep_full: true, reason: "queue: keep source intact" }, null, 2),
+      JSON.stringify({ delete: [], keep_full: true, reason: "queue: keep source intact 9:16" }, null, 2),
     );
     // edl пересобираем под keep_full (даже если файл уже был).
     py(["pipeline/edl.py", work, wav, "30"]);
@@ -325,7 +323,12 @@ async function processJob(job) {
     }
     // Motion/B-roll обязателен для очереди — без вставок останутся одни титры.
     await status(id, "motion-вставки / b-roll");
-    const durationSec = Number(words?.[words.length - 1]?.end ?? probeDurationSec(proxy) ?? 0);
+    const durationSec = Number(
+      JSON.parse(readFileSync(resolve(work, "edl.json"), "utf8")).kept_duration
+      ?? words?.[words.length - 1]?.end
+      ?? probeDurationSec(proxy)
+      ?? 0,
+    );
     const inserts = await call(AI, {
       action: "markup_inserts",
       indexed,
@@ -336,18 +339,40 @@ async function processJob(job) {
       assetFolderIds,
     });
     writeFileSync(resolve(work, "inserts.json"), JSON.stringify(inserts, null, 2));
-    // props.py ждёт media-имя без расширения; файл должен быть в public/
-    // Если mediaBase != source — копируем/симлинк или передаём 3-й аргумент.
-    const propsPath = resolve("remotion/props", `main169_${id.slice(0, 8)}.json`);
-    await status(id, "собираем пропсы 16:9");
-    py(["pipeline/props.py", work, propsPath, mediaBase]);
+
+    // Один вертикальный клип на ВСЮ длину — не «шортсы из лучших моментов».
+    const accents = JSON.parse(readFileSync(resolve(work, "accents.json"), "utf8"));
+    const accentIdx = (accents.accents || [])
+      .map((a) => Number(a.word ?? a))
+      .filter((n) => Number.isFinite(n));
+    const fullId = `Full916-${id.slice(0, 8)}`;
+    writeFileSync(
+      resolve(work, "shorts.json"),
+      JSON.stringify({
+        media: mediaBase,
+        shorts: [{
+          id: fullId,
+          title: (job.source_name || "Монтаж").replace(/\.[^.]+$/, "").slice(0, 80),
+          spans: [[0, durationSec]],
+          accents: accentIdx,
+          fixes: {},
+          captionStyle: "pill",
+        }],
+      }, null, 2),
+    );
+    // НЕ вызываем shorts_refine.py — он режет паузы jump-cut’ами.
+
+    await status(id, "собираем пропсы 9:16");
+    py(["pipeline/shorts.py", work, resolve("remotion/props")]);
+    const propsPath = resolve("remotion/props", `${fullId}.json`);
+    if (!existsSync(propsPath)) throw new Error(`нет props ${fullId}.json`);
     py(["pipeline/audio.py", propsPath]);
 
-    await status(id, "рендер 16:9", "rendering");
-    mainPath = resolve(outDir, `main169_${id.slice(0, 8)}.mp4`);
+    await status(id, "рендер 9:16", "rendering");
+    mainPath = resolve(outDir, `main916_${id.slice(0, 8)}.mp4`);
     const browserArgs = existsSync(CHROME) ? ["--browser-executable", CHROME] : [];
     sh("npx", [
-      "remotion", "render", "src/index.ts", "Main169", mainPath,
+      "remotion", "render", "src/index.ts", "Short-Example", mainPath,
       `--props=${propsPath}`,
       "--image-format=png", "--crf=18", "--x264-preset=veryfast",
       "--concurrency=1",
@@ -355,103 +380,24 @@ async function processJob(job) {
     ], { cwd: resolve("remotion") });
   }
 
-  if (wantShorts) {
-    // Шортсы — доп. нарезка лучших моментов. На основной 16:9 не влияют.
-    writeFileSync(
-      resolve(work, "delete.json"),
-      JSON.stringify({ delete: [], keep_full: true, reason: "queue: keep source intact" }, null, 2),
-    );
-    if (!existsSync(resolve(work, "inserts.json"))) {
-      await status(id, "motion-вставки для шортсов");
-      const durationSec = Number(words?.[words.length - 1]?.end ?? probeDurationSec(proxy) ?? 0);
-      const inserts = await call(AI, {
-        action: "markup_inserts",
-        indexed,
-        utterances,
-        brief: insertBrief,
-        durationSec,
-        brollMode,
-        assetFolderIds,
-      });
-      writeFileSync(resolve(work, "inserts.json"), JSON.stringify(inserts, null, 2));
-    }
-    await status(id, "отбираем шортсы");
-    if (!existsSync(resolve(work, "shorts.json"))) {
-      const shorts = await call(AI, {
-        action: "markup_shorts",
-        indexed,
-        utterances,
-        words,
-        brief,
-        count: shortsCount,
-        media: mediaBase,
-      });
-      writeFileSync(resolve(work, "shorts.json"), JSON.stringify(shorts, null, 2));
-    }
-    // Jump-cut: режем паузы и вырезанные слова внутри спанов.
-    await status(id, "монтируем (джамп-каты)");
-    py(["pipeline/shorts_refine.py", work]);
-    await status(id, "пропсы шортсов");
-    py(["pipeline/shorts.py", work, resolve("remotion/props")]);
-
-    const shortsData = JSON.parse(readFileSync(resolve(work, "shorts.json"), "utf8"));
-    for (const shItem of shortsData.shorts || []) {
-      const propsFile = resolve("remotion/props", `${shItem.id}.json`);
-      if (!existsSync(propsFile)) {
-        console.warn(`нет props для ${shItem.id}, пропуск`);
-        continue;
-      }
-      py(["pipeline/audio.py", propsFile]);
-      await status(id, `рендер ${shItem.id}`, "rendering");
-      // Уникальное имя: иначе Short-1.mp4 перезапишет шортс предыдущей заявки.
-      const out = resolve(outDir, `${id.slice(0, 8)}_${shItem.id}.mp4`);
-      const browserArgs = existsSync(CHROME) ? ["--browser-executable", CHROME] : [];
-      // Переиспользуем зарегистрированную композицию Short-Example + свои props
-      sh("npx", [
-        "remotion", "render", "src/index.ts", "Short-Example", out,
-        `--props=${propsFile}`,
-        "--image-format=png", "--crf=18", "--x264-preset=veryfast",
-        "--concurrency=1",
-        ...browserArgs,
-      ], { cwd: resolve("remotion") });
-      shortPaths.push({ path: out, title: shItem.title || shItem.id });
-    }
-  }
-
-  if (!mainPath && shortPaths.length === 0) {
-    throw new Error("Нечего публиковать: ни 16:9, ни шортсов");
+  if (!mainPath) {
+    throw new Error("Нечего публиковать: нет цельного 9:16");
   }
 
   await status(id, "публикуем");
   const title = (job.source_name || "Монтаж").replace(/\.[^.]+$/, "").slice(0, 80);
-  let videoUrl;
-  let primary;
-  const shorts = [];
-
-  if (mainPath) {
-    primary = mainPath;
-    videoUrl = await uploadRender(mainPath, basename(mainPath));
-    for (const s of shortPaths) {
-      shorts.push({ url: await uploadRender(s.path, basename(s.path)), title: s.title });
-    }
-  } else {
-    primary = shortPaths[0].path;
-    videoUrl = await uploadRender(primary, basename(primary));
-    for (const s of shortPaths.slice(1)) {
-      shorts.push({ url: await uploadRender(s.path, basename(s.path)), title: s.title });
-    }
-  }
+  const videoUrl = await uploadRender(mainPath, basename(mainPath));
 
   const { warnings } = await call(MW, {
     action: "complete",
     id,
     video_url: videoUrl,
     title,
-    duration_sec: probeDurationSec(primary),
-    shorts,
+    duration_sec: probeDurationSec(mainPath),
+    shorts: [],
   });
 
-  console.log(`✓ job ${id} done`);
+  console.log(`✓ job ${id} done (full 9:16)`);
   for (const w of warnings ?? []) console.warn(`⚠ ${w}`);
 }
 

@@ -10,7 +10,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseConfig";
 
-export type MontageFormat = "16:9" | "shorts";
+export type MontageFormat = "16:9" | "9:16" | "shorts";
 
 // "standard" — обычный монтаж; "5050" — сплит-скрин (спикер + запись экрана
 // в важных моментах), требует второго видео (source2).
@@ -176,8 +176,8 @@ export async function createMontageJob(
     project_id: projectId,
     source_url: params.sourceUrl,
     source_name: params.sourceName.slice(0, 120),
-    // Только цельный 16:9 — без шортсов и без нарезки исходника на куски.
-    formats: ["16:9"] as MontageFormat[],
+    // Только цельный 9:16 — без шортсов и без нарезки исходника на куски.
+    formats: ["9:16"] as MontageFormat[],
     shorts_count: null,
     brief: params.brief?.trim() ? params.brief.trim().slice(0, 4000) : null,
     notify_telegram: params.notifyTelegram,

@@ -138,7 +138,7 @@ function JobCard({
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
               <span>{new Date(job.created_at).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
               <span>·</span>
-              <span>полный ролик 16:9</span>
+              <span>полный ролик 9:16</span>
             </div>
           </div>
         </div>
@@ -194,7 +194,7 @@ function JobCard({
                   onClick={() => setOpen(true)}
                   className="flex w-full items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 py-2 text-sm font-medium text-primary transition hover:bg-primary/10"
                 >
-                  <Play className="h-4 w-4" /> Смотреть 16:9
+                  <Play className="h-4 w-4" /> Смотреть 9:16
                   <a
                     href={job.result_video_url}
                     target="_blank"
@@ -260,8 +260,8 @@ const CreateMontageLab = () => {
   const [uploaded, setUploaded] = useState<{ url: string; name: string } | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [duration, setDuration] = useState<number>(0);
-  // Формат зафиксирован: только цельный 16:9, без шортсов/нарезки.
-  const formats: MontageFormat[] = ["16:9"];
+  // Формат зафиксирован: только цельный 9:16, без нарезки на куски.
+  const formats: MontageFormat[] = ["9:16"];
   const [brief, setBrief] = useState("");
   const [brollMode, setBrollMode] = useState<ReelsBrollMode>("auto");
   const [selectedFolderIds, setSelectedFolderIds] = useState<string[]>([]);
@@ -489,7 +489,7 @@ const CreateMontageLab = () => {
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-bold tracking-tight">Монтаж съёмки</h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Загрузите сырую «говорящую голову» — AI добавит зумы, акценты и motion-вставки поверх цельного ролика. Без нарезки на шортсы.
+              Загрузите сырую «говорящую голову» — AI сделает цельный вертикальный ролик 9:16: зумы, акценты и motion-вставки. Без нарезки на куски.
             </p>
           </div>
           {activeCount > 0 && (
@@ -700,16 +700,16 @@ const CreateMontageLab = () => {
               </div>
 
               <div className="flex items-center gap-3 rounded-xl border-2 border-primary bg-primary/5 p-3">
-                <div className="flex h-10 w-16 shrink-0 items-center justify-center rounded-md border-2 border-primary bg-primary/10">
-                  <MonitorPlay className="h-4 w-4 text-primary" />
+                <div className="flex h-10 w-6 shrink-0 items-center justify-center rounded-md border-2 border-primary bg-primary/10">
+                  <Smartphone className="h-4 w-4 text-primary" />
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-1.5">
-                    <div className="text-sm font-semibold">Полный ролик 16:9</div>
+                    <div className="text-sm font-semibold">Полный ролик 9:16</div>
                     <CheckCircle2 className="h-3.5 w-3.5 text-primary" />
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    Исходник целиком: вставки и акценты поверх. Без шортсов и без нарезки на куски.
+                    Исходник целиком в вертикали: караоке, акценты, вставки. Без нарезки на куски.
                   </div>
                 </div>
               </div>
@@ -903,7 +903,7 @@ const CreateMontageLab = () => {
                 </div>
                 <div className="flex justify-between gap-2">
                   <dt className="text-muted-foreground">Формат</dt>
-                  <dd className="font-medium">полный 16:9</dd>
+                  <dd className="font-medium">полный 9:16</dd>
                 </div>
                 <div className="flex justify-between gap-2">
                   <dt className="text-muted-foreground">B-roll</dt>
