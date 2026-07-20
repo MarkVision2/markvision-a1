@@ -1,7 +1,7 @@
 {
-  "git_sha": "581c322",
-  "git_sha_full": "581c32271eff104dd21396627ffd873afdd3c809",
-  "updated_at": "2026-07-20T11:53:24Z",
-  "label": "Merge pull request #171 from MarkVision2/cursor/fix-kie-model-84cc",
+  "git_sha": "a27cdae",
+  "git_sha_full": "a27cdae2384e938b650e5baf6bb571e875e67221",
+  "updated_at": "2026-07-20T11:58:49Z",
+  "label": "Merge pull request #172 from MarkVision2/cursor/fix-broll-mode-priority-84cc",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
