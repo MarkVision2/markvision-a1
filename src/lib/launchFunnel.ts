@@ -4,6 +4,7 @@
 import type { LeadLite } from "@/hooks/useLeadsLite";
 import {
   STAGE_ROLE_ORDER,
+  stageRoleOf,
   type StageRole,
 } from "@/lib/stageRoles";
 
@@ -17,40 +18,27 @@ export interface LaunchStageRow {
 
 export const LAUNCH_FUNNEL_STEPS: { role: StageRole; label: string }[] = [
   { role: "new", label: "Новый лид" },
-  { role: "whatsapp", label: "WhatsApp" },
-  { role: "warming", label: "Прогрев" },
+  { role: "bot_activated", label: "Бот активирован" },
+  { role: "joined_group", label: "В группе" },
   { role: "confirmed", label: "Подтвердил" },
   { role: "attended", label: "На вебинаре" },
-  { role: "interest", label: "Интерес" },
-  { role: "call_scheduled", label: "Созвон" },
-  { role: "call_done", label: "Созвон проведён" },
-  { role: "offer", label: "КП" },
   { role: "deposit", label: "Бронь" },
+  { role: "call_scheduled", label: "Созвон" },
+  { role: "call_done", label: "Созвон ✓" },
+  { role: "offer", label: "Счёт / договор" },
   { role: "paid", label: "Оплата" },
   { role: "student", label: "Студент" },
+  { role: "graduate", label: "Выпускник" },
 ];
 
 function roleFromStageKey(key: string | null | undefined): StageRole {
-  const k = (key ?? "").toLowerCase();
-  if (k === "new") return "new";
-  if (k === "whatsapp" || k === "no_answer") return "whatsapp";
-  if (k === "warming") return "warming";
-  if (k === "confirmed") return "confirmed";
-  if (k === "visit" || k === "attended") return "attended";
-  if (k === "interest" || k === "in_progress") return "interest";
-  if (k === "scheduled") return "call_scheduled";
-  if (k === "call_done") return "call_done";
-  if (k === "invoice" || k === "offer") return "offer";
-  if (k === "deposit") return "deposit";
-  if (k === "paid") return "paid";
-  if (k === "student") return "student";
-  if (k === "rejected") return "rejected";
-  return "other";
+  return stageRoleOf({ id: key ?? undefined });
 }
 
 /** Max funnel depth a lead reached (from current stage key / paid flags). */
 export function launchDepthReached(lead: LeadLite): number {
   const role = roleFromStageKey(lead.stageKey);
+  if (role === "graduate") return STAGE_ROLE_ORDER.graduate;
   if (role === "student") return STAGE_ROLE_ORDER.student;
   if (lead.paid || lead.paidAt) {
     return Math.max(STAGE_ROLE_ORDER.paid, STAGE_ROLE_ORDER[role] || 0);
@@ -61,9 +49,7 @@ export function launchDepthReached(lead: LeadLite): number {
   return STAGE_ROLE_ORDER[role] || 0;
 }
 
-export function buildLaunchFunnel(
-  leads: LeadLite[],
-): LaunchStageRow[] {
+export function buildLaunchFunnel(leads: LeadLite[]): LaunchStageRow[] {
   const top = leads.length;
   let prev = top;
   return LAUNCH_FUNNEL_STEPS.map((step, idx) => {
@@ -82,16 +68,22 @@ export function buildLaunchFunnel(
 
 export interface LaunchKpis {
   leads: number;
-  whatsapp: number;
+  botActivated: number;
+  joinedGroup: number;
   confirmed: number;
   attended: number;
-  interest: number;
   deposits: number;
   depositRevenue: number;
+  calls: number;
   paid: number;
   revenue: number;
   students: number;
+  graduates: number;
   hot: number;
+  /** @deprecated use botActivated */
+  whatsapp: number;
+  /** @deprecated */
+  interest: number;
 }
 
 export function buildLaunchKpis(leads: LeadLite[]): LaunchKpis {
@@ -99,15 +91,19 @@ export function buildLaunchKpis(leads: LeadLite[]): LaunchKpis {
   const byRole = Object.fromEntries(rows.map((r) => [r.role, r.leads])) as Record<StageRole, number>;
   return {
     leads: byRole.new ?? leads.length,
-    whatsapp: byRole.whatsapp ?? 0,
+    botActivated: byRole.bot_activated ?? 0,
+    joinedGroup: byRole.joined_group ?? 0,
     confirmed: byRole.confirmed ?? 0,
     attended: byRole.attended ?? 0,
-    interest: byRole.interest ?? 0,
     deposits: byRole.deposit ?? 0,
     depositRevenue: leads.reduce((s, l) => s + Number(l.depositAmount ?? 0), 0),
+    calls: byRole.call_scheduled ?? 0,
     paid: byRole.paid ?? 0,
     revenue: leads.filter((l) => l.paid || l.paidAt).reduce((s, l) => s + Number(l.amount ?? 0), 0),
     students: byRole.student ?? 0,
+    graduates: byRole.graduate ?? 0,
     hot: leads.filter((l) => l.temperature === "hot").length,
+    whatsapp: byRole.bot_activated ?? 0,
+    interest: byRole.call_scheduled ?? 0,
   };
 }

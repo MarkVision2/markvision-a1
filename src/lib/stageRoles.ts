@@ -5,18 +5,24 @@
 
 export type StageRole =
   | "new"
-  | "whatsapp"
-  | "warming"
+  | "bot_activated"
+  | "joined_group"
   | "confirmed"
   | "attended"
-  | "interest"
+  | "deposit"
   | "call_scheduled"
   | "call_done"
   | "offer"
-  | "deposit"
   | "paid"
   | "student"
+  | "graduate"
   | "rejected"
+  /** @deprecated launch v1 */
+  | "whatsapp"
+  /** @deprecated launch v1 */
+  | "warming"
+  /** @deprecated launch v1 — бронь уже = интерес */
+  | "interest"
   | "other";
 
 export type LeadTemperature = "hot" | "warm" | "cold";
@@ -25,72 +31,87 @@ export type WebinarStatus = "attended" | "late" | "no_show";
 
 /** Automation events accepted by crm-stage-update edge function. */
 export type CrmAutomationEvent =
-  | "whatsapp_messaged"
-  | "warming_started"
+  | "bot_activated"
+  | "whatsapp_messaged" // alias → bot_activated
+  | "joined_group"
+  | "warming_started" // alias → joined_group
   | "attendance_confirmed"
   | "webinar_attended"
   | "webinar_late"
   | "webinar_no_show"
-  | "interest_detected"
   | "call_scheduled"
   | "call_completed"
   | "offer_sent"
   | "deposit_received"
   | "payment_received"
   | "student_created"
-  | "rejected";
+  | "graduated"
+  | "rejected"
+  /** @deprecated */
+  | "interest_detected";
 
 export const AUTOMATION_EVENT_TO_ROLE: Record<CrmAutomationEvent, StageRole> = {
-  whatsapp_messaged: "whatsapp",
-  warming_started: "warming",
+  bot_activated: "bot_activated",
+  whatsapp_messaged: "bot_activated",
+  joined_group: "joined_group",
+  warming_started: "joined_group",
   attendance_confirmed: "confirmed",
   webinar_attended: "attended",
   webinar_late: "attended",
   webinar_no_show: "rejected",
-  interest_detected: "interest",
+  interest_detected: "call_scheduled",
   call_scheduled: "call_scheduled",
   call_completed: "call_done",
   offer_sent: "offer",
   deposit_received: "deposit",
   payment_received: "paid",
   student_created: "student",
+  graduated: "graduate",
   rejected: "rejected",
 };
 
 /** Forward-only order for launch funnel (higher = further in funnel). */
 export const STAGE_ROLE_ORDER: Record<StageRole, number> = {
   new: 1,
-  whatsapp: 2,
-  warming: 3,
+  bot_activated: 2,
+  whatsapp: 2, // legacy alias
+  joined_group: 3,
+  warming: 3, // legacy
   confirmed: 4,
   attended: 5,
-  interest: 6,
+  deposit: 6,
+  interest: 7, // legacy → treat near call
   call_scheduled: 7,
   call_done: 8,
   offer: 9,
-  deposit: 10,
-  paid: 11,
-  student: 12,
+  paid: 10,
+  student: 11,
+  graduate: 12,
   rejected: 99,
   other: 0,
 };
 
 export function stageRoleOf(stage: { stageRole?: StageRole | null; id?: string } | null | undefined): StageRole {
-  if (stage?.stageRole) return stage.stageRole;
-  // Fallback for clinic pipelines that still rely on keys as LeadStage.id
+  if (stage?.stageRole) {
+    // normalize legacy roles
+    if (stage.stageRole === "whatsapp") return "bot_activated";
+    if (stage.stageRole === "warming") return "joined_group";
+    if (stage.stageRole === "interest") return "call_scheduled";
+    return stage.stageRole;
+  }
   const key = (stage?.id ?? "").toLowerCase();
   if (key === "new") return "new";
-  if (key === "no_answer" || key === "whatsapp") return "whatsapp";
-  if (key === "warming") return "warming";
+  if (key === "bot_activated" || key === "whatsapp" || key === "no_answer") return "bot_activated";
+  if (key === "joined_group" || key === "warming") return "joined_group";
   if (key === "confirmed") return "confirmed";
   if (key === "visit" || key === "attended") return "attended";
-  if (key === "interest" || key === "in_progress") return "interest";
-  if (key === "scheduled") return "call_scheduled";
+  if (key === "deposit") return "deposit";
+  if (key === "interest" || key === "in_progress" || key === "scheduled") return "call_scheduled";
   if (key === "call_done") return "call_done";
   if (key === "invoice" || key === "offer") return "offer";
-  if (key === "deposit") return "deposit";
   if (key === "paid") return "paid";
   if (key === "student") return "student";
+  if (key === "graduate") return "graduate";
   if (key === "rejected") return "rejected";
   return "other";
 }
@@ -113,10 +134,14 @@ export function requiresDiagnosticDialog(
 }
 
 export function canAutoAdvance(from: StageRole, to: StageRole): boolean {
-  if (from === to) return false;
-  if (to === "rejected") return true;
-  if (from === "rejected" || from === "paid" || from === "student") return false;
-  return STAGE_ROLE_ORDER[to] >= STAGE_ROLE_ORDER[from];
+  const fromN = stageRoleOf({ stageRole: from });
+  const toN = stageRoleOf({ stageRole: to });
+  if (fromN === toN) return false;
+  if (toN === "rejected") return true;
+  if (fromN === "rejected" || fromN === "graduate") return false;
+  if (fromN === "paid" && toN !== "student" && toN !== "graduate") return false;
+  if (fromN === "student" && toN !== "graduate") return false;
+  return STAGE_ROLE_ORDER[toN] >= STAGE_ROLE_ORDER[fromN];
 }
 
 export const TEMPERATURE_LABEL: Record<LeadTemperature, string> = {

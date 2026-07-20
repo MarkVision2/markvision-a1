@@ -832,16 +832,23 @@ export function useCrmStore() {
       ? [lead?.note, `Отказ: ${trimmed}`].filter(Boolean).join("\n")
       : lead?.note ?? null;
     const nowIso = new Date().toISOString();
+    const rejectedKey = stages.find((s) => s.stageRole === "rejected")?.id ?? "rejected";
+    const sid = stageUuid(rejectedKey);
     patchLeadLocal(leadId, (l) => ({
       ...l,
       rejectReason: reason,
       rejectedAt: nowIso,
+      stageId: rejectedKey,
       note: newNote ?? undefined,
+      lastActivityAt: nowIso,
     }));
+    // Один UPDATE: reason + stage — иначе DB trigger enforce_reject_reason падает.
     await supabase.from("leads").update({
       reject_reason: reason,
       rejected_at: nowIso,
       note: newNote,
+      ...(sid ? { stage_id: sid } : {}),
+      last_activity_at: nowIso,
     }).eq("id", leadId);
     await supabase.from("events").insert({
       lead_id: leadId,
@@ -849,7 +856,7 @@ export function useCrmStore() {
       payload: { reason, ...(trimmed ? { note: trimmed } : {}) },
       actor_id: user?.id ?? null,
     });
-  }, [leads, user?.id, patchLeadLocal]);
+  }, [leads, user?.id, patchLeadLocal, stages, stageUuid]);
 
   // ---------- card actions ----------
   const markCall = useCallback(async (
@@ -920,15 +927,18 @@ export function useCrmStore() {
       | "webinar_attended"
       | "webinar_late"
       | "webinar_no_show"
-      | "interest"
       | "call_scheduled"
       | "call_done"
       | "offer"
       | "deposit"
       | "paid"
       | "student"
-      | "warming"
-      | "whatsapp",
+      | "graduate"
+      | "joined_group"
+      | "bot_activated"
+      | "warming" // alias
+      | "whatsapp" // alias
+      | "interest", // legacy → call_scheduled
     opts?: { amount?: number; temperature?: Lead["temperature"]; tags?: string[] },
   ) => {
     const roleMap: Record<string, string> = {
@@ -936,15 +946,18 @@ export function useCrmStore() {
       webinar_attended: "attended",
       webinar_late: "attended",
       webinar_no_show: "rejected",
-      interest: "interest",
+      interest: "call_scheduled",
       call_scheduled: "call_scheduled",
       call_done: "call_done",
       offer: "offer",
       deposit: "deposit",
       paid: "paid",
       student: "student",
-      warming: "warming",
-      whatsapp: "whatsapp",
+      graduate: "graduate",
+      joined_group: "joined_group",
+      warming: "joined_group",
+      bot_activated: "bot_activated",
+      whatsapp: "bot_activated",
     };
     const targetRole = roleMap[action];
     const targetStage = stages.find((s) => s.stageRole === targetRole)
@@ -965,15 +978,19 @@ export function useCrmStore() {
       last_activity_at: patch.lastActivityAt,
     };
 
-    if (action === "webinar_attended") {
+    if (action === "webinar_no_show") {
+      patch.webinarStatus = "no_show";
+      dbPatch.webinar_status = "no_show";
+      patch.rejectReason = "no_contact";
+      patch.rejectedAt = new Date().toISOString();
+      dbPatch.reject_reason = "no_contact";
+      dbPatch.rejected_at = patch.rejectedAt;
+    } else if (action === "webinar_attended") {
       patch.webinarStatus = "attended";
       dbPatch.webinar_status = "attended";
     } else if (action === "webinar_late") {
       patch.webinarStatus = "late";
       dbPatch.webinar_status = "late";
-    } else if (action === "webinar_no_show") {
-      patch.webinarStatus = "no_show";
-      dbPatch.webinar_status = "no_show";
     }
 
     if (action === "deposit") {
@@ -1002,6 +1019,10 @@ export function useCrmStore() {
     if (action === "interest" && !opts?.temperature) {
       patch.temperature = "hot";
       dbPatch.temperature = "hot";
+    }
+    if (action === "deposit" && !opts?.temperature) {
+      patch.temperature = patch.temperature ?? "hot";
+      if (!dbPatch.temperature) dbPatch.temperature = "hot";
     }
 
     patchLeadLocal(leadId, (l) => ({ ...l, ...patch }));

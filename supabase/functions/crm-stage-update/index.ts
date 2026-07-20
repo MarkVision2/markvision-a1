@@ -23,35 +23,41 @@ const corsHeaders = {
 };
 
 const EVENT_TO_ROLE: Record<string, string> = {
-  whatsapp_messaged: "whatsapp",
-  warming_started: "warming",
+  bot_activated: "bot_activated",
+  whatsapp_messaged: "bot_activated", // legacy alias
+  joined_group: "joined_group",
+  warming_started: "joined_group", // legacy alias
   attendance_confirmed: "confirmed",
   webinar_attended: "attended",
   webinar_late: "attended",
   webinar_no_show: "rejected",
-  interest_detected: "interest",
+  interest_detected: "call_scheduled", // legacy: бронь = интерес, созвон дальше
   call_scheduled: "call_scheduled",
   call_completed: "call_done",
   offer_sent: "offer",
   deposit_received: "deposit",
   payment_received: "paid",
   student_created: "student",
+  graduated: "graduate",
   rejected: "rejected",
 };
 
 const ROLE_ORDER: Record<string, number> = {
   new: 1,
+  bot_activated: 2,
   whatsapp: 2,
+  joined_group: 3,
   warming: 3,
   confirmed: 4,
   attended: 5,
-  interest: 6,
+  deposit: 6,
+  interest: 7,
   call_scheduled: 7,
   call_done: 8,
   offer: 9,
-  deposit: 10,
-  paid: 11,
-  student: 12,
+  paid: 10,
+  student: 11,
+  graduate: 12,
   rejected: 99,
   other: 0,
 };
@@ -70,7 +76,9 @@ function digits(s: unknown): string {
 function canAdvance(from: string, to: string): boolean {
   if (from === to) return false;
   if (to === "rejected") return true;
-  if (from === "rejected" || from === "paid" || from === "student") return false;
+  if (from === "rejected" || from === "graduate") return false;
+  if (from === "paid" && to !== "student" && to !== "graduate") return false;
+  if (from === "student" && to !== "graduate") return false;
   return (ROLE_ORDER[to] ?? 0) >= (ROLE_ORDER[from] ?? 0);
 }
 
@@ -265,6 +273,15 @@ Deno.serve(async (req) => {
     patch.paid_at = new Date().toISOString();
     const amount = Number((metadata as { amount?: number }).amount);
     if (Number.isFinite(amount) && amount > 0) patch.amount = amount;
+  }
+  if (targetRole === "rejected") {
+    const reason = String((metadata as { reject_reason?: string }).reject_reason ?? "").trim()
+      || (event === "webinar_no_show" ? "no_contact" : "");
+    if (!reason) {
+      return json({ error: "reject_reason_required" }, 400);
+    }
+    patch.reject_reason = reason;
+    patch.rejected_at = new Date().toISOString();
   }
 
   let status: "applied" | "skipped" = "applied";

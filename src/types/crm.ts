@@ -29,16 +29,24 @@ export type StageHistoryEntry = {
 
 export type RejectReason =
   | "expensive"
-  | "no_contact"
-  | "changed_mind"
+  | "no_time"
+  | "thinking"
+  | "no_value"
+  | "no_authority"
   | "competitor"
-  | "other";
+  | "no_contact"
+  | "other"
+  /** @deprecated */
+  | "changed_mind";
 
 export const REJECT_REASONS: { id: RejectReason; label: string; emoji: string }[] = [
-  { id: "expensive", label: "Дорого", emoji: "💸" },
-  { id: "no_contact", label: "Не дозвонились", emoji: "📵" },
-  { id: "changed_mind", label: "Передумал", emoji: "🤔" },
-  { id: "competitor", label: "Ушёл к конкуренту", emoji: "🏃" },
+  { id: "expensive", label: "Дорого", emoji: "💰" },
+  { id: "no_time", label: "Нет времени", emoji: "⏰" },
+  { id: "thinking", label: "Пока думает", emoji: "🤔" },
+  { id: "no_value", label: "Не увидел ценности", emoji: "📉" },
+  { id: "no_authority", label: "Нет полномочий принимать решение", emoji: "🏢" },
+  { id: "competitor", label: "Купил другое обучение", emoji: "🔄" },
+  { id: "no_contact", label: "Не вышел на связь", emoji: "❌" },
   { id: "other", label: "Другое", emoji: "❓" },
 ];
 

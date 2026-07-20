@@ -175,9 +175,8 @@ const Crm = () => {
     const role = stageRoleOf(stage);
     if (requiresRejectDialog(role) || stageId === "rejected") {
       const current = leads.find((l) => l.id === leadId);
-      const prev = current?.stageId;
-      moveLead(leadId, stageId);
-      setRejectFor({ leadId, prevStageId: prev, viaDrag: true });
+      // Не двигаем этап до выбора причины (DB trigger enforce_reject_reason).
+      setRejectFor({ leadId, prevStageId: current?.stageId, viaDrag: true });
       return;
     }
     if (requiresPaymentDialog(role) || stageId === "paid") {
@@ -509,8 +508,7 @@ const Crm = () => {
         onOpenChange={(v) => { if (!v) setRejectFor(null); }}
         onPick={(reason, note) => {
           if (rejectFor) {
-            if (!rejectFor.viaDrag) moveLead(rejectFor.leadId, "rejected");
-            setRejectReason(rejectFor.leadId, reason, note);
+            void setRejectReason(rejectFor.leadId, reason, note);
             toast.success("Лид закрыт. Причина сохранена в истории.");
           }
           setRejectFor(null);

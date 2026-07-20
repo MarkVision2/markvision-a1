@@ -1,21 +1,23 @@
-import { CalendarCheck, Flame, HandCoins, GraduationCap, MessageCircle, Phone, Send, UserCheck, Video } from "lucide-react";
+import { CalendarCheck, GraduationCap, HandCoins, MessageCircle, Phone, Send, UserCheck, Users, Video } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Lead } from "@/types/crm";
 
-type LaunchAction =
-  | "whatsapp"
-  | "warming"
+export type LaunchAction =
+  | "bot_activated"
+  | "whatsapp" // alias
+  | "joined_group"
+  | "warming" // alias
   | "confirmed"
   | "webinar_attended"
   | "webinar_late"
   | "webinar_no_show"
-  | "interest"
   | "call_scheduled"
   | "call_done"
   | "offer"
   | "deposit"
   | "paid"
-  | "student";
+  | "student"
+  | "graduate";
 
 interface Props {
   lead: Lead;
@@ -32,17 +34,17 @@ export function LaunchActionsPanel({ lead, onAction }: Props) {
         Действия запуска
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5">
-        <button type="button" className={BTN} onClick={() => onAction("whatsapp")}>
-          <MessageCircle className="h-3.5 w-3.5" /> WhatsApp
+        <button type="button" className={BTN} onClick={() => onAction("bot_activated")}>
+          <MessageCircle className="h-3.5 w-3.5" /> Бот ✓
         </button>
-        <button type="button" className={BTN} onClick={() => onAction("warming")}>
-          Прогрев
+        <button type="button" className={BTN} onClick={() => onAction("joined_group")}>
+          <Users className="h-3.5 w-3.5" /> В группе
         </button>
         <button type="button" className={BTN} onClick={() => onAction("confirmed")}>
           <UserCheck className="h-3.5 w-3.5" /> Подтвердил
         </button>
         <button type="button" className={cn(BTN, "border-success/40 text-success")} onClick={() => onAction("webinar_attended")}>
-          <Video className="h-3.5 w-3.5" /> Пришёл
+          <Video className="h-3.5 w-3.5" /> На вебинаре
         </button>
         <button type="button" className={BTN} onClick={() => onAction("webinar_late")}>
           Опоздал
@@ -50,8 +52,8 @@ export function LaunchActionsPanel({ lead, onAction }: Props) {
         <button type="button" className={cn(BTN, "border-destructive/40 text-destructive")} onClick={() => onAction("webinar_no_show")}>
           Не пришёл
         </button>
-        <button type="button" className={cn(BTN, "border-warning/40 text-warning")} onClick={() => onAction("interest")}>
-          <Flame className="h-3.5 w-3.5" /> Интерес
+        <button type="button" className={cn(BTN, "border-success/40 text-success")} onClick={() => onAction("deposit", { amount: 10000 })}>
+          <HandCoins className="h-3.5 w-3.5" /> Бронь 10к
         </button>
         <button type="button" className={BTN} onClick={() => onAction("call_scheduled")}>
           <CalendarCheck className="h-3.5 w-3.5" /> Созвон
@@ -60,16 +62,16 @@ export function LaunchActionsPanel({ lead, onAction }: Props) {
           <Phone className="h-3.5 w-3.5" /> Созвон ✓
         </button>
         <button type="button" className={BTN} onClick={() => onAction("offer")}>
-          <Send className="h-3.5 w-3.5" /> КП
-        </button>
-        <button type="button" className={cn(BTN, "border-success/40 text-success")} onClick={() => onAction("deposit", { amount: 10000 })}>
-          <HandCoins className="h-3.5 w-3.5" /> Бронь 10к
+          <Send className="h-3.5 w-3.5" /> Счёт / договор
         </button>
         <button type="button" className={cn(BTN, "border-success/50 bg-success/10 text-success")} onClick={() => onAction("paid")}>
           Полная оплата
         </button>
         <button type="button" className={cn(BTN, "border-primary/40 text-primary")} onClick={() => onAction("student")}>
           <GraduationCap className="h-3.5 w-3.5" /> Студент
+        </button>
+        <button type="button" className={cn(BTN, "border-primary/40 text-primary")} onClick={() => onAction("graduate")}>
+          Выпускник
         </button>
       </div>
       {(lead.webinarStatus || lead.depositAmount || lead.temperature) && (

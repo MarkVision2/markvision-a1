@@ -613,7 +613,7 @@ const Analytics = () => {
           <div>
             <h2 className="text-sm font-bold uppercase tracking-wider">Воронка запуска</h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              Лиды → WhatsApp → вебинар → интерес → бронь → оплата → студент · {monthLabel}
+              Лиды → бот → группа → подтверждение → вебинар → бронь → созвон → счёт → оплата → студент · {monthLabel}
             </p>
           </div>
           <div className="flex flex-wrap gap-2 text-[11px]">

@@ -163,7 +163,9 @@ function applyLeadStages(f: ContentPlanFunnel, leadIds: Set<string>, leads: Cont
     if (
       [
         "whatsapp",
+        "bot_activated",
         "warming",
+        "joined_group",
         "confirmed",
         "attended",
         "interest",
@@ -173,6 +175,7 @@ function applyLeadStages(f: ContentPlanFunnel, leadIds: Set<string>, leads: Cont
         "deposit",
         "paid",
         "student",
+        "graduate",
       ].includes(role)
     ) {
       whatsapp += 1;
@@ -180,14 +183,24 @@ function applyLeadStages(f: ContentPlanFunnel, leadIds: Set<string>, leads: Cont
     if (
       lead.webinar_status === "attended" ||
       lead.webinar_status === "late" ||
-      ["attended", "interest", "call_scheduled", "call_done", "offer", "deposit", "paid", "student"].includes(role)
+      [
+        "attended",
+        "interest",
+        "call_scheduled",
+        "call_done",
+        "offer",
+        "deposit",
+        "paid",
+        "student",
+        "graduate",
+      ].includes(role)
     ) {
       webinar += 1;
     }
-    if (["deposit", "paid", "student"].includes(role) || (lead.deposit_amount ?? 0) > 0) {
+    if (["deposit", "paid", "student", "graduate"].includes(role) || (lead.deposit_amount ?? 0) > 0) {
       deposits += 1;
     }
-    if (lead.paid || role === "paid" || role === "student") {
+    if (lead.paid || role === "paid" || role === "student" || role === "graduate") {
       paidN += 1;
       revenue += Number(lead.amount ?? 0);
     }

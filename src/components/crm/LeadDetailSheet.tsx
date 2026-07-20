@@ -16,7 +16,7 @@ import { LeadDealTab } from "./lead/LeadDealTab";
 import { LeadTasksTab } from "./lead/LeadTasksTab";
 import { LeadProfileTab } from "./lead/LeadProfileTab";
 import { LeadLogTab } from "./lead/LeadLogTab";
-import { LaunchActionsPanel } from "./lead/LaunchActionsPanel";
+import { LaunchActionsPanel, type LaunchAction } from "./lead/LaunchActionsPanel";
 import {
   requiresDiagnosticDialog,
   requiresPaymentDialog,
@@ -52,20 +52,7 @@ interface Props {
   onRequestDiagnostic?: (id: string) => void;
   onLaunchAction?: (
     id: string,
-    action:
-      | "whatsapp"
-      | "warming"
-      | "confirmed"
-      | "webinar_attended"
-      | "webinar_late"
-      | "webinar_no_show"
-      | "interest"
-      | "call_scheduled"
-      | "call_done"
-      | "offer"
-      | "deposit"
-      | "paid"
-      | "student",
+    action: LaunchAction,
     opts?: { amount?: number },
   ) => void;
   pipelineTemplateKey?: string | null;
@@ -95,7 +82,6 @@ export function LeadDetailSheet({
     const role = stageRoleOf(stage);
     if (requiresRejectDialog(role) || sid === "rejected") {
       onRequestReject(lead.id);
-      onUpdate(lead.id, { stageId: sid });
       return;
     }
     if (requiresPaymentDialog(role) || sid === "paid") {
