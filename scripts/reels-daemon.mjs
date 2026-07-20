@@ -196,7 +196,82 @@ async function materializeReelsBroll(job, work) {
   return clips;
 }
 
-/** Replace weak text scenes with library/stock video cutaways. */
+const HOOK_TEMPLATES = new Set([
+  "kinetic-type",
+  "big-statement",
+  "quote-card",
+  "notification-toast",
+  "metric-callout",
+  "price-tag",
+  "countdown",
+]);
+
+function punchWords(text, max = 3) {
+  return String(text || "")
+    .replace(/[«»""]/g, "")
+    .split(/\s+/)
+    .map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""))
+    .filter(Boolean)
+    .slice(0, max);
+}
+
+/**
+ * Opening must be a strong hook (text punch), never a random B-roll cutaway.
+ * Rewrites scene 0 into kinetic-type / keeps existing hook templates.
+ */
+function ensureStrongHookOpening(reelsDoc, transcript) {
+  const scenes = Array.isArray(reelsDoc.scenes) ? [...reelsDoc.scenes] : [];
+  if (!scenes.length) return reelsDoc;
+  const first = { ...scenes[0], data: { ...(scenes[0].data || {}) } };
+  const tpl = String(first.template || "");
+  const isVideo = Boolean(first.file) || first.type === "video";
+  const isHook = HOOK_TEMPLATES.has(tpl) && !isVideo;
+
+  if (isHook) {
+    if (tpl === "kinetic-type") {
+      const words = Array.isArray(first.data.words) ? first.data.words.filter(Boolean) : [];
+      if (!words.length) {
+        const fallback = punchWords(
+          first.data.text || first.data.note || transcript,
+          3,
+        ).map((w) => w.toUpperCase());
+        if (fallback.length) first.data.words = fallback;
+      }
+      first.data.cover = true;
+      first.data.caption = false;
+    } else if (tpl === "big-statement" || tpl === "quote-card") {
+      const lines = Array.isArray(first.data.lines) ? first.data.lines.filter(Boolean) : [];
+      if (!lines.length) {
+        const punch = punchWords(first.data.text || first.data.note || transcript, 3);
+        if (punch.length) first.data.lines = [punch.join(" ").toUpperCase()];
+      }
+      first.data.cover = true;
+      first.data.caption = false;
+    }
+    scenes[0] = first;
+    return { ...reelsDoc, scenes };
+  }
+
+  const punch = punchWords(
+    first.data?.text || first.data?.note || first.data?.lines?.join?.(" ") || transcript,
+    3,
+  ).map((w) => w.toUpperCase());
+  scenes[0] = {
+    anchorWord: first.anchorWord ?? 0,
+    endWord: first.endWord ?? Math.max(2, Number(first.anchorWord ?? 0) + 2),
+    template: "kinetic-type",
+    data: {
+      words: punch.length ? punch : ["СМОТРИ"],
+      cover: true,
+      accent: "#EF4444",
+      caption: false,
+    },
+  };
+  console.log("ensureStrongHookOpening: forced kinetic hook on scene 0");
+  return { ...reelsDoc, scenes };
+}
+
+/** Replace weak text scenes with library/stock video cutaways. Never touch scene 0 (hook). */
 function injectVideoScenes(reelsDoc, clips) {
   if (!clips.length) return reelsDoc;
   const scenes = Array.isArray(reelsDoc.scenes) ? [...reelsDoc.scenes] : [];
@@ -206,7 +281,9 @@ function injectVideoScenes(reelsDoc, clips) {
   for (let i = 0; i < scenes.length; i++) {
     const s = scenes[i];
     const tpl = String(s.template || "");
-    const useVideo = clipIdx < clips.length && (weak.has(tpl) || i % 2 === 1);
+    // Scene 0 = strong hook — keep text/motion, never swap for B-roll.
+    const useVideo =
+      i > 0 && clipIdx < clips.length && (weak.has(tpl) || i % 2 === 1);
     if (useVideo) {
       const clip = clips[clipIdx++];
       out.push({
@@ -221,7 +298,7 @@ function injectVideoScenes(reelsDoc, clips) {
     }
   }
   if (clipIdx < clips.length) {
-    for (let i = 0; i < out.length && clipIdx < clips.length; i++) {
+    for (let i = 1; i < out.length && clipIdx < clips.length; i++) {
       if (out[i].file) continue;
       if (!weak.has(String(out[i].template || ""))) continue;
       const clip = clips[clipIdx++];
@@ -234,7 +311,7 @@ function injectVideoScenes(reelsDoc, clips) {
       };
     }
   }
-  console.log(`inject video scenes: ${out.filter((s) => s.file).length}/${out.length}`);
+  console.log(`inject video scenes: ${out.filter((s) => s.file).length}/${out.length} (scene0 protected)`);
   return { ...reelsDoc, scenes: out };
 }
 
@@ -287,8 +364,9 @@ async function processJob(job) {
         `формат=${config.format || "expert"}`,
         `broll=${config.brollMode || "auto"}`,
         clips.length
-          ? `Есть ${clips.length} видео-клипов из медиатеки — часть окон уйдёт под cutaway.`
+          ? `Есть ${clips.length} видео-клипов из медиатеки — cutaway со 2-й сцены; сцена 0 = ХУК.`
           : "Только motion. Караоке уже показывает речь — не дублируй фразы huge text.",
+        "Сцена 0 ОБЯЗАТЕЛЬНО сильный хук (kinetic-type/big-statement/quote-card), punch ≤3 слова, cover:true.",
         "kinetic-type → data.words[]; big-statement → data.lines ≤3 слова.",
       ].join("; "),
     });
@@ -302,12 +380,14 @@ async function processJob(job) {
       fixes: scenes.fixes || {},
       scenes: scenes.scenes || [],
     };
+    payload = ensureStrongHookOpening(payload, transcript);
     payload = injectVideoScenes(payload, clips);
     writeFileSync(reelsJsonPath, JSON.stringify(payload, null, 2));
   } else if (clips.length) {
     const existing = JSON.parse(readFileSync(reelsJsonPath, "utf8"));
     if (!(existing.scenes || []).some((s) => s.file)) {
-      writeFileSync(reelsJsonPath, JSON.stringify(injectVideoScenes(existing, clips), null, 2));
+      const hooked = ensureStrongHookOpening(existing, transcript);
+      writeFileSync(reelsJsonPath, JSON.stringify(injectVideoScenes(hooked, clips), null, 2));
     }
   }
 

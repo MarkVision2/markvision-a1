@@ -43,6 +43,7 @@ THEMES = [
 ]
 
 ECHO_TEMPLATES = frozenset({"big-statement", "kinetic-type", "quote-card"})
+HOOK_TEMPLATES = frozenset({"kinetic-type", "big-statement", "quote-card"})
 
 
 def pick_theme(seed: str) -> str:
@@ -114,9 +115,57 @@ def normalize_scene_data(template: str, data: dict) -> dict | None:
     return d
 
 
+def ensure_hook_opening(cfg: dict, words: list) -> dict:
+    """Force scenes[0] to be a short kinetic/big-statement hook, never a video cutaway."""
+    scenes = list(cfg.get("scenes") or [])
+    if not scenes:
+        return cfg
+    s0 = dict(scenes[0])
+    is_video = bool(s0.get("file")) or s0.get("type") == "video"
+    tpl = str(s0.get("template") or "").strip()
+    if not is_video and tpl in HOOK_TEMPLATES:
+        data = dict(s0.get("data") or {})
+        data.setdefault("cover", True)
+        data["caption"] = False
+        s0["data"] = data
+        scenes[0] = s0
+        cfg = {**cfg, "scenes": scenes}
+        return cfg
+
+    punch: list[str] = []
+    for w in words:
+        t = str(w.get("pw") or "").strip().strip(".,!?…")
+        if not t:
+            continue
+        punch.append(t.upper())
+        if len(punch) >= 3:
+            break
+    if not punch:
+        punch = ["СМОТРИ"]
+    anchor = s0.get("anchorWord")
+    if anchor is None and words:
+        anchor = words[0].get("i", 0)
+    end = s0.get("endWord")
+    if end is None:
+        end = (words[min(2, len(words) - 1)].get("i", 2) if words else 2)
+    scenes[0] = {
+        "anchorWord": anchor if anchor is not None else 0,
+        "endWord": end,
+        "template": "kinetic-type",
+        "data": {
+            "words": punch[:3],
+            "cover": True,
+            "caption": False,
+            "accent": "#EF4444",
+        },
+    }
+    return {**cfg, "scenes": scenes}
+
+
 def build(work: Path, props_dir: Path, audio_dur: float):
     words = json.loads((work / "words.json").read_text(encoding="utf-8"))
     cfg = json.loads((work / "reels.json").read_text(encoding="utf-8"))
+    cfg = ensure_hook_opening(cfg, words)
 
     accents = set(cfg.get("accents", []))
     fixes = {int(k): v for k, v in cfg.get("fixes", {}).items()}
