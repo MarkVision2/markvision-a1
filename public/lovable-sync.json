@@ -1,7 +1,7 @@
 {
-  "git_sha": "5d2df3f",
-  "git_sha_full": "5d2df3fefaf4f50c29e0a48ab1bf1d40e7cbd0e7",
-  "updated_at": "2026-07-20T07:58:10Z",
-  "label": "feat(demo): edge function to seed project Эрик on prod",
+  "git_sha": "a991cad",
+  "git_sha_full": "a991cad7aca2f9c6b218889f808d102f0f2e028f",
+  "updated_at": "2026-07-20T08:02:17Z",
+  "label": "fix(demo): run Eric seed via montage-worker (edge function limit)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
