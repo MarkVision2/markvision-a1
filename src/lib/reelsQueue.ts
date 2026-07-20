@@ -112,3 +112,14 @@ export async function fetchFinishedReels(projectId: string): Promise<ReelsResult
     return [];
   }
 }
+
+/** Удалить готовый Reels из галереи проекта (строка reels_usage). */
+export async function deleteFinishedReel(projectId: string, id: string): Promise<void> {
+  if (!projectId || !id) throw new Error("Нечего удалять");
+  const { error } = await db
+    .from("reels_usage")
+    .delete()
+    .eq("project_id", projectId)
+    .eq("id", id);
+  if (error) throw new Error(error.message || "Не удалось удалить видео");
+}

@@ -119,6 +119,17 @@ export async function fetchFinishedVideos(projectId: string): Promise<UsageRow[]
   }
 }
 
+/** Удалить готовое видео из галереи «Готовый контент» (строка heygen_usage). */
+export async function deleteFinishedVideo(projectId: string, id: string): Promise<void> {
+  if (!projectId || !id) throw new Error("Нечего удалять");
+  const { error } = await db
+    .from("heygen_usage")
+    .delete()
+    .eq("project_id", projectId)
+    .eq("id", id);
+  if (error) throw new Error(error.message || "Не удалось удалить видео");
+}
+
 // ── Недавние голоса на проект (для удобного выбора) ─────────────────────────
 const recentKey = (projectId: string) => `markvision.heygen.recentVoices.${projectId || "none"}`;
 
