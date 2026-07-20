@@ -259,14 +259,21 @@ async function bootstrap() {
   console.log("bootstrap ok");
 }
 
-/** Режим B-roll: колонка broll_mode ИЛИ formats `broll:kie` ИЛИ маркер в brief. */
+/** Режим B-roll: formats `broll:kie` / маркер в brief важнее колонки
+ *  (колонка могла появиться с DEFAULT 'auto' на старых заявках). */
 function resolveBrollMode(job) {
-  if (["auto", "library", "pexels", "kie"].includes(job.broll_mode)) return job.broll_mode;
   const formats = Array.isArray(job.formats) ? job.formats.map(String) : [];
-  const fromFmt = formats.find((f) => f.startsWith("broll:"))?.slice(6);
-  if (["auto", "library", "pexels", "kie"].includes(fromFmt)) return fromFmt;
-  const m = String(job.brief || "").match(/\[BROLL_MODE=(auto|library|pexels|kie)\]/i);
-  if (m) return m[1].toLowerCase();
+  const fromFmt = formats.find((f) => f.startsWith("broll:"))?.slice("broll:".length);
+  const fromBrief = String(job.brief || "").match(/\[BROLL_MODE=(auto|library|pexels|kie)\]/i)?.[1]
+    ?.toLowerCase();
+  const fromCol = ["auto", "library", "pexels", "kie"].includes(job.broll_mode)
+    ? job.broll_mode
+    : null;
+  // Явный выбор пользователя (kie/pexels/library) — из formats/brief, не из default auto.
+  for (const mode of [fromFmt, fromBrief, fromCol]) {
+    if (mode && mode !== "auto" && ["library", "pexels", "kie"].includes(mode)) return mode;
+  }
+  if (fromCol === "auto" || fromFmt === "auto" || fromBrief === "auto") return "auto";
   return "auto";
 }
 
