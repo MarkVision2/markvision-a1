@@ -72,7 +72,7 @@ def build(props_path: Path, source: Path) -> None:
     max_end = 0
     for s in segs:
         a = s["startFrame"] * spf
-        b = s["endFrame"] * spf
+        b = min(s["endFrame"] * spf, len(y))   # proxy AAC can be shorter than round(dur*fps)*spf
         max_end = max(max_end, b)
         clip = np.array(y[a:b], dtype=np.float32)
         n = len(clip)
@@ -89,8 +89,22 @@ def build(props_path: Path, source: Path) -> None:
 
     track = np.concatenate(parts) if parts else np.zeros(0, dtype=np.float32)
     expected = sum(s["endFrame"] - s["startFrame"] for s in segs) * spf
-    assert len(track) == expected, f"len {len(track)} != expected {expected}"
-    assert len(track) == props["totalDurationInFrames"] * spf, "track != comp length"
+    comp_len = props["totalDurationInFrames"] * spf
+    if len(track) != expected:
+        delta = expected - len(track)
+        if abs(delta) <= spf:                  # <=1 frame: pad/trim silence (AAC/priming drift)
+            if delta > 0:
+                track = np.pad(track, (0, delta))
+            else:
+                track = track[:expected]
+            print(f"WARN audio length drift {delta} samples ({delta / SR * 1000:.1f} ms) — adjusted")
+        else:
+            raise SystemExit(
+                f"audio track {len(track)} samples != expected {expected} "
+                f"(>{spf} sample / 1-frame tolerance)"
+            )
+    if len(track) != comp_len:
+        raise SystemExit(f"track {len(track)} != composition {comp_len} samples")
     if max_end > len(y):
         raise SystemExit(f"segment audio {max_end} exceeds source {len(y)} samples")
 

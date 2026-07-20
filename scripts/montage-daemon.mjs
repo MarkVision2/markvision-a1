@@ -82,17 +82,28 @@ async function call(url, body, retries = 5) {
 
 function sh(cmd, args, opts = {}) {
   console.log(`$ ${cmd} ${args.join(" ")}`);
+  const capture = opts.capture === true;
   const r = spawnSync(cmd, args, {
-    stdio: "inherit",
+    stdio: capture ? ["inherit", "pipe", "pipe"] : "inherit",
+    encoding: capture ? "utf8" : undefined,
     env: { ...process.env, ...env },
     ...opts,
   });
-  if (r.status !== 0) throw new Error(`${cmd} exit ${r.status}`);
+  if (r.status !== 0) {
+    const detail = capture
+      ? [r.stderr, r.stdout].filter(Boolean).join("\n").trim().split("\n").slice(-8).join("\n")
+      : "";
+    throw new Error(detail ? `${cmd} exit ${r.status}: ${detail}` : `${cmd} exit ${r.status}`);
+  }
+  return r;
 }
 
 function py(args) {
   if (!existsSync(PY)) throw new Error("Нет .venv — сначала bash scripts/montage-setup.sh");
-  sh(PY, args);
+  const r = sh(PY, args, { capture: true });
+  for (const chunk of [r.stdout, r.stderr]) {
+    if (chunk) process.stdout.write(chunk.endsWith("\n") ? chunk : `${chunk}\n`);
+  }
 }
 
 function status(id, progress, state) {
