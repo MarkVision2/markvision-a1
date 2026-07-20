@@ -484,14 +484,14 @@ async function processJob(job) {
   const brollHint = {
     auto: "B-roll: motion-графика по стилю шаблона.",
     library: "B-roll: папки проекта + motion по стилю шаблона.",
-    pexels: "B-roll: Pexels-клипы по смыслу речи (не motion-шаблоны).",
-    kie: "B-roll: Kie/Kling видео-клипы по смыслу речи (не motion-шаблоны).",
+    pexels: "B-roll: Pexels cutaway (full) + Remotion motion-дизайн на остальные мысли.",
+    kie: "B-roll: Kie/Kling cutaway (full) + Remotion motion-дизайн на остальные мысли.",
   }[brollMode];
-  // Для Kie/Pexels не подмешиваем motion-aiRules стиля — иначе ТЗ выглядит как «авто/motion».
+  // Motion-правила стиля нужны и для kie/pexels — иначе только сток без анимаций.
   const insertBrief = [
     brief,
     brollHint,
-    (brollMode === "kie" || brollMode === "pexels") ? "" : (style.aiRules || ""),
+    style.aiRules || "",
   ].filter(Boolean).join("\n");
   writeFileSync(
     resolve(work, "broll.json"),
@@ -582,7 +582,6 @@ async function processJob(job) {
         inserts = external;
       } else {
         // Фоллбэк: motion, чтобы ролик не остался без вставок.
-        // Важно: в статусе явно пишем, что Kie/Pexels не сработали — иначе кажется, что ТЗ ушло как «авто».
         console.warn(`${brollMode} пуст → motion fallback`);
         await status(id, `${brollMode} не дал клипов → motion fallback`);
         inserts = await call(AI, {
@@ -602,6 +601,41 @@ async function processJob(job) {
           accentColor: style.accentColor,
           styleId: style.id,
         });
+      }
+      // Если AI/старый план отдал только видео — добираем Remotion motion на остальные мысли.
+      const list = Array.isArray(inserts?.inserts) ? inserts.inserts : [];
+      const hasMotion = list.some((it) => it && it.template);
+      if (list.length && !hasMotion) {
+        await status(id, "добавляем motion-дизайн");
+        const motionDoc = await call(AI, {
+          action: "markup_inserts",
+          indexed,
+          utterances,
+          brief: [
+            brief,
+            "Добавь ТОЛЬКО Remotion motion-вставки (template). Видео-окна уже заняты — не пересекай их.",
+            `Занятые окна (слова): ${list.map((it) => `${it.anchorWord}-${it.endWord}`).join(", ")}`,
+            style.aiRules || "",
+          ].filter(Boolean).join("\n"),
+          durationSec,
+          brollMode: "auto",
+          assetFolderIds,
+          insertEverySec: style.insertEverySec,
+          coverRatio: style.coverRatio,
+          accentColor: style.accentColor,
+          styleId: style.id,
+        });
+        const motionList = Array.isArray(motionDoc?.inserts) ? motionDoc.inserts : [];
+        const occupied = list.map((it) => [Number(it.anchorWord) || 0, Number(it.endWord) || 0]);
+        const overlaps = (a, b, c, d) => a <= d && c <= b;
+        const extra = motionList.filter((it) => {
+          if (!it?.template) return false;
+          const a = Number(it.anchorWord) || 0;
+          const b = Number(it.endWord) || 0;
+          return !occupied.some(([x, y]) => overlaps(a, b, x, y));
+        });
+        inserts = { inserts: [...list, ...extra] };
+        console.log(`+ motion design: ${extra.length} (video=${list.length})`);
       }
     }
     writeFileSync(resolve(work, "inserts.json"), JSON.stringify(inserts, null, 2));
