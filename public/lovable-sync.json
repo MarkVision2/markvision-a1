@@ -1,7 +1,7 @@
 {
-  "git_sha": "63f51a4",
-  "git_sha_full": "63f51a46cf1dd366e84276343bdf9aa5a1610564",
-  "updated_at": "2026-07-20T09:04:06Z",
-  "label": "fix(content-plan): remove stats hint and hide С today preset",
+  "git_sha": "4a4c3b9",
+  "git_sha_full": "4a4c3b90cb75a86b55932ea7735940367239ebcf",
+  "updated_at": "2026-07-20T09:37:19Z",
+  "label": "fix(dashboard): include demo cabinets in analytics for Эрик project",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
