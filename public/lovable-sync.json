@@ -1,7 +1,7 @@
 {
-  "git_sha": "0a9ffdd",
-  "git_sha_full": "0a9ffdd81f3052fb5db4403d513bb1b2e43108f0",
-  "updated_at": "2026-07-20T06:13:02Z",
-  "label": "fix(ads): remove duplicate top summary stats on Ads page (#152)",
+  "git_sha": "094f4a5",
+  "git_sha_full": "094f4a500d5445c64ae6545bc2725341d6fd5de3",
+  "updated_at": "2026-07-20T06:18:26Z",
+  "label": "fix(ads): allow pixel event list without saved cabinet pixel_id (#154)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
