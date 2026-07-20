@@ -141,16 +141,34 @@ word = индекс из indexed. text — короткий капс (1–3 сл
         const brollMode = String(body.brollMode ?? "auto");
         if (!indexed) return json({ error: "indexed required" }, 400);
         const target = durationSec > 0
-          ? Math.max(6, Math.min(24, Math.round(durationSec / 12)))
-          : 10;
+          ? Math.max(4, Math.min(8, Math.round(durationSec / 12)))
+          : 6;
+
+        // Kie / Pexels — реальные видео-клипы (не motion-шаблоны).
+        if (brollMode === "kie" || brollMode === "pexels") {
+          const kind = brollMode === "kie" ? "Kie/Kling" : "Pexels";
+          const result = await chatJson(
+            `Ты режиссёр B-roll для вертикального 9:16 ролика «говорящая голова».
+Источник: ${kind}. Верни JSON:
+{"inserts":[{"anchorWord":<i>,"endWord":<i>,"prompt":"<english>","query":"<search>","layout":"full"|"half"|"third","note":"..."}]}
+Правила:
+- Ровно ${target} вставок, равномерно по ролику (~1 на 10–15 сек).
+- prompt — АНГЛИЙСКИЙ cinematic video prompt 1–2 предложения, vertical 9:16, no text/logos/watermarks, no faces of celebrities.
+- query — короткий английский поисковый запрос (для Pexels; для Kie продублируй суть).
+- layout: чаще "full" (накрывает спикера), иногда "half"/"third".
+- anchorWord/endWord — индексы из indexed, endWord > anchorWord, окно речи 3–6 сек.
+- Без template/motion — только видео-промпты.`,
+            `DURATION_SEC=${durationSec || "?"}\nBROLL_MODE=${brollMode}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
+            150_000,
+          );
+          if (!Array.isArray(result.inserts)) result.inserts = [];
+          return json(result);
+        }
+
         const sourceHint =
           brollMode === "library"
             ? "Источник B-roll: папки проекта — планируй окна под клипы/нарезки (cover=true чаще)."
-            : brollMode === "pexels"
-              ? "Источник B-roll: Pexels — планируй окна под стоковые видео по смыслу фразы."
-              : brollMode === "kie"
-                ? "Источник B-roll: Kie/Kling — планируй окна под сгенерированные клипы."
-                : "Источник B-roll: автоматически — motion-графика (шаблоны ниже).";
+            : "Источник B-roll: автоматически — motion-графика (шаблоны ниже).";
         const result = await chatJson(
           `Ты режиссёр motion-графики поверх «говорящей головы». Верни JSON:
 {"inserts":[{"anchorWord":<i>,"endWord":<i>,"template":"<slug>","data":{...},"note":"..."}]}

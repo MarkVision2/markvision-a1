@@ -10,7 +10,7 @@
 import { supabase } from "@/integrations/supabase/client";
 import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseConfig";
 
-export type MontageFormat = "16:9" | "9:16" | "shorts";
+export type MontageFormat = "16:9" | "9:16" | "shorts" | string;
 
 // "standard" — обычный монтаж; "5050" — сплит-скрин (спикер + запись экрана
 // в важных моментах), требует второго видео (source2).
@@ -172,14 +172,27 @@ export async function createMontageJob(
   const folderIds = Array.from(
     new Set((params.assetFolderIds ?? []).map(String).filter(Boolean)),
   ).slice(0, 20);
+  // formats — единственное поле, которое точно есть на проде.
+  // Колонки broll_* могли ещё не приехать миграцией → дублируем режим сюда.
+  const formats: MontageFormat[] = ["9:16"];
+  if (brollMode !== "auto") {
+    (formats as string[]).push(`broll:${brollMode}`);
+  }
+  for (const fid of brollMode === "library" ? folderIds : []) {
+    (formats as string[]).push(`folder:${fid}`);
+  }
+  const briefParts = [
+    params.brief?.trim() ? params.brief.trim().slice(0, 3900) : "",
+    brollMode !== "auto" ? `[BROLL_MODE=${brollMode}]` : "",
+  ].filter(Boolean);
   const row: Record<string, unknown> = {
     project_id: projectId,
     source_url: params.sourceUrl,
     source_name: params.sourceName.slice(0, 120),
     // Только цельный 9:16 — без шортсов и без нарезки исходника на куски.
-    formats: ["9:16"] as MontageFormat[],
+    formats,
     shorts_count: null,
-    brief: params.brief?.trim() ? params.brief.trim().slice(0, 4000) : null,
+    brief: briefParts.length ? briefParts.join("\n") : null,
     notify_telegram: params.notifyTelegram,
     broll_mode: brollMode,
     asset_folder_ids: brollMode === "library" ? folderIds : [],
