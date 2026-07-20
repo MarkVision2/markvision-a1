@@ -208,6 +208,10 @@ def build(work: Path, props_dir: Path, draft: bool):
                 }
                 if it.get("layout"):
                     ev["layout"] = it["layout"]
+                # Video cutaway: full-screen — third/half + failed decode looked like
+                # empty grey 50/50 with the speaker crushed at the bottom.
+                if is_video and ev.get("layout") in (None, "third", "half"):
+                    ev["layout"] = "full"
                 if it.get("coverBox"):  # blur plate over burned-in subs of the fragment
                     ev["coverBox"] = it["coverBox"]
                 insert_events.append(ev)

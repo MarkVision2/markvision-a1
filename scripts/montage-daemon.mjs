@@ -442,7 +442,8 @@ async function materializeExternalBroll(job, insertsDoc, brollMode) {
         type: "video",
         anchorWord: it.anchorWord,
         endWord: it.endWord,
-        layout: it.layout || "full",
+        // Full cutaway — third/half + broken Video seek looked like empty grey 50/50.
+        layout: "full",
         note: it.note || prompt || query,
         spokenText: it.spokenText || it.note || null,
       });
