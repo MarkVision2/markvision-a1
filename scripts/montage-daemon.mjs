@@ -241,6 +241,147 @@ async function bootstrap() {
   console.log("bootstrap ok");
 }
 
+/** Режим B-roll: колонка broll_mode ИЛИ formats `broll:kie` ИЛИ маркер в brief. */
+function resolveBrollMode(job) {
+  if (["auto", "library", "pexels", "kie"].includes(job.broll_mode)) return job.broll_mode;
+  const formats = Array.isArray(job.formats) ? job.formats.map(String) : [];
+  const fromFmt = formats.find((f) => f.startsWith("broll:"))?.slice(6);
+  if (["auto", "library", "pexels", "kie"].includes(fromFmt)) return fromFmt;
+  const m = String(job.brief || "").match(/\[BROLL_MODE=(auto|library|pexels|kie)\]/i);
+  if (m) return m[1].toLowerCase();
+  return "auto";
+}
+
+function resolveAssetFolderIds(job) {
+  if (Array.isArray(job.asset_folder_ids) && job.asset_folder_ids.length) {
+    return job.asset_folder_ids.map(String).filter(Boolean).slice(0, 20);
+  }
+  const formats = Array.isArray(job.formats) ? job.formats.map(String) : [];
+  return formats
+    .filter((f) => f.startsWith("folder:"))
+    .map((f) => f.slice(7))
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
+function extractKieVideoUrl(task) {
+  if (!task || typeof task !== "object") return null;
+  const direct = task.videoUrl || task.video_url || task.resultUrl || task.result_url;
+  if (typeof direct === "string" && /^https?:\/\//.test(direct)) return direct;
+  let parsed = task.resultJson ?? task.result_json ?? null;
+  if (typeof parsed === "string") {
+    try { parsed = JSON.parse(parsed); } catch { parsed = null; }
+  }
+  if (parsed && typeof parsed === "object") {
+    const urls = parsed.resultUrls || parsed.result_urls || parsed.urls;
+    if (Array.isArray(urls) && urls[0]) return String(urls[0]);
+    if (typeof parsed.url === "string") return parsed.url;
+  }
+  if (Array.isArray(task.resultUrls) && task.resultUrls[0]) return String(task.resultUrls[0]);
+  return null;
+}
+
+function kieState(task) {
+  return String(task?.state ?? task?.status ?? "").toLowerCase();
+}
+
+/** Скачать/сгенерировать внешние B-roll клипы → remotion/public/inserts/<jobId>/ */
+async function materializeExternalBroll(job, insertsDoc, brollMode) {
+  const projectId = String(job.project_id || "");
+  const id = job.id;
+  const list = Array.isArray(insertsDoc?.inserts) ? insertsDoc.inserts : [];
+  if (!projectId || !list.length) return insertsDoc;
+  if (brollMode !== "kie" && brollMode !== "pexels") return insertsDoc;
+
+  const outDir = resolve("remotion/public/inserts", id);
+  mkdirSync(outDir, { recursive: true });
+  const materialized = [];
+  const maxClips = Math.min(6, list.length);
+
+  for (let i = 0; i < maxClips; i++) {
+    const it = list[i];
+    const prompt = String(it.prompt || "").trim();
+    const query = String(it.query || prompt || "").trim().slice(0, 120);
+    if (!prompt && !query) continue;
+
+    const fileName = `${String(i + 1).padStart(2, "0")}_broll.mp4`;
+    const abs = resolve(outDir, fileName);
+    const rel = `${id}/${fileName}`;
+
+    try {
+      if (brollMode === "kie") {
+        await status(id, `Kie/Kling ${i + 1}/${maxClips}`);
+        const created = await call(MW, { action: "kie_create", project_id: projectId, prompt: prompt || query });
+        const taskId = created.taskId;
+        if (!taskId) throw new Error("kie_create: нет taskId");
+        let videoUrl = null;
+        for (let tick = 0; tick < 72; tick++) {
+          await new Promise((r) => setTimeout(r, 5000));
+          const st = await call(MW, { action: "kie_status", project_id: projectId, task_id: taskId });
+          const task = st.task || {};
+          const state = kieState(task);
+          console.log(`kie ${taskId} → ${state || "?"}`);
+          if (["success", "succeed", "completed", "done"].includes(state)) {
+            videoUrl = extractKieVideoUrl(task);
+            break;
+          }
+          if (["fail", "failed", "error"].includes(state)) {
+            throw new Error(`Kie fail: ${JSON.stringify(task).slice(0, 200)}`);
+          }
+        }
+        if (!videoUrl) throw new Error("Kie timeout — нет video url");
+        await download(videoUrl, abs);
+      } else {
+        await status(id, `Pexels ${i + 1}/${maxClips}`);
+        const found = await call(MW, {
+          action: "pexels_search",
+          project_id: projectId,
+          query: query || "business",
+          per_page: 4,
+        });
+        const videoUrl = found.videos?.[0]?.video_url;
+        if (!videoUrl) throw new Error(`Pexels пусто по запросу «${query}»`);
+        await download(videoUrl, abs);
+      }
+
+      if (!existsSync(abs)) throw new Error("download empty");
+      const proxyPath = resolve(outDir, fileName.replace(/\.mp4$/i, "_p.mp4"));
+      try {
+        sh("ffmpeg", [
+          "-y", "-i", abs,
+          "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-g", "1", "-bf", "0",
+          "-pix_fmt", "yuv420p", "-an", "-movflags", "+faststart",
+          proxyPath,
+        ]);
+        if (existsSync(proxyPath)) {
+          copyFileSync(proxyPath, abs);
+          unlinkSync(proxyPath);
+        }
+      } catch (e) {
+        console.warn("broll proxy failed, using original", e instanceof Error ? e.message : e);
+      }
+
+      materialized.push({
+        file: rel,
+        type: "video",
+        anchorWord: it.anchorWord,
+        endWord: it.endWord,
+        layout: it.layout || "full",
+        note: it.note || prompt || query,
+      });
+    } catch (e) {
+      console.warn(`broll clip ${i + 1} failed:`, e instanceof Error ? e.message : e);
+    }
+  }
+
+  if (!materialized.length) {
+    console.warn(`⚠ ${brollMode}: не удалось скачать клипы — фоллбэк на motion`);
+    return null;
+  }
+  console.log(`✓ ${brollMode} inserts: ${materialized.length}`);
+  return { inserts: materialized };
+}
+
 async function processJob(job) {
   const id = job.id;
   const work = resolve("work", id);
@@ -250,13 +391,10 @@ async function processJob(job) {
   // Очередь «Монтаж съёмки»: ОДИН цельный ролик 9:16 (весь исходник).
   // Не режем на шортсы и не делаем jump-cut — даже если formats со старого UI.
   const wantFull916 = true;
-  const brief = job.brief || "";
-  const brollMode = ["auto", "library", "pexels", "kie"].includes(job.broll_mode)
-    ? job.broll_mode
-    : "auto";
-  const assetFolderIds = Array.isArray(job.asset_folder_ids)
-    ? job.asset_folder_ids.map(String).filter(Boolean).slice(0, 20)
-    : [];
+  const brief = String(job.brief || "").replace(/\[BROLL_MODE=(auto|library|pexels|kie)\]/ig, "").trim();
+  const brollMode = resolveBrollMode(job);
+  const assetFolderIds = resolveAssetFolderIds(job);
+  console.log(`brollMode=${brollMode} folders=${assetFolderIds.length}`);
   const brollHint = {
     auto: "B-roll: автоматически — motion-графика и вставки по смыслу.",
     library: "B-roll: папки проекта — случайные клипы/нарезки из медиатеки.",
@@ -329,7 +467,7 @@ async function processJob(job) {
       ?? probeDurationSec(proxy)
       ?? 0,
     );
-    const inserts = await call(AI, {
+    const insertsRaw = await call(AI, {
       action: "markup_inserts",
       indexed,
       utterances,
@@ -338,6 +476,26 @@ async function processJob(job) {
       brollMode,
       assetFolderIds,
     });
+    let inserts = insertsRaw;
+    if (brollMode === "kie" || brollMode === "pexels") {
+      await status(id, `генерация B-roll (${brollMode})`);
+      const external = await materializeExternalBroll(job, insertsRaw, brollMode);
+      if (external) {
+        inserts = external;
+      } else {
+        // Фоллбэк: motion, чтобы ролик не остался без вставок.
+        console.warn(`${brollMode} пуст → motion fallback`);
+        inserts = await call(AI, {
+          action: "markup_inserts",
+          indexed,
+          utterances,
+          brief: insertBrief,
+          durationSec,
+          brollMode: "auto",
+          assetFolderIds,
+        });
+      }
+    }
     writeFileSync(resolve(work, "inserts.json"), JSON.stringify(inserts, null, 2));
 
     // Один вертикальный клип на ВСЮ длину — не «шортсы из лучших моментов».

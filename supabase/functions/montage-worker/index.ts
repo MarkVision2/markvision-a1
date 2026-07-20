@@ -15,12 +15,34 @@
 //   fail     {id, error}          → job failed + Telegram-уведомление
 //   requeue  {id}                 → вернуть failed/processing в queued (повтор)
 //   publish  {project_id, video_url, title?, ...} → регистрация без заявки
+//   kie_create {project_id, prompt} → taskId (Kling via Kie.ai)
+//   kie_status {project_id, task_id}
+//   pexels_search {project_id, query, per_page?}
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { decryptProviderKey } from "../_lib/reelsCredentials.ts";
 
 type Json = Record<string, unknown>;
 
 const json = (body: Json, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+
+async function projectProviderKey(
+  admin: ReturnType<typeof createClient>,
+  projectId: string,
+  provider: "pexels" | "kie",
+): Promise<string> {
+  const { data: credential } = await admin
+    .from("reels_provider_credentials")
+    .select("encrypted_key")
+    .eq("project_id", projectId)
+    .eq("provider", provider)
+    .eq("enabled", true)
+    .maybeSingle();
+  if (!credential?.encrypted_key) {
+    throw new Error(`${provider === "pexels" ? "Pexels" : "Kie.ai"} key not configured for project`);
+  }
+  return decryptProviderKey(String(credential.encrypted_key));
+}
 
 async function tg(token: string, method: string, body: Json): Promise<boolean> {
   try {
@@ -267,6 +289,70 @@ Deno.serve(async (req) => {
           notifyTelegram: body.notify_telegram !== false,
         });
         return json({ ok: true, warnings });
+      }
+
+      case "kie_create": {
+        const projectId = String(body.project_id ?? "");
+        const prompt = String(body.prompt ?? "").trim().slice(0, 2500);
+        if (!projectId || !prompt) return json({ error: "project_id and prompt required" }, 400);
+        const apiKey = await projectProviderKey(admin, projectId, "kie");
+        const response = await fetch("https://api.kie.ai/api/v1/jobs/createTask", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "kling/v2-1-master-text-to-video",
+            input: { prompt, aspect_ratio: "9:16" },
+          }),
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload.code !== 200) {
+          return json({ error: `Kie.ai ${response.status}`, detail: payload.msg ?? payload }, 502);
+        }
+        return json({ taskId: payload.data?.taskId });
+      }
+
+      case "kie_status": {
+        const projectId = String(body.project_id ?? "");
+        const taskId = String(body.task_id ?? body.taskId ?? "").trim();
+        if (!projectId || !taskId) return json({ error: "project_id and task_id required" }, 400);
+        const apiKey = await projectProviderKey(admin, projectId, "kie");
+        const url = new URL("https://api.kie.ai/api/v1/jobs/recordInfo");
+        url.searchParams.set("taskId", taskId);
+        const response = await fetch(url, { headers: { Authorization: `Bearer ${apiKey}` } });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) return json({ error: `Kie.ai ${response.status}`, detail: payload }, 502);
+        return json({ task: payload.data ?? payload });
+      }
+
+      case "pexels_search": {
+        const projectId = String(body.project_id ?? "");
+        const query = String(body.query ?? "").trim().slice(0, 120);
+        const perPage = Math.min(12, Math.max(1, Number(body.per_page ?? body.perPage ?? 6)));
+        if (!projectId || !query) return json({ error: "project_id and query required" }, 400);
+        const apiKey = await projectProviderKey(admin, projectId, "pexels");
+        const url = new URL("https://api.pexels.com/v1/videos/search");
+        url.searchParams.set("query", query);
+        url.searchParams.set("orientation", "portrait");
+        url.searchParams.set("per_page", String(perPage));
+        const response = await fetch(url, { headers: { Authorization: apiKey } });
+        if (!response.ok) {
+          return json({ error: `Pexels ${response.status}`, detail: (await response.text()).slice(0, 300) }, 502);
+        }
+        const payload = await response.json();
+        const videos = (payload.videos ?? []).map((video: Json) => {
+          const files = Array.isArray(video.video_files) ? video.video_files as Json[] : [];
+          const mp4 = files
+            .filter((file) => String(file.file_type ?? "") === "video/mp4")
+            .sort((a, b) => Number(b.height ?? 0) - Number(a.height ?? 0))[0];
+          return {
+            id: video.id,
+            duration: video.duration,
+            video_url: mp4?.link ?? null,
+            width: mp4?.width ?? null,
+            height: mp4?.height ?? null,
+          };
+        }).filter((video: Json) => Boolean(video.video_url));
+        return json({ videos });
       }
 
       default:
