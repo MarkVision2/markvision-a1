@@ -52,6 +52,7 @@ const FORMAT: Record<string, { label: string; color: string; icon: LucideIcon }>
   VIDEO: { label: "Reels", color: "#ec4899", icon: Film },
 };
 const fmtOf = (t: string) => FORMAT[t] ?? { label: t, color: "hsl(var(--muted-foreground))", icon: ImageIcon };
+const CONTENT_CUTOFF = "2026-07-20";
 
 const fmtDate = (s: string | null) =>
   s ? new Date(s).toLocaleDateString("ru-RU", { day: "2-digit", month: "short" }) : "—";
@@ -143,8 +144,9 @@ export default function ContentAnalytics() {
 
   const data = useMemo(() => {
     if (!account) return null;
+    const from = ymdLocal(range.from);
     return buildContentAnalyticsFromIg({
-      from: ymdLocal(range.from),
+      from: from < CONTENT_CUTOFF ? CONTENT_CUTOFF : from,
       to: ymdLocal(range.to),
       media,
       daily,

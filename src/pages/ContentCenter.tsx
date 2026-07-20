@@ -64,6 +64,7 @@ const ymd = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const fmtDate = (s: string | null) =>
   s ? new Date(s).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "—";
+const CONTENT_CUTOFF = "2026-07-20";
 
 async function fetchContentCenter(projectId: string, from: string, to: string): Promise<CCResp> {
   // supabase.functions.invoke сам подставляет Authorization (JWT пользователя)
@@ -371,7 +372,10 @@ const ContentCenter = () => {
   const viewMode = viewModeOverride ?? (isMobile ? "cards" : "table");
   const openPost = (p: Derived) => setSelectedPost(p);
 
-  const from = ymd(range.from);
+  const from = useMemo(() => {
+    const picked = ymd(range.from);
+    return picked < CONTENT_CUTOFF ? CONTENT_CUTOFF : picked;
+  }, [range.from]);
   const to = ymd(range.to);
 
   useEffect(() => {
