@@ -77,7 +77,7 @@ const BRIEF_PRESETS = [
   { icon: Zap,      label: "Динамичный темп" },
   { icon: Sparkles, label: "Акцент на цифрах и фактах" },
   { icon: Wand2,    label: "Крупные титры на ключевые фразы" },
-  { icon: MonitorPlay, label: "Больше motion-вставок" },
+  { icon: MonitorPlay, label: "Анимация сверху на каждую мысль" },
 ];
 
 function formatBytes(b: number) {

@@ -307,7 +307,7 @@ async function materializeExternalBroll(job, insertsDoc, brollMode) {
   const outDir = resolve("remotion/public/inserts", id);
   mkdirSync(outDir, { recursive: true });
   const materialized = [];
-  const maxClips = Math.min(6, list.length);
+  const maxClips = Math.min(12, list.length);
 
   for (let i = 0; i < maxClips; i++) {
     const it = list[i];
@@ -407,12 +407,16 @@ async function processJob(job) {
   const assetFolderIds = resolveAssetFolderIds(job);
   console.log(`brollMode=${brollMode} folders=${assetFolderIds.length}`);
   const brollHint = {
-    auto: "B-roll: автоматически — motion-графика и вставки по смыслу.",
-    library: "B-roll: папки проекта — случайные клипы/нарезки из медиатеки.",
-    pexels: "B-roll: Pexels — стоковые видео по смыслу реплик.",
-    kie: "B-roll: Kie.ai / Kling — сгенерировать уникальные видео-вставки.",
+    auto: "B-roll: плотные motion-вставки СВЕРХУ на каждую мысль (время→часы, деньги→цифры). Без пустых участков >5 сек.",
+    library: "B-roll: папки проекта + motion-оверлеи сверху на каждую мысль.",
+    pexels: "B-roll: Pexels-клипы + motion-оверлеи сверху на каждую мысль.",
+    kie: "B-roll: Kie/Kling клипы + motion-оверлеи сверху на каждую мысль.",
   }[brollMode];
-  const insertBrief = [brief, brollHint].filter(Boolean).join("\n");
+  const insertBrief = [
+    brief,
+    brollHint,
+    "Монтаж: каждая фраза сопровождается анимацией в верхней трети экрана (layout third, cover=false).",
+  ].filter(Boolean).join("\n");
   writeFileSync(
     resolve(work, "broll.json"),
     JSON.stringify({ brollMode, assetFolderIds }, null, 2),
@@ -465,11 +469,9 @@ async function processJob(job) {
     );
     // edl пересобираем под keep_full (даже если файл уже был).
     py(["pipeline/edl.py", work, wav, "30"]);
-    if (!existsSync(resolve(work, "accents.json"))) {
-      await status(id, "акцентные слова");
-      const acc = await call(AI, { action: "markup_accents", indexed, brief });
-      writeFileSync(resolve(work, "accents.json"), JSON.stringify(acc, null, 2));
-    }
+    await status(id, "акцентные слова");
+    const acc = await call(AI, { action: "markup_accents", indexed, brief: insertBrief });
+    writeFileSync(resolve(work, "accents.json"), JSON.stringify(acc, null, 2));
     // Motion/B-roll обязателен для очереди — без вставок останутся одни титры.
     await status(id, "motion-вставки / b-roll");
     const durationSec = Number(
@@ -508,6 +510,8 @@ async function processJob(job) {
       }
     }
     writeFileSync(resolve(work, "inserts.json"), JSON.stringify(inserts, null, 2));
+    await status(id, "уплотняем motion-вставки");
+    py(["pipeline/inserts_enrich.py", work, "4.5"]);
 
     // Один вертикальный клип на ВСЮ длину — не «шортсы из лучших моментов».
     const accents = JSON.parse(readFileSync(resolve(work, "accents.json"), "utf8"));
