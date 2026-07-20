@@ -263,6 +263,36 @@ function resolveBrollMode(job) {
   return "auto";
 }
 
+function loadStyleCatalog() {
+  const p = resolve("docs/montage-templates/styles.json");
+  if (!existsSync(p)) return {};
+  try {
+    return JSON.parse(readFileSync(p, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+/** Стиль монтажа: formats `style:…` ИЛИ [STYLE=…] в brief. Default — expert-explainer. */
+function resolveMontageStyle(job) {
+  const catalog = loadStyleCatalog();
+  const formats = Array.isArray(job.formats) ? job.formats.map(String) : [];
+  const fromFmt = formats.find((f) => f.startsWith("style:"))?.slice(6);
+  const fromBrief = String(job.brief || "").match(
+    /\[STYLE=(expert-explainer|dense-motion|classic)\]/i,
+  )?.[1];
+  const id = (fromFmt || fromBrief || "expert-explainer").toLowerCase();
+  const base = catalog[id] || catalog["expert-explainer"] || {
+    captionStyle: "karaoke-box",
+    insertEverySec: 4,
+    coverRatio: 0.45,
+    accentEverySec: 4,
+    accentColor: "#F5E14B",
+    aiRules: "",
+  };
+  return { id, ...base };
+}
+
 function resolveAssetFolderIds(job) {
   if (Array.isArray(job.asset_folder_ids) && job.asset_folder_ids.length) {
     return job.asset_folder_ids.map(String).filter(Boolean).slice(0, 20);
@@ -402,24 +432,28 @@ async function processJob(job) {
   // Очередь «Монтаж съёмки»: ОДИН цельный ролик 9:16 (весь исходник).
   // Не режем на шортсы и не делаем jump-cut — даже если formats со старого UI.
   const wantFull916 = true;
-  const brief = String(job.brief || "").replace(/\[BROLL_MODE=(auto|library|pexels|kie)\]/ig, "").trim();
+  const brief = String(job.brief || "")
+    .replace(/\[BROLL_MODE=(auto|library|pexels|kie)\]/ig, "")
+    .replace(/\[STYLE=(expert-explainer|dense-motion|classic)\]/ig, "")
+    .trim();
   const brollMode = resolveBrollMode(job);
+  const style = resolveMontageStyle(job);
   const assetFolderIds = resolveAssetFolderIds(job);
-  console.log(`brollMode=${brollMode} folders=${assetFolderIds.length}`);
+  console.log(`brollMode=${brollMode} style=${style.id} folders=${assetFolderIds.length}`);
   const brollHint = {
-    auto: "B-roll: плотные motion-вставки СВЕРХУ на каждую мысль (время→часы, деньги→цифры). Без пустых участков >5 сек.",
-    library: "B-roll: папки проекта + motion-оверлеи сверху на каждую мысль.",
-    pexels: "B-roll: Pexels-клипы + motion-оверлеи сверху на каждую мысль.",
-    kie: "B-roll: Kie/Kling клипы + motion-оверлеи сверху на каждую мысль.",
+    auto: "B-roll: motion-графика по стилю шаблона.",
+    library: "B-roll: папки проекта + motion по стилю шаблона.",
+    pexels: "B-roll: Pexels-клипы + motion по стилю шаблона.",
+    kie: "B-roll: Kie/Kling клипы + motion по стилю шаблона.",
   }[brollMode];
   const insertBrief = [
     brief,
     brollHint,
-    "Монтаж: каждая фраза сопровождается анимацией в верхней трети экрана (layout third, cover=false).",
+    style.aiRules || "",
   ].filter(Boolean).join("\n");
   writeFileSync(
     resolve(work, "broll.json"),
-    JSON.stringify({ brollMode, assetFolderIds }, null, 2),
+    JSON.stringify({ brollMode, assetFolderIds, styleId: style.id, style }, null, 2),
   );
   const mediaBase = `source_${id.slice(0, 8)}`;
 
@@ -470,7 +504,12 @@ async function processJob(job) {
     // edl пересобираем под keep_full (даже если файл уже был).
     py(["pipeline/edl.py", work, wav, "30"]);
     await status(id, "акцентные слова");
-    const acc = await call(AI, { action: "markup_accents", indexed, brief: insertBrief });
+    const acc = await call(AI, {
+      action: "markup_accents",
+      indexed,
+      brief: insertBrief,
+      accentEverySec: style.accentEverySec,
+    });
     writeFileSync(resolve(work, "accents.json"), JSON.stringify(acc, null, 2));
     // Motion/B-roll обязателен для очереди — без вставок останутся одни титры.
     await status(id, "motion-вставки / b-roll");
@@ -488,6 +527,10 @@ async function processJob(job) {
       durationSec,
       brollMode,
       assetFolderIds,
+      insertEverySec: style.insertEverySec,
+      coverRatio: style.coverRatio,
+      accentColor: style.accentColor,
+      styleId: style.id,
     });
     let inserts = insertsRaw;
     if (brollMode === "kie" || brollMode === "pexels") {
@@ -506,12 +549,16 @@ async function processJob(job) {
           durationSec,
           brollMode: "auto",
           assetFolderIds,
+          insertEverySec: style.insertEverySec,
+          coverRatio: style.coverRatio,
+          accentColor: style.accentColor,
+          styleId: style.id,
         });
       }
     }
     writeFileSync(resolve(work, "inserts.json"), JSON.stringify(inserts, null, 2));
     await status(id, "уплотняем motion-вставки");
-    py(["pipeline/inserts_enrich.py", work, "4.5"]);
+    py(["pipeline/inserts_enrich.py", work, String(style.insertEverySec || 4.5)]);
 
     // Один вертикальный клип на ВСЮ длину — не «шортсы из лучших моментов».
     const accents = JSON.parse(readFileSync(resolve(work, "accents.json"), "utf8"));
@@ -529,7 +576,7 @@ async function processJob(job) {
           spans: [[0, durationSec]],
           accents: accentIdx,
           fixes: {},
-          captionStyle: "pill",
+          captionStyle: style.captionStyle || "karaoke-box",
         }],
       }, null, 2),
     );

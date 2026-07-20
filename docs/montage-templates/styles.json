@@ -1,0 +1,26 @@
+{
+  "expert-explainer": {
+    "captionStyle": "karaoke-box",
+    "insertEverySec": 4,
+    "coverRatio": 0.45,
+    "accentEverySec": 4,
+    "accentColor": "#F5E14B",
+    "aiRules": "СТИЛЬ «Кейс-эксперт» (референс expert-explainer):\n- Титры: karaoke-box — тёмная плашка снизу, текущее слово жёлтым (#F5E14B) на чёрном.\n- Поверх спикера (cover:false, layout:third): жёлтый бейдж метрики + чёрная pill-подпись (metric-callout / number-counter / kinetic-type).\n- ~45% мыслей — cover:true на тёмном фоне: карточка, схема arrow-flow, график fake-dashboard-bars, чеклист проблем, phone-mockup/квиз.\n- Плотность ~1 вставка на 3–5 сек, без дыр >5 сек. Чередуй full-speaker и cover.\n- Акцент-цвет #F5E14B; теги контекста (год/клиент) — pill-row или notification-toast.\n- Каждая мысль/цифра/вопрос сопровождается визуалом (не только титры)."
+  },
+  "dense-motion": {
+    "captionStyle": "pill",
+    "insertEverySec": 4.5,
+    "coverRatio": 0.15,
+    "accentEverySec": 5,
+    "accentColor": "#FF7A18",
+    "aiRules": "СТИЛЬ «Плотный motion»:\n- layout:third, cover:false ≥85%, анимации сверху на каждую мысль.\n- Плотность ~1 на 4–6 сек. cover:true только 1–2 ключевых момента."
+  },
+  "classic": {
+    "captionStyle": "pill",
+    "insertEverySec": 10,
+    "coverRatio": 0.2,
+    "accentEverySec": 10,
+    "accentColor": "#FF7A18",
+    "aiRules": "СТИЛЬ «Классика»:\n- Вставки реже (~1 на 10–12 сек), спокойный темп.\n- Акценты только на цифрах и панчах."
+  }
+}

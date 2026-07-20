@@ -19,6 +19,10 @@ import {
   uploadMontageSource, type MontageFormat, type MontageJob, type MontageMode,
 } from "@/lib/montageJobs";
 import {
+  MONTAGE_STYLE_TEMPLATES,
+  type MontageStyleId,
+} from "@/lib/montageTemplates";
+import {
   buildReelsSourceConfig,
   fetchReelsAssetFolders,
   type ReelsBrollMode,
@@ -264,6 +268,7 @@ const CreateMontageLab = () => {
   const formats: MontageFormat[] = ["9:16"];
   const [brief, setBrief] = useState("");
   const [brollMode, setBrollMode] = useState<ReelsBrollMode>("auto");
+  const [styleId, setStyleId] = useState<MontageStyleId>("expert-explainer");
   const [selectedFolderIds, setSelectedFolderIds] = useState<string[]>([]);
   const [dragOver, setDragOver] = useState(false);
   const [notifyTelegram, setNotifyTelegram] = useState(true);
@@ -426,11 +431,13 @@ const CreateMontageLab = () => {
         source2Name: uploaded2?.name ?? null,
         brollMode: sourceConfig.brollMode,
         assetFolderIds: sourceConfig.assetFolderIds,
+        styleId,
       });
       clearFile();
       clearFile2();
       setBrief("");
       setBrollMode("auto");
+      setStyleId("expert-explainer");
       setSelectedFolderIds([]);
       toast.success("Заявка в очереди — монтаж начнётся автоматически");
       void queryClient.invalidateQueries({ queryKey: ["montage-jobs", projectId] });
@@ -715,10 +722,63 @@ const CreateMontageLab = () => {
               </div>
             </section>
 
-            {/* Шаг 4. B-roll — как в Reels-видео */}
+            {/* Шаг 4. Стиль монтажа */}
             <section className="rounded-2xl border border-border/60 bg-card/30 p-4 sm:p-5">
               <div className="mb-3 flex items-center gap-2">
                 <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">4</span>
+                <div>
+                  <h2 className="text-sm font-semibold">Стиль монтажа</h2>
+                  <p className="text-[11px] text-muted-foreground">
+                    Шаблон задаёт ритм вставок, титры и cover-сцены
+                  </p>
+                </div>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                {MONTAGE_STYLE_TEMPLATES.map((tpl) => {
+                  const active = styleId === tpl.id;
+                  return (
+                    <button
+                      key={tpl.id}
+                      type="button"
+                      onClick={() => setStyleId(tpl.id)}
+                      className={cn(
+                        "overflow-hidden rounded-xl border-2 text-left transition",
+                        active ? "border-primary bg-primary/5" : "border-border/60 hover:border-primary/30",
+                      )}
+                    >
+                      <div className="relative aspect-[9/14] bg-secondary/40">
+                        <img
+                          src={tpl.thumb}
+                          alt=""
+                          className="h-full w-full object-cover"
+                          loading="lazy"
+                        />
+                        {tpl.recommended && (
+                          <span className="absolute left-2 top-2 rounded-full bg-amber-400 px-2 py-0.5 text-[9px] font-bold text-black">
+                            Референс
+                          </span>
+                        )}
+                        {active && (
+                          <span className="absolute right-2 top-2 grid h-6 w-6 place-items-center rounded-full bg-primary text-primary-foreground">
+                            <Check className="h-3.5 w-3.5" />
+                          </span>
+                        )}
+                      </div>
+                      <div className="space-y-0.5 p-2.5">
+                        <div className="text-sm font-semibold leading-tight">{tpl.title}</div>
+                        <div className="text-[10px] font-medium text-primary">{tpl.subtitle}</div>
+                        <div className="text-[11px] leading-snug text-muted-foreground">{tpl.description}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
+
+            {/* Шаг 5. B-roll — как в Reels-видео */}
+            <section className="rounded-2xl border border-border/60 bg-card/30 p-4 sm:p-5">
+              <div className="mb-3 flex items-center gap-2">
+                <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">5</span>
                 <div>
                   <h2 className="text-sm font-semibold">Откуда брать B-roll</h2>
                   <p className="text-[11px] text-muted-foreground">Выберите один источник визуальных вставок</p>
@@ -818,11 +878,11 @@ const CreateMontageLab = () => {
               )}
             </section>
 
-            {/* Шаг 5. Бриф */}
+            {/* Шаг 6. Бриф */}
             <section className="rounded-2xl border border-border/60 bg-card/30 p-4 sm:p-5">
               <div className="mb-3 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">5</span>
+                  <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">6</span>
                   <h2 className="text-sm font-semibold">Пожелания к монтажу</h2>
                 </div>
                 <span className="text-[11px] text-muted-foreground">Необязательно</span>
@@ -851,10 +911,10 @@ const CreateMontageLab = () => {
               <div className="mt-1 text-right text-[11px] text-muted-foreground">{brief.length} / 4000</div>
             </section>
 
-            {/* Шаг 6. Доставка */}
+            {/* Шаг 7. Доставка */}
             <section className="rounded-2xl border border-border/60 bg-card/30 p-4 sm:p-5">
               <div className="mb-3 flex items-center gap-2">
-                <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">6</span>
+                <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">7</span>
                 <h2 className="text-sm font-semibold">Доставка результата</h2>
               </div>
 
@@ -904,6 +964,12 @@ const CreateMontageLab = () => {
                 <div className="flex justify-between gap-2">
                   <dt className="text-muted-foreground">Формат</dt>
                   <dd className="font-medium">полный 9:16</dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-muted-foreground">Стиль</dt>
+                  <dd className="font-medium">
+                    {MONTAGE_STYLE_TEMPLATES.find((t) => t.id === styleId)?.title ?? styleId}
+                  </dd>
                 </div>
                 <div className="flex justify-between gap-2">
                   <dt className="text-muted-foreground">B-roll</dt>

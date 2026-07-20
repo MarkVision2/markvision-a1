@@ -122,10 +122,11 @@ Deno.serve(async (req) => {
       case "markup_accents": {
         const indexed = String(body.indexed ?? "");
         const brief = String(body.brief ?? "");
+        const accentEverySec = Number(body.accentEverySec ?? 4);
         if (!indexed) return json({ error: "indexed required" }, 400);
         const result = await chatJson(
           `Ты монтажёр. Верни JSON {"accents":[{"word":<индекс>,"text":"ТЕКСТ КАПСОМ"}]}.
-Плотность: 1 акцент на каждые 4–6 секунд речи (цифры, ключевые слова, панчи, CTA, вопросы).
+Плотность: 1 акцент на каждые ${Math.max(3, Math.min(12, accentEverySec))} секунд речи (цифры, ключевые слова, панчи, CTA, вопросы).
 На КАЖДОЕ смысловое предложение — хотя бы один акцент на главном слове.
 word = индекс из indexed. text — короткий капс (1–3 слова, можно → ₸/$/%). Не дублируй соседние.`,
           `BRIEF:\n${brief || "(нет)"}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
@@ -139,28 +140,34 @@ word = индекс из indexed. text — короткий капс (1–3 сл
         const brief = String(body.brief ?? "");
         const durationSec = Number(body.durationSec ?? 0);
         const brollMode = String(body.brollMode ?? "auto");
+        const insertEverySec = Number(body.insertEverySec ?? 4);
+        const coverRatio = Number(body.coverRatio ?? 0.45);
+        const accentColor = String(body.accentColor ?? "#F5E14B");
+        const styleId = String(body.styleId ?? "expert-explainer");
         if (!indexed) return json({ error: "indexed required" }, 400);
+        const every = Math.max(3, Math.min(14, insertEverySec || 4));
         const target = durationSec > 0
-          ? Math.max(10, Math.min(48, Math.round(durationSec / 4)))
+          ? Math.max(8, Math.min(56, Math.round(durationSec / every)))
           : 14;
+        const coverPct = Math.round(Math.max(0.1, Math.min(0.7, coverRatio)) * 100);
 
         // Kie / Pexels — реальные видео-клипы (не motion-шаблоны).
         if (brollMode === "kie" || brollMode === "pexels") {
           const kind = brollMode === "kie" ? "Kie/Kling" : "Pexels";
-          const videoTarget = Math.max(6, Math.min(14, Math.round(target / 2)));
+          const videoTarget = Math.max(6, Math.min(16, Math.round(target / 2)));
           const result = await chatJson(
             `Ты режиссёр B-roll для вертикального 9:16 ролика «говорящая голова».
-Источник: ${kind}. Верни JSON:
+Источник: ${kind}. Стиль: ${styleId}. Верни JSON:
 {"inserts":[{"anchorWord":<i>,"endWord":<i>,"prompt":"<english>","query":"<search>","layout":"full"|"half"|"third","note":"..."}]}
 Правила:
-- Ровно ${videoTarget} видео-вставок, равномерно по ролику (~1 на 8–12 сек).
+- Ровно ${videoTarget} видео-вставок, равномерно (~1 на ${every}–${every + 4} сек).
 - prompt — АНГЛИЙСКИЙ cinematic video prompt 1–2 предложения, vertical 9:16, no text/logos/watermarks, no faces of celebrities.
-- query — короткий английский поисковый запрос (для Pexels; для Kie продублируй суть).
-- layout: чередуй "third" (верхняя треть) и "half"/"full" — не только full.
+- query — короткий английский поисковый запрос.
+- layout: чередуй "third" и "half"/"full".
 - anchorWord/endWord — индексы из indexed, endWord > anchorWord, окно речи 3–6 сек.
-- Подбирай клип ПО СМЫСЛУ фразы: время→часы/песочные часы; деньги→монеты/график; спорт→тренировка.
+- Подбирай клип ПО СМЫСЛУ фразы.
 - Без template/motion — только видео-промпты.`,
-            `DURATION_SEC=${durationSec || "?"}\nBROLL_MODE=${brollMode}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
+            `DURATION_SEC=${durationSec || "?"}\nBROLL_MODE=${brollMode}\nSTYLE=${styleId}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
             150_000,
           );
           if (!Array.isArray(result.inserts)) result.inserts = [];
@@ -169,25 +176,25 @@ word = индекс из indexed. text — короткий капс (1–3 сл
 
         const sourceHint =
           brollMode === "library"
-            ? "Источник B-roll: папки проекта — планируй окна под клипы/нарезки (cover=true чаще)."
-            : "Источник B-roll: motion-графика сверху (оверлей в верхней трети экрана).";
+            ? "Источник B-roll: папки проекта — планируй окна под клипы/нарезки."
+            : "Источник B-roll: motion-графика (шаблоны ниже).";
         const result = await chatJson(
-          `Ты режиссёр motion-графики поверх «говорящей головы» (вертикаль 9:16).
-Верни JSON:
+          `Ты режиссёр motion-графики для вертикального 9:16 «говорящая голова».
+Стиль шаблона: ${styleId}. Верни JSON:
 {"inserts":[{"anchorWord":<i>,"endWord":<i>,"template":"<slug>","layout":"third"|"half","data":{...},"note":"..."}]}
 Это code-based b-roll (НЕ картинки). template — ТОЛЬКО: ${MOTION_TEMPLATES}.
 ${sourceHint}
 Правила (ЖЁСТКО):
-- Минимум ${target} вставок — плотность ~1 на каждые 4–6 сек, БЕЗ дыр >5 сек.
-- КАЖДАЯ мысль/фраза сопровождается визуалом: время→countdown+icon:clock; деньги→number-counter+icon:coin;
-  вопрос «думаешь?»→notification-toast/kinetic-type; список→checklist-reveal; процесс→timeline-steps/arrow-flow.
-- layout="third" по умолчанию (анимация СВЕРХУ, спикер виден снизу). data.cover=false для ≥80% вставок.
-- cover:true — только 1–2 ключевых момента за весь ролик (оффер/цифра), не чаще.
-- Чередуй template и accent (#FF7A18 #22D3EE #8B5CF6 #34D399 #FFC53D #FB7185 #38BDF8).
-- data обязателен: words/items/value/label/icon/text/title и т.д. под выбранный template.
-- anchorWord/endWord — индексы из indexed, endWord > anchorWord, окно 2–5 сек речи.
-- Учитывай brief.`,
-          `DURATION_SEC=${durationSec || "?"}\nBROLL_MODE=${brollMode}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
+- Минимум ${target} вставок — плотность ~1 на каждые ${every} сек, БЕЗ дыр >${every + 1} сек.
+- ~${coverPct}% вставок с data.cover=true (тёмный фон + центральная карточка/схема/график — спикер уходит в PiP-зону композиции).
+- Остальные — cover:false + layout:third: жёлтый/цветной бейдж СВЕРХУ поверх спикера (metric-callout, number-counter, kinetic-type, notification-toast).
+- Подбор по смыслу: цифры→number-counter/metric-callout; рост→fake-dashboard-bars/stat-grid;
+  процесс/воронка→arrow-flow/timeline-steps; проблемы→checklist-reveal; UI/квиз→phone-mockup;
+  тезис→quote-card/big-statement; время→countdown+icon:clock.
+- Основной accent в data: ${accentColor}. Чередуй также #22D3EE #34D399 #FB7185 #8B5CF6.
+- data обязателен под шаблон. endWord > anchorWord, окно 2–5 сек.
+- Учитывай brief (там полные правила стиля).`,
+          `DURATION_SEC=${durationSec || "?"}\nBROLL_MODE=${brollMode}\nSTYLE=${styleId}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
           150_000,
         );
         if (!Array.isArray(result.inserts)) result.inserts = [];

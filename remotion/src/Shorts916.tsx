@@ -63,7 +63,7 @@ export type ShortsProps = {
   // Caption look: "pill" (bottom-centre, accent pill), "left-stack" (left,
   // word-stacked, cream + accent, hops position) or "mixed" (alternates the two
   // per phrase for variety).
-  captionStyle?: "pill" | "left-stack" | "mixed";
+  captionStyle?: "pill" | "left-stack" | "mixed" | "karaoke-box";
   // Background music file in public/ (played quietly under the voice), or null.
   music?: string | null;
   musicVolume?: number;
@@ -226,7 +226,7 @@ const CAP_POS: React.CSSProperties[] = [
 const Captions: React.FC<{
   words: ShortWord[];
   inserts: ShortInsert[];
-  style?: "pill" | "left-stack" | "mixed";
+  style?: "pill" | "left-stack" | "mixed" | "karaoke-box";
 }> = ({ words, inserts, style = "pill" }) => {
   const frame = useCurrentFrame();
   // A word spoken while a motion insert is on screen is carried by that overlay
@@ -266,7 +266,10 @@ const Captions: React.FC<{
     );
     if (brk) runIndex++;
   }
-  const eff = style === "mixed" ? (runIndex % 2 === 1 ? "left-stack" : "pill") : style;
+  const eff =
+    style === "mixed"
+      ? (runIndex % 2 === 1 ? "left-stack" : "pill")
+      : style;
 
   // ── left-stack (dynamic): running words that pop in and hop position per run ──
   if (eff === "left-stack") {
@@ -320,10 +323,11 @@ const Captions: React.FC<{
   const start = Math.max(runStart, Math.floor(ci / CHUNK) * CHUNK);
   // only words already spoken (no dim/gray look-ahead)
   const chunk = vis.slice(start, ci + 1);
+  const karaokeBox = eff === "karaoke-box";
 
   return (
     <AbsoluteFill
-      style={{ justifyContent: "flex-end", alignItems: "center", padding: "0 56px 300px" }}
+      style={{ justifyContent: "flex-end", alignItems: "center", padding: "0 48px 280px" }}
     >
       <div
         style={{
@@ -331,33 +335,46 @@ const Captions: React.FC<{
           flexWrap: "wrap",
           justifyContent: "center",
           alignItems: "flex-end",
-          gap: "0.28em",
+          gap: karaokeBox ? "0.18em" : "0.28em",
           fontFamily: displayFontFamily,
           fontWeight: 800,
-          fontSize: 74,
-          lineHeight: 1.0,
+          fontSize: karaokeBox ? 68 : 74,
+          lineHeight: 1.05,
           letterSpacing: "0.005em",
           textTransform: "uppercase",
           textAlign: "center",
           maxWidth: "100%",
+          ...(karaokeBox
+            ? {
+                background: "rgba(12, 14, 18, 0.82)",
+                borderRadius: 18,
+                padding: "14px 22px",
+                boxShadow: "0 12px 40px rgba(0,0,0,0.45)",
+              }
+            : {}),
         }}
       >
         {chunk.map((w, k) => {
           const isCurrent = start + k === ci; // the word being spoken right now
+          const hot = w.accent || isCurrent;
           return (
             <span
               key={start + k}
               style={{
-                color: w.accent || isCurrent ? BRAND.accentInk : PAPER,
-                background: w.accent || isCurrent ? BRAND.accent : "transparent",
-                padding: w.accent || isCurrent ? "0 0.14em" : 0,
+                color: hot ? (karaokeBox ? "#0A0C14" : BRAND.accentInk) : PAPER,
+                background: hot ? (karaokeBox ? CAP_YELLOW : BRAND.accent) : "transparent",
+                padding: hot ? "0 0.14em" : 0,
                 borderRadius: 10,
                 transform: isCurrent ? "scale(1.12)" : "none",
                 transformOrigin: "center bottom",
                 overflowWrap: "anywhere",
-                boxShadow: w.accent || isCurrent ? `0 8px 30px ${BRAND.accent}55` : "none",
+                boxShadow: hot
+                  ? karaokeBox
+                    ? "0 4px 16px rgba(245,225,75,0.35)"
+                    : `0 8px 30px ${BRAND.accent}55`
+                  : "none",
                 textShadow:
-                  w.accent || isCurrent
+                  hot || karaokeBox
                     ? "none"
                     : "0 4px 22px rgba(0,0,0,0.85), 0 2px 5px rgba(0,0,0,0.8)",
               }}

@@ -8,7 +8,8 @@
  * присылает видео в привязанный Telegram-чат проекта.
  */
 import { supabase } from "@/integrations/supabase/client";
-import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseConfig";
+import type { MontageStyleId } from "@/lib/montageTemplates";
+import { getMontageStyle } from "@/lib/montageTemplates";
 
 export type MontageFormat = "16:9" | "9:16" | "shorts" | string;
 
@@ -161,6 +162,7 @@ export async function createMontageJob(
     source2Name?: string | null;
     brollMode?: MontageBrollMode;
     assetFolderIds?: string[];
+    styleId?: MontageStyleId;
   },
 ): Promise<void> {
   if (!projectId) throw new Error("Сначала выберите проект (клиента) вверху");
@@ -169,6 +171,7 @@ export async function createMontageJob(
     throw new Error("Для режима 50/50 загрузите второе видео (запись экрана)");
   }
   const brollMode: MontageBrollMode = params.brollMode ?? "auto";
+  const style = getMontageStyle(params.styleId);
   const folderIds = Array.from(
     new Set((params.assetFolderIds ?? []).map(String).filter(Boolean)),
   ).slice(0, 20);
@@ -178,11 +181,13 @@ export async function createMontageJob(
   if (brollMode !== "auto") {
     (formats as string[]).push(`broll:${brollMode}`);
   }
+  (formats as string[]).push(`style:${style.id}`);
   for (const fid of brollMode === "library" ? folderIds : []) {
     (formats as string[]).push(`folder:${fid}`);
   }
   const briefParts = [
-    params.brief?.trim() ? params.brief.trim().slice(0, 3900) : "",
+    params.brief?.trim() ? params.brief.trim().slice(0, 3600) : "",
+    `[STYLE=${style.id}]`,
     brollMode !== "auto" ? `[BROLL_MODE=${brollMode}]` : "",
   ].filter(Boolean);
   const row: Record<string, unknown> = {
