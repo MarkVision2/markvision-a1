@@ -132,6 +132,7 @@ async function claimEvent(
   mediaId: string | null,
   commentId: string,
   username: string | null,
+  eventType = "codeword_comment",
 ): Promise<string | null> {
   const { status, json } = await dbRaw("instagram_organic_events", {
     method: "POST",
@@ -142,7 +143,7 @@ async function claimEvent(
       codeword: kw.codeword,
       reel_id: mediaId,
       reel_url: kw.reel_url,
-      event_type: "codeword_comment",
+      event_type: eventType,
       username,
       external_id: commentId,
       date: ymd(new Date()),
@@ -164,7 +165,7 @@ async function claimEvent(
           codeword: kw.codeword,
           reel_id: mediaId,
           reel_url: kw.reel_url,
-          event_type: "codeword_comment",
+          event_type: eventType,
           username,
           date: ymd(new Date()),
           occurred_at: new Date().toISOString(),
@@ -301,29 +302,50 @@ function ymd(d: Date) {
   }).format(d);
 }
 
-// --- Легаси DM-бот (Clony): личные сообщения + cf_keywords + cf_settings ---
-async function logCfMessage(igUserId: string, direction: "in" | "out", text: string) {
-  await db("cf_messages", { method: "POST", body: JSON.stringify({ ig_user_id: igUserId, direction, text }) }).catch(() => {});
-}
-interface CfKeyword { id: string; keyword: string; dm_text: string | null; link_url: string | null; }
-async function matchCfKeyword(text: string): Promise<CfKeyword | null> {
-  const rows: CfKeyword[] = (await db(`cf_keywords?active=eq.true&select=id,keyword,dm_text,link_url`)) ?? [];
-  if (!Array.isArray(rows)) return null;
-  const low = text.toLowerCase();
-  return rows.find((k) => k.keyword && low.includes(String(k.keyword).toLowerCase())) ?? null;
-}
-async function sendLegacyDm(ourIgId: string, recipientId: string, text: string): Promise<boolean> {
-  const token = await setting("ig_access_token");
-  if (!token) return false;
-  const host = /^IG/i.test(token) ? GRAPH_IG : GRAPH_FB;
-  const resp = await fetch(`${host}/${ourIgId}/messages`, {
+// Ответ в личные сообщения (DM): та же кнопка «получить доступ», что и на комментарий,
+// но recipient — по IGSID отправителя (а не comment_id).
+async function sendDmToUser(
+  igUserId: string,
+  account: ProjectAccount,
+  recipientId: string,
+  opts: { text: string; buttonTitle: string; buttonUrl: string },
+) {
+  const token = bearer(account, true);
+  if (!token) return { ok: false, body: { error: "no token" }, mode: "none" as const };
+  const host = graphHost(account, true);
+
+  const buttonBody = {
+    recipient: { id: recipientId },
+    message: {
+      attachment: {
+        type: "template",
+        payload: {
+          template_type: "button",
+          text: opts.text.slice(0, 640),
+          buttons: [{ type: "web_url", url: opts.buttonUrl, title: opts.buttonTitle }],
+        },
+      },
+    },
+  };
+  const r1 = await fetch(`${host}/${igUserId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ recipient: { id: recipientId }, message: { text: text.slice(0, 900) } }),
-  }).catch(() => null);
-  if (!resp) return false;
-  if (!resp.ok) { const b = await resp.text().catch(() => ""); console.error("[ig-webhook] DM send failed", resp.status, b.slice(0, 300)); return false; }
-  return true;
+    body: JSON.stringify(buttonBody),
+  });
+  const j1 = await r1.json().catch(() => ({}));
+  if (r1.ok) return { ok: true, body: j1, mode: "button" as const };
+
+  const textBody = {
+    recipient: { id: recipientId },
+    message: { text: `${opts.text}\n${opts.buttonUrl}`.slice(0, 1000) },
+  };
+  const r2 = await fetch(`${host}/${igUserId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify(textBody),
+  });
+  const j2 = await r2.json().catch(() => ({}));
+  return { ok: r2.ok, body: r2.ok ? j2 : { button_error: j1, text_error: j2 }, mode: r2.ok ? ("text_fallback" as const) : ("failed" as const) };
 }
 
 Deno.serve(async (req) => {
@@ -346,7 +368,8 @@ Deno.serve(async (req) => {
       const igUserId = String(entry.id ?? "");
       if (!igUserId) continue;
 
-      // Личные сообщения (DM): код-слово в директе -> ответ со ссылкой (легаси Clony)
+      // Личные сообщения (DM): код-слово в директе → тот же ответ, что и на комментарий
+      // (instagram_codewords: dm_messages + кнопка «получить доступ» на трекинг-ссылку).
       for (const ev of entry.messaging ?? []) {
         const senderId = ev.sender?.id ? String(ev.sender.id) : null;
         const msg = ev.message;
@@ -354,12 +377,36 @@ Deno.serve(async (req) => {
         if (!msg || msg.is_echo) continue;                  // не эхо собственных сообщений
         const dmText = String(msg.text ?? "").trim();
         if (!dmText) continue;
-        await logCfMessage(senderId, "in", dmText);
-        const kw = await matchCfKeyword(dmText);
+
+        const account = await resolveAccount(igUserId);
+        if (!account) continue;
+
+        const kw = await matchCodeword(account.project_id, null, dmText);
         if (!kw) continue;
-        const reply = [kw.dm_text?.trim(), kw.link_url?.trim()].filter(Boolean).join("\n") || "Лови ссылку 👇";
-        const ok = await sendLegacyDm(igUserId, senderId, reply);
-        if (ok) await logCfMessage(senderId, "out", reply);
+
+        const mid = msg.mid ? String(msg.mid) : `${senderId}:${Date.now()}`;
+        const eventId = await claimEvent(account.project_id, kw, null, mid, null, "codeword_dm");
+        if (!eventId) continue;
+
+        const pickedLink = resolveTargetUrlIndexed(kw);
+        const link = buildTrackingLink(kw.short_id, null, pickedLink?.index ?? null);
+        const dmPrefix = resolveDmText(kw) || DEFAULT_DM_TEXT;
+        const sent = await sendDmToUser(igUserId, account, senderId, {
+          text: dmPrefix,
+          buttonTitle: clampButtonTitle(),
+          buttonUrl: link,
+        });
+
+        await finalizeEvent(eventId, {
+          source: "dm",
+          mid,
+          dm_status: sent.ok ? "sent" : "failed",
+          dm_mode: sent.mode,
+          dm_button_url: link,
+          target_url: pickedLink?.value ?? null,
+          target_url_index: pickedLink?.index ?? null,
+          dm_error: sent.ok ? null : sent.body,
+        });
       }
 
       for (const change of entry.changes ?? []) {
