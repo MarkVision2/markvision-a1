@@ -34,7 +34,7 @@ import {
   createAutopostPublication,
   isVideoFile,
 } from "@/lib/autopostClient";
-import { captureFrameFromVideoFile, generateAutopostCaption } from "@/lib/autopostAiCaption";
+import { captureFrameFromVideoFile, ensureJpegCoverFile, generateAutopostCaption } from "@/lib/autopostAiCaption";
 import { upsertContentPlanFromAutopost } from "@/lib/contentPlanAutopostBridge";
 import { useInstagramAccount } from "@/hooks/useInstagramAccount";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -818,7 +818,11 @@ export function ContentPlanComposerDialog({
                       className="hidden"
                       onChange={(e) => {
                         const f = e.target.files?.[0];
-                        if (f) applyCover(f);
+                        if (f) {
+                          void ensureJpegCoverFile(f)
+                            .then(applyCover)
+                            .catch(() => applyCover(f));
+                        }
                         e.target.value = "";
                       }}
                     />

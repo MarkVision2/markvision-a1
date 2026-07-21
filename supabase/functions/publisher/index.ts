@@ -150,6 +150,9 @@ Deno.serve(async (req) => {
       } else if (p.media_type === "REELS") {
         const params = new URLSearchParams({ access_token: token, media_type: "REELS", video_url: p.media_url, caption });
         if (p.cover_url) params.set("cover_url", p.cover_url);
+        // Fallback / дополнение: кадр по миллисекундам, если обложку не приняли или нет cover_url.
+        const thumbMs = Number(p.thumb_offset_ms);
+        if (Number.isFinite(thumbMs) && thumbMs >= 0) params.set("thumb_offset", String(Math.round(thumbMs)));
         const j = await createContainer(graph, igUserId, params);
         containerId = ensureContainerId(j, "reels");
       } else if (p.media_type === "STORIES") {
