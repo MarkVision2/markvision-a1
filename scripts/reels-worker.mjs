@@ -12,6 +12,10 @@
  * Команды (из корня репозитория):
  *   node scripts/reels-worker.mjs tts <jobId> --voice <voiceId> [--out remotion/public/reels/vo_<id>.mp3] [--text "…"]
  *       Сгенерить озвучку сценария заявки выбранным голосом (ElevenLabs) и скачать mp3.
+ *   node scripts/reels-worker.mjs broll <jobId> [--work <slug>]
+ *       Автосборка живого видео-б-ролла: по полям scene.brollQuery в work/<slug>/
+ *       reels.json тянет клипы (Pexels → edge reels-broll), качает в
+ *       remotion/public/broll/<slug>/ и проставляет scene.clip. Затем reels.py → рендер.
  *   node scripts/reels-worker.mjs publish <jobId> --video out/reels_<id>.mp4 \
  *       [--title "…"] [--description "…"] [--no-telegram]
  *       Залить рендер в bucket `renders`, записать в «Готовые» (reels_usage),
@@ -19,7 +23,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { execFileSync } from "node:child_process";
-import { createWriteStream, existsSync, mkdirSync, readFileSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { dirname, resolve } from "node:path";
@@ -96,6 +100,40 @@ try {
     const { publicUrl } = await call({ action: "tts", voiceId, path: `reels/${jobId}/vo.mp3`, text });
     await download(publicUrl, out);
     console.log(`OK tts → ${out}`);
+  } else if (cmd === "broll") {
+    // Автосборка живого видео-б-ролла (Pexels) под сцены. В work/<slug>/reels.json
+    // у сцен, которым нужен футаж, должно стоять поле brollQuery (короткий англ.
+    // запрос по смыслу фразы, см. docs/broll-rules.md). Команда: тянет клипы через
+    // edge-функцию reels-broll (в bucket renders), качает их в remotion/public/broll/
+    // <slug>/ и проставляет scene.clip. Дальше — reels.py → рендер (движок играет
+    // клип как видео через OffthreadVideo, а не мёрзнет на 1 кадре).
+    const slug = argVal("work") || (jobId || "").slice(0, 8);
+    const reelsPath = `work/${slug}/reels.json`;
+    if (!existsSync(reelsPath)) throw new Error(`нет ${reelsPath} (сначала разметь сцены)`);
+    const reels = JSON.parse(readFileSync(reelsPath, "utf8"));
+    const scenes = Array.isArray(reels.scenes) ? reels.scenes : [];
+    const queries = [...new Set(scenes.map((s) => String(s.brollQuery || "").trim()).filter(Boolean))];
+    if (!queries.length) throw new Error("ни у одной сцены нет brollQuery — размечай b-roll в reels.json (см. docs/broll-rules.md)");
+    const BROLL_FN = `${SUPABASE_URL.replace(/\/+$/, "")}/functions/v1/reels-broll`;
+    const r = await fetch(BROLL_FN, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-montage-key": WORKER_KEY, apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}` },
+      body: JSON.stringify({ action: "pexels", jobId: slug, orientation: "portrait", perQuery: 1, queries }),
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.error) throw new Error(j.error || `reels-broll HTTP ${r.status}`);
+    const byQuery = new Map();
+    for (const c of j.clips || []) {
+      byQuery.set(c.query, c);
+      await download(c.url, `remotion/public/broll/${slug}/${c.url.split("/").pop()}`);
+    }
+    let assigned = 0;
+    for (const s of scenes) {
+      const c = byQuery.get(String(s.brollQuery || "").trim());
+      if (c) { s.clip = `broll/${slug}/${c.url.split("/").pop()}`; assigned++; }
+    }
+    writeFileSync(reelsPath, JSON.stringify(reels, null, 2));
+    console.log(`OK broll ${slug}: queries=${queries.length} clips=${(j.clips || []).length} assigned=${assigned} → ${reelsPath}`);
   } else if (cmd === "publish") {
     const video = argVal("video");
     if (!jobId || !video) throw new Error("usage: publish <jobId> --video <path> [--title …] [--description …] [--no-telegram]");
@@ -108,7 +146,7 @@ try {
     console.log(`OK publish ${jobId}: ${videoUrl}`);
     if (res.warnings?.length) console.log("warnings:", res.warnings.join("; "));
   } else {
-    console.error("Команды: tts | publish (см. шапку файла)");
+    console.error("Команды: tts | broll | publish (см. шапку файла)");
     process.exit(1);
   }
 } catch (e) {

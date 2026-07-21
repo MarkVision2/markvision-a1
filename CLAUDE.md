@@ -26,7 +26,10 @@
   очередь разбирает Claude-сессия (команда «разбери очередь reels») по скиллу/доке
   `docs/REELS-PIPELINE.md`: озвучка `scripts/reels-worker.mjs tts` (edge `reels-tts`,
   ключ `ELEVENLABS_API_KEY` в секретах Supabase) → `transcribe.py` → разметка сцен
-  `work/<id>/reels.json` → `pipeline/reels.py` → рендер `ReelsExplainer` →
+  `work/<id>/reels.json` (у сцен с футажом — поле `brollQuery`) → живой видео-б-ролл
+  `scripts/reels-worker.mjs broll <id>` (edge `reels-broll`/`PEXELS_API_KEY` → клипы в
+  `remotion/public/broll/<id>/`, проставляет `scene.clip`) → `pipeline/reels.py` → рендер
+  `ReelsExplainer` (клипы играют как видео через `OffthreadVideo`, не мёрзнут на 1 кадре) →
   `scripts/reels-worker.mjs publish` (в `reels_usage` + Telegram). Голоса — `src/lib/elevenVoices.ts`
   (клон «Юрий» по умолчанию).
 Обе дороги идут через edge-функцию `montage-worker` (auth: `MONTAGE_WORKER_KEY` из `.env` =

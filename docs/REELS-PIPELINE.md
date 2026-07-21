@@ -29,6 +29,17 @@ VPS-воркер Reels Factory **мёртв**, поэтому очередь р�
    `pipeline/reels.py`): непрерывная лента сцен `{anchorWord,endWord,template,data}`,
    шаблоны из `docs/motion-library.md` подбираются по смыслу фразы, цвета — разные;
    короткие карточки оставляют караоке-строку, «текстовые» шаблоны её прячут.
+   **У каждой сцены, где нужен живой футаж, ставим `brollQuery`** — короткий
+   английский запрос по смыслу фразы (см. карту в `docs/broll-rules.md`; людей
+   по цвету кожи/этничности НЕ фильтруем). CTA-сцену обычно оставляем без футажа.
+4.5. **Живой видео-б-ролл (обязательный шаг для «полу-пустых» роликов).**
+   `node scripts/reels-worker.mjs broll <jobId>` — по полям `brollQuery` тянет
+   вертикальные клипы (Pexels → edge `reels-broll`, ключ `PEXELS_API_KEY` в секретах),
+   качает их в `remotion/public/broll/<id>/` и проставляет `scene.clip` в `reels.json`.
+   Клипы играют как ЖИВОЕ видео 5-7 с (движок — `OffthreadVideo` + `Sequence`,
+   а НЕ `@remotion/media` Video: тот замерзал на первом кадре при headless-рендере,
+   б-ролл выглядел статичным фото). Нет подходящего стока → ИИ-кадр через edge
+   `reels-gen` (kie.ai/FLUX, `KIE_API_KEY`) как `scene.image`.
 5. **Пропсы.** `.venv/bin/python pipeline/reels.py work/<id> remotion/props <audio_dur_sec>`
    → `remotion/props/Reels-<id>.json`. Плюс тихий бит в `remotion/public/reels/beat_<id>.wav`.
 6. **Рендер** (композиция `ReelsExplainer`, 1080×1920, из `./remotion`):
@@ -45,10 +56,17 @@ VPS-воркер Reels Factory **мёртв**, поэтому очередь р�
 
 ## Композиция `remotion/src/ReelsExplainer.tsx`
 Пропсы `ReelsExplainerProps`: `audioTrack`, `words` (караоке), `scenes[]`
-(`{from,to,template,data}`), `totalDurationInFrames`, `music?`, `musicVolume?`,
-`captions?`. Кадр всегда живой: анимированный `SceneBackground` (орбитящие
-свечения, световой свип, вращающиеся кольца, параллакс-сетка) + слой частиц +
-дыхание/дрейф контента + слайд-переходы + полоса прогресса сверху.
+(`{from,to,template,data,clip?,clipFrom?,image?}`), `totalDurationInFrames`,
+`music?`, `musicVolume?`, `captions?`. Кадр всегда живой: анимированный
+`SceneBackground` (орбитящие свечения, световой свип, вращающиеся кольца,
+параллакс-сетка) + слой частиц + дыхание/дрейф контента + слайд-переходы +
+полоса прогресса сверху.
+- **`scene.clip`** — живой видеофутаж на весь кадр (`BrollMedia`): рендерится
+  через `OffthreadVideo` внутри `Sequence from={scene.from}`, поэтому клип
+  реально проигрывается со своего начала под сценой (5-7 с движения), а не
+  застывает на первом кадре. `clipFrom` — тримминг начала в КАДРАХ.
+- **`scene.image`** — ИИ-картинка с ken-burns (медленный зум+пан), fallback когда
+  живого стока нет. Поверх футажа — тёмные градиенты + акцентная виньетка.
 
 ## Edge-функция `supabase/functions/reels-tts` (verify_jwt off, x-montage-key)
 - `voices` — список голосов аккаунта (`GET /v1/voices`).
@@ -58,3 +76,13 @@ VPS-воркер Reels Factory **мёртв**, поэтому очередь р�
   — `reels_usage` + `reels_jobs=done` + Telegram проекта.
 
 Секрет `ELEVENLABS_API_KEY` — в Supabase → Edge Functions → Secrets.
+
+## Edge-функции б-ролла (verify_jwt off, x-montage-key)
+Сессия Claude не достаёт Pexels/kie.ai напрямую (egress 403) — проксируем через
+Supabase, клипы/кадры кладутся в bucket `renders`, дальше их качает `reels-worker broll`.
+- `reels-broll` — `pexels {jobId, queries[], orientation, perQuery}` → ищет в Pexels,
+  берёт вертикальный mp4 (h≥w, ближе к 1920), качает в `renders/broll/<jobId>/`,
+  отдаёт `{query,url,dur,w,h}`. Секрет `PEXELS_API_KEY`.
+- `reels-gen` — `flux {jobId, prompt, aspectRatio?}` → kie.ai/FLUX (createTask →
+  poll → download), кадр в `renders/broll/<jobId>/gen-*.png`, `{url,kind}`.
+  Секрет `KIE_API_KEY`. Использовать как `scene.image`, когда стока нет.
