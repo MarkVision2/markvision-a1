@@ -1,11 +1,7 @@
--- Убрать публикации до завтра (Алматы) из контент-плана.
--- Измерение воронки стартует с завтрашнего дня.
--- Supabase → SQL Editor → Run (проект szfgdruhlebfvcmlvxdk)
+-- УСТАРЕЛО / НЕ ЗАПУСКАТЬ для выравнивания с Контент-центром.
+-- Раньше удаляло план до «завтра», из‑за чего опубликованные IG-посты
+-- пропадали из Контент-плана, хотя оставались в instagram_media / Контент-центре.
+-- Актуальный бэкаф: scripts/backfill-content-plan-from-ig-media.sql
+-- Пол статистики: 2026-07-20 Asia/Almaty.
 
-WITH cutoff AS (
-  SELECT ((timezone('Asia/Almaty', now()))::date + 1)
-    ::timestamp AT TIME ZONE AT TIME ZONE 'Asia/Almaty' AS ts
-)
-DELETE FROM public.content_plan_items c
-USING cutoff
-WHERE COALESCE(c.published_at, c.scheduled_at, c.created_at) < cutoff.ts;
+SELECT 'use scripts/backfill-content-plan-from-ig-media.sql instead' AS notice;

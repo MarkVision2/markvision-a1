@@ -1,5 +1,4 @@
 import { Film, Images, Clock, type LucideIcon } from "lucide-react";
-import { todayAlmatyYmd } from "@/lib/metricsPeriod";
 
 /** Старт измерения контент-плана (Алматы): публикации раньше не показываем и не считаем. */
 export const CONTENT_PLAN_STATS_START_YMD = "2026-07-20";
@@ -8,10 +7,14 @@ export function contentPlanStatsStartMs(): number {
   return new Date(`${CONTENT_PLAN_STATS_START_YMD}T00:00:00+05:00`).getTime();
 }
 
-/** Порог импорта/отображения: max(сегодня Алматы, фиксированный старт). */
+/**
+ * @deprecated Для опубликованных IG / импорта orphans используйте contentPlanStatsStartMs —
+ * тот же пол, что у Контент-центра (2026-07-20). Раньше здесь был max(сегодня, старт),
+ * из‑за чего вчерашние посты из Instagram не попадали в план.
+ */
 export function contentPlanMeasureStartMs(now = new Date()): number {
-  const todayMs = new Date(`${todayAlmatyYmd(now)}T00:00:00+05:00`).getTime();
-  return Math.max(todayMs, contentPlanStatsStartMs());
+  void now;
+  return contentPlanStatsStartMs();
 }
 
 export function isBeforeContentPlanStatsStart(iso: string | null | undefined): boolean {

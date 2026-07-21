@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import { todayAlmatyYmd, tomorrowAlmatyYmd } from "@/lib/metricsPeriod";
 
 /**
  * Документируем проверенный факт Meta Graph (июль 2026):
@@ -7,7 +6,7 @@ import { todayAlmatyYmd, tomorrowAlmatyYmd } from "@/lib/metricsPeriod";
  * - Content Publishing API — create/publish контейнеров, без list scheduled
  * - GET /{page-id}/scheduled_posts — расписание Facebook Page (не native IG app)
  * MarkVision хранит своё расписание в cf_scheduled_posts и читает его через content-scheduler.
- * После publish: instagram-sync пишет media + orphan в content_plan_items (с today Almaty).
+ * После publish: instagram-sync пишет media + orphan в content_plan_items (с 2026-07-20 Алматы).
  */
 describe("Instagram schedule API facts", () => {
   it("documents endpoints we rely on", () => {
@@ -24,8 +23,15 @@ describe("Instagram schedule API facts", () => {
     expect(facts.afterPublish).toMatch(/orphan/);
   });
 
-  it("today/tomorrow Almaty helpers stay ISO dates", () => {
-    expect(todayAlmatyYmd()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-    expect(tomorrowAlmatyYmd()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  it("plan orphan import floor matches Content Center (fixed Jul 20, not today)", async () => {
+    const { contentPlanStatsStartMs, contentPlanMeasureStartMs, CONTENT_PLAN_STATS_START_YMD } =
+      await import("@/lib/contentPlan");
+    expect(CONTENT_PLAN_STATS_START_YMD).toBe("2026-07-20");
+    expect(contentPlanMeasureStartMs(new Date("2026-07-25T12:00:00+05:00"))).toBe(
+      contentPlanStatsStartMs(),
+    );
+    // Вчерашний пост (≥ 20.07) должен проходить порог импорта даже «сегодня» позже.
+    const yesterday = new Date("2026-07-21T15:00:00+05:00").getTime();
+    expect(yesterday).toBeGreaterThanOrEqual(contentPlanStatsStartMs());
   });
 });
