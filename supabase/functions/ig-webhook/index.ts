@@ -301,6 +301,31 @@ function ymd(d: Date) {
   }).format(d);
 }
 
+// --- Легаси DM-бот (Clony): личные сообщения + cf_keywords + cf_settings ---
+async function logCfMessage(igUserId: string, direction: "in" | "out", text: string) {
+  await db("cf_messages", { method: "POST", body: JSON.stringify({ ig_user_id: igUserId, direction, text }) }).catch(() => {});
+}
+interface CfKeyword { id: string; keyword: string; dm_text: string | null; link_url: string | null; }
+async function matchCfKeyword(text: string): Promise<CfKeyword | null> {
+  const rows: CfKeyword[] = (await db(`cf_keywords?active=eq.true&select=id,keyword,dm_text,link_url`)) ?? [];
+  if (!Array.isArray(rows)) return null;
+  const low = text.toLowerCase();
+  return rows.find((k) => k.keyword && low.includes(String(k.keyword).toLowerCase())) ?? null;
+}
+async function sendLegacyDm(ourIgId: string, recipientId: string, text: string): Promise<boolean> {
+  const token = await setting("ig_access_token");
+  if (!token) return false;
+  const host = /^IG/i.test(token) ? GRAPH_IG : GRAPH_FB;
+  const resp = await fetch(`${host}/${ourIgId}/messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({ recipient: { id: recipientId }, message: { text: text.slice(0, 900) } }),
+  }).catch(() => null);
+  if (!resp) return false;
+  if (!resp.ok) { const b = await resp.text().catch(() => ""); console.error("[ig-webhook] DM send failed", resp.status, b.slice(0, 300)); return false; }
+  return true;
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   if (req.method === "GET") {
@@ -320,6 +345,22 @@ Deno.serve(async (req) => {
     for (const entry of body?.entry ?? []) {
       const igUserId = String(entry.id ?? "");
       if (!igUserId) continue;
+
+      // Личные сообщения (DM): код-слово в директе -> ответ со ссылкой (легаси Clony)
+      for (const ev of entry.messaging ?? []) {
+        const senderId = ev.sender?.id ? String(ev.sender.id) : null;
+        const msg = ev.message;
+        if (!senderId || senderId === igUserId) continue;   // не мы
+        if (!msg || msg.is_echo) continue;                  // не эхо собственных сообщений
+        const dmText = String(msg.text ?? "").trim();
+        if (!dmText) continue;
+        await logCfMessage(senderId, "in", dmText);
+        const kw = await matchCfKeyword(dmText);
+        if (!kw) continue;
+        const reply = [kw.dm_text?.trim(), kw.link_url?.trim()].filter(Boolean).join("\n") || "Лови ссылку 👇";
+        const ok = await sendLegacyDm(igUserId, senderId, reply);
+        if (ok) await logCfMessage(senderId, "out", reply);
+      }
 
       for (const change of entry.changes ?? []) {
         if (change.field !== "comments") continue;
