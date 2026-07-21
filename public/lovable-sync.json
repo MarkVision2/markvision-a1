@@ -1,7 +1,7 @@
 {
-  "git_sha": "4d42627",
-  "git_sha_full": "4d4262778c941cf931be133e30b50d25600128e7",
-  "updated_at": "2026-07-21T20:58:30+05:00",
-  "label": "fix(ig-webhook): вернуть DM-бота на код-слова (личные сообщения)",
+  "git_sha": "30868c6",
+  "git_sha_full": "30868c6ebc7e673a5553ebdd62ad837c2858dc0e",
+  "updated_at": "2026-07-21T21:07:35+05:00",
+  "label": "fix(ig-webhook): DM отвечает из instagram_codewords (как комментарии), а не cf_keywords",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
