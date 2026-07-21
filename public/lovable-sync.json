@@ -1,7 +1,7 @@
 {
-  "git_sha": "24e9177",
-  "git_sha_full": "24e91770b599c5f8c8fca43f221b8c4a0f134266",
-  "updated_at": "2026-07-20T13:26:43Z",
-  "label": "Merge pull request #178 from MarkVision2/cursor/delete-finished-reels-84cc",
+  "git_sha": "7e63aed",
+  "git_sha_full": "7e63aeda4de12ebd29b0b9024c51c51b96049a69",
+  "updated_at": "2026-07-21T15:57:35Z",
+  "label": "Merge pull request #183 from MarkVision2/cursor/autopost-cover-frame-84cc",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
