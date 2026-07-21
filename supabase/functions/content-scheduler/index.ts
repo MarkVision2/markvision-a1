@@ -168,6 +168,9 @@ Deno.serve(async (req) => {
         } else {
           row.thumbnail_url = b.thumbnail_url ?? (media_type === "IMAGE" ? b.media_url : null);
         }
+        if (media_type === "REELS" && b.thumb_offset_ms != null && Number.isFinite(Number(b.thumb_offset_ms))) {
+          row.thumb_offset_ms = Math.max(0, Math.round(Number(b.thumb_offset_ms)));
+        }
       }
       return { row };
     };
@@ -224,6 +227,9 @@ Deno.serve(async (req) => {
       upd.scheduled_at = iso;
     }
     if (typeof b.cover_url === "string") { upd.cover_url = b.cover_url; upd.thumbnail_url = b.cover_url; }
+    if (b.thumb_offset_ms != null && Number.isFinite(Number(b.thumb_offset_ms))) {
+      upd.thumb_offset_ms = Math.max(0, Math.round(Number(b.thumb_offset_ms)));
+    }
     if (typeof b.dry_run === "boolean") upd.dry_run = b.dry_run;
     if (projectId) upd.project_id = projectId;
     const { ok, body } = await db(`cf_scheduled_posts?id=eq.${id}&status=in.(queued,failed,tested)`, { method: "PATCH", headers: { Prefer: "return=representation" }, body: JSON.stringify(upd) });

@@ -22,7 +22,7 @@ import { MediaThumb } from "@/components/autopost/MediaThumb";
 import { defaultFeed45View, fileCropKey } from "@/components/autopost/Feed45Crop";
 import { STATUS_META, TYPE_META, type PostType } from "@/components/autopost/constants";
 import { upsertContentPlanFromAutopost } from "@/lib/contentPlanAutopostBridge";
-import { captureFrameFromVideoFile, generateAutopostCaption } from "@/lib/autopostAiCaption";
+import { captureFrameFromVideoFile, ensureJpegCoverFile, generateAutopostCaption } from "@/lib/autopostAiCaption";
 import { cropImageFile, type ViewParams } from "@/lib/cropMedia";
 
 // Раздел «Автопостинг» — календарь + очередь публикаций Instagram (cf_scheduled_posts,
@@ -748,6 +748,8 @@ export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAcco
   const [uploadLabel, setUploadLabel] = useState<string>();
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  /** upload = своя картинка; frame = кадр с видео; null = ещё не фиксировали */
+  const [coverSource, setCoverSource] = useState<"upload" | "frame" | null>(null);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [seek, setSeek] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -769,6 +771,7 @@ export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAcco
     setFiles([]);
     setCropByKey({});
     setCoverFile(null);
+    setCoverSource(null);
     setCoverPreview((p) => { if (p) URL.revokeObjectURL(p); return null; });
     setVideoSrc((p) => { if (p) URL.revokeObjectURL(p); return null; });
     if (fileRef.current) fileRef.current.value = "";
@@ -776,8 +779,16 @@ export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAcco
     setDuration(0);
   };
 
-  const clearCover = () => { setCoverFile(null); setCoverPreview((p) => { if (p) URL.revokeObjectURL(p); return null; }); };
-  const applyCover = (fl: File) => { setCoverPreview((p) => { if (p) URL.revokeObjectURL(p); return URL.createObjectURL(fl); }); setCoverFile(fl); };
+  const clearCover = () => {
+    setCoverFile(null);
+    setCoverSource(null);
+    setCoverPreview((p) => { if (p) URL.revokeObjectURL(p); return null; });
+  };
+  const applyCover = (fl: File, source: "upload" | "frame") => {
+    setCoverPreview((p) => { if (p) URL.revokeObjectURL(p); return URL.createObjectURL(fl); });
+    setCoverFile(fl);
+    setCoverSource(source);
+  };
 
   const pick = (list: FileList | null, mode: "replace" | "append" = "replace") => {
     if (!list || list.length === 0) return;
@@ -817,17 +828,87 @@ export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAcco
     });
   };
 
-  const captureFrame = () => {
+  const captureFrame = async () => {
     const v = videoRef.current;
     if (!v) return;
-    const cvs = document.createElement("canvas");
-    cvs.width = v.videoWidth || 720;
-    cvs.height = v.videoHeight || 1280;
-    const ctx = cvs.getContext("2d");
-    if (!ctx) return;
-    ctx.drawImage(v, 0, 0, cvs.width, cvs.height);
-    cvs.toBlob((blob) => { if (blob) applyCover(new File([blob], `cover-${Date.now()}.jpg`, { type: "image/jpeg" })); }, "image/jpeg", 0.92);
+    const snapFromVideo = () =>
+      new Promise<File | null>((resolve) => {
+        if (!v.videoWidth) {
+          resolve(null);
+          return;
+        }
+        const cvs = document.createElement("canvas");
+        cvs.width = v.videoWidth || 720;
+        cvs.height = v.videoHeight || 1280;
+        const ctx = cvs.getContext("2d");
+        if (!ctx) {
+          resolve(null);
+          return;
+        }
+        ctx.drawImage(v, 0, 0, cvs.width, cvs.height);
+        cvs.toBlob(
+          (blob) => {
+            if (!blob) {
+              resolve(null);
+              return;
+            }
+            resolve(new File([blob], `cover-${Date.now()}.jpg`, { type: "image/jpeg" }));
+          },
+          "image/jpeg",
+          0.92,
+        );
+      });
+
+    try {
+      if (Math.abs((v.currentTime || 0) - seek) > 0.08) {
+        await new Promise<void>((resolve, reject) => {
+          const onSeeked = () => {
+            v.removeEventListener("seeked", onSeeked);
+            resolve();
+          };
+          v.addEventListener("seeked", onSeeked);
+          try {
+            v.currentTime = seek;
+          } catch (e) {
+            v.removeEventListener("seeked", onSeeked);
+            reject(e);
+          }
+          window.setTimeout(() => {
+            v.removeEventListener("seeked", onSeeked);
+            resolve();
+          }, 1500);
+        });
+      }
+      let file = await snapFromVideo();
+      if (!file && files[0] && isVideoFile(files[0])) {
+        const frame = await captureFrameFromVideoFile(files[0], { seconds: seek });
+        file = frame.file;
+      }
+      if (file) applyCover(file, "frame");
+    } catch {
+      if (files[0] && isVideoFile(files[0])) {
+        try {
+          const frame = await captureFrameFromVideoFile(files[0], { seconds: seek });
+          applyCover(frame.file, "frame");
+        } catch {
+          toast.error("Не удалось снять кадр обложки");
+        }
+      }
+    }
   };
+
+  // Перемотка = фиксация обложки (если не загружена своя картинка).
+  useEffect(() => {
+    if (type !== "REELS" || coverSource === "upload") return;
+    if (!files[0] || !isVideoFile(files[0])) return;
+    const timer = window.setTimeout(() => {
+      void captureFrameFromVideoFile(files[0], { seconds: seek })
+        .then((frame) => applyCover(frame.file, "frame"))
+        .catch(() => { /* кадр снимем при публикации */ });
+    }, 320);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- только seek/видео
+  }, [seek, type, files, coverSource]);
 
   const validate = (): string | null => {
     if (files.length === 0) return "Добавьте медиа";
@@ -879,22 +960,30 @@ export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAcco
         urls.push(isVideoFile(f) ? await normalizeVideoForInstagram(rawUrl, f.type, f.size) : rawUrl);
       }
       let coverUrl: string | null = null;
+      let thumbOffsetMs: number | null = null;
       if (type === "REELS") {
         let cover = coverFile;
-        if (!cover && files[0] && isVideoFile(files[0])) {
-          setUploadLabel("Снимаем обложку с видео…");
+        // Своя картинка — как есть; кадр с видео — всегда заново с позиции ползунка.
+        if (files[0] && isVideoFile(files[0]) && (!cover || coverSource !== "upload")) {
+          setUploadLabel("Снимаем выбранный кадр обложки…");
           try {
-            const frame = await captureFrameFromVideoFile(files[0], 0.22);
+            const frame = await captureFrameFromVideoFile(files[0], { seconds: seek });
             cover = frame.file;
-            applyCover(frame.file);
+            applyCover(frame.file, "frame");
           } catch {
-            /* без обложки превью в UI возьмёт кадр из video */
+            /* без обложки Instagram возьмёт thumb_offset / кадр 0 */
           }
         }
         if (cover) {
           setUploadLabel("Загрузка обложки…");
+          try {
+            cover = await ensureJpegCoverFile(cover);
+          } catch {
+            /* грузим как есть */
+          }
           coverUrl = await uploadToBucket(cover);
         }
+        thumbOffsetMs = Math.max(0, Math.round(seek * 1000));
       }
       setUploadLabel("Сохраняем в очередь…");
       const payload: Record<string, unknown> = {
@@ -910,6 +999,7 @@ export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAcco
         payload.media_url = urls[0];
         if (type === "REELS") {
           if (coverUrl) { payload.cover_url = coverUrl; payload.thumbnail_url = coverUrl; }
+          if (thumbOffsetMs != null) payload.thumb_offset_ms = thumbOffsetMs;
         } else {
           payload.thumbnail_url = isVideoFile(files[0]) ? null : urls[0];
         }
@@ -975,8 +1065,8 @@ export function AutopostAddDialog({ day, hourReach, bestHour, projectId, hasAcco
       duration={duration}
       onSeekChange={setSeek}
       onDurationChange={setDuration}
-      onCaptureFrame={captureFrame}
-      onPickCover={applyCover}
+      onCaptureFrame={() => { void captureFrame(); }}
+      onPickCover={(f) => { void ensureJpegCoverFile(f).then((jpeg) => applyCover(jpeg, "upload")).catch(() => applyCover(f, "upload")); }}
       onClearCover={clearCover}
       videoRef={videoRef}
       fileInputRef={fileRef}

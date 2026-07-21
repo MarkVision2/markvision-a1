@@ -35,10 +35,45 @@ export async function fileToJpegDataUrl(file: Blob, maxEdge = MAX_EDGE): Promise
   return canvas.toDataURL("image/jpeg", JPEG_QUALITY);
 }
 
+/** Meta Reels cover_url принимает только JPEG — PNG/WebP конвертим. */
+export async function ensureJpegCoverFile(file: File, maxEdge = 1920): Promise<File> {
+  if (file.type === "image/jpeg" || file.type === "image/jpg") return file;
+  const img = await loadImageFromBlob(file);
+  const scale = Math.min(1, maxEdge / Math.max(img.width, img.height));
+  const w = Math.max(1, Math.round(img.width * scale));
+  const h = Math.max(1, Math.round(img.height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas недоступен");
+  ctx.drawImage(img, 0, 0, w, h);
+  const blob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", 0.92),
+  );
+  if (!blob) throw new Error("Не удалось конвертировать обложку в JPEG");
+  return new File([blob], `cover-${Date.now()}.jpg`, { type: "image/jpeg" });
+}
+
+export type CaptureFrameAt = number | { ratio?: number; seconds?: number };
+
+function resolveCaptureTime(dur: number, at: CaptureFrameAt): number {
+  const maxT = Math.max(dur - 0.05, 0);
+  if (typeof at === "number") {
+    // Legacy ratio 0..1 — без старого clamp 0.15, чтобы можно было взять кадр у старта.
+    return Math.min(Math.max(dur * at, 0), maxT);
+  }
+  if (typeof at.seconds === "number" && Number.isFinite(at.seconds)) {
+    return Math.min(Math.max(at.seconds, 0), maxT);
+  }
+  const ratio = typeof at.ratio === "number" ? at.ratio : 0.2;
+  return Math.min(Math.max(dur * ratio, 0), maxT);
+}
+
 /** Capture a still frame from a local video File (for OCR + cover). */
 export function captureFrameFromVideoFile(
   file: File,
-  atRatio = 0.2,
+  at: CaptureFrameAt = 0.2,
 ): Promise<{ dataUrl: string; blob: Blob; file: File }> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -52,7 +87,11 @@ export function captureFrameFromVideoFile(
     const cleanup = () => {
       URL.revokeObjectURL(url);
       video.removeAttribute("src");
-      try { video.load(); } catch { /* */ }
+      try {
+        video.load();
+      } catch {
+        /* */
+      }
     };
     const fail = (msg: string) => {
       if (settled) return;
@@ -75,7 +114,7 @@ export function captureFrameFromVideoFile(
 
     video.onloadedmetadata = () => {
       const dur = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 1;
-      const t = Math.min(Math.max(dur * atRatio, 0.15), Math.max(dur - 0.05, 0.15));
+      const t = resolveCaptureTime(dur, at);
       try {
         video.currentTime = t;
       } catch {
@@ -109,7 +148,7 @@ export function captureFrameFromVideoFile(
             done(blob, dataUrl);
           },
           "image/jpeg",
-          0.9,
+          0.92,
         );
       } catch (e) {
         window.clearTimeout(timeout);

@@ -779,7 +779,7 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
               {isReels && videoSrc && (
                 <div className="rounded-2xl border border-border/60 bg-card/50 p-3">
                   <div className="mb-2 flex items-center justify-between">
-                    <FieldLabel hint="необязательно">Обложка Reels</FieldLabel>
+                    <FieldLabel hint="перемотай — кадр фиксируется сам">Обложка Reels</FieldLabel>
                     <div className="flex rounded-lg border border-border/60 bg-background p-0.5 text-[10px] font-medium">
                       <button type="button" onClick={() => { setPreviewMode("media"); }} className={cn("rounded-md px-2 py-1 transition", previewMode === "media" ? "bg-secondary text-foreground" : "text-muted-foreground")}>Видео</button>
                       <button type="button" onClick={() => { setPlaying(false); setPreviewMode("cover"); }} className={cn("rounded-md px-2 py-1 transition", previewMode === "cover" ? "bg-secondary text-foreground" : "text-muted-foreground")}>Обложка</button>
@@ -818,6 +818,9 @@ export function AutopostComposerDialog(props: AutopostComposerDialogProps) {
                     className="h-1.5 w-full cursor-pointer appearance-none rounded-full [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary [&::-webkit-slider-thumb]:shadow-md"
                   />
                   <input ref={coverInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) onPickCover(f); }} />
+                  <p className="mt-1.5 text-[11px] text-muted-foreground">
+                    Перемотай на нужный кадр — он уйдёт в Instagram как обложка. «Кадр» / «Своя» — явно зафиксировать.
+                  </p>
                 </div>
               )}
             </div>
