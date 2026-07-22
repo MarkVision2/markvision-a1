@@ -83,6 +83,14 @@ function asStringArray(raw: unknown, max = 10): string[] {
   return raw.map((v) => String(v).trim()).filter(Boolean).slice(0, max);
 }
 
+/** Legacy reply_text/dm_text sometimes stored all variants joined by newlines. */
+function legacyVariants(raw: string | null | undefined, max = 10): string[] {
+  const text = raw?.trim();
+  if (!text) return [];
+  const parts = text.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+  return (parts.length > 1 ? parts : [text]).slice(0, max);
+}
+
 function pickRandom(items: string[]): string | null {
   if (items.length === 0) return null;
   return items[Math.floor(Math.random() * items.length)] ?? null;
@@ -95,11 +103,11 @@ function pickRandomIndexed(items: string[]): { value: string; index: number } | 
 }
 
 function resolveReplyText(kw: Codeword): string | null {
-  return pickRandom(asStringArray(kw.comment_replies)) ?? (kw.reply_text?.trim() || null);
+  return pickRandom(asStringArray(kw.comment_replies)) ?? pickRandom(legacyVariants(kw.reply_text));
 }
 
 function resolveDmText(kw: Codeword): string | null {
-  return pickRandom(asStringArray(kw.dm_messages)) ?? (kw.dm_text?.trim() || null);
+  return pickRandom(asStringArray(kw.dm_messages)) ?? pickRandom(legacyVariants(kw.dm_text));
 }
 
 function resolveTargetUrlIndexed(kw: Codeword): { value: string; index: number } | null {
@@ -121,9 +129,14 @@ async function matchCodeword(projectId: string, mediaId: string | null, text: st
   }
   if (!Array.isArray(rows)) return null;
   const low = text.toLowerCase();
-  return rows.find((k) =>
-    low.includes(String(k.codeword ?? "").toLowerCase()) && (!k.reel_id || k.reel_id === mediaId)
-  ) ?? null;
+  // Prefer the longest matching codeword so "+" does not steal "хаб" / "разбор+".
+  const matches = rows.filter((k) => {
+    const cw = String(k.codeword ?? "").toLowerCase();
+    return cw.length > 0 && low.includes(cw) && (!k.reel_id || k.reel_id === mediaId);
+  });
+  if (matches.length === 0) return null;
+  matches.sort((a, b) => String(b.codeword).length - String(a.codeword).length);
+  return matches[0] ?? null;
 }
 
 async function claimEvent(
@@ -205,18 +218,32 @@ function bearer(account: ProjectAccount, preferLogin: boolean): string | null {
   return account.ig_login_access_token;
 }
 
-async function postPublicReply(commentId: string, account: ProjectAccount, text: string) {
-  const token = bearer(account, false) ?? bearer(account, true);
-  if (!token) return;
-  const host = graphHost(account, /^IG/i.test(token));
-  await fetch(`${host}/${commentId}/replies`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ message: text }),
-  }).catch(() => {});
+async function postPublicReply(
+  commentId: string,
+  account: ProjectAccount,
+  text: string,
+): Promise<{ ok: boolean; body: unknown }> {
+  // Prefer Instagram Login token (same path as DM) — Page token on this app
+  // often lacks comment reply rights for page-less IG Login accounts.
+  const token = bearer(account, true) ?? bearer(account, false);
+  if (!token) return { ok: false, body: { error: "no token" } };
+  const host = graphHost(account, /^IG/i.test(token) || Boolean(account.ig_login_access_token));
+  try {
+    const resp = await fetch(`${host}/${commentId}/replies`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ message: text }),
+    });
+    const body = await resp.json().catch(() => ({}));
+    return { ok: resp.ok, body };
+  } catch (e) {
+    return { ok: false, body: { error: String(e) } };
+  }
 }
 
 const PUBLIC_LINK_ORIGIN = Deno.env.get("IG_PUBLIC_LINK_ORIGIN") ?? "https://www.markvision.kz";
+/** Keep in sync with InstagramOrganicSettings DEFAULT_COMMENT / DEFAULT_DM */
+const DEFAULT_COMMENT_REPLY = "Спасибо! Проверь Direct — отправили доступ 👇";
 const DEFAULT_DM_TEXT = "Готово! Жми кнопку ниже и забирай доступ 👇";
 const DEFAULT_BUTTON_TITLE = "получить доступ";
 
@@ -456,49 +483,104 @@ Deno.serve(async (req) => {
         });
       }
 
+      // Comments: two Meta shapes
+      // 1) Facebook Login for Business → entry.changes[{ field, value }]
+      // 2) Business Login for Instagram → field/value directly on entry (no changes[])
+      const commentEvents: Array<{ field: string; value: Record<string, unknown> }> = [];
       for (const change of entry.changes ?? []) {
-        if (change.field !== "comments") continue;
-        const v = change.value ?? {};
-        const commentId = v.id;
-        const mediaId = v.media?.id ?? null;
-        const text = String(v.text ?? "");
-        const fromId = v.from?.id ?? null;
-        const username = v.from?.username ?? null;
-        if (!commentId || !fromId || fromId === igUserId) continue;
-
-        const account = await resolveAccount(igUserId);
-        if (!account) continue;
-
-        const kw = await matchCodeword(account.project_id, mediaId, text);
-        if (!kw) continue;
-
-        const eventId = await claimEvent(account.project_id, kw, mediaId, commentId, username);
-        if (!eventId) continue;
-
-        const replyText = resolveReplyText(kw);
-        if (replyText) {
-          await postPublicReply(commentId, account, replyText);
+        if (change?.field === "comments" || change?.field === "live_comments") {
+          commentEvents.push({ field: String(change.field), value: (change.value ?? {}) as Record<string, unknown> });
         }
-
-        const pickedLink = resolveTargetUrlIndexed(kw);
-        const link = buildTrackingLink(kw.short_id, username, pickedLink?.index ?? null);
-        const dmPrefix = resolveDmText(kw) || DEFAULT_DM_TEXT;
-        const sent = await sendPrivateDm(igUserId, account, commentId, {
-          text: dmPrefix,
-          buttonTitle: clampButtonTitle(),
-          buttonUrl: link,
+      }
+      if (entry.field === "comments" || entry.field === "live_comments") {
+        commentEvents.push({
+          field: String(entry.field),
+          value: (entry.value ?? {}) as Record<string, unknown>,
         });
+      }
 
-        await finalizeEvent(eventId, {
-          comment_id: commentId,
-          media_id: mediaId,
-          dm_status: sent.ok ? "sent" : "failed",
-          dm_mode: sent.mode,
-          dm_button_url: link,
-          target_url: pickedLink?.value ?? null,
-          target_url_index: pickedLink?.index ?? null,
-          dm_error: sent.ok ? null : sent.body,
-        });
+      for (const change of commentEvents) {
+        const raw = change.value;
+        // value can be a single object or (rarely) an array of objects
+        const values = Array.isArray(raw) ? raw : [raw];
+        for (const v0 of values) {
+          const v = (v0 ?? {}) as Record<string, unknown>;
+          const from = (v.from ?? {}) as { id?: string; username?: string };
+          const media = (v.media ?? {}) as { id?: string };
+          // FB Login uses comment_id; Instagram Login uses id
+          const commentId = (v.comment_id ?? v.id) != null ? String(v.comment_id ?? v.id) : null;
+          const mediaId = media.id != null ? String(media.id) : (v.media_id != null ? String(v.media_id) : null);
+          const text = String(v.text ?? "");
+          const fromId = from.id != null ? String(from.id) : null;
+          const username = from.username != null ? String(from.username) : null;
+          if (!commentId || !fromId || fromId === igUserId) {
+            console.log("ig-webhook: skip comment payload", {
+              igUserId,
+              field: change.field,
+              hasCommentId: Boolean(commentId),
+              hasFromId: Boolean(fromId),
+              self: fromId === igUserId,
+              keys: Object.keys(v),
+            });
+            continue;
+          }
+
+          const account = await resolveAccount(igUserId);
+          if (!account) {
+            console.log("ig-webhook: no account for", igUserId);
+            continue;
+          }
+
+          const kw = await matchCodeword(account.project_id, mediaId, text);
+          if (!kw) {
+            console.log("ig-webhook: no codeword match", {
+              project: account.project_id,
+              text: text.slice(0, 80),
+            });
+            continue;
+          }
+
+          const eventId = await claimEvent(account.project_id, kw, mediaId, commentId, username);
+          if (!eventId) continue;
+
+          // Always attempt public reply + DM (same fields as Settings → код-слова).
+          const replyText = resolveReplyText(kw) || DEFAULT_COMMENT_REPLY;
+          const replied = await postPublicReply(commentId, account, replyText);
+          const replyStatus: "sent" | "failed" = replied.ok ? "sent" : "failed";
+          const replyError: unknown = replied.ok ? null : replied.body;
+          if (!replied.ok) {
+            console.log("ig-webhook: public reply failed", { commentId, body: replied.body });
+          }
+
+          const pickedLink = resolveTargetUrlIndexed(kw);
+          const link = buildTrackingLink(kw.short_id, username, pickedLink?.index ?? null);
+          const dmPrefix = resolveDmText(kw) || DEFAULT_DM_TEXT;
+          const sent = await sendPrivateDm(igUserId, account, commentId, {
+            text: dmPrefix,
+            buttonTitle: clampButtonTitle(),
+            buttonUrl: link,
+          });
+          if (!sent.ok) {
+            console.log("ig-webhook: private DM failed", {
+              commentId,
+              body: sent.body,
+              mode: sent.mode,
+            });
+          }
+
+          await finalizeEvent(eventId, {
+            comment_id: commentId,
+            media_id: mediaId,
+            reply_status: replyStatus,
+            reply_error: replyError,
+            dm_status: sent.ok ? "sent" : "failed",
+            dm_mode: sent.mode,
+            dm_button_url: link,
+            target_url: pickedLink?.value ?? null,
+            target_url_index: pickedLink?.index ?? null,
+            dm_error: sent.ok ? null : sent.body,
+          });
+        }
       }
     }
   } catch (_e) { /* Meta expects 200 */ }
