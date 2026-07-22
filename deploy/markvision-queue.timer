@@ -1,0 +1,12 @@
+# systemd timer — check the queue every 15 minutes (persistent across reboots).
+[Unit]
+Description=Run MarkVision queue pass periodically
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=15min
+Persistent=true
+Unit=markvision-queue.service
+
+[Install]
+WantedBy=timers.target

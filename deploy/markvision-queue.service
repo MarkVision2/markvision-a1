@@ -1,0 +1,20 @@
+# systemd service — one queue-processing pass. Triggered by markvision-queue.timer.
+# Install:
+#   sudo cp deploy/markvision-queue.service /etc/systemd/system/
+#   sudo cp deploy/markvision-queue.timer   /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now markvision-queue.timer
+# Edit User= and paths to match your deploy user / clone location.
+[Unit]
+Description=MarkVision montage/reels queue pass
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=mv
+WorkingDirectory=/opt/markvision/markvision-a1
+Environment=APP_DIR=/opt/markvision/markvision-a1
+ExecStart=/usr/bin/env bash /opt/markvision/markvision-a1/deploy/queue-run.sh
+TimeoutStartSec=3600
+Nice=10
