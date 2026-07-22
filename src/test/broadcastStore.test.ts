@@ -81,7 +81,7 @@ describe("broadcast CRUD + summary", () => {
   it("обновляет статистику и сводку", () => {
     const pid = `${P}-update`;
     const b = createBroadcast(pid, { ...emptyBroadcastDraft(), name: "B", message: "hi" });
-    updateBroadcast(pid, b.id, { status: "sent", stats: { total: 5, sent: 4, failed: 1 } });
+    updateBroadcast(pid, b.id, { status: "sent", stats: { total: 5, sent: 4, delivered: 3, read: 2, replied: 1, failed: 1 } });
     const s = summarizeBroadcasts(readBroadcasts(pid));
     expect(s.total).toBe(1);
     expect(s.sent).toBe(1);

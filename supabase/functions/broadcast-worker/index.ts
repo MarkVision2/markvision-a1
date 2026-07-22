@@ -271,9 +271,9 @@ async function isOptedOut(projectId: string, phone: string): Promise<boolean> {
 async function refreshCampaign(campaignId: string) {
   const { data } = await admin
     .from("broadcast_recipients")
-    .select("status")
+    .select("status, clicked_at")
     .eq("campaign_id", campaignId);
-  const rows = (data ?? []) as { status: string }[];
+  const rows = (data ?? []) as { status: string; clicked_at: string | null }[];
   const count = (s: string) => rows.filter((r) => r.status === s).length;
   const stats = {
     total: rows.length,
@@ -285,6 +285,7 @@ async function refreshCampaign(campaignId: string) {
     converted: count("converted"),
     failed: count("failed"),
     optout: count("skipped_optout"),
+    clicked: rows.filter((r) => !!r.clicked_at).length,
   };
   const patch: Record<string, unknown> = { stats };
   if (stats.queued === 0) {

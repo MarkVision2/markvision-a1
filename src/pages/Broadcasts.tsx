@@ -217,6 +217,7 @@ const Broadcasts = () => {
                 <BroadcastRow
                   key={b.id}
                   broadcast={b}
+                  onOpen={() => navigate(`/broadcasts/${b.id}`)}
                   onSend={() => setSending(b)}
                   onEdit={() => openEdit(b)}
                   onDelete={() => setPendingDelete(b)}
@@ -275,11 +276,13 @@ const Broadcasts = () => {
 
 function BroadcastRow({
   broadcast,
+  onOpen,
   onSend,
   onEdit,
   onDelete,
 }: {
   broadcast: Broadcast;
+  onOpen: () => void;
   onSend: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -287,9 +290,21 @@ function BroadcastRow({
   const status = STATUS_META[broadcast.status];
   const ChannelIcon = broadcast.channel === "sms" ? Smartphone : MessageCircle;
   const isDone = broadcast.status === "sent" || broadcast.status === "partial" || broadcast.status === "failed";
+  const total = broadcast.recipientsCount || broadcast.stats.total || 0;
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-border">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className="cursor-pointer rounded-2xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-primary/40 hover:bg-card"
+    >
       <div className="flex items-start gap-3">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/30">
           <ChannelIcon className="h-5 w-5" />
@@ -324,7 +339,7 @@ function BroadcastRow({
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <Users className="h-3 w-3" />
-              {broadcast.recipientsCount || broadcast.uploadedContacts.length || "—"} получателей
+              {total || "—"} получателей
             </span>
             <span className="inline-flex items-center gap-1">
               {broadcast.audienceSource === "upload" ? "Загруженный список" : "База CRM"}
@@ -335,20 +350,29 @@ function BroadcastRow({
                 {new Date(broadcast.schedule.at).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}
               </span>
             )}
-            {isDone && (
-              <span className="inline-flex items-center gap-1 text-success">
-                <CheckCircle2 className="h-3 w-3" />
-                доставлено {broadcast.stats.sent}
-                {broadcast.stats.failed > 0 && (
-                  <span className="text-destructive"> · ошибок {broadcast.stats.failed}</span>
-                )}
-              </span>
-            )}
           </div>
+
+          {(isDone || broadcast.status === "sending") && (
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <MiniStat label="Отправлено" value={broadcast.stats.sent} />
+              <MiniStat label="Доставлено" value={broadcast.stats.delivered} />
+              <MiniStat label="Прочитано" value={broadcast.stats.read} />
+              <MiniStat
+                label="Ошибки"
+                value={broadcast.stats.failed}
+                tone={broadcast.stats.failed > 0 ? "destructive" : undefined}
+              />
+            </div>
+          )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div
+          className="flex shrink-0 items-center gap-2"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
           <button
+            type="button"
             onClick={onSend}
             className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-glow transition-opacity hover:opacity-90"
           >
@@ -360,6 +384,7 @@ function BroadcastRow({
               <MoreVertical className="h-4 w-4" />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-40">
+              <DropdownMenuItem onClick={onOpen}>Открыть</DropdownMenuItem>
               <DropdownMenuItem onClick={onEdit}>
                 <Pencil className="mr-2 h-3.5 w-3.5" /> Изменить
               </DropdownMenuItem>
@@ -370,6 +395,30 @@ function BroadcastRow({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone?: "destructive";
+}) {
+  return (
+    <div className="rounded-lg border border-border/40 bg-background/30 px-2.5 py-1.5">
+      <div className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div
+        className={cn(
+          "text-sm font-bold tabular-nums",
+          tone === "destructive" && value > 0 && "text-destructive",
+        )}
+      >
+        {value}
       </div>
     </div>
   );
