@@ -4,6 +4,7 @@ import {
   requireMetaAdAccountAccess,
   createUserClient,
 } from "../_lib/auth.ts";
+import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,6 +28,71 @@ async function metaGet(path: string, token: string) {
   const r = await fetch(url);
   const j = await r.json().catch(() => ({}));
   return { ok: r.ok, status: r.status, body: j as any };
+}
+
+/** Human-readable Meta OAuth / token errors for the Ads UI. */
+function formatMetaError(err: unknown): { error: string; details?: unknown; code?: number } {
+  const e = (err ?? {}) as {
+    message?: string;
+    code?: number;
+    error_subcode?: number;
+    type?: string;
+  };
+  const msg = String(e.message ?? "Meta API error");
+  const invalidated =
+    e.code === 190 ||
+    e.error_subcode === 460 ||
+    /session has been invalidated|password|validating access token/i.test(msg);
+  if (invalidated) {
+    return {
+      error:
+        "Токен Meta истёк или сброшен (смена пароля / сессии Facebook). Откройте настройки кабинета и вставьте новый Access Token (EAA…). Также обновите META_ACCESS_TOKEN в секретах Supabase, если пиксели грузятся через общий токен.",
+      details: e,
+      code: 190,
+    };
+  }
+  return { error: msg, details: e, code: e.code };
+}
+
+/**
+ * Prefer per-cabinet / automation_settings token, then env META_ACCESS_TOKEN.
+ * Resolves cabinet by ad account id when present.
+ */
+async function resolveGraphToken(
+  authHeader: string,
+  actId: string | null,
+  envToken: string,
+): Promise<string> {
+  const admin = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+  let cabinetId: string | null = null;
+  let projectId: string | null = null;
+  if (actId) {
+    try {
+      const client = createUserClient(authHeader);
+      const raw = actId.replace(/^act_/i, "");
+      const { data } = await client
+        .from("ad_cabinets")
+        .select("id, project_id, access_token")
+        .or(
+          `ad_account_id.eq.${normalizeActId(actId)},ad_account_id.eq.${raw},ad_account_id.eq.act_${raw}`,
+        )
+        .limit(1)
+        .maybeSingle();
+      if (data?.id) cabinetId = String(data.id);
+      if (data?.project_id) projectId = String(data.project_id);
+    } catch {
+      /* fall through */
+    }
+  }
+  const tok = await resolveMetaAccessToken({
+    admin,
+    cabinetId,
+    projectId,
+  });
+  return (tok && tok.trim()) || envToken;
 }
 
 function jsonResponse(body: unknown, status = 200) {
@@ -58,8 +124,8 @@ Deno.serve(async (req) => {
     const auth = await requireUser(req);
     if (!auth.ok) return auth.response;
 
-    const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN");
-    if (!META_ACCESS_TOKEN) {
+    const envMetaToken = Deno.env.get("META_ACCESS_TOKEN");
+    if (!envMetaToken) {
       return jsonResponse({ error: "META_ACCESS_TOKEN not configured" }, 500);
     }
 
@@ -71,6 +137,9 @@ Deno.serve(async (req) => {
     const igUserIdParam = url.searchParams.get("igUserId");
 
     if (!kind) return jsonResponse({ error: "kind is required" }, 400);
+
+    // Token: cabinet → project meta_tokens → automation_settings → env.
+    const META_ACCESS_TOKEN = await resolveGraphToken(auth.authHeader, actId, envMetaToken);
 
     // Tenant authorization: caller must have RLS access to a cabinet that
     // matches the requested ad account or page.
@@ -372,7 +441,7 @@ Deno.serve(async (req) => {
       );
       if (!r.ok) {
         return jsonResponse(
-          { error: "Meta API error", status: r.status, details: r.body?.error },
+          { ...formatMetaError(r.body?.error), status: r.status },
           502,
         );
       }
