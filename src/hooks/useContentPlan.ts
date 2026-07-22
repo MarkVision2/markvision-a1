@@ -8,7 +8,9 @@ import {
   type ContentPlanItem,
   type ContentPlanStatus,
   type ContentPlanType,
-  contentPlanMeasureStartMs,
+  CONTENT_PLAN_STATS_START_YMD,
+  contentPlanStatsStartMs,
+  emptyFunnel,
   summarizeContentPlan,
 } from "@/lib/contentPlan";
 import {
@@ -101,9 +103,9 @@ function asStringArray(raw: unknown): string[] {
   return raw.map((x) => String(x)).filter(Boolean);
 }
 
-/** Для очереди MarkVision / импорта опубликованных: порог max(сегодня, 20.07.2026) Алматы. */
+/** Как Контент-центр: фиксированный старт 20.07.2026 Алматы (не «сегодня»). */
 function contentPlanPublishImportStartMs(): number {
-  return contentPlanMeasureStartMs();
+  return contentPlanStatsStartMs();
 }
 
 function contentPlanQueueStartMs(): number {
@@ -192,6 +194,62 @@ function mergePlanWithQueue(planRows: ContentPlanItem[], queue: AutopostLite[], 
     // Не тащим в список совсем старые слоты очереди.
     .filter((p) => !isBeforeMeasureStart(p.scheduled_at, queueStart))
     .map((p) => queuePostToPlanItem(p, projectId));
+  return [...extras, ...planRows];
+}
+
+/** Показать опубликованные IG из media-таблицы сразу (как Контент-центр), даже до insert. */
+function mergePlanWithIgMedia(
+  planRows: ContentPlanItem[],
+  media: IgMediaRow[],
+  projectId: string,
+  codewords: CodewordRow[],
+): ContentPlanItem[] {
+  const importStart = contentPlanPublishImportStartMs();
+  const linked = new Set(planRows.map((r) => r.igMediaId).filter((x): x is string => !!x));
+  const extras: ContentPlanItem[] = [];
+  for (const m of mediaNotLinkedToPlan(media, linked)) {
+    if (!m.timestamp) continue;
+    if (new Date(m.timestamp).getTime() < importStart) continue;
+    const d = draftFromIgMedia(m, codewords);
+    const now = new Date().toISOString();
+    extras.push({
+      id: `ig:${m.media_id}`,
+      projectId,
+      title: d.title,
+      category: "content",
+      contentType: d.contentType,
+      status: d.status,
+      description: d.description,
+      hashtags: null,
+      prompts: null,
+      commentsNotes: null,
+      mediaUrl: d.mediaUrl,
+      thumbnailUrl: d.thumbnailUrl,
+      childUrls: [],
+      scheduledAt: d.scheduledAt,
+      publishedAt: d.publishedAt,
+      platforms: {
+        instagram: true,
+        facebook: false,
+        threads: false,
+        telegram: false,
+        linkedin: false,
+      },
+      autopostId: null,
+      igMediaId: d.igMediaId,
+      codewordId: d.codewordId,
+      codeword: d.codeword,
+      utmContent: null,
+      adSpend: 0,
+      aiAnalysis: null,
+      createdAt: d.publishedAt ?? now,
+      updatedAt: now,
+      funnel: emptyFunnel(),
+      synthetic: true,
+      source: "ig_media",
+    });
+    linked.add(m.media_id);
+  }
   return [...extras, ...planRows];
 }
 
@@ -294,8 +352,9 @@ export function useContentPlan() {
               "media_id, caption, media_type, media_product_type, permalink, thumbnail_url, media_url, timestamp, like_count, comments_count, shares_count, saved_count, reach, impressions, video_views, plays",
             )
             .eq("project_id", projectId)
+            .gte("timestamp", `${CONTENT_PLAN_STATS_START_YMD}T00:00:00+05:00`)
             .order("timestamp", { ascending: false })
-            .limit(200),
+            .limit(1000),
           supabase
             .from("leads")
             .select("id, paid, amount, deposit_amount, utm, source, stage_id, webinar_status")
@@ -488,15 +547,15 @@ export function useContentPlan() {
           }
         }
 
-        // Ручные / native IG-посты после выхода: тянем в план с порога измерения.
+        // Ручные / native IG-посты: в план с того же порога, что Контент-центр (20.07.2026).
         // До публикации Meta не отдаёт native-расписание — только MarkVision queue / Page schedule.
-        const measureStart = contentPlanMeasureStartMs();
+        const importStart = contentPlanPublishImportStartMs();
         const linked = new Set(
           planDbRows.map((r) => r.ig_media_id).filter((x): x is string => !!x),
         );
         const orphans = mediaNotLinkedToPlan(media, linked).filter((m) => {
           if (!m.timestamp) return false;
-          return new Date(m.timestamp).getTime() >= measureStart;
+          return new Date(m.timestamp).getTime() >= importStart;
         });
         if (orphans.length > 0) {
           const inserts = orphans.map((m) => {
@@ -564,8 +623,15 @@ export function useContentPlan() {
         return item;
       });
 
-      // ВСЕГДА мержим очередь в список (даже если insert в БД не прошёл).
-      setItems(mergePlanWithQueue(planRows, autoposts, projectId));
+      // ВСЕГДА мержим очередь + orphan IG (как Контент-центр) в список.
+      setItems(
+        mergePlanWithIgMedia(
+          mergePlanWithQueue(planRows, autoposts, projectId),
+          media,
+          projectId,
+          codewords,
+        ),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : "Ошибка загрузки контент-плана");
       setItems([]);

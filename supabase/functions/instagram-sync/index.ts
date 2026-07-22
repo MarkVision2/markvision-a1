@@ -90,15 +90,22 @@ async function syncOne(supa: any, account: any) {
     return;
   }
 
-  // 2) Media list (last 100). children needed for carousel preview fallback.
-  const mediaRes = await fetch(
-    `${GRAPH}/${igId}/media?fields=id,caption,media_type,media_product_type,permalink,thumbnail_url,media_url,timestamp,like_count,comments_count,children{media_type,media_url,thumbnail_url}&limit=100&access_token=${token}`,
-  );
-  const mediaJson = await mediaRes.json();
-  if (mediaJson.error) {
-    await supa.from("instagram_accounts").update({ last_error: `media: ${mediaJson.error.message}` }).eq("project_id", account.project_id);
+  // 2) Media list (paginate — Контент-центр читает всю таблицу; Graph limit=100 мало).
+  const items: any[] = [];
+  {
+    let url =
+      `${GRAPH}/${igId}/media?fields=id,caption,media_type,media_product_type,permalink,thumbnail_url,media_url,timestamp,like_count,comments_count,children{media_type,media_url,thumbnail_url}&limit=100&access_token=${token}`;
+    for (let page = 0; page < 5 && url; page++) {
+      const mediaRes = await fetch(url);
+      const mediaJson = await mediaRes.json();
+      if (mediaJson.error) {
+        await supa.from("instagram_accounts").update({ last_error: `media: ${mediaJson.error.message}` }).eq("project_id", account.project_id);
+        break;
+      }
+      items.push(...(mediaJson.data ?? []));
+      url = mediaJson.paging?.next ?? "";
+    }
   }
-  const items = (mediaJson.error ? [] : (mediaJson.data ?? [])) as any[];
 
   // 3) Insights per media.
   // Graph API v22+: impressions/plays are invalid for many IG media types.
@@ -158,19 +165,14 @@ async function syncOne(supa: any, account: any) {
     }, { onConflict: "media_id" });
   }
 
-  // 3b) Опубликованные медиа → content_plan_items (чтобы native IG / ручные посты
-  // попали в статистику плана сразу после sync, без ожидания открытия UI).
+  // 3b) Опубликованные медиа → content_plan_items (native IG / ручные посты).
+  // Пол = фиксированный старт статистики (как Контент-центр), НЕ «сегодня» —
+  // иначе вчерашние посты из instagram_media есть в центре, но не в плане.
   let planOrphans = { inserted: 0, skipped: 0 };
   try {
     const STATS_START_YMD = "2026-07-20";
-    const almatyToday = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Almaty",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date());
-    const cutoffYmd = almatyToday > STATS_START_YMD ? almatyToday : STATS_START_YMD;
-    const cutoffMs = new Date(`${cutoffYmd}T00:00:00+05:00`).getTime();
+    const cutoffMs = new Date(`${STATS_START_YMD}T00:00:00+05:00`).getTime();
+    const cutoffIso = `${STATS_START_YMD}T00:00:00+05:00`;
     const { data: existingPlan } = await supa
       .from("content_plan_items")
       .select("ig_media_id")
@@ -179,7 +181,38 @@ async function syncOne(supa: any, account: any) {
     const linked = new Set(
       (existingPlan ?? []).map((r: { ig_media_id?: string | null }) => r.ig_media_id).filter(Boolean),
     );
+
+    // Берём из БД все медиа проекта с даты старта (не только Graph limit=100) —
+    // Контент-центр читает ту же таблицу без «сегодня».
+    const { data: dbMedia } = await supa
+      .from("instagram_media")
+      .select(
+        "media_id, caption, media_type, media_product_type, media_url, thumbnail_url, timestamp",
+      )
+      .eq("project_id", account.project_id)
+      .gte("timestamp", cutoffIso)
+      .order("timestamp", { ascending: false })
+      .limit(1000);
+
+    const byId = new Map<string, any>();
     for (const m of items) {
+      if (m?.id) byId.set(m.id, m);
+    }
+    for (const row of dbMedia ?? []) {
+      const id = row.media_id;
+      if (!id || byId.has(id)) continue;
+      byId.set(id, {
+        id,
+        caption: row.caption,
+        media_type: row.media_type,
+        media_product_type: row.media_product_type,
+        media_url: row.media_url,
+        thumbnail_url: row.thumbnail_url,
+        timestamp: row.timestamp,
+      });
+    }
+
+    for (const m of byId.values()) {
       if (!m?.id || !m.timestamp) {
         planOrphans.skipped += 1;
         continue;
