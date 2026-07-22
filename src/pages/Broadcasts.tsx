@@ -43,6 +43,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { BroadcastDialog } from "@/components/broadcasts/BroadcastDialog";
 import { BroadcastSendDialog } from "@/components/broadcasts/BroadcastSendDialog";
+import { BroadcastSafetyPanel } from "@/components/broadcasts/BroadcastSafetyPanel";
 
 const StatTile = ({
   label,
@@ -191,6 +192,9 @@ const Broadcasts = () => {
               . SMS-канал станет доступен после подключения провайдера.
             </span>
           </div>
+
+          {/* Панель безопасности: лимиты, пауза, отписки */}
+          <BroadcastSafetyPanel projectId={projectId} />
 
           {/* List / empty */}
           {sorted.length === 0 ? (

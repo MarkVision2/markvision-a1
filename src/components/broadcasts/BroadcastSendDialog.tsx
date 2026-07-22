@@ -101,8 +101,11 @@ export function BroadcastSendDialog({ open, onOpenChange, broadcast, whatsappCon
     }
   };
 
-  const preview = renderMessage(broadcast.title, broadcast.message, { name: "Имя" }).replace(/\*(.+?)\*/g, "$1");
-  const done = counts ? counts.sent + counts.delivered + counts.read + counts.replied : 0;
+  const preview = renderMessage(broadcast.title, broadcast.message, { name: "Имя" }, broadcast.targetUrl || "")
+    .replace(/\*(.+?)\*/g, "$1");
+  const done = counts
+    ? counts.sent + counts.delivered + counts.read + counts.replied + counts.clicked + counts.converted
+    : 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -194,17 +197,17 @@ export function BroadcastSendDialog({ open, onOpenChange, broadcast, whatsappCon
                 : "Рассылка запущена. Сервер отправляет сообщения капельно в безопасном темпе — окно можно закрыть."}
             </Banner>
 
-            <div className="grid grid-cols-3 gap-2">
-              <Stat label="В очереди" value={counts?.queued ?? total} tone="muted" />
+            <div className="grid grid-cols-2 gap-2">
               <Stat label="Отправлено" value={done} tone="success" />
               <Stat label="Ответили" value={counts?.replied ?? 0} tone="primary" />
+              <Stat label="Переходы" value={counts?.clicked ?? 0} tone="primary" />
+              <Stat label="Конверсии" value={counts?.converted ?? 0} tone="success" />
             </div>
-            {(counts?.failed ?? 0) > 0 && (
-              <div className="text-center text-[11px] text-destructive">
-                С ошибкой: {counts?.failed}
-                {(counts?.optout ?? 0) > 0 && <span className="text-muted-foreground"> · отписки: {counts?.optout}</span>}
-              </div>
-            )}
+            <div className="text-center text-[11px] text-muted-foreground">
+              В очереди: {counts?.queued ?? total}
+              {(counts?.failed ?? 0) > 0 && <span className="text-destructive"> · с ошибкой: {counts?.failed}</span>}
+              {(counts?.optout ?? 0) > 0 && <span> · отписки: {counts?.optout}</span>}
+            </div>
 
             <Button onClick={() => onOpenChange(false)} className="w-full bg-gradient-primary text-primary-foreground">
               Готово

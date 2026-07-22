@@ -48,8 +48,10 @@ export type Broadcast = {
   uploadedContacts: BroadcastContact[];
   /** Необязательный заголовок — добавляется жирной строкой перед текстом. */
   title: string;
-  /** Текст сообщения. Поддерживает переменную {имя}. */
+  /** Текст сообщения. Поддерживает переменные {имя} и {ссылка}. */
   message: string;
+  /** Целевая ссылка для переменной {ссылка} (трекинг переходов). */
+  targetUrl: string;
   schedule: { mode: "now" | "scheduled"; at: string | null };
   status: BroadcastStatus;
   /** Кол-во получателей на момент последней оценки/отправки. */
@@ -94,12 +96,20 @@ export function newId(): string {
 
 const nowIso = () => new Date().toISOString();
 
-/** Подставляет имя получателя вместо {имя}/{name} и склеивает заголовок с текстом. */
-export function renderMessage(title: string, message: string, contact: { name?: string }): string {
+/** Подставляет имя получателя вместо {имя}/{name}, ссылку вместо {ссылка} и
+ *  склеивает заголовок с текстом. `link` — для превью (реальный трекинг-URL
+ *  на получателя подставляет воркер при отправке). */
+export function renderMessage(
+  title: string,
+  message: string,
+  contact: { name?: string },
+  link = "",
+): string {
   const firstName = (contact.name ?? "").trim().split(/\s+/)[0] ?? "";
-  const body = (message ?? "")
+  let body = (message ?? "")
     .replace(/\{имя\}/gi, firstName)
     .replace(/\{name\}/gi, firstName);
+  if (link) body = body.replace(/\{ссылка\}/gi, link).replace(/\{link\}/gi, link);
   const head = (title ?? "").trim();
   return head ? `*${head}*\n\n${body}` : body;
 }
@@ -168,6 +178,7 @@ function normalize(raw: Partial<Broadcast>): Broadcast {
       : [],
     title: raw.title ?? "",
     message: raw.message ?? "",
+    targetUrl: raw.targetUrl ?? "",
     schedule: {
       mode: raw.schedule?.mode === "scheduled" ? "scheduled" : "now",
       at: raw.schedule?.at ?? null,
@@ -235,6 +246,7 @@ export type BroadcastDraft = Pick<
   | "uploadedContacts"
   | "title"
   | "message"
+  | "targetUrl"
   | "schedule"
   | "recipientsCount"
 >;
@@ -248,6 +260,7 @@ export function emptyBroadcastDraft(): BroadcastDraft {
     uploadedContacts: [],
     title: "",
     message: "",
+    targetUrl: "",
     schedule: { mode: "now", at: null },
     recipientsCount: 0,
   };

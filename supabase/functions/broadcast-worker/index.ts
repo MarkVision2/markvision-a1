@@ -87,12 +87,18 @@ function inWindow(hour: number, start: number, end: number): boolean {
   return hour >= start || hour < end; // окно через полночь
 }
 
-/** Подстановка имени и заголовка (зеркалит renderMessage на фронте). */
-function renderMessage(title: string, message: string, name: string): string {
+/** Подстановка имени, ссылки перехода и заголовка. */
+function renderMessage(title: string, message: string, name: string, link: string): string {
   const first = (name ?? "").trim().split(/\s+/)[0] ?? "";
-  const body = (message ?? "").replace(/\{имя\}/gi, first).replace(/\{name\}/gi, first);
+  let body = (message ?? "").replace(/\{имя\}/gi, first).replace(/\{name\}/gi, first);
+  if (link) body = body.replace(/\{ссылка\}/gi, link).replace(/\{link\}/gi, link);
   const head = (title ?? "").trim();
   return head ? `*${head}*\n\n${body}` : body;
+}
+
+/** Трекинг-ссылка перехода для получателя (или пусто, если нет токена). */
+function clickLink(clickToken: string | null | undefined): string {
+  return clickToken ? `${SUPABASE_URL}/functions/v1/broadcast-click?t=${clickToken}` : "";
 }
 
 type Creds = { idInstance: string; apiToken: string; baseUrl: string };
@@ -381,7 +387,7 @@ Deno.serve(async (req) => {
       _campaign_id: c.id,
       _limit: perTick,
     });
-    const rows = (batch ?? []) as { id: string; phone: string; name: string; attempt: number }[];
+    const rows = (batch ?? []) as { id: string; phone: string; name: string; attempt: number; click_token: string | null }[];
     let campaignFailures = 0;
     let campaignSends = 0;
 
@@ -400,7 +406,7 @@ Deno.serve(async (req) => {
       const variant = c.message_variants.length
         ? c.message_variants[rnd(0, c.message_variants.length - 1)]
         : c.message;
-      const text = renderMessage(c.title, variant, r.name);
+      const text = renderMessage(c.title, variant, r.name, clickLink(r.click_token));
       const attempt = (r.attempt ?? 0) + 1;
 
       try {

@@ -11,7 +11,11 @@ vi.mock("@/lib/broadcastServer", () => ({
   updateCampaign: () => Promise.resolve(),
   removeCampaign: () => Promise.resolve(),
   launchCampaign: () => Promise.resolve(),
-  fetchRecipientCounts: () => Promise.resolve({ total: 0, queued: 0, sent: 0, delivered: 0, read: 0, replied: 0, failed: 0, optout: 0 }),
+  fetchRecipientCounts: () => Promise.resolve({ total: 0, queued: 0, sent: 0, delivered: 0, read: 0, replied: 0, clicked: 0, converted: 0, failed: 0, optout: 0 }),
+  fetchSafety: () => Promise.resolve({ paused: false, pauseReason: null, sentToday: 0, dailyCap: 20, warmupStartedOn: null, optOuts: [] }),
+  resumeSender: () => Promise.resolve(),
+  removeOptOut: () => Promise.resolve(),
+  warmupDailyCap: () => 20,
 }));
 
 vi.mock("@/hooks/useProjectsStore", () => ({

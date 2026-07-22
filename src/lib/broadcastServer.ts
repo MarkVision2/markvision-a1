@@ -73,6 +73,7 @@ type CampaignRow = {
   crm_filter: { stageKeys?: string[]; sources?: string[] } | null;
   title: string;
   message: string;
+  target_url: string | null;
   schedule_mode: string;
   scheduled_at: string | null;
   status: string;
@@ -97,6 +98,7 @@ function mapRow(r: CampaignRow): Broadcast {
     uploadedContacts: [], // хранятся как строки broadcast_recipients
     title: r.title ?? "",
     message: r.message ?? "",
+    targetUrl: r.target_url ?? "",
     schedule: { mode: r.schedule_mode === "scheduled" ? "scheduled" : "now", at: r.scheduled_at },
     status: DB_TO_STATUS[r.status] ?? "draft",
     recipientsCount: s.total ?? 0,
@@ -173,6 +175,7 @@ export async function createCampaign(
       crm_filter: draft.crmFilter,
       title: draft.title,
       message: draft.message,
+      target_url: draft.targetUrl || null,
       schedule_mode: draft.schedule.mode,
       scheduled_at: scheduledAt,
       status,
@@ -210,6 +213,7 @@ export async function updateCampaign(
     crm_filter: draft.crmFilter,
     title: draft.title,
     message: draft.message,
+    target_url: draft.targetUrl || null,
     schedule_mode: draft.schedule.mode,
     scheduled_at: scheduledAt,
   };
@@ -244,8 +248,71 @@ export async function launchCampaign(id: string): Promise<void> {
 /** Живые счётчики получателей кампании (для прогресса запуска). */
 export type RecipientCounts = {
   total: number; queued: number; sent: number; delivered: number;
-  read: number; replied: number; failed: number; optout: number;
+  read: number; replied: number; clicked: number; converted: number;
+  failed: number; optout: number;
 };
+
+// ─── Панель безопасности (лимиты / пауза / opt-out) ──────────────────────────
+const WARMUP_DAY1 = 20;
+const WARMUP_GROWTH = 1.3;
+const DEFAULT_DAILY_CAP = 120;
+
+/** Эффективный дневной потолок с учётом прогрева (зеркалит воркер). */
+export function warmupDailyCap(warmupStartedOn: string | null): number {
+  if (!warmupStartedOn) return WARMUP_DAY1;
+  const days = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(warmupStartedOn + "T00:00:00Z").getTime()) / 86400000),
+  );
+  const cap = Math.round(WARMUP_DAY1 * Math.pow(WARMUP_GROWTH, days));
+  return Math.min(DEFAULT_DAILY_CAP, Math.max(WARMUP_DAY1, cap));
+}
+
+export type OptOut = { phone: string; reason: string | null; created_at: string };
+export type BroadcastSafety = {
+  paused: boolean;
+  pauseReason: string | null;
+  sentToday: number;
+  dailyCap: number;
+  warmupStartedOn: string | null;
+  optOuts: OptOut[];
+};
+
+export async function fetchSafety(projectId: string): Promise<BroadcastSafety> {
+  const today = new Date().toISOString().slice(0, 10);
+  const [stateRes, dailyRes, optRes] = await Promise.all([
+    db().from("broadcast_sender_state").select("paused, pause_reason, warmup_started_on").eq("project_id", projectId).maybeSingle(),
+    db().from("broadcast_sender_daily").select("sent").eq("project_id", projectId).eq("day", today).maybeSingle(),
+    db().from("broadcast_opt_outs").select("phone, reason, created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(500),
+  ]);
+  const state = (stateRes.data ?? {}) as { paused?: boolean; pause_reason?: string | null; warmup_started_on?: string | null };
+  return {
+    paused: !!state.paused,
+    pauseReason: state.pause_reason ?? null,
+    sentToday: ((dailyRes.data as { sent?: number } | null)?.sent) ?? 0,
+    dailyCap: warmupDailyCap(state.warmup_started_on ?? null),
+    warmupStartedOn: state.warmup_started_on ?? null,
+    optOuts: (optRes.data ?? []) as OptOut[],
+  };
+}
+
+/** Снять авто-паузу номера (kill-switch reset). */
+export async function resumeSender(projectId: string): Promise<void> {
+  const { error } = await db()
+    .from("broadcast_sender_state")
+    .upsert({ project_id: projectId, paused: false, pause_reason: null, updated_at: new Date().toISOString() });
+  if (error) throw error;
+}
+
+/** Убрать номер из отписавшихся (снова можно слать). */
+export async function removeOptOut(projectId: string, phone: string): Promise<void> {
+  const { error } = await db()
+    .from("broadcast_opt_outs")
+    .delete()
+    .eq("project_id", projectId)
+    .eq("phone", phone);
+  if (error) throw error;
+}
 
 export async function fetchRecipientCounts(campaignId: string): Promise<RecipientCounts> {
   const { data } = await db()
@@ -262,6 +329,8 @@ export async function fetchRecipientCounts(campaignId: string): Promise<Recipien
     delivered: c("delivered"),
     read: c("read"),
     replied: c("replied"),
+    clicked: c("clicked"),
+    converted: c("converted"),
     failed: c("failed"),
     optout: c("skipped_optout"),
   };

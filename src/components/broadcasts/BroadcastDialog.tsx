@@ -51,6 +51,7 @@ function draftFromBroadcast(b: Broadcast): BroadcastDraft {
     uploadedContacts: b.uploadedContacts,
     title: b.title,
     message: b.message,
+    targetUrl: b.targetUrl,
     schedule: b.schedule,
     recipientsCount: b.recipientsCount,
   };
@@ -109,6 +110,7 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
   };
 
   const insertVar = () => patch("message", `${draft.message}{имя}`);
+  const insertLink = () => patch("message", `${draft.message}{ссылка}`);
 
   const previewContact = useMemo(() => {
     if (draft.audienceSource === "upload") return parsedUpload[0] ?? { name: "Имя" };
@@ -116,10 +118,12 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
     return list[0] ?? { name: "Имя" };
   }, [draft, parsedUpload, crmContacts]);
 
+  const needsLink = /(\{ссылка\}|\{link\})/i.test(draft.message);
   const canSave =
     draft.name.trim().length > 0 &&
     draft.message.trim().length > 0 &&
     recipientsCount > 0 &&
+    (!needsLink || draft.targetUrl.trim().length > 0) &&
     (draft.schedule.mode === "now" || !!draft.schedule.at);
 
   const submit = () => {
@@ -314,13 +318,22 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
               className={cn(inputCls, "resize-y")}
             />
             <div className="mt-1.5 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={insertVar}
-                className="rounded-md border border-border/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
-              >
-                + Вставить {"{имя}"}
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={insertVar}
+                  className="rounded-md border border-border/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+                >
+                  + {"{имя}"}
+                </button>
+                <button
+                  type="button"
+                  onClick={insertLink}
+                  className="rounded-md border border-border/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+                >
+                  + {"{ссылка}"}
+                </button>
+              </div>
               <span className="text-[11px] text-muted-foreground">{draft.message.length} симв.</span>
             </div>
 
@@ -329,12 +342,27 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Предпросмотр
                 </div>
-                <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                  {renderMessage(draft.title, draft.message, previewContact).replace(/\*(.+?)\*/g, "$1")}
+                <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                  {renderMessage(draft.title, draft.message, previewContact, draft.targetUrl).replace(/\*(.+?)\*/g, "$1")}
                 </div>
               </div>
             )}
           </Field>
+
+          {/* Ссылка для {ссылка} — трекинг переходов */}
+          {/(\{ссылка\}|\{link\})/i.test(draft.message) && (
+            <Field label="Ссылка для перехода">
+              <input
+                value={draft.targetUrl}
+                onChange={(e) => patch("targetUrl", e.target.value)}
+                placeholder="https://ваш-сайт.kz/promo"
+                className={inputCls}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                {"{ссылка}"} в тексте станет короткой трекинг-ссылкой — переход клиента отметится как «перешёл».
+              </p>
+            </Field>
+          )}
 
           {/* Расписание */}
           <Field label="Когда отправить">
