@@ -78,12 +78,14 @@ Deno.serve(async (req) => {
       : [];
     const exclude = excludeRaw.map((x) => normalizeActId(String(x)));
 
-    const token = await resolveMetaToken(
-      typeof body.access_token === "string" ? body.access_token : null,
-    );
+    const bodyToken = typeof body.access_token === "string" ? body.access_token : null;
+    const allowSharedFallback = await callerHasAdminOrManager(user.id);
+    const token = await resolveMetaToken(bodyToken, allowSharedFallback);
     if (!token) {
       return jsonResponse({
-        error: "Meta access token не настроен. Укажите токен в Настройках → Автоматизация или в поле ниже.",
+        error: allowSharedFallback
+          ? "Meta access token не настроен. Укажите токен в Настройках → Автоматизация или в поле ниже."
+          : "Meta access token не передан. Общий токен доступен только администраторам и менеджерам — вставьте свой User Access Token в поле ниже.",
         accounts: [],
       }, 400);
     }
