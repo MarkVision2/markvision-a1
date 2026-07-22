@@ -23,7 +23,7 @@ export function currentMonthRange(): ReportPeriodRange {
 function formatMonthLabel(from: Date): string {
   const month = MONTHS_RU[from.getMonth()];
   const lastDay = new Date(from.getFullYear(), from.getMonth() + 1, 0).getDate();
-  return `1 ${month}. – ${lastDay} ${month}. ${from.getFullYear()}`;
+  return `1–${lastDay} ${month} ${from.getFullYear()}`;
 }
 
 function formatMonthShort(from: Date): string {
@@ -47,7 +47,7 @@ export function PeriodPicker({ range, onChange, className }: Props) {
   return (
     <div
       className={cn(
-        "inline-flex max-w-full items-center gap-0.5 rounded-2xl border border-border/60 bg-card/60 px-1 py-1 sm:gap-1 sm:px-2 sm:py-1.5",
+        "inline-flex shrink-0 items-center gap-0.5 rounded-2xl border border-border/60 bg-card/60 px-1 py-1 sm:gap-1 sm:px-2 sm:py-1.5",
         className,
       )}
     >
@@ -64,12 +64,12 @@ export function PeriodPicker({ range, onChange, className }: Props) {
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="flex min-w-0 max-w-[7.5rem] items-center gap-1.5 rounded-xl px-2 py-1 text-sm font-semibold tabular-nums transition-colors hover:bg-secondary sm:max-w-none sm:gap-2 sm:px-3"
+            className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl px-2 py-1 text-sm font-semibold tabular-nums transition-colors hover:bg-secondary sm:gap-2 sm:px-3"
             aria-label="Выбрать месяц"
           >
             <CalendarDays className="h-4 w-4 shrink-0 text-muted-foreground" />
-            <span className="truncate sm:hidden">{formatMonthShort(range.from)}</span>
-            <span className="hidden truncate sm:inline">{formatMonthLabel(range.from)}</span>
+            <span className="sm:hidden">{formatMonthShort(range.from)}</span>
+            <span className="hidden sm:inline">{formatMonthLabel(range.from)}</span>
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="center" sideOffset={8}>

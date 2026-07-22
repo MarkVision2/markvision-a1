@@ -10,11 +10,13 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { PeriodPicker, currentMonthRange } from "@/components/dashboard/PeriodPicker";
+import { ContentPeriodPicker, type ContentPeriodPreset } from "@/components/content/ContentPeriodPicker";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
+import { thisMonthRange } from "@/lib/metricsPeriod";
 import { fmtKzt, fmtNum } from "@/lib/format";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { useInstagramAccount } from "@/hooks/useInstagramAccount";
 import { cn } from "@/lib/utils";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import {
@@ -64,7 +66,6 @@ const ymd = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const fmtDate = (s: string | null) =>
   s ? new Date(s).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit" }) : "—";
-const CONTENT_CUTOFF = "2026-07-20";
 
 async function fetchContentCenter(projectId: string, from: string, to: string): Promise<CCResp> {
   // supabase.functions.invoke сам подставляет Authorization (JWT пользователя)
@@ -344,27 +345,31 @@ function ContentFunnel({
   );
 }
 
-type Top5Mode = "revenue" | "leads" | "clicks" | "crSale";
+type Top5Mode = "reach" | "revenue" | "leads" | "clicks" | "crSale";
 type ViewMode = "table" | "cards";
 const TOP5_MODES: { key: Top5Mode; label: string }[] = [
-  { key: "revenue", label: "по выручке" },
-  { key: "leads", label: "по заявкам" },
+  { key: "reach", label: "по охвату" },
   { key: "clicks", label: "по кликам" },
+  { key: "leads", label: "по заявкам" },
+  { key: "revenue", label: "по выручке" },
   { key: "crSale", label: "по конверсии в продажу" },
 ];
 
 const ContentCenter = () => {
   const isMobile = useIsMobile();
   const { activeId: projectId, active } = useProjectsStore();
-  const [range, setRange] = useState<ReportPeriodRange>(() => currentMonthRange());
+  const { sync } = useInstagramAccount();
+  const [preset, setPreset] = useState<ContentPeriodPreset>("this_month");
+  const [range, setRange] = useState<ReportPeriodRange>(() => thisMonthRange());
   const [data, setData] = useState<CCResp | null>(null);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [sortKey, setSortKey] = useState<SortKey>("revenue");
+  const [sortKey, setSortKey] = useState<SortKey>("posted_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [search, setSearch] = useState("");
   const [codeword, setCodeword] = useState<string>("all");
-  const [top5Mode, setTop5Mode] = useState<Top5Mode>("revenue");
+  const [top5Mode, setTop5Mode] = useState<Top5Mode>("reach");
   const [selectedPost, setSelectedPost] = useState<Derived | null>(null);
   const [viewModeOverride, setViewModeOverride] = useState<ViewMode | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -372,10 +377,7 @@ const ContentCenter = () => {
   const viewMode = viewModeOverride ?? (isMobile ? "cards" : "table");
   const openPost = (p: Derived) => setSelectedPost(p);
 
-  const from = useMemo(() => {
-    const picked = ymd(range.from);
-    return picked < CONTENT_CUTOFF ? CONTENT_CUTOFF : picked;
-  }, [range.from]);
+  const from = useMemo(() => ymd(range.from), [range.from]);
   const to = ymd(range.to);
 
   useEffect(() => {
@@ -393,6 +395,21 @@ const ContentCenter = () => {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [projectId, from, to, refreshTick]);
+
+  const onPresetChange = (next: ContentPeriodPreset, nextRange: ReportPeriodRange) => {
+    setPreset(next);
+    setRange(nextRange);
+  };
+
+  const refresh = async () => {
+    setSyncing(true);
+    try {
+      await sync();
+      setRefreshTick((t) => t + 1);
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   const posts = useMemo(() => (data?.posts ?? []).map(enrich), [data]);
   const totals = data?.totals;
@@ -428,9 +445,14 @@ const ContentCenter = () => {
 
   const top5 = useMemo(() => {
     const key = top5Mode;
-    return [...posts]
+    const scored = [...posts]
       .filter((p) => (p[key] as number) > 0)
-      .sort((a, b) => (b[key] as number) - (a[key] as number))
+      .sort((a, b) => (b[key] as number) - (a[key] as number));
+    if (scored.length > 0) return scored.slice(0, 5);
+    // Fallback: show top reach when chosen metric has no conversions yet.
+    return [...posts]
+      .filter((p) => p.reach > 0)
+      .sort((a, b) => b.reach - a.reach)
       .slice(0, 5);
   }, [posts, top5Mode]);
 
@@ -535,16 +557,22 @@ const ContentCenter = () => {
         }
         actions={
           <>
-            <PeriodPicker range={range} onChange={setRange} />
+            <ContentPeriodPicker
+              preset={preset}
+              range={range}
+              showCompare={false}
+              onPresetChange={onPresetChange}
+            />
             <Button
               variant="outline"
               size="icon"
               className="h-10 w-10 rounded-xl border-border/60"
-              aria-label="Обновить"
-              onClick={() => setRefreshTick((t) => t + 1)}
-              disabled={loading}
+              aria-label="Синхронизировать Instagram и обновить"
+              title="Синхронизировать Instagram и обновить"
+              onClick={() => void refresh()}
+              disabled={loading || syncing}
             >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {loading || syncing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             </Button>
           </>
         }
@@ -657,7 +685,7 @@ const ContentCenter = () => {
           <div className="mt-3 space-y-2">
             {top5.length === 0 && (
               <div className="py-6 text-center text-xs text-muted-foreground">
-                {loading ? "Загружаем…" : "Нет данных за период"}
+                {loading ? "Загружаем…" : posts.length === 0 ? "Нет публикаций за период" : "Нет конверсий — покажите посты по охвату через период шире"}
               </div>
             )}
             {top5.map((p, idx) => (
