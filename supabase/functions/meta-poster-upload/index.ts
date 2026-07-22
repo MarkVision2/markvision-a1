@@ -38,6 +38,8 @@ Deno.serve(async (req) => {
   const adId = (body.ad_id ?? "").toString().trim();
   const b64 = (body.image_base64 ?? "").toString();
   if (!/^\d+$/.test(adId)) return json({ ok: false, error: "ad_id required" }, 400);
+  const access = await requireMetaCreativeAdAccess(auth.authHeader, adId);
+  if (!access.ok) return access.response;
   if (!b64 || b64.length < 200) return json({ ok: false, error: "image_base64 required" }, 400);
 
   const admin = createClient(
