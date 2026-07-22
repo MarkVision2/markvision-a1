@@ -13,7 +13,7 @@ import {
   Video,
 } from "lucide-react";
 
-/** Главные KPI — язык как у пользователя: отправили → получили → открыли → … → деньги */
+/** Главные KPI — язык как у пользователя */
 const HERO: {
   key: keyof BroadcastFunnel;
   label: string;
@@ -32,64 +32,57 @@ const HERO: {
   { key: "revenue", label: "Выручка", hint: "сумма оплат", icon: Banknote, tone: "success", money: true },
 ];
 
-/** Короткая воронка — без дубля каждого KPI-карточки сверху. */
+/** Этапы воронки — короткие понятные названия, текст всегда снаружи бара */
 const FUNNEL_STAGES: {
   key: keyof BroadcastFunnel;
   label: string;
+  hint: string;
   icon: typeof Send;
-  gradient: string;
+  bar: string;
 }[] = [
   {
     key: "total",
     label: "В списке",
+    hint: "всего получателей",
     icon: Users,
-    gradient: "from-slate-500/85 via-slate-600/70 to-slate-700/55",
+    bar: "from-slate-400/80 to-slate-500/50",
   },
   {
     key: "sent",
     label: "Отправлено",
+    hint: "сообщение ушло",
     icon: Send,
-    gradient: "from-sky-500/85 via-sky-600/70 to-sky-700/55",
+    bar: "from-sky-400/90 to-sky-600/55",
   },
   {
     key: "delivered",
     label: "Получили",
+    hint: "доставлено на телефон",
     icon: MessageCircleReply,
-    gradient: "from-cyan-500/85 via-cyan-600/70 to-cyan-700/55",
+    bar: "from-cyan-400/90 to-cyan-600/55",
   },
   {
     key: "read",
     label: "Открыли",
+    hint: "прочитали в WhatsApp",
     icon: Eye,
-    gradient: "from-teal-500/85 via-teal-600/70 to-teal-700/55",
+    bar: "from-teal-400/90 to-teal-600/55",
   },
   {
     key: "leads",
-    label: "Лиды CRM",
+    label: "Лиды в CRM",
+    hint: "есть карточка в CRM",
     icon: UserPlus,
-    gradient: "from-emerald-500/80 via-emerald-600/65 to-emerald-700/50",
+    bar: "from-emerald-400/85 to-emerald-600/50",
   },
   {
     key: "sales",
     label: "Продажи",
+    hint: "оплатили",
     icon: ShoppingCart,
-    gradient: "from-amber-500/80 via-amber-600/65 to-amber-700/50",
+    bar: "from-amber-400/90 to-amber-600/55",
   },
 ];
-
-function stageWidthPct(value: number, max: number): number {
-  if (max <= 0) return 42;
-  if (value <= 0) return 18;
-  return Math.max((value / max) * 100, 22);
-}
-
-function trapezoidClip(topPct: number, bottomPct: number): string {
-  const tl = (100 - topPct) / 2;
-  const tr = tl + topPct;
-  const bl = (100 - bottomPct) / 2;
-  const br = bl + bottomPct;
-  return `polygon(${tl}% 0, ${tr}% 0, ${br}% 100%, ${bl}% 100%)`;
-}
 
 export function BroadcastHeroKpis({ funnel }: { funnel: BroadcastFunnel }) {
   return (
@@ -160,10 +153,13 @@ export function BroadcastConversionStrip({ funnel }: { funnel: BroadcastFunnel }
   );
 }
 
+/**
+ * Читаемая воронка: название слева (не обрезается), полоска по доле от максимума,
+ * число справа. Между ступенями — % перехода.
+ */
 export function BroadcastFunnelView({ funnel }: { funnel: BroadcastFunnel }) {
   const values = FUNNEL_STAGES.map((s) => Number(funnel[s.key] ?? 0));
   const max = Math.max(...values, 1);
-  const widths = values.map((v) => stageWidthPct(v, max));
 
   const rates = FUNNEL_STAGES.map((_, i) => {
     if (i === 0) return null;
@@ -187,12 +183,12 @@ export function BroadcastFunnelView({ funnel }: { funnel: BroadcastFunnel }) {
       : null;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border/50 bg-gradient-to-b from-card/50 to-background/30">
+    <div className="overflow-hidden rounded-2xl border border-border/50 bg-card/40">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 px-4 py-3">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-primary" />
           <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Путь получателя
+            Воронка рассылки
           </span>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -203,122 +199,117 @@ export function BroadcastFunnelView({ funnel }: { funnel: BroadcastFunnel }) {
           ) : null}
           {overall != null ? (
             <span className="rounded-full border border-border/50 bg-secondary/40 px-2.5 py-0.5 text-[10px] font-semibold tabular-nums">
-              Список → продажа <span className="text-success">{overall}%</span>
+              До продажи <span className="text-success">{overall}%</span>
             </span>
           ) : null}
         </div>
       </div>
 
-      <div className="px-3 py-4 sm:px-5">
-        <div className="mx-auto w-full max-w-lg">
-          {FUNNEL_STAGES.map((stage, i) => {
-            const topW = widths[i];
-            const bottomW =
-              i < FUNNEL_STAGES.length - 1
-                ? widths[i + 1]
-                : Math.max(widths[i] * 0.72, 16);
-            const value = values[i];
-            const rate = rates[i];
-            const isWorst = i === worstIdx && values[i - 1] > 0;
-            const isEmpty = value === 0;
-            const Icon = stage.icon;
-            const isSale = stage.key === "sales";
+      <div className="space-y-1 p-4">
+        {FUNNEL_STAGES.map((stage, i) => {
+          const value = values[i];
+          const rate = rates[i];
+          const isWorst = i === worstIdx && values[i - 1] > 0;
+          const widthPct = value > 0 ? Math.max((value / max) * 100, 8) : 0;
+          const Icon = stage.icon;
+          const isSale = stage.key === "sales";
 
-            return (
-              <div key={stage.key}>
-                {rate != null && (
-                  <div className="relative z-10 flex justify-center py-1.5">
-                    <div
-                      className={cn(
-                        "flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold tabular-nums shadow-sm",
-                        isWorst
-                          ? "border-destructive/45 bg-destructive/10 text-destructive"
-                          : "border-border/60 bg-background/80 text-muted-foreground",
-                      )}
-                    >
-                      <span className="opacity-60">↓</span>
-                      <span className={cn(!isWorst && "text-foreground")}>
-                        {rate}%
+          return (
+            <div key={stage.key}>
+              {rate != null && (
+                <div className="flex items-center gap-2 py-1.5 pl-[7.5rem] sm:pl-36">
+                  <div className="h-3 w-px bg-border" />
+                  <span
+                    className={cn(
+                      "inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-semibold tabular-nums",
+                      isWorst
+                        ? "border-destructive/40 bg-destructive/10 text-destructive"
+                        : "border-border/50 bg-background/60 text-muted-foreground",
+                    )}
+                  >
+                    ↓ {rate}%
+                    <span className="font-medium opacity-80">
+                      {FUNNEL_STAGES[i - 1].label} → {stage.label}
+                    </span>
+                    {isWorst ? (
+                      <span className="rounded bg-destructive/20 px-1 text-[9px] uppercase">
+                        узкое место
                       </span>
-                      {isWorst ? (
-                        <span className="rounded bg-destructive/20 px-1 py-px text-[9px] uppercase tracking-wide">
-                          узкое место
-                        </span>
-                      ) : null}
-                    </div>
-                  </div>
-                )}
+                    ) : null}
+                  </span>
+                </div>
+              )}
 
-                <div
-                  className={cn(
-                    "relative h-[52px] w-full transition-opacity",
-                    isEmpty && "opacity-50",
-                    isSale && "shadow-[0_0_24px_-8px_hsl(38_80%_50%/0.45)]",
-                  )}
-                  style={{ clipPath: trapezoidClip(topW, bottomW) }}
-                >
+              <div
+                className={cn(
+                  "grid grid-cols-[7rem_1fr_auto] items-center gap-3 rounded-xl border px-3 py-2.5 sm:grid-cols-[9rem_1fr_4.5rem]",
+                  isSale
+                    ? "border-success/35 bg-success/5"
+                    : "border-border/50 bg-secondary/15",
+                )}
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate text-xs font-bold sm:text-sm">{stage.label}</span>
+                  </div>
+                  <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{stage.hint}</div>
+                </div>
+
+                <div className="relative h-8 overflow-hidden rounded-lg border border-border/40 bg-background/50">
                   <div
                     className={cn(
-                      "absolute inset-0 bg-gradient-to-b",
-                      isEmpty
-                        ? "from-secondary/45 via-secondary/30 to-secondary/20"
-                        : stage.gradient,
+                      "h-full rounded-lg bg-gradient-to-r transition-all duration-500",
+                      stage.bar,
+                      value === 0 && "opacity-0",
                     )}
+                    style={{ width: `${widthPct}%` }}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-white/5" />
-                  <div className="relative flex h-full items-center justify-between gap-3 px-5 sm:px-7">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-black/25 text-white/90">
-                        <Icon className="h-3.5 w-3.5" />
-                      </span>
-                      <span className="truncate text-xs font-bold uppercase tracking-wider text-white/95">
-                        {stage.label}
-                      </span>
-                    </div>
-                    <span className="text-lg font-bold tabular-nums text-white drop-shadow-sm">
-                      {fmtNum(value)}
-                    </span>
-                  </div>
+                </div>
+
+                <div className="text-right text-base font-bold tabular-nums sm:text-lg">
+                  {fmtNum(value)}
                 </div>
               </div>
-            );
-          })}
-        </div>
+            </div>
+          );
+        })}
 
-        <div className="mx-auto mt-4 flex max-w-lg items-center justify-between gap-3 rounded-xl border border-success/30 bg-success/10 px-4 py-3">
+        <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-success/30 bg-success/10 px-4 py-3">
           <div className="flex items-center gap-2">
             <Banknote className="h-4 w-4 text-success" />
-            <span className="text-sm font-semibold">Выручка</span>
+            <div>
+              <div className="text-sm font-semibold">Выручка</div>
+              <div className="text-[10px] text-muted-foreground">сумма оплат из CRM</div>
+            </div>
           </div>
-          <span className="text-lg font-bold tabular-nums text-success">
-            {fmtKzt(funnel.revenue)}
-          </span>
+          <span className="text-lg font-bold tabular-nums text-success">{fmtKzt(funnel.revenue)}</span>
         </div>
 
-        {/* Доп. этапы без дубля основной воронки */}
-        <div className="mx-auto mt-4 grid max-w-lg grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
-            { label: "Ответили", value: funnel.replied },
-            { label: "Клики", value: funnel.clicked },
-            { label: "В группе", value: funnel.groupJoined },
-            { label: "Вебинар", value: funnel.webinarAttended },
+            { label: "Ответили", hint: "написали в чат", value: funnel.replied },
+            { label: "Клики", hint: "перешли по ссылке", value: funnel.clicked },
+            { label: "В группе", hint: "этап CRM", value: funnel.groupJoined },
+            { label: "Вебинар", hint: "пришли", value: funnel.webinarAttended },
           ].map((x) => (
             <div
               key={x.label}
-              className="rounded-xl border border-border/40 bg-background/40 px-3 py-2 text-center"
+              className="rounded-xl border border-border/40 bg-background/40 px-3 py-2"
             >
-              <div className="text-[10px] uppercase tracking-wide text-muted-foreground">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
                 {x.label}
               </div>
               <div className="mt-0.5 text-sm font-bold tabular-nums">{fmtNum(x.value)}</div>
+              <div className="text-[10px] text-muted-foreground">{x.hint}</div>
             </div>
           ))}
         </div>
 
         {(funnel.failed > 0 || funnel.optout > 0) && (
-          <div className="mx-auto mt-3 flex max-w-lg flex-wrap gap-3 text-[12px] text-muted-foreground">
+          <div className="mt-3 flex flex-wrap gap-3 text-[12px] text-muted-foreground">
             {funnel.failed > 0 ? (
-              <span className="text-destructive">Ошибок: {fmtNum(funnel.failed)}</span>
+              <span className="text-destructive">Ошибок отправки: {fmtNum(funnel.failed)}</span>
             ) : null}
             {funnel.optout > 0 ? <span>Отписались: {fmtNum(funnel.optout)}</span> : null}
           </div>
