@@ -173,7 +173,20 @@ type Campaign = {
   max_gap_seconds: number;
   warmup_enabled: boolean;
   scheduled_at: string | null;
+  started_at: string | null;
+  schedule_mode: string;
 };
+
+// Окно отправки не должно блокировать кампанию, которую пользователь ТОЛЬКО что
+// запустил вручную (он осознанно жмёт «отправить сейчас») — даём грейс-период
+// после старта. Плановая рассылка на следующий день окна уже уважает.
+const LAUNCH_GRACE_MS = 15 * 60 * 1000;
+function windowOk(c: Campaign): boolean {
+  if (c.started_at && Date.now() - new Date(c.started_at).getTime() < LAUNCH_GRACE_MS) {
+    return true;
+  }
+  return inWindow(localHour(c.timezone), c.window_start_hour, c.window_end_hour);
+}
 
 async function activeCampaigns(): Promise<Campaign[]> {
   const nowIso = new Date().toISOString();
@@ -312,8 +325,8 @@ Deno.serve(async (req) => {
     // Пауза номера (kill-switch) — стоп по всему проекту.
     if (await isPaused(c.project_id)) continue;
 
-    // Окно отправки.
-    if (!inWindow(localHour(c.timezone), c.window_start_hour, c.window_end_hour)) continue;
+    // Окно отправки (с грейс-периодом для только что запущенной вручную).
+    if (!windowOk(c)) continue;
 
     // Бюджет на сегодня (кэшируем на проект).
     if (!budgetCache.has(c.project_id)) {
