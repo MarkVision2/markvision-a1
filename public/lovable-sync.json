@@ -1,7 +1,7 @@
 {
-  "git_sha": "a3231a9",
-  "git_sha_full": "a3231a95563a286e36a4442c5a737a938d895525",
-  "updated_at": "2026-07-22T10:47:15Z",
-  "label": "Merge pull request #187 from MarkVision2/cursor/broadcasts-funnel-ui-84cc",
+  "git_sha": "62e5901",
+  "git_sha_full": "62e590183e137b8c799aa18aa4d6b391a043bf0f",
+  "updated_at": "2026-07-22T10:51:17Z",
+  "label": "Merge pull request #188 from MarkVision2/cursor/broadcasts-funnel-readable-84cc",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
