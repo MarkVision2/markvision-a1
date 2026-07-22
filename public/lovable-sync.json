@@ -1,7 +1,7 @@
 {
-  "git_sha": "9e0a17a",
-  "git_sha_full": "9e0a17ac62755b33501a0adba5fa8f48e173eac1",
-  "updated_at": "2026-07-21T16:15:10Z",
-  "label": "chore(ig): wipe all organic/codeword funnel test stats",
+  "git_sha": "2c9a31f",
+  "git_sha_full": "2c9a31f1d27df91dd8ec95a8a340481979c67c6a",
+  "updated_at": "2026-07-22T09:45:13Z",
+  "label": "Changes",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
