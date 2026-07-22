@@ -1,6 +1,18 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { render, screen, fireEvent, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
+// Рассылки теперь читаются из Supabase — в тесте отдаём пустой список,
+// чтобы проверять именно рендер страницы, без обращения к сети.
+vi.mock("@/lib/broadcastServer", () => ({
+  listCampaigns: () => Promise.resolve([]),
+  createCampaign: () => Promise.resolve(null),
+  updateCampaign: () => Promise.resolve(),
+  removeCampaign: () => Promise.resolve(),
+  launchCampaign: () => Promise.resolve(),
+  fetchRecipientCounts: () => Promise.resolve({ total: 0, queued: 0, sent: 0, delivered: 0, read: 0, replied: 0, failed: 0, optout: 0 }),
+}));
 
 vi.mock("@/hooks/useProjectsStore", () => ({
   useProjectsStore: () => ({ activeId: "bcast-render-project" }),
@@ -21,12 +33,16 @@ vi.mock("@/hooks/useWhatsAppConfig", () => ({
 
 import Broadcasts from "@/pages/Broadcasts";
 
-const renderPage = () =>
-  render(
-    <MemoryRouter>
-      <Broadcasts />
-    </MemoryRouter>,
+const renderPage = () => {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <MemoryRouter>
+        <Broadcasts />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
+};
 
 describe("Broadcasts page", () => {
   beforeEach(() => {

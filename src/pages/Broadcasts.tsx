@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { useLeadContacts } from "@/hooks/useLeadContacts";
-import { useBroadcasts, resolveRecipients } from "@/hooks/useBroadcasts";
+import { useBroadcasts } from "@/hooks/useBroadcasts";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import {
   CHANNEL_META,
@@ -79,7 +79,7 @@ const Broadcasts = () => {
   const { activeId } = useProjectsStore();
   const projectId = activeId || null;
   const { contacts: crmContacts } = useLeadContacts();
-  const { broadcasts, stats, create, update, remove } = useBroadcasts(projectId);
+  const { broadcasts, stats, create, update, remove, launch } = useBroadcasts(projectId, crmContacts);
   const { config: whatsapp } = useWhatsAppConfig();
 
   const [editing, setEditing] = useState<Broadcast | null>(null);
@@ -101,20 +101,19 @@ const Broadcasts = () => {
     setDialogOpen(true);
   };
 
-  const handleSave = (draft: BroadcastDraft, recipientsCount: number) => {
-    if (editing) {
-      update(editing.id, { ...draft, recipientsCount });
-      toast.success("Рассылка обновлена");
-    } else {
-      create(draft);
-      toast.success(draft.schedule.mode === "scheduled" ? "Рассылка запланирована" : "Рассылка создана");
+  const handleSave = async (draft: BroadcastDraft, _recipientsCount: number) => {
+    try {
+      if (editing) {
+        await update(editing.id, draft);
+        toast.success("Рассылка обновлена");
+      } else {
+        await create(draft);
+        toast.success(draft.schedule.mode === "scheduled" ? "Рассылка запланирована" : "Рассылка создана");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось сохранить рассылку");
     }
   };
-
-  const sendRecipients = useMemo(
-    () => (sending ? resolveRecipients(sending, crmContacts) : []),
-    [sending, crmContacts],
-  );
 
   return (
     <main className="flex h-[calc(100vh-3.5rem)] min-h-0 flex-col animate-fade-in-up">
@@ -240,9 +239,10 @@ const Broadcasts = () => {
         open={!!sending}
         onOpenChange={(v) => !v && setSending(null)}
         broadcast={sending}
-        recipients={sendRecipients}
         whatsappConnected={whatsapp.connected}
-        onFinish={(patch) => sending && update(sending.id, patch)}
+        onLaunch={async () => {
+          if (sending) await launch(sending.id);
+        }}
       />
       <AlertDialog open={!!pendingDelete} onOpenChange={(v) => !v && setPendingDelete(null)}>
         <AlertDialogContent>
