@@ -366,16 +366,35 @@ async function syncOne(supa: any, account: any) {
     pageSched = { attempted: true, count: 0, error: e?.message ?? "page scheduled_posts failed" };
   }
 
-  // 7) Переподписка Page на comments/messages — чинит уже подключённые аккаунты,
+  // 7) Переподписка на comments/messages — чинит уже подключённые аккаунты,
   // у которых при connect забыли subscribed_apps (код-слова молчат).
-  let webhook: { attempted: boolean; ok?: boolean; error?: string } = { attempted: false };
+  // Page-linked → Facebook Graph /{page_id}/subscribed_apps
+  // Instagram Login (page-less) → Instagram Graph /{ig_user_id}/subscribed_apps
+  let webhook: { attempted: boolean; ok?: boolean; error?: string; via?: string } = { attempted: false };
   try {
     const pageId = typeof account.page_id === "string" ? account.page_id.trim() : "";
     const pageTok = typeof account.page_access_token === "string" ? account.page_access_token.trim() : "";
+    const loginTok = typeof account.ig_login_access_token === "string" ? account.ig_login_access_token.trim() : "";
+    const igId = typeof account.ig_user_id === "string" ? account.ig_user_id.trim() : "";
     if (pageId && pageTok) {
       webhook.attempted = true;
+      webhook.via = "page";
       const subRes = await fetch(
         `${GRAPH_FB}/${pageId}/subscribed_apps?subscribed_fields=comments,messages&access_token=${encodeURIComponent(pageTok)}`,
+        { method: "POST" },
+      );
+      const subJson = await subRes.json().catch(() => ({}));
+      if (!subRes.ok || subJson?.error) {
+        webhook.ok = false;
+        webhook.error = String(subJson?.error?.message ?? `HTTP ${subRes.status}`);
+      } else {
+        webhook.ok = true;
+      }
+    } else if (igId && loginTok) {
+      webhook.attempted = true;
+      webhook.via = "instagram_login";
+      const subRes = await fetch(
+        `${GRAPH_IG}/${encodeURIComponent(igId)}/subscribed_apps?subscribed_fields=comments,messages&access_token=${encodeURIComponent(loginTok)}`,
         { method: "POST" },
       );
       const subJson = await subRes.json().catch(() => ({}));

@@ -205,15 +205,25 @@ function bearer(account: ProjectAccount, preferLogin: boolean): string | null {
   return account.ig_login_access_token;
 }
 
-async function postPublicReply(commentId: string, account: ProjectAccount, text: string) {
+async function postPublicReply(
+  commentId: string,
+  account: ProjectAccount,
+  text: string,
+): Promise<{ ok: boolean; body: unknown }> {
   const token = bearer(account, false) ?? bearer(account, true);
-  if (!token) return;
+  if (!token) return { ok: false, body: { error: "no token" } };
   const host = graphHost(account, /^IG/i.test(token));
-  await fetch(`${host}/${commentId}/replies`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    body: JSON.stringify({ message: text }),
-  }).catch(() => {});
+  try {
+    const resp = await fetch(`${host}/${commentId}/replies`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ message: text }),
+    });
+    const body = await resp.json().catch(() => ({}));
+    return { ok: resp.ok, body };
+  } catch (e) {
+    return { ok: false, body: { error: String(e) } };
+  }
 }
 
 const PUBLIC_LINK_ORIGIN = Deno.env.get("IG_PUBLIC_LINK_ORIGIN") ?? "https://www.markvision.kz";
@@ -456,49 +466,107 @@ Deno.serve(async (req) => {
         });
       }
 
+      // Comments: two Meta shapes
+      // 1) Facebook Login for Business → entry.changes[{ field, value }]
+      // 2) Business Login for Instagram → field/value directly on entry (no changes[])
+      const commentEvents: Array<{ field: string; value: Record<string, unknown> }> = [];
       for (const change of entry.changes ?? []) {
-        if (change.field !== "comments") continue;
-        const v = change.value ?? {};
-        const commentId = v.id;
-        const mediaId = v.media?.id ?? null;
-        const text = String(v.text ?? "");
-        const fromId = v.from?.id ?? null;
-        const username = v.from?.username ?? null;
-        if (!commentId || !fromId || fromId === igUserId) continue;
-
-        const account = await resolveAccount(igUserId);
-        if (!account) continue;
-
-        const kw = await matchCodeword(account.project_id, mediaId, text);
-        if (!kw) continue;
-
-        const eventId = await claimEvent(account.project_id, kw, mediaId, commentId, username);
-        if (!eventId) continue;
-
-        const replyText = resolveReplyText(kw);
-        if (replyText) {
-          await postPublicReply(commentId, account, replyText);
+        if (change?.field === "comments" || change?.field === "live_comments") {
+          commentEvents.push({ field: String(change.field), value: (change.value ?? {}) as Record<string, unknown> });
         }
-
-        const pickedLink = resolveTargetUrlIndexed(kw);
-        const link = buildTrackingLink(kw.short_id, username, pickedLink?.index ?? null);
-        const dmPrefix = resolveDmText(kw) || DEFAULT_DM_TEXT;
-        const sent = await sendPrivateDm(igUserId, account, commentId, {
-          text: dmPrefix,
-          buttonTitle: clampButtonTitle(),
-          buttonUrl: link,
+      }
+      if (entry.field === "comments" || entry.field === "live_comments") {
+        commentEvents.push({
+          field: String(entry.field),
+          value: (entry.value ?? {}) as Record<string, unknown>,
         });
+      }
 
-        await finalizeEvent(eventId, {
-          comment_id: commentId,
-          media_id: mediaId,
-          dm_status: sent.ok ? "sent" : "failed",
-          dm_mode: sent.mode,
-          dm_button_url: link,
-          target_url: pickedLink?.value ?? null,
-          target_url_index: pickedLink?.index ?? null,
-          dm_error: sent.ok ? null : sent.body,
-        });
+      for (const change of commentEvents) {
+        const raw = change.value;
+        // value can be a single object or (rarely) an array of objects
+        const values = Array.isArray(raw) ? raw : [raw];
+        for (const v0 of values) {
+          const v = (v0 ?? {}) as Record<string, unknown>;
+          const from = (v.from ?? {}) as { id?: string; username?: string };
+          const media = (v.media ?? {}) as { id?: string };
+          // FB Login uses comment_id; Instagram Login uses id
+          const commentId = (v.comment_id ?? v.id) != null ? String(v.comment_id ?? v.id) : null;
+          const mediaId = media.id != null ? String(media.id) : (v.media_id != null ? String(v.media_id) : null);
+          const text = String(v.text ?? "");
+          const fromId = from.id != null ? String(from.id) : null;
+          const username = from.username != null ? String(from.username) : null;
+          if (!commentId || !fromId || fromId === igUserId) {
+            console.log("ig-webhook: skip comment payload", {
+              igUserId,
+              field: change.field,
+              hasCommentId: Boolean(commentId),
+              hasFromId: Boolean(fromId),
+              self: fromId === igUserId,
+              keys: Object.keys(v),
+            });
+            continue;
+          }
+
+          const account = await resolveAccount(igUserId);
+          if (!account) {
+            console.log("ig-webhook: no account for", igUserId);
+            continue;
+          }
+
+          const kw = await matchCodeword(account.project_id, mediaId, text);
+          if (!kw) {
+            console.log("ig-webhook: no codeword match", {
+              project: account.project_id,
+              text: text.slice(0, 80),
+            });
+            continue;
+          }
+
+          const eventId = await claimEvent(account.project_id, kw, mediaId, commentId, username);
+          if (!eventId) continue;
+
+          const replyText = resolveReplyText(kw);
+          let replyStatus: "skipped" | "sent" | "failed" = "skipped";
+          let replyError: unknown = null;
+          if (replyText) {
+            const replied = await postPublicReply(commentId, account, replyText);
+            replyStatus = replied.ok ? "sent" : "failed";
+            replyError = replied.ok ? null : replied.body;
+            if (!replied.ok) {
+              console.log("ig-webhook: public reply failed", { commentId, body: replied.body });
+            }
+          }
+
+          const pickedLink = resolveTargetUrlIndexed(kw);
+          const link = buildTrackingLink(kw.short_id, username, pickedLink?.index ?? null);
+          const dmPrefix = resolveDmText(kw) || DEFAULT_DM_TEXT;
+          const sent = await sendPrivateDm(igUserId, account, commentId, {
+            text: dmPrefix,
+            buttonTitle: clampButtonTitle(),
+            buttonUrl: link,
+          });
+          if (!sent.ok) {
+            console.log("ig-webhook: private DM failed", {
+              commentId,
+              body: sent.body,
+              mode: sent.mode,
+            });
+          }
+
+          await finalizeEvent(eventId, {
+            comment_id: commentId,
+            media_id: mediaId,
+            reply_status: replyStatus,
+            reply_error: replyError,
+            dm_status: sent.ok ? "sent" : "failed",
+            dm_mode: sent.mode,
+            dm_button_url: link,
+            target_url: pickedLink?.value ?? null,
+            target_url_index: pickedLink?.index ?? null,
+            dm_error: sent.ok ? null : sent.body,
+          });
+        }
       }
     }
   } catch (_e) { /* Meta expects 200 */ }

@@ -137,6 +137,13 @@ Deno.serve(async (req) => {
     );
     if (upErr) return json({ error: upErr.message }, 500);
 
+    // Subscribe this IG account to comment/message webhooks (Instagram Login path).
+    // Without this, codeword auto-replies never fire for page-less accounts.
+    await fetch(
+      `${GRAPH_IG}/${encodeURIComponent(igUserId)}/subscribed_apps?subscribed_fields=comments,messages&access_token=${encodeURIComponent(token)}`,
+      { method: "POST" },
+    ).catch(() => {});
+
     // Fire-and-forget metrics sync
     fetch(`${SUPABASE_URL}/functions/v1/instagram-sync`, {
       method: "POST",
