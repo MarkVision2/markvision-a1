@@ -521,6 +521,88 @@ async function insertCommunication(opts: {
   });
 }
 
+// ─── Трекинг рассылок (broadcast_recipients) ────────────────────────────────
+// Продвигаем статус получателя рассылки по message_id — только вперёд, чтобы
+// поздний "delivered" не откатил уже проставленный "read"/"replied".
+async function advanceBroadcastRecipient(idMessage: string, mappedStatus: string) {
+  try {
+    if (mappedStatus === "delivered") {
+      await admin
+        .from("broadcast_recipients")
+        .update({ status: "delivered", delivered_at: new Date().toISOString() })
+        .eq("message_id", idMessage)
+        .in("status", ["sent"]);
+    } else if (mappedStatus === "read") {
+      await admin
+        .from("broadcast_recipients")
+        .update({ status: "read", read_at: new Date().toISOString() })
+        .eq("message_id", idMessage)
+        .in("status", ["sent", "delivered"]);
+    } else if (mappedStatus === "failed") {
+      await admin
+        .from("broadcast_recipients")
+        .update({ status: "failed", error: "Green API: notDelivered/noAccount" })
+        .eq("message_id", idMessage)
+        .in("status", ["sent"]);
+    }
+  } catch (e) {
+    console.warn("advanceBroadcastRecipient failed:", e);
+  }
+}
+
+// Клиент ответил на рассылку → помечаем последнего отправленного ему получателя
+// как replied (в рамках проекта). Отвечает на «ответила да/нет».
+async function markBroadcastReply(phone: string, projectId: string | null) {
+  try {
+    const d = digits(phone);
+    if (!d) return;
+    let q = admin
+      .from("broadcast_recipients")
+      .select("id")
+      .in("status", ["sent", "delivered", "read"])
+      .or(`phone.eq.+${d},phone.eq.${d}`)
+      .order("sent_at", { ascending: false })
+      .limit(1);
+    if (projectId) q = q.eq("project_id", projectId);
+    const { data } = await q;
+    const row = (data ?? [])[0] as { id: string } | undefined;
+    if (row?.id) {
+      await admin
+        .from("broadcast_recipients")
+        .update({ status: "replied", replied_at: new Date().toISOString() })
+        .eq("id", row.id);
+    }
+  } catch (e) {
+    console.warn("markBroadcastReply failed:", e);
+  }
+}
+
+const STOP_WORDS = /\b(стоп|отпи(сать|шите|ску)|не\s*пиши|отстань|unsubscribe|stop)\b/i;
+function isStopWord(text: string): boolean {
+  return STOP_WORDS.test((text ?? "").trim());
+}
+
+// Стоп-слово от клиента → добавляем в opt-out (больше не шлём) + гасим его
+// оставшиеся в очереди сообщения по всем кампаниям проекта.
+async function optOutBroadcast(phone: string, projectId: string | null, reason: string) {
+  try {
+    const d = digits(phone);
+    if (!d || !projectId) return;
+    await admin.from("broadcast_opt_outs").upsert(
+      { project_id: projectId, phone: `+${d}`, reason: reason.slice(0, 200) },
+      { onConflict: "project_id,phone" },
+    );
+    await admin
+      .from("broadcast_recipients")
+      .update({ status: "skipped_optout" })
+      .eq("project_id", projectId)
+      .eq("status", "queued")
+      .or(`phone.eq.+${d},phone.eq.${d}`);
+  } catch (e) {
+    console.warn("optOutBroadcast failed:", e);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -589,6 +671,9 @@ Deno.serve(async (req) => {
       if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
       const text = extractText(messageData);
       await insertCommunication({ leadId, direction: "in", text, externalId: idMessage });
+      // Трекинг рассылки: клиент ответил → фиксируем reply; стоп-слово → opt-out.
+      await markBroadcastReply(phone, projectId);
+      if (isStopWord(text)) await optOutBroadcast(phone, projectId, text);
       triggerChatAnalysis(leadId, "in");
       forwardToBotWebhook(instanceCfg.botWebhookUrl, body);
       return json({ ok: true, leadId, projectId, attribution });
@@ -662,6 +747,10 @@ Deno.serve(async (req) => {
         .from("communications")
         .update({ status: newStatus })
         .eq("external_id", idMessage);
+
+      // Трекинг рассылки: продвигаем статус получателя по message_id (вперёд).
+      await advanceBroadcastRecipient(idMessage, newStatus);
+
       forwardToBotWebhook(instanceCfg.botWebhookUrl, body);
       return json({ ok: true, externalId: idMessage, status: newStatus });
     }

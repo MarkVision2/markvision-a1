@@ -1,34 +1,75 @@
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { useCallback, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  createBroadcast,
-  readBroadcasts,
-  removeBroadcast,
-  subscribeBroadcasts,
-  updateBroadcast,
-  type Broadcast,
-  type BroadcastContact,
-  type BroadcastDraft,
-} from "@/lib/broadcastStore";
+  createCampaign,
+  launchCampaign,
+  listCampaigns,
+  removeCampaign,
+  updateCampaign,
+} from "@/lib/broadcastServer";
+import { type Broadcast, type BroadcastContact, type BroadcastDraft } from "@/lib/broadcastStore";
 import type { LeadContact } from "@/hooks/useLeadContacts";
+import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 
-/** Реактивный доступ к рассылкам активного проекта (localStorage). */
-export function useBroadcasts(projectId: string | null) {
-  const broadcasts = useSyncExternalStore(
-    subscribeBroadcasts,
-    () => readBroadcasts(projectId),
-    () => readBroadcasts(projectId),
+export const BROADCASTS_QUERY_KEY = "broadcasts";
+
+/**
+ * Рассылки активного проекта из Supabase (broadcast_campaigns).
+ * Реальную отправку делает edge broadcast-worker; здесь — CRUD + запуск,
+ * прогресс подтягивается realtime-подпиской на таблицу кампаний.
+ */
+export function useBroadcasts(projectId: string | null, crmContacts: LeadContact[] = []) {
+  const queryClient = useQueryClient();
+
+  const { data: broadcasts = [] } = useQuery({
+    queryKey: [BROADCASTS_QUERY_KEY, projectId],
+    queryFn: () => (projectId ? listCampaigns(projectId) : Promise.resolve([])),
+    enabled: !!projectId,
+  });
+
+  const invalidate = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: [BROADCASTS_QUERY_KEY, projectId] });
+  }, [queryClient, projectId]);
+
+  useRealtimeTable("broadcast_campaigns", invalidate, !!projectId, 500);
+
+  const create = useCallback(
+    async (draft: BroadcastDraft) => {
+      if (!projectId) return;
+      await createCampaign(projectId, draft, crmContacts);
+      invalidate();
+    },
+    [projectId, crmContacts, invalidate],
   );
 
-  const create = useCallback((draft: BroadcastDraft) => createBroadcast(projectId, draft), [projectId]);
   const update = useCallback(
-    (id: string, patch: Partial<Broadcast>) => updateBroadcast(projectId, id, patch),
-    [projectId],
+    async (id: string, draft: BroadcastDraft) => {
+      if (!projectId) return;
+      await updateCampaign(projectId, id, draft, crmContacts);
+      invalidate();
+    },
+    [projectId, crmContacts, invalidate],
   );
-  const remove = useCallback((id: string) => removeBroadcast(projectId, id), [projectId]);
+
+  const remove = useCallback(
+    async (id: string) => {
+      await removeCampaign(id);
+      invalidate();
+    },
+    [invalidate],
+  );
+
+  const launch = useCallback(
+    async (id: string) => {
+      await launchCampaign(id);
+      invalidate();
+    },
+    [invalidate],
+  );
 
   const stats = useMemo(() => summarizeBroadcasts(broadcasts), [broadcasts]);
 
-  return { broadcasts, stats, create, update, remove };
+  return { broadcasts, stats, create, update, remove, launch };
 }
 
 export function summarizeBroadcasts(list: Broadcast[]) {
