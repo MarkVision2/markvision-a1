@@ -20,8 +20,10 @@ function jsonResponse(body: unknown, status = 200) {
 
 async function resolveMetaToken(
   bodyToken: string | null | undefined,
+  allowSharedFallback: boolean,
 ): Promise<string | null> {
   if (bodyToken?.trim()) return bodyToken.trim();
+  if (!allowSharedFallback) return null;
 
   const admin = createClient(
     Deno.env.get("SUPABASE_URL")!,
@@ -33,6 +35,19 @@ async function resolveMetaToken(
     .eq("id", true)
     .maybeSingle();
   return settings?.meta_access_token ?? Deno.env.get("META_ACCESS_TOKEN") ?? null;
+}
+
+async function callerHasAdminOrManager(userId: string): Promise<boolean> {
+  const admin = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+  const { data } = await admin
+    .from("user_roles")
+    .select("role")
+    .eq("user_id", userId)
+    .in("role", ["admin", "manager"]);
+  return (data ?? []).length > 0;
 }
 
 Deno.serve(async (req) => {
