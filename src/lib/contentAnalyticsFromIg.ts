@@ -51,6 +51,8 @@ export interface ContentAnalyticsResp {
   by_format: ContentAnalyticsFormat[];
   top_posts: ContentAnalyticsPost[];
   bottom_posts: ContentAnalyticsPost[];
+  /** All posts in the selected period, newest first. */
+  all_posts: ContentAnalyticsPost[];
   followers: ContentAnalyticsFollowers;
   production: { generated: number; published: number; generated_all: number };
 }
@@ -171,6 +173,9 @@ export function buildContentAnalyticsFromIg(params: {
   const ranked = [...inRange].map(toPost).sort((a, b) => b.er - a.er || b.reach - a.reach);
   const top_posts = ranked.slice(0, 5);
   const bottom_posts = [...ranked].reverse().slice(0, 5);
+  const all_posts = [...inRange]
+    .map(toPost)
+    .sort((a, b) => String(b.posted_at ?? "").localeCompare(String(a.posted_at ?? "")));
 
   const weekMap = new Map<string, TrendPoint>();
   for (const m of inRange) {
@@ -214,6 +219,7 @@ export function buildContentAnalyticsFromIg(params: {
     by_format,
     top_posts,
     bottom_posts,
+    all_posts,
     followers: { now, growth, series },
     production: {
       generated: params.productionGenerated ?? 0,

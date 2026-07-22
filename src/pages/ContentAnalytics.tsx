@@ -52,7 +52,6 @@ const FORMAT: Record<string, { label: string; color: string; icon: LucideIcon }>
   VIDEO: { label: "Reels", color: "#ec4899", icon: Film },
 };
 const fmtOf = (t: string) => FORMAT[t] ?? { label: t, color: "hsl(var(--muted-foreground))", icon: ImageIcon };
-const CONTENT_CUTOFF = "2026-07-20";
 
 const fmtDate = (s: string | null) =>
   s ? new Date(s).toLocaleDateString("ru-RU", { day: "2-digit", month: "short" }) : "—";
@@ -144,9 +143,8 @@ export default function ContentAnalytics() {
 
   const data = useMemo(() => {
     if (!account) return null;
-    const from = ymdLocal(range.from);
     return buildContentAnalyticsFromIg({
-      from: from < CONTENT_CUTOFF ? CONTENT_CUTOFF : from,
+      from: ymdLocal(range.from),
       to: ymdLocal(range.to),
       media,
       daily,
@@ -429,6 +427,22 @@ export default function ContentAnalytics() {
                   <p className="py-8 text-center text-sm text-muted-foreground">Нет данных</p>
                 ) : data.bottom_posts.map((p, i) => <PostRow key={p.ig_media_id} p={p} rank={i + 1} />)}
               </div>
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-border/60 bg-card/60">
+            <div className="flex items-center justify-between gap-2 border-b border-border/40 px-4 py-3">
+              <h2 className="text-sm font-semibold">Все публикации за период</h2>
+              <span className="text-xs text-muted-foreground tabular-nums">
+                {fmtNum(data.all_posts.length)} из {fmtNum(account?.mediaCount ?? data.all_posts.length)} в аккаунте
+              </span>
+            </div>
+            <div className="max-h-[28rem] divide-y divide-border/20 overflow-y-auto">
+              {data.all_posts.length === 0 ? (
+                <p className="py-8 text-center text-sm text-muted-foreground">Нет публикаций в выбранном периоде</p>
+              ) : (
+                data.all_posts.map((p, i) => <PostRow key={p.ig_media_id} p={p} rank={i + 1} />)
+              )}
             </div>
           </div>
         </div>

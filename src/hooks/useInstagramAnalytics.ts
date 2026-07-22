@@ -81,7 +81,7 @@ export function useInstagramAnalytics(range: ReportPeriodRange) {
           .gte("timestamp", fromIso)
           .lt("timestamp", toIso)
           .order("timestamp", { ascending: false })
-          .limit(500),
+          .limit(2000),
         supabase.from("instagram_account_daily")
           .select("date, followers, reach, impressions, profile_views, website_clicks")
           .eq("project_id", projectId)

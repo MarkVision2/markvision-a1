@@ -26,7 +26,9 @@ export type ContentPeriodPreset =
 const DEFAULT_PRESETS: { id: ContentPeriodPreset; label: string }[] = [
   { id: "this_month", label: "Этот месяц" },
   { id: "last_month", label: "Прошлый месяц" },
-  { id: "custom", label: "Выбрать период" },
+  { id: "last_year", label: "12 мес." },
+  { id: "all_time", label: "Все" },
+  { id: "custom", label: "Период" },
 ];
 
 interface Props {
@@ -145,7 +147,9 @@ export function ContentPeriodPicker({
       )}
 
       {preset !== "custom" && (
-        <span className="text-xs text-muted-foreground tabular-nums">{formatPeriodLabel(range)}</span>
+        <span className="shrink-0 whitespace-nowrap rounded-2xl border border-border/60 bg-card/60 px-3 py-2 text-xs font-semibold tabular-nums text-foreground">
+          {formatPeriodLabel(range)}
+        </span>
       )}
 
       {showCompare && onCompareChange && (
