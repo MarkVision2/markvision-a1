@@ -4,7 +4,7 @@
 // Body: { ad_id: string, image_base64: string (data URL или чистый base64) }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
-import { requireUser } from "../_lib/auth.ts";
+import { requireUser, requireMetaCreativeAdAccess } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
