@@ -6,7 +6,7 @@
 // Возвращает: { ok, sent: boolean, event_name, fb_response, score_delta }
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { requireUser, requireCabinetAccess } from "../_lib/auth.ts";
+import { requireUser, requireCabinetAccess, requireLeadAccess } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
