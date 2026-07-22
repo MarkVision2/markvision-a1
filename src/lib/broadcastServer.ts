@@ -10,6 +10,14 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { LeadContact } from "@/hooks/useLeadContacts";
 import {
+  buildBroadcastFunnel,
+  countDelivery,
+  digitsPhone,
+  type BroadcastFunnel,
+  type BroadcastLeadLite,
+  type BroadcastRecipientLite,
+} from "@/lib/broadcastFunnel";
+import {
   type Broadcast,
   type BroadcastDraft,
   type BroadcastStatus,
@@ -18,10 +26,23 @@ import {
 /** Один получатель для вставки в broadcast_recipients. */
 export type RecipientRow = { name: string; phone: string; lead_id: string | null };
 
-/** CRM-фильтр → строки получателей (с сохранением lead_id для трекинга конверсий). */
+function phoneIndex(contacts: LeadContact[]): Map<string, LeadContact> {
+  const m = new Map<string, LeadContact>();
+  for (const c of contacts) {
+    const key = digitsPhone(c.phone);
+    if (key && !m.has(key)) m.set(key, c);
+  }
+  return m;
+}
+
+/** CRM-фильтр / загрузка → строки получателей (lead_id для трекинга конверсий). */
 export function resolveRecipientRows(draft: BroadcastDraft, crmContacts: LeadContact[]): RecipientRow[] {
+  const byPhone = phoneIndex(crmContacts);
   if (draft.audienceSource === "upload") {
-    return draft.uploadedContacts.map((c) => ({ name: c.name, phone: c.phone, lead_id: null }));
+    return draft.uploadedContacts.map((c) => {
+      const hit = byPhone.get(digitsPhone(c.phone));
+      return { name: c.name, phone: c.phone, lead_id: hit?.id ?? null };
+    });
   }
   const { stageKeys, sources } = draft.crmFilter;
   const seen = new Set<string>();
@@ -29,7 +50,7 @@ export function resolveRecipientRows(draft: BroadcastDraft, crmContacts: LeadCon
   for (const c of crmContacts) {
     if (stageKeys.length && !stageKeys.includes(c.stageKey)) continue;
     if (sources.length && !sources.includes(c.source || "—")) continue;
-    const key = c.phone.replace(/\D/g, "");
+    const key = digitsPhone(c.phone);
     if (!key || seen.has(key)) continue;
     seen.add(key);
     out.push({ name: c.name, phone: c.phone, lead_id: c.id });
@@ -67,7 +88,23 @@ type CampaignRow = {
 
 function mapRow(r: CampaignRow): Broadcast {
   const s = r.stats ?? {};
-  const reached = (s.sent ?? 0) + (s.delivered ?? 0) + (s.read ?? 0) + (s.replied ?? 0) + (s.converted ?? 0);
+  // В jsonb воркер пишет «сырые» status=X. Для списка показываем кумулятив.
+  const raw = {
+    total: s.total ?? 0,
+    queued: s.queued ?? 0,
+    sent: s.sent ?? 0,
+    delivered: s.delivered ?? 0,
+    read: s.read ?? 0,
+    replied: s.replied ?? 0,
+    converted: s.converted ?? 0,
+    failed: s.failed ?? 0,
+    clicked: s.clicked ?? 0,
+  };
+  const sent =
+    raw.sent + raw.delivered + raw.read + raw.replied + raw.converted;
+  const delivered = raw.delivered + raw.read + raw.replied + raw.converted;
+  const read = raw.read + raw.replied + raw.converted;
+  const replied = raw.replied + raw.converted;
   return {
     id: r.id,
     name: r.name,
@@ -82,12 +119,21 @@ function mapRow(r: CampaignRow): Broadcast {
     message: r.message ?? "",
     schedule: { mode: r.schedule_mode === "scheduled" ? "scheduled" : "now", at: r.scheduled_at },
     status: DB_TO_STATUS[r.status] ?? "draft",
-    recipientsCount: s.total ?? 0,
-    stats: { total: s.total ?? 0, sent: reached, failed: s.failed ?? 0 },
+    recipientsCount: raw.total,
+    stats: {
+      total: raw.total,
+      sent,
+      delivered,
+      read,
+      replied,
+      failed: raw.failed,
+      clicked: raw.clicked,
+      converted: raw.converted,
+    },
     results: [],
     createdAt: r.created_at,
     updatedAt: r.updated_at,
-    sentAt: r.finished_at,
+    sentAt: r.finished_at ?? (r as CampaignRow & { started_at?: string | null }).started_at ?? null,
   };
 }
 
@@ -237,15 +283,181 @@ export async function fetchRecipientCounts(campaignId: string): Promise<Recipien
     .eq("campaign_id", campaignId)
     .limit(20000);
   const rows = (data ?? []) as { status: string }[];
-  const c = (s: string) => rows.filter((r) => r.status === s).length;
+  const recipients = rows.map((r, i) => ({
+    id: String(i),
+    name: "",
+    phone: "",
+    status: r.status,
+    leadId: null,
+    sentAt: null,
+    deliveredAt: null,
+    readAt: null,
+    repliedAt: null,
+    clickedAt: null,
+    convertedAt: null,
+    error: null,
+  }));
+  const d = countDelivery(recipients);
   return {
-    total: rows.length,
-    queued: c("queued"),
-    sent: c("sent"),
-    delivered: c("delivered"),
-    read: c("read"),
-    replied: c("replied"),
-    failed: c("failed"),
-    optout: c("skipped_optout"),
+    total: d.total,
+    queued: d.queued,
+    sent: d.sent,
+    delivered: d.delivered,
+    read: d.read,
+    replied: d.replied,
+    failed: d.failed,
+    optout: d.optout,
   };
+}
+
+export type CampaignDetail = {
+  campaign: Broadcast;
+  recipients: BroadcastRecipientLite[];
+  funnel: BroadcastFunnel;
+  leads: BroadcastLeadLite[];
+};
+
+type RecipientDbRow = {
+  id: string;
+  name: string | null;
+  phone: string;
+  status: string;
+  lead_id: string | null;
+  sent_at: string | null;
+  delivered_at: string | null;
+  read_at: string | null;
+  replied_at: string | null;
+  clicked_at: string | null;
+  converted_at: string | null;
+  error: string | null;
+};
+
+function mapRecipient(r: RecipientDbRow): BroadcastRecipientLite {
+  return {
+    id: r.id,
+    name: r.name ?? "",
+    phone: r.phone,
+    status: r.status,
+    leadId: r.lead_id,
+    sentAt: r.sent_at,
+    deliveredAt: r.delivered_at,
+    readAt: r.read_at,
+    repliedAt: r.replied_at,
+    clickedAt: r.clicked_at,
+    convertedAt: r.converted_at,
+    error: r.error,
+  };
+}
+
+/** Кампания + получатели + воронка CRM (лиды / группа / вебинар / продажи). */
+export async function fetchCampaignDetail(
+  campaignId: string,
+  projectId: string,
+): Promise<CampaignDetail | null> {
+  const { data: camp, error } = await db()
+    .from("broadcast_campaigns")
+    .select("*")
+    .eq("id", campaignId)
+    .eq("project_id", projectId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!camp) return null;
+
+  const { data: recData, error: recErr } = await db()
+    .from("broadcast_recipients")
+    .select(
+      "id, name, phone, status, lead_id, sent_at, delivered_at, read_at, replied_at, clicked_at, converted_at, error",
+    )
+    .eq("campaign_id", campaignId)
+    .order("sent_at", { ascending: false, nullsFirst: false })
+    .limit(20000);
+  if (recErr) throw recErr;
+  const recipients = ((recData ?? []) as RecipientDbRow[]).map(mapRecipient);
+
+  const leadIds = [
+    ...new Set(recipients.map((r) => r.leadId).filter((x): x is string => !!x)),
+  ];
+  const phones = [
+    ...new Set(recipients.map((r) => digitsPhone(r.phone)).filter(Boolean)),
+  ];
+
+  const [{ data: stagesData }, leadsByIdRes, leadsByPhoneRes] = await Promise.all([
+    db().from("pipeline_stages").select("id, key, stage_role"),
+    leadIds.length
+      ? db()
+          .from("leads")
+          .select("id, phone, stage_id, paid, amount, deposit_amount, webinar_status")
+          .in("id", leadIds)
+          .limit(5000)
+      : Promise.resolve({ data: [] }),
+    phones.length
+      ? db()
+          .from("leads")
+          .select("id, phone, stage_id, paid, amount, deposit_amount, webinar_status")
+          .eq("project_id", projectId)
+          .eq("is_personal", false)
+          .limit(5000)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const stageById = new Map<string, { key: string | null; role: string | null }>();
+  for (const s of (stagesData ?? []) as Array<{ id: string; key?: string; stage_role?: string }>) {
+    stageById.set(s.id, { key: s.key ?? null, role: s.stage_role ?? null });
+  }
+
+  const phoneSet = new Set(phones);
+  const leadMap = new Map<string, BroadcastLeadLite>();
+  const ingest = (rows: Array<Record<string, unknown>>) => {
+    for (const r of rows) {
+      const id = String(r.id);
+      if (leadMap.has(id)) continue;
+      const phone = String(r.phone ?? "");
+      const linkedById = leadIds.includes(id);
+      const linkedByPhone = phoneSet.has(digitsPhone(phone));
+      if (!linkedById && !linkedByPhone) continue;
+      const stage = stageById.get(String(r.stage_id ?? ""));
+      leadMap.set(id, {
+        id,
+        phone,
+        stageKey: stage?.key ?? null,
+        stageRole: stage?.role ?? null,
+        paid: r.paid === true,
+        amount: Number(r.amount ?? 0),
+        depositAmount: Number(r.deposit_amount ?? 0),
+        webinarStatus: (r.webinar_status as string | null) ?? null,
+      });
+    }
+  };
+  ingest((leadsByIdRes.data ?? []) as Array<Record<string, unknown>>);
+  ingest((leadsByPhoneRes.data ?? []) as Array<Record<string, unknown>>);
+
+  const leads = [...leadMap.values()];
+  const funnel = buildBroadcastFunnel(recipients, leads);
+  const campaign = mapRow(camp as CampaignRow);
+  // Подменяем stats живой воронкой (не устаревший jsonb).
+  campaign.stats = {
+    total: funnel.total,
+    sent: funnel.sent,
+    delivered: funnel.delivered,
+    read: funnel.read,
+    replied: funnel.replied,
+    failed: funnel.failed,
+    clicked: funnel.clicked,
+    converted: funnel.sales,
+  };
+  campaign.recipientsCount = funnel.total;
+
+  return { campaign, recipients, funnel, leads };
+}
+
+export async function getCampaign(campaignId: string, projectId: string): Promise<Broadcast | null> {
+  const { data, error } = await db()
+    .from("broadcast_campaigns")
+    .select("*")
+    .eq("id", campaignId)
+    .eq("project_id", projectId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  return mapRow(data as CampaignRow);
 }

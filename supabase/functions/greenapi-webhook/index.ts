@@ -524,27 +524,64 @@ async function insertCommunication(opts: {
 // ─── Трекинг рассылок (broadcast_recipients) ────────────────────────────────
 // Продвигаем статус получателя рассылки по message_id — только вперёд, чтобы
 // поздний "delivered" не откатил уже проставленный "read"/"replied".
+async function refreshBroadcastCampaignStats(campaignId: string) {
+  try {
+    const { data } = await admin
+      .from("broadcast_recipients")
+      .select("status, clicked_at")
+      .eq("campaign_id", campaignId);
+    const rows = (data ?? []) as { status: string; clicked_at: string | null }[];
+    const count = (s: string) => rows.filter((r) => r.status === s).length;
+    const stats = {
+      total: rows.length,
+      queued: count("queued"),
+      sent: count("sent"),
+      delivered: count("delivered"),
+      read: count("read"),
+      replied: count("replied"),
+      converted: count("converted"),
+      failed: count("failed"),
+      optout: count("skipped_optout"),
+      clicked: rows.filter((r) => !!r.clicked_at).length,
+    };
+    await admin.from("broadcast_campaigns").update({ stats }).eq("id", campaignId);
+  } catch (e) {
+    console.warn("refreshBroadcastCampaignStats failed:", e);
+  }
+}
+
 async function advanceBroadcastRecipient(idMessage: string, mappedStatus: string) {
   try {
+    let campaignId: string | null = null;
     if (mappedStatus === "delivered") {
-      await admin
+      const { data } = await admin
         .from("broadcast_recipients")
         .update({ status: "delivered", delivered_at: new Date().toISOString() })
         .eq("message_id", idMessage)
-        .in("status", ["sent"]);
+        .in("status", ["sent"])
+        .select("campaign_id")
+        .maybeSingle();
+      campaignId = (data as { campaign_id?: string } | null)?.campaign_id ?? null;
     } else if (mappedStatus === "read") {
-      await admin
+      const { data } = await admin
         .from("broadcast_recipients")
         .update({ status: "read", read_at: new Date().toISOString() })
         .eq("message_id", idMessage)
-        .in("status", ["sent", "delivered"]);
+        .in("status", ["sent", "delivered"])
+        .select("campaign_id")
+        .maybeSingle();
+      campaignId = (data as { campaign_id?: string } | null)?.campaign_id ?? null;
     } else if (mappedStatus === "failed") {
-      await admin
+      const { data } = await admin
         .from("broadcast_recipients")
         .update({ status: "failed", error: "Green API: notDelivered/noAccount" })
         .eq("message_id", idMessage)
-        .in("status", ["sent"]);
+        .in("status", ["sent"])
+        .select("campaign_id")
+        .maybeSingle();
+      campaignId = (data as { campaign_id?: string } | null)?.campaign_id ?? null;
     }
+    if (campaignId) await refreshBroadcastCampaignStats(campaignId);
   } catch (e) {
     console.warn("advanceBroadcastRecipient failed:", e);
   }
@@ -552,25 +589,28 @@ async function advanceBroadcastRecipient(idMessage: string, mappedStatus: string
 
 // Клиент ответил на рассылку → помечаем последнего отправленного ему получателя
 // как replied (в рамках проекта). Отвечает на «ответила да/нет».
-async function markBroadcastReply(phone: string, projectId: string | null) {
+async function markBroadcastReply(phone: string, projectId: string | null, leadId?: string | null) {
   try {
     const d = digits(phone);
     if (!d) return;
     let q = admin
       .from("broadcast_recipients")
-      .select("id")
+      .select("id, campaign_id, lead_id")
       .in("status", ["sent", "delivered", "read"])
       .or(`phone.eq.+${d},phone.eq.${d}`)
       .order("sent_at", { ascending: false })
       .limit(1);
     if (projectId) q = q.eq("project_id", projectId);
     const { data } = await q;
-    const row = (data ?? [])[0] as { id: string } | undefined;
+    const row = (data ?? [])[0] as { id: string; campaign_id: string; lead_id: string | null } | undefined;
     if (row?.id) {
-      await admin
-        .from("broadcast_recipients")
-        .update({ status: "replied", replied_at: new Date().toISOString() })
-        .eq("id", row.id);
+      const patch: Record<string, unknown> = {
+        status: "replied",
+        replied_at: new Date().toISOString(),
+      };
+      if (!row.lead_id && leadId) patch.lead_id = leadId;
+      await admin.from("broadcast_recipients").update(patch).eq("id", row.id);
+      await refreshBroadcastCampaignStats(row.campaign_id);
     }
   } catch (e) {
     console.warn("markBroadcastReply failed:", e);
@@ -672,7 +712,7 @@ Deno.serve(async (req) => {
       const text = extractText(messageData);
       await insertCommunication({ leadId, direction: "in", text, externalId: idMessage });
       // Трекинг рассылки: клиент ответил → фиксируем reply; стоп-слово → opt-out.
-      await markBroadcastReply(phone, projectId);
+      await markBroadcastReply(phone, projectId, leadId);
       if (isStopWord(text)) await optOutBroadcast(phone, projectId, text);
       triggerChatAnalysis(leadId, "in");
       forwardToBotWebhook(instanceCfg.botWebhookUrl, body);

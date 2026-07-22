@@ -2,10 +2,12 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   CheckCircle2,
+  ChevronRight,
   Clock,
   MessageCircle,
   MoreVertical,
   Pencil,
+  Search,
   Send,
   Smartphone,
   Sparkles,
@@ -24,6 +26,7 @@ import {
   type Broadcast,
   type BroadcastDraft,
 } from "@/lib/broadcastStore";
+import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -86,11 +89,21 @@ const Broadcasts = () => {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sending, setSending] = useState<Broadcast | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Broadcast | null>(null);
+  const [query, setQuery] = useState("");
 
-  const sorted = useMemo(
-    () => [...broadcasts].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
-    [broadcasts],
-  );
+  const sorted = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return [...broadcasts]
+      .filter((b) => {
+        if (!q) return true;
+        return (
+          b.name.toLowerCase().includes(q) ||
+          (b.title || "").toLowerCase().includes(q) ||
+          (b.message || "").toLowerCase().includes(q)
+        );
+      })
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }, [broadcasts, query]);
 
   const openCreate = () => {
     setEditing(null);
@@ -117,7 +130,6 @@ const Broadcasts = () => {
 
   return (
     <main className="flex h-[calc(100vh-3.5rem)] min-h-0 flex-col animate-fade-in-up">
-      {/* Header */}
       <header className="border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur sm:px-6">
         <div className="mx-auto flex max-w-[1400px] flex-wrap items-center gap-3">
           <div className="flex items-center gap-3">
@@ -132,7 +144,7 @@ const Broadcasts = () => {
                 </span>
               </div>
               <p className="text-[11px] text-muted-foreground sm:text-xs">
-                Массовые сообщения по базе CRM или списку контактов — через WhatsApp и SMS
+                Откройте рассылку — статистика доставки, кликов, лидов и продаж из CRM
               </p>
             </div>
           </div>
@@ -160,10 +172,8 @@ const Broadcasts = () => {
         </div>
       </header>
 
-      {/* Content */}
       <section className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4 sm:px-6">
         <div className="mx-auto w-full max-w-[1400px] space-y-4">
-          {/* KPI */}
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
             <StatTile label="Всего рассылок" value={String(stats.total)} icon={Send} />
             <StatTile label="Отправлено" value={String(stats.sent)} tone="success" icon={CheckCircle2} />
@@ -177,23 +187,34 @@ const Broadcasts = () => {
             />
           </div>
 
-          {/* Info banner */}
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-border/60 bg-card/40 px-4 py-3 text-[11px] text-muted-foreground">
             <Sparkles className="h-3.5 w-3.5 shrink-0 text-primary" />
             <span>
-              WhatsApp-рассылки уходят через ваш подключённый номер.{" "}
+              Нажмите на название рассылки, чтобы увидеть воронку: отправили → получили → открыли →
+              лиды → продажи. WhatsApp{" "}
               <button
                 onClick={() => navigate("/settings/connection")}
                 className="font-semibold text-primary underline-offset-2 hover:underline"
               >
-                Подключить WhatsApp
+                {whatsapp.connected ? "подключён" : "подключить"}
               </button>
-              . SMS-канал станет доступен после подключения провайдера.
+              .
             </span>
           </div>
 
-          {/* List / empty */}
-          {sorted.length === 0 ? (
+          {broadcasts.length > 0 ? (
+            <div className="relative max-w-md">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Найти рассылку по названию…"
+                className="h-10 pl-9"
+              />
+            </div>
+          ) : null}
+
+          {broadcasts.length === 0 ? (
             <div className="grid place-items-center rounded-2xl border border-dashed border-border/60 bg-secondary/20 p-10 text-center">
               <span className="grid h-14 w-14 place-items-center rounded-2xl bg-primary/10 text-primary">
                 <Send className="h-7 w-7" />
@@ -211,12 +232,17 @@ const Broadcasts = () => {
                 Создать первую рассылку
               </button>
             </div>
+          ) : sorted.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border/60 bg-secondary/20 p-8 text-center text-sm text-muted-foreground">
+              Ничего не найдено по запросу «{query}»
+            </div>
           ) : (
             <div className="space-y-3">
               {sorted.map((b) => (
                 <BroadcastRow
                   key={b.id}
                   broadcast={b}
+                  onOpen={() => navigate(`/broadcasts/${b.id}`)}
                   onSend={() => setSending(b)}
                   onEdit={() => openEdit(b)}
                   onDelete={() => setPendingDelete(b)}
@@ -227,7 +253,6 @@ const Broadcasts = () => {
         </div>
       </section>
 
-      {/* Dialogs */}
       <BroadcastDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
@@ -275,11 +300,13 @@ const Broadcasts = () => {
 
 function BroadcastRow({
   broadcast,
+  onOpen,
   onSend,
   onEdit,
   onDelete,
 }: {
   broadcast: Broadcast;
+  onOpen: () => void;
   onSend: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -287,9 +314,21 @@ function BroadcastRow({
   const status = STATUS_META[broadcast.status];
   const ChannelIcon = broadcast.channel === "sms" ? Smartphone : MessageCircle;
   const isDone = broadcast.status === "sent" || broadcast.status === "partial" || broadcast.status === "failed";
+  const total = broadcast.recipientsCount || broadcast.stats.total || 0;
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-border">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onOpen();
+        }
+      }}
+      className="cursor-pointer rounded-2xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-primary/40 hover:bg-card"
+    >
       <div className="flex items-start gap-3">
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/30">
           <ChannelIcon className="h-5 w-5" />
@@ -324,7 +363,7 @@ function BroadcastRow({
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
             <span className="inline-flex items-center gap-1">
               <Users className="h-3 w-3" />
-              {broadcast.recipientsCount || broadcast.uploadedContacts.length || "—"} получателей
+              {total || "—"} получателей
             </span>
             <span className="inline-flex items-center gap-1">
               {broadcast.audienceSource === "upload" ? "Загруженный список" : "База CRM"}
@@ -335,20 +374,30 @@ function BroadcastRow({
                 {new Date(broadcast.schedule.at).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}
               </span>
             )}
-            {isDone && (
-              <span className="inline-flex items-center gap-1 text-success">
-                <CheckCircle2 className="h-3 w-3" />
-                доставлено {broadcast.stats.sent}
-                {broadcast.stats.failed > 0 && (
-                  <span className="text-destructive"> · ошибок {broadcast.stats.failed}</span>
-                )}
-              </span>
-            )}
           </div>
+
+          {(isDone || broadcast.status === "sending") && (
+            <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <MiniStat label="Отправлено" value={broadcast.stats.sent} />
+              <MiniStat label="Получили" value={broadcast.stats.delivered} />
+              <MiniStat label="Открыли" value={broadcast.stats.read} />
+              <MiniStat
+                label="Ошибки"
+                value={broadcast.stats.failed}
+                tone={broadcast.stats.failed > 0 ? "destructive" : undefined}
+              />
+            </div>
+          )}
+          <div className="mt-2 text-[11px] font-medium text-primary/80">Открыть отчёт и воронку →</div>
         </div>
 
-        <div className="flex shrink-0 items-center gap-2">
+        <div
+          className="flex shrink-0 items-center gap-2"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => e.stopPropagation()}
+        >
           <button
+            type="button"
             onClick={onSend}
             className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-glow transition-opacity hover:opacity-90"
           >
@@ -359,7 +408,8 @@ function BroadcastRow({
             <DropdownMenuTrigger className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground">
               <MoreVertical className="h-4 w-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-40">
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onClick={onOpen}>Открыть отчёт</DropdownMenuItem>
               <DropdownMenuItem onClick={onEdit}>
                 <Pencil className="mr-2 h-3.5 w-3.5" /> Изменить
               </DropdownMenuItem>
@@ -369,7 +419,32 @@ function BroadcastRow({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
+          <ChevronRight className="hidden h-5 w-5 text-muted-foreground sm:block" />
         </div>
+      </div>
+    </div>
+  );
+}
+
+function MiniStat({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone?: "destructive";
+}) {
+  return (
+    <div className="rounded-lg border border-border/40 bg-background/30 px-2.5 py-1.5">
+      <div className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
+      <div
+        className={cn(
+          "text-sm font-bold tabular-nums",
+          tone === "destructive" && value > 0 && "text-destructive",
+        )}
+      >
+        {value}
       </div>
     </div>
   );
