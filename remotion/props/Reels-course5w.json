@@ -1,0 +1,1004 @@
+{
+ "audioTrack": "reels/vo_course5w.mp3",
+ "words": [
+  {
+   "text": "Есть",
+   "from": 0,
+   "to": 14,
+   "accent": false
+  },
+  {
+   "text": "2",
+   "from": 14,
+   "to": 22,
+   "accent": false
+  },
+  {
+   "text": "типа",
+   "from": 22,
+   "to": 31,
+   "accent": false
+  },
+  {
+   "text": "курсов",
+   "from": 31,
+   "to": 43,
+   "accent": false
+  },
+  {
+   "text": "обучения",
+   "from": 43,
+   "to": 60,
+   "accent": false
+  },
+  {
+   "text": "по",
+   "from": 60,
+   "to": 70,
+   "accent": false
+  },
+  {
+   "text": "искусственному",
+   "from": 70,
+   "to": 89,
+   "accent": false
+  },
+  {
+   "text": "интеллекту",
+   "from": 89,
+   "to": 108,
+   "accent": false
+  },
+  {
+   "text": "Первые",
+   "from": 108,
+   "to": 120,
+   "accent": false
+  },
+  {
+   "text": "учат",
+   "from": 120,
+   "to": 130,
+   "accent": false
+  },
+  {
+   "text": "пользоваться",
+   "from": 130,
+   "to": 142,
+   "accent": false
+  },
+  {
+   "text": "ChatGPT",
+   "from": 142,
+   "to": 166,
+   "accent": true
+  },
+  {
+   "text": "и",
+   "from": 166,
+   "to": 175,
+   "accent": false
+  },
+  {
+   "text": "как",
+   "from": 175,
+   "to": 182,
+   "accent": false
+  },
+  {
+   "text": "правильно",
+   "from": 182,
+   "to": 194,
+   "accent": false
+  },
+  {
+   "text": "писать",
+   "from": 194,
+   "to": 206,
+   "accent": false
+  },
+  {
+   "text": "промпт",
+   "from": 206,
+   "to": 230,
+   "accent": true
+  },
+  {
+   "text": "Вторые",
+   "from": 230,
+   "to": 242,
+   "accent": false
+  },
+  {
+   "text": "показывают",
+   "from": 242,
+   "to": 262,
+   "accent": false
+  },
+  {
+   "text": "красивые",
+   "from": 262,
+   "to": 276,
+   "accent": false
+  },
+  {
+   "text": "презентации",
+   "from": 276,
+   "to": 293,
+   "accent": false
+  },
+  {
+   "text": "про",
+   "from": 298,
+   "to": 305,
+   "accent": false
+  },
+  {
+   "text": "будущее",
+   "from": 305,
+   "to": 317,
+   "accent": true
+  },
+  {
+   "text": "и",
+   "from": 317,
+   "to": 326,
+   "accent": false
+  },
+  {
+   "text": "как",
+   "from": 326,
+   "to": 334,
+   "accent": false
+  },
+  {
+   "text": "создавать",
+   "from": 334,
+   "to": 348,
+   "accent": false
+  },
+  {
+   "text": "картинки",
+   "from": 348,
+   "to": 365,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 365,
+   "to": 370,
+   "accent": false
+  },
+  {
+   "text": "видео",
+   "from": 370,
+   "to": 379,
+   "accent": false
+  },
+  {
+   "text": "с",
+   "from": 379,
+   "to": 384,
+   "accent": false
+  },
+  {
+   "text": "помощью",
+   "from": 384,
+   "to": 394,
+   "accent": false
+  },
+  {
+   "text": "Higgsfield",
+   "from": 394,
+   "to": 478,
+   "accent": true
+  },
+  {
+   "text": "Я",
+   "from": 423,
+   "to": 433,
+   "accent": false
+  },
+  {
+   "text": "решил",
+   "from": 433,
+   "to": 440,
+   "accent": false
+  },
+  {
+   "text": "сделать",
+   "from": 440,
+   "to": 452,
+   "accent": false
+  },
+  {
+   "text": "3-ю",
+   "from": 452,
+   "to": 464,
+   "accent": false
+  },
+  {
+   "text": "модель",
+   "from": 464,
+   "to": 481,
+   "accent": false
+  },
+  {
+   "text": "Мы",
+   "from": 481,
+   "to": 491,
+   "accent": false
+  },
+  {
+   "text": "не",
+   "from": 491,
+   "to": 495,
+   "accent": false
+  },
+  {
+   "text": "изучаем",
+   "from": 495,
+   "to": 510,
+   "accent": false
+  },
+  {
+   "text": "AI",
+   "from": 510,
+   "to": 522,
+   "accent": false
+  },
+  {
+   "text": "как",
+   "from": 522,
+   "to": 529,
+   "accent": false
+  },
+  {
+   "text": "игрушку",
+   "from": 529,
+   "to": 546,
+   "accent": false
+  },
+  {
+   "text": "Мы",
+   "from": 546,
+   "to": 555,
+   "accent": false
+  },
+  {
+   "text": "строим",
+   "from": 555,
+   "to": 567,
+   "accent": false
+  },
+  {
+   "text": "бизнес",
+   "from": 567,
+   "to": 577,
+   "accent": false
+  },
+  {
+   "text": "решения",
+   "from": 577,
+   "to": 596,
+   "accent": false
+  },
+  {
+   "text": "за",
+   "from": 596,
+   "to": 599,
+   "accent": false
+  },
+  {
+   "text": "которые",
+   "from": 599,
+   "to": 608,
+   "accent": false
+  },
+  {
+   "text": "платят",
+   "from": 608,
+   "to": 623,
+   "accent": false
+  },
+  {
+   "text": "от",
+   "from": 623,
+   "to": 630,
+   "accent": false
+  },
+  {
+   "text": "1000000",
+   "from": 630,
+   "to": 651,
+   "accent": false
+  },
+  {
+   "text": "тенге",
+   "from": 651,
+   "to": 675,
+   "accent": false
+  },
+  {
+   "text": "За",
+   "from": 675,
+   "to": 683,
+   "accent": false
+  },
+  {
+   "text": "5",
+   "from": 683,
+   "to": 690,
+   "accent": false
+  },
+  {
+   "text": "недель",
+   "from": 690,
+   "to": 699,
+   "accent": true
+  },
+  {
+   "text": "ты",
+   "from": 699,
+   "to": 704,
+   "accent": false
+  },
+  {
+   "text": "не",
+   "from": 704,
+   "to": 709,
+   "accent": false
+  },
+  {
+   "text": "только",
+   "from": 709,
+   "to": 716,
+   "accent": false
+  },
+  {
+   "text": "научишься",
+   "from": 716,
+   "to": 735,
+   "accent": false
+  },
+  {
+   "text": "создавать",
+   "from": 735,
+   "to": 750,
+   "accent": false
+  },
+  {
+   "text": "сайты",
+   "from": 750,
+   "to": 762,
+   "accent": true
+  },
+  {
+   "text": "и",
+   "from": 762,
+   "to": 769,
+   "accent": false
+  },
+  {
+   "text": "приложения",
+   "from": 769,
+   "to": 819,
+   "accent": false
+  },
+  {
+   "text": "ты",
+   "from": 793,
+   "to": 800,
+   "accent": false
+  },
+  {
+   "text": "создашь",
+   "from": 800,
+   "to": 814,
+   "accent": false
+  },
+  {
+   "text": "собственную",
+   "from": 814,
+   "to": 831,
+   "accent": false
+  },
+  {
+   "text": "команду",
+   "from": 831,
+   "to": 843,
+   "accent": false
+  },
+  {
+   "text": "агентов",
+   "from": 843,
+   "to": 862,
+   "accent": false
+  },
+  {
+   "text": "которая",
+   "from": 862,
+   "to": 872,
+   "accent": false
+  },
+  {
+   "text": "будет",
+   "from": 872,
+   "to": 881,
+   "accent": false
+  },
+  {
+   "text": "работать",
+   "from": 881,
+   "to": 893,
+   "accent": false
+  },
+  {
+   "text": "за",
+   "from": 893,
+   "to": 901,
+   "accent": false
+  },
+  {
+   "text": "тебя",
+   "from": 901,
+   "to": 913,
+   "accent": false
+  },
+  {
+   "text": "включая",
+   "from": 913,
+   "to": 925,
+   "accent": false
+  },
+  {
+   "text": "контент",
+   "from": 925,
+   "to": 939,
+   "accent": false
+  },
+  {
+   "text": "завод",
+   "from": 939,
+   "to": 965,
+   "accent": false
+  },
+  {
+   "text": "сквозную",
+   "from": 965,
+   "to": 980,
+   "accent": false
+  },
+  {
+   "text": "аналитику",
+   "from": 980,
+   "to": 994,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 997,
+   "to": 1004,
+   "accent": false
+  },
+  {
+   "text": "таргетолога",
+   "from": 1004,
+   "to": 1042,
+   "accent": false
+  },
+  {
+   "text": "который",
+   "from": 1042,
+   "to": 1049,
+   "accent": false
+  },
+  {
+   "text": "запускает",
+   "from": 1049,
+   "to": 1069,
+   "accent": false
+  },
+  {
+   "text": "рекламу",
+   "from": 1069,
+   "to": 1083,
+   "accent": false
+  },
+  {
+   "text": "в",
+   "from": 1083,
+   "to": 1088,
+   "accent": false
+  },
+  {
+   "text": "пару",
+   "from": 1088,
+   "to": 1095,
+   "accent": false
+  },
+  {
+   "text": "кликов",
+   "from": 1095,
+   "to": 1117,
+   "accent": false
+  },
+  {
+   "text": "Я",
+   "from": 1124,
+   "to": 1133,
+   "accent": false
+  },
+  {
+   "text": "провожу",
+   "from": 1133,
+   "to": 1153,
+   "accent": false
+  },
+  {
+   "text": "онлайн-практикум",
+   "from": 1151,
+   "to": 1208,
+   "accent": true
+  },
+  {
+   "text": "где",
+   "from": 1208,
+   "to": 1213,
+   "accent": false
+  },
+  {
+   "text": "покажу",
+   "from": 1213,
+   "to": 1223,
+   "accent": false
+  },
+  {
+   "text": "систему",
+   "from": 1223,
+   "to": 1239,
+   "accent": true
+  },
+  {
+   "text": "и",
+   "from": 1239,
+   "to": 1247,
+   "accent": false
+  },
+  {
+   "text": "как",
+   "from": 1247,
+   "to": 1254,
+   "accent": false
+  },
+  {
+   "text": "она",
+   "from": 1254,
+   "to": 1261,
+   "accent": false
+  },
+  {
+   "text": "создает",
+   "from": 1261,
+   "to": 1275,
+   "accent": false
+  },
+  {
+   "text": "контент",
+   "from": 1275,
+   "to": 1292,
+   "accent": false
+  },
+  {
+   "text": "запускает",
+   "from": 1292,
+   "to": 1307,
+   "accent": false
+  },
+  {
+   "text": "рекламу",
+   "from": 1307,
+   "to": 1323,
+   "accent": false
+  },
+  {
+   "text": "собирает",
+   "from": 1323,
+   "to": 1338,
+   "accent": false
+  },
+  {
+   "text": "сайты",
+   "from": 1338,
+   "to": 1355,
+   "accent": false
+  },
+  {
+   "text": "CRM",
+   "from": 1355,
+   "to": 1364,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 1364,
+   "to": 1371,
+   "accent": false
+  },
+  {
+   "text": "автоматически",
+   "from": 1371,
+   "to": 1393,
+   "accent": false
+  },
+  {
+   "text": "делает",
+   "from": 1393,
+   "to": 1407,
+   "accent": false
+  },
+  {
+   "text": "отчеты",
+   "from": 1407,
+   "to": 1419,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 1419,
+   "to": 1427,
+   "accent": false
+  },
+  {
+   "text": "отправляет",
+   "from": 1427,
+   "to": 1441,
+   "accent": false
+  },
+  {
+   "text": "их",
+   "from": 1441,
+   "to": 1448,
+   "accent": false
+  },
+  {
+   "text": "клиентам",
+   "from": 1448,
+   "to": 1463,
+   "accent": false
+  },
+  {
+   "text": "каждый",
+   "from": 1463,
+   "to": 1475,
+   "accent": false
+  },
+  {
+   "text": "день",
+   "from": 1475,
+   "to": 1501,
+   "accent": false
+  },
+  {
+   "text": "Если",
+   "from": 1492,
+   "to": 1504,
+   "accent": false
+  },
+  {
+   "text": "хочешь",
+   "from": 1504,
+   "to": 1513,
+   "accent": false
+  },
+  {
+   "text": "увидеть",
+   "from": 1513,
+   "to": 1525,
+   "accent": true
+  },
+  {
+   "text": "все",
+   "from": 1525,
+   "to": 1532,
+   "accent": false
+  },
+  {
+   "text": "вживую",
+   "from": 1532,
+   "to": 1547,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 1547,
+   "to": 1556,
+   "accent": false
+  },
+  {
+   "text": "узнать",
+   "from": 1556,
+   "to": 1571,
+   "accent": false
+  },
+  {
+   "text": "как",
+   "from": 1571,
+   "to": 1573,
+   "accent": false
+  },
+  {
+   "text": "собрать",
+   "from": 1573,
+   "to": 1585,
+   "accent": false
+  },
+  {
+   "text": "такую",
+   "from": 1585,
+   "to": 1597,
+   "accent": false
+  },
+  {
+   "text": "же",
+   "from": 1597,
+   "to": 1602,
+   "accent": false
+  },
+  {
+   "text": "систему",
+   "from": 1602,
+   "to": 1616,
+   "accent": true
+  },
+  {
+   "text": "под",
+   "from": 1616,
+   "to": 1624,
+   "accent": false
+  },
+  {
+   "text": "себя",
+   "from": 1624,
+   "to": 1633,
+   "accent": false
+  },
+  {
+   "text": "напиши",
+   "from": 1633,
+   "to": 1645,
+   "accent": false
+  },
+  {
+   "text": "слово",
+   "from": 1645,
+   "to": 1657,
+   "accent": false
+  },
+  {
+   "text": "хаб",
+   "from": 1657,
+   "to": 1679,
+   "accent": false
+  },
+  {
+   "text": "Отправлю",
+   "from": 1679,
+   "to": 1693,
+   "accent": false
+  },
+  {
+   "text": "подробную",
+   "from": 1693,
+   "to": 1708,
+   "accent": false
+  },
+  {
+   "text": "информацию",
+   "from": 1708,
+   "to": 1727,
+   "accent": false
+  },
+  {
+   "text": "Количество",
+   "from": 1727,
+   "to": 1741,
+   "accent": false
+  },
+  {
+   "text": "мест",
+   "from": 1741,
+   "to": 1751,
+   "accent": false
+  },
+  {
+   "text": "ограничено",
+   "from": 1751,
+   "to": 1776,
+   "accent": false
+  }
+ ],
+ "scenes": [
+  {
+   "from": 0,
+   "to": 108,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "2 ТИПА КУРСОВ",
+     "ПО AI"
+    ],
+    "accent": "#22D3EE",
+    "cover": true
+   },
+   "clip": "broll/course5w/online-course-laptop-student-8136216.mp4"
+  },
+  {
+   "from": 108,
+   "to": 230,
+   "template": "captions",
+   "data": {
+    "accent": "#FB7185"
+   },
+   "clip": "broll/course5w/chatgpt-ai-chat-screen-typing-7362700.mp4"
+  },
+  {
+   "from": 230,
+   "to": 423,
+   "template": "captions",
+   "data": {
+    "accent": "#8B5CF6"
+   },
+   "clip": "broll/course5w/ai-generated-digital-art-futuristic-18069831.mp4"
+  },
+  {
+   "from": 423,
+   "to": 481,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ТРЕТЬЯ",
+     "МОДЕЛЬ"
+    ],
+    "accent": "#FF7A18",
+    "cover": true
+   }
+  },
+  {
+   "from": 481,
+   "to": 546,
+   "template": "kinetic-type",
+   "data": {
+    "words": [
+     "AI",
+     "НЕ",
+     "ИГРУШКА"
+    ],
+    "accentIndex": 2,
+    "accent": "#FB7185",
+    "cover": true
+   }
+  },
+  {
+   "from": 546,
+   "to": 675,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "БИЗНЕС-РЕШЕНИЯ",
+     "ОТ 1 000 000 ₸"
+    ],
+    "accent": "#FFC53D",
+    "cover": true
+   },
+   "clip": "broll/course5w/business-money-growth-success-6282164.mp4"
+  },
+  {
+   "from": 675,
+   "to": 793,
+   "template": "number-counter",
+   "data": {
+    "value": 5,
+    "suffix": " НЕДЕЛЬ",
+    "label": "САЙТЫ И ПРИЛОЖЕНИЯ С НУЛЯ",
+    "icon": "rocket",
+    "accent": "#22D3EE"
+   },
+   "clip": "broll/course5w/web-development-coding-screen-34459460.mp4"
+  },
+  {
+   "from": 793,
+   "to": 913,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ТВОЯ КОМАНДА",
+     "AI-АГЕНТОВ"
+    ],
+    "accent": "#34D399",
+    "cover": true
+   },
+   "clip": "broll/course5w/artificial-intelligence-network-abstract-35163081.mp4"
+  },
+  {
+   "from": 913,
+   "to": 1124,
+   "template": "checklist-reveal",
+   "data": {
+    "title": "АГЕНТЫ ДЕЛАЮТ САМИ",
+    "items": [
+     "Контент-завод",
+     "Сквозная аналитика",
+     "AI-таргетолог"
+    ],
+    "icons": [
+     "apps",
+     "chart",
+     "target"
+    ],
+    "accent": "#8B5CF6",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/course5w/business-analytics-dashboard-screen-36825184.mp4"
+  },
+  {
+   "from": 1124,
+   "to": 1275,
+   "template": "captions",
+   "data": {
+    "accent": "#22D3EE"
+   },
+   "clip": "broll/course5w/online-webinar-video-call-business-7644029.mp4"
+  },
+  {
+   "from": 1275,
+   "to": 1492,
+   "template": "checklist-reveal",
+   "data": {
+    "title": "СИСТЕМА ДЕЛАЕТ",
+    "items": [
+     "Контент и рекламу",
+     "Сайты и CRM",
+     "Отчёты клиентам"
+    ],
+    "icons": [
+     "rocket",
+     "apps",
+     "chart"
+    ],
+    "accent": "#34D399",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/course5w/marketing-automation-dashboard-data-36805468.mp4"
+  },
+  {
+   "from": 1492,
+   "to": 1657,
+   "template": "captions",
+   "data": {
+    "accent": "#FF7A18"
+   },
+   "clip": "broll/course5w/entrepreneur-working-laptop-office-6930460.mp4"
+  },
+  {
+   "from": 1657,
+   "to": 1776,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ПИШИ «ХАБ»",
+     "МЕСТ ОГРАНИЧЕНО"
+    ],
+    "accent": "#FF7A18",
+    "cover": true
+   }
+  }
+ ],
+ "totalDurationInFrames": 1776,
+ "fps": 30,
+ "music": "reels/beat_course5w.wav",
+ "musicVolume": 0.07,
+ "captions": true
+}
