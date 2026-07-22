@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 /**
  * Mirrors ig-webhook comment event collection + id extraction.
  * Keep in sync with supabase/functions/ig-webhook/index.ts
+ * and supabase/functions/_lib/igCodewordMessaging.ts
  */
 function collectCommentEvents(entry: Record<string, unknown>) {
   const commentEvents: Array<{ field: string; value: Record<string, unknown> }> = [];
@@ -59,6 +60,60 @@ function legacyVariants(raw: string | null | undefined) {
   return parts.length > 1 ? parts : [text];
 }
 
+/** Mirrors supabase/functions/_lib/igCodewordMessaging.ts collectMessagingEvents */
+function collectMessagingEvents(entry: Record<string, unknown>, igUserId: string) {
+  type Ev = { senderId: string; mid: string; text: string; username: string | null };
+  const out: Ev[] = [];
+  const asRecord = (v: unknown) =>
+    v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  const parse = (raw: unknown): Ev | null => {
+    const ev = asRecord(raw);
+    if (!ev) return null;
+    const sender = asRecord(ev.sender);
+    const msg = asRecord(ev.message);
+    const senderId = sender?.id != null ? String(sender.id) : null;
+    if (!senderId || senderId === igUserId) return null;
+    if (!msg || msg.is_echo === true || msg.is_deleted === true) return null;
+    const text = String(msg.text ?? "").trim();
+    if (!text) return null;
+    const mid = msg.mid != null ? String(msg.mid) : `${senderId}:${ev.timestamp ?? 0}`;
+    const username = sender?.username != null ? String(sender.username) : null;
+    return { senderId, mid, text, username };
+  };
+  const pushList = (list: unknown) => {
+    if (!Array.isArray(list)) return;
+    for (const item of list) {
+      const p = parse(item);
+      if (p) out.push(p);
+    }
+  };
+  pushList(entry.messaging);
+  pushList(entry.standby);
+  const pushValue = (field: unknown, value: unknown) => {
+    if (field !== "messages" && field !== "message_echoes") return;
+    const rec = asRecord(value);
+    if (!rec) return;
+    if (Array.isArray(rec.messaging)) {
+      pushList(rec.messaging);
+      return;
+    }
+    if (rec.sender || rec.message) {
+      const p = parse(rec);
+      if (p) out.push(p);
+    }
+  };
+  for (const change of (entry.changes as Array<Record<string, unknown>> | undefined) ?? []) {
+    pushValue(change?.field, change?.value);
+  }
+  pushValue(entry.field, entry.value);
+  const seen = new Set<string>();
+  return out.filter((e) => {
+    if (seen.has(e.mid)) return false;
+    seen.add(e.mid);
+    return true;
+  });
+}
+
 describe("ig-webhook Instagram Login comment payload", () => {
   it("reads field/value on entry (no changes[])", () => {
     const entry = {
@@ -113,5 +168,68 @@ describe("ig-webhook Instagram Login comment payload", () => {
   it("splits legacy newline-joined reply_text into variants", () => {
     expect(legacyVariants("one\ntwo\nthree")).toEqual(["one", "two", "three"]);
     expect(legacyVariants("single")).toEqual(["single"]);
+  });
+});
+
+describe("ig-webhook messaging payload shapes", () => {
+  const ig = "17841439242678602";
+
+  it("reads classic entry.messaging[]", () => {
+    const entry = {
+      id: ig,
+      messaging: [
+        {
+          sender: { id: "2542785836227958", username: "urvn.tt" },
+          recipient: { id: ig },
+          timestamp: 1,
+          message: { mid: "m1", text: "Хаб" },
+        },
+      ],
+    };
+    const evs = collectMessagingEvents(entry, ig);
+    expect(evs).toHaveLength(1);
+    expect(evs[0]).toMatchObject({
+      senderId: "2542785836227958",
+      mid: "m1",
+      text: "Хаб",
+      username: "urvn.tt",
+    });
+  });
+
+  it("reads standby[] (handover) the same way", () => {
+    const entry = {
+      id: ig,
+      standby: [
+        {
+          sender: { id: "u2" },
+          message: { mid: "m2", text: "хаб" },
+        },
+      ],
+    };
+    expect(collectMessagingEvents(entry, ig)[0]?.mid).toBe("m2");
+  });
+
+  it("reads Instagram Login field/value messages", () => {
+    const entry = {
+      id: ig,
+      field: "messages",
+      value: {
+        sender: { id: "u3" },
+        message: { mid: "m3", text: "хаб" },
+      },
+    };
+    expect(collectMessagingEvents(entry, ig)[0]?.mid).toBe("m3");
+  });
+
+  it("skips echoes and empty text", () => {
+    const entry = {
+      id: ig,
+      messaging: [
+        { sender: { id: "u4" }, message: { mid: "e1", text: "хаб", is_echo: true } },
+        { sender: { id: ig }, message: { mid: "e2", text: "хаб" } },
+        { sender: { id: "u4" }, message: { mid: "e3", text: "  " } },
+      ],
+    };
+    expect(collectMessagingEvents(entry, ig)).toHaveLength(0);
   });
 });

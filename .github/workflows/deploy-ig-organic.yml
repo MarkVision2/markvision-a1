@@ -6,6 +6,7 @@ on:
     branches: [main]
     paths:
       - "supabase/functions/ig-webhook/**"
+      - "supabase/functions/ig-dm-catchup/**"
       - "supabase/functions/ig-organic-redirect/**"
       - "supabase/functions/instagram-organic-intake/**"
       - "supabase/functions/instagram-sync/**"
@@ -43,7 +44,7 @@ jobs:
           SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
         run: |
           set -e
-          for fn in ig-webhook ig-organic-redirect instagram-organic-intake instagram-sync; do
+          for fn in ig-webhook ig-dm-catchup ig-organic-redirect instagram-organic-intake instagram-sync; do
             echo "::group::$fn"
             supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"
             echo "::endgroup::"

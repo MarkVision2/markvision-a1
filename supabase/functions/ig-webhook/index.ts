@@ -5,6 +5,8 @@
 // через Instagram Login токен (graph.instagram.com) — Page-токен на этом
 // Meta-приложении для messages падает с (#3). Варианты ответов берутся из
 // comment_replies / dm_messages (с фолбэком на legacy reply_text / dm_text).
+import { collectMessagingEvents } from "../_lib/igCodewordMessaging.ts";
+
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const H: Record<string, string> = {
@@ -216,6 +218,25 @@ function bearer(account: ProjectAccount, preferLogin: boolean): string | null {
   if (preferLogin && account.ig_login_access_token) return account.ig_login_access_token;
   if (account.page_access_token) return account.page_access_token;
   return account.ig_login_access_token;
+}
+
+/** Resolve @username for tracking links when webhook payload omits it. */
+async function resolveIgUsername(
+  account: ProjectAccount,
+  igsid: string,
+): Promise<string | null> {
+  const token = bearer(account, true);
+  if (!token) return null;
+  const host = graphHost(account, true);
+  try {
+    const r = await fetch(
+      `${host}/${encodeURIComponent(igsid)}?fields=username&access_token=${encodeURIComponent(token)}`,
+    );
+    const j = await r.json().catch(() => ({}));
+    return j?.username ? String(j.username) : null;
+  } catch {
+    return null;
+  }
 }
 
 async function postPublicReply(
@@ -442,38 +463,60 @@ Deno.serve(async (req) => {
       const igUserId = String(entry.id ?? "");
       if (!igUserId) continue;
 
-      // Личные сообщения (DM): код-слово в директе → тот же ответ, что и на комментарий
-      // (instagram_codewords: dm_messages + кнопка «получить доступ» на трекинг-ссылку).
-      for (const ev of entry.messaging ?? []) {
-        const senderId = ev.sender?.id ? String(ev.sender.id) : null;
-        const msg = ev.message;
-        if (!senderId || senderId === igUserId) continue;   // не мы
-        if (!msg || msg.is_echo) continue;                  // не эхо собственных сообщений
-        const dmText = String(msg.text ?? "").trim();
-        if (!dmText) continue;
-
+      // Личные сообщения (DM): код-слово в директе → тот же ответ, что и на комментарий.
+      // Meta шлёт messaging[] / standby[]; Instagram Login иногда — field/value или changes[].
+      const dmEvents = collectMessagingEvents(entry as Record<string, unknown>, igUserId);
+      for (const dm of dmEvents) {
         const account = await resolveAccount(igUserId);
-        if (!account) continue;
+        if (!account) {
+          console.log("ig-webhook: dm no account", { igUserId, mid: dm.mid });
+          continue;
+        }
 
-        const kw = await matchCodeword(account.project_id, null, dmText);
-        if (!kw) continue;
+        const kw = await matchCodeword(account.project_id, null, dm.text);
+        if (!kw) {
+          console.log("ig-webhook: dm no codeword", {
+            project: account.project_id,
+            text: dm.text.slice(0, 80),
+            mid: dm.mid,
+          });
+          continue;
+        }
 
-        const mid = msg.mid ? String(msg.mid) : `${senderId}:${Date.now()}`;
-        const eventId = await claimEvent(account.project_id, kw, null, mid, null, "codeword_dm");
+        const username =
+          dm.username ?? (await resolveIgUsername(account, dm.senderId));
+        const eventId = await claimEvent(
+          account.project_id,
+          kw,
+          null,
+          dm.mid,
+          username,
+          "codeword_dm",
+        );
         if (!eventId) continue;
 
         const pickedLink = resolveTargetUrlIndexed(kw);
-        const link = buildTrackingLink(kw.short_id, null, pickedLink?.index ?? null);
+        const link = buildTrackingLink(kw.short_id, username, pickedLink?.index ?? null);
         const dmPrefix = resolveDmText(kw) || DEFAULT_DM_TEXT;
-        const sent = await sendDmToUser(igUserId, account, senderId, {
+        const sent = await sendDmToUser(igUserId, account, dm.senderId, {
           text: dmPrefix,
           buttonTitle: clampButtonTitle(),
           buttonUrl: link,
         });
+        if (!sent.ok) {
+          console.log("ig-webhook: dm send failed", {
+            mid: dm.mid,
+            senderId: dm.senderId,
+            body: sent.body,
+            mode: sent.mode,
+          });
+        }
 
         await finalizeEvent(eventId, {
           source: "dm",
-          mid,
+          mid: dm.mid,
+          recipient_id: dm.senderId,
+          username,
           dm_status: sent.ok ? "sent" : "failed",
           dm_mode: sent.mode,
           dm_button_url: link,
@@ -583,6 +626,9 @@ Deno.serve(async (req) => {
         }
       }
     }
-  } catch (_e) { /* Meta expects 200 */ }
+  } catch (e) {
+    // Meta retries on non-2xx; always 200, but log so DM misses are visible.
+    console.error("[ig-webhook] handler error", e instanceof Error ? e.message : String(e));
+  }
   return new Response("EVENT_RECEIVED");
 });

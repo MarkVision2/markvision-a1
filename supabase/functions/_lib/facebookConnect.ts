@@ -58,7 +58,7 @@ export async function connectPageAndAdAccount(
       body: JSON.stringify({ project_id: projectId }),
     }).catch(() => {});
 
-    await fetch(`${GRAPH}/${page.id}/subscribed_apps?subscribed_fields=comments,messages&access_token=${page.access_token}`, { method: "POST" }).catch(() => {});
+    await fetch(`${GRAPH}/${page.id}/subscribed_apps?subscribed_fields=comments,live_comments,messages,messaging_postbacks,messaging_referral,messaging_seen,standby&access_token=${page.access_token}`, { method: "POST" }).catch(() => {});
   }
 
   if (adAccount) {

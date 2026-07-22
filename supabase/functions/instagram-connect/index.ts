@@ -122,7 +122,7 @@ Deno.serve(async (req) => {
     let webhookError: string | null = null;
     try {
       const subRes = await fetch(
-        `${GRAPH}/${page_id}/subscribed_apps?subscribed_fields=comments,messages&access_token=${page.access_token}`,
+        `${GRAPH}/${page_id}/subscribed_apps?subscribed_fields=comments,live_comments,messages,messaging_postbacks,messaging_referral,messaging_seen,standby&access_token=${page.access_token}`,
         { method: "POST" },
       );
       const subJson = await subRes.json().catch(() => ({}));
