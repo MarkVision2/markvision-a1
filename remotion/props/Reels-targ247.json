@@ -1,0 +1,743 @@
+{
+ "audioTrack": "reels/vo_targ247.mp3",
+ "words": [
+  {
+   "text": "Как",
+   "from": 2,
+   "to": 12,
+   "accent": false
+  },
+  {
+   "text": "таргетологу",
+   "from": 12,
+   "to": 36,
+   "accent": false
+  },
+  {
+   "text": "перестать",
+   "from": 36,
+   "to": 55,
+   "accent": false
+  },
+  {
+   "text": "жить",
+   "from": 55,
+   "to": 65,
+   "accent": false
+  },
+  {
+   "text": "в",
+   "from": 65,
+   "to": 70,
+   "accent": false
+  },
+  {
+   "text": "рекламном",
+   "from": 70,
+   "to": 86,
+   "accent": false
+  },
+  {
+   "text": "кабинете?",
+   "from": 86,
+   "to": 115,
+   "accent": false
+  },
+  {
+   "text": "Еще",
+   "from": 115,
+   "to": 127,
+   "accent": false
+  },
+  {
+   "text": "год",
+   "from": 127,
+   "to": 134,
+   "accent": false
+  },
+  {
+   "text": "назад",
+   "from": 134,
+   "to": 144,
+   "accent": false
+  },
+  {
+   "text": "я",
+   "from": 144,
+   "to": 151,
+   "accent": false
+  },
+  {
+   "text": "сидел",
+   "from": 151,
+   "to": 161,
+   "accent": false
+  },
+  {
+   "text": "с",
+   "from": 161,
+   "to": 168,
+   "accent": false
+  },
+  {
+   "text": "запусками",
+   "from": 168,
+   "to": 185,
+   "accent": false
+  },
+  {
+   "text": "по",
+   "from": 185,
+   "to": 190,
+   "accent": false
+  },
+  {
+   "text": "10",
+   "from": 190,
+   "to": 204,
+   "accent": false
+  },
+  {
+   "text": "часов",
+   "from": 204,
+   "to": 211,
+   "accent": false
+  },
+  {
+   "text": "в",
+   "from": 211,
+   "to": 218,
+   "accent": false
+  },
+  {
+   "text": "день",
+   "from": 218,
+   "to": 228,
+   "accent": false
+  },
+  {
+   "text": "Правки",
+   "from": 228,
+   "to": 242,
+   "accent": false
+  },
+  {
+   "text": "оптимизация",
+   "from": 242,
+   "to": 274,
+   "accent": false
+  },
+  {
+   "text": "отчеты",
+   "from": 274,
+   "to": 302,
+   "accent": false
+  },
+  {
+   "text": "Сейчас",
+   "from": 302,
+   "to": 312,
+   "accent": false
+  },
+  {
+   "text": "рекламу",
+   "from": 312,
+   "to": 326,
+   "accent": false
+  },
+  {
+   "text": "запускает",
+   "from": 326,
+   "to": 346,
+   "accent": false
+  },
+  {
+   "text": "система",
+   "from": 361,
+   "to": 373,
+   "accent": false
+  },
+  {
+   "text": "Я",
+   "from": 373,
+   "to": 378,
+   "accent": false
+  },
+  {
+   "text": "говорю",
+   "from": 378,
+   "to": 385,
+   "accent": false
+  },
+  {
+   "text": "что",
+   "from": 385,
+   "to": 393,
+   "accent": false
+  },
+  {
+   "text": "нужно",
+   "from": 393,
+   "to": 405,
+   "accent": true
+  },
+  {
+   "text": "а",
+   "from": 405,
+   "to": 409,
+   "accent": false
+  },
+  {
+   "text": "система",
+   "from": 409,
+   "to": 424,
+   "accent": false
+  },
+  {
+   "text": "создает",
+   "from": 424,
+   "to": 441,
+   "accent": false
+  },
+  {
+   "text": "контент",
+   "from": 441,
+   "to": 460,
+   "accent": false
+  },
+  {
+   "text": "пишет",
+   "from": 460,
+   "to": 472,
+   "accent": false
+  },
+  {
+   "text": "стратегию",
+   "from": 472,
+   "to": 491,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 491,
+   "to": 496,
+   "accent": false
+  },
+  {
+   "text": "запускает",
+   "from": 496,
+   "to": 513,
+   "accent": false
+  },
+  {
+   "text": "рекламу",
+   "from": 513,
+   "to": 527,
+   "accent": false
+  },
+  {
+   "text": "все",
+   "from": 527,
+   "to": 539,
+   "accent": false
+  },
+  {
+   "text": "сама",
+   "from": 539,
+   "to": 565,
+   "accent": false
+  },
+  {
+   "text": "Затем",
+   "from": 565,
+   "to": 577,
+   "accent": false
+  },
+  {
+   "text": "делает",
+   "from": 577,
+   "to": 589,
+   "accent": false
+  },
+  {
+   "text": "отчеты",
+   "from": 589,
+   "to": 601,
+   "accent": true
+  },
+  {
+   "text": "и",
+   "from": 601,
+   "to": 609,
+   "accent": false
+  },
+  {
+   "text": "отправляет",
+   "from": 609,
+   "to": 623,
+   "accent": false
+  },
+  {
+   "text": "их",
+   "from": 623,
+   "to": 630,
+   "accent": false
+  },
+  {
+   "text": "клиентам",
+   "from": 630,
+   "to": 657,
+   "accent": true
+  },
+  {
+   "text": "Я",
+   "from": 657,
+   "to": 664,
+   "accent": false
+  },
+  {
+   "text": "буквально",
+   "from": 664,
+   "to": 676,
+   "accent": false
+  },
+  {
+   "text": "нанял",
+   "from": 676,
+   "to": 688,
+   "accent": false
+  },
+  {
+   "text": "себе",
+   "from": 688,
+   "to": 697,
+   "accent": false
+  },
+  {
+   "text": "профи",
+   "from": 697,
+   "to": 712,
+   "accent": false
+  },
+  {
+   "text": "который",
+   "from": 712,
+   "to": 719,
+   "accent": false
+  },
+  {
+   "text": "работает",
+   "from": 719,
+   "to": 733,
+   "accent": false
+  },
+  {
+   "text": "круглосуточно",
+   "from": 733,
+   "to": 762,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 762,
+   "to": 767,
+   "accent": false
+  },
+  {
+   "text": "не",
+   "from": 767,
+   "to": 769,
+   "accent": false
+  },
+  {
+   "text": "ошибается",
+   "from": 769,
+   "to": 793,
+   "accent": false
+  },
+  {
+   "text": "Благодаря",
+   "from": 803,
+   "to": 818,
+   "accent": false
+  },
+  {
+   "text": "этому",
+   "from": 818,
+   "to": 827,
+   "accent": false
+  },
+  {
+   "text": "оплата",
+   "from": 827,
+   "to": 839,
+   "accent": false
+  },
+  {
+   "text": "за",
+   "from": 839,
+   "to": 847,
+   "accent": false
+  },
+  {
+   "text": "мою",
+   "from": 847,
+   "to": 854,
+   "accent": false
+  },
+  {
+   "text": "работу",
+   "from": 854,
+   "to": 863,
+   "accent": false
+  },
+  {
+   "text": "выросла",
+   "from": 863,
+   "to": 878,
+   "accent": false
+  },
+  {
+   "text": "в",
+   "from": 878,
+   "to": 883,
+   "accent": false
+  },
+  {
+   "text": "2-3",
+   "from": 883,
+   "to": 895,
+   "accent": false
+  },
+  {
+   "text": "раза",
+   "from": 895,
+   "to": 909,
+   "accent": false
+  },
+  {
+   "text": "а",
+   "from": 909,
+   "to": 914,
+   "accent": false
+  },
+  {
+   "text": "нагрузка",
+   "from": 914,
+   "to": 928,
+   "accent": false
+  },
+  {
+   "text": "наоборот",
+   "from": 928,
+   "to": 943,
+   "accent": false
+  },
+  {
+   "text": "упала",
+   "from": 943,
+   "to": 959,
+   "accent": false
+  },
+  {
+   "text": "Хочешь",
+   "from": 959,
+   "to": 969,
+   "accent": false
+  },
+  {
+   "text": "себе",
+   "from": 969,
+   "to": 976,
+   "accent": false
+  },
+  {
+   "text": "умную",
+   "from": 976,
+   "to": 991,
+   "accent": false
+  },
+  {
+   "text": "систему",
+   "from": 991,
+   "to": 1007,
+   "accent": false
+  },
+  {
+   "text": "которая",
+   "from": 1007,
+   "to": 1017,
+   "accent": false
+  },
+  {
+   "text": "заменит",
+   "from": 1017,
+   "to": 1031,
+   "accent": false
+  },
+  {
+   "text": "целый",
+   "from": 1031,
+   "to": 1041,
+   "accent": false
+  },
+  {
+   "text": "штат",
+   "from": 1041,
+   "to": 1048,
+   "accent": false
+  },
+  {
+   "text": "маркетологов?",
+   "from": 1048,
+   "to": 1091,
+   "accent": false
+  },
+  {
+   "text": "Пиши",
+   "from": 1096,
+   "to": 1108,
+   "accent": false
+  },
+  {
+   "text": "хаб",
+   "from": 1108,
+   "to": 1115,
+   "accent": false
+  },
+  {
+   "text": "в",
+   "from": 1115,
+   "to": 1123,
+   "accent": false
+  },
+  {
+   "text": "комментариях",
+   "from": 1123,
+   "to": 1135,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 1135,
+   "to": 1142,
+   "accent": false
+  },
+  {
+   "text": "узнай",
+   "from": 1142,
+   "to": 1154,
+   "accent": false
+  },
+  {
+   "text": "как",
+   "from": 1154,
+   "to": 1159,
+   "accent": false
+  },
+  {
+   "text": "повторить",
+   "from": 1159,
+   "to": 1171,
+   "accent": false
+  },
+  {
+   "text": "этот",
+   "from": 1171,
+   "to": 1180,
+   "accent": false
+  },
+  {
+   "text": "результат",
+   "from": 1180,
+   "to": 1195,
+   "accent": false
+  },
+  {
+   "text": "у",
+   "from": 1195,
+   "to": 1202,
+   "accent": false
+  },
+  {
+   "text": "себя",
+   "from": 1202,
+   "to": 1217,
+   "accent": false
+  }
+ ],
+ "scenes": [
+  {
+   "from": 0,
+   "to": 115,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ЖИТЬ В РЕКЛАМНОМ",
+     "КАБИНЕТЕ?"
+    ],
+    "accent": "#22D3EE",
+    "cover": true
+   },
+   "clip": "broll/targ247/advertising-dashboard-analytics-screen-36950917.mp4"
+  },
+  {
+   "from": 115,
+   "to": 228,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ГОД НАЗАД",
+     "10 ЧАСОВ В ДЕНЬ"
+    ],
+    "accent": "#FB7185",
+    "cover": true
+   },
+   "clip": "broll/targ247/busy-office-desk-clock-deadline-12909006.mp4"
+  },
+  {
+   "from": 228,
+   "to": 302,
+   "template": "pill-row",
+   "data": {
+    "items": [
+     "Правки",
+     "Оптимизация",
+     "Отчёты"
+    ],
+    "accent": "#FB7185",
+    "cover": true
+   },
+   "clip": "broll/targ247/spreadsheet-data-reports-screen-6782251.mp4"
+  },
+  {
+   "from": 302,
+   "to": 373,
+   "template": "kinetic-type",
+   "data": {
+    "words": [
+     "УМНАЯ",
+     "СИСТЕМА"
+    ],
+    "accentIndex": 1,
+    "accent": "#FF7A18",
+    "cover": true
+   },
+   "clip": "broll/targ247/artificial-intelligence-abstract-technol-17144481.mp4"
+  },
+  {
+   "from": 373,
+   "to": 405,
+   "template": "captions",
+   "data": {
+    "accent": "#22D3EE"
+   },
+   "clip": "broll/targ247/futuristic-ai-interface-glow-5473972.mp4"
+  },
+  {
+   "from": 405,
+   "to": 565,
+   "template": "checklist-reveal",
+   "data": {
+    "title": "СИСТЕМА ДЕЛАЕТ САМА",
+    "items": [
+     "Контент",
+     "Стратегию",
+     "Рекламу"
+    ],
+    "icons": [
+     "apps",
+     "target",
+     "rocket"
+    ],
+    "accent": "#8B5CF6",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/targ247/marketing-automation-dashboard-data-36805468.mp4"
+  },
+  {
+   "from": 565,
+   "to": 657,
+   "template": "captions",
+   "data": {
+    "accent": "#34D399"
+   },
+   "clip": "broll/targ247/business-report-chart-screen-presentatio-7691585.mp4"
+  },
+  {
+   "from": 657,
+   "to": 803,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ПРОФИ 24/7",
+     "БЕЗ ОШИБОК"
+    ],
+    "accent": "#22D3EE",
+    "cover": true
+   },
+   "clip": "broll/targ247/ai-robot-automation-server-technology-35280159.mp4"
+  },
+  {
+   "from": 803,
+   "to": 909,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ОПЛАТА ВЫРОСЛА",
+     "В 2-3 РАЗА"
+    ],
+    "accent": "#FFC53D",
+    "cover": true
+   },
+   "clip": "broll/targ247/money-growth-financial-success-chart-6282164.mp4"
+  },
+  {
+   "from": 909,
+   "to": 959,
+   "template": "kinetic-type",
+   "data": {
+    "words": [
+     "НАГРУЗКА",
+     "УПАЛА"
+    ],
+    "accentIndex": 1,
+    "accent": "#34D399",
+    "cover": true
+   }
+  },
+  {
+   "from": 959,
+   "to": 1096,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ЗАМЕНИ ШТАТ",
+     "МАРКЕТОЛОГОВ"
+    ],
+    "accent": "#8B5CF6",
+    "cover": true
+   },
+   "clip": "broll/targ247/modern-tech-office-workspace-screens-33314914.mp4"
+  },
+  {
+   "from": 1096,
+   "to": 1217,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ПИШИ «ХАБ»",
+     "ПОВТОРИ РЕЗУЛЬТАТ"
+    ],
+    "accent": "#FF7A18",
+    "cover": true
+   }
+  }
+ ],
+ "totalDurationInFrames": 1217,
+ "fps": 30,
+ "music": "reels/beat_targ247.wav",
+ "musicVolume": 0.07,
+ "captions": true
+}
