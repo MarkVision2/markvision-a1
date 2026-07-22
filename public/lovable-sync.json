@@ -1,7 +1,7 @@
 {
-  "git_sha": "230d6b0",
-  "git_sha_full": "230d6b03f0371d247ba08e071e50e00cca1a3f42",
-  "updated_at": "2026-07-22T16:28:04Z",
-  "label": "Merge pull request #189 from MarkVision2/cursor/ig-webhook-comment-id-84cc",
+  "git_sha": "a47f92a",
+  "git_sha_full": "a47f92a5e734373840386a5fd28b135ee851c2b2",
+  "updated_at": "2026-07-22T16:36:21Z",
+  "label": "Merge pull request #191 from MarkVision2/cursor/ads-wa-number-fallback-84cc",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
