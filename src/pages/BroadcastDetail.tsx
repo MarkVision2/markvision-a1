@@ -4,9 +4,11 @@ import {
   ArrowLeft,
   CheckCircle2,
   Clock,
+  ExternalLink,
   Loader2,
   MessageCircle,
   Pencil,
+  Search,
   Send,
   Smartphone,
   Trash2,
@@ -15,6 +17,7 @@ import {
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,8 +29,9 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  BroadcastConversionStrip,
   BroadcastFunnelView,
-  BroadcastMetricsGrid,
+  BroadcastHeroKpis,
 } from "@/components/broadcasts/BroadcastFunnelView";
 import { BroadcastDialog } from "@/components/broadcasts/BroadcastDialog";
 import { BroadcastSendDialog } from "@/components/broadcasts/BroadcastSendDialog";
@@ -48,13 +52,22 @@ import { cn } from "@/lib/utils";
 const STATUS_LABEL: Record<string, string> = {
   queued: "В очереди",
   sent: "Отправлено",
-  delivered: "Доставлено",
-  read: "Прочитано",
+  delivered: "Получил",
+  read: "Открыл",
   replied: "Ответил",
   converted: "Конверсия",
   failed: "Ошибка",
   skipped_optout: "Отписка",
 };
+
+const FILTERS: { id: string; label: string; match: (status: string) => boolean }[] = [
+  { id: "all", label: "Все", match: () => true },
+  { id: "delivered", label: "Получили", match: (s) => ["delivered", "read", "replied", "converted"].includes(s) },
+  { id: "read", label: "Открыли", match: (s) => ["read", "replied", "converted"].includes(s) },
+  { id: "replied", label: "Ответили", match: (s) => ["replied", "converted"].includes(s) },
+  { id: "failed", label: "Ошибки", match: (s) => s === "failed" },
+  { id: "crm", label: "Есть в CRM", match: () => true }, // special: handled below
+];
 
 export default function BroadcastDetail() {
   const { id } = useParams<{ id: string }>();
@@ -69,11 +82,33 @@ export default function BroadcastDetail() {
   const [editOpen, setEditOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState("all");
 
   const matched = useMemo(() => {
     if (!detail) return new Map();
     return matchRecipientLeads(detail.recipients, detail.leads);
   }, [detail]);
+
+  const filteredRecipients = useMemo(() => {
+    if (!detail) return [];
+    const q = query.trim().toLowerCase();
+    return detail.recipients.filter((r) => {
+      const lead = matched.get(r.id);
+      if (filter === "crm") {
+        if (!lead) return false;
+      } else {
+        const f = FILTERS.find((x) => x.id === filter);
+        if (f && !f.match(r.status)) return false;
+      }
+      if (!q) return true;
+      return (
+        (r.name || "").toLowerCase().includes(q) ||
+        r.phone.toLowerCase().includes(q) ||
+        (lead?.stageKey ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [detail, filter, matched, query]);
 
   if (loading && !detail) {
     return (
@@ -127,12 +162,12 @@ export default function BroadcastDetail() {
           </Button>
 
           <div className="flex flex-wrap items-start gap-3">
-            <span className="grid h-11 w-11 place-items-center rounded-xl bg-gradient-primary text-primary-foreground shadow-glow">
-              <ChannelIcon className="h-5 w-5" />
+            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-primary text-primary-foreground shadow-glow">
+              <ChannelIcon className="h-6 w-6" />
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="truncate text-lg font-bold sm:text-xl">{campaign.name}</h1>
+                <h1 className="truncate text-xl font-bold sm:text-2xl">{campaign.name}</h1>
                 <span
                   className={cn(
                     "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
@@ -150,10 +185,6 @@ export default function BroadcastDetail() {
                   {CHANNEL_META[campaign.channel].label}
                 </span>
               </div>
-              <p className="mt-1 line-clamp-2 text-xs text-muted-foreground sm:text-sm">
-                {campaign.title ? `${campaign.title} · ` : ""}
-                {campaign.message || "Текст не задан"}
-              </p>
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
                 <span className="inline-flex items-center gap-1">
                   <Users className="h-3 w-3" />
@@ -171,6 +202,10 @@ export default function BroadcastDetail() {
                     })}
                   </span>
                 )}
+                <Link to="/crm" className="inline-flex items-center gap-1 text-primary hover:underline">
+                  <ExternalLink className="h-3 w-3" />
+                  CRM
+                </Link>
               </div>
             </div>
 
@@ -205,41 +240,81 @@ export default function BroadcastDetail() {
       </header>
 
       <section className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4 sm:px-6">
-        <div className="mx-auto grid w-full max-w-[1400px] gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="space-y-4">
-            <div>
-              <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-muted-foreground">
-                Сводка
-              </h2>
-              <BroadcastMetricsGrid funnel={funnel} />
-            </div>
-
-            <div className="rounded-2xl border border-border/60 bg-card/40 p-4">
-              <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-muted-foreground">
-                Воронка рассылки
-              </h2>
-              <BroadcastFunnelView funnel={funnel} />
-              <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
-                Доставка и прочтения — из WhatsApp. Лиды, группа, вебинар и продажи —
-                из CRM по связанным контактам (телефон / lead_id). Клики по ссылке
-                появятся, когда в тексте будут трекинг-ссылки.
-              </p>
-            </div>
+        <div className="mx-auto w-full max-w-[1400px] space-y-5">
+          <div className="space-y-3">
+            <BroadcastHeroKpis funnel={funnel} />
+            <BroadcastConversionStrip funnel={funnel} />
           </div>
 
-          <div className="space-y-4">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
+            <div className="space-y-5">
+              <div className="rounded-2xl border border-border/60 bg-card/40 p-4">
+                <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-muted-foreground">
+                  Воронка
+                </h2>
+                <BroadcastFunnelView funnel={funnel} />
+                <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
+                  Доставка и открытия — из WhatsApp. Группа, вебинар, лиды и продажи — из CRM
+                  по телефону получателя. Клики по ссылке появятся при трекинг-ссылках в тексте.
+                </p>
+              </div>
+
+              <div className="rounded-2xl border border-border/60 bg-card/40 p-4">
+                <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-muted-foreground">
+                  Текст сообщения
+                </h2>
+                {campaign.title ? (
+                  <div className="mb-2 text-sm font-semibold">{campaign.title}</div>
+                ) : null}
+                <pre className="whitespace-pre-wrap break-words rounded-xl border border-border/40 bg-background/40 p-3 text-[13px] leading-relaxed text-foreground/90">
+                  {campaign.message || "Текст не задан"}
+                </pre>
+              </div>
+            </div>
+
             <div className="rounded-2xl border border-border/60 bg-card/40 p-4">
-              <div className="mb-3 flex items-center justify-between">
+              <div className="mb-3 flex items-center justify-between gap-2">
                 <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
                   Получатели
                 </h2>
-                <span className="text-[11px] text-muted-foreground">{recipients.length}</span>
+                <span className="text-[11px] text-muted-foreground">
+                  {filteredRecipients.length}/{recipients.length}
+                </span>
               </div>
-              <div className="max-h-[70vh] space-y-2 overflow-y-auto pr-1">
-                {recipients.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Список пуст</p>
+
+              <div className="relative mb-2">
+                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Имя или телефон…"
+                  className="h-9 pl-8 text-xs"
+                />
+              </div>
+
+              <div className="mb-3 flex flex-wrap gap-1">
+                {FILTERS.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setFilter(f.id)}
+                    className={cn(
+                      "rounded-full px-2 py-0.5 text-[10px] font-semibold transition-colors",
+                      filter === f.id
+                        ? "bg-primary/15 text-primary"
+                        : "bg-secondary/60 text-muted-foreground hover:text-foreground",
+                    )}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+
+              <div className="max-h-[62vh] space-y-2 overflow-y-auto pr-1">
+                {filteredRecipients.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-muted-foreground">Никого не найдено</p>
                 ) : (
-                  recipients.map((r) => {
+                  filteredRecipients.map((r) => {
                     const lead = matched.get(r.id);
                     const st = STATUS_LABEL[r.status] ?? r.status;
                     return (
@@ -252,9 +327,7 @@ export default function BroadcastDetail() {
                             <div className="truncate text-sm font-semibold">
                               {r.name || "Без имени"}
                             </div>
-                            <div className="truncate text-[11px] text-muted-foreground">
-                              {r.phone}
-                            </div>
+                            <div className="truncate text-[11px] text-muted-foreground">{r.phone}</div>
                           </div>
                           <span
                             className={cn(
@@ -271,20 +344,19 @@ export default function BroadcastDetail() {
                           </span>
                         </div>
                         {lead ? (
-                          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
-                            <span className="inline-flex items-center gap-1 text-primary">
+                          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
+                            <Link
+                              to={`/crm?lead=${lead.id}`}
+                              className="inline-flex items-center gap-1 font-semibold text-primary hover:underline"
+                            >
                               <CheckCircle2 className="h-3 w-3" />
-                              CRM
+                              Открыть в CRM
                               {lead.stageKey ? ` · ${lead.stageKey}` : ""}
-                            </span>
+                            </Link>
                             {lead.paid ? (
-                              <span className="text-success">
-                                оплата {fmtKzt(lead.amount)}
-                              </span>
+                              <span className="text-success">оплата {fmtKzt(lead.amount)}</span>
                             ) : null}
-                            {lead.webinarStatus ? (
-                              <span>вебинар: {lead.webinarStatus}</span>
-                            ) : null}
+                            {lead.webinarStatus ? <span>вебинар: {lead.webinarStatus}</span> : null}
                           </div>
                         ) : null}
                         {r.error ? (
