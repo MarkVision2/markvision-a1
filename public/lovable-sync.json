@@ -1,7 +1,7 @@
 {
-  "git_sha": "19acee3",
-  "git_sha_full": "19acee34485f9f831b182e9ad378ce56f23a261d",
-  "updated_at": "2026-07-22T15:01:24+05:00",
-  "label": "Серверный движок WhatsApp-рассылок (БД + воркер + антибан) (#184)",
+  "git_sha": "861135d",
+  "git_sha_full": "861135dbee347cfb5e06bc0e319b67833b887c4b",
+  "updated_at": "2026-07-22T10:38:02Z",
+  "label": "Merge pull request #186 from MarkVision2/cursor/broadcasts-funnel-detail-84cc",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
