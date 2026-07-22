@@ -83,6 +83,14 @@ function asStringArray(raw: unknown, max = 10): string[] {
   return raw.map((v) => String(v).trim()).filter(Boolean).slice(0, max);
 }
 
+/** Legacy reply_text/dm_text sometimes stored all variants joined by newlines. */
+function legacyVariants(raw: string | null | undefined, max = 10): string[] {
+  const text = raw?.trim();
+  if (!text) return [];
+  const parts = text.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+  return (parts.length > 1 ? parts : [text]).slice(0, max);
+}
+
 function pickRandom(items: string[]): string | null {
   if (items.length === 0) return null;
   return items[Math.floor(Math.random() * items.length)] ?? null;
@@ -95,11 +103,11 @@ function pickRandomIndexed(items: string[]): { value: string; index: number } | 
 }
 
 function resolveReplyText(kw: Codeword): string | null {
-  return pickRandom(asStringArray(kw.comment_replies)) ?? (kw.reply_text?.trim() || null);
+  return pickRandom(asStringArray(kw.comment_replies)) ?? pickRandom(legacyVariants(kw.reply_text));
 }
 
 function resolveDmText(kw: Codeword): string | null {
-  return pickRandom(asStringArray(kw.dm_messages)) ?? (kw.dm_text?.trim() || null);
+  return pickRandom(asStringArray(kw.dm_messages)) ?? pickRandom(legacyVariants(kw.dm_text));
 }
 
 function resolveTargetUrlIndexed(kw: Codeword): { value: string; index: number } | null {
@@ -121,9 +129,14 @@ async function matchCodeword(projectId: string, mediaId: string | null, text: st
   }
   if (!Array.isArray(rows)) return null;
   const low = text.toLowerCase();
-  return rows.find((k) =>
-    low.includes(String(k.codeword ?? "").toLowerCase()) && (!k.reel_id || k.reel_id === mediaId)
-  ) ?? null;
+  // Prefer the longest matching codeword so "+" does not steal "хаб" / "разбор+".
+  const matches = rows.filter((k) => {
+    const cw = String(k.codeword ?? "").toLowerCase();
+    return cw.length > 0 && low.includes(cw) && (!k.reel_id || k.reel_id === mediaId);
+  });
+  if (matches.length === 0) return null;
+  matches.sort((a, b) => String(b.codeword).length - String(a.codeword).length);
+  return matches[0] ?? null;
 }
 
 async function claimEvent(
@@ -210,9 +223,11 @@ async function postPublicReply(
   account: ProjectAccount,
   text: string,
 ): Promise<{ ok: boolean; body: unknown }> {
-  const token = bearer(account, false) ?? bearer(account, true);
+  // Prefer Instagram Login token (same path as DM) — Page token on this app
+  // often lacks comment reply rights for page-less IG Login accounts.
+  const token = bearer(account, true) ?? bearer(account, false);
   if (!token) return { ok: false, body: { error: "no token" } };
-  const host = graphHost(account, /^IG/i.test(token));
+  const host = graphHost(account, /^IG/i.test(token) || Boolean(account.ig_login_access_token));
   try {
     const resp = await fetch(`${host}/${commentId}/replies`, {
       method: "POST",
@@ -227,6 +242,8 @@ async function postPublicReply(
 }
 
 const PUBLIC_LINK_ORIGIN = Deno.env.get("IG_PUBLIC_LINK_ORIGIN") ?? "https://www.markvision.kz";
+/** Keep in sync with InstagramOrganicSettings DEFAULT_COMMENT / DEFAULT_DM */
+const DEFAULT_COMMENT_REPLY = "Спасибо! Проверь Direct — отправили доступ 👇";
 const DEFAULT_DM_TEXT = "Готово! Жми кнопку ниже и забирай доступ 👇";
 const DEFAULT_BUTTON_TITLE = "получить доступ";
 
@@ -526,16 +543,13 @@ Deno.serve(async (req) => {
           const eventId = await claimEvent(account.project_id, kw, mediaId, commentId, username);
           if (!eventId) continue;
 
-          const replyText = resolveReplyText(kw);
-          let replyStatus: "skipped" | "sent" | "failed" = "skipped";
-          let replyError: unknown = null;
-          if (replyText) {
-            const replied = await postPublicReply(commentId, account, replyText);
-            replyStatus = replied.ok ? "sent" : "failed";
-            replyError = replied.ok ? null : replied.body;
-            if (!replied.ok) {
-              console.log("ig-webhook: public reply failed", { commentId, body: replied.body });
-            }
+          // Always attempt public reply + DM (same fields as Settings → код-слова).
+          const replyText = resolveReplyText(kw) || DEFAULT_COMMENT_REPLY;
+          const replied = await postPublicReply(commentId, account, replyText);
+          const replyStatus: "sent" | "failed" = replied.ok ? "sent" : "failed";
+          const replyError: unknown = replied.ok ? null : replied.body;
+          if (!replied.ok) {
+            console.log("ig-webhook: public reply failed", { commentId, body: replied.body });
           }
 
           const pickedLink = resolveTargetUrlIndexed(kw);
