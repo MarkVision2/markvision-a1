@@ -178,6 +178,8 @@ Deno.serve(async (req) => {
 
     // 4. История + обновление leads_crm (опционально, если lead_id есть и привязан к таблице нового Supabase)
     if (lead_id) {
+      const leadAccess = await requireLeadAccess(auth.authHeader, String(lead_id));
+      if (!leadAccess.ok) return leadAccess.response;
       try {
         await supa.from("lead_status_history").insert({
           lead_id,
