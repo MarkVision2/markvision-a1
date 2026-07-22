@@ -361,7 +361,54 @@ Deno.serve(async (req) => {
   }
   if (req.method !== "POST") return new Response("ok");
 
-  const body = await req.json().catch(() => null);
+  const rawBody = await req.text();
+  const appSecret = Deno.env.get("META_APP_SECRET") ?? (await setting("app_secret"));
+  if (!appSecret) {
+    console.error("[ig-webhook] META_APP_SECRET not configured; rejecting POST");
+    return new Response("forbidden", { status: 403 });
+  }
+  const sigHeader =
+    req.headers.get("x-hub-signature-256") ||
+    req.headers.get("X-Hub-Signature-256") ||
+    "";
+  const provided = sigHeader.startsWith("sha256=") ? sigHeader.slice(7) : "";
+  if (!provided) return new Response("forbidden", { status: 403 });
+  try {
+    const key = await crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(appSecret),
+      { name: "HMAC", hash: "SHA-256" },
+      false,
+      ["sign"],
+    );
+    const macBuf = await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(rawBody),
+    );
+    const expected = Array.from(new Uint8Array(macBuf))
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    // constant-time compare
+    if (expected.length !== provided.length) {
+      return new Response("forbidden", { status: 403 });
+    }
+    let diff = 0;
+    for (let i = 0; i < expected.length; i++) {
+      diff |= expected.charCodeAt(i) ^ provided.charCodeAt(i);
+    }
+    if (diff !== 0) return new Response("forbidden", { status: 403 });
+  } catch (e) {
+    console.error("[ig-webhook] signature verification failed", e);
+    return new Response("forbidden", { status: 403 });
+  }
+
+  let body: { entry?: unknown[] } | null = null;
+  try {
+    body = rawBody ? JSON.parse(rawBody) : null;
+  } catch {
+    body = null;
+  }
 
   try {
     for (const entry of body?.entry ?? []) {
