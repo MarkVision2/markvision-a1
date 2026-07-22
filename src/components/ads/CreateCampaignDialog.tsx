@@ -649,6 +649,7 @@ const CreateCampaignDialog = ({
     setPageId(selectedCabinet?.pageId ?? "");
     setWebsiteUrl(selectedCabinet?.websiteUrl ?? "");
     setExistingMediaId("");
+    setWhatsappId("");
   }, [cabinetId, selectedCabinet?.pageId, selectedCabinet?.websiteUrl]);
 
   // Если в списке доступных страниц нет текущей — но дефолт из настроек уже задан,
