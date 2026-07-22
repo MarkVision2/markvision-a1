@@ -248,14 +248,11 @@ export default function BroadcastDetail() {
 
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_380px]">
             <div className="space-y-5">
-              <div className="rounded-2xl border border-border/60 bg-card/40 p-4">
-                <h2 className="mb-3 text-sm font-bold uppercase tracking-wider text-muted-foreground">
-                  Воронка
-                </h2>
+              <div>
                 <BroadcastFunnelView funnel={funnel} />
-                <p className="mt-4 text-[11px] leading-relaxed text-muted-foreground">
-                  Доставка и открытия — из WhatsApp. Группа, вебинар, лиды и продажи — из CRM
-                  по телефону получателя. Клики по ссылке появятся при трекинг-ссылках в тексте.
+                <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+                  Доставка и открытия — из WhatsApp. Лиды и продажи — из CRM по телефону.
+                  Клики появятся при трекинг-ссылках в тексте.
                 </p>
               </div>
 
