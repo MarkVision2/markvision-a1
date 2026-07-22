@@ -18,21 +18,38 @@ import {
 /** Один получатель для вставки в broadcast_recipients. */
 export type RecipientRow = { name: string; phone: string; lead_id: string | null };
 
+/**
+ * Канонический формат телефона для хранения: «+<цифры>». Единый формат нужен,
+ * чтобы дедуп (unique campaign_id+phone) и матчинг статусов/opt-out в webhook
+ * не сбоили из-за разных форматов. Возвращает "" для явно невалидных номеров
+ * (8–15 цифр — международный диапазон E.164).
+ */
+export function canonicalPhone(raw: string): string {
+  const d = (raw ?? "").replace(/\D/g, "");
+  if (d.length < 8 || d.length > 15) return "";
+  return `+${d}`;
+}
+
 /** CRM-фильтр → строки получателей (с сохранением lead_id для трекинга конверсий). */
 export function resolveRecipientRows(draft: BroadcastDraft, crmContacts: LeadContact[]): RecipientRow[] {
-  if (draft.audienceSource === "upload") {
-    return draft.uploadedContacts.map((c) => ({ name: c.name, phone: c.phone, lead_id: null }));
-  }
-  const { stageKeys, sources } = draft.crmFilter;
   const seen = new Set<string>();
   const out: RecipientRow[] = [];
+  const push = (name: string, rawPhone: string, leadId: string | null) => {
+    const phone = canonicalPhone(rawPhone);
+    if (!phone || seen.has(phone)) return;
+    seen.add(phone);
+    out.push({ name, phone, lead_id: leadId });
+  };
+
+  if (draft.audienceSource === "upload") {
+    for (const c of draft.uploadedContacts) push(c.name, c.phone, null);
+    return out;
+  }
+  const { stageKeys, sources } = draft.crmFilter;
   for (const c of crmContacts) {
     if (stageKeys.length && !stageKeys.includes(c.stageKey)) continue;
     if (sources.length && !sources.includes(c.source || "—")) continue;
-    const key = c.phone.replace(/\D/g, "");
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push({ name: c.name, phone: c.phone, lead_id: c.id });
+    push(c.name, c.phone, c.id);
   }
   return out;
 }
