@@ -93,6 +93,9 @@ describe("ContentPlan uses AutopostAddDialog", () => {
     expect(screen.queryByRole("button", { name: /С сегодня/i })).toBeNull();
     expect(screen.getByRole("heading", { name: /Сводка за период/i })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: /Ближайшие в очереди MarkVision/i })).toBeNull();
-    expect(screen.getByText(/Список ·/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Все/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Запланировано/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Опубликовано/i })).toBeTruthy();
+    expect(screen.getByText(/Сверху — что ещё выйдет/i)).toBeTruthy();
   });
 });

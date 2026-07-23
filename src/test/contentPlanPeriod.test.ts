@@ -3,6 +3,7 @@ import {
   CONTENT_PLAN_STATS_START_YMD,
   emptyFunnel,
   filterContentPlanByPeriod,
+  partitionContentPlan,
   summarizeContentPlan,
   type ContentPlanItem,
 } from "@/lib/contentPlan";
@@ -133,5 +134,36 @@ describe("summarizeContentPlan", () => {
     expect(s.avgReach).toBe(100);
     expect(s.leads).toBe(3);
     expect(s.revenue).toBe(1500);
+  });
+});
+
+describe("partitionContentPlan", () => {
+  it("splits upcoming vs published and sorts by date", () => {
+    const items = [
+      item({
+        id: "pub-old",
+        status: "published",
+        publishedAt: "2026-07-21T10:00:00+05:00",
+      }),
+      item({
+        id: "pub-new",
+        status: "published",
+        publishedAt: "2026-07-23T10:00:00+05:00",
+      }),
+      item({
+        id: "later",
+        status: "scheduled",
+        scheduledAt: "2026-07-25T09:00:00+05:00",
+      }),
+      item({
+        id: "sooner",
+        status: "scheduled",
+        scheduledAt: "2026-07-22T09:00:00+05:00",
+      }),
+      item({ id: "draft", status: "ready", scheduledAt: "2026-07-24T09:00:00+05:00" }),
+    ];
+    const { upcoming, published } = partitionContentPlan(items);
+    expect(upcoming.map((i) => i.id)).toEqual(["sooner", "draft", "later"]);
+    expect(published.map((i) => i.id)).toEqual(["pub-new", "pub-old"]);
   });
 });

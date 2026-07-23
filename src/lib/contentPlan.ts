@@ -208,6 +208,56 @@ export function summarizeContentPlan(items: ContentPlanItem[]): ContentPlanSumma
   };
 }
 
+/** Ещё не вышло: план / черновики / ошибки очереди. */
+export function isContentPlanUpcoming(item: ContentPlanItem): boolean {
+  return item.status !== "published";
+}
+
+function anchorTs(iso: string | null | undefined): number {
+  if (!iso) return Number.POSITIVE_INFINITY;
+  const t = new Date(iso).getTime();
+  return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
+}
+
+/** Ближайшие слоты первыми (по scheduledAt). */
+export function sortContentPlanUpcoming(items: ContentPlanItem[]): ContentPlanItem[] {
+  return [...items].sort((a, b) => {
+    const ta = anchorTs(a.scheduledAt ?? a.createdAt);
+    const tb = anchorTs(b.scheduledAt ?? b.createdAt);
+    if (ta !== tb) return ta - tb;
+    return a.title.localeCompare(b.title, "ru");
+  });
+}
+
+/** Свежие публикации первыми (по publishedAt). */
+export function sortContentPlanPublished(items: ContentPlanItem[]): ContentPlanItem[] {
+  return [...items].sort((a, b) => {
+    const ta = anchorTs(a.publishedAt ?? a.scheduledAt ?? a.createdAt);
+    const tb = anchorTs(b.publishedAt ?? b.scheduledAt ?? b.createdAt);
+    // Infinity last; newer first → reverse numeric when finite
+    if (ta === tb) return a.title.localeCompare(b.title, "ru");
+    if (!Number.isFinite(ta)) return 1;
+    if (!Number.isFinite(tb)) return -1;
+    return tb - ta;
+  });
+}
+
+export function partitionContentPlan(items: ContentPlanItem[]): {
+  upcoming: ContentPlanItem[];
+  published: ContentPlanItem[];
+} {
+  const upcoming: ContentPlanItem[] = [];
+  const published: ContentPlanItem[] = [];
+  for (const item of items) {
+    if (isContentPlanUpcoming(item)) upcoming.push(item);
+    else published.push(item);
+  }
+  return {
+    upcoming: sortContentPlanUpcoming(upcoming),
+    published: sortContentPlanPublished(published),
+  };
+}
+
 export function emptyFunnel(adSpend = 0): ContentPlanFunnel {
   return {
     reach: 0,
