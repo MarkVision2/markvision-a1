@@ -725,6 +725,10 @@ const ContentCenter = () => {
         </div>
       </div>
 
+      <div className="mt-6">
+        <SiteAnalyticsCard projectId={active?.id ?? null} />
+      </div>
+
       {/* Toolbar */}
       <div className="mt-6 flex flex-wrap items-center gap-2">
         <div className="relative min-w-[220px] flex-1">
