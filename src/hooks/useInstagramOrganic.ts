@@ -21,7 +21,7 @@ export interface InstagramOrganicEvent {
   codeword: string | null;
   reelId: string | null;
   reelUrl: string | null;
-  eventType: "codeword_dm" | "link_click" | "lead";
+  eventType: "codeword_dm" | "codeword_comment" | "link_click" | "lead";
   username: string | null;
   contact: string | null;
   leadId: string | null;
@@ -64,7 +64,7 @@ interface RawEvent {
   codeword: string | null;
   reel_id: string | null;
   reel_url: string | null;
-  event_type: "codeword_dm" | "link_click" | "lead";
+  event_type: "codeword_dm" | "codeword_comment" | "link_click" | "lead";
   username: string | null;
   contact: string | null;
   lead_id: string | null;
@@ -129,12 +129,17 @@ export function useInstagramOrganic(range: { from: Date; to: Date }) {
   }, [projectId, since, until, tick]);
 
   const funnel = useMemo<InstagramOrganicFunnelData>(() => {
-    const dms = events.filter((e) => e.eventType === "codeword_dm");
+    // «Написали код-слово» = директ + комментарий (оба триггерят отправку DM с кнопкой).
+    // Считать только codeword_dm — недоучёт: клики/заявки идут и с комментариев,
+    // из-за чего конверсия по воронке уходила за 100%.
+    const messaged = events.filter(
+      (e) => e.eventType === "codeword_dm" || e.eventType === "codeword_comment",
+    );
     const clicks = events.filter((e) => e.eventType === "link_click");
     const leads = events.filter((e) => e.eventType === "lead");
-    const uniqueUsers = new Set(dms.map((e) => e.username || e.contact || e.id)).size;
+    const uniqueUsers = new Set(messaged.map((e) => e.username || e.contact || e.id)).size;
     return {
-      codewordDms: dms.length,
+      codewordDms: messaged.length,
       uniqueUsers,
       linkClicks: clicks.length,
       leads: leads.length,

@@ -25,7 +25,7 @@ export function ContentTrendChart({ events }: Props) {
     const byDate = new Map<string, { dms: number; clicks: number; leads: number }>();
     for (const e of events) {
       const cur = byDate.get(e.date) ?? { dms: 0, clicks: 0, leads: 0 };
-      if (e.eventType === "codeword_dm") cur.dms += 1;
+      if (e.eventType === "codeword_dm" || e.eventType === "codeword_comment") cur.dms += 1;
       if (e.eventType === "link_click") cur.clicks += 1;
       if (e.eventType === "lead") cur.leads += 1;
       byDate.set(e.date, cur);

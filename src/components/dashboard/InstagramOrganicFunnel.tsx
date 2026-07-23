@@ -11,7 +11,7 @@ const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 
 export function InstagramOrganicFunnel({ funnel, topCodewords }: Props) {
   const steps = [
-    { id: "dm",     label: "Код-слово в DM",   icon: MessageCircle,     value: funnel.codewordDms, base: funnel.codewordDms },
+    { id: "dm",     label: "Написали код-слово", icon: MessageCircle,   value: funnel.codewordDms, base: funnel.codewordDms },
     { id: "users",  label: "Уникальные люди",  icon: Camera,            value: funnel.uniqueUsers, base: funnel.codewordDms },
     { id: "click",  label: "Перешли по ссылке", icon: MousePointerClick, value: funnel.linkClicks,  base: funnel.codewordDms },
     { id: "lead",   label: "Оставили заявку",   icon: UserCheck,         value: funnel.leads,       base: funnel.codewordDms },
