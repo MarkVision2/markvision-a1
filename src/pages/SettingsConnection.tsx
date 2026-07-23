@@ -1038,15 +1038,17 @@ export function SiteIntakeCard() {
 })();
 </script>`;
 
-  const copySnippet = async () => {
+  const copyText = async (text: string, okMsg: string) => {
     try {
-      await navigator.clipboard.writeText(htmlSnippet);
-      toast.success("Код скопирован", {
-        description: "Вставьте его в Lovable и попросите подключить к форме заявки.",
-      });
+      await navigator.clipboard.writeText(text);
+      toast.success(okMsg);
     } catch {
-      toast.error("Не удалось скопировать код");
+      toast.error("Не удалось скопировать");
     }
+  };
+
+  const copySnippet = async () => {
+    await copyText(htmlSnippet, "Код скопирован — вставьте на сайт или лендинг");
   };
 
   return (
@@ -1054,10 +1056,11 @@ export function SiteIntakeCard() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-lg">
           <Code2 className="h-5 w-5 text-primary" />
-          Подключение сайта к CRM
+          Сайт и лендинги → CRM
         </CardTitle>
         <CardDescription>
-          Проект: <strong>{projectName}</strong>. Скопируйте готовый код и вставьте его в чат Lovable вашего сайта.
+          Проект: <strong>{projectName}</strong>. Один токен на проект — подходит для основного сайта,
+          Tilda, Webflow и любых HTML-лендингов. Заявки приходят в CRM, этап «Новая».
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -1069,20 +1072,57 @@ export function SiteIntakeCard() {
           </div>
         )}
 
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Токен проекта
+            </div>
+            <div className="mt-1 break-all font-mono text-xs">{token || "—"}</div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              disabled={!token}
+              onClick={() => void copyText(token, "Токен скопирован")}
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Скопировать токен
+            </Button>
+          </div>
+          <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Webhook URL
+            </div>
+            <div className="mt-1 break-all font-mono text-xs">{url}</div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-2"
+              onClick={() => void copyText(url, "URL скопирован")}
+            >
+              <Copy className="h-3.5 w-3.5" />
+              Скопировать URL
+            </Button>
+          </div>
+        </div>
+
         <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-          <p className="text-sm font-semibold">Короткая инструкция</p>
+          <p className="text-sm font-semibold">Как подключить</p>
           <div className="mt-3 space-y-2 text-sm">
             <div className="flex items-start gap-2">
               <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">1</span>
-              <span>Нажмите <strong>«Скопировать код»</strong>.</span>
+              <span>Нажмите <strong>«Скопировать код»</strong> или вставьте токен + URL в свою форму.</span>
             </div>
             <div className="flex items-start gap-2">
               <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">2</span>
-              <span>Откройте чат Lovable нужного сайта и напишите: <strong>«Подключи этот код к форме заявки»</strong>.</span>
+              <span>
+                Lovable: в чат сайта напишите «Подключи этот код к форме заявки» и вставьте сниппет.
+                Tilda / другой HTML: вставьте скрипт на страницу или отправляйте POST на webhook с полем <code>token</code>.
+              </span>
             </div>
             <div className="flex items-start gap-2">
               <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">3</span>
-              <span>Вставьте скопированный код. После публикации новые заявки будут сразу появляться в CRM.</span>
+              <span>После публикации нажмите «Отправить тест» — заявка должна появиться в CRM.</span>
             </div>
           </div>
         </div>
@@ -1090,9 +1130,9 @@ export function SiteIntakeCard() {
         <div>
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <div>
-              <p className="text-sm font-semibold">Готовый код для Lovable</p>
+              <p className="text-sm font-semibold">Готовый HTML-код</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
-                Код уже содержит токен проекта и не требует ручной настройки.
+                Уже содержит токен проекта. Работает на сайте и на лендингах.
               </p>
             </div>
             <Button

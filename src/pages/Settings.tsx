@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
-import { Camera, CheckCircle2, Edit2, Eye, Globe, GitBranch, KeyRound, Link2, Loader2, MessageCircle, Phone, Plus, RefreshCw, Search, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
+import { Camera, CheckCircle2, Edit2, Eye, Globe, GitBranch, KeyRound, Loader2, MessageCircle, Phone, Plus, RefreshCw, Search, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +21,6 @@ import { SipuniSettings } from "@/components/settings/SipuniSettings";
 import { ProfileSettings } from "@/components/settings/ProfileSettings";
 import { PipelinesSettings } from "@/components/settings/PipelinesSettings";
 import { LossReasonsSettings } from "@/components/settings/LossReasonsSettings";
-import { InboundTokensSettings } from "@/components/settings/InboundTokensSettings";
 import { ClientDashTokensSettings } from "@/components/settings/ClientDashTokensSettings";
 import { InstagramOrganicSettings } from "@/components/settings/InstagramOrganicSettings";
 import { MetaTokensSettings } from "@/components/settings/MetaTokensSettings";
@@ -41,7 +40,6 @@ import {
   useTeamStore,
 } from "@/hooks/useTeamStore";
 import { toast } from "sonner";
-
 const ROLE_COLOR: Record<string, string> = {
   admin: "bg-destructive/15 text-destructive border-destructive/40",
   director: "bg-warning/15 text-warning border-warning/40",
@@ -85,15 +83,9 @@ const CONNECTION_NAV: Array<{
   },
   {
     tab: "site",
-    title: "Сайт",
-    desc: "Готовый код для передачи заявок из Lovable в CRM.",
+    title: "Сайт и лендинги",
+    desc: "Токен и HTML-код: заявки с сайта / Tilda / лендинга попадают в CRM.",
     icon: Globe,
-  },
-  {
-    tab: "inbound",
-    title: "Лендинги",
-    desc: "Токены и HTML-сниппеты для форм и страниц.",
-    icon: Link2,
   },
   {
     tab: "ig-organic",
@@ -142,10 +134,12 @@ function ConnectionStatusBadge({ status }: { status: ConnectionStatus }) {
 export default function Settings() {
   const [searchParams, setSearchParams] = useSearchParams();
   const tabParam = searchParams.get("tab");
-  const activeTab: SettingsTab = SETTINGS_TABS.includes(tabParam as SettingsTab)
-    ? (tabParam as SettingsTab)
+  // Старый таб «Лендинги» (?tab=inbound) = тот же intake, что и «Сайт».
+  const resolvedTab = tabParam === "inbound" ? "site" : tabParam;
+  const activeTab: SettingsTab = SETTINGS_TABS.includes(resolvedTab as SettingsTab)
+    ? (resolvedTab as SettingsTab)
     : "team";
-  const setActiveTab = (tab: SettingsTab) => setSearchParams({ tab });
+  const setActiveTab = (tab: SettingsTab) => setSearchParams({ tab: tab === "inbound" ? "site" : tab });
   const { members, removeMember } = useTeamStore();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<TeamMember | null>(null);
@@ -161,12 +155,16 @@ export default function Settings() {
     telephony: "checking",
     whatsapp: "checking",
     site: "checking",
-    inbound: "checking",
+    inbound: "disconnected",
     "ig-organic": "checking",
     "meta-tokens": "checking",
     "google-ads": "checking",
     clientview: "checking",
   });
+
+  useEffect(() => {
+    if (tabParam === "inbound") setSearchParams({ tab: "site" }, { replace: true });
+  }, [tabParam, setSearchParams]);
 
   const handleEdit = (m: TeamMember) => { setEditing(m); setOpen(true); };
   const handleAdd = () => { setEditing(null); setOpen(true); };
@@ -215,14 +213,14 @@ export default function Settings() {
         telephony: "checking",
         whatsapp: "checking",
         site: "checking",
-        inbound: "checking",
+        inbound: "disconnected",
         "ig-organic": "checking",
         "meta-tokens": "checking",
         "google-ads": "checking",
         clientview: "checking",
       }));
 
-      const [telephonyRes, waRes, igRes, metaRes, googleRes, inboundRes, clientViewRes] = await Promise.all([
+      const [telephonyRes, waRes, igRes, metaRes, googleRes, clientViewRes] = await Promise.all([
         supabase
           .from("automation_settings" as never)
           .select("sipuni_enabled,sipuni_token_present")
@@ -252,13 +250,6 @@ export default function Settings() {
           .limit(1),
         clientConfigSupabase
           ? clientConfigSupabase
-              .from("inbound_tokens")
-              .select("token")
-              .eq("is_active", true)
-              .limit(1)
-          : Promise.resolve({ data: null, error: null }),
-        clientConfigSupabase
-          ? clientConfigSupabase
               .from("client_dashboard_tokens")
               .select("token")
               .eq("is_active", true)
@@ -275,7 +266,6 @@ export default function Settings() {
       const igConnected = !!(igRes.data?.ig_user_id && igRes.data?.active);
       const metaConnected = !!(metaRes.data && metaRes.data.length > 0);
       const googleConnected = !!((googleRes.data as unknown[] | null) && (googleRes.data as unknown[]).length > 0);
-      const inboundConnected = !!(inboundRes.data && inboundRes.data.length > 0);
       const clientViewConnected = !!(clientViewRes.data && clientViewRes.data.length > 0);
 
       setConnectionStatus((prev) => ({
@@ -283,7 +273,7 @@ export default function Settings() {
         telephony: telephonyConnected ? "connected" : "disconnected",
         whatsapp: waConnected ? "connected" : "disconnected",
         site: siteConnected ? "connected" : "disconnected",
-        inbound: inboundConnected ? "connected" : "disconnected",
+        inbound: siteConnected ? "connected" : "disconnected",
         "ig-organic": igConnected ? "connected" : "disconnected",
         "meta-tokens": metaConnected ? "connected" : "disconnected",
         "google-ads": googleConnected ? "connected" : "disconnected",
@@ -505,8 +495,6 @@ export default function Settings() {
           )}
 
           {activeTab === "google-ads" && <GoogleAdsConnect />}
-
-          {activeTab === "inbound" && <InboundTokensSettings />}
 
           {activeTab === "clientview" && <ClientDashTokensSettings />}
         </div>
