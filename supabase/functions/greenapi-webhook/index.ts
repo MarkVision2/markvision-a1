@@ -167,9 +167,11 @@ async function projectFromInstance(
   const expected = row.webhook_token ?? null;
   const envToken = Deno.env.get("GREENAPI_WEBHOOK_TOKEN") ?? null;
   const required = expected || envToken;
-  // Reject if no webhook token is configured anywhere — otherwise the endpoint
-  // would accept arbitrary unauthenticated payloads spoofing this instance.
-  if (!required || required !== presentedToken) {
+  // If a token is configured (DB or GREENAPI_WEBHOOK_TOKEN), require a match.
+  // If none is configured, accept — setWebhook currently clears webhookUrlToken,
+  // and Green API then sends no token. Requiring a token here silently dropped
+  // all inbound WhatsApp traffic (401 invalid webhook token).
+  if (required && required !== presentedToken) {
     return {
       projectId: row.project_id ?? null,
       ok: false,
