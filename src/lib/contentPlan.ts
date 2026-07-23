@@ -138,15 +138,20 @@ export interface ContentPlanItem {
 export interface ContentPlanSummary {
   total: number;
   scheduled: number;
-  awaitingCreation: number;
   published: number;
-  avgReach: number;
-  avgCodewordComments: number;
-  leads: number;
+  /** Суммарный охват опубликованных за период. */
+  totalReach: number;
+  /** Сумма срабатываний код-слова (комменты + DM). */
+  codewordHits: number;
+  /** Клики по ссылке из Direct. */
+  linkClicks: number;
+  /** Лиды / заявки. */
   registrations: number;
   webinarAttended: number;
   paid: number;
   revenue: number;
+  /** Суммарный расход на рекламу по публикациям периода. */
+  adSpend: number;
 }
 
 /** Дата, по которой публикация попадает в период. */
@@ -182,29 +187,20 @@ export function filterContentPlanByPeriod(
 export function summarizeContentPlan(items: ContentPlanItem[]): ContentPlanSummary {
   const total = items.length;
   const scheduled = items.filter((i) => i.status === "scheduled").length;
-  const awaitingCreation = items.filter((i) =>
-    ["idea", "in_progress", "ready"].includes(i.status),
-  ).length;
   const published = items.filter((i) => i.status === "published").length;
   const pub = items.filter((i) => i.status === "published");
-  const avgReach =
-    pub.length > 0 ? Math.round(pub.reduce((s, i) => s + i.funnel.reach, 0) / pub.length) : 0;
-  const avgCodewordComments =
-    pub.length > 0
-      ? Math.round(pub.reduce((s, i) => s + i.funnel.codewordHits, 0) / pub.length)
-      : 0;
   return {
     total,
     scheduled,
-    awaitingCreation,
     published,
-    avgReach,
-    avgCodewordComments,
-    leads: items.reduce((s, i) => s + i.funnel.linkClicks, 0),
+    totalReach: pub.reduce((s, i) => s + i.funnel.reach, 0),
+    codewordHits: items.reduce((s, i) => s + i.funnel.codewordHits, 0),
+    linkClicks: items.reduce((s, i) => s + i.funnel.linkClicks, 0),
     registrations: items.reduce((s, i) => s + i.funnel.registrations, 0),
     webinarAttended: items.reduce((s, i) => s + i.funnel.webinarAttended, 0),
     paid: items.reduce((s, i) => s + i.funnel.paid, 0),
     revenue: items.reduce((s, i) => s + i.funnel.revenue, 0),
+    adSpend: items.reduce((s, i) => s + (i.funnel.adSpend || i.adSpend || 0), 0),
   };
 }
 

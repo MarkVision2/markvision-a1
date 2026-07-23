@@ -6,6 +6,7 @@ import {
   isBotUserAgent,
   mediaNotLinkedToPlan,
   normalizeCaptionKey,
+  primaryIgMediaForCodeword,
   resolveIgMediaIdForPlan,
   titleFromIgCaption,
   type ContentPlanIgMedia,
@@ -133,6 +134,55 @@ describe("contentPlanIgLink helpers", () => {
     expect(f.paid).toBe(1);
     expect(f.revenue).toBe(50000);
     expect(isBotUserAgent("facebookexternalhit/1.1")).toBe(true);
+  });
+
+  it("claims orphan codeword events only for primary post", () => {
+    const events = [
+      { id: "1", codeword_id: "cw1", codeword: "хаб", event_type: "codeword_dm", lead_id: null, reel_id: null },
+      { id: "2", codeword_id: "cw1", codeword: "хаб", event_type: "codeword_comment", lead_id: null, reel_id: "m-primary" },
+      {
+        id: "3",
+        codeword_id: "cw1",
+        codeword: "хаб",
+        event_type: "link_click",
+        lead_id: null,
+        reel_id: null,
+        payload: { user_agent: "Mozilla/5.0" },
+      },
+    ];
+    const primary = buildContentPlanFunnel({
+      igMediaId: "m-primary",
+      codewordId: "cw1",
+      codeword: "хаб",
+      claimOrphanCodewordEvents: true,
+      events,
+      leads: [],
+    });
+    const other = buildContentPlanFunnel({
+      igMediaId: "m-other",
+      codewordId: "cw1",
+      codeword: "хаб",
+      claimOrphanCodewordEvents: false,
+      events,
+      leads: [],
+    });
+    expect(primary.codewordHits).toBe(2);
+    expect(primary.linkClicks).toBe(1);
+    expect(other.codewordHits).toBe(0);
+    expect(other.linkClicks).toBe(0);
+  });
+
+  it("primaryIgMediaForCodeword picks newest published", () => {
+    expect(
+      primaryIgMediaForCodeword(
+        [
+          { igMediaId: "old", codewordId: "cw", publishedAt: "2026-07-01T00:00:00Z" },
+          { igMediaId: "new", codewordId: "cw", publishedAt: "2026-07-20T00:00:00Z" },
+          { igMediaId: "x", codewordId: "other", publishedAt: "2026-07-21T00:00:00Z" },
+        ],
+        "cw",
+      ),
+    ).toBe("new");
   });
 
   it("uses views/impressions as reach when Meta returns reach=0", () => {

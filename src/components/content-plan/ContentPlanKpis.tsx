@@ -12,18 +12,18 @@ type CardDef = {
 const PLAN_CARDS: CardDef[] = [
   { key: "total", label: "Всего" },
   { key: "scheduled", label: "В плане" },
-  { key: "awaitingCreation", label: "В работе" },
   { key: "published", label: "Вышло" },
 ];
 
 const RESULT_CARDS: CardDef[] = [
-  { key: "avgReach", label: "Ср. охват", hint: "Средний охват опубликованных" },
-  { key: "avgCodewordComments", label: "Ср. код-слов", hint: "Комментарии/DM с код-словом" },
-  { key: "leads", label: "Переходы", hint: "Клики из Direct" },
-  { key: "registrations", label: "Лиды", hint: "Заявки с UTM публикации" },
+  { key: "totalReach", label: "Охват", hint: "Сумма охвата опубликованных постов" },
+  { key: "codewordHits", label: "Код-слова", hint: "Комментарии и DM с код-словом" },
+  { key: "linkClicks", label: "Переходы", hint: "Клики по ссылке из Direct" },
+  { key: "registrations", label: "Лиды", hint: "Заявки, привязанные к код-слову / посту" },
   { key: "webinarAttended", label: "Вебинар" },
   { key: "paid", label: "Оплаты" },
   { key: "revenue", label: "Выручка", format: "money" },
+  { key: "adSpend", label: "Реклама", format: "money", hint: "Расход на продвижение постов" },
 ];
 
 function MetricCard({
@@ -72,9 +72,8 @@ export function ContentPlanKpis({
           </p>
         </div>
         <p className="max-w-lg text-[11px] leading-relaxed text-muted-foreground">
-          Считаем публикации за выбранный отрезок. Статистика — с Instagram (не важно, пост
-          вышел вручную или через автопост): охват из media, воронка по событиям на этот
-          media_id.
+          Охват — сумма по Instagram media. Код-слова, переходы и лиды — из organic-событий
+          (код-слово в комменте/DM → ссылка → заявка), без двойного счёта.
         </p>
       </div>
 
@@ -82,7 +81,7 @@ export function ContentPlanKpis({
         <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           План
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid grid-cols-3 gap-2">
           {PLAN_CARDS.map((c) => (
             <MetricCard key={c.key} card={c} summary={summary} />
           ))}
@@ -93,9 +92,14 @@ export function ContentPlanKpis({
         <div className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
           Результат
         </div>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
           {RESULT_CARDS.map((c) => (
-            <MetricCard key={c.key} card={c} summary={summary} emphasize={c.key === "revenue"} />
+            <MetricCard
+              key={c.key}
+              card={c}
+              summary={summary}
+              emphasize={c.key === "revenue" || c.key === "codewordHits"}
+            />
           ))}
         </div>
       </div>

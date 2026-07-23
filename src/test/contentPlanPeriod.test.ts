@@ -111,17 +111,19 @@ describe("filterContentPlanByPeriod", () => {
 });
 
 describe("summarizeContentPlan", () => {
-  it("aggregates plan and funnel metrics", () => {
+  it("aggregates plan and funnel metrics as totals", () => {
     const items = [
       item({
         id: "a",
         status: "published",
-        funnel: { ...emptyFunnel(), reach: 100, linkClicks: 2, revenue: 1000 },
+        funnel: { ...emptyFunnel(), reach: 100, linkClicks: 2, codewordHits: 4, revenue: 1000 },
+        adSpend: 200,
       }),
       item({
         id: "b",
         status: "scheduled",
-        funnel: { ...emptyFunnel(), reach: 50, linkClicks: 1, revenue: 500 },
+        funnel: { ...emptyFunnel(), reach: 50, linkClicks: 1, codewordHits: 1, revenue: 500 },
+        adSpend: 50,
       }),
       item({ id: "c", status: "idea" }),
     ];
@@ -129,9 +131,10 @@ describe("summarizeContentPlan", () => {
     expect(s.total).toBe(3);
     expect(s.published).toBe(1);
     expect(s.scheduled).toBe(1);
-    expect(s.awaitingCreation).toBe(1);
-    expect(s.avgReach).toBe(100);
-    expect(s.leads).toBe(3);
+    expect(s.totalReach).toBe(100);
+    expect(s.codewordHits).toBe(5);
+    expect(s.linkClicks).toBe(3);
     expect(s.revenue).toBe(1500);
+    expect(s.adSpend).toBe(250);
   });
 });
