@@ -1,7 +1,7 @@
 {
-  "git_sha": "4fbc157",
-  "git_sha_full": "4fbc15775cbdb8cb37c1f85b2b29b3106f3f3549",
-  "updated_at": "2026-07-23T09:27:25Z",
-  "label": "Merge remove lead journey checklist",
-  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
+  "git_sha": "518c1e7",
+  "git_sha_full": "518c1e7f383501011c5ffd400e9923217c2c5695",
+  "updated_at": "2026-07-23T09:28:54Z",
+  "label": "chore: lovable sync stamp 4fbc157 [lovable-stamp]",
+  "publish_hint": "push main → www.markvision.kz (Vercel)"
 }
