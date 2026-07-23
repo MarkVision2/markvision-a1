@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveContentPlanAdSpend } from "@/lib/contentPlanAdSpend";
+import {
+  normalizeAdCaptionKey,
+  resolveContentPlanAdSpend,
+} from "@/lib/contentPlanAdSpend";
 
 describe("resolveContentPlanAdSpend", () => {
   it("prefers Meta spend when > 0", () => {
@@ -17,5 +20,11 @@ describe("resolveContentPlanAdSpend", () => {
   it("ignores non-finite manual", () => {
     expect(resolveContentPlanAdSpend(Number.NaN, undefined)).toBe(0);
     expect(resolveContentPlanAdSpend(Number.NaN, 50)).toBe(50);
+  });
+});
+
+describe("normalizeAdCaptionKey", () => {
+  it("collapses whitespace and lowercases", () => {
+    expect(normalizeAdCaptionKey("  Я  упростил\nжизнь  ", 20)).toBe("я упростил жизнь");
   });
 });

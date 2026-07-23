@@ -277,7 +277,7 @@ export default function ContentPlanDetail() {
                     {item.igMediaId
                       ? metaSpendLoading
                         ? "Ищем расход в Meta Ads…"
-                        : "В Meta Ads пока нет связки с этим постом (нужен буст / sync). Можно указать вручную."
+                        : "Расход из Meta не найден (нужен буст этого поста + актуальный Meta-токен / sync). Можно указать вручную."
                       : "Нет ig_media_id — укажите расход вручную или дождитесь публикации."}
                   </p>
                 </>
