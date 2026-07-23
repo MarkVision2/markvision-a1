@@ -29,6 +29,14 @@ function asStringArray(raw: unknown): string[] {
   return raw.map((v) => String(v).trim()).filter(Boolean);
 }
 
+/** Meta/мессенджеры префетчат URL кнопки в DM — это не клик человека. */
+function isLinkClickBotUa(ua: string | null | undefined): boolean {
+  const s = (ua ?? "").trim();
+  if (!s) return false;
+  return /(bot|crawler|spider|preview|facebookcatalog|facebookexternalhit|whatsapp|telegram|slack|discord|vkshare|skypeuripreview)/i
+    .test(s);
+}
+
 function resolveTargetUrl(row: {
   target_url: string | null;
   target_urls: unknown;
@@ -72,8 +80,11 @@ Deno.serve(async (req) => {
 
   const occurredAt = new Date();
   const dateKey = almatyDateKey(occurredAt);
+  const userAgent = req.headers.get("user-agent") ?? null;
+  const isBot = isLinkClickBotUa(userAgent);
 
-  if (req.method === "GET") {
+  // Пишем клик только для живых браузеров (не facebookexternalhit при превью кнопки в DM).
+  if (req.method === "GET" && !isBot) {
     const { error: insErr } = await admin.from("instagram_organic_events").insert({
       project_id: row.project_id,
       codeword_id: row.id,
@@ -88,7 +99,7 @@ Deno.serve(async (req) => {
         short_id: shortId,
         target_url_index: linkIndex,
         target_url: targetUrl,
-        user_agent: req.headers.get("user-agent") ?? null,
+        user_agent: userAgent,
       },
     });
     if (insErr) console.error("[ig-organic-redirect] link_click insert", insErr);

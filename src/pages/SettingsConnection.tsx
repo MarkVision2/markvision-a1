@@ -1009,16 +1009,16 @@ export function SiteIntakeCard() {
   var WEBHOOK_URL = '${url}';
   var form = document.getElementById('lead-form');
   if (!form) return;
-  // Подхватываем UTM из URL и сохраняем между страницами
+  // Подхватываем UTM + код-слово Instagram из URL и сохраняем между страницами
   var qs = new URLSearchParams(location.search);
-  ['utm_source','utm_medium','utm_campaign','utm_content','utm_term'].forEach(function (k) {
+  ['utm_source','utm_medium','utm_campaign','utm_content','utm_term','cw','ig_user'].forEach(function (k) {
     var v = qs.get(k); if (v) try { sessionStorage.setItem(k, v); } catch(e) {}
   });
   form.addEventListener('submit', async function (e) {
     e.preventDefault();
     var fd = new FormData(form);
     var payload = Object.fromEntries(fd.entries());
-    ['utm_source','utm_medium','utm_campaign','utm_content','utm_term'].forEach(function (k) {
+    ['utm_source','utm_medium','utm_campaign','utm_content','utm_term','cw','ig_user'].forEach(function (k) {
       try { var v = sessionStorage.getItem(k); if (v && !payload[k]) payload[k] = v; } catch(e) {}
     });
     payload.token = PROJECT_TOKEN;
