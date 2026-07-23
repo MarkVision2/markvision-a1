@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
   AlertCircle, ArrowLeft, Brain, CalendarClock, Clapperboard, Loader2, Save, Trash2,
@@ -23,40 +23,57 @@ import {
   ContentPlanMetricsGrid,
 } from "@/components/content-plan/ContentPlanFunnelView";
 import { useContentPlanItem } from "@/hooks/useContentPlan";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
-  CONTENT_PLAN_CATEGORY_META,
   CONTENT_PLAN_STATUS_META,
   CONTENT_PLAN_TYPE_META,
   funnelRoi,
-  type ContentPlanCategory,
   type ContentPlanStatus,
-  type ContentPlanType,
 } from "@/lib/contentPlan";
+import { loadMetaAdSpendByIgMedia } from "@/lib/contentPlanAdSpend";
 import { fmtKzt } from "@/lib/format";
 
 export default function ContentPlanDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { activeId: projectId } = useProjectsStore();
   const { item, loading, update, remove, adoptSynthetic } = useContentPlanItem(id);
   const [saving, setSaving] = useState(false);
 
-  const [title, setTitle] = useState<string | null>(null);
   const [description, setDescription] = useState<string | null>(null);
-  const [hashtags, setHashtags] = useState<string | null>(null);
-  const [prompts, setPrompts] = useState<string | null>(null);
-  const [commentsNotes, setCommentsNotes] = useState<string | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [adSpend, setAdSpend] = useState<string | null>(null);
+  const [metaSpend, setMetaSpend] = useState<number | null>(null);
+  const [metaSpendLoading, setMetaSpendLoading] = useState(false);
 
-  const draftTitle = title ?? item?.title ?? "";
   const draftDescription = description ?? item?.description ?? "";
-  const draftHashtags = hashtags ?? item?.hashtags ?? "";
-  const draftPrompts = prompts ?? item?.prompts ?? "";
-  const draftComments = commentsNotes ?? item?.commentsNotes ?? "";
   const draftAi = aiAnalysis ?? item?.aiAnalysis ?? "";
   const draftSpend = adSpend ?? String(item?.adSpend ?? 0);
 
   const roi = useMemo(() => (item ? funnelRoi(item.funnel) : null), [item]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!projectId || !item?.igMediaId) {
+        setMetaSpend(null);
+        return;
+      }
+      setMetaSpendLoading(true);
+      try {
+        const map = await loadMetaAdSpendByIgMedia(projectId, [item.igMediaId]);
+        if (!cancelled) setMetaSpend(map.get(item.igMediaId) ?? 0);
+      } catch {
+        if (!cancelled) setMetaSpend(null);
+      } finally {
+        if (!cancelled) setMetaSpendLoading(false);
+      }
+    };
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, item?.igMediaId]);
 
   if (loading && !item) {
     return (
@@ -90,15 +107,19 @@ export default function ContentPlanDetail() {
         realId = await adoptSynthetic(item);
         toast.success("Публикация добавлена в план");
       }
-      await update(realId, {
-        title: draftTitle,
+      // Если расход уже из Meta Ads — не перезаписываем ручное поле в БД.
+      const patch: {
+        description: string | null;
+        aiAnalysis: string | null;
+        adSpend?: number;
+      } = {
         description: draftDescription || null,
-        hashtags: draftHashtags || null,
-        prompts: draftPrompts || null,
-        commentsNotes: draftComments || null,
         aiAnalysis: draftAi || null,
-        adSpend: Number(draftSpend) || 0,
-      });
+      };
+      if (!(metaSpend != null && metaSpend > 0)) {
+        patch.adSpend = Number(draftSpend) || 0;
+      }
+      await update(realId, patch);
       toast.success("Сохранено");
       if (realId !== item.id) navigate(`/marketing/content-plan/${realId}`, { replace: true });
     } catch (e) {
@@ -125,6 +146,9 @@ export default function ContentPlanDetail() {
 
   const typeMeta = CONTENT_PLAN_TYPE_META[item.contentType];
   const statusMeta = CONTENT_PLAN_STATUS_META[item.status];
+  const displaySpend =
+    metaSpend != null && metaSpend > 0 ? metaSpend : Number(draftSpend) || 0;
+  const spendFromMeta = metaSpend != null && metaSpend > 0;
 
   return (
     <PageContainer wide>
@@ -183,9 +207,12 @@ export default function ContentPlanDetail() {
           <div className="rounded-2xl border border-border/60 bg-card/50 p-4">
             <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Сводка</div>
             <ContentPlanMetricsGrid funnel={item.funnel} />
-            {item.funnel.adSpend > 0 && (
+            {displaySpend > 0 && (
               <div className="mt-3 rounded-xl border border-border/60 px-3 py-2 text-sm">
-                Реклама {fmtKzt(item.funnel.adSpend)}
+                Реклама {fmtKzt(displaySpend)}
+                {spendFromMeta && (
+                  <span className="ml-2 text-xs text-muted-foreground">из Meta Ads</span>
+                )}
                 {roi != null && (
                   <span className="ml-2 font-semibold text-success">ROI {roi}%</span>
                 )}
@@ -203,7 +230,7 @@ export default function ContentPlanDetail() {
       </div>
 
       <Tabs defaultValue="content" className="mt-8">
-        <TabsList className="flex flex-wrap h-auto gap-1">
+        <TabsList className="flex h-auto flex-wrap gap-1">
           <TabsTrigger value="content">Контент</TabsTrigger>
           <TabsTrigger value="autopost">Автопостинг</TabsTrigger>
           <TabsTrigger value="analytics">Аналитика</TabsTrigger>
@@ -213,27 +240,6 @@ export default function ContentPlanDetail() {
 
         <TabsContent value="content" className="mt-4 space-y-3 rounded-2xl border border-border/60 p-4">
           <div className="grid gap-3 sm:grid-cols-2">
-            <div className="space-y-1.5 sm:col-span-2">
-              <Label>Название</Label>
-              <Input value={draftTitle} onChange={(e) => setTitle(e.target.value)} />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Тип</Label>
-              <Select
-                value={item.contentType}
-                onValueChange={(v) => void update(item.id, { contentType: v as ContentPlanType })}
-                disabled={item.synthetic}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(CONTENT_PLAN_TYPE_META) as ContentPlanType[]).map((k) => (
-                    <SelectItem key={k} value={k}>
-                      {CONTENT_PLAN_TYPE_META[k].emoji} {CONTENT_PLAN_TYPE_META[k].label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             <div className="space-y-1.5">
               <Label>Статус</Label>
               <Select
@@ -250,40 +256,37 @@ export default function ContentPlanDetail() {
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label>Категория</Label>
-              <Select
-                value={item.category}
-                onValueChange={(v) => void update(item.id, { category: v as ContentPlanCategory })}
-                disabled={item.synthetic}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(CONTENT_PLAN_CATEGORY_META) as ContentPlanCategory[]).map((k) => (
-                    <SelectItem key={k} value={k}>{CONTENT_PLAN_CATEGORY_META[k].label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
               <Label>Расход на рекламу (₸)</Label>
-              <Input value={draftSpend} onChange={(e) => setAdSpend(e.target.value)} inputMode="decimal" />
+              {spendFromMeta ? (
+                <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/5 px-3 py-2">
+                  <div className="text-base font-bold tabular-nums">{fmtKzt(metaSpend!)}</div>
+                  <div className="mt-0.5 text-[11px] text-muted-foreground">
+                    Подтянуто из Meta Ads по продвижению этого поста
+                    {metaSpendLoading ? "…" : ""}
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <Input
+                    value={draftSpend}
+                    onChange={(e) => setAdSpend(e.target.value)}
+                    inputMode="decimal"
+                    placeholder="0"
+                  />
+                  <p className="text-[11px] text-muted-foreground">
+                    {item.igMediaId
+                      ? metaSpendLoading
+                        ? "Ищем расход в Meta Ads…"
+                        : "В Meta Ads пока нет связки с этим постом (нужен буст / sync). Можно указать вручную."
+                      : "Нет ig_media_id — укажите расход вручную или дождитесь публикации."}
+                  </p>
+                </>
+              )}
             </div>
           </div>
           <div className="space-y-1.5">
-            <Label>Описание</Label>
-            <Textarea value={draftDescription} onChange={(e) => setDescription(e.target.value)} rows={4} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Хэштеги</Label>
-            <Input value={draftHashtags} onChange={(e) => setHashtags(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Промпты</Label>
-            <Textarea value={draftPrompts} onChange={(e) => setPrompts(e.target.value)} rows={3} />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Комментарии</Label>
-            <Textarea value={draftComments} onChange={(e) => setCommentsNotes(e.target.value)} rows={3} />
+            <Label>Описание / подпись</Label>
+            <Textarea value={draftDescription} onChange={(e) => setDescription(e.target.value)} rows={5} />
           </div>
         </TabsContent>
 
@@ -312,8 +315,8 @@ export default function ContentPlanDetail() {
         <TabsContent value="analytics" className="mt-4 space-y-4 rounded-2xl border border-border/60 p-4">
           <ContentPlanMetricsGrid funnel={item.funnel} />
           <p className="text-xs text-muted-foreground">
-            Метрики подтягиваются из Instagram Media Sync и воронки код-слов. Графики динамики —
-            следующий этап (V2).
+            Метрики подтягиваются из Instagram Media Sync и воронки код-слов. Расход на рекламу —
+            из Meta Ads по бусту этого поста.
           </p>
         </TabsContent>
 

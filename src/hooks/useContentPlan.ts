@@ -19,6 +19,10 @@ import {
   type ContentPlanIgMedia,
   type ContentPlanOrganicEvent,
 } from "@/lib/contentPlanIgLink";
+import {
+  loadMetaAdSpendByIgMedia,
+  resolveContentPlanAdSpend,
+} from "@/lib/contentPlanAdSpend";
 import { schedulerApi } from "@/lib/autopostClient";
 
 type DbRow = {
@@ -548,9 +552,16 @@ export function useContentPlan() {
         webinar_status: l.webinar_status,
       }));
 
+      const igIdsForSpend = planDbRows
+        .map((r) => r.ig_media_id)
+        .filter((x): x is string => !!x);
+      const metaSpendByMedia = await loadMetaAdSpendByIgMedia(projectId, igIdsForSpend);
+
       const planRows = planDbRows.map((row) => {
+        const metaSpend = row.ig_media_id ? metaSpendByMedia.get(row.ig_media_id) : undefined;
+        const adSpend = resolveContentPlanAdSpend(Number(row.ad_spend ?? 0), metaSpend);
         const funnel = buildContentPlanFunnel({
-          adSpend: Number(row.ad_spend ?? 0),
+          adSpend,
           media: row.ig_media_id ? mediaById.get(row.ig_media_id) ?? null : null,
           igMediaId: row.ig_media_id,
           codewordId: row.codeword_id,
@@ -559,6 +570,8 @@ export function useContentPlan() {
           codewordStats: row.codeword_id ? statsByCodewordId.get(row.codeword_id) ?? null : null,
         });
         const item = fromDb(row, funnel);
+        // Keep displayed adSpend aligned with funnel (Meta override).
+        item.adSpend = adSpend;
         if (row.ig_media_id && !row.autopost_id) item.source = "ig_media";
         else if (row.autopost_id) item.source = "autopost";
         return item;
