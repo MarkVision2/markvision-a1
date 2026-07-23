@@ -16,7 +16,6 @@ import type { Lead, LeadStage } from "@/types/crm";
 import type { TeamMember } from "@/hooks/useTeamStore";
 import { InlineEdit } from "./InlineEdit";
 import { LeadAttribution } from "./LeadAttribution";
-import { LeadJourneyProgress } from "./LeadJourneyProgress";
 
 interface Props {
   lead: Lead;
@@ -245,9 +244,6 @@ export function LeadHeader({
           )}
         </div>
       </div>
-
-      {/* Путь до покупки (Launch Funnel) */}
-      <LeadJourneyProgress lead={lead} />
 
       {/* Откуда пришёл лид (конкретный креатив Meta) */}
       <LeadAttribution lead={lead} />
