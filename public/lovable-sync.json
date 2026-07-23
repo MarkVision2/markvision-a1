@@ -1,7 +1,7 @@
 {
-  "git_sha": "9724e88",
-  "git_sha_full": "9724e88a84fc75feda2dd2d9ca2631ba576b4ad5",
-  "updated_at": "2026-07-23T04:46:05Z",
-  "label": "content-plan: sections + KPI totals + Meta spend",
-  "publish_hint": "push main → www.markvision.kz (Vercel)"
+  "git_sha": "880ab74",
+  "git_sha_full": "880ab7466d756b1d9c2cb31df984f6bb0fe86897",
+  "updated_at": "2026-07-23T05:40:02Z",
+  "label": "Merge branch 'cursor/content-plan-kpi-fix-84cc'",
+  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
