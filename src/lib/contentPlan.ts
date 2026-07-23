@@ -189,18 +189,19 @@ export function summarizeContentPlan(items: ContentPlanItem[]): ContentPlanSumma
   const scheduled = items.filter((i) => i.status === "scheduled").length;
   const published = items.filter((i) => i.status === "published").length;
   const pub = items.filter((i) => i.status === "published");
+  // Воронка и расход — только по опубликованным (черновики/слоты без media не раздувают KPI).
   return {
     total,
     scheduled,
     published,
     totalReach: pub.reduce((s, i) => s + i.funnel.reach, 0),
-    codewordHits: items.reduce((s, i) => s + i.funnel.codewordHits, 0),
-    linkClicks: items.reduce((s, i) => s + i.funnel.linkClicks, 0),
-    registrations: items.reduce((s, i) => s + i.funnel.registrations, 0),
-    webinarAttended: items.reduce((s, i) => s + i.funnel.webinarAttended, 0),
-    paid: items.reduce((s, i) => s + i.funnel.paid, 0),
-    revenue: items.reduce((s, i) => s + i.funnel.revenue, 0),
-    adSpend: items.reduce((s, i) => s + (i.funnel.adSpend || i.adSpend || 0), 0),
+    codewordHits: pub.reduce((s, i) => s + i.funnel.codewordHits, 0),
+    linkClicks: pub.reduce((s, i) => s + i.funnel.linkClicks, 0),
+    registrations: pub.reduce((s, i) => s + i.funnel.registrations, 0),
+    webinarAttended: pub.reduce((s, i) => s + i.funnel.webinarAttended, 0),
+    paid: pub.reduce((s, i) => s + i.funnel.paid, 0),
+    revenue: pub.reduce((s, i) => s + i.funnel.revenue, 0),
+    adSpend: pub.reduce((s, i) => s + (i.funnel.adSpend || i.adSpend || 0), 0),
   };
 }
 

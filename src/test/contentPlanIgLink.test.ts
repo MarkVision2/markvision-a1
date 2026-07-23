@@ -172,6 +172,24 @@ describe("contentPlanIgLink helpers", () => {
     expect(other.linkClicks).toBe(0);
   });
 
+  it("does not attach global codeword stats to items without ig media", () => {
+    const f = buildContentPlanFunnel({
+      codewordId: "cw1",
+      codeword: "хаб",
+      events: [],
+      leads: [],
+      codewordStats: {
+        codeword_dms: 5,
+        codeword_comments: 2,
+        link_clicks: 7,
+        leads: 3,
+      },
+    });
+    expect(f.codewordHits).toBe(0);
+    expect(f.linkClicks).toBe(0);
+    expect(f.registrations).toBe(0);
+  });
+
   it("primaryIgMediaForCodeword picks newest published", () => {
     expect(
       primaryIgMediaForCodeword(

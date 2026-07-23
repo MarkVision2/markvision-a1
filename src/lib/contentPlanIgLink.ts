@@ -324,7 +324,7 @@ export function buildContentPlanFunnel(input: {
     f.registrations = leadIds.size;
     applyLeadStages(f, leadIds, input.leads);
 
-    // Если по событиям пусто, а это primary код-слова — подтянуть агрегаты stats.
+    // Stats-агрегат только у primary и только если живых событий ещё нет.
     const st = input.codewordStats;
     if (claimOrphans && st && hits === 0 && clicks === 0 && leadIds.size === 0) {
       f.codewordHits = Number(st.codeword_dms ?? 0) + Number(st.codeword_comments ?? 0);
@@ -338,25 +338,8 @@ export function buildContentPlanFunnel(input: {
     return f;
   }
 
-  const st = input.codewordStats;
-  if (st && input.codewordId) {
-    f.codewordHits = Number(st.codeword_dms ?? 0) + Number(st.codeword_comments ?? 0);
-    f.messagesSent = Number(st.codeword_dms ?? 0) || f.codewordHits;
-    f.messagesOpened = f.messagesSent;
-    f.linkClicks = Number(st.link_clicks ?? 0);
-    f.registrations = Number(st.leads ?? 0);
-    f.paid = Number(st.sales ?? 0);
-    f.revenue = Number(st.revenue ?? 0);
-
-    const leadIds = new Set<string>();
-    for (const e of input.events) {
-      if (!eventMatchesCodeword(e, input.codewordId, input.codeword)) continue;
-      if (e.event_type !== "lead" || !e.lead_id) continue;
-      leadIds.add(e.lead_id);
-    }
-    applyLeadStages(f, leadIds, input.leads);
-  }
-
+  // Без ig_media_id НЕльзя вешать codeword_stats: одно код-слово на десятки
+  // черновиков/слотов → KPI раздувается (7×N). Считаем только по media/событиям.
   return f;
 }
 
