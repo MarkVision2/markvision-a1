@@ -16,14 +16,23 @@ const PLAN_CARDS: CardDef[] = [
 ];
 
 const RESULT_CARDS: CardDef[] = [
-  { key: "totalReach", label: "Охват", hint: "Сумма охвата опубликованных постов" },
-  { key: "codewordHits", label: "Код-слова", hint: "Комментарии и DM с код-словом" },
-  { key: "linkClicks", label: "Переходы", hint: "Клики по ссылке из Direct" },
-  { key: "registrations", label: "Лиды", hint: "Заявки, привязанные к код-слову / посту" },
+  { key: "totalReach", label: "Охват", hint: "Сумма охвата опубликованных постов из Instagram" },
+  {
+    key: "codewordHits",
+    label: "Код-слова",
+    hint: "Сколько раз написали код-слово в комментарии или Direct по этим постам",
+  },
+  { key: "linkClicks", label: "Переходы", hint: "Клики по ссылке из автоответа Direct" },
+  { key: "registrations", label: "Лиды", hint: "Заявки, привязанные к этим срабатываниям" },
   { key: "webinarAttended", label: "Вебинар" },
   { key: "paid", label: "Оплаты" },
   { key: "revenue", label: "Выручка", format: "money" },
-  { key: "adSpend", label: "Реклама", format: "money", hint: "Расход на продвижение постов" },
+  {
+    key: "adSpend",
+    label: "Реклама",
+    format: "money",
+    hint: "Только расход буста поста (связка Meta Ads ↔ IG media). Иначе ручное поле или 0",
+  },
 ];
 
 function MetricCard({
@@ -72,8 +81,9 @@ export function ContentPlanKpis({
           </p>
         </div>
         <p className="max-w-lg text-[11px] leading-relaxed text-muted-foreground">
-          Охват — сумма по Instagram media. Код-слова, переходы и лиды — из organic-событий
-          (код-слово в комменте/DM → ссылка → заявка), без двойного счёта.
+          Охват — сумма Instagram reach. Код-слова / переходы / лиды — реальные события
+          (коммент или DM с код-словом → клик → заявка) по опубликованным постам, без
+          умножения на все слоты плана.
         </p>
       </div>
 

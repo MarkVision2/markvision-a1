@@ -133,10 +133,11 @@ describe("summarizeContentPlan", () => {
     expect(s.published).toBe(1);
     expect(s.scheduled).toBe(1);
     expect(s.totalReach).toBe(100);
-    expect(s.codewordHits).toBe(5);
-    expect(s.linkClicks).toBe(3);
-    expect(s.revenue).toBe(1500);
-    expect(s.adSpend).toBe(250);
+    // Только published — scheduled/idea не раздувают воронку.
+    expect(s.codewordHits).toBe(4);
+    expect(s.linkClicks).toBe(2);
+    expect(s.revenue).toBe(1000);
+    expect(s.adSpend).toBe(200);
   });
 });
 
