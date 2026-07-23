@@ -447,7 +447,7 @@ Deno.serve(async (req) => {
       // ---- 3. Ads (creatives) ----
       const adFields = [
         "id", "name", "status", "effective_status", "campaign_id", "adset_id",
-        "creative{thumbnail_url,image_url,video_id,object_story_spec,asset_feed_spec,body,title,call_to_action_type,object_url}",
+        "creative{thumbnail_url,image_url,video_id,object_story_spec,asset_feed_spec,body,title,call_to_action_type,object_url,source_instagram_media_id,effective_instagram_media_id}",
       ].join(",");
       const ads = await fetchAllPages<Record<string, unknown>>(
         `https://graph.facebook.com/${META_API_VERSION}/${actId}/ads?fields=${adFields}&limit=200&access_token=${encodeURIComponent(token)}`,
@@ -507,6 +507,14 @@ Deno.serve(async (req) => {
         headline: (cr?.title as string | undefined) ?? null,
         cta: (cr?.call_to_action_type as string | undefined) ?? null,
         destination_url: (cr?.object_url as string | undefined) ?? null,
+        source_instagram_media_id: (() => {
+          const v = cr?.source_instagram_media_id;
+          return v != null && String(v).trim() ? String(v) : null;
+        })(),
+        effective_instagram_media_id: (() => {
+          const v = cr?.effective_instagram_media_id;
+          return v != null && String(v).trim() ? String(v) : null;
+        })(),
         last_synced_at: new Date().toISOString(),
       };
       });
