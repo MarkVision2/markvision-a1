@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { SiteAnalyticsCard } from "@/components/content-center/SiteAnalyticsCard";
 
 // Раздел «Контент-центр» — аналитика Instagram-автоворонки (cf_*), которая живёт
 // в клиентском Supabase (szfgdruhlebfvcmlvxdk). Данные считает edge-функция
@@ -722,6 +723,10 @@ const ContentCenter = () => {
             ))}
           </div>
         </div>
+      </div>
+
+      <div className="mt-6">
+        <SiteAnalyticsCard projectId={active?.id ?? null} />
       </div>
 
       {/* Toolbar */}
