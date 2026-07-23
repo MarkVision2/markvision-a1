@@ -17,6 +17,7 @@ import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
 import {
   filterContentPlanByPeriod,
+  partitionContentPlan,
   summarizeContentPlan,
   type ContentPlanItem,
 } from "@/lib/contentPlan";
@@ -43,6 +44,28 @@ const CONTENT_PLAN_PERIOD_PRESETS: { id: ContentPeriodPreset; label: string }[] 
   { id: "custom", label: "Выбрать период" },
 ];
 
+type ListFilter = "all" | "upcoming" | "published";
+
+function SectionHeading({
+  title,
+  count,
+  hint,
+}: {
+  title: string;
+  count: number;
+  hint?: string;
+}) {
+  return (
+    <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+      <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        {title}
+        <span className="ml-2 tabular-nums text-foreground/70">{count}</span>
+      </h2>
+      {hint ? <span className="text-[11px] text-muted-foreground/80">{hint}</span> : null}
+    </div>
+  );
+}
+
 export default function ContentPlan() {
   const [params, setParams] = useSearchParams();
   const showCalendar = params.get("view") === "calendar" || params.get("tab") === "autopost";
@@ -54,6 +77,7 @@ export default function ContentPlan() {
   const [preset, setPreset] = useState<ContentPeriodPreset>("this_month");
   const [range, setRange] = useState<ReportPeriodRange>(() => contentPlanThisMonth());
   const [refreshing, setRefreshing] = useState(false);
+  const [listFilter, setListFilter] = useState<ListFilter>("all");
 
   const setShowCalendar = (on: boolean) => {
     const p = new URLSearchParams(params);
@@ -66,6 +90,10 @@ export default function ContentPlan() {
   const periodItems = useMemo(() => filterContentPlanByPeriod(items, range), [items, range]);
   const summary = useMemo(() => summarizeContentPlan(periodItems), [periodItems]);
   const periodLabel = useMemo(() => formatPeriodLabel(range), [range]);
+  const { upcoming, published } = useMemo(
+    () => partitionContentPlan(periodItems),
+    [periodItems],
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -88,13 +116,16 @@ export default function ContentPlan() {
     }
   };
 
+  const showUpcoming = listFilter === "all" || listFilter === "upcoming";
+  const showPublished = listFilter === "all" || listFilter === "published";
+
   return (
     <PageContainer wide>
       <PageHeader
         icon={ClipboardList}
         iconAccent="pink"
         title="Контент-план"
-        description="План и метрики после выхода. Очередь MarkVision — в общем списке (без отдельного блока «Ближайшие»)."
+        description="Сверху — что ещё выйдет, снизу — что уже опубликовано."
         actions={
           <div className="flex flex-wrap gap-2">
             <Button
@@ -170,28 +201,91 @@ export default function ContentPlan() {
           <AutoPost embedded />
         </div>
       ) : (
-        <div className="mt-6 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
-            <span>
-              Список · {PRESET_LABELS[preset].toLowerCase()}
-              <span className="mx-1 text-border">·</span>
+        <div className="mt-6 space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap gap-1.5">
+              {(
+                [
+                  { id: "all" as const, label: "Все", count: periodItems.length },
+                  { id: "upcoming" as const, label: "Запланировано", count: upcoming.length },
+                  { id: "published" as const, label: "Опубликовано", count: published.length },
+                ] as const
+              ).map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  onClick={() => setListFilter(f.id)}
+                  className={cn(
+                    "rounded-xl border px-3 py-1.5 text-xs font-medium transition",
+                    listFilter === f.id
+                      ? "border-primary/50 bg-primary/10 text-primary"
+                      : "border-border/60 bg-card/40 text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {f.label}
+                  <span className="ml-1.5 tabular-nums opacity-70">{f.count}</span>
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
               <span className="tabular-nums">{periodLabel}</span>
-              {items.length !== periodItems.length ? (
-                <>
-                  <span className="mx-1 text-border">·</span>
-                  {periodItems.length} из {items.length}
-                </>
-              ) : null}
-            </span>
-            <Link to="/marketing/content-center" className="text-primary hover:underline">
-              Контент-центр →
-            </Link>
+              <Link to="/marketing/content-center" className="text-primary hover:underline">
+                Контент-центр →
+              </Link>
+            </div>
           </div>
-          <ContentPlanTable
-            items={periodItems}
-            loading={loading}
-            onAdopt={onAdopt}
-          />
+
+          {loading && periodItems.length === 0 ? (
+            <ContentPlanTable items={[]} loading onAdopt={onAdopt} />
+          ) : periodItems.length === 0 ? (
+            <ContentPlanTable items={[]} loading={false} onAdopt={onAdopt} />
+          ) : (
+            <>
+              {showUpcoming && (
+                <section>
+                  <SectionHeading
+                    title="Запланировано"
+                    count={upcoming.length}
+                    hint="ближайшие слоты сверху"
+                  />
+                  {upcoming.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">
+                      Нет запланированных публикаций за период.
+                    </div>
+                  ) : (
+                    <ContentPlanTable
+                      items={upcoming}
+                      loading={false}
+                      onAdopt={onAdopt}
+                      showFunnelStats={false}
+                    />
+                  )}
+                </section>
+              )}
+
+              {showPublished && (
+                <section>
+                  <SectionHeading
+                    title="Опубликовано"
+                    count={published.length}
+                    hint="свежие сверху · с метриками"
+                  />
+                  {published.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-border/60 px-4 py-8 text-center text-sm text-muted-foreground">
+                      Нет вышедших публикаций за период.
+                    </div>
+                  ) : (
+                    <ContentPlanTable
+                      items={published}
+                      loading={false}
+                      onAdopt={onAdopt}
+                      showFunnelStats
+                    />
+                  )}
+                </section>
+              )}
+            </>
+          )}
         </div>
       )}
 
