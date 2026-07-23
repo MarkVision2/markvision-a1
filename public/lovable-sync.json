@@ -1,7 +1,8 @@
 {
-  "git_sha": "9d1c39c",
+  "git_sha": "4fbc15775cbdb8cb37c1f85b2b29b3106f3f3549",
   "git_sha_full": "9d1c39c420c126f2f5f55b56c4f6becfefb4839c",
   "updated_at": "2026-07-23T08:22:30Z",
   "label": "Merge branch 'cursor/settings-unify-site-intake-84cc'",
-  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
+  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app",
+  "short_sha": "4fbc157"
 }
