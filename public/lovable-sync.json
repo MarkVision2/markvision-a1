@@ -1,7 +1,7 @@
 {
-  "git_sha": "4cf62d6",
-  "git_sha_full": "4cf62d67856d7541b695ff9f03306368a53bb481",
-  "updated_at": "2026-07-23T04:35:18Z",
-  "label": "Merge branch 'cursor/content-plan-detail-spend-84cc'",
+  "git_sha": "df45d18",
+  "git_sha_full": "df45d186fcc66df534d04b979e0b0b6295637da4",
+  "updated_at": "2026-07-23T04:42:04Z",
+  "label": "Merge branch 'cursor/content-plan-kpi-totals-84cc'",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
