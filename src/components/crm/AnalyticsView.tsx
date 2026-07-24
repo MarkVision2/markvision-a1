@@ -7,6 +7,7 @@ import type { StageMetrics, RejectStat } from "@/hooks/useCrmAnalytics";
 import { monthKey, useRevenuePlan } from "@/hooks/useRevenuePlan";
 import type { Lead } from "@/types/crm";
 import { QualityBlock, QualityFunnel } from "@/components/crm/QualityBlock";
+import { LaunchConversionFunnel } from "@/components/crm/LaunchConversionFunnel";
 
 interface Props {
   stageMetrics: StageMetrics[];
@@ -14,9 +15,18 @@ interface Props {
   forecast: number;
   actual: number;
   leads?: readonly Lead[];
+  /** pipelines.template_key — when "launch", show launch conversion funnel */
+  pipelineTemplateKey?: string | null;
 }
 
-export function AnalyticsView({ stageMetrics, rejectStats, forecast, actual, leads = [] }: Props) {
+export function AnalyticsView({
+  stageMetrics,
+  rejectStats,
+  forecast,
+  actual,
+  leads = [],
+  pipelineTemplateKey,
+}: Props) {
   const { store, setForMonth } = useRevenuePlan();
   const mk = monthKey();
   const plan = store[mk] ?? 0;
@@ -25,12 +35,19 @@ export function AnalyticsView({ stageMetrics, rejectStats, forecast, actual, lea
   const totalLost = rejectStats.reduce((s, r) => s + r.lostRevenue, 0);
   const planPct = plan > 0 ? Math.min(100, (actual / plan) * 100) : 0;
   const forecastPct = plan > 0 ? Math.min(100, ((actual + forecast) / plan) * 100) : 0;
+  const isLaunch = pipelineTemplateKey === "launch";
 
   const maxCount = Math.max(1, ...stageMetrics.map((s) => s.count));
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-      {leads.length > 0 && (
+      {leads.length > 0 && isLaunch && (
+        <div className="lg:col-span-2">
+          <LaunchConversionFunnel leads={leads} />
+        </div>
+      )}
+
+      {leads.length > 0 && !isLaunch && (
         <>
           <div className="lg:col-span-2">
             <QualityBlock leads={leads} />
@@ -41,11 +58,17 @@ export function AnalyticsView({ stageMetrics, rejectStats, forecast, actual, lea
         </>
       )}
 
-      {/* Funnel */}
+      {/* Snapshot: currently on stage (not cumulative conversion) */}
       <div className="rounded-2xl border border-border/60 bg-card/40 p-4">
         <div className="flex items-center gap-2 text-sm font-semibold">
-          <Sparkles className="h-4 w-4 text-primary" /> Воронка по этапам
+          <Sparkles className="h-4 w-4 text-primary" />{" "}
+          {isLaunch ? "Сейчас на этапе" : "Воронка по этапам"}
         </div>
+        {isLaunch && (
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            Сколько лидов стоит на этапе прямо сейчас (не накопительная конверсия).
+          </p>
+        )}
         <div className="mt-4 space-y-2">
           {stageMetrics.map((sm) => {
             const w = (sm.count / maxCount) * 100;
@@ -54,7 +77,7 @@ export function AnalyticsView({ stageMetrics, rejectStats, forecast, actual, lea
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-medium">{sm.stage.title}</span>
                   <span className="text-muted-foreground tabular-nums">
-                    {sm.count} · {sm.potential.toLocaleString("ru-RU")} $
+                    {sm.count} · {sm.potential.toLocaleString("ru-RU")} ₸
                     {sm.conversionFromPrev !== null && (
                       <span className="ml-2 text-primary">CR {sm.conversionFromPrev.toFixed(0)}%</span>
                     )}
