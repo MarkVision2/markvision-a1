@@ -1,7 +1,7 @@
 {
-  "git_sha": "b93c699",
-  "git_sha_full": "b93c69902c597b0e021b32965e6efdafd52e5d43",
-  "updated_at": "2026-07-24T09:29:24Z",
-  "label": "Merge remove WhatsApp bindings table",
+  "git_sha": "a8392a1",
+  "git_sha_full": "a8392a198f6ea0778776518e151b5dc3fdb65d01",
+  "updated_at": "2026-07-24T09:33:36Z",
+  "label": "Merge wa-web QR loading fix",
   "publish_hint": "push main → www.markvision.kz (Vercel)"
 }
