@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { Calendar, Megaphone, CreditCard, Wallet, ArrowRight, Layers } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Calendar, Megaphone, CreditCard, Wallet, ArrowRight, Layers, type LucideIcon } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -39,7 +39,7 @@ interface Props {
   onChangeStage?: (stageId: string) => void;
 }
 
-function FieldLabel({ icon: Icon, children }: { icon: typeof Layers; children: React.ReactNode }) {
+function FieldLabel({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
   return (
     <div className="mb-2 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
       <Icon className="h-3.5 w-3.5 text-primary/80" />
