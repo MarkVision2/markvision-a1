@@ -148,9 +148,9 @@ async function openSocket(projectId, { forcePair = false } = {}) {
       }
       if (connection === "open") {
         const me = sock.user;
-        const phone = jidToPhone(me?.id) || (me?.id ? `+${String(me.id).split(":")[0]}` : null);
+        const phone = jidToPhone(me?.id);
         await setState(projectId, "connected", {
-          phone,
+          phone: phone || null,
           display_name: me?.name || me?.verifiedName || null,
         });
         const entry = sockets.get(projectId) || {};
