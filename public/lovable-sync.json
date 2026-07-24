@@ -1,7 +1,7 @@
 {
-  "git_sha": "a7307e0",
-  "git_sha_full": "a7307e0744b5e2e69168340ad2652915ee23f4cf",
-  "updated_at": "2026-07-24T10:54:40+05:00",
-  "label": "Рассылки: ban-aware безопасность (статус аккаунта Green + авто-стоп) (#201)",
+  "git_sha": "7a7d47b",
+  "git_sha_full": "7a7d47b52b306064b2c330622762e3c3a66c5b8b",
+  "updated_at": "2026-07-24T09:22:42Z",
+  "label": "Added CHECK constraints to policies",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
