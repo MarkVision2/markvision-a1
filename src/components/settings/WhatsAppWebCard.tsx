@@ -230,7 +230,9 @@ export function WhatsAppWebCard({ projectId }: Props) {
               {session?.display_name || "WhatsApp"} {session?.phone ? `· ${session.phone}` : ""}
             </div>
             <p className="mt-1 text-xs text-muted-foreground">
-              Работает. Сообщения с этого номера появляются в CRM → Чаты.
+              Работает. Новые входящие и исходящие с телефона появятся в CRM → Чаты
+              (в этом проекте). Старые переписки WhatsApp может не отдать — напишите
+              тестовое сообщение сейчас.
             </p>
           </div>
         )}
