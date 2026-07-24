@@ -149,7 +149,7 @@ function leadRowToFrontIndexed(
   return {
     id: r.id,
     name: r.name,
-    phone: r.phone,
+    phone: r.phone ?? "",
     email: r.email ?? undefined,
     source: r.source,
     stageId: idToKey.get(r.stage_id) ?? "new",
