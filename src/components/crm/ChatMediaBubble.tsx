@@ -12,6 +12,17 @@ function captionOf(m: ChatMessage): string | null {
   return t;
 }
 
+function stopSheetDismiss(e: React.SyntheticEvent) {
+  // Lightbox is portaled outside Sheet — without this, Radix treats
+  // the click as "outside" and closes the whole lead card.
+  e.stopPropagation();
+  // React 17+ root delegation — also stop native bubbling for Radix listeners.
+  const ne = e.nativeEvent;
+  if (typeof ne.stopImmediatePropagation === "function") {
+    ne.stopImmediatePropagation();
+  }
+}
+
 function ImageLightbox({
   url,
   alt,
@@ -26,32 +37,46 @@ function ImageLightbox({
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
     };
-    window.addEventListener("keydown", onKey);
+    // Capture phase so Sheet/Dialog don't also close on Escape.
+    window.addEventListener("keydown", onKey, true);
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKey, true);
       document.body.style.overflow = prev;
     };
   }, [open, onClose]);
 
   if (!open || typeof document === "undefined") return null;
 
+  const closeOnlyPhoto = (e: React.SyntheticEvent) => {
+    stopSheetDismiss(e);
+    onClose();
+  };
+
   return createPortal(
     <div
       role="dialog"
       aria-modal="true"
       aria-label={alt}
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-      onClick={onClose}
+      className="fixed inset-0 z-[200] flex cursor-zoom-out items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+      data-crm-image-lightbox=""
+      onPointerDown={stopSheetDismiss}
+      onMouseDown={stopSheetDismiss}
+      onClick={closeOnlyPhoto}
     >
       <button
         type="button"
-        onClick={onClose}
-        className="absolute right-3 top-3 grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20"
-        aria-label="Закрыть"
+        onPointerDown={stopSheetDismiss}
+        onMouseDown={stopSheetDismiss}
+        onClick={closeOnlyPhoto}
+        className="absolute right-3 top-3 z-[1] grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20"
+        aria-label="Закрыть фото"
       >
         <X className="h-5 w-5" />
       </button>
@@ -59,7 +84,7 @@ function ImageLightbox({
         src={url}
         alt={alt}
         className="max-h-[92dvh] max-w-[min(96vw,1100px)] rounded-lg object-contain shadow-2xl"
-        onClick={(e) => e.stopPropagation()}
+        draggable={false}
       />
     </div>,
     document.body,
@@ -90,7 +115,10 @@ export function ChatMediaBubble({
         <>
           <button
             type="button"
-            onClick={() => setLightboxOpen(true)}
+            onClick={(e) => {
+              e.stopPropagation();
+              setLightboxOpen(true);
+            }}
             className="block max-w-full cursor-zoom-in text-left"
             title="Открыть"
           >
