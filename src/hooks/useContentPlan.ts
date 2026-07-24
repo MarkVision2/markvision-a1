@@ -14,11 +14,17 @@ import {
 import {
   buildContentPlanFunnel,
   draftFromIgMedia,
+  matchCodewordInCaption,
   mediaNotLinkedToPlan,
+  primaryIgMediaForCodeword,
   resolveIgMediaIdForPlan,
   type ContentPlanIgMedia,
   type ContentPlanOrganicEvent,
 } from "@/lib/contentPlanIgLink";
+import {
+  loadMetaAdSpendByIgMedia,
+  resolveContentPlanAdSpend,
+} from "@/lib/contentPlanAdSpend";
 import { schedulerApi } from "@/lib/autopostClient";
 
 type DbRow = {
@@ -548,17 +554,74 @@ export function useContentPlan() {
         webinar_status: l.webinar_status,
       }));
 
+      // Привязать код-слово из подписи, если в строке плана его ещё нет.
+      const codewordPatches: Array<{ id: string; codeword_id: string; codeword: string }> = [];
+      for (const row of planDbRows) {
+        if (row.codeword_id) continue;
+        const caption =
+          row.description ||
+          (row.ig_media_id ? mediaById.get(row.ig_media_id)?.caption : null) ||
+          row.title;
+        const cw = matchCodewordInCaption(caption, codewords, row.ig_media_id);
+        if (!cw) continue;
+        row.codeword_id = cw.id;
+        row.codeword = cw.codeword;
+        codewordPatches.push({ id: row.id, codeword_id: cw.id, codeword: cw.codeword });
+      }
+      if (codewordPatches.length > 0) {
+        await Promise.all(
+          codewordPatches.map((p) =>
+            supabase
+              .from("content_plan_items" as never)
+              .update({ codeword_id: p.codeword_id, codeword: p.codeword } as never)
+              .eq("id", p.id),
+          ),
+        );
+      }
+
+      const primaryByCodeword = new Map<string, string>();
+      const codewordIds = Array.from(
+        new Set(planDbRows.map((r) => r.codeword_id).filter((x): x is string => !!x)),
+      );
+      for (const cwId of codewordIds) {
+        const primary = primaryIgMediaForCodeword(
+          planDbRows.map((r) => ({
+            igMediaId: r.ig_media_id,
+            codewordId: r.codeword_id,
+            publishedAt: r.published_at,
+            scheduledAt: r.scheduled_at,
+          })),
+          cwId,
+        );
+        if (primary) primaryByCodeword.set(cwId, primary);
+      }
+
+      const igIdsForSpend = planDbRows
+        .map((r) => r.ig_media_id)
+        .filter((x): x is string => !!x);
+      const metaSpendByMedia = await loadMetaAdSpendByIgMedia(projectId, igIdsForSpend);
+
       const planRows = planDbRows.map((row) => {
+        const metaSpend = row.ig_media_id ? metaSpendByMedia.get(row.ig_media_id) : undefined;
+        const adSpend = resolveContentPlanAdSpend(Number(row.ad_spend ?? 0), metaSpend);
+        const claimOrphans =
+          !!row.codeword_id &&
+          !!row.ig_media_id &&
+          primaryByCodeword.get(row.codeword_id) === row.ig_media_id;
         const funnel = buildContentPlanFunnel({
-          adSpend: Number(row.ad_spend ?? 0),
+          adSpend,
           media: row.ig_media_id ? mediaById.get(row.ig_media_id) ?? null : null,
           igMediaId: row.ig_media_id,
           codewordId: row.codeword_id,
+          codeword: row.codeword,
+          claimOrphanCodewordEvents: claimOrphans,
           events,
           leads: leadLite,
           codewordStats: row.codeword_id ? statsByCodewordId.get(row.codeword_id) ?? null : null,
         });
         const item = fromDb(row, funnel);
+        // Keep displayed adSpend aligned with funnel (Meta override).
+        item.adSpend = adSpend;
         if (row.ig_media_id && !row.autopost_id) item.source = "ig_media";
         else if (row.autopost_id) item.source = "autopost";
         return item;

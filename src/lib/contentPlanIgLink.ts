@@ -139,9 +139,13 @@ export function matchCodewordInCaption(
 ): { id: string; codeword: string } | null {
   const low = (caption ?? "").toLowerCase();
   if (!low.trim()) return null;
-  for (const k of codewords) {
+  // Длинные слова раньше коротких («хаб» до «+»), чтобы не ловить мусор.
+  const ranked = [...codewords].sort(
+    (a, b) => (b.codeword ?? "").trim().length - (a.codeword ?? "").trim().length,
+  );
+  for (const k of ranked) {
     const word = (k.codeword ?? "").trim().toLowerCase();
-    if (!word) continue;
+    if (!word || word.length < 2) continue;
     if (!low.includes(word)) continue;
     if (k.reel_id && mediaId && k.reel_id !== mediaId) continue;
     return { id: k.id, codeword: k.codeword };
@@ -216,7 +220,42 @@ function applyLeadStages(f: ContentPlanFunnel, leadIds: Set<string>, leads: Cont
 }
 
 /**
+ * Среди постов с одним код-словом — «основной» media_id (самый свежий),
+ * на него вешаем orphan-события без reel_id (DM/клики/лиды), чтобы не дублировать.
+ */
+export function primaryIgMediaForCodeword(
+  posts: Array<{
+    igMediaId: string | null;
+    codewordId: string | null;
+    publishedAt?: string | null;
+    scheduledAt?: string | null;
+  }>,
+  codewordId: string,
+): string | null {
+  const ranked = posts
+    .filter((p) => p.codewordId === codewordId && p.igMediaId)
+    .sort((a, b) => {
+      const ta = a.publishedAt ?? a.scheduledAt ?? "";
+      const tb = b.publishedAt ?? b.scheduledAt ?? "";
+      return tb.localeCompare(ta);
+    });
+  return ranked[0]?.igMediaId ?? null;
+}
+
+function eventMatchesCodeword(
+  e: ContentPlanOrganicEvent,
+  codewordId: string | null | undefined,
+  codeword: string | null | undefined,
+): boolean {
+  if (codewordId && e.codeword_id && e.codeword_id === codewordId) return true;
+  const want = (codeword ?? "").trim().toLowerCase();
+  const got = (e.codeword ?? "").trim().toLowerCase();
+  return !!want && !!got && want === got;
+}
+
+/**
  * Воронка публикации: IG insights + organic events по reel_id (как Контент-центр).
+ * Orphan-события код-слова (без reel_id) — только на primary-пост код-слова.
  * Если media нет — fallback на агрегаты код-слова.
  */
 export function buildContentPlanFunnel(input: {
@@ -224,6 +263,9 @@ export function buildContentPlanFunnel(input: {
   media?: ContentPlanIgMedia | null;
   igMediaId?: string | null;
   codewordId?: string | null;
+  codeword?: string | null;
+  /** Принимать события код-слова без reel_id (только у одного primary-поста). */
+  claimOrphanCodewordEvents?: boolean;
   events: ContentPlanOrganicEvent[];
   leads: ContentPlanLeadLite[];
   codewordStats?: {
@@ -251,14 +293,21 @@ export function buildContentPlanFunnel(input: {
   }
 
   const igMediaId = input.igMediaId ?? m?.media_id ?? null;
+  const claimOrphans = !!input.claimOrphanCodewordEvents;
 
   if (igMediaId) {
-    const forMedia = input.events.filter((e) => e.reel_id === igMediaId);
     let hits = 0;
     let dms = 0;
     let clicks = 0;
     const leadIds = new Set<string>();
-    for (const e of forMedia) {
+    for (const e of input.events) {
+      const byReel = e.reel_id === igMediaId;
+      const byOrphan =
+        claimOrphans &&
+        !e.reel_id &&
+        eventMatchesCodeword(e, input.codewordId, input.codeword);
+      if (!byReel && !byOrphan) continue;
+
       if (e.event_type === "codeword_comment" || e.event_type === "codeword_dm") {
         hits += 1;
         if (e.event_type === "codeword_dm") dms += 1;
@@ -274,28 +323,23 @@ export function buildContentPlanFunnel(input: {
     f.linkClicks = clicks;
     f.registrations = leadIds.size;
     applyLeadStages(f, leadIds, input.leads);
+
+    // Stats-агрегат только у primary и только если живых событий ещё нет.
+    const st = input.codewordStats;
+    if (claimOrphans && st && hits === 0 && clicks === 0 && leadIds.size === 0) {
+      f.codewordHits = Number(st.codeword_dms ?? 0) + Number(st.codeword_comments ?? 0);
+      f.messagesSent = Number(st.codeword_dms ?? 0) || f.codewordHits;
+      f.messagesOpened = f.messagesSent;
+      f.linkClicks = Number(st.link_clicks ?? 0);
+      f.registrations = Number(st.leads ?? 0);
+      f.paid = Number(st.sales ?? 0);
+      f.revenue = Number(st.revenue ?? 0);
+    }
     return f;
   }
 
-  const st = input.codewordStats;
-  if (st && input.codewordId) {
-    f.codewordHits = Number(st.codeword_dms ?? 0) + Number(st.codeword_comments ?? 0);
-    f.messagesSent = Number(st.codeword_dms ?? 0) || f.codewordHits;
-    f.messagesOpened = f.messagesSent;
-    f.linkClicks = Number(st.link_clicks ?? 0);
-    f.registrations = Number(st.leads ?? 0);
-    f.paid = Number(st.sales ?? 0);
-    f.revenue = Number(st.revenue ?? 0);
-
-    const leadIds = new Set<string>();
-    for (const e of input.events) {
-      if (e.codeword_id !== input.codewordId) continue;
-      if (e.event_type !== "lead" || !e.lead_id) continue;
-      leadIds.add(e.lead_id);
-    }
-    applyLeadStages(f, leadIds, input.leads);
-  }
-
+  // Без ig_media_id НЕльзя вешать codeword_stats: одно код-слово на десятки
+  // черновиков/слотов → KPI раздувается (7×N). Считаем только по media/событиям.
   return f;
 }
 

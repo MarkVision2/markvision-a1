@@ -3,6 +3,7 @@ import {
   CONTENT_PLAN_STATS_START_YMD,
   emptyFunnel,
   filterContentPlanByPeriod,
+  partitionContentPlan,
   summarizeContentPlan,
   type ContentPlanItem,
 } from "@/lib/contentPlan";
@@ -111,17 +112,19 @@ describe("filterContentPlanByPeriod", () => {
 });
 
 describe("summarizeContentPlan", () => {
-  it("aggregates plan and funnel metrics", () => {
+  it("aggregates plan and funnel metrics as totals", () => {
     const items = [
       item({
         id: "a",
         status: "published",
-        funnel: { ...emptyFunnel(), reach: 100, linkClicks: 2, revenue: 1000 },
+        funnel: { ...emptyFunnel(), reach: 100, linkClicks: 2, codewordHits: 4, revenue: 1000 },
+        adSpend: 200,
       }),
       item({
         id: "b",
         status: "scheduled",
-        funnel: { ...emptyFunnel(), reach: 50, linkClicks: 1, revenue: 500 },
+        funnel: { ...emptyFunnel(), reach: 50, linkClicks: 1, codewordHits: 1, revenue: 500 },
+        adSpend: 50,
       }),
       item({ id: "c", status: "idea" }),
     ];
@@ -129,9 +132,42 @@ describe("summarizeContentPlan", () => {
     expect(s.total).toBe(3);
     expect(s.published).toBe(1);
     expect(s.scheduled).toBe(1);
-    expect(s.awaitingCreation).toBe(1);
-    expect(s.avgReach).toBe(100);
-    expect(s.leads).toBe(3);
-    expect(s.revenue).toBe(1500);
+    expect(s.totalReach).toBe(100);
+    // Только published — scheduled/idea не раздувают воронку.
+    expect(s.codewordHits).toBe(4);
+    expect(s.linkClicks).toBe(2);
+    expect(s.revenue).toBe(1000);
+    expect(s.adSpend).toBe(200);
+  });
+});
+
+describe("partitionContentPlan", () => {
+  it("splits upcoming vs published and sorts by date", () => {
+    const items = [
+      item({
+        id: "pub-old",
+        status: "published",
+        publishedAt: "2026-07-21T10:00:00+05:00",
+      }),
+      item({
+        id: "pub-new",
+        status: "published",
+        publishedAt: "2026-07-23T10:00:00+05:00",
+      }),
+      item({
+        id: "later",
+        status: "scheduled",
+        scheduledAt: "2026-07-25T09:00:00+05:00",
+      }),
+      item({
+        id: "sooner",
+        status: "scheduled",
+        scheduledAt: "2026-07-22T09:00:00+05:00",
+      }),
+      item({ id: "draft", status: "ready", scheduledAt: "2026-07-24T09:00:00+05:00" }),
+    ];
+    const { upcoming, published } = partitionContentPlan(items);
+    expect(upcoming.map((i) => i.id)).toEqual(["sooner", "draft", "later"]);
+    expect(published.map((i) => i.id)).toEqual(["pub-new", "pub-old"]);
   });
 });

@@ -50,9 +50,11 @@ describe("launch funnel v2", () => {
     const rows = buildLaunchFunnel([
       { id: "1", stageKey: "new", amount: 0, paid: false },
       { id: "2", stageKey: "deposit", amount: 0, paid: false, depositAmount: 10000 },
+      { id: "3", stageKey: "confirmed", amount: 0, paid: false, webinarStatus: "attended" },
     ] as never);
-    expect(rows[0].leads).toBe(2);
+    expect(rows[0].leads).toBe(3);
     expect(rows.find((r) => r.role === "deposit")?.leads).toBe(1);
+    expect(rows.find((r) => r.role === "attended")?.leads).toBe(2);
   });
 
   it("can advance to graduate from student", () => {

@@ -123,8 +123,9 @@ export function monthsInRange(range: ReportPeriodRange): string[] {
 }
 
 export function formatPeriodLabel(range: ReportPeriodRange): string {
-  const from = ymdLocal(range.from);
-  const to = ymdLocal(range.to);
-  if (from === to) return from;
+  const opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short", year: "numeric" };
+  const from = range.from.toLocaleDateString("ru-RU", opts);
+  const to = range.to.toLocaleDateString("ru-RU", opts);
+  if (ymdLocal(range.from) === ymdLocal(range.to)) return from;
   return `${from} — ${to}`;
 }

@@ -30,7 +30,6 @@ function timeAgo(iso: string) {
 }
 
 import { classifyQuality, QUALITY_LABEL, QUALITY_BADGE_CLS } from "@/lib/quality";
-import { LeadJourneyProgress } from "@/components/crm/lead/LeadJourneyProgress";
 
 function scoreColor(score: number) {
   if (score >= 75) return "text-success";
@@ -206,8 +205,6 @@ function LeadCardImpl({
           <span className="truncate">{lead.utm?.campaign ?? lead.utm?.source}</span>
         </div>
       )}
-
-      <LeadJourneyProgress lead={lead} compact />
 
       {((lead.tags && lead.tags.length > 0) || lead.temperature || lead.webinarStatus) && (
         <div className="mt-1.5 flex flex-wrap gap-1">

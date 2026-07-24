@@ -79,9 +79,22 @@ async function parseInvokeError(error: unknown): Promise<string> {
     try {
       const body = await (error.context as Response).json();
       if (body && typeof body === "object") {
+        const errMsg = String((body as { error?: unknown }).error ?? "");
         const detail =
           (body as { details?: { message?: string } }).details?.message ??
-          (body as { error?: unknown }).error;
+          errMsg;
+        const raw = String(detail || errMsg);
+        if (
+          /session has been invalidated|password|validating access token|Токен Meta истёк/i.test(
+            raw,
+          ) ||
+          (body as { code?: number }).code === 190
+        ) {
+          return (
+            "Токен Meta истёк или сброшен (смена пароля / сессии Facebook). " +
+            "Обновите Access Token в настройках кабинета (EAA…) и при необходимости секрет META_ACCESS_TOKEN."
+          );
+        }
         if (detail) return String(detail);
       }
     } catch {
@@ -90,7 +103,13 @@ async function parseInvokeError(error: unknown): Promise<string> {
     return error.message;
   }
   if (error && typeof error === "object" && "message" in error) {
-    return String((error as { message: unknown }).message);
+    const msg = String((error as { message: unknown }).message);
+    if (/session has been invalidated|password|validating access token/i.test(msg)) {
+      return (
+        "Токен Meta истёк или сброшен. Обновите Access Token в настройках кабинета."
+      );
+    }
+    return msg;
   }
   return "Ошибка запроса";
 }
@@ -189,8 +208,19 @@ export function useMetaPageAssets<K extends AssetKind>({
           return;
         }
         const detail =
-          resp.details?.message ?? resp.error ?? "Ошибка Meta API";
-        setError(String(detail));
+          String(resp.error ?? "") ||
+          resp.details?.message ||
+          "Ошибка Meta API";
+        const friendly =
+          resp.code === 190 ||
+          /session has been invalidated|password|validating access token|Токен Meta истёк/i.test(
+            detail,
+          )
+            ? String(resp.error).includes("Токен Meta")
+              ? String(resp.error)
+              : "Токен Meta истёк или сброшен. Обновите Access Token в настройках кабинета."
+            : detail;
+        setError(friendly);
         setData([]);
         setLoading(false);
         return;

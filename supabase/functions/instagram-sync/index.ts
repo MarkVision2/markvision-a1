@@ -90,15 +90,26 @@ async function syncOne(supa: any, account: any) {
     return;
   }
 
-  // 2) Media list (last 100). children needed for carousel preview fallback.
-  const mediaRes = await fetch(
-    `${GRAPH}/${igId}/media?fields=id,caption,media_type,media_product_type,permalink,thumbnail_url,media_url,timestamp,like_count,comments_count,children{media_type,media_url,thumbnail_url}&limit=100&access_token=${token}`,
-  );
-  const mediaJson = await mediaRes.json();
-  if (mediaJson.error) {
-    await supa.from("instagram_accounts").update({ last_error: `media: ${mediaJson.error.message}` }).eq("project_id", account.project_id);
+  // 2) Media list — paginate Graph pages (up to ~500) so analytics isn't stuck on the latest 100.
+  const mediaFields =
+    "id,caption,media_type,media_product_type,permalink,thumbnail_url,media_url,timestamp,like_count,comments_count,children{media_type,media_url,thumbnail_url}";
+  const items: any[] = [];
+  let mediaUrl: string | null =
+    `${GRAPH}/${igId}/media?fields=${mediaFields}&limit=100&access_token=${token}`;
+  let mediaError: string | null = null;
+  for (let page = 0; page < 5 && mediaUrl; page++) {
+    const mediaRes = await fetch(mediaUrl);
+    const mediaJson = await mediaRes.json();
+    if (mediaJson.error) {
+      mediaError = String(mediaJson.error.message ?? "media fetch failed");
+      break;
+    }
+    items.push(...((mediaJson.data ?? []) as any[]));
+    mediaUrl = typeof mediaJson.paging?.next === "string" ? mediaJson.paging.next : null;
   }
-  const items = (mediaJson.error ? [] : (mediaJson.data ?? [])) as any[];
+  if (mediaError) {
+    await supa.from("instagram_accounts").update({ last_error: `media: ${mediaError}` }).eq("project_id", account.project_id);
+  }
 
   // 3) Insights per media.
   // Graph API v22+: impressions/plays are invalid for many IG media types.
@@ -366,16 +377,35 @@ async function syncOne(supa: any, account: any) {
     pageSched = { attempted: true, count: 0, error: e?.message ?? "page scheduled_posts failed" };
   }
 
-  // 7) Переподписка Page на comments/messages — чинит уже подключённые аккаунты,
+  // 7) Переподписка на comments/messages — чинит уже подключённые аккаунты,
   // у которых при connect забыли subscribed_apps (код-слова молчат).
-  let webhook: { attempted: boolean; ok?: boolean; error?: string } = { attempted: false };
+  // Page-linked → Facebook Graph /{page_id}/subscribed_apps
+  // Instagram Login (page-less) → Instagram Graph /{ig_user_id}/subscribed_apps
+  let webhook: { attempted: boolean; ok?: boolean; error?: string; via?: string } = { attempted: false };
   try {
     const pageId = typeof account.page_id === "string" ? account.page_id.trim() : "";
     const pageTok = typeof account.page_access_token === "string" ? account.page_access_token.trim() : "";
+    const loginTok = typeof account.ig_login_access_token === "string" ? account.ig_login_access_token.trim() : "";
+    const igId = typeof account.ig_user_id === "string" ? account.ig_user_id.trim() : "";
     if (pageId && pageTok) {
       webhook.attempted = true;
+      webhook.via = "page";
       const subRes = await fetch(
         `${GRAPH_FB}/${pageId}/subscribed_apps?subscribed_fields=comments,messages&access_token=${encodeURIComponent(pageTok)}`,
+        { method: "POST" },
+      );
+      const subJson = await subRes.json().catch(() => ({}));
+      if (!subRes.ok || subJson?.error) {
+        webhook.ok = false;
+        webhook.error = String(subJson?.error?.message ?? `HTTP ${subRes.status}`);
+      } else {
+        webhook.ok = true;
+      }
+    } else if (igId && loginTok) {
+      webhook.attempted = true;
+      webhook.via = "instagram_login";
+      const subRes = await fetch(
+        `${GRAPH_IG}/${encodeURIComponent(igId)}/subscribed_apps?subscribed_fields=comments,messages&access_token=${encodeURIComponent(loginTok)}`,
         { method: "POST" },
       );
       const subJson = await subRes.json().catch(() => ({}));

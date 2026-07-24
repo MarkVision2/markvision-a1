@@ -82,7 +82,20 @@ export type Broadcast = {
   status: BroadcastStatus;
   /** Кол-во получателей на момент последней оценки/отправки. */
   recipientsCount: number;
-  stats: { total: number; sent: number; failed: number };
+  /**
+   * Счётчики доставки. `sent` / `delivered` / `read` / `replied` —
+   * кумулятивные (как в воронке детализации), не «сырые» status=X.
+   */
+  stats: {
+    total: number;
+    sent: number;
+    delivered: number;
+    read: number;
+    replied: number;
+    failed: number;
+    clicked?: number;
+    converted?: number;
+  };
   results: BroadcastResult[];
   createdAt: string;
   updatedAt: string;
@@ -218,7 +231,12 @@ function normalize(raw: Partial<Broadcast>): Broadcast {
     stats: {
       total: raw.stats?.total ?? 0,
       sent: raw.stats?.sent ?? 0,
+      delivered: raw.stats?.delivered ?? 0,
+      read: raw.stats?.read ?? 0,
+      replied: raw.stats?.replied ?? 0,
       failed: raw.stats?.failed ?? 0,
+      clicked: raw.stats?.clicked ?? 0,
+      converted: raw.stats?.converted ?? 0,
     },
     results: Array.isArray(raw.results) ? raw.results : [],
     createdAt: raw.createdAt ?? nowIso(),

@@ -138,15 +138,20 @@ export interface ContentPlanItem {
 export interface ContentPlanSummary {
   total: number;
   scheduled: number;
-  awaitingCreation: number;
   published: number;
-  avgReach: number;
-  avgCodewordComments: number;
-  leads: number;
+  /** Суммарный охват опубликованных за период. */
+  totalReach: number;
+  /** Сумма срабатываний код-слова (комменты + DM). */
+  codewordHits: number;
+  /** Клики по ссылке из Direct. */
+  linkClicks: number;
+  /** Лиды / заявки. */
   registrations: number;
   webinarAttended: number;
   paid: number;
   revenue: number;
+  /** Суммарный расход на рекламу по публикациям периода. */
+  adSpend: number;
 }
 
 /** Дата, по которой публикация попадает в период. */
@@ -182,29 +187,71 @@ export function filterContentPlanByPeriod(
 export function summarizeContentPlan(items: ContentPlanItem[]): ContentPlanSummary {
   const total = items.length;
   const scheduled = items.filter((i) => i.status === "scheduled").length;
-  const awaitingCreation = items.filter((i) =>
-    ["idea", "in_progress", "ready"].includes(i.status),
-  ).length;
   const published = items.filter((i) => i.status === "published").length;
   const pub = items.filter((i) => i.status === "published");
-  const avgReach =
-    pub.length > 0 ? Math.round(pub.reduce((s, i) => s + i.funnel.reach, 0) / pub.length) : 0;
-  const avgCodewordComments =
-    pub.length > 0
-      ? Math.round(pub.reduce((s, i) => s + i.funnel.codewordHits, 0) / pub.length)
-      : 0;
+  // Воронка и расход — только по опубликованным (черновики/слоты без media не раздувают KPI).
   return {
     total,
     scheduled,
-    awaitingCreation,
     published,
-    avgReach,
-    avgCodewordComments,
-    leads: items.reduce((s, i) => s + i.funnel.linkClicks, 0),
-    registrations: items.reduce((s, i) => s + i.funnel.registrations, 0),
-    webinarAttended: items.reduce((s, i) => s + i.funnel.webinarAttended, 0),
-    paid: items.reduce((s, i) => s + i.funnel.paid, 0),
-    revenue: items.reduce((s, i) => s + i.funnel.revenue, 0),
+    totalReach: pub.reduce((s, i) => s + i.funnel.reach, 0),
+    codewordHits: pub.reduce((s, i) => s + i.funnel.codewordHits, 0),
+    linkClicks: pub.reduce((s, i) => s + i.funnel.linkClicks, 0),
+    registrations: pub.reduce((s, i) => s + i.funnel.registrations, 0),
+    webinarAttended: pub.reduce((s, i) => s + i.funnel.webinarAttended, 0),
+    paid: pub.reduce((s, i) => s + i.funnel.paid, 0),
+    revenue: pub.reduce((s, i) => s + i.funnel.revenue, 0),
+    adSpend: pub.reduce((s, i) => s + (i.funnel.adSpend || i.adSpend || 0), 0),
+  };
+}
+
+/** Ещё не вышло: план / черновики / ошибки очереди. */
+export function isContentPlanUpcoming(item: ContentPlanItem): boolean {
+  return item.status !== "published";
+}
+
+function anchorTs(iso: string | null | undefined): number {
+  if (!iso) return Number.POSITIVE_INFINITY;
+  const t = new Date(iso).getTime();
+  return Number.isNaN(t) ? Number.POSITIVE_INFINITY : t;
+}
+
+/** Ближайшие слоты первыми (по scheduledAt). */
+export function sortContentPlanUpcoming(items: ContentPlanItem[]): ContentPlanItem[] {
+  return [...items].sort((a, b) => {
+    const ta = anchorTs(a.scheduledAt ?? a.createdAt);
+    const tb = anchorTs(b.scheduledAt ?? b.createdAt);
+    if (ta !== tb) return ta - tb;
+    return a.title.localeCompare(b.title, "ru");
+  });
+}
+
+/** Свежие публикации первыми (по publishedAt). */
+export function sortContentPlanPublished(items: ContentPlanItem[]): ContentPlanItem[] {
+  return [...items].sort((a, b) => {
+    const ta = anchorTs(a.publishedAt ?? a.scheduledAt ?? a.createdAt);
+    const tb = anchorTs(b.publishedAt ?? b.scheduledAt ?? b.createdAt);
+    // Infinity last; newer first → reverse numeric when finite
+    if (ta === tb) return a.title.localeCompare(b.title, "ru");
+    if (!Number.isFinite(ta)) return 1;
+    if (!Number.isFinite(tb)) return -1;
+    return tb - ta;
+  });
+}
+
+export function partitionContentPlan(items: ContentPlanItem[]): {
+  upcoming: ContentPlanItem[];
+  published: ContentPlanItem[];
+} {
+  const upcoming: ContentPlanItem[] = [];
+  const published: ContentPlanItem[] = [];
+  for (const item of items) {
+    if (isContentPlanUpcoming(item)) upcoming.push(item);
+    else published.push(item);
+  }
+  return {
+    upcoming: sortContentPlanUpcoming(upcoming),
+    published: sortContentPlanPublished(published),
   };
 }
 

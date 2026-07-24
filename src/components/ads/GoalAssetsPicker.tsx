@@ -370,6 +370,56 @@ const GoalAssetsPicker = ({
     enabled: goal === "whatsapp" && (!!pageId || !!actId),
   });
 
+  /** Digits-only form used by Meta Ads `whatsapp_phone_number`. */
+  const normalizeWa = (raw: string | null | undefined) =>
+    String(raw ?? "").replace(/\D+/g, "");
+
+  const formatWaDisplay = (digits: string) => {
+    if (!digits) return "";
+    if (digits.startsWith("7") && digits.length === 11) {
+      return `+7 ${digits.slice(1, 4)} ${digits.slice(4, 7)} ${digits.slice(7, 9)} ${digits.slice(9)}`;
+    }
+    return `+${digits}`;
+  };
+
+  // Meta Graph list + fallback to cabinet settings number (ad_cabinets.whatsapp_number).
+  // Settings store a plain phone string; Meta often returns nothing if Page has no WABA link.
+  const waOptions = useMemo(() => {
+    const fromMeta = wa.data.map((p) => ({
+      id: normalizeWa(p.id) || normalizeWa(p.display_phone_number) || p.id,
+      display: p.display_phone_number || p.id,
+      source: "meta" as const,
+    }));
+    const seen = new Set(fromMeta.map((p) => normalizeWa(p.id)).filter(Boolean));
+    const cabinetDigits = normalizeWa(cabinet?.whatsappNumber);
+    if (cabinetDigits && !seen.has(cabinetDigits)) {
+      fromMeta.push({
+        id: cabinetDigits,
+        display: `${formatWaDisplay(cabinetDigits)} · из настроек`,
+        source: "cabinet",
+      });
+    }
+    return fromMeta;
+  }, [wa.data, cabinet?.whatsappNumber]);
+
+  // Auto-select: keep current if still valid; else prefer Meta item; else cabinet number.
+  useEffect(() => {
+    if (goal !== "whatsapp") return;
+    if (wa.isLoading) return;
+    if (waOptions.length === 0) {
+      if (whatsappId) setWhatsappId("");
+      return;
+    }
+    const currentOk = waOptions.some((p) => p.id === whatsappId || normalizeWa(p.id) === normalizeWa(whatsappId));
+    if (currentOk) return;
+    const cabinetDigits = normalizeWa(cabinet?.whatsappNumber);
+    const preferred =
+      waOptions.find((p) => p.source === "meta") ??
+      waOptions.find((p) => p.id === cabinetDigits) ??
+      waOptions[0];
+    if (preferred) setWhatsappId(preferred.id);
+  }, [goal, wa.isLoading, waOptions, whatsappId, cabinet?.whatsappNumber, setWhatsappId]);
+
   const pixels = useMetaPageAssets({
     kind: "pixels",
     actId,
@@ -413,20 +463,30 @@ const GoalAssetsPicker = ({
               placeholder={
                 wa.isLoading
                   ? "Загрузка..."
-                  : wa.data.length === 0
-                    ? "Нет привязанных номеров"
+                  : waOptions.length === 0
+                    ? "Нет номера — укажите WhatsApp в настройках кабинета"
                     : "Выберите номер"
               }
             />
           </SelectTrigger>
           <SelectContent>
-            {wa.data.map((p) => (
-              <SelectItem key={p.id} value={p.id}>
-                {p.display_phone_number}
+            {waOptions.map((p) => (
+              <SelectItem key={`${p.source}-${p.id}`} value={p.id}>
+                {p.display}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
+        {waOptions.length === 0 && !wa.isLoading && (
+          <p className="text-[11px] text-muted-foreground">
+            Номер берётся из Meta (WABA на странице) или из поля WhatsApp в настройках кабинета.
+          </p>
+        )}
+        {waOptions.some((p) => p.source === "cabinet") && wa.data.length === 0 && !wa.isLoading && (
+          <p className="text-[11px] text-muted-foreground">
+            Номер из настроек кабинета. Чтобы подтянуть из Meta — привяжите WhatsApp Business к Facebook-странице.
+          </p>
+        )}
       </FieldShell>
     );
   }

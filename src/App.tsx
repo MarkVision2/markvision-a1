@@ -29,6 +29,7 @@ const CallsHistory = lazy(routeImports.Calls);
 const SalesAI = lazy(routeImports.SalesAI);
 const AiAgents = lazy(routeImports.AiAgents);
 const Broadcasts = lazy(routeImports.Broadcasts);
+const BroadcastDetail = lazy(routeImports.BroadcastDetail);
 const Analytics = lazy(routeImports.Analytics);
 const CreativeFunnel = lazy(routeImports.CreativeFunnel);
 const ContentAnalytics = lazy(routeImports.ContentAnalytics);
@@ -86,6 +87,7 @@ const App = () => (
               <Route path="/sales-ai" element={<RequireAuth><AppLayout><SalesAI /></AppLayout></RequireAuth>} />
               <Route path="/ai-agents" element={<RequireAuth><AppLayout><AiAgents /></AppLayout></RequireAuth>} />
               <Route path="/broadcasts" element={<RequireAuth><AppLayout><Broadcasts /></AppLayout></RequireAuth>} />
+              <Route path="/broadcasts/:id" element={<RequireAuth><AppLayout><BroadcastDetail /></AppLayout></RequireAuth>} />
               <Route path="/analytics" element={<RequireAuth><AppLayout><Analytics /></AppLayout></RequireAuth>} />
               <Route path="/analytics/creatives" element={<RequireAuth><AppLayout><CreativeFunnel /></AppLayout></RequireAuth>} />
               <Route path="/analytics/content" element={<RequireAuth><AppLayout><ContentAnalytics /></AppLayout></RequireAuth>} />

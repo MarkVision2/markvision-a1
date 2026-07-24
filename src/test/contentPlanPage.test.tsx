@@ -9,15 +9,15 @@ vi.mock("@/hooks/useContentPlan", () => ({
     summary: {
       total: 0,
       scheduled: 0,
-      awaitingCreation: 0,
       published: 0,
-      avgReach: 0,
-      avgCodewordComments: 0,
-      leads: 0,
+      totalReach: 0,
+      codewordHits: 0,
+      linkClicks: 0,
       registrations: 0,
       webinarAttended: 0,
       paid: 0,
       revenue: 0,
+      adSpend: 0,
     },
     upcomingQueue: [],
     queueCount: 0,
@@ -93,6 +93,9 @@ describe("ContentPlan uses AutopostAddDialog", () => {
     expect(screen.queryByRole("button", { name: /С сегодня/i })).toBeNull();
     expect(screen.getByRole("heading", { name: /Сводка за период/i })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: /Ближайшие в очереди MarkVision/i })).toBeNull();
-    expect(screen.getByText(/Список ·/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /^Все/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Запланировано/i })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Опубликовано/i })).toBeTruthy();
+    expect(screen.getByText(/Сверху — что ещё выйдет/i)).toBeTruthy();
   });
 });
