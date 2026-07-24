@@ -120,11 +120,11 @@ export function LeadDetailSheet({
           <SheetTitle>{lead.name}</SheetTitle>
         </SheetHeader>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(420px,520px)_1fr]">
+        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(400px,480px)_1fr]">
           {/* LEFT: lead fields */}
-          <div className="flex min-h-0 flex-col border-r border-border/60">
+          <div className="flex min-h-0 flex-col border-r border-border/50 bg-background">
             <div className="flex-1 overflow-y-auto">
-              <div className="px-5 pt-5">
+              <div className="space-y-4 px-4 pt-5 sm:px-5">
                 <LeadHeader
                   lead={lead}
                   stages={stages}
@@ -134,9 +134,7 @@ export function LeadDetailSheet({
                   onAssign={(aid) => onAssign(lead.id, aid)}
                   onChangeStage={handleChangeStage}
                 />
-              </div>
 
-              <div className="px-5 pt-3">
                 <LeadActionPanel
                   lead={lead}
                   onCall={(opts) => onMarkCall(lead.id, opts)}
@@ -147,10 +145,8 @@ export function LeadDetailSheet({
                   onWrite={(text) => { if (text.trim()) onSendMessage(lead.id, text); }}
                   busySlots={busySlots}
                 />
-              </div>
 
-              {isLaunch && onLaunchAction && (
-                <div className="px-5 pt-3">
+                {isLaunch && onLaunchAction && (
                   <LaunchActionsPanel
                     lead={lead}
                     onAction={(action, opts) => {
@@ -161,21 +157,34 @@ export function LeadDetailSheet({
                       onLaunchAction(lead.id, action, opts);
                     }}
                   />
-                </div>
-              )}
+                )}
+              </div>
 
-              <Tabs value={tab} onValueChange={setTab} className="flex flex-col px-5 pt-3 pb-4">
-                <TabsList className={cn("grid w-full", isMobile ? "grid-cols-5" : "grid-cols-4")}>
-                  <TabsTrigger value="deal" className="gap-1 px-1 text-[10px] sm:text-xs"><ShoppingCart className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Сделка</span></TabsTrigger>
-                  <TabsTrigger value="tasks" className="gap-1 px-1 text-[10px] sm:text-xs"><ListChecks className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Задачи</span></TabsTrigger>
-                  <TabsTrigger value="profile" className="gap-1 px-1 text-[10px] sm:text-xs"><User className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Профиль</span></TabsTrigger>
-                  <TabsTrigger value="log" className="gap-1 px-1 text-[10px] sm:text-xs"><History className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Лог</span></TabsTrigger>
+              <Tabs value={tab} onValueChange={setTab} className="flex flex-col px-4 pb-5 pt-4 sm:px-5">
+                <TabsList className={cn(
+                  "grid h-auto w-full gap-1 rounded-2xl bg-secondary/40 p-1",
+                  isMobile ? "grid-cols-5" : "grid-cols-4",
+                )}>
+                  <TabsTrigger value="deal" className="gap-1 rounded-xl px-1 py-2 text-[10px] data-[state=active]:shadow-sm sm:text-xs">
+                    <ShoppingCart className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Сделка</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="tasks" className="gap-1 rounded-xl px-1 py-2 text-[10px] data-[state=active]:shadow-sm sm:text-xs">
+                    <ListChecks className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Задачи</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="profile" className="gap-1 rounded-xl px-1 py-2 text-[10px] data-[state=active]:shadow-sm sm:text-xs">
+                    <User className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Профиль</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="log" className="gap-1 rounded-xl px-1 py-2 text-[10px] data-[state=active]:shadow-sm sm:text-xs">
+                    <History className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Лог</span>
+                  </TabsTrigger>
                   {isMobile && (
-                    <TabsTrigger value="chat" className="gap-1 px-1 text-[10px] sm:text-xs"><MessageSquare className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Чат</span></TabsTrigger>
+                    <TabsTrigger value="chat" className="gap-1 rounded-xl px-1 py-2 text-[10px] data-[state=active]:shadow-sm sm:text-xs">
+                      <MessageSquare className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Чат</span>
+                    </TabsTrigger>
                   )}
                 </TabsList>
 
-                <div className="mt-3">
+                <div className="mt-3.5">
                   <TabsContent value="deal" className="m-0 data-[state=inactive]:hidden">
                     <LeadDealTab lead={lead} stages={stages} onUpdate={(p) => onUpdate(lead.id, p)} onChangeStage={handleChangeStage} />
                   </TabsContent>
@@ -208,22 +217,24 @@ export function LeadDetailSheet({
               </Tabs>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-5 py-3">
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 bg-background/80 px-4 py-3 backdrop-blur-sm sm:px-5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <Button
-                  variant="outline"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     if (confirm("Удалить лида?")) {
                       onDelete(lead.id);
                       onOpenChange(false);
                     }
                   }}
-                  className="text-destructive hover:text-destructive"
+                  className="h-9 rounded-xl text-destructive hover:bg-destructive/10 hover:text-destructive"
                 >
                   <Trash2 className="h-4 w-4" />Удалить
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     if (confirm(
                       "Убрать в личные?\n\nЭто не клиент — заявка пришла из вашей личной переписки. " +
@@ -234,24 +245,36 @@ export function LeadDetailSheet({
                       onOpenChange(false);
                     }
                   }}
+                  className="h-9 rounded-xl text-muted-foreground"
                   title="Скрыть лид как личную переписку — он не будет учитываться нигде в CRM и аналитике"
                 >
                   <EyeOff className="h-4 w-4" />Убрать в личные
                 </Button>
               </div>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>Закрыть</Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onOpenChange(false)}
+                className="h-9 rounded-xl px-4"
+              >
+                Закрыть
+              </Button>
             </div>
           </div>
 
-          <div className="hidden min-h-0 flex-col bg-muted/20 lg:flex">
-            <div className="flex items-center gap-2 border-b border-border/60 px-5 py-3">
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Чат с клиентом</span>
-              {stageTitle && (
-                <span className="ml-auto text-xs text-muted-foreground">{stageTitle}</span>
-              )}
+          <div className="hidden min-h-0 flex-col bg-muted/15 lg:flex">
+            <div className="flex items-center gap-2 border-b border-border/50 px-5 py-3.5">
+              <span className="grid h-8 w-8 place-items-center rounded-xl bg-secondary/60">
+                <MessageSquare className="h-4 w-4 text-muted-foreground" />
+              </span>
+              <div className="min-w-0">
+                <div className="text-sm font-medium">Чат с клиентом</div>
+                {stageTitle && (
+                  <div className="truncate text-[11px] text-muted-foreground">{stageTitle}</div>
+                )}
+              </div>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1 flex-col p-3">
               <LeadChatPanel
                 lead={lead}
                 chats={leadChats}
