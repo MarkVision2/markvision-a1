@@ -1,7 +1,7 @@
 {
-  "git_sha": "9b0263e",
-  "git_sha_full": "9b0263e396bfa608df0ab8885b14a049335da78b",
-  "updated_at": "2026-07-24T05:15:19Z",
-  "label": "Merge launch conversion funnel analytics",
+  "git_sha": "637a58c",
+  "git_sha_full": "637a58ca152a85ec3625f423e1e4ceaf8bb6596e",
+  "updated_at": "2026-07-24T05:24:40Z",
+  "label": "Merge free WhatsApp Web QR bridge",
   "publish_hint": "push main → www.markvision.kz (Vercel)"
 }
