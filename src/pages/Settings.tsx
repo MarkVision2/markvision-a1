@@ -220,7 +220,7 @@ export default function Settings() {
         clientview: "checking",
       }));
 
-      const [telephonyRes, waRes, igRes, metaRes, googleRes, clientViewRes] = await Promise.all([
+      const [telephonyRes, waRes, waWebRes, igRes, metaRes, googleRes, clientViewRes] = await Promise.all([
         supabase
           .from("automation_settings" as never)
           .select("sipuni_enabled,sipuni_token_present")
@@ -229,6 +229,11 @@ export default function Settings() {
         supabase
           .from("whatsapp_config_safe")
           .select("id_instance,api_token_present,connected")
+          .eq("project_id", activeId)
+          .maybeSingle(),
+        supabase
+          .from("whatsapp_web_sessions" as never)
+          .select("status")
           .eq("project_id", activeId)
           .maybeSingle(),
         supabase
@@ -261,7 +266,9 @@ export default function Settings() {
 
       const telephonyData = telephonyRes.data as { sipuni_enabled?: boolean; sipuni_token_present?: boolean } | null;
       const telephonyConnected = !!(telephonyData?.sipuni_enabled && telephonyData?.sipuni_token_present);
-      const waConnected = !!(waRes.data?.id_instance && waRes.data?.api_token_present && waRes.data?.connected);
+      const waGreenConnected = !!(waRes.data?.id_instance && waRes.data?.api_token_present && waRes.data?.connected);
+      const waWebConnected = (waWebRes.data as { status?: string } | null)?.status === "connected";
+      const waConnected = waGreenConnected || waWebConnected;
       const siteConnected = !!active?.intakeToken;
       const igConnected = !!(igRes.data?.ig_user_id && igRes.data?.active);
       const metaConnected = !!(metaRes.data && metaRes.data.length > 0);
@@ -475,7 +482,7 @@ export default function Settings() {
           {activeTab === "whatsapp" && (
             <div className="rounded-2xl border border-border bg-card p-6">
               <p className="mb-4 text-sm text-muted-foreground">
-                Авторизуйте инстанс Green API через QR-код или по номеру телефона. Сообщения попадут в CRM проекта.
+                Бесплатно: QR WhatsApp Web → чаты CRM. Отдельно — Green API для ботов и рассылок.
               </p>
               <Button asChild>
                 <Link to="/settings/connection">Открыть мастер подключения</Link>

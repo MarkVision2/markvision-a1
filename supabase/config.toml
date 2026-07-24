@@ -12,6 +12,9 @@ verify_jwt = false
 [functions.greenapi-webhook]
 verify_jwt = false
 
+[functions.wa-web-bridge]
+verify_jwt = false
+
 [functions.ai-rop-analyze-chat]
 verify_jwt = false
 

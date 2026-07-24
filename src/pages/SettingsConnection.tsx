@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { getCrmWebhookUrl, isValidBotWebhookUrl, WHATSAPP_SETUP_STEPS } from "@/lib/whatsappSetup";
 import { supabaseUrl } from "@/lib/supabaseConfig";
+import { WhatsAppWebCard } from "@/components/settings/WhatsAppWebCard";
 
 type GreenResp<T = unknown> = {
   ok: boolean;
@@ -225,9 +226,21 @@ const SettingsConnection = () => {
 
         <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">Подключение WhatsApp</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Green API → CRM MarkVision. Проект: <strong>{active?.name ?? "не выбран"}</strong>.
-          В Green API Console webhook всегда указывает на CRM URL ниже; n8n-бот подключается отдельным полем.
+          Два канала: <strong>WhatsApp Web</strong> (бесплатно, QR → чаты CRM) и{" "}
+          <strong>Green API</strong> (автоматизации, рассылки). Проект:{" "}
+          <strong>{active?.name ?? "не выбран"}</strong>.
         </p>
+
+        <WhatsAppWebCard projectId={projectId} />
+
+        <div className="mt-8 mb-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+            Green API — автоматизации
+          </h2>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Инстанс Green API для ботов, CTWA и рассылок. Webhook CRM — ниже.
+          </p>
+        </div>
 
         <WhatsAppSetupChecklist steps={setupSteps} loading={waLoading} />
 

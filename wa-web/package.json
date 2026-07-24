@@ -1,0 +1,12 @@
+{
+  "name": "markvision-wa-web",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Free WhatsApp Web (Baileys) daemon → MarkVision CRM",
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.18",
+    "qrcode": "^1.5.4",
+    "pino": "^9.6.0"
+  }
+}
