@@ -27,6 +27,7 @@ import { CHANNELS, resolveChannel, type ChannelKey } from "@/lib/channelAttribut
 import { isLeadPaid } from "@/lib/leadStageFlags";
 import { buildAnalyticsInsights, buildSiteBreakdown, buildSourceBreakdown } from "@/lib/analyticsBreakdowns";
 import { buildLaunchFunnel, buildLaunchKpis } from "@/lib/launchFunnel";
+import { LaunchConversionFunnel } from "@/components/crm/LaunchConversionFunnel";
 import { ChannelCard, type ChannelStat } from "@/components/analytics/ChannelCard";
 import { InsightsStrip } from "@/components/analytics/InsightsStrip";
 import { SitesTable } from "@/components/analytics/SitesTable";
@@ -608,38 +609,31 @@ const Analytics = () => {
       </div>
 
       {/* Воронка запуска AI Marketing Lab */}
-      <section className="mt-8 rounded-2xl border border-border/60 bg-card/40 p-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-bold uppercase tracking-wider">Воронка запуска</h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              Лиды → бот → группа → подтверждение → вебинар → бронь → созвон → счёт → оплата → студент · {monthLabel}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2 text-[11px]">
-            <span className="rounded-md bg-secondary/60 px-2 py-1">Горячих: <b>{launchKpis.hot}</b></span>
-            <span className="rounded-md bg-success/10 px-2 py-1 text-success">Бронь: <b>{launchKpis.deposits}</b> · {fmtNumber(launchKpis.depositRevenue)} ₸</span>
-            <span className="rounded-md bg-primary/10 px-2 py-1 text-primary">Студентов: <b>{launchKpis.students}</b></span>
-          </div>
-        </div>
-        <div className="mt-5 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {launchFunnel.map((row) => (
-            <div key={row.role} className="rounded-xl border border-border/50 bg-background/40 px-3 py-2.5">
-              <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{row.label}</div>
-              <div className="mt-1 flex items-baseline justify-between gap-2">
-                <span className="text-lg font-bold tabular-nums">{fmtNumber(row.leads)}</span>
-                <span className="text-[11px] text-muted-foreground">
-                  {row.conversionFromTop != null ? `${row.conversionFromTop.toFixed(0)}% от лидов` : "—"}
-                </span>
-              </div>
-              {row.conversionFromPrev != null && (
-                <div className="mt-1 text-[10px] text-muted-foreground">
-                  из предыдущего: <span className="font-semibold text-foreground/80">{row.conversionFromPrev.toFixed(0)}%</span>
+      <section className="mt-8">
+        <LaunchConversionFunnel leads={filteredLeads} periodLabel={monthLabel} />
+        <details className="mt-3 rounded-2xl border border-border/50 bg-card/30 p-4">
+          <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Полная воронка (12 этапов) · горячих {launchKpis.hot} · студентов {launchKpis.students}
+          </summary>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {launchFunnel.map((row) => (
+              <div key={row.role} className="rounded-xl border border-border/50 bg-background/40 px-3 py-2.5">
+                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{row.label}</div>
+                <div className="mt-1 flex items-baseline justify-between gap-2">
+                  <span className="text-lg font-bold tabular-nums">{fmtNumber(row.leads)}</span>
+                  <span className="text-[11px] text-muted-foreground">
+                    {row.conversionFromTop != null ? `${row.conversionFromTop.toFixed(0)}% от лидов` : "—"}
+                  </span>
                 </div>
-              )}
-            </div>
-          ))}
-        </div>
+                {row.conversionFromPrev != null && (
+                  <div className="mt-1 text-[10px] text-muted-foreground">
+                    из предыдущего: <span className="font-semibold text-foreground/80">{row.conversionFromPrev.toFixed(0)}%</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </details>
       </section>
 
       {/* Channels */}

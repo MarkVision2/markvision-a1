@@ -521,6 +521,73 @@ async function insertCommunication(opts: {
   });
 }
 
+/**
+ * Launch funnel: move lead new → bot_activated when they start the bot
+ * (СТАРТ_… / /start) or when the bot sends the first API message.
+ * Forward-only; no-op if already past bot_activated / not a launch pipeline.
+ */
+async function maybeAdvanceBotActivated(leadId: string, reason: string) {
+  try {
+    const { data: lead } = await admin
+      .from("leads")
+      .select("id, stage_id, pipeline_id, project_id")
+      .eq("id", leadId)
+      .maybeSingle();
+    if (!lead?.stage_id || !lead.pipeline_id) return;
+
+    const { data: pipe } = await admin
+      .from("pipelines")
+      .select("id, template_key")
+      .eq("id", lead.pipeline_id)
+      .maybeSingle();
+    if ((pipe as { template_key?: string | null } | null)?.template_key !== "launch") return;
+
+    const { data: stages } = await admin
+      .from("pipeline_stages")
+      .select("id, key, stage_role, order_index")
+      .eq("pipeline_id", lead.pipeline_id)
+      .order("order_index", { ascending: true });
+    const list = (stages ?? []) as {
+      id: string;
+      key: string;
+      stage_role: string | null;
+      order_index: number;
+    }[];
+    const current = list.find((s) => s.id === lead.stage_id);
+    if (!current) return;
+    const curRole = current.stage_role || current.key;
+    if (curRole !== "new") return;
+
+    const target = list.find((s) => s.stage_role === "bot_activated" || s.key === "bot_activated" || s.key === "whatsapp");
+    if (!target || target.id === lead.stage_id) return;
+
+    await admin.from("leads").update({
+      stage_id: target.id,
+      updated_at: new Date().toISOString(),
+    }).eq("id", leadId);
+
+    await admin.from("lead_status_history").insert({
+      lead_id: leadId,
+      from_stage_id: lead.stage_id,
+      to_stage_id: target.id,
+      changed_by: null,
+    }).then(() => undefined, () => undefined);
+
+    console.log("greenapi-webhook: bot_activated", { leadId, reason });
+  } catch (e) {
+    console.warn("maybeAdvanceBotActivated failed", e);
+  }
+}
+
+function looksLikeBotStart(text: string): boolean {
+  const t = text.trim();
+  if (!t) return false;
+  if (/^\/start\b/i.test(t)) return true;
+  if (/^старт([_\s-]|$)/i.test(t)) return true;
+  if (/^start([_\s-]|$)/i.test(t)) return true;
+  return false;
+}
+
 // ─── Трекинг рассылок (broadcast_recipients) ────────────────────────────────
 // Продвигаем статус получателя рассылки по message_id — только вперёд, чтобы
 // поздний "delivered" не откатил уже проставленный "read"/"replied".
@@ -711,6 +778,9 @@ Deno.serve(async (req) => {
       if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
       const text = extractText(messageData);
       await insertCommunication({ leadId, direction: "in", text, externalId: idMessage });
+      if (looksLikeBotStart(text)) {
+        await maybeAdvanceBotActivated(leadId, "inbound_start");
+      }
       // Трекинг рассылки: клиент ответил → фиксируем reply; стоп-слово → opt-out.
       await markBroadcastReply(phone, projectId, leadId);
       if (isStopWord(text)) await optOutBroadcast(phone, projectId, text);
@@ -730,13 +800,18 @@ Deno.serve(async (req) => {
       const leadId = await findOrCreateLead(phone, "", projectId);
       if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
       const text = extractText(messageData);
+      const isAuto = type === "outgoingAPIMessageReceived";
       await insertCommunication({
         leadId,
         direction: "out",
         text,
-        isAuto: type === "outgoingAPIMessageReceived",
+        isAuto,
         externalId: idMessage,
       });
+      // Bot API message delivered → personal bot activated (launch funnel).
+      if (isAuto) {
+        await maybeAdvanceBotActivated(leadId, "outgoing_api");
+      }
       // Fire-and-forget: попросим AI-РОПа переоценить переписку.
       // Не блокируем ответ Green API.
       triggerChatAnalysis(leadId, "out");

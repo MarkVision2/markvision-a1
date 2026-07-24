@@ -408,6 +408,7 @@ const Crm = () => {
                 forecast={analytics.forecast}
                 actual={analytics.actual}
                 leads={leads}
+                pipelineTemplateKey={pipelineTemplateKey}
               />
             )}
 
