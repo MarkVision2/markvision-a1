@@ -46,6 +46,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { BroadcastDialog } from "@/components/broadcasts/BroadcastDialog";
 import { BroadcastSendDialog } from "@/components/broadcasts/BroadcastSendDialog";
+import { BroadcastSafetyPanel } from "@/components/broadcasts/BroadcastSafetyPanel";
 
 const StatTile = ({
   label,
@@ -202,6 +203,9 @@ const Broadcasts = () => {
             </span>
           </div>
 
+          {/* Панель безопасности: лимиты, пауза, отписки */}
+          <BroadcastSafetyPanel projectId={projectId} />
+
           {broadcasts.length > 0 ? (
             <div className="relative max-w-md">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -334,7 +338,14 @@ function BroadcastRow({
           <ChannelIcon className="h-5 w-5" />
         </span>
 
-        <div className="min-w-0 flex-1">
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={onOpen}
+          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && onOpen()}
+          className="min-w-0 flex-1 cursor-pointer text-left"
+          title="Открыть отчёт"
+        >
           <div className="flex flex-wrap items-center gap-2">
             <span className="truncate text-sm font-bold">{broadcast.name}</span>
             <span

@@ -41,6 +41,17 @@ const HARD_TICK_CAP = 5;
 const MAX_INTICK_SLEEP_S = 8;
 const WARMUP_DAY1 = 20;
 const WARMUP_GROWTH = 1.3;
+// Ретраи транзиентных сбоев (сеть/5xx/429). Постоянные ошибки (нет WhatsApp,
+// инстанс просрочен, битый номер) не ретраятся.
+const MAX_ATTEMPTS = 3;
+// Строки, застрявшие в 'sending' дольше этого (воркер упал в полёте), возвращаем
+// в очередь в начале тика.
+const STALE_SENDING_MIN = 5;
+
+/** Транзиентная ли ошибка Green API (стоит ретраить). */
+function isTransient(msg: string): boolean {
+  return /(\s5\d\d:)|(\b429\b)|network|timeout|timed out|fetch failed|ECONN|socket|temporarily/i.test(msg);
+}
 
 const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const rnd = (min: number, max: number) => Math.floor(min + Math.random() * (max - min + 1));
@@ -76,12 +87,18 @@ function inWindow(hour: number, start: number, end: number): boolean {
   return hour >= start || hour < end; // окно через полночь
 }
 
-/** Подстановка имени и заголовка (зеркалит renderMessage на фронте). */
-function renderMessage(title: string, message: string, name: string): string {
+/** Подстановка имени, ссылки перехода и заголовка. */
+function renderMessage(title: string, message: string, name: string, link: string): string {
   const first = (name ?? "").trim().split(/\s+/)[0] ?? "";
-  const body = (message ?? "").replace(/\{имя\}/gi, first).replace(/\{name\}/gi, first);
+  let body = (message ?? "").replace(/\{имя\}/gi, first).replace(/\{name\}/gi, first);
+  if (link) body = body.replace(/\{ссылка\}/gi, link).replace(/\{link\}/gi, link);
   const head = (title ?? "").trim();
   return head ? `*${head}*\n\n${body}` : body;
+}
+
+/** Трекинг-ссылка перехода для получателя (или пусто, если нет токена). */
+function clickLink(clickToken: string | null | undefined): string {
+  return clickToken ? `${SUPABASE_URL}/functions/v1/broadcast-click?t=${clickToken}` : "";
 }
 
 type Creds = { idInstance: string; apiToken: string; baseUrl: string };
@@ -267,7 +284,17 @@ async function isOptedOut(projectId: string, phone: string): Promise<boolean> {
   return !!data;
 }
 
-/** Пересчёт stats кампании и финализация статуса, когда очередь пуста. */
+/** Возврат в очередь строк, застрявших в 'sending' (воркер упал в полёте). */
+async function reapStaleSending() {
+  const cutoff = new Date(Date.now() - STALE_SENDING_MIN * 60_000).toISOString();
+  await admin
+    .from("broadcast_recipients")
+    .update({ status: "queued" })
+    .eq("status", "sending")
+    .lt("updated_at", cutoff);
+}
+
+/** Пересчёт stats кампании и финализация, когда в работе никого не осталось. */
 async function refreshCampaign(campaignId: string) {
   const { data } = await admin
     .from("broadcast_recipients")
@@ -278,6 +305,7 @@ async function refreshCampaign(campaignId: string) {
   const stats = {
     total: rows.length,
     queued: count("queued"),
+    sending: count("sending"),
     sent: count("sent"),
     delivered: count("delivered"),
     read: count("read"),
@@ -288,7 +316,8 @@ async function refreshCampaign(campaignId: string) {
     clicked: rows.filter((r) => !!r.clicked_at).length,
   };
   const patch: Record<string, unknown> = { stats };
-  if (stats.queued === 0) {
+  // Финализируем только когда никого не осталось ни в очереди, ни в полёте.
+  if (stats.queued === 0 && stats.sending === 0) {
     const anySent = stats.sent + stats.delivered + stats.read + stats.replied + stats.converted;
     patch.status = anySent === 0 ? "failed" : stats.failed > 0 ? "partial" : "sent";
     patch.finished_at = new Date().toISOString();
@@ -300,6 +329,9 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   if (!(await authorize(req))) return json({ error: "unauthorized" }, 401);
+
+  // Возвращаем в очередь «зависшие» в отправке строки от упавших воркеров.
+  await reapStaleSending();
 
   const campaigns = await activeCampaigns();
   if (campaigns.length === 0) return json({ ok: true, processed: 0, note: "no active campaigns" });
@@ -350,17 +382,13 @@ Deno.serve(async (req) => {
     const creds = credsCache.get(c.project_id) ?? null;
     if (!creds) continue; // WhatsApp не подключён — оставляем очередь как есть
 
-    const nowIso = new Date().toISOString();
-    const { data: batch } = await admin
-      .from("broadcast_recipients")
-      .select("id, phone, name")
-      .eq("campaign_id", c.id)
-      .eq("status", "queued")
-      .or(`scheduled_at.is.null,scheduled_at.lte.${nowIso}`)
-      .order("created_at", { ascending: true })
-      .limit(perTick);
-
-    const rows = (batch ?? []) as { id: string; phone: string; name: string }[];
+    // Атомарный захват: помечает строки 'sending' и возвращает их. Два
+    // параллельных воркера получат разные строки (SKIP LOCKED) → без дублей.
+    const { data: batch } = await admin.rpc("broadcast_claim_recipients", {
+      _campaign_id: c.id,
+      _limit: perTick,
+    });
+    const rows = (batch ?? []) as { id: string; phone: string; name: string; attempt: number; click_token: string | null }[];
     let campaignFailures = 0;
     let campaignSends = 0;
 
@@ -379,7 +407,8 @@ Deno.serve(async (req) => {
       const variant = c.message_variants.length
         ? c.message_variants[rnd(0, c.message_variants.length - 1)]
         : c.message;
-      const text = renderMessage(c.title, variant, r.name);
+      const text = renderMessage(c.title, variant, r.name, clickLink(r.click_token));
+      const attempt = (r.attempt ?? 0) + 1;
 
       try {
         const idMessage = await sendGreen(creds, r.phone, text);
@@ -389,7 +418,7 @@ Deno.serve(async (req) => {
             status: "sent",
             message_id: idMessage,
             sent_at: new Date().toISOString(),
-            attempt: 1,
+            attempt,
           })
           .eq("id", r.id);
         await admin.rpc("broadcast_bump_daily", { _project_id: c.project_id, _n: 1 });
@@ -397,13 +426,21 @@ Deno.serve(async (req) => {
         stats.sent++;
         campaignSends++;
       } catch (e) {
+        const msg = (e as Error).message.slice(0, 300);
+        // Транзиентная ошибка и попытки не исчерпаны → назад в очередь с backoff.
+        const retry = attempt < MAX_ATTEMPTS && isTransient(msg);
         await admin
           .from("broadcast_recipients")
-          .update({
-            status: "failed",
-            error: (e as Error).message.slice(0, 300),
-            attempt: 1,
-          })
+          .update(
+            retry
+              ? {
+                  status: "queued",
+                  error: msg,
+                  attempt,
+                  scheduled_at: new Date(Date.now() + attempt * 60_000).toISOString(),
+                }
+              : { status: "failed", error: msg, attempt },
+          )
           .eq("id", r.id);
         stats.failed++;
         campaignFailures++;

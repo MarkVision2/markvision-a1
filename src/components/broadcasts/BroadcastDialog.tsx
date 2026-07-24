@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Clock,
+  Loader2,
   MessageCircle,
   Send,
   Smartphone,
+  Sparkles,
   Upload,
   Users,
 } from "lucide-react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +26,7 @@ import { filterCrmContacts } from "@/hooks/useBroadcasts";
 import type { LeadContact } from "@/hooks/useLeadContacts";
 import {
   CHANNEL_META,
+  PACE_META,
   emptyBroadcastDraft,
   parseContacts,
   renderMessage,
@@ -29,6 +34,7 @@ import {
   type Broadcast,
   type BroadcastChannel,
   type BroadcastDraft,
+  type BroadcastPace,
 } from "@/lib/broadcastStore";
 
 interface Props {
@@ -51,6 +57,8 @@ function draftFromBroadcast(b: Broadcast): BroadcastDraft {
     uploadedContacts: b.uploadedContacts,
     title: b.title,
     message: b.message,
+    targetUrl: b.targetUrl,
+    messageVariants: b.messageVariants,
     schedule: b.schedule,
     recipientsCount: b.recipientsCount,
   };
@@ -59,6 +67,7 @@ function draftFromBroadcast(b: Broadcast): BroadcastDraft {
 export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, onSave }: Props) {
   const [draft, setDraft] = useState<BroadcastDraft>(emptyBroadcastDraft);
   const [pasted, setPasted] = useState("");
+  const [genLoading, setGenLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -109,6 +118,31 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
   };
 
   const insertVar = () => patch("message", `${draft.message}{имя}`);
+  const insertLink = () => patch("message", `${draft.message}{ссылка}`);
+
+  // Правка текста инвалидирует старые ИИ-варианты.
+  const onMessageChange = (value: string) =>
+    setDraft((p) => ({ ...p, message: value, messageVariants: [] }));
+
+  // Генерация ИИ-вариантов (антиспам): каждому получателю уходит свой.
+  const generateVariants = async () => {
+    if (!draft.message.trim()) return;
+    setGenLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("broadcast-ai-variants", {
+        body: { message: draft.message, count: 20 },
+      });
+      if (error) throw new Error(error.message || "Ошибка генерации");
+      const variants = ((data as { variants?: string[] } | null)?.variants ?? []).filter(Boolean);
+      if (!variants.length) throw new Error("ИИ не вернул варианты");
+      patch("messageVariants", variants);
+      toast.success(`Готово: ${variants.length} вариантов — каждому получателю уйдёт свой`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось сгенерировать");
+    } finally {
+      setGenLoading(false);
+    }
+  };
 
   const previewContact = useMemo(() => {
     if (draft.audienceSource === "upload") return parsedUpload[0] ?? { name: "Имя" };
@@ -116,10 +150,12 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
     return list[0] ?? { name: "Имя" };
   }, [draft, parsedUpload, crmContacts]);
 
+  const needsLink = /(\{ссылка\}|\{link\})/i.test(draft.message);
   const canSave =
     draft.name.trim().length > 0 &&
     draft.message.trim().length > 0 &&
     recipientsCount > 0 &&
+    (!needsLink || draft.targetUrl.trim().length > 0) &&
     (draft.schedule.mode === "now" || !!draft.schedule.at);
 
   const submit = () => {
@@ -308,20 +344,71 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
             />
             <textarea
               value={draft.message}
-              onChange={(e) => patch("message", e.target.value)}
+              onChange={(e) => onMessageChange(e.target.value)}
               rows={5}
               placeholder="Здравствуйте, {имя}! У нас для вас специальное предложение…"
               className={cn(inputCls, "resize-y")}
             />
             <div className="mt-1.5 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={insertVar}
-                className="rounded-md border border-border/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
-              >
-                + Вставить {"{имя}"}
-              </button>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={insertVar}
+                  className="rounded-md border border-border/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+                >
+                  + {"{имя}"}
+                </button>
+                <button
+                  type="button"
+                  onClick={insertLink}
+                  className="rounded-md border border-border/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
+                >
+                  + {"{ссылка}"}
+                </button>
+              </div>
               <span className="text-[11px] text-muted-foreground">{draft.message.length} симв.</span>
+            </div>
+
+            {/* ИИ-варианты против спама */}
+            <div className="mt-2">
+              {draft.messageVariants.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-success/40 bg-success/10 px-3 py-2 text-[11px]">
+                  <Sparkles className="h-3.5 w-3.5 shrink-0 text-success" />
+                  <span className="font-semibold text-success">{draft.messageVariants.length} ИИ-вариантов</span>
+                  <span className="text-muted-foreground">— каждому уходит свой, не как спам</span>
+                  <div className="ml-auto flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={generateVariants}
+                      disabled={genLoading}
+                      className="rounded-md border border-border/60 px-2 py-0.5 font-medium transition-colors hover:bg-secondary/60 disabled:opacity-60"
+                    >
+                      {genLoading ? "…" : "Обновить"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => patch("messageVariants", [])}
+                      className="rounded-md border border-border/60 px-2 py-0.5 font-medium transition-colors hover:bg-secondary/60"
+                    >
+                      Убрать
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={generateVariants}
+                  disabled={genLoading || !draft.message.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+                >
+                  {genLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                  ИИ-варианты против спама
+                </button>
+              )}
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                ИИ перепишет текст в разные формулировки (приветствие, порядок слов) — массовая отправка
+                не выглядит одинаково и реже ловит спам-фильтры.
+              </p>
             </div>
 
             {draft.message.trim() && (
@@ -329,12 +416,27 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
                 <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Предпросмотр
                 </div>
-                <div className="whitespace-pre-wrap text-sm leading-relaxed">
-                  {renderMessage(draft.title, draft.message, previewContact).replace(/\*(.+?)\*/g, "$1")}
+                <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
+                  {renderMessage(draft.title, draft.message, previewContact, draft.targetUrl).replace(/\*(.+?)\*/g, "$1")}
                 </div>
               </div>
             )}
           </Field>
+
+          {/* Ссылка для {ссылка} — трекинг переходов */}
+          {/(\{ссылка\}|\{link\})/i.test(draft.message) && (
+            <Field label="Ссылка для перехода">
+              <input
+                value={draft.targetUrl}
+                onChange={(e) => patch("targetUrl", e.target.value)}
+                placeholder="https://ваш-сайт.kz/promo"
+                className={inputCls}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                {"{ссылка}"} в тексте станет короткой трекинг-ссылкой — переход клиента отметится как «перешёл».
+              </p>
+            </Field>
+          )}
 
           {/* Расписание */}
           <Field label="Когда отправить">
@@ -374,6 +476,32 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
                 className={cn(inputCls, "mt-2")}
               />
             )}
+          </Field>
+
+          {/* Темп отправки */}
+          <Field label="Темп отправки">
+            <div className="grid grid-cols-3 gap-2">
+              {(["slow", "medium", "fast"] as BroadcastPace[]).map((p) => {
+                const active = draft.sendPace === p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => patch("sendPace", p)}
+                    className={cn(
+                      "flex flex-col gap-0.5 rounded-xl border px-3 py-2 text-left transition-colors",
+                      active ? "border-primary/60 bg-primary/10" : "border-border/60 bg-background/40 hover:bg-secondary/40",
+                    )}
+                  >
+                    <span className="text-sm font-semibold">{PACE_META[p].label}</span>
+                    <span className="text-[10px] text-muted-foreground">{PACE_META[p].hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              Сервер отправляет капельно с рандомными паузами. Чем медленнее — тем безопаснее для номера.
+            </p>
           </Field>
         </div>
 

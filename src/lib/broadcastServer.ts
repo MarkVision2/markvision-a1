@@ -10,6 +10,13 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { LeadContact } from "@/hooks/useLeadContacts";
 import {
+  PACE_GAPS,
+  paceFromGaps,
+  type Broadcast,
+  type BroadcastDraft,
+  type BroadcastStatus,
+} from "@/lib/broadcastStore";
+import {
   buildBroadcastFunnel,
   countDelivery,
   digitsPhone,
@@ -17,14 +24,21 @@ import {
   type BroadcastLeadLite,
   type BroadcastRecipientLite,
 } from "@/lib/broadcastFunnel";
-import {
-  type Broadcast,
-  type BroadcastDraft,
-  type BroadcastStatus,
-} from "@/lib/broadcastStore";
 
 /** Один получатель для вставки в broadcast_recipients. */
 export type RecipientRow = { name: string; phone: string; lead_id: string | null };
+
+/**
+ * Канонический формат телефона для хранения: «+<цифры>». Единый формат нужен,
+ * чтобы дедуп (unique campaign_id+phone) и матчинг статусов/opt-out в webhook
+ * не сбоили из-за разных форматов. Возвращает "" для явно невалидных номеров
+ * (8–15 цифр — международный диапазон E.164).
+ */
+export function canonicalPhone(raw: string): string {
+  const d = (raw ?? "").replace(/\D/g, "");
+  if (d.length < 8 || d.length > 15) return "";
+  return `+${d}`;
+}
 
 function phoneIndex(contacts: LeadContact[]): Map<string, LeadContact> {
   const m = new Map<string, LeadContact>();
@@ -35,25 +49,31 @@ function phoneIndex(contacts: LeadContact[]): Map<string, LeadContact> {
   return m;
 }
 
-/** CRM-фильтр / загрузка → строки получателей (lead_id для трекинга конверсий). */
+/** CRM-фильтр / загрузка → строки получателей. lead_id (в т.ч. для загруженных —
+ *  матч по телефону) нужен для трекинга конверсий; телефон канонизируется. */
 export function resolveRecipientRows(draft: BroadcastDraft, crmContacts: LeadContact[]): RecipientRow[] {
   const byPhone = phoneIndex(crmContacts);
-  if (draft.audienceSource === "upload") {
-    return draft.uploadedContacts.map((c) => {
-      const hit = byPhone.get(digitsPhone(c.phone));
-      return { name: c.name, phone: c.phone, lead_id: hit?.id ?? null };
-    });
-  }
-  const { stageKeys, sources } = draft.crmFilter;
   const seen = new Set<string>();
   const out: RecipientRow[] = [];
+  const push = (name: string, rawPhone: string, leadId: string | null) => {
+    const phone = canonicalPhone(rawPhone);
+    if (!phone || seen.has(phone)) return;
+    seen.add(phone);
+    out.push({ name, phone, lead_id: leadId });
+  };
+
+  if (draft.audienceSource === "upload") {
+    for (const c of draft.uploadedContacts) {
+      const hit = byPhone.get(digitsPhone(c.phone));
+      push(c.name, c.phone, hit?.id ?? null);
+    }
+    return out;
+  }
+  const { stageKeys, sources } = draft.crmFilter;
   for (const c of crmContacts) {
     if (stageKeys.length && !stageKeys.includes(c.stageKey)) continue;
     if (sources.length && !sources.includes(c.source || "—")) continue;
-    const key = digitsPhone(c.phone);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    out.push({ name: c.name, phone: c.phone, lead_id: c.id });
+    push(c.name, c.phone, c.id);
   }
   return out;
 }
@@ -77,6 +97,10 @@ type CampaignRow = {
   crm_filter: { stageKeys?: string[]; sources?: string[] } | null;
   title: string;
   message: string;
+  message_variants: string[] | null;
+  target_url: string | null;
+  min_gap_seconds: number | null;
+  max_gap_seconds: number | null;
   schedule_mode: string;
   scheduled_at: string | null;
   status: string;
@@ -117,6 +141,9 @@ function mapRow(r: CampaignRow): Broadcast {
     uploadedContacts: [], // хранятся как строки broadcast_recipients
     title: r.title ?? "",
     message: r.message ?? "",
+    targetUrl: r.target_url ?? "",
+    messageVariants: Array.isArray(r.message_variants) ? r.message_variants : [],
+    sendPace: paceFromGaps(r.min_gap_seconds ?? 50, r.max_gap_seconds ?? 70),
     schedule: { mode: r.schedule_mode === "scheduled" ? "scheduled" : "now", at: r.scheduled_at },
     status: DB_TO_STATUS[r.status] ?? "draft",
     recipientsCount: raw.total,
@@ -189,6 +216,7 @@ export async function createCampaign(
 ): Promise<Broadcast> {
   const scheduledAt = scheduledIso(draft);
   const rows = resolveRecipientRows(draft, crmContacts);
+  const gaps = PACE_GAPS[draft.sendPace] ?? PACE_GAPS.slow;
   const status = draft.schedule.mode === "scheduled" ? "scheduled" : "draft";
   const stats = { total: rows.length, queued: rows.length, sent: 0, delivered: 0, read: 0, replied: 0, converted: 0, failed: 0, optout: 0 };
 
@@ -202,6 +230,10 @@ export async function createCampaign(
       crm_filter: draft.crmFilter,
       title: draft.title,
       message: draft.message,
+      message_variants: draft.messageVariants ?? [],
+      target_url: draft.targetUrl || null,
+      min_gap_seconds: gaps.min,
+      max_gap_seconds: gaps.max,
       schedule_mode: draft.schedule.mode,
       scheduled_at: scheduledAt,
       status,
@@ -223,6 +255,7 @@ export async function updateCampaign(
 ): Promise<void> {
   const scheduledAt = scheduledIso(draft);
   const rows = resolveRecipientRows(draft, crmContacts);
+  const gaps = PACE_GAPS[draft.sendPace] ?? PACE_GAPS.slow;
 
   // Пересобираем получателей только пока кампания не ушла в отправку.
   const { data: current } = await db()
@@ -239,6 +272,10 @@ export async function updateCampaign(
     crm_filter: draft.crmFilter,
     title: draft.title,
     message: draft.message,
+    message_variants: draft.messageVariants ?? [],
+    target_url: draft.targetUrl || null,
+    min_gap_seconds: gaps.min,
+    max_gap_seconds: gaps.max,
     schedule_mode: draft.schedule.mode,
     scheduled_at: scheduledAt,
   };
@@ -273,8 +310,95 @@ export async function launchCampaign(id: string): Promise<void> {
 /** Живые счётчики получателей кампании (для прогресса запуска). */
 export type RecipientCounts = {
   total: number; queued: number; sent: number; delivered: number;
-  read: number; replied: number; failed: number; optout: number;
+  read: number; replied: number; clicked: number; converted: number;
+  failed: number; optout: number;
 };
+
+// ─── Панель безопасности (лимиты / пауза / opt-out) ──────────────────────────
+const WARMUP_DAY1 = 20;
+const WARMUP_GROWTH = 1.3;
+const DEFAULT_DAILY_CAP = 120;
+
+/** Эффективный дневной потолок с учётом прогрева (зеркалит воркер). */
+export function warmupDailyCap(warmupStartedOn: string | null): number {
+  if (!warmupStartedOn) return WARMUP_DAY1;
+  const days = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(warmupStartedOn + "T00:00:00Z").getTime()) / 86400000),
+  );
+  const cap = Math.round(WARMUP_DAY1 * Math.pow(WARMUP_GROWTH, days));
+  return Math.min(DEFAULT_DAILY_CAP, Math.max(WARMUP_DAY1, cap));
+}
+
+export type OptOut = { phone: string; reason: string | null; created_at: string };
+export type BroadcastSafety = {
+  paused: boolean;
+  pauseReason: string | null;
+  sentToday: number;
+  dailyCap: number;
+  warmupStartedOn: string | null;
+  optOuts: OptOut[];
+};
+
+export async function fetchSafety(projectId: string): Promise<BroadcastSafety> {
+  const today = new Date().toISOString().slice(0, 10);
+  const [stateRes, dailyRes, optRes] = await Promise.all([
+    db().from("broadcast_sender_state").select("paused, pause_reason, warmup_started_on").eq("project_id", projectId).maybeSingle(),
+    db().from("broadcast_sender_daily").select("sent").eq("project_id", projectId).eq("day", today).maybeSingle(),
+    db().from("broadcast_opt_outs").select("phone, reason, created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(500),
+  ]);
+  const state = (stateRes.data ?? {}) as { paused?: boolean; pause_reason?: string | null; warmup_started_on?: string | null };
+  return {
+    paused: !!state.paused,
+    pauseReason: state.pause_reason ?? null,
+    sentToday: ((dailyRes.data as { sent?: number } | null)?.sent) ?? 0,
+    dailyCap: warmupDailyCap(state.warmup_started_on ?? null),
+    warmupStartedOn: state.warmup_started_on ?? null,
+    optOuts: (optRes.data ?? []) as OptOut[],
+  };
+}
+
+/** Снять авто-паузу номера (kill-switch reset). */
+export async function resumeSender(projectId: string): Promise<void> {
+  const { error } = await db()
+    .from("broadcast_sender_state")
+    .upsert({ project_id: projectId, paused: false, pause_reason: null, updated_at: new Date().toISOString() });
+  if (error) throw error;
+}
+
+/** Убрать номер из отписавшихся (снова можно слать). */
+export async function removeOptOut(projectId: string, phone: string): Promise<void> {
+  const { error } = await db()
+    .from("broadcast_opt_outs")
+    .delete()
+    .eq("project_id", projectId)
+    .eq("phone", phone);
+  if (error) throw error;
+}
+
+export type RecipientDetail = {
+  id: string;
+  name: string;
+  phone: string;
+  status: string;
+  sent_at: string | null;
+  read_at: string | null;
+  replied_at: string | null;
+  clicked_at: string | null;
+  converted_at: string | null;
+  error: string | null;
+};
+
+/** Список получателей кампании со статусами (для панели детализации). */
+export async function fetchRecipients(campaignId: string, limit = 2000): Promise<RecipientDetail[]> {
+  const { data } = await db()
+    .from("broadcast_recipients")
+    .select("id, name, phone, status, sent_at, read_at, replied_at, clicked_at, converted_at, error")
+    .eq("campaign_id", campaignId)
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+  return (data ?? []) as RecipientDetail[];
+}
 
 export async function fetchRecipientCounts(campaignId: string): Promise<RecipientCounts> {
   const { data } = await db()
@@ -305,6 +429,8 @@ export async function fetchRecipientCounts(campaignId: string): Promise<Recipien
     delivered: d.delivered,
     read: d.read,
     replied: d.replied,
+    clicked: recipients.filter((r) => r.status === "clicked").length,
+    converted: recipients.filter((r) => r.status === "converted").length,
     failed: d.failed,
     optout: d.optout,
   };
