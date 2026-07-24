@@ -137,12 +137,30 @@ export function ChatMediaBubble({
           />
         </>
       ) : kind === "audio" ? (
-        <audio
-          controls
-          preload="metadata"
-          src={url}
-          className="w-full min-w-[200px] max-w-[280px]"
-        />
+        <div className="space-y-1.5">
+          <audio
+            controls
+            preload="metadata"
+            playsInline
+            className="w-full min-w-[220px] max-w-[300px]"
+          >
+            <source src={url} type={m.mediaMime?.split(";")[0] || "audio/mp4"} />
+            <source src={url} type="audio/ogg" />
+          </audio>
+          <a
+            href={url}
+            target="_blank"
+            rel="noreferrer"
+            download={m.mediaFilename || "voice.m4a"}
+            className={cn(
+              "inline-flex items-center gap-1 text-[10px] font-medium underline-offset-2 hover:underline",
+              fromMe ? "text-primary-foreground/80" : "text-muted-foreground",
+            )}
+          >
+            <Download className="h-3 w-3" />
+            Скачать голосовое
+          </a>
+        </div>
       ) : kind === "video" ? (
         <video
           controls

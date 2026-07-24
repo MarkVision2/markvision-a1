@@ -17,9 +17,11 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import makeWASocket, {
   DisconnectReason,
@@ -255,6 +257,32 @@ function detectMedia(msg) {
 
 const MAX_MEDIA_BYTES = 12 * 1024 * 1024;
 
+/** Safari/iOS can't play WhatsApp Opus-in-Ogg — convert to AAC/M4A for CRM playback. */
+function convertAudioToM4a(buf) {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const inPath = join(tmpdir(), `wa-in-${id}.ogg`);
+  const outPath = join(tmpdir(), `wa-out-${id}.m4a`);
+  try {
+    writeFileSync(inPath, buf);
+    const r = spawnSync(
+      "ffmpeg",
+      ["-y", "-i", inPath, "-c:a", "aac", "-b:a", "64k", "-ac", "1", "-movflags", "+faststart", outPath],
+      { encoding: "utf8", timeout: 60_000 },
+    );
+    if (r.status !== 0 || !existsSync(outPath)) {
+      log.warn({ stderr: (r.stderr || "").slice(0, 400) }, "ffmpeg audio convert failed");
+      return null;
+    }
+    return readFileSync(outPath);
+  } catch (e) {
+    log.warn({ err: e }, "ffmpeg audio convert error");
+    return null;
+  } finally {
+    try { unlinkSync(inPath); } catch { /* ignore */ }
+    try { unlinkSync(outPath); } catch { /* ignore */ }
+  }
+}
+
 async function downloadWaMedia(sock, msg) {
   const info = detectMedia(msg);
   if (!info) return null;
@@ -273,7 +301,26 @@ async function downloadWaMedia(sock, msg) {
       log.warn({ size: buf.length, kind: info.kind }, "media too large — skip upload");
       return { ...info, base64: null };
     }
-    return { ...info, base64: Buffer.from(buf).toString("base64") };
+
+    let outBuf = Buffer.from(buf);
+    let mime = info.mime;
+    let filename = info.filename;
+    if (info.kind === "audio") {
+      const converted = convertAudioToM4a(outBuf);
+      if (converted && converted.length > 0) {
+        outBuf = converted;
+        mime = "audio/mp4";
+        filename = "voice.m4a";
+        log.info({ fromBytes: buf.length, toBytes: outBuf.length }, "audio converted to m4a");
+      }
+    }
+
+    return {
+      ...info,
+      mime,
+      filename,
+      base64: outBuf.toString("base64"),
+    };
   } catch (e) {
     log.warn({ err: e, kind: info.kind }, "media download failed");
     return { ...info, base64: null };
