@@ -1,7 +1,7 @@
 {
-  "git_sha": "a8392a1",
-  "git_sha_full": "a8392a198f6ea0778776518e151b5dc3fdb65d01",
-  "updated_at": "2026-07-24T09:33:36Z",
-  "label": "Merge wa-web QR loading fix",
-  "publish_hint": "push main → www.markvision.kz (Vercel)"
+  "git_sha": "7b26713",
+  "git_sha_full": "7b26713d708992230dfb9f338b66ec4231c37751",
+  "updated_at": "2026-07-24T09:34:18Z",
+  "label": "fix(wa-web): skip re-pair when session already connected",
+  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
