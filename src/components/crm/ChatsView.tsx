@@ -60,16 +60,25 @@ export function ChatsView({
   const stageFilters = [{ id: "all", title: "Все" }, ...stages];
 
   const filteredLeads = useMemo(() => {
-    return leads.filter((l) => {
+    const q = search.trim().toLowerCase();
+    const list = leads.filter((l) => {
       const stageOk = activeStageId === "all" || l.stageId === activeStageId;
-      const q = search.trim().toLowerCase();
+      const hasChat = (chatsByLeadId.get(l.id)?.length ?? 0) > 0;
+      // Inbox: only conversations with messages (search can still find by name/phone).
+      const inboxOk = hasChat || !!q;
       const searchOk =
         !q ||
         l.name.toLowerCase().includes(q) ||
-        l.phone.toLowerCase().includes(q);
-      return stageOk && searchOk;
+        (l.phone ?? "").toLowerCase().includes(q);
+      return stageOk && inboxOk && searchOk;
     });
-  }, [leads, activeStageId, search]);
+    // Newest activity first — otherwise a fresh WA chat is buried under old CRM leads.
+    return list.sort((a, b) => {
+      const aLast = chatsByLeadId.get(a.id)?.at(-1)?.at ?? a.lastActivityAt ?? a.createdAt ?? "";
+      const bLast = chatsByLeadId.get(b.id)?.at(-1)?.at ?? b.lastActivityAt ?? b.createdAt ?? "";
+      return bLast.localeCompare(aLast);
+    });
+  }, [leads, activeStageId, search, chatsByLeadId]);
 
   const activeLead = leads.find((l) => l.id === activeLeadId) ?? null;
   const activeChats = activeLeadId ? (chatsByLeadId.get(activeLeadId) ?? []) : [];
