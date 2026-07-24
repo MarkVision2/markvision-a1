@@ -1,4 +1,6 @@
-import { FileText, Download } from "lucide-react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { FileText, Download, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ChatMessage } from "@/types/crm";
 
@@ -10,6 +12,60 @@ function captionOf(m: ChatMessage): string | null {
   return t;
 }
 
+function ImageLightbox({
+  url,
+  alt,
+  open,
+  onClose,
+}: {
+  url: string;
+  alt: string;
+  open: boolean;
+  onClose: () => void;
+}) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open, onClose]);
+
+  if (!open || typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={alt}
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        className="absolute right-3 top-3 grid h-10 w-10 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20"
+        aria-label="Закрыть"
+      >
+        <X className="h-5 w-5" />
+      </button>
+      <img
+        src={url}
+        alt={alt}
+        className="max-h-[92dvh] max-w-[min(96vw,1100px)] rounded-lg object-contain shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      />
+    </div>,
+    document.body,
+  );
+}
+
 /** Renders WA/CRM media inside a chat bubble (audio player, image, video, file). */
 export function ChatMediaBubble({
   message: m,
@@ -18,9 +74,11 @@ export function ChatMediaBubble({
   message: ChatMessage;
   fromMe?: boolean;
 }) {
+  const [lightboxOpen, setLightboxOpen] = useState(false);
   const caption = captionOf(m);
   const url = m.mediaUrl;
   const kind = m.mediaKind;
+  const alt = caption || "Изображение";
 
   if (!url) {
     return <div className="whitespace-pre-wrap break-words">{m.text}</div>;
@@ -29,14 +87,27 @@ export function ChatMediaBubble({
   return (
     <div className="space-y-1.5">
       {(kind === "image" || kind === "sticker") ? (
-        <a href={url} target="_blank" rel="noreferrer" className="block">
-          <img
-            src={url}
-            alt={caption || "Изображение"}
-            className="max-h-72 max-w-full rounded-lg object-contain"
-            loading="lazy"
+        <>
+          <button
+            type="button"
+            onClick={() => setLightboxOpen(true)}
+            className="block max-w-full cursor-zoom-in text-left"
+            title="Открыть"
+          >
+            <img
+              src={url}
+              alt={alt}
+              className="max-h-72 max-w-full rounded-lg object-contain"
+              loading="lazy"
+            />
+          </button>
+          <ImageLightbox
+            url={url}
+            alt={alt}
+            open={lightboxOpen}
+            onClose={() => setLightboxOpen(false)}
           />
-        </a>
+        </>
       ) : kind === "audio" ? (
         <audio
           controls
