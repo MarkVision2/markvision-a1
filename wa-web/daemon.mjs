@@ -77,9 +77,12 @@ async function bridge(action, body = {}) {
 }
 
 function jidToPhone(jid) {
-  if (!jid || jid.endsWith("@g.us")) return "";
+  if (!jid || String(jid).endsWith("@g.us")) return "";
+  // Baileys multi-device JID: "774728425955:57@s.whatsapp.net"
+  // everything after ":" is the device id — NOT part of the phone.
   const user = String(jid).split("@")[0] || "";
-  const d = user.replace(/\D/g, "");
+  const phonePart = user.split(":")[0] || "";
+  const d = phonePart.replace(/\D/g, "");
   return d ? `+${d}` : "";
 }
 
@@ -145,9 +148,9 @@ async function openSocket(projectId, { forcePair = false } = {}) {
       }
       if (connection === "open") {
         const me = sock.user;
-        const phone = jidToPhone(me?.id) || (me?.id ? `+${String(me.id).split(":")[0]}` : null);
+        const phone = jidToPhone(me?.id);
         await setState(projectId, "connected", {
-          phone,
+          phone: phone || null,
           display_name: me?.name || me?.verifiedName || null,
         });
         const entry = sockets.get(projectId) || {};
@@ -223,9 +226,9 @@ async function handleCommand(cmd) {
       // Already live — don't wipe session / spam new QR.
       if (existing?.sock?.user) {
         const me = existing.sock.user;
-        const phone = jidToPhone(me?.id) || (me?.id ? `+${String(me.id).split(":")[0]}` : null);
+        const phone = jidToPhone(me?.id);
         await setState(projectId, "connected", {
-          phone,
+          phone: phone || null,
           display_name: me?.name || me?.verifiedName || null,
         });
         await bridge("ack", { id: cmd.id, status: "done", result: { ok: true, already: true } });
