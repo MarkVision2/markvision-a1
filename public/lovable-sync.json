@@ -1,7 +1,7 @@
 {
-  "git_sha": "7a7d47b",
-  "git_sha_full": "7a7d47b52b306064b2c330622762e3c3a66c5b8b",
-  "updated_at": "2026-07-24T09:22:42Z",
-  "label": "Added CHECK constraints to policies",
-  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
+  "git_sha": "b93c699",
+  "git_sha_full": "b93c69902c597b0e021b32965e6efdafd52e5d43",
+  "updated_at": "2026-07-24T09:29:24Z",
+  "label": "Merge remove WhatsApp bindings table",
+  "publish_hint": "push main → www.markvision.kz (Vercel)"
 }
