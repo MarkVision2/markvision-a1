@@ -1268,10 +1268,6 @@ export type Database = {
           is_auto: boolean
           is_draft: boolean
           lead_id: string
-          media_filename: string | null
-          media_kind: string | null
-          media_mime: string | null
-          media_url: string | null
           status: string | null
           template_key: string | null
           type: Database["public"]["Enums"]["communication_type"]
@@ -1289,10 +1285,6 @@ export type Database = {
           is_auto?: boolean
           is_draft?: boolean
           lead_id: string
-          media_filename?: string | null
-          media_kind?: string | null
-          media_mime?: string | null
-          media_url?: string | null
           status?: string | null
           template_key?: string | null
           type: Database["public"]["Enums"]["communication_type"]
@@ -1310,10 +1302,6 @@ export type Database = {
           is_auto?: boolean
           is_draft?: boolean
           lead_id?: string
-          media_filename?: string | null
-          media_kind?: string | null
-          media_mime?: string | null
-          media_url?: string | null
           status?: string | null
           template_key?: string | null
           type?: Database["public"]["Enums"]["communication_type"]
@@ -1964,14 +1952,13 @@ export type Database = {
           paid: boolean
           paid_at: string | null
           payment_method: Database["public"]["Enums"]["payment_method"] | null
-          phone: string | null
+          phone: string
           pinned: boolean
           pipeline_id: string | null
           project_id: string | null
           referrer: string | null
           reject_reason: string | null
           rejected_at: string | null
-          whatsapp_lid: string | null
           service: string | null
           source: string
           stage_id: string | null
@@ -2011,7 +1998,7 @@ export type Database = {
           paid?: boolean
           paid_at?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"] | null
-          phone?: string | null
+          phone: string
           pinned?: boolean
           pipeline_id?: string | null
           project_id?: string | null
@@ -2023,7 +2010,6 @@ export type Database = {
           stage_id?: string | null
           updated_at?: string
           utm?: Json | null
-          whatsapp_lid?: string | null
         }
         Update: {
           age?: number | null
@@ -2058,7 +2044,7 @@ export type Database = {
           paid?: boolean
           paid_at?: string | null
           payment_method?: Database["public"]["Enums"]["payment_method"] | null
-          phone?: string | null
+          phone?: string
           pinned?: boolean
           pipeline_id?: string | null
           project_id?: string | null
@@ -2070,7 +2056,6 @@ export type Database = {
           stage_id?: string | null
           updated_at?: string
           utm?: Json | null
-          whatsapp_lid?: string | null
         }
         Relationships: [
           {
