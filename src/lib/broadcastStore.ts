@@ -11,6 +11,28 @@ const PREFIX = "mv:broadcasts:";
 
 export type BroadcastChannel = "whatsapp" | "sms";
 export type AudienceSource = "crm" | "upload";
+export type BroadcastPace = "slow" | "medium" | "fast";
+
+/** Пресеты темпа → разброс паузы между сообщениями (сек). */
+export const PACE_GAPS: Record<BroadcastPace, { min: number; max: number }> = {
+  slow: { min: 50, max: 70 },   // ≈ 1 сообщение/мин — максимально безопасно
+  medium: { min: 25, max: 45 }, // ≈ 2/мин
+  fast: { min: 12, max: 22 },   // ≈ 4/мин
+};
+
+export const PACE_META: Record<BroadcastPace, { label: string; hint: string }> = {
+  slow: { label: "Медленно", hint: "≈ 1 сообщение в минуту · безопасно" },
+  medium: { label: "Средне", hint: "≈ 2 в минуту" },
+  fast: { label: "Быстро", hint: "≈ 4 в минуту" },
+};
+
+/** Темп из разброса пауз (для обратного маппинга из БД). */
+export function paceFromGaps(minGap: number, maxGap: number): BroadcastPace {
+  const avg = (minGap + maxGap) / 2;
+  if (avg <= 20) return "fast";
+  if (avg <= 40) return "medium";
+  return "slow";
+}
 export type BroadcastStatus =
   | "draft"
   | "scheduled"
@@ -54,6 +76,8 @@ export type Broadcast = {
   targetUrl: string;
   /** ИИ-варианты текста (антиспам): каждому получателю уходит случайный. */
   messageVariants: string[];
+  /** Темп отправки: slow ≈ 1/мин, medium ≈ 2/мин, fast ≈ 4/мин. */
+  sendPace: BroadcastPace;
   schedule: { mode: "now" | "scheduled"; at: string | null };
   status: BroadcastStatus;
   /** Кол-во получателей на момент последней оценки/отправки. */
@@ -184,6 +208,7 @@ function normalize(raw: Partial<Broadcast>): Broadcast {
     messageVariants: Array.isArray(raw.messageVariants)
       ? raw.messageVariants.filter((v): v is string => typeof v === "string")
       : [],
+    sendPace: raw.sendPace === "fast" || raw.sendPace === "medium" ? raw.sendPace : "slow",
     schedule: {
       mode: raw.schedule?.mode === "scheduled" ? "scheduled" : "now",
       at: raw.schedule?.at ?? null,
@@ -253,6 +278,7 @@ export type BroadcastDraft = Pick<
   | "message"
   | "targetUrl"
   | "messageVariants"
+  | "sendPace"
   | "schedule"
   | "recipientsCount"
 >;
@@ -268,6 +294,7 @@ export function emptyBroadcastDraft(): BroadcastDraft {
     message: "",
     targetUrl: "",
     messageVariants: [],
+    sendPace: "slow",
     schedule: { mode: "now", at: null },
     recipientsCount: 0,
   };

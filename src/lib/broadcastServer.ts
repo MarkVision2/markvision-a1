@@ -10,6 +10,8 @@
 import { supabase } from "@/integrations/supabase/client";
 import type { LeadContact } from "@/hooks/useLeadContacts";
 import {
+  PACE_GAPS,
+  paceFromGaps,
   type Broadcast,
   type BroadcastDraft,
   type BroadcastStatus,
@@ -75,6 +77,8 @@ type CampaignRow = {
   message: string;
   message_variants: string[] | null;
   target_url: string | null;
+  min_gap_seconds: number | null;
+  max_gap_seconds: number | null;
   schedule_mode: string;
   scheduled_at: string | null;
   status: string;
@@ -101,6 +105,7 @@ function mapRow(r: CampaignRow): Broadcast {
     message: r.message ?? "",
     targetUrl: r.target_url ?? "",
     messageVariants: Array.isArray(r.message_variants) ? r.message_variants : [],
+    sendPace: paceFromGaps(r.min_gap_seconds ?? 50, r.max_gap_seconds ?? 70),
     schedule: { mode: r.schedule_mode === "scheduled" ? "scheduled" : "now", at: r.scheduled_at },
     status: DB_TO_STATUS[r.status] ?? "draft",
     recipientsCount: s.total ?? 0,
@@ -164,6 +169,7 @@ export async function createCampaign(
 ): Promise<Broadcast> {
   const scheduledAt = scheduledIso(draft);
   const rows = resolveRecipientRows(draft, crmContacts);
+  const gaps = PACE_GAPS[draft.sendPace] ?? PACE_GAPS.slow;
   const status = draft.schedule.mode === "scheduled" ? "scheduled" : "draft";
   const stats = { total: rows.length, queued: rows.length, sent: 0, delivered: 0, read: 0, replied: 0, converted: 0, failed: 0, optout: 0 };
 
@@ -179,6 +185,8 @@ export async function createCampaign(
       message: draft.message,
       message_variants: draft.messageVariants ?? [],
       target_url: draft.targetUrl || null,
+      min_gap_seconds: gaps.min,
+      max_gap_seconds: gaps.max,
       schedule_mode: draft.schedule.mode,
       scheduled_at: scheduledAt,
       status,
@@ -200,6 +208,7 @@ export async function updateCampaign(
 ): Promise<void> {
   const scheduledAt = scheduledIso(draft);
   const rows = resolveRecipientRows(draft, crmContacts);
+  const gaps = PACE_GAPS[draft.sendPace] ?? PACE_GAPS.slow;
 
   // Пересобираем получателей только пока кампания не ушла в отправку.
   const { data: current } = await db()
@@ -218,6 +227,8 @@ export async function updateCampaign(
     message: draft.message,
     message_variants: draft.messageVariants ?? [],
     target_url: draft.targetUrl || null,
+    min_gap_seconds: gaps.min,
+    max_gap_seconds: gaps.max,
     schedule_mode: draft.schedule.mode,
     scheduled_at: scheduledAt,
   };
@@ -316,6 +327,30 @@ export async function removeOptOut(projectId: string, phone: string): Promise<vo
     .eq("project_id", projectId)
     .eq("phone", phone);
   if (error) throw error;
+}
+
+export type RecipientDetail = {
+  id: string;
+  name: string;
+  phone: string;
+  status: string;
+  sent_at: string | null;
+  read_at: string | null;
+  replied_at: string | null;
+  clicked_at: string | null;
+  converted_at: string | null;
+  error: string | null;
+};
+
+/** Список получателей кампании со статусами (для панели детализации). */
+export async function fetchRecipients(campaignId: string, limit = 2000): Promise<RecipientDetail[]> {
+  const { data } = await db()
+    .from("broadcast_recipients")
+    .select("id, name, phone, status, sent_at, read_at, replied_at, clicked_at, converted_at, error")
+    .eq("campaign_id", campaignId)
+    .order("updated_at", { ascending: false })
+    .limit(limit);
+  return (data ?? []) as RecipientDetail[];
 }
 
 export async function fetchRecipientCounts(campaignId: string): Promise<RecipientCounts> {

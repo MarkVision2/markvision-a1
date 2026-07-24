@@ -26,6 +26,7 @@ import { filterCrmContacts } from "@/hooks/useBroadcasts";
 import type { LeadContact } from "@/hooks/useLeadContacts";
 import {
   CHANNEL_META,
+  PACE_META,
   emptyBroadcastDraft,
   parseContacts,
   renderMessage,
@@ -33,6 +34,7 @@ import {
   type Broadcast,
   type BroadcastChannel,
   type BroadcastDraft,
+  type BroadcastPace,
 } from "@/lib/broadcastStore";
 
 interface Props {
@@ -474,6 +476,32 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
                 className={cn(inputCls, "mt-2")}
               />
             )}
+          </Field>
+
+          {/* Темп отправки */}
+          <Field label="Темп отправки">
+            <div className="grid grid-cols-3 gap-2">
+              {(["slow", "medium", "fast"] as BroadcastPace[]).map((p) => {
+                const active = draft.sendPace === p;
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => patch("sendPace", p)}
+                    className={cn(
+                      "flex flex-col gap-0.5 rounded-xl border px-3 py-2 text-left transition-colors",
+                      active ? "border-primary/60 bg-primary/10" : "border-border/60 bg-background/40 hover:bg-secondary/40",
+                    )}
+                  >
+                    <span className="text-sm font-semibold">{PACE_META[p].label}</span>
+                    <span className="text-[10px] text-muted-foreground">{PACE_META[p].hint}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              Сервер отправляет капельно с рандомными паузами. Чем медленнее — тем безопаснее для номера.
+            </p>
           </Field>
         </div>
 

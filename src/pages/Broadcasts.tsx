@@ -44,6 +44,7 @@ import {
 import { BroadcastDialog } from "@/components/broadcasts/BroadcastDialog";
 import { BroadcastSendDialog } from "@/components/broadcasts/BroadcastSendDialog";
 import { BroadcastSafetyPanel } from "@/components/broadcasts/BroadcastSafetyPanel";
+import { BroadcastDetailsDialog } from "@/components/broadcasts/BroadcastDetailsDialog";
 
 const StatTile = ({
   label,
@@ -86,6 +87,7 @@ const Broadcasts = () => {
   const [editing, setEditing] = useState<Broadcast | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [sending, setSending] = useState<Broadcast | null>(null);
+  const [detailing, setDetailing] = useState<Broadcast | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Broadcast | null>(null);
 
   const sorted = useMemo(
@@ -221,6 +223,7 @@ const Broadcasts = () => {
                 <BroadcastRow
                   key={b.id}
                   broadcast={b}
+                  onOpen={() => setDetailing(b)}
                   onSend={() => setSending(b)}
                   onEdit={() => openEdit(b)}
                   onDelete={() => setPendingDelete(b)}
@@ -247,6 +250,11 @@ const Broadcasts = () => {
         onLaunch={async () => {
           if (sending) await launch(sending.id);
         }}
+      />
+      <BroadcastDetailsDialog
+        open={!!detailing}
+        onOpenChange={(v) => !v && setDetailing(null)}
+        broadcast={detailing}
       />
       <AlertDialog open={!!pendingDelete} onOpenChange={(v) => !v && setPendingDelete(null)}>
         <AlertDialogContent>
@@ -279,11 +287,13 @@ const Broadcasts = () => {
 
 function BroadcastRow({
   broadcast,
+  onOpen,
   onSend,
   onEdit,
   onDelete,
 }: {
   broadcast: Broadcast;
+  onOpen: () => void;
   onSend: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -299,7 +309,7 @@ function BroadcastRow({
           <ChannelIcon className="h-5 w-5" />
         </span>
 
-        <div className="min-w-0 flex-1">
+        <button type="button" onClick={onOpen} className="min-w-0 flex-1 cursor-pointer text-left" title="Открыть статусы">
           <div className="flex flex-wrap items-center gap-2">
             <span className="truncate text-sm font-bold">{broadcast.name}</span>
             <span
@@ -349,7 +359,7 @@ function BroadcastRow({
               </span>
             )}
           </div>
-        </div>
+        </button>
 
         <div className="flex shrink-0 items-center gap-2">
           <button
