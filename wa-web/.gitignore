@@ -1,0 +1,5 @@
+# Sessions and node_modules stay local — never commit auth state.
+sessions/
+node_modules/
+package-lock.json
+wa-web/.env.local

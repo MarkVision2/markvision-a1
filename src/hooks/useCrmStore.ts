@@ -763,24 +763,54 @@ export function useCrmStore() {
     const safeChannel: CommChannel = (ch && (allowedChannels as readonly string[]).includes(ch))
       ? (ch as CommChannel) : "whatsapp";
 
-    // For WhatsApp — send via Green API proxy. Webhook will mirror it back,
-    // but to make UI snappy we also insert immediately.
+    // For WhatsApp — prefer free WhatsApp Web session if connected; else Green API.
     let deliveryStatus: "sent" | "failed" = "sent";
     let externalId: string | null = null;
     if (safeChannel === "whatsapp") {
       const lead = leads.find((l) => l.id === leadId);
       const phone = lead?.phone ?? "";
       try {
-        const { data, error } = await supabase.functions.invoke("greenapi-proxy", {
-          body: { action: "sendMessage", phone, message: text },
-        });
-        const idMessage = (data as { data?: { idMessage?: string } } | null)?.data?.idMessage ?? null;
-        const ok =
-          !error &&
-          (data as { ok?: boolean } | null)?.ok !== false &&
-          !!idMessage;
-        if (!ok) deliveryStatus = "failed";
-        externalId = idMessage;
+        let sent = false;
+        if (projectId) {
+          const { data: webStatus } = await supabase.functions.invoke("wa-web-bridge", {
+            body: { action: "status", project_id: projectId },
+          });
+          const webConnected =
+            (webStatus as { session?: { status?: string } } | null)?.session?.status === "connected";
+          if (webConnected) {
+            const { data, error } = await supabase.functions.invoke("wa-web-bridge", {
+              body: {
+                action: "send",
+                project_id: projectId,
+                phone,
+                message: text,
+                lead_id: leadId,
+              },
+            });
+            const idMessage =
+              (data as { idMessage?: string } | null)?.idMessage ?? null;
+            const ok =
+              !error &&
+              (data as { ok?: boolean } | null)?.ok !== false &&
+              !!idMessage;
+            if (ok) {
+              sent = true;
+              externalId = idMessage;
+            }
+          }
+        }
+        if (!sent) {
+          const { data, error } = await supabase.functions.invoke("greenapi-proxy", {
+            body: { action: "sendMessage", phone, message: text },
+          });
+          const idMessage = (data as { data?: { idMessage?: string } } | null)?.data?.idMessage ?? null;
+          const ok =
+            !error &&
+            (data as { ok?: boolean } | null)?.ok !== false &&
+            !!idMessage;
+          if (!ok) deliveryStatus = "failed";
+          externalId = idMessage;
+        }
       } catch {
         deliveryStatus = "failed";
       }
@@ -805,7 +835,7 @@ export function useCrmStore() {
     } else {
       await supabase.from("communications").insert(insert);
     }
-  }, [user?.id, leads]);
+  }, [user?.id, leads, projectId]);
 
   // ---------- growth ----------
   const togglePin = useCallback(async (leadId: string) => {
