@@ -77,13 +77,59 @@ async function bridge(action, body = {}) {
 }
 
 function jidToPhone(jid) {
-  if (!jid || String(jid).endsWith("@g.us")) return "";
-  // Baileys multi-device JID: "774728425955:57@s.whatsapp.net"
-  // everything after ":" is the device id — NOT part of the phone.
-  const user = String(jid).split("@")[0] || "";
+  if (!jid) return "";
+  const s = String(jid);
+  // Never treat @lid / @g.us / status as a phone number.
+  if (s.endsWith("@lid") || s.endsWith("@g.us") || s === "status@broadcast") return "";
+  if (!s.endsWith("@s.whatsapp.net") && !s.endsWith("@c.us")) return "";
+  // Multi-device: "77472842595:57@s.whatsapp.net" → device id after ":"
+  const user = s.split("@")[0] || "";
   const phonePart = user.split(":")[0] || "";
   const d = phonePart.replace(/\D/g, "");
-  return d ? `+${d}` : "";
+  if (d.length < 8 || d.length > 15) return "";
+  return `+${d}`;
+}
+
+/** lid localpart → +phone */
+const lidPhone = new Map();
+
+function rememberLidMap(lidJid, phoneJidOrPhone) {
+  if (!lidJid || !String(lidJid).includes("@lid")) return;
+  const lid = String(lidJid).split("@")[0];
+  const phone = String(phoneJidOrPhone).startsWith("+")
+    ? String(phoneJidOrPhone)
+    : jidToPhone(phoneJidOrPhone);
+  if (lid && phone) lidPhone.set(lid, phone);
+}
+
+/** Prefer real PN jid over WhatsApp LID (linked id). */
+function resolveMessagePhone(msg) {
+  const key = msg?.key || {};
+  const candidates = [
+    key.remoteJidAlt,
+    key.participantAlt,
+    key.remoteJid,
+    key.participant,
+  ];
+  for (const jid of candidates) {
+    const phone = jidToPhone(jid);
+    if (phone) {
+      // Learn lid↔phone when both present.
+      if (String(key.remoteJid || "").endsWith("@lid") && phone) {
+        rememberLidMap(key.remoteJid, phone);
+      }
+      if (String(key.remoteJidAlt || "").endsWith("@lid") && phone) {
+        rememberLidMap(key.remoteJidAlt, phone);
+      }
+      return { phone, jid: String(jid) };
+    }
+  }
+  const rid = String(key.remoteJid || "");
+  if (rid.endsWith("@lid")) {
+    const mapped = lidPhone.get(rid.split("@")[0]);
+    if (mapped) return { phone: mapped, jid: rid };
+  }
+  return { phone: "", jid: rid };
 }
 
 async function extractText(msg) {
@@ -95,6 +141,8 @@ async function extractText(msg) {
   if (m.audioMessage) return "[Аудио]";
   if (m.documentMessage) return m.documentMessage.fileName || "[Файл]";
   if (m.stickerMessage) return "[Стикер]";
+  if (m.contactMessage) return "[Контакт]";
+  if (m.locationMessage || m.liveLocationMessage) return "[Геолокация]";
   if (m.buttonsResponseMessage?.selectedDisplayText) {
     return m.buttonsResponseMessage.selectedDisplayText;
   }
@@ -102,7 +150,42 @@ async function extractText(msg) {
   if (m.templateButtonReplyMessage?.selectedDisplayText) {
     return m.templateButtonReplyMessage.selectedDisplayText;
   }
-  return "";
+  if (m.reactionMessage) return ""; // skip reactions
+  return "[Сообщение]";
+}
+
+async function ingestWaMessage(projectId, msg, source = "upsert") {
+  if (!msg?.message || msg.message.protocolMessage || msg.message.reactionMessage) {
+    return { skipped: "protocol" };
+  }
+  const { phone, jid } = resolveMessagePhone(msg);
+  if (!phone) {
+    log.warn({ projectId, jid, source }, "skip message: no phone jid (lid?)");
+    return { skipped: "no_phone", jid };
+  }
+  const text = await extractText(msg);
+  if (!text) return { skipped: "empty" };
+  const direction = msg.key?.fromMe ? "out" : "in";
+  const externalId = msg.key?.id || null;
+  const name = msg.pushName || "";
+  const res = await bridge("ingest", {
+    project_id: projectId,
+    phone,
+    name,
+    direction,
+    text,
+    external_id: externalId,
+  });
+  log.info({
+    projectId,
+    phone,
+    direction,
+    source,
+    externalId,
+    leadId: res.leadId,
+    deduped: res.deduped,
+  }, "ingested");
+  return res;
 }
 
 /** @type {Map<string, { sock: any, connecting: boolean }>} */
@@ -132,8 +215,9 @@ async function openSocket(projectId, { forcePair = false } = {}) {
     auth: state,
     logger: pino({ level: "silent" }),
     printQRInTerminal: false,
-    syncFullHistory: false,
+    syncFullHistory: true,
     markOnlineOnConnect: false,
+    getMessage: async () => undefined,
   });
 
   sock.ev.on("creds.update", saveCreds);
@@ -186,28 +270,57 @@ async function openSocket(projectId, { forcePair = false } = {}) {
   });
 
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
-    if (type !== "notify" && type !== "append") return;
-    for (const msg of messages) {
+    log.info({ projectId, type, count: messages?.length || 0 }, "messages.upsert");
+    for (const msg of messages || []) {
       try {
-        if (!msg.message || msg.message.protocolMessage) continue;
-        const remote = msg.key.remoteJid;
-        if (!remote || remote.endsWith("@g.us") || remote === "status@broadcast") continue;
-        const phone = jidToPhone(remote);
-        if (!phone) continue;
-        const text = await extractText(msg);
-        const direction = msg.key.fromMe ? "out" : "in";
-        const externalId = msg.key.id || null;
-        const name = msg.pushName || "";
-        await bridge("ingest", {
-          project_id: projectId,
-          phone,
-          name,
-          direction,
-          text,
-          external_id: externalId,
-        });
+        await ingestWaMessage(projectId, msg, `upsert:${type || "unknown"}`);
       } catch (e) {
         log.error({ err: e, projectId }, "ingest failed");
+      }
+    }
+  });
+
+  sock.ev.on("contacts.upsert", (contacts) => {
+    for (const c of contacts || []) {
+      try {
+        const id = c.id || c.lid;
+        const pn = c.phoneNumber || c.notify || "";
+        if (id && String(id).includes("@lid") && pn) {
+          const digits = String(pn).replace(/\D/g, "");
+          if (digits.length >= 8) rememberLidMap(id, `+${digits}`);
+        }
+        if (c.id && c.lid) rememberLidMap(c.lid, c.id);
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+
+  sock.ev.on("contacts.update", (updates) => {
+    for (const c of updates || []) {
+      try {
+        if (c.id && c.lid) rememberLidMap(c.lid, c.id);
+        if (c.lid && c.phoneNumber) {
+          const digits = String(c.phoneNumber).replace(/\D/g, "");
+          if (digits.length >= 8) rememberLidMap(c.lid, `+${digits}`);
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+
+  // Initial / catch-up history after linking the device.
+  sock.ev.on("messaging-history.set", async (payload) => {
+    const messages = payload?.messages || [];
+    log.info({ projectId, count: messages.length }, "messaging-history.set");
+    // Cap to avoid flooding CRM on first sync.
+    const recent = messages.slice(-200);
+    for (const msg of recent) {
+      try {
+        await ingestWaMessage(projectId, msg, "history");
+      } catch (e) {
+        log.error({ err: e, projectId }, "history ingest failed");
       }
     }
   });

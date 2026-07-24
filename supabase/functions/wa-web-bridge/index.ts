@@ -286,6 +286,11 @@ Deno.serve(async (req) => {
         externalId,
         isAuto: !!body.is_auto,
       });
+      // Bump chat sorting in CRM.
+      await admin.from("leads").update({
+        last_activity_at: new Date().toISOString(),
+        ...(name && direction === "in" ? { name } : {}),
+      }).eq("id", leadId);
       return json({ ok: true, leadId, communicationId: row.id, deduped: row.deduped });
     }
 
