@@ -106,6 +106,15 @@ export function LeadDetailSheet({
       <SheetContent
         side="right"
         className="flex h-[100dvh] w-screen max-w-none flex-col gap-0 overflow-hidden p-0 pb-[env(safe-area-inset-bottom)] sm:max-w-none"
+        onPointerDownOutside={(e) => {
+          if (document.querySelector("[data-crm-image-lightbox]")) e.preventDefault();
+        }}
+        onInteractOutside={(e) => {
+          if (document.querySelector("[data-crm-image-lightbox]")) e.preventDefault();
+        }}
+        onEscapeKeyDown={(e) => {
+          if (document.querySelector("[data-crm-image-lightbox]")) e.preventDefault();
+        }}
       >
         <SheetHeader className="sr-only">
           <SheetTitle>{lead.name}</SheetTitle>
