@@ -94,6 +94,10 @@ type CommRow = {
   channel: string | null; content: string | null; status: string | null;
   template_key: string | null; is_draft: boolean; is_auto: boolean;
   created_by: string | null; created_at: string;
+  media_url?: string | null;
+  media_kind?: string | null;
+  media_mime?: string | null;
+  media_filename?: string | null;
 };
 
 type EventRow = {
@@ -120,6 +124,7 @@ type StageHistRow = {
 function commToChat(r: CommRow): ChatMessage {
   const isCall = r.type === "call";
   const fromMe = r.direction === "out";
+  const mediaKind = r.media_kind as ChatMessage["mediaKind"] | null;
   return {
     id: r.id,
     leadId: r.lead_id,
@@ -133,6 +138,10 @@ function commToChat(r: CommRow): ChatMessage {
       ? (r.status === "missed" ? "missed" : (r.direction === "in" ? "incoming" : "outgoing"))
       : undefined,
     templateKey: r.template_key ?? undefined,
+    mediaUrl: r.media_url ?? undefined,
+    mediaKind: mediaKind || undefined,
+    mediaMime: r.media_mime ?? undefined,
+    mediaFilename: r.media_filename ?? undefined,
   };
 }
 
@@ -294,7 +303,7 @@ export function useCrmStore() {
       leadsQuery,
       supabase
         .from("communications")
-        .select("id,lead_id,type,direction,channel,content,status,template_key,is_draft,is_auto,created_by,created_at")
+        .select("id,lead_id,type,direction,channel,content,status,template_key,is_draft,is_auto,created_by,created_at,media_url,media_kind,media_mime,media_filename")
         .order("created_at", { ascending: false })
         .limit(2000),
       supabase

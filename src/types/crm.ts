@@ -163,6 +163,11 @@ export type ChatMessage = {
   callDurationSec?: number;
   /** Key of the template used to compose the message, if any */
   templateKey?: string;
+  /** Attached media (WhatsApp voice/photo/video/file) */
+  mediaUrl?: string;
+  mediaKind?: "image" | "audio" | "video" | "document" | "sticker";
+  mediaMime?: string;
+  mediaFilename?: string;
 };
 
 export type WhatsAppConfig = {

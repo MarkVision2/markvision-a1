@@ -1,0 +1,91 @@
+import { FileText, Download } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { ChatMessage } from "@/types/crm";
+
+const PLACEHOLDER_RE = /^\[(Аудио|Изображение|Видео|Стикер|Файл|Сообщение|Документ)\]$/i;
+
+function captionOf(m: ChatMessage): string | null {
+  const t = (m.text ?? "").trim();
+  if (!t || PLACEHOLDER_RE.test(t)) return null;
+  return t;
+}
+
+/** Renders WA/CRM media inside a chat bubble (audio player, image, video, file). */
+export function ChatMediaBubble({
+  message: m,
+  fromMe,
+}: {
+  message: ChatMessage;
+  fromMe?: boolean;
+}) {
+  const caption = captionOf(m);
+  const url = m.mediaUrl;
+  const kind = m.mediaKind;
+
+  if (!url) {
+    return <div className="whitespace-pre-wrap break-words">{m.text}</div>;
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {(kind === "image" || kind === "sticker") ? (
+        <a href={url} target="_blank" rel="noreferrer" className="block">
+          <img
+            src={url}
+            alt={caption || "Изображение"}
+            className="max-h-72 max-w-full rounded-lg object-contain"
+            loading="lazy"
+          />
+        </a>
+      ) : kind === "audio" ? (
+        <audio
+          controls
+          preload="metadata"
+          src={url}
+          className="w-full min-w-[200px] max-w-[280px]"
+        />
+      ) : kind === "video" ? (
+        <video
+          controls
+          preload="metadata"
+          src={url}
+          className="max-h-72 max-w-full rounded-lg bg-black/40"
+        />
+      ) : (
+        <a
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          download={m.mediaFilename || true}
+          className={cn(
+            "inline-flex max-w-full items-center gap-2 rounded-lg px-2.5 py-2 text-xs font-medium underline-offset-2 hover:underline",
+            fromMe ? "bg-background/15" : "bg-background/50",
+          )}
+        >
+          <FileText className="h-4 w-4 shrink-0" />
+          <span className="truncate">{m.mediaFilename || "Файл"}</span>
+          <Download className="h-3.5 w-3.5 shrink-0 opacity-70" />
+        </a>
+      )}
+
+      {caption && <div className="whitespace-pre-wrap break-words">{caption}</div>}
+    </div>
+  );
+}
+
+/** Short preview line for chat list. */
+export function chatPreviewText(m: ChatMessage | undefined, fallbackPhone?: string): string {
+  if (!m) return fallbackPhone || "";
+  if (m.mediaKind === "audio") return "🎤 Голосовое";
+  if (m.mediaKind === "image" || m.mediaKind === "sticker") return "🖼 Фото";
+  if (m.mediaKind === "video") return "🎬 Видео";
+  if (m.mediaKind === "document") return `📎 ${m.mediaFilename || "Файл"}`;
+  if (PLACEHOLDER_RE.test((m.text ?? "").trim())) {
+    const t = m.text.trim();
+    if (t.includes("Аудио")) return "🎤 Голосовое";
+    if (t.includes("Изображение") || t.includes("Стикер")) return "🖼 Фото";
+    if (t.includes("Видео")) return "🎬 Видео";
+    if (t.includes("Файл") || t.includes("Документ")) return "📎 Файл";
+  }
+  return m.text || fallbackPhone || "";
+}

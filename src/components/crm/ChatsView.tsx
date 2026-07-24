@@ -19,6 +19,7 @@ import { resolveLeadSource } from "@/lib/leadSource";
 import { getStageIcon, stageColorClasses } from "./StageIcon";
 import { useQuickReplies } from "@/hooks/useQuickReplies";
 import { AiSuggestButton } from "./AiSuggestButton";
+import { ChatMediaBubble, chatPreviewText } from "./ChatMediaBubble";
 
 interface ChatsViewProps {
   leads: Lead[];
@@ -181,7 +182,11 @@ export function ChatsView({
           <div className="max-h-[480px] overflow-y-auto px-2 pb-3">
             {filteredLeads.length === 0 ? (
               <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-                Нет чатов
+                Нет чатов с сообщениями.
+                <div className="mt-1 text-[11px]">
+                  WhatsApp Web пишет в текущий проект. Откройте проект, где сканировали QR
+                  (например «Виталя»), и обновите страницу.
+                </div>
               </div>
             ) : (
               filteredLeads.map((lead) => {
@@ -235,7 +240,7 @@ export function ChatsView({
                           {sourceMeta.label}
                         </span>
                         <span className="truncate text-xs text-muted-foreground">
-                          {last ? last.text : lead.phone}
+                          {chatPreviewText(last, lead.phone)}
                         </span>
                       </div>
                     </div>
@@ -297,7 +302,7 @@ export function ChatsView({
                           : "rounded-bl-sm bg-secondary text-foreground",
                       )}
                     >
-                      <div>{m.text}</div>
+                      <ChatMediaBubble message={m} fromMe={m.fromMe} />
                       <div
                         className={cn(
                           "mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70",

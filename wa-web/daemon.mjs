@@ -23,6 +23,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import makeWASocket, {
   DisconnectReason,
+  downloadMediaMessage,
   fetchLatestBaileysVersion,
   useMultiFileAuthState,
 } from "@whiskeysockets/baileys";
@@ -188,7 +189,11 @@ async function extractText(msg) {
   if (m.imageMessage) return m.imageMessage.caption || "[Изображение]";
   if (m.videoMessage) return m.videoMessage.caption || "[Видео]";
   if (m.audioMessage) return "[Аудио]";
-  if (m.documentMessage) return m.documentMessage.fileName || "[Файл]";
+  if (m.documentMessage) {
+    return m.documentMessage.caption
+      || m.documentMessage.fileName
+      || "[Файл]";
+  }
   if (m.stickerMessage) return "[Стикер]";
   if (m.contactMessage) return "[Контакт]";
   if (m.locationMessage || m.liveLocationMessage) return "[Геолокация]";
@@ -203,7 +208,79 @@ async function extractText(msg) {
   return "[Сообщение]";
 }
 
-async function ingestWaMessage(projectId, msg, source = "upsert") {
+function detectMedia(msg) {
+  const m = msg.message || {};
+  if (m.imageMessage) {
+    return {
+      kind: "image",
+      mime: m.imageMessage.mimetype || "image/jpeg",
+      filename: null,
+      caption: m.imageMessage.caption || "",
+    };
+  }
+  if (m.videoMessage) {
+    return {
+      kind: "video",
+      mime: m.videoMessage.mimetype || "video/mp4",
+      filename: null,
+      caption: m.videoMessage.caption || "",
+    };
+  }
+  if (m.audioMessage) {
+    return {
+      kind: "audio",
+      mime: m.audioMessage.mimetype || "audio/ogg",
+      filename: null,
+      caption: "",
+    };
+  }
+  if (m.documentMessage) {
+    return {
+      kind: "document",
+      mime: m.documentMessage.mimetype || "application/octet-stream",
+      filename: m.documentMessage.fileName || "file",
+      caption: m.documentMessage.caption || "",
+    };
+  }
+  if (m.stickerMessage) {
+    return {
+      kind: "sticker",
+      mime: m.stickerMessage.mimetype || "image/webp",
+      filename: null,
+      caption: "",
+    };
+  }
+  return null;
+}
+
+const MAX_MEDIA_BYTES = 12 * 1024 * 1024;
+
+async function downloadWaMedia(sock, msg) {
+  const info = detectMedia(msg);
+  if (!info) return null;
+  try {
+    const buf = await downloadMediaMessage(
+      msg,
+      "buffer",
+      {},
+      {
+        logger: log,
+        reuploadRequest: sock.updateMediaMessage.bind(sock),
+      },
+    );
+    if (!buf || !buf.length) return { ...info, base64: null };
+    if (buf.length > MAX_MEDIA_BYTES) {
+      log.warn({ size: buf.length, kind: info.kind }, "media too large — skip upload");
+      return { ...info, base64: null };
+    }
+    return { ...info, base64: Buffer.from(buf).toString("base64") };
+  } catch (e) {
+    log.warn({ err: e, kind: info.kind }, "media download failed");
+    return { ...info, base64: null };
+  }
+}
+
+async function ingestWaMessage(projectId, msg, source = "upsert", sock = null) {
   if (!msg?.message || msg.message.protocolMessage || msg.message.reactionMessage) {
     return { skipped: "protocol" };
   }
@@ -228,6 +305,23 @@ async function ingestWaMessage(projectId, msg, source = "upsert") {
   const direction = msg.key?.fromMe ? "out" : "in";
   const externalId = msg.key?.id || null;
   const name = msg.pushName || "";
+
+  let mediaPayload = {};
+  if (sock && detectMedia(msg)) {
+    const media = await downloadWaMedia(sock, msg);
+    if (media) {
+      mediaPayload = {
+        media_kind: media.kind,
+        media_mime: media.mime,
+        media_filename: media.filename,
+        ...(media.base64 ? { media_base64: media.base64 } : {}),
+      };
+      if (media.caption && text.startsWith("[")) {
+        // prefer real caption when extractText fell back to placeholder
+      }
+    }
+  }
+
   const res = await bridge("ingest", {
     project_id: projectId,
     phone: phone || "",
@@ -236,6 +330,7 @@ async function ingestWaMessage(projectId, msg, source = "upsert") {
     direction,
     text,
     external_id: externalId,
+    ...mediaPayload,
   });
   log.info({
     projectId,
@@ -246,6 +341,8 @@ async function ingestWaMessage(projectId, msg, source = "upsert") {
     externalId,
     leadId: res.leadId,
     deduped: res.deduped,
+    mediaKind: mediaPayload.media_kind || null,
+    mediaUrl: res.mediaUrl || null,
   }, "ingested");
   return res;
 }
@@ -336,7 +433,7 @@ async function openSocket(projectId, { forcePair = false } = {}) {
     log.info({ projectId, type, count: messages?.length || 0 }, "messages.upsert");
     for (const msg of messages || []) {
       try {
-        await ingestWaMessage(projectId, msg, `upsert:${type || "unknown"}`);
+        await ingestWaMessage(projectId, msg, `upsert:${type || "unknown"}`, sock);
       } catch (e) {
         log.error({ err: e, projectId }, "ingest failed");
       }
@@ -386,7 +483,7 @@ async function openSocket(projectId, { forcePair = false } = {}) {
     const recent = messages.slice(-200);
     for (const msg of recent) {
       try {
-        await ingestWaMessage(projectId, msg, "history");
+        await ingestWaMessage(projectId, msg, "history", sock);
       } catch (e) {
         log.error({ err: e, projectId }, "history ingest failed");
       }

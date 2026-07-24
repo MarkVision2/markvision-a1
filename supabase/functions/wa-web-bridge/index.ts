@@ -181,14 +181,29 @@ async function insertCommunication(opts: {
   text: string;
   externalId?: string | null;
   isAuto?: boolean;
+  mediaUrl?: string | null;
+  mediaKind?: string | null;
+  mediaMime?: string | null;
+  mediaFilename?: string | null;
 }) {
   if (opts.externalId) {
     const { data: existing } = await admin
       .from("communications")
-      .select("id")
+      .select("id, media_url")
       .eq("external_id", opts.externalId)
       .maybeSingle();
-    if (existing?.id) return { id: existing.id as string, deduped: true };
+    if (existing?.id) {
+      if (opts.mediaUrl && !(existing as { media_url?: string | null }).media_url) {
+        await admin.from("communications").update({
+          media_url: opts.mediaUrl,
+          media_kind: opts.mediaKind,
+          media_mime: opts.mediaMime,
+          media_filename: opts.mediaFilename,
+          content: opts.text || undefined,
+        }).eq("id", existing.id);
+      }
+      return { id: existing.id as string, deduped: true };
+    }
   }
   const { data, error } = await admin
     .from("communications")
@@ -202,11 +217,79 @@ async function insertCommunication(opts: {
       is_draft: false,
       is_auto: !!opts.isAuto,
       external_id: opts.externalId ?? null,
+      media_url: opts.mediaUrl ?? null,
+      media_kind: opts.mediaKind ?? null,
+      media_mime: opts.mediaMime ?? null,
+      media_filename: opts.mediaFilename ?? null,
     })
     .select("id")
     .single();
   if (error) throw error;
   return { id: data.id as string, deduped: false };
+}
+
+function extFromMime(mime: string, filename?: string | null): string {
+  if (filename && /\.[a-z0-9]{2,5}$/i.test(filename)) {
+    return filename.split(".").pop()!.toLowerCase();
+  }
+  const base = (mime || "").split(";")[0].trim().toLowerCase();
+  const map: Record<string, string> = {
+    "audio/ogg": "ogg",
+    "audio/opus": "ogg",
+    "audio/mpeg": "mp3",
+    "audio/mp4": "m4a",
+    "audio/aac": "aac",
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "video/3gpp": "3gp",
+    "application/pdf": "pdf",
+  };
+  return map[base] || base.split("/")[1] || "bin";
+}
+
+function b64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function uploadChatMedia(opts: {
+  projectId: string;
+  leadId: string;
+  mime: string;
+  filename?: string | null;
+  base64: string;
+}): Promise<string | null> {
+  try {
+    const bytes = b64ToBytes(opts.base64);
+    if (bytes.byteLength === 0) return null;
+    if (bytes.byteLength > 40 * 1024 * 1024) {
+      console.error("wa-web media too large", bytes.byteLength);
+      return null;
+    }
+    const ext = extFromMime(opts.mime, opts.filename);
+    const path = `${opts.projectId}/${opts.leadId}/${crypto.randomUUID()}.${ext}`;
+    const contentType = (opts.mime || "application/octet-stream").split(";")[0].trim();
+    const { error } = await admin.storage.from("crm-chat-media").upload(path, bytes, {
+      contentType,
+      upsert: false,
+    });
+    if (error) {
+      console.error("wa-web media upload", error);
+      return null;
+    }
+    const { data } = admin.storage.from("crm-chat-media").getPublicUrl(path);
+    return data.publicUrl as string;
+  } catch (e) {
+    console.error("wa-web media upload failed", e);
+    return null;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -336,19 +419,45 @@ Deno.serve(async (req) => {
         whatsappLid,
       );
       if (!leadId) return json({ error: "lead not created" }, 500);
+
+      const mediaKind = body.media_kind ? String(body.media_kind) : null;
+      const mediaMime = body.media_mime ? String(body.media_mime) : null;
+      const mediaFilename = body.media_filename ? String(body.media_filename) : null;
+      const mediaBase64 = body.media_base64 ? String(body.media_base64) : null;
+      let mediaUrl: string | null = body.media_url ? String(body.media_url) : null;
+      if (!mediaUrl && mediaBase64 && mediaMime) {
+        mediaUrl = await uploadChatMedia({
+          projectId,
+          leadId,
+          mime: mediaMime,
+          filename: mediaFilename,
+          base64: mediaBase64,
+        });
+      }
+
       const row = await insertCommunication({
         leadId,
         direction,
         text,
         externalId,
         isAuto: !!body.is_auto,
+        mediaUrl,
+        mediaKind,
+        mediaMime,
+        mediaFilename,
       });
       // Bump chat sorting in CRM.
       await admin.from("leads").update({
         last_activity_at: new Date().toISOString(),
         ...(name && direction === "in" ? { name } : {}),
       }).eq("id", leadId);
-      return json({ ok: true, leadId, communicationId: row.id, deduped: row.deduped });
+      return json({
+        ok: true,
+        leadId,
+        communicationId: row.id,
+        deduped: row.deduped,
+        mediaUrl,
+      });
     }
 
     return json({ error: `unknown worker action: ${action}` }, 400);

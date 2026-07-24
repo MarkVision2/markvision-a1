@@ -1268,6 +1268,10 @@ export type Database = {
           is_auto: boolean
           is_draft: boolean
           lead_id: string
+          media_filename: string | null
+          media_kind: string | null
+          media_mime: string | null
+          media_url: string | null
           status: string | null
           template_key: string | null
           type: Database["public"]["Enums"]["communication_type"]
@@ -1285,6 +1289,10 @@ export type Database = {
           is_auto?: boolean
           is_draft?: boolean
           lead_id: string
+          media_filename?: string | null
+          media_kind?: string | null
+          media_mime?: string | null
+          media_url?: string | null
           status?: string | null
           template_key?: string | null
           type: Database["public"]["Enums"]["communication_type"]
@@ -1302,6 +1310,10 @@ export type Database = {
           is_auto?: boolean
           is_draft?: boolean
           lead_id?: string
+          media_filename?: string | null
+          media_kind?: string | null
+          media_mime?: string | null
+          media_url?: string | null
           status?: string | null
           template_key?: string | null
           type?: Database["public"]["Enums"]["communication_type"]
