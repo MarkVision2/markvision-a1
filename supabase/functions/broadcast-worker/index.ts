@@ -122,6 +122,18 @@ async function resolveCreds(projectId: string): Promise<Creds | null> {
   return { idInstance: row.id_instance, apiToken: (row.api_token ?? "").trim(), baseUrl };
 }
 
+/** Состояние аккаунта у Green API: authorized / yellowCard / blocked / … */
+async function accountState(creds: Creds): Promise<string> {
+  try {
+    const url = `${creds.baseUrl}/waInstance${creds.idInstance}/getStateInstance/${creds.apiToken}`;
+    const res = await fetch(url);
+    const data = await res.json().catch(() => null);
+    return (data as { stateInstance?: string } | null)?.stateInstance ?? "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
 /** Одна отправка. Возвращает idMessage при успехе. */
 async function sendGreen(creds: Creds, phone: string, message: string): Promise<string> {
   const chatId = `${digits(phone)}@c.us`;
@@ -351,6 +363,7 @@ Deno.serve(async (req) => {
   // Кэш creds/бюджета по проекту в пределах тика.
   const credsCache = new Map<string, Creds | null>();
   const budgetCache = new Map<string, number>(); // сколько ещё можно отправить сегодня
+  const stateCache = new Map<string, string>(); // состояние аккаунта Green по проекту
 
   for (const c of campaigns) {
     stats.touchedCampaigns.add(c.id);
@@ -381,6 +394,21 @@ Deno.serve(async (req) => {
     }
     const creds = credsCache.get(c.project_id) ?? null;
     if (!creds) continue; // WhatsApp не подключён — оставляем очередь как есть
+
+    // Ban-aware: реальное состояние аккаунта у Green (раз на проект за тик).
+    // yellowCard = предупреждение WhatsApp перед баном → немедленно на паузу.
+    if (!stateCache.has(c.project_id)) stateCache.set(c.project_id, await accountState(creds));
+    const state = stateCache.get(c.project_id) ?? "unknown";
+    if (state === "blocked" || state === "yellowCard") {
+      await pauseSender(
+        c.project_id,
+        state === "blocked"
+          ? "Аккаунт заблокирован WhatsApp"
+          : "WhatsApp выдал предупреждение (жёлтая карточка) — отправка остановлена",
+      );
+      continue;
+    }
+    if (state !== "authorized") continue; // не в сети / авторизация — просто ждём
 
     // Атомарный захват: помечает строки 'sending' и возвращает их. Два
     // параллельных воркера получат разные строки (SKIP LOCKED) → без дублей.

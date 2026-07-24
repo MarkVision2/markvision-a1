@@ -358,6 +358,30 @@ export async function fetchSafety(projectId: string): Promise<BroadcastSafety> {
   };
 }
 
+export type BroadcastHealth = {
+  connected: boolean;
+  accountState: string;
+  phone: string | null;
+  riskLevel: "ok" | "warning" | "danger";
+  riskReason: string;
+  warmupDay: number;
+  dailyCap: number;
+  sentToday: number;
+  remainingToday: number;
+  failRatePct: number;
+  recommendations: string[];
+  checkedAt: string;
+};
+
+/** «Ban-aware» здоровье рассылок: статус аккаунта Green + риск блокировки. */
+export async function fetchHealth(projectId: string): Promise<BroadcastHealth | null> {
+  const { data, error } = await supabase.functions.invoke("broadcast-health", {
+    body: { project_id: projectId },
+  });
+  if (error) return null;
+  return data as BroadcastHealth;
+}
+
 /** Снять авто-паузу номера (kill-switch reset). */
 export async function resumeSender(projectId: string): Promise<void> {
   const { error } = await db()
