@@ -73,6 +73,7 @@ type CampaignRow = {
   crm_filter: { stageKeys?: string[]; sources?: string[] } | null;
   title: string;
   message: string;
+  message_variants: string[] | null;
   target_url: string | null;
   schedule_mode: string;
   scheduled_at: string | null;
@@ -99,6 +100,7 @@ function mapRow(r: CampaignRow): Broadcast {
     title: r.title ?? "",
     message: r.message ?? "",
     targetUrl: r.target_url ?? "",
+    messageVariants: Array.isArray(r.message_variants) ? r.message_variants : [],
     schedule: { mode: r.schedule_mode === "scheduled" ? "scheduled" : "now", at: r.scheduled_at },
     status: DB_TO_STATUS[r.status] ?? "draft",
     recipientsCount: s.total ?? 0,
@@ -175,6 +177,7 @@ export async function createCampaign(
       crm_filter: draft.crmFilter,
       title: draft.title,
       message: draft.message,
+      message_variants: draft.messageVariants ?? [],
       target_url: draft.targetUrl || null,
       schedule_mode: draft.schedule.mode,
       scheduled_at: scheduledAt,
@@ -213,6 +216,7 @@ export async function updateCampaign(
     crm_filter: draft.crmFilter,
     title: draft.title,
     message: draft.message,
+    message_variants: draft.messageVariants ?? [],
     target_url: draft.targetUrl || null,
     schedule_mode: draft.schedule.mode,
     scheduled_at: scheduledAt,

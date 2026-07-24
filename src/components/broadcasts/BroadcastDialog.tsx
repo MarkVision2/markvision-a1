@@ -1,12 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Clock,
+  Loader2,
   MessageCircle,
   Send,
   Smartphone,
+  Sparkles,
   Upload,
   Users,
 } from "lucide-react";
+import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 import {
   Dialog,
   DialogContent,
@@ -52,6 +56,7 @@ function draftFromBroadcast(b: Broadcast): BroadcastDraft {
     title: b.title,
     message: b.message,
     targetUrl: b.targetUrl,
+    messageVariants: b.messageVariants,
     schedule: b.schedule,
     recipientsCount: b.recipientsCount,
   };
@@ -60,6 +65,7 @@ function draftFromBroadcast(b: Broadcast): BroadcastDraft {
 export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, onSave }: Props) {
   const [draft, setDraft] = useState<BroadcastDraft>(emptyBroadcastDraft);
   const [pasted, setPasted] = useState("");
+  const [genLoading, setGenLoading] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -111,6 +117,30 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
 
   const insertVar = () => patch("message", `${draft.message}{имя}`);
   const insertLink = () => patch("message", `${draft.message}{ссылка}`);
+
+  // Правка текста инвалидирует старые ИИ-варианты.
+  const onMessageChange = (value: string) =>
+    setDraft((p) => ({ ...p, message: value, messageVariants: [] }));
+
+  // Генерация ИИ-вариантов (антиспам): каждому получателю уходит свой.
+  const generateVariants = async () => {
+    if (!draft.message.trim()) return;
+    setGenLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("broadcast-ai-variants", {
+        body: { message: draft.message, count: 20 },
+      });
+      if (error) throw new Error(error.message || "Ошибка генерации");
+      const variants = ((data as { variants?: string[] } | null)?.variants ?? []).filter(Boolean);
+      if (!variants.length) throw new Error("ИИ не вернул варианты");
+      patch("messageVariants", variants);
+      toast.success(`Готово: ${variants.length} вариантов — каждому получателю уйдёт свой`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось сгенерировать");
+    } finally {
+      setGenLoading(false);
+    }
+  };
 
   const previewContact = useMemo(() => {
     if (draft.audienceSource === "upload") return parsedUpload[0] ?? { name: "Имя" };
@@ -312,7 +342,7 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
             />
             <textarea
               value={draft.message}
-              onChange={(e) => patch("message", e.target.value)}
+              onChange={(e) => onMessageChange(e.target.value)}
               rows={5}
               placeholder="Здравствуйте, {имя}! У нас для вас специальное предложение…"
               className={cn(inputCls, "resize-y")}
@@ -335,6 +365,48 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
                 </button>
               </div>
               <span className="text-[11px] text-muted-foreground">{draft.message.length} симв.</span>
+            </div>
+
+            {/* ИИ-варианты против спама */}
+            <div className="mt-2">
+              {draft.messageVariants.length > 0 ? (
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-success/40 bg-success/10 px-3 py-2 text-[11px]">
+                  <Sparkles className="h-3.5 w-3.5 shrink-0 text-success" />
+                  <span className="font-semibold text-success">{draft.messageVariants.length} ИИ-вариантов</span>
+                  <span className="text-muted-foreground">— каждому уходит свой, не как спам</span>
+                  <div className="ml-auto flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={generateVariants}
+                      disabled={genLoading}
+                      className="rounded-md border border-border/60 px-2 py-0.5 font-medium transition-colors hover:bg-secondary/60 disabled:opacity-60"
+                    >
+                      {genLoading ? "…" : "Обновить"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => patch("messageVariants", [])}
+                      className="rounded-md border border-border/60 px-2 py-0.5 font-medium transition-colors hover:bg-secondary/60"
+                    >
+                      Убрать
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={generateVariants}
+                  disabled={genLoading || !draft.message.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+                >
+                  {genLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                  ИИ-варианты против спама
+                </button>
+              )}
+              <p className="mt-1 text-[10px] text-muted-foreground">
+                ИИ перепишет текст в разные формулировки (приветствие, порядок слов) — массовая отправка
+                не выглядит одинаково и реже ловит спам-фильтры.
+              </p>
             </div>
 
             {draft.message.trim() && (

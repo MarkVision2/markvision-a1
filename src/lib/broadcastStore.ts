@@ -52,6 +52,8 @@ export type Broadcast = {
   message: string;
   /** Целевая ссылка для переменной {ссылка} (трекинг переходов). */
   targetUrl: string;
+  /** ИИ-варианты текста (антиспам): каждому получателю уходит случайный. */
+  messageVariants: string[];
   schedule: { mode: "now" | "scheduled"; at: string | null };
   status: BroadcastStatus;
   /** Кол-во получателей на момент последней оценки/отправки. */
@@ -179,6 +181,9 @@ function normalize(raw: Partial<Broadcast>): Broadcast {
     title: raw.title ?? "",
     message: raw.message ?? "",
     targetUrl: raw.targetUrl ?? "",
+    messageVariants: Array.isArray(raw.messageVariants)
+      ? raw.messageVariants.filter((v): v is string => typeof v === "string")
+      : [],
     schedule: {
       mode: raw.schedule?.mode === "scheduled" ? "scheduled" : "now",
       at: raw.schedule?.at ?? null,
@@ -247,6 +252,7 @@ export type BroadcastDraft = Pick<
   | "title"
   | "message"
   | "targetUrl"
+  | "messageVariants"
   | "schedule"
   | "recipientsCount"
 >;
@@ -261,6 +267,7 @@ export function emptyBroadcastDraft(): BroadcastDraft {
     title: "",
     message: "",
     targetUrl: "",
+    messageVariants: [],
     schedule: { mode: "now", at: null },
     recipientsCount: 0,
   };

@@ -8,6 +8,7 @@ import {
   Send,
   Shield,
   Smartphone,
+  Sparkles,
 } from "lucide-react";
 import {
   Dialog,
@@ -157,6 +158,13 @@ export function BroadcastSendDialog({ open, onOpenChange, broadcast, whatsappCon
               </div>
               <div className="max-h-32 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed">{preview}</div>
             </div>
+
+            {broadcast.messageVariants.length > 0 && (
+              <div className="flex items-center gap-1.5 text-[11px] text-success">
+                <Sparkles className="h-3.5 w-3.5" />
+                {broadcast.messageVariants.length} ИИ-вариантов — каждому получателю уходит свой (антиспам)
+              </div>
+            )}
 
             {/* Тестовая отправка */}
             {!isSms && whatsappConnected && (
