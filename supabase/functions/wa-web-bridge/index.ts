@@ -330,7 +330,19 @@ Deno.serve(async (req) => {
         error: "WA Web воркер не настроен (нет WA_WEB_WORKER_KEY). Запустите daemon на VPS.",
       }, 503);
     }
-    await ensureSession(projectId);
+    const session = await ensureSession(projectId);
+    if (session.status === "connected" && session.phone) {
+      return json({
+        ok: true,
+        already: true,
+        session: {
+          status: session.status,
+          phone: session.phone,
+          display_name: session.display_name,
+          worker_online: true,
+        },
+      });
+    }
     await admin.from("whatsapp_web_sessions").update({
       status: "pairing",
       qr_data: null,
@@ -340,7 +352,7 @@ Deno.serve(async (req) => {
     await admin.from("whatsapp_web_commands").insert({
       project_id: projectId,
       action: "pair",
-      payload: {},
+      payload: { force: session.status !== "pairing" },
       status: "pending",
     });
     return json({ ok: true });
