@@ -899,37 +899,6 @@ export function WhatsappProjectBindCard({
                 </Button>
               </div>
             </div>
-
-            {rows.length > 0 && (
-              <div>
-                <p className="mb-1.5 text-xs font-medium text-muted-foreground">
-                  Все привязки в системе
-                </p>
-                <div className="overflow-hidden rounded-md border border-border/60">
-                  <table className="w-full text-xs">
-                    <thead className="bg-muted/40 text-left text-muted-foreground">
-                      <tr>
-                        <th className="px-3 py-2 font-medium">Проект</th>
-                        <th className="px-3 py-2 font-medium">idInstance</th>
-                        <th className="px-3 py-2 font-medium">Номер</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((r) => {
-                        const proj = projects.find((p) => p.id === r.project_id);
-                        return (
-                          <tr key={r.id} className="border-t border-border/40">
-                            <td className="px-3 py-2">{proj?.name ?? "—"}</td>
-                            <td className="px-3 py-2"><code>{r.id_instance ?? "—"}</code></td>
-                            <td className="px-3 py-2">{r.phone ?? "—"}</td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
           </>
         )}
       </CardContent>
