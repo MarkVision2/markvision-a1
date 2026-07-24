@@ -1,7 +1,7 @@
 {
-  "git_sha": "b668a7a",
-  "git_sha_full": "b668a7a459a3821908315dec81f14409b0d67b7a",
-  "updated_at": "2026-07-23T10:27:06Z",
-  "label": "Добавил карточку аналитики сайтов",
-  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
+  "git_sha": "9b0263e",
+  "git_sha_full": "9b0263e396bfa608df0ab8885b14a049335da78b",
+  "updated_at": "2026-07-24T05:15:19Z",
+  "label": "Merge launch conversion funnel analytics",
+  "publish_hint": "push main → www.markvision.kz (Vercel)"
 }
