@@ -78,58 +78,107 @@ async function bridge(action, body = {}) {
 
 function jidToPhone(jid) {
   if (!jid) return "";
-  const s = String(jid);
+  const s = String(jid).trim();
   // Never treat @lid / @g.us / status as a phone number.
   if (s.endsWith("@lid") || s.endsWith("@g.us") || s === "status@broadcast") return "";
-  if (!s.endsWith("@s.whatsapp.net") && !s.endsWith("@c.us")) return "";
-  // Multi-device: "77472842595:57@s.whatsapp.net" → device id after ":"
-  const user = s.split("@")[0] || "";
-  const phonePart = user.split(":")[0] || "";
+  let user = s;
+  if (s.includes("@")) {
+    if (!s.endsWith("@s.whatsapp.net") && !s.endsWith("@c.us")) return "";
+    user = s.split("@")[0] || "";
+  }
+  // Multi-device: "77472842595:57@s.whatsapp.net" → strip device id after ":"
+  const phonePart = String(user).split(":")[0] || "";
   const d = phonePart.replace(/\D/g, "");
-  if (d.length < 8 || d.length > 15) return "";
+  // Dialable length; 13+ opaque ids are WhatsApp LIDs, not phones.
+  if (d.length < 8 || d.length > 12) return "";
+  if (d.startsWith("80")) return ""; // calling code 80 does not exist
   return `+${d}`;
 }
 
-/** lid localpart → +phone */
-const lidPhone = new Map();
+function lidLocal(jid) {
+  if (!jid || !String(jid).includes("@lid")) return "";
+  return String(jid).split("@")[0].split(":")[0] || "";
+}
 
-function rememberLidMap(lidJid, phoneJidOrPhone) {
-  if (!lidJid || !String(lidJid).includes("@lid")) return;
-  const lid = String(lidJid).split("@")[0];
+/** projectId → (lid localpart → +phone) — also persisted under sessions/<id>/lid-map.json */
+const lidPhoneByProject = new Map();
+
+function lidMapPath(projectId) {
+  return resolve(AUTH_ROOT, projectId, "lid-map.json");
+}
+
+function loadLidMap(projectId) {
+  let m = lidPhoneByProject.get(projectId);
+  if (m) return m;
+  m = new Map();
+  try {
+    const p = lidMapPath(projectId);
+    if (existsSync(p)) {
+      const raw = JSON.parse(readFileSync(p, "utf8"));
+      for (const [lid, phone] of Object.entries(raw || {})) {
+        if (lid && phone) m.set(String(lid), String(phone));
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  lidPhoneByProject.set(projectId, m);
+  return m;
+}
+
+function persistLidMap(projectId) {
+  const m = lidPhoneByProject.get(projectId);
+  if (!m) return;
+  try {
+    mkdirSync(resolve(AUTH_ROOT, projectId), { recursive: true });
+    writeFileSync(lidMapPath(projectId), JSON.stringify(Object.fromEntries(m), null, 0));
+  } catch (e) {
+    log.warn({ err: e, projectId }, "lid-map persist failed");
+  }
+}
+
+function rememberLidMap(projectId, lidJid, phoneJidOrPhone) {
+  const lid = lidLocal(lidJid);
+  if (!lid) return;
   const phone = String(phoneJidOrPhone).startsWith("+")
-    ? String(phoneJidOrPhone)
+    ? (jidToPhone(phoneJidOrPhone) || String(phoneJidOrPhone))
     : jidToPhone(phoneJidOrPhone);
-  if (lid && phone) lidPhone.set(lid, phone);
+  if (!phone) return;
+  const m = loadLidMap(projectId);
+  if (m.get(lid) === phone) return;
+  m.set(lid, phone);
+  persistLidMap(projectId);
+  log.info({ projectId, lid, phone }, "lid→phone mapped");
 }
 
 /** Prefer real PN jid over WhatsApp LID (linked id). */
-function resolveMessagePhone(msg) {
+function resolveMessagePhone(projectId, msg) {
   const key = msg?.key || {};
   const candidates = [
     key.remoteJidAlt,
     key.participantAlt,
+    key.senderPn,
+    key.participantPn,
     key.remoteJid,
     key.participant,
   ];
+  let lid = lidLocal(key.remoteJid) || lidLocal(key.participant) || lidLocal(key.senderLid) || "";
   for (const jid of candidates) {
     const phone = jidToPhone(jid);
     if (phone) {
-      // Learn lid↔phone when both present.
-      if (String(key.remoteJid || "").endsWith("@lid") && phone) {
-        rememberLidMap(key.remoteJid, phone);
-      }
-      if (String(key.remoteJidAlt || "").endsWith("@lid") && phone) {
-        rememberLidMap(key.remoteJidAlt, phone);
-      }
-      return { phone, jid: String(jid) };
+      if (lid) rememberLidMap(projectId, `${lid}@lid`, phone);
+      // Learn when Alt is LID and primary is PN (or vice versa).
+      if (String(key.remoteJid || "").endsWith("@lid")) rememberLidMap(projectId, key.remoteJid, phone);
+      if (String(key.remoteJidAlt || "").endsWith("@lid")) rememberLidMap(projectId, key.remoteJidAlt, phone);
+      if (key.senderLid) rememberLidMap(projectId, key.senderLid, phone);
+      return { phone, jid: String(jid), lid };
     }
   }
-  const rid = String(key.remoteJid || "");
-  if (rid.endsWith("@lid")) {
-    const mapped = lidPhone.get(rid.split("@")[0]);
-    if (mapped) return { phone: mapped, jid: rid };
+  if (lid) {
+    const mapped = loadLidMap(projectId).get(lid);
+    if (mapped) return { phone: mapped, jid: `${lid}@lid`, lid };
   }
-  return { phone: "", jid: rid };
+  return { phone: "", jid: String(key.remoteJid || ""), lid };
 }
 
 async function extractText(msg) {
@@ -158,9 +207,20 @@ async function ingestWaMessage(projectId, msg, source = "upsert") {
   if (!msg?.message || msg.message.protocolMessage || msg.message.reactionMessage) {
     return { skipped: "protocol" };
   }
-  const { phone, jid } = resolveMessagePhone(msg);
-  if (!phone) {
-    log.warn({ projectId, jid, source }, "skip message: no phone jid (lid?)");
+  const { phone, jid, lid } = resolveMessagePhone(projectId, msg);
+  if (!phone && !lid) {
+    log.warn({
+      projectId,
+      jid,
+      source,
+      key: {
+        remoteJid: msg.key?.remoteJid,
+        remoteJidAlt: msg.key?.remoteJidAlt,
+        senderPn: msg.key?.senderPn,
+        participantPn: msg.key?.participantPn,
+        senderLid: msg.key?.senderLid,
+      },
+    }, "skip message: no phone/lid");
     return { skipped: "no_phone", jid };
   }
   const text = await extractText(msg);
@@ -170,7 +230,8 @@ async function ingestWaMessage(projectId, msg, source = "upsert") {
   const name = msg.pushName || "";
   const res = await bridge("ingest", {
     project_id: projectId,
-    phone,
+    phone: phone || "",
+    whatsapp_lid: lid || null,
     name,
     direction,
     text,
@@ -178,7 +239,8 @@ async function ingestWaMessage(projectId, msg, source = "upsert") {
   });
   log.info({
     projectId,
-    phone,
+    phone: phone || null,
+    lid: lid || null,
     direction,
     source,
     externalId,
@@ -208,6 +270,7 @@ async function openSocket(projectId, { forcePair = false } = {}) {
   }
 
   sockets.set(projectId, { sock: null, connecting: true });
+  loadLidMap(projectId);
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
   const { version } = await fetchLatestBaileysVersion();
   const sock = makeWASocket({
@@ -284,12 +347,12 @@ async function openSocket(projectId, { forcePair = false } = {}) {
     for (const c of contacts || []) {
       try {
         const id = c.id || c.lid;
-        const pn = c.phoneNumber || c.notify || "";
+        // phoneNumber is the PN jid/number; notify is a display name — never use as phone.
+        const pn = c.phoneNumber || "";
         if (id && String(id).includes("@lid") && pn) {
-          const digits = String(pn).replace(/\D/g, "");
-          if (digits.length >= 8) rememberLidMap(id, `+${digits}`);
+          rememberLidMap(projectId, id, pn);
         }
-        if (c.id && c.lid) rememberLidMap(c.lid, c.id);
+        if (c.id && c.lid) rememberLidMap(projectId, c.lid, c.id);
       } catch {
         /* ignore */
       }
@@ -299,14 +362,19 @@ async function openSocket(projectId, { forcePair = false } = {}) {
   sock.ev.on("contacts.update", (updates) => {
     for (const c of updates || []) {
       try {
-        if (c.id && c.lid) rememberLidMap(c.lid, c.id);
-        if (c.lid && c.phoneNumber) {
-          const digits = String(c.phoneNumber).replace(/\D/g, "");
-          if (digits.length >= 8) rememberLidMap(c.lid, `+${digits}`);
-        }
+        if (c.id && c.lid) rememberLidMap(projectId, c.lid, c.id);
+        if (c.lid && c.phoneNumber) rememberLidMap(projectId, c.lid, c.phoneNumber);
       } catch {
         /* ignore */
       }
+    }
+  });
+
+  sock.ev.on("chats.phoneNumberShare", ({ lid, jid }) => {
+    try {
+      rememberLidMap(projectId, lid, jid);
+    } catch {
+      /* ignore */
     }
   });
 

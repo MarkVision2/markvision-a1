@@ -40,6 +40,15 @@ function timeAgo(iso: string): string {
   return "";
 }
 
+/** Hide WhatsApp LID digits mistaken for a phone (e.g. +80968874504413). */
+function displayablePhone(raw?: string | null): string {
+  const trimmed = (raw ?? "").trim();
+  const d = trimmed.replace(/\D/g, "");
+  if (d.length < 8 || d.length > 12) return "";
+  if (d.startsWith("80")) return "";
+  return trimmed;
+}
+
 function copyText(value: string, message: string) {
   navigator.clipboard.writeText(value).then(
     () => toast.success(message),
@@ -54,7 +63,7 @@ export function LeadHeader({
   const assignee = members.find((m) => m.id === lead.assigneeId);
   const sourceMeta = resolveLeadSource(lead);
   const SourceIcon = sourceMeta.Icon;
-  const phone = lead.phone?.trim();
+  const phone = displayablePhone(lead.phone);
   const createdAgo = lead.createdAt ? timeAgo(lead.createdAt) : "";
 
   return (

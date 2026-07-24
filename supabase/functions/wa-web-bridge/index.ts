@@ -30,6 +30,13 @@ function digits(s: string | null | undefined): string {
   return String(s ?? "").replace(/\D/g, "");
 }
 
+/** Dialable E.164 for CRM. Reject WhatsApp LID opaque ids (13+ digits / fake CC 80). */
+function isPlausiblePhone(d: string): boolean {
+  if (d.length < 8 || d.length > 12) return false;
+  if (d.startsWith("80")) return false;
+  return true;
+}
+
 function workerOk(req: Request): boolean {
   if (!WORKER_KEY) return false;
   const presented = req.headers.get("x-wa-web-key") ?? "";
@@ -86,20 +93,57 @@ async function getDefaultStage(projectId: string | null): Promise<{ pipeline_id:
   return null;
 }
 
-async function findOrCreateLead(phoneRaw: string, name: string, projectId: string): Promise<string | null> {
+async function findOrCreateLead(
+  phoneRaw: string,
+  name: string,
+  projectId: string,
+  whatsappLid?: string | null,
+): Promise<string | null> {
   const d = digits(phoneRaw);
-  if (d.length < 8) return null;
-  const variants = [`+${d}`, d];
-  const { data: match } = await admin
-    .from("leads")
-    .select("id")
-    .eq("project_id", projectId)
-    .eq("is_personal", false)
-    .or(variants.map((p) => `phone.eq.${p}`).join(","))
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (match?.id) return match.id as string;
+  const phoneOk = isPlausiblePhone(d);
+  const lid = String(whatsappLid ?? "").replace(/\D/g, "") || null;
+
+  if (phoneOk) {
+    const variants = [`+${d}`, d];
+    const { data: match } = await admin
+      .from("leads")
+      .select("id, whatsapp_lid")
+      .eq("project_id", projectId)
+      .eq("is_personal", false)
+      .or(variants.map((p) => `phone.eq.${p}`).join(","))
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (match?.id) {
+      if (lid && !(match as { whatsapp_lid?: string | null }).whatsapp_lid) {
+        await admin.from("leads").update({ whatsapp_lid: lid }).eq("id", match.id);
+      }
+      return match.id as string;
+    }
+  }
+
+  if (lid) {
+    const { data: byLid } = await admin
+      .from("leads")
+      .select("id, phone")
+      .eq("project_id", projectId)
+      .eq("is_personal", false)
+      .eq("whatsapp_lid", lid)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (byLid?.id) {
+      if (phoneOk) {
+        const cur = digits((byLid as { phone?: string | null }).phone);
+        if (!isPlausiblePhone(cur)) {
+          await admin.from("leads").update({ phone: `+${d}` }).eq("id", byLid.id);
+        }
+      }
+      return byLid.id as string;
+    }
+  }
+
+  if (!phoneOk && !lid) return null;
 
   const def = await getDefaultStage(projectId);
   if (!def) return null;
@@ -111,8 +155,9 @@ async function findOrCreateLead(phoneRaw: string, name: string, projectId: strin
   const { data: created, error } = await admin
     .from("leads")
     .insert({
-      name: name?.trim() || `+${d}`,
-      phone: `+${d}`,
+      name: name?.trim() || (phoneOk ? `+${d}` : "WhatsApp"),
+      phone: phoneOk ? `+${d}` : null,
+      whatsapp_lid: lid,
       source: "whatsapp",
       channel: "whatsapp",
       project_id: projectId,
@@ -272,12 +317,24 @@ Deno.serve(async (req) => {
     if (action === "ingest") {
       const projectId = String(body.project_id ?? "");
       const phone = String(body.phone ?? "");
+      const whatsappLid = body.whatsapp_lid ? String(body.whatsapp_lid).replace(/\D/g, "") : null;
       const direction = body.direction === "out" ? "out" : "in";
       const text = String(body.text ?? "");
       const externalId = body.external_id ? String(body.external_id) : null;
       const name = String(body.name ?? "");
-      if (!projectId || !phone) return json({ error: "project_id + phone required" }, 400);
-      const leadId = await findOrCreateLead(phone, name, projectId);
+      if (!projectId || (!phone && !whatsappLid)) {
+        return json({ error: "project_id + (phone|whatsapp_lid) required" }, 400);
+      }
+      const d = digits(phone);
+      if (phone && !isPlausiblePhone(d) && !whatsappLid) {
+        return json({ error: "invalid phone (looks like WhatsApp LID)" }, 400);
+      }
+      const leadId = await findOrCreateLead(
+        isPlausiblePhone(d) ? phone : "",
+        name,
+        projectId,
+        whatsappLid,
+      );
       if (!leadId) return json({ error: "lead not created" }, 500);
       const row = await insertCommunication({
         leadId,
