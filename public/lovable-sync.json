@@ -1,7 +1,7 @@
 {
-  "git_sha": "e9dff0c",
-  "git_sha_full": "e9dff0c8e7eff9a9226128bcf548523b62142dd2",
-  "updated_at": "2026-07-24T09:47:46Z",
-  "label": "Merge wa-web chats ingest fix",
-  "publish_hint": "push main → www.markvision.kz (Vercel)"
+  "git_sha": "2c41022",
+  "git_sha_full": "2c410225bce1fc5e15407d66bc475c800387f646",
+  "updated_at": "2026-07-24T10:50:24Z",
+  "label": "fix(crm): type FieldLabel icon prop for LeadDealTab",
+  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
