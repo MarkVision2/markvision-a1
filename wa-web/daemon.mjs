@@ -157,14 +157,20 @@ async function openSocket(projectId, { forcePair = false } = {}) {
       if (connection === "close") {
         const code = lastDisconnect?.error?.output?.statusCode;
         const loggedOut = code === DisconnectReason.loggedOut;
+        // 515 = restartRequired — normal right after QR scan / pairing.
+        const restartRequired = code === DisconnectReason.restartRequired || code === 515;
         sockets.delete(projectId);
         if (loggedOut) {
           await setState(projectId, "disconnected");
           log.warn({ projectId }, "logged out");
+        } else if (restartRequired) {
+          // Keep pairing/connected UX clean — no scary "reconnect 515".
+          log.info({ projectId, code }, "restart required — reconnecting");
+          setTimeout(() => {
+            openSocket(projectId).catch((e) => log.error(e));
+          }, 1500);
         } else {
-          await setState(projectId, "error", {
-            error: `reconnect ${code ?? "unknown"}`,
-          });
+          // Transient drop: stay in pairing if we were pairing, else reconnect quietly.
           log.warn({ projectId, code }, "connection closed — retry soon");
           setTimeout(() => {
             openSocket(projectId).catch((e) => log.error(e));
@@ -213,7 +219,22 @@ async function handleCommand(cmd) {
   const action = cmd.action;
   try {
     if (action === "pair") {
-      await openSocket(projectId, { forcePair: true });
+      const existing = sockets.get(projectId);
+      // Already live — don't wipe session / spam new QR.
+      if (existing?.sock?.user) {
+        const me = existing.sock.user;
+        const phone = jidToPhone(me?.id) || (me?.id ? `+${String(me.id).split(":")[0]}` : null);
+        await setState(projectId, "connected", {
+          phone,
+          display_name: me?.name || me?.verifiedName || null,
+        });
+        await bridge("ack", { id: cmd.id, status: "done", result: { ok: true, already: true } });
+        return;
+      }
+      const authDir = resolve(AUTH_ROOT, projectId);
+      const hasCreds = existsSync(resolve(authDir, "creds.json"));
+      // Only wipe when user asks for a fresh QR and there is no working session.
+      await openSocket(projectId, { forcePair: !hasCreds || !!cmd.payload?.force });
       await bridge("ack", { id: cmd.id, status: "done", result: { ok: true } });
       return;
     }
