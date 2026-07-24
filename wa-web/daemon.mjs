@@ -43,7 +43,11 @@ function loadEnv(path) {
   return out;
 }
 
-const env = { ...loadEnv(resolve(ROOT, ".env")), ...process.env };
+const env = {
+  ...loadEnv(resolve(ROOT, ".env")),
+  ...loadEnv(resolve(HERE, ".env.local")),
+  ...process.env,
+};
 const SUPABASE_URL = (env.VITE_SUPABASE_URL || env.VITE_CLIENT_SUPABASE_URL || env.SUPABASE_URL || "").replace(/\/+$/, "");
 const ANON_KEY = env.VITE_SUPABASE_PUBLISHABLE_KEY || env.VITE_CLIENT_SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY || "";
 const WORKER_KEY = env.WA_WEB_WORKER_KEY || "";
