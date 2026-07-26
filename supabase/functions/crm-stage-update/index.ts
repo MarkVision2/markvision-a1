@@ -171,19 +171,79 @@ Deno.serve(async (req) => {
       .maybeSingle();
     lead = data as typeof lead;
   } else {
-    // Match by phone suffix (last 10 digits) within project
+    // Match by phone within project — do NOT limit to last 50 rows (misses older leads).
     const needle = phone.slice(-10);
     const { data } = await supabase
       .from("leads")
       .select("id, stage_id, pipeline_id, tags, temperature, webinar_status, deposit_amount, phone")
       .eq("project_id", projectId)
       .eq("is_personal", false)
+      .or(`phone.eq.+${phone},phone.eq.${phone},phone.like.%${needle}`)
       .order("created_at", { ascending: false })
-      .limit(50);
-    const hit = (data ?? []).find((r: { phone?: string }) =>
-      digits(r.phone).endsWith(needle) || needle.endsWith(digits(r.phone).slice(-10))
-    );
+      .limit(20);
+    const hit = (data ?? []).find((r: { phone?: string }) => {
+      const p = digits(r.phone);
+      return p === phone || p.endsWith(needle) || needle.endsWith(p.slice(-10));
+    });
     lead = (hit as typeof lead) ?? null;
+  }
+
+  // Bot activated but no CRM lead yet (form missed / webhook was on n8n only) → create.
+  if (!lead && phone.length >= 8 && (event === "bot_activated" || event === "whatsapp_messaged")) {
+    const { data: pipe } = await supabase
+      .from("pipelines")
+      .select("id")
+      .eq("project_id", projectId)
+      .eq("is_default", true)
+      .limit(1)
+      .maybeSingle();
+    const pipelineIdNew = pipe?.id ?? null;
+    if (pipelineIdNew) {
+      const { data: stagesNew } = await supabase
+        .from("pipeline_stages")
+        .select("id, key, stage_role, order_index")
+        .eq("pipeline_id", pipelineIdNew)
+        .order("order_index");
+      const stageListNew = stagesNew ?? [];
+      const botStage = stageListNew.find((s) =>
+        (s as { stage_role?: string }).stage_role === "bot_activated"
+        || s.key === "bot_activated"
+        || s.key === "whatsapp"
+      ) ?? stageListNew.find((s) =>
+        (s as { stage_role?: string }).stage_role === "new" || s.key === "new"
+      );
+      const { data: proj } = await supabase
+        .from("projects")
+        .select("created_by")
+        .eq("id", projectId)
+        .maybeSingle();
+      const ownerId = (proj as { created_by?: string | null } | null)?.created_by ?? null;
+      const metaName = String((metadata as { name?: string; senderName?: string }).name
+        ?? (metadata as { senderName?: string }).senderName
+        ?? "").trim();
+      const { data: created, error: createErr } = await supabase
+        .from("leads")
+        .insert({
+          name: metaName || `+${phone}`,
+          phone: `+${phone}`,
+          source: "whatsapp",
+          channel: "whatsapp",
+          project_id: projectId,
+          pipeline_id: pipelineIdNew,
+          stage_id: botStage?.id ?? null,
+          created_by: ownerId,
+          assigned_to: ownerId,
+          click_id: `wa_act_${phone}`,
+          last_activity_at: new Date().toISOString(),
+        })
+        .select("id, stage_id, pipeline_id, tags, temperature, webinar_status, deposit_amount")
+        .single();
+      if (createErr) {
+        console.error("crm-stage-update createLead", createErr);
+      } else {
+        lead = created as typeof lead;
+      }
+    }
   }
 
   if (!lead) {
