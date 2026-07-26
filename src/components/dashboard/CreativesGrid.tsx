@@ -224,7 +224,10 @@ export function CreativesGrid({
                   </div>
                   <div>
                     <div className="text-muted-foreground">{leadLabel}</div>
-                    <div className="font-bold tabular-nums">{fmtNum(leadValue)}</div>
+                    <div className={cn(
+                      "font-bold tabular-nums",
+                      (sortKey === "crmLeads" || sortKey === "leads") && leadValue > 0 && "text-primary",
+                    )}>{fmtNum(leadValue)}</div>
                   </div>
                   <div>
                     <div className="text-muted-foreground">Продажи</div>
