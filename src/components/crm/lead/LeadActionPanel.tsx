@@ -42,7 +42,7 @@ const ActionButton = forwardRef<HTMLButtonElement, ActionButtonProps & React.Com
         onClick={onClick}
         {...rest}
         className={cn(
-          "flex h-full w-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-2xl px-2 py-2.5 text-[11px] font-medium transition-colors",
+          "flex min-h-[4.5rem] h-full w-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-2xl px-2 py-2.5 text-[11px] font-medium transition-colors",
           tone === "danger"
             ? "bg-destructive/8 text-destructive ring-1 ring-destructive/25 hover:bg-destructive/15"
             : "bg-secondary/40 text-foreground ring-1 ring-border/40 hover:bg-secondary/70 hover:ring-border/60",

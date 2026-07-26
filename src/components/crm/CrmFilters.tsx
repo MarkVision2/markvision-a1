@@ -25,7 +25,7 @@ export function CrmFilters({ state, onChange, sources, members }: Props) {
     <button
       onClick={onClick}
       className={cn(
-        "shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+        "shrink-0 rounded-full border px-3 py-2 text-xs font-medium transition-colors sm:py-1",
         active
           ? "border-primary bg-primary/15 text-primary"
           : "border-border/60 bg-card/60 text-muted-foreground hover:text-foreground",
@@ -40,13 +40,13 @@ export function CrmFilters({ state, onChange, sources, members }: Props) {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative flex-1 min-w-[220px] max-w-sm">
+        <div className="relative min-w-0 flex-1 sm:min-w-[220px] sm:max-w-sm">
           <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => onChange({ ...state, search: e.target.value })}
             placeholder="Поиск по имени или телефону…"
-            className="pl-9"
+            className="h-11 pl-9 text-base sm:h-10 sm:text-sm"
           />
         </div>
         {hasFilters && (

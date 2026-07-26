@@ -132,7 +132,7 @@ export function ChatsView({
       )}
 
       {/* status tabs */}
-      <div className="flex flex-wrap gap-1 border-b border-border/60 px-3 py-2">
+      <div className="flex gap-1 overflow-x-auto touch-pan-x border-b border-border/60 px-3 py-2 scrollbar-none">
         {stageFilters.map((s) => {
           const active = activeStageId === s.id;
           const count =
@@ -144,7 +144,7 @@ export function ChatsView({
               key={s.id}
               onClick={() => setActiveStageId(s.id)}
               className={cn(
-                "flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors",
+                "flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors sm:min-h-0 sm:py-1.5",
                 active
                   ? "bg-primary/15 text-primary"
                   : "text-muted-foreground hover:bg-secondary/60",
@@ -175,11 +175,11 @@ export function ChatsView({
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Поиск..."
-                className="pl-9"
+                className="h-11 pl-9 text-base sm:h-10 sm:text-sm"
               />
             </div>
           </div>
-          <div className="max-h-[480px] overflow-y-auto px-2 pb-3">
+          <div className="max-h-[min(60dvh,480px)] overflow-y-auto overscroll-contain px-2 pb-3 md:max-h-[480px]">
             {filteredLeads.length === 0 ? (
               <div className="px-3 py-8 text-center text-sm text-muted-foreground">
                 Нет чатов с сообщениями.
@@ -252,12 +252,16 @@ export function ChatsView({
         </div>
 
         {/* chat */}
-        <div className={cn("flex min-h-[min(520px,65dvh)] flex-col md:min-h-[520px]", isMobile && !activeLeadId && "hidden")}>
+        <div className={cn(
+          "flex min-h-[min(70dvh,620px)] flex-col md:min-h-[520px]",
+          isMobile && !activeLeadId && "hidden",
+          isMobile && activeLeadId && "min-h-[calc(100dvh-12rem)]",
+        )}>
           {activeLead ? (
             <>
-              <div className="flex items-center gap-3 border-b border-border/60 px-4 py-3">
+              <div className="flex shrink-0 items-center gap-3 border-b border-border/60 px-4 py-3">
                 {isMobile && (
-                  <button type="button" onClick={() => setActiveLeadId(null)} className="grid h-10 w-10 shrink-0 place-items-center rounded-full hover:bg-secondary" aria-label="Назад к списку">
+                  <button type="button" onClick={() => setActiveLeadId(null)} className="grid h-11 w-11 shrink-0 place-items-center rounded-full hover:bg-secondary" aria-label="Назад к списку">
                     <ArrowLeft className="h-5 w-5" />
                   </button>
                 )}
@@ -279,7 +283,7 @@ export function ChatsView({
                 </span>
               </div>
 
-              <div className="flex-1 space-y-2 overflow-y-auto bg-background/40 px-4 py-4">
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain bg-background/40 px-4 py-4">
                 {activeChats.length === 0 && (
                   <div className="grid h-full place-items-center text-center text-sm text-muted-foreground">
                     Сообщений ещё нет.<br />
@@ -296,7 +300,7 @@ export function ChatsView({
                   >
                     <div
                       className={cn(
-                        "max-w-[70%] rounded-2xl px-3 py-2 text-sm",
+                        "max-w-[min(85%,22rem)] rounded-2xl px-3 py-2 text-sm",
                         m.fromMe
                           ? "rounded-br-sm bg-primary text-primary-foreground"
                           : "rounded-bl-sm bg-secondary text-foreground",
@@ -319,61 +323,71 @@ export function ChatsView({
                 ))}
               </div>
 
-              <div className="flex items-center gap-2 border-t border-border/60 px-3 py-3">
-                <Input
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleSend();
-                    }
-                  }}
-                  placeholder={
-                    whatsapp.connected
-                      ? "Сообщение..."
-                      : "Подключите WhatsApp, чтобы отправлять"
-                  }
-                  disabled={!whatsapp.connected}
-                />
-                <Button
-                  onClick={handleSend}
-                  disabled={!whatsapp.connected || !draft.trim()}
-                  className="bg-gradient-primary text-primary-foreground"
-                >
-                  <Send className="h-4 w-4" />
-                </Button>
-              </div>
-              {/* Quick replies + AI */}
-              <div className="flex flex-col gap-2 border-t border-border/60 px-3 py-2">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {quickReplies.map((q, i) => (
-                    <span key={i} className="group inline-flex items-center gap-1 rounded-full border border-border/60 bg-secondary/60 pl-2.5 pr-1 py-0.5 text-[11px]">
-                      <button onClick={() => setDraft(q)} className="max-w-[180px] truncate text-left">
-                        {q}
+              <div className="shrink-0 border-t border-border/60 bg-background/95 backdrop-blur-sm">
+                <div className="flex flex-col gap-2 px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {quickReplies.map((q, i) => (
+                      <span key={i} className="group inline-flex min-h-8 items-center gap-1 rounded-full border border-border/60 bg-secondary/60 pl-2.5 pr-1 py-1 text-[11px]">
+                        <button type="button" onClick={() => setDraft(q)} className="max-w-[180px] truncate text-left">
+                          {q}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeReply(i)}
+                          className="grid h-6 w-6 place-items-center rounded-full opacity-70 transition-opacity hover:bg-secondary md:opacity-0 md:group-hover:opacity-100"
+                          title="Удалить"
+                          aria-label="Удалить шаблон"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </span>
+                    ))}
+                    {draft.trim() && (
+                      <button
+                        type="button"
+                        onClick={() => { addReply(draft); }}
+                        className="inline-flex min-h-8 items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/20"
+                        title="Сохранить как шаблон"
+                      >
+                        <Plus className="h-3 w-3" /> в шаблоны
                       </button>
-                      <button onClick={() => removeReply(i)} className="opacity-0 transition-opacity group-hover:opacity-100" title="Удалить">
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                  ))}
-                  {draft.trim() && (
-                    <button
-                      onClick={() => { addReply(draft); }}
-                      className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary hover:bg-primary/20"
-                      title="Сохранить как шаблон"
-                    >
-                      <Plus className="h-3 w-3" /> в шаблоны
-                    </button>
-                  )}
+                    )}
+                  </div>
+                  <AiSuggestButton
+                    messages={activeChats.map((c) => ({ fromMe: c.fromMe, text: c.text }))}
+                    stage={stageTitle}
+                    leadName={activeLead.name}
+                    channel={activeLead.channel}
+                    onPick={(text) => setDraft(text)}
+                  />
                 </div>
-                <AiSuggestButton
-                  messages={activeChats.map((c) => ({ fromMe: c.fromMe, text: c.text }))}
-                  stage={stageTitle}
-                  leadName={activeLead.name}
-                  channel={activeLead.channel}
-                  onPick={(text) => setDraft(text)}
-                />
+                <div className="flex items-center gap-2 px-3 pb-3 pt-1">
+                  <Input
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSend();
+                      }
+                    }}
+                    placeholder={
+                      whatsapp.connected
+                        ? "Сообщение..."
+                        : "Подключите WhatsApp, чтобы отправлять"
+                    }
+                    disabled={!whatsapp.connected}
+                    className="h-11 text-base sm:h-10 sm:text-sm"
+                  />
+                  <Button
+                    onClick={handleSend}
+                    disabled={!whatsapp.connected || !draft.trim()}
+                    className="h-11 w-11 shrink-0 bg-gradient-primary p-0 text-primary-foreground sm:h-10 sm:w-10"
+                    aria-label="Отправить"
+                  >
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             </>
           ) : (

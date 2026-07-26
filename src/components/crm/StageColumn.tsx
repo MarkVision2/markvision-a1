@@ -36,6 +36,7 @@ const VIRTUALIZE_MIN = 35;
 
 interface StageColumnProps {
   stage: LeadStage;
+  stages: LeadStage[];
   leads: Lead[];
   metrics?: StageMetrics;
   members: TeamMember[];
@@ -71,6 +72,7 @@ function fmtMin(m: number | null) {
 
 function StageColumnImpl({
   stage,
+  stages,
   leads,
   metrics,
   members,
@@ -166,9 +168,11 @@ function StageColumnImpl({
         highlightSla={isAlertColumn}
         selectMode={selectMode}
         selected={selectedIds.has(lead.id)}
+        stages={stages}
         onSelectToggle={toggleLeadSelection}
         onClick={() => onOpenLead(lead)}
         onTogglePin={onTogglePin}
+        onChangeStage={onDropLead}
       />
     );
   };
@@ -182,7 +186,7 @@ function StageColumnImpl({
       onDragLeave={() => setDragOver(false)}
       onDrop={handleDrop}
       className={cn(
-        "flex h-full min-h-[280px] w-[300px] shrink-0 flex-col rounded-2xl border bg-card/40 p-3 transition-colors",
+        "flex h-full min-h-[240px] w-[min(300px,calc(100vw-2rem))] shrink-0 flex-col rounded-2xl border bg-card/40 p-3 transition-colors sm:w-[300px]",
         isAlertColumn ? "border-destructive/40 bg-destructive/5" : "border-border/60",
         dragOver && "border-primary/60 bg-primary/5",
       )}
@@ -256,7 +260,7 @@ function StageColumnImpl({
                 setSelectMode(true);
                 setSelectedIds(new Set());
               }}
-              className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary"
+              className="grid h-9 w-9 place-items-center rounded-lg text-muted-foreground hover:bg-primary/10 hover:text-primary sm:h-7 sm:w-7"
               title="Выбрать несколько сделок"
               aria-label="Выбрать несколько"
             >
@@ -265,7 +269,7 @@ function StageColumnImpl({
             <button
               type="button"
               onClick={() => void confirmDeleteLeads(leads.map((l) => l.id), `все ${leads.length} сделок на этапе «${stage.title}»`)}
-              className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              className="grid h-9 w-9 place-items-center rounded-lg text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:h-7 sm:w-7"
               title={`Удалить все сделки на этапе (${leads.length})`}
               aria-label="Удалить все на этапе"
             >
@@ -277,14 +281,14 @@ function StageColumnImpl({
         <button
           type="button"
           onClick={() => setCollapsed((c) => !c)}
-          className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-secondary/60"
+          className="grid h-9 w-9 place-items-center rounded-lg text-muted-foreground hover:bg-secondary/60 sm:h-7 sm:w-7"
           aria-label="Свернуть"
         >
           <ChevronDown className={cn("h-4 w-4 transition-transform", collapsed && "-rotate-90")} />
         </button>
 
         <DropdownMenu>
-          <DropdownMenuTrigger className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground hover:bg-secondary/60">
+          <DropdownMenuTrigger className="grid h-9 w-9 place-items-center rounded-lg text-muted-foreground hover:bg-secondary/60 sm:h-7 sm:w-7">
             <MoreVertical className="h-4 w-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-48">
@@ -401,7 +405,8 @@ function StageColumnImpl({
             <div className="grid min-h-[120px] flex-1 place-items-center rounded-xl border border-dashed border-border/60 bg-secondary/20 p-6 text-center text-xs text-muted-foreground">
               <div>
                 <Icon className={cn("mx-auto mb-2 h-5 w-5 opacity-60", colors.text)} />
-                Перетащите карточку
+                <span className="hidden md:inline">Перетащите карточку</span>
+                <span className="md:hidden">Смените этап кнопкой на карточке</span>
               </div>
             </div>
           ) : useVirtualList ? (

@@ -1,11 +1,18 @@
 import { memo, useSyncExternalStore, type DragEvent, type MouseEvent } from "react";
-import { Bot, Phone, Sparkles, Star, Tag } from "lucide-react";
+import { ArrowRightLeft, Bot, Phone, Sparkles, Star, Tag } from "lucide-react";
 import { subscribeAutoMoved, isRecentlyAutoMoved, getAutoMovedSnapshot } from "@/lib/autoMoveTracker";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
-import type { Lead } from "@/types/crm";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import type { Lead, LeadStage } from "@/types/crm";
 import { leadSlaMinutes, recommendationFor, slaTone } from "@/hooks/useCrmAnalytics";
 import { resolveLeadSource } from "@/lib/leadSource";
+import { classifyQuality, QUALITY_LABEL, QUALITY_BADGE_CLS } from "@/lib/quality";
 
 interface LeadCardProps {
   lead: Lead;
@@ -13,9 +20,11 @@ interface LeadCardProps {
   highlightSla?: boolean;
   selectMode?: boolean;
   selected?: boolean;
+  stages?: LeadStage[];
   onSelectToggle?: (leadId: string) => void;
   onClick?: () => void;
   onTogglePin?: (leadId: string) => void;
+  onChangeStage?: (leadId: string, stageId: string) => void;
 }
 
 function timeAgo(iso: string) {
@@ -29,8 +38,6 @@ function timeAgo(iso: string) {
   return `${d} д`;
 }
 
-import { classifyQuality, QUALITY_LABEL, QUALITY_BADGE_CLS } from "@/lib/quality";
-
 function scoreColor(score: number) {
   if (score >= 75) return "text-success";
   if (score >= 50) return "text-warning";
@@ -43,9 +50,11 @@ function LeadCardImpl({
   highlightSla,
   selectMode,
   selected,
+  stages,
   onSelectToggle,
   onClick,
   onTogglePin,
+  onChangeStage,
 }: LeadCardProps) {
   const handleDragStart = (e: DragEvent) => {
     if (selectMode) {
@@ -73,19 +82,28 @@ function LeadCardImpl({
   const tone = slaTone(sla);
   const showSlaTimer = highlightSla || (!lead.firstResponseAt && (lead.stageId === "new" || lead.stageId === "no_answer"));
   const rec = recommendationFor(lead.aiScore);
+  const otherStages = (stages ?? []).filter((s) => s.id !== lead.stageId);
+  const canMoveStage = !selectMode && !!onChangeStage && otherStages.length > 0;
 
   // Бейдж «🤖 авто» — если лид недавно был автоматически передвинут n8n-WA-анализом
   useSyncExternalStore(subscribeAutoMoved, getAutoMovedSnapshot, getAutoMovedSnapshot);
   const autoMoved = isRecentlyAutoMoved(lead.id);
 
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       draggable={!selectMode}
       onDragStart={handleDragStart}
       onClick={handleClick}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          handleClick();
+        }
+      }}
       className={cn(
-        "group relative w-full shrink-0 rounded-xl border bg-card/80 p-3 pb-9 text-left transition-shadow hover:shadow-md",
+        "group relative w-full shrink-0 rounded-xl border bg-card/80 p-3 pb-10 text-left transition-shadow hover:shadow-md",
         selectMode ? "cursor-pointer" : "cursor-grab active:cursor-grabbing",
         selected ? "border-primary ring-2 ring-primary/30" : lead.pinned ? "border-primary/40 ring-1 ring-primary/20" : "border-border/60 hover:border-primary/50",
         showSlaTimer && tone === "bad" && "ring-1 ring-destructive/40",
@@ -253,7 +271,8 @@ function LeadCardImpl({
             }
           }}
           className={cn(
-            "absolute bottom-2 right-2 grid h-6 w-6 cursor-pointer place-items-center rounded-md text-muted-foreground opacity-0 transition-opacity hover:bg-secondary group-hover:opacity-100",
+            "absolute bottom-2 right-2 grid h-8 w-8 cursor-pointer place-items-center rounded-md text-muted-foreground transition-opacity hover:bg-secondary",
+            "opacity-100 md:opacity-0 md:group-hover:opacity-100",
             lead.pinned && "text-primary opacity-100",
           )}
           title={lead.pinned ? "Открепить" : "Закрепить"}
@@ -261,7 +280,45 @@ function LeadCardImpl({
           <Star className={cn("h-3.5 w-3.5", lead.pinned && "fill-primary")} />
         </span>
       )}
-    </button>
+
+      {canMoveStage && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              className={cn(
+                "absolute bottom-2 left-2 inline-flex h-8 items-center gap-1 rounded-md px-2 text-[10px] font-semibold text-muted-foreground transition-opacity hover:bg-secondary hover:text-foreground",
+                "opacity-100 md:opacity-0 md:group-hover:opacity-100",
+              )}
+              title="Сменить этап"
+              aria-label="Сменить этап"
+            >
+              <ArrowRightLeft className="h-3.5 w-3.5" />
+              <span className="hidden xs:inline sm:inline">Этап</span>
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="start"
+            className="max-h-[min(320px,50dvh)] w-56 overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {otherStages.map((s) => (
+              <DropdownMenuItem
+                key={s.id}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onChangeStage?.(lead.id, s.id);
+                }}
+              >
+                {s.title}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
+    </div>
   );
 }
 
