@@ -1,7 +1,7 @@
 {
-  "git_sha": "52bc05d",
-  "git_sha_full": "52bc05df1b720bf4f6bd4b97ad5a9e0c8bd1a930",
-  "updated_at": "2026-07-26T09:40:07Z",
-  "label": "fix(crm): polish mobile UX across funnel, lead sheet, and chats",
+  "git_sha": "4ca8862",
+  "git_sha_full": "4ca88621d920fa152a5f8c1bba95cbb9cfd127e9",
+  "updated_at": "2026-07-26T09:49:38Z",
+  "label": "fix(crm): restore Green API→CRM lead ingest for bot activations",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
