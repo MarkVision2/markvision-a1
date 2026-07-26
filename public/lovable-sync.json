@@ -1,7 +1,7 @@
 {
-  "git_sha": "3a89546",
-  "git_sha_full": "3a8954693b5e44d9db651f521c17a0244b73884b",
-  "updated_at": "2026-07-24T11:29:28Z",
-  "label": "fix(wa-web): convert WhatsApp voice notes to M4A for playback",
+  "git_sha": "52bc05d",
+  "git_sha_full": "52bc05df1b720bf4f6bd4b97ad5a9e0c8bd1a930",
+  "updated_at": "2026-07-26T09:40:07Z",
+  "label": "fix(crm): polish mobile UX across funnel, lead sheet, and chats",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
