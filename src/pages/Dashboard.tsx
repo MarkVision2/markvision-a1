@@ -233,12 +233,24 @@ const Dashboard = () => {
         </>
       )}
 
-      {/* Block 4.2 — Топ-6 креативов Meta по выручке CRM */}
+      {/* Block 4.2 — Топ креативов Meta по выручке CRM */}
       <SectionTitle>Топ креативов по выручке CRM</SectionTitle>
       <CreativesGrid
         rows={metaCreatives}
         topMode
         topLimit={4}
+        topSortKey="crmRevenue"
+        periodLabel={rangeLabel}
+        viewAllHref="/ads?tab=creatives"
+      />
+
+      {/* Block 4.3 — Топ креативов по лидам CRM (fallback: Meta leads) */}
+      <SectionTitle accent="bg-primary">Топ креативов по лидам CRM</SectionTitle>
+      <CreativesGrid
+        rows={metaCreatives}
+        topMode
+        topLimit={4}
+        topSortKey="crmLeads"
         periodLabel={rangeLabel}
         viewAllHref="/ads?tab=creatives"
       />
