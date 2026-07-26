@@ -1,7 +1,7 @@
 {
-  "git_sha": "4ca8862",
-  "git_sha_full": "4ca88621d920fa152a5f8c1bba95cbb9cfd127e9",
-  "updated_at": "2026-07-26T09:49:38Z",
-  "label": "fix(crm): restore Green API→CRM lead ingest for bot activations",
+  "git_sha": "6bf2b77",
+  "git_sha_full": "6bf2b772b413aa8413634a811524d9f71e62b838",
+  "updated_at": "2026-07-26T09:52:29Z",
+  "label": "chore: guard Green API webhook toward CRM every 2 minutes",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
