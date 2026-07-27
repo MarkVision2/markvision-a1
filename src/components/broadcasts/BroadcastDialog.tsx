@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { fetchGroups, fetchGroupInvite, type WaGroup } from "@/lib/broadcastServer";
 import {
   Dialog,
   DialogContent,
@@ -59,6 +61,8 @@ function draftFromBroadcast(b: Broadcast): BroadcastDraft {
     message: b.message,
     targetUrl: b.targetUrl,
     messageVariants: b.messageVariants,
+    sendPace: b.sendPace,
+    groupId: b.groupId,
     schedule: b.schedule,
     recipientsCount: b.recipientsCount,
   };
@@ -68,6 +72,9 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
   const [draft, setDraft] = useState<BroadcastDraft>(emptyBroadcastDraft);
   const [pasted, setPasted] = useState("");
   const [genLoading, setGenLoading] = useState(false);
+  const { activeId: projectId } = useProjectsStore();
+  const [groups, setGroups] = useState<WaGroup[]>([]);
+  const [groupBusy, setGroupBusy] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -119,6 +126,44 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
 
   const insertVar = () => patch("message", `${draft.message}{имя}`);
   const insertLink = () => patch("message", `${draft.message}{ссылка}`);
+
+  // ── Рассылка со вступлением в WhatsApp-группу ──
+  const loadGroups = async () => {
+    if (!projectId) return;
+    setGroupBusy(true);
+    try {
+      const list = await fetchGroups(projectId);
+      setGroups(list);
+      if (list.length === 0) toast("Групп не найдено — номер должен состоять в группе");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось получить группы");
+    } finally {
+      setGroupBusy(false);
+    }
+  };
+
+  const pickGroup = async (groupId: string) => {
+    if (!projectId || !groupId) return;
+    setGroupBusy(true);
+    try {
+      const invite = await fetchGroupInvite(projectId, groupId);
+      setDraft((p) => ({
+        ...p,
+        groupId,
+        targetUrl: invite || p.targetUrl,
+        message: /(\{ссылка\}|\{link\})/i.test(p.message)
+          ? p.message
+          : `${p.message}${p.message ? "\n\n" : ""}Вступить в группу: {ссылка}`,
+      }));
+      toast.success("Группа выбрана — ссылка на вступление подставлена");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось получить ссылку группы");
+    } finally {
+      setGroupBusy(false);
+    }
+  };
+
+  const clearGroup = () => setDraft((p) => ({ ...p, groupId: "" }));
 
   // Правка текста инвалидирует старые ИИ-варианты.
   const onMessageChange = (value: string) =>
@@ -421,6 +466,54 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
                 </div>
               </div>
             )}
+          </Field>
+
+          {/* Вступление в WhatsApp-группу */}
+          <Field label="Вступление в WhatsApp-группу (необязательно)">
+            {draft.groupId ? (
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-success/40 bg-success/10 px-3 py-2 text-xs">
+                <Users className="h-3.5 w-3.5 shrink-0 text-success" />
+                <span className="font-semibold text-success">Группа выбрана</span>
+                <span className="truncate text-muted-foreground">
+                  {groups.find((g) => g.id === draft.groupId)?.name ?? draft.groupId}
+                </span>
+                <button
+                  type="button"
+                  onClick={clearGroup}
+                  className="ml-auto rounded-md border border-border/60 px-2 py-0.5 font-medium transition-colors hover:bg-secondary/60"
+                >
+                  Убрать
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={loadGroups}
+                  disabled={groupBusy}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-50"
+                >
+                  {groupBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Users className="h-3.5 w-3.5" />}
+                  Выбрать группу
+                </button>
+                {groups.length > 0 && (
+                  <select
+                    onChange={(e) => pickGroup(e.target.value)}
+                    defaultValue=""
+                    className={inputCls}
+                  >
+                    <option value="" disabled>Выберите группу…</option>
+                    {groups.map((g) => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )}
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              Выберите группу — ссылка на вступление подставится в {"{ссылка}"} автоматически, а мы посчитаем,
+              кто реально перешёл и <b>вступил в группу</b>.
+            </p>
           </Field>
 
           {/* Ссылка для {ссылка} — трекинг переходов */}

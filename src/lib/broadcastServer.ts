@@ -99,6 +99,7 @@ type CampaignRow = {
   message: string;
   message_variants: string[] | null;
   target_url: string | null;
+  group_id: string | null;
   min_gap_seconds: number | null;
   max_gap_seconds: number | null;
   schedule_mode: string;
@@ -142,6 +143,7 @@ function mapRow(r: CampaignRow): Broadcast {
     title: r.title ?? "",
     message: r.message ?? "",
     targetUrl: r.target_url ?? "",
+    groupId: r.group_id ?? "",
     messageVariants: Array.isArray(r.message_variants) ? r.message_variants : [],
     sendPace: paceFromGaps(r.min_gap_seconds ?? 50, r.max_gap_seconds ?? 70),
     schedule: { mode: r.schedule_mode === "scheduled" ? "scheduled" : "now", at: r.scheduled_at },
@@ -232,6 +234,7 @@ export async function createCampaign(
       message: draft.message,
       message_variants: draft.messageVariants ?? [],
       target_url: draft.targetUrl || null,
+      group_id: draft.groupId || null,
       min_gap_seconds: gaps.min,
       max_gap_seconds: gaps.max,
       schedule_mode: draft.schedule.mode,
@@ -274,6 +277,7 @@ export async function updateCampaign(
     message: draft.message,
     message_variants: draft.messageVariants ?? [],
     target_url: draft.targetUrl || null,
+    group_id: draft.groupId || null,
     min_gap_seconds: gaps.min,
     max_gap_seconds: gaps.max,
     schedule_mode: draft.schedule.mode,
@@ -382,6 +386,26 @@ export async function fetchHealth(projectId: string): Promise<BroadcastHealth | 
   return data as BroadcastHealth;
 }
 
+export type WaGroup = { id: string; name: string };
+
+/** Список WhatsApp-групп, где состоит номер (для выбора цели рассылки). */
+export async function fetchGroups(projectId: string): Promise<WaGroup[]> {
+  const { data, error } = await supabase.functions.invoke("broadcast-groups", {
+    body: { project_id: projectId, action: "list" },
+  });
+  if (error) throw new Error(error.message || "Не удалось получить группы");
+  return (data as { groups?: WaGroup[] } | null)?.groups ?? [];
+}
+
+/** Пригласительная ссылка группы (для {ссылка} в тексте). */
+export async function fetchGroupInvite(projectId: string, groupId: string): Promise<string> {
+  const { data, error } = await supabase.functions.invoke("broadcast-groups", {
+    body: { project_id: projectId, action: "invite", groupId },
+  });
+  if (error) throw new Error(error.message || "Не удалось получить ссылку группы");
+  return (data as { inviteLink?: string } | null)?.inviteLink ?? "";
+}
+
 /** Снять авто-паузу номера (kill-switch reset). */
 export async function resumeSender(projectId: string): Promise<void> {
   const { error } = await db()
@@ -479,6 +503,7 @@ type RecipientDbRow = {
   replied_at: string | null;
   clicked_at: string | null;
   converted_at: string | null;
+  joined_at: string | null;
   error: string | null;
 };
 
@@ -495,6 +520,7 @@ function mapRecipient(r: RecipientDbRow): BroadcastRecipientLite {
     repliedAt: r.replied_at,
     clickedAt: r.clicked_at,
     convertedAt: r.converted_at,
+    joinedAt: r.joined_at,
     error: r.error,
   };
 }
@@ -516,7 +542,7 @@ export async function fetchCampaignDetail(
   const { data: recData, error: recErr } = await db()
     .from("broadcast_recipients")
     .select(
-      "id, name, phone, status, lead_id, sent_at, delivered_at, read_at, replied_at, clicked_at, converted_at, error",
+      "id, name, phone, status, lead_id, sent_at, delivered_at, read_at, replied_at, clicked_at, converted_at, joined_at, error",
     )
     .eq("campaign_id", campaignId)
     .order("sent_at", { ascending: false, nullsFirst: false })
