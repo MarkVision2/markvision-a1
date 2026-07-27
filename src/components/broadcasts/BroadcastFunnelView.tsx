@@ -26,7 +26,7 @@ const HERO: {
   { key: "delivered", label: "Получили", hint: "доставлено", icon: Users, tone: "primary" },
   { key: "read", label: "Открыли", hint: "прочитали сообщение", icon: Eye },
   { key: "clicked", label: "Клики по ссылке", hint: "перешли по ссылке", icon: Link2 },
-  { key: "groupJoined", label: "В группе", hint: "этап CRM / WhatsApp", icon: UserPlus },
+  { key: "joined", label: "Вступили в группу", hint: "реально в WhatsApp-группе", icon: UserPlus, tone: "success" },
   { key: "leads", label: "Лиды", hint: "есть в CRM", icon: Users, tone: "primary" },
   { key: "sales", label: "Продажи", hint: "оплачено", icon: ShoppingCart, tone: "success" },
   { key: "revenue", label: "Выручка", hint: "сумма оплат", icon: Banknote, tone: "success", money: true },
@@ -118,8 +118,8 @@ export function BroadcastConversionStrip({ funnel }: { funnel: BroadcastFunnel }
   const pairs: { from: keyof BroadcastFunnel; to: keyof BroadcastFunnel; label: string }[] = [
     { from: "sent", to: "delivered", label: "доставка" },
     { from: "delivered", to: "read", label: "открытие" },
-    { from: "sent", to: "replied", label: "ответ" },
-    { from: "leads", to: "sales", label: "в оплату" },
+    { from: "read", to: "clicked", label: "клик" },
+    { from: "clicked", to: "joined", label: "перешли→вступили" },
   ];
   return (
     <div className="flex flex-wrap gap-2">
@@ -288,10 +288,10 @@ export function BroadcastFunnelView({ funnel }: { funnel: BroadcastFunnel }) {
 
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
           {[
-            { label: "Ответили", hint: "написали в чат", value: funnel.replied },
             { label: "Клики", hint: "перешли по ссылке", value: funnel.clicked },
-            { label: "В группе", hint: "этап CRM", value: funnel.groupJoined },
-            { label: "Вебинар", hint: "пришли", value: funnel.webinarAttended },
+            { label: "Вступили в группу", hint: "реально в группе", value: funnel.joined },
+            { label: "Ответили", hint: "написали в чат", value: funnel.replied },
+            { label: "Продажи", hint: "оплатили", value: funnel.sales },
           ].map((x) => (
             <div
               key={x.label}

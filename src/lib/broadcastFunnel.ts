@@ -23,6 +23,8 @@ export type BroadcastRecipientLite = {
   repliedAt: string | null;
   clickedAt: string | null;
   convertedAt: string | null;
+  /** Реально появился в составе WhatsApp-группы (детект по getGroupData). */
+  joinedAt: string | null;
   error: string | null;
 };
 
@@ -46,7 +48,9 @@ export type BroadcastFunnel = {
   read: number;
   replied: number;
   clicked: number;
-  /** Вступили в WhatsApp / группу (по stage_role связанного лида). */
+  /** Реально вступили в WhatsApp-группу (детект по составу группы). */
+  joined: number;
+  /** Вступили в WhatsApp / группу (по stage_role связанного лида) — CRM-прокси. */
   groupJoined: number;
   /** Пришли на вебинар (webinar_status или stage_role). */
   webinarAttended: number;
@@ -103,7 +107,7 @@ export function digitsPhone(phone: string): string {
 /** Кумулятивные счётчики доставки из сырых статусов получателей. */
 export function countDelivery(recipients: BroadcastRecipientLite[]): Omit<
   BroadcastFunnel,
-  "clicked" | "groupJoined" | "webinarAttended" | "leads" | "deposits" | "sales" | "revenue"
+  "clicked" | "joined" | "groupJoined" | "webinarAttended" | "leads" | "deposits" | "sales" | "revenue"
 > {
   let queued = 0;
   let sent = 0;
@@ -160,8 +164,10 @@ export function buildBroadcastFunnel(
   const matched = matchRecipientLeads(recipients, leads);
 
   let clicked = 0;
+  let joined = 0;
   for (const r of recipients) {
     if (r.clickedAt) clicked += 1;
+    if (r.joinedAt) joined += 1;
   }
 
   const seenLeads = new Set<string>();
@@ -196,6 +202,7 @@ export function buildBroadcastFunnel(
   return {
     ...delivery,
     clicked,
+    joined,
     groupJoined,
     webinarAttended,
     leads: seenLeads.size,

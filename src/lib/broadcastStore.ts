@@ -78,6 +78,8 @@ export type Broadcast = {
   messageVariants: string[];
   /** Темп отправки: slow ≈ 1/мин, medium ≈ 2/мин, fast ≈ 4/мин. */
   sendPace: BroadcastPace;
+  /** WhatsApp-группа (chatId …@g.us) для трекинга вступлений; "" — обычная. */
+  groupId: string;
   schedule: { mode: "now" | "scheduled"; at: string | null };
   status: BroadcastStatus;
   /** Кол-во получателей на момент последней оценки/отправки. */
@@ -222,6 +224,7 @@ function normalize(raw: Partial<Broadcast>): Broadcast {
       ? raw.messageVariants.filter((v): v is string => typeof v === "string")
       : [],
     sendPace: raw.sendPace === "fast" || raw.sendPace === "medium" ? raw.sendPace : "slow",
+    groupId: raw.groupId ?? "",
     schedule: {
       mode: raw.schedule?.mode === "scheduled" ? "scheduled" : "now",
       at: raw.schedule?.at ?? null,
@@ -297,6 +300,7 @@ export type BroadcastDraft = Pick<
   | "targetUrl"
   | "messageVariants"
   | "sendPace"
+  | "groupId"
   | "schedule"
   | "recipientsCount"
 >;
@@ -313,6 +317,7 @@ export function emptyBroadcastDraft(): BroadcastDraft {
     targetUrl: "",
     messageVariants: [],
     sendPace: "slow",
+    groupId: "",
     schedule: { mode: "now", at: null },
     recipientsCount: 0,
   };
