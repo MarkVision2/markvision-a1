@@ -448,12 +448,25 @@ export async function fetchHealth(projectId: string): Promise<BroadcastHealth | 
 
 export type WaGroup = { id: string; name: string };
 
+async function edgeErrorMessage(error: { message?: string }, data: unknown): Promise<string> {
+  const fromBody = (data as { error?: string } | null)?.error;
+  if (fromBody) return fromBody;
+  const ctx = (error as { context?: Response })?.context;
+  if (ctx && typeof ctx.json === "function") {
+    try {
+      const body = await ctx.json() as { error?: string };
+      if (body?.error) return body.error;
+    } catch { /* ignore */ }
+  }
+  return error.message || "Ошибка edge-функции";
+}
+
 /** Список WhatsApp-групп, где состоит номер (для выбора цели рассылки). */
 export async function fetchGroups(projectId: string): Promise<WaGroup[]> {
   const { data, error } = await supabase.functions.invoke("broadcast-groups", {
     body: { project_id: projectId, action: "list" },
   });
-  if (error) throw new Error(error.message || "Не удалось получить группы");
+  if (error) throw new Error(await edgeErrorMessage(error, data));
   return (data as { groups?: WaGroup[] } | null)?.groups ?? [];
 }
 
@@ -462,8 +475,10 @@ export async function fetchGroupInvite(projectId: string, groupId: string): Prom
   const { data, error } = await supabase.functions.invoke("broadcast-groups", {
     body: { project_id: projectId, action: "invite", groupId },
   });
-  if (error) throw new Error(error.message || "Не удалось получить ссылку группы");
-  return (data as { inviteLink?: string } | null)?.inviteLink ?? "";
+  if (error) throw new Error(await edgeErrorMessage(error, data));
+  const invite = (data as { inviteLink?: string } | null)?.inviteLink ?? "";
+  if (!invite) throw new Error("Ссылка приглашения не пришла — проверьте права админа в группе");
+  return invite;
 }
 
 /** Снять авто-паузу номера (kill-switch reset). */
