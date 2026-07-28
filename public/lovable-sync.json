@@ -1,7 +1,7 @@
 {
-  "git_sha": "55a54f9",
-  "git_sha_full": "55a54f9f4fd2a7aed3c5adb9554525057a79e7c3",
-  "updated_at": "2026-07-27T22:53:36+05:00",
-  "label": "Рассылки: аналитика вступления в WhatsApp-группу (перешли → вступили) (#205)",
+  "git_sha": "b014897",
+  "git_sha_full": "b0148970309fee0360b182d993b9bcabd375b2a5",
+  "updated_at": "2026-07-28T09:10:11+05:00",
+  "label": "Рассылки: CRM-атрибуция «Рассылка» (вступившие в группу → воронка CRM) (#206)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
