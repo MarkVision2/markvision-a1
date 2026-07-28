@@ -344,12 +344,12 @@ export function useContentPlan() {
       const events = (eventsRes.data ?? []) as unknown as ContentPlanOrganicEvent[];
 
       const stageRoleById = new Map<string, string>();
-      for (const s of stagesRes.data ?? []) {
-        const role = (s as { stage_role?: string }).stage_role;
+      for (const s of (stagesRes.data ?? []) as unknown as Array<{ id: string; stage_role?: string }>) {
+        const role = s.stage_role;
         if (role) stageRoleById.set(s.id, role);
       }
 
-      const leads: LeadLite[] = ((leadsRes.data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+      const leads: LeadLite[] = ((leadsRes.data ?? []) as unknown as Array<Record<string, unknown>>).map((r) => ({
         id: String(r.id),
         stage_role: stageRoleById.get(String(r.stage_id ?? "")) ?? null,
         paid: r.paid as boolean | null,
