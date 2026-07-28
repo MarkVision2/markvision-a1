@@ -1,7 +1,7 @@
 {
-  "git_sha": "1cd6f4e",
-  "git_sha_full": "1cd6f4e7e042638a2224e17c6b8e7cbb57f9a546",
-  "updated_at": "2026-07-28T11:29:31Z",
-  "label": "Merge branch 'cursor/broadcast-cta-button-84cc': WhatsApp CTA button",
-  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
+  "git_sha": "4393baa",
+  "git_sha_full": "4393baab4a2e4e42c6f3d8a545b5b6774eb351a1",
+  "updated_at": "2026-07-28T11:36:52Z",
+  "label": "fix(broadcasts): harden test send to require WhatsApp CTA button",
+  "publish_hint": "push main \u2192 www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
