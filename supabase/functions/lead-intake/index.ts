@@ -329,7 +329,11 @@ Deno.serve(async (req) => {
     vk: "vk", vkontakte: "vk",
     cpc: "ads", advert: "ads",
     leadform: "lead_form", call: "phone",
+    // Партнёрские / именные UTM: ?utm_source=vit → источник «Виталя»
+    vit: "виталя", vitalya: "виталя", "виталя": "виталя", vitaly: "виталя",
   };
+  /** Generic placeholders that must not override a real utm_source. */
+  const GENERIC_SOURCES = new Set(["site", "web", "website", "tilda", "landing", "form"]);
   // Detect source from referrer host if no explicit source/utm_source.
   // Покрывает ещё WhatsApp Web, мобильные приложения, t.me-ссылки и др.
   function detectFromReferrer(ref: string | null | undefined): string | null {
@@ -357,10 +361,16 @@ Deno.serve(async (req) => {
   // Наличие gclid = клик по объявлению Google Ads (auto-tagging), даже если на
   // лендинге не проставлен utm_source. Тогда источник по умолчанию — google.
   const hasGclid = !!(v.gclid && v.gclid.trim());
+  const bodySource = (v.source && v.source.trim()) || "";
+  const utmSource = (v.utm_source && v.utm_source.trim()) || "";
+  // Лендинги часто шлют source=site и параллельно utm_source=vit — берём UTM.
+  const explicitSource =
+    bodySource && !GENERIC_SOURCES.has(bodySource.toLowerCase())
+      ? bodySource
+      : (utmSource || bodySource || "");
   const rawSource =
     (organicCodeword ? "instagram" : null) ||
-    (v.source && v.source.trim()) ||
-    (v.utm_source && v.utm_source.trim()) ||
+    (explicitSource || null) ||
     (hasGclid ? "google" : null) ||
     detectFromReferrer(v.referrer) ||
     (v.channel && v.channel.trim() !== "web" ? v.channel.trim() : null) ||

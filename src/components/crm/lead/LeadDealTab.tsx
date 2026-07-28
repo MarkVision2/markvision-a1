@@ -13,6 +13,7 @@ const SOURCE_PRESETS: { id: string; label: string }[] = [
   { id: "meta", label: "Meta" },
   { id: "google", label: "Google" },
   { id: "tiktok", label: "TikTok" },
+  { id: "виталя", label: "Виталя" },
   { id: "sarafan", label: "Сарафан" },
 ];
 const PRESET_IDS = new Set(SOURCE_PRESETS.map((s) => s.id));
