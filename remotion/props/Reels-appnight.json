@@ -1,0 +1,1085 @@
+{
+ "audioTrack": "reels/vo_appnight.mp3",
+ "words": [
+  {
+   "text": "Думаешь",
+   "from": 5,
+   "to": 22,
+   "accent": false
+  },
+  {
+   "text": "чтобы",
+   "from": 22,
+   "to": 31,
+   "accent": false
+  },
+  {
+   "text": "создать",
+   "from": 31,
+   "to": 41,
+   "accent": false
+  },
+  {
+   "text": "приложение",
+   "from": 41,
+   "to": 62,
+   "accent": false
+  },
+  {
+   "text": "нужно",
+   "from": 62,
+   "to": 70,
+   "accent": false
+  },
+  {
+   "text": "быть",
+   "from": 70,
+   "to": 74,
+   "accent": false
+  },
+  {
+   "text": "программистом?",
+   "from": 74,
+   "to": 110,
+   "accent": true
+  },
+  {
+   "text": "А",
+   "from": 110,
+   "to": 118,
+   "accent": false
+  },
+  {
+   "text": "если",
+   "from": 118,
+   "to": 125,
+   "accent": false
+  },
+  {
+   "text": "я",
+   "from": 125,
+   "to": 130,
+   "accent": false
+  },
+  {
+   "text": "скажу",
+   "from": 130,
+   "to": 146,
+   "accent": false
+  },
+  {
+   "text": "что",
+   "from": 146,
+   "to": 154,
+   "accent": false
+  },
+  {
+   "text": "своё",
+   "from": 154,
+   "to": 163,
+   "accent": false
+  },
+  {
+   "text": "первое",
+   "from": 163,
+   "to": 175,
+   "accent": false
+  },
+  {
+   "text": "приложение",
+   "from": 175,
+   "to": 190,
+   "accent": false
+  },
+  {
+   "text": "можно",
+   "from": 190,
+   "to": 199,
+   "accent": false
+  },
+  {
+   "text": "собрать",
+   "from": 199,
+   "to": 209,
+   "accent": false
+  },
+  {
+   "text": "всего",
+   "from": 209,
+   "to": 221,
+   "accent": false
+  },
+  {
+   "text": "за",
+   "from": 221,
+   "to": 228,
+   "accent": false
+  },
+  {
+   "text": "один",
+   "from": 228,
+   "to": 235,
+   "accent": false
+  },
+  {
+   "text": "вечер?",
+   "from": 235,
+   "to": 262,
+   "accent": true
+  },
+  {
+   "text": "Сегодня",
+   "from": 266,
+   "to": 283,
+   "accent": false
+  },
+  {
+   "text": "тебе",
+   "from": 283,
+   "to": 293,
+   "accent": false
+  },
+  {
+   "text": "не",
+   "from": 293,
+   "to": 300,
+   "accent": false
+  },
+  {
+   "text": "обязательно",
+   "from": 300,
+   "to": 312,
+   "accent": false
+  },
+  {
+   "text": "годами",
+   "from": 312,
+   "to": 329,
+   "accent": false
+  },
+  {
+   "text": "учить",
+   "from": 329,
+   "to": 346,
+   "accent": false
+  },
+  {
+   "text": "программирование",
+   "from": 346,
+   "to": 374,
+   "accent": true
+  },
+  {
+   "text": "Ты",
+   "from": 382,
+   "to": 390,
+   "accent": false
+  },
+  {
+   "text": "можешь",
+   "from": 390,
+   "to": 399,
+   "accent": false
+  },
+  {
+   "text": "объяснить",
+   "from": 399,
+   "to": 421,
+   "accent": false
+  },
+  {
+   "text": "нейросети",
+   "from": 421,
+   "to": 442,
+   "accent": false
+  },
+  {
+   "text": "простым",
+   "from": 442,
+   "to": 454,
+   "accent": false
+  },
+  {
+   "text": "языком",
+   "from": 454,
+   "to": 478,
+   "accent": false
+  },
+  {
+   "text": "что",
+   "from": 478,
+   "to": 486,
+   "accent": false
+  },
+  {
+   "text": "хочешь",
+   "from": 486,
+   "to": 495,
+   "accent": false
+  },
+  {
+   "text": "создать",
+   "from": 495,
+   "to": 517,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 517,
+   "to": 519,
+   "accent": false
+  },
+  {
+   "text": "вместе",
+   "from": 519,
+   "to": 529,
+   "accent": false
+  },
+  {
+   "text": "с",
+   "from": 529,
+   "to": 534,
+   "accent": false
+  },
+  {
+   "text": "ней",
+   "from": 534,
+   "to": 536,
+   "accent": false
+  },
+  {
+   "text": "собрать",
+   "from": 536,
+   "to": 548,
+   "accent": false
+  },
+  {
+   "text": "рабочий",
+   "from": 548,
+   "to": 560,
+   "accent": false
+  },
+  {
+   "text": "прототип",
+   "from": 560,
+   "to": 591,
+   "accent": true
+  },
+  {
+   "text": "Например",
+   "from": 594,
+   "to": 615,
+   "accent": false
+  },
+  {
+   "text": "приложение",
+   "from": 618,
+   "to": 632,
+   "accent": false
+  },
+  {
+   "text": "для",
+   "from": 632,
+   "to": 639,
+   "accent": false
+  },
+  {
+   "text": "учета",
+   "from": 639,
+   "to": 651,
+   "accent": false
+  },
+  {
+   "text": "клиентов",
+   "from": 651,
+   "to": 675,
+   "accent": false
+  },
+  {
+   "text": "сервис",
+   "from": 675,
+   "to": 687,
+   "accent": false
+  },
+  {
+   "text": "для",
+   "from": 687,
+   "to": 694,
+   "accent": false
+  },
+  {
+   "text": "заявок",
+   "from": 694,
+   "to": 709,
+   "accent": false
+  },
+  {
+   "text": "или",
+   "from": 709,
+   "to": 721,
+   "accent": false
+  },
+  {
+   "text": "внутренний",
+   "from": 721,
+   "to": 740,
+   "accent": false
+  },
+  {
+   "text": "инструмент",
+   "from": 740,
+   "to": 752,
+   "accent": false
+  },
+  {
+   "text": "для",
+   "from": 752,
+   "to": 759,
+   "accent": false
+  },
+  {
+   "text": "бизнеса",
+   "from": 759,
+   "to": 858,
+   "accent": true
+  },
+  {
+   "text": "А",
+   "from": 800,
+   "to": 808,
+   "accent": false
+  },
+  {
+   "text": "самое",
+   "from": 808,
+   "to": 820,
+   "accent": false
+  },
+  {
+   "text": "интересное",
+   "from": 820,
+   "to": 851,
+   "accent": false
+  },
+  {
+   "text": "такие",
+   "from": 851,
+   "to": 860,
+   "accent": false
+  },
+  {
+   "text": "решения",
+   "from": 860,
+   "to": 872,
+   "accent": false
+  },
+  {
+   "text": "можно",
+   "from": 872,
+   "to": 882,
+   "accent": false
+  },
+  {
+   "text": "не",
+   "from": 882,
+   "to": 887,
+   "accent": false
+  },
+  {
+   "text": "просто",
+   "from": 887,
+   "to": 894,
+   "accent": false
+  },
+  {
+   "text": "создавать",
+   "from": 894,
+   "to": 908,
+   "accent": false
+  },
+  {
+   "text": "для",
+   "from": 908,
+   "to": 918,
+   "accent": false
+  },
+  {
+   "text": "себя",
+   "from": 918,
+   "to": 937,
+   "accent": false
+  },
+  {
+   "text": "их",
+   "from": 937,
+   "to": 947,
+   "accent": false
+  },
+  {
+   "text": "можно",
+   "from": 947,
+   "to": 954,
+   "accent": false
+  },
+  {
+   "text": "продавать",
+   "from": 954,
+   "to": 966,
+   "accent": false
+  },
+  {
+   "text": "бизнесу",
+   "from": 966,
+   "to": 980,
+   "accent": false
+  },
+  {
+   "text": "как",
+   "from": 980,
+   "to": 988,
+   "accent": false
+  },
+  {
+   "text": "готовое",
+   "from": 988,
+   "to": 1002,
+   "accent": false
+  },
+  {
+   "text": "решение",
+   "from": 1002,
+   "to": 1033,
+   "accent": true
+  },
+  {
+   "text": "Я",
+   "from": 1036,
+   "to": 1045,
+   "accent": false
+  },
+  {
+   "text": "сам",
+   "from": 1045,
+   "to": 1052,
+   "accent": false
+  },
+  {
+   "text": "пришел",
+   "from": 1052,
+   "to": 1064,
+   "accent": false
+  },
+  {
+   "text": "в",
+   "from": 1064,
+   "to": 1069,
+   "accent": false
+  },
+  {
+   "text": "это",
+   "from": 1069,
+   "to": 1074,
+   "accent": false
+  },
+  {
+   "text": "из",
+   "from": 1074,
+   "to": 1079,
+   "accent": false
+  },
+  {
+   "text": "маркетинга",
+   "from": 1079,
+   "to": 1105,
+   "accent": false
+  },
+  {
+   "text": "Без",
+   "from": 1105,
+   "to": 1115,
+   "accent": false
+  },
+  {
+   "text": "классического",
+   "from": 1115,
+   "to": 1134,
+   "accent": false
+  },
+  {
+   "text": "программирования",
+   "from": 1134,
+   "to": 1165,
+   "accent": true
+  },
+  {
+   "text": "За",
+   "from": 1179,
+   "to": 1189,
+   "accent": false
+  },
+  {
+   "text": "последнее",
+   "from": 1189,
+   "to": 1201,
+   "accent": false
+  },
+  {
+   "text": "время",
+   "from": 1201,
+   "to": 1208,
+   "accent": false
+  },
+  {
+   "text": "создал",
+   "from": 1208,
+   "to": 1220,
+   "accent": false
+  },
+  {
+   "text": "несколько",
+   "from": 1220,
+   "to": 1237,
+   "accent": false
+  },
+  {
+   "text": "собственных",
+   "from": 1237,
+   "to": 1254,
+   "accent": false
+  },
+  {
+   "text": "продуктов",
+   "from": 1254,
+   "to": 1268,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 1268,
+   "to": 1285,
+   "accent": false
+  },
+  {
+   "text": "продал",
+   "from": 1285,
+   "to": 1297,
+   "accent": false
+  },
+  {
+   "text": "готовые",
+   "from": 1297,
+   "to": 1314,
+   "accent": false
+  },
+  {
+   "text": "решения",
+   "from": 1314,
+   "to": 1326,
+   "accent": false
+  },
+  {
+   "text": "примерно",
+   "from": 1326,
+   "to": 1338,
+   "accent": false
+  },
+  {
+   "text": "на",
+   "from": 1338,
+   "to": 1345,
+   "accent": false
+  },
+  {
+   "text": "10",
+   "from": 1345,
+   "to": 1355,
+   "accent": false
+  },
+  {
+   "text": "миллионов",
+   "from": 1355,
+   "to": 1369,
+   "accent": false
+  },
+  {
+   "text": "тенге",
+   "from": 1369,
+   "to": 1395,
+   "accent": true
+  },
+  {
+   "text": "И",
+   "from": 1395,
+   "to": 1400,
+   "accent": false
+  },
+  {
+   "text": "первого",
+   "from": 1400,
+   "to": 1412,
+   "accent": false
+  },
+  {
+   "text": "августа",
+   "from": 1412,
+   "to": 1424,
+   "accent": false
+  },
+  {
+   "text": "я",
+   "from": 1424,
+   "to": 1431,
+   "accent": false
+  },
+  {
+   "text": "проведу",
+   "from": 1431,
+   "to": 1443,
+   "accent": false
+  },
+  {
+   "text": "бесплатный",
+   "from": 1443,
+   "to": 1463,
+   "accent": false
+  },
+  {
+   "text": "воркшоп",
+   "from": 1463,
+   "to": 1491,
+   "accent": true
+  },
+  {
+   "text": "В",
+   "from": 1491,
+   "to": 1496,
+   "accent": false
+  },
+  {
+   "text": "прямом",
+   "from": 1496,
+   "to": 1506,
+   "accent": false
+  },
+  {
+   "text": "эфире",
+   "from": 1506,
+   "to": 1518,
+   "accent": false
+  },
+  {
+   "text": "мы",
+   "from": 1518,
+   "to": 1525,
+   "accent": false
+  },
+  {
+   "text": "вместе",
+   "from": 1525,
+   "to": 1535,
+   "accent": false
+  },
+  {
+   "text": "создадим",
+   "from": 1535,
+   "to": 1549,
+   "accent": false
+  },
+  {
+   "text": "первое",
+   "from": 1549,
+   "to": 1561,
+   "accent": false
+  },
+  {
+   "text": "приложение",
+   "from": 1561,
+   "to": 1575,
+   "accent": false
+  },
+  {
+   "text": "с",
+   "from": 1575,
+   "to": 1583,
+   "accent": false
+  },
+  {
+   "text": "нуля",
+   "from": 1583,
+   "to": 1633,
+   "accent": false
+  },
+  {
+   "text": "а",
+   "from": 1601,
+   "to": 1608,
+   "accent": false
+  },
+  {
+   "text": "после",
+   "from": 1608,
+   "to": 1618,
+   "accent": false
+  },
+  {
+   "text": "я",
+   "from": 1618,
+   "to": 1622,
+   "accent": false
+  },
+  {
+   "text": "покажу",
+   "from": 1622,
+   "to": 1637,
+   "accent": false
+  },
+  {
+   "text": "как",
+   "from": 1637,
+   "to": 1642,
+   "accent": false
+  },
+  {
+   "text": "искать",
+   "from": 1642,
+   "to": 1654,
+   "accent": false
+  },
+  {
+   "text": "клиентов",
+   "from": 1654,
+   "to": 1680,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 1680,
+   "to": 1685,
+   "accent": false
+  },
+  {
+   "text": "продавать",
+   "from": 1685,
+   "to": 1699,
+   "accent": false
+  },
+  {
+   "text": "такие",
+   "from": 1699,
+   "to": 1709,
+   "accent": false
+  },
+  {
+   "text": "решения",
+   "from": 1709,
+   "to": 1721,
+   "accent": false
+  },
+  {
+   "text": "бизнесу",
+   "from": 1721,
+   "to": 1742,
+   "accent": false
+  },
+  {
+   "text": "от",
+   "from": 1742,
+   "to": 1752,
+   "accent": false
+  },
+  {
+   "text": "1 000",
+   "from": 1752,
+   "to": 1764,
+   "accent": false
+  },
+  {
+   "text": "долларов",
+   "from": 1764,
+   "to": 1795,
+   "accent": true
+  },
+  {
+   "text": "Хочешь",
+   "from": 1800,
+   "to": 1814,
+   "accent": false
+  },
+  {
+   "text": "попробовать?",
+   "from": 1814,
+   "to": 1841,
+   "accent": false
+  },
+  {
+   "text": "Переходи",
+   "from": 1841,
+   "to": 1853,
+   "accent": false
+  },
+  {
+   "text": "по",
+   "from": 1853,
+   "to": 1860,
+   "accent": false
+  },
+  {
+   "text": "ссылке",
+   "from": 1860,
+   "to": 1867,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 1867,
+   "to": 1874,
+   "accent": false
+  },
+  {
+   "text": "занимай",
+   "from": 1874,
+   "to": 1886,
+   "accent": false
+  },
+  {
+   "text": "место",
+   "from": 1886,
+   "to": 1910,
+   "accent": true
+  },
+  {
+   "text": "Количество",
+   "from": 1910,
+   "to": 1927,
+   "accent": false
+  },
+  {
+   "text": "участников",
+   "from": 1927,
+   "to": 1946,
+   "accent": false
+  },
+  {
+   "text": "ограничено",
+   "from": 1946,
+   "to": 1976,
+   "accent": true
+  }
+ ],
+ "scenes": [
+  {
+   "from": 0,
+   "to": 110,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "НУЖНО БЫТЬ",
+     "ПРОГРАММИСТОМ?"
+    ],
+    "accent": "#22D3EE",
+    "cover": true
+   }
+  },
+  {
+   "from": 110,
+   "to": 266,
+   "template": "quote-card",
+   "data": {
+    "text": "ПЕРВОЕ ПРИЛОЖЕНИЕ ЗА ОДИН ВЕЧЕР?",
+    "accent": "#FF7A18"
+   },
+   "clip": "broll/appnight/mobile-app-interface-phone-screen-13441334.mp4"
+  },
+  {
+   "from": 266,
+   "to": 382,
+   "template": "kinetic-type",
+   "data": {
+    "words": [
+     "ЗАБУДЬ",
+     "ПРО КОД"
+    ],
+    "accentIndex": 1,
+    "accent": "#8B5CF6",
+    "cover": true
+   }
+  },
+  {
+   "from": 382,
+   "to": 594,
+   "template": "chat-bubbles",
+   "data": {
+    "messages": [
+     {
+      "from": "user",
+      "text": "Хочу приложение для заявок"
+     },
+     {
+      "from": "ai",
+      "text": "Собираю прототип..."
+     },
+     {
+      "from": "ai",
+      "text": "Готово ✅"
+     }
+    ],
+    "accent": "#8B5CF6"
+   }
+  },
+  {
+   "from": 594,
+   "to": 800,
+   "template": "arrow-flow",
+   "data": {
+    "steps": [
+     "Идея",
+     "Диалог с ИИ",
+     "Интерфейс",
+     "Приложение"
+    ],
+    "accent": "#22D3EE",
+    "cover": true
+   }
+  },
+  {
+   "from": 800,
+   "to": 937,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "СОЗДАВАЙ",
+     "НЕ ТОЛЬКО СЕБЕ"
+    ],
+    "accent": "#34D399",
+    "cover": true
+   },
+   "clip": "broll/appnight/software-developer-working-project-scree-34679079.mp4"
+  },
+  {
+   "from": 937,
+   "to": 1036,
+   "template": "arrow-flow",
+   "data": {
+    "steps": [
+     "Создал",
+     "Упаковал",
+     "Клиент",
+     "Продал"
+    ],
+    "accent": "#FFC53D",
+    "cover": true
+   }
+  },
+  {
+   "from": 1036,
+   "to": 1179,
+   "template": "quote-card",
+   "data": {
+    "text": "ПРИШЁЛ ИЗ МАРКЕТИНГА, БЕЗ КОДА",
+    "accent": "#22D3EE"
+   },
+   "clip": "broll/appnight/marketing-professional-laptop-office-7579940.mp4"
+  },
+  {
+   "from": 1179,
+   "to": 1395,
+   "template": "metric-callout",
+   "data": {
+    "value": "10 млн ₸",
+    "label": "ПРОДАЛ ГОТОВЫХ РЕШЕНИЙ",
+    "up": true,
+    "accent": "#FFC53D"
+   },
+   "clip": "broll/appnight/money-success-financial-growth-chart-6282164.mp4"
+  },
+  {
+   "from": 1395,
+   "to": 1491,
+   "template": "notification-toast",
+   "data": {
+    "title": "1 АВГУСТА · 20:00",
+    "text": "Бесплатный воркшоп в прямом эфире",
+    "icon": "clock",
+    "accent": "#34D399"
+   },
+   "clip": "broll/appnight/online-workshop-webinar-laptop-8522975.mp4"
+  },
+  {
+   "from": 1491,
+   "to": 1601,
+   "template": "kinetic-type",
+   "data": {
+    "words": [
+     "СОЗДАДИМ",
+     "С НУЛЯ"
+    ],
+    "accentIndex": 1,
+    "accent": "#FF7A18",
+    "cover": true
+   }
+  },
+  {
+   "from": 1601,
+   "to": 1800,
+   "template": "price-tag",
+   "data": {
+    "price": "$1 000",
+    "label": "ПРОДАВАЙ БИЗНЕСУ ОТ",
+    "accent": "#FFC53D"
+   },
+   "clip": "broll/appnight/business-deal-payment-handshake-success-8061760.mp4"
+  },
+  {
+   "from": 1800,
+   "to": 1910,
+   "template": "spec-card",
+   "data": {
+    "tag": "БЕСПЛАТНО",
+    "title": "ЗАНЯТЬ МЕСТО",
+    "icon": "rocket",
+    "accent": "#22D3EE",
+    "items": [
+     {
+      "type": "check",
+      "icon": "rocket",
+      "text": "Приложение за вечер"
+     },
+     {
+      "type": "bullet",
+      "icon": "apps",
+      "text": "Без программирования"
+     },
+     {
+      "type": "bullet",
+      "icon": "chart",
+      "text": "С нуля"
+     },
+     {
+      "type": "bullet",
+      "icon": "target",
+      "text": "Участие бесплатно"
+     }
+    ]
+   },
+   "clip": "broll/appnight/online-registration-signup-laptop-34771072.mp4"
+  },
+  {
+   "from": 1910,
+   "to": 1976,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ЗАНЯТЬ",
+     "МЕСТО →"
+    ],
+    "accent": "#FF7A18",
+    "cover": true
+   }
+  }
+ ],
+ "totalDurationInFrames": 1976,
+ "fps": 30,
+ "music": "reels/beat_appnight.wav",
+ "musicVolume": 0.07,
+ "captions": true
+}
