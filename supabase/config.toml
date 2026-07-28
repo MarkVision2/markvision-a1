@@ -144,3 +144,9 @@ verify_jwt = false
 
 [functions.broadcast-ai-variants]
 verify_jwt = false
+
+[functions.broadcast-groups]
+verify_jwt = false
+
+[functions.broadcast-group-sync]
+verify_jwt = false

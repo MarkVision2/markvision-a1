@@ -57,7 +57,17 @@ Deno.serve(async (req) => {
 
   const { data: proj } = await admin.from("projects").select("id, created_by").eq("id", projectId).maybeSingle();
   const { data: isAdmin } = await admin.rpc("has_role" as never, { _user_id: userId, _role: "admin" });
-  const allowed = !!proj && ((proj as { created_by?: string }).created_by === userId || isAdmin === true);
+  const { data: membership } = await admin
+    .from("project_members")
+    .select("user_id")
+    .eq("project_id", projectId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  const allowed = !!proj && (
+    (proj as { created_by?: string }).created_by === userId
+    || isAdmin === true
+    || !!membership
+  );
   if (!allowed) return json({ error: "Forbidden" }, 403);
 
   const { data: cfg } = await admin
@@ -72,14 +82,31 @@ Deno.serve(async (req) => {
   if (action === "invite") {
     const groupId = typeof body.groupId === "string" ? body.groupId : "";
     if (!groupId) return json({ error: "groupId required" }, 400);
-    const res = await fetch(`${base}/getGroupInviteLink/${wc.api_token}`, {
+    // getGroupInviteLink в Green API нет — ссылка приходит в getGroupData.groupInviteLink.
+    const res = await fetch(`${base}/getGroupData/${wc.api_token}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ groupId }),
     });
-    const data = await res.json().catch(() => null) as { inviteLink?: string } | null;
-    if (!res.ok || !data?.inviteLink) return json({ error: "Не удалось получить ссылку группы" }, 502);
-    return json({ inviteLink: data.inviteLink });
+    const data = await res.json().catch(() => null) as {
+      groupInviteLink?: string;
+      error?: string;
+    } | null;
+    const inviteLink = (data?.groupInviteLink ?? "").trim();
+    if (!res.ok) {
+      return json({
+        error: "Не удалось получить данные группы",
+        detail: typeof data === "object" ? data : String(data),
+        status: res.status,
+      }, 502);
+    }
+    if (!inviteLink) {
+      return json({
+        error:
+          "Ссылка приглашения пустая. Номер WhatsApp должен быть админом группы (или владельцем).",
+      }, 502);
+    }
+    return json({ inviteLink });
   }
 
   // list: контакты номера → только группы.
