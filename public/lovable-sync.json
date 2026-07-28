@@ -1,7 +1,7 @@
 {
-  "git_sha": "7ab0cf2",
-  "git_sha_full": "7ab0cf234779ccf89918039019a6e20ce8018161",
-  "updated_at": "2026-07-28T04:41:28Z",
-  "label": "Added cabinet access gate",
+  "git_sha": "db27c9a",
+  "git_sha_full": "db27c9a0814b87f3ae25fb0606f18ec0779a13bb",
+  "updated_at": "2026-07-28T10:39:19Z",
+  "label": "fix(broadcasts): names, delivery statuses, WhatsApp CTA button",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
