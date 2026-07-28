@@ -1,7 +1,7 @@
 {
-  "git_sha": "d6a0cf3",
-  "git_sha_full": "d6a0cf3432517f566ddd2516a0abdbf19dabafcb",
-  "updated_at": "2026-07-28T11:01:26Z",
-  "label": "feat(broadcasts): duplicate campaign with editable contact base",
-  "publish_hint": "push main \u2192 www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
+  "git_sha": "ac2fbf7",
+  "git_sha_full": "ac2fbf7c07dd22d34d8c5e5517ccad1dc20d32c4",
+  "updated_at": "2026-07-28T11:18:03Z",
+  "label": "Merge branch 'cursor/broadcast-analytics-cta-84cc': reliable WhatsApp broadcast delivery",
+  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
