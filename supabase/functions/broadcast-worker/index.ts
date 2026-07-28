@@ -165,6 +165,32 @@ function normalizeOutgoingLink(message: string, targetUrl: string | null | undef
 
 type Creds = { idInstance: string; apiToken: string; baseUrl: string };
 
+/** Резолв chatId: WhatsApp всё чаще отдаёт @lid; @c.us часто зависает в status=sent. */
+async function resolveChatId(creds: Creds, phone: string): Promise<string> {
+  const fallback = `${digits(phone)}@c.us`;
+  try {
+    const url = `${creds.baseUrl}/waInstance${creds.idInstance}/checkWhatsapp/${creds.apiToken}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phoneNumber: Number(digits(phone)) }),
+    });
+    if (!res.ok) return fallback;
+    const data = await res.json().catch(() => null) as {
+      existsWhatsapp?: boolean;
+      chatId?: string;
+    } | null;
+    if (data?.existsWhatsapp === false) {
+      throw new Error("Нет WhatsApp на этом номере");
+    }
+    const chatId = (data?.chatId ?? "").trim();
+    if (chatId.includes("@")) return chatId;
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("Нет WhatsApp")) throw e;
+  }
+  return fallback;
+}
+
 async function resolveCreds(projectId: string): Promise<Creds | null> {
   const { data } = await admin
     .from("whatsapp_config")
@@ -215,7 +241,7 @@ async function accountState(creds: Creds): Promise<{ state: string; httpStatus: 
 
 /** Одна отправка текстом. Возвращает idMessage при успехе. */
 async function sendGreen(creds: Creds, phone: string, message: string): Promise<string> {
-  const chatId = `${digits(phone)}@c.us`;
+  const chatId = await resolveChatId(creds, phone);
   const url = `${creds.baseUrl}/waInstance${creds.idInstance}/sendMessage/${creds.apiToken}`;
   const res = await fetch(url, {
     method: "POST",
@@ -244,7 +270,7 @@ async function sendGreenWithButton(
   buttonText: string,
   header?: string,
 ): Promise<string> {
-  const chatId = `${digits(phone)}@c.us`;
+  const chatId = await resolveChatId(creds, phone);
   const url = `${creds.baseUrl}/waInstance${creds.idInstance}/sendInteractiveButtons/${creds.apiToken}`;
   const payload: Record<string, unknown> = {
     chatId,
