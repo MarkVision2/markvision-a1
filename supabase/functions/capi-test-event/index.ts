@@ -13,6 +13,7 @@
 // показать конкретную причину, а не общее «Edge Function returned a non-2xx».
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { requireCabinetAccess } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
