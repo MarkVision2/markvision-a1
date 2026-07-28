@@ -393,10 +393,12 @@ Deno.serve(async (req) => {
       case "sendMessage": {
         const phoneRaw = String(body.phone ?? "").replace(/\D/g, "");
         const message = String(body.message ?? "").trim();
+        const buttonUrl = String(body.buttonUrl ?? "").trim();
+        const buttonText = String(body.buttonText ?? "Перейти").trim().slice(0, 25) || "Перейти";
         if (!phoneRaw || phoneRaw.length < 8 || phoneRaw.length > 15) {
           return json({ error: "Invalid phone number" }, 400);
         }
-        if (!message) return json({ error: "Empty message" }, 400);
+        if (!message && !buttonUrl) return json({ error: "Empty message" }, 400);
         // WhatsApp LID: checkWhatsapp → chatId (@lid), иначе @c.us часто зависает в sent.
         let chatId = `${phoneRaw}@c.us`;
         try {
@@ -415,12 +417,52 @@ Deno.serve(async (req) => {
         } catch {
           /* fallback @c.us */
         }
+
+        // URL-кнопка (CTA «Вступить в группу» / «Перейти»).
+        if (/^https?:\/\//i.test(buttonUrl)) {
+          const payload: Record<string, unknown> = {
+            chatId,
+            body: message || " ",
+            buttons: [
+              {
+                type: "url",
+                buttonId: "cta",
+                buttonText,
+                url: buttonUrl,
+              },
+            ],
+          };
+          const header = String(body.header ?? "").trim();
+          if (header) payload.header = header.slice(0, 60);
+          const r = await callGreen(creds, "sendInteractiveButtons", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          if (r.ok) return json({ ok: true, status: r.status, data: r.data, chatId, mode: "button" });
+          // Fallback: текст + URL, если интерактивные кнопки недоступны.
+          const fallback = `${message || ""}\n\n${buttonUrl}`.trim();
+          const plain = await callGreen(creds, "sendMessage", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chatId, message: fallback }),
+          });
+          return json({
+            ok: plain.ok,
+            status: plain.status,
+            data: plain.data,
+            chatId,
+            mode: "fallback_text",
+            buttonError: r.data,
+          });
+        }
+
         const r = await callGreen(creds, "sendMessage", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ chatId, message }),
         });
-        return json({ ok: r.ok, status: r.status, data: r.data, chatId });
+        return json({ ok: r.ok, status: r.status, data: r.data, chatId, mode: "text" });
       }
 
       default:

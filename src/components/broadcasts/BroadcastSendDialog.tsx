@@ -20,7 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { CHANNEL_META, renderMessage, type Broadcast } from "@/lib/broadcastStore";
+import { CHANNEL_META, defaultCtaLabel, renderMessage, type Broadcast } from "@/lib/broadcastStore";
 import { sendWhatsAppMessage } from "@/lib/broadcastSender";
 import { fetchRecipientCounts, type RecipientCounts } from "@/lib/broadcastServer";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
@@ -80,8 +80,23 @@ export function BroadcastSendDialog({ open, onOpenChange, broadcast, whatsappCon
     }
     setTesting(true);
     try {
-      await sendWhatsAppMessage(phone, renderMessage(broadcast.title, broadcast.message, { name: "Имя" }));
-      toast.success("Тестовое сообщение отправлено");
+      const target = (broadcast.targetUrl || "").trim();
+      const asButton = /^https?:\/\//i.test(target);
+      const text = renderMessage(
+        broadcast.title,
+        broadcast.message,
+        { name: "Имя" },
+        asButton ? "" : target,
+        asButton,
+      );
+      await sendWhatsAppMessage(phone, text, asButton
+        ? {
+            buttonUrl: target,
+            buttonText: (broadcast.ctaLabel || "").trim() || defaultCtaLabel(target),
+            header: (broadcast.title || "").trim() || undefined,
+          }
+        : undefined);
+      toast.success(asButton ? "Тест отправлен с кнопкой" : "Тестовое сообщение отправлено");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось отправить тест");
     } finally {
@@ -102,8 +117,18 @@ export function BroadcastSendDialog({ open, onOpenChange, broadcast, whatsappCon
     }
   };
 
-  const preview = renderMessage(broadcast.title, broadcast.message, { name: "Имя" }, broadcast.targetUrl || "")
-    .replace(/\*(.+?)\*/g, "$1");
+  const target = (broadcast.targetUrl || "").trim();
+  const asButton = /^https?:\/\//i.test(target);
+  const preview = renderMessage(
+    broadcast.title,
+    broadcast.message,
+    { name: "Имя" },
+    asButton ? "" : target,
+    asButton,
+  ).replace(/\*(.+?)\*/g, "$1");
+  const previewCta = asButton
+    ? ((broadcast.ctaLabel || "").trim() || defaultCtaLabel(target))
+    : "";
   const done = counts
     ? counts.sent + counts.delivered + counts.read + counts.replied + counts.clicked + counts.converted
     : 0;
@@ -157,6 +182,11 @@ export function BroadcastSendDialog({ open, onOpenChange, broadcast, whatsappCon
                 Сообщение
               </div>
               <div className="max-h-32 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed">{preview}</div>
+              {previewCta && (
+                <div className="mt-2 inline-flex rounded-lg bg-primary/15 px-3 py-1.5 text-xs font-semibold text-primary">
+                  Кнопка: {previewCta}
+                </div>
+              )}
             </div>
 
             {broadcast.messageVariants.length > 0 && (

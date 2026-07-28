@@ -65,6 +65,9 @@ describe("renderMessage", () => {
   });
   it("в режиме кнопки убирает плейсхолдер ссылки", () => {
     expect(renderMessage("", "Жми {ссылка}", { name: "" }, "https://x", true)).toBe("Жми");
+    expect(
+      renderMessage("", "Текст\n\nВступить в группу: {ссылка}", { name: "" }, "https://x", true),
+    ).toBe("Текст");
   });
 });
 

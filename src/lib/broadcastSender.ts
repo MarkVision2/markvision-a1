@@ -19,10 +19,22 @@ export class SmsNotConnectedError extends Error {
   }
 }
 
-/** Одна WhatsApp-отправка через greenapi-proxy. Бросает при ошибке. */
-export async function sendWhatsAppMessage(phone: string, message: string): Promise<void> {
+/** Одна WhatsApp-отправка через greenapi-proxy. Бросает при ошибке.
+ *  Если передан buttonUrl — уходит interactive URL-кнопка (CTA). */
+export async function sendWhatsAppMessage(
+  phone: string,
+  message: string,
+  opts?: { buttonUrl?: string; buttonText?: string; header?: string },
+): Promise<void> {
   const { data, error } = await supabase.functions.invoke("greenapi-proxy", {
-    body: { action: "sendMessage", phone, message },
+    body: {
+      action: "sendMessage",
+      phone,
+      message,
+      buttonUrl: opts?.buttonUrl || undefined,
+      buttonText: opts?.buttonText || undefined,
+      header: opts?.header || undefined,
+    },
   });
   if (error) throw new Error(error.message || "Ошибка отправки");
   const res = data as { ok?: boolean; status?: number; error?: string } | null;

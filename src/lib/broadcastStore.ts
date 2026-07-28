@@ -158,6 +158,9 @@ export function renderMessage(
     body = body
       .replace(/\{ссылка\}/gi, "")
       .replace(/\{link\}/gi, "")
+      // Убираем хвост «Вступить в группу:» — текст кнопки отдельный.
+      .replace(/^[ \t]*вступить в группу:?[ \t]*$/gim, "")
+      .replace(/[ \t]*вступить в группу:?[ \t]*$/gim, "")
       .replace(/[ \t]+\n/g, "\n")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
