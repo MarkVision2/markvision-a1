@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createCampaign,
+  duplicateCampaign,
   launchCampaign,
   listCampaigns,
   removeCampaign,
@@ -34,10 +35,21 @@ export function useBroadcasts(projectId: string | null, crmContacts: LeadContact
   useRealtimeTable("broadcast_campaigns", invalidate, !!projectId, 500);
 
   const create = useCallback(
-    async (draft: BroadcastDraft) => {
-      if (!projectId) return;
-      await createCampaign(projectId, draft, crmContacts);
+    async (draft: BroadcastDraft): Promise<Broadcast | null> => {
+      if (!projectId) return null;
+      const created = await createCampaign(projectId, draft, crmContacts);
       invalidate();
+      return created;
+    },
+    [projectId, crmContacts, invalidate],
+  );
+
+  const duplicate = useCallback(
+    async (draft: BroadcastDraft): Promise<Broadcast | null> => {
+      if (!projectId) return null;
+      const created = await duplicateCampaign(projectId, draft, crmContacts);
+      invalidate();
+      return created;
     },
     [projectId, crmContacts, invalidate],
   );
@@ -69,7 +81,7 @@ export function useBroadcasts(projectId: string | null, crmContacts: LeadContact
 
   const stats = useMemo(() => summarizeBroadcasts(broadcasts), [broadcasts]);
 
-  return { broadcasts, stats, create, update, remove, launch };
+  return { broadcasts, stats, create, duplicate, update, remove, launch };
 }
 
 export function summarizeBroadcasts(list: Broadcast[]) {

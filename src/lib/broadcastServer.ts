@@ -257,6 +257,49 @@ export async function createCampaign(
   return mapRow(campaign);
 }
 
+/**
+ * Контакты кампании для префилла диалога (дублирование / правка списка).
+ * Берём из broadcast_recipients — uploadedContacts в кампании не хранятся.
+ */
+export async function fetchRecipientContacts(
+  campaignId: string,
+  limit = 50000,
+): Promise<{ name: string; phone: string }[]> {
+  const { data, error } = await db()
+    .from("broadcast_recipients")
+    .select("name, phone")
+    .eq("campaign_id", campaignId)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+  if (error) throw error;
+  return ((data ?? []) as { name: string | null; phone: string }[]).map((r) => ({
+    name: (r.name ?? "").trim(),
+    phone: r.phone,
+  }));
+}
+
+/**
+ * Дублирует кампанию как новый черновик с актуальным списком из draft
+ * (можно добавить/убрать контакты). История статусов исходной не трогается.
+ */
+export async function duplicateCampaign(
+  projectId: string,
+  draft: BroadcastDraft,
+  crmContacts: LeadContact[],
+): Promise<Broadcast> {
+  const name = draft.name.trim() || "Копия рассылки";
+  return createCampaign(
+    projectId,
+    {
+      ...draft,
+      name,
+      schedule: { mode: "now", at: null },
+      recipientsCount: draft.recipientsCount,
+    },
+    crmContacts,
+  );
+}
+
 export async function updateCampaign(
   projectId: string,
   id: string,

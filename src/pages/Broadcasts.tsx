@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock,
+  Copy,
   MessageCircle,
   MoreVertical,
   Pencil,
@@ -26,6 +27,7 @@ import {
   type Broadcast,
   type BroadcastDraft,
 } from "@/lib/broadcastStore";
+import { fetchRecipientContacts } from "@/lib/broadcastServer";
 import { Input } from "@/components/ui/input";
 import {
   DropdownMenu,
@@ -83,11 +85,13 @@ const Broadcasts = () => {
   const { activeId } = useProjectsStore();
   const projectId = activeId || null;
   const { contacts: crmContacts } = useLeadContacts();
-  const { broadcasts, stats, create, update, remove, launch } = useBroadcasts(projectId, crmContacts);
+  const { broadcasts, stats, create, duplicate, update, remove, launch } = useBroadcasts(projectId, crmContacts);
   const { config: whatsapp } = useWhatsAppConfig();
 
   const [editing, setEditing] = useState<Broadcast | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<"create" | "edit" | "duplicate">("create");
+  const [seedContacts, setSeedContacts] = useState<{ name: string; phone: string }[]>([]);
   const [sending, setSending] = useState<Broadcast | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Broadcast | null>(null);
   const [query, setQuery] = useState("");
@@ -108,25 +112,75 @@ const Broadcasts = () => {
 
   const openCreate = () => {
     setEditing(null);
+    setDialogMode("create");
+    setSeedContacts([]);
     setDialogOpen(true);
   };
-  const openEdit = (b: Broadcast) => {
+
+  const openEdit = async (b: Broadcast) => {
     setEditing(b);
+    setDialogMode("edit");
+    try {
+      setSeedContacts(await fetchRecipientContacts(b.id));
+    } catch {
+      setSeedContacts([]);
+    }
+    setDialogOpen(true);
+  };
+
+  const openDuplicate = async (b: Broadcast) => {
+    setEditing(b);
+    setDialogMode("duplicate");
+    try {
+      setSeedContacts(await fetchRecipientContacts(b.id));
+    } catch {
+      setSeedContacts([]);
+    }
     setDialogOpen(true);
   };
 
   const handleSave = async (draft: BroadcastDraft, _recipientsCount: number) => {
     try {
+      if (dialogMode === "duplicate") {
+        const created = await duplicate(draft);
+        if (!created) throw new Error("Не удалось создать копию");
+        toast.success(`Копия создана · ${created.recipientsCount} получателей`);
+        navigate(`/broadcasts/${created.id}`);
+        return;
+      }
       if (editing) {
+        const locked = !["draft", "scheduled"].includes(editing.status);
+        if (locked && draft.audienceSource === "upload") {
+          const created = await duplicate({
+            ...draft,
+            name: draft.name.startsWith("Копия:") ? draft.name : `Копия: ${draft.name}`,
+          });
+          if (!created) throw new Error("Не удалось создать копию");
+          toast.success(`Создана копия с новой базой (${created.recipientsCount} чел.)`);
+          navigate(`/broadcasts/${created.id}`);
+          return;
+        }
         await update(editing.id, draft);
         toast.success("Рассылка обновлена");
       } else {
-        await create(draft);
+        const created = await create(draft);
         toast.success(draft.schedule.mode === "scheduled" ? "Рассылка запланирована" : "Рассылка создана");
+        if (created) navigate(`/broadcasts/${created.id}`);
       }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось сохранить рассылку");
+      throw e;
     }
+  };
+
+  const handleSendClick = (b: Broadcast) => {
+    const done = b.status === "sent" || b.status === "partial" || b.status === "failed";
+    if (done) {
+      void openDuplicate(b);
+      toast.message("Дублируйте рассылку, добавьте базу и отправьте копию");
+      return;
+    }
+    setSending(b);
   };
 
   return (
@@ -247,8 +301,9 @@ const Broadcasts = () => {
                   key={b.id}
                   broadcast={b}
                   onOpen={() => navigate(`/broadcasts/${b.id}`)}
-                  onSend={() => setSending(b)}
-                  onEdit={() => openEdit(b)}
+                  onSend={() => handleSendClick(b)}
+                  onEdit={() => void openEdit(b)}
+                  onDuplicate={() => void openDuplicate(b)}
                   onDelete={() => setPendingDelete(b)}
                 />
               ))}
@@ -261,6 +316,8 @@ const Broadcasts = () => {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         broadcast={editing}
+        mode={dialogMode}
+        seedContacts={seedContacts}
         crmContacts={crmContacts}
         onSave={handleSave}
       />
@@ -307,12 +364,14 @@ function BroadcastRow({
   onOpen,
   onSend,
   onEdit,
+  onDuplicate,
   onDelete,
 }: {
   broadcast: Broadcast;
   onOpen: () => void;
   onSend: () => void;
   onEdit: () => void;
+  onDuplicate: () => void;
   onDelete: () => void;
 }) {
   const status = STATUS_META[broadcast.status];
@@ -413,14 +472,17 @@ function BroadcastRow({
             className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-glow transition-opacity hover:opacity-90"
           >
             <Send className="h-3.5 w-3.5" />
-            {isDone ? "Повторить" : "Отправить"}
+            {isDone ? "На новую базу" : "Отправить"}
           </button>
           <DropdownMenu>
             <DropdownMenuTrigger className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground">
               <MoreVertical className="h-4 w-4" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuContent align="end" className="w-48">
               <DropdownMenuItem onClick={onOpen}>Открыть отчёт</DropdownMenuItem>
+              <DropdownMenuItem onClick={onDuplicate}>
+                <Copy className="mr-2 h-3.5 w-3.5" /> Дублировать
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={onEdit}>
                 <Pencil className="mr-2 h-3.5 w-3.5" /> Изменить
               </DropdownMenuItem>

@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   Clock,
+  Copy,
   ExternalLink,
   Loader2,
   MessageCircle,
@@ -41,6 +42,7 @@ import { useLeadContacts } from "@/hooks/useLeadContacts";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { matchRecipientLeads } from "@/lib/broadcastFunnel";
+import { fetchRecipientContacts } from "@/lib/broadcastServer";
 import { fmtKzt } from "@/lib/format";
 import {
   CHANNEL_META,
@@ -77,11 +79,14 @@ export default function BroadcastDetail() {
   const { activeId } = useProjectsStore();
   const projectId = activeId || null;
   const { contacts: crmContacts } = useLeadContacts();
-  const { update, remove, launch } = useBroadcasts(projectId, crmContacts);
+  const { update, remove, launch, duplicate } = useBroadcasts(projectId, crmContacts);
   const { config: whatsapp } = useWhatsAppConfig();
   const { detail, loading, error, refetch } = useBroadcastDetail(id, projectId);
 
   const [editOpen, setEditOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<"edit" | "duplicate">("edit");
+  const [seedContacts, setSeedContacts] = useState<{ name: string; phone: string }[]>([]);
+  const [seedLoading, setSeedLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
   const [query, setQuery] = useState("");
@@ -142,14 +147,75 @@ export default function BroadcastDetail() {
   const isDone =
     campaign.status === "sent" || campaign.status === "partial" || campaign.status === "failed";
 
+  const openEdit = async () => {
+    if (!campaign) return;
+    setDialogMode("edit");
+    setSeedLoading(true);
+    try {
+      const contacts = await fetchRecipientContacts(campaign.id);
+      setSeedContacts(contacts);
+    } catch {
+      setSeedContacts([]);
+    } finally {
+      setSeedLoading(false);
+      setEditOpen(true);
+    }
+  };
+
+  const openDuplicate = async () => {
+    if (!campaign) return;
+    setDialogMode("duplicate");
+    setSeedLoading(true);
+    try {
+      const contacts = await fetchRecipientContacts(campaign.id);
+      setSeedContacts(contacts);
+    } catch {
+      setSeedContacts([]);
+    } finally {
+      setSeedLoading(false);
+      setEditOpen(true);
+    }
+  };
+
   const handleSave = async (draft: BroadcastDraft) => {
     try {
+      if (dialogMode === "duplicate") {
+        const created = await duplicate(draft);
+        if (!created) throw new Error("Не удалось создать копию");
+        toast.success(`Копия создана · ${created.recipientsCount} получателей — можно отправлять`);
+        navigate(`/broadcasts/${created.id}`);
+        return;
+      }
+      // Уже отправленную рассылку нельзя пересобрать — делаем копию с новым списком.
+      const locked = !["draft", "scheduled"].includes(campaign.status);
+      if (locked && draft.audienceSource === "upload") {
+        const created = await duplicate({
+          ...draft,
+          name: draft.name.startsWith("Копия:") ? draft.name : `Копия: ${draft.name}`,
+        });
+        if (!created) throw new Error("Не удалось создать копию");
+        toast.success(
+          `Список у отправленной рассылки не меняется — создана копия (${created.recipientsCount} чел.)`,
+        );
+        navigate(`/broadcasts/${created.id}`);
+        return;
+      }
       await update(campaign.id, draft);
       toast.success("Рассылка обновлена");
       refetch();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось сохранить");
+      throw e;
     }
+  };
+
+  const handlePrimarySend = () => {
+    if (isDone) {
+      void openDuplicate();
+      toast.message("Чтобы слать новой базе — дублируйте рассылку и добавьте контакты");
+      return;
+    }
+    setSending(true);
   };
 
   return (
@@ -214,16 +280,27 @@ export default function BroadcastDetail() {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => setSending(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-glow transition-opacity hover:opacity-90"
+                onClick={handlePrimarySend}
+                disabled={seedLoading}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-glow transition-opacity hover:opacity-90 disabled:opacity-60"
               >
                 <Send className="h-3.5 w-3.5" />
-                {isDone ? "Повторить" : "Отправить"}
+                {isDone ? "Повторить на новую базу" : "Отправить"}
               </button>
               <button
                 type="button"
-                onClick={() => setEditOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-card/60 px-3 py-2 text-xs font-semibold transition-colors hover:bg-secondary/60"
+                onClick={() => void openDuplicate()}
+                disabled={seedLoading}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-60"
+              >
+                {seedLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
+                Дублировать
+              </button>
+              <button
+                type="button"
+                onClick={() => void openEdit()}
+                disabled={seedLoading}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-card/60 px-3 py-2 text-xs font-semibold transition-colors hover:bg-secondary/60 disabled:opacity-60"
               >
                 <Pencil className="h-3.5 w-3.5" />
                 Изменить
@@ -401,6 +478,8 @@ export default function BroadcastDetail() {
         open={editOpen}
         onOpenChange={setEditOpen}
         broadcast={campaign}
+        mode={dialogMode}
+        seedContacts={seedContacts}
         crmContacts={crmContacts}
         onSave={handleSave}
       />
