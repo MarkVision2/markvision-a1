@@ -110,10 +110,13 @@ export function BroadcastDialog({
         seedContacts && seedContacts.length
           ? seedContacts
           : d.uploadedContacts;
+      // При дублировании всегда даём править список вручную (снимок получателей).
+      const audienceSource =
+        effectiveMode === "duplicate" && seeds.length > 0 ? ("upload" as const) : d.audienceSource;
       setDraft({
         ...d,
+        audienceSource,
         uploadedContacts: seeds,
-        audienceSource: seeds.length && !d.crmFilter.stageKeys.length ? d.audienceSource : d.audienceSource,
       });
       setPasted(formatPaste(seeds));
     } else {
