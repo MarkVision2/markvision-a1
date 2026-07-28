@@ -1,0 +1,417 @@
+{
+ "audioTrack": "reels/vo_skillup.mp3",
+ "words": [
+  {
+   "text": "Хочешь",
+   "from": 5,
+   "to": 14,
+   "accent": false
+  },
+  {
+   "text": "освоить",
+   "from": 14,
+   "to": 29,
+   "accent": false
+  },
+  {
+   "text": "новый",
+   "from": 29,
+   "to": 36,
+   "accent": false
+  },
+  {
+   "text": "навык",
+   "from": 36,
+   "to": 46,
+   "accent": true
+  },
+  {
+   "text": "и",
+   "from": 46,
+   "to": 53,
+   "accent": false
+  },
+  {
+   "text": "зарабатывать",
+   "from": 53,
+   "to": 70,
+   "accent": false
+  },
+  {
+   "text": "дополнительно",
+   "from": 70,
+   "to": 94,
+   "accent": false
+  },
+  {
+   "text": "не",
+   "from": 94,
+   "to": 98,
+   "accent": false
+  },
+  {
+   "text": "увольняясь",
+   "from": 98,
+   "to": 115,
+   "accent": false
+  },
+  {
+   "text": "с",
+   "from": 115,
+   "to": 120,
+   "accent": false
+  },
+  {
+   "text": "работы?",
+   "from": 120,
+   "to": 144,
+   "accent": false
+  },
+  {
+   "text": "Сейчас",
+   "from": 144,
+   "to": 156,
+   "accent": false
+  },
+  {
+   "text": "с",
+   "from": 156,
+   "to": 163,
+   "accent": false
+  },
+  {
+   "text": "помощью",
+   "from": 163,
+   "to": 170,
+   "accent": false
+  },
+  {
+   "text": "нейросетей",
+   "from": 170,
+   "to": 194,
+   "accent": false
+  },
+  {
+   "text": "можно",
+   "from": 194,
+   "to": 204,
+   "accent": false
+  },
+  {
+   "text": "создавать",
+   "from": 204,
+   "to": 218,
+   "accent": false
+  },
+  {
+   "text": "сайты",
+   "from": 218,
+   "to": 238,
+   "accent": false
+  },
+  {
+   "text": "приложения",
+   "from": 238,
+   "to": 250,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 250,
+   "to": 257,
+   "accent": false
+  },
+  {
+   "text": "цифровые",
+   "from": 257,
+   "to": 274,
+   "accent": false
+  },
+  {
+   "text": "решения",
+   "from": 274,
+   "to": 286,
+   "accent": false
+  },
+  {
+   "text": "без",
+   "from": 286,
+   "to": 298,
+   "accent": false
+  },
+  {
+   "text": "навыков",
+   "from": 298,
+   "to": 312,
+   "accent": false
+  },
+  {
+   "text": "программирования",
+   "from": 312,
+   "to": 355,
+   "accent": false
+  },
+  {
+   "text": "На",
+   "from": 355,
+   "to": 360,
+   "accent": false
+  },
+  {
+   "text": "бесплатном",
+   "from": 360,
+   "to": 377,
+   "accent": false
+  },
+  {
+   "text": "воркшопе",
+   "from": 377,
+   "to": 394,
+   "accent": true
+  },
+  {
+   "text": "мы",
+   "from": 394,
+   "to": 398,
+   "accent": false
+  },
+  {
+   "text": "вместе",
+   "from": 398,
+   "to": 408,
+   "accent": false
+  },
+  {
+   "text": "создадим",
+   "from": 408,
+   "to": 425,
+   "accent": false
+  },
+  {
+   "text": "твое",
+   "from": 425,
+   "to": 434,
+   "accent": false
+  },
+  {
+   "text": "первое",
+   "from": 434,
+   "to": 446,
+   "accent": false
+  },
+  {
+   "text": "приложение",
+   "from": 446,
+   "to": 511,
+   "accent": false
+  },
+  {
+   "text": "а",
+   "from": 468,
+   "to": 478,
+   "accent": false
+  },
+  {
+   "text": "после",
+   "from": 478,
+   "to": 485,
+   "accent": false
+  },
+  {
+   "text": "я",
+   "from": 485,
+   "to": 492,
+   "accent": false
+  },
+  {
+   "text": "покажу",
+   "from": 492,
+   "to": 507,
+   "accent": false
+  },
+  {
+   "text": "как",
+   "from": 507,
+   "to": 512,
+   "accent": false
+  },
+  {
+   "text": "такие",
+   "from": 512,
+   "to": 521,
+   "accent": false
+  },
+  {
+   "text": "решения",
+   "from": 521,
+   "to": 536,
+   "accent": false
+  },
+  {
+   "text": "продавать",
+   "from": 536,
+   "to": 550,
+   "accent": false
+  },
+  {
+   "text": "бизнесу",
+   "from": 550,
+   "to": 567,
+   "accent": false
+  },
+  {
+   "text": "от",
+   "from": 567,
+   "to": 572,
+   "accent": false
+  },
+  {
+   "text": "1000$",
+   "from": 572,
+   "to": 608,
+   "accent": false
+  },
+  {
+   "text": "Количество",
+   "from": 608,
+   "to": 627,
+   "accent": false
+  },
+  {
+   "text": "мест",
+   "from": 627,
+   "to": 636,
+   "accent": false
+  },
+  {
+   "text": "ограничено",
+   "from": 636,
+   "to": 658,
+   "accent": false
+  },
+  {
+   "text": "жми",
+   "from": 658,
+   "to": 668,
+   "accent": false
+  },
+  {
+   "text": "подробнее",
+   "from": 668,
+   "to": 682,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 682,
+   "to": 692,
+   "accent": false
+  },
+  {
+   "text": "занимай",
+   "from": 692,
+   "to": 708,
+   "accent": false
+  },
+  {
+   "text": "место",
+   "from": 708,
+   "to": 780,
+   "accent": false
+  }
+ ],
+ "scenes": [
+  {
+   "from": 0,
+   "to": 144,
+   "template": "quote-card",
+   "data": {
+    "text": "НОВЫЙ НАВЫК И ДОХОД, НЕ УВОЛЬНЯЯСЬ?",
+    "accent": "#22D3EE"
+   },
+   "clip": "broll/skillup/person-learning-laptop-online-course-7189831.mp4"
+  },
+  {
+   "from": 144,
+   "to": 286,
+   "template": "pill-row",
+   "data": {
+    "items": [
+     "Сайты",
+     "Приложения",
+     "Решения"
+    ],
+    "accent": "#8B5CF6",
+    "cover": true
+   },
+   "clip": "broll/skillup/app-development-coding-screen-33315117.mp4"
+  },
+  {
+   "from": 286,
+   "to": 355,
+   "template": "kinetic-type",
+   "data": {
+    "words": [
+     "БЕЗ",
+     "КОДА"
+    ],
+    "accentIndex": 1,
+    "accent": "#FF7A18",
+    "cover": true
+   }
+  },
+  {
+   "from": 355,
+   "to": 468,
+   "template": "notification-toast",
+   "data": {
+    "title": "БЕСПЛАТНЫЙ ВОРКШОП",
+    "text": "Создаём первое приложение вместе",
+    "icon": "rocket",
+    "accent": "#34D399"
+   },
+   "clip": "broll/skillup/online-coding-workshop-laptop-class-8266177.mp4"
+  },
+  {
+   "from": 468,
+   "to": 608,
+   "template": "price-tag",
+   "data": {
+    "price": "$1 000",
+    "label": "ПРОДАЁШЬ БИЗНЕСУ ОТ",
+    "accent": "#FFC53D",
+    "caption": false
+   },
+   "clip": "broll/skillup/business-deal-payment-success-handshake-8814522.mp4"
+  },
+  {
+   "from": 608,
+   "to": 658,
+   "template": "countdown",
+   "data": {
+    "from": 5,
+    "label": "МЕСТ ОСТАЛОСЬ",
+    "accent": "#FB7185",
+    "cover": true
+   }
+  },
+  {
+   "from": 658,
+   "to": 781,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ЖМИ",
+     "«ПОДРОБНЕЕ»"
+    ],
+    "accent": "#FF7A18",
+    "cover": true
+   }
+  }
+ ],
+ "totalDurationInFrames": 781,
+ "fps": 30,
+ "music": "reels/beat_skillup.wav",
+ "musicVolume": 0.07,
+ "captions": true
+}
