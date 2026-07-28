@@ -313,6 +313,40 @@ async function bindMissingGroupIds(credsCache: Map<string, Creds | null>): Promi
 type Campaign = { id: string; project_id: string; group_id: string };
 type Rec = { id: string; phone: string; name: string; lead_id: string | null; campaign_id: string; status: string };
 
+/** Пересчёт stats кампании + touch updated_at — UI подхватит через realtime. */
+async function refreshCampaignStats(campaignId: string) {
+  const { data } = await admin
+    .from("broadcast_recipients")
+    .select("status, clicked_at, joined_at, lead_id")
+    .eq("campaign_id", campaignId)
+    .limit(50000);
+  const rows = (data ?? []) as {
+    status: string;
+    clicked_at: string | null;
+    joined_at: string | null;
+    lead_id: string | null;
+  }[];
+  const count = (s: string) => rows.filter((r) => r.status === s).length;
+  const stats = {
+    total: rows.length,
+    queued: count("queued"),
+    sent: count("sent"),
+    delivered: count("delivered"),
+    read: count("read"),
+    replied: count("replied"),
+    converted: count("converted"),
+    failed: count("failed"),
+    optout: count("skipped_optout"),
+    clicked: rows.filter((r) => !!r.clicked_at || !!r.joined_at).length,
+    joined: rows.filter((r) => !!r.joined_at).length,
+    leads: rows.filter((r) => !!r.joined_at && !!r.lead_id).length,
+  };
+  await admin
+    .from("broadcast_campaigns")
+    .update({ stats, updated_at: new Date().toISOString() })
+    .eq("id", campaignId);
+}
+
 /**
  * Создать / привязать лида + сдвинуть на joined_group.
  * Возвращает leadId и флаг создания.
@@ -404,6 +438,7 @@ Deno.serve(async (req) => {
   let leadsCreated = 0;
   let leadsAdvanced = 0;
   let repaired = 0;
+  const touchedCampaigns = new Set<string>();
 
   for (const [projectId, groups] of byProject) {
     if (!credsCache.has(projectId)) credsCache.set(projectId, await resolveCreds(projectId));
@@ -452,6 +487,7 @@ Deno.serve(async (req) => {
           }
           await admin.from("broadcast_recipients").update(patch).eq("id", r.id);
           marked += 1;
+          touchedCampaigns.add(r.campaign_id);
 
           const result = await ensureJoinCrm(r, projectId, joinStage, owner);
           if (result.created) leadsCreated += 1;
@@ -474,9 +510,23 @@ Deno.serve(async (req) => {
         const before = r.lead_id;
         const result = await ensureJoinCrm(r, projectId, joinStage, owner);
         if (result.created) leadsCreated += 1;
-        if (result.advanced || (!before && result.leadId)) repaired += 1;
+        if (result.advanced || (!before && result.leadId)) {
+          repaired += 1;
+          touchedCampaigns.add(r.campaign_id);
+        }
         if (result.advanced) leadsAdvanced += 1;
       }
+
+      // Даже без новых join — периодически освежаем stats, чтобы UI не замирал.
+      for (const cid of campaignIds) touchedCampaigns.add(cid);
+    }
+  }
+
+  for (const cid of touchedCampaigns) {
+    try {
+      await refreshCampaignStats(cid);
+    } catch (e) {
+      console.warn("refreshCampaignStats failed", cid, e);
     }
   }
 
@@ -487,6 +537,7 @@ Deno.serve(async (req) => {
     leadsAdvanced,
     repaired,
     bound,
+    campaignsRefreshed: touchedCampaigns.size,
     ran_at: new Date().toISOString(),
   });
 });

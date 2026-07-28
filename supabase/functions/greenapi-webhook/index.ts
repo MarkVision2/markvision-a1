@@ -562,9 +562,14 @@ async function refreshBroadcastCampaignStats(campaignId: string) {
   try {
     const { data } = await admin
       .from("broadcast_recipients")
-      .select("status, clicked_at")
+      .select("status, clicked_at, joined_at, lead_id")
       .eq("campaign_id", campaignId);
-    const rows = (data ?? []) as { status: string; clicked_at: string | null }[];
+    const rows = (data ?? []) as {
+      status: string;
+      clicked_at: string | null;
+      joined_at: string | null;
+      lead_id: string | null;
+    }[];
     const count = (s: string) => rows.filter((r) => r.status === s).length;
     const stats = {
       total: rows.length,
@@ -576,9 +581,14 @@ async function refreshBroadcastCampaignStats(campaignId: string) {
       converted: count("converted"),
       failed: count("failed"),
       optout: count("skipped_optout"),
-      clicked: rows.filter((r) => !!r.clicked_at).length,
+      clicked: rows.filter((r) => !!r.clicked_at || !!r.joined_at).length,
+      joined: rows.filter((r) => !!r.joined_at).length,
+      leads: rows.filter((r) => !!r.joined_at && !!r.lead_id).length,
     };
-    await admin.from("broadcast_campaigns").update({ stats }).eq("id", campaignId);
+    await admin
+      .from("broadcast_campaigns")
+      .update({ stats, updated_at: new Date().toISOString() })
+      .eq("id", campaignId);
   } catch (e) {
     console.warn("refreshBroadcastCampaignStats failed:", e);
   }

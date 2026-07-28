@@ -13,6 +13,8 @@ export function useBroadcastDetail(campaignId: string | undefined, projectId: st
     queryKey: [BROADCAST_DETAIL_KEY, projectId, campaignId],
     queryFn: () => fetchCampaignDetail(campaignId!, projectId!),
     enabled: !!campaignId && !!projectId,
+    // Отчёт: цифры доставки / группы / CRM без ручного обновления.
+    refetchInterval: 12_000,
   });
 
   const invalidate = useCallback(() => {
@@ -22,6 +24,8 @@ export function useBroadcastDetail(campaignId: string | undefined, projectId: st
 
   useRealtimeTable("broadcast_recipients", invalidate, !!campaignId && !!projectId, 600);
   useRealtimeTable("broadcast_campaigns", invalidate, !!campaignId && !!projectId, 800);
+  // CRM-стадии/оплаты тоже двигают воронку (вебинар → оплата).
+  useRealtimeTable("leads", invalidate, !!campaignId && !!projectId, 1200);
 
   return {
     detail: query.data ?? null,

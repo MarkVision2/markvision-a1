@@ -26,6 +26,12 @@ export function useBroadcasts(projectId: string | null, crmContacts: LeadContact
     queryKey: [BROADCASTS_QUERY_KEY, projectId],
     queryFn: () => (projectId ? listCampaigns(projectId) : Promise.resolve([])),
     enabled: !!projectId,
+    // Пока идёт отправка / есть активные кампании — подтягиваем воронку без F5.
+    refetchInterval: (q) => {
+      const list = q.state.data ?? [];
+      const live = list.some((b) => b.status === "sending" || b.status === "scheduled");
+      return live ? 15_000 : 45_000;
+    },
   });
 
   const invalidate = useCallback(() => {
@@ -33,6 +39,7 @@ export function useBroadcasts(projectId: string | null, crmContacts: LeadContact
   }, [queryClient, projectId]);
 
   useRealtimeTable("broadcast_campaigns", invalidate, !!projectId, 500);
+  useRealtimeTable("broadcast_recipients", invalidate, !!projectId, 800);
 
   const create = useCallback(
     async (draft: BroadcastDraft): Promise<Broadcast | null> => {
