@@ -1,7 +1,7 @@
 {
-  "git_sha": "bffbcacd",
-  "git_sha_full": "bffbcacd33c6bd29266ec52fc8c86c4aa8a4d8fc",
-  "updated_at": "2026-07-28T15:40:47Z",
-  "label": "Merge branch 'cursor/broadcast-live-stats-84cc': live broadcast funnel stats",
+  "git_sha": "a04bdf33",
+  "git_sha_full": "a04bdf33bf0e7db0caf21e6dda7df3e8dbda4b30",
+  "updated_at": "2026-07-28T16:03:12Z",
+  "label": "Merge branch 'cursor/broadcast-detail-polish-84cc': drop CRM KPI + polish report",
   "publish_hint": "push main \u2192 www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
