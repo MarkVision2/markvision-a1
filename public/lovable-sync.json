@@ -1,7 +1,7 @@
 {
-  "git_sha": "b014897",
-  "git_sha_full": "b0148970309fee0360b182d993b9bcabd375b2a5",
-  "updated_at": "2026-07-28T09:10:11+05:00",
-  "label": "Рассылки: CRM-атрибуция «Рассылка» (вступившие в группу → воронка CRM) (#206)",
+  "git_sha": "817bbae",
+  "git_sha_full": "817bbae63130383cb04457dd81eeb1bfea8b542c",
+  "updated_at": "2026-07-28T04:35:06Z",
+  "label": "Fixed RLS on storage.objects",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
