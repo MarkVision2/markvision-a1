@@ -8,6 +8,7 @@
  * присылает видео в привязанный Telegram-чат проекта.
  */
 import { supabase } from "@/integrations/supabase/client";
+import { clientSupabaseUrl, clientSupabasePublishableKey } from "@/lib/supabaseConfig";
 import type { MontageStyleId } from "@/lib/montageTemplates";
 import { getMontageStyle } from "@/lib/montageTemplates";
 

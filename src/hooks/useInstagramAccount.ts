@@ -112,7 +112,7 @@ export function useInstagramAccount() {
       setLoadError(null);
       return;
     }
-    const row = data as Record<string, unknown>;
+    const row = data as unknown as Record<string, unknown>;
     setAccount({
       igUserId: String(row.ig_user_id),
       username: (row.username as string | null) ?? null,

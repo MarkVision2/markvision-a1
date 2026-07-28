@@ -19,6 +19,7 @@ const rec = (
   repliedAt: null,
   clickedAt: null,
   convertedAt: null,
+  joinedAt: null,
   error: null,
   ...partial,
 });

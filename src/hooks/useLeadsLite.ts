@@ -68,14 +68,14 @@ export async function fetchLeadsLite(activeId: string | null): Promise<LeadLite[
   ]);
   const idToKey = new Map<string, string>();
   const idToRole = new Map<string, string>();
-  for (const s of stagesRes.data ?? []) {
+  for (const s of (stagesRes.data ?? []) as unknown as Array<{ id: string; key: string; stage_role?: string }>) {
     idToKey.set(s.id, s.key);
-    if ((s as { stage_role?: string }).stage_role) {
-      idToRole.set(s.id, (s as { stage_role: string }).stage_role);
+    if (s.stage_role) {
+      idToRole.set(s.id, s.stage_role);
     }
   }
 
-  return (leadsRes.data ?? []).map((r) => ({
+  return ((leadsRes.data ?? []) as unknown as Array<Record<string, unknown>>).map((r) => ({
     id: r.id as string,
     projectId: (r.project_id as string | null) ?? null,
     source: (r.source as string) ?? "",
@@ -88,24 +88,24 @@ export async function fetchLeadsLite(activeId: string | null): Promise<LeadLite[
     stageKey: idToKey.get(r.stage_id as string) ?? "new",
     stageRole: idToRole.get(r.stage_id as string) ?? null,
     amount: Number(r.amount ?? 0),
-    diagnosticAmount: Number((r as { diagnostic_amount?: number | null }).diagnostic_amount ?? 0),
+    diagnosticAmount: Number((r.diagnostic_amount as number | null) ?? 0),
     createdAt: r.created_at as string,
     paidAt: (r.paid_at as string | null) ?? null,
     lastActivityAt: r.last_activity_at as string,
     firstResponseAt: (r.first_response_at as string | null) ?? null,
     assigneeId: (r.assigned_to as string | null) ?? null,
     paid: Boolean(r.paid),
-    aiScore: Number((r as { ai_score?: number | null }).ai_score ?? 0),
-    scoreLabel: ((r as { score_label?: string | null }).score_label ?? null) as string | null,
-    rejectReason: ((r as { reject_reason?: string | null }).reject_reason ?? null) as string | null,
-    rejectedAt: ((r as { rejected_at?: string | null }).rejected_at ?? null) as string | null,
+    aiScore: Number((r.ai_score as number | null) ?? 0),
+    scoreLabel: ((r.score_label as string | null) ?? null),
+    rejectReason: ((r.reject_reason as string | null) ?? null),
+    rejectedAt: ((r.rejected_at as string | null) ?? null),
     stageId: (r.stage_id as string | null) ?? null,
     nextVisitAt: (r.next_visit_at as string | null) ?? null,
     paymentMethod: (r.payment_method as string | null) ?? null,
-    tags: Array.isArray((r as { tags?: string[] }).tags) ? (r as { tags: string[] }).tags : [],
-    temperature: ((r as { temperature?: string | null }).temperature ?? null) as string | null,
-    webinarStatus: ((r as { webinar_status?: string | null }).webinar_status ?? null) as string | null,
-    depositAmount: Number((r as { deposit_amount?: number | null }).deposit_amount ?? 0) || null,
+    tags: Array.isArray(r.tags) ? (r.tags as string[]) : [],
+    temperature: ((r.temperature as string | null) ?? null),
+    webinarStatus: ((r.webinar_status as string | null) ?? null),
+    depositAmount: Number((r.deposit_amount as number | null) ?? 0) || null,
   }));
 }
 

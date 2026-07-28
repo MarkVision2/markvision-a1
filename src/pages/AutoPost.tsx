@@ -416,7 +416,7 @@ const AutoPost = ({ embedded = false }: { embedded?: boolean } = {}) => {
         ))}
       </div>
 
-      {!initialLoading && <AutopostUpcomingRail posts={posts} onEdit={setEditing} />}
+      {!initialLoading && <AutopostUpcomingRail posts={posts} onEdit={(p) => setEditing(p as unknown as QueuePost)} />}
 
       {/* Тулбар: вид + фильтры + действие */}
       <div className="mt-6 flex flex-wrap items-center justify-between gap-3">

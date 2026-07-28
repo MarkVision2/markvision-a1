@@ -170,7 +170,7 @@ export function useCodewordStats() {
         setStats([]);
       } else {
         setStats(
-          (data ?? []).map((r: Record<string, unknown>) => ({
+          ((data ?? []) as unknown as Record<string, unknown>[]).map((r) => ({
             codewordId: String(r.codeword_id),
             codeword: String(r.codeword ?? ""),
             shortId: (r.short_id as string | null) ?? null,

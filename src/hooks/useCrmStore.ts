@@ -360,7 +360,7 @@ export function useCrmStore() {
     // Communications were fetched DESC for limit; chats expect ASC for chronological render.
     // Чаты «личных» лидов тоже не показываем — фильтруем по id видимых лидов.
     const visibleIds = new Set(visibleLeads.map((l) => l.id));
-    const commsAsc = ((commRes.data ?? []) as CommRow[])
+    const commsAsc = ((commRes.data ?? []) as unknown as CommRow[])
       .slice()
       .reverse()
       .filter((c) => visibleIds.has(c.lead_id));

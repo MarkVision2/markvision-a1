@@ -467,6 +467,7 @@ export async function fetchRecipientCounts(campaignId: string): Promise<Recipien
     repliedAt: null,
     clickedAt: null,
     convertedAt: null,
+    joinedAt: null,
     error: null,
   }));
   const d = countDelivery(recipients);
