@@ -103,7 +103,6 @@ const FILTERS: RecFilter[] = [
     match: (r) => ["replied", "converted"].includes(r.status),
   },
   { id: "failed", label: "Ошибки", match: (r) => r.status === "failed" },
-  { id: "crm", label: "В CRM", match: null },
 ];
 
 export default function BroadcastDetail() {
@@ -135,12 +134,8 @@ export default function BroadcastDetail() {
     const q = query.trim().toLowerCase();
     return detail.recipients.filter((r) => {
       const lead = matched.get(r.id);
-      if (filter === "crm") {
-        if (!lead) return false;
-      } else {
-        const f = FILTERS.find((x) => x.id === filter);
-        if (f?.match && !f.match(r)) return false;
-      }
+      const f = FILTERS.find((x) => x.id === filter);
+      if (f?.match && !f.match(r)) return false;
       if (!q) return true;
       return (
         (r.name || "").toLowerCase().includes(q) ||
@@ -252,8 +247,17 @@ export default function BroadcastDetail() {
   };
 
   return (
-    <main className="flex h-[calc(100vh-3.5rem)] min-h-0 flex-col animate-fade-in-up">
-      <header className="border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur sm:px-6">
+    <main className="relative flex h-[calc(100vh-3.5rem)] min-h-0 flex-col animate-fade-in-up">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-[radial-gradient(ellipse_at_top,_hsl(162_70%_45%_/_0.12),_transparent_55%)]"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--border)/0.3)_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border)/0.3)_1px,transparent_1px)] bg-[size:44px_44px] opacity-30 [mask-image:linear-gradient(to_bottom,black,transparent_65%)]"
+      />
+
+      <header className="relative z-10 border-b border-border/50 bg-background/70 px-4 py-3 backdrop-blur-xl sm:px-6">
         <div className="mx-auto max-w-[1400px] space-y-3">
           <Button variant="ghost" size="sm" className="gap-1 -ml-2" asChild>
             <Link to="/broadcasts">
@@ -268,7 +272,7 @@ export default function BroadcastDetail() {
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="truncate text-xl font-bold sm:text-2xl">{campaign.name}</h1>
+                <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">{campaign.name}</h1>
                 <span
                   className={cn(
                     "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
@@ -279,6 +283,9 @@ export default function BroadcastDetail() {
                     status.tone === "muted" && "bg-secondary text-muted-foreground",
                   )}
                 >
+                  {campaign.status === "sending" ? (
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+                  ) : null}
                   {status.label}
                 </span>
                 <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px] font-semibold">
@@ -305,7 +312,7 @@ export default function BroadcastDetail() {
                 )}
                 <Link to="/crm" className="inline-flex items-center gap-1 text-primary hover:underline">
                   <ExternalLink className="h-3 w-3" />
-                  CRM
+                  Открыть CRM
                 </Link>
               </div>
             </div>
@@ -315,7 +322,7 @@ export default function BroadcastDetail() {
                 type="button"
                 onClick={handlePrimarySend}
                 disabled={seedLoading}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-glow transition-opacity hover:opacity-90 disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground shadow-glow transition-transform hover:scale-[1.02] disabled:opacity-60"
               >
                 <Send className="h-3.5 w-3.5" />
                 {isDone ? "Повторить на новую базу" : "Отправить"}
@@ -324,7 +331,7 @@ export default function BroadcastDetail() {
                 type="button"
                 onClick={() => void openDuplicate()}
                 disabled={seedLoading}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/5 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-60"
               >
                 {seedLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
                 Дублировать
@@ -333,7 +340,7 @@ export default function BroadcastDetail() {
                 type="button"
                 onClick={() => void openEdit()}
                 disabled={seedLoading}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-card/60 px-3 py-2 text-xs font-semibold transition-colors hover:bg-secondary/60 disabled:opacity-60"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-border/60 bg-card/60 px-3 py-2 text-xs font-semibold transition-colors hover:bg-secondary/60 disabled:opacity-60"
               >
                 <Pencil className="h-3.5 w-3.5" />
                 Изменить
@@ -341,7 +348,7 @@ export default function BroadcastDetail() {
               <button
                 type="button"
                 onClick={() => setPendingDelete(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/30 px-3 py-2 text-xs font-semibold text-destructive transition-colors hover:bg-destructive/10"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-destructive/30 px-3 py-2 text-xs font-semibold text-destructive transition-colors hover:bg-destructive/10"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 Удалить
@@ -351,7 +358,7 @@ export default function BroadcastDetail() {
         </div>
       </header>
 
-      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4 sm:px-6">
+      <section className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-5 sm:px-6">
         <div className="mx-auto w-full max-w-[1400px] space-y-5">
           <div className="space-y-3">
             <BroadcastHeroKpis funnel={funnel} />
@@ -364,18 +371,17 @@ export default function BroadcastDetail() {
                 <BroadcastFunnelView funnel={funnel} />
                 <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
                   <span className="font-semibold text-foreground/80">Прочитали</span> — две синие
-                  галочки WhatsApp (не клик).{" "}
-                  <span className="font-semibold text-foreground/80">Клики</span> — переход по
-                  кнопке/ссылке.{" "}
-                  <span className="font-semibold text-foreground/80">В группе</span> — человек в
-                  составе WhatsApp-группы.{" "}
-                  <span className="font-semibold text-foreground/80">В CRM</span> — карточка лида со
-                  стадией «Вступил в группу» (или дальше по воронке).
+                  галочки.{" "}
+                  <span className="font-semibold text-foreground/80">Клики</span> — кнопка/ссылка.{" "}
+                  <span className="font-semibold text-foreground/80">В группе</span> — реально в
+                  WhatsApp-группе (лид в CRM создаётся сам).{" "}
+                  <span className="font-semibold text-foreground/80">Вебинар / оплаты</span> — дальше
+                  по воронке CRM среди вступивших.
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-border/60 bg-card/40 p-4">
-                <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-muted-foreground">
+              <div className="rounded-2xl border border-border/55 bg-card/45 p-4 backdrop-blur-sm">
+                <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Текст сообщения
                 </h2>
                 {campaign.title ? (
@@ -387,12 +393,12 @@ export default function BroadcastDetail() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-border/60 bg-card/40 p-4">
+            <div className="rounded-2xl border border-border/55 bg-card/45 p-4 backdrop-blur-sm">
               <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
+                <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Получатели
                 </h2>
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-[11px] tabular-nums text-muted-foreground">
                   {filteredRecipients.length}/{recipients.length}
                 </span>
               </div>
@@ -403,7 +409,7 @@ export default function BroadcastDetail() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Имя или телефон…"
-                  className="h-9 pl-8 text-xs"
+                  className="h-9 border-border/50 bg-background/40 pl-8 text-xs"
                 />
               </div>
 
