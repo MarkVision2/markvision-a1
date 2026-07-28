@@ -92,6 +92,9 @@ def build(work: Path, props_dir: Path, audio_dur: float):
         "music": f"reels/{cfg['music']}" if cfg.get("music") else None,
         "musicVolume": cfg.get("musicVolume", 0.1),
         "captions": True,
+        # фон всего ролика: "grid" (по умолч.) | "aurora" | "warp" | "mesh".
+        # Отдельная сцена может переопределить своим data.bg.
+        "background": cfg.get("background", "grid"),
     }
     out = props_dir / f"{cfg['id']}.json"
     out.parent.mkdir(parents=True, exist_ok=True)

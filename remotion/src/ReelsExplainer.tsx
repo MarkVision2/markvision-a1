@@ -36,6 +36,7 @@ export type ReelsExplainerProps = {
   music?: string | null;
   musicVolume?: number;
   captions?: boolean;
+  background?: string; // "grid" (по умолч.) | "aurora" | "warp"
 };
 
 const PAPER = BRAND.text;
@@ -163,6 +164,68 @@ const Captions: React.FC<{ words: ShortWord[]; scene: ReelsScene | null }> = ({ 
   );
 };
 
+// ─── Дополнительные фоны (чтобы ролики не выглядели одинаково) ────────────────
+// "aurora" — плавные цветные пятна-градиенты дрейфуют и пульсируют (премиум,
+// совсем не как сетка). "warp" — звёздные полосы разлетаются из центра
+// (гиперскачок, ударный хук). Выбираются через props.background или scene.data.bg.
+
+const AuroraBackground: React.FC<{ frame: number; accent: string }> = ({ frame, accent }) => {
+  const blob = (x: number, y: number, c: string, r: number, dx: number, dy: number, sp: number) => ({
+    position: "absolute" as const,
+    left: `${x + Math.sin(frame / sp) * dx}%`,
+    top: `${y + Math.cos(frame / (sp * 1.3)) * dy}%`,
+    width: r,
+    height: r,
+    borderRadius: "50%",
+    background: `radial-gradient(circle, ${c}, transparent 68%)`,
+    filter: "blur(60px)",
+    opacity: 0.55 + 0.2 * Math.sin(frame / (sp * 0.8)),
+  });
+  return (
+    <AbsoluteFill style={{ background: "linear-gradient(160deg, #0B0A18 0%, #0A0C16 55%, #060810 100%)", overflow: "hidden" }}>
+      <div style={blob(8, 6, accent, 760, 8, 6, 90)} />
+      <div style={blob(62, 60, "#7C3AED", 820, 10, 8, 120)} />
+      <div style={blob(72, 8, "#EC4899", 620, 7, 6, 105)} />
+      <div style={blob(18, 66, "#22D3EE", 680, 9, 7, 135)} />
+      {/* тонкая зернистая вуаль сверху для глубины */}
+      <AbsoluteFill style={{ background: "radial-gradient(120% 90% at 50% 40%, transparent 40%, rgba(4,6,12,0.7) 100%)" }} />
+    </AbsoluteFill>
+  );
+};
+
+const WarpBackground: React.FC<{ frame: number; accent: string }> = ({ frame, accent }) => {
+  const N = 90;
+  const cx = CANVAS_W / 2;
+  const cy = CANVAS_H / 2;
+  return (
+    <AbsoluteFill style={{ background: "radial-gradient(90% 70% at 50% 50%, #0C1430 0%, #05070F 70%)", overflow: "hidden" }}>
+      {Array.from({ length: N }, (_, i) => {
+        const ang = rnd(i, 1) * Math.PI * 2;
+        const speed = 0.6 + rnd(i, 2) * 1.6;
+        // радиус циклически растёт от центра к краю → эффект гиперскачка
+        const t = (frame * speed + rnd(i, 3) * 900) % 900;
+        const rad = (t / 900) * 1200;
+        const x = cx + Math.cos(ang) * rad;
+        const y = cy + Math.sin(ang) * rad;
+        const len = 6 + (rad / 1200) * 60;
+        const op = Math.min(1, rad / 400) * (1 - rad / 1200) * 1.6;
+        const white = rnd(i, 6) > 0.6;
+        return (
+          <div key={i} style={{ position: "absolute", left: x, top: y, width: len, height: 2.5,
+            background: white ? "#FFFFFF" : accent, opacity: op, borderRadius: 2,
+            transform: `rotate(${(ang * 180) / Math.PI}deg)`, boxShadow: `0 0 8px ${white ? "#fff" : accent}` }} />
+        );
+      })}
+    </AbsoluteFill>
+  );
+};
+
+const Backdrop: React.FC<{ name: string; frame: number; accent: string }> = ({ name, frame, accent }) => {
+  if (name === "aurora") return <AuroraBackground frame={frame} accent={accent} />;
+  if (name === "warp") return <WarpBackground frame={frame} accent={accent} />;
+  return <SceneBackground localFrame={frame} accent={accent} />;
+};
+
 export const ReelsExplainer: React.FC<ReelsExplainerProps> = ({
   audioTrack,
   words,
@@ -171,6 +234,7 @@ export const ReelsExplainer: React.FC<ReelsExplainerProps> = ({
   music = null,
   musicVolume = 0.1,
   captions = true,
+  background = "grid",
 }) => {
   const frame = useCurrentFrame();
   const idx = scenes.findIndex((s) => frame >= s.from && frame < s.to);
@@ -192,9 +256,11 @@ export const ReelsExplainer: React.FC<ReelsExplainerProps> = ({
   // top progress line (constant motion, fills the very top edge)
   const prog = interpolate(frame, [0, totalDurationInFrames], [0, 100], { extrapolateRight: "clamp" });
 
+  const bgName = (active?.data?.bg as string | undefined) ?? background;
+
   return (
     <AbsoluteFill style={{ backgroundColor: BRAND.bg }}>
-      <SceneBackground localFrame={frame} accent={accent} />
+      <Backdrop name={bgName} frame={frame} accent={accent} />
 
       {/* живой б-ролл на весь кадр (если у сцены есть image/clip) — крестфейд */}
       {active && (active.image || active.clip) ? (
