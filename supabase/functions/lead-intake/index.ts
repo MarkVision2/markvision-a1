@@ -362,7 +362,18 @@ Deno.serve(async (req) => {
   // лендинге не проставлен utm_source. Тогда источник по умолчанию — google.
   const hasGclid = !!(v.gclid && v.gclid.trim());
   const bodySource = (v.source && v.source.trim()) || "";
-  const utmSource = (v.utm_source && v.utm_source.trim()) || "";
+  const landingUrlEarly = v.landing_url || v.page || null;
+  let utmSource = (v.utm_source && v.utm_source.trim()) || "";
+  // На случай если лендинг положил UTM только в landing_url, а не в поля.
+  if (!utmSource && landingUrlEarly) {
+    try {
+      const fromUrl = new URL(landingUrlEarly).searchParams.get("utm_source");
+      if (fromUrl?.trim()) {
+        utmSource = fromUrl.trim();
+        if (!utm.source) utm.source = utmSource;
+      }
+    } catch { /* ignore bad URL */ }
+  }
   // Лендинги часто шлют source=site и параллельно utm_source=vit — берём UTM.
   const explicitSource =
     bodySource && !GENERIC_SOURCES.has(bodySource.toLowerCase())
@@ -383,7 +394,7 @@ Deno.serve(async (req) => {
   const ALLOWED_CHANNELS = new Set(["whatsapp", "telegram", "instagram", "phone", "web"]);
   const channel = ALLOWED_CHANNELS.has(channelInput) ? channelInput : "web";
   const note = [v.message, v.note].filter(Boolean).join("\n").trim() || null;
-  const landingUrl = v.landing_url || v.page || null;
+  const landingUrl = landingUrlEarly;
 
   // Resolve project_id and cabinet_id.
   // Priority: URL token > body project_id > inbound_tokens(body token) > cabinet_id > ad_account_id.
