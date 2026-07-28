@@ -85,14 +85,28 @@ export function useBroadcasts(projectId: string | null, crmContacts: LeadContact
 }
 
 export function summarizeBroadcasts(list: Broadcast[]) {
-  const sent = list.filter((b) => b.status === "sent" || b.status === "partial");
+  const sentCampaigns = list.filter((b) => b.status === "sent" || b.status === "partial");
   const scheduled = list.filter((b) => b.status === "scheduled").length;
-  const reached = list.reduce((s, b) => s + b.stats.sent, 0);
+  const sending = list.filter((b) => b.status === "sending").length;
+  let reached = 0;
+  let joined = 0;
+  let webinarAttended = 0;
+  let sales = 0;
+  for (const b of list) {
+    reached += b.stats.sent || 0;
+    joined += b.stats.joined ?? 0;
+    webinarAttended += b.stats.webinarAttended ?? 0;
+    sales += b.stats.sales ?? b.stats.converted ?? 0;
+  }
   return {
     total: list.length,
-    sent: sent.length,
+    sent: sentCampaigns.length,
     scheduled,
+    sending,
     reached,
+    joined,
+    webinarAttended,
+    sales,
   };
 }
 
