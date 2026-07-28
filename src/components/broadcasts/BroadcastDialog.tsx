@@ -185,16 +185,23 @@ export function BroadcastDialog({
     setGroupBusy(true);
     try {
       const invite = await fetchGroupInvite(projectId, groupId);
-      setDraft((p) => ({
-        ...p,
-        groupId,
-        targetUrl: invite || p.targetUrl,
-        ctaLabel: p.ctaLabel || "Вступить в группу",
-        message: /(\{ссылка\}|\{link\})/i.test(p.message)
-          ? p.message
-          : `${p.message}${p.message ? "\n\n" : ""}Вступить в группу: {ссылка}`,
-      }));
-      toast.success("Группа выбрана — ссылка на вступление подставлена");
+      setDraft((p) => {
+        // Ссылку кладём в targetUrl → уйдёт кнопкой WhatsApp, не текстом.
+        // Убираем старые хвосты «Вступить в группу: {ссылка}», чтобы не дублировать CTA.
+        let message = (p.message ?? "")
+          .replace(/\n*[ \t]*Вступить в группу:[ \t]*\{ссылка\}[ \t]*/gi, "")
+          .replace(/\{ссылка\}|\{link\}/gi, "")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+        return {
+          ...p,
+          groupId,
+          targetUrl: invite || p.targetUrl,
+          ctaLabel: p.ctaLabel || "Вступить в группу",
+          message,
+        };
+      });
+      toast.success("Группа выбрана — в сообщении будет кнопка «Вступить в группу»");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось получить ссылку группы");
     } finally {
@@ -584,8 +591,8 @@ export function BroadcastDialog({
               </div>
             )}
             <p className="mt-1 text-[10px] text-muted-foreground">
-              Выберите группу — ссылка на вступление подставится в {"{ссылка}"} автоматически, а мы посчитаем,
-              кто реально перешёл и <b>вступил в группу</b>. Уйдёт как кнопка WhatsApp с трекингом.
+              Выберите группу — в WhatsApp уйдёт <b>кнопка «Вступить в группу»</b> (не текстовая ссылка).
+              Переходы и реальные вступления считаем автоматически.
             </p>
           </Field>
 

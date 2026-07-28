@@ -30,6 +30,20 @@ import {
 export type RecipientRow = { name: string; phone: string; lead_id: string | null };
 
 /**
+ * Когда есть targetUrl, CTA уходит кнопкой — чистим текстовые хвосты
+ * «Вступить в группу: {ссылка}», чтобы в WhatsApp не было голой ссылки.
+ */
+function scrubCtaTextPlaceholders(message: string, hasTargetUrl: boolean): string {
+  let body = message ?? "";
+  if (hasTargetUrl) {
+    body = body
+      .replace(/\n*[ \t]*Вступить в группу:[ \t]*\{ссылка\}[ \t]*/gi, "")
+      .replace(/\n*[ \t]*Вступить в группу:[ \t]*\{link\}[ \t]*/gi, "");
+  }
+  return body.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
  * Канонический формат телефона для хранения: «+<цифры>». Единый формат нужен,
  * чтобы дедуп (unique campaign_id+phone) и матчинг статусов/opt-out в webhook
  * не сбоили из-за разных форматов. Возвращает "" для явно невалидных номеров
@@ -227,6 +241,7 @@ export async function createCampaign(
   const status = draft.schedule.mode === "scheduled" ? "scheduled" : "draft";
   const stats = { total: rows.length, queued: rows.length, sent: 0, delivered: 0, read: 0, replied: 0, converted: 0, failed: 0, optout: 0, clicked: 0 };
   const link = normalizeBroadcastLink(draft.message, draft.targetUrl);
+  const message = scrubCtaTextPlaceholders(link.message, !!link.targetUrl);
 
   const { data, error } = await db()
     .from("broadcast_campaigns")
@@ -237,7 +252,7 @@ export async function createCampaign(
       audience_source: draft.audienceSource,
       crm_filter: draft.crmFilter,
       title: draft.title,
-      message: link.message,
+      message,
       message_variants: draft.messageVariants ?? [],
       target_url: link.targetUrl || null,
       group_id: draft.groupId || null,
@@ -325,7 +340,7 @@ export async function updateCampaign(
     audience_source: draft.audienceSource,
     crm_filter: draft.crmFilter,
     title: draft.title,
-    message: link.message,
+    message: scrubCtaTextPlaceholders(link.message, !!link.targetUrl),
     message_variants: draft.messageVariants ?? [],
     target_url: link.targetUrl || null,
     group_id: draft.groupId || null,

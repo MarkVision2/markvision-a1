@@ -102,6 +102,8 @@ function renderMessage(
     body = body
       .replace(/\{ссылка\}/gi, "")
       .replace(/\{link\}/gi, "")
+      .replace(/^[ \t]*вступить в группу:?[ \t]*$/gim, "")
+      .replace(/[ \t]*вступить в группу:?[ \t]*$/gim, "")
       .replace(/[ \t]+\n/g, "\n")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
