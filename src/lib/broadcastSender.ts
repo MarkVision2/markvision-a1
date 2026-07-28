@@ -20,27 +20,45 @@ export class SmsNotConnectedError extends Error {
 }
 
 /** Одна WhatsApp-отправка через greenapi-proxy. Бросает при ошибке.
- *  Если передан buttonUrl — уходит interactive URL-кнопка (CTA). */
+ *  Если передан buttonUrl — уходит interactive URL-кнопка (CTA).
+ *  requireButton=true — не молча откатываться в обычный текст. */
 export async function sendWhatsAppMessage(
   phone: string,
   message: string,
-  opts?: { buttonUrl?: string; buttonText?: string; header?: string },
-): Promise<void> {
+  opts?: {
+    buttonUrl?: string;
+    buttonText?: string;
+    header?: string;
+    projectId?: string;
+    requireButton?: boolean;
+  },
+): Promise<{ mode?: string }> {
   const { data, error } = await supabase.functions.invoke("greenapi-proxy", {
     body: {
       action: "sendMessage",
       phone,
       message,
+      project_id: opts?.projectId || undefined,
       buttonUrl: opts?.buttonUrl || undefined,
       buttonText: opts?.buttonText || undefined,
       header: opts?.header || undefined,
+      requireButton: opts?.requireButton === true,
     },
   });
   if (error) throw new Error(error.message || "Ошибка отправки");
-  const res = data as { ok?: boolean; status?: number; error?: string } | null;
+  const res = data as {
+    ok?: boolean;
+    status?: number;
+    error?: string;
+    mode?: string;
+  } | null;
   if (!res?.ok) {
     throw new Error(res?.error || `Green-API вернул статус ${res?.status ?? "?"}`);
   }
+  if (opts?.requireButton && opts.buttonUrl && res.mode !== "button") {
+    throw new Error(res.error || "WhatsApp не принял кнопку — сообщение без кнопки не отправляем");
+  }
+  return { mode: res.mode };
 }
 
 export type SendProgress = {

@@ -420,6 +420,7 @@ Deno.serve(async (req) => {
 
         // URL-кнопка (CTA «Вступить в группу» / «Перейти»).
         if (/^https?:\/\//i.test(buttonUrl)) {
+          const requireButton = body.requireButton === true;
           const payload: Record<string, unknown> = {
             chatId,
             body: message || " ",
@@ -440,7 +441,16 @@ Deno.serve(async (req) => {
             body: JSON.stringify(payload),
           });
           if (r.ok) return json({ ok: true, status: r.status, data: r.data, chatId, mode: "button" });
-          // Fallback: текст + URL, если интерактивные кнопки недоступны.
+          if (requireButton) {
+            return json({
+              ok: false,
+              error: "Не удалось отправить кнопку WhatsApp",
+              detail: r.data,
+              status: r.status,
+              mode: "button_failed",
+            }, 502);
+          }
+          // Fallback только для обычных CRM-сообщений, не для теста рассылки.
           const fallback = `${message || ""}\n\n${buttonUrl}`.trim();
           const plain = await callGreen(creds, "sendMessage", {
             method: "POST",
