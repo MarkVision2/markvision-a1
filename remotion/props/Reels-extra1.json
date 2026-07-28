@@ -1,0 +1,404 @@
+{
+ "audioTrack": "reels/vo_extra1.mp3",
+ "words": [
+  {
+   "text": "Хочешь",
+   "from": 2,
+   "to": 14,
+   "accent": false
+  },
+  {
+   "text": "дополнительный",
+   "from": 14,
+   "to": 38,
+   "accent": true
+  },
+  {
+   "text": "источник",
+   "from": 38,
+   "to": 50,
+   "accent": false
+  },
+  {
+   "text": "дохода?",
+   "from": 50,
+   "to": 72,
+   "accent": true
+  },
+  {
+   "text": "Освой",
+   "from": 72,
+   "to": 84,
+   "accent": false
+  },
+  {
+   "text": "навык",
+   "from": 84,
+   "to": 94,
+   "accent": false
+  },
+  {
+   "text": "создания",
+   "from": 94,
+   "to": 108,
+   "accent": false
+  },
+  {
+   "text": "сайтов",
+   "from": 108,
+   "to": 120,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 120,
+   "to": 125,
+   "accent": false
+  },
+  {
+   "text": "приложений",
+   "from": 125,
+   "to": 142,
+   "accent": false
+  },
+  {
+   "text": "с",
+   "from": 142,
+   "to": 146,
+   "accent": false
+  },
+  {
+   "text": "помощью",
+   "from": 146,
+   "to": 156,
+   "accent": false
+  },
+  {
+   "text": "нейросетей",
+   "from": 156,
+   "to": 194,
+   "accent": false
+  },
+  {
+   "text": "Создай",
+   "from": 194,
+   "to": 211,
+   "accent": false
+  },
+  {
+   "text": "свое",
+   "from": 211,
+   "to": 221,
+   "accent": false
+  },
+  {
+   "text": "1-ое",
+   "from": 221,
+   "to": 230,
+   "accent": false
+  },
+  {
+   "text": "приложение",
+   "from": 230,
+   "to": 247,
+   "accent": false
+  },
+  {
+   "text": "за",
+   "from": 247,
+   "to": 254,
+   "accent": false
+  },
+  {
+   "text": "вечер",
+   "from": 254,
+   "to": 262,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 262,
+   "to": 269,
+   "accent": false
+  },
+  {
+   "text": "узнай",
+   "from": 269,
+   "to": 283,
+   "accent": false
+  },
+  {
+   "text": "как",
+   "from": 283,
+   "to": 286,
+   "accent": false
+  },
+  {
+   "text": "продавать",
+   "from": 286,
+   "to": 298,
+   "accent": false
+  },
+  {
+   "text": "такие",
+   "from": 298,
+   "to": 310,
+   "accent": false
+  },
+  {
+   "text": "решения",
+   "from": 310,
+   "to": 324,
+   "accent": false
+  },
+  {
+   "text": "бизнесу",
+   "from": 324,
+   "to": 341,
+   "accent": false
+  },
+  {
+   "text": "от",
+   "from": 341,
+   "to": 346,
+   "accent": false
+  },
+  {
+   "text": "1000",
+   "from": 346,
+   "to": 362,
+   "accent": false
+  },
+  {
+   "text": "долларов",
+   "from": 362,
+   "to": 403,
+   "accent": false
+  },
+  {
+   "text": "Начать",
+   "from": 381,
+   "to": 393,
+   "accent": false
+  },
+  {
+   "text": "можно",
+   "from": 393,
+   "to": 405,
+   "accent": false
+  },
+  {
+   "text": "с",
+   "from": 405,
+   "to": 408,
+   "accent": false
+  },
+  {
+   "text": "0",
+   "from": 408,
+   "to": 415,
+   "accent": false
+  },
+  {
+   "text": "без",
+   "from": 415,
+   "to": 427,
+   "accent": false
+  },
+  {
+   "text": "программирования",
+   "from": 427,
+   "to": 453,
+   "accent": false
+  },
+  {
+   "text": "без",
+   "from": 453,
+   "to": 458,
+   "accent": false
+  },
+  {
+   "text": "опыта",
+   "from": 458,
+   "to": 468,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 468,
+   "to": 475,
+   "accent": false
+  },
+  {
+   "text": "удаленно",
+   "from": 475,
+   "to": 494,
+   "accent": false
+  },
+  {
+   "text": "Жми",
+   "from": 494,
+   "to": 504,
+   "accent": false
+  },
+  {
+   "text": "кнопку",
+   "from": 504,
+   "to": 516,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 516,
+   "to": 520,
+   "accent": false
+  },
+  {
+   "text": "оставляй",
+   "from": 520,
+   "to": 532,
+   "accent": false
+  },
+  {
+   "text": "заявку",
+   "from": 532,
+   "to": 554,
+   "accent": false
+  },
+  {
+   "text": "Количество",
+   "from": 554,
+   "to": 564,
+   "accent": false
+  },
+  {
+   "text": "мест",
+   "from": 564,
+   "to": 573,
+   "accent": false
+  },
+  {
+   "text": "ограничено",
+   "from": 573,
+   "to": 660,
+   "accent": false
+  }
+ ],
+ "scenes": [
+  {
+   "from": 0,
+   "to": 72,
+   "template": "quote-card",
+   "data": {
+    "text": "ХОЧЕШЬ ДОПОЛНИТЕЛЬНЫЙ ДОХОД?",
+    "accent": "#22D3EE"
+   },
+   "clip": "broll/extra1/money-income-growth-laptop-success-6282322.mp4"
+  },
+  {
+   "from": 72,
+   "to": 194,
+   "template": "phone-mockup",
+   "data": {
+    "title": "СОЗДАЙ",
+    "lines": [
+     "Сайт",
+     "Приложение",
+     "С помощью ИИ"
+    ],
+    "accent": "#8B5CF6",
+    "cover": true
+   }
+  },
+  {
+   "from": 194,
+   "to": 262,
+   "template": "kinetic-type",
+   "data": {
+    "words": [
+     "ЗА",
+     "ОДИН ВЕЧЕР"
+    ],
+    "accentIndex": 1,
+    "accent": "#FF7A18",
+    "cover": true
+   }
+  },
+  {
+   "from": 262,
+   "to": 381,
+   "template": "price-tag",
+   "data": {
+    "price": "$1 000",
+    "label": "ПРОДАЙ БИЗНЕСУ ОТ",
+    "accent": "#FFC53D",
+    "caption": false
+   },
+   "clip": "broll/extra1/business-deal-payment-success-handshake-8814522.mp4"
+  },
+  {
+   "from": 381,
+   "to": 494,
+   "template": "spec-card",
+   "data": {
+    "tag": "СТАРТ",
+    "title": "НАЧАТЬ МОЖНО",
+    "icon": "rocket",
+    "accent": "#34D399",
+    "caption": false,
+    "items": [
+     {
+      "type": "check",
+      "icon": "rocket",
+      "text": "С нуля"
+     },
+     {
+      "type": "bullet",
+      "icon": "apps",
+      "text": "Без программирования"
+     },
+     {
+      "type": "bullet",
+      "icon": "chart",
+      "text": "Без опыта"
+     },
+     {
+      "type": "bullet",
+      "icon": "globe",
+      "text": "Удалённо"
+     }
+    ]
+   },
+   "clip": "broll/extra1/person-working-laptop-home-remote-7126537.mp4"
+  },
+  {
+   "from": 494,
+   "to": 554,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ОСТАВЬ",
+     "ЗАЯВКУ"
+    ],
+    "accent": "#FF7A18",
+    "cover": true
+   }
+  },
+  {
+   "from": 554,
+   "to": 660,
+   "template": "gauge",
+   "data": {
+    "value": 90,
+    "label": "МЕСТ ЗАНЯТО",
+    "accent": "#FB7185",
+    "cover": true
+   }
+  }
+ ],
+ "totalDurationInFrames": 660,
+ "fps": 30,
+ "music": "reels/beat_extra1.wav",
+ "musicVolume": 0.07,
+ "captions": true
+}
