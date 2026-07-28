@@ -86,6 +86,19 @@ def ensure_row(row: str) -> bool:
         "stateWebhook": "yes",
     }
     http_json("POST", f"{base}/waInstance{idi}/setSettings/{token}", payload)
+    # Keep DB in sync so UI/diagnostics don't show the stolen n8n URL.
+    if project:
+        try:
+            psql(
+                load_database_url(),
+                "update whatsapp_config set webhook_url = %s, updated_at = now() where project_id = %s"
+                % (
+                    "'" + CRM_WEBHOOK.replace("'", "''") + "'",
+                    "'" + project.replace("'", "''") + "'",
+                ),
+            )
+        except Exception as e:
+            print(f"db webhook_url update failed: {e}", file=sys.stderr)
     print(
         f"repaired project={project or '?'} instance={idi} "
         f"from={live or '(empty)'} bot_forward={bot_url or '(none)'}"

@@ -135,6 +135,34 @@ function isHttpUrl(u: string | null | undefined): u is string {
   }
 }
 
+/** Нормализация `{https://…}` / голого URL → `{ссылка}` + targetUrl (как на клиенте). */
+function normalizeOutgoingLink(message: string, targetUrl: string | null | undefined): {
+  message: string;
+  targetUrl: string;
+} {
+  let extracted = (targetUrl ?? "").trim();
+  let body = message ?? "";
+  body = body.replace(/\{((?:https?:\/\/)[^}]+)\}/gi, (_m, url: string) => {
+    const u = String(url).trim();
+    if (!extracted && /^https?:\/\//i.test(u)) extracted = u;
+    return "{ссылка}";
+  });
+  if (!extracted) {
+    const bare = body.match(/(https?:\/\/[^\s<>"']+)/i);
+    if (bare?.[0]) {
+      extracted = bare[0].replace(/[),.;]+$/, "");
+      body = body.replace(bare[0], "{ссылка}");
+    }
+  }
+  let seen = false;
+  body = body.replace(/\{ссылка\}|\{link\}/gi, () => {
+    if (seen) return "";
+    seen = true;
+    return "{ссылка}";
+  });
+  return { message: body.replace(/\n{3,}/g, "\n\n").trim(), targetUrl: extracted };
+}
+
 type Creds = { idInstance: string; apiToken: string; baseUrl: string };
 
 async function resolveCreds(projectId: string): Promise<Creds | null> {
@@ -393,9 +421,9 @@ async function reapStaleSending() {
 async function refreshCampaign(campaignId: string) {
   const { data } = await admin
     .from("broadcast_recipients")
-    .select("status, clicked_at")
+    .select("status, clicked_at, joined_at")
     .eq("campaign_id", campaignId);
-  const rows = (data ?? []) as { status: string; clicked_at: string | null }[];
+  const rows = (data ?? []) as { status: string; clicked_at: string | null; joined_at: string | null }[];
   const count = (s: string) => rows.filter((r) => r.status === s).length;
   const stats = {
     total: rows.length,
@@ -409,15 +437,112 @@ async function refreshCampaign(campaignId: string) {
     failed: count("failed"),
     optout: count("skipped_optout"),
     clicked: rows.filter((r) => !!r.clicked_at).length,
+    joined: rows.filter((r) => !!r.joined_at).length,
   };
   const patch: Record<string, unknown> = { stats };
   // Финализируем только когда никого не осталось ни в очереди, ни в полёте.
   if (stats.queued === 0 && stats.sending === 0) {
-    const anySent = stats.sent + stats.delivered + stats.read + stats.replied + stats.converted;
+    const anySent =
+      stats.sent + stats.delivered + stats.read + stats.replied + stats.converted + count("clicked");
     patch.status = anySent === 0 ? "failed" : stats.failed > 0 ? "partial" : "sent";
     patch.finished_at = new Date().toISOString();
   }
   await admin.from("broadcast_campaigns").update(patch).eq("id", campaignId);
+}
+
+/**
+ * Бэкап к webhook outgoingMessageStatus: если статусы не долетели (n8n украл
+ * webhook), догоняем delivered/read из журнала Green API.
+ */
+async function syncDeliveryStatuses(): Promise<number> {
+  const since = new Date(Date.now() - 48 * 3600_000).toISOString();
+  const { data } = await admin
+    .from("broadcast_recipients")
+    .select("id, project_id, campaign_id, message_id, status, phone")
+    .eq("status", "sent")
+    .not("message_id", "is", null)
+    .gte("sent_at", since)
+    .limit(200);
+  const rows = (data ?? []) as {
+    id: string;
+    project_id: string;
+    campaign_id: string;
+    message_id: string;
+    status: string;
+    phone: string;
+  }[];
+  if (!rows.length) return 0;
+
+  const byProject = new Map<string, typeof rows>();
+  for (const r of rows) {
+    if (!byProject.has(r.project_id)) byProject.set(r.project_id, []);
+    byProject.get(r.project_id)!.push(r);
+  }
+
+  let updated = 0;
+  const touched = new Set<string>();
+
+  for (const [projectId, list] of byProject) {
+    const creds = await resolveCreds(projectId);
+    if (!creds) continue;
+    let journal: { idMessage?: string; statusMessage?: string; chatId?: string }[] = [];
+    try {
+      const url =
+        `${creds.baseUrl}/waInstance${creds.idInstance}/lastOutgoingMessages/${creds.apiToken}?minutes=2880`;
+      const res = await fetch(url);
+      const data = await res.json().catch(() => []);
+      journal = Array.isArray(data) ? data : [];
+    } catch {
+      continue;
+    }
+    const byId = new Map<string, string>();
+    for (const m of journal) {
+      if (m.idMessage && m.statusMessage) byId.set(m.idMessage, m.statusMessage);
+    }
+
+    for (const r of list) {
+      let st = byId.get(r.message_id) ?? null;
+      if (!st) {
+        try {
+          const url = `${creds.baseUrl}/waInstance${creds.idInstance}/getMessage/${creds.apiToken}`;
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chatId: `${digits(r.phone)}@c.us`,
+              idMessage: r.message_id,
+            }),
+          });
+          const data = await res.json().catch(() => null) as { statusMessage?: string } | null;
+          st = data?.statusMessage ?? null;
+        } catch {
+          st = null;
+        }
+      }
+      if (!st || st === "sent" || st === "pending") continue;
+      const now = new Date().toISOString();
+      const patch: Record<string, unknown> = {};
+      if (st === "delivered") {
+        patch.status = "delivered";
+        patch.delivered_at = now;
+      } else if (st === "read") {
+        patch.status = "read";
+        patch.delivered_at = now;
+        patch.read_at = now;
+      } else if (st === "failed" || st === "noAccount" || st === "notDelivered") {
+        patch.status = "failed";
+        patch.error = `Green API: ${st}`;
+      } else {
+        continue;
+      }
+      await admin.from("broadcast_recipients").update(patch).eq("id", r.id);
+      updated += 1;
+      touched.add(r.campaign_id);
+    }
+  }
+
+  for (const id of touched) await refreshCampaign(id);
+  return updated;
 }
 
 Deno.serve(async (req) => {
@@ -427,10 +552,17 @@ Deno.serve(async (req) => {
 
   // Возвращаем в очередь «зависшие» в отправке строки от упавших воркеров.
   await reapStaleSending();
+  const statusSynced = await syncDeliveryStatuses();
 
   const campaigns = await activeCampaigns();
-  if (campaigns.length === 0) return json({ ok: true, processed: 0, note: "no active campaigns" });
-
+  if (campaigns.length === 0) {
+    return json({
+      ok: true,
+      processed: 0,
+      status_synced: statusSynced,
+      note: "no active campaigns",
+    });
+  }
   // scheduled → sending (проставляем started_at при первом заходе).
   for (const c of campaigns) {
     if (c.status === "scheduled") {
@@ -515,12 +647,14 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const variant = c.message_variants.length
+      const variantRaw = c.message_variants.length
         ? c.message_variants[rnd(0, c.message_variants.length - 1)]
         : c.message;
+      const norm = normalizeOutgoingLink(variantRaw, c.target_url);
+      const effectiveTarget = norm.targetUrl || c.target_url;
       const track = clickLink(r.click_token);
-      const useButton = isHttpUrl(c.target_url) && !!track;
-      const text = renderMessage(c.title, variant, r.name, track, useButton);
+      const useButton = isHttpUrl(effectiveTarget) && !!track;
+      const text = renderMessage(c.title, norm.message, r.name, track, useButton);
       const attempt = (r.attempt ?? 0) + 1;
 
       try {
@@ -529,9 +663,9 @@ Deno.serve(async (req) => {
             creds,
             r.phone,
             // title уже может быть в header кнопки — в body без markdown-заголовка
-            renderMessage("", variant, r.name, track, true),
+            renderMessage("", norm.message, r.name, track, true),
             track,
-            (c.cta_label || "").trim() || defaultCtaLabel(c.target_url),
+            (c.cta_label || "").trim() || defaultCtaLabel(effectiveTarget),
             c.title,
           )
           : await sendGreen(creds, r.phone, text);
@@ -599,6 +733,7 @@ Deno.serve(async (req) => {
     failed: stats.failed,
     skipped: stats.skipped,
     campaigns: stats.touchedCampaigns.size,
+    status_synced: statusSynced,
     ran_at: new Date().toISOString(),
   });
 });

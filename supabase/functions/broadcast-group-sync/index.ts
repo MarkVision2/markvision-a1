@@ -146,12 +146,85 @@ async function authorize(req: Request): Promise<boolean> {
   return false;
 }
 
+async function groupInviteLink(creds: Creds, groupId: string): Promise<string | null> {
+  try {
+    const url = `${creds.baseUrl}/waInstance${creds.idInstance}/getGroupData/${creds.apiToken}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ groupId }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null) as { groupInviteLink?: string } | null;
+    return data?.groupInviteLink ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function inviteCode(u: string | null | undefined): string | null {
+  if (!u) return null;
+  const m = String(u).match(/chat\.whatsapp\.com\/([A-Za-z0-9_-]+)/i);
+  return m?.[1] ?? null;
+}
+
+/** Кампании с invite-URL, но без group_id — подтягиваем chatId группы. */
+async function bindMissingGroupIds(credsCache: Map<string, Creds | null>): Promise<number> {
+  const since = new Date(Date.now() - 30 * 24 * 3600_000).toISOString();
+  const { data } = await admin
+    .from("broadcast_campaigns")
+    .select("id, project_id, target_url")
+    .is("group_id", null)
+    .not("target_url", "is", null)
+    .in("status", ["sending", "sent", "partial"])
+    .gte("updated_at", since)
+    .limit(50);
+  const rows = (data ?? []) as { id: string; project_id: string; target_url: string }[];
+  let bound = 0;
+  const contactsCache = new Map<string, { id: string }[]>();
+
+  for (const c of rows) {
+    const code = inviteCode(c.target_url);
+    if (!code) continue;
+    if (!credsCache.has(c.project_id)) credsCache.set(c.project_id, await resolveCreds(c.project_id));
+    const creds = credsCache.get(c.project_id) ?? null;
+    if (!creds) continue;
+
+    if (!contactsCache.has(c.project_id)) {
+      try {
+        const url = `${creds.baseUrl}/waInstance${creds.idInstance}/getContacts/${creds.apiToken}`;
+        const res = await fetch(url);
+        const contacts = res.ok ? await res.json().catch(() => []) : [];
+        const groups = (Array.isArray(contacts) ? contacts : [])
+          .filter((x: { id?: string }) => String(x.id ?? "").endsWith("@g.us"))
+          .map((x: { id?: string }) => ({ id: String(x.id) }));
+        contactsCache.set(c.project_id, groups);
+      } catch {
+        contactsCache.set(c.project_id, []);
+      }
+    }
+    const groups = contactsCache.get(c.project_id) ?? [];
+    for (const g of groups) {
+      const link = await groupInviteLink(creds, g.id);
+      if (link && inviteCode(link) === code) {
+        await admin.from("broadcast_campaigns").update({ group_id: g.id }).eq("id", c.id);
+        bound += 1;
+        break;
+      }
+    }
+  }
+  return bound;
+}
+
 type Campaign = { id: string; project_id: string; group_id: string };
-type Rec = { id: string; phone: string; name: string; lead_id: string | null; campaign_id: string };
+type Rec = { id: string; phone: string; name: string; lead_id: string | null; campaign_id: string; status: string };
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (!(await authorize(req))) return json({ error: "unauthorized" }, 401);
+
+  const credsCache = new Map<string, Creds | null>();
+  const bound = await bindMissingGroupIds(credsCache);
 
   const since = new Date(Date.now() - 30 * 24 * 3600_000).toISOString();
   const { data: camps } = await admin
@@ -162,7 +235,9 @@ Deno.serve(async (req) => {
     .gte("updated_at", since);
 
   const campaigns = (camps ?? []) as Campaign[];
-  if (campaigns.length === 0) return json({ ok: true, note: "no group campaigns" });
+  if (campaigns.length === 0) {
+    return json({ ok: true, note: "no group campaigns", bound, ran_at: new Date().toISOString() });
+  }
 
   const byProject = new Map<string, Map<string, string[]>>();
   for (const c of campaigns) {
@@ -174,7 +249,6 @@ Deno.serve(async (req) => {
 
   let marked = 0;
   let leadsCreated = 0;
-  const credsCache = new Map<string, Creds | null>();
 
   for (const [projectId, groups] of byProject) {
     if (!credsCache.has(projectId)) credsCache.set(projectId, await resolveCreds(projectId));
@@ -191,7 +265,7 @@ Deno.serve(async (req) => {
 
       const { data: recData } = await admin
         .from("broadcast_recipients")
-        .select("id, phone, name, lead_id, campaign_id")
+        .select("id, phone, name, lead_id, campaign_id, status")
         .in("campaign_id", campaignIds)
         .is("joined_at", null)
         .limit(20000);
@@ -204,10 +278,20 @@ Deno.serve(async (req) => {
         resolvedCrm = true;
       }
 
+      const now = new Date().toISOString();
       for (const r of newly) {
-        await admin.from("broadcast_recipients")
-          .update({ joined_at: new Date().toISOString() })
-          .eq("id", r.id);
+        // Вступление = точно получил/открыл ссылку. Статусы доставки Green API
+        // иногда зависают на sent — догоняем по факту join.
+        const patch: Record<string, unknown> = {
+          joined_at: now,
+          clicked_at: now,
+          delivered_at: now,
+          read_at: now,
+        };
+        if (["queued", "sending", "sent", "delivered", "read"].includes(r.status)) {
+          patch.status = "clicked";
+        }
+        await admin.from("broadcast_recipients").update(patch).eq("id", r.id);
         marked += 1;
 
         // CRM-атрибуция «Рассылка».
@@ -242,5 +326,5 @@ Deno.serve(async (req) => {
     }
   }
 
-  return json({ ok: true, marked, leadsCreated, ran_at: new Date().toISOString() });
+  return json({ ok: true, marked, leadsCreated, bound, ran_at: new Date().toISOString() });
 });
