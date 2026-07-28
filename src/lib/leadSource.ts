@@ -27,6 +27,7 @@ export type SourceKey =
   | "lead_form"
   | "phone"
   | "referral"
+  | "broadcast"
   | "manual"
   | "unknown";
 
@@ -77,6 +78,10 @@ const TABLE: Record<string, Omit<SourceMeta, "raw">> = {
   // Phone
   phone: { key: "phone", label: "Звонок", Icon: Phone, cls: "text-warning" },
   call: { key: "phone", label: "Звонок", Icon: Phone, cls: "text-warning" },
+  // Broadcast (WhatsApp-рассылка)
+  broadcast: { key: "broadcast", label: "Рассылка", Icon: Send, cls: "text-primary" },
+  "рассылка": { key: "broadcast", label: "Рассылка", Icon: Send, cls: "text-primary" },
+  mailing: { key: "broadcast", label: "Рассылка", Icon: Send, cls: "text-primary" },
   // Other
   referral: { key: "referral", label: "Рекомендация", Icon: UserPlus, cls: "text-foreground" },
   manual: { key: "manual", label: "Вручную", Icon: Hand, cls: "text-muted-foreground" },
