@@ -142,6 +142,9 @@ function mapRow(r: CampaignRow): Broadcast {
     converted: s.converted ?? 0,
     failed: s.failed ?? 0,
     clicked: s.clicked ?? 0,
+    joined: s.joined ?? 0,
+    webinarAttended: s.webinar_attended ?? s.webinarAttended ?? 0,
+    sales: s.sales ?? s.converted ?? 0,
   };
   const sent =
     raw.sent + raw.delivered + raw.read + raw.replied + raw.converted + raw.clicked;
@@ -177,12 +180,162 @@ function mapRow(r: CampaignRow): Broadcast {
       failed: raw.failed,
       clicked: raw.clicked,
       converted: raw.converted,
+      joined: Number(raw.joined) || 0,
+      webinarAttended: Number(raw.webinarAttended) || 0,
+      sales: Number(raw.sales) || 0,
     },
     results: [],
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     sentAt: r.finished_at ?? (r as CampaignRow & { started_at?: string | null }).started_at ?? null,
   };
+}
+
+/**
+ * Живая воронка для списка: доставка + группа + вебинар + оплата из CRM.
+ * Тот же buildBroadcastFunnel, что на странице отчёта — цифры совпадают.
+ */
+async function enrichListCrmStats(list: Broadcast[], projectId: string): Promise<Broadcast[]> {
+  const active = list.filter((b) =>
+    ["sending", "sent", "partial", "failed"].includes(b.status),
+  );
+  if (active.length === 0) return list;
+
+  const ids = active.map((b) => b.id);
+  const { data: recData, error: recErr } = await db()
+    .from("broadcast_recipients")
+    .select(
+      "id, campaign_id, name, phone, status, lead_id, sent_at, delivered_at, read_at, replied_at, clicked_at, converted_at, joined_at, error",
+    )
+    .in("campaign_id", ids)
+    .limit(100000);
+  if (recErr || !recData?.length) return list;
+
+  type RecRow = {
+    id: string;
+    campaign_id: string;
+    name: string | null;
+    phone: string;
+    status: string;
+    lead_id: string | null;
+    sent_at: string | null;
+    delivered_at: string | null;
+    read_at: string | null;
+    replied_at: string | null;
+    clicked_at: string | null;
+    converted_at: string | null;
+    joined_at: string | null;
+    error: string | null;
+  };
+
+  const byCamp = new Map<string, BroadcastRecipientLite[]>();
+  const leadIds = new Set<string>();
+  const phones = new Set<string>();
+
+  for (const row of recData as RecRow[]) {
+    const lite: BroadcastRecipientLite = {
+      id: row.id,
+      name: row.name ?? "",
+      phone: row.phone,
+      status: row.status,
+      leadId: row.lead_id,
+      sentAt: row.sent_at,
+      deliveredAt: row.delivered_at,
+      readAt: row.read_at,
+      repliedAt: row.replied_at,
+      clickedAt: row.clicked_at,
+      convertedAt: row.converted_at,
+      joinedAt: row.joined_at,
+      error: row.error,
+    };
+    const arr = byCamp.get(row.campaign_id) ?? [];
+    arr.push(lite);
+    byCamp.set(row.campaign_id, arr);
+    if (row.lead_id) leadIds.add(row.lead_id);
+    const d = digitsPhone(row.phone);
+    if (d) phones.add(d);
+  }
+
+  const [{ data: stagesData }, leadsByIdRes, leadsByPhoneRes] = await Promise.all([
+    db().from("pipeline_stages").select("id, key, stage_role"),
+    leadIds.size
+      ? db()
+          .from("leads")
+          .select("id, name, phone, stage_id, paid, amount, deposit_amount, webinar_status")
+          .in("id", [...leadIds])
+          .limit(10000)
+      : Promise.resolve({ data: [] }),
+    phones.size
+      ? db()
+          .from("leads")
+          .select("id, name, phone, stage_id, paid, amount, deposit_amount, webinar_status")
+          .eq("project_id", projectId)
+          .eq("is_personal", false)
+          .limit(8000)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+  const stageById = new Map<string, { key: string | null; role: string | null }>();
+  for (const s of (stagesData ?? []) as Array<{ id: string; key?: string; stage_role?: string }>) {
+    stageById.set(s.id, { key: s.key ?? null, role: s.stage_role ?? null });
+  }
+
+  const phoneSet = phones;
+  const leadIdSet = leadIds;
+  const leadMap = new Map<string, BroadcastLeadLite>();
+  const ingest = (rows: Array<Record<string, unknown>>) => {
+    for (const r of rows) {
+      const id = String(r.id);
+      if (leadMap.has(id)) continue;
+      const phone = String(r.phone ?? "");
+      const linkedById = leadIdSet.has(id);
+      const linkedByPhone = phoneSet.has(digitsPhone(phone));
+      if (!linkedById && !linkedByPhone) continue;
+      const stage = stageById.get(String(r.stage_id ?? ""));
+      leadMap.set(id, {
+        id,
+        name: String(r.name ?? "").trim(),
+        phone,
+        stageKey: stage?.key ?? null,
+        stageRole: stage?.role ?? null,
+        paid: r.paid === true,
+        amount: Number(r.amount ?? 0),
+        depositAmount: Number(r.deposit_amount ?? 0),
+        webinarStatus: (r.webinar_status as string | null) ?? null,
+      });
+    }
+  };
+  ingest((leadsByIdRes.data ?? []) as Array<Record<string, unknown>>);
+  ingest((leadsByPhoneRes.data ?? []) as Array<Record<string, unknown>>);
+  const allLeads = [...leadMap.values()];
+
+  const funnelById = new Map<string, BroadcastFunnel>();
+  for (const [campId, recipients] of byCamp) {
+    funnelById.set(campId, buildBroadcastFunnel(recipients, allLeads));
+  }
+
+  return list.map((b) => {
+    const funnel = funnelById.get(b.id);
+    if (!funnel) return b;
+    return {
+      ...b,
+      recipientsCount: funnel.total || b.recipientsCount,
+      stats: {
+        ...b.stats,
+        total: funnel.total,
+        sent: funnel.sent,
+        delivered: funnel.delivered,
+        read: funnel.read,
+        replied: funnel.replied,
+        failed: funnel.failed,
+        clicked: funnel.clicked,
+        converted: funnel.sales,
+        joined: funnel.joined,
+        webinarAttended: funnel.webinarAttended,
+        sales: funnel.sales,
+      },
+    };
+  });
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -196,7 +349,8 @@ export async function listCampaigns(projectId: string): Promise<Broadcast[]> {
     .order("updated_at", { ascending: false })
     .limit(500);
   if (error) throw error;
-  return ((data ?? []) as CampaignRow[]).map(mapRow);
+  const list = ((data ?? []) as CampaignRow[]).map(mapRow);
+  return enrichListCrmStats(list, projectId);
 }
 
 function scheduledIso(draft: BroadcastDraft): string | null {
@@ -712,6 +866,9 @@ export async function fetchCampaignDetail(
     failed: funnel.failed,
     clicked: funnel.clicked,
     converted: funnel.sales,
+    joined: funnel.joined,
+    webinarAttended: funnel.webinarAttended,
+    sales: funnel.sales,
   };
   campaign.recipientsCount = funnel.total;
 

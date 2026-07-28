@@ -87,8 +87,9 @@ export type Broadcast = {
   /** Кол-во получателей на момент последней оценки/отправки. */
   recipientsCount: number;
   /**
-   * Счётчики доставки. `sent` / `delivered` / `read` / `replied` —
+   * Счётчики доставки + CRM. `sent` / `delivered` / `read` / `replied` —
    * кумулятивные (как в воронке детализации), не «сырые» status=X.
+   * `joined` / `webinarAttended` / `sales` — связка с WhatsApp-группой и CRM.
    */
   stats: {
     total: number;
@@ -99,6 +100,12 @@ export type Broadcast = {
     failed: number;
     clicked?: number;
     converted?: number;
+    /** Реально вступили в WhatsApp-группу кампании. */
+    joined?: number;
+    /** Пришли на вебинар (CRM webinar_status / стадия). */
+    webinarAttended?: number;
+    /** Полная оплата в CRM. */
+    sales?: number;
   };
   results: BroadcastResult[];
   createdAt: string;
@@ -321,6 +328,9 @@ function normalize(raw: Partial<Broadcast>): Broadcast {
       failed: raw.stats?.failed ?? 0,
       clicked: raw.stats?.clicked ?? 0,
       converted: raw.stats?.converted ?? 0,
+      joined: raw.stats?.joined ?? 0,
+      webinarAttended: raw.stats?.webinarAttended ?? 0,
+      sales: raw.stats?.sales ?? 0,
     },
     results: Array.isArray(raw.results) ? raw.results : [],
     createdAt: raw.createdAt ?? nowIso(),

@@ -180,12 +180,25 @@ export function buildBroadcastFunnel(
   let clicked = 0;
   let joined = 0;
   let joinedInCrm = 0;
+  /** Лиды, по которым считаем CRM-исход (вебинар/оплата) для этой рассылки. */
+  const outcomeLeadIds = new Set<string>();
+
   for (const r of recipients) {
     if (r.clickedAt || r.joinedAt) clicked += 1;
     if (r.joinedAt) {
       joined += 1;
-      if (r.leadId || matched.has(r.id)) joinedInCrm += 1;
+      const lead = matched.get(r.id);
+      if (r.leadId || lead) {
+        joinedInCrm += 1;
+        if (lead) outcomeLeadIds.add(lead.id);
+        else if (r.leadId) outcomeLeadIds.add(r.leadId);
+      }
     }
+  }
+
+  // Нет детекта группы — эффективность по всем связанным лидам получателей.
+  if (joined === 0) {
+    for (const lead of matched.values()) outcomeLeadIds.add(lead.id);
   }
 
   const seenLeads = new Set<string>();
@@ -201,6 +214,8 @@ export function buildBroadcastFunnel(
 
     const role = (lead.stageRole ?? "").toLowerCase();
     if (GROUP_ROLES.has(role)) groupJoined += 1;
+
+    if (!outcomeLeadIds.has(lead.id)) continue;
 
     const webinarOk =
       lead.webinarStatus === "attended" ||

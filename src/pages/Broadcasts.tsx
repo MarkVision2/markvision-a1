@@ -448,17 +448,29 @@ function BroadcastRow({
 
           {(isDone || broadcast.status === "sending") && (
             <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <MiniStat label="Отправлено" value={broadcast.stats.sent} />
-              <MiniStat label="Получили" value={broadcast.stats.delivered} />
-              <MiniStat label="Открыли" value={broadcast.stats.read} />
+              <MiniStat label="Отправлено" value={broadcast.stats.sent} hint="ушло в WhatsApp" />
               <MiniStat
-                label="Ошибки"
-                value={broadcast.stats.failed}
-                tone={broadcast.stats.failed > 0 ? "destructive" : undefined}
+                label="В группе"
+                value={broadcast.stats.joined ?? 0}
+                hint="реально в WhatsApp-группе"
+                tone={(broadcast.stats.joined ?? 0) > 0 ? "success" : undefined}
+              />
+              <MiniStat
+                label="Вебинар"
+                value={broadcast.stats.webinarAttended ?? 0}
+                hint="посетили вебинар (CRM)"
+              />
+              <MiniStat
+                label="Оплата"
+                value={broadcast.stats.sales ?? broadcast.stats.converted ?? 0}
+                hint="полная оплата в CRM"
+                tone={(broadcast.stats.sales ?? broadcast.stats.converted ?? 0) > 0 ? "success" : undefined}
               />
             </div>
           )}
-          <div className="mt-2 text-[11px] font-medium text-primary/80">Открыть отчёт и воронку →</div>
+          <div className="mt-2 text-[11px] font-medium text-primary/80">
+            Отчёт: отправка → группа → вебинар → оплата →
+          </div>
         </div>
 
         <div
@@ -502,23 +514,27 @@ function BroadcastRow({
 function MiniStat({
   label,
   value,
+  hint,
   tone,
 }: {
   label: string;
   value: number;
-  tone?: "destructive";
+  hint?: string;
+  tone?: "destructive" | "success";
 }) {
   return (
-    <div className="rounded-lg border border-border/40 bg-background/30 px-2.5 py-1.5">
+    <div className="rounded-lg border border-border/40 bg-background/30 px-2.5 py-1.5" title={hint}>
       <div className="text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
       <div
         className={cn(
           "text-sm font-bold tabular-nums",
           tone === "destructive" && value > 0 && "text-destructive",
+          tone === "success" && value > 0 && "text-success",
         )}
       >
         {value}
       </div>
+      {hint ? <div className="mt-0.5 truncate text-[9px] text-muted-foreground/80">{hint}</div> : null}
     </div>
   );
 }
