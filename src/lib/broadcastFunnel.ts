@@ -30,6 +30,7 @@ export type BroadcastRecipientLite = {
 
 export type BroadcastLeadLite = {
   id: string;
+  name: string;
   phone: string;
   stageKey: string | null;
   stageRole: string | null;
@@ -63,9 +64,9 @@ export type BroadcastFunnel = {
   optout: number;
 };
 
-const OUTBOX = new Set(["sent", "delivered", "read", "replied", "converted"]);
-const DELIVERED = new Set(["delivered", "read", "replied", "converted"]);
-const READ = new Set(["read", "replied", "converted"]);
+const OUTBOX = new Set(["sent", "delivered", "read", "clicked", "replied", "converted"]);
+const DELIVERED = new Set(["delivered", "read", "clicked", "replied", "converted"]);
+const READ = new Set(["read", "clicked", "replied", "converted"]);
 const REPLIED = new Set(["replied", "converted"]);
 
 const GROUP_ROLES = new Set([

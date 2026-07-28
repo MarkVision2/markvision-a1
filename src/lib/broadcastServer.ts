@@ -12,6 +12,7 @@ import type { LeadContact } from "@/hooks/useLeadContacts";
 import {
   PACE_GAPS,
   paceFromGaps,
+  normalizeBroadcastLink,
   type Broadcast,
   type BroadcastDraft,
   type BroadcastStatus,
@@ -65,7 +66,9 @@ export function resolveRecipientRows(draft: BroadcastDraft, crmContacts: LeadCon
   if (draft.audienceSource === "upload") {
     for (const c of draft.uploadedContacts) {
       const hit = byPhone.get(digitsPhone(c.phone));
-      push(c.name, c.phone, hit?.id ?? null);
+      // Имя из списка; если пусто — подтягиваем из CRM по телефону
+      const name = (c.name || "").trim() || (hit?.name || "").trim();
+      push(name, c.phone, hit?.id ?? null);
     }
     return out;
   }
@@ -100,6 +103,7 @@ type CampaignRow = {
   message_variants: string[] | null;
   target_url: string | null;
   group_id: string | null;
+  cta_label: string | null;
   min_gap_seconds: number | null;
   max_gap_seconds: number | null;
   schedule_mode: string;
@@ -126,9 +130,9 @@ function mapRow(r: CampaignRow): Broadcast {
     clicked: s.clicked ?? 0,
   };
   const sent =
-    raw.sent + raw.delivered + raw.read + raw.replied + raw.converted;
-  const delivered = raw.delivered + raw.read + raw.replied + raw.converted;
-  const read = raw.read + raw.replied + raw.converted;
+    raw.sent + raw.delivered + raw.read + raw.replied + raw.converted + raw.clicked;
+  const delivered = raw.delivered + raw.read + raw.replied + raw.converted + raw.clicked;
+  const read = raw.read + raw.replied + raw.converted + raw.clicked;
   const replied = raw.replied + raw.converted;
   return {
     id: r.id,
@@ -144,6 +148,7 @@ function mapRow(r: CampaignRow): Broadcast {
     message: r.message ?? "",
     targetUrl: r.target_url ?? "",
     groupId: r.group_id ?? "",
+    ctaLabel: r.cta_label ?? "",
     messageVariants: Array.isArray(r.message_variants) ? r.message_variants : [],
     sendPace: paceFromGaps(r.min_gap_seconds ?? 50, r.max_gap_seconds ?? 70),
     schedule: { mode: r.schedule_mode === "scheduled" ? "scheduled" : "now", at: r.scheduled_at },
@@ -220,7 +225,8 @@ export async function createCampaign(
   const rows = resolveRecipientRows(draft, crmContacts);
   const gaps = PACE_GAPS[draft.sendPace] ?? PACE_GAPS.slow;
   const status = draft.schedule.mode === "scheduled" ? "scheduled" : "draft";
-  const stats = { total: rows.length, queued: rows.length, sent: 0, delivered: 0, read: 0, replied: 0, converted: 0, failed: 0, optout: 0 };
+  const stats = { total: rows.length, queued: rows.length, sent: 0, delivered: 0, read: 0, replied: 0, converted: 0, failed: 0, optout: 0, clicked: 0 };
+  const link = normalizeBroadcastLink(draft.message, draft.targetUrl);
 
   const { data, error } = await db()
     .from("broadcast_campaigns")
@@ -231,10 +237,11 @@ export async function createCampaign(
       audience_source: draft.audienceSource,
       crm_filter: draft.crmFilter,
       title: draft.title,
-      message: draft.message,
+      message: link.message,
       message_variants: draft.messageVariants ?? [],
-      target_url: draft.targetUrl || null,
+      target_url: link.targetUrl || null,
       group_id: draft.groupId || null,
+      cta_label: (draft.ctaLabel || "").trim() || null,
       min_gap_seconds: gaps.min,
       max_gap_seconds: gaps.max,
       schedule_mode: draft.schedule.mode,
@@ -267,6 +274,7 @@ export async function updateCampaign(
     .eq("id", id)
     .maybeSingle();
   const editable = ["draft", "scheduled"].includes((current as { status?: string } | null)?.status ?? "draft");
+  const link = normalizeBroadcastLink(draft.message, draft.targetUrl);
 
   const patch: Record<string, unknown> = {
     name: draft.name,
@@ -274,10 +282,11 @@ export async function updateCampaign(
     audience_source: draft.audienceSource,
     crm_filter: draft.crmFilter,
     title: draft.title,
-    message: draft.message,
+    message: link.message,
     message_variants: draft.messageVariants ?? [],
-    target_url: draft.targetUrl || null,
+    target_url: link.targetUrl || null,
     group_id: draft.groupId || null,
+    cta_label: (draft.ctaLabel || "").trim() || null,
     min_gap_seconds: gaps.min,
     max_gap_seconds: gaps.max,
     schedule_mode: draft.schedule.mode,
@@ -285,7 +294,7 @@ export async function updateCampaign(
   };
   if (editable) {
     patch.status = draft.schedule.mode === "scheduled" ? "scheduled" : "draft";
-    patch.stats = { total: rows.length, queued: rows.length, sent: 0, delivered: 0, read: 0, replied: 0, converted: 0, failed: 0, optout: 0 };
+    patch.stats = { total: rows.length, queued: rows.length, sent: 0, delivered: 0, read: 0, replied: 0, converted: 0, failed: 0, optout: 0, clicked: 0 };
   }
 
   const { error } = await db().from("broadcast_campaigns").update(patch).eq("id", id);
@@ -563,14 +572,14 @@ export async function fetchCampaignDetail(
     leadIds.length
       ? db()
           .from("leads")
-          .select("id, phone, stage_id, paid, amount, deposit_amount, webinar_status")
+          .select("id, name, phone, stage_id, paid, amount, deposit_amount, webinar_status")
           .in("id", leadIds)
           .limit(5000)
       : Promise.resolve({ data: [] }),
     phones.length
       ? db()
           .from("leads")
-          .select("id, phone, stage_id, paid, amount, deposit_amount, webinar_status")
+          .select("id, name, phone, stage_id, paid, amount, deposit_amount, webinar_status")
           .eq("project_id", projectId)
           .eq("is_personal", false)
           .limit(5000)
@@ -595,6 +604,7 @@ export async function fetchCampaignDetail(
       const stage = stageById.get(String(r.stage_id ?? ""));
       leadMap.set(id, {
         id,
+        name: String(r.name ?? "").trim(),
         phone,
         stageKey: stage?.key ?? null,
         stageRole: stage?.role ?? null,

@@ -87,11 +87,27 @@ function inWindow(hour: number, start: number, end: number): boolean {
   return hour >= start || hour < end; // окно через полночь
 }
 
-/** Подстановка имени, ссылки перехода и заголовка. */
-function renderMessage(title: string, message: string, name: string, link: string): string {
+/** Подстановка имени, ссылки перехода и заголовка.
+ *  linkAsButton — убрать плейсхолдер (URL уйдёт в кнопку WhatsApp). */
+function renderMessage(
+  title: string,
+  message: string,
+  name: string,
+  link: string,
+  linkAsButton = false,
+): string {
   const first = (name ?? "").trim().split(/\s+/)[0] ?? "";
   let body = (message ?? "").replace(/\{имя\}/gi, first).replace(/\{name\}/gi, first);
-  if (link) body = body.replace(/\{ссылка\}/gi, link).replace(/\{link\}/gi, link);
+  if (linkAsButton) {
+    body = body
+      .replace(/\{ссылка\}/gi, "")
+      .replace(/\{link\}/gi, "")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  } else if (link) {
+    body = body.replace(/\{ссылка\}/gi, link).replace(/\{link\}/gi, link);
+  }
   const head = (title ?? "").trim();
   return head ? `*${head}*\n\n${body}` : body;
 }
@@ -99,6 +115,24 @@ function renderMessage(title: string, message: string, name: string, link: strin
 /** Трекинг-ссылка перехода для получателя (или пусто, если нет токена). */
 function clickLink(clickToken: string | null | undefined): string {
   return clickToken ? `${SUPABASE_URL}/functions/v1/broadcast-click?t=${clickToken}` : "";
+}
+
+function defaultCtaLabel(targetUrl: string | null | undefined): string {
+  const u = (targetUrl ?? "").toLowerCase();
+  if (u.includes("chat.whatsapp.com") || u.includes("whatsapp.com/channel")) {
+    return "Вступить в группу";
+  }
+  return "Перейти";
+}
+
+function isHttpUrl(u: string | null | undefined): u is string {
+  if (!u) return false;
+  try {
+    const url = new URL(u);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
 }
 
 type Creds = { idInstance: string; apiToken: string; baseUrl: string };
@@ -134,7 +168,7 @@ async function accountState(creds: Creds): Promise<string> {
   }
 }
 
-/** Одна отправка. Возвращает idMessage при успехе. */
+/** Одна отправка текстом. Возвращает idMessage при успехе. */
 async function sendGreen(creds: Creds, phone: string, message: string): Promise<string> {
   const chatId = `${digits(phone)}@c.us`;
   const url = `${creds.baseUrl}/waInstance${creds.idInstance}/sendMessage/${creds.apiToken}`;
@@ -153,6 +187,53 @@ async function sendGreen(creds: Creds, phone: string, message: string): Promise<
   }
   const idMessage = (data as { idMessage?: string } | null)?.idMessage;
   if (!idMessage) throw new Error("Green API: пустой idMessage");
+  return idMessage;
+}
+
+/** Сообщение + URL-кнопка (трекинг-ссылка вшита в кнопку). Fallback → sendMessage. */
+async function sendGreenWithButton(
+  creds: Creds,
+  phone: string,
+  body: string,
+  buttonUrl: string,
+  buttonText: string,
+  header?: string,
+): Promise<string> {
+  const chatId = `${digits(phone)}@c.us`;
+  const url = `${creds.baseUrl}/waInstance${creds.idInstance}/sendInteractiveButtons/${creds.apiToken}`;
+  const payload: Record<string, unknown> = {
+    chatId,
+    body: body || " ",
+    buttons: [
+      {
+        type: "url",
+        buttonId: "cta",
+        buttonText: (buttonText || "Перейти").slice(0, 25),
+        url: buttonUrl,
+      },
+    ],
+  };
+  const head = (header ?? "").trim();
+  if (head) payload.header = head.slice(0, 60);
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const text = await res.text();
+  let data: unknown = text;
+  try {
+    data = JSON.parse(text);
+  } catch { /* keep raw */ }
+  if (!res.ok) {
+    // Не все инстансы/тарифы тянут interactive buttons — откат на текст со ссылкой.
+    const fallback = head ? `*${head}*\n\n${body}\n\n${buttonUrl}` : `${body}\n\n${buttonUrl}`;
+    console.warn("sendInteractiveButtons failed, fallback sendMessage:", String(text).slice(0, 120));
+    return await sendGreen(creds, phone, fallback.trim());
+  }
+  const idMessage = (data as { idMessage?: string } | null)?.idMessage;
+  if (!idMessage) throw new Error("Green API: пустой idMessage (buttons)");
   return idMessage;
 }
 
@@ -194,6 +275,8 @@ type Campaign = {
   title: string;
   message: string;
   message_variants: string[];
+  target_url: string | null;
+  cta_label: string | null;
   daily_limit: number;
   window_start_hour: number;
   window_end_hour: number;
@@ -435,11 +518,23 @@ Deno.serve(async (req) => {
       const variant = c.message_variants.length
         ? c.message_variants[rnd(0, c.message_variants.length - 1)]
         : c.message;
-      const text = renderMessage(c.title, variant, r.name, clickLink(r.click_token));
+      const track = clickLink(r.click_token);
+      const useButton = isHttpUrl(c.target_url) && !!track;
+      const text = renderMessage(c.title, variant, r.name, track, useButton);
       const attempt = (r.attempt ?? 0) + 1;
 
       try {
-        const idMessage = await sendGreen(creds, r.phone, text);
+        const idMessage = useButton
+          ? await sendGreenWithButton(
+            creds,
+            r.phone,
+            // title уже может быть в header кнопки — в body без markdown-заголовка
+            renderMessage("", variant, r.name, track, true),
+            track,
+            (c.cta_label || "").trim() || defaultCtaLabel(c.target_url),
+            c.title,
+          )
+          : await sendGreen(creds, r.phone, text);
         await admin
           .from("broadcast_recipients")
           .update({

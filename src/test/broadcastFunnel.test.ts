@@ -33,13 +33,14 @@ describe("broadcastFunnel", () => {
       rec({ id: "4", status: "read" }),
       rec({ id: "5", status: "replied" }),
       rec({ id: "6", status: "failed" }),
+      rec({ id: "7", status: "clicked" }),
     ];
     const d = countDelivery(recipients);
-    expect(d.total).toBe(6);
+    expect(d.total).toBe(7);
     expect(d.queued).toBe(1);
-    expect(d.sent).toBe(4); // sent+delivered+read+replied
-    expect(d.delivered).toBe(3);
-    expect(d.read).toBe(2);
+    expect(d.sent).toBe(5); // sent+delivered+read+replied+clicked
+    expect(d.delivered).toBe(4);
+    expect(d.read).toBe(3);
     expect(d.replied).toBe(1);
     expect(d.failed).toBe(1);
   });
@@ -53,6 +54,7 @@ describe("broadcastFunnel", () => {
     const leads: BroadcastLeadLite[] = [
       {
         id: "L1",
+        name: "Алия",
         phone: "+77001110001",
         stageKey: "paid",
         stageRole: "paid",
@@ -63,6 +65,7 @@ describe("broadcastFunnel", () => {
       },
       {
         id: "L2",
+        name: "Болат",
         phone: "77001110002",
         stageKey: "whatsapp",
         stageRole: "joined_group",
@@ -73,6 +76,7 @@ describe("broadcastFunnel", () => {
       },
       {
         id: "L3",
+        name: "Самат",
         phone: "+77001110003",
         stageKey: "new",
         stageRole: "new",

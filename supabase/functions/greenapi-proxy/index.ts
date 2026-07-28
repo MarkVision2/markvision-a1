@@ -347,7 +347,15 @@ Deno.serve(async (req) => {
         const cur = await callGreen(creds, "getSettings");
         const live = String((cur.data as { webhookUrl?: string } | null)?.webhookUrl ?? "");
         const outApi = String((cur.data as { outgoingAPIMessageWebhook?: string } | null)?.outgoingAPIMessageWebhook ?? "");
-        const matched = live.replace(/\/+$/, "") === crmUrl.replace(/\/+$/, "") && outApi === "yes";
+        const outWebhook = String((cur.data as { outgoingWebhook?: string } | null)?.outgoingWebhook ?? "");
+        const outMsg = String((cur.data as { outgoingMessageWebhook?: string } | null)?.outgoingMessageWebhook ?? "");
+        const incoming = String((cur.data as { incomingWebhook?: string } | null)?.incomingWebhook ?? "");
+        const matched =
+          live.replace(/\/+$/, "") === crmUrl.replace(/\/+$/, "") &&
+          outApi === "yes" &&
+          outWebhook === "yes" &&
+          outMsg === "yes" &&
+          incoming === "yes";
         if (matched) {
           return json({ ok: true, repaired: false, webhookUrl: live });
         }

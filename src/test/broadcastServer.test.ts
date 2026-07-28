@@ -51,4 +51,15 @@ describe("resolveRecipientRows", () => {
     expect(rows).toHaveLength(2);
     expect(rows.every((r) => r.lead_id === null)).toBe(true);
   });
+
+  it("upload: имя из CRM если в списке пусто", () => {
+    const draft = {
+      ...emptyBroadcastDraft(),
+      audienceSource: "upload" as const,
+      uploadedContacts: [{ name: "", phone: "+7 701 111 22 33" }],
+    };
+    const rows = resolveRecipientRows(draft, crm);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({ name: "Иван", phone: "+77011112233", lead_id: "1" });
+  });
 });

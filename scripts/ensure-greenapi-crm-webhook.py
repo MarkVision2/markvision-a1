@@ -64,11 +64,13 @@ def ensure_row(row: str) -> bool:
     live = str(settings.get("webhookUrl") or "").rstrip("/")
     out_api = str(settings.get("outgoingAPIMessageWebhook") or "")
     out_msg = str(settings.get("outgoingMessageWebhook") or "")
+    out_status = str(settings.get("outgoingWebhook") or "")
     incoming = str(settings.get("incomingWebhook") or "")
     ok = (
         live == CRM_WEBHOOK
         and out_api == "yes"
         and out_msg == "yes"
+        and out_status == "yes"
         and incoming == "yes"
     )
     if ok:

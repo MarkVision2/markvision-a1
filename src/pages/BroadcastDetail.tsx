@@ -54,6 +54,7 @@ const STATUS_LABEL: Record<string, string> = {
   sent: "Отправлено",
   delivered: "Получил",
   read: "Открыл",
+  clicked: "Кликнул",
   replied: "Ответил",
   converted: "Конверсия",
   failed: "Ошибка",
@@ -62,8 +63,9 @@ const STATUS_LABEL: Record<string, string> = {
 
 const FILTERS: { id: string; label: string; match: (status: string) => boolean }[] = [
   { id: "all", label: "Все", match: () => true },
-  { id: "delivered", label: "Получили", match: (s) => ["delivered", "read", "replied", "converted"].includes(s) },
-  { id: "read", label: "Открыли", match: (s) => ["read", "replied", "converted"].includes(s) },
+  { id: "delivered", label: "Получили", match: (s) => ["delivered", "read", "clicked", "replied", "converted"].includes(s) },
+  { id: "read", label: "Открыли", match: (s) => ["read", "clicked", "replied", "converted"].includes(s) },
+  { id: "clicked", label: "Клики", match: (s) => s === "clicked" || s === "converted" },
   { id: "replied", label: "Ответили", match: (s) => ["replied", "converted"].includes(s) },
   { id: "failed", label: "Ошибки", match: (s) => s === "failed" },
   { id: "crm", label: "Есть в CRM", match: () => true }, // special: handled below
@@ -313,7 +315,10 @@ export default function BroadcastDetail() {
                 ) : (
                   filteredRecipients.map((r) => {
                     const lead = matched.get(r.id);
+                    const displayName =
+                      (r.name || "").trim() || (lead?.name || "").trim() || "Без имени";
                     const st = STATUS_LABEL[r.status] ?? r.status;
+                    const inGroup = !!r.joinedAt;
                     return (
                       <div
                         key={r.id}
@@ -322,7 +327,7 @@ export default function BroadcastDetail() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="truncate text-sm font-semibold">
-                              {r.name || "Без имени"}
+                              {displayName}
                             </div>
                             <div className="truncate text-[11px] text-muted-foreground">{r.phone}</div>
                           </div>
@@ -331,14 +336,37 @@ export default function BroadcastDetail() {
                               "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
                               r.status === "failed" && "bg-destructive/15 text-destructive",
                               r.status === "replied" && "bg-success/15 text-success",
-                              r.status === "read" && "bg-primary/15 text-primary",
-                              (r.status === "delivered" || r.status === "sent") &&
-                                "bg-secondary text-muted-foreground",
+                              (r.status === "read" || r.status === "clicked") && "bg-primary/15 text-primary",
+                              r.status === "delivered" && "bg-primary/10 text-primary",
+                              r.status === "sent" && "bg-secondary text-muted-foreground",
                               r.status === "queued" && "bg-secondary text-muted-foreground",
                             )}
                           >
                             {st}
                           </span>
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px]">
+                          {lead ? (
+                            <span className="rounded-full bg-success/15 px-2 py-0.5 font-semibold text-success">
+                              Есть в CRM
+                            </span>
+                          ) : null}
+                          {r.clickedAt ? (
+                            <span className="rounded-full bg-primary/15 px-2 py-0.5 font-semibold text-primary">
+                              Кликнул
+                            </span>
+                          ) : null}
+                          {inGroup ? (
+                            <span className="rounded-full bg-primary/15 px-2 py-0.5 font-semibold text-primary">
+                              В группе
+                            </span>
+                          ) : null}
+                          {r.deliveredAt ? (
+                            <span className="text-muted-foreground">получил</span>
+                          ) : null}
+                          {r.readAt ? (
+                            <span className="text-muted-foreground">открыл</span>
+                          ) : null}
                         </div>
                         {lead ? (
                           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">

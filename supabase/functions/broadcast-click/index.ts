@@ -1,6 +1,6 @@
 // Broadcast click tracker — публичный редирект коротких ссылок рассылки.
 //
-// В сообщение подставляется ссылка вида
+// В сообщение / кнопку подставляется ссылка вида
 //   <SUPABASE_URL>/functions/v1/broadcast-click?t=<click_token>
 // Переход фиксирует clicked_at у получателя (и статус 'clicked', если ещё не
 // дальше по воронке) и делает 302 на target_url кампании.
@@ -23,6 +23,7 @@ function isHttpUrl(u: string | null | undefined): u is string {
     return false;
   }
 }
+
 
 function redirect(url: string) {
   return new Response(null, { status: 302, headers: { Location: url } });
@@ -49,18 +50,18 @@ Deno.serve(async (req) => {
   const row = rec as { id: string; status: string; campaign_id: string } | null;
   if (!row) return new Response("Not found", { status: 404 });
 
-  // Фиксируем клик. Статус двигаем в 'clicked' только с ранних стадий,
-  // чтобы не откатить replied/converted.
-  const patch: Record<string, unknown> = { clicked_at: new Date().toISOString() };
-  if (["sent", "delivered", "read"].includes(row.status)) patch.status = "clicked";
-  await admin.from("broadcast_recipients").update(patch).eq("id", row.id);
-
   const { data: camp } = await admin
     .from("broadcast_campaigns")
     .select("target_url")
     .eq("id", row.campaign_id)
     .maybeSingle();
   const target = (camp as { target_url?: string } | null)?.target_url ?? null;
+
+  // Фиксируем клик. Статус двигаем в 'clicked' только с ранних стадий,
+  // чтобы не откатить replied/converted.
+  const patch: Record<string, unknown> = { clicked_at: new Date().toISOString() };
+  if (["sent", "delivered", "read"].includes(row.status)) patch.status = "clicked";
+  await admin.from("broadcast_recipients").update(patch).eq("id", row.id);
 
   if (isHttpUrl(target)) return redirect(target);
   // Клик зафиксирован, но целевой ссылки нет — вежливая заглушка.

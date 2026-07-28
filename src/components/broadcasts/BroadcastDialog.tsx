@@ -32,6 +32,8 @@ import {
   emptyBroadcastDraft,
   parseContacts,
   renderMessage,
+  normalizeBroadcastLink,
+  defaultCtaLabel,
   type AudienceSource,
   type Broadcast,
   type BroadcastChannel,
@@ -60,11 +62,12 @@ function draftFromBroadcast(b: Broadcast): BroadcastDraft {
     title: b.title,
     message: b.message,
     targetUrl: b.targetUrl,
+    ctaLabel: b.ctaLabel,
     messageVariants: b.messageVariants,
-    sendPace: b.sendPace,
     groupId: b.groupId,
     schedule: b.schedule,
     recipientsCount: b.recipientsCount,
+    sendPace: b.sendPace,
   };
 }
 
@@ -151,6 +154,7 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
         ...p,
         groupId,
         targetUrl: invite || p.targetUrl,
+        ctaLabel: p.ctaLabel || "Вступить в группу",
         message: /(\{ссылка\}|\{link\})/i.test(p.message)
           ? p.message
           : `${p.message}${p.message ? "\n\n" : ""}Вступить в группу: {ссылка}`,
@@ -195,19 +199,28 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
     return list[0] ?? { name: "Имя" };
   }, [draft, parsedUpload, crmContacts]);
 
-  const needsLink = /(\{ссылка\}|\{link\})/i.test(draft.message);
+  const needsLink =
+    /(\{ссылка\}|\{link\})/i.test(draft.message) ||
+    /\{https?:\/\//i.test(draft.message) ||
+    /https?:\/\//i.test(draft.message) ||
+    draft.targetUrl.trim().length > 0;
   const canSave =
     draft.name.trim().length > 0 &&
     draft.message.trim().length > 0 &&
     recipientsCount > 0 &&
-    (!needsLink || draft.targetUrl.trim().length > 0) &&
+    (!needsLink || draft.targetUrl.trim().length > 0 || /\{https?:\/\//i.test(draft.message) || /https?:\/\//i.test(draft.message)) &&
     (draft.schedule.mode === "now" || !!draft.schedule.at);
 
   const submit = () => {
     if (!canSave) return;
+    const link = normalizeBroadcastLink(draft.message, draft.targetUrl);
+    if (needsLink && !link.targetUrl) return;
     const finalDraft: BroadcastDraft = {
       ...draft,
       name: draft.name.trim(),
+      message: link.message,
+      targetUrl: link.targetUrl,
+      ctaLabel: (draft.ctaLabel || "").trim() || defaultCtaLabel(link.targetUrl),
       uploadedContacts: draft.audienceSource === "upload" ? parsedUpload : [],
       recipientsCount,
     };
@@ -363,11 +376,11 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
                   value={pasted}
                   onChange={(e) => setPasted(e.target.value)}
                   rows={5}
-                  placeholder={"Вставьте контакты, по одному в строке:\nИван, +7 700 123 45 67\nАйгерим, +7 701 765 43 21\n+7 702 000 00 00"}
+                  placeholder={"Вставьте контакты, по одному в строке:\nИван, +7 700 123 45 67\nЮрий +7 747 284 25 95\n+7 702 000 00 00"}
                   className={cn(inputCls, "resize-y font-mono text-xs")}
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  Формат: «Имя, номер» или просто номер. Дубликаты убираются автоматически.
+                  Формат: «Имя, номер», «Имя номер» или просто номер. Дубликаты убираются автоматически.
                 </p>
               </div>
             )}
@@ -462,8 +475,19 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
                   Предпросмотр
                 </div>
                 <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                  {renderMessage(draft.title, draft.message, previewContact, draft.targetUrl).replace(/\*(.+?)\*/g, "$1")}
+                  {renderMessage(
+                    draft.title,
+                    normalizeBroadcastLink(draft.message, draft.targetUrl).message,
+                    previewContact,
+                    draft.targetUrl || "https://…",
+                    true,
+                  ).replace(/\*(.+?)\*/g, "$1")}
                 </div>
+                {(draft.targetUrl || /https?:\/\//i.test(draft.message)) && (
+                  <div className="mt-2 inline-flex rounded-lg bg-primary/15 px-3 py-1.5 text-xs font-semibold text-primary">
+                    Кнопка: {(draft.ctaLabel || "").trim() || defaultCtaLabel(draft.targetUrl || draft.message)}
+                  </div>
+                )}
               </div>
             )}
           </Field>
@@ -512,21 +536,29 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
             )}
             <p className="mt-1 text-[10px] text-muted-foreground">
               Выберите группу — ссылка на вступление подставится в {"{ссылка}"} автоматически, а мы посчитаем,
-              кто реально перешёл и <b>вступил в группу</b>.
+              кто реально перешёл и <b>вступил в группу</b>. Уйдёт как кнопка WhatsApp с трекингом.
             </p>
           </Field>
 
-          {/* Ссылка для {ссылка} — трекинг переходов */}
-          {/(\{ссылка\}|\{link\})/i.test(draft.message) && (
-            <Field label="Ссылка для перехода">
+          {/* Ссылка → кнопка WhatsApp с трекингом */}
+          {(needsLink || /(\{ссылка\}|\{link\})/i.test(draft.message)) && (
+            <Field label="Кнопка со ссылкой">
               <input
                 value={draft.targetUrl}
                 onChange={(e) => patch("targetUrl", e.target.value)}
-                placeholder="https://ваш-сайт.kz/promo"
+                placeholder="https://chat.whatsapp.com/… или сайт"
+                className={cn(inputCls, "mb-2")}
+              />
+              <input
+                value={draft.ctaLabel}
+                onChange={(e) => patch("ctaLabel", e.target.value)}
+                placeholder={defaultCtaLabel(draft.targetUrl)}
+                maxLength={25}
                 className={inputCls}
               />
-              <p className="text-[11px] text-muted-foreground">
-                {"{ссылка}"} в тексте станет короткой трекинг-ссылкой — переход клиента отметится как «перешёл».
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                В WhatsApp уйдёт кнопка (не голая ссылка). В кнопку вшита трекинг-ссылка —
+                клик попадёт в аналитику, затем редирект на ваш URL.
               </p>
             </Field>
           )}
