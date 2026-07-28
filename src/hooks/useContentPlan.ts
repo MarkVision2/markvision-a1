@@ -368,7 +368,7 @@ export function useContentPlan() {
           .map((p) => [String(p.id), String(p.published_ig_media_id)]),
       );
 
-      let planDbRows = ((planRes.data ?? []) as unknown as DbRow[]) ?? [];
+      let planDbRows = ((planRes.data ?? []) as unknown as DbRow[]);
 
       // Не удаляем строки при каждой загрузке: уже опубликованные (с ig_media_id)
       // должны оставаться для статистики. Прошлый one-shot trim — отдельно.
