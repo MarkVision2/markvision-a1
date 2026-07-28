@@ -100,4 +100,71 @@ describe("broadcastFunnel", () => {
     expect(funnel.sales).toBe(1);
     expect(funnel.revenue).toBe(150000);
   });
+
+  it("считает прочтение по read_at даже если статус ещё delivered", () => {
+    const recipients = [
+      rec({ id: "1", status: "delivered", deliveredAt: "2026-07-01", readAt: "2026-07-01T12:00:00Z" }),
+      rec({ id: "2", status: "sent", sentAt: "2026-07-01" }),
+    ];
+    const d = countDelivery(recipients);
+    expect(d.sent).toBe(2);
+    expect(d.delivered).toBe(1);
+    expect(d.read).toBe(1);
+  });
+
+  it("В CRM = вступившие с карточкой, не все матчи списка", () => {
+    const recipients = [
+      rec({
+        id: "a",
+        status: "clicked",
+        phone: "+77001110001",
+        leadId: "L1",
+        joinedAt: "2026-07-01",
+        clickedAt: "2026-07-01",
+      }),
+      rec({
+        id: "b",
+        status: "sent",
+        phone: "+77001110002",
+        leadId: "L2",
+      }),
+      rec({
+        id: "c",
+        status: "clicked",
+        phone: "+77001110003",
+        leadId: null,
+        joinedAt: "2026-07-01",
+        clickedAt: "2026-07-01",
+      }),
+    ];
+    const leads: BroadcastLeadLite[] = [
+      {
+        id: "L1",
+        name: "Алия",
+        phone: "+77001110001",
+        stageKey: "joined_group",
+        stageRole: "joined_group",
+        paid: false,
+        amount: 0,
+        depositAmount: 0,
+        webinarStatus: null,
+      },
+      {
+        id: "L2",
+        name: "Болат",
+        phone: "+77001110002",
+        stageKey: "new",
+        stageRole: "new",
+        paid: false,
+        amount: 0,
+        depositAmount: 0,
+        webinarStatus: null,
+      },
+    ];
+    const funnel = buildBroadcastFunnel(recipients, leads);
+    expect(funnel.joined).toBe(2);
+    expect(funnel.clicked).toBe(2);
+    // a в CRM по leadId; c без лида → 1
+    expect(funnel.leads).toBe(1);
+  });
 });

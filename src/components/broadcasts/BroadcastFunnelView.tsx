@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import {
   Banknote,
   Eye,
+  HelpCircle,
   Link2,
   MessageCircleReply,
   Send,
@@ -12,27 +13,88 @@ import {
   Users,
   Video,
 } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
-/** Главные KPI — язык как у пользователя */
+/** KPI-карточки: короткие названия + tooltip с формулой */
 const HERO: {
   key: keyof BroadcastFunnel;
   label: string;
-  hint?: string;
+  hint: string;
+  how: string;
   icon: typeof Send;
   tone?: "success" | "primary" | "warning";
   money?: boolean;
 }[] = [
-  { key: "sent", label: "Отправлено", hint: "ушло в WhatsApp", icon: Send },
-  { key: "delivered", label: "Получили", hint: "доставлено", icon: Users, tone: "primary" },
-  { key: "read", label: "Открыли", hint: "прочитали сообщение", icon: Eye },
-  { key: "clicked", label: "Клики по ссылке", hint: "перешли по ссылке", icon: Link2 },
-  { key: "joined", label: "Вступили в группу", hint: "реально в WhatsApp-группе", icon: UserPlus, tone: "success" },
-  { key: "leads", label: "Лиды", hint: "есть в CRM", icon: Users, tone: "primary" },
-  { key: "sales", label: "Продажи", hint: "оплачено", icon: ShoppingCart, tone: "success" },
-  { key: "revenue", label: "Выручка", hint: "сумма оплат", icon: Banknote, tone: "success", money: true },
+  {
+    key: "sent",
+    label: "Отправлено",
+    hint: "ушло в WhatsApp",
+    how: "Статус sent/delivered/read/clicked/replied или есть sent_at — сообщение принято API WhatsApp.",
+    icon: Send,
+  },
+  {
+    key: "delivered",
+    label: "Получили",
+    hint: "доставлено на телефон",
+    how: "Одна галочка доставки от WhatsApp (delivered) или факт прочтения / клика / вступления.",
+    icon: Users,
+    tone: "primary",
+  },
+  {
+    key: "read",
+    label: "Прочитали",
+    hint: "две синие галочки",
+    how: "«Прочитали» = WhatsApp read receipt (две синие галочки). Если у человека выключены отчёты о прочтении — сюда не попадёт, пока не кликнет или не вступит в группу.",
+    icon: Eye,
+  },
+  {
+    key: "clicked",
+    label: "Клики",
+    hint: "перешли по ссылке",
+    how: "Клик по трекинг-ссылке или кнопке «Вступить в группу». При детектe вступления в группу клик тоже засчитывается.",
+    icon: Link2,
+  },
+  {
+    key: "joined",
+    label: "В группе",
+    hint: "реально в WhatsApp",
+    how: "Человек найден в составе WhatsApp-группы кампании (проверка getGroupData каждые ~5 мин).",
+    icon: UserPlus,
+    tone: "success",
+  },
+  {
+    key: "leads",
+    label: "В CRM",
+    hint: "карточка лида",
+    how: "Вступившие, у которых есть карточка в CRM (создана или привязана по телефону). Стадия — «Вступил в группу», если лид был раньше.",
+    icon: Users,
+    tone: "primary",
+  },
+  {
+    key: "sales",
+    label: "Продажи",
+    hint: "оплачено",
+    how: "Связанные лиды с оплатой (paid / стадия paid+).",
+    icon: ShoppingCart,
+    tone: "success",
+  },
+  {
+    key: "revenue",
+    label: "Выручка",
+    hint: "сумма оплат",
+    how: "Сумма amount у оплаченных лидов из этой рассылки.",
+    icon: Banknote,
+    tone: "success",
+    money: true,
+  },
 ];
 
-/** Этапы воронки — короткие понятные названия, текст всегда снаружи бара */
+/** Полная воронка как в CRM-запуске: каждый этап виден */
 const FUNNEL_STAGES: {
   key: keyof BroadcastFunnel;
   label: string;
@@ -43,14 +105,14 @@ const FUNNEL_STAGES: {
   {
     key: "total",
     label: "В списке",
-    hint: "всего получателей",
+    hint: "получатели рассылки",
     icon: Users,
     bar: "from-slate-400/80 to-slate-500/50",
   },
   {
     key: "sent",
     label: "Отправлено",
-    hint: "сообщение ушло",
+    hint: "ушло в WhatsApp",
     icon: Send,
     bar: "from-sky-400/90 to-sky-600/55",
   },
@@ -63,17 +125,31 @@ const FUNNEL_STAGES: {
   },
   {
     key: "read",
-    label: "Открыли",
-    hint: "прочитали в WhatsApp",
+    label: "Прочитали",
+    hint: "read receipt WhatsApp",
     icon: Eye,
     bar: "from-teal-400/90 to-teal-600/55",
   },
   {
-    key: "leads",
-    label: "Лиды в CRM",
-    hint: "есть карточка в CRM",
+    key: "clicked",
+    label: "Клики",
+    hint: "перешли по ссылке / кнопке",
+    icon: Link2,
+    bar: "from-violet-400/85 to-violet-600/50",
+  },
+  {
+    key: "joined",
+    label: "В группе",
+    hint: "реально в WhatsApp-группе",
     icon: UserPlus,
-    bar: "from-emerald-400/85 to-emerald-600/50",
+    bar: "from-emerald-400/90 to-emerald-600/55",
+  },
+  {
+    key: "leads",
+    label: "В CRM",
+    hint: "есть карточка лида",
+    icon: Users,
+    bar: "from-lime-400/85 to-lime-600/50",
   },
   {
     key: "sales",
@@ -84,42 +160,72 @@ const FUNNEL_STAGES: {
   },
 ];
 
+const GLOSSARY: { title: string; text: string }[] = [
+  {
+    title: "Прочитали",
+    text: "Две синие галочки WhatsApp. Не клик и не открытие ссылки. Если отчёты о прочтении выключены — цифра занижена.",
+  },
+  {
+    title: "Клики",
+    text: "Переход по кнопке/ссылке рассылки. Вступление в группу автоматически считается кликом.",
+  },
+  {
+    title: "В группе",
+    text: "Факт членства в WhatsApp-группе кампании (синхронизация каждые ~5 минут).",
+  },
+  {
+    title: "В CRM",
+    text: "По вступившим создаётся или находится лид; стадия двигается на «Вступил в группу» (только вперёд).",
+  },
+];
+
 export function BroadcastHeroKpis({ funnel }: { funnel: BroadcastFunnel }) {
   return (
-    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
-      {HERO.map((c) => {
-        const raw = Number(funnel[c.key] ?? 0);
-        const value = c.money ? fmtKzt(raw) : fmtNum(raw);
-        const Icon = c.icon;
-        return (
-          <div
-            key={c.key}
-            className={cn(
-              "rounded-2xl border border-border/60 bg-card/60 p-3",
-              c.tone === "success" && "border-success/35 bg-success/5",
-              c.tone === "primary" && "border-primary/30 bg-primary/5",
-            )}
-            title={c.hint}
-          >
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-              <Icon className="h-3 w-3 shrink-0" />
-              <span className="truncate">{c.label}</span>
-            </div>
-            <div className="mt-1.5 text-lg font-bold tabular-nums leading-none sm:text-xl">{value}</div>
-            {c.hint ? <div className="mt-1 truncate text-[10px] text-muted-foreground">{c.hint}</div> : null}
-          </div>
-        );
-      })}
-    </div>
+    <TooltipProvider delayDuration={200}>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 xl:grid-cols-8">
+        {HERO.map((c) => {
+          const raw = Number(funnel[c.key] ?? 0);
+          const value = c.money ? fmtKzt(raw) : fmtNum(raw);
+          const Icon = c.icon;
+          return (
+            <Tooltip key={c.key}>
+              <TooltipTrigger asChild>
+                <div
+                  className={cn(
+                    "cursor-help rounded-2xl border border-border/60 bg-card/60 p-3 transition-colors hover:border-primary/40",
+                    c.tone === "success" && "border-success/35 bg-success/5",
+                    c.tone === "primary" && "border-primary/30 bg-primary/5",
+                  )}
+                >
+                  <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                    <Icon className="h-3 w-3 shrink-0" />
+                    <span className="min-w-0 truncate">{c.label}</span>
+                    <HelpCircle className="ml-auto h-3 w-3 shrink-0 opacity-50" />
+                  </div>
+                  <div className="mt-1.5 text-lg font-bold tabular-nums leading-none sm:text-xl">{value}</div>
+                  <div className="mt-1 truncate text-[10px] text-muted-foreground">{c.hint}</div>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" className="max-w-xs text-xs leading-relaxed">
+                <p className="font-semibold">{c.label}</p>
+                <p className="mt-1 text-muted-foreground">{c.how}</p>
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
+      </div>
+    </TooltipProvider>
   );
 }
 
 export function BroadcastConversionStrip({ funnel }: { funnel: BroadcastFunnel }) {
   const pairs: { from: keyof BroadcastFunnel; to: keyof BroadcastFunnel; label: string }[] = [
     { from: "sent", to: "delivered", label: "доставка" },
-    { from: "delivered", to: "read", label: "открытие" },
+    { from: "delivered", to: "read", label: "прочтение" },
     { from: "read", to: "clicked", label: "клик" },
-    { from: "clicked", to: "joined", label: "перешли→вступили" },
+    { from: "clicked", to: "joined", label: "клик → группа" },
+    { from: "joined", to: "leads", label: "группа → CRM" },
+    { from: "leads", to: "sales", label: "CRM → оплата" },
   ];
   return (
     <div className="flex flex-wrap gap-2">
@@ -154,8 +260,8 @@ export function BroadcastConversionStrip({ funnel }: { funnel: BroadcastFunnel }
 }
 
 /**
- * Читаемая воронка: название слева (не обрезается), полоска по доле от максимума,
- * число справа. Между ступенями — % перехода.
+ * Полная воронка рассылки: список → … → клики → группа → CRM → продажи.
+ * Между ступенями — % перехода; узкое место подсвечено.
  */
 export function BroadcastFunnelView({ funnel }: { funnel: BroadcastFunnel }) {
   const values = FUNNEL_STAGES.map((s) => Number(funnel[s.key] ?? 0));
@@ -177,24 +283,29 @@ export function BroadcastFunnelView({ funnel }: { funnel: BroadcastFunnel }) {
 
   const overall =
     values[0] > 0 ? funnelStepRate(values[0], Number(funnel.sales ?? 0)) : null;
-  const openRate =
-    Number(funnel.delivered ?? 0) > 0
-      ? funnelStepRate(Number(funnel.delivered), Number(funnel.read))
+  const joinRate =
+    Number(funnel.clicked ?? 0) > 0
+      ? funnelStepRate(Number(funnel.clicked), Number(funnel.joined))
       : null;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-border/50 bg-card/40">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <span className="h-2 w-2 rounded-full bg-primary" />
-          <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
-            Воронка рассылки
-          </span>
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="h-2 w-2 rounded-full bg-primary" />
+            <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+              Воронка рассылки
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Список → отправка → доставка → прочтение → клик → группа → CRM → продажа
+          </p>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {openRate != null ? (
+          {joinRate != null ? (
             <span className="rounded-full border border-border/50 bg-secondary/40 px-2.5 py-0.5 text-[10px] font-semibold tabular-nums">
-              Открытие <span className="text-primary">{openRate}%</span>
+              Клик → группа <span className="text-primary">{joinRate}%</span>
             </span>
           ) : null}
           {overall != null ? (
@@ -213,11 +324,12 @@ export function BroadcastFunnelView({ funnel }: { funnel: BroadcastFunnel }) {
           const widthPct = value > 0 ? Math.max((value / max) * 100, 8) : 0;
           const Icon = stage.icon;
           const isSale = stage.key === "sales";
+          const isJoin = stage.key === "joined";
 
           return (
             <div key={stage.key}>
               {rate != null && (
-                <div className="flex items-center gap-2 py-1.5 pl-[7.5rem] sm:pl-36">
+                <div className="flex items-center gap-2 py-1.5 pl-[7.5rem] sm:pl-40">
                   <div className="h-3 w-px bg-border" />
                   <span
                     className={cn(
@@ -242,10 +354,10 @@ export function BroadcastFunnelView({ funnel }: { funnel: BroadcastFunnel }) {
 
               <div
                 className={cn(
-                  "grid grid-cols-[7rem_1fr_auto] items-center gap-3 rounded-xl border px-3 py-2.5 sm:grid-cols-[9rem_1fr_4.5rem]",
-                  isSale
-                    ? "border-success/35 bg-success/5"
-                    : "border-border/50 bg-secondary/15",
+                  "grid grid-cols-[7rem_1fr_auto] items-center gap-3 rounded-xl border px-3 py-2.5 sm:grid-cols-[10rem_1fr_4.5rem]",
+                  isSale && "border-success/35 bg-success/5",
+                  isJoin && !isSale && "border-emerald-500/30 bg-emerald-500/5",
+                  !isSale && !isJoin && "border-border/50 bg-secondary/15",
                 )}
               >
                 <div className="min-w-0">
@@ -286,32 +398,29 @@ export function BroadcastFunnelView({ funnel }: { funnel: BroadcastFunnel }) {
           <span className="text-lg font-bold tabular-nums text-success">{fmtKzt(funnel.revenue)}</span>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {[
-            { label: "Клики", hint: "перешли по ссылке", value: funnel.clicked },
-            { label: "Вступили в группу", hint: "реально в группе", value: funnel.joined },
-            { label: "Ответили", hint: "написали в чат", value: funnel.replied },
-            { label: "Продажи", hint: "оплатили", value: funnel.sales },
-          ].map((x) => (
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {GLOSSARY.map((g) => (
             <div
-              key={x.label}
-              className="rounded-xl border border-border/40 bg-background/40 px-3 py-2"
+              key={g.title}
+              className="rounded-xl border border-border/40 bg-background/40 px-3 py-2.5"
             >
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-                {x.label}
+              <div className="text-[11px] font-bold uppercase tracking-wide text-foreground">
+                {g.title}
               </div>
-              <div className="mt-0.5 text-sm font-bold tabular-nums">{fmtNum(x.value)}</div>
-              <div className="text-[10px] text-muted-foreground">{x.hint}</div>
+              <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">{g.text}</p>
             </div>
           ))}
         </div>
 
-        {(funnel.failed > 0 || funnel.optout > 0) && (
+        {(funnel.failed > 0 || funnel.optout > 0 || funnel.deposits > 0) && (
           <div className="mt-3 flex flex-wrap gap-3 text-[12px] text-muted-foreground">
             {funnel.failed > 0 ? (
               <span className="text-destructive">Ошибок отправки: {fmtNum(funnel.failed)}</span>
             ) : null}
             {funnel.optout > 0 ? <span>Отписались: {fmtNum(funnel.optout)}</span> : null}
+            {funnel.deposits > 0 ? (
+              <span>Бронь / депозит в CRM: {fmtNum(funnel.deposits)}</span>
+            ) : null}
           </div>
         )}
       </div>
