@@ -1,7 +1,7 @@
 {
-  "git_sha": "73a69a6",
-  "git_sha_full": "73a69a6d8fff18e6c591743df52e4976913cbba1",
-  "updated_at": "2026-07-28T11:36:53Z",
-  "label": "Merge branch 'cursor/broadcast-test-button-84cc': harden broadcast test button",
-  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
+  "git_sha": "f861736c",
+  "git_sha_full": "f861736c7c22caa696c1f5905115085c927af32e",
+  "updated_at": "2026-07-28T12:41:07Z",
+  "label": "Merge branch 'cursor/broadcast-funnel-clarity-84cc': broadcast funnel clarity + CRM join advance",
+  "publish_hint": "push main \u2192 www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
