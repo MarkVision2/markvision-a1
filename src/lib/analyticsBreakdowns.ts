@@ -19,6 +19,7 @@ export interface SourceBreakdownRow {
 }
 
 const SOURCE_LABELS: Array<{ rx: RegExp; label: string }> = [
+  { rx: /^vit$|vitalya|виталя|vitaly/, label: "Виталя" },
   { rx: /whatsapp|^wa$|wa\.me/, label: "WhatsApp" },
   { rx: /instagram|^ig$|insta/, label: "Instagram" },
   { rx: /telegram|^tg$/, label: "Telegram" },
