@@ -55,7 +55,7 @@ const STATUS_LABEL: Record<string, string> = {
   queued: "В очереди",
   sent: "Отправлено",
   delivered: "Получил",
-  read: "Открыл",
+  read: "Прочитал",
   clicked: "Кликнул",
   replied: "Ответил",
   converted: "Конверсия",
@@ -63,14 +63,47 @@ const STATUS_LABEL: Record<string, string> = {
   skipped_optout: "Отписка",
 };
 
-const FILTERS: { id: string; label: string; match: (status: string) => boolean }[] = [
+type RecFilter = {
+  id: string;
+  label: string;
+  /** null = special handler in filteredRecipients */
+  match: ((r: { status: string; clickedAt: string | null; joinedAt: string | null; readAt: string | null; deliveredAt: string | null }) => boolean) | null;
+};
+
+const FILTERS: RecFilter[] = [
   { id: "all", label: "Все", match: () => true },
-  { id: "delivered", label: "Получили", match: (s) => ["delivered", "read", "clicked", "replied", "converted"].includes(s) },
-  { id: "read", label: "Открыли", match: (s) => ["read", "clicked", "replied", "converted"].includes(s) },
-  { id: "clicked", label: "Клики", match: (s) => s === "clicked" || s === "converted" },
-  { id: "replied", label: "Ответили", match: (s) => ["replied", "converted"].includes(s) },
-  { id: "failed", label: "Ошибки", match: (s) => s === "failed" },
-  { id: "crm", label: "Есть в CRM", match: () => true }, // special: handled below
+  {
+    id: "delivered",
+    label: "Получили",
+    match: (r) =>
+      ["delivered", "read", "clicked", "replied", "converted"].includes(r.status) ||
+      !!r.deliveredAt ||
+      !!r.readAt ||
+      !!r.clickedAt ||
+      !!r.joinedAt,
+  },
+  {
+    id: "read",
+    label: "Прочитали",
+    match: (r) =>
+      ["read", "clicked", "replied", "converted"].includes(r.status) ||
+      !!r.readAt ||
+      !!r.clickedAt ||
+      !!r.joinedAt,
+  },
+  {
+    id: "clicked",
+    label: "Клики",
+    match: (r) => !!r.clickedAt || !!r.joinedAt || r.status === "clicked" || r.status === "converted",
+  },
+  { id: "joined", label: "В группе", match: (r) => !!r.joinedAt },
+  {
+    id: "replied",
+    label: "Ответили",
+    match: (r) => ["replied", "converted"].includes(r.status),
+  },
+  { id: "failed", label: "Ошибки", match: (r) => r.status === "failed" },
+  { id: "crm", label: "В CRM", match: null },
 ];
 
 export default function BroadcastDetail() {
@@ -106,7 +139,7 @@ export default function BroadcastDetail() {
         if (!lead) return false;
       } else {
         const f = FILTERS.find((x) => x.id === filter);
-        if (f && !f.match(r.status)) return false;
+        if (f?.match && !f.match(r)) return false;
       }
       if (!q) return true;
       return (
@@ -330,8 +363,14 @@ export default function BroadcastDetail() {
               <div>
                 <BroadcastFunnelView funnel={funnel} />
                 <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-                  Доставка и открытия — из WhatsApp. Лиды и продажи — из CRM по телефону.
-                  Клики появятся при трекинг-ссылках в тексте.
+                  <span className="font-semibold text-foreground/80">Прочитали</span> — две синие
+                  галочки WhatsApp (не клик).{" "}
+                  <span className="font-semibold text-foreground/80">Клики</span> — переход по
+                  кнопке/ссылке.{" "}
+                  <span className="font-semibold text-foreground/80">В группе</span> — человек в
+                  составе WhatsApp-группы.{" "}
+                  <span className="font-semibold text-foreground/80">В CRM</span> — карточка лида со
+                  стадией «Вступил в группу» (или дальше по воронке).
                 </p>
               </div>
 
@@ -442,7 +481,7 @@ export default function BroadcastDetail() {
                             <span className="text-muted-foreground">получил</span>
                           ) : null}
                           {r.readAt ? (
-                            <span className="text-muted-foreground">открыл</span>
+                            <span className="text-muted-foreground">прочитал</span>
                           ) : null}
                         </div>
                         {lead ? (

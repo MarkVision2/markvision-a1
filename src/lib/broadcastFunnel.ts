@@ -105,7 +105,11 @@ export function digitsPhone(phone: string): string {
   return (phone ?? "").replace(/\D/g, "");
 }
 
-/** Кумулятивные счётчики доставки из сырых статусов получателей. */
+/**
+ * Кумулятивные счётчики доставки.
+ * Статус Green API + таймстампы (read_at / delivered_at / …): вебхук иногда
+ * опаздывает, а join-sync дописывает факт прочтения/клика по вступлению.
+ */
 export function countDelivery(recipients: BroadcastRecipientLite[]): Omit<
   BroadcastFunnel,
   "clicked" | "joined" | "groupJoined" | "webinarAttended" | "leads" | "deposits" | "sales" | "revenue"
@@ -120,12 +124,21 @@ export function countDelivery(recipients: BroadcastRecipientLite[]): Omit<
   for (const r of recipients) {
     const s = r.status;
     if (s === "queued") queued += 1;
-    if (OUTBOX.has(s)) sent += 1;
-    if (DELIVERED.has(s)) delivered += 1;
-    if (READ.has(s)) read += 1;
-    if (REPLIED.has(s)) replied += 1;
     if (s === "failed") failed += 1;
     if (s === "skipped_optout") optout += 1;
+
+    const isSent =
+      OUTBOX.has(s) || !!r.sentAt || !!r.deliveredAt || !!r.readAt || !!r.clickedAt || !!r.joinedAt;
+    const isDelivered =
+      DELIVERED.has(s) || !!r.deliveredAt || !!r.readAt || !!r.clickedAt || !!r.joinedAt;
+    // «Открыли» = WhatsApp read receipt (две синие галочки) ИЛИ факт клика/вступления.
+    const isRead = READ.has(s) || !!r.readAt || !!r.clickedAt || !!r.joinedAt;
+    const isReplied = REPLIED.has(s) || !!r.repliedAt;
+
+    if (isSent) sent += 1;
+    if (isDelivered) delivered += 1;
+    if (isRead) read += 1;
+    if (isReplied) replied += 1;
   }
   return { total: recipients.length, queued, sent, delivered, read, replied, failed, optout };
 }
@@ -166,9 +179,13 @@ export function buildBroadcastFunnel(
 
   let clicked = 0;
   let joined = 0;
+  let joinedInCrm = 0;
   for (const r of recipients) {
-    if (r.clickedAt) clicked += 1;
-    if (r.joinedAt) joined += 1;
+    if (r.clickedAt || r.joinedAt) clicked += 1;
+    if (r.joinedAt) {
+      joined += 1;
+      if (r.leadId || matched.has(r.id)) joinedInCrm += 1;
+    }
   }
 
   const seenLeads = new Set<string>();
@@ -200,13 +217,17 @@ export function buildBroadcastFunnel(
     }
   }
 
+  // «Лиды / В CRM» в KPI: при наличии вступлений — сколько из них с карточкой CRM;
+  // иначе — все совпадения по телефону / lead_id (база из CRM).
+  const leadsCount = joined > 0 ? joinedInCrm : seenLeads.size;
+
   return {
     ...delivery,
     clicked,
     joined,
     groupJoined,
     webinarAttended,
-    leads: seenLeads.size,
+    leads: leadsCount,
     deposits,
     sales,
     revenue,

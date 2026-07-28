@@ -5,7 +5,7 @@
 // опрашивает у Green состав группы (getGroupData), матчит участников с
 // получателями по телефону и:
 //   1) ставит broadcast_recipients.joined_at (реальное вступление);
-//   2) заводит/привязывает лида в CRM с источником «Рассылка» на стадии
+//   2) заводит/привязывает лида в CRM и forward-only двигает стадию на
 //      «в группе» — дальше по воронке CRM (подтвердил участие → … → оплата).
 //
 // Запускается pg_cron раз в 5 минут. Auth: x-automation-key == cron_secret.
@@ -27,6 +27,27 @@ const admin: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
+/** Порядок стадий CRM — только вперёд, как в crm-stage-update. */
+const ROLE_ORDER: Record<string, number> = {
+  new: 1,
+  bot_activated: 2,
+  whatsapp: 2,
+  joined_group: 3,
+  warming: 3,
+  confirmed: 4,
+  attended: 5,
+  deposit: 6,
+  interest: 7,
+  call_scheduled: 7,
+  call_done: 8,
+  offer: 9,
+  paid: 10,
+  student: 11,
+  graduate: 12,
+  rejected: 99,
+  other: 0,
+};
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -36,6 +57,28 @@ function json(body: unknown, status = 200) {
 
 function digits(s: string | null | undefined): string {
   return String(s ?? "").replace(/\D/g, "");
+}
+
+function normalizeRole(role: string | null | undefined, key: string | null | undefined): string {
+  const r = (role ?? "").toLowerCase();
+  if (r === "whatsapp") return "bot_activated";
+  if (r === "warming") return "joined_group";
+  if (r === "interest") return "call_scheduled";
+  if (r) return r;
+  const k = (key ?? "").toLowerCase();
+  if (k === "joined_group" || k === "warming") return "joined_group";
+  if (k === "bot_activated" || k === "whatsapp") return "bot_activated";
+  if (k) return k;
+  return "other";
+}
+
+function canAdvance(from: string, to: string): boolean {
+  if (from === to) return false;
+  if (to === "rejected") return true;
+  if (from === "rejected" || from === "graduate") return false;
+  if (from === "paid" && to !== "student" && to !== "graduate") return false;
+  if (from === "student" && to !== "graduate") return false;
+  return (ROLE_ORDER[to] ?? 0) >= (ROLE_ORDER[from] ?? 0);
 }
 
 type Creds = { idInstance: string; apiToken: string; baseUrl: string };
@@ -77,7 +120,12 @@ async function groupParticipants(creds: Creds, groupId: string): Promise<Set<str
 }
 
 // ─── CRM-атрибуция ───────────────────────────────────────────────────────────
-type JoinStage = { pipeline_id: string; stage_id: string } | null;
+type JoinStage = {
+  pipeline_id: string;
+  stage_id: string;
+  /** stage_id → normalized role */
+  roleByStageId: Map<string, string>;
+} | null;
 
 /** Стадия для вступивших: приоритет «joined_group», иначе первая стадия. */
 async function resolveJoinStage(projectId: string): Promise<JoinStage> {
@@ -99,8 +147,16 @@ async function resolveJoinStage(projectId: string): Promise<JoinStage> {
     .order("order_index", { ascending: true });
   const rows = (stages ?? []) as { id: string; key: string | null; stage_role: string | null; order_index: number }[];
   if (rows.length === 0) return null;
+  const roleByStageId = new Map<string, string>();
+  for (const s of rows) {
+    roleByStageId.set(s.id, normalizeRole(s.stage_role, s.key));
+  }
   const joined = rows.find((s) => s.key === "joined_group" || s.stage_role === "joined_group");
-  return { pipeline_id: pipelineId, stage_id: (joined ?? rows[0]).id };
+  return {
+    pipeline_id: pipelineId,
+    stage_id: (joined ?? rows[0]).id,
+    roleByStageId,
+  };
 }
 
 async function projectOwner(projectId: string): Promise<string | null> {
@@ -109,19 +165,57 @@ async function projectOwner(projectId: string): Promise<string | null> {
 }
 
 async function findLeadByPhone(projectId: string, d: string): Promise<string | null> {
-  const { data } = await admin.from("leads").select("id")
+  if (d.length < 8) return null;
+  const needle = d.slice(-10);
+  const { data } = await admin.from("leads").select("id, phone")
     .eq("project_id", projectId)
-    .or(`phone.eq.+${d},phone.eq.${d}`)
-    .limit(1).maybeSingle();
-  return (data as { id?: string } | null)?.id ?? null;
+    .eq("is_personal", false)
+    .or(`phone.eq.+${d},phone.eq.${d},phone.like.%${needle}`)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  const hit = (data ?? []).find((r: { phone?: string }) => {
+    const p = digits(r.phone);
+    return p === d || p.endsWith(needle) || needle.endsWith(p.slice(-10));
+  });
+  return (hit as { id?: string } | null)?.id ?? null;
 }
 
-/** Проставляет привязку к кампании (не перетирая source существующего лида). */
-async function attributeLead(leadId: string, campaignId: string) {
-  await admin.from("leads")
-    .update({ broadcast_campaign_id: campaignId })
+/**
+ * Привязка к кампании + forward-only сдвиг на «Вступил в группу».
+ * Не откатывает лида, который уже дальше (confirmed / paid / …).
+ */
+async function attributeAndAdvanceJoin(
+  leadId: string,
+  campaignId: string,
+  joinStage: NonNullable<JoinStage>,
+): Promise<"advanced" | "attributed" | "unchanged"> {
+  const { data: lead } = await admin.from("leads")
+    .select("id, stage_id, pipeline_id, broadcast_campaign_id")
     .eq("id", leadId)
-    .is("broadcast_campaign_id", null);
+    .maybeSingle();
+  if (!lead) return "unchanged";
+
+  const row = lead as {
+    id: string;
+    stage_id: string | null;
+    pipeline_id: string | null;
+    broadcast_campaign_id: string | null;
+  };
+
+  const patch: Record<string, unknown> = {};
+  if (!row.broadcast_campaign_id) {
+    patch.broadcast_campaign_id = campaignId;
+  }
+
+  const currentRole = joinStage.roleByStageId.get(row.stage_id ?? "") ?? "other";
+  if (canAdvance(currentRole, "joined_group")) {
+    patch.stage_id = joinStage.stage_id;
+    if (!row.pipeline_id) patch.pipeline_id = joinStage.pipeline_id;
+  }
+
+  if (Object.keys(patch).length === 0) return "unchanged";
+  await admin.from("leads").update(patch).eq("id", leadId);
+  return patch.stage_id ? "advanced" : "attributed";
 }
 
 async function authorize(req: Request): Promise<boolean> {
@@ -219,6 +313,65 @@ async function bindMissingGroupIds(credsCache: Map<string, Creds | null>): Promi
 type Campaign = { id: string; project_id: string; group_id: string };
 type Rec = { id: string; phone: string; name: string; lead_id: string | null; campaign_id: string; status: string };
 
+/**
+ * Создать / привязать лида + сдвинуть на joined_group.
+ * Возвращает leadId и флаг создания.
+ */
+async function ensureJoinCrm(
+  r: Rec,
+  projectId: string,
+  joinStage: NonNullable<JoinStage>,
+  owner: string | null,
+): Promise<{ leadId: string | null; created: boolean; advanced: boolean }> {
+  let leadId = r.lead_id;
+  let created = false;
+
+  if (!leadId) {
+    const d = digits(r.phone);
+    leadId = await findLeadByPhone(projectId, d);
+  }
+
+  if (!leadId && joinStage) {
+    const d = digits(r.phone);
+    if (d.length >= 8) {
+      const { data: createdRow } = await admin.from("leads").insert({
+        name: r.name || `+${d}`,
+        phone: `+${d}`,
+        source: "broadcast",
+        channel: "whatsapp",
+        project_id: projectId,
+        pipeline_id: joinStage.pipeline_id,
+        stage_id: joinStage.stage_id,
+        created_by: owner,
+        assigned_to: owner,
+        broadcast_campaign_id: r.campaign_id,
+      }).select("id").single();
+      leadId = (createdRow as { id?: string } | null)?.id ?? null;
+      if (leadId) created = true;
+    }
+  }
+
+  if (!leadId) return { leadId: null, created: false, advanced: false };
+
+  let advanced = false;
+  if (created) {
+    // Уже на joined_group при insert — только привязка recipient.
+    await admin.from("leads")
+      .update({ broadcast_campaign_id: r.campaign_id })
+      .eq("id", leadId)
+      .is("broadcast_campaign_id", null);
+  } else {
+    const result = await attributeAndAdvanceJoin(leadId, r.campaign_id, joinStage);
+    advanced = result === "advanced";
+  }
+
+  if (r.lead_id !== leadId) {
+    await admin.from("broadcast_recipients").update({ lead_id: leadId }).eq("id", r.id);
+  }
+
+  return { leadId, created, advanced };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (!(await authorize(req))) return json({ error: "unauthorized" }, 401);
@@ -249,6 +402,8 @@ Deno.serve(async (req) => {
 
   let marked = 0;
   let leadsCreated = 0;
+  let leadsAdvanced = 0;
+  let repaired = 0;
 
   for (const [projectId, groups] of byProject) {
     if (!credsCache.has(projectId)) credsCache.set(projectId, await resolveCreds(projectId));
@@ -258,6 +413,13 @@ Deno.serve(async (req) => {
     let joinStage: JoinStage = null;
     let owner: string | null = null;
     let resolvedCrm = false;
+
+    const ensureCrmReady = async () => {
+      if (resolvedCrm) return;
+      joinStage = await resolveJoinStage(projectId);
+      owner = await projectOwner(projectId);
+      resolvedCrm = true;
+    };
 
     for (const [groupId, campaignIds] of groups) {
       const members = await groupParticipants(creds, groupId);
@@ -270,61 +432,61 @@ Deno.serve(async (req) => {
         .is("joined_at", null)
         .limit(20000);
       const newly = ((recData ?? []) as Rec[]).filter((r) => members.has(digits(r.phone)));
-      if (newly.length === 0) continue;
 
-      if (!resolvedCrm) {
-        joinStage = await resolveJoinStage(projectId);
-        owner = await projectOwner(projectId);
-        resolvedCrm = true;
+      if (newly.length > 0) {
+        await ensureCrmReady();
+        if (!joinStage) continue;
+
+        const now = new Date().toISOString();
+        for (const r of newly) {
+          // Вступление = точно получил/открыл ссылку. Статусы доставки Green API
+          // иногда зависают на sent — догоняем по факту join.
+          const patch: Record<string, unknown> = {
+            joined_at: now,
+            clicked_at: now,
+            delivered_at: now,
+            read_at: now,
+          };
+          if (["queued", "sending", "sent", "delivered", "read"].includes(r.status)) {
+            patch.status = "clicked";
+          }
+          await admin.from("broadcast_recipients").update(patch).eq("id", r.id);
+          marked += 1;
+
+          const result = await ensureJoinCrm(r, projectId, joinStage, owner);
+          if (result.created) leadsCreated += 1;
+          if (result.advanced) leadsAdvanced += 1;
+        }
       }
 
-      const now = new Date().toISOString();
-      for (const r of newly) {
-        // Вступление = точно получил/открыл ссылку. Статусы доставки Green API
-        // иногда зависают на sent — догоняем по факту join.
-        const patch: Record<string, unknown> = {
-          joined_at: now,
-          clicked_at: now,
-          delivered_at: now,
-          read_at: now,
-        };
-        if (["queued", "sending", "sent", "delivered", "read"].includes(r.status)) {
-          patch.status = "clicked";
-        }
-        await admin.from("broadcast_recipients").update(patch).eq("id", r.id);
-        marked += 1;
+      // Ремонт: уже вступившие, но без лида / без сдвига стадии (баг старой версии).
+      await ensureCrmReady();
+      if (!joinStage) continue;
 
-        // CRM-атрибуция «Рассылка».
-        if (r.lead_id) {
-          await attributeLead(r.lead_id, r.campaign_id);
-          continue;
-        }
-        const d = digits(r.phone);
-        if (d.length < 8) continue;
-        let leadId = await findLeadByPhone(projectId, d);
-        if (!leadId && joinStage) {
-          const { data: created } = await admin.from("leads").insert({
-            name: r.name || `+${d}`,
-            phone: `+${d}`,
-            source: "broadcast",
-            channel: "whatsapp",
-            project_id: projectId,
-            pipeline_id: joinStage.pipeline_id,
-            stage_id: joinStage.stage_id,
-            created_by: owner,
-            assigned_to: owner,
-            broadcast_campaign_id: r.campaign_id,
-          }).select("id").single();
-          leadId = (created as { id?: string } | null)?.id ?? null;
-          if (leadId) leadsCreated += 1;
-        }
-        if (leadId) {
-          await attributeLead(leadId, r.campaign_id);
-          await admin.from("broadcast_recipients").update({ lead_id: leadId }).eq("id", r.id);
-        }
+      const { data: joinedData } = await admin
+        .from("broadcast_recipients")
+        .select("id, phone, name, lead_id, campaign_id, status")
+        .in("campaign_id", campaignIds)
+        .not("joined_at", "is", null)
+        .limit(20000);
+      for (const r of (joinedData ?? []) as Rec[]) {
+        if (!members.has(digits(r.phone))) continue;
+        const before = r.lead_id;
+        const result = await ensureJoinCrm(r, projectId, joinStage, owner);
+        if (result.created) leadsCreated += 1;
+        if (result.advanced || (!before && result.leadId)) repaired += 1;
+        if (result.advanced) leadsAdvanced += 1;
       }
     }
   }
 
-  return json({ ok: true, marked, leadsCreated, bound, ran_at: new Date().toISOString() });
+  return json({
+    ok: true,
+    marked,
+    leadsCreated,
+    leadsAdvanced,
+    repaired,
+    bound,
+    ran_at: new Date().toISOString(),
+  });
 });
