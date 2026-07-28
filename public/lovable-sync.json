@@ -1,7 +1,7 @@
 {
-  "git_sha": "2059058b",
-  "git_sha_full": "2059058bbc1f2ced71d004ed8df9bf503e63fda8",
-  "updated_at": "2026-07-28T12:54:55Z",
-  "label": "Merge branch 'cursor/utm-source-vitalya-84cc': utm_source=vit \u2192 \u0412\u0438\u0442\u0430\u043b\u044f",
+  "git_sha": "f2188575",
+  "git_sha_full": "f218857562d62c178d0cdd63a2ca9be4f6ce1fe5",
+  "updated_at": "2026-07-28T12:56:47Z",
+  "label": "chore: lovable sync stamp 2059058b [lovable-stamp]",
   "publish_hint": "push main \u2192 www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
