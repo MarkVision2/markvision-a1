@@ -397,15 +397,30 @@ Deno.serve(async (req) => {
           return json({ error: "Invalid phone number" }, 400);
         }
         if (!message) return json({ error: "Empty message" }, 400);
+        // WhatsApp LID: checkWhatsapp → chatId (@lid), иначе @c.us часто зависает в sent.
+        let chatId = `${phoneRaw}@c.us`;
+        try {
+          const chk = await callGreen(creds, "checkWhatsapp", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ phoneNumber: Number(phoneRaw) }),
+          });
+          const data = chk.data as { existsWhatsapp?: boolean; chatId?: string } | null;
+          if (data?.existsWhatsapp === false) {
+            return json({ error: "No WhatsApp on this number" }, 400);
+          }
+          if (data?.chatId && String(data.chatId).includes("@")) {
+            chatId = String(data.chatId);
+          }
+        } catch {
+          /* fallback @c.us */
+        }
         const r = await callGreen(creds, "sendMessage", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chatId: `${phoneRaw}@c.us`,
-            message,
-          }),
+          body: JSON.stringify({ chatId, message }),
         });
-        return json({ ok: r.ok, status: r.status, data: r.data });
+        return json({ ok: r.ok, status: r.status, data: r.data, chatId });
       }
 
       default:
