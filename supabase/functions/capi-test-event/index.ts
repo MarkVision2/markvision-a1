@@ -47,6 +47,11 @@ Deno.serve(async (req) => {
 
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
 
+    if (cabinet_id) {
+      const access = await requireCabinetAccess(authHeader, String(cabinet_id));
+      if (!access.ok) return access.response;
+    }
+
     if (cabinet_id && (!pixelId || !token)) {
       const { data: cab } = await admin.from("ad_cabinets").select("pixel_id, access_token, capi_test_event_code").eq("id", cabinet_id).maybeSingle();
       if (cab) {
