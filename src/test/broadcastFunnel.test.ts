@@ -101,6 +101,55 @@ describe("broadcastFunnel", () => {
     expect(funnel.revenue).toBe(150000);
   });
 
+  it("при вступлениях вебинар/оплата только по вступившим", () => {
+    const recipients = [
+      rec({
+        id: "a",
+        status: "clicked",
+        phone: "+77001110001",
+        leadId: "L1",
+        joinedAt: "2026-07-01",
+        clickedAt: "2026-07-01",
+      }),
+      rec({
+        id: "b",
+        status: "sent",
+        phone: "+77001110002",
+        leadId: "L2",
+      }),
+    ];
+    const leads: BroadcastLeadLite[] = [
+      {
+        id: "L1",
+        name: "Алия",
+        phone: "+77001110001",
+        stageKey: "joined_group",
+        stageRole: "joined_group",
+        paid: false,
+        amount: 0,
+        depositAmount: 0,
+        webinarStatus: null,
+      },
+      {
+        id: "L2",
+        name: "Болат",
+        phone: "+77001110002",
+        stageKey: "paid",
+        stageRole: "paid",
+        paid: true,
+        amount: 200000,
+        depositAmount: 0,
+        webinarStatus: "attended",
+      },
+    ];
+    const funnel = buildBroadcastFunnel(recipients, leads);
+    expect(funnel.joined).toBe(1);
+    expect(funnel.leads).toBe(1);
+    // L2 оплатил, но не вступал из этой рассылки — не считаем
+    expect(funnel.webinarAttended).toBe(0);
+    expect(funnel.sales).toBe(0);
+  });
+
   it("считает прочтение по read_at даже если статус ещё delivered", () => {
     const recipients = [
       rec({ id: "1", status: "delivered", deliveredAt: "2026-07-01", readAt: "2026-07-01T12:00:00Z" }),
