@@ -1,6 +1,6 @@
 import {
   Star, Tag, Globe, Copy, MessageCircle, Mail, MapPin, Clock,
-  Phone as PhoneIcon,
+  Phone as PhoneIcon, UserRound,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,6 +40,15 @@ function timeAgo(iso: string): string {
   return "";
 }
 
+/** Hide WhatsApp LID digits mistaken for a phone (e.g. +80968874504413). */
+function displayablePhone(raw?: string | null): string {
+  const trimmed = (raw ?? "").trim();
+  const d = trimmed.replace(/\D/g, "");
+  if (d.length < 8 || d.length > 12) return "";
+  if (d.startsWith("80")) return "";
+  return trimmed;
+}
+
 function copyText(value: string, message: string) {
   navigator.clipboard.writeText(value).then(
     () => toast.success(message),
@@ -54,18 +63,18 @@ export function LeadHeader({
   const assignee = members.find((m) => m.id === lead.assigneeId);
   const sourceMeta = resolveLeadSource(lead);
   const SourceIcon = sourceMeta.Icon;
-  const phone = lead.phone?.trim();
+  const phone = displayablePhone(lead.phone);
   const createdAgo = lead.createdAt ? timeAgo(lead.createdAt) : "";
 
   return (
-    <div className="border-b border-border/60 bg-background pb-3">
-      <div className="flex items-start gap-3">
-        <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-primary/15 text-base font-bold text-primary ring-1 ring-primary/30">
+    <div className="space-y-4">
+      <div className="flex items-start gap-3.5">
+        <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 text-lg font-semibold tracking-tight text-primary">
           {lead.name.slice(0, 1).toUpperCase()}
         </span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <div className="min-w-0 flex-1 text-base font-bold leading-tight sm:text-lg">
+          <div className="flex items-start gap-2">
+            <div className="min-w-0 flex-1 text-[1.125rem] font-semibold leading-snug tracking-tight sm:text-xl">
               <InlineEdit
                 value={lead.name}
                 onSave={(v) => v && onUpdate({ name: v })}
@@ -78,19 +87,20 @@ export function LeadHeader({
               type="button"
               onClick={onTogglePin}
               className={cn(
-                "grid h-7 w-7 shrink-0 place-items-center rounded-md hover:bg-secondary",
-                lead.pinned && "text-primary",
+                "mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground",
+                lead.pinned && "text-amber-400 hover:text-amber-300",
               )}
               title={lead.pinned ? "Открепить" : "Закрепить"}
             >
-              <Star className={cn("h-4 w-4", lead.pinned && "fill-primary")} />
+              <Star className={cn("h-4 w-4", lead.pinned && "fill-current")} />
             </button>
           </div>
 
-          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[11px]">
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
             <span
               className={cn(
-                "inline-flex items-center gap-1 rounded-md bg-secondary/60 px-1.5 py-0.5 font-medium",
+                "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium",
+                "bg-success/10 text-success",
                 sourceMeta.cls,
               )}
               title={`Источник: ${sourceMeta.label}${lead.channel ? ` · канал: ${lead.channel}` : ""}`}
@@ -99,18 +109,19 @@ export function LeadHeader({
               {sourceMeta.label}
             </span>
 
-            {/* stage chip with quick switcher */}
             <Popover>
               <PopoverTrigger asChild>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 font-semibold text-primary hover:bg-primary/20"
+                  className="inline-flex items-center gap-1 rounded-full bg-primary/12 px-2 py-0.5 text-[11px] font-semibold text-primary transition-colors hover:bg-primary/20"
                 >
                   {stage?.title ?? lead.stageId}
                 </button>
               </PopoverTrigger>
               <PopoverContent className="w-56 p-1" align="start">
-                <div className="px-2 py-1.5 text-[10px] uppercase tracking-wider text-muted-foreground">Сменить этап</div>
+                <div className="px-2 py-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Сменить этап
+                </div>
                 {stages.map((s) => (
                   <button
                     key={s.id}
@@ -127,18 +138,20 @@ export function LeadHeader({
               </PopoverContent>
             </Popover>
 
-            {/* assignee */}
             <Popover>
               <PopoverTrigger asChild>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-1 rounded-md bg-secondary/60 px-1.5 py-0.5 hover:bg-secondary"
+                  className="inline-flex items-center gap-1 rounded-full bg-secondary/70 px-2 py-0.5 text-[11px] text-foreground/90 transition-colors hover:bg-secondary"
                 >
-                  👤 {assignee?.name ?? "не назначен"}
+                  <UserRound className="h-3 w-3 text-muted-foreground" />
+                  {assignee?.name ?? "не назначен"}
                 </button>
               </PopoverTrigger>
               <PopoverContent className="w-56" align="start">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Ответственный</div>
+                <div className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                  Ответственный
+                </div>
                 <Select
                   value={lead.assigneeId ?? "none"}
                   onValueChange={(v) => onAssign(v === "none" ? undefined : v)}
@@ -154,7 +167,7 @@ export function LeadHeader({
 
             {createdAgo && (
               <span
-                className="inline-flex items-center gap-1 rounded-md px-1 py-0.5 text-muted-foreground"
+                className="inline-flex items-center gap-1 px-1 py-0.5 text-[11px] text-muted-foreground"
                 title={`Заявка создана: ${new Date(lead.createdAt).toLocaleString("ru-RU")}`}
               >
                 <Clock className="h-3 w-3" />
@@ -163,40 +176,39 @@ export function LeadHeader({
             )}
           </div>
 
-          {/* Контакты: телефон + быстрые действия, email, город */}
-          <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             {phone ? (
-              <span className="inline-flex items-center overflow-hidden rounded-lg border border-border/70 bg-secondary/40">
+              <span className="inline-flex items-center overflow-hidden rounded-full bg-secondary/50 ring-1 ring-border/50">
                 <a
                   href={`tel:${phone.replace(/[^\d+]/g, "")}`}
-                  className="inline-flex items-center gap-1.5 px-2 py-1 font-semibold tabular-nums hover:bg-secondary"
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-sm font-semibold tabular-nums transition-colors hover:bg-secondary"
                   title="Позвонить"
                 >
-                  <PhoneIcon className="h-3 w-3 text-primary" />
+                  <PhoneIcon className="h-3.5 w-3.5 text-primary" />
                   {phone}
                 </a>
                 <button
                   type="button"
                   onClick={() => copyText(phone, "Номер скопирован")}
-                  className="grid h-full place-items-center border-l border-border/60 px-1.5 py-1 text-muted-foreground hover:bg-secondary hover:text-foreground"
+                  className="grid h-full place-items-center px-2 py-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
                   title="Скопировать номер"
                 >
-                  <Copy className="h-3 w-3" />
+                  <Copy className="h-3.5 w-3.5" />
                 </button>
                 <button
                   type="button"
                   onClick={() => {
                     if (!openWhatsApp(phone)) toast.error("Не удалось открыть WhatsApp");
                   }}
-                  className="grid h-full place-items-center border-l border-border/60 px-1.5 py-1 text-success hover:bg-success/10"
+                  className="grid h-full place-items-center px-2 py-1.5 text-success transition-colors hover:bg-success/10"
                   title="Открыть чат в WhatsApp"
                 >
-                  <MessageCircle className="h-3 w-3" />
+                  <MessageCircle className="h-3.5 w-3.5" />
                 </button>
               </span>
             ) : (
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-dashed border-border/70 px-2 py-1 text-muted-foreground">
-                <PhoneIcon className="h-3 w-3" />
+              <span className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs text-muted-foreground ring-1 ring-dashed ring-border/70">
+                <PhoneIcon className="h-3.5 w-3.5" />
                 нет номера
               </span>
             )}
@@ -204,51 +216,48 @@ export function LeadHeader({
             {lead.email && (
               <a
                 href={`mailto:${lead.email}`}
-                className="inline-flex max-w-[200px] items-center gap-1.5 rounded-lg border border-border/70 bg-secondary/40 px-2 py-1 hover:bg-secondary"
+                className="inline-flex max-w-[200px] items-center gap-1.5 rounded-full bg-secondary/50 px-2.5 py-1.5 text-xs ring-1 ring-border/50 transition-colors hover:bg-secondary"
                 title={lead.email}
               >
-                <Mail className="h-3 w-3 shrink-0 text-muted-foreground" />
+                <Mail className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                 <span className="truncate">{lead.email}</span>
               </a>
             )}
 
             {lead.city && (
-              <span className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-secondary/40 px-2 py-1">
-                <MapPin className="h-3 w-3 text-muted-foreground" />
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary/50 px-2.5 py-1.5 text-xs ring-1 ring-border/50">
+                <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
                 {lead.city}
               </span>
             )}
           </div>
 
           {((lead.tags && lead.tags.length > 0) || lead.temperature || lead.webinarStatus || (lead.depositAmount ?? 0) > 0) && (
-            <div className="mt-2 flex flex-wrap gap-1">
+            <div className="mt-2.5 flex flex-wrap gap-1.5">
               {lead.temperature && (
-                <span className="rounded-md bg-warning/15 px-1.5 py-0.5 text-[10px] font-semibold text-warning">
-                  {lead.temperature === "hot" ? "🔥 Горячий" : lead.temperature === "warm" ? "🙂 Тёплый" : "❄️ Холодный"}
+                <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-semibold text-warning">
+                  {lead.temperature === "hot" ? "Горячий" : lead.temperature === "warm" ? "Тёплый" : "Холодный"}
                 </span>
               )}
               {lead.webinarStatus && (
-                <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
                   Вебинар: {lead.webinarStatus}
                 </span>
               )}
               {(lead.depositAmount ?? 0) > 0 && (
-                <span className="rounded-md bg-success/15 px-1.5 py-0.5 text-[10px] font-semibold text-success">
+                <span className="rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-semibold text-success">
                   Бронь {Number(lead.depositAmount).toLocaleString("ru-RU")} ₸
                 </span>
               )}
               {(lead.tags ?? []).slice(0, 4).map((t) => (
-                <span key={t} className="rounded-md bg-secondary/70 px-1.5 py-0.5 text-[10px]">{t}</span>
+                <span key={t} className="rounded-full bg-secondary/70 px-2 py-0.5 text-[10px]">{t}</span>
               ))}
             </div>
           )}
         </div>
       </div>
 
-      {/* Откуда пришёл лид (конкретный креатив Meta) */}
       <LeadAttribution lead={lead} />
-
-      {/* Атрибуция и UTM */}
       <UtmStrip lead={lead} />
     </div>
   );
@@ -269,13 +278,12 @@ function UtmStrip({ lead }: { lead: Lead }) {
   const landingDomain = lead.landingUrl ? siteDomain(lead.landingUrl) : null;
   const showLanding = !!lead.landingUrl && !!landingDomain && landingDomain !== "Сайт не определён";
 
-  // Совсем нет данных об источнике — не занимаем место пустой плашкой.
   if (entries.length === 0 && !showLanding) return null;
 
   return (
-    <div className="mt-3 rounded-lg border border-border/60 bg-card/40 p-2">
-      <div className="flex flex-wrap items-center gap-1">
-        <span className="mr-0.5 inline-flex items-center gap-1 text-[10px] uppercase tracking-wider text-muted-foreground">
+    <div className="rounded-2xl bg-secondary/30 px-3 py-2.5 ring-1 ring-border/40">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="mr-0.5 inline-flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           <Tag className="h-3 w-3 text-primary" />
           Источник
         </span>
@@ -285,7 +293,7 @@ function UtmStrip({ lead }: { lead: Lead }) {
             href={lead.landingUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex max-w-full items-center gap-1 rounded-md bg-secondary/60 px-1.5 py-0.5 text-[10px] font-semibold hover:bg-secondary"
+            className="inline-flex max-w-full items-center gap-1 rounded-full bg-background/50 px-2 py-0.5 text-[10px] font-semibold ring-1 ring-border/50 hover:bg-background"
             title={`Страница с формой: ${lead.landingUrl}`}
           >
             <Globe className="h-3 w-3 shrink-0 text-muted-foreground" />
@@ -296,7 +304,7 @@ function UtmStrip({ lead }: { lead: Lead }) {
         {entries.map(([k, v]) => (
           <span
             key={k}
-            className="inline-flex max-w-full items-center gap-1 rounded-md bg-secondary/60 px-1.5 py-0.5 text-[10px]"
+            className="inline-flex max-w-full items-center gap-1 rounded-full bg-background/50 px-2 py-0.5 text-[10px] ring-1 ring-border/50"
             title={`utm_${k}: ${v}`}
           >
             <span className="font-mono text-muted-foreground">utm_{UTM_LABELS[k] ?? k}</span>
@@ -306,10 +314,10 @@ function UtmStrip({ lead }: { lead: Lead }) {
 
         {entries.length === 0 && (
           <span
-            className="inline-flex items-center rounded-md px-1 py-0.5 text-[10px] text-muted-foreground/70"
+            className="inline-flex items-center rounded-full px-1.5 py-0.5 text-[10px] text-muted-foreground/70"
             title="Лид пришёл без utm_source/medium/campaign. Проверьте, что форма на сайте передаёт UTM-параметры из URL."
           >
-            без UTM ⓘ
+            без UTM
           </span>
         )}
       </div>

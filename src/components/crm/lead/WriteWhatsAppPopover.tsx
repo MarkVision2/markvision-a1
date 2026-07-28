@@ -60,7 +60,7 @@ export function WriteWhatsAppPopover({ trigger, lead, onSent }: Props) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent align="start" className="w-[380px] p-0">
+      <PopoverContent align="start" className="w-[min(380px,calc(100vw-1.5rem))] p-0">
         <div className="border-b border-border/60 p-3">
           <div className="flex items-center gap-2">
             <span className="flex h-7 w-7 items-center justify-center rounded-full bg-success/15 text-success">

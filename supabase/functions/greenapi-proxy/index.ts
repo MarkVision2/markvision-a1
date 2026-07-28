@@ -306,12 +306,22 @@ Deno.serve(async (req) => {
         if (!webhookUrl.startsWith("http")) {
           return json({ error: "Invalid webhook URL" }, 400);
         }
+        // Keep existing per-instance token — empty token + DB token = 401 on every webhook.
+        let webhookUrlToken = "";
+        if (creds.rowId) {
+          const { data: tokRow } = await admin
+            .from("whatsapp_config")
+            .select("webhook_token")
+            .eq("id", creds.rowId)
+            .maybeSingle();
+          webhookUrlToken = String((tokRow as { webhook_token?: string | null } | null)?.webhook_token ?? "");
+        }
         const r = await callGreen(creds, "setSettings", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             webhookUrl,
-            webhookUrlToken: "",
+            webhookUrlToken,
             outgoingWebhook: "yes",
             outgoingMessageWebhook: "yes",
             outgoingAPIMessageWebhook: "yes",
@@ -326,6 +336,50 @@ Deno.serve(async (req) => {
           }).eq("id", creds.rowId);
         }
         return json({ ok: r.ok, status: r.status, data: r.data, webhookUrl });
+      }
+
+      case "ensureCrmWebhook": {
+        // Repair drift: n8n/console sometimes overwrite webhookUrl away from CRM.
+        const crmUrl = SUPABASE_URL
+          ? `${SUPABASE_URL.replace(/\/+$/, "")}/functions/v1/greenapi-webhook`
+          : "";
+        if (!crmUrl) return json({ error: "SUPABASE_URL missing" }, 500);
+        const cur = await callGreen(creds, "getSettings");
+        const live = String((cur.data as { webhookUrl?: string } | null)?.webhookUrl ?? "");
+        const outApi = String((cur.data as { outgoingAPIMessageWebhook?: string } | null)?.outgoingAPIMessageWebhook ?? "");
+        const matched = live.replace(/\/+$/, "") === crmUrl.replace(/\/+$/, "") && outApi === "yes";
+        if (matched) {
+          return json({ ok: true, repaired: false, webhookUrl: live });
+        }
+        let webhookUrlToken = "";
+        if (creds.rowId) {
+          const { data: tokRow } = await admin
+            .from("whatsapp_config")
+            .select("webhook_token")
+            .eq("id", creds.rowId)
+            .maybeSingle();
+          webhookUrlToken = String((tokRow as { webhook_token?: string | null } | null)?.webhook_token ?? "");
+        }
+        const r = await callGreen(creds, "setSettings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            webhookUrl: crmUrl,
+            webhookUrlToken,
+            outgoingWebhook: "yes",
+            outgoingMessageWebhook: "yes",
+            outgoingAPIMessageWebhook: "yes",
+            incomingWebhook: "yes",
+            stateWebhook: "yes",
+          }),
+        });
+        if (r.ok && creds.rowId) {
+          await admin.from("whatsapp_config").update({
+            webhook_url: crmUrl,
+            updated_at: new Date().toISOString(),
+          }).eq("id", creds.rowId);
+        }
+        return json({ ok: r.ok, repaired: true, status: r.status, data: r.data, webhookUrl: crmUrl, previousUrl: live });
       }
 
       case "sendMessage": {

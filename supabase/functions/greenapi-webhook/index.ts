@@ -201,27 +201,21 @@ async function findExistingLeadId(
 ): Promise<string | null> {
   const d = digits(phone);
   if (!d) return null;
+  const needle = d.slice(-10);
 
   let q = admin
     .from("leads")
     .select("id, phone")
-    .or(`phone.eq.${phone},phone.eq.+${d},phone.eq.${d}`)
-    .limit(1);
+    .or(`phone.eq.${phone},phone.eq.+${d},phone.eq.${d},phone.like.%${needle}`)
+    .order("created_at", { ascending: false })
+    .limit(20);
   if (projectId) q = q.eq("project_id", projectId);
   const { data: existing } = await q;
-  if (existing && existing.length > 0) {
-    return (existing[0] as { id: string }).id;
-  }
-
-  let scan = admin
-    .from("leads")
-    .select("id, phone")
-    .order("created_at", { ascending: false })
-    .limit(500);
-  if (projectId) scan = scan.eq("project_id", projectId);
-  const { data: recent } = await scan;
-  const match = (recent ?? []).find((l) => digits(l.phone) === d) as { id: string } | undefined;
-  return match?.id ?? null;
+  const hit = (existing ?? []).find((l) => {
+    const p = digits((l as { phone?: string }).phone);
+    return p === d || p.endsWith(needle) || needle.endsWith(p.slice(-10));
+  }) as { id: string } | undefined;
+  return hit?.id ?? null;
 }
 
 // Best-effort parser of Meta CTWA (Click-To-WhatsApp) referral payload.
@@ -368,44 +362,17 @@ async function findOrCreateLead(
     }, { onConflict: "click_id" });
   }
 
-  let q = admin
-    .from("leads")
-    .select("id, phone, meta_ad_id")
-    .or(`phone.eq.${phone},phone.eq.+${d},phone.eq.${d}`)
-    .limit(1);
-  if (projectId) q = q.eq("project_id", projectId);
-  const { data: existing } = await q;
-  if (existing && existing.length > 0) {
-    const row = existing[0] as { id: string; meta_ad_id: string | null };
+  const existingId = await findExistingLeadId(phone, projectId);
+  if (existingId) {
     if (attribution?.meta_ad_id) {
       await admin.from("leads").update({
         meta_ad_id: attribution.meta_ad_id,
         meta_adset_id: attribution.meta_adset_id,
         meta_campaign_id: attribution.meta_campaign_id,
         click_id: attribution.click_id ?? null,
-      }).eq("id", row.id);
+      }).eq("id", existingId);
     }
-    return row.id;
-  }
-
-  let scan = admin
-    .from("leads")
-    .select("id, phone, meta_ad_id")
-    .order("created_at", { ascending: false })
-    .limit(500);
-  if (projectId) scan = scan.eq("project_id", projectId);
-  const { data: recent } = await scan;
-  const match = (recent ?? []).find((l) => digits(l.phone) === d) as { id: string; meta_ad_id: string | null } | undefined;
-  if (match) {
-    if (attribution?.meta_ad_id) {
-      await admin.from("leads").update({
-        meta_ad_id: attribution.meta_ad_id,
-        meta_adset_id: attribution.meta_adset_id,
-        meta_campaign_id: attribution.meta_campaign_id,
-        click_id: attribution.click_id ?? null,
-      }).eq("id", match.id);
-    }
-    return match.id;
+    return existingId;
   }
 
   let resolvedProject = projectId;

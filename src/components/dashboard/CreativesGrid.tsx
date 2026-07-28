@@ -9,15 +9,16 @@ import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 
-type SortKey = "crmRevenue" | "crmRomi" | "spend" | "ctr" | "cpl" | "leads" | "romi";
+type SortKey = "crmRevenue" | "crmLeads" | "crmRomi" | "spend" | "ctr" | "cpl" | "leads" | "romi";
 
 const SORT_LABELS: Record<SortKey, string> = {
   crmRevenue: "по выручке CRM",
+  crmLeads: "по лидам CRM",
   crmRomi: "по окупаемости CRM",
   spend: "по расходу",
   ctr: "по CTR",
   cpl: "по CPL",
-  leads: "по заявкам Meta",
+  leads: "по лидам Meta",
   romi: "по ROMI Meta",
 };
 
@@ -27,12 +28,18 @@ interface Props {
   /** Топ-N режим для дашборда: фиксированный лимит, ссылка «все креативы». */
   topMode?: boolean;
   topLimit?: number;
+  /** Сортировка в topMode (по умолчанию — выручка CRM). */
+  topSortKey?: SortKey;
   periodLabel?: string;
   viewAllHref?: string;
 }
 
 const sortValue = (r: MetaCreativeRow, key: SortKey): number => {
   if (key === "cpl") return r.cpl > 0 ? -r.cpl : Number.NEGATIVE_INFINITY;
+  if (key === "crmLeads") {
+    // CRM-лиды в приоритете; если атрибуции ещё нет — смотрим Meta leads.
+    return (r.crmLeads ?? 0) > 0 ? (r.crmLeads ?? 0) : r.leads;
+  }
   return (r as unknown as Record<string, number>)[key] ?? 0;
 };
 
@@ -40,7 +47,12 @@ const sortValue = (r: MetaCreativeRow, key: SortKey): number => {
 const compareCreatives = (a: MetaCreativeRow, b: MetaCreativeRow, key: SortKey): number => {
   const primary = sortValue(b, key) - sortValue(a, key);
   if (primary !== 0) return primary;
-  // При равной выручке — сначала креативы с продажами/диагностиками, потом по расходу.
+  if (key === "crmLeads" || key === "leads") {
+    const metaDelta = b.leads - a.leads;
+    if (metaDelta !== 0) return metaDelta;
+    return b.spend - a.spend;
+  }
+  // При равной выручке — сначала креативы с продажами, потом по расходу.
   const crmDelta = (b.crmSales ?? 0) - (a.crmSales ?? 0);
   if (crmDelta !== 0) return crmDelta;
   return b.spend - a.spend;
@@ -65,10 +77,11 @@ export function CreativesGrid({
   initialLimit = 8,
   topMode = false,
   topLimit = 6,
+  topSortKey = "crmRevenue",
   periodLabel,
   viewAllHref = "/ads?tab=creatives",
 }: Props) {
-  const [sortKey, setSortKey] = useState<SortKey>(topMode ? "crmRevenue" : "spend");
+  const [sortKey, setSortKey] = useState<SortKey>(topMode ? topSortKey : "spend");
   const [showAll, setShowAll] = useState(false);
 
   const scopedRows = useMemo(
@@ -85,6 +98,9 @@ export function CreativesGrid({
   const limit = topMode ? topLimit : initialLimit;
   const visible = topMode || !showAll ? sorted.slice(0, limit) : sorted;
   const withRevenue = sorted.filter((r) => (r.crmRevenue ?? 0) > 0).length;
+  const withCrmLeads = sorted.filter((r) => (r.crmLeads ?? 0) > 0).length;
+  const withMetaLeads = sorted.filter((r) => r.leads > 0).length;
+  const sortPhrase = SORT_LABELS[sortKey];
 
   if (scopedRows.length === 0) {
     return (
@@ -111,9 +127,20 @@ export function CreativesGrid({
         <div className="text-xs text-muted-foreground">
           {topMode ? (
             <>
-              Топ-{Math.min(limit, sorted.length)} креативов <span className="text-foreground/70">по выручке CRM</span>
+              Топ-{Math.min(limit, sorted.length)} креативов{" "}
+              <span className="text-foreground/70">{sortPhrase}</span>
               {periodLabel ? ` · период: ${periodLabel}` : ""}
-              {withRevenue > 0 ? ` · с выручкой: ${withRevenue}` : " · выручка пока не привязана к креативам"}
+              {sortKey === "crmRevenue"
+                ? (withRevenue > 0 ? ` · с выручкой: ${withRevenue}` : " · выручка пока не привязана к креативам")
+                : sortKey === "crmLeads"
+                  ? (withCrmLeads > 0
+                    ? ` · с лидами CRM: ${withCrmLeads}`
+                    : withMetaLeads > 0
+                      ? ` · лиды CRM пока слабо привязаны · с лидами Meta: ${withMetaLeads}`
+                      : " · лиды пока не привязаны к креативам")
+                  : sortKey === "leads"
+                    ? (withMetaLeads > 0 ? ` · с лидами Meta: ${withMetaLeads}` : " · лидов Meta за период нет")
+                    : null}
               {" · "}активных за период: {scopedRows.length}
             </>
           ) : (
@@ -197,7 +224,10 @@ export function CreativesGrid({
                   </div>
                   <div>
                     <div className="text-muted-foreground">{leadLabel}</div>
-                    <div className="font-bold tabular-nums">{fmtNum(leadValue)}</div>
+                    <div className={cn(
+                      "font-bold tabular-nums",
+                      (sortKey === "crmLeads" || sortKey === "leads") && leadValue > 0 && "text-primary",
+                    )}>{fmtNum(leadValue)}</div>
                   </div>
                   <div>
                     <div className="text-muted-foreground">Продажи</div>

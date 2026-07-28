@@ -85,9 +85,9 @@ export function VisitSlotPopover({ current, busy = [], onConfirm, trigger }: Pro
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-      <PopoverContent align="end" className="w-[520px] p-0">
-        <div className="flex">
-          <div className="border-r border-border/60">
+      <PopoverContent align="end" className="w-[min(520px,calc(100vw-1.5rem))] p-0">
+        <div className="flex max-h-[min(80dvh,640px)] flex-col overflow-y-auto sm:flex-row sm:overflow-hidden">
+          <div className="shrink-0 border-b border-border/60 sm:border-b-0 sm:border-r">
             <Calendar
               mode="single"
               selected={date}
@@ -110,7 +110,7 @@ export function VisitSlotPopover({ current, busy = [], onConfirm, trigger }: Pro
                 {date.toLocaleDateString("ru-RU", { day: "2-digit", month: "long" })}
               </span>
             </div>
-            <div className="grid max-h-[260px] grid-cols-3 gap-1.5 overflow-y-auto pr-1">
+            <div className="grid max-h-[min(40dvh,260px)] grid-cols-3 gap-1.5 overflow-y-auto overscroll-contain pr-1 sm:max-h-[260px]">
               {slots.map((s) => {
                 const isBusy = !!s.busyBy || s.past;
                 const active = picked === s.iso;
@@ -122,7 +122,7 @@ export function VisitSlotPopover({ current, busy = [], onConfirm, trigger }: Pro
                     onClick={() => setPicked(s.iso)}
                     title={s.past ? "Прошедшее время" : s.busyBy ? `Занято: ${s.busyBy}` : "Свободно"}
                     className={cn(
-                      "rounded-md border px-2 py-1.5 text-xs font-medium transition-colors",
+                      "min-h-10 rounded-md border px-2 py-2 text-xs font-medium transition-colors sm:min-h-0 sm:py-1.5",
                       isBusy
                         ? "cursor-not-allowed border-border/40 bg-secondary/30 text-muted-foreground line-through"
                         : active
@@ -136,7 +136,7 @@ export function VisitSlotPopover({ current, busy = [], onConfirm, trigger }: Pro
               })}
             </div>
 
-            <div className="mt-3 flex items-center gap-2">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
                 <span className="inline-flex items-center gap-1">
                   <span className="h-2.5 w-2.5 rounded border border-border/60 bg-background" /> свободно
@@ -149,7 +149,7 @@ export function VisitSlotPopover({ current, busy = [], onConfirm, trigger }: Pro
                 onClick={submit}
                 disabled={!picked}
                 size="sm"
-                className="ml-auto bg-gradient-primary text-primary-foreground"
+                className="ml-auto h-10 bg-gradient-primary text-primary-foreground sm:h-9"
               >
                 <CalendarCheck className="h-4 w-4" /> Назначить
               </Button>

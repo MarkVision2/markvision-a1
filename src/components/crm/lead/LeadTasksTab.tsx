@@ -213,7 +213,7 @@ export function LeadTasksTab({ tasks, onAdd, onToggle, onRemove }: Props) {
                 <button
                   type="button"
                   onClick={() => onRemove(t.id)}
-                  className="opacity-0 transition-opacity group-hover:opacity-100"
+                  className="opacity-70 transition-opacity hover:opacity-100 md:opacity-0 md:group-hover:opacity-100"
                   title="Удалить задачу"
                   aria-label="Удалить задачу"
                 >

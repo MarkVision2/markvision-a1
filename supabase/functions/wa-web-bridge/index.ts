@@ -30,6 +30,13 @@ function digits(s: string | null | undefined): string {
   return String(s ?? "").replace(/\D/g, "");
 }
 
+/** Dialable E.164 for CRM. Reject WhatsApp LID opaque ids (13+ digits / fake CC 80). */
+function isPlausiblePhone(d: string): boolean {
+  if (d.length < 8 || d.length > 12) return false;
+  if (d.startsWith("80")) return false;
+  return true;
+}
+
 function workerOk(req: Request): boolean {
   if (!WORKER_KEY) return false;
   const presented = req.headers.get("x-wa-web-key") ?? "";
@@ -86,20 +93,57 @@ async function getDefaultStage(projectId: string | null): Promise<{ pipeline_id:
   return null;
 }
 
-async function findOrCreateLead(phoneRaw: string, name: string, projectId: string): Promise<string | null> {
+async function findOrCreateLead(
+  phoneRaw: string,
+  name: string,
+  projectId: string,
+  whatsappLid?: string | null,
+): Promise<string | null> {
   const d = digits(phoneRaw);
-  if (d.length < 8) return null;
-  const variants = [`+${d}`, d];
-  const { data: match } = await admin
-    .from("leads")
-    .select("id")
-    .eq("project_id", projectId)
-    .eq("is_personal", false)
-    .or(variants.map((p) => `phone.eq.${p}`).join(","))
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (match?.id) return match.id as string;
+  const phoneOk = isPlausiblePhone(d);
+  const lid = String(whatsappLid ?? "").replace(/\D/g, "") || null;
+
+  if (phoneOk) {
+    const variants = [`+${d}`, d];
+    const { data: match } = await admin
+      .from("leads")
+      .select("id, whatsapp_lid")
+      .eq("project_id", projectId)
+      .eq("is_personal", false)
+      .or(variants.map((p) => `phone.eq.${p}`).join(","))
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (match?.id) {
+      if (lid && !(match as { whatsapp_lid?: string | null }).whatsapp_lid) {
+        await admin.from("leads").update({ whatsapp_lid: lid }).eq("id", match.id);
+      }
+      return match.id as string;
+    }
+  }
+
+  if (lid) {
+    const { data: byLid } = await admin
+      .from("leads")
+      .select("id, phone")
+      .eq("project_id", projectId)
+      .eq("is_personal", false)
+      .eq("whatsapp_lid", lid)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (byLid?.id) {
+      if (phoneOk) {
+        const cur = digits((byLid as { phone?: string | null }).phone);
+        if (!isPlausiblePhone(cur)) {
+          await admin.from("leads").update({ phone: `+${d}` }).eq("id", byLid.id);
+        }
+      }
+      return byLid.id as string;
+    }
+  }
+
+  if (!phoneOk && !lid) return null;
 
   const def = await getDefaultStage(projectId);
   if (!def) return null;
@@ -111,8 +155,9 @@ async function findOrCreateLead(phoneRaw: string, name: string, projectId: strin
   const { data: created, error } = await admin
     .from("leads")
     .insert({
-      name: name?.trim() || `+${d}`,
-      phone: `+${d}`,
+      name: name?.trim() || (phoneOk ? `+${d}` : "WhatsApp"),
+      phone: phoneOk ? `+${d}` : null,
+      whatsapp_lid: lid,
       source: "whatsapp",
       channel: "whatsapp",
       project_id: projectId,
@@ -136,14 +181,29 @@ async function insertCommunication(opts: {
   text: string;
   externalId?: string | null;
   isAuto?: boolean;
+  mediaUrl?: string | null;
+  mediaKind?: string | null;
+  mediaMime?: string | null;
+  mediaFilename?: string | null;
 }) {
   if (opts.externalId) {
     const { data: existing } = await admin
       .from("communications")
-      .select("id")
+      .select("id, media_url")
       .eq("external_id", opts.externalId)
       .maybeSingle();
-    if (existing?.id) return { id: existing.id as string, deduped: true };
+    if (existing?.id) {
+      if (opts.mediaUrl && !(existing as { media_url?: string | null }).media_url) {
+        await admin.from("communications").update({
+          media_url: opts.mediaUrl,
+          media_kind: opts.mediaKind,
+          media_mime: opts.mediaMime,
+          media_filename: opts.mediaFilename,
+          content: opts.text || undefined,
+        }).eq("id", existing.id);
+      }
+      return { id: existing.id as string, deduped: true };
+    }
   }
   const { data, error } = await admin
     .from("communications")
@@ -157,11 +217,79 @@ async function insertCommunication(opts: {
       is_draft: false,
       is_auto: !!opts.isAuto,
       external_id: opts.externalId ?? null,
+      media_url: opts.mediaUrl ?? null,
+      media_kind: opts.mediaKind ?? null,
+      media_mime: opts.mediaMime ?? null,
+      media_filename: opts.mediaFilename ?? null,
     })
     .select("id")
     .single();
   if (error) throw error;
   return { id: data.id as string, deduped: false };
+}
+
+function extFromMime(mime: string, filename?: string | null): string {
+  if (filename && /\.[a-z0-9]{2,5}$/i.test(filename)) {
+    return filename.split(".").pop()!.toLowerCase();
+  }
+  const base = (mime || "").split(";")[0].trim().toLowerCase();
+  const map: Record<string, string> = {
+    "audio/ogg": "ogg",
+    "audio/opus": "ogg",
+    "audio/mpeg": "mp3",
+    "audio/mp4": "m4a",
+    "audio/aac": "aac",
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "video/3gpp": "3gp",
+    "application/pdf": "pdf",
+  };
+  return map[base] || base.split("/")[1] || "bin";
+}
+
+function b64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function uploadChatMedia(opts: {
+  projectId: string;
+  leadId: string;
+  mime: string;
+  filename?: string | null;
+  base64: string;
+}): Promise<string | null> {
+  try {
+    const bytes = b64ToBytes(opts.base64);
+    if (bytes.byteLength === 0) return null;
+    if (bytes.byteLength > 40 * 1024 * 1024) {
+      console.error("wa-web media too large", bytes.byteLength);
+      return null;
+    }
+    const ext = extFromMime(opts.mime, opts.filename);
+    const path = `${opts.projectId}/${opts.leadId}/${crypto.randomUUID()}.${ext}`;
+    const contentType = (opts.mime || "application/octet-stream").split(";")[0].trim();
+    const { error } = await admin.storage.from("crm-chat-media").upload(path, bytes, {
+      contentType,
+      upsert: false,
+    });
+    if (error) {
+      console.error("wa-web media upload", error);
+      return null;
+    }
+    const { data } = admin.storage.from("crm-chat-media").getPublicUrl(path);
+    return data.publicUrl as string;
+  } catch (e) {
+    console.error("wa-web media upload failed", e);
+    return null;
+  }
 }
 
 Deno.serve(async (req) => {
@@ -272,21 +400,64 @@ Deno.serve(async (req) => {
     if (action === "ingest") {
       const projectId = String(body.project_id ?? "");
       const phone = String(body.phone ?? "");
+      const whatsappLid = body.whatsapp_lid ? String(body.whatsapp_lid).replace(/\D/g, "") : null;
       const direction = body.direction === "out" ? "out" : "in";
       const text = String(body.text ?? "");
       const externalId = body.external_id ? String(body.external_id) : null;
       const name = String(body.name ?? "");
-      if (!projectId || !phone) return json({ error: "project_id + phone required" }, 400);
-      const leadId = await findOrCreateLead(phone, name, projectId);
+      if (!projectId || (!phone && !whatsappLid)) {
+        return json({ error: "project_id + (phone|whatsapp_lid) required" }, 400);
+      }
+      const d = digits(phone);
+      if (phone && !isPlausiblePhone(d) && !whatsappLid) {
+        return json({ error: "invalid phone (looks like WhatsApp LID)" }, 400);
+      }
+      const leadId = await findOrCreateLead(
+        isPlausiblePhone(d) ? phone : "",
+        name,
+        projectId,
+        whatsappLid,
+      );
       if (!leadId) return json({ error: "lead not created" }, 500);
+
+      const mediaKind = body.media_kind ? String(body.media_kind) : null;
+      const mediaMime = body.media_mime ? String(body.media_mime) : null;
+      const mediaFilename = body.media_filename ? String(body.media_filename) : null;
+      const mediaBase64 = body.media_base64 ? String(body.media_base64) : null;
+      let mediaUrl: string | null = body.media_url ? String(body.media_url) : null;
+      if (!mediaUrl && mediaBase64 && mediaMime) {
+        mediaUrl = await uploadChatMedia({
+          projectId,
+          leadId,
+          mime: mediaMime,
+          filename: mediaFilename,
+          base64: mediaBase64,
+        });
+      }
+
       const row = await insertCommunication({
         leadId,
         direction,
         text,
         externalId,
         isAuto: !!body.is_auto,
+        mediaUrl,
+        mediaKind,
+        mediaMime,
+        mediaFilename,
       });
-      return json({ ok: true, leadId, communicationId: row.id, deduped: row.deduped });
+      // Bump chat sorting in CRM.
+      await admin.from("leads").update({
+        last_activity_at: new Date().toISOString(),
+        ...(name && direction === "in" ? { name } : {}),
+      }).eq("id", leadId);
+      return json({
+        ok: true,
+        leadId,
+        communicationId: row.id,
+        deduped: row.deduped,
+        mediaUrl,
+      });
     }
 
     return json({ error: `unknown worker action: ${action}` }, 400);
@@ -330,7 +501,19 @@ Deno.serve(async (req) => {
         error: "WA Web воркер не настроен (нет WA_WEB_WORKER_KEY). Запустите daemon на VPS.",
       }, 503);
     }
-    await ensureSession(projectId);
+    const session = await ensureSession(projectId);
+    if (session.status === "connected" && session.phone) {
+      return json({
+        ok: true,
+        already: true,
+        session: {
+          status: session.status,
+          phone: session.phone,
+          display_name: session.display_name,
+          worker_online: true,
+        },
+      });
+    }
     await admin.from("whatsapp_web_sessions").update({
       status: "pairing",
       qr_data: null,
@@ -340,7 +523,7 @@ Deno.serve(async (req) => {
     await admin.from("whatsapp_web_commands").insert({
       project_id: projectId,
       action: "pair",
-      payload: {},
+      payload: { force: session.status !== "pairing" },
       status: "pending",
     });
     return json({ ok: true });

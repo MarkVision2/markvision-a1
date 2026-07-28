@@ -514,6 +514,10 @@ function WebhookCard({
     }
     setLoading(true);
     try {
+      // Repair if Green API was pointed at n8n (or outgoing webhooks disabled).
+      await supabase.functions.invoke("greenapi-proxy", {
+        body: { action: "ensureCrmWebhook", project_id: projectId },
+      });
       const { data } = await supabase.functions.invoke("greenapi-proxy", {
         body: { action: "settings", project_id: projectId },
       });

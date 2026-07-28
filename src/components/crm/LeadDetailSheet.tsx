@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { useIsMobile } from "@/hooks/use-mobile";
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
@@ -67,14 +66,26 @@ export function LeadDetailSheet({
   onLaunchAction, pipelineTemplateKey,
   busySlots,
 }: Props) {
-  const isMobile = useIsMobile();
   const [tab, setTab] = useState("deal");
+
+  // Desktop has a side chat — don't leave the mobile-only "chat" tab active after resize.
+  useEffect(() => {
+    if (!open) return;
+    const mq = window.matchMedia("(min-width: 768px)");
+    const sync = () => {
+      if (mq.matches) setTab((t) => (t === "chat" ? "deal" : t));
+    };
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, [open]);
 
   if (!lead) return null;
 
   const stageTitle = stages.find((s) => s.id === lead.stageId)?.title;
   const leadChats = chats.filter((c) => c.leadId === lead.id);
   const isLaunch = pipelineTemplateKey === "launch";
+  const chatTabActive = tab === "chat";
 
   const handleChangeStage = (sid: string) => {
     if (sid === lead.stageId) return;
@@ -106,16 +117,36 @@ export function LeadDetailSheet({
       <SheetContent
         side="right"
         className="flex h-[100dvh] w-screen max-w-none flex-col gap-0 overflow-hidden p-0 pb-[env(safe-area-inset-bottom)] sm:max-w-none"
+        onPointerDownOutside={(e) => {
+          if (document.querySelector("[data-crm-image-lightbox]")) e.preventDefault();
+        }}
+        onInteractOutside={(e) => {
+          if (document.querySelector("[data-crm-image-lightbox]")) e.preventDefault();
+        }}
+        onEscapeKeyDown={(e) => {
+          if (document.querySelector("[data-crm-image-lightbox]")) e.preventDefault();
+        }}
       >
         <SheetHeader className="sr-only">
           <SheetTitle>{lead.name}</SheetTitle>
         </SheetHeader>
 
-        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(420px,520px)_1fr]">
+        {/* md+: side chat from 768 — closes the 768–1023 gap where chat was missing */}
+        <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(360px,440px)_1fr] lg:grid-cols-[minmax(400px,480px)_1fr]">
           {/* LEFT: lead fields */}
-          <div className="flex min-h-0 flex-col border-r border-border/60">
-            <div className="flex-1 overflow-y-auto">
-              <div className="px-5 pt-5">
+          <div className="flex min-h-0 flex-col border-r border-border/50 bg-background">
+            <div
+              className={cn(
+                "flex min-h-0 flex-1 flex-col",
+                chatTabActive ? "md:overflow-y-auto" : "overflow-y-auto",
+              )}
+            >
+              <div
+                className={cn(
+                  "space-y-4 px-4 pt-5 sm:px-5",
+                  chatTabActive && "max-md:hidden",
+                )}
+              >
                 <LeadHeader
                   lead={lead}
                   stages={stages}
@@ -125,9 +156,7 @@ export function LeadDetailSheet({
                   onAssign={(aid) => onAssign(lead.id, aid)}
                   onChangeStage={handleChangeStage}
                 />
-              </div>
 
-              <div className="px-5 pt-3">
                 <LeadActionPanel
                   lead={lead}
                   onCall={(opts) => onMarkCall(lead.id, opts)}
@@ -138,10 +167,8 @@ export function LeadDetailSheet({
                   onWrite={(text) => { if (text.trim()) onSendMessage(lead.id, text); }}
                   busySlots={busySlots}
                 />
-              </div>
 
-              {isLaunch && onLaunchAction && (
-                <div className="px-5 pt-3">
+                {isLaunch && onLaunchAction && (
                   <LaunchActionsPanel
                     lead={lead}
                     onAction={(action, opts) => {
@@ -152,21 +179,56 @@ export function LeadDetailSheet({
                       onLaunchAction(lead.id, action, opts);
                     }}
                   />
+                )}
+              </div>
+
+              {/* Compact header when mobile chat tab is open */}
+              {chatTabActive && (
+                <div className="flex shrink-0 items-center gap-2 border-b border-border/50 px-4 py-3 md:hidden">
+                  <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary/15 text-sm font-semibold text-primary">
+                    {lead.name.slice(0, 1).toUpperCase()}
+                  </span>
+                  <div className="min-w-0 flex-1 pr-10">
+                    <div className="truncate text-sm font-semibold">{lead.name}</div>
+                    {stageTitle && (
+                      <div className="truncate text-[11px] text-muted-foreground">{stageTitle}</div>
+                    )}
+                  </div>
                 </div>
               )}
 
-              <Tabs value={tab} onValueChange={setTab} className="flex flex-col px-5 pt-3 pb-4">
-                <TabsList className={cn("grid w-full", isMobile ? "grid-cols-5" : "grid-cols-4")}>
-                  <TabsTrigger value="deal" className="gap-1 px-1 text-[10px] sm:text-xs"><ShoppingCart className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Сделка</span></TabsTrigger>
-                  <TabsTrigger value="tasks" className="gap-1 px-1 text-[10px] sm:text-xs"><ListChecks className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Задачи</span></TabsTrigger>
-                  <TabsTrigger value="profile" className="gap-1 px-1 text-[10px] sm:text-xs"><User className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Профиль</span></TabsTrigger>
-                  <TabsTrigger value="log" className="gap-1 px-1 text-[10px] sm:text-xs"><History className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Лог</span></TabsTrigger>
-                  {isMobile && (
-                    <TabsTrigger value="chat" className="gap-1 px-1 text-[10px] sm:text-xs"><MessageSquare className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Чат</span></TabsTrigger>
-                  )}
+              <Tabs
+                value={tab}
+                onValueChange={setTab}
+                className={cn(
+                  "flex min-h-0 flex-col px-4 pb-5 pt-4 sm:px-5",
+                  chatTabActive && "max-md:min-h-0 max-md:flex-1 max-md:pb-2",
+                )}
+              >
+                <TabsList className="grid h-auto w-full grid-cols-5 gap-1 rounded-2xl bg-secondary/40 p-1 md:grid-cols-4">
+                  <TabsTrigger value="deal" className="min-h-10 gap-1 rounded-xl px-1 py-2 text-[10px] data-[state=active]:shadow-sm sm:text-xs">
+                    <ShoppingCart className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Сделка</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="tasks" className="min-h-10 gap-1 rounded-xl px-1 py-2 text-[10px] data-[state=active]:shadow-sm sm:text-xs">
+                    <ListChecks className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Задачи</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="profile" className="min-h-10 gap-1 rounded-xl px-1 py-2 text-[10px] data-[state=active]:shadow-sm sm:text-xs">
+                    <User className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Профиль</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="log" className="min-h-10 gap-1 rounded-xl px-1 py-2 text-[10px] data-[state=active]:shadow-sm sm:text-xs">
+                    <History className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Лог</span>
+                  </TabsTrigger>
+                  <TabsTrigger value="chat" className="min-h-10 gap-1 rounded-xl px-1 py-2 text-[10px] data-[state=active]:shadow-sm sm:text-xs md:hidden">
+                    <MessageSquare className="h-3.5 w-3.5 shrink-0" /><span className="truncate">Чат</span>
+                  </TabsTrigger>
                 </TabsList>
 
-                <div className="mt-3">
+                <div
+                  className={cn(
+                    "mt-3.5",
+                    chatTabActive && "max-md:mt-2 max-md:flex max-md:min-h-0 max-md:flex-1 max-md:flex-col",
+                  )}
+                >
                   <TabsContent value="deal" className="m-0 data-[state=inactive]:hidden">
                     <LeadDealTab lead={lead} stages={stages} onUpdate={(p) => onUpdate(lead.id, p)} onChangeStage={handleChangeStage} />
                   </TabsContent>
@@ -184,37 +246,46 @@ export function LeadDetailSheet({
                   <TabsContent value="log" className="m-0 data-[state=inactive]:hidden">
                     <LeadLogTab lead={lead} stages={stages} />
                   </TabsContent>
-                  {isMobile && (
-                    <TabsContent value="chat" className="m-0 min-h-[50dvh] data-[state=inactive]:hidden">
-                      <LeadChatPanel
-                        lead={lead}
-                        chats={leadChats}
-                        whatsappConnected={whatsapp.connected}
-                        stageTitle={stageTitle}
-                        onSend={(txt) => onSendMessage(lead.id, txt)}
-                      />
-                    </TabsContent>
-                  )}
+                  <TabsContent
+                    value="chat"
+                    className="m-0 min-h-0 data-[state=inactive]:hidden max-md:flex max-md:min-h-0 max-md:flex-1 max-md:flex-col md:hidden"
+                  >
+                    <LeadChatPanel
+                      lead={lead}
+                      chats={leadChats}
+                      whatsappConnected={whatsapp.connected}
+                      stageTitle={stageTitle}
+                      onSend={(txt) => onSendMessage(lead.id, txt)}
+                      className="min-h-0 flex-1"
+                    />
+                  </TabsContent>
                 </div>
               </Tabs>
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/60 px-5 py-3">
-              <div className="flex flex-wrap items-center gap-2">
+            <div
+              className={cn(
+                "flex flex-wrap items-center justify-between gap-2 border-t border-border/50 bg-background/80 px-4 py-3 backdrop-blur-sm sm:px-5",
+                chatTabActive && "max-md:hidden",
+              )}
+            >
+              <div className="flex flex-wrap items-center gap-1.5">
                 <Button
-                  variant="outline"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     if (confirm("Удалить лида?")) {
                       onDelete(lead.id);
                       onOpenChange(false);
                     }
                   }}
-                  className="text-destructive hover:text-destructive"
+                  className="h-10 rounded-xl text-destructive hover:bg-destructive/10 hover:text-destructive"
                 >
                   <Trash2 className="h-4 w-4" />Удалить
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => {
                     if (confirm(
                       "Убрать в личные?\n\nЭто не клиент — заявка пришла из вашей личной переписки. " +
@@ -225,24 +296,36 @@ export function LeadDetailSheet({
                       onOpenChange(false);
                     }
                   }}
+                  className="h-10 rounded-xl text-muted-foreground"
                   title="Скрыть лид как личную переписку — он не будет учитываться нигде в CRM и аналитике"
                 >
                   <EyeOff className="h-4 w-4" />Убрать в личные
                 </Button>
               </div>
-              <Button variant="outline" onClick={() => onOpenChange(false)}>Закрыть</Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => onOpenChange(false)}
+                className="h-10 rounded-xl px-4"
+              >
+                Закрыть
+              </Button>
             </div>
           </div>
 
-          <div className="hidden min-h-0 flex-col bg-muted/20 lg:flex">
-            <div className="flex items-center gap-2 border-b border-border/60 px-5 py-3">
-              <MessageSquare className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">Чат с клиентом</span>
-              {stageTitle && (
-                <span className="ml-auto text-xs text-muted-foreground">{stageTitle}</span>
-              )}
+          <div className="hidden min-h-0 flex-col bg-muted/15 md:flex">
+            <div className="flex items-center gap-2 border-b border-border/50 px-5 py-3.5">
+              <span className="grid h-8 w-8 place-items-center rounded-xl bg-secondary/60">
+                <MessageSquare className="h-4 w-4 text-muted-foreground" />
+              </span>
+              <div className="min-w-0">
+                <div className="text-sm font-medium">Чат с клиентом</div>
+                {stageTitle && (
+                  <div className="truncate text-[11px] text-muted-foreground">{stageTitle}</div>
+                )}
+              </div>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex min-h-0 flex-1 flex-col p-3">
               <LeadChatPanel
                 lead={lead}
                 chats={leadChats}

@@ -1,7 +1,7 @@
 {
-  "git_sha": "b93c699",
-  "git_sha_full": "b93c69902c597b0e021b32965e6efdafd52e5d43",
-  "updated_at": "2026-07-24T09:29:24Z",
-  "label": "Merge remove WhatsApp bindings table",
-  "publish_hint": "push main → www.markvision.kz (Vercel)"
+  "git_sha": "55a54f9",
+  "git_sha_full": "55a54f9f4fd2a7aed3c5adb9554525057a79e7c3",
+  "updated_at": "2026-07-27T22:53:36+05:00",
+  "label": "Рассылки: аналитика вступления в WhatsApp-группу (перешли → вступили) (#205)",
+  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }

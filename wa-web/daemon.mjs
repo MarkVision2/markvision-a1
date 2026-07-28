@@ -17,12 +17,15 @@ import {
   mkdirSync,
   readFileSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import makeWASocket, {
   DisconnectReason,
+  downloadMediaMessage,
   fetchLatestBaileysVersion,
   useMultiFileAuthState,
 } from "@whiskeysockets/baileys";
@@ -77,10 +80,108 @@ async function bridge(action, body = {}) {
 }
 
 function jidToPhone(jid) {
-  if (!jid || jid.endsWith("@g.us")) return "";
-  const user = String(jid).split("@")[0] || "";
-  const d = user.replace(/\D/g, "");
-  return d ? `+${d}` : "";
+  if (!jid) return "";
+  const s = String(jid).trim();
+  // Never treat @lid / @g.us / status as a phone number.
+  if (s.endsWith("@lid") || s.endsWith("@g.us") || s === "status@broadcast") return "";
+  let user = s;
+  if (s.includes("@")) {
+    if (!s.endsWith("@s.whatsapp.net") && !s.endsWith("@c.us")) return "";
+    user = s.split("@")[0] || "";
+  }
+  // Multi-device: "77472842595:57@s.whatsapp.net" → strip device id after ":"
+  const phonePart = String(user).split(":")[0] || "";
+  const d = phonePart.replace(/\D/g, "");
+  // Dialable length; 13+ opaque ids are WhatsApp LIDs, not phones.
+  if (d.length < 8 || d.length > 12) return "";
+  if (d.startsWith("80")) return ""; // calling code 80 does not exist
+  return `+${d}`;
+}
+
+function lidLocal(jid) {
+  if (!jid || !String(jid).includes("@lid")) return "";
+  return String(jid).split("@")[0].split(":")[0] || "";
+}
+
+/** projectId → (lid localpart → +phone) — also persisted under sessions/<id>/lid-map.json */
+const lidPhoneByProject = new Map();
+
+function lidMapPath(projectId) {
+  return resolve(AUTH_ROOT, projectId, "lid-map.json");
+}
+
+function loadLidMap(projectId) {
+  let m = lidPhoneByProject.get(projectId);
+  if (m) return m;
+  m = new Map();
+  try {
+    const p = lidMapPath(projectId);
+    if (existsSync(p)) {
+      const raw = JSON.parse(readFileSync(p, "utf8"));
+      for (const [lid, phone] of Object.entries(raw || {})) {
+        if (lid && phone) m.set(String(lid), String(phone));
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+  lidPhoneByProject.set(projectId, m);
+  return m;
+}
+
+function persistLidMap(projectId) {
+  const m = lidPhoneByProject.get(projectId);
+  if (!m) return;
+  try {
+    mkdirSync(resolve(AUTH_ROOT, projectId), { recursive: true });
+    writeFileSync(lidMapPath(projectId), JSON.stringify(Object.fromEntries(m), null, 0));
+  } catch (e) {
+    log.warn({ err: e, projectId }, "lid-map persist failed");
+  }
+}
+
+function rememberLidMap(projectId, lidJid, phoneJidOrPhone) {
+  const lid = lidLocal(lidJid);
+  if (!lid) return;
+  const phone = String(phoneJidOrPhone).startsWith("+")
+    ? (jidToPhone(phoneJidOrPhone) || String(phoneJidOrPhone))
+    : jidToPhone(phoneJidOrPhone);
+  if (!phone) return;
+  const m = loadLidMap(projectId);
+  if (m.get(lid) === phone) return;
+  m.set(lid, phone);
+  persistLidMap(projectId);
+  log.info({ projectId, lid, phone }, "lid→phone mapped");
+}
+
+/** Prefer real PN jid over WhatsApp LID (linked id). */
+function resolveMessagePhone(projectId, msg) {
+  const key = msg?.key || {};
+  const candidates = [
+    key.remoteJidAlt,
+    key.participantAlt,
+    key.senderPn,
+    key.participantPn,
+    key.remoteJid,
+    key.participant,
+  ];
+  let lid = lidLocal(key.remoteJid) || lidLocal(key.participant) || lidLocal(key.senderLid) || "";
+  for (const jid of candidates) {
+    const phone = jidToPhone(jid);
+    if (phone) {
+      if (lid) rememberLidMap(projectId, `${lid}@lid`, phone);
+      // Learn when Alt is LID and primary is PN (or vice versa).
+      if (String(key.remoteJid || "").endsWith("@lid")) rememberLidMap(projectId, key.remoteJid, phone);
+      if (String(key.remoteJidAlt || "").endsWith("@lid")) rememberLidMap(projectId, key.remoteJidAlt, phone);
+      if (key.senderLid) rememberLidMap(projectId, key.senderLid, phone);
+      return { phone, jid: String(jid), lid };
+    }
+  }
+  if (lid) {
+    const mapped = loadLidMap(projectId).get(lid);
+    if (mapped) return { phone: mapped, jid: `${lid}@lid`, lid };
+  }
+  return { phone: "", jid: String(key.remoteJid || ""), lid };
 }
 
 async function extractText(msg) {
@@ -90,8 +191,14 @@ async function extractText(msg) {
   if (m.imageMessage) return m.imageMessage.caption || "[Изображение]";
   if (m.videoMessage) return m.videoMessage.caption || "[Видео]";
   if (m.audioMessage) return "[Аудио]";
-  if (m.documentMessage) return m.documentMessage.fileName || "[Файл]";
+  if (m.documentMessage) {
+    return m.documentMessage.caption
+      || m.documentMessage.fileName
+      || "[Файл]";
+  }
   if (m.stickerMessage) return "[Стикер]";
+  if (m.contactMessage) return "[Контакт]";
+  if (m.locationMessage || m.liveLocationMessage) return "[Геолокация]";
   if (m.buttonsResponseMessage?.selectedDisplayText) {
     return m.buttonsResponseMessage.selectedDisplayText;
   }
@@ -99,7 +206,192 @@ async function extractText(msg) {
   if (m.templateButtonReplyMessage?.selectedDisplayText) {
     return m.templateButtonReplyMessage.selectedDisplayText;
   }
-  return "";
+  if (m.reactionMessage) return ""; // skip reactions
+  return "[Сообщение]";
+}
+
+function detectMedia(msg) {
+  const m = msg.message || {};
+  if (m.imageMessage) {
+    return {
+      kind: "image",
+      mime: m.imageMessage.mimetype || "image/jpeg",
+      filename: null,
+      caption: m.imageMessage.caption || "",
+    };
+  }
+  if (m.videoMessage) {
+    return {
+      kind: "video",
+      mime: m.videoMessage.mimetype || "video/mp4",
+      filename: null,
+      caption: m.videoMessage.caption || "",
+    };
+  }
+  if (m.audioMessage) {
+    return {
+      kind: "audio",
+      mime: m.audioMessage.mimetype || "audio/ogg",
+      filename: null,
+      caption: "",
+    };
+  }
+  if (m.documentMessage) {
+    return {
+      kind: "document",
+      mime: m.documentMessage.mimetype || "application/octet-stream",
+      filename: m.documentMessage.fileName || "file",
+      caption: m.documentMessage.caption || "",
+    };
+  }
+  if (m.stickerMessage) {
+    return {
+      kind: "sticker",
+      mime: m.stickerMessage.mimetype || "image/webp",
+      filename: null,
+      caption: "",
+    };
+  }
+  return null;
+}
+
+const MAX_MEDIA_BYTES = 12 * 1024 * 1024;
+
+/** Safari/iOS can't play WhatsApp Opus-in-Ogg — convert to AAC/M4A for CRM playback. */
+function convertAudioToM4a(buf) {
+  const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const inPath = join(tmpdir(), `wa-in-${id}.ogg`);
+  const outPath = join(tmpdir(), `wa-out-${id}.m4a`);
+  try {
+    writeFileSync(inPath, buf);
+    const r = spawnSync(
+      "ffmpeg",
+      ["-y", "-i", inPath, "-c:a", "aac", "-b:a", "64k", "-ac", "1", "-movflags", "+faststart", outPath],
+      { encoding: "utf8", timeout: 60_000 },
+    );
+    if (r.status !== 0 || !existsSync(outPath)) {
+      log.warn({ stderr: (r.stderr || "").slice(0, 400) }, "ffmpeg audio convert failed");
+      return null;
+    }
+    return readFileSync(outPath);
+  } catch (e) {
+    log.warn({ err: e }, "ffmpeg audio convert error");
+    return null;
+  } finally {
+    try { unlinkSync(inPath); } catch { /* ignore */ }
+    try { unlinkSync(outPath); } catch { /* ignore */ }
+  }
+}
+
+async function downloadWaMedia(sock, msg) {
+  const info = detectMedia(msg);
+  if (!info) return null;
+  try {
+    const buf = await downloadMediaMessage(
+      msg,
+      "buffer",
+      {},
+      {
+        logger: log,
+        reuploadRequest: sock.updateMediaMessage.bind(sock),
+      },
+    );
+    if (!buf || !buf.length) return { ...info, base64: null };
+    if (buf.length > MAX_MEDIA_BYTES) {
+      log.warn({ size: buf.length, kind: info.kind }, "media too large — skip upload");
+      return { ...info, base64: null };
+    }
+
+    let outBuf = Buffer.from(buf);
+    let mime = info.mime;
+    let filename = info.filename;
+    if (info.kind === "audio") {
+      const converted = convertAudioToM4a(outBuf);
+      if (converted && converted.length > 0) {
+        outBuf = converted;
+        mime = "audio/mp4";
+        filename = "voice.m4a";
+        log.info({ fromBytes: buf.length, toBytes: outBuf.length }, "audio converted to m4a");
+      }
+    }
+
+    return {
+      ...info,
+      mime,
+      filename,
+      base64: outBuf.toString("base64"),
+    };
+  } catch (e) {
+    log.warn({ err: e, kind: info.kind }, "media download failed");
+    return { ...info, base64: null };
+  }
+}
+
+async function ingestWaMessage(projectId, msg, source = "upsert", sock = null) {
+  if (!msg?.message || msg.message.protocolMessage || msg.message.reactionMessage) {
+    return { skipped: "protocol" };
+  }
+  const { phone, jid, lid } = resolveMessagePhone(projectId, msg);
+  if (!phone && !lid) {
+    log.warn({
+      projectId,
+      jid,
+      source,
+      key: {
+        remoteJid: msg.key?.remoteJid,
+        remoteJidAlt: msg.key?.remoteJidAlt,
+        senderPn: msg.key?.senderPn,
+        participantPn: msg.key?.participantPn,
+        senderLid: msg.key?.senderLid,
+      },
+    }, "skip message: no phone/lid");
+    return { skipped: "no_phone", jid };
+  }
+  const text = await extractText(msg);
+  if (!text) return { skipped: "empty" };
+  const direction = msg.key?.fromMe ? "out" : "in";
+  const externalId = msg.key?.id || null;
+  const name = msg.pushName || "";
+
+  let mediaPayload = {};
+  if (sock && detectMedia(msg)) {
+    const media = await downloadWaMedia(sock, msg);
+    if (media) {
+      mediaPayload = {
+        media_kind: media.kind,
+        media_mime: media.mime,
+        media_filename: media.filename,
+        ...(media.base64 ? { media_base64: media.base64 } : {}),
+      };
+      if (media.caption && text.startsWith("[")) {
+        // prefer real caption when extractText fell back to placeholder
+      }
+    }
+  }
+
+  const res = await bridge("ingest", {
+    project_id: projectId,
+    phone: phone || "",
+    whatsapp_lid: lid || null,
+    name,
+    direction,
+    text,
+    external_id: externalId,
+    ...mediaPayload,
+  });
+  log.info({
+    projectId,
+    phone: phone || null,
+    lid: lid || null,
+    direction,
+    source,
+    externalId,
+    leadId: res.leadId,
+    deduped: res.deduped,
+    mediaKind: mediaPayload.media_kind || null,
+    mediaUrl: res.mediaUrl || null,
+  }, "ingested");
+  return res;
 }
 
 /** @type {Map<string, { sock: any, connecting: boolean }>} */
@@ -122,6 +414,7 @@ async function openSocket(projectId, { forcePair = false } = {}) {
   }
 
   sockets.set(projectId, { sock: null, connecting: true });
+  loadLidMap(projectId);
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
   const { version } = await fetchLatestBaileysVersion();
   const sock = makeWASocket({
@@ -129,8 +422,9 @@ async function openSocket(projectId, { forcePair = false } = {}) {
     auth: state,
     logger: pino({ level: "silent" }),
     printQRInTerminal: false,
-    syncFullHistory: false,
+    syncFullHistory: true,
     markOnlineOnConnect: false,
+    getMessage: async () => undefined,
   });
 
   sock.ev.on("creds.update", saveCreds);
@@ -145,9 +439,9 @@ async function openSocket(projectId, { forcePair = false } = {}) {
       }
       if (connection === "open") {
         const me = sock.user;
-        const phone = jidToPhone(me?.id) || (me?.id ? `+${String(me.id).split(":")[0]}` : null);
+        const phone = jidToPhone(me?.id);
         await setState(projectId, "connected", {
-          phone,
+          phone: phone || null,
           display_name: me?.name || me?.verifiedName || null,
         });
         const entry = sockets.get(projectId) || {};
@@ -157,14 +451,20 @@ async function openSocket(projectId, { forcePair = false } = {}) {
       if (connection === "close") {
         const code = lastDisconnect?.error?.output?.statusCode;
         const loggedOut = code === DisconnectReason.loggedOut;
+        // 515 = restartRequired — normal right after QR scan / pairing.
+        const restartRequired = code === DisconnectReason.restartRequired || code === 515;
         sockets.delete(projectId);
         if (loggedOut) {
           await setState(projectId, "disconnected");
           log.warn({ projectId }, "logged out");
+        } else if (restartRequired) {
+          // Keep pairing/connected UX clean — no scary "reconnect 515".
+          log.info({ projectId, code }, "restart required — reconnecting");
+          setTimeout(() => {
+            openSocket(projectId).catch((e) => log.error(e));
+          }, 1500);
         } else {
-          await setState(projectId, "error", {
-            error: `reconnect ${code ?? "unknown"}`,
-          });
+          // Transient drop: stay in pairing if we were pairing, else reconnect quietly.
           log.warn({ projectId, code }, "connection closed — retry soon");
           setTimeout(() => {
             openSocket(projectId).catch((e) => log.error(e));
@@ -177,28 +477,62 @@ async function openSocket(projectId, { forcePair = false } = {}) {
   });
 
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
-    if (type !== "notify" && type !== "append") return;
-    for (const msg of messages) {
+    log.info({ projectId, type, count: messages?.length || 0 }, "messages.upsert");
+    for (const msg of messages || []) {
       try {
-        if (!msg.message || msg.message.protocolMessage) continue;
-        const remote = msg.key.remoteJid;
-        if (!remote || remote.endsWith("@g.us") || remote === "status@broadcast") continue;
-        const phone = jidToPhone(remote);
-        if (!phone) continue;
-        const text = await extractText(msg);
-        const direction = msg.key.fromMe ? "out" : "in";
-        const externalId = msg.key.id || null;
-        const name = msg.pushName || "";
-        await bridge("ingest", {
-          project_id: projectId,
-          phone,
-          name,
-          direction,
-          text,
-          external_id: externalId,
-        });
+        await ingestWaMessage(projectId, msg, `upsert:${type || "unknown"}`, sock);
       } catch (e) {
         log.error({ err: e, projectId }, "ingest failed");
+      }
+    }
+  });
+
+  sock.ev.on("contacts.upsert", (contacts) => {
+    for (const c of contacts || []) {
+      try {
+        const id = c.id || c.lid;
+        // phoneNumber is the PN jid/number; notify is a display name — never use as phone.
+        const pn = c.phoneNumber || "";
+        if (id && String(id).includes("@lid") && pn) {
+          rememberLidMap(projectId, id, pn);
+        }
+        if (c.id && c.lid) rememberLidMap(projectId, c.lid, c.id);
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+
+  sock.ev.on("contacts.update", (updates) => {
+    for (const c of updates || []) {
+      try {
+        if (c.id && c.lid) rememberLidMap(projectId, c.lid, c.id);
+        if (c.lid && c.phoneNumber) rememberLidMap(projectId, c.lid, c.phoneNumber);
+      } catch {
+        /* ignore */
+      }
+    }
+  });
+
+  sock.ev.on("chats.phoneNumberShare", ({ lid, jid }) => {
+    try {
+      rememberLidMap(projectId, lid, jid);
+    } catch {
+      /* ignore */
+    }
+  });
+
+  // Initial / catch-up history after linking the device.
+  sock.ev.on("messaging-history.set", async (payload) => {
+    const messages = payload?.messages || [];
+    log.info({ projectId, count: messages.length }, "messaging-history.set");
+    // Cap to avoid flooding CRM on first sync.
+    const recent = messages.slice(-200);
+    for (const msg of recent) {
+      try {
+        await ingestWaMessage(projectId, msg, "history", sock);
+      } catch (e) {
+        log.error({ err: e, projectId }, "history ingest failed");
       }
     }
   });
@@ -213,7 +547,22 @@ async function handleCommand(cmd) {
   const action = cmd.action;
   try {
     if (action === "pair") {
-      await openSocket(projectId, { forcePair: true });
+      const existing = sockets.get(projectId);
+      // Already live — don't wipe session / spam new QR.
+      if (existing?.sock?.user) {
+        const me = existing.sock.user;
+        const phone = jidToPhone(me?.id);
+        await setState(projectId, "connected", {
+          phone: phone || null,
+          display_name: me?.name || me?.verifiedName || null,
+        });
+        await bridge("ack", { id: cmd.id, status: "done", result: { ok: true, already: true } });
+        return;
+      }
+      const authDir = resolve(AUTH_ROOT, projectId);
+      const hasCreds = existsSync(resolve(authDir, "creds.json"));
+      // Only wipe when user asks for a fresh QR and there is no working session.
+      await openSocket(projectId, { forcePair: !hasCreds || !!cmd.payload?.force });
       await bridge("ack", { id: cmd.id, status: "done", result: { ok: true } });
       return;
     }

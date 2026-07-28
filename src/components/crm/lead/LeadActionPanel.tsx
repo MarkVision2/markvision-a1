@@ -42,14 +42,21 @@ const ActionButton = forwardRef<HTMLButtonElement, ActionButtonProps & React.Com
         onClick={onClick}
         {...rest}
         className={cn(
-          "flex h-full w-full min-w-0 flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-[11px] font-semibold transition-all hover:-translate-y-0.5 hover:shadow-elevated",
+          "flex min-h-[4.5rem] h-full w-full min-w-0 flex-col items-center justify-center gap-1.5 rounded-2xl px-2 py-2.5 text-[11px] font-medium transition-colors",
           tone === "danger"
-            ? "border-destructive/30 bg-destructive/5 text-destructive hover:bg-destructive/10"
-            : "border-border/70 bg-secondary/50 text-foreground hover:bg-secondary",
+            ? "bg-destructive/8 text-destructive ring-1 ring-destructive/25 hover:bg-destructive/15"
+            : "bg-secondary/40 text-foreground ring-1 ring-border/40 hover:bg-secondary/70 hover:ring-border/60",
           className,
         )}
       >
-        <Icon className="h-4 w-4 shrink-0" />
+        <span
+          className={cn(
+            "grid h-8 w-8 place-items-center rounded-xl",
+            tone === "danger" ? "bg-destructive/10" : "bg-background/50",
+          )}
+        >
+          <Icon className="h-4 w-4 shrink-0" />
+        </span>
         <span className="truncate">{label}</span>
       </button>
     );
@@ -63,8 +70,8 @@ export function LeadActionPanel({
   const slaHint = sla > 5 && !lead.firstResponseAt ? `Связаться немедленно — ждёт ${sla} мин` : null;
 
   return (
-    <div className="border-b border-border/60 bg-background py-3">
-      <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-5">
+    <div className="space-y-2.5">
+      <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
         <CallDialPopover
           phone={lead.phone}
           leadId={lead.id}
@@ -93,9 +100,9 @@ export function LeadActionPanel({
       </div>
 
       {slaHint && (
-        <div className="mt-2.5 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-[11px] text-destructive">
+        <div className="flex items-start gap-2 rounded-2xl bg-destructive/10 px-3 py-2.5 text-[11px] text-destructive ring-1 ring-destructive/25">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-          <span className="font-semibold">{slaHint}</span>
+          <span className="font-medium">{slaHint}</span>
         </div>
       )}
     </div>

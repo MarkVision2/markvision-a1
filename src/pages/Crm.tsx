@@ -270,7 +270,7 @@ const Crm = () => {
                 key={t.id}
                 onClick={() => setTab(t.id)}
                 className={cn(
-                  "inline-flex shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors",
+                  "inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-3.5 py-2 text-xs font-semibold transition-colors sm:min-h-0 sm:py-1.5",
                   active
                     ? "bg-success/15 text-success"
                     : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
@@ -319,6 +319,7 @@ const Crm = () => {
                   >
                     <StageColumn
                       stage={stage}
+                      stages={stages}
                       leads={leadsByStage.get(stage.id) ?? EMPTY_LEADS}
                       metrics={analytics.stageMetrics[idx]}
                       members={members}

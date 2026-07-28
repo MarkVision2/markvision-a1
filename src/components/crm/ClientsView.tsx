@@ -117,17 +117,17 @@ export function ClientsView({ leads, stages, onOpenLead }: ClientsViewProps) {
   return (
     <div className="rounded-2xl border border-border/60 bg-card/40 p-4">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[240px]">
+        <div className="relative min-w-0 flex-1 basis-full sm:min-w-[240px] sm:basis-auto">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Поиск: имя, телефон, email, кампания..."
-            className="pl-10"
+            className="h-11 pl-10 text-base sm:h-10 sm:text-sm"
           />
         </div>
         <Select value={sourceFilter} onValueChange={setSourceFilter}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="h-11 w-full sm:h-10 sm:w-[180px]">
             <SelectValue placeholder="Источник" />
           </SelectTrigger>
           <SelectContent>
