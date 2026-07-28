@@ -185,15 +185,32 @@ async function resolveCreds(projectId: string): Promise<Creds | null> {
 }
 
 /** Состояние аккаунта у Green API: authorized / yellowCard / blocked / … */
-async function accountState(creds: Creds): Promise<string> {
-  try {
-    const url = `${creds.baseUrl}/waInstance${creds.idInstance}/getStateInstance/${creds.apiToken}`;
-    const res = await fetch(url);
-    const data = await res.json().catch(() => null);
-    return (data as { stateInstance?: string } | null)?.stateInstance ?? "unknown";
-  } catch {
-    return "unknown";
+async function accountState(creds: Creds): Promise<{ state: string; httpStatus: number | null }> {
+  const url = `${creds.baseUrl}/waInstance${creds.idInstance}/getStateInstance/${creds.apiToken}`;
+  // На минутном кроне рядом бьют другие воркеры → Green часто отвечает 429.
+  // Один ретрай с паузой; 429 не считаем «не в сети».
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url);
+      if (res.status === 429) {
+        if (attempt === 0) {
+          await delay(800 + rnd(0, 400));
+          continue;
+        }
+        return { state: "rate_limited", httpStatus: 429 };
+      }
+      const data = await res.json().catch(() => null);
+      const state = (data as { stateInstance?: string } | null)?.stateInstance ?? "unknown";
+      return { state, httpStatus: res.status };
+    } catch {
+      if (attempt === 0) {
+        await delay(500);
+        continue;
+      }
+      return { state: "unknown", httpStatus: null };
+    }
   }
+  return { state: "unknown", httpStatus: null };
 }
 
 /** Одна отправка текстом. Возвращает idMessage при успехе. */
@@ -276,7 +293,8 @@ async function authorize(req: Request): Promise<boolean> {
   const provided = req.headers.get("x-automation-key");
   if (secret && provided && provided === secret) return true;
 
-  // Ручной прогон: авторизованный админ.
+  // Ручной прогон / kick после «Отправить»: любой авторизованный пользователь.
+  // Запуск кампании уже защищён RLS на broadcast_campaigns.
   const auth = req.headers.get("Authorization") ?? "";
   const jwt = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (jwt && ANON_KEY) {
@@ -285,12 +303,7 @@ async function authorize(req: Request): Promise<boolean> {
       auth: { persistSession: false, autoRefreshToken: false },
     });
     const { data: { user } } = await userClient.auth.getUser();
-    if (user?.id) {
-      const { data: role } = await admin
-        .from("user_roles").select("role")
-        .eq("user_id", user.id).eq("role", "admin").maybeSingle();
-      if (role) return true;
-    }
+    if (user?.id) return true;
   }
   return false;
 }
@@ -574,7 +587,16 @@ Deno.serve(async (req) => {
     }
   }
 
-  const stats = { sent: 0, failed: 0, skipped: 0, touchedCampaigns: new Set<string>() };
+  const stats = {
+    sent: 0,
+    failed: 0,
+    skipped: 0,
+    touchedCampaigns: new Set<string>(),
+    skips: [] as { campaign_id: string; reason: string }[],
+  };
+  const skip = (campaignId: string, reason: string) => {
+    stats.skips.push({ campaign_id: campaignId, reason });
+  };
   // Кэш creds/бюджета по проекту в пределах тика.
   const credsCache = new Map<string, Creds | null>();
   const budgetCache = new Map<string, number>(); // сколько ещё можно отправить сегодня
@@ -584,10 +606,16 @@ Deno.serve(async (req) => {
     stats.touchedCampaigns.add(c.id);
 
     // Пауза номера (kill-switch) — стоп по всему проекту.
-    if (await isPaused(c.project_id)) continue;
+    if (await isPaused(c.project_id)) {
+      skip(c.id, "sender_paused");
+      continue;
+    }
 
     // Окно отправки (с грейс-периодом для только что запущенной вручную).
-    if (!windowOk(c)) continue;
+    if (!windowOk(c)) {
+      skip(c.id, "outside_send_window");
+      continue;
+    }
 
     // Бюджет на сегодня (кэшируем на проект).
     if (!budgetCache.has(c.project_id)) {
@@ -596,7 +624,10 @@ Deno.serve(async (req) => {
       budgetCache.set(c.project_id, Math.max(0, cap - used));
     }
     let budget = budgetCache.get(c.project_id) ?? 0;
-    if (budget <= 0) continue;
+    if (budget <= 0) {
+      skip(c.id, "daily_budget_exhausted");
+      continue;
+    }
 
     // Размер пакета за тик: капельно, из среднего джиттера.
     const avgGap = Math.max(1, (c.min_gap_seconds + c.max_gap_seconds) / 2);
@@ -608,11 +639,19 @@ Deno.serve(async (req) => {
       credsCache.set(c.project_id, await resolveCreds(c.project_id));
     }
     const creds = credsCache.get(c.project_id) ?? null;
-    if (!creds) continue; // WhatsApp не подключён — оставляем очередь как есть
+    if (!creds) {
+      skip(c.id, "whatsapp_not_connected");
+      continue; // WhatsApp не подключён — оставляем очередь как есть
+    }
 
     // Ban-aware: реальное состояние аккаунта у Green (раз на проект за тик).
     // yellowCard = предупреждение WhatsApp перед баном → немедленно на паузу.
-    if (!stateCache.has(c.project_id)) stateCache.set(c.project_id, await accountState(creds));
+    // 429 / краткий unknown — не блокируем тик: иначе рассылка «висит» часами
+    // при минутном кроне рядом с другими Green-вызовами.
+    if (!stateCache.has(c.project_id)) {
+      const st = await accountState(creds);
+      stateCache.set(c.project_id, st.state);
+    }
     const state = stateCache.get(c.project_id) ?? "unknown";
     if (state === "blocked" || state === "yellowCard") {
       await pauseSender(
@@ -621,17 +660,32 @@ Deno.serve(async (req) => {
           ? "Аккаунт заблокирован WhatsApp"
           : "WhatsApp выдал предупреждение (жёлтая карточка) — отправка остановлена",
       );
+      skip(c.id, state);
       continue;
     }
-    if (state !== "authorized") continue; // не в сети / авторизация — просто ждём
+    if (state === "notAuthorized" || state === "sleepMode") {
+      skip(c.id, `green_state:${state}`);
+      continue;
+    }
+    if (state !== "authorized" && state !== "rate_limited" && state !== "unknown") {
+      skip(c.id, `green_state:${state}`);
+      continue;
+    }
 
     // Атомарный захват: помечает строки 'sending' и возвращает их. Два
     // параллельных воркера получат разные строки (SKIP LOCKED) → без дублей.
-    const { data: batch } = await admin.rpc("broadcast_claim_recipients", {
+    const { data: batch, error: claimErr } = await admin.rpc("broadcast_claim_recipients", {
       _campaign_id: c.id,
       _limit: perTick,
     });
+    if (claimErr) {
+      skip(c.id, `claim_error:${claimErr.message}`.slice(0, 160));
+      continue;
+    }
     const rows = (batch ?? []) as { id: string; phone: string; name: string; attempt: number; click_token: string | null }[];
+    if (rows.length === 0) {
+      skip(c.id, "no_claimable_recipients");
+    }
     let campaignFailures = 0;
     let campaignSends = 0;
 
@@ -734,6 +788,7 @@ Deno.serve(async (req) => {
     skipped: stats.skipped,
     campaigns: stats.touchedCampaigns.size,
     status_synced: statusSynced,
+    skips: stats.skips.slice(0, 20),
     ran_at: new Date().toISOString(),
   });
 });

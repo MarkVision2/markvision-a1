@@ -354,13 +354,21 @@ export async function removeCampaign(id: string): Promise<void> {
   if (error) throw error;
 }
 
-/** Запуск немедленной отправки: воркер подхватит status=sending на ближайшем тике. */
+/** Запуск немедленной отправки: ставим sending и сразу дергаем broadcast-worker.
+ *  Крон остаётся бэкапом; без kick очередь могла часami висеть при 429 Green API. */
 export async function launchCampaign(id: string): Promise<void> {
   const { error } = await db()
     .from("broadcast_campaigns")
     .update({ status: "sending", started_at: new Date().toISOString() })
     .eq("id", id);
   if (error) throw error;
+
+  // Fire-and-forget: ошибка invoke не откатывает запуск — крон догонит.
+  void supabase.functions.invoke("broadcast-worker", { body: { source: "launch", campaign_id: id } }).then(
+    ({ error: invokeErr }) => {
+      if (invokeErr) console.warn("broadcast-worker kick failed:", invokeErr.message);
+    },
+  );
 }
 
 /** Живые счётчики получателей кампании (для прогресса запуска). */
