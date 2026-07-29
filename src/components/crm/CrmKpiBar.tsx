@@ -1,5 +1,5 @@
 import {
-  Calendar, CreditCard, Flame, Phone, TimerReset, XCircle,
+  Calendar, CreditCard, Flame, MessageCircle, TimerReset, Users, XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { CrmKpi } from "@/hooks/useCrmAnalytics";
@@ -7,6 +7,8 @@ import { slaTone } from "@/hooks/useCrmAnalytics";
 
 interface Props {
   kpi: CrmKpi;
+  /** When "launch", show webinar-funnel labels instead of clinic Дозвон/Запись */
+  templateKey?: string | null;
 }
 
 function deltaLabel(today: number, yesterday: number) {
@@ -15,55 +17,102 @@ function deltaLabel(today: number, yesterday: number) {
   return `${d >= 0 ? "+" : ""}${d}`;
 }
 
-export function CrmKpiBar({ kpi }: Props) {
+export function CrmKpiBar({ kpi, templateKey }: Props) {
   const sla = slaTone(kpi.avgResponseMin);
   const slaColor = sla === "good" ? "text-success" : sla === "warn" ? "text-warning" : "text-destructive";
+  const isLaunch = templateKey === "launch";
 
-  const items = [
-    {
-      icon: Flame,
-      label: "Новые сегодня",
-      value: String(kpi.newToday),
-      sub: `${deltaLabel(kpi.newToday, kpi.newYesterday)} к вчера`,
-      tone: "primary" as const,
-    },
-    {
-      icon: TimerReset,
-      label: "Время ответа",
-      value: kpi.avgResponseMin > 0 ? `${kpi.avgResponseMin} мин` : "—",
-      sub: sla === "good" ? "В норме" : sla === "warn" ? "Подтянуть" : "Критично",
-      tone: sla,
-      valueClass: slaColor,
-    },
-    {
-      icon: Phone,
-      label: "Дозвон",
-      value: `${kpi.reachedPct.toFixed(0)}%`,
-      sub: "в работе",
-      tone: "primary" as const,
-    },
-    {
-      icon: Calendar,
-      label: "Запись",
-      value: `${kpi.scheduledPct.toFixed(0)}%`,
-      sub: "от лидов",
-      tone: "primary" as const,
-    },
-    {
-      icon: CreditCard,
-      label: "Оплата",
-      value: `${kpi.paidPct.toFixed(0)}%`,
-      sub: "в продажу",
-      tone: "success" as const,
-    },
-    {
-      icon: XCircle,
-      label: "Потери",
-      value: `${kpi.rejectedPct.toFixed(0)}%`,
-      sub: kpi.topRejectReason ? kpi.topRejectReason.label : "—",
-      tone: "bad" as const,
-    },
-  ];
+  const items = isLaunch
+    ? [
+        {
+          icon: Flame,
+          label: "Новые сегодня",
+          value: String(kpi.newToday),
+          sub: `${deltaLabel(kpi.newToday, kpi.newYesterday)} к вчера`,
+          tone: "primary" as const,
+        },
+        {
+          icon: TimerReset,
+          label: "Время ответа",
+          value: kpi.avgResponseMin > 0 ? `${kpi.avgResponseMin} мин` : "—",
+          sub: sla === "good" ? "В норме" : sla === "warn" ? "Медленно" : "Критично",
+          tone: sla,
+          valueClass: slaColor,
+        },
+        {
+          icon: MessageCircle,
+          label: "С касанием",
+          value: `${kpi.reachedPct.toFixed(0)}%`,
+          sub: "уже ответили / сдвинули",
+          tone: "primary" as const,
+        },
+        {
+          icon: Users,
+          label: "Дальше new",
+          value: `${kpi.scheduledPct.toFixed(0)}%`,
+          sub: "прошли первый этап",
+          tone: "primary" as const,
+        },
+        {
+          icon: CreditCard,
+          label: "Оплата",
+          value: `${kpi.paidPct.toFixed(0)}%`,
+          sub: "от всех лидов",
+          tone: "success" as const,
+        },
+        {
+          icon: XCircle,
+          label: "Потери",
+          value: `${kpi.rejectedPct.toFixed(0)}%`,
+          sub: kpi.topRejectReason ? kpi.topRejectReason.label : "отказы",
+          tone: "bad" as const,
+        },
+      ]
+    : [
+        {
+          icon: Flame,
+          label: "Новые сегодня",
+          value: String(kpi.newToday),
+          sub: `${deltaLabel(kpi.newToday, kpi.newYesterday)} к вчера`,
+          tone: "primary" as const,
+        },
+        {
+          icon: TimerReset,
+          label: "Время ответа",
+          value: kpi.avgResponseMin > 0 ? `${kpi.avgResponseMin} мин` : "—",
+          sub: sla === "good" ? "В норме" : sla === "warn" ? "Подтянуть" : "Критично",
+          tone: sla,
+          valueClass: slaColor,
+        },
+        {
+          icon: MessageCircle,
+          label: "Дозвон",
+          value: `${kpi.reachedPct.toFixed(0)}%`,
+          sub: "в работе",
+          tone: "primary" as const,
+        },
+        {
+          icon: Calendar,
+          label: "Запись",
+          value: `${kpi.scheduledPct.toFixed(0)}%`,
+          sub: "от лидов",
+          tone: "primary" as const,
+        },
+        {
+          icon: CreditCard,
+          label: "Оплата",
+          value: `${kpi.paidPct.toFixed(0)}%`,
+          sub: "в продажу",
+          tone: "success" as const,
+        },
+        {
+          icon: XCircle,
+          label: "Потери",
+          value: `${kpi.rejectedPct.toFixed(0)}%`,
+          sub: kpi.topRejectReason ? kpi.topRejectReason.label : "—",
+          tone: "bad" as const,
+        },
+      ];
 
   return (
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-6">
@@ -73,6 +122,7 @@ export function CrmKpiBar({ kpi }: Props) {
           <div
             key={it.label}
             className="flex items-center gap-2.5 rounded-xl border border-border/60 bg-card/60 px-3 py-2"
+            title={it.sub}
           >
             <span
               className={cn(
