@@ -45,6 +45,10 @@ interface Props {
   broadcast: Broadcast | null;
   crmContacts: LeadContact[];
   onSave: (draft: BroadcastDraft, recipientsCount: number) => void;
+  /** Режим догоняющей рассылки: аудитория фиксирована (не отреагировавшие). */
+  followUp?: { sourceName: string; recipientCount: number } | null;
+  /** Преднаполненный черновик (для догоняющей) — используется при broadcast === null. */
+  initialDraft?: BroadcastDraft | null;
 }
 
 const inputCls =
@@ -68,7 +72,7 @@ function draftFromBroadcast(b: Broadcast): BroadcastDraft {
   };
 }
 
-export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, onSave }: Props) {
+export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, onSave, followUp, initialDraft }: Props) {
   const [draft, setDraft] = useState<BroadcastDraft>(emptyBroadcastDraft);
   const [pasted, setPasted] = useState("");
   const [genLoading, setGenLoading] = useState(false);
@@ -81,11 +85,14 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
     if (broadcast) {
       setDraft(draftFromBroadcast(broadcast));
       setPasted(broadcast.uploadedContacts.map((c) => `${c.name}${c.name ? ", " : ""}${c.phone}`).join("\n"));
+    } else if (initialDraft) {
+      setDraft(initialDraft);
+      setPasted("");
     } else {
       setDraft(emptyBroadcastDraft());
       setPasted("");
     }
-  }, [open, broadcast]);
+  }, [open, broadcast, initialDraft]);
 
   const patch = <K extends keyof BroadcastDraft>(key: K, value: BroadcastDraft[K]) =>
     setDraft((p) => ({ ...p, [key]: value }));
@@ -103,11 +110,12 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
   // Парсим вставленные контакты на лету
   const parsedUpload = useMemo(() => (draft.audienceSource === "upload" ? parseContacts(pasted) : []), [pasted, draft.audienceSource]);
 
-  // Итоговое число получателей
+  // Итоговое число получателей (в догоняющей аудитория фиксирована)
   const recipientsCount = useMemo(() => {
+    if (followUp) return followUp.recipientCount;
     if (draft.audienceSource === "upload") return parsedUpload.length;
     return filterCrmContacts(crmContacts, draft.crmFilter.stageKeys, draft.crmFilter.sources).length;
-  }, [draft.audienceSource, draft.crmFilter, parsedUpload, crmContacts]);
+  }, [followUp, draft.audienceSource, draft.crmFilter, parsedUpload, crmContacts]);
 
   const toggleStage = (key: string) => {
     const has = draft.crmFilter.stageKeys.includes(key);
@@ -223,10 +231,12 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-primary text-primary-foreground shadow-glow">
               <Send className="h-4 w-4" />
             </span>
-            {broadcast ? "Настройка рассылки" : "Новая рассылка"}
+            {broadcast ? "Настройка рассылки" : followUp ? "Догоняющая рассылка" : "Новая рассылка"}
           </DialogTitle>
           <DialogDescription>
-            Отправьте сообщение по базе CRM или загруженному списку контактов.
+            {followUp
+              ? `Вторая волна по тем, кто не отреагировал на «${followUp.sourceName}». Напишите другой текст и выберите дату.`
+              : "Отправьте сообщение по базе CRM или загруженному списку контактов."}
           </DialogDescription>
         </DialogHeader>
 
@@ -274,6 +284,21 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
           </Field>
 
           {/* Аудитория */}
+          {followUp ? (
+            <Field label="Кому отправляем">
+              <div className="rounded-xl border border-primary/40 bg-primary/5 p-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                  <Users className="h-4 w-4" />
+                  Догоняющая · {followUp.recipientCount} не отреагировавших
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Из «{followUp.sourceName}» — те, кому сообщение дошло, но они не перешли по ссылке,
+                  не вступили в группу и не ответили. Ошибки, отписавшиеся и уже отреагировавшие
+                  исключены автоматически.
+                </p>
+              </div>
+            </Field>
+          ) : (
           <Field label="Кому отправляем">
             <div className="mb-2 grid grid-cols-2 gap-2">
               {([
@@ -377,6 +402,7 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
               Получателей: {recipientsCount}
             </div>
           </Field>
+          )}
 
           {/* Сообщение */}
           <Field label="Сообщение">
@@ -603,7 +629,7 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
             Отмена
           </Button>
           <Button onClick={submit} disabled={!canSave} className="bg-gradient-primary text-primary-foreground">
-            {broadcast ? "Сохранить" : "Создать рассылку"}
+            {broadcast ? "Сохранить" : followUp ? "Создать догоняющую" : "Создать рассылку"}
           </Button>
         </DialogFooter>
       </DialogContent>

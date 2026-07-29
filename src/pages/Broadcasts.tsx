@@ -7,6 +7,7 @@ import {
   MessageCircle,
   MoreVertical,
   Pencil,
+  Repeat2,
   Search,
   Send,
   Smartphone,
@@ -364,6 +365,12 @@ function BroadcastRow({
               <ChannelIcon className="h-3 w-3" />
               {CHANNEL_META[broadcast.channel].label}
             </span>
+            {broadcast.parentCampaignId && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                <Repeat2 className="h-3 w-3" />
+                Догоняющая
+              </span>
+            )}
           </div>
 
           <p className="mt-1.5 line-clamp-2 text-[12px] leading-relaxed text-muted-foreground">

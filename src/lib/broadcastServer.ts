@@ -100,6 +100,7 @@ type CampaignRow = {
   message_variants: string[] | null;
   target_url: string | null;
   group_id: string | null;
+  parent_campaign_id: string | null;
   min_gap_seconds: number | null;
   max_gap_seconds: number | null;
   schedule_mode: string;
@@ -144,6 +145,7 @@ function mapRow(r: CampaignRow): Broadcast {
     message: r.message ?? "",
     targetUrl: r.target_url ?? "",
     groupId: r.group_id ?? "",
+    parentCampaignId: r.parent_campaign_id ?? "",
     messageVariants: Array.isArray(r.message_variants) ? r.message_variants : [],
     sendPace: paceFromGaps(r.min_gap_seconds ?? 50, r.max_gap_seconds ?? 70),
     schedule: { mode: r.schedule_mode === "scheduled" ? "scheduled" : "now", at: r.scheduled_at },
@@ -211,13 +213,18 @@ async function insertRecipients(
   }
 }
 
+/** Опции создания: явные получатели (догоняющая) + связь цепочки. */
+export type CreateCampaignOpts = { explicitRows?: RecipientRow[]; parentCampaignId?: string };
+
 export async function createCampaign(
   projectId: string,
   draft: BroadcastDraft,
   crmContacts: LeadContact[],
+  opts?: CreateCampaignOpts,
 ): Promise<Broadcast> {
   const scheduledAt = scheduledIso(draft);
-  const rows = resolveRecipientRows(draft, crmContacts);
+  // Для догоняющей получатели уже готовы (не отреагировавшие), иначе — из CRM/загрузки.
+  const rows = opts?.explicitRows ?? resolveRecipientRows(draft, crmContacts);
   const gaps = PACE_GAPS[draft.sendPace] ?? PACE_GAPS.slow;
   const status = draft.schedule.mode === "scheduled" ? "scheduled" : "draft";
   const stats = { total: rows.length, queued: rows.length, sent: 0, delivered: 0, read: 0, replied: 0, converted: 0, failed: 0, optout: 0 };
@@ -235,6 +242,7 @@ export async function createCampaign(
       message_variants: draft.messageVariants ?? [],
       target_url: draft.targetUrl || null,
       group_id: draft.groupId || null,
+      parent_campaign_id: opts?.parentCampaignId || null,
       min_gap_seconds: gaps.min,
       max_gap_seconds: gaps.max,
       schedule_mode: draft.schedule.mode,
@@ -248,6 +256,51 @@ export async function createCampaign(
   const campaign = data as CampaignRow;
   if (rows.length) await insertRecipients(campaign.id, projectId, rows, scheduledAt);
   return mapRow(campaign);
+}
+
+/**
+ * Получатели исходной кампании, которые НЕ отреагировали — для догоняющей волны.
+ * «Не отреагировал» = сообщение дошло (sent/delivered/read), но человек не
+ * кликнул, не вступил в группу и не ответил. Исключаем: ошибки (нет WhatsApp),
+ * отписавшихся и ещё не отправленных. Дедуп по номеру.
+ */
+export async function fetchNonResponders(
+  sourceCampaignId: string,
+  projectId: string,
+): Promise<{ rows: RecipientRow[]; total: number }> {
+  const [recRes, optRes] = await Promise.all([
+    db()
+      .from("broadcast_recipients")
+      .select("name, phone, lead_id, status, clicked_at, joined_at, replied_at")
+      .eq("campaign_id", sourceCampaignId)
+      .limit(20000),
+    db().from("broadcast_opt_outs").select("phone").eq("project_id", projectId).limit(5000),
+  ]);
+  const optOut = new Set(
+    ((optRes.data ?? []) as { phone: string }[]).map((o) => digitsPhone(o.phone)),
+  );
+  const reached = new Set(["sent", "delivered", "read"]);
+  const rows: RecipientRow[] = [];
+  const seen = new Set<string>();
+  for (const r of (recRes.data ?? []) as Array<{
+    name: string | null;
+    phone: string;
+    lead_id: string | null;
+    status: string;
+    clicked_at: string | null;
+    joined_at: string | null;
+    replied_at: string | null;
+  }>) {
+    if (!reached.has(r.status)) continue; // failed / queued / optout — пропускаем
+    if (r.clicked_at || r.joined_at || r.replied_at) continue; // уже отреагировал
+    const phone = canonicalPhone(r.phone);
+    if (!phone) continue;
+    const key = digitsPhone(phone);
+    if (!key || optOut.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ name: r.name ?? "", phone, lead_id: r.lead_id ?? null });
+  }
+  return { rows, total: rows.length };
 }
 
 export async function updateCampaign(

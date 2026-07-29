@@ -8,6 +8,7 @@ import {
   Loader2,
   MessageCircle,
   Pencil,
+  Repeat2,
   Search,
   Send,
   Smartphone,
@@ -41,13 +42,21 @@ import { useLeadContacts } from "@/hooks/useLeadContacts";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { matchRecipientLeads } from "@/lib/broadcastFunnel";
+import { fetchNonResponders, type RecipientRow } from "@/lib/broadcastServer";
 import { fmtKzt } from "@/lib/format";
 import {
   CHANNEL_META,
   STATUS_META,
+  emptyBroadcastDraft,
   type BroadcastDraft,
 } from "@/lib/broadcastStore";
 import { cn } from "@/lib/utils";
+
+/** Дата в формат <input type="datetime-local"> (локальное время). */
+function toLocalInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 const STATUS_LABEL: Record<string, string> = {
   queued: "В очереди",
@@ -75,7 +84,7 @@ export default function BroadcastDetail() {
   const { activeId } = useProjectsStore();
   const projectId = activeId || null;
   const { contacts: crmContacts } = useLeadContacts();
-  const { update, remove, launch } = useBroadcasts(projectId, crmContacts);
+  const { create, update, remove, launch } = useBroadcasts(projectId, crmContacts);
   const { config: whatsapp } = useWhatsAppConfig();
   const { detail, loading, error, refetch } = useBroadcastDetail(id, projectId);
 
@@ -84,6 +93,13 @@ export default function BroadcastDetail() {
   const [pendingDelete, setPendingDelete] = useState(false);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
+
+  // Догоняющая рассылка (вторая волна по не отреагировавшим).
+  const [followUpOpen, setFollowUpOpen] = useState(false);
+  const [followUpBusy, setFollowUpBusy] = useState(false);
+  const [followUpRows, setFollowUpRows] = useState<RecipientRow[]>([]);
+  const [followUpMeta, setFollowUpMeta] = useState<{ sourceName: string; recipientCount: number } | null>(null);
+  const [followUpDraft, setFollowUpDraft] = useState<BroadcastDraft | null>(null);
 
   const matched = useMemo(() => {
     if (!detail) return new Map();
@@ -150,6 +166,51 @@ export default function BroadcastDetail() {
     }
   };
 
+  // Собрать не отреагировавших и открыть диалог догоняющей.
+  const startFollowUp = async () => {
+    if (!projectId || followUpBusy) return;
+    setFollowUpBusy(true);
+    try {
+      const { rows, total } = await fetchNonResponders(campaign.id, projectId);
+      if (total === 0) {
+        toast.success("Все получатели уже отреагировали — догонять некого 🎉");
+        return;
+      }
+      const at = new Date(Date.now() + 2 * 86_400_000);
+      at.setHours(11, 0, 0, 0); // через 2 дня в 11:00
+      setFollowUpRows(rows);
+      setFollowUpMeta({ sourceName: campaign.name, recipientCount: total });
+      setFollowUpDraft({
+        ...emptyBroadcastDraft(),
+        name: `Догоняющая — ${campaign.name}`.slice(0, 80),
+        channel: campaign.channel,
+        title: campaign.title,
+        message: "",
+        targetUrl: campaign.targetUrl,
+        groupId: campaign.groupId,
+        sendPace: campaign.sendPace,
+        schedule: { mode: "scheduled", at: toLocalInput(at) },
+      });
+      setFollowUpOpen(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось собрать аудиторию");
+    } finally {
+      setFollowUpBusy(false);
+    }
+  };
+
+  const handleFollowUpSave = async (draft: BroadcastDraft) => {
+    try {
+      await create(draft, { explicitRows: followUpRows, parentCampaignId: campaign.id });
+      toast.success(
+        draft.schedule.mode === "scheduled" ? "Догоняющая запланирована" : "Догоняющая создана",
+      );
+      navigate("/broadcasts");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось создать догоняющую");
+    }
+  };
+
   return (
     <main className="flex h-[calc(100vh-3.5rem)] min-h-0 flex-col animate-fade-in-up">
       <header className="border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur sm:px-6">
@@ -184,6 +245,16 @@ export default function BroadcastDetail() {
                   <ChannelIcon className="h-3 w-3" />
                   {CHANNEL_META[campaign.channel].label}
                 </span>
+                {campaign.parentCampaignId && (
+                  <Link
+                    to={`/broadcasts/${campaign.parentCampaignId}`}
+                    className="inline-flex items-center gap-1 rounded-full border border-primary/40 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary hover:bg-primary/15"
+                    title="Открыть исходную рассылку"
+                  >
+                    <Repeat2 className="h-3 w-3" />
+                    Догоняющая
+                  </Link>
+                )}
               </div>
               <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
                 <span className="inline-flex items-center gap-1">
@@ -218,6 +289,22 @@ export default function BroadcastDetail() {
                 <Send className="h-3.5 w-3.5" />
                 {isDone ? "Повторить" : "Отправить"}
               </button>
+              {isDone && (
+                <button
+                  type="button"
+                  onClick={startFollowUp}
+                  disabled={followUpBusy}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-60"
+                  title="Вторая волна по тем, кто не отреагировал"
+                >
+                  {followUpBusy ? (
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Repeat2 className="h-3.5 w-3.5" />
+                  )}
+                  Догоняющая
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setEditOpen(true)}
@@ -375,6 +462,15 @@ export default function BroadcastDetail() {
         broadcast={campaign}
         crmContacts={crmContacts}
         onSave={handleSave}
+      />
+      <BroadcastDialog
+        open={followUpOpen}
+        onOpenChange={setFollowUpOpen}
+        broadcast={null}
+        crmContacts={crmContacts}
+        initialDraft={followUpDraft}
+        followUp={followUpMeta}
+        onSave={handleFollowUpSave}
       />
       <BroadcastSendDialog
         open={sending}

@@ -6,6 +6,7 @@ import {
   listCampaigns,
   removeCampaign,
   updateCampaign,
+  type CreateCampaignOpts,
 } from "@/lib/broadcastServer";
 import { type Broadcast, type BroadcastContact, type BroadcastDraft } from "@/lib/broadcastStore";
 import type { LeadContact } from "@/hooks/useLeadContacts";
@@ -34,9 +35,9 @@ export function useBroadcasts(projectId: string | null, crmContacts: LeadContact
   useRealtimeTable("broadcast_campaigns", invalidate, !!projectId, 500);
 
   const create = useCallback(
-    async (draft: BroadcastDraft) => {
+    async (draft: BroadcastDraft, opts?: CreateCampaignOpts) => {
       if (!projectId) return;
-      await createCampaign(projectId, draft, crmContacts);
+      await createCampaign(projectId, draft, crmContacts, opts);
       invalidate();
     },
     [projectId, crmContacts, invalidate],

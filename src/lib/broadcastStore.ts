@@ -80,6 +80,8 @@ export type Broadcast = {
   sendPace: BroadcastPace;
   /** WhatsApp-группа (chatId …@g.us) для трекинга вступлений; "" — обычная. */
   groupId: string;
+  /** Исходная кампания, если это догоняющая рассылка (цепочка); "" — обычная. */
+  parentCampaignId: string;
   schedule: { mode: "now" | "scheduled"; at: string | null };
   status: BroadcastStatus;
   /** Кол-во получателей на момент последней оценки/отправки. */
@@ -225,6 +227,7 @@ function normalize(raw: Partial<Broadcast>): Broadcast {
       : [],
     sendPace: raw.sendPace === "fast" || raw.sendPace === "medium" ? raw.sendPace : "slow",
     groupId: raw.groupId ?? "",
+    parentCampaignId: raw.parentCampaignId ?? "",
     schedule: {
       mode: raw.schedule?.mode === "scheduled" ? "scheduled" : "now",
       at: raw.schedule?.at ?? null,
