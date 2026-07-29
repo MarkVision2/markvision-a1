@@ -319,19 +319,33 @@ export type RecipientCounts = {
 };
 
 // ─── Панель безопасности (лимиты / пауза / opt-out) ──────────────────────────
+// Формула ОДНА с сервером (_lib/broadcast_limits.ts) — панель показывает ровно
+// то число, что реально шлёт воркер.
 const WARMUP_DAY1 = 20;
 const WARMUP_GROWTH = 1.3;
-const DEFAULT_DAILY_CAP = 120;
+const WARMUP_CEILING = 120;
 
-/** Эффективный дневной потолок с учётом прогрева (зеркалит воркер). */
+function warmupRamp(warmupStartedOn: string | null): number {
+  const days = warmupStartedOn
+    ? Math.max(0, Math.floor((Date.now() - new Date(warmupStartedOn + "T00:00:00Z").getTime()) / 86400000))
+    : 0;
+  return Math.min(WARMUP_CEILING, Math.max(WARMUP_DAY1, Math.round(WARMUP_DAY1 * Math.pow(WARMUP_GROWTH, days))));
+}
+
+/** Эффективный дневной потолок с учётом лимита кампании и прогрева. */
+export function effectiveDailyCap(
+  dailyLimit: number,
+  warmupEnabled: boolean,
+  warmupStartedOn: string | null,
+): number {
+  const limit = Math.max(0, Math.floor(dailyLimit || 0));
+  if (!warmupEnabled) return limit;
+  return Math.min(limit, warmupRamp(warmupStartedOn));
+}
+
+/** Совместимость: прогревочный потолок номера без лимита кампании. */
 export function warmupDailyCap(warmupStartedOn: string | null): number {
-  if (!warmupStartedOn) return WARMUP_DAY1;
-  const days = Math.max(
-    0,
-    Math.floor((Date.now() - new Date(warmupStartedOn + "T00:00:00Z").getTime()) / 86400000),
-  );
-  const cap = Math.round(WARMUP_DAY1 * Math.pow(WARMUP_GROWTH, days));
-  return Math.min(DEFAULT_DAILY_CAP, Math.max(WARMUP_DAY1, cap));
+  return warmupRamp(warmupStartedOn);
 }
 
 export type OptOut = { phone: string; reason: string | null; created_at: string };
@@ -346,17 +360,25 @@ export type BroadcastSafety = {
 
 export async function fetchSafety(projectId: string): Promise<BroadcastSafety> {
   const today = new Date().toISOString().slice(0, 10);
-  const [stateRes, dailyRes, optRes] = await Promise.all([
+  const [stateRes, dailyRes, optRes, campRes] = await Promise.all([
     db().from("broadcast_sender_state").select("paused, pause_reason, warmup_started_on").eq("project_id", projectId).maybeSingle(),
     db().from("broadcast_sender_daily").select("sent").eq("project_id", projectId).eq("day", today).maybeSingle(),
     db().from("broadcast_opt_outs").select("phone, reason, created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(500),
+    db().from("broadcast_campaigns").select("daily_limit, warmup_enabled, status, updated_at").eq("project_id", projectId).order("updated_at", { ascending: false }).limit(50),
   ]);
   const state = (stateRes.data ?? {}) as { paused?: boolean; pause_reason?: string | null; warmup_started_on?: string | null };
+  const camps = (campRes.data ?? []) as { daily_limit?: number; warmup_enabled?: boolean; status?: string }[];
+  const gov = camps.find((c) => c.status === "sending" || c.status === "scheduled") ?? camps[0];
+  const dailyCap = effectiveDailyCap(
+    gov?.daily_limit ?? WARMUP_CEILING,
+    gov?.warmup_enabled ?? true,
+    state.warmup_started_on ?? null,
+  );
   return {
     paused: !!state.paused,
     pauseReason: state.pause_reason ?? null,
     sentToday: ((dailyRes.data as { sent?: number } | null)?.sent) ?? 0,
-    dailyCap: warmupDailyCap(state.warmup_started_on ?? null),
+    dailyCap,
     warmupStartedOn: state.warmup_started_on ?? null,
     optOuts: (optRes.data ?? []) as OptOut[],
   };
@@ -373,6 +395,7 @@ export type BroadcastHealth = {
   sentToday: number;
   remainingToday: number;
   failRatePct: number;
+  deliveredRatePct: number;
   recommendations: string[];
   checkedAt: string;
 };

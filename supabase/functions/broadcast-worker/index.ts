@@ -19,6 +19,7 @@ import {
   DEFAULT_GREEN_API_BASE_URL,
   validateGreenApiBaseUrl,
 } from "../_lib/green_api_url.ts";
+import { effectiveDailyCap as computeDailyCap } from "../_lib/broadcast_limits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,8 +40,6 @@ const admin: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE, {
 const HARD_TICK_CAP = 5;
 // Максимальная пауза внутри тика (сек) — чтобы edge-функция не жила слишком долго.
 const MAX_INTICK_SLEEP_S = 8;
-const WARMUP_DAY1 = 20;
-const WARMUP_GROWTH = 1.3;
 // Ретраи транзиентных сбоев (сеть/5xx/429). Постоянные ошибки (нет WhatsApp,
 // инстанс просрочен, битый номер) не ретраятся.
 const MAX_ATTEMPTS = 3;
@@ -87,11 +86,29 @@ function inWindow(hour: number, start: number, end: number): boolean {
   return hour >= start || hour < end; // окно через полночь
 }
 
-/** Подстановка имени, ссылки перехода и заголовка. */
-function renderMessage(title: string, message: string, name: string, link: string): string {
+/** Подстановка имени, ссылки перехода и заголовка.
+ *  linkAsButton — убрать плейсхолдер (URL уйдёт в кнопку WhatsApp). */
+function renderMessage(
+  title: string,
+  message: string,
+  name: string,
+  link: string,
+  linkAsButton = false,
+): string {
   const first = (name ?? "").trim().split(/\s+/)[0] ?? "";
   let body = (message ?? "").replace(/\{имя\}/gi, first).replace(/\{name\}/gi, first);
-  if (link) body = body.replace(/\{ссылка\}/gi, link).replace(/\{link\}/gi, link);
+  if (linkAsButton) {
+    body = body
+      .replace(/\{ссылка\}/gi, "")
+      .replace(/\{link\}/gi, "")
+      .replace(/^[ \t]*вступить в группу:?[ \t]*$/gim, "")
+      .replace(/[ \t]*вступить в группу:?[ \t]*$/gim, "")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  } else if (link) {
+    body = body.replace(/\{ссылка\}/gi, link).replace(/\{link\}/gi, link);
+  }
   const head = (title ?? "").trim();
   return head ? `*${head}*\n\n${body}` : body;
 }
@@ -101,7 +118,79 @@ function clickLink(clickToken: string | null | undefined): string {
   return clickToken ? `${SUPABASE_URL}/functions/v1/broadcast-click?t=${clickToken}` : "";
 }
 
+function defaultCtaLabel(targetUrl: string | null | undefined): string {
+  const u = (targetUrl ?? "").toLowerCase();
+  if (u.includes("chat.whatsapp.com") || u.includes("whatsapp.com/channel")) {
+    return "Вступить в группу";
+  }
+  return "Перейти";
+}
+
+function isHttpUrl(u: string | null | undefined): u is string {
+  if (!u) return false;
+  try {
+    const url = new URL(u);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/** Нормализация `{https://…}` / голого URL → `{ссылка}` + targetUrl (как на клиенте). */
+function normalizeOutgoingLink(message: string, targetUrl: string | null | undefined): {
+  message: string;
+  targetUrl: string;
+} {
+  let extracted = (targetUrl ?? "").trim();
+  let body = message ?? "";
+  body = body.replace(/\{((?:https?:\/\/)[^}]+)\}/gi, (_m, url: string) => {
+    const u = String(url).trim();
+    if (!extracted && /^https?:\/\//i.test(u)) extracted = u;
+    return "{ссылка}";
+  });
+  if (!extracted) {
+    const bare = body.match(/(https?:\/\/[^\s<>"']+)/i);
+    if (bare?.[0]) {
+      extracted = bare[0].replace(/[),.;]+$/, "");
+      body = body.replace(bare[0], "{ссылка}");
+    }
+  }
+  let seen = false;
+  body = body.replace(/\{ссылка\}|\{link\}/gi, () => {
+    if (seen) return "";
+    seen = true;
+    return "{ссылка}";
+  });
+  return { message: body.replace(/\n{3,}/g, "\n\n").trim(), targetUrl: extracted };
+}
+
 type Creds = { idInstance: string; apiToken: string; baseUrl: string };
+
+/** Резолв chatId: WhatsApp всё чаще отдаёт @lid; @c.us часто зависает в status=sent. */
+async function resolveChatId(creds: Creds, phone: string): Promise<string> {
+  const fallback = `${digits(phone)}@c.us`;
+  try {
+    const url = `${creds.baseUrl}/waInstance${creds.idInstance}/checkWhatsapp/${creds.apiToken}`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ phoneNumber: Number(digits(phone)) }),
+    });
+    if (!res.ok) return fallback;
+    const data = await res.json().catch(() => null) as {
+      existsWhatsapp?: boolean;
+      chatId?: string;
+    } | null;
+    if (data?.existsWhatsapp === false) {
+      throw new Error("Нет WhatsApp на этом номере");
+    }
+    const chatId = (data?.chatId ?? "").trim();
+    if (chatId.includes("@")) return chatId;
+  } catch (e) {
+    if (e instanceof Error && e.message.startsWith("Нет WhatsApp")) throw e;
+  }
+  return fallback;
+}
 
 async function resolveCreds(projectId: string): Promise<Creds | null> {
   const { data } = await admin
@@ -123,20 +212,37 @@ async function resolveCreds(projectId: string): Promise<Creds | null> {
 }
 
 /** Состояние аккаунта у Green API: authorized / yellowCard / blocked / … */
-async function accountState(creds: Creds): Promise<string> {
-  try {
-    const url = `${creds.baseUrl}/waInstance${creds.idInstance}/getStateInstance/${creds.apiToken}`;
-    const res = await fetch(url);
-    const data = await res.json().catch(() => null);
-    return (data as { stateInstance?: string } | null)?.stateInstance ?? "unknown";
-  } catch {
-    return "unknown";
+async function accountState(creds: Creds): Promise<{ state: string; httpStatus: number | null }> {
+  const url = `${creds.baseUrl}/waInstance${creds.idInstance}/getStateInstance/${creds.apiToken}`;
+  // На минутном кроне рядом бьют другие воркеры → Green часто отвечает 429.
+  // Один ретрай с паузой; 429 не считаем «не в сети».
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(url);
+      if (res.status === 429) {
+        if (attempt === 0) {
+          await delay(800 + rnd(0, 400));
+          continue;
+        }
+        return { state: "rate_limited", httpStatus: 429 };
+      }
+      const data = await res.json().catch(() => null);
+      const state = (data as { stateInstance?: string } | null)?.stateInstance ?? "unknown";
+      return { state, httpStatus: res.status };
+    } catch {
+      if (attempt === 0) {
+        await delay(500);
+        continue;
+      }
+      return { state: "unknown", httpStatus: null };
+    }
   }
+  return { state: "unknown", httpStatus: null };
 }
 
-/** Одна отправка. Возвращает idMessage при успехе. */
+/** Одна отправка текстом. Возвращает idMessage при успехе. */
 async function sendGreen(creds: Creds, phone: string, message: string): Promise<string> {
-  const chatId = `${digits(phone)}@c.us`;
+  const chatId = await resolveChatId(creds, phone);
   const url = `${creds.baseUrl}/waInstance${creds.idInstance}/sendMessage/${creds.apiToken}`;
   const res = await fetch(url, {
     method: "POST",
@@ -156,6 +262,53 @@ async function sendGreen(creds: Creds, phone: string, message: string): Promise<
   return idMessage;
 }
 
+/** Сообщение + URL-кнопка (трекинг-ссылка вшита в кнопку). Fallback → sendMessage. */
+async function sendGreenWithButton(
+  creds: Creds,
+  phone: string,
+  body: string,
+  buttonUrl: string,
+  buttonText: string,
+  header?: string,
+): Promise<string> {
+  const chatId = await resolveChatId(creds, phone);
+  const url = `${creds.baseUrl}/waInstance${creds.idInstance}/sendInteractiveButtons/${creds.apiToken}`;
+  const payload: Record<string, unknown> = {
+    chatId,
+    body: body || " ",
+    buttons: [
+      {
+        type: "url",
+        buttonId: "cta",
+        buttonText: (buttonText || "Перейти").slice(0, 25),
+        url: buttonUrl,
+      },
+    ],
+  };
+  const head = (header ?? "").trim();
+  if (head) payload.header = head.slice(0, 60);
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const text = await res.text();
+  let data: unknown = text;
+  try {
+    data = JSON.parse(text);
+  } catch { /* keep raw */ }
+  if (!res.ok) {
+    // Не все инстансы/тарифы тянут interactive buttons — откат на текст со ссылкой.
+    const fallback = head ? `*${head}*\n\n${body}\n\n${buttonUrl}` : `${body}\n\n${buttonUrl}`;
+    console.warn("sendInteractiveButtons failed, fallback sendMessage:", String(text).slice(0, 120));
+    return await sendGreen(creds, phone, fallback.trim());
+  }
+  const idMessage = (data as { idMessage?: string } | null)?.idMessage;
+  if (!idMessage) throw new Error("Green API: пустой idMessage (buttons)");
+  return idMessage;
+}
+
 // ─── Auth ────────────────────────────────────────────────────────────────────
 async function authorize(req: Request): Promise<boolean> {
   const { data: settings } = await admin
@@ -167,7 +320,8 @@ async function authorize(req: Request): Promise<boolean> {
   const provided = req.headers.get("x-automation-key");
   if (secret && provided && provided === secret) return true;
 
-  // Ручной прогон: авторизованный админ.
+  // Ручной прогон / kick после «Отправить»: любой авторизованный пользователь.
+  // Запуск кампании уже защищён RLS на broadcast_campaigns.
   const auth = req.headers.get("Authorization") ?? "";
   const jwt = auth.startsWith("Bearer ") ? auth.slice(7) : "";
   if (jwt && ANON_KEY) {
@@ -176,12 +330,7 @@ async function authorize(req: Request): Promise<boolean> {
       auth: { persistSession: false, autoRefreshToken: false },
     });
     const { data: { user } } = await userClient.auth.getUser();
-    if (user?.id) {
-      const { data: role } = await admin
-        .from("user_roles").select("role")
-        .eq("user_id", user.id).eq("role", "admin").maybeSingle();
-      if (role) return true;
-    }
+    if (user?.id) return true;
   }
   return false;
 }
@@ -194,6 +343,8 @@ type Campaign = {
   title: string;
   message: string;
   message_variants: string[];
+  target_url: string | null;
+  cta_label: string | null;
   daily_limit: number;
   window_start_hour: number;
   window_end_hour: number;
@@ -242,9 +393,15 @@ async function sentToday(projectId: string): Promise<number> {
   return (data as { sent?: number } | null)?.sent ?? 0;
 }
 
-/** Эффективный дневной потолок с учётом прогрева номера. */
+/** Эффективный дневной потолок с учётом прогрева номера (единая формула с health). */
 async function effectiveDailyCap(c: Campaign): Promise<number> {
-  if (!c.warmup_enabled) return c.daily_limit;
+  if (!c.warmup_enabled) {
+    return computeDailyCap({
+      dailyLimit: c.daily_limit,
+      warmupEnabled: false,
+      warmupStartedOn: null,
+    }).cap;
+  }
   const { data } = await admin
     .from("broadcast_sender_state")
     .select("warmup_started_on, paused")
@@ -260,12 +417,11 @@ async function effectiveDailyCap(c: Campaign): Promise<number> {
       updated_at: new Date().toISOString(),
     });
   }
-  const days = Math.max(
-    0,
-    Math.floor((Date.now() - new Date(startedOn + "T00:00:00Z").getTime()) / 86400000),
-  );
-  const warmCap = Math.round(WARMUP_DAY1 * Math.pow(WARMUP_GROWTH, days));
-  return Math.min(c.daily_limit, Math.max(WARMUP_DAY1, warmCap));
+  return computeDailyCap({
+    dailyLimit: c.daily_limit,
+    warmupEnabled: true,
+    warmupStartedOn: startedOn,
+  }).cap;
 }
 
 async function isPaused(projectId: string): Promise<boolean> {
@@ -310,9 +466,9 @@ async function reapStaleSending() {
 async function refreshCampaign(campaignId: string) {
   const { data } = await admin
     .from("broadcast_recipients")
-    .select("status, clicked_at")
+    .select("status, clicked_at, joined_at")
     .eq("campaign_id", campaignId);
-  const rows = (data ?? []) as { status: string; clicked_at: string | null }[];
+  const rows = (data ?? []) as { status: string; clicked_at: string | null; joined_at: string | null }[];
   const count = (s: string) => rows.filter((r) => r.status === s).length;
   const stats = {
     total: rows.length,
@@ -326,15 +482,112 @@ async function refreshCampaign(campaignId: string) {
     failed: count("failed"),
     optout: count("skipped_optout"),
     clicked: rows.filter((r) => !!r.clicked_at).length,
+    joined: rows.filter((r) => !!r.joined_at).length,
   };
   const patch: Record<string, unknown> = { stats };
   // Финализируем только когда никого не осталось ни в очереди, ни в полёте.
   if (stats.queued === 0 && stats.sending === 0) {
-    const anySent = stats.sent + stats.delivered + stats.read + stats.replied + stats.converted;
+    const anySent =
+      stats.sent + stats.delivered + stats.read + stats.replied + stats.converted + count("clicked");
     patch.status = anySent === 0 ? "failed" : stats.failed > 0 ? "partial" : "sent";
     patch.finished_at = new Date().toISOString();
   }
   await admin.from("broadcast_campaigns").update(patch).eq("id", campaignId);
+}
+
+/**
+ * Бэкап к webhook outgoingMessageStatus: если статусы не долетели (n8n украл
+ * webhook), догоняем delivered/read из журнала Green API.
+ */
+async function syncDeliveryStatuses(): Promise<number> {
+  const since = new Date(Date.now() - 48 * 3600_000).toISOString();
+  const { data } = await admin
+    .from("broadcast_recipients")
+    .select("id, project_id, campaign_id, message_id, status, phone")
+    .eq("status", "sent")
+    .not("message_id", "is", null)
+    .gte("sent_at", since)
+    .limit(200);
+  const rows = (data ?? []) as {
+    id: string;
+    project_id: string;
+    campaign_id: string;
+    message_id: string;
+    status: string;
+    phone: string;
+  }[];
+  if (!rows.length) return 0;
+
+  const byProject = new Map<string, typeof rows>();
+  for (const r of rows) {
+    if (!byProject.has(r.project_id)) byProject.set(r.project_id, []);
+    byProject.get(r.project_id)!.push(r);
+  }
+
+  let updated = 0;
+  const touched = new Set<string>();
+
+  for (const [projectId, list] of byProject) {
+    const creds = await resolveCreds(projectId);
+    if (!creds) continue;
+    let journal: { idMessage?: string; statusMessage?: string; chatId?: string }[] = [];
+    try {
+      const url =
+        `${creds.baseUrl}/waInstance${creds.idInstance}/lastOutgoingMessages/${creds.apiToken}?minutes=2880`;
+      const res = await fetch(url);
+      const data = await res.json().catch(() => []);
+      journal = Array.isArray(data) ? data : [];
+    } catch {
+      continue;
+    }
+    const byId = new Map<string, string>();
+    for (const m of journal) {
+      if (m.idMessage && m.statusMessage) byId.set(m.idMessage, m.statusMessage);
+    }
+
+    for (const r of list) {
+      let st = byId.get(r.message_id) ?? null;
+      if (!st) {
+        try {
+          const url = `${creds.baseUrl}/waInstance${creds.idInstance}/getMessage/${creds.apiToken}`;
+          const res = await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chatId: `${digits(r.phone)}@c.us`,
+              idMessage: r.message_id,
+            }),
+          });
+          const data = await res.json().catch(() => null) as { statusMessage?: string } | null;
+          st = data?.statusMessage ?? null;
+        } catch {
+          st = null;
+        }
+      }
+      if (!st || st === "sent" || st === "pending") continue;
+      const now = new Date().toISOString();
+      const patch: Record<string, unknown> = {};
+      if (st === "delivered") {
+        patch.status = "delivered";
+        patch.delivered_at = now;
+      } else if (st === "read") {
+        patch.status = "read";
+        patch.delivered_at = now;
+        patch.read_at = now;
+      } else if (st === "failed" || st === "noAccount" || st === "notDelivered") {
+        patch.status = "failed";
+        patch.error = `Green API: ${st}`;
+      } else {
+        continue;
+      }
+      await admin.from("broadcast_recipients").update(patch).eq("id", r.id);
+      updated += 1;
+      touched.add(r.campaign_id);
+    }
+  }
+
+  for (const id of touched) await refreshCampaign(id);
+  return updated;
 }
 
 Deno.serve(async (req) => {
@@ -344,10 +597,17 @@ Deno.serve(async (req) => {
 
   // Возвращаем в очередь «зависшие» в отправке строки от упавших воркеров.
   await reapStaleSending();
+  const statusSynced = await syncDeliveryStatuses();
 
   const campaigns = await activeCampaigns();
-  if (campaigns.length === 0) return json({ ok: true, processed: 0, note: "no active campaigns" });
-
+  if (campaigns.length === 0) {
+    return json({
+      ok: true,
+      processed: 0,
+      status_synced: statusSynced,
+      note: "no active campaigns",
+    });
+  }
   // scheduled → sending (проставляем started_at при первом заходе).
   for (const c of campaigns) {
     if (c.status === "scheduled") {
@@ -359,7 +619,16 @@ Deno.serve(async (req) => {
     }
   }
 
-  const stats = { sent: 0, failed: 0, skipped: 0, touchedCampaigns: new Set<string>() };
+  const stats = {
+    sent: 0,
+    failed: 0,
+    skipped: 0,
+    touchedCampaigns: new Set<string>(),
+    skips: [] as { campaign_id: string; reason: string }[],
+  };
+  const skip = (campaignId: string, reason: string) => {
+    stats.skips.push({ campaign_id: campaignId, reason });
+  };
   // Кэш creds/бюджета по проекту в пределах тика.
   const credsCache = new Map<string, Creds | null>();
   const budgetCache = new Map<string, number>(); // сколько ещё можно отправить сегодня
@@ -369,10 +638,16 @@ Deno.serve(async (req) => {
     stats.touchedCampaigns.add(c.id);
 
     // Пауза номера (kill-switch) — стоп по всему проекту.
-    if (await isPaused(c.project_id)) continue;
+    if (await isPaused(c.project_id)) {
+      skip(c.id, "sender_paused");
+      continue;
+    }
 
     // Окно отправки (с грейс-периодом для только что запущенной вручную).
-    if (!windowOk(c)) continue;
+    if (!windowOk(c)) {
+      skip(c.id, "outside_send_window");
+      continue;
+    }
 
     // Бюджет на сегодня (кэшируем на проект).
     if (!budgetCache.has(c.project_id)) {
@@ -381,7 +656,10 @@ Deno.serve(async (req) => {
       budgetCache.set(c.project_id, Math.max(0, cap - used));
     }
     let budget = budgetCache.get(c.project_id) ?? 0;
-    if (budget <= 0) continue;
+    if (budget <= 0) {
+      skip(c.id, "daily_budget_exhausted");
+      continue;
+    }
 
     // Размер пакета за тик: капельно, из среднего джиттера.
     const avgGap = Math.max(1, (c.min_gap_seconds + c.max_gap_seconds) / 2);
@@ -393,11 +671,19 @@ Deno.serve(async (req) => {
       credsCache.set(c.project_id, await resolveCreds(c.project_id));
     }
     const creds = credsCache.get(c.project_id) ?? null;
-    if (!creds) continue; // WhatsApp не подключён — оставляем очередь как есть
+    if (!creds) {
+      skip(c.id, "whatsapp_not_connected");
+      continue; // WhatsApp не подключён — оставляем очередь как есть
+    }
 
     // Ban-aware: реальное состояние аккаунта у Green (раз на проект за тик).
     // yellowCard = предупреждение WhatsApp перед баном → немедленно на паузу.
-    if (!stateCache.has(c.project_id)) stateCache.set(c.project_id, await accountState(creds));
+    // 429 / краткий unknown — не блокируем тик: иначе рассылка «висит» часами
+    // при минутном кроне рядом с другими Green-вызовами.
+    if (!stateCache.has(c.project_id)) {
+      const st = await accountState(creds);
+      stateCache.set(c.project_id, st.state);
+    }
     const state = stateCache.get(c.project_id) ?? "unknown";
     if (state === "blocked" || state === "yellowCard") {
       await pauseSender(
@@ -406,17 +692,32 @@ Deno.serve(async (req) => {
           ? "Аккаунт заблокирован WhatsApp"
           : "WhatsApp выдал предупреждение (жёлтая карточка) — отправка остановлена",
       );
+      skip(c.id, state);
       continue;
     }
-    if (state !== "authorized") continue; // не в сети / авторизация — просто ждём
+    if (state === "notAuthorized" || state === "sleepMode") {
+      skip(c.id, `green_state:${state}`);
+      continue;
+    }
+    if (state !== "authorized" && state !== "rate_limited" && state !== "unknown") {
+      skip(c.id, `green_state:${state}`);
+      continue;
+    }
 
     // Атомарный захват: помечает строки 'sending' и возвращает их. Два
     // параллельных воркера получат разные строки (SKIP LOCKED) → без дублей.
-    const { data: batch } = await admin.rpc("broadcast_claim_recipients", {
+    const { data: batch, error: claimErr } = await admin.rpc("broadcast_claim_recipients", {
       _campaign_id: c.id,
       _limit: perTick,
     });
+    if (claimErr) {
+      skip(c.id, `claim_error:${claimErr.message}`.slice(0, 160));
+      continue;
+    }
     const rows = (batch ?? []) as { id: string; phone: string; name: string; attempt: number; click_token: string | null }[];
+    if (rows.length === 0) {
+      skip(c.id, "no_claimable_recipients");
+    }
     let campaignFailures = 0;
     let campaignSends = 0;
 
@@ -432,14 +733,28 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const variant = c.message_variants.length
+      const variantRaw = c.message_variants.length
         ? c.message_variants[rnd(0, c.message_variants.length - 1)]
         : c.message;
-      const text = renderMessage(c.title, variant, r.name, clickLink(r.click_token));
+      const norm = normalizeOutgoingLink(variantRaw, c.target_url);
+      const effectiveTarget = norm.targetUrl || c.target_url;
+      const track = clickLink(r.click_token);
+      const useButton = isHttpUrl(effectiveTarget) && !!track;
+      const text = renderMessage(c.title, norm.message, r.name, track, useButton);
       const attempt = (r.attempt ?? 0) + 1;
 
       try {
-        const idMessage = await sendGreen(creds, r.phone, text);
+        const idMessage = useButton
+          ? await sendGreenWithButton(
+            creds,
+            r.phone,
+            // title уже может быть в header кнопки — в body без markdown-заголовка
+            renderMessage("", norm.message, r.name, track, true),
+            track,
+            (c.cta_label || "").trim() || defaultCtaLabel(effectiveTarget),
+            c.title,
+          )
+          : await sendGreen(creds, r.phone, text);
         await admin
           .from("broadcast_recipients")
           .update({
@@ -504,6 +819,8 @@ Deno.serve(async (req) => {
     failed: stats.failed,
     skipped: stats.skipped,
     campaigns: stats.touchedCampaigns.size,
+    status_synced: statusSynced,
+    skips: stats.skips.slice(0, 20),
     ran_at: new Date().toISOString(),
   });
 });

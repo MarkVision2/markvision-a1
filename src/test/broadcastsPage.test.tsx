@@ -20,6 +20,7 @@ vi.mock("@/lib/broadcastServer", () => ({
   resumeSender: () => Promise.resolve(),
   removeOptOut: () => Promise.resolve(),
   warmupDailyCap: () => 20,
+  effectiveDailyCap: () => 20,
 }));
 
 vi.mock("@/hooks/useProjectsStore", () => ({
