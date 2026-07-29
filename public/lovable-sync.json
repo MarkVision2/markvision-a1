@@ -1,7 +1,8 @@
 {
-  "git_sha": "02818ed",
+  "git_sha": "dedeb52",
   "git_sha_full": "02818ed2cfa0ada8fe55f6cd3988605eca4956c9",
-  "updated_at": "2026-07-29T18:03:49+05:00",
+  "updated_at": "2026-07-29T14:18:14.087343Z",
   "label": "Merge pull request #213 from MarkVision2/claude/mailing-automation-logic-3j3klf",
-  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
+  "publish_hint": "push main \u2192 www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app",
+  "full_sha": "dedeb5219789c3664a8cb23a8e350e34cda32c0d"
 }
