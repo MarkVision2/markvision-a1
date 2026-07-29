@@ -1,5 +1,8 @@
 // Автоматическая настройка webhook в GreenAPI.
 // Вызывает /setSettings с нашим webhook URL и включает incoming/outgoing/state webhooks.
+// WARNING: do not use on a Green API instance shared with an n8n bot watcher —
+// reclaiming webhookUrl away from the bot causes setSettings thrash and kills greetings.
+// Prefer bot-owned webhook; CRM copies via n8n forward.
 //
 // POST body: { idInstance: string, apiToken: string, apiUrl?: string, webhookUrl: string }
 // Auth: Bearer JWT обычного пользователя (через verify_jwt в config.toml не включаем —
