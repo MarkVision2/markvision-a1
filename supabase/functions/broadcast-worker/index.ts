@@ -19,6 +19,7 @@ import {
   DEFAULT_GREEN_API_BASE_URL,
   validateGreenApiBaseUrl,
 } from "../_lib/green_api_url.ts";
+import { effectiveDailyCap as computeDailyCap } from "../_lib/broadcast_limits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -39,8 +40,6 @@ const admin: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE, {
 const HARD_TICK_CAP = 5;
 // Максимальная пауза внутри тика (сек) — чтобы edge-функция не жила слишком долго.
 const MAX_INTICK_SLEEP_S = 8;
-const WARMUP_DAY1 = 20;
-const WARMUP_GROWTH = 1.3;
 // Ретраи транзиентных сбоев (сеть/5xx/429). Постоянные ошибки (нет WhatsApp,
 // инстанс просрочен, битый номер) не ретраятся.
 const MAX_ATTEMPTS = 3;
@@ -394,9 +393,15 @@ async function sentToday(projectId: string): Promise<number> {
   return (data as { sent?: number } | null)?.sent ?? 0;
 }
 
-/** Эффективный дневной потолок с учётом прогрева номера. */
+/** Эффективный дневной потолок с учётом прогрева номера (единая формула с health). */
 async function effectiveDailyCap(c: Campaign): Promise<number> {
-  if (!c.warmup_enabled) return c.daily_limit;
+  if (!c.warmup_enabled) {
+    return computeDailyCap({
+      dailyLimit: c.daily_limit,
+      warmupEnabled: false,
+      warmupStartedOn: null,
+    }).cap;
+  }
   const { data } = await admin
     .from("broadcast_sender_state")
     .select("warmup_started_on, paused")
@@ -412,12 +417,11 @@ async function effectiveDailyCap(c: Campaign): Promise<number> {
       updated_at: new Date().toISOString(),
     });
   }
-  const days = Math.max(
-    0,
-    Math.floor((Date.now() - new Date(startedOn + "T00:00:00Z").getTime()) / 86400000),
-  );
-  const warmCap = Math.round(WARMUP_DAY1 * Math.pow(WARMUP_GROWTH, days));
-  return Math.min(c.daily_limit, Math.max(WARMUP_DAY1, warmCap));
+  return computeDailyCap({
+    dailyLimit: c.daily_limit,
+    warmupEnabled: true,
+    warmupStartedOn: startedOn,
+  }).cap;
 }
 
 async function isPaused(projectId: string): Promise<boolean> {

@@ -62,12 +62,28 @@ export function BroadcastSafetyPanel({ projectId }: { projectId: string | null }
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { void loadHealth(); }, [loadHealth]);
+  // Держим статус свежим: перепроверяем аккаунт раз в 2 минуты, пока вкладка видна.
+  useEffect(() => {
+    if (!projectId) return;
+    const id = setInterval(() => {
+      if (document.visibilityState === "visible") void loadHealth();
+    }, 120_000);
+    return () => clearInterval(id);
+  }, [projectId, loadHealth]);
   useRealtimeTable("broadcast_sender_state", load, !!projectId, 600);
   useRealtimeTable("broadcast_opt_outs", load, !!projectId, 600);
 
   if (!projectId || !data) return null;
 
-  const pct = data.dailyCap > 0 ? Math.min(100, Math.round((data.sentToday / data.dailyCap) * 100)) : 0;
+  // Health — авторитет по реальным цифрам (та же формула, что шлёт воркер);
+  // safety-стор служит быстрым фолбэком до ответа health.
+  const cap = health?.dailyCap ?? data.dailyCap;
+  const sentToday = health?.sentToday ?? data.sentToday;
+  const remaining = health?.remainingToday ?? Math.max(0, cap - sentToday);
+  const pct = cap > 0 ? Math.min(100, Math.round((sentToday / cap) * 100)) : 0;
+  const checkedAt = health?.checkedAt
+    ? new Date(health.checkedAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })
+    : null;
   const risk = health?.riskLevel ?? "ok";
   const riskTone =
     risk === "danger" ? "destructive" : risk === "warning" ? "warning" : "success";
@@ -130,6 +146,13 @@ export function BroadcastSafetyPanel({ projectId }: { projectId: string | null }
           <div className="text-[11px] text-muted-foreground">
             {health?.riskReason ?? "Прогрев номера защищает от блокировки"}
           </div>
+          {(health?.phone || checkedAt) && (
+            <div className="mt-0.5 flex items-center gap-2 text-[10px] text-muted-foreground/70">
+              {health?.phone && <span className="font-mono">{health.phone}</span>}
+              {health?.phone && checkedAt && <span>·</span>}
+              {checkedAt && <span>проверено {checkedAt}</span>}
+            </div>
+          )}
         </div>
 
         <div className="ml-auto flex items-center gap-2">
@@ -155,14 +178,16 @@ export function BroadcastSafetyPanel({ projectId }: { projectId: string | null }
       </div>
 
       {/* Ключевые цифры */}
-      <div className="mt-3 grid grid-cols-3 gap-2">
-        <Metric label="Отправлено сегодня" value={String(data.sentToday)} />
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+        <Metric label="Отправлено сегодня" value={String(sentToday)} />
+        <Metric label="Безопасный остаток" value={String(remaining)} tone="success" />
+        <Metric label="Дневной лимит" value={`~${cap}`} hint={health ? `прогрев: день ${health.warmupDay}` : undefined} />
         <Metric
-          label="Безопасный остаток"
-          value={String(health?.remainingToday ?? Math.max(0, data.dailyCap - data.sentToday))}
-          tone="success"
+          label="Доставляемость"
+          value={health ? `${health.deliveredRatePct}%` : "—"}
+          tone={health && health.deliveredRatePct < 70 ? "danger" : undefined}
+          hint="за сутки"
         />
-        <Metric label="Дневной лимит" value={`~${data.dailyCap}`} hint={health ? `прогрев: день ${health.warmupDay}` : undefined} />
       </div>
 
       {/* Прогресс дневного лимита */}
@@ -255,10 +280,10 @@ export function BroadcastSafetyPanel({ projectId }: { projectId: string | null }
   );
 }
 
-function Metric({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: "success" }) {
+function Metric({ label, value, hint, tone }: { label: string; value: string; hint?: string; tone?: "success" | "danger" }) {
   return (
     <div className="rounded-xl border border-border/60 bg-card/40 p-2.5 text-center">
-      <div className={cn("text-lg font-bold tabular-nums", tone === "success" && "text-success")}>{value}</div>
+      <div className={cn("text-lg font-bold tabular-nums", tone === "success" && "text-success", tone === "danger" && "text-destructive")}>{value}</div>
       <div className="text-[10px] text-muted-foreground">{label}</div>
       {hint && <div className="text-[9px] text-muted-foreground/70">{hint}</div>}
     </div>

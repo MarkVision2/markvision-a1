@@ -12,7 +12,7 @@ import {
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
-import { fetchGroups, fetchGroupInvite, type WaGroup } from "@/lib/broadcastServer";
+import { fetchGroups, fetchGroupInvite, type FollowUpExcluded, type WaGroup } from "@/lib/broadcastServer";
 import {
   Dialog,
   DialogContent,
@@ -51,6 +51,10 @@ interface Props {
   seedContacts?: { name: string; phone: string }[];
   crmContacts: LeadContact[];
   onSave: (draft: BroadcastDraft, recipientsCount: number) => void | Promise<void>;
+  /** Режим догоняющей рассылки: аудитория фиксирована (не отреагировавшие). */
+  followUp?: { sourceName: string; recipientCount: number; excluded: FollowUpExcluded } | null;
+  /** Преднаполненный черновик (для догоняющей) — используется при broadcast === null. */
+  initialDraft?: BroadcastDraft | null;
 }
 
 const inputCls =
@@ -90,6 +94,8 @@ export function BroadcastDialog({
   seedContacts,
   crmContacts,
   onSave,
+  followUp,
+  initialDraft,
 }: Props) {
   const [draft, setDraft] = useState<BroadcastDraft>(emptyBroadcastDraft);
   const [pasted, setPasted] = useState("");
@@ -119,11 +125,15 @@ export function BroadcastDialog({
         uploadedContacts: seeds,
       });
       setPasted(formatPaste(seeds));
+    } else if (initialDraft) {
+      // Догоняющая: преднаполненный черновик, аудитория фиксирована извне.
+      setDraft(initialDraft);
+      setPasted("");
     } else {
       setDraft(emptyBroadcastDraft());
       setPasted("");
     }
-  }, [open, broadcast, seedContacts, effectiveMode]);
+  }, [open, broadcast, initialDraft, seedContacts, effectiveMode]);
 
   const patch = <K extends keyof BroadcastDraft>(key: K, value: BroadcastDraft[K]) =>
     setDraft((p) => ({ ...p, [key]: value }));
@@ -141,11 +151,12 @@ export function BroadcastDialog({
   // Парсим вставленные контакты на лету
   const parsedUpload = useMemo(() => (draft.audienceSource === "upload" ? parseContacts(pasted) : []), [pasted, draft.audienceSource]);
 
-  // Итоговое число получателей
+  // Итоговое число получателей (в догоняющей аудитория фиксирована)
   const recipientsCount = useMemo(() => {
+    if (followUp) return followUp.recipientCount;
     if (draft.audienceSource === "upload") return parsedUpload.length;
     return filterCrmContacts(crmContacts, draft.crmFilter.stageKeys, draft.crmFilter.sources).length;
-  }, [draft.audienceSource, draft.crmFilter, parsedUpload, crmContacts]);
+  }, [followUp, draft.audienceSource, draft.crmFilter, parsedUpload, crmContacts]);
 
   const toggleStage = (key: string) => {
     const has = draft.crmFilter.stageKeys.includes(key);
@@ -285,14 +296,18 @@ export function BroadcastDialog({
             </span>
             {effectiveMode === "duplicate"
               ? "Дублировать рассылку"
-              : broadcast
-                ? "Настройка рассылки"
-                : "Новая рассылка"}
+              : followUp
+                ? "Догоняющая рассылка"
+                : broadcast
+                  ? "Настройка рассылки"
+                  : "Новая рассылка"}
           </DialogTitle>
           <DialogDescription>
             {effectiveMode === "duplicate"
               ? "Создаётся новая рассылка: добавьте или замените базу контактов, сохраните и отправьте."
-              : "Отправьте сообщение по базе CRM или загруженному списку контактов."}
+              : followUp
+                ? `Вторая волна по тем, кто не отреагировал на «${followUp.sourceName}». Напишите другой текст и выберите дату.`
+                : "Отправьте сообщение по базе CRM или загруженному списку контактов."}
           </DialogDescription>
         </DialogHeader>
 
@@ -340,6 +355,41 @@ export function BroadcastDialog({
           </Field>
 
           {/* Аудитория */}
+          {followUp ? (
+            <Field label="Кому отправляем">
+              <div className="rounded-xl border border-primary/40 bg-primary/5 p-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                  <Users className="h-4 w-4" />
+                  Догоняющая · {followUp.recipientCount} не отреагировавших
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Из «{followUp.sourceName}» — те, кому сообщение дошло, но они не перешли по ссылке,
+                  не вступили в группу и не ответили.
+                </p>
+                {/* Прозрачно показываем, кого исключили (главное — вступивших) */}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {followUp.excluded.joined > 0 && (
+                    <ExcludedTag tone="success" label={`вступили в группу: ${followUp.excluded.joined}`} />
+                  )}
+                  {followUp.excluded.clicked > 0 && (
+                    <ExcludedTag label={`перешли по ссылке: ${followUp.excluded.clicked}`} />
+                  )}
+                  {followUp.excluded.replied > 0 && (
+                    <ExcludedTag label={`ответили: ${followUp.excluded.replied}`} />
+                  )}
+                  {followUp.excluded.failed > 0 && (
+                    <ExcludedTag label={`нет WhatsApp: ${followUp.excluded.failed}`} />
+                  )}
+                  {followUp.excluded.optout > 0 && (
+                    <ExcludedTag label={`отписались: ${followUp.excluded.optout}`} />
+                  )}
+                </div>
+                <p className="mt-1.5 text-[10px] text-success">
+                  ✓ Вступившим в группу дожим не отправляется.
+                </p>
+              </div>
+            </Field>
+          ) : (
           <Field label="Кому отправляем">
             <div className="mb-2 grid grid-cols-2 gap-2">
               {([
@@ -446,6 +496,7 @@ export function BroadcastDialog({
               Получателей: {recipientsCount}
             </div>
           </Field>
+          )}
 
           {/* Сообщение */}
           <Field label="Сообщение">
@@ -702,6 +753,8 @@ export function BroadcastDialog({
               </>
             ) : effectiveMode === "duplicate" ? (
               "Создать копию"
+            ) : followUp ? (
+              "Создать догоняющую"
             ) : broadcast ? (
               "Сохранить"
             ) : (
@@ -711,6 +764,21 @@ export function BroadcastDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ExcludedTag({ label, tone }: { label: string; tone?: "success" }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+        tone === "success"
+          ? "border-success/40 bg-success/10 text-success"
+          : "border-border/60 bg-background/40 text-muted-foreground",
+      )}
+    >
+      исключены · {label}
+    </span>
   );
 }
 

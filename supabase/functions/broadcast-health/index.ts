@@ -11,6 +11,7 @@ import {
   DEFAULT_GREEN_API_BASE_URL,
   validateGreenApiBaseUrl,
 } from "../_lib/green_api_url.ts";
+import { effectiveDailyCap } from "../_lib/broadcast_limits.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -24,10 +25,6 @@ const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
 const admin: SupabaseClient = createClient(SUPABASE_URL, SERVICE_ROLE, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
-
-const WARMUP_DAY1 = 20;
-const WARMUP_GROWTH = 1.3;
-const DEFAULT_DAILY_CAP = 120;
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -61,14 +58,28 @@ async function callGreen(baseUrl: string, idInstance: string, path: string, apiT
   return { ok: res.ok, status: res.status, data };
 }
 
-function warmupCap(startedOn: string | null): { day: number; cap: number } {
-  if (!startedOn) return { day: 1, cap: WARMUP_DAY1 };
-  const days = Math.max(
-    0,
-    Math.floor((Date.now() - new Date(startedOn + "T00:00:00Z").getTime()) / 86400000),
-  );
-  const cap = Math.min(DEFAULT_DAILY_CAP, Math.max(WARMUP_DAY1, Math.round(WARMUP_DAY1 * Math.pow(WARMUP_GROWTH, days))));
-  return { day: days + 1, cap };
+/** Настройки кампании, которые реально управляют дневным потолком номера.
+ *  Берём активную (sending/scheduled), иначе самую свежую; иначе дефолты. */
+async function governingCampaign(
+  projectId: string,
+): Promise<{ dailyLimit: number; warmupEnabled: boolean }> {
+  const { data } = await admin
+    .from("broadcast_campaigns")
+    .select("daily_limit, warmup_enabled, status, updated_at")
+    .eq("project_id", projectId)
+    .order("updated_at", { ascending: false })
+    .limit(50);
+  const rows = (data ?? []) as {
+    daily_limit?: number;
+    warmup_enabled?: boolean;
+    status?: string;
+  }[];
+  const active = rows.find((r) => r.status === "sending" || r.status === "scheduled");
+  const pick = active ?? rows[0];
+  return {
+    dailyLimit: pick?.daily_limit ?? 120,
+    warmupEnabled: pick?.warmup_enabled ?? true,
+  };
 }
 
 Deno.serve(async (req) => {
@@ -98,21 +109,35 @@ Deno.serve(async (req) => {
 
   // Наша статистика (не зависит от Green).
   const today = new Date().toISOString().slice(0, 10);
-  const [dailyRes, stateRes, failRes] = await Promise.all([
+  const [dailyRes, stateRes, failRes, gov] = await Promise.all([
     admin.from("broadcast_sender_daily").select("sent").eq("project_id", projectId).eq("day", today).maybeSingle(),
     admin.from("broadcast_sender_state").select("warmup_started_on, paused, pause_reason").eq("project_id", projectId).maybeSingle(),
     admin.from("broadcast_recipients").select("status")
       .eq("project_id", projectId)
       .gte("sent_at", new Date(Date.now() - 24 * 3600_000).toISOString())
-      .limit(1000),
+      .limit(2000),
+    governingCampaign(projectId),
   ]);
   const sentToday = ((dailyRes.data as { sent?: number } | null)?.sent) ?? 0;
   const st = (stateRes.data ?? {}) as { warmup_started_on?: string | null; paused?: boolean; pause_reason?: string | null };
-  const { day: warmupDay, cap: dailyCap } = warmupCap(st.warmup_started_on ?? null);
+  // Реальный дневной потолок — той же формулой, что шлёт воркер.
+  const { cap: dailyCap, warmupDay } = effectiveDailyCap({
+    dailyLimit: gov.dailyLimit,
+    warmupEnabled: gov.warmupEnabled,
+    warmupStartedOn: st.warmup_started_on ?? null,
+  });
 
+  // Качество базы за сутки: доля ошибок и доля реально доставленных.
   const failRows = (failRes.data ?? []) as { status: string }[];
+  // «Дошло» = доставлено/прочитано/ответил/кликнул/конверсия (клик = точно получил).
+  const DELIVERED = new Set(["delivered", "read", "replied", "clicked", "converted"]);
   const failed = failRows.filter((r) => r.status === "failed").length;
+  const deliveredCnt = failRows.filter((r) => DELIVERED.has(r.status)).length;
   const failRatePct = failRows.length ? Math.round((failed / failRows.length) * 100) : 0;
+  // Доставляемость считаем только по «завершённым» (доставлено/ошибка), без
+  // ещё висящих «sent», чтобы свежая отправка не занижала процент.
+  const settled = deliveredCnt + failed;
+  const deliveredRatePct = settled ? Math.round((deliveredCnt / settled) * 100) : 100;
 
   // Состояние аккаунта у Green API.
   let accountState = "unknown";
@@ -164,6 +189,10 @@ Deno.serve(async (req) => {
       riskLevel = "warning";
       riskReason = `Высокая доля ошибок (${failRatePct}%) — много номеров не в WhatsApp или проблемы с доставкой.`;
       recommendations.push("Почистите базу от нерабочих номеров — частые ошибки повышают риск бана.");
+    } else if (settled >= 15 && deliveredRatePct < 70) {
+      riskLevel = "warning";
+      riskReason = `Низкая доставляемость (${deliveredRatePct}%) — WhatsApp мог придержать часть сообщений.`;
+      recommendations.push("Снизьте темп и объём, проверьте качество базы — низкая доставка повышает риск бана.");
     } else if (sentToday >= dailyCap) {
       riskLevel = "warning";
       riskReason = "Дневной безопасный лимит достигнут.";
@@ -193,6 +222,7 @@ Deno.serve(async (req) => {
     sentToday,
     remainingToday,
     failRatePct,
+    deliveredRatePct,
     recommendations,
     checkedAt: new Date().toISOString(),
   });

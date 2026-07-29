@@ -117,6 +117,7 @@ type CampaignRow = {
   message_variants: string[] | null;
   target_url: string | null;
   group_id: string | null;
+  parent_campaign_id: string | null;
   cta_label: string | null;
   min_gap_seconds: number | null;
   max_gap_seconds: number | null;
@@ -165,6 +166,7 @@ function mapRow(r: CampaignRow): Broadcast {
     message: r.message ?? "",
     targetUrl: r.target_url ?? "",
     groupId: r.group_id ?? "",
+    parentCampaignId: r.parent_campaign_id ?? "",
     ctaLabel: r.cta_label ?? "",
     messageVariants: Array.isArray(r.message_variants) ? r.message_variants : [],
     sendPace: paceFromGaps(r.min_gap_seconds ?? 50, r.max_gap_seconds ?? 70),
@@ -384,13 +386,18 @@ async function insertRecipients(
   }
 }
 
+/** Опции создания: явные получатели (догоняющая) + связь цепочки. */
+export type CreateCampaignOpts = { explicitRows?: RecipientRow[]; parentCampaignId?: string };
+
 export async function createCampaign(
   projectId: string,
   draft: BroadcastDraft,
   crmContacts: LeadContact[],
+  opts?: CreateCampaignOpts,
 ): Promise<Broadcast> {
   const scheduledAt = scheduledIso(draft);
-  const rows = resolveRecipientRows(draft, crmContacts);
+  // Для догоняющей получатели уже готовы (не отреагировавшие), иначе — из CRM/загрузки.
+  const rows = opts?.explicitRows ?? resolveRecipientRows(draft, crmContacts);
   const gaps = PACE_GAPS[draft.sendPace] ?? PACE_GAPS.slow;
   const status = draft.schedule.mode === "scheduled" ? "scheduled" : "draft";
   const stats = { total: rows.length, queued: rows.length, sent: 0, delivered: 0, read: 0, replied: 0, converted: 0, failed: 0, optout: 0, clicked: 0 };
@@ -410,6 +417,7 @@ export async function createCampaign(
       message_variants: draft.messageVariants ?? [],
       target_url: link.targetUrl || null,
       group_id: draft.groupId || null,
+      parent_campaign_id: opts?.parentCampaignId || null,
       cta_label: (draft.ctaLabel || "").trim() || null,
       min_gap_seconds: gaps.min,
       max_gap_seconds: gaps.max,
@@ -424,6 +432,71 @@ export async function createCampaign(
   const campaign = data as CampaignRow;
   if (rows.length) await insertRecipients(campaign.id, projectId, rows, scheduledAt);
   return mapRow(campaign);
+}
+
+/** Разбивка исключённых из догоняющей (для прозрачности в UI). */
+export type FollowUpExcluded = {
+  joined: number;    // вступили в группу — им дожим НЕ шлём
+  clicked: number;   // перешли по ссылке
+  replied: number;   // ответили
+  failed: number;    // ошибка / нет WhatsApp
+  optout: number;    // отписались
+  notReached: number; // не дошло / ещё в очереди
+};
+export type NonResponders = { rows: RecipientRow[]; total: number; excluded: FollowUpExcluded };
+
+/**
+ * Получатели исходной кампании, которые НЕ отреагировали — для догоняющей волны.
+ * «Не отреагировал» = сообщение дошло (sent/delivered/read), но человек не
+ * кликнул, не вступил в группу и не ответил. Исключаем: вступивших в группу,
+ * кликнувших, ответивших, ошибки (нет WhatsApp), отписавшихся и ещё не
+ * отправленных. Дедуп по номеру. Возвращает разбивку исключённых для UI.
+ */
+export async function fetchNonResponders(
+  sourceCampaignId: string,
+  projectId: string,
+): Promise<NonResponders> {
+  const [recRes, optRes] = await Promise.all([
+    db()
+      .from("broadcast_recipients")
+      .select("name, phone, lead_id, status, clicked_at, joined_at, replied_at")
+      .eq("campaign_id", sourceCampaignId)
+      .limit(20000),
+    db().from("broadcast_opt_outs").select("phone").eq("project_id", projectId).limit(5000),
+  ]);
+  const optOut = new Set(
+    ((optRes.data ?? []) as { phone: string }[]).map((o) => digitsPhone(o.phone)),
+  );
+  const reached = new Set(["sent", "delivered", "read"]);
+  const rows: RecipientRow[] = [];
+  const seen = new Set<string>();
+  const excluded: FollowUpExcluded = { joined: 0, clicked: 0, replied: 0, failed: 0, optout: 0, notReached: 0 };
+  for (const r of (recRes.data ?? []) as Array<{
+    name: string | null;
+    phone: string;
+    lead_id: string | null;
+    status: string;
+    clicked_at: string | null;
+    joined_at: string | null;
+    replied_at: string | null;
+  }>) {
+    // Считаем причины исключения (приоритет: вступил > кликнул > ответил).
+    if (r.joined_at) { excluded.joined += 1; continue; }
+    if (r.clicked_at || r.status === "clicked") { excluded.clicked += 1; continue; }
+    if (r.replied_at || r.status === "replied" || r.status === "converted") { excluded.replied += 1; continue; }
+    if (r.status === "failed") { excluded.failed += 1; continue; }
+    if (r.status === "skipped_optout") { excluded.optout += 1; continue; }
+    if (!reached.has(r.status)) { excluded.notReached += 1; continue; } // queued / sending
+    const phone = canonicalPhone(r.phone);
+    if (!phone) { excluded.notReached += 1; continue; }
+    const key = digitsPhone(phone);
+    if (!key) { excluded.notReached += 1; continue; }
+    if (optOut.has(key)) { excluded.optout += 1; continue; }
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push({ name: r.name ?? "", phone, lead_id: r.lead_id ?? null });
+  }
+  return { rows, total: rows.length, excluded };
 }
 
 /**
@@ -548,19 +621,33 @@ export type RecipientCounts = {
 };
 
 // ─── Панель безопасности (лимиты / пауза / opt-out) ──────────────────────────
+// Формула ОДНА с сервером (_lib/broadcast_limits.ts) — панель показывает ровно
+// то число, что реально шлёт воркер.
 const WARMUP_DAY1 = 20;
 const WARMUP_GROWTH = 1.3;
-const DEFAULT_DAILY_CAP = 120;
+const WARMUP_CEILING = 120;
 
-/** Эффективный дневной потолок с учётом прогрева (зеркалит воркер). */
+function warmupRamp(warmupStartedOn: string | null): number {
+  const days = warmupStartedOn
+    ? Math.max(0, Math.floor((Date.now() - new Date(warmupStartedOn + "T00:00:00Z").getTime()) / 86400000))
+    : 0;
+  return Math.min(WARMUP_CEILING, Math.max(WARMUP_DAY1, Math.round(WARMUP_DAY1 * Math.pow(WARMUP_GROWTH, days))));
+}
+
+/** Эффективный дневной потолок с учётом лимита кампании и прогрева. */
+export function effectiveDailyCap(
+  dailyLimit: number,
+  warmupEnabled: boolean,
+  warmupStartedOn: string | null,
+): number {
+  const limit = Math.max(0, Math.floor(dailyLimit || 0));
+  if (!warmupEnabled) return limit;
+  return Math.min(limit, warmupRamp(warmupStartedOn));
+}
+
+/** Совместимость: прогревочный потолок номера без лимита кампании. */
 export function warmupDailyCap(warmupStartedOn: string | null): number {
-  if (!warmupStartedOn) return WARMUP_DAY1;
-  const days = Math.max(
-    0,
-    Math.floor((Date.now() - new Date(warmupStartedOn + "T00:00:00Z").getTime()) / 86400000),
-  );
-  const cap = Math.round(WARMUP_DAY1 * Math.pow(WARMUP_GROWTH, days));
-  return Math.min(DEFAULT_DAILY_CAP, Math.max(WARMUP_DAY1, cap));
+  return warmupRamp(warmupStartedOn);
 }
 
 export type OptOut = { phone: string; reason: string | null; created_at: string };
@@ -575,17 +662,25 @@ export type BroadcastSafety = {
 
 export async function fetchSafety(projectId: string): Promise<BroadcastSafety> {
   const today = new Date().toISOString().slice(0, 10);
-  const [stateRes, dailyRes, optRes] = await Promise.all([
+  const [stateRes, dailyRes, optRes, campRes] = await Promise.all([
     db().from("broadcast_sender_state").select("paused, pause_reason, warmup_started_on").eq("project_id", projectId).maybeSingle(),
     db().from("broadcast_sender_daily").select("sent").eq("project_id", projectId).eq("day", today).maybeSingle(),
     db().from("broadcast_opt_outs").select("phone, reason, created_at").eq("project_id", projectId).order("created_at", { ascending: false }).limit(500),
+    db().from("broadcast_campaigns").select("daily_limit, warmup_enabled, status, updated_at").eq("project_id", projectId).order("updated_at", { ascending: false }).limit(50),
   ]);
   const state = (stateRes.data ?? {}) as { paused?: boolean; pause_reason?: string | null; warmup_started_on?: string | null };
+  const camps = (campRes.data ?? []) as { daily_limit?: number; warmup_enabled?: boolean; status?: string }[];
+  const gov = camps.find((c) => c.status === "sending" || c.status === "scheduled") ?? camps[0];
+  const dailyCap = effectiveDailyCap(
+    gov?.daily_limit ?? WARMUP_CEILING,
+    gov?.warmup_enabled ?? true,
+    state.warmup_started_on ?? null,
+  );
   return {
     paused: !!state.paused,
     pauseReason: state.pause_reason ?? null,
     sentToday: ((dailyRes.data as { sent?: number } | null)?.sent) ?? 0,
-    dailyCap: warmupDailyCap(state.warmup_started_on ?? null),
+    dailyCap,
     warmupStartedOn: state.warmup_started_on ?? null,
     optOuts: (optRes.data ?? []) as OptOut[],
   };
@@ -602,6 +697,7 @@ export type BroadcastHealth = {
   sentToday: number;
   remainingToday: number;
   failRatePct: number;
+  deliveredRatePct: number;
   recommendations: string[];
   checkedAt: string;
 };
