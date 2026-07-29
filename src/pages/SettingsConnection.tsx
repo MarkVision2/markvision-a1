@@ -88,10 +88,10 @@ const SettingsConnection = () => {
     setWaLoading(true);
     const { data } = await supabase
       .from("whatsapp_config_safe")
-      .select("id, project_id, id_instance, api_token_present, api_url, phone, connected, ads_only, webhook_url")
+      .select("id, project_id, id_instance, api_token_present, api_url, phone, connected, ads_only, webhook_url, bot_webhook_url")
       .eq("project_id", projectId)
       .maybeSingle();
-    setWaRow((data ? { ...(data as Record<string, unknown>), bot_webhook_url: null } as unknown as WaBindRow : null));
+    setWaRow((data as WaBindRow | null) ?? null);
 
     setWaLoading(false);
   }, [projectId]);
@@ -514,25 +514,30 @@ function WebhookCard({
     }
     setLoading(true);
     try {
-      // Repair if Green API was pointed at n8n (or outgoing webhooks disabled).
-      await supabase.functions.invoke("greenapi-proxy", {
-        body: { action: "ensureCrmWebhook", project_id: projectId },
-      });
+      // Read-only: do NOT call ensureCrmWebhook — that fought the n8n bot watcher
+      // (minute-level setSettings thrash → 0 greetings). Bot owns webhookUrl.
       const { data } = await supabase.functions.invoke("greenapi-proxy", {
         body: { action: "settings", project_id: projectId },
       });
       const s = (data as { data?: { webhookUrl?: string } } | null)?.data;
       const live = s?.webhookUrl ?? "";
       setCurrent(live);
-      const matched = !!live && live.replace(/\/+$/, "") === crmUrl.replace(/\/+$/, "");
+      const botUrl = (row.bot_webhook_url ?? "").replace(/\/+$/, "");
+      const liveNorm = live.replace(/\/+$/, "");
+      // OK if webhook points at bot OR (legacy) CRM — do not auto-rewrite.
+      const matched = !!liveNorm && (
+        liveNorm === botUrl ||
+        liveNorm === crmUrl.replace(/\/+$/, "") ||
+        /n8n\.|webhook\//i.test(liveNorm)
+      );
       onWebhookStatus(matched);
     } catch {
       setCurrent(null);
-      onWebhookStatus(!!row?.webhook_url && row.webhook_url.replace(/\/+$/, "") === crmUrl.replace(/\/+$/, ""));
+      onWebhookStatus(!!row?.webhook_url);
     } finally {
       setLoading(false);
     }
-  }, [projectId, row?.id_instance, row?.webhook_url, crmUrl, onWebhookStatus]);
+  }, [projectId, row?.id_instance, row?.webhook_url, row?.bot_webhook_url, crmUrl, onWebhookStatus]);
 
   useEffect(() => {
     void checkSettings();
@@ -612,15 +617,20 @@ function WebhookCard({
     }
   };
 
-  const matched = current && current.replace(/\/+$/, "") === crmUrl.replace(/\/+$/, "");
+  const botNorm = (row?.bot_webhook_url ?? "").replace(/\/+$/, "");
+  const liveNorm = (current ?? "").replace(/\/+$/, "");
+  const matchedBot = !!liveNorm && !!botNorm && liveNorm === botNorm;
+  const matchedCrm = !!liveNorm && liveNorm === crmUrl.replace(/\/+$/, "");
+  const matched = matchedBot || matchedCrm || (!!liveNorm && /n8n\.|webhook\//i.test(liveNorm));
 
   return (
     <Card className="mt-6 border-border bg-card">
       <CardHeader>
-        <CardTitle className="text-lg">Шаг 3 — Webhook CRM (обязательно)</CardTitle>
+        <CardTitle className="text-lg">Шаг 3 — Webhook WhatsApp</CardTitle>
         <CardDescription>
-          Green API принимает только один webhook URL. Он должен указывать на CRM — тогда все сообщения попадают в лиды и чаты.
-          Не вставляйте сюда n8n: для бота есть отдельное поле ниже.
+          На общем инстансе с ботом webhook должен указывать на n8n (бот). Платформа больше не
+          переставляет его на greenapi-webhook — это ломало приветствия (борьба setSettings каждую минуту).
+          CRM URL ниже — только если нужен отдельный инстанс только под CRM.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -650,11 +660,13 @@ function WebhookCard({
             <span className="text-muted-foreground">
               {loading
                 ? "Проверка…"
-                : matched
-                  ? "Green API → CRM настроено"
-                  : current
-                    ? `В Green API другой URL: ${current || "(пусто)"}`
-                    : "Webhook не настроен — сообщения не попадут в CRM"}
+                : matchedBot
+                  ? "Green API → n8n-бот (ок для приветствий)"
+                  : matchedCrm
+                    ? "Green API → CRM (бот не получит события без форварда)"
+                    : current
+                      ? `В Green API: ${current || "(пусто)"}`
+                      : "Webhook не настроен"}
             </span>
           </div>
           <div className="flex gap-2">
@@ -662,24 +674,30 @@ function WebhookCard({
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
               Проверить
             </Button>
-            <Button size="sm" onClick={setupWebhook} disabled={saving || !row?.api_token_present}>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={setupWebhook}
+              disabled={saving || !row?.api_token_present}
+              title="Не используйте на общем инстансе с ботом"
+            >
               {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-              Настроить в Green API
+              Только CRM (опасно)
             </Button>
           </div>
         </div>
 
         <div className="space-y-2 border-t border-border/60 pt-4">
           <p className="text-xs font-medium text-muted-foreground">
-            Шаг 4 — URL n8n-бота (опционально)
+            Шаг 4 — URL n8n-бота (владелец webhook)
           </p>
           <Input
             value={botUrl}
             onChange={(e) => setBotUrl(e.target.value)}
-            placeholder="https://n8n.zapoinov.com/webhook/whatsapp-bot"
+            placeholder="https://n8n.zapoinov.com/webhook/wos-bot-in"
           />
           <p className="text-[11px] text-muted-foreground">
-            Копия каждого события Green API уходит на этот URL после записи в CRM. В Green API Console webhook остаётся CRM URL выше.
+            Этот URL должен стоять в Green API Console как webhookUrl. Не включайте авто-reclaim CRM.
           </p>
           <Button size="sm" variant="outline" onClick={saveBotUrl} disabled={botSaving || !projectId}>
             {botSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
@@ -716,8 +734,8 @@ export function WhatsappProjectBindCard({
   const refreshAll = useCallback(async () => {
     const { data } = await supabase
       .from("whatsapp_config_safe")
-      .select("id, project_id, id_instance, api_token_present, api_url, phone, connected, ads_only, webhook_url");
-    setRows(((data ?? []) as Array<Record<string, unknown>>).map((r) => ({ ...r, bot_webhook_url: null })) as unknown as WaBindRow[]);
+      .select("id, project_id, id_instance, api_token_present, api_url, phone, connected, ads_only, webhook_url, bot_webhook_url");
+    setRows((data ?? []) as WaBindRow[]);
     await onRefresh();
   }, [onRefresh]);
 
@@ -779,17 +797,8 @@ export function WhatsappProjectBindCard({
       });
       await refreshAll();
       await onBound?.();
-      // Авто-прописка CRM webhook сразу после привязки
-      try {
-        const { data } = await supabase.functions.invoke("greenapi-proxy", {
-          body: { action: "setWebhook", webhookUrl: getCrmWebhookUrl(), project_id: projectId },
-        });
-        if ((data as { ok?: boolean } | null)?.ok) {
-          toast.success("Webhook CRM автоматически прописан в Green API");
-        }
-      } catch {
-        /* пользователь настроит вручную на шаге 3 */
-      }
+      // Do NOT auto-set Green webhook to CRM — shared instance + n8n watcher
+      // fight causes setSettings thrash and kills bot greetings.
     } catch (e) {
       toast.error("Не удалось привязать", { description: (e as Error).message });
     } finally {
