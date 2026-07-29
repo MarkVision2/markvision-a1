@@ -1,0 +1,682 @@
+{
+ "audioTrack": "reels/vo_targ2.mp3",
+ "words": [
+  {
+   "text": "Как",
+   "from": 0,
+   "to": 10,
+   "accent": false
+  },
+  {
+   "text": "таргетологу",
+   "from": 10,
+   "to": 34,
+   "accent": false
+  },
+  {
+   "text": "перестать",
+   "from": 34,
+   "to": 48,
+   "accent": false
+  },
+  {
+   "text": "жить",
+   "from": 48,
+   "to": 55,
+   "accent": false
+  },
+  {
+   "text": "в",
+   "from": 55,
+   "to": 58,
+   "accent": false
+  },
+  {
+   "text": "рекламном",
+   "from": 58,
+   "to": 72,
+   "accent": false
+  },
+  {
+   "text": "кабинете?",
+   "from": 72,
+   "to": 103,
+   "accent": true
+  },
+  {
+   "text": "Еще",
+   "from": 103,
+   "to": 113,
+   "accent": false
+  },
+  {
+   "text": "год",
+   "from": 113,
+   "to": 122,
+   "accent": false
+  },
+  {
+   "text": "назад",
+   "from": 122,
+   "to": 130,
+   "accent": false
+  },
+  {
+   "text": "я",
+   "from": 130,
+   "to": 137,
+   "accent": false
+  },
+  {
+   "text": "сидел",
+   "from": 137,
+   "to": 146,
+   "accent": false
+  },
+  {
+   "text": "с",
+   "from": 146,
+   "to": 154,
+   "accent": false
+  },
+  {
+   "text": "запусками",
+   "from": 154,
+   "to": 170,
+   "accent": false
+  },
+  {
+   "text": "по",
+   "from": 170,
+   "to": 178,
+   "accent": false
+  },
+  {
+   "text": "10",
+   "from": 178,
+   "to": 187,
+   "accent": false
+  },
+  {
+   "text": "часов",
+   "from": 187,
+   "to": 197,
+   "accent": false
+  },
+  {
+   "text": "в",
+   "from": 197,
+   "to": 204,
+   "accent": false
+  },
+  {
+   "text": "день",
+   "from": 204,
+   "to": 218,
+   "accent": true
+  },
+  {
+   "text": "Правки",
+   "from": 221,
+   "to": 245,
+   "accent": false
+  },
+  {
+   "text": "оптимизация",
+   "from": 245,
+   "to": 288,
+   "accent": false
+  },
+  {
+   "text": "отчеты",
+   "from": 288,
+   "to": 310,
+   "accent": true
+  },
+  {
+   "text": "сейчас",
+   "from": 314,
+   "to": 324,
+   "accent": false
+  },
+  {
+   "text": "рекламу",
+   "from": 324,
+   "to": 338,
+   "accent": false
+  },
+  {
+   "text": "запускает",
+   "from": 338,
+   "to": 353,
+   "accent": false
+  },
+  {
+   "text": "умная",
+   "from": 353,
+   "to": 367,
+   "accent": false
+  },
+  {
+   "text": "система",
+   "from": 367,
+   "to": 425,
+   "accent": true
+  },
+  {
+   "text": "Я",
+   "from": 398,
+   "to": 405,
+   "accent": false
+  },
+  {
+   "text": "говорю",
+   "from": 405,
+   "to": 414,
+   "accent": false
+  },
+  {
+   "text": "что",
+   "from": 414,
+   "to": 422,
+   "accent": false
+  },
+  {
+   "text": "нужно",
+   "from": 422,
+   "to": 441,
+   "accent": false
+  },
+  {
+   "text": "а",
+   "from": 441,
+   "to": 448,
+   "accent": false
+  },
+  {
+   "text": "система",
+   "from": 448,
+   "to": 460,
+   "accent": false
+  },
+  {
+   "text": "создает",
+   "from": 460,
+   "to": 472,
+   "accent": false
+  },
+  {
+   "text": "контент",
+   "from": 472,
+   "to": 498,
+   "accent": false
+  },
+  {
+   "text": "пишет",
+   "from": 498,
+   "to": 510,
+   "accent": false
+  },
+  {
+   "text": "стратегию",
+   "from": 510,
+   "to": 534,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 534,
+   "to": 544,
+   "accent": false
+  },
+  {
+   "text": "запускает",
+   "from": 544,
+   "to": 561,
+   "accent": false
+  },
+  {
+   "text": "рекламу",
+   "from": 561,
+   "to": 582,
+   "accent": false
+  },
+  {
+   "text": "все",
+   "from": 582,
+   "to": 592,
+   "accent": false
+  },
+  {
+   "text": "сама",
+   "from": 592,
+   "to": 623,
+   "accent": true
+  },
+  {
+   "text": "Затем",
+   "from": 623,
+   "to": 633,
+   "accent": false
+  },
+  {
+   "text": "делает",
+   "from": 633,
+   "to": 647,
+   "accent": false
+  },
+  {
+   "text": "отчеты",
+   "from": 647,
+   "to": 657,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 662,
+   "to": 674,
+   "accent": false
+  },
+  {
+   "text": "отправляет",
+   "from": 674,
+   "to": 688,
+   "accent": false
+  },
+  {
+   "text": "их",
+   "from": 688,
+   "to": 695,
+   "accent": false
+  },
+  {
+   "text": "клиентам",
+   "from": 695,
+   "to": 724,
+   "accent": true
+  },
+  {
+   "text": "Я",
+   "from": 729,
+   "to": 736,
+   "accent": false
+  },
+  {
+   "text": "буквально",
+   "from": 736,
+   "to": 750,
+   "accent": false
+  },
+  {
+   "text": "нанял",
+   "from": 750,
+   "to": 762,
+   "accent": false
+  },
+  {
+   "text": "себе",
+   "from": 762,
+   "to": 770,
+   "accent": false
+  },
+  {
+   "text": "профи",
+   "from": 770,
+   "to": 782,
+   "accent": false
+  },
+  {
+   "text": "который",
+   "from": 782,
+   "to": 791,
+   "accent": false
+  },
+  {
+   "text": "работает",
+   "from": 791,
+   "to": 803,
+   "accent": false
+  },
+  {
+   "text": "сутками",
+   "from": 803,
+   "to": 818,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 818,
+   "to": 822,
+   "accent": false
+  },
+  {
+   "text": "не",
+   "from": 822,
+   "to": 827,
+   "accent": false
+  },
+  {
+   "text": "ошибается",
+   "from": 827,
+   "to": 851,
+   "accent": true
+  },
+  {
+   "text": "Благодаря",
+   "from": 869,
+   "to": 886,
+   "accent": false
+  },
+  {
+   "text": "этому",
+   "from": 886,
+   "to": 903,
+   "accent": false
+  },
+  {
+   "text": "оплата",
+   "from": 903,
+   "to": 917,
+   "accent": false
+  },
+  {
+   "text": "за",
+   "from": 917,
+   "to": 925,
+   "accent": false
+  },
+  {
+   "text": "мою",
+   "from": 925,
+   "to": 929,
+   "accent": false
+  },
+  {
+   "text": "работу",
+   "from": 929,
+   "to": 939,
+   "accent": false
+  },
+  {
+   "text": "выросла",
+   "from": 939,
+   "to": 956,
+   "accent": false
+  },
+  {
+   "text": "в",
+   "from": 956,
+   "to": 958,
+   "accent": false
+  },
+  {
+   "text": "разы",
+   "from": 958,
+   "to": 970,
+   "accent": true
+  },
+  {
+   "text": "а",
+   "from": 970,
+   "to": 977,
+   "accent": false
+  },
+  {
+   "text": "нагрузка",
+   "from": 977,
+   "to": 994,
+   "accent": false
+  },
+  {
+   "text": "наоборот",
+   "from": 994,
+   "to": 1011,
+   "accent": false
+  },
+  {
+   "text": "упала",
+   "from": 1011,
+   "to": 1040,
+   "accent": true
+  },
+  {
+   "text": "Хочешь",
+   "from": 1052,
+   "to": 1061,
+   "accent": false
+  },
+  {
+   "text": "себе",
+   "from": 1061,
+   "to": 1071,
+   "accent": false
+  },
+  {
+   "text": "умную",
+   "from": 1071,
+   "to": 1083,
+   "accent": false
+  },
+  {
+   "text": "систему",
+   "from": 1083,
+   "to": 1100,
+   "accent": false
+  },
+  {
+   "text": "которая",
+   "from": 1100,
+   "to": 1107,
+   "accent": false
+  },
+  {
+   "text": "заменит",
+   "from": 1107,
+   "to": 1119,
+   "accent": false
+  },
+  {
+   "text": "целый",
+   "from": 1119,
+   "to": 1131,
+   "accent": false
+  },
+  {
+   "text": "штат",
+   "from": 1131,
+   "to": 1138,
+   "accent": false
+  },
+  {
+   "text": "маркетологов?",
+   "from": 1138,
+   "to": 1174,
+   "accent": true
+  },
+  {
+   "text": "Жми",
+   "from": 1179,
+   "to": 1191,
+   "accent": false
+  },
+  {
+   "text": "кнопку",
+   "from": 1191,
+   "to": 1201,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 1201,
+   "to": 1205,
+   "accent": false
+  },
+  {
+   "text": "узнай",
+   "from": 1205,
+   "to": 1215,
+   "accent": false
+  },
+  {
+   "text": "подробнее",
+   "from": 1215,
+   "to": 1237,
+   "accent": true
+  }
+ ],
+ "scenes": [
+  {
+   "from": 0,
+   "to": 103,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ЖИТЬ В РЕКЛАМНОМ",
+     "КАБИНЕТЕ?"
+    ],
+    "accent": "#22D3EE",
+    "cover": true,
+    "bg": "warp"
+   }
+  },
+  {
+   "from": 103,
+   "to": 221,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ГОД НАЗАД",
+     "10 ЧАСОВ В ДЕНЬ"
+    ],
+    "accent": "#FB7185",
+    "cover": true
+   },
+   "clip": "broll/targ2/busy-office-clock-overwork-desk-36025108.mp4"
+  },
+  {
+   "from": 221,
+   "to": 314,
+   "template": "pill-row",
+   "data": {
+    "items": [
+     "Правки",
+     "Оптимизация",
+     "Отчёты"
+    ],
+    "accent": "#FB7185",
+    "cover": true
+   },
+   "clip": "broll/targ2/spreadsheet-data-reports-screen-6782251.mp4"
+  },
+  {
+   "from": 314,
+   "to": 398,
+   "template": "kinetic-type",
+   "data": {
+    "words": [
+     "УМНАЯ",
+     "СИСТЕМА"
+    ],
+    "accentIndex": 1,
+    "accent": "#FF7A18",
+    "cover": true
+   }
+  },
+  {
+   "from": 398,
+   "to": 623,
+   "template": "fake-terminal",
+   "data": {
+    "title": "ai-система",
+    "lines": [
+     "> контент... ок",
+     "> стратегия... ок",
+     "> реклама... запущена",
+     "✓ всё сделала сама"
+    ],
+    "accent": "#8B5CF6"
+   },
+   "clip": "broll/targ2/ai-automation-marketing-dashboard-8328142.mp4"
+  },
+  {
+   "from": 623,
+   "to": 729,
+   "template": "phone-mockup",
+   "data": {
+    "title": "КЛИЕНТУ",
+    "lines": [
+     "Отчёт готов",
+     "Отправлено ✓",
+     "Без тебя"
+    ],
+    "accent": "#34D399"
+   },
+   "clip": "broll/targ2/business-report-email-screen-laptop-6120114.mp4"
+  },
+  {
+   "from": 729,
+   "to": 869,
+   "template": "gauge",
+   "data": {
+    "value": 100,
+    "label": "БЕЗ ОШИБОК · СУТКАМИ",
+    "accent": "#22D3EE",
+    "cover": true
+   },
+   "clip": "broll/targ2/ai-robot-automation-server-technology-35280160.mp4"
+  },
+  {
+   "from": 869,
+   "to": 1052,
+   "template": "fake-dashboard-bars",
+   "data": {
+    "title": "МОИ ЦИФРЫ",
+    "bars": [
+     {
+      "label": "Нагрузка",
+      "value": 30
+     },
+     {
+      "label": "Оплата",
+      "value": 100
+     }
+    ],
+    "accent": "#34D399"
+   }
+  },
+  {
+   "from": 1052,
+   "to": 1179,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ЗАМЕНИ ШТАТ",
+     "МАРКЕТОЛОГОВ"
+    ],
+    "accent": "#8B5CF6",
+    "cover": true
+   },
+   "clip": "broll/targ2/modern-tech-office-workspace-screens-33314914.mp4"
+  },
+  {
+   "from": 1179,
+   "to": 1237,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ЖМИ КНОПКУ",
+     "УЗНАЙ БОЛЬШЕ"
+    ],
+    "accent": "#FF7A18",
+    "cover": true
+   },
+   "clip": "broll/targ2/click-button-register-laptop-hands-34771079.mp4"
+  }
+ ],
+ "totalDurationInFrames": 1237,
+ "fps": 30,
+ "music": "reels/beat_targ2.wav",
+ "musicVolume": 0.07,
+ "captions": true,
+ "background": "aurora"
+}
