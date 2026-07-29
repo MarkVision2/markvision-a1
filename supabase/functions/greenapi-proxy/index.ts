@@ -339,26 +339,25 @@ Deno.serve(async (req) => {
       }
 
       case "ensureCrmWebhook": {
-        // Repair drift: n8n/console sometimes overwrite webhookUrl away from CRM.
+        // DISABLED: auto-reclaim to greenapi-webhook fought the n8n bot watcher
+        // (setSettings every minute → instance reload thrash → 0 greetings).
+        // Bot owns webhookUrl. Pass force:true only for deliberate one-shot repair.
+        const force = body.force === true || body.force === "true";
+        const cur = await callGreen(creds, "getSettings");
+        const live = String((cur.data as { webhookUrl?: string } | null)?.webhookUrl ?? "");
+        if (!force) {
+          return json({
+            ok: true,
+            repaired: false,
+            disabled: true,
+            webhookUrl: live,
+            reason: "CRM webhook auto-reclaim disabled — bot owns Green API webhook",
+          });
+        }
         const crmUrl = SUPABASE_URL
           ? `${SUPABASE_URL.replace(/\/+$/, "")}/functions/v1/greenapi-webhook`
           : "";
         if (!crmUrl) return json({ error: "SUPABASE_URL missing" }, 500);
-        const cur = await callGreen(creds, "getSettings");
-        const live = String((cur.data as { webhookUrl?: string } | null)?.webhookUrl ?? "");
-        const outApi = String((cur.data as { outgoingAPIMessageWebhook?: string } | null)?.outgoingAPIMessageWebhook ?? "");
-        const outWebhook = String((cur.data as { outgoingWebhook?: string } | null)?.outgoingWebhook ?? "");
-        const outMsg = String((cur.data as { outgoingMessageWebhook?: string } | null)?.outgoingMessageWebhook ?? "");
-        const incoming = String((cur.data as { incomingWebhook?: string } | null)?.incomingWebhook ?? "");
-        const matched =
-          live.replace(/\/+$/, "") === crmUrl.replace(/\/+$/, "") &&
-          outApi === "yes" &&
-          outWebhook === "yes" &&
-          outMsg === "yes" &&
-          incoming === "yes";
-        if (matched) {
-          return json({ ok: true, repaired: false, webhookUrl: live });
-        }
         let webhookUrlToken = "";
         if (creds.rowId) {
           const { data: tokRow } = await admin
@@ -387,7 +386,15 @@ Deno.serve(async (req) => {
             updated_at: new Date().toISOString(),
           }).eq("id", creds.rowId);
         }
-        return json({ ok: r.ok, repaired: true, status: r.status, data: r.data, webhookUrl: crmUrl, previousUrl: live });
+        return json({
+          ok: r.ok,
+          repaired: true,
+          forced: true,
+          status: r.status,
+          data: r.data,
+          webhookUrl: crmUrl,
+          previousUrl: live,
+        });
       }
 
       case "sendMessage": {

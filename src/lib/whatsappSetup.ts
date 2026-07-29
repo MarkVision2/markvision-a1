@@ -24,6 +24,6 @@ export function isValidBotWebhookUrl(raw: string): boolean {
 export const WHATSAPP_SETUP_STEPS = [
   { id: "bind", title: "Привязать инстанс к проекту", hint: "idInstance + apiToken из Green API Console" },
   { id: "auth", title: "Авторизовать WhatsApp", hint: "QR-код или код по номеру телефона" },
-  { id: "webhook", title: "Webhook CRM", hint: "Green API → наш greenapi-webhook" },
-  { id: "bot", title: "Бот n8n (опционально)", hint: "Копия событий на ваш workflow" },
+  { id: "webhook", title: "Webhook (бот / CRM)", hint: "На общем инстансе — n8n-бот; CRM не переставляет" },
+  { id: "bot", title: "URL n8n-бота", hint: "Владелец webhookUrl в Green API" },
 ] as const;

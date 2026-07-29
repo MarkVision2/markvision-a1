@@ -251,7 +251,7 @@ const Crm = () => {
 
         {/* KPI strip */}
         <div className="mx-auto mt-3 max-w-[1600px]">
-          <CrmKpiBar kpi={analytics.kpi} />
+          <CrmKpiBar kpi={analytics.kpi} templateKey={pipelineTemplateKey} />
         </div>
 
         {/* Inline SLA strip (only when there are issues) */}

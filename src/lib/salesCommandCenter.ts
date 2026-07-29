@@ -21,6 +21,8 @@ export interface PriorityLead {
   lead: Lead;
   reason: "overdue_task" | "sla" | "stale" | "high_score";
   label: string;
+  /** Short next step shown in the Today queue */
+  action: string;
   score: number;
 }
 
@@ -83,12 +85,16 @@ export function buildSalesCommandCenter({
   now = Date.now(),
 }: SalesCommandCenterInput): SalesCommandCenter {
   const active = leads.filter((lead) => !isTerminal(lead));
-  const urgent = active.filter(
-    (lead) =>
-      !lead.firstResponseAt
-      && (lead.stageId === "new" || lead.stageId === "no_answer")
-      && minutesBetween(lead.createdAt, now) >= 15,
-  );
+  const urgent = active.filter((lead) => {
+    if (lead.firstResponseAt) return false;
+    const stage = lead.stageId.toLowerCase();
+    const waitingStage =
+      stage === "new"
+      || stage === "no_answer"
+      || stage === "bot_activated"
+      || stage === "whatsapp";
+    return waitingStage && minutesBetween(lead.createdAt, now) >= 15;
+  });
   const overdueLeadIds = new Set<string>();
   let overdueTasks = 0;
   for (const lead of active) {
@@ -169,18 +175,45 @@ export function buildSalesCommandCenter({
   const priorityLeads = active
     .map((lead): PriorityLead => {
       if (overdueLeadIds.has(lead.id)) {
-        return { lead, reason: "overdue_task", label: "Просрочена задача", score: 400 + lead.aiScore };
+        return {
+          lead,
+          reason: "overdue_task",
+          label: "Просрочена задача",
+          action: "Закрыть задачу",
+          score: 400 + lead.aiScore,
+        };
       }
       if (urgentIds.has(lead.id)) {
-        return { lead, reason: "sla", label: "Ждёт ответа >15 мин", score: 300 + lead.aiScore };
+        const waited = Math.round(minutesBetween(lead.createdAt, now));
+        return {
+          lead,
+          reason: "sla",
+          label: waited >= 60
+            ? `Ждёт ответа ${Math.round(waited / 60)} ч`
+            : `Ждёт ответа ${waited} мин`,
+          action: "Ответить",
+          score: 300 + lead.aiScore,
+        };
       }
       if (staleIds.has(lead.id)) {
-        return { lead, reason: "stale", label: "Нет активности >48 ч", score: 200 + lead.aiScore };
+        return {
+          lead,
+          reason: "stale",
+          label: "Тишина больше 2 дней",
+          action: "Написать",
+          score: 200 + lead.aiScore,
+        };
       }
-      return { lead, reason: "high_score", label: `AI-приоритет ${lead.aiScore}`, score: lead.aiScore };
+      return {
+        lead,
+        reason: "high_score",
+        label: lead.stageId === "new" ? "Новый лид" : "В работе",
+        action: "Открыть",
+        score: lead.aiScore,
+      };
     })
     .sort((a, b) => b.score - a.score)
-    .slice(0, 8);
+    .slice(0, 12);
 
   const activeCount = active.length || 1;
   const responsePenalty = Math.min(20, Math.max(0, avgResponseMin - 5));
