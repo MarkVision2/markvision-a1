@@ -32,6 +32,8 @@ export type ContentPlanOrganicEvent = {
   event_type: string;
   lead_id: string | null;
   reel_id: string | null;
+  /** ISO timestamp of when the event happened — used for date-guarding orphan claims. */
+  occurred_at?: string | null;
   payload?: { user_agent?: string | null } | null;
 };
 
@@ -255,7 +257,9 @@ function eventMatchesCodeword(
 
 /**
  * Воронка публикации: IG insights + organic events по reel_id (как Контент-центр).
- * Orphan-события код-слова (без reel_id) — только на primary-пост код-слова.
+ * Orphan-события код-слова (без reel_id) — только на primary-пост код-слова,
+ * и только если событие произошло ПОСЛЕ публикации этого поста (иначе события
+ * со старых постов «перелезают» на новый при смене primary).
  * Если media нет — fallback на агрегаты код-слова.
  */
 export function buildContentPlanFunnel(input: {
@@ -266,6 +270,8 @@ export function buildContentPlanFunnel(input: {
   codeword?: string | null;
   /** Принимать события код-слова без reel_id (только у одного primary-поста). */
   claimOrphanCodewordEvents?: boolean;
+  /** Дата публикации primary-поста — события раньше этого времени не считаем. */
+  primaryPublishedAt?: string | null;
   events: ContentPlanOrganicEvent[];
   leads: ContentPlanLeadLite[];
   codewordStats?: {
@@ -275,6 +281,8 @@ export function buildContentPlanFunnel(input: {
     leads?: number;
     sales?: number;
     revenue?: number;
+    /** ISO timestamp последнего события по кодслову — для date-guard. */
+    last_event_at?: string | null;
   } | null;
 }): ContentPlanFunnel {
   const f = emptyFunnel(input.adSpend ?? 0);
@@ -294,6 +302,11 @@ export function buildContentPlanFunnel(input: {
 
   const igMediaId = input.igMediaId ?? m?.media_id ?? null;
   const claimOrphans = !!input.claimOrphanCodewordEvents;
+  // Граница времени: orphan-событие считается только если оно произошло ПОСЛЕ
+  // публикации конкретного поста (иначе вся история кодслова перелезает на свежий).
+  const publishedMs = input.primaryPublishedAt
+    ? new Date(input.primaryPublishedAt).getTime()
+    : null;
 
   if (igMediaId) {
     let hits = 0;
@@ -302,9 +315,13 @@ export function buildContentPlanFunnel(input: {
     const leadIds = new Set<string>();
     for (const e of input.events) {
       const byReel = e.reel_id === igMediaId;
+      // Orphan (без reel_id): считаем только если событие произошло после публикации поста.
+      const eventMs = e.occurred_at ? new Date(e.occurred_at).getTime() : null;
+      const afterPublish = publishedMs == null || eventMs == null || eventMs >= publishedMs;
       const byOrphan =
         claimOrphans &&
         !e.reel_id &&
+        afterPublish &&
         eventMatchesCodeword(e, input.codewordId, input.codeword);
       if (!byReel && !byOrphan) continue;
 
@@ -324,9 +341,21 @@ export function buildContentPlanFunnel(input: {
     f.registrations = leadIds.size;
     applyLeadStages(f, leadIds, input.leads);
 
-    // Stats-агрегат только у primary и только если живых событий ещё нет.
+    // Stats-агрегат (lifetime total кодслова) — ТОЛЬКО если нет ни одного живого
+    // события И пост опубликован не ранее последнего события в кодслове.
+    // Иначе старая история кодслова приписывается новому посту.
     const st = input.codewordStats;
-    if (claimOrphans && st && hits === 0 && clicks === 0 && leadIds.size === 0) {
+    const lastEventMs = st?.last_event_at ? new Date(st.last_event_at).getTime() : null;
+    const statsAreForThisPost =
+      !lastEventMs || !publishedMs || lastEventMs >= publishedMs;
+    if (
+      claimOrphans &&
+      st &&
+      statsAreForThisPost &&
+      hits === 0 &&
+      clicks === 0 &&
+      leadIds.size === 0
+    ) {
       f.codewordHits = Number(st.codeword_dms ?? 0) + Number(st.codeword_comments ?? 0);
       f.messagesSent = Number(st.codeword_dms ?? 0) || f.codewordHits;
       f.messagesOpened = f.messagesSent;
