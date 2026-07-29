@@ -42,7 +42,7 @@ import { useLeadContacts } from "@/hooks/useLeadContacts";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { matchRecipientLeads } from "@/lib/broadcastFunnel";
-import { fetchNonResponders, type RecipientRow } from "@/lib/broadcastServer";
+import { fetchNonResponders, type FollowUpExcluded, type RecipientRow } from "@/lib/broadcastServer";
 import { fmtKzt } from "@/lib/format";
 import {
   CHANNEL_META,
@@ -98,7 +98,7 @@ export default function BroadcastDetail() {
   const [followUpOpen, setFollowUpOpen] = useState(false);
   const [followUpBusy, setFollowUpBusy] = useState(false);
   const [followUpRows, setFollowUpRows] = useState<RecipientRow[]>([]);
-  const [followUpMeta, setFollowUpMeta] = useState<{ sourceName: string; recipientCount: number } | null>(null);
+  const [followUpMeta, setFollowUpMeta] = useState<{ sourceName: string; recipientCount: number; excluded: FollowUpExcluded } | null>(null);
   const [followUpDraft, setFollowUpDraft] = useState<BroadcastDraft | null>(null);
 
   const matched = useMemo(() => {
@@ -171,7 +171,7 @@ export default function BroadcastDetail() {
     if (!projectId || followUpBusy) return;
     setFollowUpBusy(true);
     try {
-      const { rows, total } = await fetchNonResponders(campaign.id, projectId);
+      const { rows, total, excluded } = await fetchNonResponders(campaign.id, projectId);
       if (total === 0) {
         toast.success("Все получатели уже отреагировали — догонять некого 🎉");
         return;
@@ -179,7 +179,7 @@ export default function BroadcastDetail() {
       const at = new Date(Date.now() + 2 * 86_400_000);
       at.setHours(11, 0, 0, 0); // через 2 дня в 11:00
       setFollowUpRows(rows);
-      setFollowUpMeta({ sourceName: campaign.name, recipientCount: total });
+      setFollowUpMeta({ sourceName: campaign.name, recipientCount: total, excluded });
       setFollowUpDraft({
         ...emptyBroadcastDraft(),
         name: `Догоняющая — ${campaign.name}`.slice(0, 80),
@@ -192,6 +192,9 @@ export default function BroadcastDetail() {
         schedule: { mode: "scheduled", at: toLocalInput(at) },
       });
       setFollowUpOpen(true);
+      if (excluded.joined > 0) {
+        toast.success(`${total} для дожима · ${excluded.joined} вступивших исключены`);
+      }
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось собрать аудиторию");
     } finally {

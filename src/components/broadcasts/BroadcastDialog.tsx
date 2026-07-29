@@ -12,7 +12,7 @@ import {
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
-import { fetchGroups, fetchGroupInvite, type WaGroup } from "@/lib/broadcastServer";
+import { fetchGroups, fetchGroupInvite, type FollowUpExcluded, type WaGroup } from "@/lib/broadcastServer";
 import {
   Dialog,
   DialogContent,
@@ -46,7 +46,7 @@ interface Props {
   crmContacts: LeadContact[];
   onSave: (draft: BroadcastDraft, recipientsCount: number) => void;
   /** Режим догоняющей рассылки: аудитория фиксирована (не отреагировавшие). */
-  followUp?: { sourceName: string; recipientCount: number } | null;
+  followUp?: { sourceName: string; recipientCount: number; excluded: FollowUpExcluded } | null;
   /** Преднаполненный черновик (для догоняющей) — используется при broadcast === null. */
   initialDraft?: BroadcastDraft | null;
 }
@@ -293,8 +293,28 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">
                   Из «{followUp.sourceName}» — те, кому сообщение дошло, но они не перешли по ссылке,
-                  не вступили в группу и не ответили. Ошибки, отписавшиеся и уже отреагировавшие
-                  исключены автоматически.
+                  не вступили в группу и не ответили.
+                </p>
+                {/* Прозрачно показываем, кого исключили (главное — вступивших) */}
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {followUp.excluded.joined > 0 && (
+                    <ExcludedTag tone="success" label={`вступили в группу: ${followUp.excluded.joined}`} />
+                  )}
+                  {followUp.excluded.clicked > 0 && (
+                    <ExcludedTag label={`перешли по ссылке: ${followUp.excluded.clicked}`} />
+                  )}
+                  {followUp.excluded.replied > 0 && (
+                    <ExcludedTag label={`ответили: ${followUp.excluded.replied}`} />
+                  )}
+                  {followUp.excluded.failed > 0 && (
+                    <ExcludedTag label={`нет WhatsApp: ${followUp.excluded.failed}`} />
+                  )}
+                  {followUp.excluded.optout > 0 && (
+                    <ExcludedTag label={`отписались: ${followUp.excluded.optout}`} />
+                  )}
+                </div>
+                <p className="mt-1.5 text-[10px] text-success">
+                  ✓ Вступившим в группу дожим не отправляется.
                 </p>
               </div>
             </Field>
@@ -634,6 +654,21 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function ExcludedTag({ label, tone }: { label: string; tone?: "success" }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium",
+        tone === "success"
+          ? "border-success/40 bg-success/10 text-success"
+          : "border-border/60 bg-background/40 text-muted-foreground",
+      )}
+    >
+      исключены · {label}
+    </span>
   );
 }
 

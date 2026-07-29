@@ -258,16 +258,28 @@ export async function createCampaign(
   return mapRow(campaign);
 }
 
+/** Разбивка исключённых из догоняющей (для прозрачности в UI). */
+export type FollowUpExcluded = {
+  joined: number;    // вступили в группу — им дожим НЕ шлём
+  clicked: number;   // перешли по ссылке
+  replied: number;   // ответили
+  failed: number;    // ошибка / нет WhatsApp
+  optout: number;    // отписались
+  notReached: number; // не дошло / ещё в очереди
+};
+export type NonResponders = { rows: RecipientRow[]; total: number; excluded: FollowUpExcluded };
+
 /**
  * Получатели исходной кампании, которые НЕ отреагировали — для догоняющей волны.
  * «Не отреагировал» = сообщение дошло (sent/delivered/read), но человек не
- * кликнул, не вступил в группу и не ответил. Исключаем: ошибки (нет WhatsApp),
- * отписавшихся и ещё не отправленных. Дедуп по номеру.
+ * кликнул, не вступил в группу и не ответил. Исключаем: вступивших в группу,
+ * кликнувших, ответивших, ошибки (нет WhatsApp), отписавшихся и ещё не
+ * отправленных. Дедуп по номеру. Возвращает разбивку исключённых для UI.
  */
 export async function fetchNonResponders(
   sourceCampaignId: string,
   projectId: string,
-): Promise<{ rows: RecipientRow[]; total: number }> {
+): Promise<NonResponders> {
   const [recRes, optRes] = await Promise.all([
     db()
       .from("broadcast_recipients")
@@ -282,6 +294,7 @@ export async function fetchNonResponders(
   const reached = new Set(["sent", "delivered", "read"]);
   const rows: RecipientRow[] = [];
   const seen = new Set<string>();
+  const excluded: FollowUpExcluded = { joined: 0, clicked: 0, replied: 0, failed: 0, optout: 0, notReached: 0 };
   for (const r of (recRes.data ?? []) as Array<{
     name: string | null;
     phone: string;
@@ -291,16 +304,23 @@ export async function fetchNonResponders(
     joined_at: string | null;
     replied_at: string | null;
   }>) {
-    if (!reached.has(r.status)) continue; // failed / queued / optout — пропускаем
-    if (r.clicked_at || r.joined_at || r.replied_at) continue; // уже отреагировал
+    // Считаем причины исключения (приоритет: вступил > кликнул > ответил).
+    if (r.joined_at) { excluded.joined += 1; continue; }
+    if (r.clicked_at || r.status === "clicked") { excluded.clicked += 1; continue; }
+    if (r.replied_at || r.status === "replied" || r.status === "converted") { excluded.replied += 1; continue; }
+    if (r.status === "failed") { excluded.failed += 1; continue; }
+    if (r.status === "skipped_optout") { excluded.optout += 1; continue; }
+    if (!reached.has(r.status)) { excluded.notReached += 1; continue; } // queued / sending
     const phone = canonicalPhone(r.phone);
-    if (!phone) continue;
+    if (!phone) { excluded.notReached += 1; continue; }
     const key = digitsPhone(phone);
-    if (!key || optOut.has(key) || seen.has(key)) continue;
+    if (!key) { excluded.notReached += 1; continue; }
+    if (optOut.has(key)) { excluded.optout += 1; continue; }
+    if (seen.has(key)) continue;
     seen.add(key);
     rows.push({ name: r.name ?? "", phone, lead_id: r.lead_id ?? null });
   }
-  return { rows, total: rows.length };
+  return { rows, total: rows.length, excluded };
 }
 
 export async function updateCampaign(
