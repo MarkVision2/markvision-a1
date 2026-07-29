@@ -121,6 +121,67 @@ async function getDefaultStage(projectId: string): Promise<{ pipeline_id: string
   return { pipeline_id: pipelineId, stage_id: neu.id };
 }
 
+async function attributionFromPhone(phone: string, projectId: string): Promise<{
+  meta_ad_id: string | null;
+  meta_adset_id: string | null;
+  meta_campaign_id: string | null;
+  click_id: string | null;
+  source: string;
+} | null> {
+  const d = digits(phone);
+  if (!d) return null;
+  let q = admin
+    .from("phone_attribution")
+    .select("meta_ad_id, meta_adset_id, meta_campaign_id, click_id, captured_at")
+    .eq("phone", d)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  q = q.eq("project_id", projectId);
+  const { data } = await q;
+  const row = (data ?? [])[0] as {
+    meta_ad_id: string | null;
+    meta_adset_id: string | null;
+    meta_campaign_id: string | null;
+    click_id: string | null;
+    captured_at: string;
+  } | undefined;
+  if (row?.meta_ad_id) {
+    const ageMs = Date.now() - new Date(row.captured_at).getTime();
+    if (ageMs <= 30 * 24 * 3600 * 1000) {
+      return {
+        meta_ad_id: row.meta_ad_id,
+        meta_adset_id: row.meta_adset_id,
+        meta_campaign_id: row.meta_campaign_id,
+        click_id: row.click_id,
+        source: "meta",
+      };
+    }
+  }
+  const { data: wc } = await admin
+    .from("wa_clicks")
+    .select("utm_content, utm_term, utm_campaign, utm_source, click_id")
+    .or(`matched_phone.eq.+${d},matched_phone.eq.${d}`)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const w = (wc ?? [])[0] as {
+    utm_content: string | null;
+    utm_term: string | null;
+    utm_campaign: string | null;
+    utm_source: string | null;
+    click_id: string | null;
+  } | undefined;
+  if (w?.utm_content && /^[0-9]{6,}$/.test(w.utm_content)) {
+    return {
+      meta_ad_id: w.utm_content,
+      meta_adset_id: w.utm_term,
+      meta_campaign_id: w.utm_campaign,
+      click_id: w.click_id,
+      source: (w.utm_source || "meta").slice(0, 32),
+    };
+  }
+  return null;
+}
+
 async function findOrCreateLead(
   phone: string,
   displayName: string,
@@ -129,7 +190,20 @@ async function findOrCreateLead(
   const d = digits(phone);
   if (!d) return null;
   const existing = await findExistingLeadId(phone, projectId);
-  if (existing) return existing;
+  const attr = await attributionFromPhone(phone, projectId);
+
+  if (existing) {
+    if (attr?.meta_ad_id) {
+      await admin.from("leads").update({
+        meta_ad_id: attr.meta_ad_id,
+        meta_adset_id: attr.meta_adset_id,
+        meta_campaign_id: attr.meta_campaign_id,
+        click_id: attr.click_id,
+        source: attr.source || "meta",
+      }).eq("id", existing).is("meta_ad_id", null);
+    }
+    return existing;
+  }
 
   const def = await getDefaultStage(projectId);
   if (!def) return null;
@@ -141,18 +215,39 @@ async function findOrCreateLead(
     .maybeSingle();
   const ownerId = (proj as { created_by?: string | null } | null)?.created_by ?? null;
 
+  let cabinetId: string | null = null;
+  let metaCampaignId = attr?.meta_campaign_id ?? null;
+  let metaAdsetId = attr?.meta_adset_id ?? null;
+  if (attr?.meta_ad_id) {
+    const { data: creative } = await admin
+      .from("meta_creatives")
+      .select("campaign_id, adset_id, cabinet_id")
+      .eq("ad_id", attr.meta_ad_id)
+      .maybeSingle();
+    if (creative) {
+      cabinetId = (creative as { cabinet_id?: string | null }).cabinet_id ?? null;
+      metaCampaignId = metaCampaignId || (creative as { campaign_id?: string | null }).campaign_id || null;
+      metaAdsetId = metaAdsetId || (creative as { adset_id?: string | null }).adset_id || null;
+    }
+  }
+
   const { data: created, error } = await admin
     .from("leads")
     .insert({
       name: displayName || `+${d}`,
       phone: `+${d}`,
-      source: "whatsapp",
+      source: attr?.meta_ad_id ? (attr.source || "meta") : "whatsapp",
       channel: "whatsapp",
       project_id: projectId,
+      cabinet_id: cabinetId,
       pipeline_id: def.pipeline_id,
       stage_id: def.stage_id,
       created_by: ownerId,
       assigned_to: ownerId,
+      meta_ad_id: attr?.meta_ad_id ?? null,
+      meta_adset_id: metaAdsetId,
+      meta_campaign_id: metaCampaignId,
+      click_id: attr?.click_id ?? null,
       last_activity_at: new Date().toISOString(),
     })
     .select("id")
