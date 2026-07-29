@@ -150,3 +150,7 @@ verify_jwt = false
 
 [functions.broadcast-group-sync]
 verify_jwt = false
+
+# Poll Green API journals → CRM (bot keeps webhookUrl; no setSettings).
+[functions.greenapi-crm-ingest]
+verify_jwt = false
