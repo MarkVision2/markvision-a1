@@ -1,7 +1,7 @@
 {
-  "git_sha": "804d7da",
-  "git_sha_full": "804d7da774c6d287d410a5194bf01cec7e0b8968",
-  "updated_at": "2026-07-29T14:18:14Z",
-  "label": "chore: stamp lovable-sync after CRM Today UX",
+  "git_sha": "4a1dfcb",
+  "git_sha_full": "4a1dfcb7137eb9f655c050255446e2b6213f9b63",
+  "updated_at": "2026-07-29T14:33:41Z",
+  "label": "Merge ad attribution restore for CRM WhatsApp leads",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
