@@ -9,10 +9,11 @@ function mergeWaOptions(
   meta: Array<{ id: string; display_phone_number: string }>,
   cabinetNumber: string | null | undefined,
 ) {
-  const fromMeta = meta.map((p) => ({
+  type WaOpt = { id: string; display: string; source: "meta" | "cabinet" };
+  const fromMeta: WaOpt[] = meta.map((p) => ({
     id: normalizeWa(p.id) || normalizeWa(p.display_phone_number) || p.id,
     display: p.display_phone_number || p.id,
-    source: "meta" as const,
+    source: "meta",
   }));
   const seen = new Set(fromMeta.map((p) => normalizeWa(p.id)).filter(Boolean));
   const cabinetDigits = normalizeWa(cabinetNumber);

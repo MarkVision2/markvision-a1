@@ -385,10 +385,11 @@ const GoalAssetsPicker = ({
   // Meta Graph list + fallback to cabinet settings number (ad_cabinets.whatsapp_number).
   // Settings store a plain phone string; Meta often returns nothing if Page has no WABA link.
   const waOptions = useMemo(() => {
-    const fromMeta = wa.data.map((p) => ({
+    type WaOpt = { id: string; display: string; source: "meta" | "cabinet" };
+    const fromMeta: WaOpt[] = wa.data.map((p) => ({
       id: normalizeWa(p.id) || normalizeWa(p.display_phone_number) || p.id,
       display: p.display_phone_number || p.id,
-      source: "meta" as const,
+      source: "meta",
     }));
     const seen = new Set(fromMeta.map((p) => normalizeWa(p.id)).filter(Boolean));
     const cabinetDigits = normalizeWa(cabinet?.whatsappNumber);

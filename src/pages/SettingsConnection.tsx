@@ -1010,7 +1010,8 @@ export function SiteIntakeCard() {
     payload.token = PROJECT_TOKEN;
     payload.referrer = document.referrer || '';
     payload.landing_url = location.href;
-    payload.source = payload.source || 'site';
+    // UTM важнее заглушки «site» — иначе ?utm_source=vit не попадёт в источник CRM
+    payload.source = payload.utm_source || payload.source || 'site';
     try {
       var r = await fetch(WEBHOOK_URL, {
         method: 'POST',

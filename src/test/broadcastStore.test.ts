@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   createBroadcast,
   emptyBroadcastDraft,
+  normalizeBroadcastLink,
   parseContacts,
   readBroadcasts,
   removeBroadcast,
@@ -33,6 +34,25 @@ describe("parseContacts", () => {
     expect(list[0]).toEqual({ name: "Иван", phone: "+77001234567" });
     expect(list[2].name).toBe("");
   });
+
+  it("разбирает «Имя +номер» через пробел", () => {
+    const list = parseContacts("Юрий Валерьевич +77472842595\nМария 87011234567");
+    expect(list).toHaveLength(2);
+    expect(list[0]).toEqual({ name: "Юрий Валерьевич", phone: "+77472842595" });
+    expect(list[1].name).toBe("Мария");
+  });
+});
+
+describe("normalizeBroadcastLink", () => {
+  it("вытаскивает {https://…} в targetUrl и ставит {ссылка}", () => {
+    const { message, targetUrl } = normalizeBroadcastLink(
+      "Жми {https://chat.whatsapp.com/abc}",
+      "",
+    );
+    expect(targetUrl).toBe("https://chat.whatsapp.com/abc");
+    expect(message).toContain("{ссылка}");
+    expect(message).not.toContain("chat.whatsapp.com");
+  });
 });
 
 describe("renderMessage", () => {
@@ -42,6 +62,12 @@ describe("renderMessage", () => {
   });
   it("работает без заголовка и без имени", () => {
     expect(renderMessage("", "Здравствуйте, {name}!", { name: "" })).toBe("Здравствуйте, !");
+  });
+  it("в режиме кнопки убирает плейсхолдер ссылки", () => {
+    expect(renderMessage("", "Жми {ссылка}", { name: "" }, "https://x", true)).toBe("Жми");
+    expect(
+      renderMessage("", "Текст\n\nВступить в группу: {ссылка}", { name: "" }, "https://x", true),
+    ).toBe("Текст");
   });
 });
 

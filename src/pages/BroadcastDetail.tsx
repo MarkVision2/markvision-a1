@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   CheckCircle2,
   Clock,
+  Copy,
   ExternalLink,
   Loader2,
   MessageCircle,
@@ -42,7 +43,12 @@ import { useLeadContacts } from "@/hooks/useLeadContacts";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { matchRecipientLeads } from "@/lib/broadcastFunnel";
-import { fetchNonResponders, type FollowUpExcluded, type RecipientRow } from "@/lib/broadcastServer";
+import {
+  fetchNonResponders,
+  fetchRecipientContacts,
+  type FollowUpExcluded,
+  type RecipientRow,
+} from "@/lib/broadcastServer";
 import { fmtKzt } from "@/lib/format";
 import {
   CHANNEL_META,
@@ -62,20 +68,54 @@ const STATUS_LABEL: Record<string, string> = {
   queued: "В очереди",
   sent: "Отправлено",
   delivered: "Получил",
-  read: "Открыл",
+  read: "Прочитал",
+  clicked: "Кликнул",
   replied: "Ответил",
   converted: "Конверсия",
   failed: "Ошибка",
   skipped_optout: "Отписка",
 };
 
-const FILTERS: { id: string; label: string; match: (status: string) => boolean }[] = [
+type RecFilter = {
+  id: string;
+  label: string;
+  /** null = special handler in filteredRecipients */
+  match: ((r: { status: string; clickedAt: string | null; joinedAt: string | null; readAt: string | null; deliveredAt: string | null }) => boolean) | null;
+};
+
+const FILTERS: RecFilter[] = [
   { id: "all", label: "Все", match: () => true },
-  { id: "delivered", label: "Получили", match: (s) => ["delivered", "read", "replied", "converted"].includes(s) },
-  { id: "read", label: "Открыли", match: (s) => ["read", "replied", "converted"].includes(s) },
-  { id: "replied", label: "Ответили", match: (s) => ["replied", "converted"].includes(s) },
-  { id: "failed", label: "Ошибки", match: (s) => s === "failed" },
-  { id: "crm", label: "Есть в CRM", match: () => true }, // special: handled below
+  {
+    id: "delivered",
+    label: "Получили",
+    match: (r) =>
+      ["delivered", "read", "clicked", "replied", "converted"].includes(r.status) ||
+      !!r.deliveredAt ||
+      !!r.readAt ||
+      !!r.clickedAt ||
+      !!r.joinedAt,
+  },
+  {
+    id: "read",
+    label: "Прочитали",
+    match: (r) =>
+      ["read", "clicked", "replied", "converted"].includes(r.status) ||
+      !!r.readAt ||
+      !!r.clickedAt ||
+      !!r.joinedAt,
+  },
+  {
+    id: "clicked",
+    label: "Клики",
+    match: (r) => !!r.clickedAt || !!r.joinedAt || r.status === "clicked" || r.status === "converted",
+  },
+  { id: "joined", label: "В группе", match: (r) => !!r.joinedAt },
+  {
+    id: "replied",
+    label: "Ответили",
+    match: (r) => ["replied", "converted"].includes(r.status),
+  },
+  { id: "failed", label: "Ошибки", match: (r) => r.status === "failed" },
 ];
 
 export default function BroadcastDetail() {
@@ -84,11 +124,14 @@ export default function BroadcastDetail() {
   const { activeId } = useProjectsStore();
   const projectId = activeId || null;
   const { contacts: crmContacts } = useLeadContacts();
-  const { create, update, remove, launch } = useBroadcasts(projectId, crmContacts);
+  const { create, update, remove, launch, duplicate } = useBroadcasts(projectId, crmContacts);
   const { config: whatsapp } = useWhatsAppConfig();
   const { detail, loading, error, refetch } = useBroadcastDetail(id, projectId);
 
   const [editOpen, setEditOpen] = useState(false);
+  const [dialogMode, setDialogMode] = useState<"edit" | "duplicate">("edit");
+  const [seedContacts, setSeedContacts] = useState<{ name: string; phone: string }[]>([]);
+  const [seedLoading, setSeedLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [pendingDelete, setPendingDelete] = useState(false);
   const [query, setQuery] = useState("");
@@ -111,12 +154,8 @@ export default function BroadcastDetail() {
     const q = query.trim().toLowerCase();
     return detail.recipients.filter((r) => {
       const lead = matched.get(r.id);
-      if (filter === "crm") {
-        if (!lead) return false;
-      } else {
-        const f = FILTERS.find((x) => x.id === filter);
-        if (f && !f.match(r.status)) return false;
-      }
+      const f = FILTERS.find((x) => x.id === filter);
+      if (f?.match && !f.match(r)) return false;
       if (!q) return true;
       return (
         (r.name || "").toLowerCase().includes(q) ||
@@ -156,13 +195,65 @@ export default function BroadcastDetail() {
   const isDone =
     campaign.status === "sent" || campaign.status === "partial" || campaign.status === "failed";
 
+  const openEdit = async () => {
+    if (!campaign) return;
+    setDialogMode("edit");
+    setSeedLoading(true);
+    try {
+      const contacts = await fetchRecipientContacts(campaign.id);
+      setSeedContacts(contacts);
+    } catch {
+      setSeedContacts([]);
+    } finally {
+      setSeedLoading(false);
+      setEditOpen(true);
+    }
+  };
+
+  const openDuplicate = async () => {
+    if (!campaign) return;
+    setDialogMode("duplicate");
+    setSeedLoading(true);
+    try {
+      const contacts = await fetchRecipientContacts(campaign.id);
+      setSeedContacts(contacts);
+    } catch {
+      setSeedContacts([]);
+    } finally {
+      setSeedLoading(false);
+      setEditOpen(true);
+    }
+  };
+
   const handleSave = async (draft: BroadcastDraft) => {
     try {
+      if (dialogMode === "duplicate") {
+        const created = await duplicate(draft);
+        if (!created) throw new Error("Не удалось создать копию");
+        toast.success(`Копия создана · ${created.recipientsCount} получателей — можно отправлять`);
+        navigate(`/broadcasts/${created.id}`);
+        return;
+      }
+      // Уже отправленную рассылку нельзя пересобрать — делаем копию с новым списком.
+      const locked = !["draft", "scheduled"].includes(campaign.status);
+      if (locked && draft.audienceSource === "upload") {
+        const created = await duplicate({
+          ...draft,
+          name: draft.name.startsWith("Копия:") ? draft.name : `Копия: ${draft.name}`,
+        });
+        if (!created) throw new Error("Не удалось создать копию");
+        toast.success(
+          `Список у отправленной рассылки не меняется — создана копия (${created.recipientsCount} чел.)`,
+        );
+        navigate(`/broadcasts/${created.id}`);
+        return;
+      }
       await update(campaign.id, draft);
       toast.success("Рассылка обновлена");
       refetch();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось сохранить");
+      throw e;
     }
   };
 
@@ -214,9 +305,27 @@ export default function BroadcastDetail() {
     }
   };
 
+  const handlePrimarySend = () => {
+    if (isDone) {
+      void openDuplicate();
+      toast.message("Чтобы слать новой базе — дублируйте рассылку и добавьте контакты");
+      return;
+    }
+    setSending(true);
+  };
+
   return (
-    <main className="flex h-[calc(100vh-3.5rem)] min-h-0 flex-col animate-fade-in-up">
-      <header className="border-b border-border/60 bg-background/80 px-4 py-3 backdrop-blur sm:px-6">
+    <main className="relative flex h-[calc(100vh-3.5rem)] min-h-0 flex-col animate-fade-in-up">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-[radial-gradient(ellipse_at_top,_hsl(162_70%_45%_/_0.12),_transparent_55%)]"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[linear-gradient(to_right,hsl(var(--border)/0.3)_1px,transparent_1px),linear-gradient(to_bottom,hsl(var(--border)/0.3)_1px,transparent_1px)] bg-[size:44px_44px] opacity-30 [mask-image:linear-gradient(to_bottom,black,transparent_65%)]"
+      />
+
+      <header className="relative z-10 border-b border-border/50 bg-background/70 px-4 py-3 backdrop-blur-xl sm:px-6">
         <div className="mx-auto max-w-[1400px] space-y-3">
           <Button variant="ghost" size="sm" className="gap-1 -ml-2" asChild>
             <Link to="/broadcasts">
@@ -231,7 +340,7 @@ export default function BroadcastDetail() {
             </span>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
-                <h1 className="truncate text-xl font-bold sm:text-2xl">{campaign.name}</h1>
+                <h1 className="truncate text-xl font-bold tracking-tight sm:text-2xl">{campaign.name}</h1>
                 <span
                   className={cn(
                     "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold",
@@ -242,6 +351,9 @@ export default function BroadcastDetail() {
                     status.tone === "muted" && "bg-secondary text-muted-foreground",
                   )}
                 >
+                  {campaign.status === "sending" ? (
+                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
+                  ) : null}
                   {status.label}
                 </span>
                 <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px] font-semibold">
@@ -278,7 +390,7 @@ export default function BroadcastDetail() {
                 )}
                 <Link to="/crm" className="inline-flex items-center gap-1 text-primary hover:underline">
                   <ExternalLink className="h-3 w-3" />
-                  CRM
+                  Открыть CRM
                 </Link>
               </div>
             </div>
@@ -286,11 +398,12 @@ export default function BroadcastDetail() {
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                onClick={() => setSending(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-primary px-3 py-2 text-xs font-semibold text-primary-foreground shadow-glow transition-opacity hover:opacity-90"
+                onClick={handlePrimarySend}
+                disabled={seedLoading}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-gradient-primary px-3.5 py-2 text-xs font-semibold text-primary-foreground shadow-glow transition-transform hover:scale-[1.02] disabled:opacity-60"
               >
                 <Send className="h-3.5 w-3.5" />
-                {isDone ? "Повторить" : "Отправить"}
+                {isDone ? "Повторить на новую базу" : "Отправить"}
               </button>
               {isDone && (
                 <button
@@ -310,8 +423,18 @@ export default function BroadcastDetail() {
               )}
               <button
                 type="button"
-                onClick={() => setEditOpen(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border/60 bg-card/60 px-3 py-2 text-xs font-semibold transition-colors hover:bg-secondary/60"
+                onClick={() => void openDuplicate()}
+                disabled={seedLoading}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-primary/40 bg-primary/5 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/10 disabled:opacity-60"
+              >
+                {seedLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
+                Дублировать
+              </button>
+              <button
+                type="button"
+                onClick={() => void openEdit()}
+                disabled={seedLoading}
+                className="inline-flex items-center gap-1.5 rounded-xl border border-border/60 bg-card/60 px-3 py-2 text-xs font-semibold transition-colors hover:bg-secondary/60 disabled:opacity-60"
               >
                 <Pencil className="h-3.5 w-3.5" />
                 Изменить
@@ -319,7 +442,7 @@ export default function BroadcastDetail() {
               <button
                 type="button"
                 onClick={() => setPendingDelete(true)}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-destructive/30 px-3 py-2 text-xs font-semibold text-destructive transition-colors hover:bg-destructive/10"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-destructive/30 px-3 py-2 text-xs font-semibold text-destructive transition-colors hover:bg-destructive/10"
               >
                 <Trash2 className="h-3.5 w-3.5" />
                 Удалить
@@ -329,7 +452,7 @@ export default function BroadcastDetail() {
         </div>
       </header>
 
-      <section className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-4 sm:px-6">
+      <section className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-5 sm:px-6">
         <div className="mx-auto w-full max-w-[1400px] space-y-5">
           <div className="space-y-3">
             <BroadcastHeroKpis funnel={funnel} />
@@ -341,13 +464,18 @@ export default function BroadcastDetail() {
               <div>
                 <BroadcastFunnelView funnel={funnel} />
                 <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
-                  Доставка и открытия — из WhatsApp. Лиды и продажи — из CRM по телефону.
-                  Клики появятся при трекинг-ссылках в тексте.
+                  <span className="font-semibold text-foreground/80">Прочитали</span> — две синие
+                  галочки.{" "}
+                  <span className="font-semibold text-foreground/80">Клики</span> — кнопка/ссылка.{" "}
+                  <span className="font-semibold text-foreground/80">В группе</span> — реально в
+                  WhatsApp-группе (лид в CRM создаётся сам).{" "}
+                  <span className="font-semibold text-foreground/80">Вебинар / оплаты</span> — дальше
+                  по воронке CRM среди вступивших.
                 </p>
               </div>
 
-              <div className="rounded-2xl border border-border/60 bg-card/40 p-4">
-                <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-muted-foreground">
+              <div className="rounded-2xl border border-border/55 bg-card/45 p-4 backdrop-blur-sm">
+                <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Текст сообщения
                 </h2>
                 {campaign.title ? (
@@ -359,12 +487,12 @@ export default function BroadcastDetail() {
               </div>
             </div>
 
-            <div className="rounded-2xl border border-border/60 bg-card/40 p-4">
+            <div className="rounded-2xl border border-border/55 bg-card/45 p-4 backdrop-blur-sm">
               <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">
+                <h2 className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
                   Получатели
                 </h2>
-                <span className="text-[11px] text-muted-foreground">
+                <span className="text-[11px] tabular-nums text-muted-foreground">
                   {filteredRecipients.length}/{recipients.length}
                 </span>
               </div>
@@ -375,7 +503,7 @@ export default function BroadcastDetail() {
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Имя или телефон…"
-                  className="h-9 pl-8 text-xs"
+                  className="h-9 border-border/50 bg-background/40 pl-8 text-xs"
                 />
               </div>
 
@@ -403,7 +531,10 @@ export default function BroadcastDetail() {
                 ) : (
                   filteredRecipients.map((r) => {
                     const lead = matched.get(r.id);
+                    const displayName =
+                      (r.name || "").trim() || (lead?.name || "").trim() || "Без имени";
                     const st = STATUS_LABEL[r.status] ?? r.status;
+                    const inGroup = !!r.joinedAt;
                     return (
                       <div
                         key={r.id}
@@ -412,7 +543,7 @@ export default function BroadcastDetail() {
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="truncate text-sm font-semibold">
-                              {r.name || "Без имени"}
+                              {displayName}
                             </div>
                             <div className="truncate text-[11px] text-muted-foreground">{r.phone}</div>
                           </div>
@@ -421,14 +552,37 @@ export default function BroadcastDetail() {
                               "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold",
                               r.status === "failed" && "bg-destructive/15 text-destructive",
                               r.status === "replied" && "bg-success/15 text-success",
-                              r.status === "read" && "bg-primary/15 text-primary",
-                              (r.status === "delivered" || r.status === "sent") &&
-                                "bg-secondary text-muted-foreground",
+                              (r.status === "read" || r.status === "clicked") && "bg-primary/15 text-primary",
+                              r.status === "delivered" && "bg-primary/10 text-primary",
+                              r.status === "sent" && "bg-secondary text-muted-foreground",
                               r.status === "queued" && "bg-secondary text-muted-foreground",
                             )}
                           >
                             {st}
                           </span>
+                        </div>
+                        <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10px]">
+                          {lead ? (
+                            <span className="rounded-full bg-success/15 px-2 py-0.5 font-semibold text-success">
+                              Есть в CRM
+                            </span>
+                          ) : null}
+                          {r.clickedAt ? (
+                            <span className="rounded-full bg-primary/15 px-2 py-0.5 font-semibold text-primary">
+                              Кликнул
+                            </span>
+                          ) : null}
+                          {inGroup ? (
+                            <span className="rounded-full bg-primary/15 px-2 py-0.5 font-semibold text-primary">
+                              В группе
+                            </span>
+                          ) : null}
+                          {r.deliveredAt ? (
+                            <span className="text-muted-foreground">получил</span>
+                          ) : null}
+                          {r.readAt ? (
+                            <span className="text-muted-foreground">прочитал</span>
+                          ) : null}
                         </div>
                         {lead ? (
                           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
@@ -463,6 +617,8 @@ export default function BroadcastDetail() {
         open={editOpen}
         onOpenChange={setEditOpen}
         broadcast={campaign}
+        mode={dialogMode}
+        seedContacts={seedContacts}
         crmContacts={crmContacts}
         onSave={handleSave}
       />

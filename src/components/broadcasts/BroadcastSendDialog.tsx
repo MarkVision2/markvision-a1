@@ -20,10 +20,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { CHANNEL_META, renderMessage, type Broadcast } from "@/lib/broadcastStore";
+import { CHANNEL_META, defaultCtaLabel, renderMessage, type Broadcast } from "@/lib/broadcastStore";
 import { sendWhatsAppMessage } from "@/lib/broadcastSender";
-import { fetchRecipientCounts, type RecipientCounts } from "@/lib/broadcastServer";
+import { fetchRecipientCounts, getCampaign, type RecipientCounts } from "@/lib/broadcastServer";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 
 interface Props {
   open: boolean;
@@ -37,21 +38,34 @@ interface Props {
 type Phase = "confirm" | "launched";
 
 export function BroadcastSendDialog({ open, onOpenChange, broadcast, whatsappConnected, onLaunch }: Props) {
+  const { activeId: projectId } = useProjectsStore();
   const [phase, setPhase] = useState<Phase>("confirm");
   const [testPhone, setTestPhone] = useState("");
   const [testing, setTesting] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [counts, setCounts] = useState<RecipientCounts | null>(null);
+  const [live, setLive] = useState<Broadcast | null>(broadcast);
 
   useEffect(() => {
     if (open) {
       setPhase("confirm");
       setTestPhone("");
       setCounts(null);
+      setLive(broadcast);
     }
-  }, [open]);
+  }, [open, broadcast]);
 
-  const campaignId = broadcast?.id ?? null;
+  // Подтянуть свежий targetUrl/cta из БД — иначе тест уходит текстом без кнопки.
+  useEffect(() => {
+    if (!open || !broadcast?.id || !projectId) return;
+    let cancelled = false;
+    void getCampaign(broadcast.id, projectId).then((fresh) => {
+      if (!cancelled && fresh) setLive(fresh);
+    }).catch(() => { /* keep prop */ });
+    return () => { cancelled = true; };
+  }, [open, broadcast?.id, projectId]);
+
+  const campaignId = live?.id ?? broadcast?.id ?? null;
   const refreshCounts = useCallback(() => {
     if (!campaignId) return;
     void fetchRecipientCounts(campaignId).then(setCounts);
@@ -63,11 +77,12 @@ export function BroadcastSendDialog({ open, onOpenChange, broadcast, whatsappCon
   }, [phase, refreshCounts]);
   useRealtimeTable("broadcast_recipients", refreshCounts, phase === "launched", 800);
 
-  if (!broadcast) return null;
+  const active = live ?? broadcast;
+  if (!active) return null;
 
-  const isSms = broadcast.channel === "sms";
-  const total = broadcast.recipientsCount || 0;
-  const isScheduled = broadcast.schedule.mode === "scheduled";
+  const isSms = active.channel === "sms";
+  const total = active.recipientsCount || 0;
+  const isScheduled = active.schedule.mode === "scheduled";
   const blocked = isSms || !whatsappConnected || total === 0;
   const ChannelIcon = isSms ? Smartphone : MessageCircle;
 
@@ -80,8 +95,33 @@ export function BroadcastSendDialog({ open, onOpenChange, broadcast, whatsappCon
     }
     setTesting(true);
     try {
-      await sendWhatsAppMessage(phone, renderMessage(broadcast.title, broadcast.message, { name: "Имя" }));
-      toast.success("Тестовое сообщение отправлено");
+      // Ещё раз читаем кампанию — targetUrl мог появиться после выбора группы.
+      let current = active;
+      if (projectId) {
+        const fresh = await getCampaign(active.id, projectId).catch(() => null);
+        if (fresh) {
+          current = fresh;
+          setLive(fresh);
+        }
+      }
+      const target = (current.targetUrl || "").trim();
+      if (!target) {
+        toast.error("Сначала выберите группу или укажите ссылку — иначе тест уйдёт без кнопки");
+        return;
+      }
+      if (!/^https?:\/\//i.test(target)) {
+        toast.error("Ссылка для кнопки должна начинаться с https://");
+        return;
+      }
+      const text = renderMessage(current.title, current.message, { name: "Имя" }, "", true);
+      await sendWhatsAppMessage(phone, text, {
+        buttonUrl: target,
+        buttonText: (current.ctaLabel || "").trim() || defaultCtaLabel(target),
+        header: (current.title || "").trim() || undefined,
+        projectId: projectId || undefined,
+        requireButton: true,
+      });
+      toast.success("Тест отправлен с кнопкой «Вступить в группу»");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось отправить тест");
     } finally {
@@ -102,8 +142,18 @@ export function BroadcastSendDialog({ open, onOpenChange, broadcast, whatsappCon
     }
   };
 
-  const preview = renderMessage(broadcast.title, broadcast.message, { name: "Имя" }, broadcast.targetUrl || "")
-    .replace(/\*(.+?)\*/g, "$1");
+  const target = (active.targetUrl || "").trim();
+  const asButton = /^https?:\/\//i.test(target);
+  const preview = renderMessage(
+    active.title,
+    active.message,
+    { name: "Имя" },
+    asButton ? "" : target,
+    asButton,
+  ).replace(/\*(.+?)\*/g, "$1");
+  const previewCta = asButton
+    ? ((active.ctaLabel || "").trim() || defaultCtaLabel(target))
+    : "";
   const done = counts
     ? counts.sent + counts.delivered + counts.read + counts.replied + counts.clicked + counts.converted
     : 0;
@@ -120,7 +170,7 @@ export function BroadcastSendDialog({ open, onOpenChange, broadcast, whatsappCon
           </DialogTitle>
           <DialogDescription className="flex items-center gap-1.5">
             <ChannelIcon className="h-3.5 w-3.5" />
-            {CHANNEL_META[broadcast.channel].label} · {total} получателей
+            {CHANNEL_META[active.channel].label} · {total} получателей
           </DialogDescription>
         </DialogHeader>
 
@@ -145,9 +195,15 @@ export function BroadcastSendDialog({ open, onOpenChange, broadcast, whatsappCon
                 Клиенты, ответившие «стоп», исключаются автоматически.
               </Banner>
             )}
-            {isScheduled && broadcast.schedule.at && (
+            {isScheduled && active.schedule.at && (
               <Banner tone="muted" icon={Clock}>
-                Старт по расписанию: {new Date(broadcast.schedule.at).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}.
+                Старт по расписанию: {new Date(active.schedule.at).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}.
+              </Banner>
+            )}
+            {!asButton && (
+              <Banner tone="warning" icon={AlertTriangle}>
+                Нет ссылки для кнопки. Выберите WhatsApp-группу в карточке рассылки и сохраните — иначе тест
+                уйдёт обычным текстом.
               </Banner>
             )}
 
@@ -157,12 +213,17 @@ export function BroadcastSendDialog({ open, onOpenChange, broadcast, whatsappCon
                 Сообщение
               </div>
               <div className="max-h-32 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed">{preview}</div>
+              {previewCta && (
+                <div className="mt-2 inline-flex rounded-lg bg-primary/15 px-3 py-1.5 text-xs font-semibold text-primary">
+                  Кнопка: {previewCta}
+                </div>
+              )}
             </div>
 
-            {broadcast.messageVariants.length > 0 && (
+            {active.messageVariants.length > 0 && (
               <div className="flex items-center gap-1.5 text-[11px] text-success">
                 <Sparkles className="h-3.5 w-3.5" />
-                {broadcast.messageVariants.length} ИИ-вариантов — каждому получателю уходит свой (антиспам)
+                {active.messageVariants.length} ИИ-вариантов — каждому получателю уходит свой (антиспам)
               </div>
             )}
 

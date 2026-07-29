@@ -162,9 +162,10 @@ export function InstagramAccountConnect() {
 
   const handleSync = async () => {
     try {
-      const res = await sync() as { results?: Array<{ webhook?: { attempted?: boolean; ok?: boolean; error?: string } }> } | void;
+      const res = (await sync()) as { results?: Array<{ webhook?: { attempted?: boolean; ok?: boolean; error?: string } }> } | void;
       toast.success("Синхронизация запущена");
-      const wh = Array.isArray(res?.results) ? res.results[0]?.webhook : undefined;
+      const results = res && typeof res === "object" && Array.isArray(res.results) ? res.results : [];
+      const wh = results[0]?.webhook;
       if (wh?.attempted && wh.ok === false) {
         toast.warning(`Автоответ на комментарии: вебхук не подписан — ${wh.error ?? "проверьте Page-токен"}`);
       } else if (wh?.attempted && wh.ok) {

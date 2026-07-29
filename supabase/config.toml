@@ -131,3 +131,22 @@ verify_jwt = false
 # x-montage-key; секрет ELEVENLABS_API_KEY в Supabase Edge Secrets.
 [functions.reels-tts]
 verify_jwt = false
+
+# Рассылки: воркер (cron / admin) и публичный клик-редирект.
+[functions.broadcast-worker]
+verify_jwt = false
+
+[functions.broadcast-click]
+verify_jwt = false
+
+[functions.broadcast-health]
+verify_jwt = false
+
+[functions.broadcast-ai-variants]
+verify_jwt = false
+
+[functions.broadcast-groups]
+verify_jwt = false
+
+[functions.broadcast-group-sync]
+verify_jwt = false

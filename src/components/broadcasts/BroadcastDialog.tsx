@@ -32,6 +32,8 @@ import {
   emptyBroadcastDraft,
   parseContacts,
   renderMessage,
+  normalizeBroadcastLink,
+  defaultCtaLabel,
   type AudienceSource,
   type Broadcast,
   type BroadcastChannel,
@@ -43,8 +45,12 @@ interface Props {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   broadcast: Broadcast | null;
+  /** create | edit | duplicate — влияет на заголовок и префилл имени. */
+  mode?: "create" | "edit" | "duplicate";
+  /** Контакты из БД (получатели исходной рассылки) для upload-аудитории. */
+  seedContacts?: { name: string; phone: string }[];
   crmContacts: LeadContact[];
-  onSave: (draft: BroadcastDraft, recipientsCount: number) => void;
+  onSave: (draft: BroadcastDraft, recipientsCount: number) => void | Promise<void>;
   /** Режим догоняющей рассылки: аудитория фиксирована (не отреагировавшие). */
   followUp?: { sourceName: string; recipientCount: number; excluded: FollowUpExcluded } | null;
   /** Преднаполненный черновик (для догоняющей) — используется при broadcast === null. */
@@ -54,9 +60,15 @@ interface Props {
 const inputCls =
   "w-full rounded-lg border border-border/60 bg-background/40 px-3 py-2 text-sm outline-none transition-colors focus:border-primary/50";
 
-function draftFromBroadcast(b: Broadcast): BroadcastDraft {
-  return {
-    name: b.name,
+function formatPaste(contacts: { name: string; phone: string }[]): string {
+  return contacts
+    .map((c) => `${c.name}${c.name ? ", " : ""}${c.phone}`)
+    .join("\n");
+}
+
+function draftFromBroadcast(b: Broadcast, mode: "edit" | "duplicate"): BroadcastDraft {
+  const base = {
+    name: mode === "duplicate" ? `Копия: ${b.name}` : b.name,
     channel: b.channel,
     audienceSource: b.audienceSource,
     crmFilter: b.crmFilter,
@@ -64,35 +76,64 @@ function draftFromBroadcast(b: Broadcast): BroadcastDraft {
     title: b.title,
     message: b.message,
     targetUrl: b.targetUrl,
+    ctaLabel: b.ctaLabel,
     messageVariants: b.messageVariants,
-    sendPace: b.sendPace,
     groupId: b.groupId,
-    schedule: b.schedule,
+    schedule: mode === "duplicate" ? ({ mode: "now", at: null } as const) : b.schedule,
     recipientsCount: b.recipientsCount,
+    sendPace: b.sendPace,
   };
+  return base;
 }
 
-export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, onSave, followUp, initialDraft }: Props) {
+export function BroadcastDialog({
+  open,
+  onOpenChange,
+  broadcast,
+  mode = "create",
+  seedContacts,
+  crmContacts,
+  onSave,
+  followUp,
+  initialDraft,
+}: Props) {
   const [draft, setDraft] = useState<BroadcastDraft>(emptyBroadcastDraft);
   const [pasted, setPasted] = useState("");
   const [genLoading, setGenLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const { activeId: projectId } = useProjectsStore();
   const [groups, setGroups] = useState<WaGroup[]>([]);
   const [groupBusy, setGroupBusy] = useState(false);
 
+  const effectiveMode: "create" | "edit" | "duplicate" =
+    mode === "duplicate" ? "duplicate" : broadcast ? "edit" : "create";
+
   useEffect(() => {
     if (!open) return;
     if (broadcast) {
-      setDraft(draftFromBroadcast(broadcast));
-      setPasted(broadcast.uploadedContacts.map((c) => `${c.name}${c.name ? ", " : ""}${c.phone}`).join("\n"));
+      const d = draftFromBroadcast(broadcast, effectiveMode === "duplicate" ? "duplicate" : "edit");
+      const seeds =
+        seedContacts && seedContacts.length
+          ? seedContacts
+          : d.uploadedContacts;
+      // При дублировании всегда даём править список вручную (снимок получателей).
+      const audienceSource =
+        effectiveMode === "duplicate" && seeds.length > 0 ? ("upload" as const) : d.audienceSource;
+      setDraft({
+        ...d,
+        audienceSource,
+        uploadedContacts: seeds,
+      });
+      setPasted(formatPaste(seeds));
     } else if (initialDraft) {
+      // Догоняющая: преднаполненный черновик, аудитория фиксирована извне.
       setDraft(initialDraft);
       setPasted("");
     } else {
       setDraft(emptyBroadcastDraft());
       setPasted("");
     }
-  }, [open, broadcast, initialDraft]);
+  }, [open, broadcast, initialDraft, seedContacts, effectiveMode]);
 
   const patch = <K extends keyof BroadcastDraft>(key: K, value: BroadcastDraft[K]) =>
     setDraft((p) => ({ ...p, [key]: value }));
@@ -155,15 +196,23 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
     setGroupBusy(true);
     try {
       const invite = await fetchGroupInvite(projectId, groupId);
-      setDraft((p) => ({
-        ...p,
-        groupId,
-        targetUrl: invite || p.targetUrl,
-        message: /(\{ссылка\}|\{link\})/i.test(p.message)
-          ? p.message
-          : `${p.message}${p.message ? "\n\n" : ""}Вступить в группу: {ссылка}`,
-      }));
-      toast.success("Группа выбрана — ссылка на вступление подставлена");
+      setDraft((p) => {
+        // Ссылку кладём в targetUrl → уйдёт кнопкой WhatsApp, не текстом.
+        // Убираем старые хвосты «Вступить в группу: {ссылка}», чтобы не дублировать CTA.
+        let message = (p.message ?? "")
+          .replace(/\n*[ \t]*Вступить в группу:[ \t]*\{ссылка\}[ \t]*/gi, "")
+          .replace(/\{ссылка\}|\{link\}/gi, "")
+          .replace(/\n{3,}/g, "\n\n")
+          .trim();
+        return {
+          ...p,
+          groupId,
+          targetUrl: invite || p.targetUrl,
+          ctaLabel: p.ctaLabel || "Вступить в группу",
+          message,
+        };
+      });
+      toast.success("Группа выбрана — в сообщении будет кнопка «Вступить в группу»");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось получить ссылку группы");
     } finally {
@@ -203,24 +252,38 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
     return list[0] ?? { name: "Имя" };
   }, [draft, parsedUpload, crmContacts]);
 
-  const needsLink = /(\{ссылка\}|\{link\})/i.test(draft.message);
+  const needsLink =
+    /(\{ссылка\}|\{link\})/i.test(draft.message) ||
+    /\{https?:\/\//i.test(draft.message) ||
+    /https?:\/\//i.test(draft.message) ||
+    draft.targetUrl.trim().length > 0;
   const canSave =
     draft.name.trim().length > 0 &&
     draft.message.trim().length > 0 &&
     recipientsCount > 0 &&
-    (!needsLink || draft.targetUrl.trim().length > 0) &&
+    (!needsLink || draft.targetUrl.trim().length > 0 || /\{https?:\/\//i.test(draft.message) || /https?:\/\//i.test(draft.message)) &&
     (draft.schedule.mode === "now" || !!draft.schedule.at);
 
-  const submit = () => {
-    if (!canSave) return;
+  const submit = async () => {
+    if (!canSave || saving) return;
+    const link = normalizeBroadcastLink(draft.message, draft.targetUrl);
+    if (needsLink && !link.targetUrl) return;
     const finalDraft: BroadcastDraft = {
       ...draft,
       name: draft.name.trim(),
+      message: link.message,
+      targetUrl: link.targetUrl,
+      ctaLabel: (draft.ctaLabel || "").trim() || defaultCtaLabel(link.targetUrl),
       uploadedContacts: draft.audienceSource === "upload" ? parsedUpload : [],
       recipientsCount,
     };
-    onSave(finalDraft, recipientsCount);
-    onOpenChange(false);
+    setSaving(true);
+    try {
+      await onSave(finalDraft, recipientsCount);
+      onOpenChange(false);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -231,12 +294,20 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
             <span className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-primary text-primary-foreground shadow-glow">
               <Send className="h-4 w-4" />
             </span>
-            {broadcast ? "Настройка рассылки" : followUp ? "Догоняющая рассылка" : "Новая рассылка"}
+            {effectiveMode === "duplicate"
+              ? "Дублировать рассылку"
+              : followUp
+                ? "Догоняющая рассылка"
+                : broadcast
+                  ? "Настройка рассылки"
+                  : "Новая рассылка"}
           </DialogTitle>
           <DialogDescription>
-            {followUp
-              ? `Вторая волна по тем, кто не отреагировал на «${followUp.sourceName}». Напишите другой текст и выберите дату.`
-              : "Отправьте сообщение по базе CRM или загруженному списку контактов."}
+            {effectiveMode === "duplicate"
+              ? "Создаётся новая рассылка: добавьте или замените базу контактов, сохраните и отправьте."
+              : followUp
+                ? `Вторая волна по тем, кто не отреагировал на «${followUp.sourceName}». Напишите другой текст и выберите дату.`
+                : "Отправьте сообщение по базе CRM или загруженному списку контактов."}
           </DialogDescription>
         </DialogHeader>
 
@@ -408,11 +479,14 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
                   value={pasted}
                   onChange={(e) => setPasted(e.target.value)}
                   rows={5}
-                  placeholder={"Вставьте контакты, по одному в строке:\nИван, +7 700 123 45 67\nАйгерим, +7 701 765 43 21\n+7 702 000 00 00"}
+                  placeholder={"Вставьте контакты, по одному в строке:\nИван, +7 700 123 45 67\nЮрий +7 747 284 25 95\n+7 702 000 00 00"}
                   className={cn(inputCls, "resize-y font-mono text-xs")}
                 />
                 <p className="text-[11px] text-muted-foreground">
-                  Формат: «Имя, номер» или просто номер. Дубликаты убираются автоматически.
+                  Формат: «Имя, номер», «Имя номер» или просто номер. Дубликаты убираются автоматически.
+                  {effectiveMode === "duplicate"
+                    ? " Можно оставить старых и дописать новых — уйдёт новая рассылка по всему списку."
+                    : ""}
                 </p>
               </div>
             )}
@@ -508,8 +582,19 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
                   Предпросмотр
                 </div>
                 <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">
-                  {renderMessage(draft.title, draft.message, previewContact, draft.targetUrl).replace(/\*(.+?)\*/g, "$1")}
+                  {renderMessage(
+                    draft.title,
+                    normalizeBroadcastLink(draft.message, draft.targetUrl).message,
+                    previewContact,
+                    draft.targetUrl || "https://…",
+                    true,
+                  ).replace(/\*(.+?)\*/g, "$1")}
                 </div>
+                {(draft.targetUrl || /https?:\/\//i.test(draft.message)) && (
+                  <div className="mt-2 inline-flex rounded-lg bg-primary/15 px-3 py-1.5 text-xs font-semibold text-primary">
+                    Кнопка: {(draft.ctaLabel || "").trim() || defaultCtaLabel(draft.targetUrl || draft.message)}
+                  </div>
+                )}
               </div>
             )}
           </Field>
@@ -557,22 +642,30 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
               </div>
             )}
             <p className="mt-1 text-[10px] text-muted-foreground">
-              Выберите группу — ссылка на вступление подставится в {"{ссылка}"} автоматически, а мы посчитаем,
-              кто реально перешёл и <b>вступил в группу</b>.
+              Выберите группу — в WhatsApp уйдёт <b>кнопка «Вступить в группу»</b> (не текстовая ссылка).
+              Переходы и реальные вступления считаем автоматически.
             </p>
           </Field>
 
-          {/* Ссылка для {ссылка} — трекинг переходов */}
-          {/(\{ссылка\}|\{link\})/i.test(draft.message) && (
-            <Field label="Ссылка для перехода">
+          {/* Ссылка → кнопка WhatsApp с трекингом */}
+          {(needsLink || /(\{ссылка\}|\{link\})/i.test(draft.message)) && (
+            <Field label="Кнопка со ссылкой">
               <input
                 value={draft.targetUrl}
                 onChange={(e) => patch("targetUrl", e.target.value)}
-                placeholder="https://ваш-сайт.kz/promo"
+                placeholder="https://chat.whatsapp.com/… или сайт"
+                className={cn(inputCls, "mb-2")}
+              />
+              <input
+                value={draft.ctaLabel}
+                onChange={(e) => patch("ctaLabel", e.target.value)}
+                placeholder={defaultCtaLabel(draft.targetUrl)}
+                maxLength={25}
                 className={inputCls}
               />
-              <p className="text-[11px] text-muted-foreground">
-                {"{ссылка}"} в тексте станет короткой трекинг-ссылкой — переход клиента отметится как «перешёл».
+              <p className="mt-1.5 text-[11px] text-muted-foreground">
+                В WhatsApp уйдёт кнопка (не голая ссылка). В кнопку вшита трекинг-ссылка —
+                клик попадёт в аналитику, затем редирект на ваш URL.
               </p>
             </Field>
           )}
@@ -645,11 +738,28 @@ export function BroadcastDialog({ open, onOpenChange, broadcast, crmContacts, on
         </div>
 
         <DialogFooter className="border-t border-border/60 px-5 py-3">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Отмена
           </Button>
-          <Button onClick={submit} disabled={!canSave} className="bg-gradient-primary text-primary-foreground">
-            {broadcast ? "Сохранить" : followUp ? "Создать догоняющую" : "Создать рассылку"}
+          <Button
+            onClick={() => void submit()}
+            disabled={!canSave || saving}
+            className="bg-gradient-primary text-primary-foreground"
+          >
+            {saving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Сохраняем…
+              </>
+            ) : effectiveMode === "duplicate" ? (
+              "Создать копию"
+            ) : followUp ? (
+              "Создать догоняющую"
+            ) : broadcast ? (
+              "Сохранить"
+            ) : (
+              "Создать рассылку"
+            )}
           </Button>
         </DialogFooter>
       </DialogContent>

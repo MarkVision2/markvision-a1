@@ -13,6 +13,7 @@
 // показать конкретную причину, а не общее «Edge Function returned a non-2xx».
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
+import { requireCabinetAccess } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -45,6 +46,11 @@ Deno.serve(async (req) => {
     let testCode = String(codeIn || "");
 
     const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+
+    if (cabinet_id) {
+      const access = await requireCabinetAccess(authHeader, String(cabinet_id));
+      if (!access.ok) return access.response;
+    }
 
     if (cabinet_id && (!pixelId || !token)) {
       const { data: cab } = await admin.from("ad_cabinets").select("pixel_id, access_token, capi_test_event_code").eq("id", cabinet_id).maybeSingle();

@@ -291,7 +291,7 @@ export function useContentPlan() {
           supabase
             .from("instagram_codeword_stats")
             .select(
-              "codeword_id, codeword, short_id, reel_url, thumbnail_url, active, codeword_dms, codeword_comments, unique_users, link_clicks, leads, sales, revenue",
+              "codeword_id, codeword, short_id, reel_url, thumbnail_url, active, codeword_dms, codeword_comments, unique_users, link_clicks, leads, sales, revenue, last_event_at",
             )
             .eq("project_id", projectId),
           supabase
@@ -311,7 +311,7 @@ export function useContentPlan() {
           supabase.from("pipeline_stages").select("id, key, stage_role"),
           supabase
             .from("instagram_organic_events")
-            .select("id, codeword_id, codeword, event_type, lead_id, reel_id, payload")
+            .select("id, codeword_id, codeword, event_type, lead_id, reel_id, occurred_at, payload")
             .eq("project_id", projectId)
             .limit(8000),
           supabase
@@ -344,12 +344,12 @@ export function useContentPlan() {
       const events = (eventsRes.data ?? []) as unknown as ContentPlanOrganicEvent[];
 
       const stageRoleById = new Map<string, string>();
-      for (const s of stagesRes.data ?? []) {
-        const role = (s as { stage_role?: string }).stage_role;
+      for (const s of (stagesRes.data ?? []) as unknown as Array<{ id: string; stage_role?: string }>) {
+        const role = s.stage_role;
         if (role) stageRoleById.set(s.id, role);
       }
 
-      const leads: LeadLite[] = ((leadsRes.data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+      const leads: LeadLite[] = ((leadsRes.data ?? []) as unknown as Array<Record<string, unknown>>).map((r) => ({
         id: String(r.id),
         stage_role: stageRoleById.get(String(r.stage_id ?? "")) ?? null,
         paid: r.paid as boolean | null,
@@ -368,7 +368,7 @@ export function useContentPlan() {
           .map((p) => [String(p.id), String(p.published_ig_media_id)]),
       );
 
-      let planDbRows = ((planRes.data ?? []) as unknown as DbRow[]) ?? [];
+      let planDbRows = ((planRes.data ?? []) as unknown as DbRow[]);
 
       // Не удаляем строки при каждой загрузке: уже опубликованные (с ig_media_id)
       // должны оставаться для статистики. Прошлый one-shot trim — отдельно.
@@ -615,6 +615,8 @@ export function useContentPlan() {
           codewordId: row.codeword_id,
           codeword: row.codeword,
           claimOrphanCodewordEvents: claimOrphans,
+          // Граница: события orphan и stats считаются только если ≥ даты публикации поста.
+          primaryPublishedAt: claimOrphans ? (row.published_at ?? row.scheduled_at ?? null) : null,
           events,
           leads: leadLite,
           codewordStats: row.codeword_id ? statsByCodewordId.get(row.codeword_id) ?? null : null,

@@ -19,6 +19,7 @@ const rec = (
   repliedAt: null,
   clickedAt: null,
   convertedAt: null,
+  joinedAt: null,
   error: null,
   ...partial,
 });
@@ -32,13 +33,14 @@ describe("broadcastFunnel", () => {
       rec({ id: "4", status: "read" }),
       rec({ id: "5", status: "replied" }),
       rec({ id: "6", status: "failed" }),
+      rec({ id: "7", status: "clicked" }),
     ];
     const d = countDelivery(recipients);
-    expect(d.total).toBe(6);
+    expect(d.total).toBe(7);
     expect(d.queued).toBe(1);
-    expect(d.sent).toBe(4); // sent+delivered+read+replied
-    expect(d.delivered).toBe(3);
-    expect(d.read).toBe(2);
+    expect(d.sent).toBe(5); // sent+delivered+read+replied+clicked
+    expect(d.delivered).toBe(4);
+    expect(d.read).toBe(3);
     expect(d.replied).toBe(1);
     expect(d.failed).toBe(1);
   });
@@ -52,6 +54,7 @@ describe("broadcastFunnel", () => {
     const leads: BroadcastLeadLite[] = [
       {
         id: "L1",
+        name: "Алия",
         phone: "+77001110001",
         stageKey: "paid",
         stageRole: "paid",
@@ -62,6 +65,7 @@ describe("broadcastFunnel", () => {
       },
       {
         id: "L2",
+        name: "Болат",
         phone: "77001110002",
         stageKey: "whatsapp",
         stageRole: "joined_group",
@@ -72,6 +76,7 @@ describe("broadcastFunnel", () => {
       },
       {
         id: "L3",
+        name: "Самат",
         phone: "+77001110003",
         stageKey: "new",
         stageRole: "new",
@@ -94,5 +99,121 @@ describe("broadcastFunnel", () => {
     expect(funnel.deposits).toBe(2); // L1 paid role + L2 deposit
     expect(funnel.sales).toBe(1);
     expect(funnel.revenue).toBe(150000);
+  });
+
+  it("при вступлениях вебинар/оплата только по вступившим", () => {
+    const recipients = [
+      rec({
+        id: "a",
+        status: "clicked",
+        phone: "+77001110001",
+        leadId: "L1",
+        joinedAt: "2026-07-01",
+        clickedAt: "2026-07-01",
+      }),
+      rec({
+        id: "b",
+        status: "sent",
+        phone: "+77001110002",
+        leadId: "L2",
+      }),
+    ];
+    const leads: BroadcastLeadLite[] = [
+      {
+        id: "L1",
+        name: "Алия",
+        phone: "+77001110001",
+        stageKey: "joined_group",
+        stageRole: "joined_group",
+        paid: false,
+        amount: 0,
+        depositAmount: 0,
+        webinarStatus: null,
+      },
+      {
+        id: "L2",
+        name: "Болат",
+        phone: "+77001110002",
+        stageKey: "paid",
+        stageRole: "paid",
+        paid: true,
+        amount: 200000,
+        depositAmount: 0,
+        webinarStatus: "attended",
+      },
+    ];
+    const funnel = buildBroadcastFunnel(recipients, leads);
+    expect(funnel.joined).toBe(1);
+    expect(funnel.leads).toBe(1);
+    // L2 оплатил, но не вступал из этой рассылки — не считаем
+    expect(funnel.webinarAttended).toBe(0);
+    expect(funnel.sales).toBe(0);
+  });
+
+  it("считает прочтение по read_at даже если статус ещё delivered", () => {
+    const recipients = [
+      rec({ id: "1", status: "delivered", deliveredAt: "2026-07-01", readAt: "2026-07-01T12:00:00Z" }),
+      rec({ id: "2", status: "sent", sentAt: "2026-07-01" }),
+    ];
+    const d = countDelivery(recipients);
+    expect(d.sent).toBe(2);
+    expect(d.delivered).toBe(1);
+    expect(d.read).toBe(1);
+  });
+
+  it("В CRM = вступившие с карточкой, не все матчи списка", () => {
+    const recipients = [
+      rec({
+        id: "a",
+        status: "clicked",
+        phone: "+77001110001",
+        leadId: "L1",
+        joinedAt: "2026-07-01",
+        clickedAt: "2026-07-01",
+      }),
+      rec({
+        id: "b",
+        status: "sent",
+        phone: "+77001110002",
+        leadId: "L2",
+      }),
+      rec({
+        id: "c",
+        status: "clicked",
+        phone: "+77001110003",
+        leadId: null,
+        joinedAt: "2026-07-01",
+        clickedAt: "2026-07-01",
+      }),
+    ];
+    const leads: BroadcastLeadLite[] = [
+      {
+        id: "L1",
+        name: "Алия",
+        phone: "+77001110001",
+        stageKey: "joined_group",
+        stageRole: "joined_group",
+        paid: false,
+        amount: 0,
+        depositAmount: 0,
+        webinarStatus: null,
+      },
+      {
+        id: "L2",
+        name: "Болат",
+        phone: "+77001110002",
+        stageKey: "new",
+        stageRole: "new",
+        paid: false,
+        amount: 0,
+        depositAmount: 0,
+        webinarStatus: null,
+      },
+    ];
+    const funnel = buildBroadcastFunnel(recipients, leads);
+    expect(funnel.joined).toBe(2);
+    expect(funnel.clicked).toBe(2);
+    // a в CRM по leadId; c без лида → 1
+    expect(funnel.leads).toBe(1);
   });
 });

@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createCampaign,
+  duplicateCampaign,
   launchCampaign,
   listCampaigns,
   removeCampaign,
@@ -26,6 +27,12 @@ export function useBroadcasts(projectId: string | null, crmContacts: LeadContact
     queryKey: [BROADCASTS_QUERY_KEY, projectId],
     queryFn: () => (projectId ? listCampaigns(projectId) : Promise.resolve([])),
     enabled: !!projectId,
+    // Пока идёт отправка / есть активные кампании — подтягиваем воронку без F5.
+    refetchInterval: (q) => {
+      const list = q.state.data ?? [];
+      const live = list.some((b) => b.status === "sending" || b.status === "scheduled");
+      return live ? 15_000 : 45_000;
+    },
   });
 
   const invalidate = useCallback(() => {
@@ -33,12 +40,24 @@ export function useBroadcasts(projectId: string | null, crmContacts: LeadContact
   }, [queryClient, projectId]);
 
   useRealtimeTable("broadcast_campaigns", invalidate, !!projectId, 500);
+  useRealtimeTable("broadcast_recipients", invalidate, !!projectId, 800);
 
   const create = useCallback(
-    async (draft: BroadcastDraft, opts?: CreateCampaignOpts) => {
-      if (!projectId) return;
-      await createCampaign(projectId, draft, crmContacts, opts);
+    async (draft: BroadcastDraft, opts?: CreateCampaignOpts): Promise<Broadcast | null> => {
+      if (!projectId) return null;
+      const created = await createCampaign(projectId, draft, crmContacts, opts);
       invalidate();
+      return created;
+    },
+    [projectId, crmContacts, invalidate],
+  );
+
+  const duplicate = useCallback(
+    async (draft: BroadcastDraft): Promise<Broadcast | null> => {
+      if (!projectId) return null;
+      const created = await duplicateCampaign(projectId, draft, crmContacts);
+      invalidate();
+      return created;
     },
     [projectId, crmContacts, invalidate],
   );
@@ -70,18 +89,32 @@ export function useBroadcasts(projectId: string | null, crmContacts: LeadContact
 
   const stats = useMemo(() => summarizeBroadcasts(broadcasts), [broadcasts]);
 
-  return { broadcasts, stats, create, update, remove, launch };
+  return { broadcasts, stats, create, duplicate, update, remove, launch };
 }
 
 export function summarizeBroadcasts(list: Broadcast[]) {
-  const sent = list.filter((b) => b.status === "sent" || b.status === "partial");
+  const sentCampaigns = list.filter((b) => b.status === "sent" || b.status === "partial");
   const scheduled = list.filter((b) => b.status === "scheduled").length;
-  const reached = list.reduce((s, b) => s + b.stats.sent, 0);
+  const sending = list.filter((b) => b.status === "sending").length;
+  let reached = 0;
+  let joined = 0;
+  let webinarAttended = 0;
+  let sales = 0;
+  for (const b of list) {
+    reached += b.stats.sent || 0;
+    joined += b.stats.joined ?? 0;
+    webinarAttended += b.stats.webinarAttended ?? 0;
+    sales += b.stats.sales ?? b.stats.converted ?? 0;
+  }
   return {
     total: list.length,
-    sent: sent.length,
+    sent: sentCampaigns.length,
     scheduled,
+    sending,
     reached,
+    joined,
+    webinarAttended,
+    sales,
   };
 }
 

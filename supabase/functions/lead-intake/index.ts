@@ -329,7 +329,11 @@ Deno.serve(async (req) => {
     vk: "vk", vkontakte: "vk",
     cpc: "ads", advert: "ads",
     leadform: "lead_form", call: "phone",
+    // Партнёрские / именные UTM: ?utm_source=vit → источник «Виталя»
+    vit: "виталя", vitalya: "виталя", "виталя": "виталя", vitaly: "виталя",
   };
+  /** Generic placeholders that must not override a real utm_source. */
+  const GENERIC_SOURCES = new Set(["site", "web", "website", "tilda", "landing", "form"]);
   // Detect source from referrer host if no explicit source/utm_source.
   // Покрывает ещё WhatsApp Web, мобильные приложения, t.me-ссылки и др.
   function detectFromReferrer(ref: string | null | undefined): string | null {
@@ -357,10 +361,27 @@ Deno.serve(async (req) => {
   // Наличие gclid = клик по объявлению Google Ads (auto-tagging), даже если на
   // лендинге не проставлен utm_source. Тогда источник по умолчанию — google.
   const hasGclid = !!(v.gclid && v.gclid.trim());
+  const bodySource = (v.source && v.source.trim()) || "";
+  const landingUrlEarly = v.landing_url || v.page || null;
+  let utmSource = (v.utm_source && v.utm_source.trim()) || "";
+  // На случай если лендинг положил UTM только в landing_url, а не в поля.
+  if (!utmSource && landingUrlEarly) {
+    try {
+      const fromUrl = new URL(landingUrlEarly).searchParams.get("utm_source");
+      if (fromUrl?.trim()) {
+        utmSource = fromUrl.trim();
+        if (!utm.source) utm.source = utmSource;
+      }
+    } catch { /* ignore bad URL */ }
+  }
+  // Лендинги часто шлют source=site и параллельно utm_source=vit — берём UTM.
+  const explicitSource =
+    bodySource && !GENERIC_SOURCES.has(bodySource.toLowerCase())
+      ? bodySource
+      : (utmSource || bodySource || "");
   const rawSource =
     (organicCodeword ? "instagram" : null) ||
-    (v.source && v.source.trim()) ||
-    (v.utm_source && v.utm_source.trim()) ||
+    (explicitSource || null) ||
     (hasGclid ? "google" : null) ||
     detectFromReferrer(v.referrer) ||
     (v.channel && v.channel.trim() !== "web" ? v.channel.trim() : null) ||
@@ -373,7 +394,7 @@ Deno.serve(async (req) => {
   const ALLOWED_CHANNELS = new Set(["whatsapp", "telegram", "instagram", "phone", "web"]);
   const channel = ALLOWED_CHANNELS.has(channelInput) ? channelInput : "web";
   const note = [v.message, v.note].filter(Boolean).join("\n").trim() || null;
-  const landingUrl = v.landing_url || v.page || null;
+  const landingUrl = landingUrlEarly;
 
   // Resolve project_id and cabinet_id.
   // Priority: URL token > body project_id > inbound_tokens(body token) > cabinet_id > ad_account_id.

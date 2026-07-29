@@ -562,9 +562,14 @@ async function refreshBroadcastCampaignStats(campaignId: string) {
   try {
     const { data } = await admin
       .from("broadcast_recipients")
-      .select("status, clicked_at")
+      .select("status, clicked_at, joined_at, lead_id")
       .eq("campaign_id", campaignId);
-    const rows = (data ?? []) as { status: string; clicked_at: string | null }[];
+    const rows = (data ?? []) as {
+      status: string;
+      clicked_at: string | null;
+      joined_at: string | null;
+      lead_id: string | null;
+    }[];
     const count = (s: string) => rows.filter((r) => r.status === s).length;
     const stats = {
       total: rows.length,
@@ -576,9 +581,14 @@ async function refreshBroadcastCampaignStats(campaignId: string) {
       converted: count("converted"),
       failed: count("failed"),
       optout: count("skipped_optout"),
-      clicked: rows.filter((r) => !!r.clicked_at).length,
+      clicked: rows.filter((r) => !!r.clicked_at || !!r.joined_at).length,
+      joined: rows.filter((r) => !!r.joined_at).length,
+      leads: rows.filter((r) => !!r.joined_at && !!r.lead_id).length,
     };
-    await admin.from("broadcast_campaigns").update({ stats }).eq("id", campaignId);
+    await admin
+      .from("broadcast_campaigns")
+      .update({ stats, updated_at: new Date().toISOString() })
+      .eq("id", campaignId);
   } catch (e) {
     console.warn("refreshBroadcastCampaignStats failed:", e);
   }
@@ -586,36 +596,54 @@ async function refreshBroadcastCampaignStats(campaignId: string) {
 
 async function advanceBroadcastRecipient(idMessage: string, mappedStatus: string) {
   try {
-    let campaignId: string | null = null;
+    const { data: existing } = await admin
+      .from("broadcast_recipients")
+      .select("id, campaign_id, status, delivered_at, read_at")
+      .eq("message_id", idMessage)
+      .maybeSingle();
+    const row = existing as {
+      id: string;
+      campaign_id: string;
+      status: string;
+      delivered_at: string | null;
+      read_at: string | null;
+    } | null;
+    if (!row) return;
+
+    // Ранги: не откатываем clicked/replied/converted при позднем delivered/read.
+    const rank: Record<string, number> = {
+      queued: 0,
+      sending: 0,
+      sent: 1,
+      delivered: 2,
+      read: 3,
+      clicked: 4,
+      replied: 5,
+      converted: 6,
+      failed: -1,
+      skipped_optout: -1,
+    };
+    const cur = rank[row.status] ?? 0;
+    const now = new Date().toISOString();
+    const patch: Record<string, unknown> = {};
+
     if (mappedStatus === "delivered") {
-      const { data } = await admin
-        .from("broadcast_recipients")
-        .update({ status: "delivered", delivered_at: new Date().toISOString() })
-        .eq("message_id", idMessage)
-        .in("status", ["sent"])
-        .select("campaign_id")
-        .maybeSingle();
-      campaignId = (data as { campaign_id?: string } | null)?.campaign_id ?? null;
+      if (!row.delivered_at) patch.delivered_at = now;
+      if (cur > 0 && cur < rank.delivered) patch.status = "delivered";
     } else if (mappedStatus === "read") {
-      const { data } = await admin
-        .from("broadcast_recipients")
-        .update({ status: "read", read_at: new Date().toISOString() })
-        .eq("message_id", idMessage)
-        .in("status", ["sent", "delivered"])
-        .select("campaign_id")
-        .maybeSingle();
-      campaignId = (data as { campaign_id?: string } | null)?.campaign_id ?? null;
+      if (!row.read_at) patch.read_at = now;
+      if (!row.delivered_at && !patch.delivered_at) patch.delivered_at = now;
+      if (cur > 0 && cur < rank.read) patch.status = "read";
     } else if (mappedStatus === "failed") {
-      const { data } = await admin
-        .from("broadcast_recipients")
-        .update({ status: "failed", error: "Green API: notDelivered/noAccount" })
-        .eq("message_id", idMessage)
-        .in("status", ["sent"])
-        .select("campaign_id")
-        .maybeSingle();
-      campaignId = (data as { campaign_id?: string } | null)?.campaign_id ?? null;
+      if (row.status === "sent" || row.status === "sending") {
+        patch.status = "failed";
+        patch.error = "Green API: notDelivered/noAccount";
+      }
     }
-    if (campaignId) await refreshBroadcastCampaignStats(campaignId);
+
+    if (Object.keys(patch).length === 0) return;
+    await admin.from("broadcast_recipients").update(patch).eq("id", row.id);
+    await refreshBroadcastCampaignStats(row.campaign_id);
   } catch (e) {
     console.warn("advanceBroadcastRecipient failed:", e);
   }
@@ -630,7 +658,7 @@ async function markBroadcastReply(phone: string, projectId: string | null, leadI
     let q = admin
       .from("broadcast_recipients")
       .select("id, campaign_id, lead_id")
-      .in("status", ["sent", "delivered", "read"])
+      .in("status", ["sent", "delivered", "read", "clicked"])
       .or(`phone.eq.+${d},phone.eq.${d}`)
       .order("sent_at", { ascending: false })
       .limit(1);

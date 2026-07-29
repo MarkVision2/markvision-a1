@@ -29,6 +29,7 @@ export type SourceKey =
   | "referral"
   | "broadcast"
   | "manual"
+  | "vitalya"
   | "unknown";
 
 export interface SourceMeta {
@@ -82,6 +83,11 @@ const TABLE: Record<string, Omit<SourceMeta, "raw">> = {
   broadcast: { key: "broadcast", label: "Рассылка", Icon: Send, cls: "text-primary" },
   "рассылка": { key: "broadcast", label: "Рассылка", Icon: Send, cls: "text-primary" },
   mailing: { key: "broadcast", label: "Рассылка", Icon: Send, cls: "text-primary" },
+  // Партнёр: ?utm_source=vit на лендинге zapoinovai
+  vit: { key: "vitalya", label: "Виталя", Icon: UserPlus, cls: "text-primary" },
+  vitalya: { key: "vitalya", label: "Виталя", Icon: UserPlus, cls: "text-primary" },
+  vitaly: { key: "vitalya", label: "Виталя", Icon: UserPlus, cls: "text-primary" },
+  "виталя": { key: "vitalya", label: "Виталя", Icon: UserPlus, cls: "text-primary" },
   // Other
   referral: { key: "referral", label: "Рекомендация", Icon: UserPlus, cls: "text-foreground" },
   manual: { key: "manual", label: "Вручную", Icon: Hand, cls: "text-muted-foreground" },
@@ -120,5 +126,7 @@ export function normalizeSource(raw: string | null | undefined): SourceMeta {
 export function canonicalSourceKey(raw: string | null | undefined): string {
   const m = normalizeSource(raw);
   if (m.key === "unknown") return (raw ?? "").trim() || "unknown";
+  // В БД партнёрский источник — «виталя» (как в lead-intake aliases).
+  if (m.key === "vitalya") return "виталя";
   return m.key;
 }

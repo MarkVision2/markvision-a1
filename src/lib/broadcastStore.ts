@@ -74,6 +74,8 @@ export type Broadcast = {
   message: string;
   /** Целевая ссылка для переменной {ссылка} (трекинг переходов). */
   targetUrl: string;
+  /** Подпись кнопки WhatsApp с трекинг-ссылкой (пусто → авто по URL). */
+  ctaLabel: string;
   /** ИИ-варианты текста (антиспам): каждому получателю уходит случайный. */
   messageVariants: string[];
   /** Темп отправки: slow ≈ 1/мин, medium ≈ 2/мин, fast ≈ 4/мин. */
@@ -87,8 +89,9 @@ export type Broadcast = {
   /** Кол-во получателей на момент последней оценки/отправки. */
   recipientsCount: number;
   /**
-   * Счётчики доставки. `sent` / `delivered` / `read` / `replied` —
+   * Счётчики доставки + CRM. `sent` / `delivered` / `read` / `replied` —
    * кумулятивные (как в воронке детализации), не «сырые» status=X.
+   * `joined` / `webinarAttended` / `sales` — связка с WhatsApp-группой и CRM.
    */
   stats: {
     total: number;
@@ -99,6 +102,12 @@ export type Broadcast = {
     failed: number;
     clicked?: number;
     converted?: number;
+    /** Реально вступили в WhatsApp-группу кампании. */
+    joined?: number;
+    /** Пришли на вебинар (CRM webinar_status / стадия). */
+    webinarAttended?: number;
+    /** Полная оплата в CRM. */
+    sales?: number;
   };
   results: BroadcastResult[];
   createdAt: string;
@@ -141,25 +150,89 @@ const nowIso = () => new Date().toISOString();
 
 /** Подставляет имя получателя вместо {имя}/{name}, ссылку вместо {ссылка} и
  *  склеивает заголовок с текстом. `link` — для превью (реальный трекинг-URL
- *  на получателя подставляет воркер при отправке). */
+ *  на получателя подставляет воркер при отправке).
+ *  Если `linkAsButton` — плейсхолдер ссылки убираем из текста (URL уйдёт в кнопку). */
 export function renderMessage(
   title: string,
   message: string,
   contact: { name?: string },
   link = "",
+  linkAsButton = false,
 ): string {
   const firstName = (contact.name ?? "").trim().split(/\s+/)[0] ?? "";
   let body = (message ?? "")
     .replace(/\{имя\}/gi, firstName)
     .replace(/\{name\}/gi, firstName);
-  if (link) body = body.replace(/\{ссылка\}/gi, link).replace(/\{link\}/gi, link);
+  if (linkAsButton) {
+    body = body
+      .replace(/\{ссылка\}/gi, "")
+      .replace(/\{link\}/gi, "")
+      // Убираем хвост «Вступить в группу:» — текст кнопки отдельный.
+      .replace(/^[ \t]*вступить в группу:?[ \t]*$/gim, "")
+      .replace(/[ \t]*вступить в группу:?[ \t]*$/gim, "")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+  } else if (link) {
+    body = body.replace(/\{ссылка\}/gi, link).replace(/\{link\}/gi, link);
+  }
   const head = (title ?? "").trim();
   return head ? `*${head}*\n\n${body}` : body;
 }
 
+/** URL внутри фигурных скобок или «голый» http(s) в тексте сообщения. */
+const BRACED_URL_RE = /\{((?:https?:\/\/)[^}]+)\}/gi;
+const BARE_URL_RE = /(https?:\/\/[^\s<>"']+)/gi;
+
+/**
+ * Достаёт целевую ссылку из текста вида `{https://…}` / голого URL и
+ * нормализует плейсхолдер к `{ссылка}`. Нужно, когда пользователь вставил
+ * ссылку прямо в текст вместо поля «Ссылка для перехода».
+ */
+export function normalizeBroadcastLink(message: string, targetUrl = ""): {
+  message: string;
+  targetUrl: string;
+} {
+  let extracted = (targetUrl ?? "").trim();
+  let body = message ?? "";
+
+  body = body.replace(BRACED_URL_RE, (_m, url: string) => {
+    const u = String(url).trim();
+    if (!extracted && /^https?:\/\//i.test(u)) extracted = u;
+    return "{ссылка}";
+  });
+
+  if (!extracted) {
+    const bare = body.match(BARE_URL_RE);
+    if (bare?.[0]) {
+      extracted = bare[0].replace(/[),.;]+$/, "");
+      body = body.replace(bare[0], "{ссылка}");
+    }
+  }
+
+  // Несколько плейсхолдеров → один
+  let seen = false;
+  body = body.replace(/\{ссылка\}|\{link\}/gi, () => {
+    if (seen) return "";
+    seen = true;
+    return "{ссылка}";
+  });
+
+  return { message: body.replace(/\n{3,}/g, "\n\n").trim(), targetUrl: extracted };
+}
+
+/** Текст кнопки CTA по умолчанию: для invite WhatsApp — «Вступить в группу». */
+export function defaultCtaLabel(targetUrl: string): string {
+  const u = (targetUrl ?? "").toLowerCase();
+  if (u.includes("chat.whatsapp.com") || u.includes("whatsapp.com/channel")) {
+    return "Вступить в группу";
+  }
+  return "Перейти";
+}
+
 /**
  * Парсит вставленный список контактов. Каждая строка: «Имя, +7…» / «+7…; Имя»
- * / «Имя<TAB>номер» и т.п. Телефон определяется по цифрам, остальное — имя.
+ * / «Имя +7…» / «Имя<TAB>номер» и т.п. Телефон определяется по цифрам, остальное — имя.
  * Дедуп по нормализованному номеру.
  */
 export function parseContacts(raw: string): BroadcastContact[] {
@@ -172,13 +245,27 @@ export function parseContacts(raw: string): BroadcastContact[] {
     // Находим часть, похожую на телефон (>= 8 цифр)
     let phonePart = "";
     let namePart = "";
-    for (const p of parts) {
-      const digits = p.replace(/\D/g, "");
-      if (!phonePart && digits.length >= 8 && digits.length <= 15) phonePart = p;
-      else if (!namePart) namePart = p;
+    if (parts.length >= 2) {
+      for (const p of parts) {
+        const digits = p.replace(/\D/g, "");
+        if (!phonePart && digits.length >= 8 && digits.length <= 15) phonePart = p;
+        else if (!namePart) namePart = p;
+      }
     }
     if (!phonePart) {
-      // вся строка может быть просто номером
+      // «Имя +7 700…» / «+7700… Имя» / просто номер — вырезаем телефон из строки
+      const m = trimmed.match(/(\+?\d[\d\s\-()]{6,}\d)/);
+      if (m && m.index != null) {
+        const digits = m[1].replace(/\D/g, "");
+        if (digits.length >= 8 && digits.length <= 15) {
+          phonePart = m[1];
+          namePart = `${trimmed.slice(0, m.index)} ${trimmed.slice(m.index + m[1].length)}`
+            .replace(/^[,;\s\-–—]+|[,;\s\-–—]+$/g, "")
+            .trim();
+        }
+      }
+    }
+    if (!phonePart) {
       const digits = trimmed.replace(/\D/g, "");
       if (digits.length >= 8 && digits.length <= 15) phonePart = trimmed;
       else continue;
@@ -222,6 +309,7 @@ function normalize(raw: Partial<Broadcast>): Broadcast {
     title: raw.title ?? "",
     message: raw.message ?? "",
     targetUrl: raw.targetUrl ?? "",
+    ctaLabel: raw.ctaLabel ?? "",
     messageVariants: Array.isArray(raw.messageVariants)
       ? raw.messageVariants.filter((v): v is string => typeof v === "string")
       : [],
@@ -243,6 +331,9 @@ function normalize(raw: Partial<Broadcast>): Broadcast {
       failed: raw.stats?.failed ?? 0,
       clicked: raw.stats?.clicked ?? 0,
       converted: raw.stats?.converted ?? 0,
+      joined: raw.stats?.joined ?? 0,
+      webinarAttended: raw.stats?.webinarAttended ?? 0,
+      sales: raw.stats?.sales ?? 0,
     },
     results: Array.isArray(raw.results) ? raw.results : [],
     createdAt: raw.createdAt ?? nowIso(),
@@ -301,6 +392,7 @@ export type BroadcastDraft = Pick<
   | "title"
   | "message"
   | "targetUrl"
+  | "ctaLabel"
   | "messageVariants"
   | "sendPace"
   | "groupId"
@@ -318,6 +410,7 @@ export function emptyBroadcastDraft(): BroadcastDraft {
     title: "",
     message: "",
     targetUrl: "",
+    ctaLabel: "",
     messageVariants: [],
     sendPace: "slow",
     groupId: "",

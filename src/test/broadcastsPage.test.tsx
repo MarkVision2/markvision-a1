@@ -10,6 +10,9 @@ vi.mock("@/lib/broadcastServer", () => ({
   createCampaign: () => Promise.resolve(null),
   updateCampaign: () => Promise.resolve(),
   removeCampaign: () => Promise.resolve(),
+  duplicateCampaign: () => Promise.resolve(null),
+  fetchRecipientContacts: () => Promise.resolve([]),
+  fetchNonResponders: () => Promise.resolve({ rows: [], total: 0, excluded: { joined: 0, clicked: 0, replied: 0, failed: 0, optout: 0, notReached: 0 } }),
   launchCampaign: () => Promise.resolve(),
   fetchRecipientCounts: () => Promise.resolve({ total: 0, queued: 0, sent: 0, delivered: 0, read: 0, replied: 0, clicked: 0, converted: 0, failed: 0, optout: 0 }),
   fetchRecipients: () => Promise.resolve([]),
@@ -61,10 +64,11 @@ describe("Broadcasts page", () => {
   it("монтируется, показывает заголовок и пустое состояние", () => {
     renderPage();
     expect(screen.getByRole("heading", { name: "Рассылка" })).toBeInTheDocument();
-    expect(screen.getByText("Всего рассылок")).toBeInTheDocument();
-    expect(screen.getByText("Рассылок пока нет")).toBeInTheDocument();
-    // счётчик контактов из мок-базы
-    expect(screen.getByText("Контактов в базе")).toBeInTheDocument();
+    // мета-чипы статистики (новый дизайн)
+    expect(screen.getByText("0 рассылок")).toBeInTheDocument();
+    expect(screen.getByText("Запустите первую рассылку")).toBeInTheDocument();
+    // счётчик контактов из мок-базы (2 контакта)
+    expect(screen.getByText("2 в CRM-базе")).toBeInTheDocument();
   });
 
   it("открывает диалог создания рассылки", () => {
