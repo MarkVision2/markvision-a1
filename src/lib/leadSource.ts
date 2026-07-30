@@ -65,9 +65,11 @@ const TABLE: Record<string, Omit<SourceMeta, "raw">> = {
   tilda: { key: "site", label: "Сайт", Icon: Globe, cls: "text-muted-foreground" },
   web: { key: "site", label: "Сайт", Icon: Globe, cls: "text-muted-foreground" },
   website: { key: "site", label: "Сайт", Icon: Globe, cls: "text-muted-foreground" },
+  direct: { key: "site", label: "Прямой заход", Icon: Globe, cls: "text-muted-foreground" },
   // Paid ads
   ads: { key: "ads", label: "Реклама", Icon: Megaphone, cls: "text-warning" },
   advert: { key: "ads", label: "Реклама", Icon: Megaphone, cls: "text-warning" },
+  an: { key: "ads", label: "Реклама", Icon: Megaphone, cls: "text-warning" },
   google: { key: "google", label: "Google Ads", Icon: Megaphone, cls: "text-warning" },
   google_ads: { key: "google", label: "Google Ads", Icon: Megaphone, cls: "text-warning" },
   googleads: { key: "google", label: "Google Ads", Icon: Megaphone, cls: "text-warning" },
