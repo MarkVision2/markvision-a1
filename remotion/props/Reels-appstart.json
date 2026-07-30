@@ -1,0 +1,205 @@
+{
+ "audioTrack": "reels/vo_appstart.mp3",
+ "words": [
+  {
+   "text": "Создай",
+   "from": 2,
+   "to": 17,
+   "accent": false
+  },
+  {
+   "text": "своё",
+   "from": 17,
+   "to": 24,
+   "accent": false
+  },
+  {
+   "text": "первое",
+   "from": 24,
+   "to": 34,
+   "accent": false
+  },
+  {
+   "text": "приложение",
+   "from": 34,
+   "to": 48,
+   "accent": false
+  },
+  {
+   "text": "за",
+   "from": 48,
+   "to": 55,
+   "accent": false
+  },
+  {
+   "text": "вечер",
+   "from": 55,
+   "to": 72,
+   "accent": true
+  },
+  {
+   "text": "И",
+   "from": 72,
+   "to": 82,
+   "accent": false
+  },
+  {
+   "text": "узнай",
+   "from": 82,
+   "to": 96,
+   "accent": false
+  },
+  {
+   "text": "продавать",
+   "from": 96,
+   "to": 108,
+   "accent": false
+  },
+  {
+   "text": "такие",
+   "from": 108,
+   "to": 118,
+   "accent": false
+  },
+  {
+   "text": "решения",
+   "from": 118,
+   "to": 130,
+   "accent": false
+  },
+  {
+   "text": "бизнесу",
+   "from": 130,
+   "to": 149,
+   "accent": false
+  },
+  {
+   "text": "от",
+   "from": 149,
+   "to": 156,
+   "accent": false
+  },
+  {
+   "text": "$1 000",
+   "from": 156,
+   "to": 192,
+   "accent": false
+  },
+  {
+   "text": "Начать",
+   "from": 192,
+   "to": 206,
+   "accent": false
+  },
+  {
+   "text": "можно",
+   "from": 206,
+   "to": 216,
+   "accent": false
+  },
+  {
+   "text": "с",
+   "from": 216,
+   "to": 221,
+   "accent": false
+  },
+  {
+   "text": "нуля",
+   "from": 221,
+   "to": 233,
+   "accent": false
+  },
+  {
+   "text": "без",
+   "from": 233,
+   "to": 238,
+   "accent": false
+  },
+  {
+   "text": "опыта",
+   "from": 238,
+   "to": 247,
+   "accent": true
+  },
+  {
+   "text": "и",
+   "from": 247,
+   "to": 254,
+   "accent": false
+  },
+  {
+   "text": "на",
+   "from": 254,
+   "to": 262,
+   "accent": false
+  },
+  {
+   "text": "удалёнке",
+   "from": 262,
+   "to": 285,
+   "accent": true
+  }
+ ],
+ "scenes": [
+  {
+   "from": 0,
+   "to": 72,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ПРИЛОЖЕНИЕ",
+     "ЗА ВЕЧЕР"
+    ],
+    "accent": "#22D3EE",
+    "cover": true,
+    "bg": "warp"
+   }
+  },
+  {
+   "from": 72,
+   "to": 192,
+   "template": "price-tag",
+   "data": {
+    "price": "$1 000",
+    "label": "ПРОДАВАЙ БИЗНЕСУ ОТ",
+    "accent": "#FFC53D"
+   },
+   "clip": "broll/appstart/business-deal-payment-success-handshake-8814522.mp4"
+  },
+  {
+   "from": 192,
+   "to": 285,
+   "template": "spec-card",
+   "data": {
+    "tag": "СТАРТ",
+    "title": "НАЧАТЬ МОЖНО",
+    "icon": "rocket",
+    "accent": "#34D399",
+    "items": [
+     {
+      "type": "check",
+      "icon": "rocket",
+      "text": "С нуля"
+     },
+     {
+      "type": "bullet",
+      "icon": "chart",
+      "text": "Без опыта"
+     },
+     {
+      "type": "bullet",
+      "icon": "globe",
+      "text": "На удалёнке"
+     }
+    ]
+   },
+   "clip": "broll/appstart/person-working-laptop-home-remote-7126537.mp4"
+  }
+ ],
+ "totalDurationInFrames": 285,
+ "fps": 30,
+ "music": "reels/beat_appstart.wav",
+ "musicVolume": 0.07,
+ "captions": true,
+ "background": "aurora"
+}
