@@ -293,6 +293,9 @@ export const ReelsExplainer: React.FC<ReelsExplainerProps> = ({
 
       {captions ? <Captions words={words} scene={active} /> : null}
 
+      {/* удар-вспышка на склейке: короткий акцентный флеш в начале каждой сцены */}
+      <AbsoluteFill style={{ background: accent, opacity: interpolate(localFrame, [0, 4], [0.24, 0], { extrapolateRight: "clamp" }), mixBlendMode: "screen", pointerEvents: "none" }} />
+
       <Audio src={staticFile(audioTrack)} />
       {music ? <Audio src={staticFile(music)} volume={musicVolume} /> : null}
     </AbsoluteFill>
