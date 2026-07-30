@@ -27,9 +27,6 @@ const ClientsView = lazy(() => import("@/components/crm/ClientsView").then((m) =
 import { NewLeadDialog } from "@/components/crm/NewLeadDialog";
 import { LeadDetailSheet } from "@/components/crm/LeadDetailSheet";
 import { ConnectWhatsAppDialog } from "@/components/crm/ConnectWhatsAppDialog";
-import { CrmKpiBar } from "@/components/crm/CrmKpiBar";
-import { CrmLeadDynamics } from "@/components/crm/CrmLeadDynamics";
-import { SlaAlerts } from "@/components/crm/SlaAlerts";
 import { CrmFilters, type CrmFilterState } from "@/components/crm/CrmFilters";
 import { CrmTodayView } from "@/components/crm/CrmTodayView";
 import { RejectReasonDialog } from "@/components/crm/RejectReasonDialog";
@@ -203,13 +200,6 @@ const Crm = () => {
     }
   }, [removeStage, stages]);
 
-  const jumpToNoAnswer = () => {
-    setTab("funnel");
-    setTimeout(() => {
-      noAnswerRef.current?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
-    }, 50);
-  };
-
   return (
     <main className="flex min-h-0 flex-1 flex-col animate-fade-in-up">
       {/* Compact header */}
@@ -250,23 +240,6 @@ const Crm = () => {
           </div>
         </div>
 
-        {/* Lead dynamics by day */}
-        <div className="mx-auto mt-3 max-w-[1600px]">
-          <CrmLeadDynamics leads={leads} />
-        </div>
-
-        {/* KPI strip */}
-        <div className="mx-auto mt-3 max-w-[1600px]">
-          <CrmKpiBar kpi={analytics.kpi} templateKey={pipelineTemplateKey} />
-        </div>
-
-        {/* Inline SLA strip (only when there are issues) */}
-        {(analytics.slaAlerts.red.length > 0 || analytics.slaAlerts.yellow.length > 0) && (
-          <div className="mx-auto mt-2 max-w-[1600px]">
-            <SlaAlerts alerts={analytics.slaAlerts} onJumpToNoAnswer={jumpToNoAnswer} compact />
-          </div>
-        )}
-
         {/* Tabs */}
         <div className="mx-auto mt-3 flex max-w-[1600px] gap-1 overflow-x-auto scrollbar-none touch-pan-x pb-0.5">
           {TABS.map((t) => {
@@ -297,10 +270,6 @@ const Crm = () => {
             <div className="min-h-0 flex-1 overflow-y-auto pb-2">
               <CrmTodayView
                 leads={leads}
-                managerStats={analytics.managerStats}
-                paidPct={analytics.kpi.paidPct}
-                rejectedPct={analytics.kpi.rejectedPct}
-                avgResponseMin={analytics.kpi.avgResponseMin}
                 onOpenLead={handleOpenLead}
                 onOpenFunnel={() => setTab("funnel")}
               />
@@ -320,7 +289,6 @@ const Crm = () => {
                 {stages.map((stage, idx) => (
                   <div
                     key={stage.id}
-                    ref={stage.id === "no_answer" ? noAnswerRef : undefined}
                     className="flex h-full shrink-0"
                   >
                     <StageColumn
