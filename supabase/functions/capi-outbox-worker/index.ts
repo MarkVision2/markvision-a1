@@ -8,9 +8,10 @@
 // Retry: при failure инкрементируется attempts. Когда attempts > 5 — статус 'failed'.
 //
 // Источники конфигурации (в порядке приоритета):
-//   1. ad_cabinets (id = capi_outbox.cabinet_id): access_token, pixel_id
-//   2. clients_config (project_id = capi_outbox.project_id): fb_token, fb_pixel_id
-//   3. ENV META_ACCESS_TOKEN + ENV META_PIXEL_ID (последний fallback)
+//   1. ad_cabinets (id = capi_outbox.cabinet_id): pixel обязателен, токен — свой или общий
+//   2. первый кабинет проекта с pixel_id (лиды WhatsApp часто без cabinet_id)
+//   3. clients_config (legacy): fb_token + fb_pixel_id
+//   4. ENV META_ACCESS_TOKEN + META_DEFAULT_PIXEL_ID
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 
 const corsHeaders = {
@@ -63,7 +64,13 @@ async function hashUserData(raw: Record<string, unknown>): Promise<Record<string
     if (parts[1]) out.ln = [await sha256Lower(parts[1])];
   }
   // fbc/fbp передаём как есть, без хеширования — Meta так требует.
-  if (raw.fbc) out.fbc = String(raw.fbc);
+  // Сырой fbclid (без префикса fb.) нормализуем в формат Meta.
+  const rawFbc = raw.fbc != null ? String(raw.fbc).trim() : "";
+  if (rawFbc) {
+    out.fbc = rawFbc.startsWith("fb.")
+      ? rawFbc
+      : `fb.1.${Math.floor(Date.now() / 1000)}.${rawFbc}`;
+  }
   if (raw.fbp) out.fbp = String(raw.fbp);
   // external_id хешируем для лучшего matching без раскрытия PII.
   if (raw.external_id) out.external_id = [await sha256Lower(String(raw.external_id))];
@@ -85,33 +92,63 @@ async function resolveSharedMetaToken(admin: ReturnType<typeof createClient>): P
     || Deno.env.get("META_ACCESS_TOKEN") || null;
 }
 
+async function credsFromCabinetRow(
+  admin: ReturnType<typeof createClient>,
+  data: { access_token?: string | null; pixel_id?: string | null; capi_test_event_code?: string | null } | null,
+): Promise<PixelCreds | null> {
+  const pixel = data?.pixel_id?.trim();
+  if (!pixel) return null;
+  const ownToken = data?.access_token?.trim();
+  const token = ownToken || (await resolveSharedMetaToken(admin));
+  if (!token) return null;
+  return {
+    pixel_id: pixel,
+    access_token: token,
+    test_event_code: data?.capi_test_event_code ?? null,
+  };
+}
+
 async function resolvePixelCreds(
   admin: ReturnType<typeof createClient>,
   row: OutboxRow,
 ): Promise<PixelCreds | null> {
-  // 1) Через кабинет: pixel обязателен, токен — свой ИЛИ общий системный.
+  // 1) Через кабинет из outbox-строки (атрибуция лида).
   if (row.cabinet_id) {
     const { data } = await admin.from("ad_cabinets")
       .select("access_token, pixel_id, capi_test_event_code")
       .eq("id", row.cabinet_id).maybeSingle();
-    const pixel = (data as { pixel_id?: string } | null)?.pixel_id;
-    const testCode = (data as { capi_test_event_code?: string } | null)?.capi_test_event_code ?? null;
-    if (pixel) {
-      const ownToken = (data as { access_token?: string } | null)?.access_token;
-      const token = ownToken || (await resolveSharedMetaToken(admin));
-      if (token) return { pixel_id: pixel, access_token: token, test_event_code: testCode };
-    }
+    const creds = await credsFromCabinetRow(admin, data as {
+      access_token?: string | null; pixel_id?: string | null; capi_test_event_code?: string | null;
+    } | null);
+    if (creds) return creds;
   }
-  // 2) Через проект (clients_config — legacy)
+  // 2) Первый кабинет проекта с Pixel — WhatsApp-лиды часто без cabinet_id,
+  // но CAPI всё равно должен уходить в пиксель проекта из настроек CRM.
   if (row.project_id) {
-    const { data } = await admin.from("clients_config")
+    const { data } = await admin.from("ad_cabinets")
+      .select("access_token, pixel_id, capi_test_event_code")
+      .eq("project_id", row.project_id)
+      .not("pixel_id", "is", null)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    const creds = await credsFromCabinetRow(admin, data as {
+      access_token?: string | null; pixel_id?: string | null; capi_test_event_code?: string | null;
+    } | null);
+    if (creds) return creds;
+  }
+  // 3) Legacy clients_config (таблицы может не быть — игнорируем ошибку)
+  if (row.project_id) {
+    const { data, error } = await admin.from("clients_config")
       .select("fb_token, fb_pixel_id")
       .eq("project_id", row.project_id).maybeSingle();
-    const token = (data as { fb_token?: string } | null)?.fb_token;
-    const pixel = (data as { fb_pixel_id?: string } | null)?.fb_pixel_id;
-    if (token && pixel) return { pixel_id: pixel, access_token: token };
+    if (!error) {
+      const token = (data as { fb_token?: string } | null)?.fb_token;
+      const pixel = (data as { fb_pixel_id?: string } | null)?.fb_pixel_id;
+      if (token && pixel) return { pixel_id: pixel, access_token: token };
+    }
   }
-  // 3) Global ENV — последний fallback (полезно для тестов / migration)
+  // 4) Global ENV
   const envToken = Deno.env.get("META_ACCESS_TOKEN");
   const envPixel = Deno.env.get("META_DEFAULT_PIXEL_ID");
   if (envToken && envPixel) return { pixel_id: envPixel, access_token: envToken };

@@ -31,12 +31,27 @@ const EVENT_LABEL: Record<CapiEvent, { ru: string; hint: string }> = {
 };
 
 // Автоопределение события по ключу стадии — тот же принцип, что в онбординг-визарде.
+// Учитываем и клинику, и запуск/вебинар (deposit, confirmed, visit…).
 function guessEvent(key: string): CapiEvent | "" {
   const low = key.toLowerCase();
-  if (low.includes("paid") || low.includes("оплач") || low.includes("продаж") || low.includes("sale") || low.includes("won")) return "Purchase";
-  if (low.includes("visit") || low.includes("диагност") || low.includes("визит")) return "Diagnostic";
-  if (low.includes("schedule") || low.includes("invoice") || low.includes("запис") || low.includes("счёт") || low.includes("счет") || low.includes("book")) return "Schedule";
-  if (low.includes("new") || low.includes("нов") || low.includes("lead") || low.includes("заяв")) return "Lead";
+  if (
+    low.includes("paid") || low.includes("оплач") || low.includes("продаж") ||
+    low.includes("sale") || low.includes("won") || low.includes("deposit") ||
+    low.includes("брон") || low.includes("student")
+  ) return "Purchase";
+  if (
+    low.includes("visit") || low.includes("диагност") || low.includes("визит") ||
+    low.includes("joined") || low.includes("webinar") || low.includes("attended")
+  ) return "Diagnostic";
+  if (
+    low.includes("schedule") || low.includes("invoice") || low.includes("запис") ||
+    low.includes("счёт") || low.includes("счет") || low.includes("book") ||
+    low.includes("confirm") || low.includes("call")
+  ) return "Schedule";
+  if (
+    low.includes("new") || low.includes("нов") || low.includes("lead") ||
+    low.includes("заяв") || low.includes("bot_activated")
+  ) return "Lead";
   return "";
 }
 
@@ -95,6 +110,7 @@ export function CapiSettings() {
   const [outbox, setOutbox] = useState<OutboxRow[]>([]);
   const [eventFilter, setEventFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [requeuing, setRequeuing] = useState(false);
   const [, setSearchParams] = useSearchParams();
 
   const cabinet = useMemo(() => cabinets.find((c) => c.id === cabinetId), [cabinets, cabinetId]);
@@ -180,11 +196,12 @@ export function CapiSettings() {
   useRealtimeTable("capi_outbox", () => void loadOutbox());
 
   const outboxStats = useMemo(() => {
-    const s = { sent: 0, pending: 0, failed: 0 };
+    const s = { sent: 0, pending: 0, failed: 0, skipped: 0 };
     for (const r of outbox) {
       if (r.status === "sent") s.sent++;
       else if (r.status === "pending") s.pending++;
       else if (r.status === "failed") s.failed++;
+      else if (r.status === "skipped") s.skipped++;
     }
     return s;
   }, [outbox]);
@@ -194,7 +211,27 @@ export function CapiSettings() {
     (statusFilter === "all" || r.status === statusFilter)
   ), [outbox, eventFilter, statusFilter]);
 
-  const failedError = useMemo(() => outbox.find((r) => r.status === "failed")?.last_error ?? null, [outbox]);
+  const failedError = useMemo(
+    () => outbox.find((r) => r.status === "failed" || r.status === "skipped")?.last_error ?? null,
+    [outbox],
+  );
+
+  const requeueFailed = async () => {
+    if (!projectId) return;
+    setRequeuing(true);
+    try {
+      const { data, error } = await (supabase.rpc as any)("requeue_capi_outbox", {
+        p_project_id: projectId,
+      });
+      if (error) throw error;
+      toast.success(data ? `Вернули в очередь: ${data}` : "Нечего переотправлять");
+      await loadOutbox();
+    } catch (e: any) {
+      toast.error(e?.message ?? "Не удалось переотправить");
+    } finally {
+      setRequeuing(false);
+    }
+  };
 
   // Готовность: пиксель обязателен. Токен — свой у кабинета ИЛИ общий подключённый Meta
   // (его наличие проверяется на сервере кнопкой «Проверить связь»), поэтому не требуем его тут.
@@ -365,13 +402,26 @@ export function CapiSettings() {
         </Card>
       )}
 
-      {/* Предупреждение о сбоях доставки (например, протух токен) */}
-      {outboxStats.failed > 0 && (
+      {/* Предупреждение о сбоях доставки (например, протух токен / нет Pixel) */}
+      {(outboxStats.failed > 0 || outboxStats.skipped > 0) && (
         <Alert variant="destructive">
-          <AlertDescription className="text-xs">
-            <b>{outboxStats.failed} событий не ушло в Meta.</b>{" "}
-            {failedError ? `Причина: ${failedError}.` : ""} Обычно это истёкший или неверный токен —
-            проверьте подключение и нажмите «Проверить связь». После починки события переотправятся автоматически.
+          <AlertDescription className="space-y-2 text-xs">
+            <div>
+              <b>
+                {[
+                  outboxStats.failed > 0 ? `${outboxStats.failed} с ошибкой` : null,
+                  outboxStats.skipped > 0 ? `${outboxStats.skipped} пропущено` : null,
+                ].filter(Boolean).join(", ")}
+                .
+              </b>{" "}
+              {failedError ? `Причина: ${failedError}.` : ""}{" "}
+              Проверьте Pixel ID и нажмите «Проверить связь», затем «Переотправить» —
+              события сами не вернутся в очередь.
+            </div>
+            <Button size="sm" variant="outline" onClick={requeueFailed} disabled={requeuing}>
+              {requeuing && <Loader2 className="mr-2 h-3 w-3 animate-spin" />}
+              Переотправить
+            </Button>
           </AlertDescription>
         </Alert>
       )}
@@ -464,7 +514,9 @@ export function CapiSettings() {
           </div>
         </div>
         <p className="text-xs text-muted-foreground">
-          Когда лид переходит на этап — в Meta летит выбранное событие. У <b>Оплаты</b> дополнительно уходит сумма сделки как ценность конверсии.
+          Когда лид переходит на этап — в Meta летит выбранное событие. У <b>Оплаты</b> дополнительно
+          уходит сумма сделки (или брони) как ценность конверсии. Событие <b>Диагностика</b> —
+          кастомное для Meta: создайте Custom Conversion в Events Manager, если его ещё нет.
         </p>
 
         {/* Легенда: что означает каждое событие */}
@@ -517,6 +569,9 @@ export function CapiSettings() {
           <div className="flex items-center gap-1.5 text-[11px]">
             <Badge className="bg-success/15 text-success border-success/30">{outboxStats.sent} ушло</Badge>
             <Badge className="bg-warning/15 text-warning border-warning/30">{outboxStats.pending} в очереди</Badge>
+            {outboxStats.skipped > 0 && (
+              <Badge className="bg-muted text-muted-foreground border-border">{outboxStats.skipped} пропущено</Badge>
+            )}
             {outboxStats.failed > 0 && <Badge variant="destructive">{outboxStats.failed} ошибок</Badge>}
           </div>
         </div>
@@ -539,6 +594,7 @@ export function CapiSettings() {
                 <SelectItem value="all">Любой статус</SelectItem>
                 <SelectItem value="sent">Ушло</SelectItem>
                 <SelectItem value="pending">В очереди</SelectItem>
+                <SelectItem value="skipped">Пропущено</SelectItem>
                 <SelectItem value="failed">Ошибка</SelectItem>
               </SelectContent>
             </Select>
