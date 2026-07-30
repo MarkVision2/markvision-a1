@@ -21,6 +21,7 @@ const CreateNeuroPhoto = lazy(routeImports.CreateNeuroPhoto);
 const CreateMontage = lazy(routeImports.CreateMontage);
 const CreateMontageLab = lazy(routeImports.CreateMontageLab);
 const CreateReels = lazy(routeImports.CreateReels);
+const CreateVcs = lazy(routeImports.CreateVcs);
 const Ads = lazy(routeImports.Ads);
 const Dashboard = lazy(routeImports.Dashboard);
 const Metrics = lazy(routeImports.Metrics);
@@ -106,6 +107,7 @@ const App = () => (
               <Route path="/create/montage" element={<RequireAuth><AppLayout><CreateMontage /></AppLayout></RequireAuth>} />
               <Route path="/create/montage-lab" element={<RequireAuth><AppLayout><CreateMontageLab /></AppLayout></RequireAuth>} />
               <Route path="/create/reels" element={<RequireAuth><AppLayout><CreateReels /></AppLayout></RequireAuth>} />
+              <Route path="/create/vcs" element={<RequireAuth><AppLayout><CreateVcs /></AppLayout></RequireAuth>} />
               <Route path="/projects/new" element={<RequireAuth><AppLayout><ProjectIntegrationWizard /></AppLayout></RequireAuth>} />
               <Route path="/projects/:id/strategy" element={<RequireAuth><AppLayout><ProjectStrategy /></AppLayout></RequireAuth>} />
               <Route path="*" element={<NotFound />} />

@@ -12,6 +12,7 @@ export const routeImports = {
   CreateMontage: () => import("@/pages/CreateMontage"),
   CreateMontageLab: () => import("@/pages/CreateMontageLab"),
   CreateReels: () => import("@/pages/CreateReels"),
+  CreateVcs: () => import("@/pages/CreateVcs"),
   Ads: () => import("@/pages/Ads"),
   Dashboard: () => import("@/pages/Dashboard"),
   Metrics: () => import("@/pages/Metrics"),
