@@ -20,6 +20,7 @@ export type SourceKey =
   | "instagram_organic"
   | "facebook"
   | "telegram"
+  | "tiktok"
   | "site"
   | "ads"
   | "google"
@@ -60,6 +61,9 @@ const TABLE: Record<string, Omit<SourceMeta, "raw">> = {
   // Telegram
   telegram: { key: "telegram", label: "Telegram", Icon: Send, cls: "text-primary" },
   tg: { key: "telegram", label: "Telegram", Icon: Send, cls: "text-primary" },
+  // TikTok
+  tiktok: { key: "tiktok", label: "TikTok", Icon: Megaphone, cls: "text-foreground" },
+  tt: { key: "tiktok", label: "TikTok", Icon: Megaphone, cls: "text-foreground" },
   // Site
   site: { key: "site", label: "Сайт", Icon: Globe, cls: "text-muted-foreground" },
   tilda: { key: "site", label: "Сайт", Icon: Globe, cls: "text-muted-foreground" },
