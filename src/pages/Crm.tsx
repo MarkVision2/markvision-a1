@@ -28,6 +28,7 @@ import { NewLeadDialog } from "@/components/crm/NewLeadDialog";
 import { LeadDetailSheet } from "@/components/crm/LeadDetailSheet";
 import { ConnectWhatsAppDialog } from "@/components/crm/ConnectWhatsAppDialog";
 import { CrmKpiBar } from "@/components/crm/CrmKpiBar";
+import { CrmLeadDynamics } from "@/components/crm/CrmLeadDynamics";
 import { SlaAlerts } from "@/components/crm/SlaAlerts";
 import { CrmFilters, type CrmFilterState } from "@/components/crm/CrmFilters";
 import { CrmTodayView } from "@/components/crm/CrmTodayView";
@@ -247,6 +248,11 @@ const Crm = () => {
               Новый лид
             </Button>
           </div>
+        </div>
+
+        {/* Lead dynamics by day */}
+        <div className="mx-auto mt-3 max-w-[1600px]">
+          <CrmLeadDynamics leads={leads} />
         </div>
 
         {/* KPI strip */}
