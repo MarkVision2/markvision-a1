@@ -1,9 +1,9 @@
 {
-  "git_sha": "dc5bce1bf49fa5e6b869570948ce5340a791f40d",
-  "git_sha_full": "dc5bce1bf49fa5e6b869570948ce5340a791f40d",
-  "updated_at": "2026-07-30T10:40:05Z",
-  "label": "CRM lead dynamics by day",
+  "git_sha": "ed8a9d1023068b1d74bd5e77a4f485daa4aac797",
+  "git_sha_full": "ed8a9d1023068b1d74bd5e77a4f485daa4aac797",
+  "updated_at": "2026-07-30T10:57:39Z",
+  "label": "CRM Today cleanup \u2014 lead dynamics hero",
   "publish_hint": "push main \u2192 www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app",
-  "git_sha_short": "dc5bce1b",
+  "git_sha_short": "ed8a9d10",
   "branch": "main"
 }
