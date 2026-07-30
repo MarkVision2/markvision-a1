@@ -1,9 +1,9 @@
 {
-  "git_sha": "231fe8757be86070eb337dd9c3b7f9d6834b89f6",
-  "git_sha_full": "231fe8757be86070eb337dd9c3b7f9d6834b89f6",
-  "updated_at": "2026-07-30T11:01:51Z",
-  "label": "CRM drop period lead list",
+  "git_sha": "6127d0920473ae948f33c9c8808e61632c8abc23",
+  "git_sha_full": "6127d0920473ae948f33c9c8808e61632c8abc23",
+  "updated_at": "2026-07-30T11:06:04Z",
+  "label": "CRM funnel filters redesign",
   "publish_hint": "push main \u2192 www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app",
-  "git_sha_short": "231fe875",
+  "git_sha_short": "6127d092",
   "branch": "main"
 }
