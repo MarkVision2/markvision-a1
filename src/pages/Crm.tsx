@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import {
   Plus,
@@ -124,8 +124,6 @@ const Crm = () => {
         .map((l) => ({ iso: l.nextVisitAt as string, leadName: l.name })),
     [leads, activeLeadId],
   );
-
-  const noAnswerRef = useRef<HTMLDivElement | null>(null);
 
   const sources = useMemo(() => {
     const set = new Set<string>();
