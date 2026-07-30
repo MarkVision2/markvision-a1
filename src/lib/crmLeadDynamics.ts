@@ -1,4 +1,5 @@
 import { ymdAlmaty, ymdAlmatyFromIso } from "@/lib/metaSync";
+import { resolveLeadSource } from "@/lib/leadSource";
 
 export type LeadPeriodPreset = "today" | "yesterday" | "week" | "last7" | "month";
 
@@ -190,4 +191,70 @@ export function buildLeadDynamics(
     delta,
     rangeLabel,
   };
+}
+
+export type LeadChannelBucket = {
+  key: string;
+  label: string;
+  count: number;
+  share: number;
+  raw: string;
+};
+
+/**
+ * Разбивка лидов периода по каналу/источнику.
+ * Сортировка: больше → меньше. Макс. 8 строк + «Другое».
+ */
+export function buildLeadChannelBreakdown(
+  leads: Array<{
+    createdAt: string;
+    source?: string | null;
+    channel?: string | null;
+    metaAdId?: string | null;
+  }>,
+  fromYmd: string,
+  toYmd: string,
+  opts?: { focusYmd?: string | null },
+): LeadChannelBucket[] {
+  const focus = opts?.focusYmd ?? null;
+  const counts = new Map<string, { label: string; count: number; raw: string }>();
+
+  for (const l of leads) {
+    const day = ymdAlmatyFromIso(l.createdAt);
+    if (!day) continue;
+    if (focus) {
+      if (day !== focus) continue;
+    } else if (day < fromYmd || day > toYmd) {
+      continue;
+    }
+    const meta = resolveLeadSource(l);
+    const bucketKey = meta.key === "unknown" ? (meta.raw || "unknown") : meta.key;
+    const cur = counts.get(bucketKey) ?? { label: meta.label, count: 0, raw: meta.raw };
+    cur.count += 1;
+    counts.set(bucketKey, cur);
+  }
+
+  const total = [...counts.values()].reduce((s, c) => s + c.count, 0) || 1;
+  const rows = [...counts.entries()]
+    .map(([key, v]) => ({
+      key,
+      label: v.label,
+      count: v.count,
+      share: (v.count / total) * 100,
+      raw: v.raw,
+    }))
+    .sort((a, b) => b.count - a.count);
+
+  if (rows.length <= 8) return rows;
+  const top = rows.slice(0, 7);
+  const rest = rows.slice(7);
+  const otherCount = rest.reduce((s, r) => s + r.count, 0);
+  top.push({
+    key: "__other__",
+    label: "Другое",
+    count: otherCount,
+    share: (otherCount / total) * 100,
+    raw: "",
+  });
+  return top;
 }

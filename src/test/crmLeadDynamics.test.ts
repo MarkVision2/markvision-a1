@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addDaysYmd,
+  buildLeadChannelBreakdown,
   buildLeadDynamics,
   rangeForLeadPreset,
 } from "@/lib/crmLeadDynamics";
@@ -46,5 +47,19 @@ describe("crmLeadDynamics", () => {
     const focused = buildLeadDynamics(leads, "week", { now, focusYmd: "2026-07-29" });
     expect(focused.total).toBe(1);
     expect(focused.rangeLabel).toContain("29");
+  });
+
+  it("breaks down leads by channel for the period", () => {
+    const now = new Date("2026-07-30T08:00:00Z");
+    const leads = [
+      { createdAt: "2026-07-30T05:00:00Z", source: "instagram" },
+      { createdAt: "2026-07-30T06:00:00Z", source: "instagram" },
+      { createdAt: "2026-07-30T07:00:00Z", source: "tiktok" },
+      { createdAt: "2026-07-29T12:00:00Z", source: "google" },
+    ];
+    const today = buildLeadDynamics(leads, "today", { now });
+    const channels = buildLeadChannelBreakdown(leads, today.fromYmd, today.toYmd);
+    expect(channels[0]).toMatchObject({ label: "Instagram", count: 2 });
+    expect(channels.some((c) => c.label === "TikTok" && c.count === 1)).toBe(true);
   });
 });
