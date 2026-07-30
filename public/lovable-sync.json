@@ -1,9 +1,9 @@
 {
-  "git_sha": "aa1cb70afdeb0cf919ad4d15a9025fcdeaf88f1c",
-  "git_sha_full": "4a1dfcb7137eb9f655c050255446e2b6213f9b63",
-  "updated_at": "2026-07-30T04:57:04Z",
-  "label": "Merge ad attribution restore for CRM WhatsApp leads",
+  "git_sha": "65c254e75f562402558b8cc9f6a879e333bfc39b",
+  "git_sha_full": "65c254e75f562402558b8cc9f6a879e333bfc39b",
+  "updated_at": "2026-07-30T04:57:56Z",
+  "label": "fix CRM CAPI settings \u2192 Meta delivery",
   "publish_hint": "push main \u2192 www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app",
-  "git_sha_short": "aa1cb70a",
+  "git_sha_short": "65c254e7",
   "branch": "main"
 }
