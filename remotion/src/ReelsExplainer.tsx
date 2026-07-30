@@ -1,5 +1,5 @@
 import React from "react";
-import { AbsoluteFill, Img, interpolate, OffthreadVideo, Sequence, staticFile, useCurrentFrame } from "remotion";
+import { AbsoluteFill, Img, interpolate, OffthreadVideo, Sequence, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
 import { Audio } from "@remotion/media";
 import { displayFontFamily } from "./fonts";
 import { BRAND } from "./brand";
@@ -237,19 +237,30 @@ export const ReelsExplainer: React.FC<ReelsExplainerProps> = ({
   background = "grid",
 }) => {
   const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
   const idx = scenes.findIndex((s) => frame >= s.from && frame < s.to);
   const active = idx >= 0 ? scenes[idx] : null;
   const accent = active?.data?.accent ?? BRAND.accent;
   const localFrame = active ? frame - active.from : 0;
   const dur = active ? active.to - active.from : 1;
 
-  // enter: fade + slide-in; exit: slight slide-out near the end of the scene
+  // enter: spring pop + directional slide (alternates per scene → snappier cuts);
+  // exit: slight slide-out near the end of the scene.
+  const pop = spring({ frame: localFrame, fps, config: { damping: 14, mass: 0.6 }, durationInFrames: 20 });
   const inAmt = interpolate(localFrame, [0, 8], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const outAmt = interpolate(localFrame, [dur - 7, dur], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const slide = (1 - inAmt) * 70 - outAmt * 60;
+  // punch-zoom on entry (1.14 → 1) instead of a plain slide — reads as a hard cut
+  const punch = interpolate(pop, [0, 1], [1.14, 1], { extrapolateRight: "clamp" });
+  const dir = idx % 4; // 0:→ 1:↓ 2:← 3:↑ — vary entry direction scene to scene
+  const off = (1 - pop) * 120;
+  const enterX = dir === 0 ? off : dir === 2 ? -off : 0;
+  const enterY = dir === 1 ? off : dir === 3 ? -off : 0;
   // continuous idle motion so the scene is never frozen
   const floatY = Math.sin(frame / 34) * 9;
   const breathe = 1 + Math.sin(frame / 46) * 0.014;
+  const contentScale = punch * breathe;
+  const slideX = enterX - outAmt * 60;
+  const slideY = enterY + floatY;
   const opacity = inAmt * (1 - outAmt * 0.85);
   const Comp = active && MOTION_TEMPLATES[active.template] ? MOTION_TEMPLATES[active.template] : null;
 
@@ -262,9 +273,9 @@ export const ReelsExplainer: React.FC<ReelsExplainerProps> = ({
     <AbsoluteFill style={{ backgroundColor: BRAND.bg }}>
       <Backdrop name={bgName} frame={frame} accent={accent} />
 
-      {/* живой б-ролл на весь кадр (если у сцены есть image/clip) — крестфейд */}
+      {/* живой б-ролл на весь кадр (если у сцены есть image/clip) — крестфейд + punch */}
       {active && (active.image || active.clip) ? (
-        <AbsoluteFill style={{ opacity: inAmt * (1 - outAmt * 0.7) }}>
+        <AbsoluteFill style={{ opacity: inAmt * (1 - outAmt * 0.7), transform: `scale(${1 + (1 - pop) * 0.08})` }}>
           <BrollMedia scene={active} localFrame={localFrame} duration={dur} accent={accent} />
         </AbsoluteFill>
       ) : null}
@@ -275,7 +286,7 @@ export const ReelsExplainer: React.FC<ReelsExplainerProps> = ({
       <div style={{ position: "absolute", top: 0, left: 0, height: 6, width: `${prog}%`, background: accent, boxShadow: `0 0 16px ${accent}`, opacity: 0.9 }} />
 
       {Comp && active ? (
-        <AbsoluteFill style={{ opacity, transform: `translateX(${slide}px) translateY(${floatY}px) scale(${breathe})` }}>
+        <AbsoluteFill style={{ opacity, transform: `translateX(${slideX}px) translateY(${slideY}px) scale(${contentScale})` }}>
           <Comp localFrame={localFrame} duration={dur} {...(active.data ?? {})} />
         </AbsoluteFill>
       ) : null}
