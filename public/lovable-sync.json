@@ -1,9 +1,9 @@
 {
-  "git_sha": "6d25e42f5fb8339ce698846e2a3d6e7c269856e7",
-  "git_sha_full": "6d25e42f5fb8339ce698846e2a3d6e7c269856e7",
-  "updated_at": "2026-07-30T11:10:29Z",
-  "label": "CRM Today channels breakdown",
+  "git_sha": "f39bb95b3d16d2d2a9db1962ff26d7b3704a19be",
+  "git_sha_full": "f39bb95b3d16d2d2a9db1962ff26d7b3704a19be",
+  "updated_at": "2026-07-31T10:55:53Z",
+  "label": "CRM Today spend + CPL",
   "publish_hint": "push main \u2192 www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app",
-  "git_sha_short": "6d25e42f",
+  "git_sha_short": "f39bb95b",
   "branch": "main"
 }
