@@ -399,15 +399,15 @@ async function ingestProject(row: WaRow, minutes: number) {
     const text = msgText(m);
     const name = (m.senderName || m.senderContactName || "").trim();
 
-  const before = await findExistingLeadId(phone, row.project_id);
-  let leadId = before;
-  if (!leadId) {
-    leadId = await findOrCreateLead(phone, name, row.project_id);
-    // Re-check in case of concurrent insert race.
-    if (!leadId) leadId = await findExistingLeadId(phone, row.project_id);
-  }
-  if (!leadId) return;
-  if (!before) leadsCreated += 1;
+    const before = await findExistingLeadId(phone, row.project_id);
+    let leadId = before;
+    // Исходящие не создают лида (рассылка ≠ новый лид). Только входящие / CTWA.
+    if (!leadId && direction === "in") {
+      leadId = await findOrCreateLead(phone, name, row.project_id);
+      if (!leadId) leadId = await findExistingLeadId(phone, row.project_id);
+    }
+    if (!leadId) return;
+    if (!before && direction === "in") leadsCreated += 1;
 
     const isAuto = direction === "out"; // journal outgoing from API/phone; treat as bot/auto for stage
     const inserted = await insertCommunication({
