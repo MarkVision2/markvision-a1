@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { humanizeMetaApiError } from "@/lib/metaApiError";
 import { cn } from "@/lib/utils";
 
 const SEARCH_THRESHOLD = 3;
@@ -297,7 +298,7 @@ const Ads = () => {
                   );
                   setRefreshKey((k) => k + 1);
                 } else if (r) {
-                  toast.error("Meta: " + (r.error || "не удалось получить данные"));
+                  toast.error(humanizeMetaApiError(r.error || "не удалось получить данные"));
                 }
               });
             }
