@@ -9,7 +9,10 @@ export interface GroupInviteLinkStat {
   inviteUrl: string;
   groupId: string | null;
   clickCount: number;
+  /** Вступления именно по tracked-ссылке (после baseline). */
   joinCount: number;
+  /** Сколько человек сейчас в группе (snapshot). */
+  membersNow: number;
   baselineTaken: boolean;
   trackingStartedAt: string;
 }
@@ -44,17 +47,46 @@ async function fetchLinks(projectId: string): Promise<GroupInviteLinkStat[]> {
     .eq("is_active", true)
     .order("created_at", { ascending: true });
   if (error) throw error;
-  return ((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
-    id: String(r.id),
-    slug: String(r.slug),
-    label: String(r.label ?? ""),
-    inviteUrl: String(r.invite_url ?? ""),
-    groupId: (r.group_id as string | null) ?? null,
-    clickCount: Number(r.click_count) || 0,
-    joinCount: Number(r.join_count) || 0,
-    baselineTaken: Boolean(r.baseline_taken),
-    trackingStartedAt: String(r.tracking_started_at ?? ""),
-  }));
+  const rows = (data ?? []) as Array<Record<string, unknown>>;
+
+  // Live counts from members — denormalized join_count can drift.
+  const withCounts = await Promise.all(
+    rows.map(async (r) => {
+      const linkId = String(r.id);
+      const [{ count: membersNow }, { count: viaLink }] = await Promise.all([
+        supabase
+          .from("group_invite_members" as never)
+          .select("id", { count: "exact", head: true })
+          .eq("link_id", linkId),
+        supabase
+          .from("group_invite_members" as never)
+          .select("id", { count: "exact", head: true })
+          .eq("link_id", linkId)
+          .eq("joined_via_link", true),
+      ]);
+      const joinCount = viaLink ?? 0;
+      // Heal denormalized counter if UI and DB drifted.
+      if (Number(r.join_count) !== joinCount) {
+        void supabase
+          .from("group_invite_links" as never)
+          .update({ join_count: joinCount } as never)
+          .eq("id", linkId);
+      }
+      return {
+        id: linkId,
+        slug: String(r.slug),
+        label: String(r.label ?? ""),
+        inviteUrl: String(r.invite_url ?? ""),
+        groupId: (r.group_id as string | null) ?? null,
+        clickCount: Number(r.click_count) || 0,
+        joinCount,
+        membersNow: membersNow ?? 0,
+        baselineTaken: Boolean(r.baseline_taken),
+        trackingStartedAt: String(r.tracking_started_at ?? ""),
+      } satisfies GroupInviteLinkStat;
+    }),
+  );
+  return withCounts;
 }
 
 async function fetchJoins(linkId: string): Promise<GroupInviteJoinRow[]> {

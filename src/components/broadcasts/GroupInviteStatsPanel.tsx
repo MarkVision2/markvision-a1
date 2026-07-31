@@ -90,7 +90,7 @@ function LinkCard({
           </p>
         </div>
 
-        <div className="grid grid-cols-3 gap-2 sm:min-w-[280px]">
+        <div className="grid grid-cols-2 gap-2 sm:min-w-[320px] sm:grid-cols-4">
           <div className="rounded-xl border border-border/50 bg-background/40 px-3 py-2">
             <div className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
               <MousePointerClick className="h-3 w-3" /> Клики
@@ -99,13 +99,20 @@ function LinkCard({
           </div>
           <div className="rounded-xl border border-border/50 bg-background/40 px-3 py-2">
             <div className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
-              <UserPlus className="h-3 w-3" /> Вступили
+              <UserPlus className="h-3 w-3" /> По ссылке
             </div>
             <div className="mt-1 text-lg font-bold tabular-nums text-cyan-400">{link.joinCount}</div>
+            <div className="text-[10px] text-muted-foreground">после метки</div>
           </div>
           <div className="rounded-xl border border-border/50 bg-background/40 px-3 py-2">
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">CR</div>
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">В группе</div>
+            <div className="mt-1 text-lg font-bold tabular-nums">{link.membersNow}</div>
+            <div className="text-[10px] text-muted-foreground">сейчас всего</div>
+          </div>
+          <div className="rounded-xl border border-border/50 bg-background/40 px-3 py-2">
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">CR ссылки</div>
             <div className="mt-1 text-lg font-bold tabular-nums">{link.clickCount > 0 ? `${cr}%` : "—"}</div>
+            <div className="text-[10px] text-muted-foreground">вступ. / клик</div>
           </div>
         </div>
       </div>
@@ -185,7 +192,8 @@ export function GroupInviteStatsPanel() {
         <div>
           <h2 className="text-base font-semibold tracking-tight">Ссылки в WhatsApp-группу</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Клики по /g/… и реальные вступления в группу (не из рассылки).
+            «По ссылке» — новые после старта трекинга. «В группе» — весь текущий состав WA.
+            Не путать с карточкой «Из рассылок» выше.
           </p>
         </div>
         <Button type="button" size="sm" variant="outline" className="h-8 gap-1.5" onClick={() => void refetch()} disabled={loading}>

@@ -101,9 +101,9 @@ const Broadcasts = () => {
       },
       {
         key: "joined",
-        label: "В группе",
+        label: "Из рассылок",
         value: stats.joined,
-        hint: "вступили из рассылок",
+        hint: "joined_at у получателей рассылок",
         icon: UserPlus,
         tone: "success" as const,
       },
@@ -486,7 +486,7 @@ function BroadcastRow({
 
   const stages = [
     { key: "sent", label: "Отправлено", value: sent, icon: Send, bar: "from-sky-400 to-sky-600" },
-    { key: "joined", label: "В группе", value: joined, icon: UserPlus, bar: "from-emerald-400 to-emerald-600" },
+    { key: "joined", label: "Из рассылки", value: joined, icon: UserPlus, bar: "from-emerald-400 to-emerald-600" },
     { key: "webinar", label: "Вебинар", value: webinar, icon: Video, bar: "from-teal-400 to-teal-600" },
     { key: "sales", label: "Оплата", value: sales, icon: ShoppingCart, bar: "from-amber-400 to-amber-600" },
   ] as const;
