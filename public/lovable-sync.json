@@ -1,10 +1,10 @@
 {
-  "git_sha": "27511bef89123ecfe149c45ad057c9548258cc05",
+  "git_sha": "f8456b2d8ab8f77a81ec823f0c75d142027b431c",
   "git_sha_full": "cea2f6fd1d0a6f99f33d6e253b0481b83a29518f",
   "updated_at": "2026-07-31T10:59:52Z",
   "label": "Meta #200 permission warning UX",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app",
-  "git_sha_short": "27511be",
+  "git_sha_short": "f8456b2",
   "branch": "main",
-  "note": "ads+metrics CRM launch columns"
+  "note": "group invite stats UI on Broadcasts"
 }
