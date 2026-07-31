@@ -1,0 +1,767 @@
+{
+ "audioTrack": "reels/vo_agr1.mp3",
+ "words": [
+  {
+   "text": "Думаешь",
+   "from": 2,
+   "to": 14,
+   "accent": false
+  },
+  {
+   "text": "чтобы",
+   "from": 14,
+   "to": 31,
+   "accent": false
+  },
+  {
+   "text": "создать",
+   "from": 31,
+   "to": 46,
+   "accent": false
+  },
+  {
+   "text": "приложение",
+   "from": 46,
+   "to": 72,
+   "accent": false
+  },
+  {
+   "text": "нужно",
+   "from": 72,
+   "to": 74,
+   "accent": false
+  },
+  {
+   "text": "быть",
+   "from": 74,
+   "to": 82,
+   "accent": false
+  },
+  {
+   "text": "программистом?",
+   "from": 82,
+   "to": 108,
+   "accent": true
+  },
+  {
+   "text": "Уже",
+   "from": 108,
+   "to": 120,
+   "accent": false
+  },
+  {
+   "text": "нет",
+   "from": 120,
+   "to": 127,
+   "accent": true
+  },
+  {
+   "text": "нейросеть",
+   "from": 127,
+   "to": 146,
+   "accent": false
+  },
+  {
+   "text": "превращает",
+   "from": 146,
+   "to": 158,
+   "accent": false
+  },
+  {
+   "text": "идею",
+   "from": 158,
+   "to": 170,
+   "accent": false
+  },
+  {
+   "text": "в",
+   "from": 170,
+   "to": 175,
+   "accent": false
+  },
+  {
+   "text": "приложение",
+   "from": 175,
+   "to": 190,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 190,
+   "to": 197,
+   "accent": false
+  },
+  {
+   "text": "собрать",
+   "from": 197,
+   "to": 209,
+   "accent": false
+  },
+  {
+   "text": "свое",
+   "from": 209,
+   "to": 218,
+   "accent": false
+  },
+  {
+   "text": "первое",
+   "from": 218,
+   "to": 228,
+   "accent": false
+  },
+  {
+   "text": "можно",
+   "from": 228,
+   "to": 238,
+   "accent": false
+  },
+  {
+   "text": "самому",
+   "from": 238,
+   "to": 252,
+   "accent": false
+  },
+  {
+   "text": "за",
+   "from": 252,
+   "to": 259,
+   "accent": false
+  },
+  {
+   "text": "один",
+   "from": 259,
+   "to": 266,
+   "accent": false
+  },
+  {
+   "text": "вечер",
+   "from": 266,
+   "to": 278,
+   "accent": true
+  },
+  {
+   "text": "Просто",
+   "from": 278,
+   "to": 288,
+   "accent": false
+  },
+  {
+   "text": "объясняешь",
+   "from": 288,
+   "to": 314,
+   "accent": false
+  },
+  {
+   "text": "что",
+   "from": 314,
+   "to": 324,
+   "accent": false
+  },
+  {
+   "text": "нужно",
+   "from": 324,
+   "to": 336,
+   "accent": false
+  },
+  {
+   "text": "а",
+   "from": 336,
+   "to": 341,
+   "accent": false
+  },
+  {
+   "text": "система",
+   "from": 341,
+   "to": 350,
+   "accent": false
+  },
+  {
+   "text": "собирает",
+   "from": 350,
+   "to": 365,
+   "accent": false
+  },
+  {
+   "text": "интерфейс",
+   "from": 365,
+   "to": 386,
+   "accent": true
+  },
+  {
+   "text": "но",
+   "from": 386,
+   "to": 391,
+   "accent": false
+  },
+  {
+   "text": "зачем",
+   "from": 391,
+   "to": 398,
+   "accent": false
+  },
+  {
+   "text": "его",
+   "from": 398,
+   "to": 406,
+   "accent": false
+  },
+  {
+   "text": "создавать?",
+   "from": 406,
+   "to": 473,
+   "accent": false
+  },
+  {
+   "text": "Затем",
+   "from": 429,
+   "to": 444,
+   "accent": false
+  },
+  {
+   "text": "что",
+   "from": 444,
+   "to": 448,
+   "accent": false
+  },
+  {
+   "text": "приложение",
+   "from": 448,
+   "to": 463,
+   "accent": false
+  },
+  {
+   "text": "можно",
+   "from": 463,
+   "to": 472,
+   "accent": false
+  },
+  {
+   "text": "продать",
+   "from": 472,
+   "to": 487,
+   "accent": true
+  },
+  {
+   "text": "Это",
+   "from": 487,
+   "to": 492,
+   "accent": false
+  },
+  {
+   "text": "решение",
+   "from": 492,
+   "to": 504,
+   "accent": false
+  },
+  {
+   "text": "для",
+   "from": 504,
+   "to": 511,
+   "accent": false
+  },
+  {
+   "text": "бизнеса",
+   "from": 511,
+   "to": 523,
+   "accent": false
+  },
+  {
+   "text": "от",
+   "from": 523,
+   "to": 530,
+   "accent": false
+  },
+  {
+   "text": "$1 000",
+   "from": 530,
+   "to": 544,
+   "accent": false
+  },
+  {
+   "text": "долларов",
+   "from": 544,
+   "to": 556,
+   "accent": true
+  },
+  {
+   "text": "Многие",
+   "from": 556,
+   "to": 566,
+   "accent": false
+  },
+  {
+   "text": "уже",
+   "from": 566,
+   "to": 573,
+   "accent": false
+  },
+  {
+   "text": "умеют",
+   "from": 573,
+   "to": 583,
+   "accent": false
+  },
+  {
+   "text": "генерить",
+   "from": 583,
+   "to": 597,
+   "accent": false
+  },
+  {
+   "text": "тексты",
+   "from": 597,
+   "to": 607,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 607,
+   "to": 612,
+   "accent": false
+  },
+  {
+   "text": "картинки",
+   "from": 612,
+   "to": 636,
+   "accent": true
+  },
+  {
+   "text": "а",
+   "from": 636,
+   "to": 638,
+   "accent": false
+  },
+  {
+   "text": "ты",
+   "from": 638,
+   "to": 643,
+   "accent": false
+  },
+  {
+   "text": "научишься",
+   "from": 643,
+   "to": 660,
+   "accent": false
+  },
+  {
+   "text": "создавать",
+   "from": 660,
+   "to": 674,
+   "accent": false
+  },
+  {
+   "text": "сайты",
+   "from": 674,
+   "to": 691,
+   "accent": false
+  },
+  {
+   "text": "приложения",
+   "from": 691,
+   "to": 705,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 705,
+   "to": 710,
+   "accent": false
+  },
+  {
+   "text": "сервисы",
+   "from": 710,
+   "to": 727,
+   "accent": true
+  },
+  {
+   "text": "Не",
+   "from": 727,
+   "to": 732,
+   "accent": false
+  },
+  {
+   "text": "просто",
+   "from": 732,
+   "to": 753,
+   "accent": false
+  },
+  {
+   "text": "нейросеть",
+   "from": 755,
+   "to": 776,
+   "accent": false
+  },
+  {
+   "text": "а",
+   "from": 776,
+   "to": 781,
+   "accent": false
+  },
+  {
+   "text": "создавать",
+   "from": 781,
+   "to": 791,
+   "accent": false
+  },
+  {
+   "text": "с",
+   "from": 791,
+   "to": 795,
+   "accent": false
+  },
+  {
+   "text": "ее",
+   "from": 795,
+   "to": 803,
+   "accent": false
+  },
+  {
+   "text": "помощью",
+   "from": 803,
+   "to": 817,
+   "accent": true
+  },
+  {
+   "text": "Я",
+   "from": 817,
+   "to": 822,
+   "accent": false
+  },
+  {
+   "text": "провожу",
+   "from": 822,
+   "to": 834,
+   "accent": false
+  },
+  {
+   "text": "бесплатный",
+   "from": 834,
+   "to": 851,
+   "accent": false
+  },
+  {
+   "text": "воркшоп",
+   "from": 851,
+   "to": 865,
+   "accent": false
+  },
+  {
+   "text": "ведь",
+   "from": 865,
+   "to": 870,
+   "accent": false
+  },
+  {
+   "text": "в",
+   "from": 870,
+   "to": 875,
+   "accent": false
+  },
+  {
+   "text": "прямом",
+   "from": 875,
+   "to": 882,
+   "accent": false
+  },
+  {
+   "text": "эфире",
+   "from": 882,
+   "to": 891,
+   "accent": false
+  },
+  {
+   "text": "создадим",
+   "from": 891,
+   "to": 906,
+   "accent": false
+  },
+  {
+   "text": "первое",
+   "from": 906,
+   "to": 918,
+   "accent": false
+  },
+  {
+   "text": "приложение",
+   "from": 918,
+   "to": 937,
+   "accent": true
+  },
+  {
+   "text": "Без",
+   "from": 937,
+   "to": 942,
+   "accent": false
+  },
+  {
+   "text": "опыта",
+   "from": 942,
+   "to": 956,
+   "accent": false
+  },
+  {
+   "text": "без",
+   "from": 956,
+   "to": 961,
+   "accent": false
+  },
+  {
+   "text": "программирования",
+   "from": 961,
+   "to": 980,
+   "accent": false
+  },
+  {
+   "text": "с",
+   "from": 980,
+   "to": 990,
+   "accent": false
+  },
+  {
+   "text": "нуля",
+   "from": 990,
+   "to": 999,
+   "accent": true
+  },
+  {
+   "text": "Занимай",
+   "from": 999,
+   "to": 1014,
+   "accent": false
+  },
+  {
+   "text": "место",
+   "from": 1014,
+   "to": 1021,
+   "accent": false
+  },
+  {
+   "text": "это",
+   "from": 1021,
+   "to": 1031,
+   "accent": false
+  },
+  {
+   "text": "бесплатно",
+   "from": 1031,
+   "to": 1052,
+   "accent": true
+  }
+ ],
+ "scenes": [
+  {
+   "from": 0,
+   "to": 108,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "СОЗДАТЬ ПРИЛОЖЕНИЕ",
+     "= ПРОГРАММИСТ?"
+    ],
+    "accent": "#FB7185",
+    "cover": true,
+    "bg": "warp"
+   }
+  },
+  {
+   "from": 108,
+   "to": 127,
+   "template": "kinetic-type",
+   "data": {
+    "words": [
+     "УЖЕ",
+     "НЕТ"
+    ],
+    "accentIndex": 1,
+    "accent": "#22D3EE",
+    "cover": true,
+    "bg": "warp"
+   }
+  },
+  {
+   "from": 127,
+   "to": 190,
+   "template": "arrow-flow",
+   "data": {
+    "steps": [
+     "AI",
+     "Идея",
+     "Приложение"
+    ],
+    "accent": "#22D3EE",
+    "cover": true
+   }
+  },
+  {
+   "from": 190,
+   "to": 278,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ПЕРВОЕ ЗА",
+     "ОДИН ВЕЧЕР"
+    ],
+    "accent": "#FF7A18",
+    "cover": true
+   },
+   "clip": "broll/agr1/mobile-app-interface-phone-screen-13441334.mp4"
+  },
+  {
+   "from": 278,
+   "to": 386,
+   "template": "chat-bubbles",
+   "data": {
+    "messages": [
+     {
+      "from": "user",
+      "text": "Создай CRM для клиентов"
+     },
+     {
+      "from": "ai",
+      "text": "Собираю интерфейс..."
+     },
+     {
+      "from": "ai",
+      "text": "Готово ✅"
+     }
+    ],
+    "accent": "#8B5CF6"
+   },
+   "clip": "broll/agr1/ai-chatbot-conversation-interface-screen-18069700.mp4"
+  },
+  {
+   "from": 386,
+   "to": 487,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ЗАЧЕМ СОЗДАВАТЬ?",
+     "ЧТОБЫ ПРОДАТЬ"
+    ],
+    "accent": "#FFC53D",
+    "cover": true
+   }
+  },
+  {
+   "from": 487,
+   "to": 556,
+   "template": "metric-callout",
+   "data": {
+    "value": "$1 000+",
+    "label": "РЕШЕНИЕ ДЛЯ БИЗНЕСА",
+    "up": true,
+    "accent": "#FFC53D"
+   },
+   "clip": "broll/agr1/business-deal-payment-money-success-34812214.mp4"
+  },
+  {
+   "from": 556,
+   "to": 636,
+   "template": "vs-compare",
+   "data": {
+    "leftTitle": "МНОГИЕ",
+    "rightTitle": "ТЫ",
+    "leftItems": [
+     "Тексты",
+     "Картинки"
+    ],
+    "rightItems": [
+     "Сайты",
+     "Приложения"
+    ],
+    "accent": "#FF7A18"
+   }
+  },
+  {
+   "from": 636,
+   "to": 727,
+   "template": "pill-row",
+   "data": {
+    "items": [
+     "Сайты",
+     "Приложения",
+     "Сервисы",
+     "Автоматизации"
+    ],
+    "accent": "#34D399",
+    "cover": true
+   },
+   "clip": "broll/agr1/app-development-coding-screen-33315117.mp4"
+  },
+  {
+   "from": 727,
+   "to": 817,
+   "template": "kinetic-type",
+   "data": {
+    "words": [
+     "СОЗДАВАЙ",
+     "С ПОМОЩЬЮ AI"
+    ],
+    "accentIndex": 1,
+    "accent": "#22D3EE",
+    "cover": true
+   }
+  },
+  {
+   "from": 817,
+   "to": 937,
+   "template": "notification-toast",
+   "data": {
+    "title": "БЕСПЛАТНЫЙ ВОРКШОП",
+    "text": "Живой эфир, создаём первое приложение",
+    "icon": "rocket",
+    "accent": "#34D399"
+   },
+   "clip": "broll/agr1/online-workshop-webinar-laptop-class-8052000.mp4"
+  },
+  {
+   "from": 937,
+   "to": 999,
+   "template": "spec-card",
+   "data": {
+    "tag": "БЕЗ БАРЬЕРОВ",
+    "title": "МОЖНО НАЧАТЬ",
+    "icon": "rocket",
+    "accent": "#8B5CF6",
+    "items": [
+     {
+      "type": "check",
+      "icon": "rocket",
+      "text": "Без опыта"
+     },
+     {
+      "type": "bullet",
+      "icon": "apps",
+      "text": "Без программирования"
+     },
+     {
+      "type": "bullet",
+      "icon": "chart",
+      "text": "С нуля"
+     }
+    ]
+   },
+   "clip": "broll/agr1/person-working-laptop-home-remote-7126537.mp4"
+  },
+  {
+   "from": 999,
+   "to": 1052,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ЗАНЯТЬ МЕСТО",
+     "БЕСПЛАТНО →"
+    ],
+    "accent": "#FF7A18",
+    "cover": true
+   },
+   "clip": "broll/agr1/click-button-register-laptop-hands-34771079.mp4"
+  }
+ ],
+ "totalDurationInFrames": 1052,
+ "fps": 30,
+ "music": "reels/beat_agr1.wav",
+ "musicVolume": 0.07,
+ "captions": true,
+ "background": "aurora"
+}
