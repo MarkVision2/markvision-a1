@@ -1,7 +1,7 @@
 // Public redirect for tracked WhatsApp group invite links.
 // GET /functions/v1/group-invite-redirect?s=<slug>
 // 1) Resolve active group_invite_links by slug
-// 2) Insert group_invite_clicks + bump click_count
+// 2) Insert group_invite_clicks + bump click_count (люди; боты/превью — нет)
 // 3) 302 → invite_url (chat.whatsapp.com/…)
 //
 // Short public URL on site: https://www.markvision.kz/g/<slug>
@@ -38,6 +38,41 @@ function pickUtm(url: URL): Record<string, string> {
   return out;
 }
 
+/**
+ * Превью-боты (WhatsApp/Telegram при шаринге ссылки) дергают URL без вступления.
+ * Их не считаем кликами — иначе 8 «кликов» и 1 вход выглядят как потеря.
+ * Реальный тап пользователя в WhatsApp обычно идёт с Safari/Chrome UA.
+ */
+export function isInvitePreviewBot(userAgent: string | null): boolean {
+  const ua = (userAgent ?? "").trim();
+  if (!ua) return true; // пустой UA — почти всегда сканер
+  const low = ua.toLowerCase();
+  const needles = [
+    "whatsapp/", // link preview fetcher (не in-app browser)
+    "telegrambot",
+    "twitterbot",
+    "facebookexternalhit",
+    "facebot",
+    "slackbot",
+    "discordbot",
+    "linkedinbot",
+    "vkshare",
+    "preview",
+    "bot",
+    "spider",
+    "crawler",
+    "curl/",
+    "wget/",
+    "python-requests",
+    "go-http-client",
+    "httpclient",
+    "axios/",
+    "scrapy",
+    "headless",
+  ];
+  return needles.some((n) => low.includes(n));
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "GET" && req.method !== "HEAD") {
@@ -70,15 +105,17 @@ Deno.serve(async (req) => {
   const dateKey = almatyDateKey(occurredAt);
   const linkId = (link as { id: string }).id;
   const projectId = (link as { project_id: string }).project_id;
+  const ua = req.headers.get("user-agent");
+  const skipClick = req.method !== "GET" || isInvitePreviewBot(ua);
 
-  if (req.method === "GET") {
+  if (!skipClick) {
     const utm = pickUtm(url);
     const { error: insErr } = await admin.from("group_invite_clicks").insert({
       link_id: linkId,
       project_id: projectId,
       occurred_at: occurredAt.toISOString(),
       date: dateKey,
-      user_agent: (req.headers.get("user-agent") ?? "").slice(0, 512) || null,
+      user_agent: (ua ?? "").slice(0, 512) || null,
       referrer: (req.headers.get("referer") ?? "").slice(0, 512) || null,
       utm,
     });
@@ -107,6 +144,7 @@ Deno.serve(async (req) => {
       ...corsHeaders,
       Location: target,
       "Cache-Control": "no-store",
+      "X-Invite-Click": skipClick ? "skipped" : "counted",
     },
   });
 });

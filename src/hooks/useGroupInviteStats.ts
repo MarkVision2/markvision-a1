@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 
+export { trackedInviteUrl } from "@/lib/groupInvite";
+
 export interface GroupInviteLinkStat {
   id: string;
   slug: string;
@@ -27,14 +29,6 @@ export interface GroupInviteJoinRow {
 export interface GroupInviteClickDay {
   date: string;
   clicks: number;
-}
-
-const TRACKED_BASE = "https://www.markvision.kz/g/";
-
-export function trackedInviteUrl(slug: string, utmSource?: string): string {
-  const u = `${TRACKED_BASE}${slug}`;
-  if (!utmSource?.trim()) return u;
-  return `${u}?utm_source=${encodeURIComponent(utmSource.trim())}`;
 }
 
 async function fetchLinks(projectId: string): Promise<GroupInviteLinkStat[]> {

@@ -26,6 +26,7 @@ import {
   type BroadcastLeadLite,
   type BroadcastRecipientLite,
 } from "@/lib/broadcastFunnel";
+import { trackedInviteUrl } from "@/lib/groupInvite";
 
 /** Один получатель для вставки в broadcast_recipients. */
 export type RecipientRow = { name: string; phone: string; lead_id: string | null };
@@ -742,14 +743,45 @@ export async function fetchGroups(projectId: string): Promise<WaGroup[]> {
   return (data as { groups?: WaGroup[] } | null)?.groups ?? [];
 }
 
-/** Пригласительная ссылка группы (для {ссылка} в тексте). */
+/** Пригласительная ссылка группы (для кнопки CTA). Предпочитаем tracked /g/<slug>. */
 export async function fetchGroupInvite(projectId: string, groupId: string): Promise<string> {
+  // 1) Если есть активная tracked-ссылка на эту группу — отдаём публичный short URL.
+  const { data: tracked } = await db()
+    .from("group_invite_links")
+    .select("slug, invite_url, invite_code")
+    .eq("project_id", projectId)
+    .eq("is_active", true)
+    .eq("group_id", groupId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  const trackedRow = tracked as { slug?: string; invite_url?: string; invite_code?: string } | null;
+  if (trackedRow?.slug) {
+    return trackedInviteUrl(trackedRow.slug);
+  }
+
+  // 2) Fallback: сырая ссылка из Green API + попытка матча по invite_code.
   const { data, error } = await supabase.functions.invoke("broadcast-groups", {
     body: { project_id: projectId, action: "invite", groupId },
   });
   if (error) throw new Error(await edgeErrorMessage(error, data));
   const invite = (data as { inviteLink?: string } | null)?.inviteLink ?? "";
   if (!invite) throw new Error("Ссылка приглашения не пришла — проверьте права админа в группе");
+
+  const code = invite.match(/chat\.whatsapp\.com\/([A-Za-z0-9_-]+)/)?.[1] ?? "";
+  if (code) {
+    const { data: byCode } = await db()
+      .from("group_invite_links")
+      .select("slug")
+      .eq("project_id", projectId)
+      .eq("is_active", true)
+      .eq("invite_code", code)
+      .limit(1)
+      .maybeSingle();
+    const slug = (byCode as { slug?: string } | null)?.slug;
+    if (slug) return trackedInviteUrl(slug);
+  }
+
   return invite;
 }
 

@@ -3,8 +3,8 @@ import { Copy, ExternalLink, Link2, Loader2, RefreshCw, UserPlus, MousePointerCl
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { trackedInviteUrl } from "@/lib/groupInvite";
 import {
-  trackedInviteUrl,
   useGroupInviteStats,
   type GroupInviteLinkStat,
 } from "@/hooks/useGroupInviteStats";
@@ -96,13 +96,14 @@ function LinkCard({
               <MousePointerClick className="h-3 w-3" /> Клики
             </div>
             <div className="mt-1 text-lg font-bold tabular-nums">{link.clickCount}</div>
+            <div className="text-[10px] text-muted-foreground">люди, без ботов</div>
           </div>
           <div className="rounded-xl border border-border/50 bg-background/40 px-3 py-2">
             <div className="flex items-center gap-1 text-[10px] uppercase tracking-wide text-muted-foreground">
               <UserPlus className="h-3 w-3" /> По ссылке
             </div>
             <div className="mt-1 text-lg font-bold tabular-nums text-cyan-400">{link.joinCount}</div>
-            <div className="text-[10px] text-muted-foreground">после метки</div>
+            <div className="text-[10px] text-muted-foreground">новые после метки</div>
           </div>
           <div className="rounded-xl border border-border/50 bg-background/40 px-3 py-2">
             <div className="text-[10px] uppercase tracking-wide text-muted-foreground">В группе</div>
@@ -116,6 +117,11 @@ function LinkCard({
           </div>
         </div>
       </div>
+
+      <p className="mt-3 text-[11px] leading-relaxed text-muted-foreground">
+        Клик = открыли tracked-ссылку. Вступление = реально появились в WhatsApp-группе после старта трекинга.
+        Превью WhatsApp/Telegram при шаринге в клики не входят. Кто уже был в группе до метки — в «По ссылке» не считается.
+      </p>
 
       {clickDays.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
