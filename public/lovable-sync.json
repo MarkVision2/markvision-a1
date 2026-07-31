@@ -1,9 +1,10 @@
 {
-  "git_sha": "cea2f6fd1d0a6f99f33d6e253b0481b83a29518f",
+  "git_sha": "65b70d65c073f1f2d8b9f4fa01264af9dbf9032b",
   "git_sha_full": "cea2f6fd1d0a6f99f33d6e253b0481b83a29518f",
   "updated_at": "2026-07-31T10:59:52Z",
   "label": "Meta #200 permission warning UX",
-  "publish_hint": "push main \u2192 www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app",
-  "git_sha_short": "cea2f6fd",
-  "branch": "main"
+  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app",
+  "git_sha_short": "65b70d6",
+  "branch": "main",
+  "note": "wa-group-invite-track /g/lab"
 }
