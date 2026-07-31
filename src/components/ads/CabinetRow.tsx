@@ -16,6 +16,12 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import type { AdCabinet } from "@/types/ads";
 import { useMetaInsights } from "@/hooks/useMetaInsights";
+import { useLeadsLite } from "@/hooks/useLeadsLite";
+import { useStageChangeEvents } from "@/hooks/useStageChangeEvents";
+import {
+  buildAdsCabinetCrmDaily,
+  sumAdsCabinetCrmDaily,
+} from "@/lib/adsCabinetCrmDaily";
 import { supabase } from "@/integrations/supabase/client";
 import { manualValueForSave } from "@/lib/cdiManualOverride";
 import {
@@ -106,6 +112,27 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
     cabinet.id,
   );
 
+  const crmPeriod = useMemo(() => {
+    const year = monthCursor.getFullYear();
+    const month = monthCursor.getMonth();
+    return {
+      from: new Date(year, month, 1),
+      to: new Date(year, month + 1, 0, 23, 59, 59, 999),
+    };
+  }, [monthCursor]);
+
+  const { leads: allLeads } = useLeadsLite();
+  const { events: stageEvents } = useStageChangeEvents(crmPeriod, true);
+
+  const crmByDay = useMemo(() => {
+    const since = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}-01`;
+    const last = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0).getDate();
+    const until = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}-${String(last).padStart(2, "0")}`;
+    return buildAdsCabinetCrmDaily(allLeads, stageEvents, cabinet.id, since, until);
+  }, [allLeads, stageEvents, cabinet.id, monthCursor]);
+
+  const crmTotals = useMemo(() => sumAdsCabinetCrmDaily(crmByDay), [crmByDay]);
+
   const [syncing, setSyncing] = useState(false);
 
   const handleSync = async () => {
@@ -166,7 +193,8 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
     });
   }, [monthCursor]);
 
-  const cpl = totals && totals.leads > 0 ? totals.spend / totals.leads : 0;
+  const cplCrm =
+    totals && crmTotals.crmLeads > 0 ? totals.spend / crmTotals.crmLeads : 0;
 
   const upsertManual = async (
     isoDate: string,
@@ -204,8 +232,6 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
     }
   };
 
-  const handleManualDiagnostics = (isoDate: string, v: number) =>
-    upsertManual(isoDate, { manual_diagnostics: v });
   const handleManualSales = (isoDate: string, v: number) =>
     upsertManual(isoDate, { manual_sales: v });
   const handleManualRevenue = (isoDate: string, v: number) =>
@@ -282,21 +308,25 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
           </div>
         </div>
 
-        <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:grid-cols-4">
+        <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
           <Metric
             label="Расход"
             value={formatMoney(totals?.spend ?? 0, currency)}
           />
           <Metric
-            label="Лиды"
+            label="Лиды Meta"
             value={formatNumber(totals?.leads ?? 0)}
-            sub={cpl > 0 ? `CPL ${formatMoney(cpl, currency)}` : "—"}
           />
           <Metric
-            label="Диагностики"
+            label="Лиды CRM"
+            value={formatNumber(crmTotals.crmLeads)}
+            sub={cplCrm > 0 ? `CPL ${formatMoney(cplCrm, currency)}` : "—"}
+          />
+          <Metric
+            label="Вступления"
             value={
-              <span className="text-amber-400">
-                {formatNumber(totals?.diagnostics ?? 0)}
+              <span className="text-cyan-400">
+                {formatNumber(crmTotals.joins)}
               </span>
             }
           />
@@ -412,8 +442,8 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {[
               {
-                label: "CPL",
-                value: cpl > 0 ? formatMoney(cpl, currency) : `— ${CURRENCY_SYMBOLS[currency] ?? currency}`,
+                label: "CPL CRM",
+                value: cplCrm > 0 ? formatMoney(cplCrm, currency) : `— ${CURRENCY_SYMBOLS[currency] ?? currency}`,
                 color: "text-amber-400",
               },
               {
@@ -462,23 +492,24 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
             <table className="w-full text-sm">
               <thead className="bg-background/40 text-[10px] uppercase tracking-wider text-muted-foreground">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium">Дата</th>
-                  <th className="px-4 py-3 text-right font-medium">Расход</th>
-                  <th className="px-4 py-3 text-right font-medium">Лиды</th>
-                  <th className="px-4 py-3 text-right font-medium">CPL</th>
-                  <th className="px-4 py-3 text-right font-medium">Диагн.</th>
-                  <th className="px-4 py-3 text-right font-medium">Продажи</th>
-                  <th className="px-4 py-3 text-right font-medium">Сумма CRM</th>
+                  <th className="px-3 py-3 text-left font-medium">Дата</th>
+                  <th className="px-3 py-3 text-right font-medium">Расход</th>
+                  <th className="px-3 py-3 text-right font-medium">Лиды Meta</th>
+                  <th className="px-3 py-3 text-right font-medium">Лиды CRM</th>
+                  <th className="px-3 py-3 text-right font-medium">CPL CRM</th>
+                  <th className="px-3 py-3 text-right font-medium">Вступлений</th>
+                  <th className="px-3 py-3 text-right font-medium">Продажи</th>
+                  <th className="px-3 py-3 text-right font-medium">Сумма</th>
                 </tr>
               </thead>
               <tbody>
                 {monthDays.map((d) => {
                   const row = dailyByDate.get(d.iso);
-                  const dayCpl =
-                    row && row.leads > 0 ? row.spend / row.leads : 0;
-                  const diag = row?.diagnostics ?? 0;
-                  const crmDiag = row?.crmDiagnostics ?? 0;
-                  const manualDiag = row?.manualDiagnostics ?? 0;
+                  const crm = crmByDay.get(d.iso);
+                  const crmLeads = crm?.crmLeads ?? 0;
+                  const joins = crm?.joins ?? 0;
+                  const dayCplCrm =
+                    row && crmLeads > 0 ? row.spend / crmLeads : 0;
                   const sales = row?.sales ?? 0;
                   const crmSalesOnly = row?.crmSales ?? 0;
                   const manualSales = row?.manualSales ?? 0;
@@ -490,10 +521,10 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                       key={d.key}
                       className="border-t border-border/60 last:border-b-0"
                     >
-                      <td className="px-4 py-3 font-medium">{d.label}</td>
+                      <td className="px-3 py-3 font-medium">{d.label}</td>
                       <td
                         className={cn(
-                          "px-4 py-3 text-right",
+                          "px-3 py-3 text-right tabular-nums",
                           !row?.spend && "text-muted-foreground",
                         )}
                       >
@@ -501,7 +532,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                       </td>
                       <td
                         className={cn(
-                          "px-4 py-3 text-right",
+                          "px-3 py-3 text-right tabular-nums",
                           !row?.leads && "text-muted-foreground",
                         )}
                       >
@@ -509,22 +540,29 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                       </td>
                       <td
                         className={cn(
-                          "px-4 py-3 text-right",
-                          !dayCpl && "text-muted-foreground",
+                          "px-3 py-3 text-right tabular-nums",
+                          !crmLeads && "text-muted-foreground",
                         )}
                       >
-                        {dayCpl > 0 ? formatMoney(dayCpl, currency) : "—"}
+                        {crmLeads ? formatNumber(crmLeads) : "—"}
                       </td>
-                      <td className="px-4 py-3 text-right">
-                        <DiagnosticsCell
-                          isoDate={d.iso}
-                          diagnostics={diag}
-                          crm={crmDiag}
-                          manual={manualDiag}
-                          onSave={(v) => handleManualDiagnostics(d.iso, v)}
-                        />
+                      <td
+                        className={cn(
+                          "px-3 py-3 text-right tabular-nums",
+                          !dayCplCrm && "text-muted-foreground",
+                        )}
+                      >
+                        {dayCplCrm > 0 ? formatMoney(dayCplCrm, currency) : "—"}
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td
+                        className={cn(
+                          "px-3 py-3 text-right tabular-nums",
+                          joins ? "text-cyan-400" : "text-muted-foreground",
+                        )}
+                      >
+                        {joins ? formatNumber(joins) : "—"}
+                      </td>
+                      <td className="px-3 py-3 text-right">
                         <EditableNumberCell
                           value={sales}
                           manual={manualSales}
@@ -535,7 +573,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                           title="Продажи вручную"
                         />
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="px-3 py-3 text-right">
                         <EditableNumberCell
                           value={crmRev}
                           manual={manualRev}
@@ -555,82 +593,13 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
           </div>
 
           <p className="text-xs text-muted-foreground">
-            Данные Meta + CRM подгружаются в реальном времени. Диагностики и продажи считаются автоматически по лидам этого кабинета. Кликни на ячейку «Диагн.» чтобы добавить вручную.
+            Meta — расход и лиды из Ads. Лиды CRM — заявки с атрибуцией на этот кабинет.
+            CPL CRM = расход ÷ лиды CRM. Вступления — переходы в этап «Вступил в группу».
+            Продажи и сумма — оплаты из CRM (можно поправить вручную).
           </p>
         </div>
       )}
     </article>
-  );
-};
-
-const DiagnosticsCell = ({
-  isoDate,
-  diagnostics,
-  crm,
-  manual,
-  onSave,
-}: {
-  isoDate: string;
-  /** Итоговое значение (override-aware). */
-  diagnostics: number;
-  /** Чистое CRM значение, чтобы в попапе можно было увидеть авто-факт даже если поверх стоит manual. */
-  crm: number;
-  manual: number;
-  onSave: (newManual: number) => Promise<void>;
-}) => {
-  const [open, setOpen] = useState(false);
-  const [val, setVal] = useState<string>(String(manual));
-  const [saving, setSaving] = useState(false);
-
-  const handleSave = async () => {
-    const n = Math.max(0, Math.floor(Number(val) || 0));
-    setSaving(true);
-    try {
-      await onSave(n);
-      setOpen(false);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Popover open={open} onOpenChange={(o) => { setOpen(o); if (o) setVal(String(manual)); }}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-secondary",
-            !diagnostics && "text-muted-foreground",
-          )}
-          title={`Дата ${isoDate}. CRM + ручные`}
-        >
-          {diagnostics ? diagnostics : "—"}
-          <Pencil className="h-3 w-3 opacity-60" />
-        </button>
-      </PopoverTrigger>
-      <PopoverContent className="w-56" align="end">
-        <div className="space-y-2">
-          <div className="text-xs font-medium">Диагностики вручную</div>
-          <div className="text-[11px] text-muted-foreground">
-            Из CRM: {crm} · Вручную: {manual} · Показано: {diagnostics}
-          </div>
-          <Input
-            type="number"
-            min={0}
-            value={val}
-            onChange={(e) => setVal(e.target.value)}
-          />
-          <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => setOpen(false)} disabled={saving}>
-              Отмена
-            </Button>
-            <Button size="sm" onClick={handleSave} disabled={saving}>
-              {saving ? "..." : "Сохранить"}
-            </Button>
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
   );
 };
 

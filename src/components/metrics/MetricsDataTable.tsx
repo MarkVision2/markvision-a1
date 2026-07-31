@@ -46,7 +46,8 @@ interface Props {
   onSavePrepaySum: (iso: string, next: number | null) => Promise<void>;
 }
 
-const COL_COUNT_DETAILED = 16;
+/** Бизнес: Дата + 7 метрик. Детально: реклама/CRM/деньги без клиник-диагностик. */
+const COL_COUNT_DETAILED = 12;
 const COL_COUNT_BUSINESS = 8;
 
 export function MetricsDataTable({
@@ -60,11 +61,6 @@ export function MetricsDataTable({
   onSaveSpend,
   onSaveLeads,
   onSaveCrmReceived,
-  onSaveQualified,
-  onSavePlannedVisits,
-  onSaveConductedVisits,
-  onSaveDiagnosticsPaid,
-  onSaveDiagnosticRevenue,
   onSaveSales,
   onSaveSalesRevenue,
   onSaveCash,
@@ -82,12 +78,12 @@ export function MetricsDataTable({
 
   return (
     <div className="overflow-x-auto rounded-2xl border border-border/60 bg-card/30 shadow-sm">
-      <table className={cn("w-full border-collapse text-sm", mode === "business" ? "min-w-[980px]" : "min-w-[1400px]")}>
+      <table className={cn("w-full border-collapse text-sm", mode === "business" ? "min-w-[980px]" : "min-w-[1280px]")}>
         <thead className="sticky top-0 z-[2]">
           {mode === "business" ? (
             <tr className="border-b-2 border-border/80 bg-muted/70 shadow-sm">
               <th className={stickyDateHeader}>Дата</th>
-              {["Затраты", "Лиды Meta", "Получено CRM", "CPL", "Визиты", "Продажи", "Итого"].map((h) => (
+              {["Затраты", "Лиды Meta", "Лиды CRM", "CPL CRM", "Вступлений", "Продажи", "Сумма"].map((h) => (
                 <th key={h} className={cn(headerTh, "text-right")}>{h}</th>
               ))}
             </tr>
@@ -97,14 +93,11 @@ export function MetricsDataTable({
             <th rowSpan={2} className={stickyDateHeader}>
               Дата
             </th>
-            <th colSpan={3} className="border-b border-border/40 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-foreground">
+            <th colSpan={2} className="border-b border-border/40 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-foreground">
               Реклама
             </th>
-            <th colSpan={2} className="border-b border-l border-border/40 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-foreground">
+            <th colSpan={3} className="border-b border-l border-border/40 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-foreground">
               CRM
-            </th>
-            <th colSpan={4} className="border-b border-l border-border/40 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-foreground">
-              Диагностики
             </th>
             <th colSpan={6} className="border-b border-l border-border/40 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-foreground">
               Деньги ₸
@@ -113,14 +106,10 @@ export function MetricsDataTable({
           <tr className="border-b-2 border-border/80 bg-muted/70">
             {[
               { h: "Затраты", border: false },
-              { h: "Передано", border: false },
-              { h: "CPL", border: false },
-              { h: "Получено", border: true },
-              { h: "Квал", border: false },
-              { h: "Записано", border: true },
-              { h: "Проведено", border: false },
-              { h: "Оплачено", border: false },
-              { h: "Сумма", border: false },
+              { h: "Лиды Meta", border: false },
+              { h: "Лиды CRM", border: true },
+              { h: "CPL CRM", border: false },
+              { h: "Вступлений", border: false },
               { h: "Предоплат", border: true },
               { h: "Сумма предопл.", border: false },
               { h: "Продажи", border: false },
@@ -153,20 +142,21 @@ export function MetricsDataTable({
           ) : (
             visibleDays.map(({ day, iso, weekday }, rowIdx) => {
               const d = dailyMap.get(iso);
-              const cpl = d && d.leads > 0 ? d.spend / d.leads : 0;
+              const crmLeads = d?.crmReceived ?? 0;
+              const cplCrm = d && crmLeads > 0 ? d.spend / crmLeads : 0;
+              const joins = d?.joins ?? 0;
               const dayRevenue = d?.crmRevenue ?? 0;
               const weekend = isWeekend(weekday);
               const today = iso === todayIso;
               const hasData = !!d && (
                 d.spend > 0 ||
                 d.leads > 0 ||
-                d.crmReceived > 0 ||
-                d.plannedVisits > 0 ||
-                d.conductedVisits > 0 ||
-                d.diagnosticsPaid > 0 ||
+                crmLeads > 0 ||
+                joins > 0 ||
                 d.sales > 0 ||
                 dayRevenue > 0 ||
-                d.cashRevenue > 0
+                d.cashRevenue > 0 ||
+                (d.prepayCount ?? 0) > 0
               );
 
               return (
@@ -206,9 +196,13 @@ export function MetricsDataTable({
                     <>
                       <Cell>{num(d?.spend)}</Cell>
                       <Cell>{num(d?.leads)}</Cell>
-                      <Cell>{num(d?.crmReceived)}</Cell>
-                      <Cell>{cpl > 0 ? formatNumber(cpl) : <MetricsDash />}</Cell>
-                      <Cell>{num(d?.conductedVisits)}</Cell>
+                      <Cell>{num(crmLeads)}</Cell>
+                      <Cell>{cplCrm > 0 ? formatNumber(cplCrm) : <MetricsDash />}</Cell>
+                      <Cell>
+                        <span className={cn(joins > 0 && "text-cyan-400")}>
+                          {num(joins)}
+                        </span>
+                      </Cell>
                       <Cell>{num(d?.sales)}</Cell>
                       <Cell>
                         <span className={cn("font-semibold", dayRevenue > 0 && "text-success")}>
@@ -248,92 +242,25 @@ export function MetricsDataTable({
                       onSave={(next) => onSaveLeads(iso, next)}
                     />
                   </Cell>
-                  <Cell>{cpl > 0 ? formatNumber(cpl) : <MetricsDash />}</Cell>
                   <Cell>
                     <ManualFactCell
-                      title="Получено в CRM"
+                      title="Лиды CRM"
                       icon={Users}
                       isoDate={iso}
-                      value={d?.crmReceived ?? 0}
-                      crm={d?.autoCrmReceived ?? d?.crmReceived ?? 0}
-                      manual={d?.crmReceived ?? 0}
+                      value={crmLeads}
+                      crm={d?.autoCrmReceived ?? crmLeads}
+                      manual={crmLeads}
                       manualRaw={d?.manualCrmReceivedRaw ?? null}
                       autoLabel="CRM"
                       disabled={editDisabled || rnpEditDisabled}
                       onSave={(next) => onSaveCrmReceived(iso, next)}
                     />
                   </Cell>
+                  <Cell>{cplCrm > 0 ? formatNumber(cplCrm) : <MetricsDash />}</Cell>
                   <Cell>
-                    <ManualFactCell
-                      title="Квалифицированные лиды"
-                      icon={Users}
-                      isoDate={iso}
-                      value={d?.qualified ?? 0}
-                      crm={d?.autoQualified ?? d?.qualified ?? 0}
-                      manual={d?.qualified ?? 0}
-                      manualRaw={d?.manualQualifiedRaw ?? null}
-                      autoLabel="CRM"
-                      disabled={editDisabled || rnpEditDisabled}
-                      onSave={(next) => onSaveQualified(iso, next)}
-                    />
-                  </Cell>
-                  <Cell>
-                    <ManualFactCell
-                      title="Записано на визит"
-                      icon={Users}
-                      isoDate={iso}
-                      value={d?.plannedVisits ?? 0}
-                      crm={d?.autoPlannedVisits ?? d?.plannedVisits ?? 0}
-                      manual={d?.plannedVisits ?? 0}
-                      manualRaw={d?.manualPlannedVisitsRaw ?? null}
-                      autoLabel="CRM"
-                      disabled={editDisabled || rnpEditDisabled}
-                      onSave={(next) => onSavePlannedVisits(iso, next)}
-                    />
-                  </Cell>
-                  <Cell>
-                    <ManualFactCell
-                      title="Проведено визитов"
-                      icon={Users}
-                      isoDate={iso}
-                      value={d?.conductedVisits ?? 0}
-                      crm={d?.autoConductedVisits ?? d?.conductedVisits ?? 0}
-                      manual={d?.conductedVisits ?? 0}
-                      manualRaw={d?.manualConductedVisitsRaw ?? null}
-                      autoLabel="CRM"
-                      disabled={editDisabled || rnpEditDisabled}
-                      onSave={(next) => onSaveConductedVisits(iso, next)}
-                    />
-                  </Cell>
-                  <Cell>
-                    <ManualFactCell
-                      title="Оплачено диагностик"
-                      icon={Users}
-                      isoDate={iso}
-                      value={d?.diagnosticsPaid ?? 0}
-                      crm={d?.autoDiagnosticsPaid ?? d?.diagnosticsPaid ?? 0}
-                      manual={d?.diagnosticsPaid ?? 0}
-                      manualRaw={d?.manualDiagnosticsPaidRaw ?? null}
-                      autoLabel="CRM"
-                      disabled={editDisabled || rnpEditDisabled}
-                      onSave={(next) => onSaveDiagnosticsPaid(iso, next)}
-                    />
-                  </Cell>
-                  <Cell>
-                    <ManualFactCell
-                      title="Сумма диагностик"
-                      icon={DollarSign}
-                      isoDate={iso}
-                      value={d?.diagnosticRevenue ?? 0}
-                      crm={d?.diagnosticRevenuePaid ?? d?.crmDiagnosticRevenue ?? 0}
-                      manual={d?.manualDiagnosticRevenue ?? 0}
-                      manualRaw={d?.manualDiagnosticRevenueRaw ?? null}
-                      autoLabel="CRM"
-                      disabled={editDisabled}
-                      format={formatNumber}
-                      allowDecimal
-                      onSave={(next) => onSaveDiagnosticRevenue(iso, next)}
-                    />
+                    <span className={cn(joins > 0 && "font-medium text-cyan-400")}>
+                      {num(joins)}
+                    </span>
                   </Cell>
                   <Cell>
                     <ManualFactCell

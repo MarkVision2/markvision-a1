@@ -9,12 +9,13 @@ import {
 interface Props {
   factRevenue: number;
   factSpend: number;
+  factMetaLeads: number;
   factCrmReceived: number;
+  factJoins: number;
   factSales: number;
-  factDiagnostics: number;
   factCpl: number;
-  crLeadDiagnostics: number;
-  crDiagnosticsSale: number;
+  crLeadJoin: number;
+  crJoinSale: number;
   monthProgress: number;
   filledDays: number;
   daysInMonth: number;
@@ -47,12 +48,13 @@ function CompactStat({
 export function MetricsKpiPanel({
   factRevenue,
   factSpend,
+  factMetaLeads,
   factCrmReceived,
+  factJoins,
   factSales,
-  factDiagnostics,
   factCpl,
-  crLeadDiagnostics,
-  crDiagnosticsSale,
+  crLeadJoin,
+  crJoinSale,
   monthProgress,
   filledDays,
   daysInMonth,
@@ -67,18 +69,26 @@ export function MetricsKpiPanel({
         <span>{monthProgress}% месяца заполнено</span>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <CompactStat
           label="Расходы"
           value={factSpend > 0 ? formatTenge(factSpend) : <MetricsDash />}
+        />
+        <CompactStat
+          label="Лиды Meta"
+          value={factMetaLeads > 0 ? formatNumber(factMetaLeads) : <MetricsDash />}
         />
         <CompactStat
           label="Лиды CRM"
           value={factCrmReceived > 0 ? formatNumber(factCrmReceived) : <MetricsDash />}
         />
         <CompactStat
-          label="CPL"
+          label="CPL CRM"
           value={factCpl > 0 ? formatTenge(factCpl) : <MetricsDash />}
+        />
+        <CompactStat
+          label="Вступления"
+          value={factJoins > 0 ? formatNumber(factJoins) : <MetricsDash />}
         />
         <CompactStat
           label="Выручка"
@@ -89,22 +99,16 @@ export function MetricsKpiPanel({
 
       <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span>
-          Диагностики:{" "}
-          <strong className="text-foreground">
-            {factDiagnostics > 0 ? formatNumber(factDiagnostics) : "—"}
-          </strong>
-        </span>
-        <span>
           Продажи:{" "}
           <strong className="text-foreground">
             {factSales > 0 ? formatNumber(factSales) : "—"}
           </strong>
         </span>
-        {crLeadDiagnostics > 0 && (
-          <span>Лид → визит: {formatPercent(crLeadDiagnostics)}</span>
+        {crLeadJoin > 0 && (
+          <span>CRM → вступление: {formatPercent(crLeadJoin)}</span>
         )}
-        {crDiagnosticsSale > 0 && (
-          <span>Визит → продажа: {formatPercent(crDiagnosticsSale)}</span>
+        {crJoinSale > 0 && (
+          <span>Вступление → продажа: {formatPercent(crJoinSale)}</span>
         )}
       </div>
     </div>

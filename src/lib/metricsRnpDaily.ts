@@ -1,6 +1,7 @@
 import type { LeadLite } from "@/hooks/useLeadsLite";
 import type { StageChangeEvent } from "@/hooks/useStageChangeEvents";
 import type { ReportPeriodRange } from "@/lib/crmDailyMetrics";
+import { isGroupJoinStageKey } from "@/lib/adsCabinetCrmDaily";
 import { ymdAlmatyFromIso } from "@/lib/metaSync";
 import { isLeadConductedVisit, isLeadPaid } from "@/lib/leadStageFlags";
 
@@ -9,6 +10,8 @@ export const QUAL_SCORE_MIN = 50;
 export interface RnpDailyMetrics {
   crmReceived: number;
   qualified: number;
+  /** Вступления в группу (stage → joined_group). */
+  joins: number;
   plannedVisits: number;
   conductedVisits: number;
   /** Записано (stage_changed → scheduled). */
@@ -37,6 +40,7 @@ function empty(): RnpDailyMetrics {
   return {
     crmReceived: 0,
     qualified: 0,
+    joins: 0,
     plannedVisits: 0,
     conductedVisits: 0,
     scheduled: 0,
@@ -49,7 +53,7 @@ function empty(): RnpDailyMetrics {
   };
 }
 
-/** РНП-метрики по дням. stageEvents необязательны — используются для scheduled/conducted. */
+/** РНП-метрики по дням. stageEvents — вступления / scheduled / conducted. */
 export function metricsRnpDaily(
   leads: LeadLite[],
   stageEvents: StageChangeEvent[],
@@ -112,11 +116,22 @@ export function metricsRnpDaily(
     }
   }
 
+  const joinedDay = new Set<string>();
   for (const ev of stageEvents) {
-    if (!ev.isDiagnostic) continue;
     if (!matchCabinet(ev.cabinetId)) continue;
     const ymd = ymdAlmatyFromIso(ev.at);
     if (!ymd || !inMonthRange(ymd, range)) continue;
+
+    if (isGroupJoinStageKey(ev.toStageKey)) {
+      const key = `${ymd}:${ev.leadId}`;
+      if (!joinedDay.has(key)) {
+        joinedDay.add(key);
+        get(ymd).joins += 1;
+      }
+      continue;
+    }
+
+    if (!ev.isDiagnostic) continue;
     const cur = get(ymd);
     if (ev.toStageKey === "scheduled") cur.scheduled += 1;
     else if (ev.toStageKey === "visit" || ev.toStageKey === "conducted") cur.conducted += 1;
@@ -130,6 +145,7 @@ export function sumRnpDaily(map: Map<string, RnpDailyMetrics>): RnpDailyMetrics 
   for (const v of map.values()) {
     total.crmReceived += v.crmReceived;
     total.qualified += v.qualified;
+    total.joins += v.joins;
     total.plannedVisits += v.plannedVisits;
     total.conductedVisits += v.conductedVisits;
     total.scheduled += v.scheduled;

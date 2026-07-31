@@ -39,6 +39,7 @@ function ins(partial: Partial<DailyInsightRow> & Pick<DailyInsightRow, "date">):
     crmReceived: 0,
     autoCrmReceived: 0,
     manualCrmReceivedRaw: null,
+    joins: 0,
     qualified: 0,
     autoQualified: 0,
     manualQualifiedRaw: null,
@@ -68,6 +69,7 @@ describe("resolveMetricsDayMoney", () => {
       {
         crmReceived: 0,
         qualified: 0,
+        joins: 0,
         plannedVisits: 0,
         conductedVisits: 0,
         scheduled: 0,

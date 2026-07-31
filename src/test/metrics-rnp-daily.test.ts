@@ -46,14 +46,28 @@ describe("metricsRnpDaily", () => {
     to: new Date(2026, 5, 30),
   };
 
-  it("считает получено CRM по created_at", () => {
+  it("считает вступления по stage_changed → joined_group", () => {
     const m = metricsRnpDaily(
-      [lead({ id: "1", createdAt: "2026-06-11T10:00:00Z" })],
-      [],
+      [lead({ id: "j1", createdAt: "2026-06-10T10:00:00+05:00" })],
+      [
+        stageEvent({
+          leadId: "j1",
+          at: "2026-06-11T12:00:00+05:00",
+          toStageKey: "joined_group",
+          isDiagnostic: false,
+        }),
+        stageEvent({
+          leadId: "j1",
+          at: "2026-06-11T13:00:00+05:00",
+          toStageKey: "joined_group",
+          isDiagnostic: false,
+        }),
+      ],
       range,
       "all",
     );
-    expect(m.get("2026-06-11")?.crmReceived).toBe(1);
+    expect(m.get("2026-06-11")?.joins).toBe(1);
+    expect(sumRnpDaily(m).joins).toBe(1);
   });
 
   it("считает оплату диагностики только по paid_at + diagnostic_amount", () => {
