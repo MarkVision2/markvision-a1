@@ -21,6 +21,7 @@ import {
   buildBroadcastFunnel,
   countDelivery,
   digitsPhone,
+  phoneKey,
   type BroadcastFunnel,
   type BroadcastLeadLite,
   type BroadcastRecipientLite,
@@ -145,7 +146,9 @@ function mapRow(r: CampaignRow): Broadcast {
     clicked: s.clicked ?? 0,
     joined: s.joined ?? 0,
     webinarAttended: s.webinar_attended ?? s.webinarAttended ?? 0,
-    sales: s.sales ?? s.converted ?? 0,
+    sales: s.sales ?? 0,
+    deposits: s.deposits ?? 0,
+    revenue: s.revenue ?? 0,
   };
   const sent =
     raw.sent + raw.delivered + raw.read + raw.replied + raw.converted + raw.clicked;
@@ -185,6 +188,8 @@ function mapRow(r: CampaignRow): Broadcast {
       joined: Number(raw.joined) || 0,
       webinarAttended: Number(raw.webinarAttended) || 0,
       sales: Number(raw.sales) || 0,
+      deposits: Number(raw.deposits) || 0,
+      revenue: Number(raw.revenue) || 0,
     },
     results: [],
     createdAt: r.created_at,
@@ -254,7 +259,7 @@ async function enrichListCrmStats(list: Broadcast[], projectId: string): Promise
     arr.push(lite);
     byCamp.set(row.campaign_id, arr);
     if (row.lead_id) leadIds.add(row.lead_id);
-    const d = digitsPhone(row.phone);
+    const d = phoneKey(row.phone);
     if (d) phones.add(d);
   }
 
@@ -291,7 +296,7 @@ async function enrichListCrmStats(list: Broadcast[], projectId: string): Promise
       if (leadMap.has(id)) continue;
       const phone = String(r.phone ?? "");
       const linkedById = leadIdSet.has(id);
-      const linkedByPhone = phoneSet.has(digitsPhone(phone));
+      const linkedByPhone = phoneSet.has(phoneKey(phone));
       if (!linkedById && !linkedByPhone) continue;
       const stage = stageById.get(String(r.stage_id ?? ""));
       leadMap.set(id, {
@@ -335,6 +340,8 @@ async function enrichListCrmStats(list: Broadcast[], projectId: string): Promise
         joined: funnel.joined,
         webinarAttended: funnel.webinarAttended,
         sales: funnel.sales,
+        deposits: funnel.deposits,
+        revenue: funnel.revenue,
       },
     };
   });
@@ -895,7 +902,7 @@ export async function fetchCampaignDetail(
     ...new Set(recipients.map((r) => r.leadId).filter((x): x is string => !!x)),
   ];
   const phones = [
-    ...new Set(recipients.map((r) => digitsPhone(r.phone)).filter(Boolean)),
+    ...new Set(recipients.map((r) => phoneKey(r.phone)).filter(Boolean)),
   ];
 
   const [{ data: stagesData }, leadsByIdRes, leadsByPhoneRes] = await Promise.all([
@@ -930,7 +937,7 @@ export async function fetchCampaignDetail(
       if (leadMap.has(id)) continue;
       const phone = String(r.phone ?? "");
       const linkedById = leadIds.includes(id);
-      const linkedByPhone = phoneSet.has(digitsPhone(phone));
+      const linkedByPhone = phoneSet.has(phoneKey(phone));
       if (!linkedById && !linkedByPhone) continue;
       const stage = stageById.get(String(r.stage_id ?? ""));
       leadMap.set(id, {
@@ -965,6 +972,8 @@ export async function fetchCampaignDetail(
     joined: funnel.joined,
     webinarAttended: funnel.webinarAttended,
     sales: funnel.sales,
+    deposits: funnel.deposits,
+    revenue: funnel.revenue,
   };
   campaign.recipientsCount = funnel.total;
 

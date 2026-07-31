@@ -108,6 +108,10 @@ export type Broadcast = {
     webinarAttended?: number;
     /** Полная оплата в CRM. */
     sales?: number;
+    /** Депозит / предоплата в CRM. */
+    deposits?: number;
+    /** Сумма оплат (₸). */
+    revenue?: number;
   };
   results: BroadcastResult[];
   createdAt: string;

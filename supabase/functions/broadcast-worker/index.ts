@@ -20,6 +20,13 @@ import {
   validateGreenApiBaseUrl,
 } from "../_lib/green_api_url.ts";
 import { effectiveDailyCap as computeDailyCap } from "../_lib/broadcast_limits.ts";
+import {
+  buildBroadcastFunnel,
+  funnelToCampaignStats,
+  phoneKey,
+  type BroadcastLeadLite,
+  type BroadcastRecipientLite,
+} from "../_lib/broadcastFunnel.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -462,33 +469,107 @@ async function reapStaleSending() {
     .lt("updated_at", cutoff);
 }
 
-/** Пересчёт stats кампании и финализация, когда в работе никого не осталось. */
+/** Пересчёт stats кампании (доставка + CRM) и финализация, когда очередь пуста. */
 async function refreshCampaign(campaignId: string) {
+  const { data: camp } = await admin
+    .from("broadcast_campaigns")
+    .select("id, project_id")
+    .eq("id", campaignId)
+    .maybeSingle();
+  if (!camp) return;
+  const projectId = (camp as { project_id: string }).project_id;
+
   const { data } = await admin
     .from("broadcast_recipients")
-    .select("status, clicked_at, joined_at")
+    .select(
+      "id, name, phone, status, lead_id, sent_at, delivered_at, read_at, replied_at, clicked_at, converted_at, joined_at, error",
+    )
     .eq("campaign_id", campaignId);
-  const rows = (data ?? []) as { status: string; clicked_at: string | null; joined_at: string | null }[];
-  const count = (s: string) => rows.filter((r) => r.status === s).length;
-  const stats = {
-    total: rows.length,
-    queued: count("queued"),
-    sending: count("sending"),
-    sent: count("sent"),
-    delivered: count("delivered"),
-    read: count("read"),
-    replied: count("replied"),
-    converted: count("converted"),
-    failed: count("failed"),
-    optout: count("skipped_optout"),
-    clicked: rows.filter((r) => !!r.clicked_at).length,
-    joined: rows.filter((r) => !!r.joined_at).length,
+
+  const recipients: BroadcastRecipientLite[] = ((data ?? []) as Array<Record<string, unknown>>).map(
+    (row) => ({
+      id: String(row.id),
+      name: String(row.name ?? ""),
+      phone: String(row.phone ?? ""),
+      status: String(row.status ?? "queued"),
+      leadId: (row.lead_id as string | null) ?? null,
+      sentAt: (row.sent_at as string | null) ?? null,
+      deliveredAt: (row.delivered_at as string | null) ?? null,
+      readAt: (row.read_at as string | null) ?? null,
+      repliedAt: (row.replied_at as string | null) ?? null,
+      clickedAt: (row.clicked_at as string | null) ?? null,
+      convertedAt: (row.converted_at as string | null) ?? null,
+      joinedAt: (row.joined_at as string | null) ?? null,
+      error: (row.error as string | null) ?? null,
+    }),
+  );
+
+  const leadIds = [
+    ...new Set(recipients.map((r) => r.leadId).filter((x): x is string => !!x)),
+  ];
+  const phones = [
+    ...new Set(recipients.map((r) => phoneKey(r.phone)).filter(Boolean)),
+  ];
+
+  const [{ data: stagesData }, leadsByIdRes, leadsByPhoneRes] = await Promise.all([
+    admin.from("pipeline_stages").select("id, key, stage_role"),
+    leadIds.length
+      ? admin
+          .from("leads")
+          .select("id, name, phone, stage_id, paid, amount, deposit_amount, webinar_status")
+          .in("id", leadIds)
+          .limit(10000)
+      : Promise.resolve({ data: [] as unknown[] }),
+    phones.length
+      ? admin
+          .from("leads")
+          .select("id, name, phone, stage_id, paid, amount, deposit_amount, webinar_status")
+          .eq("project_id", projectId)
+          .eq("is_personal", false)
+          .limit(8000)
+      : Promise.resolve({ data: [] as unknown[] }),
+  ]);
+
+  const stageById = new Map<string, { key: string | null; role: string | null }>();
+  for (const s of (stagesData ?? []) as Array<{ id: string; key?: string; stage_role?: string }>) {
+    stageById.set(s.id, { key: s.key ?? null, role: s.stage_role ?? null });
+  }
+
+  const phoneSet = new Set(phones);
+  const leadIdSet = new Set(leadIds);
+  const leadMap = new Map<string, BroadcastLeadLite>();
+  const ingest = (rows: Array<Record<string, unknown>>) => {
+    for (const r of rows) {
+      const id = String(r.id);
+      if (leadMap.has(id)) continue;
+      const phone = String(r.phone ?? "");
+      if (!leadIdSet.has(id) && !phoneSet.has(phoneKey(phone))) continue;
+      const stage = stageById.get(String(r.stage_id ?? ""));
+      leadMap.set(id, {
+        id,
+        name: String(r.name ?? "").trim(),
+        phone,
+        stageKey: stage?.key ?? null,
+        stageRole: stage?.role ?? null,
+        paid: r.paid === true,
+        amount: Number(r.amount ?? 0),
+        depositAmount: Number(r.deposit_amount ?? 0),
+        webinarStatus: (r.webinar_status as string | null) ?? null,
+      });
+    }
   };
+  ingest((leadsByIdRes.data ?? []) as Array<Record<string, unknown>>);
+  ingest((leadsByPhoneRes.data ?? []) as Array<Record<string, unknown>>);
+
+  const funnel = buildBroadcastFunnel(recipients, [...leadMap.values()]);
+  const stats = funnelToCampaignStats(recipients, funnel);
   const patch: Record<string, unknown> = { stats };
+
   // Финализируем только когда никого не осталось ни в очереди, ни в полёте.
   if (stats.queued === 0 && stats.sending === 0) {
     const anySent =
-      stats.sent + stats.delivered + stats.read + stats.replied + stats.converted + count("clicked");
+      stats.sent + stats.delivered + stats.read + stats.replied + stats.converted +
+      recipients.filter((r) => r.status === "clicked").length;
     patch.status = anySent === 0 ? "failed" : stats.failed > 0 ? "partial" : "sent";
     patch.finished_at = new Date().toISOString();
   }
