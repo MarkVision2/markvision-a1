@@ -1,9 +1,9 @@
 {
-  "git_sha": "f39bb95b3d16d2d2a9db1962ff26d7b3704a19be",
-  "git_sha_full": "f39bb95b3d16d2d2a9db1962ff26d7b3704a19be",
-  "updated_at": "2026-07-31T10:55:53Z",
-  "label": "CRM Today spend + CPL",
+  "git_sha": "cea2f6fd1d0a6f99f33d6e253b0481b83a29518f",
+  "git_sha_full": "cea2f6fd1d0a6f99f33d6e253b0481b83a29518f",
+  "updated_at": "2026-07-31T10:59:52Z",
+  "label": "Meta #200 permission warning UX",
   "publish_hint": "push main \u2192 www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app",
-  "git_sha_short": "f39bb95b",
+  "git_sha_short": "cea2f6fd",
   "branch": "main"
 }
