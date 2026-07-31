@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { ArrowRight, TrendingDown, TrendingUp } from "lucide-react";
+import { ArrowRight, TrendingDown, TrendingUp, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Lead } from "@/types/crm";
 import {
@@ -10,6 +10,13 @@ import {
 } from "@/lib/crmLeadDynamics";
 import { normalizeSource } from "@/lib/leadSource";
 import { ymdAlmaty } from "@/lib/metaSync";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
+import {
+  cplFromSpend,
+  fmtCrmTenge,
+  sumSpendInRange,
+  useCrmAdSpend,
+} from "@/hooks/useCrmAdSpend";
 
 const PRESETS: LeadPeriodPreset[] = ["today", "yesterday", "week", "last7", "month"];
 
@@ -28,7 +35,10 @@ function pluralLeads(n: number): string {
 }
 
 export function CrmTodayView({ leads, onOpenFunnel, className }: Props) {
-  const [preset, setPreset] = useState<LeadPeriodPreset>("week");
+  const { activeId: projectId } = useProjectsStore();
+  const { byDay: spendByDay, loading: spendLoading } = useCrmAdSpend(projectId);
+
+  const [preset, setPreset] = useState<LeadPeriodPreset>("today");
   const [focusYmd, setFocusYmd] = useState<string | null>(null);
 
   const dynamics = useMemo(
@@ -36,7 +46,6 @@ export function CrmTodayView({ leads, onOpenFunnel, className }: Props) {
     [leads, preset, focusYmd],
   );
 
-  // Для «Сегодня/Вчера» график всегда за 7 дней — иначе один столбец и пустота.
   const chart = useMemo(() => {
     if (preset === "today" || preset === "yesterday") {
       const spark = buildLeadDynamics(leads, "last7");
@@ -49,16 +58,33 @@ export function CrmTodayView({ leads, onOpenFunnel, className }: Props) {
     return { days: dynamics.days, highlight: focusYmd };
   }, [leads, preset, focusYmd, dynamics.days]);
 
+  const periodSpend = useMemo(
+    () => sumSpendInRange(spendByDay, dynamics.fromYmd, dynamics.toYmd, focusYmd),
+    [spendByDay, dynamics.fromYmd, dynamics.toYmd, focusYmd],
+  );
+  const periodCpl = cplFromSpend(periodSpend, dynamics.total);
+
   const snapshots = useMemo(() => {
-    const today = buildLeadDynamics(leads, "today");
-    const yesterday = buildLeadDynamics(leads, "yesterday");
-    const week = buildLeadDynamics(leads, "week");
-    return [
-      { preset: "today" as const, total: today.total, label: "Сегодня" },
-      { preset: "yesterday" as const, total: yesterday.total, label: "Вчера" },
-      { preset: "week" as const, total: week.total, label: "Неделя" },
-    ];
-  }, [leads]);
+    const items: Array<{
+      preset: LeadPeriodPreset;
+      total: number;
+      spend: number;
+      cpl: number;
+      label: string;
+    }> = [];
+    for (const p of ["today", "yesterday", "week"] as LeadPeriodPreset[]) {
+      const d = buildLeadDynamics(leads, p);
+      const spend = sumSpendInRange(spendByDay, d.fromYmd, d.toYmd);
+      items.push({
+        preset: p,
+        total: d.total,
+        spend,
+        cpl: cplFromSpend(spend, d.total),
+        label: p === "today" ? "Сегодня" : p === "yesterday" ? "Вчера" : "Неделя",
+      });
+    }
+    return items;
+  }, [leads, spendByDay]);
 
   const channels = useMemo(
     () =>
@@ -80,7 +106,6 @@ export function CrmTodayView({ leads, onOpenFunnel, className }: Props) {
         />
 
         <div className="relative flex flex-col gap-5">
-          {/* Header */}
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
@@ -106,6 +131,27 @@ export function CrmTodayView({ leads, onOpenFunnel, className }: Props) {
                     {dynamics.delta === 0
                       ? "без изменений"
                       : `${dynamics.delta > 0 ? "+" : ""}${dynamics.delta} к прошлому`}
+                  </div>
+                </div>
+              </div>
+
+              {/* Spend + CPL for selected period */}
+              <div className="mt-4 grid grid-cols-2 gap-2 sm:max-w-md">
+                <div className="rounded-2xl border border-border/50 bg-background/50 px-3 py-2.5">
+                  <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    <Wallet className="h-3 w-3" />
+                    Расход
+                  </div>
+                  <div className="mt-1 text-lg font-bold tabular-nums sm:text-xl">
+                    {spendLoading && periodSpend <= 0 ? "…" : fmtCrmTenge(periodSpend)}
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-border/50 bg-background/50 px-3 py-2.5">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    CPL · стоимость лида
+                  </div>
+                  <div className="mt-1 text-lg font-bold tabular-nums text-success sm:text-xl">
+                    {spendLoading && periodCpl <= 0 ? "…" : fmtCrmTenge(periodCpl)}
                   </div>
                 </div>
               </div>
@@ -146,7 +192,7 @@ export function CrmTodayView({ leads, onOpenFunnel, className }: Props) {
             </div>
           </div>
 
-          {/* Snapshots */}
+          {/* Snapshots with spend/CPL */}
           <div className="grid grid-cols-3 gap-2 sm:gap-3">
             {snapshots.map((s) => {
               const active = preset === s.preset && !focusYmd;
@@ -169,6 +215,20 @@ export function CrmTodayView({ leads, onOpenFunnel, className }: Props) {
                     {s.label}
                   </div>
                   <div className="mt-1 text-2xl font-bold tabular-nums sm:text-3xl">{s.total}</div>
+                  <div className="mt-2 space-y-0.5 text-[11px] text-muted-foreground">
+                    <div className="flex justify-between gap-2">
+                      <span>Расход</span>
+                      <span className="font-semibold tabular-nums text-foreground/90">
+                        {fmtCrmTenge(s.spend)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <span>CPL</span>
+                      <span className="font-semibold tabular-nums text-success">
+                        {fmtCrmTenge(s.cpl)}
+                      </span>
+                    </div>
+                  </div>
                 </button>
               );
             })}
@@ -192,11 +252,12 @@ export function CrmTodayView({ leads, onOpenFunnel, className }: Props) {
                     Math.round((day.count / max) * 100),
                   );
                   const selected = chart.highlight === day.ymd;
+                  const daySpend = spendByDay.get(day.ymd) ?? 0;
                   return (
                     <button
                       key={day.ymd}
                       type="button"
-                      title={`${day.label}: ${day.count}`}
+                      title={`${day.label}: ${day.count} лид. · ${fmtCrmTenge(daySpend)}`}
                       onClick={() => {
                         setFocusYmd((prev) => (prev === day.ymd ? null : day.ymd));
                       }}
@@ -247,9 +308,7 @@ export function CrmTodayView({ leads, onOpenFunnel, className }: Props) {
                 <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   Каналы
                 </h3>
-                <span className="text-[10px] text-muted-foreground">
-                  откуда пришли
-                </span>
+                <span className="text-[10px] text-muted-foreground">откуда пришли</span>
               </div>
 
               {channels.length === 0 ? (
