@@ -89,7 +89,14 @@ const cmd = process.argv[2];
 const jobId = process.argv[3];
 
 try {
-  if (cmd === "tts") {
+  if (cmd === "next") {
+    // Автоконвейер: забрать самую старую необработанную заявку (edge claim →
+    // помечает rendering). Печатает JSON заявки {jobId, projectId, script, config}
+    // или "NONE". Дальше сессия строит по ней ролик и делает publish.
+    const res = await call({ action: "claim" });
+    if (!res.job) { console.log("NONE"); }
+    else { console.log(JSON.stringify(res.job, null, 2)); }
+  } else if (cmd === "tts") {
     const voiceId = argVal("voice");
     const out = argVal("out") || `remotion/public/reels/vo_${jobId}.mp3`;
     if (!jobId || !voiceId) throw new Error("usage: tts <jobId> --voice <voiceId> [--out path]");
@@ -146,7 +153,7 @@ try {
     console.log(`OK publish ${jobId}: ${videoUrl}`);
     if (res.warnings?.length) console.log("warnings:", res.warnings.join("; "));
   } else {
-    console.error("Команды: tts | broll | publish (см. шапку файла)");
+    console.error("Команды: next | tts | broll | publish (см. шапку файла)");
     process.exit(1);
   }
 } catch (e) {

@@ -147,6 +147,25 @@ Deno.serve(async (req) => {
         return json({ ok: true, warnings });
       }
 
+      case "claim": {
+        // Автоконвейер: отдать самую старую необработанную заявку и пометить её
+        // rendering (чтобы два прогона не взяли одну). Берём status='queued' и
+        // «зависшие» rendering (обновлены >20 мин назад — живого воркера нет).
+        const staleIso = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+        const { data: jobs, error: selErr } = await admin
+          .from("reels_jobs")
+          .select("id, project_id, status, script, config, updated_at, created_at")
+          .in("status", ["queued", "rendering"])
+          .order("created_at", { ascending: true })
+          .limit(10);
+        if (selErr) return json({ error: `select: ${selErr.message}` }, 500);
+        const pick = (jobs ?? []).find((j) =>
+          j.status === "queued" || (j.status === "rendering" && String(j.updated_at ?? "") < staleIso));
+        if (!pick) return json({ ok: true, job: null });
+        await admin.from("reels_jobs").update({ status: "rendering", stage: "монтаж", progress: 10 }).eq("id", pick.id);
+        return json({ ok: true, job: { jobId: pick.id, projectId: pick.project_id, script: pick.script, config: pick.config } });
+      }
+
       default:
         return json({ error: `unknown action: ${action}` }, 400);
     }
