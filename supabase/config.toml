@@ -154,3 +154,11 @@ verify_jwt = false
 # Poll Green API journals → CRM (bot keeps webhookUrl; no setSettings).
 [functions.greenapi-crm-ingest]
 verify_jwt = false
+
+# Public tracked WhatsApp group invite: /g/:slug → click + 302 to chat.whatsapp.com
+[functions.group-invite-redirect]
+verify_jwt = false
+
+# Cron: detect real joins for tracked group invite links
+[functions.group-invite-sync]
+verify_jwt = false
