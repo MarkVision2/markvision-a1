@@ -57,6 +57,7 @@ import {
 import { BroadcastDialog } from "@/components/broadcasts/BroadcastDialog";
 import { BroadcastSendDialog } from "@/components/broadcasts/BroadcastSendDialog";
 import { BroadcastSafetyPanel } from "@/components/broadcasts/BroadcastSafetyPanel";
+import { GroupInviteStatsPanel } from "@/components/broadcasts/GroupInviteStatsPanel";
 
 const Broadcasts = () => {
   const navigate = useNavigate();
@@ -307,6 +308,8 @@ const Broadcasts = () => {
               );
             })}
           </div>
+
+          <GroupInviteStatsPanel />
 
           {/* Meta strip */}
           <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
