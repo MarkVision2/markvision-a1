@@ -87,8 +87,7 @@ export function MetaTokensSettings() {
     await supabase
       .from("ad_cabinets")
       .update({ access_token: t })
-      .eq("project_id", activeId)
-      .eq("is_active", true);
+      .eq("project_id", activeId);
 
     setSaving(false);
     setLabel("");
