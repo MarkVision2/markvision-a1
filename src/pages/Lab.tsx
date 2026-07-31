@@ -38,7 +38,7 @@ import {
 /* Конфигурация лендинга: правится в одном месте                      */
 /* ------------------------------------------------------------------ */
 
-const WHATSAPP_URL = "https://chat.whatsapp.com/JqhTdCL3koe9CaGXaCqj4e?mode=gi_t";
+const WHATSAPP_URL = "https://www.markvision.kz/g/lab";
 const EVENT_DATE = "1 августа";
 const EVENT_TIME = "19:00 (GMT+5)";
 
