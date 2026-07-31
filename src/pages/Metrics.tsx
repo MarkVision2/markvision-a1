@@ -23,6 +23,7 @@ import { MONTHS_GEN_RU, WEEKDAYS_RU } from "@/components/metrics/metricsFormat";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
 import { useMultiMetaInsights, type DailyInsightRow } from "@/hooks/useMetaInsights";
 import { useLeadsLite } from "@/hooks/useLeadsLite";
+import { useStageChangeEvents } from "@/hooks/useStageChangeEvents";
 import { crmDailyMetrics, fetchCdiFactRows, type ReportPeriodRange } from "@/hooks/useReportData";
 import { metricsRnpDaily } from "@/lib/metricsRnpDaily";
 import { useRnpManual, type RnpManualPatch } from "@/hooks/useRnpManual";
@@ -171,6 +172,7 @@ const Metrics = () => {
     }),
     [monthCursor],
   );
+  const { events: stageEvents } = useStageChangeEvents(crmPeriod, true);
 
   const cabinetSelector = cabinetId === "all" ? "all" : cabinetId;
 
@@ -210,8 +212,8 @@ const Metrics = () => {
   );
 
   const rnpByDay = useMemo(
-    () => metricsRnpDaily(allLeads, [], crmPeriod, cabinetSelector),
-    [allLeads, crmPeriod, cabinetSelector],
+    () => metricsRnpDaily(allLeads, stageEvents, crmPeriod, cabinetSelector),
+    [allLeads, stageEvents, crmPeriod, cabinetSelector],
   );
 
   // Ручные РНП-факты (предоплаты) — project-level, не зависят от кабинета.
@@ -238,6 +240,7 @@ const Metrics = () => {
       salesRevenue: 0, crmSalesRevenueOnly: 0, manualSalesRevenue: 0, manualSalesRevenueRaw: null,
       crmRevenue: 0, crmRevenueOnly: 0, manualRevenue: 0,
       crmReceived: 0, autoCrmReceived: 0, manualCrmReceivedRaw: null,
+      joins: 0,
       qualified: 0, autoQualified: 0, manualQualifiedRaw: null,
       plannedVisits: 0, autoPlannedVisits: 0, manualPlannedVisitsRaw: null,
       conductedVisits: 0, autoConductedVisits: 0, manualConductedVisitsRaw: null,
@@ -331,6 +334,7 @@ const Metrics = () => {
         crmReceived: merged.crmReceived,
         autoCrmReceived: autoBlock.crmReceived,
         manualCrmReceivedRaw: useProjectOverrides ? (proj?.manualCrmReceived ?? null) : null,
+        joins: rnp?.joins ?? 0,
         qualified: merged.qualified,
         autoQualified: autoBlock.qualified,
         manualQualifiedRaw: useProjectOverrides ? (proj?.manualQualified ?? null) : null,
@@ -361,7 +365,7 @@ const Metrics = () => {
   const factFromDaily = useMemo(() => {
     let spend = 0, leads = 0, diagnostics = 0, diagnosticRevenue = 0;
     let sales = 0, salesRevenue = 0, revenue = 0;
-    let crmReceived = 0, qualified = 0;
+    let crmReceived = 0, qualified = 0, joins = 0;
     for (const { iso } of monthDays) {
       const d = dailyMap.get(iso);
       if (!d) continue;
@@ -374,29 +378,23 @@ const Metrics = () => {
       revenue += d.crmRevenue ?? 0;
       crmReceived += d.crmReceived;
       qualified += d.qualified;
+      joins += d.joins ?? 0;
     }
-    return { spend, leads, diagnostics, diagnosticRevenue, sales, salesRevenue, revenue, crmReceived, qualified };
+    return { spend, leads, diagnostics, diagnosticRevenue, sales, salesRevenue, revenue, crmReceived, qualified, joins };
   }, [dailyMap, monthDays]);
 
-  const factDiagnostics = factFromDaily.diagnostics;
-  const factDiagnosticRevenue = factFromDaily.diagnosticRevenue;
   const factSales = factFromDaily.sales;
-  const factSalesRevenue = factFromDaily.salesRevenue;
   const factRevenue = factFromDaily.revenue;
   const factCrmReceived = factFromDaily.crmReceived;
-  const factQualified = factFromDaily.qualified;
-  const factPrepay = useMemo(() => {
-    let count = 0, sum = 0;
-    for (const v of rnpManualByDate.values()) { count += v.prepayCount; sum += v.prepaySum; }
-    return { count, sum };
-  }, [rnpManualByDate]);
+  const factJoins = factFromDaily.joins;
+  const factMetaLeads = factFromDaily.leads;
   const factLeads = factCrmReceived;
   const factSpend = factFromDaily.spend;
-  const factCpl = factFromDaily.leads > 0 ? factSpend / factFromDaily.leads : (totals?.cpl ?? 0);
-  const crLeadDiagnostics =
-    factLeads > 0 ? (factDiagnostics / factLeads) * 100 : 0;
-  const crDiagnosticsSale =
-    factDiagnostics > 0 ? (factSales / factDiagnostics) * 100 : 0;
+  const factCpl = factCrmReceived > 0 ? factSpend / factCrmReceived : 0;
+  const crLeadJoin =
+    factCrmReceived > 0 ? (factJoins / factCrmReceived) * 100 : 0;
+  const crJoinSale =
+    factJoins > 0 ? (factSales / factJoins) * 100 : 0;
 
   const daysWithData = useMemo(
     () =>
@@ -407,13 +405,11 @@ const Metrics = () => {
           d.spend > 0 ||
           d.leads > 0 ||
           d.crmReceived > 0 ||
-          d.plannedVisits > 0 ||
-          d.conductedVisits > 0 ||
-          d.diagnosticsPaid > 0 ||
-          d.diagnostics > 0 ||
+          (d.joins ?? 0) > 0 ||
           d.sales > 0 ||
           (d.crmRevenue ?? 0) > 0 ||
-          d.cashRevenue > 0
+          d.cashRevenue > 0 ||
+          (d.prepayCount ?? 0) > 0
         );
       }),
     [monthDays, dailyMap],
@@ -429,26 +425,22 @@ const Metrics = () => {
   const handleExportCsv = () => {
     const header = [
       "Дата", "День",
-      "Затраты", "Передано Meta", "CPL", "Получено CRM", "Квал. лиды",
-      "Записано", "Проведено", "Оплачено диаг", "Сумма диаг",
+      "Затраты", "Лиды Meta", "Лиды CRM", "CPL CRM", "Вступлений",
       "Предоплат", "Сумма предоплат",
-      "Продажи", "Выручка продаж", "Касса", "Итого",
+      "Продажи", "Выручка продаж", "Касса", "Сумма",
     ];
     const rows = monthDays.map(({ day, iso, weekday }) => {
       const d = dailyMap.get(iso);
-      const cpl = d && d.leads > 0 ? d.spend / d.leads : 0;
+      const crmLeads = d?.crmReceived ?? 0;
+      const cplCrm = d && crmLeads > 0 ? d.spend / crmLeads : 0;
       return [
         iso,
         `${String(day).padStart(2, "0")} ${weekday}`,
         d?.spend ?? 0,
         d?.leads ?? 0,
-        cpl ? Math.round(cpl) : "",
-        d?.crmReceived ?? 0,
-        d?.qualified ?? 0,
-        d?.plannedVisits ?? 0,
-        d?.conductedVisits ?? 0,
-        d?.diagnosticsPaid ?? 0,
-        d?.diagnosticRevenuePaid ?? 0,
+        crmLeads,
+        cplCrm ? Math.round(cplCrm) : "",
+        d?.joins ?? 0,
         d?.prepayCount ?? 0,
         d?.prepaySum ?? 0,
         d?.sales ?? 0,
@@ -654,12 +646,13 @@ const Metrics = () => {
       <MetricsKpiPanel
         factRevenue={factRevenue}
         factSpend={factSpend}
+        factMetaLeads={factMetaLeads}
         factCrmReceived={factLeads}
+        factJoins={factJoins}
         factSales={factSales}
-        factDiagnostics={factDiagnostics}
         factCpl={factCpl}
-        crLeadDiagnostics={crLeadDiagnostics}
-        crDiagnosticsSale={crDiagnosticsSale}
+        crLeadJoin={crLeadJoin}
+        crJoinSale={crJoinSale}
         monthProgress={monthProgress}
         filledDays={filledDays}
         daysInMonth={daysInMonth}

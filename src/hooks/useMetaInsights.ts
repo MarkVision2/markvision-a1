@@ -54,6 +54,8 @@ export interface DailyInsightRow {
   crmReceived: number;
   autoCrmReceived: number;
   manualCrmReceivedRaw: number | null;
+  /** Вступления в группу (stage → joined_group). */
+  joins: number;
   /** Квал. лиды (скоринг Green API >= порога). */
   qualified: number;
   autoQualified: number;
@@ -130,6 +132,7 @@ const RNP_DAY_ZERO = {
   autoCashRevenue: 0,
   manualCashRaw: null as number | null,
   crmReceived: 0,
+  joins: 0,
   qualified: 0,
   prepayCount: 0,
   prepaySum: 0,
