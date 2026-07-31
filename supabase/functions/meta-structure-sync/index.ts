@@ -21,12 +21,20 @@ const META_API_VERSION = "v21.0";
 
 const LEAD_ACTIONS = [
   "lead",
+  "leadgen",
   "leadgen.other",
   "onsite_conversion.lead_grouped",
   "offsite_conversion.fb_pixel_lead",
   "onsite_web_lead",
+  "omni_complete_registration",
+  "complete_registration",
 ];
-const MESSAGING_ACTIONS = ["onsite_conversion.messaging_conversation_started_7d"];
+// Переписки WhatsApp / Messenger — Meta Ads Manager «Результаты» часто считает их лидами.
+const MESSAGING_ACTIONS = [
+  "onsite_conversion.messaging_conversation_started_7d",
+  "onsite_conversion.total_messaging_connection",
+  "onsite_conversion.messaging_first_reply",
+];
 const PURCHASE_ACTIONS = ["purchase", "offsite_conversion.fb_pixel_purchase", "omni_purchase"];
 
 function json(body: unknown, status = 200) {

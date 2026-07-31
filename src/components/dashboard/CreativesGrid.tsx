@@ -159,11 +159,18 @@ export function CreativesGrid({
         {visible.map((row) => {
           const { title, subtitle } = pickCreativeTitle({ name: row.name, headline: row.headline });
           const hasCrmRevenue = (row.crmRevenue ?? 0) > 0;
-          // В режиме «по лидам CRM» всегда показываем CRM-цифру (даже 0),
-          // иначе карточка с Meta leads выглядит как лидер CRM.
-          const showCrmLeads = sortKey === "crmLeads" || (row.crmLeads ?? 0) > 0;
-          const leadValue = showCrmLeads ? (row.crmLeads ?? 0) : row.leads;
-          const leadLabel = showCrmLeads ? "Лиды CRM" : "Лиды Meta";
+          const showCrmLeads = sortKey === "crmLeads" ||
+            (sortKey !== "leads" && (row.crmLeads ?? 0) > 0);
+          const leadValue = sortKey === "leads"
+            ? row.leads
+            : showCrmLeads
+              ? (row.crmLeads ?? 0)
+              : row.leads;
+          const leadLabel = sortKey === "leads"
+            ? "Лиды Meta"
+            : showCrmLeads
+              ? "Лиды CRM"
+              : "Лиды Meta";
           const romiVal = hasCrmRevenue ? row.crmRomi : 0;
           const romiPositive = romiVal >= 0;
           const RomiIcon = romiPositive ? TrendingUp : TrendingDown;
@@ -210,6 +217,9 @@ export function CreativesGrid({
                     )}>{fmtNum(leadValue)}</div>
                     {sortKey === "crmLeads" && row.leads > 0 && (row.crmLeads ?? 0) !== row.leads ? (
                       <div className="text-[10px] text-muted-foreground">Meta: {fmtNum(row.leads)}</div>
+                    ) : null}
+                    {sortKey === "leads" && (row.crmLeads ?? 0) > 0 && (row.crmLeads ?? 0) !== row.leads ? (
+                      <div className="text-[10px] text-muted-foreground">CRM: {fmtNum(row.crmLeads ?? 0)}</div>
                     ) : null}
                   </div>
                   <div>

@@ -13,15 +13,19 @@ const META_API_VERSION = "v21.0";
 // чтобы не задвоить (Meta часто дублирует одно и то же действие под разными именами).
 const LEAD_ACTIONS = [
   "lead",
+  "leadgen",
   "leadgen.other",
   "onsite_conversion.lead_grouped",
   "offsite_conversion.fb_pixel_lead",
   "onsite_web_lead",
+  "omni_complete_registration",
+  "complete_registration",
 ];
 // "Начатые переписки" — отдельное событие, считаем как лид и СУММИРУЕМ с лидами выше.
-// Только то событие, что Meta UI показывает в графе "Начало переписки".
 const MESSAGING_ACTIONS = [
   "onsite_conversion.messaging_conversation_started_7d",
+  "onsite_conversion.total_messaging_connection",
+  "onsite_conversion.messaging_first_reply",
 ];
 const PURCHASE_ACTIONS = [
   "purchase",
