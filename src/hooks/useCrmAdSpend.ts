@@ -16,6 +16,7 @@ export function useCrmAdSpend(projectId: string | null | undefined) {
   const [byDay, setByDay] = useState<SpendByDay>(() => new Map());
   const [loading, setLoading] = useState(false);
   const [currency] = useState("KZT");
+  const [lastDate, setLastDate] = useState<string | null>(null);
 
   const window = useMemo(() => {
     const today = ymdAlmaty();
@@ -64,6 +65,8 @@ export function useCrmAdSpend(projectId: string | null | undefined) {
             m.set(day, (m.get(day) ?? 0) + kzt);
           }
           setByDay(m);
+          const dates = [...m.keys()].sort();
+          setLastDate(dates.length ? dates[dates.length - 1] : null);
           return;
         }
         throw error;
@@ -81,8 +84,11 @@ export function useCrmAdSpend(projectId: string | null | undefined) {
         m.set(day, (m.get(day) ?? 0) + kzt);
       }
       setByDay(m);
+      const dates = [...m.keys()].sort();
+      setLastDate(dates.length ? dates[dates.length - 1] : null);
     } catch {
       setByDay(new Map());
+      setLastDate(null);
     } finally {
       setLoading(false);
     }
@@ -94,7 +100,7 @@ export function useCrmAdSpend(projectId: string | null | undefined) {
 
   useRealtimeTable("cabinet_daily_insights", () => void refetch());
 
-  return { byDay, loading, currency };
+  return { byDay, loading, currency, lastDate };
 }
 
 export function sumSpendInRange(

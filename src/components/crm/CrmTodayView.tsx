@@ -6,6 +6,7 @@ import {
   buildLeadChannelBreakdown,
   buildLeadDynamics,
   leadPeriodPresetLabel,
+  addDaysYmd,
   type LeadPeriodPreset,
 } from "@/lib/crmLeadDynamics";
 import { normalizeSource } from "@/lib/leadSource";
@@ -17,6 +18,7 @@ import {
   sumSpendInRange,
   useCrmAdSpend,
 } from "@/hooks/useCrmAdSpend";
+import { Link } from "react-router-dom";
 
 const PRESETS: LeadPeriodPreset[] = ["today", "yesterday", "week", "last7", "month"];
 
@@ -36,7 +38,14 @@ function pluralLeads(n: number): string {
 
 export function CrmTodayView({ leads, onOpenFunnel, className }: Props) {
   const { activeId: projectId } = useProjectsStore();
-  const { byDay: spendByDay, loading: spendLoading } = useCrmAdSpend(projectId);
+  const { byDay: spendByDay, loading: spendLoading, lastDate: lastSpendDate } = useCrmAdSpend(projectId);
+
+  const spendStale = useMemo(() => {
+    if (!lastSpendDate) return true;
+    const today = ymdAlmaty();
+    // Нормально, если последний CDI = вчера (cron тянет вчера ночью). Старше — проблема.
+    return lastSpendDate < addDaysYmd(today, -1);
+  }, [lastSpendDate]);
 
   const [preset, setPreset] = useState<LeadPeriodPreset>("today");
   const [focusYmd, setFocusYmd] = useState<string | null>(null);
@@ -155,6 +164,21 @@ export function CrmTodayView({ leads, onOpenFunnel, className }: Props) {
                   </div>
                 </div>
               </div>
+
+              {spendStale && !spendLoading && (
+                <div className="mt-3 max-w-xl rounded-2xl border border-warning/40 bg-warning/10 px-3 py-2.5 text-xs text-foreground/90">
+                  <b>Meta не отдаёт расходы.</b> У токена нет прав{" "}
+                  <code className="text-[10px]">ads_read</code> /{" "}
+                  <code className="text-[10px]">ads_management</code> на кабинет
+                  MARKVISION AI
+                  {lastSpendDate ? ` · последние данные: ${lastSpendDate}` : ""}.
+                  {" "}
+                  <Link to="/settings?tab=meta-tokens" className="font-semibold text-success underline-offset-2 hover:underline">
+                    Переподключить Facebook в Настройках → Meta
+                  </Link>
+                  {" "}под админом рекламного кабинета и снова выдать доступ к Ad Account.
+                </div>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
