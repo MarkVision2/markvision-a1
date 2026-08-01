@@ -62,4 +62,32 @@ describe("adsCabinetCrmDaily", () => {
     expect(byDay.get("2026-07-11")).toEqual({ crmLeads: 1, joins: 1 });
     expect(sumAdsCabinetCrmDaily(byDay)).toEqual({ crmLeads: 3, joins: 2 });
   });
+
+  it("sole Meta cabinet counts unattributed zapoinovai/meta utm leads", () => {
+    const leads = [
+      lead({
+        id: "z1",
+        cabinetId: null,
+        createdAt: "2026-08-01T05:00:00+05:00",
+        source: "zapoinovai",
+        utm: { source: "meta" },
+      }),
+      lead({
+        id: "z2",
+        cabinetId: null,
+        createdAt: "2026-08-01T06:00:00+05:00",
+        source: "broadcast_zoom",
+        utm: { source: "meta" },
+      }),
+      lead({
+        id: "z3",
+        cabinetId: "cab1",
+        createdAt: "2026-08-01T07:00:00+05:00",
+      }),
+    ];
+    const byDay = buildAdsCabinetCrmDaily(leads, [], "cab1", "2026-08-01", "2026-08-31", {
+      soleMetaCabinet: true,
+    });
+    expect(sumAdsCabinetCrmDaily(byDay)).toEqual({ crmLeads: 2, joins: 0 });
+  });
 });

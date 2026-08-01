@@ -98,9 +98,11 @@ interface Props {
   onToggleOnline: (id: string) => void;
   onRemove: (id: string) => void;
   onSynced?: () => void;
+  /** У проекта один Meta-кабинет — считать unattributed Meta-лиды своими. */
+  soleMetaCabinet?: boolean;
 }
 
-const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, onRemove, onSynced }: Props) => {
+const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, onRemove, onSynced, soleMetaCabinet }: Props) => {
   const monthParam = `${monthCursor.getFullYear()}-${String(
     monthCursor.getMonth() + 1,
   ).padStart(2, "0")}`;
@@ -128,8 +130,10 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
     const since = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}-01`;
     const last = new Date(monthCursor.getFullYear(), monthCursor.getMonth() + 1, 0).getDate();
     const until = `${monthCursor.getFullYear()}-${String(monthCursor.getMonth() + 1).padStart(2, "0")}-${String(last).padStart(2, "0")}`;
-    return buildAdsCabinetCrmDaily(allLeads, stageEvents, cabinet.id, since, until);
-  }, [allLeads, stageEvents, cabinet.id, monthCursor]);
+    return buildAdsCabinetCrmDaily(allLeads, stageEvents, cabinet.id, since, until, {
+      soleMetaCabinet: !!soleMetaCabinet,
+    });
+  }, [allLeads, stageEvents, cabinet.id, monthCursor, soleMetaCabinet]);
 
   const crmTotals = useMemo(() => sumAdsCabinetCrmDaily(crmByDay), [crmByDay]);
 
