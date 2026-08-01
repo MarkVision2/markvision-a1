@@ -1,10 +1,7 @@
 {
-  "git_sha": "62974d899776999523880ffc209f975f490b7006",
-  "git_sha_full": "cea2f6fd1d0a6f99f33d6e253b0481b83a29518f",
-  "updated_at": "2026-07-31T10:59:52Z",
-  "label": "Meta #200 permission warning UX",
-  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app",
-  "git_sha_short": "62974d8",
-  "branch": "main",
-  "note": "fix group join count display"
+  "git_sha": "2e2a389",
+  "git_sha_full": "2e2a389dd5d7e15b0dc2e7cd2bc5c6fe343bd94b",
+  "updated_at": "2026-08-01T06:39:48Z",
+  "label": "feat: short partner links /p/astana /p/dastan /p/nadi",
+  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
