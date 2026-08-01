@@ -1,7 +1,7 @@
 {
-  "git_sha": "4027dda",
-  "git_sha_full": "4027ddae01fce56e4a4296b89bef42c251b01995",
-  "updated_at": "2026-08-01T06:53:56Z",
-  "label": "Merge pull request #222 from MarkVision2/cursor/partner-sources-crm-84cc",
+  "git_sha": "9f971ee",
+  "git_sha_full": "9f971eebd41a287f7aae83d03228ef3a03cff58b",
+  "updated_at": "2026-08-01T07:04:46Z",
+  "label": "Fixed security issues",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
