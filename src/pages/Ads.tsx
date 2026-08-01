@@ -62,6 +62,11 @@ const Ads = () => {
 
   const active = cabinets.filter((c) => c.online).length;
   const showSearch = cabinets.length > SEARCH_THRESHOLD;
+  const soleMetaCabinet =
+    cabinets.filter((c) => {
+      const p = (c.provider ?? "meta").toLowerCase();
+      return p === "meta" || p === "facebook";
+    }).length === 1;
 
   const handleRefresh = () => {
     setRefreshKey((k) => k + 1);
@@ -208,6 +213,7 @@ const Ads = () => {
               monthCursor={monthCursor}
               onToggleOnline={handleToggleOnline}
               onRemove={removeCabinet}
+              soleMetaCabinet={soleMetaCabinet}
             />
           ))}
           {filtered.length === 0 && (
