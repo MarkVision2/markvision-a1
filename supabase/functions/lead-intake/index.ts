@@ -331,6 +331,8 @@ Deno.serve(async (req) => {
     leadform: "lead_form", call: "phone",
     // Партнёрские / именные UTM: ?utm_source=vit → источник «Виталя»
     vit: "виталя", vitalya: "виталя", "виталя": "виталя", vitaly: "виталя",
+    yuriy: "yuriy", dastan: "dastan", nadi: "nadi",
+    astana_hub: "astana_hub", hub: "astana_hub",
   };
   /** Generic placeholders that must not override a real utm_source. */
   const GENERIC_SOURCES = new Set(["site", "web", "website", "tilda", "landing", "form"]);

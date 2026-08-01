@@ -1,13 +1,31 @@
 /**
- * Partner short-links: /p/:slug → landing with UTM.
- * https://www.markvision.kz/p/astana → zapoinovai + utm_source=astana_hub
+ * Partner short-links: /p/:slug → landing with UTM + cid for WhatsApp ref.
+ *
+ * Landing (zapoinovai) builds WA text as:
+ *   Хочу получить доступ
+ *   ref:zapoinovai[.cid][.asid][.adid]
+ * It does NOT read utm_source into the message — only cid/asid/adid.
+ * So we put the partner token into `cid` as well; Green API / CRM then
+ * maps `ref:zapoinovai.yuriy` → source=yuriy.
  */
-const PARTNERS: Record<string, string> = {
-  hub: "https://zapoinovai.vercel.app/?utm_source=astana_hub&utm_medium=referral&utm_campaign=workshop_aug1",
-  dastan: "https://zapoinovai.vercel.app/?utm_source=dastan&utm_medium=referral&utm_campaign=workshop_aug1",
-  nadi: "https://zapoinovai.vercel.app/?utm_source=nadi&utm_medium=referral&utm_campaign=workshop_aug1",
-  yuriy: "https://zapoinovai.vercel.app/?utm_source=yuriy&utm_medium=referral&utm_campaign=workshop_aug1",
+const PARTNERS: Record<string, { utmSource: string; label?: string }> = {
+  hub: { utmSource: "astana_hub" },
+  dastan: { utmSource: "dastan" },
+  nadi: { utmSource: "nadi" },
+  yuriy: { utmSource: "yuriy" },
 };
+
+const LANDING = "https://zapoinovai.vercel.app/";
+
+function partnerTarget(utmSource: string): string {
+  const u = new URL(LANDING);
+  u.searchParams.set("utm_source", utmSource);
+  u.searchParams.set("utm_medium", "referral");
+  u.searchParams.set("utm_campaign", "workshop_aug1");
+  // Landing WA CTA only forwards cid/asid/adid into ref: — inject partner here.
+  u.searchParams.set("cid", utmSource);
+  return u.toString();
+}
 
 export default async function handler(
   req: { method?: string; query?: Record<string, string | string[] | undefined> },
@@ -25,16 +43,16 @@ export default async function handler(
 
   const raw = req.query?.slug ?? req.query?.s;
   const slug = (Array.isArray(raw) ? raw[0] : raw ?? "").trim().toLowerCase();
-  const target = slug ? PARTNERS[slug] : undefined;
+  const partner = slug ? PARTNERS[slug] : undefined;
 
-  if (!target) {
+  if (!partner) {
     res.statusCode = 404;
     res.end("Unknown partner link");
     return;
   }
 
   res.statusCode = 302;
-  res.setHeader("Location", target);
+  res.setHeader("Location", partnerTarget(partner.utmSource));
   res.setHeader("Cache-Control", "no-store");
   res.end();
 }

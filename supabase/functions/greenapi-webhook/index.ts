@@ -13,6 +13,10 @@
 // same URL serves every project's Green API instance.
 import { corsHeaders } from "https://esm.sh/@supabase/supabase-js@2.95.0/cors";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import {
+  isGenericLeadSource,
+  partnerSourceFromWhatsAppText,
+} from "../_lib/partnerSource.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -338,11 +342,35 @@ async function enrichFromCreative(adId: string): Promise<{ campaign_id: string |
   };
 }
 
+/** If WA text carries ref:zapoinovai.<partner>, set leads.source (and utm.source). */
+async function applyPartnerSourceFromText(leadId: string, text: string): Promise<string | null> {
+  const partner = partnerSourceFromWhatsAppText(text);
+  if (!partner) return null;
+  const { data: lead } = await admin
+    .from("leads")
+    .select("id, source, meta_ad_id, utm")
+    .eq("id", leadId)
+    .maybeSingle();
+  if (!lead) return null;
+  if ((lead as { meta_ad_id?: string | null }).meta_ad_id) return null;
+  const cur = String((lead as { source?: string | null }).source ?? "");
+  if (cur.toLowerCase() === partner.toLowerCase()) return partner;
+  if (!isGenericLeadSource(cur)) return null;
+  const prevUtm = ((lead as { utm?: Record<string, unknown> | null }).utm ?? {}) as Record<string, unknown>;
+  await admin.from("leads").update({
+    source: partner,
+    utm: { ...prevUtm, source: partner },
+    updated_at: new Date().toISOString(),
+  }).eq("id", leadId);
+  return partner;
+}
+
 async function findOrCreateLead(
   phone: string,
   displayName: string,
   projectId: string | null,
   attribution?: CtwaAttribution,
+  partnerSource?: string | null,
 ): Promise<string | null> {
   const d = digits(phone);
   if (!d) return null;
@@ -434,12 +462,15 @@ async function findOrCreateLead(
     ownerId = (proj as { created_by?: string | null } | null)?.created_by ?? null;
   }
 
+  const source = attribution?.meta_ad_id
+    ? "meta"
+    : (partnerSource && partnerSource.trim() ? partnerSource.trim() : "whatsapp");
   const { data: created, error } = await admin
     .from("leads")
     .insert({
       name: displayName || `+${d}`,
       phone: `+${d}`,
-      source: attribution?.meta_ad_id ? "meta" : "whatsapp",
+      source,
       channel: "whatsapp",
       project_id: resolvedProject,
       cabinet_id: cabinetId,
@@ -451,6 +482,9 @@ async function findOrCreateLead(
       meta_adset_id: metaAdsetId,
       meta_campaign_id: metaCampaignId,
       click_id: attribution?.click_id ?? null,
+      ...(partnerSource && !attribution?.meta_ad_id
+        ? { utm: { source: partnerSource } }
+        : {}),
     })
     .select("id")
     .single();
@@ -773,10 +807,12 @@ Deno.serve(async (req) => {
         return json({ ok: true, skipped: "ads_only_no_ctwa", projectId });
       }
 
-      const leadId = existingLeadId ??
-        await findOrCreateLead(phone, name, projectId, attribution ?? undefined);
-      if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
       const text = extractText(messageData);
+      const partnerSource = partnerSourceFromWhatsAppText(text);
+      const leadId = existingLeadId ??
+        await findOrCreateLead(phone, name, projectId, attribution ?? undefined, partnerSource);
+      if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
+      if (partnerSource) await applyPartnerSourceFromText(leadId, text);
       await insertCommunication({ leadId, direction: "in", text, externalId: idMessage });
       if (looksLikeBotStart(text)) {
         await maybeAdvanceBotActivated(leadId, "inbound_start");

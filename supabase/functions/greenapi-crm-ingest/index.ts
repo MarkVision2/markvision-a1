@@ -11,6 +11,10 @@ import {
   DEFAULT_GREEN_API_BASE_URL,
   validateGreenApiBaseUrl,
 } from "../_lib/green_api_url.ts";
+import {
+  isGenericLeadSource,
+  partnerSourceFromWhatsAppText,
+} from "../_lib/partnerSource.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -182,10 +186,33 @@ async function attributionFromPhone(phone: string, projectId: string): Promise<{
   return null;
 }
 
+async function applyPartnerSourceFromText(leadId: string, text: string): Promise<string | null> {
+  const partner = partnerSourceFromWhatsAppText(text);
+  if (!partner) return null;
+  const { data: lead } = await admin
+    .from("leads")
+    .select("id, source, meta_ad_id, utm")
+    .eq("id", leadId)
+    .maybeSingle();
+  if (!lead) return null;
+  if ((lead as { meta_ad_id?: string | null }).meta_ad_id) return null;
+  const cur = String((lead as { source?: string | null }).source ?? "");
+  if (cur.toLowerCase() === partner.toLowerCase()) return partner;
+  if (!isGenericLeadSource(cur)) return null;
+  const prevUtm = ((lead as { utm?: Record<string, unknown> | null }).utm ?? {}) as Record<string, unknown>;
+  await admin.from("leads").update({
+    source: partner,
+    utm: { ...prevUtm, source: partner },
+    updated_at: new Date().toISOString(),
+  }).eq("id", leadId);
+  return partner;
+}
+
 async function findOrCreateLead(
   phone: string,
   displayName: string,
   projectId: string,
+  partnerSource?: string | null,
 ): Promise<string | null> {
   const d = digits(phone);
   if (!d) return null;
@@ -231,12 +258,15 @@ async function findOrCreateLead(
     }
   }
 
+  const source = attr?.meta_ad_id
+    ? (attr.source || "meta")
+    : (partnerSource && partnerSource.trim() ? partnerSource.trim() : "whatsapp");
   const { data: created, error } = await admin
     .from("leads")
     .insert({
       name: displayName || `+${d}`,
       phone: `+${d}`,
-      source: attr?.meta_ad_id ? (attr.source || "meta") : "whatsapp",
+      source,
       channel: "whatsapp",
       project_id: projectId,
       cabinet_id: cabinetId,
@@ -249,6 +279,7 @@ async function findOrCreateLead(
       meta_campaign_id: metaCampaignId,
       click_id: attr?.click_id ?? null,
       last_activity_at: new Date().toISOString(),
+      ...(partnerSource && !attr?.meta_ad_id ? { utm: { source: partnerSource } } : {}),
     })
     .select("id")
     .single();
@@ -399,15 +430,20 @@ async function ingestProject(row: WaRow, minutes: number) {
     const text = msgText(m);
     const name = (m.senderName || m.senderContactName || "").trim();
 
+  const partnerSource = direction === "in" ? partnerSourceFromWhatsAppText(text) : null;
   const before = await findExistingLeadId(phone, row.project_id);
   let leadId = before;
   if (!leadId) {
-    leadId = await findOrCreateLead(phone, name, row.project_id);
+    leadId = await findOrCreateLead(phone, name, row.project_id, partnerSource);
     // Re-check in case of concurrent insert race.
     if (!leadId) leadId = await findExistingLeadId(phone, row.project_id);
   }
   if (!leadId) return;
   if (!before) leadsCreated += 1;
+
+    if (direction === "in" && partnerSource) {
+      await applyPartnerSourceFromText(leadId, text);
+    }
 
     const isAuto = direction === "out"; // journal outgoing from API/phone; treat as bot/auto for stage
     const inserted = await insertCommunication({
