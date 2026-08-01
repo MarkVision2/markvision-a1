@@ -62,4 +62,20 @@ describe("crmLeadDynamics", () => {
     expect(channels[0]).toMatchObject({ label: "Instagram", count: 2 });
     expect(channels.some((c) => c.label === "TikTok" && c.count === 1)).toBe(true);
   });
+
+  it("не считает broadcast / broadcast_zoom в KPI новых лидов", () => {
+    const now = new Date("2026-08-01T08:00:00Z");
+    const leads = [
+      { createdAt: "2026-08-01T05:00:00Z", source: "zapoinovai" },
+      { createdAt: "2026-08-01T05:01:00Z", source: "broadcast_zoom" },
+      { createdAt: "2026-08-01T05:02:00Z", source: "broadcast_zoom" },
+      { createdAt: "2026-08-01T05:03:00Z", source: "broadcast" },
+      { createdAt: "2026-08-01T05:04:00Z", source: "whatsapp" },
+    ];
+    const today = buildLeadDynamics(leads, "today", { now });
+    expect(today.total).toBe(2);
+    const channels = buildLeadChannelBreakdown(leads, today.fromYmd, today.toYmd);
+    expect(channels.every((c) => !/broadcast|рассыл/i.test(c.label + c.raw))).toBe(true);
+    expect(channels.reduce((s, c) => s + c.count, 0)).toBe(2);
+  });
 });

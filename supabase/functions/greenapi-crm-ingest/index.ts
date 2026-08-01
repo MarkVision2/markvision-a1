@@ -433,6 +433,8 @@ async function ingestProject(row: WaRow, minutes: number) {
   const partnerSource = direction === "in" ? partnerSourceFromWhatsAppText(text) : null;
   const before = await findExistingLeadId(phone, row.project_id);
   let leadId = before;
+  // Исходящие (рассылка) — только к существующим лидам, без создания новых.
+  if (!leadId && direction === "out") return;
   if (!leadId) {
     leadId = await findOrCreateLead(phone, name, row.project_id, partnerSource);
     // Re-check in case of concurrent insert race.

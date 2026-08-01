@@ -89,8 +89,9 @@ const TABLE: Record<string, Omit<SourceMeta, "raw">> = {
   // Phone
   phone: { key: "phone", label: "Звонок", Icon: Phone, cls: "text-warning" },
   call: { key: "phone", label: "Звонок", Icon: Phone, cls: "text-warning" },
-  // Broadcast (WhatsApp-рассылка)
+  // Broadcast (WhatsApp-рассылка) — в KPI «новые лиды» не считаем
   broadcast: { key: "broadcast", label: "Рассылка", Icon: Send, cls: "text-primary" },
+  broadcast_zoom: { key: "broadcast", label: "Рассылка Zoom", Icon: Send, cls: "text-primary" },
   "рассылка": { key: "broadcast", label: "Рассылка", Icon: Send, cls: "text-primary" },
   mailing: { key: "broadcast", label: "Рассылка", Icon: Send, cls: "text-primary" },
   // Партнёры: ?utm_source=… / cid=… на лендинге zapoinovai → CRM «Источники»

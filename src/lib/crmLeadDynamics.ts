@@ -122,13 +122,34 @@ export function formatLeadRangeLabel(fromYmd: string, toYmd: string): string {
   return `${a} – ${b}`;
 }
 
+/**
+ * Заявки из WhatsApp/Zoom-рассылки (source=broadcast, broadcast_zoom, …)
+ * не считаем «новыми лидами» в KPI: бот создаёт карточку в момент исходящего,
+ * из‑за этого «Сегодня» раздувается на десятки фейковых заявок.
+ */
+export function isAcquisitionLeadSource(source: string | null | undefined): boolean {
+  const s = (source ?? "").trim().toLowerCase();
+  if (!s) return true;
+  if (s === "broadcast" || s.startsWith("broadcast_")) return false;
+  if (s === "рассылка" || s === "mailing") return false;
+  return true;
+}
+
+type LeadForDynamics = {
+  createdAt: string;
+  source?: string | null;
+  channel?: string | null;
+  metaAdId?: string | null;
+};
+
 function countInRange(
-  leads: Array<{ createdAt: string }>,
+  leads: Array<LeadForDynamics>,
   fromYmd: string,
   toYmd: string,
 ): number {
   let n = 0;
   for (const l of leads) {
+    if (!isAcquisitionLeadSource(l.source)) continue;
     const day = ymdAlmatyFromIso(l.createdAt);
     if (day && day >= fromYmd && day <= toYmd) n += 1;
   }
@@ -140,7 +161,7 @@ function countInRange(
  * @param focusYmd — если задан, total = только этот день (бары остаются по периоду).
  */
 export function buildLeadDynamics(
-  leads: Array<{ createdAt: string }>,
+  leads: Array<LeadForDynamics>,
   preset: LeadPeriodPreset,
   opts?: { now?: Date; focusYmd?: string | null },
 ): LeadDynamics {
@@ -151,6 +172,7 @@ export function buildLeadDynamics(
   const byDay = new Map<string, number>();
   for (const y of ymds) byDay.set(y, 0);
   for (const l of leads) {
+    if (!isAcquisitionLeadSource(l.source)) continue;
     const day = ymdAlmatyFromIso(l.createdAt);
     if (!day || !byDay.has(day)) continue;
     byDay.set(day, (byDay.get(day) ?? 0) + 1);
@@ -206,12 +228,7 @@ export type LeadChannelBucket = {
  * Сортировка: больше → меньше. Макс. 8 строк + «Другое».
  */
 export function buildLeadChannelBreakdown(
-  leads: Array<{
-    createdAt: string;
-    source?: string | null;
-    channel?: string | null;
-    metaAdId?: string | null;
-  }>,
+  leads: Array<LeadForDynamics>,
   fromYmd: string,
   toYmd: string,
   opts?: { focusYmd?: string | null },
@@ -220,6 +237,7 @@ export function buildLeadChannelBreakdown(
   const counts = new Map<string, { label: string; count: number; raw: string }>();
 
   for (const l of leads) {
+    if (!isAcquisitionLeadSource(l.source)) continue;
     const day = ymdAlmatyFromIso(l.createdAt);
     if (!day) continue;
     if (focus) {
