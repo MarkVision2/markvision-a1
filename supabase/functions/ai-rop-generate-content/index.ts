@@ -236,9 +236,15 @@ Deno.serve(async (req) => {
 
   try {
     if (payload.project_id) {
+      if (!auth.internal) {
+        const access = await requireProjectAccess(auth.authHeader, String(payload.project_id));
+        if (!access.ok) return access.response;
+      }
       const res = await generateForProject(payload.project_id);
       return json({ ok: true, ...res });
     }
+    // Fan-out over all projects is cron/internal-only.
+    if (!auth.internal) return json({ error: "Forbidden" }, 403);
     const projects = await getActiveProjectIds();
     const results: Array<{ project_id: string; ok: boolean; reason?: string; idea_id?: string }> = [];
     for (const pid of projects) {
