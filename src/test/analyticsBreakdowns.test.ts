@@ -51,6 +51,10 @@ describe("sourceLabel", () => {
     expect(sourceLabel("wa")).toBe("WhatsApp");
     expect(sourceLabel("instagram")).toBe("Instagram");
     expect(sourceLabel("meta")).toBe("Реклама Meta");
+    expect(sourceLabel("yuriy")).toBe("Yuriy");
+    expect(sourceLabel("dastan")).toBe("Дастан");
+    expect(sourceLabel("nadi")).toBe("Нади");
+    expect(sourceLabel("astana_hub")).toBe("Astana Hub");
     expect(sourceLabel("")).toBe("Без источника");
     expect(sourceLabel(null)).toBe("Без источника");
     expect(sourceLabel("Своя CRM")).toBe("Своя CRM");

@@ -31,6 +31,10 @@ export type SourceKey =
   | "broadcast"
   | "manual"
   | "vitalya"
+  | "yuriy"
+  | "dastan"
+  | "nadi"
+  | "astana_hub"
   | "unknown";
 
 export interface SourceMeta {
@@ -89,11 +93,16 @@ const TABLE: Record<string, Omit<SourceMeta, "raw">> = {
   broadcast: { key: "broadcast", label: "Рассылка", Icon: Send, cls: "text-primary" },
   "рассылка": { key: "broadcast", label: "Рассылка", Icon: Send, cls: "text-primary" },
   mailing: { key: "broadcast", label: "Рассылка", Icon: Send, cls: "text-primary" },
-  // Партнёр: ?utm_source=vit на лендинге zapoinovai
+  // Партнёры: ?utm_source=… / cid=… на лендинге zapoinovai → CRM «Источники»
   vit: { key: "vitalya", label: "Виталя", Icon: UserPlus, cls: "text-primary" },
   vitalya: { key: "vitalya", label: "Виталя", Icon: UserPlus, cls: "text-primary" },
   vitaly: { key: "vitalya", label: "Виталя", Icon: UserPlus, cls: "text-primary" },
   "виталя": { key: "vitalya", label: "Виталя", Icon: UserPlus, cls: "text-primary" },
+  yuriy: { key: "yuriy", label: "Yuriy", Icon: UserPlus, cls: "text-primary" },
+  dastan: { key: "dastan", label: "Дастан", Icon: UserPlus, cls: "text-primary" },
+  nadi: { key: "nadi", label: "Нади", Icon: UserPlus, cls: "text-primary" },
+  astana_hub: { key: "astana_hub", label: "Astana Hub", Icon: UserPlus, cls: "text-primary" },
+  hub: { key: "astana_hub", label: "Astana Hub", Icon: UserPlus, cls: "text-primary" },
   // Other
   referral: { key: "referral", label: "Рекомендация", Icon: UserPlus, cls: "text-foreground" },
   manual: { key: "manual", label: "Вручную", Icon: Hand, cls: "text-muted-foreground" },
@@ -134,5 +143,6 @@ export function canonicalSourceKey(raw: string | null | undefined): string {
   if (m.key === "unknown") return (raw ?? "").trim() || "unknown";
   // В БД партнёрский источник — «виталя» (как в lead-intake aliases).
   if (m.key === "vitalya") return "виталя";
+  if (m.key === "astana_hub") return "astana_hub";
   return m.key;
 }
