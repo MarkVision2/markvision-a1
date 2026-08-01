@@ -435,6 +435,39 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const { project_id, all } = body ?? {};
 
+    // --- Auth: cron shared secret OR authenticated user with project access ---
+    let isCron = false;
+    const envCronKey = Deno.env.get("IG_SYNC_CRON_KEY") ?? Deno.env.get("META_SYNC_CRON_KEY");
+    const envCronHeader = req.headers.get("x-cron-key");
+    if (envCronKey && envCronHeader === envCronKey) {
+      isCron = true;
+    } else {
+      const automationKey = req.headers.get("x-automation-key");
+      if (automationKey) {
+        const { data: settings } = await supa
+          .from("automation_settings")
+          .select("cron_secret")
+          .eq("id", true)
+          .maybeSingle();
+        const dbSecret = (settings as { cron_secret?: string | null } | null)?.cron_secret ?? null;
+        if (dbSecret && automationKey === dbSecret) isCron = true;
+      }
+    }
+
+    if (!isCron) {
+      const auth = await requireUser(req);
+      if (!auth.ok) return auth.response;
+      // Fan-out over every tenant is cron/admin-only.
+      if (all || !project_id) {
+        if (!(await userHasAnyRole(auth.userId, ["admin"]))) {
+          return json({ error: "Forbidden" }, 403);
+        }
+      } else {
+        const access = await requireProjectAccess(auth.authHeader, String(project_id));
+        if (!access.ok) return access.response;
+      }
+    }
+
     let query = supa.from("instagram_accounts").select("*").eq("active", true);
     if (project_id && !all) query = query.eq("project_id", project_id);
     const { data: accounts, error } = await query;
