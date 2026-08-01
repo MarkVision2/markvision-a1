@@ -18,6 +18,10 @@
       "destination": "/api/g-redirect?slug=:slug"
     },
     {
+      "source": "/p/:slug",
+      "destination": "/api/p-redirect?slug=:slug"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }
