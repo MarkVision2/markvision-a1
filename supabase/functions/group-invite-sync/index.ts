@@ -36,6 +36,13 @@ function digits(s: string | null | undefined): string {
   return String(s ?? "").replace(/\D/g, "");
 }
 
+/** Last-10 — единый ключ участника (7… / 8… / полный id). */
+function phoneKey(s: string | null | undefined): string {
+  const d = digits(s);
+  if (!d) return "";
+  return d.length >= 10 ? d.slice(-10) : d;
+}
+
 type Creds = { idInstance: string; apiToken: string; baseUrl: string };
 
 async function authorize(req: Request): Promise<boolean> {
@@ -77,8 +84,8 @@ async function groupParticipants(creds: Creds, groupId: string): Promise<Set<str
     if (!Array.isArray(parts)) return null;
     const set = new Set<string>();
     for (const p of parts) {
-      const d = digits(p?.id);
-      if (d.length >= 8) set.add(d);
+      const k = phoneKey(p?.id);
+      if (k.length >= 8) set.add(k);
     }
     return set;
   } catch {
@@ -163,10 +170,12 @@ Deno.serve(async (req) => {
       .select("phone_digits")
       .eq("link_id", link.id);
     const known = new Set(
-      ((knownRows ?? []) as { phone_digits: string }[]).map((r) => r.phone_digits),
+      ((knownRows ?? []) as { phone_digits: string }[])
+        .map((r) => phoneKey(r.phone_digits))
+        .filter((k) => k.length >= 8),
     );
 
-    const fresh = [...members].filter((p) => !known.has(p));
+    const fresh = [...members].filter((p) => !known.has(phoneKey(p)));
     if (fresh.length === 0) continue;
 
     if (!link.baseline_taken) {
@@ -174,7 +183,7 @@ Deno.serve(async (req) => {
       const inserts = fresh.map((phone) => ({
         link_id: link.id,
         project_id: link.project_id,
-        phone_digits: phone,
+        phone_digits: phoneKey(phone),
         joined_via_link: false,
       }));
       const { error } = await admin.from("group_invite_members").upsert(inserts, {
@@ -194,7 +203,8 @@ Deno.serve(async (req) => {
     const nowIso = new Date().toISOString();
     let newJoins = 0;
 
-    for (const phone of fresh) {
+    for (const phoneRaw of fresh) {
+      const phone = phoneKey(phoneRaw);
       let leadId: string | null = null;
       const existing = await findLeadByPhone(link.project_id, phone);
       if (existing) {

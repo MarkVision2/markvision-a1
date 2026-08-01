@@ -797,8 +797,13 @@ Deno.serve(async (req) => {
       const messageData = body.messageData as Record<string, unknown> | undefined;
       const phone = chatIdToPhone(senderData?.chatId);
       if (!phone) return json({ ok: true, skipped: "no phone" });
-      const leadId = await findOrCreateLead(phone, "", projectId);
-      if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
+      // Не создаём лида на исходящее (рассылка / API): иначе холодная база
+      // заливает CRM «лидами» с именем = телефон. Лид только на входящее / CTWA.
+      const leadId = await findExistingLeadId(phone, projectId);
+      if (!leadId) {
+        forwardToBotWebhook(instanceCfg.botWebhookUrl, body);
+        return json({ ok: true, skipped: "no_lead_on_outgoing", projectId });
+      }
       const text = extractText(messageData);
       const isAuto = type === "outgoingAPIMessageReceived";
       await insertCommunication({

@@ -1,15 +1,6 @@
-// Воронка рассылки: доставка WhatsApp + конверсии из CRM по связанным лидам.
-// Счётчики доставки — кумулятивные (read входит в delivered и sent), как в UI-воронках.
-
-export type BroadcastDeliveryStatus =
-  | "queued"
-  | "sent"
-  | "delivered"
-  | "read"
-  | "replied"
-  | "converted"
-  | "failed"
-  | "skipped_optout";
+// Воронка рассылки для edge-функций (зеркало src/lib/broadcastFunnel.ts).
+// Нужна, чтобы broadcast-group-sync / broadcast-worker писали полный stats
+// (joined + webinar + sales), а не затирали CRM-поля сырыми status-счётчиками.
 
 export type BroadcastRecipientLite = {
   id: string;
@@ -23,7 +14,6 @@ export type BroadcastRecipientLite = {
   repliedAt: string | null;
   clickedAt: string | null;
   convertedAt: string | null;
-  /** Реально появился в составе WhatsApp-группы (детект по getGroupData). */
   joinedAt: string | null;
   error: string | null;
 };
@@ -43,19 +33,14 @@ export type BroadcastLeadLite = {
 export type BroadcastFunnel = {
   total: number;
   queued: number;
-  /** Ушло из очереди успешно (sent|delivered|read|replied|converted). */
   sent: number;
   delivered: number;
   read: number;
   replied: number;
   clicked: number;
-  /** Реально вступили в WhatsApp-группу (детект по составу группы). */
   joined: number;
-  /** Вступили в WhatsApp / группу (по stage_role связанного лида) — CRM-прокси. */
   groupJoined: number;
-  /** Пришли на вебинар (webinar_status или stage_role). */
   webinarAttended: number;
-  /** Связанные лиды в CRM. */
   leads: number;
   deposits: number;
   sales: number;
@@ -105,22 +90,13 @@ export function digitsPhone(phone: string): string {
   return (phone ?? "").replace(/\D/g, "");
 }
 
-/** Ключ телефона: последние 10 цифр (KZ 7… / 8… → один человек). */
 export function phoneKey(phone: string): string {
   const d = digitsPhone(phone);
   if (!d) return "";
   return d.length >= 10 ? d.slice(-10) : d;
 }
 
-/**
- * Кумулятивные счётчики доставки.
- * Статус Green API + таймстампы (read_at / delivered_at / …): вебхук иногда
- * опаздывает, а join-sync дописывает факт прочтения/клика по вступлению.
- */
-export function countDelivery(recipients: BroadcastRecipientLite[]): Omit<
-  BroadcastFunnel,
-  "clicked" | "joined" | "groupJoined" | "webinarAttended" | "leads" | "deposits" | "sales" | "revenue"
-> {
+function countDelivery(recipients: BroadcastRecipientLite[]) {
   let queued = 0;
   let sent = 0;
   let delivered = 0;
@@ -133,15 +109,12 @@ export function countDelivery(recipients: BroadcastRecipientLite[]): Omit<
     if (s === "queued") queued += 1;
     if (s === "failed") failed += 1;
     if (s === "skipped_optout") optout += 1;
-
     const isSent =
       OUTBOX.has(s) || !!r.sentAt || !!r.deliveredAt || !!r.readAt || !!r.clickedAt || !!r.joinedAt;
     const isDelivered =
       DELIVERED.has(s) || !!r.deliveredAt || !!r.readAt || !!r.clickedAt || !!r.joinedAt;
-    // «Открыли» = WhatsApp read receipt (две синие галочки) ИЛИ факт клика/вступления.
     const isRead = READ.has(s) || !!r.readAt || !!r.clickedAt || !!r.joinedAt;
     const isReplied = REPLIED.has(s) || !!r.repliedAt;
-
     if (isSent) sent += 1;
     if (isDelivered) delivered += 1;
     if (isRead) read += 1;
@@ -169,10 +142,6 @@ function isPaidOk(lead: BroadcastLeadLite): boolean {
   return lead.paid === true || PAID_ROLES.has(role);
 }
 
-/**
- * Сопоставляет получателей с CRM-лидами: сначала lead_id, иначе телефон (last-10).
- * Возвращает Map recipientId → lead.
- */
 export function matchRecipientLeads(
   recipients: BroadcastRecipientLite[],
   leads: BroadcastLeadLite[],
@@ -205,7 +174,6 @@ export function buildBroadcastFunnel(
   let clicked = 0;
   let joined = 0;
   let joinedInCrm = 0;
-  /** Лиды / телефоны, по которым считаем CRM-исход (вебинар/оплата) для этой рассылки. */
   const outcomeLeadIds = new Set<string>();
   const outcomePhones = new Set<string>();
 
@@ -228,7 +196,6 @@ export function buildBroadcastFunnel(
     }
   }
 
-  // Нет детекта группы — эффективность по всем связанным лидам получателей.
   if (joined === 0) {
     for (const lead of matched.values()) {
       outcomeLeadIds.add(lead.id);
@@ -239,7 +206,6 @@ export function buildBroadcastFunnel(
 
   const seenLeads = new Set<string>();
   let groupJoined = 0;
-
   for (const lead of matched.values()) {
     if (seenLeads.has(lead.id)) continue;
     seenLeads.add(lead.id);
@@ -247,17 +213,12 @@ export function buildBroadcastFunnel(
     if (GROUP_ROLES.has(role)) groupJoined += 1;
   }
 
-  // Вебинар / депозит / оплата: объединяем дубли CRM по одному телефону
-  // (lead_id вступившего + другая карточка с оплатой на том же номере).
   type Agg = { webinar: boolean; deposit: boolean; paid: boolean; revenue: number };
   const byPerson = new Map<string, Agg>();
-
   for (const lead of leads) {
     const pk = phoneKey(lead.phone);
-    const inOutcome =
-      outcomeLeadIds.has(lead.id) || (!!pk && outcomePhones.has(pk));
+    const inOutcome = outcomeLeadIds.has(lead.id) || (!!pk && outcomePhones.has(pk));
     if (!inOutcome) continue;
-
     const key = pk || `id:${lead.id}`;
     const cur = byPerson.get(key) ?? {
       webinar: false,
@@ -287,8 +248,6 @@ export function buildBroadcastFunnel(
     }
   }
 
-  // «Лиды / В CRM» в KPI: при наличии вступлений — сколько из них с карточкой CRM;
-  // иначе — все совпадения по телефону / lead_id (база из CRM).
   const leadsCount = joined > 0 ? joinedInCrm : seenLeads.size;
 
   return {
@@ -304,7 +263,30 @@ export function buildBroadcastFunnel(
   };
 }
 
-export function funnelStepRate(from: number, to: number): number | null {
-  if (from <= 0) return null;
-  return Math.round((to / from) * 1000) / 10;
+/** Stats jsonb: сырые status-счётчики (mapRow их кумулятивит) + CRM-поля из воронки. */
+export function funnelToCampaignStats(
+  recipients: { status: string; clickedAt: string | null; joinedAt: string | null }[],
+  funnel: BroadcastFunnel,
+  extra?: { sending?: number },
+): Record<string, number> {
+  const count = (s: string) => recipients.filter((r) => r.status === s).length;
+  return {
+    total: recipients.length,
+    queued: count("queued"),
+    sending: extra?.sending ?? count("sending"),
+    sent: count("sent"),
+    delivered: count("delivered"),
+    read: count("read"),
+    replied: count("replied"),
+    converted: count("converted"),
+    failed: count("failed"),
+    optout: count("skipped_optout"),
+    clicked: recipients.filter((r) => !!r.clickedAt || !!r.joinedAt).length,
+    joined: funnel.joined,
+    leads: funnel.leads,
+    webinarAttended: funnel.webinarAttended,
+    sales: funnel.sales,
+    deposits: funnel.deposits,
+    revenue: funnel.revenue,
+  };
 }

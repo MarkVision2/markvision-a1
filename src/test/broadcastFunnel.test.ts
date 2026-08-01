@@ -3,6 +3,7 @@ import {
   buildBroadcastFunnel,
   countDelivery,
   matchRecipientLeads,
+  phoneKey,
   type BroadcastLeadLite,
   type BroadcastRecipientLite,
 } from "@/lib/broadcastFunnel";
@@ -25,6 +26,12 @@ const rec = (
 });
 
 describe("broadcastFunnel", () => {
+  it("phoneKey: 7… и 8… сходятся", () => {
+    expect(phoneKey("+77001112233")).toBe("7001112233");
+    expect(phoneKey("87001112233")).toBe("7001112233");
+    expect(phoneKey("7001112233")).toBe("7001112233");
+  });
+
   it("считает доставку кумулятивно", () => {
     const recipients = [
       rec({ id: "1", status: "queued" }),
@@ -148,6 +155,81 @@ describe("broadcastFunnel", () => {
     // L2 оплатил, но не вступал из этой рассылки — не считаем
     expect(funnel.webinarAttended).toBe(0);
     expect(funnel.sales).toBe(0);
+  });
+
+  it("матчит телефон по last-10 (7… и 8… — один человек)", () => {
+    const recipients = [
+      rec({
+        id: "a",
+        status: "clicked",
+        phone: "87001110001",
+        leadId: null,
+        joinedAt: "2026-07-01",
+        clickedAt: "2026-07-01",
+      }),
+    ];
+    const leads: BroadcastLeadLite[] = [
+      {
+        id: "L1",
+        name: "Алия",
+        phone: "+77001110001",
+        stageKey: "attended",
+        stageRole: "attended",
+        paid: true,
+        amount: 99000,
+        depositAmount: 0,
+        webinarStatus: "attended",
+      },
+    ];
+    const matched = matchRecipientLeads(recipients, leads);
+    expect(matched.get("a")?.id).toBe("L1");
+    const funnel = buildBroadcastFunnel(recipients, leads);
+    expect(funnel.joined).toBe(1);
+    expect(funnel.webinarAttended).toBe(1);
+    expect(funnel.sales).toBe(1);
+    expect(funnel.revenue).toBe(99000);
+  });
+
+  it("оплата на дубле CRM с тем же телефоном считается для вступившего", () => {
+    const recipients = [
+      rec({
+        id: "a",
+        status: "clicked",
+        phone: "+77001110001",
+        leadId: "L1",
+        joinedAt: "2026-07-01",
+        clickedAt: "2026-07-01",
+      }),
+    ];
+    const leads: BroadcastLeadLite[] = [
+      {
+        id: "L1",
+        name: "Алия (группа)",
+        phone: "+77001110001",
+        stageKey: "joined_group",
+        stageRole: "joined_group",
+        paid: false,
+        amount: 0,
+        depositAmount: 0,
+        webinarStatus: null,
+      },
+      {
+        id: "L2",
+        name: "Алия (оплата)",
+        phone: "87001110001",
+        stageKey: "paid",
+        stageRole: "paid",
+        paid: true,
+        amount: 150000,
+        depositAmount: 0,
+        webinarStatus: "attended",
+      },
+    ];
+    const funnel = buildBroadcastFunnel(recipients, leads);
+    expect(funnel.joined).toBe(1);
+    expect(funnel.webinarAttended).toBe(1);
+    expect(funnel.sales).toBe(1);
+    expect(funnel.revenue).toBe(150000);
   });
 
   it("считает прочтение по read_at даже если статус ещё delivered", () => {

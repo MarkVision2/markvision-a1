@@ -4,12 +4,13 @@ import { ArrowRight, Eye, Image as ImageIcon, MousePointerClick, TrendingDown, T
 import { cn } from "@/lib/utils";
 import { pickCreativeTitle } from "@/lib/creativeDisplay";
 import { CreativePreview } from "@/components/creatives/CreativePreview";
+import { compareCreatives, type CreativeSortKey } from "@/lib/creativesGridSort";
 import type { MetaCreativeRow } from "@/hooks/useMetaStructure";
 
 const fmtNum = (n: number) => Math.round(n).toLocaleString("ru-RU");
 const fmtTenge = (n: number) => `${Math.round(n).toLocaleString("ru-RU")} ₸`;
 
-type SortKey = "crmRevenue" | "crmLeads" | "crmRomi" | "spend" | "ctr" | "cpl" | "leads" | "romi";
+type SortKey = CreativeSortKey;
 
 const SORT_LABELS: Record<SortKey, string> = {
   crmRevenue: "по выручке CRM",
@@ -33,30 +34,6 @@ interface Props {
   periodLabel?: string;
   viewAllHref?: string;
 }
-
-const sortValue = (r: MetaCreativeRow, key: SortKey): number => {
-  if (key === "cpl") return r.cpl > 0 ? -r.cpl : Number.NEGATIVE_INFINITY;
-  if (key === "crmLeads") {
-    // CRM-лиды в приоритете; если атрибуции ещё нет — смотрим Meta leads.
-    return (r.crmLeads ?? 0) > 0 ? (r.crmLeads ?? 0) : r.leads;
-  }
-  return (r as unknown as Record<string, number>)[key] ?? 0;
-};
-
-
-const compareCreatives = (a: MetaCreativeRow, b: MetaCreativeRow, key: SortKey): number => {
-  const primary = sortValue(b, key) - sortValue(a, key);
-  if (primary !== 0) return primary;
-  if (key === "crmLeads" || key === "leads") {
-    const metaDelta = b.leads - a.leads;
-    if (metaDelta !== 0) return metaDelta;
-    return b.spend - a.spend;
-  }
-  // При равной выручке — сначала креативы с продажами, потом по расходу.
-  const crmDelta = (b.crmSales ?? 0) - (a.crmSales ?? 0);
-  if (crmDelta !== 0) return crmDelta;
-  return b.spend - a.spend;
-};
 
 /** Креатив был активен в выбранном периоде (расход, показы или CRM). */
 function hasPeriodActivity(r: MetaCreativeRow): boolean {
@@ -182,8 +159,18 @@ export function CreativesGrid({
         {visible.map((row) => {
           const { title, subtitle } = pickCreativeTitle({ name: row.name, headline: row.headline });
           const hasCrmRevenue = (row.crmRevenue ?? 0) > 0;
-          const leadValue = (row.crmLeads ?? 0) > 0 ? row.crmLeads : row.leads;
-          const leadLabel = (row.crmLeads ?? 0) > 0 ? "Лиды CRM" : "Лиды Meta";
+          const showCrmLeads = sortKey === "crmLeads" ||
+            (sortKey !== "leads" && (row.crmLeads ?? 0) > 0);
+          const leadValue = sortKey === "leads"
+            ? row.leads
+            : showCrmLeads
+              ? (row.crmLeads ?? 0)
+              : row.leads;
+          const leadLabel = sortKey === "leads"
+            ? "Лиды Meta"
+            : showCrmLeads
+              ? "Лиды CRM"
+              : "Лиды Meta";
           const romiVal = hasCrmRevenue ? row.crmRomi : 0;
           const romiPositive = romiVal >= 0;
           const RomiIcon = romiPositive ? TrendingUp : TrendingDown;
@@ -228,6 +215,12 @@ export function CreativesGrid({
                       "font-bold tabular-nums",
                       (sortKey === "crmLeads" || sortKey === "leads") && leadValue > 0 && "text-primary",
                     )}>{fmtNum(leadValue)}</div>
+                    {sortKey === "crmLeads" && row.leads > 0 && (row.crmLeads ?? 0) !== row.leads ? (
+                      <div className="text-[10px] text-muted-foreground">Meta: {fmtNum(row.leads)}</div>
+                    ) : null}
+                    {sortKey === "leads" && (row.crmLeads ?? 0) > 0 && (row.crmLeads ?? 0) !== row.leads ? (
+                      <div className="text-[10px] text-muted-foreground">CRM: {fmtNum(row.crmLeads ?? 0)}</div>
+                    ) : null}
                   </div>
                   <div>
                     <div className="text-muted-foreground">Продажи</div>

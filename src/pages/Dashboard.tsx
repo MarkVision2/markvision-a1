@@ -244,13 +244,13 @@ const Dashboard = () => {
         viewAllHref="/ads?tab=creatives"
       />
 
-      {/* Block 4.3 — Топ креативов по лидам CRM (fallback: Meta leads) */}
-      <SectionTitle accent="bg-primary">Топ креативов по лидам CRM</SectionTitle>
+      {/* Block 4.3 — Топ креативов по лидам Meta (insights: lead / messaging) */}
+      <SectionTitle accent="bg-primary">Топ креативов по лидам Meta</SectionTitle>
       <CreativesGrid
         rows={metaCreatives}
         topMode
         topLimit={4}
-        topSortKey="crmLeads"
+        topSortKey="leads"
         periodLabel={rangeLabel}
         viewAllHref="/ads?tab=creatives"
       />

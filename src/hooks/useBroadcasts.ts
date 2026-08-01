@@ -41,6 +41,8 @@ export function useBroadcasts(projectId: string | null, crmContacts: LeadContact
 
   useRealtimeTable("broadcast_campaigns", invalidate, !!projectId, 500);
   useRealtimeTable("broadcast_recipients", invalidate, !!projectId, 800);
+  // CRM: посещение вебинара / оплата → сразу пересчитать воронку рассылок.
+  useRealtimeTable("leads", invalidate, !!projectId, 1200);
 
   const create = useCallback(
     async (draft: BroadcastDraft, opts?: CreateCampaignOpts): Promise<Broadcast | null> => {
