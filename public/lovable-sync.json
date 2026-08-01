@@ -1,7 +1,10 @@
 {
-  "git_sha": "2e2a389",
-  "git_sha_full": "2e2a389dd5d7e15b0dc2e7cd2bc5c6fe343bd94b",
-  "updated_at": "2026-08-01T06:39:48Z",
-  "label": "feat: short partner links /p/astana /p/dastan /p/nadi",
-  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
+  "git_sha": "c7939a44",
+  "git_sha_full": "c7939a445e6112368b280c73e25647fa7c3b4c84",
+  "updated_at": "2026-08-01T06:42:41Z",
+  "label": "Partner short links /p/astana",
+  "publish_hint": "push main → www.markvision.kz (Vercel)",
+  "git_sha_short": "c7939a44",
+  "branch": "main",
+  "note": "Short UTM partner links for workshop"
 }
