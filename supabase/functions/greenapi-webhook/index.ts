@@ -833,8 +833,13 @@ Deno.serve(async (req) => {
       const messageData = body.messageData as Record<string, unknown> | undefined;
       const phone = chatIdToPhone(senderData?.chatId);
       if (!phone) return json({ ok: true, skipped: "no phone" });
-      const leadId = await findOrCreateLead(phone, "", projectId);
-      if (!leadId) return json({ ok: false, error: "lead not created" }, 500);
+      // Не создаём лид на исходящее (рассылка/бот) — иначе KPI «новые лиды»
+      // раздувается. Только прикрепляем сообщение к уже существующему контакту.
+      const leadId = await findExistingLeadId(phone, projectId);
+      if (!leadId) {
+        forwardToBotWebhook(instanceCfg.botWebhookUrl, body);
+        return json({ ok: true, skipped: "outgoing_no_existing_lead", projectId });
+      }
       const text = extractText(messageData);
       const isAuto = type === "outgoingAPIMessageReceived";
       await insertCommunication({
