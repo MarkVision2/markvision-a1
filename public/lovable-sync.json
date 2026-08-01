@@ -1,7 +1,7 @@
 {
-  "git_sha": "1125b1d",
-  "git_sha_full": "1125b1db2570e7bf453a9e299e7720ca258f1d73",
-  "updated_at": "2026-08-01T06:45:10Z",
-  "label": "fix: rename partner short link /p/astana → /p/hub",
+  "git_sha": "417063f",
+  "git_sha_full": "417063fa0c36d7d0c96968a4dd3be2bccf83353c",
+  "updated_at": "2026-08-01T06:48:05Z",
+  "label": "feat: partner short link /p/yuriy",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
