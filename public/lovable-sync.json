@@ -1,7 +1,7 @@
 {
-  "git_sha": "9f971ee",
-  "git_sha_full": "9f971eebd41a287f7aae83d03228ef3a03cff58b",
-  "updated_at": "2026-08-01T07:04:46Z",
-  "label": "Fixed security issues",
+  "git_sha": "7cb7687",
+  "git_sha_full": "7cb768791189099bf0387fba16c5684abf1c25e9",
+  "updated_at": "2026-08-01T08:09:18Z",
+  "label": "Merge pull request #223 from MarkVision2/cursor/crm-exclude-broadcast-leads-84cc",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
