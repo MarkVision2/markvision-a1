@@ -46,9 +46,11 @@ function json(body: unknown, status = 200) {
   });
 }
 
-async function authorize(req: Request): Promise<{ ok: true } | { ok: false; resp: Response }> {
+async function authorize(
+  req: Request,
+): Promise<{ ok: true; internal: boolean; authHeader: string } | { ok: false; resp: Response }> {
   const internal = req.headers.get("x-internal-key") ?? "";
-  if (internal && internal === SERVICE_KEY) return { ok: true };
+  if (internal && internal === SERVICE_KEY) return { ok: true, internal: true, authHeader: "" };
   const authHeader = req.headers.get("Authorization") ?? "";
   if (!authHeader.startsWith("Bearer ")) {
     return { ok: false, resp: json({ error: "Unauthorized" }, 401) };
@@ -61,7 +63,7 @@ async function authorize(req: Request): Promise<{ ok: true } | { ok: false; resp
   if (error || !data?.claims) {
     return { ok: false, resp: json({ error: "Unauthorized" }, 401) };
   }
-  return { ok: true };
+  return { ok: true, internal: false, authHeader };
 }
 
 async function callLLM(prompt: string, systemPrompt: string): Promise<string> {
