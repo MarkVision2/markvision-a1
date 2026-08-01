@@ -154,7 +154,7 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
 
-  const url = new URL(req.url);
+  
   const raw = await parseBody(req);
 
   // NOTE: the one-shot destructive maintenance ops (reset_stats / trim_content_plan_past)
