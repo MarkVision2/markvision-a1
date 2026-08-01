@@ -154,106 +154,13 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ ok: false, error: "method_not_allowed" }, 405);
 
-  const url = new URL(req.url);
+  
   const raw = await parseBody(req);
 
-  // One-shot wipe of test funnel stats (codeword writes + button clicks + organic leads).
-  // Gated by x-confirm / body.confirm — does not touch codewords or CRM leads rows.
-  // NOTE: field name is mv_op (not "action") — some gateways strip "action" from JSON.
-  const RESET_CONFIRM = "mv-reset-ig-stats-20260719";
-  const op =
-    (typeof raw.mv_op === "string" ? raw.mv_op : "") ||
-    (typeof raw.op === "string" ? raw.op : "") ||
-    (typeof raw.action === "string" ? raw.action : "") ||
-    (url.searchParams.get("mv_op") ?? "") ||
-    (url.searchParams.get("action") ?? "");
-  if (op === "reset_stats") {
-    const confirm =
-      req.headers.get("x-confirm") ||
-      (typeof raw.confirm === "string" ? raw.confirm : "") ||
-      (url.searchParams.get("confirm") ?? "");
-    if (confirm !== RESET_CONFIRM) return json({ ok: false, error: "forbidden", build: "reset-v3" }, 403);
+  // NOTE: the one-shot destructive maintenance ops (reset_stats / trim_content_plan_past)
+  // were removed — they were gated only by a hardcoded string on a public endpoint and
+  // deleted data across every tenant. Run such cleanups via a scoped SQL migration instead.
 
-    const types = ["codeword_comment", "codeword_dm", "link_click", "lead"];
-    const { count: before, error: countErr } = await admin
-      .from("instagram_organic_events")
-      .select("id", { count: "exact", head: true })
-      .in("event_type", types);
-    if (countErr) return json({ ok: false, error: countErr.message }, 500);
-
-    const { error: delErr } = await admin
-      .from("instagram_organic_events")
-      .delete()
-      .in("event_type", types);
-    if (delErr) return json({ ok: false, error: delErr.message }, 500);
-
-    const { count: after } = await admin
-      .from("instagram_organic_events")
-      .select("id", { count: "exact", head: true })
-      .in("event_type", types);
-
-    return json({
-      ok: true,
-      reset: true,
-      deleted_approx: before ?? null,
-      remaining: after ?? 0,
-      event_types: types,
-      build: "reset-v3",
-    });
-  }
-
-  if (op === "trim_content_plan_past") {
-    const confirm =
-      req.headers.get("x-confirm") ||
-      (typeof raw.confirm === "string" ? raw.confirm : "") ||
-      (url.searchParams.get("confirm") ?? "");
-    if (confirm !== RESET_CONFIRM) {
-      return json({ ok: false, error: "forbidden", build: "trim-plan-v1" }, 403);
-    }
-
-    // Удалить публикации контент-плана до завтрашнего дня (Asia/Almaty).
-    const almatyYmd = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "Asia/Almaty",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(new Date());
-    const cutoffMs = new Date(`${almatyYmd}T00:00:00+05:00`).getTime() + 24 * 60 * 60 * 1000;
-
-    const { data: rows, error: listErr } = await admin
-      .from("content_plan_items")
-      .select("id, published_at, scheduled_at, created_at");
-    if (listErr) return json({ ok: false, error: listErr.message }, 500);
-
-    const pastIds = (rows ?? [])
-      .filter((r: { published_at?: string | null; scheduled_at?: string | null; created_at?: string | null }) => {
-        const iso = r.published_at ?? r.scheduled_at ?? r.created_at;
-        if (!iso) return false;
-        const t = new Date(iso).getTime();
-        return !Number.isNaN(t) && t < cutoffMs;
-      })
-      .map((r: { id: string }) => r.id);
-
-    let deleted = 0;
-    for (let i = 0; i < pastIds.length; i += 100) {
-      const slice = pastIds.slice(i, i + 100);
-      const { error: delErr, count } = await admin
-        .from("content_plan_items")
-        .delete({ count: "exact" })
-        .in("id", slice);
-      if (delErr) return json({ ok: false, error: delErr.message }, 500);
-      deleted += count ?? slice.length;
-    }
-
-    return json({
-      ok: true,
-      trim: true,
-      deleted,
-      scanned: rows?.length ?? 0,
-      cutoff_iso: new Date(cutoffMs).toISOString(),
-      build: "trim-plan-v1",
-    });
-  }
 
   const parsed = Schema.safeParse(raw);
   if (!parsed.success) {

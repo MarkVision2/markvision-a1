@@ -91,7 +91,7 @@ const SettingsConnection = () => {
       .select("id, project_id, id_instance, api_token_present, api_url, phone, connected, ads_only, webhook_url, bot_webhook_url")
       .eq("project_id", projectId)
       .maybeSingle();
-    setWaRow((data as WaBindRow | null) ?? null);
+    setWaRow((data as unknown as WaBindRow | null) ?? null);
 
     setWaLoading(false);
   }, [projectId]);
@@ -735,7 +735,7 @@ export function WhatsappProjectBindCard({
     const { data } = await supabase
       .from("whatsapp_config_safe")
       .select("id, project_id, id_instance, api_token_present, api_url, phone, connected, ads_only, webhook_url, bot_webhook_url");
-    setRows((data ?? []) as WaBindRow[]);
+    setRows((data ?? []) as unknown as WaBindRow[]);
     await onRefresh();
   }, [onRefresh]);
 

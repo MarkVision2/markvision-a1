@@ -31,9 +31,11 @@ function json(body: unknown, status = 200) {
   });
 }
 
-async function authorize(req: Request): Promise<{ ok: true } | { ok: false; resp: Response }> {
+async function authorize(
+  req: Request,
+): Promise<{ ok: true; internal: boolean; authHeader: string } | { ok: false; resp: Response }> {
   const internal = req.headers.get("x-internal-key") ?? "";
-  if (internal && internal === SERVICE_KEY) return { ok: true };
+  if (internal && internal === SERVICE_KEY) return { ok: true, internal: true, authHeader: "" };
   const authHeader = req.headers.get("Authorization") ?? "";
   if (!authHeader.startsWith("Bearer ")) {
     return { ok: false, resp: json({ error: "Unauthorized" }, 401) };
@@ -46,7 +48,7 @@ async function authorize(req: Request): Promise<{ ok: true } | { ok: false; resp
   if (error || !data?.claims) {
     return { ok: false, resp: json({ error: "Unauthorized" }, 401) };
   }
-  return { ok: true };
+  return { ok: true, internal: false, authHeader };
 }
 
 async function callLLM(prompt: string, systemPrompt: string): Promise<string> {
@@ -234,9 +236,15 @@ Deno.serve(async (req) => {
 
   try {
     if (payload.project_id) {
+      if (!auth.internal) {
+        const access = await requireProjectAccess(auth.authHeader, String(payload.project_id));
+        if (!access.ok) return access.response;
+      }
       const res = await generateForProject(payload.project_id);
       return json({ ok: true, ...res });
     }
+    // Fan-out over all projects is cron/internal-only.
+    if (!auth.internal) return json({ error: "Forbidden" }, 403);
     const projects = await getActiveProjectIds();
     const results: Array<{ project_id: string; ok: boolean; reason?: string; idea_id?: string }> = [];
     for (const pid of projects) {
