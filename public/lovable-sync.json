@@ -1,7 +1,7 @@
 {
-  "git_sha": "b4299fa",
-  "git_sha_full": "b4299fabc746e9bd91ff95852cdd168b1a942a0b",
-  "updated_at": "2026-08-03T12:10:06Z",
-  "label": "fix(factory): content goals — traffic, site leads, WhatsApp messages [vercel-deploy]",
+  "git_sha": "d69e350",
+  "git_sha_full": "d69e350e1c6f3b235b06207f6762679bf6e7d95f",
+  "updated_at": "2026-08-03T13:21:58Z",
+  "label": "fix: allow project delete when leads block pipelines FK [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
