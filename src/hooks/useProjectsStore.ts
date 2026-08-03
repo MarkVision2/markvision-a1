@@ -191,9 +191,42 @@ export function useProjectsStore() {
 
   const removeProject = useCallback(
     async (id: string) => {
+      // Prefer RPC: cleans leads tied to pipelines before CASCADE on pipelines.
+      const { error: rpcError } = await supabase.rpc("delete_project_cascade", {
+        p_project_id: id,
+      });
+      if (!rpcError) {
+        await refetch();
+        return;
+      }
+      const rpcMissing = /function|schema cache|does not exist|PGRST202/i.test(
+        rpcError.message ?? "",
+      );
+      if (!rpcMissing) {
+        throw new Error(rpcError.message || "Не удалось удалить проект");
+      }
+
+      // Fallback without RPC: wipe CRM rows that block pipelines CASCADE
+      // (leads_pipeline_id_fkey ON DELETE RESTRICT on older DBs).
+      const { data: pipes } = await supabase
+        .from("pipelines")
+        .select("id")
+        .eq("project_id", id);
+      const pipeIds = (pipes ?? []).map((p) => p.id).filter(Boolean);
+      if (pipeIds.length) {
+        await supabase.from("leads").delete().in("pipeline_id", pipeIds);
+      }
+      await supabase.from("leads").delete().eq("project_id", id);
+
       const { error } = await supabase.from("projects").delete().eq("id", id);
       if (error) {
-        throw new Error(error.message || "Не удалось удалить проект");
+        const msg = error.message || "Не удалось удалить проект";
+        if (/leads_pipeline_id_fkey|foreign key/i.test(msg)) {
+          throw new Error(
+            "Не удалось удалить: лиды держат воронку. Нужна миграция 20260803140000 на Supabase.",
+          );
+        }
+        throw new Error(msg);
       }
       await refetch();
     },
