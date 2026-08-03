@@ -1,9 +1,9 @@
 {
-  "git_sha": "716a4bd",
-  "git_sha_full": "716a4bdc60f5f16f2855279f46c8d58749ac589c",
-  "updated_at": "2026-08-03T13:26:19Z",
-  "label": "chore: add SQL script to fix project delete FK for SQL Editor",
-  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app",
-  "synced_at": "2026-08-03T13:50:34Z",
+  "git_sha": "2e9f421",
+  "git_sha_full": "2e9f421c66301ef0d7d29d82660fd4853a97ef7b",
+  "updated_at": "2026-08-03T13:50:45Z",
+  "synced_at": "2026-08-03T13:50:45Z",
+  "label": "deploy: Meta cabinet save + client_configs sync",
+  "publish_hint": "push main → www.markvision.kz (Vercel)",
   "note": "cabinet save + client_configs dual-write deploy"
 }
