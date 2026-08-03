@@ -77,10 +77,12 @@ export interface MarketingWebhookInput {
   cta: MarketingSelection;
   tone: MarketingSelection;
   goal: MarketingSelection;
+  /** Код-слово для CTA code_word — уходит в n8n и на оверлей. */
+  codeWord?: string;
 }
 
 const EMPTY_MARKETING = {
-  cta: { id: "", label: "", phrase: "", description: "" },
+  cta: { id: "", label: "", phrase: "", description: "", code_word: "" },
   tone: { id: "", label: "", description: "" },
   goal: { id: "", label: "", description: "" },
 };
@@ -90,7 +92,7 @@ export function buildMarketingWebhookFields(input: MarketingWebhookInput): {
   flat: Record<string, string>;
   nested: typeof EMPTY_MARKETING;
 } {
-  const { step3, isNeuroPhoto, cta, tone, goal } = input;
+  const { step3, isNeuroPhoto, cta, tone, goal, codeWord = "" } = input;
 
   if (isNeuroPhoto) {
     return {
@@ -99,6 +101,7 @@ export function buildMarketingWebhookFields(input: MarketingWebhookInput): {
         cta_id: "",
         cta_label: "",
         cta_phrase: "",
+        code_word: "",
         tone: "",
         tone_label: "",
         tone_description: "",
@@ -113,6 +116,8 @@ export function buildMarketingWebhookFields(input: MarketingWebhookInput): {
   const includeCta = step3.showCta;
   const includeTone = step3.showTone;
   const includeGoal = step3.showGoal;
+  const resolvedCodeWord =
+    includeCta && cta.id === "code_word" ? codeWord.trim() : "";
 
   return {
     flat: {
@@ -120,6 +125,7 @@ export function buildMarketingWebhookFields(input: MarketingWebhookInput): {
       cta_id: includeCta ? cta.id : "",
       cta_label: includeCta ? cta.label : "",
       cta_phrase: includeCta ? (cta.phrase ?? "") : "",
+      code_word: includeCta ? resolvedCodeWord : "",
       tone: includeTone ? tone.id : "",
       tone_label: includeTone ? tone.label : "",
       tone_description: includeTone ? tone.description : "",
@@ -129,7 +135,13 @@ export function buildMarketingWebhookFields(input: MarketingWebhookInput): {
     },
     nested: {
       cta: includeCta
-        ? { id: cta.id, label: cta.label, phrase: cta.phrase ?? "", description: cta.description }
+        ? {
+            id: cta.id,
+            label: cta.label,
+            phrase: cta.phrase ?? "",
+            description: cta.description,
+            code_word: resolvedCodeWord,
+          }
         : EMPTY_MARKETING.cta,
       tone: includeTone
         ? { id: tone.id, label: tone.label, description: tone.description }

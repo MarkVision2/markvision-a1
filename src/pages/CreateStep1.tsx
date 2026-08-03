@@ -95,8 +95,8 @@ const CreateStep1 = () => {
     (mode === "photo" &&
       (step1.peoplePhotoRequired
         ? hasPeoplePhotos
-        : hasContentPhotos || hasPeoplePhotos || hasLogo)) ||
-    (mode === "description" && (hasDescription || hasProductName || hasLogo));
+        : hasContentPhotos || hasPeoplePhotos || hasLogo || hasDescription || hasProductName)) ||
+    (mode === "description" && (hasDescription || hasProductName));
 
   const visibleModes = step1.allowedModes.map((id) => ({ id, ...MODE_META[id] }));
 
@@ -211,7 +211,7 @@ const CreateStep1 = () => {
         {/* Logo — primary, always visible */}
         {step1.showLogo && (
           <div className="mt-6">
-            <LogoSource file={logoFile} onChange={setLogoFile} />
+            <LogoSource file={logoFile} onChange={setLogoFile} optional />
           </div>
         )}
 
@@ -339,15 +339,22 @@ const CreateStep1 = () => {
                 ? "Вставьте ссылку или загрузите логотип."
                 : mode === "photo"
                   ? "Достаточно логотипа — фото товара и людей необязательны."
-                  : "Достаточно логотипа, описания или названия товара."}
+                  : "Напишите описание или название товара — логотип необязателен."}
           </p>
         )}
       </section>
 
-      {/* Sticky footer nav */}
-      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border/60 bg-background/85 backdrop-blur-md">
-        <div className="container flex max-w-3xl items-center justify-between gap-3 py-3">
-          <Button variant="outline" onClick={() => navigate("/")}>
+      {/* Sticky footer — крупные зоны нажатия под палец */}
+      <div
+        className="fixed inset-x-0 bottom-0 z-30 border-t border-border/60 bg-background/90 backdrop-blur-md"
+        style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+      >
+        <div className="container flex max-w-3xl items-stretch gap-3 px-4 py-3 sm:px-6">
+          <Button
+            variant="outline"
+            onClick={() => navigate("/")}
+            className="h-14 min-w-[6.5rem] shrink-0 rounded-2xl px-4 text-base sm:min-w-[7.5rem]"
+          >
             <ArrowLeft className="h-4 w-4" />
             Назад
           </Button>
@@ -374,7 +381,7 @@ const CreateStep1 = () => {
               persistWizardState({ ...nextState, hasLogo: Boolean(logoFile) });
               navigate("/create/step-2", { state: nextState });
             }}
-            className="bg-gradient-primary text-primary-foreground shadow-glow hover:opacity-90 disabled:bg-secondary disabled:bg-none disabled:text-muted-foreground disabled:shadow-none"
+            className="h-14 flex-1 rounded-2xl bg-gradient-primary text-base font-semibold text-primary-foreground shadow-glow hover:opacity-90 disabled:bg-secondary disabled:bg-none disabled:text-muted-foreground disabled:shadow-none"
           >
             Далее
             <ArrowRight className="h-4 w-4" />

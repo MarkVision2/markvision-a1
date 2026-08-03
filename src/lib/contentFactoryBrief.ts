@@ -46,6 +46,8 @@ export interface WizardInputState {
   /** Шаг 3 — маркетинг и цвет (сохраняются в sessionStorage). */
   colorId?: string;
   ctaId?: string;
+  /** Пользовательское код-слово для CTA (например «Хаб»). */
+  codeWord?: string;
   toneId?: string;
   goalId?: string;
 }

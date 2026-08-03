@@ -36,6 +36,8 @@ export interface Step3Flow {
   label: string;
   subtitle: string;
   showCreativeFormats: boolean;
+  /** Если задано — в пикере форматов только эти ID (например auto + before_after). */
+  allowedCreativeFormats?: string[];
   showNeuroStyles: boolean;
   showAngles: boolean;
   showGoal: boolean;
@@ -57,15 +59,15 @@ export interface ContentTypeFlow {
 
 const ADS_STEP1: Step1Flow = {
   label: "Источник и бриф",
-  subtitle: "Фото или описание — что продвигаем",
-  showModeSelector: true,
-  allowedModes: ["photo", "description"],
-  defaultMode: "photo",
+  subtitle: "Опишите оффер — логотип по желанию",
+  showModeSelector: false,
+  allowedModes: ["description"],
+  defaultMode: "description",
   showLogo: true,
-  showPeoplePhoto: true,
+  showPeoplePhoto: false,
   peoplePhotoRequired: false,
   peoplePhotoTitle: "Фото людей",
-  showProductPhoto: true,
+  showProductPhoto: false,
   showBrandTemplate: true,
   showCopyMode: true,
   showDescription: true,
@@ -89,8 +91,9 @@ const ADS_STEP2: Step2Flow = {
 
 const ADS_STEP3: Step3Flow = {
   label: "Стиль и маркетинг",
-  subtitle: "Формат креатива, цель, тон и CTA",
+  subtitle: "Формат, цель, подача и призыв к действию",
   showCreativeFormats: true,
+  allowedCreativeFormats: ["auto", "before_after"],
   showNeuroStyles: false,
   showAngles: false,
   showGoal: true,
@@ -165,7 +168,16 @@ const FLOWS: Record<string, ContentTypeFlow> = {
     typeId: "marketplace",
     wizardMode: "standard",
     totalSteps: 3,
-    step1: { ...ADS_STEP1, defaultMode: "photo", showLogo: false },
+    step1: {
+      ...ADS_STEP1,
+      showModeSelector: true,
+      allowedModes: ["photo", "description"],
+      defaultMode: "photo",
+      showLogo: false,
+      showPeoplePhoto: true,
+      showProductPhoto: true,
+      subtitle: "Фото товара или описание карточки",
+    },
     step2: { ...ADS_STEP2, defaultAspect: "1:1", variantsLabel: "Слайдов карточки", variantCounts: [3, 5, 7, 10], defaultVariants: 5 },
     step3: { ...ADS_STEP3, showCta: false },
   },
@@ -191,8 +203,12 @@ const FLOWS: Record<string, ContentTypeFlow> = {
     totalSteps: 3,
     step1: {
       ...ADS_STEP1,
+      showModeSelector: true,
       allowedModes: ["photo", "description"],
       defaultMode: "photo",
+      showPeoplePhoto: true,
+      showProductPhoto: true,
+      subtitle: "Фото или описание обложки",
     },
     step2: {
       ...ADS_STEP2,
@@ -226,8 +242,12 @@ const FLOWS: Record<string, ContentTypeFlow> = {
     totalSteps: 3,
     step1: {
       ...ADS_STEP1,
+      showModeSelector: true,
       allowedModes: ["photo", "description"],
       defaultMode: "photo",
+      showPeoplePhoto: true,
+      showProductPhoto: true,
+      subtitle: "Кадр или описание превью",
     },
     step2: {
       ...ADS_STEP2,
@@ -243,7 +263,16 @@ const FLOWS: Record<string, ContentTypeFlow> = {
     typeId: "web-banner",
     wizardMode: "standard",
     totalSteps: 3,
-    step1: { ...ADS_STEP1, defaultMode: "photo", showLogo: true },
+    step1: {
+      ...ADS_STEP1,
+      showModeSelector: true,
+      allowedModes: ["photo", "description"],
+      defaultMode: "photo",
+      showLogo: true,
+      showPeoplePhoto: true,
+      showProductPhoto: true,
+      subtitle: "Фото или описание баннера",
+    },
     step2: {
       ...ADS_STEP2,
       defaultAspect: "16:9",

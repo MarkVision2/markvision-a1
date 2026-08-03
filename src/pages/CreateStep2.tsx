@@ -41,7 +41,7 @@ const CreateStep2 = () => {
     <main className="min-h-screen">
       <Header onClose={() => navigate("/")} />
 
-      <section className="container max-w-3xl pt-6 pb-16 animate-fade-in-up">
+      <section className="container max-w-3xl pt-6 pb-4 animate-fade-in-up">
         <div className="inline-flex items-center rounded-xl border border-primary/40 bg-primary/10 px-4 py-2 text-xs font-semibold uppercase tracking-wider text-primary">
           Шаг 2 из {flow.totalSteps}
         </div>
@@ -135,46 +135,51 @@ const CreateStep2 = () => {
           </div>
         )}
 
-        <div className="mt-12 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <Button
-            variant="outline"
-            size="lg"
-            onClick={() => navigate(-1)}
-            className="h-14 rounded-2xl border-border bg-card text-base"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Назад
-          </Button>
-          <Button
-            size="lg"
-            onClick={() => {
-              const stashed = readWizardFiles();
-              const nextState = {
-                ...prevState,
-                aspect,
-                lang,
-                variants,
-                logoFile: (prevState.logoFile as File | null | undefined) ?? stashed.logoFile,
-                photos: (prevState.photos as File[] | undefined)?.length
-                  ? (prevState.photos as File[])
-                  : stashed.photos,
-                peoplePhotos: (prevState.peoplePhotos as File[] | undefined)?.length
-                  ? (prevState.peoplePhotos as File[])
-                  : stashed.peoplePhotos,
-              };
-              stashWizardFiles({
-                logoFile: nextState.logoFile as File | null,
-                photos: nextState.photos as File[],
-                peoplePhotos: nextState.peoplePhotos as File[],
-              });
-              persistWizardState(nextState);
-              navigate("/create/step-3", { state: nextState });
-            }}
-            className="h-14 rounded-2xl bg-gradient-primary text-base text-primary-foreground shadow-glow hover:opacity-90"
-          >
-            Продолжить
-            <ArrowRight className="h-4 w-4" />
-          </Button>
+        {/* Spacer for sticky mobile footer */}
+        <div className="h-28 sm:h-0" aria-hidden />
+
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border/60 bg-background/95 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3 backdrop-blur-md sm:static sm:mt-12 sm:border-0 sm:bg-transparent sm:p-0 sm:backdrop-blur-none">
+          <div className="mx-auto grid max-w-3xl grid-cols-2 gap-3">
+            <Button
+              variant="outline"
+              size="lg"
+              onClick={() => navigate(-1)}
+              className="h-14 rounded-2xl border-border bg-card text-base touch-manipulation active:scale-[0.98]"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Назад
+            </Button>
+            <Button
+              size="lg"
+              onClick={() => {
+                const stashed = readWizardFiles();
+                const nextState = {
+                  ...prevState,
+                  aspect,
+                  lang,
+                  variants,
+                  logoFile: (prevState.logoFile as File | null | undefined) ?? stashed.logoFile,
+                  photos: (prevState.photos as File[] | undefined)?.length
+                    ? (prevState.photos as File[])
+                    : stashed.photos,
+                  peoplePhotos: (prevState.peoplePhotos as File[] | undefined)?.length
+                    ? (prevState.peoplePhotos as File[])
+                    : stashed.peoplePhotos,
+                };
+                stashWizardFiles({
+                  logoFile: nextState.logoFile as File | null,
+                  photos: nextState.photos as File[],
+                  peoplePhotos: nextState.peoplePhotos as File[],
+                });
+                persistWizardState(nextState);
+                navigate("/create/step-3", { state: nextState });
+              }}
+              className="h-14 rounded-2xl bg-gradient-primary text-base font-semibold text-primary-foreground shadow-glow hover:opacity-90 touch-manipulation active:scale-[0.98]"
+            >
+              Далее
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </section>
     </main>

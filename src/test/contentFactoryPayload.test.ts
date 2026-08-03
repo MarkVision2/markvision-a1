@@ -88,7 +88,28 @@ describe("contentFactoryPayload", () => {
       goal: { id: "conversions", label: "Конверсии", description: "" },
     });
     expect(flat.ctas).toBe("");
+    expect(flat.code_word).toBe("");
     expect(nested.cta.phrase).toBe("");
+  });
+
+  it("ads marketing passes code_word for code-word CTA", () => {
+    const { flat, nested } = buildMarketingWebhookFields({
+      step3: ADS_STEP3,
+      isNeuroPhoto: false,
+      cta: {
+        id: "code_word",
+        label: "Код-слово",
+        phrase: "Пишите код-слово «Хаб» в директ",
+        description: "",
+      },
+      tone: { id: "selling", label: "Продающий", description: "" },
+      goal: { id: "leads", label: "Лиды", description: "" },
+      codeWord: "Хаб",
+    });
+    expect(flat.cta_id).toBe("code_word");
+    expect(flat.code_word).toBe("Хаб");
+    expect(flat.cta_phrase).toContain("Хаб");
+    expect(nested.cta.code_word).toBe("Хаб");
   });
 
   it("neuro marketing is fully empty", () => {
