@@ -1,9 +1,7 @@
 {
-  "git_sha": "2e9f421",
-  "git_sha_full": "2e9f421c66301ef0d7d29d82660fd4853a97ef7b",
+  "git_sha": "2be079e",
+  "git_sha_full": "2be079e345f41b070be64b9f1b171eea639c157f",
   "updated_at": "2026-08-03T13:50:45Z",
-  "synced_at": "2026-08-03T13:50:45Z",
-  "label": "deploy: Meta cabinet save + client_configs sync",
-  "publish_hint": "push main → www.markvision.kz (Vercel)",
-  "note": "cabinet save + client_configs dual-write deploy"
+  "label": "chore: lovable sync stamp 2e9f421 [vercel-deploy]",
+  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
