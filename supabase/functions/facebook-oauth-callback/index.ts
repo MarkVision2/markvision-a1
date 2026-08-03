@@ -105,14 +105,33 @@ Deno.serve(async (req) => {
       return finish(returnUrl, { success: false, error: "У этого Facebook-аккаунта нет ни одной страницы" });
     }
 
-    // 4) ad accounts
+    // 4) ad accounts — Graph errors must not look like "empty list"
     const adsRes = await fetch(`${GRAPH}/me/adaccounts?fields=id,name,account_status,currency,business{id,name}&limit=200&access_token=${userToken}`);
     const adsJson = await adsRes.json();
-    const adAccounts = (adsJson.data ?? []) as AdAccount[];
+    if (adsJson.error) {
+      const msg = String(adsJson.error.message ?? "Meta adaccounts error");
+      const code = Number(adsJson.error.code ?? 0);
+      if (
+        code === 190
+        || /session has been invalidated|validating access token|expired/i.test(msg)
+      ) {
+        throw new Error(msg);
+      }
+      // Missing ads permission → continue with pages only, but surface later
+      console.error("[facebook-oauth-callback] adaccounts:", msg);
+    }
+    const adAccounts = (Array.isArray(adsJson.data) ? adsJson.data : []) as AdAccount[];
 
     // Ровно одна страница и максимум один кабинет — подключаем сразу, без выбора.
     if (pages.length === 1 && adAccounts.length <= 1) {
-      const summary = await connectPageAndAdAccount(supa, projectId, userToken, pages[0], adAccounts[0] ?? null);
+      const summary = await connectPageAndAdAccount(
+        supa,
+        projectId,
+        userToken,
+        pages[0],
+        adAccounts[0] ?? null,
+        { userId },
+      );
       return finish(returnUrl, { success: true, summary });
     }
 

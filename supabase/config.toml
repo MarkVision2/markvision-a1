@@ -93,6 +93,10 @@ verify_jwt = false
 [functions.google-ads-config]
 verify_jwt = false
 
+# Сохранение рекламного кабинета: JWT + project access внутри функции.
+[functions.meta-upsert-cabinet]
+verify_jwt = false
+
 [functions.content-factory-proxy]
 verify_jwt = true
 
