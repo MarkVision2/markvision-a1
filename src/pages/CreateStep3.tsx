@@ -355,40 +355,36 @@ const TONES: { id: ToneId; label: string; description: string; icon: typeof Mega
   },
 ];
 
-type GoalId = "traffic" | "conversions" | "engagement" | "awareness" | "leads";
+type GoalId = "traffic" | "leads" | "messages";
 
 const GOALS: { id: GoalId; label: string; description: string; icon: typeof Target }[] = [
   {
     id: "traffic",
     label: "Трафик",
-    description: "Переходы в профиль / на сайт. Копирайт ведёт «куда кликнуть», CTA — мягкий переход.",
+    description: "Рост подписчиков: переход в профиль, подписка. Мягкий CTA «подписаться / смотреть».",
     icon: Users,
-  },
-  {
-    id: "conversions",
-    label: "Конверсии",
-    description: "Покупка или целевое действие. Жёсткий оффер, выгода, срочность, сильный CTA.",
-    icon: Target,
-  },
-  {
-    id: "engagement",
-    label: "Вовлечённость",
-    description: "Лайки, комменты, сохранения. Провокация и вопрос — CTA на реакцию.",
-    icon: MessageCircle,
-  },
-  {
-    id: "awareness",
-    label: "Охват",
-    description: "Запомнить бренд. Яркий визуал, простое сообщение, без сложного оффера.",
-    icon: Megaphone,
   },
   {
     id: "leads",
     label: "Лиды",
-    description: "Заявки в директ / WhatsApp. Код-слово или «оставьте заявку» собирают контакт.",
-    icon: Send,
+    description: "Заявки с сайта: форма, лендинг, «оставить заявку». CTA ведёт на сайт.",
+    icon: Target,
+  },
+  {
+    id: "messages",
+    label: "Сообщения",
+    description: "Переписка в WhatsApp: код-слово или «напишите в WA». CTA собирает диалог.",
+    icon: MessageCircle,
   },
 ];
+
+function resolveGoalId(raw: string | undefined): GoalId {
+  if (raw && GOALS.some((g) => g.id === raw)) return raw as GoalId;
+  // Старые id из прошлых сессий → ближайший новый
+  if (raw === "conversions" || raw === "awareness") return "leads";
+  if (raw === "engagement") return "messages";
+  return "leads";
+}
 
 interface GeneratedVariant {
 
@@ -523,9 +519,7 @@ const CreateStep3 = () => {
   const [toneId, setToneId] = useState<ToneId>(
     (wizardState.toneId as ToneId) ?? "selling",
   );
-  const [goalId, setGoalId] = useState<GoalId>(
-    (wizardState.goalId as GoalId) ?? "conversions",
-  );
+  const [goalId, setGoalId] = useState<GoalId>(() => resolveGoalId(wizardState.goalId));
   // Format с шага 2 — в локальном state, чтобы webhook не зависел от потерянного location.state.
   const [aspect] = useState(
     () =>
@@ -1630,10 +1624,9 @@ const CreateStep3 = () => {
             Цель контента
           </div>
           <p className="mt-1 text-xs text-muted-foreground">
-            Логика: цель задаёт акценты копирайта и силу CTA. Трафик — мягкий переход; конверсии — жёсткий оффер;
-            вовлечённость — реакция; охват — запомнить бренд; лиды — собрать контакт.
+            Трафик — подписчики; лиды — заявки с сайта; сообщения — диалог в WhatsApp. Под цель подстраиваются копирайт и CTA.
           </p>
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
             {GOALS.map((g) => {
               const Icon = g.icon;
               const selected = goalId === g.id;
