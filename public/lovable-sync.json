@@ -1,7 +1,7 @@
 {
-  "git_sha": "b8b1a38",
-  "git_sha_full": "b8b1a3893ff8cb269243112a8f708aab10e9a7bb",
-  "updated_at": "2026-08-03T12:03:46Z",
-  "label": "fix: pass chosen aspect (9:16 etc.) into content-factory webhook TZ [vercel-deploy]",
+  "git_sha": "b4299fa",
+  "git_sha_full": "b4299fabc746e9bd91ff95852cdd168b1a942a0b",
+  "updated_at": "2026-08-03T12:10:06Z",
+  "label": "fix(factory): content goals — traffic, site leads, WhatsApp messages [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
