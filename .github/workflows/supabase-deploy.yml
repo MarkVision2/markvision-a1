@@ -27,7 +27,7 @@ jobs:
       - name: Install Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: 2.20.5
 
       # Функции деплоятся только по ACCESS_TOKEN + project ref (без пароля БД).
       # Пароль нужен только для db push, поэтому его отсутствие не должно блокировать

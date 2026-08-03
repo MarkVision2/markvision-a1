@@ -1,4 +1,4 @@
-# Деплой только Meta edge functions (без db push).
+# Деплой Meta + Facebook OAuth edge functions (без db push).
 # Секреты: SUPABASE_ACCESS_TOKEN, SUPABASE_PROJECT_REF (= szfgdruhlebfvcmlvxdk)
 name: Deploy Meta edge functions
 
@@ -9,12 +9,18 @@ on:
       - "supabase/functions/meta-list-ad-accounts/**"
       - "supabase/functions/meta-daily-sync/**"
       - "supabase/functions/meta-validate-cabinet/**"
+      - "supabase/functions/meta-upsert-cabinet/**"
       - "supabase/functions/meta-creative-refresh/**"
       - "supabase/functions/meta-structure-sync/**"
       - "supabase/functions/meta-poster-upload/**"
       - "supabase/functions/meta-page-assets/**"
       - "supabase/functions/launch-campaign/**"
+      - "supabase/functions/facebook-oauth-start/**"
+      - "supabase/functions/facebook-oauth-callback/**"
+      - "supabase/functions/facebook-oauth-finish/**"
       - "supabase/functions/_lib/meta_list_ad_accounts.ts"
+      - "supabase/functions/_lib/facebookConnect.ts"
+      - "supabase/functions/_lib/metaToken.ts"
       - "supabase/functions/_lib/creativePoster.ts"
       - "supabase/functions/_lib/auth.ts"
       - ".github/workflows/deploy-meta-edge-functions.yml"
@@ -36,7 +42,8 @@ jobs:
 
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # Pin to avoid GitHub "latest" API rate limits on setup-cli
+          version: 2.20.5
 
       - name: Verify secrets
         run: |
@@ -52,16 +59,28 @@ jobs:
           SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
         run: |
           set -e
+          FAILED=""
           for fn in \
             meta-list-ad-accounts \
             meta-daily-sync \
             meta-validate-cabinet \
+            meta-upsert-cabinet \
             meta-creative-refresh \
             meta-structure-sync \
             meta-poster-upload \
             meta-page-assets \
-            launch-campaign; do
+            launch-campaign \
+            facebook-oauth-start \
+            facebook-oauth-callback \
+            facebook-oauth-finish; do
             echo "::group::Deploy $fn"
-            supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"
+            if ! supabase functions deploy "$fn" --project-ref "$SUPABASE_PROJECT_REF"; then
+              echo "::warning::Failed to deploy $fn"
+              FAILED="$FAILED $fn"
+            fi
             echo "::endgroup::"
           done
+          if [ -n "$FAILED" ]; then
+            echo "::error::Failed functions:$FAILED"
+            exit 1
+          fi
