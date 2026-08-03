@@ -9,6 +9,7 @@ import {
   type CopyMode,
 } from "@/lib/contentFactoryCopy";
 import { clearWizardFiles } from "@/lib/wizardFilesStore";
+import { toSerializableWizardState } from "@/lib/contentFactoryAspect";
 
 export type WizardMode = "link" | "photo" | "description" | string | null;
 
@@ -63,11 +64,28 @@ export interface MarketingMeta {
 const WIZARD_STORAGE_KEY = "mv:create-wizard:v1";
 
 /** Сохраняем текстовые поля мастера (File в storage не кладём). */
-export function persistWizardState(patch: WizardInputState): void {
+export function persistWizardState(
+  patch: WizardInputState & { clearFormat?: boolean },
+): void {
   try {
     const prev = JSON.parse(sessionStorage.getItem(WIZARD_STORAGE_KEY) || "{}") as WizardInputState;
-    const { photos: _p, logoFile: _l, peoplePhotos: _pp, ...rest } = patch;
-    sessionStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify({ ...prev, ...rest }));
+    const { clearFormat, ...raw } = patch;
+    const serializable = toSerializableWizardState(raw as Record<string, unknown>);
+    const next: WizardInputState = { ...prev, ...serializable };
+    // Новый прогон с шага 1 — сбрасываем формат, иначе залипает старый 4:5 из прошлой сессии.
+    if (clearFormat) {
+      delete next.aspect;
+      delete next.variants;
+      delete next.lang;
+      delete next.selectedStyles;
+      delete next.selectedAngles;
+      delete next.ctaId;
+      delete next.codeWord;
+      delete next.toneId;
+      delete next.goalId;
+      delete next.colorId;
+    }
+    sessionStorage.setItem(WIZARD_STORAGE_KEY, JSON.stringify(next));
   } catch {
     /* ignore */
   }
@@ -76,7 +94,21 @@ export function persistWizardState(patch: WizardInputState): void {
 export function loadWizardState(locationState: WizardInputState): WizardInputState {
   try {
     const saved = JSON.parse(sessionStorage.getItem(WIZARD_STORAGE_KEY) || "{}") as WizardInputState;
-    return { ...saved, ...locationState };
+    // location.state может потерять File и часть полей — sessionStorage приоритетнее для format,
+    // но явные значения из location (если есть) перекрывают saved.
+    const loc = toSerializableWizardState((locationState ?? {}) as Record<string, unknown>);
+    const merged: WizardInputState = { ...saved, ...loc };
+    // Пустые строки/undefined из loc не должны затирать aspect/variants из saved.
+    if (loc.aspect == null || loc.aspect === "") {
+      if (saved.aspect) merged.aspect = saved.aspect;
+    }
+    if (loc.variants == null) {
+      if (typeof saved.variants === "number") merged.variants = saved.variants;
+    }
+    if (loc.lang == null || loc.lang === "") {
+      if (saved.lang) merged.lang = saved.lang;
+    }
+    return merged;
   } catch {
     return locationState;
   }

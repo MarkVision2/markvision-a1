@@ -27,6 +27,7 @@ import {
 import { CONTENT_TYPES } from "@/data/contentTypes";
 import { CopyModePanel } from "@/components/factory/CopyModePanel";
 import { persistWizardState } from "@/lib/contentFactoryBrief";
+import { toSerializableWizardState } from "@/lib/contentFactoryAspect";
 import { stashWizardFiles } from "@/lib/wizardFilesStore";
 import type { CopyMode } from "@/lib/contentFactoryCopy";
 import { BrandTemplatePicker } from "@/components/factory/BrandTemplatePicker";
@@ -378,8 +379,16 @@ const CreateStep1 = () => {
                 brandTemplateId,
               };
               stashWizardFiles({ logoFile, photos, peoplePhotos });
-              persistWizardState({ ...nextState, hasLogo: Boolean(logoFile) });
-              navigate("/create/step-2", { state: nextState });
+              // clearFormat: не тащим aspect/variants с прошлого запуска (часто залипал 4:5).
+              persistWizardState({
+                ...nextState,
+                hasLogo: Boolean(logoFile),
+                clearFormat: true,
+              });
+              // В history только сериализуемое — File в state часто роняет весь location.state.
+              navigate("/create/step-2", {
+                state: toSerializableWizardState(nextState as Record<string, unknown>),
+              });
             }}
             className="h-14 flex-1 rounded-2xl bg-gradient-primary text-base font-semibold text-primary-foreground shadow-glow hover:opacity-90 disabled:bg-secondary disabled:bg-none disabled:text-muted-foreground disabled:shadow-none"
           >

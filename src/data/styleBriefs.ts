@@ -330,7 +330,11 @@ export function buildStyleBrief(input: BuildBriefInput): BuiltBrief {
     input.userBrief?.trim() || "клиент не оставил описание — используй best-practice по нише";
 
   const formatLines: string[] = [];
-  if (input.format?.aspect) formatLines.push(`Соотношение сторон: ${input.format.aspect}.`);
+  if (input.format?.aspect) {
+    formatLines.push(
+      `ОБЯЗАТЕЛЬНОЕ соотношение сторон: ${input.format.aspect}. Не подменять на другой формат (в т.ч. не 4:5, если выбран иной).`,
+    );
+  }
   if (input.format?.lang) {
     const langMap: Record<string, string> = { ru: "русский", kz: "казахский", en: "английский" };
     const lang = langMap[input.format.lang] ?? input.format.lang;

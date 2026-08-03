@@ -60,6 +60,11 @@ import {
   type WizardInputState,
 } from "@/lib/contentFactoryBrief";
 import {
+  buildAspectWebhookFields,
+  normalizeWizardAspect,
+  resolveAspectPixels,
+} from "@/lib/contentFactoryAspect";
+import {
   enrichWizardState,
   resolveWizardFiles,
 } from "@/lib/contentFactoryWizardContext";
@@ -433,7 +438,8 @@ const CreateStep3 = () => {
   } | null>(null);
 
   useEffect(() => {
-    persistWizardState((location.state ?? {}) as WizardInputState);
+    // Мержим location + sessionStorage, чтобы не затереть aspect/variants.
+    persistWizardState(loadWizardState((location.state ?? {}) as WizardInputState));
   }, [location.state]);
 
   const neuroAutoSubmit = wizardState.neuroAutoSubmit === true;
@@ -520,6 +526,20 @@ const CreateStep3 = () => {
   const [goalId, setGoalId] = useState<GoalId>(
     (wizardState.goalId as GoalId) ?? "conversions",
   );
+  // Format с шага 2 — в локальном state, чтобы webhook не зависел от потерянного location.state.
+  const [aspect] = useState(
+    () =>
+      normalizeWizardAspect(wizardState.aspect) ??
+      flow.step2.defaultAspect ??
+      "1:1",
+  );
+  const [lang] = useState(() => wizardState.lang ?? "ru");
+  const [variants] = useState(() => {
+    const v = wizardState.variants;
+    if (typeof v === "number" && v > 0) return v;
+    return flow.step2.defaultVariants ?? 3;
+  });
+
 
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState<
@@ -767,6 +787,9 @@ const CreateStep3 = () => {
       codeWord: ctaId === "code_word" ? codeWord.trim() : undefined,
       toneId,
       goalId,
+      aspect,
+      lang,
+      variants,
       selectedStyles,
       selectedAngles,
     });
@@ -987,9 +1010,9 @@ const CreateStep3 = () => {
             styleId: styleDef.id as BriefStyleId,
             userBrief: brief.prompt,
             format: {
-              aspect: wizardState.aspect ?? null,
-              lang: wizardState.lang ?? null,
-              variants: wizardState.variants ?? null,
+              aspect,
+              lang,
+              variants,
             },
             color: color
               ? { id: color.id, label: color.label, swatch: color.swatch }
@@ -997,15 +1020,20 @@ const CreateStep3 = () => {
             angles: anglesPayload,
             autoCandidates: isAuto ? autoCandidates : null,
           });
+          const aspectFields = buildAspectWebhookFields(aspect);
+          let finalTechnicalBriefBase = built.technicalBrief;
+          if (aspectFields.briefLine) {
+            finalTechnicalBriefBase = `${aspectFields.briefLine}\n\n${finalTechnicalBriefBase}`;
+          }
 
           // Если пользователь отредактировал ТЗ — отправляем его, иначе авто.
           const userEdited =
             typeof editedBriefs[styleDef.id] === "string" &&
             (editedBriefs[styleDef.id] as string).trim().length > 0 &&
-            editedBriefs[styleDef.id] !== built.technicalBrief;
+            editedBriefs[styleDef.id] !== finalTechnicalBriefBase;
           let finalTechnicalBrief = userEdited
             ? (editedBriefs[styleDef.id] as string)
-            : built.technicalBrief;
+            : finalTechnicalBriefBase;
           if (!isNeuroPhoto && effectiveLogoUrl) {
             finalTechnicalBrief = `${finalTechnicalBrief}\n\n--- Логотип ---\n${logoPromptBlock(effectiveLogoUrl)}`;
           }
@@ -1065,8 +1093,8 @@ const CreateStep3 = () => {
           // Один request_id на стиль — фронт по нему ловит результат
           // в content_factory_results через realtime.
           const slidesCount =
-            typeof wizardState.variants === "number" && wizardState.variants > 0
-              ? wizardState.variants
+            typeof variants === "number" && variants > 0
+              ? variants
               : 1;
           // Niche / контекст — собираем из всех источников ТЗ.
           const nicheBits = buildNicheContext({
@@ -1107,10 +1135,11 @@ const CreateStep3 = () => {
             color: color?.label ?? "auto",
             color_id: color?.id ?? "auto",
             color_swatch: color?.swatch && color.swatch !== "custom" ? color.swatch : "",
-            language: wizardState.lang ?? "ru",
-            aspect: wizardState.aspect ?? "1:1",
+            language: lang ?? "ru",
+            ...aspectFields.flat,
             slides: slidesCount,
             image_count: slidesCount,
+            variants: slidesCount,
             // niche / cta — содержательные сведения о продукте для fb-target.
             fb_niche: nicheBits,
             ...marketingFields.flat,
@@ -1216,9 +1245,15 @@ const CreateStep3 = () => {
           };
 
           const formatBlock = {
-            aspect: wizardState.aspect ?? null,
-            lang: wizardState.lang ?? null,
-            variants: wizardState.variants ?? null,
+            aspect,
+            lang,
+            variants,
+            ...(() => {
+              const px = resolveAspectPixels(aspect);
+              return px
+                ? { width: px.width, height: px.height, aspect_ratio: px.aspect }
+                : {};
+            })(),
           };
 
           const designBlock = {
@@ -1415,6 +1450,31 @@ const CreateStep3 = () => {
         <p className="mt-2 text-sm text-muted-foreground sm:text-base">
           {flow.step3.subtitle}
         </p>
+
+        {/* Формат с шага 2 — что реально уйдёт в webhook */}
+        <div className="mt-4 flex flex-wrap items-center gap-2 rounded-2xl border border-border/60 bg-card/50 px-4 py-3 text-sm">
+          <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">В ТЗ</span>
+          <span className="rounded-lg bg-primary/15 px-2.5 py-1 font-semibold text-primary">
+            {aspect}
+            {(() => {
+              const px = resolveAspectPixels(aspect);
+              return px ? ` · ${px.width}×${px.height}` : "";
+            })()}
+          </span>
+          <span className="rounded-lg bg-secondary/80 px-2.5 py-1 text-foreground">
+            {variants} {variants === 1 ? "вариант" : "вариантов"}
+          </span>
+          <span className="rounded-lg bg-secondary/80 px-2.5 py-1 text-muted-foreground">
+            {lang === "kz" ? "KZ" : lang === "en" ? "EN" : "RU"}
+          </span>
+          <button
+            type="button"
+            onClick={() => navigate("/create/step-2", { state: loadWizardState(wizardState) })}
+            className="ml-auto text-xs font-medium text-primary underline-offset-2 hover:underline"
+          >
+            Изменить формат
+          </button>
+        </div>
 
         {/* Format / style multi-select */}
         {(flow.step3.showCreativeFormats || flow.step3.showNeuroStyles) && (
@@ -1898,9 +1958,9 @@ const CreateStep3 = () => {
                 styleId: styleDef.id as BriefStyleId,
                 userBrief: userBriefWithMeta,
                 format: {
-                  aspect: wizardState.aspect ?? null,
-                  lang: wizardState.lang ?? null,
-                  variants: wizardState.variants ?? null,
+                  aspect,
+                  lang,
+                  variants,
                 },
                 color: color ? { id: color.id, label: color.label, swatch: color.swatch } : null,
                 angles: anglesPayload,
@@ -2251,8 +2311,8 @@ const CreateStep3 = () => {
                 <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-primary" />
                 {(() => {
                   const variantsPerStyle =
-                    typeof wizardState.variants === "number" && wizardState.variants > 0
-                      ? wizardState.variants
+                    typeof variants === "number" && variants > 0
+                      ? variants
                       : 1;
                   const total = selectedStyles.length * variantsPerStyle;
                   return variantsPerStyle > 1

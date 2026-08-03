@@ -4,7 +4,8 @@ import { ArrowLeft, ArrowRight, Globe, Layers, Maximize, Check } from "lucide-re
 import Header from "@/components/factory/Header";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { persistWizardState } from "@/lib/contentFactoryBrief";
+import { loadWizardState, persistWizardState } from "@/lib/contentFactoryBrief";
+import { toSerializableWizardState } from "@/lib/contentFactoryAspect";
 import { readWizardFiles, stashWizardFiles } from "@/lib/wizardFilesStore";
 import { getContentTypeFlow, type AspectId } from "@/data/contentTypeFlows";
 import { AspectRatioPicker } from "@/components/factory/AspectRatioPicker";
@@ -18,17 +19,39 @@ const LANGS: { id: LangId; code: string; label: string }[] = [
   { id: "en", code: "EN", label: "English" },
 ];
 
+function isAspectId(v: unknown, allowed: AspectId[]): v is AspectId {
+  return typeof v === "string" && (allowed as string[]).includes(v);
+}
+
 const CreateStep2 = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const prevState = (location.state ?? {}) as Record<string, unknown>;
-  const typeId = typeof prevState.typeId === "string" ? prevState.typeId : undefined;
+  const saved = loadWizardState(prevState);
+  const typeId =
+    typeof prevState.typeId === "string"
+      ? prevState.typeId
+      : typeof saved.typeId === "string"
+        ? saved.typeId
+        : undefined;
   const flow = getContentTypeFlow(typeId);
   const step2 = flow.step2;
 
-  const [aspect, setAspect] = useState<AspectId>(step2.defaultAspect);
-  const [lang, setLang] = useState<LangId>("ru");
-  const [variants, setVariants] = useState<number>(step2.defaultVariants);
+  const initialAspect = isAspectId(saved.aspect, step2.aspects)
+    ? saved.aspect
+    : step2.defaultAspect;
+  const initialLang: LangId =
+    saved.lang === "kz" || saved.lang === "en" || saved.lang === "ru"
+      ? saved.lang
+      : "ru";
+  const initialVariants =
+    typeof saved.variants === "number" && step2.variantCounts.includes(saved.variants)
+      ? saved.variants
+      : step2.defaultVariants;
+
+  const [aspect, setAspect] = useState<AspectId>(initialAspect);
+  const [lang, setLang] = useState<LangId>(initialLang);
+  const [variants, setVariants] = useState<number>(initialVariants);
 
   const variantUnit =
     step2.variantsLabel.toLowerCase().includes("слайд")
@@ -36,6 +59,41 @@ const CreateStep2 = () => {
       : step2.variantsLabel.toLowerCase().includes("фото")
         ? "фото"
         : "вариантов";
+
+  const goNext = () => {
+    const stashed = readWizardFiles();
+    const merged = {
+      ...saved,
+      ...prevState,
+      typeId,
+      aspect,
+      lang,
+      variants,
+    };
+    stashWizardFiles({
+      logoFile: stashed.logoFile,
+      photos: stashed.photos,
+      peoplePhotos: stashed.peoplePhotos,
+    });
+    // Явно пишем format в sessionStorage — источник правды для шага 3 / webhook.
+    persistWizardState({
+      ...merged,
+      aspect,
+      lang,
+      variants,
+      hasLogo: Boolean(stashed.logoFile || saved.hasLogo),
+      photosCount: stashed.photos.length || saved.photosCount || 0,
+      peoplePhotosCount: stashed.peoplePhotos.length || saved.peoplePhotosCount || 0,
+    });
+    navigate("/create/step-3", {
+      state: toSerializableWizardState({
+        ...merged,
+        aspect,
+        lang,
+        variants,
+      } as Record<string, unknown>),
+    });
+  };
 
   return (
     <main className="min-h-screen">
@@ -61,6 +119,9 @@ const CreateStep2 = () => {
               </span>
               Соотношение сторон
             </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Выбрано: <span className="font-semibold text-foreground">{aspect}</span> — уйдёт в ТЗ и webhook как есть
+            </p>
             <div className="mt-4">
               <AspectRatioPicker
                 value={aspect}
@@ -151,29 +212,7 @@ const CreateStep2 = () => {
             </Button>
             <Button
               size="lg"
-              onClick={() => {
-                const stashed = readWizardFiles();
-                const nextState = {
-                  ...prevState,
-                  aspect,
-                  lang,
-                  variants,
-                  logoFile: (prevState.logoFile as File | null | undefined) ?? stashed.logoFile,
-                  photos: (prevState.photos as File[] | undefined)?.length
-                    ? (prevState.photos as File[])
-                    : stashed.photos,
-                  peoplePhotos: (prevState.peoplePhotos as File[] | undefined)?.length
-                    ? (prevState.peoplePhotos as File[])
-                    : stashed.peoplePhotos,
-                };
-                stashWizardFiles({
-                  logoFile: nextState.logoFile as File | null,
-                  photos: nextState.photos as File[],
-                  peoplePhotos: nextState.peoplePhotos as File[],
-                });
-                persistWizardState(nextState);
-                navigate("/create/step-3", { state: nextState });
-              }}
+              onClick={goNext}
               className="h-14 rounded-2xl bg-gradient-primary text-base font-semibold text-primary-foreground shadow-glow hover:opacity-90 touch-manipulation active:scale-[0.98]"
             >
               Далее
