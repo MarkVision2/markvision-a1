@@ -1,7 +1,7 @@
 {
-  "git_sha": "d69e350",
-  "git_sha_full": "d69e350e1c6f3b235b06207f6762679bf6e7d95f",
-  "updated_at": "2026-08-03T13:21:58Z",
-  "label": "fix: allow project delete when leads block pipelines FK [vercel-deploy]",
+  "git_sha": "7015f62",
+  "git_sha_full": "7015f62bf95662e92db901382d79c76f36ef2da2",
+  "updated_at": "2026-08-03T13:26:19Z",
+  "label": "chore: add SQL script to fix project delete FK for SQL Editor",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
