@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { Check, GitCompareArrows, Wand2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   AUTO_FORMAT_ID,
@@ -13,12 +13,101 @@ const MAX_STYLES = 4;
 interface CreativeFormatPickerProps {
   selected: CreativeFormatId[];
   onToggle: (id: CreativeFormatId) => void;
+  /** Если задано — показываем только эти форматы (без категорий). */
+  allowed?: CreativeFormatId[];
 }
 
-export function CreativeFormatPicker({ selected, onToggle }: CreativeFormatPickerProps) {
+export function CreativeFormatPicker({
+  selected,
+  onToggle,
+  allowed,
+}: CreativeFormatPickerProps) {
+  const pool = allowed?.length
+    ? CREATIVE_FORMATS.filter((f) => allowed.includes(f.id))
+    : CREATIVE_FORMATS;
+
   const selectedFormats = selected
     .map((id) => CREATIVE_FORMATS.find((f) => f.id === id))
     .filter((f): f is CreativeFormat => Boolean(f));
+
+  const compact = Boolean(allowed?.length);
+
+  if (compact) {
+    return (
+      <div className="space-y-4">
+        <div className={cn("grid gap-3", pool.length <= 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1 sm:grid-cols-2")}>
+          {pool.map((format) => {
+            const Icon = format.icon ?? (format.id === "before_after" ? GitCompareArrows : Wand2);
+            const isSelected = selected.includes(format.id);
+            const order = isSelected ? selected.indexOf(format.id) + 1 : null;
+            const isAuto = format.id === AUTO_FORMAT_ID;
+
+            return (
+              <button
+                key={format.id}
+                type="button"
+                onClick={() => onToggle(format.id)}
+                aria-pressed={isSelected}
+                aria-label={`${format.label}: ${format.subtitle}`}
+                className={cn(
+                  "group relative flex min-h-[8.5rem] flex-col overflow-hidden rounded-2xl border p-4 text-left transition-all duration-200",
+                  "active:scale-[0.98] touch-manipulation",
+                  isSelected
+                    ? "border-primary bg-primary/10 shadow-[0_0_0_1px_hsl(var(--primary)/0.35),0_16px_32px_-14px_hsl(var(--primary)/0.5)]"
+                    : "border-border/60 bg-card/50 hover:border-primary/40 hover:bg-card/80",
+                  isAuto && !isSelected && "border-dashed border-primary/35",
+                )}
+              >
+                <div
+                  className={cn(
+                    "pointer-events-none absolute inset-0 opacity-40",
+                    `bg-gradient-to-br ${format.gradient}`,
+                  )}
+                />
+                <div className="relative flex items-start justify-between gap-3">
+                  <span
+                    className={cn(
+                      "grid h-12 w-12 place-items-center rounded-xl",
+                      isSelected ? "bg-primary text-primary-foreground" : "bg-background/70 text-primary backdrop-blur",
+                    )}
+                  >
+                    <Icon className="h-5 w-5" strokeWidth={1.75} />
+                  </span>
+                  {isSelected && order !== null ? (
+                    <span className="grid h-6 w-6 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground">
+                      {order}
+                    </span>
+                  ) : (
+                    <span className="grid h-6 w-6 place-items-center rounded-full border border-border/60 bg-background/40 text-transparent">
+                      <Check className="h-3.5 w-3.5" />
+                    </span>
+                  )}
+                </div>
+                <div className="relative mt-auto space-y-1 pt-4">
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-base font-semibold text-foreground">{format.label}</h4>
+                    <span className="rounded-md bg-background/50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-muted-foreground backdrop-blur">
+                      {format.tag}
+                    </span>
+                  </div>
+                  <p className="text-sm text-muted-foreground">{format.subtitle}</p>
+                  <p className="text-xs leading-snug text-muted-foreground/90 line-clamp-2">{format.outputHint}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+
+        {selectedFormats.length > 0 && (
+          <div className="rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-muted-foreground">
+            {selectedFormats.map((f) => f.label).join(" · ")}
+            {" — "}
+            {selectedFormats.map((f) => f.outputHint).join("; ")}
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

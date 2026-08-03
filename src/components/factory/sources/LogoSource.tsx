@@ -5,11 +5,13 @@ import { cn } from "@/lib/utils";
 interface LogoSourceProps {
   file: File | null;
   onChange: (file: File | null) => void;
+  /** Не блокирует «Далее» — просто усиливает бренд на креативе. */
+  optional?: boolean;
 }
 
 const ACCEPT = "image/png,image/jpeg,image/webp,image/svg+xml";
 
-const LogoSource = ({ file, onChange }: LogoSourceProps) => {
+const LogoSource = ({ file, onChange, optional = false }: LogoSourceProps) => {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
@@ -38,16 +40,19 @@ const LogoSource = ({ file, onChange }: LogoSourceProps) => {
 
   return (
     <div className="animate-fade-in-up">
-      <div className="flex items-center gap-2 text-sm font-medium">
+      <div className="flex flex-wrap items-center gap-2 text-sm font-medium">
         <span className="grid h-7 w-7 place-items-center rounded-lg bg-primary/15 text-primary">
           <BadgeCheck className="h-4 w-4" />
         </span>
         Логотип бренда
-        <span className="font-normal text-muted-foreground">(достаточно для продолжения)</span>
+        <span className="font-normal text-muted-foreground">
+          {optional ? "(необязательно)" : "(достаточно для продолжения)"}
+        </span>
       </div>
       <p className="mt-1.5 text-xs text-muted-foreground">
-        Загрузите логотип — этого хватит, чтобы перейти дальше. AI изучит форму, цвета и стиль бренда.
-        Фото товара и людей — по желанию.
+        {optional
+          ? "Можно пропустить. Если загрузите — AI подхватит форму, цвета и стиль бренда на креативе."
+          : "Загрузите логотип — этого хватит, чтобы перейти дальше. AI изучит форму, цвета и стиль бренда."}
       </p>
 
       {file && previewUrl ? (
