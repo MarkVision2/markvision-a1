@@ -35,10 +35,13 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { DEFAULT_META_UTM_TEMPLATE } from "@/lib/utmDefaults";
+import { humanizeMetaApiError } from "@/lib/metaApiError";
 import type { AdCabinet } from "@/types/ads";
 import type { AvailableMetaAdAccount } from "@/hooks/useMetaAdAccounts";
 import { useMetaPageAssets } from "@/hooks/useMetaPageAssets";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { AddCabinetPickStep } from "@/components/ads/AddCabinetPickStep";
+import { Link } from "react-router-dom";
 
 interface AddCabinetDialogProps {
   open: boolean;
@@ -87,6 +90,7 @@ const AddCabinetDialog = ({
   existingActIds = [],
   initialStep = "pick",
 }: AddCabinetDialogProps) => {
+  const { activeId: projectId } = useProjectsStore();
   const [step, setStep] = useState<Step>(initialStep);
   const [selectedMeta, setSelectedMeta] = useState<AvailableMetaAdAccount | null>(null);
   const [currency, setCurrency] = useState("KZT");
@@ -109,6 +113,7 @@ const AddCabinetDialog = ({
   const [brief, setBrief] = useState("");
   const [validating, setValidating] = useState(false);
   const [checks, setChecks] = useState<CheckItem[] | null>(null);
+  const [tokenInvalid, setTokenInvalid] = useState(false);
 
   const pagesAssets = useMetaPageAssets({
     kind: "pages",
@@ -147,6 +152,7 @@ const AddCabinetDialog = ({
     setBrief("");
     setChecks(null);
     setValidating(false);
+    setTokenInvalid(false);
   }, []);
 
   const applyMetaAccount = (acc: AvailableMetaAdAccount) => {
@@ -209,9 +215,11 @@ const AddCabinetDialog = ({
     }
     setValidating(true);
     setChecks(null);
+    setTokenInvalid(false);
     try {
       const { data, error } = await supabase.functions.invoke("meta-validate-cabinet", {
         body: {
+          projectId: projectId || undefined,
           adAccountId: adAccountId.trim(),
           pageId: pageId.trim() || undefined,
           pixelId: pixelId.trim() || undefined,
@@ -220,11 +228,29 @@ const AddCabinetDialog = ({
         },
       });
       if (error) throw error;
-      setChecks(data?.checks ?? []);
-      if (data?.ok) toast.success("Все данные кабинета проверены");
-      else toast.error("Есть ошибки в данных кабинета");
+      const rawChecks = (data?.checks ?? []) as CheckItem[];
+      setChecks(
+        rawChecks.map((c) => ({
+          ...c,
+          detail: c.detail ? humanizeMetaApiError(c.detail) : c.detail,
+        })),
+      );
+      const invalid = !!data?.token_invalid
+        || rawChecks.some((c) =>
+          !c.ok && /session has been invalidated|истёк|сброшен|#190/i.test(c.detail ?? ""),
+        );
+      setTokenInvalid(invalid);
+      if (invalid) {
+        toast.error("Токен Meta недействителен", {
+          description: "Настройки → Meta → переподключите Facebook, затем добавьте кабинет снова.",
+        });
+      } else if (data?.ok) {
+        toast.success("Все данные кабинета проверены");
+      } else {
+        toast.error("Есть ошибки в данных кабинета");
+      }
     } catch (e) {
-      toast.error((e as Error).message || "Ошибка проверки");
+      toast.error(humanizeMetaApiError((e as Error).message || "Ошибка проверки"));
     } finally {
       setValidating(false);
     }
@@ -311,6 +337,7 @@ const AddCabinetDialog = ({
                   onAccessTokenChange={setAccessToken}
                   onSelect={applyMetaAccount}
                   onManual={() => setStep("configure")}
+                  projectId={projectId}
                 />
               </div>
               <div className="border-t border-border/60 px-6 py-4">
@@ -457,6 +484,15 @@ const AddCabinetDialog = ({
                         {validating ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                         Проверить
                       </Button>
+                      {tokenInvalid && (
+                        <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+                          Токен Meta истёк или сброшен (смена пароля Facebook).{" "}
+                          <Link to="/settings" className="font-semibold underline underline-offset-2">
+                            Настройки → Meta
+                          </Link>
+                          {" "}— переподключите Facebook, потом добавьте кабинет снова.
+                        </div>
+                      )}
                       {checks?.map((c, i) => (
                         <div key={i} className="flex gap-2 text-xs">
                           {c.ok ? <CheckCircle2 className="h-3.5 w-3.5 text-success" /> : <XCircle className="h-3.5 w-3.5 text-destructive" />}

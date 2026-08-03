@@ -4,6 +4,7 @@ import {
   createUserClient,
   requireCabinetAccess,
 } from "../_lib/auth.ts";
+import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
 
 const corsHeaders = AUTH_CORS_HEADERS;
 
@@ -23,6 +24,16 @@ interface CheckResult {
   detail?: string;
 }
 
+function humanizeDetail(raw: string | undefined): string | undefined {
+  if (!raw) return raw;
+  if (/session has been invalidated|validating access token|#190|expired/i.test(raw)) {
+    return (
+      "Токен Meta истёк или сброшен. Откройте Настройки → Meta и переподключите Facebook."
+    );
+  }
+  return raw;
+}
+
 async function checkAdAccount(actId: string, token: string): Promise<CheckResult> {
   if (!actId) return { ok: false, label: "Ad Account", detail: "не указан" };
   const url =
@@ -32,14 +43,20 @@ async function checkAdAccount(actId: string, token: string): Promise<CheckResult
   try {
     const r = await fetch(url);
     const j = await r.json();
-    if (!r.ok) return { ok: false, label: "Ad Account", detail: j?.error?.message || "ошибка Meta" };
+    if (!r.ok) {
+      return {
+        ok: false,
+        label: "Ad Account",
+        detail: humanizeDetail(j?.error?.message || "ошибка Meta"),
+      };
+    }
     return {
       ok: true,
       label: "Ad Account",
       detail: `${j.name || actId} • ${j.currency || ""} • ${j.account_status === 1 ? "active" : "status " + j.account_status}`,
     };
   } catch (e) {
-    return { ok: false, label: "Ad Account", detail: (e as Error).message };
+    return { ok: false, label: "Ad Account", detail: humanizeDetail((e as Error).message) };
   }
 }
 
@@ -50,10 +67,16 @@ async function checkPage(pageId: string, token: string): Promise<CheckResult | n
   try {
     const r = await fetch(url);
     const j = await r.json();
-    if (!r.ok) return { ok: false, label: "Page", detail: j?.error?.message || "ошибка" };
+    if (!r.ok) {
+      return {
+        ok: false,
+        label: "Page",
+        detail: humanizeDetail(j?.error?.message || "ошибка"),
+      };
+    }
     return { ok: true, label: "Page", detail: j.name || pageId };
   } catch (e) {
-    return { ok: false, label: "Page", detail: (e as Error).message };
+    return { ok: false, label: "Page", detail: humanizeDetail((e as Error).message) };
   }
 }
 
@@ -64,12 +87,18 @@ async function checkPixel(actId: string, pixelId: string, token: string): Promis
   try {
     const r = await fetch(url);
     const j = await r.json();
-    if (!r.ok) return { ok: false, label: "Pixel", detail: j?.error?.message || "ошибка" };
+    if (!r.ok) {
+      return {
+        ok: false,
+        label: "Pixel",
+        detail: humanizeDetail(j?.error?.message || "ошибка"),
+      };
+    }
     const found = (j.data || []).find((p: { id: string }) => p.id === pixelId.trim());
     if (!found) return { ok: false, label: "Pixel", detail: "не найден в этом Ad Account" };
     return { ok: true, label: "Pixel", detail: found.name || pixelId };
   } catch (e) {
-    return { ok: false, label: "Pixel", detail: (e as Error).message };
+    return { ok: false, label: "Pixel", detail: humanizeDetail((e as Error).message) };
   }
 }
 
@@ -80,10 +109,16 @@ async function checkInstagram(igId: string, token: string): Promise<CheckResult 
   try {
     const r = await fetch(url);
     const j = await r.json();
-    if (!r.ok) return { ok: false, label: "Instagram", detail: j?.error?.message || "ошибка" };
+    if (!r.ok) {
+      return {
+        ok: false,
+        label: "Instagram",
+        detail: humanizeDetail(j?.error?.message || "ошибка"),
+      };
+    }
     return { ok: true, label: "Instagram", detail: j.username ? `@${j.username}` : igId };
   } catch (e) {
-    return { ok: false, label: "Instagram", detail: (e as Error).message };
+    return { ok: false, label: "Instagram", detail: humanizeDetail((e as Error).message) };
   }
 }
 
@@ -107,15 +142,15 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const cabinetId: string | undefined = body.cabinetId;
+    const projectId: string | undefined = body.projectId || body.project_id;
     let adAccountId: string = body.adAccountId || "";
     let pageId: string = body.pageId || "";
     let pixelId: string = body.pixelId || "";
     let instagramId: string = body.instagramId || "";
     let cabinetToken: string | null = body.accessToken || null;
+    let resolvedProjectId: string | null = projectId || null;
 
     if (cabinetId) {
-      // Tenant authorization: caller must have RLS access to this cabinet
-      // before we read its stored Meta credentials with service role.
       const access = await requireCabinetAccess(authHeader, cabinetId);
       if (!access.ok) return access.response;
 
@@ -125,7 +160,7 @@ Deno.serve(async (req) => {
       );
       const { data: cab } = await admin
         .from("ad_cabinets")
-        .select("ad_account_id, external_id, page_id, pixel_id, instagram_id, access_token")
+        .select("ad_account_id, external_id, page_id, pixel_id, instagram_id, access_token, project_id")
         .eq("id", cabinetId)
         .maybeSingle();
       if (cab) {
@@ -134,12 +169,19 @@ Deno.serve(async (req) => {
         pixelId = pixelId || cab.pixel_id || "";
         instagramId = instagramId || cab.instagram_id || "";
         cabinetToken = cabinetToken || cab.access_token || null;
+        if (!resolvedProjectId) resolvedProjectId = cab.project_id || null;
       }
     }
 
-    const accessToken = cabinetToken || Deno.env.get("META_ACCESS_TOKEN") || "";
+    const accessToken = await resolveMetaAccessToken({
+      cabinetId: cabinetId ?? null,
+      projectId: resolvedProjectId,
+      bodyToken: cabinetToken,
+    });
     if (!accessToken) {
-      return new Response(JSON.stringify({ error: "Нет access token" }), {
+      return new Response(JSON.stringify({
+        error: "Нет access token. Переподключите Facebook в Настройки → Meta.",
+      }), {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -153,8 +195,18 @@ Deno.serve(async (req) => {
     ]);
     const filtered = checks.filter((c): c is CheckResult => c !== null);
     const ok = filtered.every((c) => c.ok);
+    const tokenInvalid = filtered.some((c) =>
+      !c.ok && /истёк|сброшен|переподключите Facebook/i.test(c.detail ?? "")
+    );
 
-    return new Response(JSON.stringify({ ok, checks: filtered }), {
+    return new Response(JSON.stringify({
+      ok,
+      checks: filtered,
+      token_invalid: tokenInvalid,
+      reconnect_hint: tokenInvalid
+        ? "Токен Meta недействителен. Настройки → Meta → переподключить Facebook."
+        : null,
+    }), {
       status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (e) {

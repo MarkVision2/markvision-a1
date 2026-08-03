@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
 import {
   fetchAllMetaAdAccounts,
   mapAdAccounts,
@@ -18,23 +19,14 @@ function jsonResponse(body: unknown, status = 200) {
   });
 }
 
-async function resolveMetaToken(
-  bodyToken: string | null | undefined,
-  allowSharedFallback: boolean,
-): Promise<string | null> {
-  if (bodyToken?.trim()) return bodyToken.trim();
-  if (!allowSharedFallback) return null;
-
-  const admin = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
-  );
-  const { data: settings } = await admin
-    .from("automation_settings")
-    .select("meta_access_token")
-    .eq("id", true)
-    .maybeSingle();
-  return settings?.meta_access_token ?? Deno.env.get("META_ACCESS_TOKEN") ?? null;
+function humanizeTokenError(raw: string): string {
+  if (/session has been invalidated|validating access token|#190|expired/i.test(raw)) {
+    return (
+      "Токен Meta истёк или сброшен (смена пароля / сессии Facebook). "
+      + "Откройте Настройки → Meta и переподключите Facebook."
+    );
+  }
+  return raw;
 }
 
 async function callerHasAdminOrManager(userId: string): Promise<boolean> {
@@ -48,6 +40,20 @@ async function callerHasAdminOrManager(userId: string): Promise<boolean> {
     .eq("user_id", userId)
     .in("role", ["admin", "manager"]);
   return (data ?? []).length > 0;
+}
+
+async function resolveTokenFromTokenId(tokenId: string): Promise<string | null> {
+  const admin = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+  const { data } = await admin
+    .from("meta_tokens")
+    .select("access_token")
+    .eq("id", tokenId)
+    .maybeSingle();
+  const t = (data as { access_token?: string | null } | null)?.access_token;
+  return t?.trim() || null;
 }
 
 Deno.serve(async (req) => {
@@ -79,18 +85,56 @@ Deno.serve(async (req) => {
     const exclude = excludeRaw.map((x) => normalizeActId(String(x)));
 
     const bodyToken = typeof body.access_token === "string" ? body.access_token : null;
+    const projectId = typeof body.project_id === "string" ? body.project_id : null;
+    const tokenId = typeof body.token_id === "string" ? body.token_id : null;
     const allowSharedFallback = await callerHasAdminOrManager(user.id);
-    const token = await resolveMetaToken(bodyToken, allowSharedFallback);
+
+    let token: string | null = null;
+    if (bodyToken?.trim()) {
+      token = bodyToken.trim();
+    } else if (tokenId) {
+      token = await resolveTokenFromTokenId(tokenId);
+    } else if (projectId) {
+      const admin = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      );
+      const { data: projectToken } = await admin
+        .from("meta_tokens")
+        .select("access_token")
+        .eq("project_id", projectId)
+        .eq("is_active", true)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      token = (projectToken as { access_token?: string | null } | null)?.access_token?.trim() || null;
+      if (!token && allowSharedFallback) {
+        token = await resolveMetaAccessToken({ bodyToken: null });
+      }
+    } else if (allowSharedFallback) {
+      token = await resolveMetaAccessToken({ bodyToken: null });
+    }
+
     if (!token) {
       return jsonResponse({
-        error: allowSharedFallback
+        error: projectId
+          ? "Нет активного Meta-токена у проекта. Откройте Настройки → Meta и переподключите Facebook."
+          : allowSharedFallback
           ? "Meta access token не настроен. Укажите токен в Настройках → Автоматизация или в поле ниже."
-          : "Meta access token не передан. Общий токен доступен только администраторам и менеджерам — вставьте свой User Access Token в поле ниже.",
+          : "Meta access token не передан. Переподключите Facebook в Настройки → Meta или вставьте User Access Token.",
         accounts: [],
       }, 400);
     }
 
     const fetched = await fetchAllMetaAdAccounts(token);
+    if (fetched.meta_hint && /session has been invalidated|validating access token|#190/i.test(fetched.meta_hint)) {
+      return jsonResponse({
+        error: humanizeTokenError(fetched.meta_hint),
+        accounts: [],
+        code: 190,
+      }, 401);
+    }
+
     const accounts = mapAdAccounts(fetched.rows, exclude);
     return jsonResponse({
       ok: true,
@@ -102,6 +146,6 @@ Deno.serve(async (req) => {
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "Unknown error";
-    return jsonResponse({ error: msg, accounts: [] }, 500);
+    return jsonResponse({ error: humanizeTokenError(msg), accounts: [] }, 500);
   }
 });

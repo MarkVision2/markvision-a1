@@ -58,7 +58,14 @@ Deno.serve(async (req) => {
     if (!page) return json({ error: "page not found in selection" }, 400);
     const adAccount = adAccountId ? sel.ad_accounts.find((a) => a.id === adAccountId) ?? null : null;
 
-    const summary = await connectPageAndAdAccount(supa, sel.project_id, sel.user_token, page, adAccount);
+    const summary = await connectPageAndAdAccount(
+      supa,
+      sel.project_id,
+      sel.user_token,
+      page,
+      adAccount,
+      { userId: user.id },
+    );
     return json({ ok: true, summary });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "unknown" }, 500);

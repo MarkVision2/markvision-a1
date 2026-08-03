@@ -17,26 +17,66 @@ export type FbPage = {
 };
 export type FbAdAccount = { id: string; name: string; currency?: string; business?: { id: string; name: string } };
 
+async function upsertProjectMetaToken(
+  admin: ReturnType<typeof createClient>,
+  projectId: string,
+  userToken: string,
+  userId?: string | null,
+) {
+  await admin
+    .from("meta_tokens")
+    .update({ is_active: false })
+    .eq("project_id", projectId)
+    .eq("is_active", true);
+
+  const { error } = await admin.from("meta_tokens").insert({
+    project_id: projectId,
+    label: "Facebook OAuth",
+    access_token: userToken,
+    is_active: true,
+    created_by: userId ?? null,
+    last_validated_at: new Date().toISOString(),
+    last_validation_status: "ok: facebook oauth",
+  });
+  if (error) {
+    console.error("[facebookConnect] meta_tokens insert:", error.message);
+    throw new Error(`Не удалось сохранить Meta-токен: ${error.message}`);
+  }
+}
+
 export async function connectPageAndAdAccount(
   supa: ReturnType<typeof createClient>,
   projectId: string,
   userToken: string,
   page: FbPage,
   adAccount: FbAdAccount | null,
+  opts?: { userId?: string | null },
 ): Promise<string> {
   const igRes = await fetch(
     `${GRAPH}/${page.id}?fields=instagram_business_account{id,username,name,profile_picture_url,followers_count,follows_count,media_count}&access_token=${page.access_token}`,
   );
   const igJson = await igRes.json();
+  if (igJson?.error?.message) {
+    const msg = String(igJson.error.message);
+    if (/session has been invalidated|validating access token|#190/i.test(msg)) {
+      throw new Error(msg);
+    }
+  }
   const ig = igJson.instagram_business_account as
     | { id: string; username?: string; name?: string; profile_picture_url?: string; followers_count?: number; follows_count?: number; media_count?: number }
     | undefined;
 
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  // Callers pass service-role client; keep using it for writes.
+  const admin = supa;
+
+  // Always persist the fresh long-lived user token for this project —
+  // Ads UI / meta-list / validate read meta_tokens before shared fallbacks.
+  await upsertProjectMetaToken(admin, projectId, userToken, opts?.userId);
 
   if (ig?.id) {
-    await supa.from("instagram_accounts").upsert({
+    const { error: igErr } = await admin.from("instagram_accounts").upsert({
       project_id: projectId,
       ig_user_id: ig.id,
       username: ig.username ?? null,
@@ -51,6 +91,10 @@ export async function connectPageAndAdAccount(
       active: true,
       last_error: null,
     }, { onConflict: "project_id" });
+    if (igErr) {
+      console.error("[facebookConnect] instagram_accounts:", igErr.message);
+      throw new Error(`Не удалось сохранить Instagram: ${igErr.message}`);
+    }
 
     fetch(`${SUPABASE_URL}/functions/v1/instagram-sync`, {
       method: "POST",
@@ -62,7 +106,7 @@ export async function connectPageAndAdAccount(
   }
 
   if (adAccount) {
-    const { data: existing } = await supa
+    const { data: existing } = await admin
       .from("ad_cabinets")
       .select("id")
       .eq("project_id", projectId)
@@ -80,11 +124,24 @@ export async function connectPageAndAdAccount(
       business_id: adAccount.business?.id ?? null,
       currency: adAccount.currency ?? "KZT",
       provider: "meta",
+      online: true,
     };
+    if (opts?.userId) row.created_by = opts.userId;
+
     if (existing) {
-      await supa.from("ad_cabinets").update(row).eq("id", (existing as { id: string }).id);
+      const { error } = await admin.from("ad_cabinets").update(row).eq("id", (existing as { id: string }).id);
+      if (error) {
+        console.error("[facebookConnect] ad_cabinets update:", error.message);
+        throw new Error(`Не удалось обновить рекламный кабинет: ${error.message}`);
+      }
+      await mirrorClientConfig(admin, (existing as { id: string }).id, row);
     } else {
-      await supa.from("ad_cabinets").insert(row);
+      const { data: inserted, error } = await admin.from("ad_cabinets").insert(row).select("id").single();
+      if (error) {
+        console.error("[facebookConnect] ad_cabinets insert:", error.message);
+        throw new Error(`Не удалось сохранить рекламный кабинет: ${error.message}`);
+      }
+      await mirrorClientConfig(admin, (inserted as { id: string }).id, row);
     }
   }
 
@@ -93,4 +150,35 @@ export async function connectPageAndAdAccount(
     ig?.username ? `Instagram @${ig.username}` : "без привязанного Instagram",
     adAccount ? `кабинет «${adAccount.name}»` : "без рекламного кабинета",
   ].join(", ");
+}
+
+async function mirrorClientConfig(
+  admin: ReturnType<typeof createClient>,
+  cabinetId: string,
+  row: Record<string, unknown>,
+) {
+  const { error } = await admin.from("client_configs").upsert(
+    {
+      cabinet_id: cabinetId,
+      name: String(row.name ?? "Кабинет"),
+      type: row.type === "Агентский" ? "Агентский" : "Личный",
+      daily_budget: row.daily_budget ?? null,
+      city: row.city ?? null,
+      ad_account_id: row.ad_account_id ?? null,
+      page_id: row.page_id ?? null,
+      page_name: row.page_name ?? null,
+      instagram_id: row.instagram_id ?? null,
+      access_token: row.access_token ?? null,
+      telegram_group_id: row.telegram_group_id ?? null,
+      whatsapp_number: row.whatsapp_number ?? null,
+      pixel_id: row.pixel_id ?? null,
+      pixel_event: row.pixel_event ?? "Lead",
+      website_url: row.website_url ?? null,
+      brief: row.brief ?? null,
+    },
+    { onConflict: "cabinet_id" },
+  );
+  if (error) {
+    console.error("[facebookConnect] client_configs:", error.message);
+  }
 }

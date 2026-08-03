@@ -90,6 +90,10 @@ jobs:
           FAILED=""
           for SQL_FILE in \
             scripts/apply-prod-pending-20260719.sql \
+            scripts/apply-prod-cabinets-client-configs.sql \
+            scripts/apply-ad-cabinets-project-member-write.sql \
+            scripts/apply-client-configs-yurcha-sync.sql \
+            scripts/apply-fix-project-delete-leads-pipeline-fk.sql \
             supabase/migrations/20260719190000_ig_dm_button_title.sql \
             supabase/migrations/20260719193000_montage_jobs_broll_source.sql
           do

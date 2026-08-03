@@ -20,6 +20,8 @@ import {
   type AvailableMetaAdAccount,
   type MetaListDiagnostics,
 } from "@/hooks/useMetaAdAccounts";
+import { humanizeMetaApiError } from "@/lib/metaApiError";
+import { Link } from "react-router-dom";
 
 const STATUS_RU: Record<string, string> = {
   active: "Активен",
@@ -127,6 +129,7 @@ interface Props {
   onAccessTokenChange: (v: string) => void;
   onSelect: (acc: AvailableMetaAdAccount) => void;
   onManual: () => void;
+  projectId?: string | null;
 }
 
 export function AddCabinetPickStep({
@@ -136,6 +139,7 @@ export function AddCabinetPickStep({
   onAccessTokenChange,
   onSelect,
   onManual,
+  projectId,
 }: Props) {
   const { listAvailable, listing } = useMetaAdAccounts();
   const [allAccounts, setAllAccounts] = useState<AvailableMetaAdAccount[]>([]);
@@ -160,11 +164,14 @@ export function AddCabinetPickStep({
   const load = useCallback(async () => {
     setListError(null);
     setDiagnostics(null);
-    const { accounts, error, diagnostics: diag } = await listAvailable(accessToken.trim() || undefined);
+    const { accounts, error, diagnostics: diag } = await listAvailable(
+      accessToken.trim() || undefined,
+      projectId || undefined,
+    );
     setAllAccounts(accounts);
     setDiagnostics(diag ?? null);
     if (error) setListError(error);
-  }, [listAvailable, accessToken]);
+  }, [listAvailable, accessToken, projectId]);
 
   useEffect(() => {
     if (active) void load();
@@ -182,17 +189,32 @@ export function AddCabinetPickStep({
   }
 
   if (listError) {
+    const human = humanizeMetaApiError(listError);
+    const tokenDead = /истёк|сброшен|переподключите|session has been invalidated|#190/i.test(
+      human + listError,
+    );
     return (
       <div className="space-y-4">
         <div className="flex items-start gap-2 rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
             <div className="font-semibold">Не удалось получить список</div>
-            <div className="mt-1">{listError}</div>
-            <div className="mt-2 text-[11px] opacity-80">
-              Проверьте Meta-токен в Настройках → Автоматизация (или введите ниже).
-              Нужны права ads_read и business_management. Если ошибка «Edge Function» —
-              задеплойте функции meta-list-ad-accounts и meta-daily-sync на Supabase.
+            <div className="mt-1">{human}</div>
+            <div className="mt-2 text-[11px] opacity-90">
+              {tokenDead ? (
+                <>
+                  Откройте{" "}
+                  <Link to="/settings" className="font-semibold underline underline-offset-2">
+                    Настройки → Meta
+                  </Link>
+                  {" "}и переподключите Facebook (после смены пароля старый токен не работает).
+                </>
+              ) : (
+                <>
+                  Проверьте Meta-токен в Настройках → Meta (или введите ниже).
+                  Нужны права ads_read и business_management.
+                </>
+              )}
             </div>
           </div>
         </div>

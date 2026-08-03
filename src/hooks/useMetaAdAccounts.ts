@@ -24,6 +24,7 @@ export type MetaListDiagnostics = {
 type ListBody = {
   exclude_act_ids: string[];
   access_token?: string;
+  project_id?: string;
 };
 
 function shouldFallbackToNextFunction(err?: string | null): boolean {
@@ -102,6 +103,7 @@ export function useMetaAdAccounts() {
   const listAvailable = useCallback(
     async (
       accessToken?: string,
+      projectId?: string,
     ): Promise<{
       accounts: AvailableMetaAdAccount[];
       error?: string;
@@ -109,9 +111,10 @@ export function useMetaAdAccounts() {
     }> => {
       setListing(true);
       try {
-        const body: ListBody = {
+        const body: ListBody & { project_id?: string } = {
           exclude_act_ids: [],
           access_token: accessToken?.trim() || undefined,
+          project_id: projectId || undefined,
         };
 
         const fns = [
@@ -131,6 +134,11 @@ export function useMetaAdAccounts() {
         for (const fn of fns) {
           result = await invokeListAdAccounts(fn, body);
           if (!shouldFallbackToNextFunction(result.error)) break;
+        }
+
+        if (result.error) {
+          const { humanizeMetaApiError } = await import("@/lib/metaApiError");
+          result = { ...result, error: humanizeMetaApiError(result.error) };
         }
 
         return result;

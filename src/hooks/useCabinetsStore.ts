@@ -151,6 +151,59 @@ export function useCabinetsStore() {
     if (!projectId) {
       throw new Error("Сначала создайте проект и сделайте его активным");
     }
+
+    // Prefer service-role edge upsert: RLS was historically admin-only, and
+    // client INSERT…RETURNING * breaks on access_token column privileges.
+    const { data: fnData, error: fnError } = await supabase.functions.invoke(
+      "meta-upsert-cabinet",
+      {
+        body: {
+          project_id: projectId,
+          id: c.id,
+          name: c.name,
+          type: c.type,
+          provider: c.provider ?? "meta",
+          online: c.online !== false,
+          ad_account_id: c.adAccountId || c.externalId,
+          external_id: c.externalId || c.adAccountId,
+          access_token: c.accessToken || null,
+          currency: c.currency ?? "KZT",
+          daily_budget: c.dailyBudget ?? null,
+          city: c.city ?? null,
+          page_id: c.pageId ?? null,
+          page_name: c.pageName ?? null,
+          instagram_id: c.instagramId ?? null,
+          telegram_group_id: c.telegramGroupId ?? null,
+          whatsapp_number: c.whatsappNumber ?? null,
+          pixel_id: c.pixelId ?? null,
+          pixel_event: c.pixelEvent ?? "Lead",
+          website_url: c.websiteUrl ?? null,
+          utm_template: c.utmTemplate ?? null,
+          brief: c.brief ?? null,
+          business_id: c.businessId ?? null,
+        },
+      },
+    );
+
+    if (!fnError && fnData?.cabinet && !fnData?.error) {
+      const saved = toCabinet(fnData.cabinet);
+      // Edge already mirrors client_configs under service role; retry only if it failed.
+      if (!fnData.client_config_synced) {
+        await syncCabinetToClientConfig({
+          ...saved,
+          accessToken: c.accessToken,
+        });
+      }
+      await refetch();
+      return saved.id;
+    }
+
+    if (fnData?.error && !fnError) {
+      // Function returned 2xx with error payload — don't pretend success.
+      console.warn("[addCabinet] meta-upsert-cabinet:", fnData.error);
+    }
+
+    // Fallback: direct insert (after RLS migration) without selecting secrets
     const dbRow = {
       ...toDbPatch(c),
       name: c.name,
@@ -160,33 +213,93 @@ export function useCabinetsStore() {
     const { data, error } = await supabase
       .from("ad_cabinets")
       .insert(dbRow as any)
-      .select("*")
+      .select(
+        "id, project_id, created_by, created_at, updated_at, name, external_id, online, type, provider, currency, daily_budget, spend, leads, lead_cost, sales, revenue, city, ad_account_id, page_id, page_name, instagram_id, telegram_group_id, whatsapp_number, pixel_id, pixel_event, website_url, landing_url, utm_template, brief",
+      )
       .single();
-    if (error) throw error;
-    // Зеркалим в client config supabase (туда смотрят n8n + content factory).
-    // Используем серверный id (real UUID), а не c.id — фронт может слать
-    // временный slug, реальный id выдаёт DB.
+
+    if (error) {
+      const edgeMsg =
+        (fnData as { error?: string } | null)?.error
+        || (fnError instanceof Error ? fnError.message : null);
+      const msg = error.message || edgeMsg || "Не удалось сохранить кабинет";
+      if (/row-level security|RLS|permission denied|42501/i.test(msg)) {
+        throw new Error(
+          "Нет прав записать кабинет в базу. Нужна миграция ad_cabinets_project_member_write или роль admin. "
+          + msg,
+        );
+      }
+      throw new Error(msg);
+    }
+
     if (data) {
-      await syncCabinetToClientConfig(toCabinet(data));
+      await syncCabinetToClientConfig(toCabinet({ ...data, access_token: c.accessToken }));
     }
     await refetch();
     return (data?.id as string) ?? null;
   }, [user?.id, refetch, projectId]);
 
   const updateCabinet = useCallback(async (id: string, patch: Partial<AdCabinet>) => {
+    const dbPatch = toDbPatch(patch);
+    // Prefer edge upsert when rotating access_token (column locked for client).
+    if (patch.accessToken !== undefined || patch.adAccountId !== undefined) {
+      const current = cabinets.find((x) => x.id === id);
+      const projectForCab = projectId;
+      if (projectForCab) {
+        const body: Record<string, unknown> = {
+          project_id: projectForCab,
+          id,
+          name: patch.name ?? current?.name,
+          type: patch.type ?? current?.type,
+          ad_account_id: patch.adAccountId ?? current?.adAccountId ?? current?.externalId,
+          currency: patch.currency ?? current?.currency,
+          daily_budget: patch.dailyBudget ?? current?.dailyBudget,
+          city: patch.city ?? current?.city,
+          page_id: patch.pageId ?? current?.pageId,
+          page_name: patch.pageName ?? current?.pageName,
+          instagram_id: patch.instagramId ?? current?.instagramId,
+          telegram_group_id: patch.telegramGroupId ?? current?.telegramGroupId,
+          whatsapp_number: patch.whatsappNumber ?? current?.whatsappNumber,
+          pixel_id: patch.pixelId ?? current?.pixelId,
+          pixel_event: patch.pixelEvent ?? current?.pixelEvent,
+          website_url: patch.websiteUrl ?? current?.websiteUrl,
+          utm_template: patch.utmTemplate ?? current?.utmTemplate,
+          brief: patch.brief ?? current?.brief,
+        };
+        if (patch.accessToken !== undefined) {
+          body.access_token = patch.accessToken || null;
+        }
+        const { data: fnData, error: fnError } = await supabase.functions.invoke(
+          "meta-upsert-cabinet",
+          { body },
+        );
+        if (!fnError && fnData?.cabinet && !fnData?.error) {
+          if (!fnData.client_config_synced) {
+            await syncCabinetToClientConfig(toCabinet({
+              ...fnData.cabinet,
+              access_token: patch.accessToken ?? current?.accessToken,
+            }));
+          }
+          await refetch();
+          return;
+        }
+      }
+    }
+
     const { data, error } = await supabase
       .from("ad_cabinets")
-      .update(toDbPatch(patch) as any)
+      .update(dbPatch as any)
       .eq("id", id)
-      .select("*")
+      .select(
+        "id, project_id, created_by, created_at, updated_at, name, external_id, online, type, provider, currency, daily_budget, spend, leads, lead_cost, sales, revenue, city, ad_account_id, page_id, page_name, instagram_id, telegram_group_id, whatsapp_number, pixel_id, pixel_event, website_url, landing_url, utm_template, brief",
+      )
       .single();
     if (error) throw error;
-    // Перезеркалить актуальный снимок строки.
     if (data) {
       await syncCabinetToClientConfig(toCabinet(data));
     }
     await refetch();
-  }, [refetch]);
+  }, [refetch, cabinets, projectId]);
 
   const removeCabinet = useCallback(async (id: string) => {
     await supabase.from("ad_cabinets").delete().eq("id", id);
