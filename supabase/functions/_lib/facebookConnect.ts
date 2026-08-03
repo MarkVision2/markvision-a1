@@ -134,12 +134,14 @@ export async function connectPageAndAdAccount(
         console.error("[facebookConnect] ad_cabinets update:", error.message);
         throw new Error(`Не удалось обновить рекламный кабинет: ${error.message}`);
       }
+      await mirrorClientConfig(admin, (existing as { id: string }).id, row);
     } else {
-      const { error } = await admin.from("ad_cabinets").insert(row);
+      const { data: inserted, error } = await admin.from("ad_cabinets").insert(row).select("id").single();
       if (error) {
         console.error("[facebookConnect] ad_cabinets insert:", error.message);
         throw new Error(`Не удалось сохранить рекламный кабинет: ${error.message}`);
       }
+      await mirrorClientConfig(admin, (inserted as { id: string }).id, row);
     }
   }
 
@@ -148,4 +150,35 @@ export async function connectPageAndAdAccount(
     ig?.username ? `Instagram @${ig.username}` : "без привязанного Instagram",
     adAccount ? `кабинет «${adAccount.name}»` : "без рекламного кабинета",
   ].join(", ");
+}
+
+async function mirrorClientConfig(
+  admin: ReturnType<typeof createClient>,
+  cabinetId: string,
+  row: Record<string, unknown>,
+) {
+  const { error } = await admin.from("client_configs").upsert(
+    {
+      cabinet_id: cabinetId,
+      name: String(row.name ?? "Кабинет"),
+      type: row.type === "Агентский" ? "Агентский" : "Личный",
+      daily_budget: row.daily_budget ?? null,
+      city: row.city ?? null,
+      ad_account_id: row.ad_account_id ?? null,
+      page_id: row.page_id ?? null,
+      page_name: row.page_name ?? null,
+      instagram_id: row.instagram_id ?? null,
+      access_token: row.access_token ?? null,
+      telegram_group_id: row.telegram_group_id ?? null,
+      whatsapp_number: row.whatsapp_number ?? null,
+      pixel_id: row.pixel_id ?? null,
+      pixel_event: row.pixel_event ?? "Lead",
+      website_url: row.website_url ?? null,
+      brief: row.brief ?? null,
+    },
+    { onConflict: "cabinet_id" },
+  );
+  if (error) {
+    console.error("[facebookConnect] client_configs:", error.message);
+  }
 }

@@ -142,7 +142,34 @@ Deno.serve(async (req) => {
       .single();
     if (readErr) throw readErr;
 
-    return json({ ok: true, cabinet: safe });
+    // Dual-write for n8n / content factory (service role bypasses RLS).
+    const cab = safe as Record<string, unknown>;
+    const { error: mirrorErr } = await admin.from("client_configs").upsert(
+      {
+        cabinet_id: savedId,
+        name: String(cab.name ?? adAccountId),
+        type: cab.type === "Агентский" ? "Агентский" : "Личный",
+        daily_budget: cab.daily_budget ?? null,
+        city: cab.city ?? null,
+        ad_account_id: cab.ad_account_id ?? adAccountId,
+        page_id: cab.page_id ?? null,
+        page_name: cab.page_name ?? null,
+        instagram_id: cab.instagram_id ?? null,
+        access_token: accessToken,
+        telegram_group_id: cab.telegram_group_id ?? null,
+        whatsapp_number: cab.whatsapp_number ?? null,
+        pixel_id: cab.pixel_id ?? null,
+        pixel_event: cab.pixel_event ?? "Lead",
+        website_url: cab.website_url ?? null,
+        brief: cab.brief ?? null,
+      },
+      { onConflict: "cabinet_id" },
+    );
+    if (mirrorErr) {
+      console.error("[meta-upsert-cabinet] client_configs:", mirrorErr.message);
+    }
+
+    return json({ ok: true, cabinet: safe, client_config_synced: !mirrorErr });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "unknown" }, 500);
   }

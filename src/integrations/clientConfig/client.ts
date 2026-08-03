@@ -51,5 +51,4 @@ export async function markAdvanceDone(leadCrmId: string): Promise<void> {
     .eq('id', leadCrmId);
 }
 
-// Запись в client_configs делается через src/lib/cabinetSync.ts — единая точка
-// для всех мест, где меняется кабинет (useCabinetsStore + ProjectOnboardingDialog).
+// Запись в client_configs — src/lib/cabinetSync.ts (через основной supabase + JWT).
