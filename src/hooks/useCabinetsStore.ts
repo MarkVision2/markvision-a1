@@ -185,14 +185,22 @@ export function useCabinetsStore() {
       },
     );
 
-    if (!fnError && fnData?.cabinet) {
+    if (!fnError && fnData?.cabinet && !fnData?.error) {
       const saved = toCabinet(fnData.cabinet);
-      await syncCabinetToClientConfig({
-        ...saved,
-        accessToken: c.accessToken,
-      });
+      // Edge already mirrors client_configs under service role; retry only if it failed.
+      if (!fnData.client_config_synced) {
+        await syncCabinetToClientConfig({
+          ...saved,
+          accessToken: c.accessToken,
+        });
+      }
       await refetch();
       return saved.id;
+    }
+
+    if (fnData?.error && !fnError) {
+      // Function returned 2xx with error payload — don't pretend success.
+      console.warn("[addCabinet] meta-upsert-cabinet:", fnData.error);
     }
 
     // Fallback: direct insert (after RLS migration) without selecting secrets
@@ -265,11 +273,13 @@ export function useCabinetsStore() {
           "meta-upsert-cabinet",
           { body },
         );
-        if (!fnError && fnData?.cabinet) {
-          await syncCabinetToClientConfig(toCabinet({
-            ...fnData.cabinet,
-            access_token: patch.accessToken ?? current?.accessToken,
-          }));
+        if (!fnError && fnData?.cabinet && !fnData?.error) {
+          if (!fnData.client_config_synced) {
+            await syncCabinetToClientConfig(toCabinet({
+              ...fnData.cabinet,
+              access_token: patch.accessToken ?? current?.accessToken,
+            }));
+          }
           await refetch();
           return;
         }
