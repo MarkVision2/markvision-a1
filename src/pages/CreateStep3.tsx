@@ -1322,7 +1322,7 @@ const CreateStep3 = () => {
 
       // Map settled results — keep failed ones visible with an error message
       // instead of throwing the whole batch away.
-      const variants: GeneratedVariant[] = settled.map((r, i) => {
+      const variantResults: GeneratedVariant[] = settled.map((r, i) => {
         if (r.status === "fulfilled") return r.value;
         const styleDef = activeStyles.find((s) => s.id === selectedStyles[i])!;
         return {
@@ -1339,14 +1339,14 @@ const CreateStep3 = () => {
         progressTimer = null;
       }
       setProgress(100);
-      const okCount = variants.filter((v) => !v.error).length;
-      const failCount = variants.length - okCount;
-      const readyCount = variants.filter((v) => !v.error && v.imageUrl).length;
-      setResults(variants);
+      const okCount = variantResults.filter((v) => !v.error).length;
+      const failCount = variantResults.length - okCount;
+      const readyCount = variantResults.filter((v) => !v.error && v.imageUrl).length;
+      setResults(variantResults);
 
       const meta = galleryMetaRef.current;
       if (meta && projectId) {
-        for (const v of variants) {
+        for (const v of variantResults) {
           if (!v.imageUrl || !v.requestId) continue;
           void saveGalleryItem({
             requestId: v.requestId,
@@ -1366,10 +1366,10 @@ const CreateStep3 = () => {
       if (okCount === 0) {
         setStatus("error");
         setStatusMessage(
-          variants[0]?.error ?? "Не удалось поставить задачу",
+          variantResults[0]?.error ?? "Не удалось поставить задачу",
         );
         toast.error("Все варианты упали", {
-          description: variants[0]?.error,
+          description: variantResults[0]?.error,
         });
       } else if (readyCount === 0) {
         // n8n принял задачу, но картинку ещё не вернул — это нормальный
@@ -1385,11 +1385,11 @@ const CreateStep3 = () => {
         setStatus("success");
         setStatusMessage(
           failCount > 0
-            ? `Готово: ${readyCount} из ${variants.length} (${failCount} с ошибкой)`
+            ? `Готово: ${readyCount} из ${variantResults.length} (${failCount} с ошибкой)`
             : `Готово: ${readyCount} ${readyCount === 1 ? "вариант" : "варианта(ов)"} сгенерировано`,
         );
         toast.success("Креативы готовы", {
-          description: variants
+          description: variantResults
             .filter((v) => !v.error && v.imageUrl)
             .map((v) => v.styleLabel)
             .join(" · "),
