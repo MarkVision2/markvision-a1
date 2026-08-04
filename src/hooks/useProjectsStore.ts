@@ -192,7 +192,10 @@ export function useProjectsStore() {
   const removeProject = useCallback(
     async (id: string) => {
       // Prefer RPC: cleans leads tied to pipelines before CASCADE on pipelines.
-      const { error: rpcError } = await supabase.rpc("delete_project_cascade", {
+      const { error: rpcError } = await (supabase.rpc as unknown as (
+        fn: string,
+        args: Record<string, unknown>,
+      ) => Promise<{ error: { message?: string } | null }>)("delete_project_cascade", {
         p_project_id: id,
       });
       if (!rpcError) {
