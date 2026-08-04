@@ -30,3 +30,14 @@ pm2 start daemon.mjs --name wa-web --cwd /path/to/repo/wa-web
 «Показать QR» → сканируете телефоном (Связанные устройства).
 
 Входящие и исходящие с телефона попадают в CRM → Чаты.
+
+**Важно:** после скана QR в CRM попадают только **новые** сообщения
+(после подключения). История старых чатов с телефона в лиды не импортируется.
+
+После обновления `daemon.mjs` на VPS:
+
+```bash
+cd /path/to/repo && git pull
+pm2 restart wa-web
+# или: pm2 start wa-web/daemon.mjs --name wa-web --cwd /path/to/repo/wa-web
+```

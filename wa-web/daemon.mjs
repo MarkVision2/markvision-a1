@@ -331,6 +331,23 @@ async function ingestWaMessage(projectId, msg, source = "upsert", sock = null) {
   if (!msg?.message || msg.message.protocolMessage || msg.message.reactionMessage) {
     return { skipped: "protocol" };
   }
+  // Never turn WhatsApp history / catch-up dumps into CRM leads.
+  // Baileys: type "append" = historical sync; "notify" = live after connect.
+  if (
+    source === "history"
+    || source === "upsert:append"
+    || source.startsWith("upsert:append")
+  ) {
+    return { skipped: "history" };
+  }
+
+  const afterMs = ingestAfterMs.get(projectId);
+  const tsMs = messageTimestampMs(msg);
+  // 90s skew: clock / pair race right after QR.
+  if (afterMs && tsMs != null && tsMs < afterMs - 90_000) {
+    return { skipped: "before_pair", tsMs, afterMs };
+  }
+
   const { phone, jid, lid } = resolveMessagePhone(projectId, msg);
   if (!phone && !lid) {
     log.warn({
@@ -377,8 +394,14 @@ async function ingestWaMessage(projectId, msg, source = "upsert", sock = null) {
     direction,
     text,
     external_id: externalId,
+    source,
+    message_ts: tsMs != null ? Math.floor(tsMs / 1000) : null,
     ...mediaPayload,
   });
+  if (res?.skipped) {
+    log.info({ projectId, source, skipped: res.skipped }, "ingest skipped by bridge");
+    return res;
+  }
   log.info({
     projectId,
     phone: phone || null,
@@ -394,8 +417,24 @@ async function ingestWaMessage(projectId, msg, source = "upsert", sock = null) {
   return res;
 }
 
+/** Per-project: ignore WA messages older than connect time (ms epoch). */
+const ingestAfterMs = new Map();
+
 /** @type {Map<string, { sock: any, connecting: boolean }>} */
 const sockets = new Map();
+
+function messageTimestampMs(msg) {
+  const raw = msg?.messageTimestamp;
+  if (raw == null) return null;
+  let n;
+  if (typeof raw === "object" && raw !== null && "toNumber" in raw) {
+    n = Number(raw.toNumber());
+  } else {
+    n = Number(raw);
+  }
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n < 1e12 ? n * 1000 : n;
+}
 
 async function setState(projectId, status, extra = {}) {
   await bridge("set_state", { project_id: projectId, status, ...extra });
@@ -414,6 +453,7 @@ async function openSocket(projectId, { forcePair = false } = {}) {
   }
 
   sockets.set(projectId, { sock: null, connecting: true });
+  if (forcePair) ingestAfterMs.delete(projectId);
   loadLidMap(projectId);
   const { state, saveCreds } = await useMultiFileAuthState(authDir);
   const { version } = await fetchLatestBaileysVersion();
@@ -422,7 +462,8 @@ async function openSocket(projectId, { forcePair = false } = {}) {
     auth: state,
     logger: pino({ level: "silent" }),
     printQRInTerminal: false,
-    syncFullHistory: true,
+    // Do NOT pull the whole chat archive into CRM on QR link.
+    syncFullHistory: false,
     markOnlineOnConnect: false,
     getMessage: async () => undefined,
   });
@@ -440,13 +481,17 @@ async function openSocket(projectId, { forcePair = false } = {}) {
       if (connection === "open") {
         const me = sock.user;
         const phone = jidToPhone(me?.id);
+        // Gate: only messages at/after this connect become CRM leads.
+        if (!ingestAfterMs.has(projectId)) {
+          ingestAfterMs.set(projectId, Date.now());
+        }
         await setState(projectId, "connected", {
           phone: phone || null,
           display_name: me?.name || me?.verifiedName || null,
         });
         const entry = sockets.get(projectId) || {};
         sockets.set(projectId, { ...entry, sock, connecting: false });
-        log.info({ projectId, phone }, "connected");
+        log.info({ projectId, phone, ingestAfterMs: ingestAfterMs.get(projectId) }, "connected");
       }
       if (connection === "close") {
         const code = lastDisconnect?.error?.output?.statusCode;
@@ -455,6 +500,7 @@ async function openSocket(projectId, { forcePair = false } = {}) {
         const restartRequired = code === DisconnectReason.restartRequired || code === 515;
         sockets.delete(projectId);
         if (loggedOut) {
+          ingestAfterMs.delete(projectId);
           await setState(projectId, "disconnected");
           log.warn({ projectId }, "logged out");
         } else if (restartRequired) {
@@ -477,10 +523,16 @@ async function openSocket(projectId, { forcePair = false } = {}) {
   });
 
   sock.ev.on("messages.upsert", async ({ messages, type }) => {
-    log.info({ projectId, type, count: messages?.length || 0 }, "messages.upsert");
+    const t = String(type || "unknown");
+    // Live traffic only. "append" is historical catch-up from the phone.
+    if (t === "append") {
+      log.info({ projectId, type: t, count: messages?.length || 0 }, "skip history upsert");
+      return;
+    }
+    log.info({ projectId, type: t, count: messages?.length || 0 }, "messages.upsert");
     for (const msg of messages || []) {
       try {
-        await ingestWaMessage(projectId, msg, `upsert:${type || "unknown"}`, sock);
+        await ingestWaMessage(projectId, msg, `upsert:${t}`, sock);
       } catch (e) {
         log.error({ err: e, projectId }, "ingest failed");
       }
@@ -522,17 +574,19 @@ async function openSocket(projectId, { forcePair = false } = {}) {
     }
   });
 
-  // Initial / catch-up history after linking the device.
+  // History sync must NOT create CRM leads. Keep lid↔phone maps only.
   sock.ev.on("messaging-history.set", async (payload) => {
     const messages = payload?.messages || [];
-    log.info({ projectId, count: messages.length }, "messaging-history.set");
-    // Cap to avoid flooding CRM on first sync.
-    const recent = messages.slice(-200);
-    for (const msg of recent) {
+    log.info(
+      { projectId, count: messages.length },
+      "messaging-history.set ignored for CRM (live-only ingest)",
+    );
+    for (const c of payload?.contacts || []) {
       try {
-        await ingestWaMessage(projectId, msg, "history", sock);
-      } catch (e) {
-        log.error({ err: e, projectId }, "history ingest failed");
+        if (c.id && c.lid) rememberLidMap(projectId, c.lid, c.id);
+        if (c.lid && c.phoneNumber) rememberLidMap(projectId, c.lid, c.phoneNumber);
+      } catch {
+        /* ignore */
       }
     }
   });
@@ -574,6 +628,7 @@ async function handleCommand(cmd) {
         /* ignore */
       }
       sockets.delete(projectId);
+      ingestAfterMs.delete(projectId);
       const authDir = resolve(AUTH_ROOT, projectId);
       if (existsSync(authDir)) rmSync(authDir, { recursive: true, force: true });
       await setState(projectId, "disconnected");

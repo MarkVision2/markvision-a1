@@ -405,9 +405,45 @@ Deno.serve(async (req) => {
       const text = String(body.text ?? "");
       const externalId = body.external_id ? String(body.external_id) : null;
       const name = String(body.name ?? "");
+      const source = String(body.source ?? "");
       if (!projectId || (!phone && !whatsappLid)) {
         return json({ error: "project_id + (phone|whatsapp_lid) required" }, 400);
       }
+
+      const { data: sessRow } = await admin
+        .from("whatsapp_web_sessions")
+        .select("status, paired_at")
+        .eq("project_id", projectId)
+        .maybeSingle();
+      const sess = sessRow as { status?: string; paired_at?: string | null } | null;
+
+      // Stop zombie history loops after logout / disconnect.
+      if (sess?.status && sess.status !== "connected") {
+        return json({ ok: true, skipped: "session_not_connected" });
+      }
+
+      // Defense in depth: never create CRM leads from WA history dumps.
+      if (
+        source === "history"
+        || source === "upsert:append"
+        || source.startsWith("upsert:append")
+      ) {
+        return json({ ok: true, skipped: "history" });
+      }
+
+      // Drop messages older than session pair time (old daemon may still send history).
+      const rawTs = body.message_ts != null ? Number(body.message_ts) : NaN;
+      if (Number.isFinite(rawTs) && rawTs > 0) {
+        const tsMs = rawTs < 1e12 ? rawTs * 1000 : rawTs;
+        const pairedAt = sess?.paired_at;
+        if (pairedAt) {
+          const pairedMs = new Date(pairedAt).getTime() - 90_000;
+          if (Number.isFinite(pairedMs) && tsMs < pairedMs) {
+            return json({ ok: true, skipped: "before_pair" });
+          }
+        }
+      }
+
       const d = digits(phone);
       if (phone && !isPlausiblePhone(d) && !whatsappLid) {
         return json({ error: "invalid phone (looks like WhatsApp LID)" }, 400);
