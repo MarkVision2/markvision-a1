@@ -1,7 +1,7 @@
 {
-  "git_sha": "78afa0f",
-  "git_sha_full": "78afa0f329d7b24eb23c49010fb838e082654de3",
-  "updated_at": "2026-08-04T10:33:51Z",
-  "label": "deploy: force Vercel build for ads creatives stats fix [vercel-deploy]",
+  "git_sha": "257c4fc",
+  "git_sha_full": "257c4fc3447e7f9dd1371432422092f4b074636d",
+  "updated_at": "2026-08-04T15:36:16Z",
+  "label": "fix: WhatsApp QR — не импортировать старые чаты в лиды (#231)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
