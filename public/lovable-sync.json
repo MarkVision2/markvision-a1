@@ -1,7 +1,7 @@
 {
-  "git_sha": "5d52939",
-  "git_sha_full": "5d529397d45538448aad6708b9fa3bda33229a30",
-  "updated_at": "2026-08-04T09:24:45Z",
-  "label": "deploy: content create TDZ fix to prod [vercel-deploy]",
+  "git_sha": "9d7f47f",
+  "git_sha_full": "9d7f47fbc946a1c37dc42f5370d3e965543cf40e",
+  "updated_at": "2026-08-04T10:30:41Z",
+  "label": "fix: ads creatives/campaigns stats + CPL, no double-count messages [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
