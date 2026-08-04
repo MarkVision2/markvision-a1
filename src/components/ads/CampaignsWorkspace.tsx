@@ -154,21 +154,41 @@ export function CampaignsWorkspace({
           />
         </div>
 
-        <div className="mt-4 flex items-start gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 text-xs text-muted-foreground">
-          <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" />
-          <p>
-            Блок «WhatsApp» считает сообщения, «Лиды с сайта» — заявки через пиксель.
-            Если ROMI пустой, расход уже есть, а оплаты по этим креативам в CRM ещё не прошли или креативы не синхронизированы.
-            {onOpenCreatives && (
-              <>
-                {" "}
-                <button type="button" className="font-medium text-primary hover:underline" onClick={() => onOpenCreatives()}>
-                  Открыть креативы
-                </button>
-              </>
-            )}
-          </p>
-        </div>
+        {!loading && rows.length > 0 && summary.spend === 0 && (
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2.5 text-xs">
+            <p>
+              <span className="font-semibold text-foreground">По кампаниям нет расхода за период.</span>{" "}
+              Нажмите «Синхронизировать Meta», чтобы подтянуть дневную статистику объявлений и кампаний.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 shrink-0 rounded-lg"
+              disabled={syncing}
+              onClick={() => void handleSync()}
+            >
+              {syncing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
+              Синхронизировать
+            </Button>
+          </div>
+        )}
+
+        {summary.spend > 0 && !summary.hasCrm && (
+          <div className="mt-3 flex items-start gap-2 rounded-xl border border-border/60 bg-secondary/30 px-3 py-2.5 text-xs text-muted-foreground">
+            <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <p>
+              Расход есть, ROMI пустой — оплаты в CRM по этим кампаниям ещё не прошли или лиды не привязаны.
+              {onOpenCreatives && (
+                <>
+                  {" "}
+                  <button type="button" className="font-medium text-primary hover:underline" onClick={() => onOpenCreatives()}>
+                    Открыть креативы
+                  </button>
+                </>
+              )}
+            </p>
+          </div>
+        )}
       </section>
 
       {activeLaunches.length > 0 && (

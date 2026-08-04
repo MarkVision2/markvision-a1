@@ -351,6 +351,24 @@ export async function fetchMetaDashboard(
     for (const d of campDaily) accumulateDaily(campAgg, d.campaign_id, d);
   }
 
+  // If campaign daily is still empty but creative daily has spend, roll up by campaign_id.
+  if (sumSpend(campAgg) === 0 && sumSpend(creativeAgg) > 0) {
+    const creativeById = new Map(creatives.map((c) => [c.ad_id, c.campaign_id]));
+    for (const [adId, metrics] of creativeAgg) {
+      const campaignId = creativeById.get(adId);
+      if (!campaignId) continue;
+      const cur = campAgg.get(campaignId) ?? emptyMetrics();
+      cur.spend += metrics.spend;
+      cur.impressions += metrics.impressions;
+      cur.clicks += metrics.clicks;
+      cur.leads += metrics.leads;
+      cur.messages += metrics.messages;
+      cur.purchases += metrics.purchases;
+      cur.revenue += metrics.revenue;
+      campAgg.set(campaignId, cur);
+    }
+  }
+
   const range = {
     from: new Date(`${since}T00:00:00`),
     to: new Date(`${until}T00:00:00`),
