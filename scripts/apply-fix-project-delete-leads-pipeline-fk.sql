@@ -39,11 +39,15 @@ BEGIN
   WHERE project_id = OLD.id;
 
   -- Remaining tables with project_id (except projects itself).
+  -- Cast bind param to column type: legacy text project_id → avoid text = uuid.
   FOR t IN
-    SELECT c.relname AS table_name
+    SELECT
+      c.relname AS table_name,
+      typ.typname AS typname
     FROM pg_attribute a
     JOIN pg_class c ON c.oid = a.attrelid
     JOIN pg_namespace n ON n.oid = c.relnamespace
+    JOIN pg_type typ ON typ.oid = a.atttypid
     WHERE n.nspname = 'public'
       AND c.relkind = 'r'
       AND a.attname = 'project_id'
@@ -51,11 +55,24 @@ BEGIN
       AND c.relname NOT IN ('projects', 'leads', 'pipelines')
   LOOP
     BEGIN
-      EXECUTE format('DELETE FROM public.%I WHERE project_id = $1', t.table_name)
-      USING OLD.id;
+      IF t.typname = 'uuid' THEN
+        EXECUTE format('DELETE FROM public.%I WHERE project_id = $1', t.table_name)
+          USING OLD.id;
+      ELSIF t.typname IN ('text', 'varchar', 'bpchar', 'citext', 'name') THEN
+        EXECUTE format('DELETE FROM public.%I WHERE project_id = $1', t.table_name)
+          USING OLD.id::text;
+      ELSE
+        EXECUTE format(
+          'DELETE FROM public.%I WHERE project_id::text = $1',
+          t.table_name
+        )
+          USING OLD.id::text;
+      END IF;
     EXCEPTION
       WHEN undefined_table THEN NULL;
       WHEN insufficient_privilege THEN NULL;
+      WHEN undefined_function THEN NULL;
+      WHEN datatype_mismatch THEN NULL;
     END;
   END LOOP;
 
