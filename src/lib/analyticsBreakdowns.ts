@@ -237,7 +237,7 @@ export function buildAnalyticsInsights(input: {
       value: pickCreativeTitle({ name: bestCreative.name, headline: bestCreative.headline }).title,
       detail: bestCreative.crmRevenue > 0
         ? `${fmtTenge(bestCreative.crmRevenue)} · ROMI ${bestCreative.crmRomi >= 0 ? "+" : ""}${Math.round(bestCreative.crmRomi)}%`
-        : `${bestCreative.leads + bestCreative.messages} заявок · ${fmtTenge(bestCreative.spend)} расход`,
+        : `${Math.max(bestCreative.leads, bestCreative.messages)} заявок · ${fmtTenge(bestCreative.spend)} расход`,
       tone: bestCreative.crmRevenue > 0 ? "success" : "default",
       adId: bestCreative.adId,
     });

@@ -312,9 +312,9 @@ export function AdsCreativesPanel({ range }: { range: ReportPeriodRange }) {
           />
           <SummaryCard
             icon={Target}
-            label="Заявки и сообщения"
+            label="Результаты Meta"
             value={summary.results > 0 ? summary.results.toLocaleString("ru-RU") : "—"}
-            hint="По данным Meta за период"
+            hint="Заявки и сообщения без двойного счёта"
           />
           <SummaryCard
             icon={Coins}

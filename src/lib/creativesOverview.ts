@@ -4,7 +4,7 @@ export interface CreativesSummary {
   total: number;
   active: number;
   spend: number;
-  /** Заявки + сообщения Meta за период. */
+  /** Результаты Meta за период (заявки/сообщения без двойного счёта). */
   results: number;
   crmRevenue: number;
   crmProfit: number;
@@ -26,7 +26,9 @@ export function buildCreativesSummary(rows: MetaCreativeRow[]): CreativesSummary
     total: rows.length,
     active: rows.filter((row) => (row.effectiveStatus ?? "").toUpperCase() === "ACTIVE").length,
     spend,
-    results: rows.reduce((sum, row) => sum + row.leads + row.messages, 0),
+    // meta_creative_daily.leads already = form leads + messaging (see meta-structure-sync).
+    // Do NOT add messages again — that doubles WhatsApp results (5 → 10).
+    results: rows.reduce((sum, row) => sum + Math.max(row.leads, row.messages), 0),
     crmRevenue,
     crmProfit: crmRevenue - spend,
     crmSales: rows.reduce((sum, row) => sum + row.crmSales, 0),
