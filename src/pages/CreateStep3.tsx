@@ -1322,7 +1322,10 @@ const CreateStep3 = () => {
 
       // Map settled results — keep failed ones visible with an error message
       // instead of throwing the whole batch away.
-      const variants: GeneratedVariant[] = settled.map((r, i) => {
+      // IMPORTANT: do NOT name this `variants` — that shadows the useState
+      // `variants` (slide count) in the same try-block and causes TDZ:
+      // "Cannot access 'L' before initialization" when reading slidesCount.
+      const generatedVariants: GeneratedVariant[] = settled.map((r, i) => {
         if (r.status === "fulfilled") return r.value;
         const styleDef = activeStyles.find((s) => s.id === selectedStyles[i])!;
         return {
@@ -1339,14 +1342,14 @@ const CreateStep3 = () => {
         progressTimer = null;
       }
       setProgress(100);
-      const okCount = variants.filter((v) => !v.error).length;
-      const failCount = variants.length - okCount;
-      const readyCount = variants.filter((v) => !v.error && v.imageUrl).length;
-      setResults(variants);
+      const okCount = generatedVariants.filter((v) => !v.error).length;
+      const failCount = generatedVariants.length - okCount;
+      const readyCount = generatedVariants.filter((v) => !v.error && v.imageUrl).length;
+      setResults(generatedVariants);
 
       const meta = galleryMetaRef.current;
       if (meta && projectId) {
-        for (const v of variants) {
+        for (const v of generatedVariants) {
           if (!v.imageUrl || !v.requestId) continue;
           void saveGalleryItem({
             requestId: v.requestId,
@@ -1366,10 +1369,10 @@ const CreateStep3 = () => {
       if (okCount === 0) {
         setStatus("error");
         setStatusMessage(
-          variants[0]?.error ?? "Не удалось поставить задачу",
+          generatedVariants[0]?.error ?? "Не удалось поставить задачу",
         );
         toast.error("Все варианты упали", {
-          description: variants[0]?.error,
+          description: generatedVariants[0]?.error,
         });
       } else if (readyCount === 0) {
         // n8n принял задачу, но картинку ещё не вернул — это нормальный
@@ -1385,11 +1388,11 @@ const CreateStep3 = () => {
         setStatus("success");
         setStatusMessage(
           failCount > 0
-            ? `Готово: ${readyCount} из ${variants.length} (${failCount} с ошибкой)`
+            ? `Готово: ${readyCount} из ${generatedVariants.length} (${failCount} с ошибкой)`
             : `Готово: ${readyCount} ${readyCount === 1 ? "вариант" : "варианта(ов)"} сгенерировано`,
         );
         toast.success("Креативы готовы", {
-          description: variants
+          description: generatedVariants
             .filter((v) => !v.error && v.imageUrl)
             .map((v) => v.styleLabel)
             .join(" · "),
