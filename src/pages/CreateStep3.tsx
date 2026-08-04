@@ -1322,6 +1322,8 @@ const CreateStep3 = () => {
 
       // Map settled results — keep failed ones visible with an error message
       // instead of throwing the whole batch away.
+      // Do NOT name this `variants`: it shadows useState `variants` (slide count)
+      // in the same try-block → TDZ "Cannot access before initialization".
       const variantResults: GeneratedVariant[] = settled.map((r, i) => {
         if (r.status === "fulfilled") return r.value;
         const styleDef = activeStyles.find((s) => s.id === selectedStyles[i])!;
