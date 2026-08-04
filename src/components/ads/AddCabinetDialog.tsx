@@ -200,12 +200,14 @@ const AddCabinetDialog = ({
     }
   }, [step, igAssets.data, instagramId]);
 
-  // Auto-pick first pixel
+  // Auto-pick pixel only when it belongs to the ad account (not BM siblings).
   useEffect(() => {
     if (step !== "configure" || pixelId) return;
-    if (pixelsAssets.data.length > 0) {
-      setPixelId(pixelsAssets.data[0].id);
-    }
+    const actPixels = pixelsAssets.data.filter(
+      (p) => !(p as { source?: string }).source || (p as { source?: string }).source === "ad_account",
+    );
+    const pick = actPixels[0] ?? (pixelsAssets.data.length === 1 ? pixelsAssets.data[0] : null);
+    if (pick) setPixelId(pick.id);
   }, [step, pixelsAssets.data, pixelId]);
 
   const runValidation = async () => {
@@ -427,6 +429,11 @@ const AddCabinetDialog = ({
                             ))}
                           </SelectContent>
                         </Select>
+                        {!pagesAssets.isLoading && pagesAssets.data.length === 0 && (
+                          <p className="text-[11px] text-muted-foreground">
+                            Meta не отдала promote_pages для этого кабинета. Сохраним страницу из текущих объявлений автоматически; при необходимости укажите ID вручную в настройках.
+                          </p>
+                        )}
                       </div>
                       {pageId && (
                         <div className="space-y-1.5">

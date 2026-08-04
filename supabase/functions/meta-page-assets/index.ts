@@ -5,6 +5,7 @@ import {
   createUserClient,
 } from "../_lib/auth.ts";
 import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
+import { inferCabinetAssetsFromAds } from "../_lib/metaCabinetAssets.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -429,12 +430,64 @@ Deno.serve(async (req) => {
         const client = r2.body?.business?.client_pages?.data ?? [];
         [...owned, ...client].forEach(push);
       }
+      // 3) Fallback: pages actually used in recent ads (partner BM often has
+      // empty promote_pages even when creatives reference a page).
+      if (items.length === 0) {
+        const inferred = await inferCabinetAssetsFromAds(actId, META_ACCESS_TOKEN);
+        if (inferred.page_id) {
+          push({
+            id: inferred.page_id,
+            name: inferred.page_name ?? inferred.page_id,
+            website: inferred.website_url ?? undefined,
+            instagram_business_account: inferred.instagram_id
+              ? { id: inferred.instagram_id }
+              : undefined,
+          });
+        }
+        // Also list every distinct page from ads (not only the top one).
+        const ads = await metaGet(
+          `/${normalizeActId(actId)}/ads?fields=creative{object_story_spec,actor_id}&limit=50`,
+          META_ACCESS_TOKEN,
+        );
+        for (const ad of ads.body?.data ?? []) {
+          const cr = ad?.creative ?? {};
+          const oss = cr?.object_story_spec ?? {};
+          const id = String(oss?.page_id || cr?.actor_id || "").trim();
+          if (!id) continue;
+          push({
+            id,
+            name: id === inferred.page_id ? (inferred.page_name ?? id) : id,
+            instagram_business_account: oss?.instagram_user_id || oss?.instagram_actor_id
+              ? { id: String(oss.instagram_user_id || oss.instagram_actor_id) }
+              : undefined,
+          });
+        }
+      }
       return jsonResponse({ items });
     }
 
     // ============ PIXELS ============
     if (kind === "pixels") {
       if (!actId) return jsonResponse({ error: "actId is required" }, 400);
+      const seen = new Set<string>();
+      const items: Array<{
+        id: string;
+        name: string;
+        last_fired_time: string | null;
+        source?: string;
+      }> = [];
+      const pushPixel = (p: any, source: string) => {
+        const id = String(p?.id ?? "");
+        if (!id || seen.has(id)) return;
+        seen.add(id);
+        items.push({
+          id,
+          name: p?.name ?? id,
+          last_fired_time: p?.last_fired_time ?? null,
+          source,
+        });
+      };
+
       const r = await metaGet(
         `/${normalizeActId(actId)}/adspixels?fields=id,name,last_fired_time&limit=100`,
         META_ACCESS_TOKEN,
@@ -445,11 +498,30 @@ Deno.serve(async (req) => {
           502,
         );
       }
-      const items = (r.body?.data ?? []).map((p: any) => ({
-        id: p.id,
-        name: p.name,
-        last_fired_time: p.last_fired_time ?? null,
-      }));
+      for (const p of r.body?.data ?? []) pushPixel(p, "ad_account");
+
+      // Fallback: business pixels (act often has empty adspixels while BM has pixels).
+      if (items.length === 0) {
+        const r2 = await metaGet(
+          `/${normalizeActId(actId)}?fields=business{owned_pixels{id,name,last_fired_time},client_pixels{id,name,last_fired_time}}`,
+          META_ACCESS_TOKEN,
+        );
+        for (const p of r2.body?.business?.owned_pixels?.data ?? []) {
+          pushPixel(p, "business");
+        }
+        for (const p of r2.body?.business?.client_pixels?.data ?? []) {
+          pushPixel(p, "business");
+        }
+      }
+
+      // Fallback: pixel from adset promoted_object
+      if (items.length === 0) {
+        const inferred = await inferCabinetAssetsFromAds(actId, META_ACCESS_TOKEN);
+        if (inferred.pixel_id) {
+          pushPixel({ id: inferred.pixel_id, name: inferred.pixel_id }, "ads");
+        }
+      }
+
       return jsonResponse({ items });
     }
 

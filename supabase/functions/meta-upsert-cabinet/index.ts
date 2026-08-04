@@ -8,6 +8,7 @@ import {
   requireProjectAccess,
   requireUser,
 } from "../_lib/auth.ts";
+import { inferCabinetAssetsFromAds } from "../_lib/metaCabinetAssets.ts";
 
 const corsHeaders = AUTH_CORS_HEADERS;
 
@@ -171,6 +172,72 @@ Deno.serve(async (req) => {
       }
     }
 
+    // If UI saved without page/pixel (empty promote_pages), fill from live ads.
+    let inferToken = accessToken;
+    if (!inferToken) {
+      const { data: tokRow } = await admin
+        .from("ad_cabinets")
+        .select("access_token")
+        .eq("id", savedId)
+        .maybeSingle();
+      inferToken =
+        (tokRow as { access_token?: string | null } | null)?.access_token?.trim() || null;
+    }
+
+    let assetsInferred = false;
+    if (inferToken) {
+      const { data: current } = await admin
+        .from("ad_cabinets")
+        .select("page_id, page_name, instagram_id, pixel_id, pixel_event, website_url")
+        .eq("id", savedId)
+        .maybeSingle();
+      const cur = current as {
+        page_id?: string | null;
+        page_name?: string | null;
+        instagram_id?: string | null;
+        pixel_id?: string | null;
+        pixel_event?: string | null;
+        website_url?: string | null;
+      } | null;
+      const needsPage = !String(cur?.page_id ?? "").trim();
+      const needsIg = !String(cur?.instagram_id ?? "").trim();
+      const needsPixel = !String(cur?.pixel_id ?? "").trim();
+      const needsSite = !String(cur?.website_url ?? "").trim();
+      if (needsPage || needsIg || needsPixel || needsSite) {
+        try {
+          const inferred = await inferCabinetAssetsFromAds(adAccountId, inferToken);
+          const patch: Record<string, unknown> = {};
+          if (needsPage && inferred.page_id) {
+            patch.page_id = inferred.page_id;
+            patch.page_name = inferred.page_name || inferred.page_id;
+          }
+          if (needsIg && inferred.instagram_id) patch.instagram_id = inferred.instagram_id;
+          // Only fill pixel from ads promoted_object — never from unrelated BM pixels.
+          if (needsPixel && inferred.pixel_id) {
+            patch.pixel_id = inferred.pixel_id;
+            if (inferred.pixel_event) patch.pixel_event = inferred.pixel_event;
+          }
+          if (needsSite && inferred.website_url) patch.website_url = inferred.website_url;
+          if (Object.keys(patch).length > 0) {
+            const { error: fillErr } = await admin
+              .from("ad_cabinets")
+              .update(patch)
+              .eq("id", savedId);
+            if (fillErr) {
+              console.error("[meta-upsert-cabinet] asset infer:", fillErr.message);
+            } else {
+              assetsInferred = true;
+            }
+          }
+        } catch (e) {
+          console.error(
+            "[meta-upsert-cabinet] asset infer failed:",
+            e instanceof Error ? e.message : e,
+          );
+        }
+      }
+    }
+
     const { data: safe, error: readErr } = await admin
       .from("ad_cabinets")
       .select(SAFE_FIELDS)
@@ -224,6 +291,7 @@ Deno.serve(async (req) => {
       client_config_synced: !mirrorErr,
       has_access_token: !!tokenForMirror,
       token_inherited_from_project: tokenInheritedFromProject,
+      assets_inferred_from_ads: assetsInferred,
     });
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "unknown" }, 500);
