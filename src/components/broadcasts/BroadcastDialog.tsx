@@ -199,7 +199,7 @@ export function BroadcastDialog({
       setDraft((p) => {
         // Ссылку кладём в targetUrl → уйдёт кнопкой WhatsApp, не текстом.
         // Убираем старые хвосты «Вступить в группу: {ссылка}», чтобы не дублировать CTA.
-        let message = (p.message ?? "")
+        const message = (p.message ?? "")
           .replace(/\n*[ \t]*Вступить в группу:[ \t]*\{ссылка\}[ \t]*/gi, "")
           .replace(/\{ссылка\}|\{link\}/gi, "")
           .replace(/\n{3,}/g, "\n\n")

@@ -326,11 +326,13 @@ export async function fetchMetaDashboard(
   const adIds = creatives.map((c) => c.ad_id).filter(Boolean);
   const campaignIds = camps.map((c) => c.campaign_id).filter(Boolean);
 
-  let [daily, campDaily, crm] = await Promise.all([
+  const [dailyInitial, campDailyInitial, crm] = await Promise.all([
     fetchCreativeDailyByProject(projectId, since, until),
     fetchCampaignDailyByProject(projectId, since, until),
     fetchCrmDaily(projectId, since, until, adIds),
   ]);
+  let daily = dailyInitial;
+  let campDaily = campDailyInitial;
 
   const creativeAgg = new Map<string, DailyMetricBag>();
   for (const d of daily) accumulateDaily(creativeAgg, d.ad_id, d);

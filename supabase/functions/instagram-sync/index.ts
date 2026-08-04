@@ -172,7 +172,7 @@ async function syncOne(supa: any, account: any) {
 
   // 3b) Опубликованные медиа → content_plan_items (чтобы native IG / ручные посты
   // попали в статистику плана сразу после sync, без ожидания открытия UI).
-  let planOrphans = { inserted: 0, skipped: 0 };
+  const planOrphans = { inserted: 0, skipped: 0 };
   try {
     const STATS_START_YMD = "2026-07-20";
     const almatyToday = new Intl.DateTimeFormat("en-CA", {
@@ -382,7 +382,7 @@ async function syncOne(supa: any, account: any) {
   // у которых при connect забыли subscribed_apps (код-слова молчат).
   // Page-linked → Facebook Graph /{page_id}/subscribed_apps
   // Instagram Login (page-less) → Instagram Graph /{ig_user_id}/subscribed_apps
-  let webhook: { attempted: boolean; ok?: boolean; error?: string; via?: string } = { attempted: false };
+  const webhook: { attempted: boolean; ok?: boolean; error?: string; via?: string } = { attempted: false };
   try {
     const pageId = typeof account.page_id === "string" ? account.page_id.trim() : "";
     const pageTok = typeof account.page_access_token === "string" ? account.page_access_token.trim() : "";
