@@ -89,18 +89,26 @@ export function CreativeCard({
       <MetricPill label="Заявки" value={fmtNum(leadValue)} />
       <MetricPill label="Расход" value={row.spend > 0 ? fmtTenge(row.spend) : "—"} />
       <MetricPill
-        label="Выручка"
-        value={hasCrmRevenue ? fmtTenge(row.crmRevenue) : "—"}
-        tone={hasCrmRevenue ? "success" : "muted"}
+        label="CPL"
+        value={
+          leadValue > 0 && row.spend > 0
+            ? fmtTenge(row.spend / leadValue)
+            : row.crmCpl > 0
+              ? fmtTenge(row.crmCpl)
+              : row.cpl > 0
+                ? fmtTenge(row.cpl)
+                : "—"
+        }
+        tone={leadValue > 0 && row.spend > 0 ? "success" : "muted"}
       />
       <MetricPill label="CTR" value={row.ctr > 0 ? `${row.ctr.toFixed(2)}%` : "—"} />
     </>
   ) : (
     <>
-      <MetricPill label="CTR" value={row.ctr > 0 ? `${row.ctr.toFixed(2)}%` : "—"} />
-      <MetricPill label="CPL" value={row.cpl > 0 ? fmtTenge(row.cpl) : "—"} tone="success" />
-      <MetricPill label="Расход" value={row.spend > 0 ? fmtTenge(row.spend) : "—"} />
       <MetricPill label={isWhatsApp ? "Сообщ." : "Заявки"} value={fmtNum(isWhatsApp ? row.messages : row.leads)} />
+      <MetricPill label="Расход" value={row.spend > 0 ? fmtTenge(row.spend) : "—"} />
+      <MetricPill label="CPL" value={row.cpl > 0 ? fmtTenge(row.cpl) : "—"} tone="success" />
+      <MetricPill label="CTR" value={row.ctr > 0 ? `${row.ctr.toFixed(2)}%` : "—"} />
     </>
   );
 

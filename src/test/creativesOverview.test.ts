@@ -72,9 +72,16 @@ describe("buildCreativesSummary", () => {
     expect(summary.total).toBe(3);
     expect(summary.active).toBe(1);
     expect(summary.spend).toBe(150_000);
-    expect(summary.results).toBe(30);
+    expect(summary.results).toBe(25);
     expect(summary.crmRevenue).toBe(400_000);
     expect(summary.crmProfit).toBe(250_000);
+  });
+
+  it("does not double-count WhatsApp messages already inside leads", () => {
+    const summary = buildCreativesSummary([
+      creative({ id: "wa", adId: "wa1", name: "WA", leads: 5, messages: 5, spend: 1000 }),
+    ]);
+    expect(summary.results).toBe(5);
   });
 
   it("picks the best creative by CRM ROMI with spend", () => {

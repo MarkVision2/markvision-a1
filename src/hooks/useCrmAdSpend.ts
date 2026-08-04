@@ -38,7 +38,7 @@ export function useCrmAdSpend(projectId: string | null | undefined) {
         .maybeSingle();
       const usdKzt = Number(fx?.usd_kzt ?? 470);
 
-      let q = supabase
+      const q = supabase
         .from("cabinet_daily_insights")
         .select("date, spend, manual_spend, currency, project_id")
         .gte("date", window.since)

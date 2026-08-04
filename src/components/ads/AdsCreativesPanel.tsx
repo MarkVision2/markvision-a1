@@ -9,7 +9,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
-import { supabase } from "@/integrations/supabase/client";
 import { CreativeCard } from "./CreativeCard";
 import { CreativeDetailDrawer } from "@/components/creatives/CreativeDetailDrawer";
 import {
@@ -21,6 +20,8 @@ import {
 import { META_STRUCTURE_QUERY_KEY } from "@/hooks/useMetaDashboard";
 import { buildCreativesSummary } from "@/lib/creativesOverview";
 import { pickCreativeTitle } from "@/lib/creativeDisplay";
+import { formatMetaSyncMessages, syncMetaFull } from "@/lib/metaSync";
+import { fetchCdiRows } from "@/lib/cdiFetch";
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import type { ReportPeriodRange } from "@/hooks/useReportData";
@@ -31,17 +32,17 @@ type TypeFilter = "all" | "video" | "image" | "carousel";
 type SortKey = "spend" | "ctr" | "cpl" | "leads" | "messages" | "romi" | "crmLeads" | "crmSales" | "crmRevenue" | "crmRomi" | "crmCpl";
 
 const SORT_LABELS: Record<SortKey, string> = {
-  crmRomi: "ROMI (CRM)",
-  crmRevenue: "Выручка CRM",
-  crmSales: "Продажи CRM",
-  crmLeads: "Лиды CRM",
-  crmCpl: "CPL CRM",
   spend: "Расход",
-  romi: "ROMI Meta",
-  ctr: "CTR",
   cpl: "CPL Meta",
+  ctr: "CTR",
   leads: "Заявки Meta",
   messages: "Сообщения",
+  crmLeads: "Лиды CRM",
+  crmCpl: "CPL CRM",
+  crmRevenue: "Выручка CRM",
+  crmSales: "Продажи CRM",
+  crmRomi: "ROMI (CRM)",
+  romi: "ROMI Meta",
 };
 
 const STATUS_FILTERS: { id: StatusFilter; label: string }[] = [
@@ -70,12 +71,14 @@ export function AdsCreativesPanel({ range }: { range: ReportPeriodRange }) {
   const [status, setStatus] = useState<StatusFilter>("active_or_spent");
   const [typeF, setTypeF] = useState<TypeFilter>("all");
   const [goalF, setGoalF] = useState<"all" | "whatsapp" | "site">("all");
-  const [sort, setSort] = useState<SortKey>("crmRevenue");
+  const [sort, setSort] = useState<SortKey>("spend");
   const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [cabinetFilter, setCabinetFilter] = useState<string>("all");
   const [visibleCount, setVisibleCount] = useState(48);
+  const [cdiSpend, setCdiSpend] = useState(0);
+  const [cdiTick, setCdiTick] = useState(0);
   const [viewMode, setViewMode] = useState<"grid" | "list">(() =>
     typeof window !== "undefined" && window.innerWidth < 768 ? "list" : "grid",
   );
@@ -108,6 +111,40 @@ export function AdsCreativesPanel({ range }: { range: ReportPeriodRange }) {
       setSearchParams((sp) => { sp.delete("ad"); return sp; }, { replace: true });
     }
   }, [focusAdId, creatives, openId, setSearchParams]);
+
+  useEffect(() => {
+    if (!projectId) {
+      setCdiSpend(0);
+      return;
+    }
+    const cabinetIds =
+      cabinetFilter !== "all"
+        ? [cabinetFilter]
+        : cabinets.map((c) => c.id).filter(Boolean);
+    if (cabinetIds.length === 0) {
+      setCdiSpend(0);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const rows = await fetchCdiRows<{ spend: number | string }>("spend", {
+          cabinetIds,
+          since: ymd(range.from),
+          until: ymd(range.to),
+          projectId,
+        });
+        if (!cancelled) {
+          setCdiSpend(rows.reduce((s, r) => s + (Number(r.spend) || 0), 0));
+        }
+      } catch {
+        if (!cancelled) setCdiSpend(0);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, cabinets, cabinetFilter, range.from, range.to, cdiTick]);
 
   const campaignById = useMemo(() => {
     const m = new Map<string, MetaCampaignRow>();
@@ -163,6 +200,8 @@ export function AdsCreativesPanel({ range }: { range: ReportPeriodRange }) {
   const bestTitle = summary.best
     ? pickCreativeTitle({ name: summary.best.name, headline: summary.best.headline }).title
     : null;
+  const spendMissing = !loading && creatives.length > 0 && summary.spend === 0;
+  const spendFromCdi = spendMissing && cdiSpend > 0;
 
   const openCreative = useMemo(
     () => (openId ? filtered.find((f) => f.row.id === openId) ?? null : null),
@@ -177,12 +216,18 @@ export function AdsCreativesPanel({ range }: { range: ReportPeriodRange }) {
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const { error } = await supabase.functions.invoke("meta-structure-sync", {
-        body: { since: ymd(range.from), until: ymd(range.to) },
+      const result = await syncMetaFull({
+        since: ymd(range.from),
+        until: ymd(range.to),
+        insights_only: true,
+        ...(cabinetFilter !== "all" ? { cabinet_id: cabinetFilter } : {}),
       });
-      if (error) throw new Error(error.message);
+      const messages = formatMetaSyncMessages(result);
+      if (messages.success) toast.success(messages.success);
+      if (messages.error) toast.error(messages.error);
+      for (const w of messages.warnings) toast.warning(w);
       await queryClient.invalidateQueries({ queryKey: [META_STRUCTURE_QUERY_KEY, projectId] });
-      toast.success("Синхронизация запущена. Креативы и CRM-метрики обновятся через несколько секунд.");
+      setCdiTick((t) => t + 1);
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Не удалось синхронизировать");
     } finally {
@@ -205,7 +250,7 @@ export function AdsCreativesPanel({ range }: { range: ReportPeriodRange }) {
             <div className="min-w-0">
               <h2 className="text-base font-semibold">Креативы за период</h2>
               <p className="text-xs text-muted-foreground">
-                Каждая карточка — объявление из Meta с расходом, заявками и реальной выручкой из CRM. Нажмите на карточку, чтобы увидеть воронку.
+                На каждой карточке — расход, заявки, CPL и CTR из Meta за выбранный период. Нажмите карточку, чтобы открыть воронку.
               </p>
             </div>
           </div>
@@ -222,18 +267,54 @@ export function AdsCreativesPanel({ range }: { range: ReportPeriodRange }) {
           </Button>
         </div>
 
+        {spendMissing && (
+          <div
+            className={cn(
+              "mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-3 py-2.5 text-xs",
+              spendFromCdi
+                ? "border-amber-500/40 bg-amber-500/10 text-foreground"
+                : "border-primary/30 bg-primary/5 text-muted-foreground",
+            )}
+          >
+            <p>
+              <span className="font-semibold text-foreground">
+                {spendFromCdi
+                  ? `В кабинете есть расход (${fmtTenge(cdiSpend)}), а по креативам — 0 ₸.`
+                  : "По креативам нет расхода за период."}
+              </span>{" "}
+              Подтяните дневную статистику объявлений из Meta — после синхронизации на карточках появятся расход, лиды, CPL и CTR.
+            </p>
+            <Button
+              type="button"
+              size="sm"
+              className="h-8 shrink-0 rounded-lg"
+              disabled={syncing}
+              onClick={() => void handleSync()}
+            >
+              {syncing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}
+              Синхронизировать
+            </Button>
+          </div>
+        )}
+
         <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
           <SummaryCard
             icon={Wallet}
             label="Расход за период"
-            value={summary.spend > 0 ? fmtTenge(summary.spend) : "—"}
-            hint={`${summary.active} активных из ${summary.total}`}
+            value={summary.spend > 0 ? fmtTenge(summary.spend) : spendFromCdi ? fmtTenge(cdiSpend) : "—"}
+            hint={
+              summary.spend > 0
+                ? `${summary.active} активных из ${summary.total}`
+                : spendFromCdi
+                  ? "Сумма из таблицы кабинетов — синхронизируйте креативы"
+                  : `${summary.active} активных из ${summary.total}`
+            }
           />
           <SummaryCard
             icon={Target}
-            label="Заявки и сообщения"
+            label="Результаты Meta"
             value={summary.results > 0 ? summary.results.toLocaleString("ru-RU") : "—"}
-            hint="По данным Meta за период"
+            hint="Заявки и сообщения без двойного счёта"
           />
           <SummaryCard
             icon={Coins}
