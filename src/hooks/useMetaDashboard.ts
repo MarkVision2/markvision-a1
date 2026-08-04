@@ -13,6 +13,10 @@ import type { MetaCampaignRow, MetaCreativeRow } from "./useMetaStructure";
 
 export const META_STRUCTURE_QUERY_KEY = "meta-structure";
 
+/** PostgREST default max-rows is 1000 — page until exhausted. */
+const PAGE_SIZE = 1000;
+const IN_CHUNK = 150;
+
 interface Range { from: Date; to: Date }
 
 function ymd(d: Date) {
@@ -71,50 +75,194 @@ interface RawCampaignDaily {
   revenue: number | string;
 }
 
-export async function fetchMetaDashboard(
-  projectId: string,
-  since: string,
-  until: string,
-): Promise<{ creatives: MetaCreativeRow[]; campaigns: MetaCampaignRow[] }> {
-  const crmTable = (supabase as any).from("meta_creative_crm_daily");
+type DailyMetricBag = {
+  spend: number;
+  impressions: number;
+  clicks: number;
+  leads: number;
+  messages: number;
+  purchases: number;
+  revenue: number;
+};
 
+function emptyMetrics(): DailyMetricBag {
+  return { spend: 0, impressions: 0, clicks: 0, leads: 0, messages: 0, purchases: 0, revenue: 0 };
+}
 
-  const [creativesRes, dailyRes, crmRes, campsRes, campDailyRes, leads] = await Promise.all([
+function accumulateDaily(
+  agg: Map<string, DailyMetricBag>,
+  key: string,
+  d: {
+    spend: number | string;
+    impressions: number | string;
+    clicks: number | string;
+    leads: number | string;
+    messages: number | string;
+    purchases: number | string;
+    revenue: number | string;
+  },
+) {
+  const cur = agg.get(key) ?? emptyMetrics();
+  cur.spend += Number(d.spend) || 0;
+  cur.impressions += Number(d.impressions) || 0;
+  cur.clicks += Number(d.clicks) || 0;
+  cur.leads += Number(d.leads) || 0;
+  cur.messages += Number(d.messages) || 0;
+  cur.purchases += Number(d.purchases) || 0;
+  cur.revenue += Number(d.revenue) || 0;
+  agg.set(key, cur);
+}
+
+function sumSpend(agg: Map<string, DailyMetricBag>): number {
+  let s = 0;
+  for (const v of agg.values()) s += v.spend;
+  return s;
+}
+
+async function fetchPaged<T>(
+  runPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await runPage(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const chunk = data ?? [];
+    out.push(...chunk);
+    if (chunk.length < PAGE_SIZE) break;
+  }
+  return out;
+}
+
+function chunkIds(ids: string[], size = IN_CHUNK): string[][] {
+  const unique = Array.from(new Set(ids.filter(Boolean)));
+  const chunks: string[][] = [];
+  for (let i = 0; i < unique.length; i += size) {
+    chunks.push(unique.slice(i, i + size));
+  }
+  return chunks;
+}
+
+async function fetchCreatives(projectId: string): Promise<RawCreative[]> {
+  return fetchPaged((from, to) =>
     supabase
       .from("meta_creatives")
       .select(
         "id, ad_id, campaign_id, cabinet_id, name, creative_type, thumbnail_url, image_url, poster_url, video_url, video_id, primary_text, headline, cta, destination_url, effective_status",
       )
       .eq("project_id", projectId)
-      .limit(500),
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
+}
+
+async function fetchCampaigns(projectId: string): Promise<RawCampaign[]> {
+  return fetchPaged((from, to) =>
+    supabase
+      .from("meta_campaigns")
+      .select("id, campaign_id, cabinet_id, name, objective, destination_type, effective_status, daily_budget")
+      .eq("project_id", projectId)
+      .order("id", { ascending: true })
+      .range(from, to),
+  );
+}
+
+/**
+ * Period metrics for creatives.
+ * Primary: filter by project_id (indexed).
+ * Fallback: by ad_id from project's creatives — covers rows with null/wrong project_id.
+ */
+async function fetchCreativeDailyByProject(
+  projectId: string,
+  since: string,
+  until: string,
+): Promise<RawDailyAgg[]> {
+  return fetchPaged((from, to) =>
     supabase
       .from("meta_creative_daily")
       .select("ad_id, spend, impressions, clicks, leads, messages, purchases, revenue")
       .eq("project_id", projectId)
       .gte("date", since)
-      .lte("date", until),
-    crmTable
-      .select("ad_id, crm_leads, crm_qualified, crm_sales, crm_revenue, crm_diagnostics, crm_diagnostic_revenue")
-      .eq("project_id", projectId)
-      .gte("date", since)
-      .lte("date", until),
-    supabase
-      .from("meta_campaigns")
-      .select("id, campaign_id, cabinet_id, name, objective, destination_type, effective_status, daily_budget")
-      .eq("project_id", projectId)
-      .limit(500),
+      .lte("date", until)
+      .order("ad_id", { ascending: true })
+      .order("date", { ascending: true })
+      .range(from, to),
+  );
+}
+
+async function fetchCreativeDailyByAdIds(
+  adIds: string[],
+  since: string,
+  until: string,
+): Promise<RawDailyAgg[]> {
+  if (adIds.length === 0) return [];
+  const out: RawDailyAgg[] = [];
+  for (const ids of chunkIds(adIds)) {
+    const page = await fetchPaged<RawDailyAgg>((from, to) =>
+      supabase
+        .from("meta_creative_daily")
+        .select("ad_id, spend, impressions, clicks, leads, messages, purchases, revenue")
+        .in("ad_id", ids)
+        .gte("date", since)
+        .lte("date", until)
+        .order("ad_id", { ascending: true })
+        .order("date", { ascending: true })
+        .range(from, to),
+    );
+    out.push(...page);
+  }
+  return out;
+}
+
+async function fetchCampaignDailyByProject(
+  projectId: string,
+  since: string,
+  until: string,
+): Promise<RawCampaignDaily[]> {
+  return fetchPaged((from, to) =>
     supabase
       .from("meta_campaign_daily")
       .select("campaign_id, spend, impressions, clicks, leads, messages, purchases, revenue")
       .eq("project_id", projectId)
       .gte("date", since)
-      .lte("date", until),
-    fetchLeadsLite(projectId),
-  ]);
+      .lte("date", until)
+      .order("campaign_id", { ascending: true })
+      .order("date", { ascending: true })
+      .range(from, to),
+  );
+}
 
-  const creatives = (creativesRes.data ?? []) as RawCreative[];
-  const daily = (dailyRes.data ?? []) as RawDailyAgg[];
-  const crm = ((crmRes.data ?? []) as unknown) as Array<{
+async function fetchCampaignDailyByIds(
+  campaignIds: string[],
+  since: string,
+  until: string,
+): Promise<RawCampaignDaily[]> {
+  if (campaignIds.length === 0) return [];
+  const out: RawCampaignDaily[] = [];
+  for (const ids of chunkIds(campaignIds)) {
+    const page = await fetchPaged<RawCampaignDaily>((from, to) =>
+      supabase
+        .from("meta_campaign_daily")
+        .select("campaign_id, spend, impressions, clicks, leads, messages, purchases, revenue")
+        .in("campaign_id", ids)
+        .gte("date", since)
+        .lte("date", until)
+        .order("campaign_id", { ascending: true })
+        .order("date", { ascending: true })
+        .range(from, to),
+    );
+    out.push(...page);
+  }
+  return out;
+}
+
+async function fetchCrmDaily(
+  projectId: string,
+  since: string,
+  until: string,
+  adIds: string[],
+) {
+  const crmTable = (supabase as any).from("meta_creative_crm_daily");
+  type CrmRow = {
     ad_id: string;
     crm_leads: number | string;
     crm_qualified: number | string;
@@ -122,22 +270,85 @@ export async function fetchMetaDashboard(
     crm_revenue: number | string;
     crm_diagnostics?: number | string;
     crm_diagnostic_revenue?: number | string;
-  }>;
+  };
 
-  const agg = new Map<string, {
-    spend: number; impressions: number; clicks: number;
-    leads: number; messages: number; purchases: number; revenue: number;
-  }>();
-  for (const d of daily) {
-    const cur = agg.get(d.ad_id) ?? { spend: 0, impressions: 0, clicks: 0, leads: 0, messages: 0, purchases: 0, revenue: 0 };
-    cur.spend += Number(d.spend) || 0;
-    cur.impressions += Number(d.impressions) || 0;
-    cur.clicks += Number(d.clicks) || 0;
-    cur.leads += Number(d.leads) || 0;
-    cur.messages += Number(d.messages) || 0;
-    cur.purchases += Number(d.purchases) || 0;
-    cur.revenue += Number(d.revenue) || 0;
-    agg.set(d.ad_id, cur);
+  let rows: CrmRow[] = [];
+  try {
+    rows = await fetchPaged<CrmRow>((from, to) =>
+      crmTable
+        .select("ad_id, crm_leads, crm_qualified, crm_sales, crm_revenue, crm_diagnostics, crm_diagnostic_revenue")
+        .eq("project_id", projectId)
+        .gte("date", since)
+        .lte("date", until)
+        .order("ad_id", { ascending: true })
+        .range(from, to),
+    );
+  } catch {
+    rows = [];
+  }
+
+  const crmSpendProxy = rows.reduce((s, r) => s + (Number(r.crm_leads) || 0), 0);
+  if (crmSpendProxy === 0 && adIds.length > 0) {
+    try {
+      const extra: CrmRow[] = [];
+      for (const ids of chunkIds(adIds)) {
+        const page = await fetchPaged<CrmRow>((from, to) =>
+          crmTable
+            .select("ad_id, crm_leads, crm_qualified, crm_sales, crm_revenue, crm_diagnostics, crm_diagnostic_revenue")
+            .in("ad_id", ids)
+            .gte("date", since)
+            .lte("date", until)
+            .order("ad_id", { ascending: true })
+            .range(from, to),
+        );
+        extra.push(...page);
+      }
+      if (extra.length > rows.length) rows = extra;
+    } catch {
+      /* view may be missing */
+    }
+  }
+
+  return rows;
+}
+
+export async function fetchMetaDashboard(
+  projectId: string,
+  since: string,
+  until: string,
+): Promise<{ creatives: MetaCreativeRow[]; campaigns: MetaCampaignRow[] }> {
+  const [creatives, camps, leads] = await Promise.all([
+    fetchCreatives(projectId),
+    fetchCampaigns(projectId),
+    fetchLeadsLite(projectId),
+  ]);
+
+  const adIds = creatives.map((c) => c.ad_id).filter(Boolean);
+  const campaignIds = camps.map((c) => c.campaign_id).filter(Boolean);
+
+  let [daily, campDaily, crm] = await Promise.all([
+    fetchCreativeDailyByProject(projectId, since, until),
+    fetchCampaignDailyByProject(projectId, since, until),
+    fetchCrmDaily(projectId, since, until, adIds),
+  ]);
+
+  const creativeAgg = new Map<string, DailyMetricBag>();
+  for (const d of daily) accumulateDaily(creativeAgg, d.ad_id, d);
+
+  // Rows with null/mismatched project_id never appear in the project filter —
+  // re-fetch by the creatives we already own for this project.
+  if (sumSpend(creativeAgg) === 0 && adIds.length > 0) {
+    daily = await fetchCreativeDailyByAdIds(adIds, since, until);
+    creativeAgg.clear();
+    for (const d of daily) accumulateDaily(creativeAgg, d.ad_id, d);
+  }
+
+  const campAgg = new Map<string, DailyMetricBag>();
+  for (const d of campDaily) accumulateDaily(campAgg, d.campaign_id, d);
+  if (sumSpend(campAgg) === 0 && campaignIds.length > 0) {
+    campDaily = await fetchCampaignDailyByIds(campaignIds, since, until);
+    campAgg.clear();
+    for (const d of campDaily) accumulateDaily(campAgg, d.campaign_id, d);
   }
 
   const range = {
@@ -161,8 +372,14 @@ export async function fetchMetaDashboard(
   const crmAgg = mergeCreativeCrmMaps(crmFromView, crmFromLeads);
 
   const creativeRows: MetaCreativeRow[] = creatives.map((c) => {
-    const a = agg.get(c.ad_id) ?? { spend: 0, impressions: 0, clicks: 0, leads: 0, messages: 0, purchases: 0, revenue: 0 };
-    const cr = crmAgg.get(c.ad_id) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmDiagnostics: 0, crmRevenue: 0 };
+    const a = creativeAgg.get(c.ad_id) ?? emptyMetrics();
+    const cr = crmAgg.get(c.ad_id) ?? {
+      crmLeads: 0,
+      crmQualified: 0,
+      crmSales: 0,
+      crmDiagnostics: 0,
+      crmRevenue: 0,
+    };
     const ctr = a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0;
     const cpl = a.leads > 0 ? a.spend / a.leads : 0;
     const cpc = a.clicks > 0 ? a.spend / a.clicks : 0;
@@ -218,26 +435,8 @@ export async function fetchMetaDashboard(
     crmByCampaign.set(campaignId, cur);
   }
 
-  const camps = (campsRes.data ?? []) as RawCampaign[];
-  const campDaily = (campDailyRes.data ?? []) as RawCampaignDaily[];
-  const campAgg = new Map<string, {
-    spend: number; impressions: number; clicks: number;
-    leads: number; messages: number; purchases: number; revenue: number;
-  }>();
-  for (const d of campDaily) {
-    const cur = campAgg.get(d.campaign_id) ?? { spend: 0, impressions: 0, clicks: 0, leads: 0, messages: 0, purchases: 0, revenue: 0 };
-    cur.spend += Number(d.spend) || 0;
-    cur.impressions += Number(d.impressions) || 0;
-    cur.clicks += Number(d.clicks) || 0;
-    cur.leads += Number(d.leads) || 0;
-    cur.messages += Number(d.messages) || 0;
-    cur.purchases += Number(d.purchases) || 0;
-    cur.revenue += Number(d.revenue) || 0;
-    campAgg.set(d.campaign_id, cur);
-  }
-
   const campaignRows: MetaCampaignRow[] = camps.map((c) => {
-    const a = campAgg.get(c.campaign_id) ?? { spend: 0, impressions: 0, clicks: 0, leads: 0, messages: 0, purchases: 0, revenue: 0 };
+    const a = campAgg.get(c.campaign_id) ?? emptyMetrics();
     const cr = crmByCampaign.get(c.campaign_id) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 };
     const ctr = a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0;
     const cpl = a.leads > 0 ? a.spend / a.leads : 0;
