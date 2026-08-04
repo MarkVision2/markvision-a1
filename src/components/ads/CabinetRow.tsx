@@ -23,6 +23,7 @@ import {
   sumAdsCabinetCrmDaily,
 } from "@/lib/adsCabinetCrmDaily";
 import { supabase } from "@/integrations/supabase/client";
+import { formatMetaSyncMessages, syncMetaFull } from "@/lib/metaSync";
 import { manualValueForSave } from "@/lib/cdiManualOverride";
 import {
   DropdownMenu,
@@ -151,18 +152,20 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
       const today = new Date();
       const end = lastDayOfMonth < today ? lastDayOfMonth : today;
       const until = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, "0")}-${String(end.getDate()).padStart(2, "0")}`;
-      const { data: resp, error: err } = await supabase.functions.invoke("meta-daily-sync", {
-        body: { cabinet_id: cabinet.id, since, until },
+      const result = await syncMetaFull({
+        since,
+        until,
+        cabinet_id: cabinet.id,
+        insights_only: true,
       });
-      if (err) throw err;
-      const r = (resp?.results ?? [])[0];
-      if (r?.ok) {
-        toast.success(`Загружено: ${r.days} дн., ${r.leads} лидов, расход ${Math.round(r.spend)}`);
+      const messages = formatMetaSyncMessages(result);
+      if (messages.success) {
+        toast.success(messages.success);
         refresh();
         onSynced?.();
-      } else {
-        toast.error("Meta: " + (r?.error || "не удалось получить данные"));
       }
+      if (messages.error) toast.error(messages.error);
+      for (const w of messages.warnings) toast.warning(w);
     } catch (e) {
       toast.error((e as Error).message || "Ошибка синхронизации");
     } finally {
