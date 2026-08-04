@@ -12,7 +12,7 @@ import { META_STRUCTURE_QUERY_KEY } from "@/hooks/useMetaDashboard";
 import { useAdCampaignLaunches } from "@/hooks/useAdCampaignLaunches";
 import { useMetaCampaigns } from "@/hooks/useMetaStructure";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
-import { supabase } from "@/integrations/supabase/client";
+import { formatMetaSyncMessages, syncMetaFull } from "@/lib/metaSync";
 import {
   buildCampaignWorkspaceSummary,
   filterCampaignRows,
