@@ -1,7 +1,7 @@
 {
-  "git_sha": "9d7f47f",
-  "git_sha_full": "9d7f47fbc946a1c37dc42f5370d3e965543cf40e",
-  "updated_at": "2026-08-04T10:30:41Z",
-  "label": "fix: ads creatives/campaigns stats + CPL, no double-count messages [vercel-deploy]",
+  "git_sha": "78afa0f",
+  "git_sha_full": "78afa0f329d7b24eb23c49010fb838e082654de3",
+  "updated_at": "2026-08-04T10:33:51Z",
+  "label": "deploy: force Vercel build for ads creatives stats fix [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
