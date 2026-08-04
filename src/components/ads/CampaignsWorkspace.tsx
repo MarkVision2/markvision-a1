@@ -69,12 +69,16 @@ export function CampaignsWorkspace({
   const handleSync = async () => {
     setSyncing(true);
     try {
-      const { error } = await supabase.functions.invoke("meta-structure-sync", {
-        body: { since: ymd(range.from), until: ymd(range.to) },
+      const result = await syncMetaFull({
+        since: ymd(range.from),
+        until: ymd(range.to),
+        insights_only: true,
       });
-      if (error) throw new Error(error.message);
+      const messages = formatMetaSyncMessages(result);
+      if (messages.success) toast.success(messages.success);
+      if (messages.error) toast.error(messages.error);
+      for (const w of messages.warnings) toast.warning(w);
       await queryClient.invalidateQueries({ queryKey: [META_STRUCTURE_QUERY_KEY, projectId] });
-      toast.success("Синхронизация Meta запущена. Кампании и CRM-метрики обновятся через несколько секунд.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Не удалось синхронизировать");
     } finally {
