@@ -1,7 +1,8 @@
 {
-  "git_sha": "9a9f783",
-  "git_sha_full": "9a9f78311143aecc78ec672f677e110b810bb1e6",
-  "updated_at": "2026-08-04T08:26:05Z",
-  "label": "Fixed RLS policy security",
-  "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
+  "git_sha": "fdf5654",
+  "git_sha_full": "fdf56547b0f83bf1829dd382e4a6bd01dc0cd4b1",
+  "updated_at": "2026-08-04T09:24:45Z",
+  "synced_at": "2026-08-04T09:24:45Z",
+  "label": "deploy: content create TDZ fix (variantResults)",
+  "publish_hint": "push main → www.markvision.kz (Vercel)"
 }
