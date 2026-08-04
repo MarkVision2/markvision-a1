@@ -183,8 +183,9 @@ export function WhatsAppWebCard({ projectId }: Props) {
               WhatsApp Web (бесплатно)
             </CardTitle>
             <CardDescription className="mt-1.5">
-              QR как в WhatsApp Web → сообщения сразу в CRM. Без Green API.
-              Green API оставьте для автоматизаций и рассылок.
+              QR как в WhatsApp Web → в CRM попадают только новые сообщения после
+              подключения (старые чаты не импортируются). Green API оставьте для
+              автоматизаций и рассылок.
             </CardDescription>
           </div>
           <div className="flex flex-wrap gap-1.5">

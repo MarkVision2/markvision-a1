@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import { AutopostComposerDialog } from "@/components/autopost/AutopostComposerDialog";
@@ -23,6 +23,13 @@ describe("AutopostComposerDialog schedule + AI caption", () => {
     onGenerateCaption.mockReset();
     onCaptionChange.mockReset();
     onPickFiles.mockReset();
+    // Freeze "today" so Завтра / Сегодня labels match day prop (Asia/Almaty).
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(new Date("2026-07-19T08:00:00+05:00"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   const baseProps = () => ({
