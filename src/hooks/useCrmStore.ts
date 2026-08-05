@@ -216,8 +216,8 @@ function leadRowToFrontIndexed(
 
 export function useCrmStore() {
   const { user } = useAuth();
-  const { config: whatsapp, setWhatsapp } = useWhatsAppConfig();
   const { activeId: projectId } = useProjectsStore();
+  const { config: whatsapp, setWhatsapp } = useWhatsAppConfig(projectId);
 
   const [stages, setStages] = useState<LeadStage[]>(DEFAULT_STAGES);
   const [leads, setLeads] = useState<Lead[]>([]);

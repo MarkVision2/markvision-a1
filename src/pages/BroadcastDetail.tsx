@@ -125,7 +125,7 @@ export default function BroadcastDetail() {
   const projectId = activeId || null;
   const { contacts: crmContacts } = useLeadContacts();
   const { create, update, remove, launch, duplicate } = useBroadcasts(projectId, crmContacts);
-  const { config: whatsapp } = useWhatsAppConfig();
+  const { config: whatsapp } = useWhatsAppConfig(projectId);
   const { detail, loading, error, refetch } = useBroadcastDetail(id, projectId);
 
   const [editOpen, setEditOpen] = useState(false);

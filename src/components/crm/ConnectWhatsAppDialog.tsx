@@ -51,7 +51,8 @@ export function ConnectWhatsAppDialog({
             Подключить WhatsApp Business
           </DialogTitle>
           <DialogDescription>
-            Все входящие заявки будут попадать в воронку и в раздел чатов.
+            Для бесплатного QR откройте Настройки → Подключения → WhatsApp Web.
+            Либо укажите номер Green API ниже (если инстанс уже авторизован).
           </DialogDescription>
         </DialogHeader>
 

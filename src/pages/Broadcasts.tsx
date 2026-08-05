@@ -65,7 +65,7 @@ const Broadcasts = () => {
   const projectId = activeId || null;
   const { contacts: crmContacts } = useLeadContacts();
   const { broadcasts, stats, create, duplicate, update, remove, launch } = useBroadcasts(projectId, crmContacts);
-  const { config: whatsapp } = useWhatsAppConfig();
+  const { config: whatsapp } = useWhatsAppConfig(projectId);
 
   const [editing, setEditing] = useState<Broadcast | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);

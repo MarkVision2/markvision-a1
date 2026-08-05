@@ -102,9 +102,9 @@ export function ChatsView({
               <MessageCircle className="h-4 w-4" />
             </span>
             <div>
-              <div className="font-semibold">WhatsApp Business не подключён</div>
+              <div className="font-semibold">WhatsApp не подключён</div>
               <div className="text-xs text-muted-foreground">
-                Подключите номер, чтобы получать заявки и переписку прямо в CRM.
+                Подключите WhatsApp Web (QR) или Green API в Настройках — заявки и переписка появятся в CRM.
               </div>
             </div>
           </div>
