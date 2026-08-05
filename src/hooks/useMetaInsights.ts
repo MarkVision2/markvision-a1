@@ -374,10 +374,11 @@ export function useMetaInsights(
         setData({ currency: "USD", totals: EMPTY_TOTALS, daily: [] });
       })
       .finally(() => { if (!cancelled) setLoading(false); });
-    // Realtime: subscribe to changes in cabinet_daily_insights for this external_id
+    // Realtime: unique channel name per mount — shared `cdi-${actId}` collides when
+    // several CabinetRows (or Strict Mode remount) call channel() after subscribe().
     const norm = normalizeActId(actId);
     const channel = supabase
-      .channel(`cdi-${norm}`)
+      .channel(`cdi-${norm}-${Math.random().toString(36).slice(2, 8)}`)
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "cabinet_daily_insights", filter: `external_id=eq.${norm}` },
@@ -390,7 +391,7 @@ export function useMetaInsights(
       .subscribe();
     return () => {
       cancelled = true;
-      supabase.removeChannel(channel);
+      void supabase.removeChannel(channel);
     };
   }, [actId, month, enabled, refreshKey, projectId, cabinetId]);
 
