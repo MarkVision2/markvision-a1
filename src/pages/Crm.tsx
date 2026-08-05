@@ -53,7 +53,6 @@ const Crm = () => {
     leads,
     chats,
     whatsapp,
-    setWhatsapp,
     addStage,
     renameStage,
     removeStage,
