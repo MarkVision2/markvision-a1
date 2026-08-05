@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Plus,
   Columns3,
@@ -26,7 +26,6 @@ const ChatsView = lazy(() => import("@/components/crm/ChatsView").then((m) => ({
 const ClientsView = lazy(() => import("@/components/crm/ClientsView").then((m) => ({ default: m.ClientsView })));
 import { NewLeadDialog } from "@/components/crm/NewLeadDialog";
 import { LeadDetailSheet } from "@/components/crm/LeadDetailSheet";
-import { ConnectWhatsAppDialog } from "@/components/crm/ConnectWhatsAppDialog";
 import { CrmFilters, type CrmFilterState } from "@/components/crm/CrmFilters";
 import { CrmTodayView } from "@/components/crm/CrmTodayView";
 import { RejectReasonDialog } from "@/components/crm/RejectReasonDialog";
@@ -47,6 +46,7 @@ type Tab = "today" | "funnel" | "chats" | "clients" | "managers" | "analytics" |
 
 const Crm = () => {
   const { isAdmin } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const {
     stages,
@@ -98,7 +98,6 @@ const Crm = () => {
 
   const [tab, setTab] = useState<Tab>("today");
   const [newOpen, setNewOpen] = useState(false);
-  const [waOpen, setWaOpen] = useState(false);
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null);
   const [newStageDraft, setNewStageDraft] = useState("");
   const [addingStage, setAddingStage] = useState(false);
@@ -218,7 +217,7 @@ const Crm = () => {
           <div className="ml-auto flex items-center gap-2">
             {!whatsapp.connected && (
               <Button
-                onClick={() => setWaOpen(true)}
+                onClick={() => navigate("/settings/connection")}
                 variant="outline"
                 size="sm"
                 className="gap-1.5"
@@ -359,7 +358,7 @@ const Crm = () => {
                 chats={chats}
                 whatsapp={whatsapp}
                 onSend={sendMessage}
-                onConnectWhatsApp={() => setWaOpen(true)}
+                onConnectWhatsApp={() => navigate("/settings/connection")}
               />
             )}
 
@@ -522,15 +521,6 @@ const Crm = () => {
       />
 
 
-      <ConnectWhatsAppDialog
-        open={waOpen}
-        onOpenChange={setWaOpen}
-        current={whatsapp}
-        onConnect={(cfg) => {
-          setWhatsapp(cfg);
-          toast.success("WhatsApp подключён");
-        }}
-      />
     </main>
   );
 };
