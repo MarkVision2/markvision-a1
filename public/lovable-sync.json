@@ -1,7 +1,7 @@
 {
-  "git_sha": "61b9a7c",
-  "git_sha_full": "61b9a7cc5426a1e87f917221083d12e197ace794",
-  "updated_at": "2026-08-05T16:04:12Z",
-  "label": "chore: deploy CRM WA Web status harden [vercel-deploy]",
+  "git_sha": "dd2e7a4",
+  "git_sha_full": "dd2e7a4d7379f2d6dac2a59d7c0d5b5aee114efb",
+  "updated_at": "2026-08-05T16:16:27Z",
+  "label": "chore: deploy WA Web UTM attribution [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
