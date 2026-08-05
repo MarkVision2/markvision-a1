@@ -327,6 +327,88 @@ async function downloadWaMedia(sock, msg) {
   }
 }
 
+function messageTimestampMs(msg) {
+  const raw = msg?.messageTimestamp;
+  if (raw == null) return null;
+  let n;
+  if (typeof raw === "object" && raw !== null && "toNumber" in raw) {
+    n = Number(raw.toNumber());
+  } else {
+    n = Number(raw);
+  }
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n < 1e12 ? n * 1000 : n;
+}
+
+/** Pull Meta CTWA / externalAdReply fields from a Baileys message for CRM attribution. */
+function extractCtwaAttribution(msg) {
+  const out = {
+    meta_ad_id: null,
+    meta_adset_id: null,
+    meta_campaign_id: null,
+    click_id: null,
+    headline: null,
+  };
+  const m = msg?.message;
+  if (!m || typeof m !== "object") return out;
+
+  const candidates = [];
+  const push = (v) => {
+    if (v && typeof v === "object" && !Array.isArray(v)) candidates.push(v);
+  };
+
+  push(m);
+  push(m.extendedTextMessage);
+  push(m.imageMessage);
+  push(m.videoMessage);
+  push(m.buttonsMessage);
+  push(m.templateMessage);
+  push(m.interactiveMessage);
+
+  for (const node of [...candidates]) {
+    push(node.contextInfo);
+    push(node.contextInfo?.externalAdReply);
+    push(node.contextInfo?.external_ad_reply);
+    push(node.contextInfo?.entryPointConversionSource);
+    push(node.externalAdReply);
+    push(node.external_ad_reply);
+    push(node.referral);
+  }
+
+  // Some CTWA payloads sit on message Stub / hydrated template
+  push(m.messageContextInfo);
+  push(m.messageContextInfo?.deviceListMetadata);
+
+  const adFromUrl = (u) => {
+    if (!u || typeof u !== "string") return null;
+    const m1 = u.match(/[?&](?:ad_id|adId|content)=([0-9]{6,})/);
+    if (m1) return m1[1];
+    const m2 = u.match(/fb\.me\/([0-9]{6,})/);
+    if (m2) return m2[1];
+    return null;
+  };
+
+  for (const c of candidates) {
+    const sourceId = c.sourceId ?? c.source_id ?? c.adId ?? c.ad_id;
+    if (sourceId && !out.meta_ad_id) out.meta_ad_id = String(sourceId);
+    const ctwa = c.ctwaClid ?? c.ctwa_clid ?? c.clickId ?? c.click_id;
+    if (ctwa && !out.click_id) out.click_id = String(ctwa);
+    const camp = c.campaignId ?? c.campaign_id;
+    if (camp && !out.meta_campaign_id) out.meta_campaign_id = String(camp);
+    const adset = c.adsetId ?? c.adset_id;
+    if (adset && !out.meta_adset_id) out.meta_adset_id = String(adset);
+    const headline = c.headline ?? c.title;
+    if (headline && !out.headline) out.headline = String(headline);
+    if (!out.meta_ad_id) {
+      const fromUrl = adFromUrl(c.sourceUrl ?? c.source_url ?? c.url ?? c.originalUrl);
+      if (fromUrl) out.meta_ad_id = fromUrl;
+    }
+  }
+
+  if (!out.meta_ad_id && !out.click_id && !out.meta_campaign_id) return null;
+  return out;
+}
+
 async function ingestWaMessage(projectId, msg, source = "upsert", sock = null) {
   if (!msg?.message || msg.message.protocolMessage || msg.message.reactionMessage) {
     return { skipped: "protocol" };
@@ -369,6 +451,7 @@ async function ingestWaMessage(projectId, msg, source = "upsert", sock = null) {
   const direction = msg.key?.fromMe ? "out" : "in";
   const externalId = msg.key?.id || null;
   const name = msg.pushName || "";
+  const attribution = direction === "in" ? extractCtwaAttribution(msg) : null;
 
   let mediaPayload = {};
   if (sock && detectMedia(msg)) {
@@ -396,6 +479,7 @@ async function ingestWaMessage(projectId, msg, source = "upsert", sock = null) {
     external_id: externalId,
     source,
     message_ts: tsMs != null ? Math.floor(tsMs / 1000) : null,
+    ...(attribution ? { attribution } : {}),
     ...mediaPayload,
   });
   if (res?.skipped) {
@@ -413,6 +497,7 @@ async function ingestWaMessage(projectId, msg, source = "upsert", sock = null) {
     deduped: res.deduped,
     mediaKind: mediaPayload.media_kind || null,
     mediaUrl: res.mediaUrl || null,
+    metaAdId: res.attribution?.meta_ad_id || attribution?.meta_ad_id || null,
   }, "ingested");
   return res;
 }
@@ -422,19 +507,6 @@ const ingestAfterMs = new Map();
 
 /** @type {Map<string, { sock: any, connecting: boolean }>} */
 const sockets = new Map();
-
-function messageTimestampMs(msg) {
-  const raw = msg?.messageTimestamp;
-  if (raw == null) return null;
-  let n;
-  if (typeof raw === "object" && raw !== null && "toNumber" in raw) {
-    n = Number(raw.toNumber());
-  } else {
-    n = Number(raw);
-  }
-  if (!Number.isFinite(n) || n <= 0) return null;
-  return n < 1e12 ? n * 1000 : n;
-}
 
 async function setState(projectId, status, extra = {}) {
   await bridge("set_state", { project_id: projectId, status, ...extra });

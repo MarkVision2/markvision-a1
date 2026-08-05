@@ -4,6 +4,15 @@
  // Worker (x-wa-web-key): heartbeat | push_qr | set_state | claim | ack | ingest
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { requireProjectAccess, requireUser } from "../_lib/auth.ts";
+import {
+  attributionFromWhatsAppText,
+  ctwaFromTextAttr,
+  emptyCtwa,
+  mergeCtwa,
+  parseCtwaPayload,
+  resolveLeadSourceLabel,
+  type CtwaAttribution,
+} from "../_lib/waAttribution.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -93,15 +102,180 @@ async function getDefaultStage(projectId: string | null): Promise<{ pipeline_id:
   return null;
 }
 
+async function attributionFromPhone(
+  phone: string,
+  projectId: string | null,
+): Promise<CtwaAttribution | null> {
+  const d = digits(phone);
+  if (!d) return null;
+  let q = admin
+    .from("phone_attribution")
+    .select("meta_ad_id, meta_adset_id, meta_campaign_id, click_id, captured_at")
+    .eq("phone", d)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+  if (projectId) q = q.eq("project_id", projectId);
+  const { data } = await q;
+  const row = (data ?? [])[0] as {
+    meta_ad_id: string | null;
+    meta_adset_id: string | null;
+    meta_campaign_id: string | null;
+    click_id: string | null;
+    captured_at: string;
+  } | undefined;
+  if (row?.meta_ad_id) {
+    const ageMs = Date.now() - new Date(row.captured_at).getTime();
+    if (ageMs <= 30 * 24 * 3600 * 1000) {
+      return {
+        meta_ad_id: row.meta_ad_id,
+        meta_adset_id: row.meta_adset_id,
+        meta_campaign_id: row.meta_campaign_id,
+        click_id: row.click_id,
+        headline: null,
+      };
+    }
+  }
+  const { data: wc } = await admin
+    .from("wa_clicks")
+    .select("utm_content, utm_term, utm_campaign, click_id")
+    .or(`matched_phone.eq.+${d},matched_phone.eq.${d}`)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const w = (wc ?? [])[0] as {
+    utm_content: string | null;
+    utm_term: string | null;
+    utm_campaign: string | null;
+    click_id: string | null;
+  } | undefined;
+  if (w?.utm_content) {
+    const ad = String(w.utm_content).match(/^([0-9]{6,})/);
+    if (ad) {
+      return {
+        meta_ad_id: ad[1],
+        meta_adset_id: w.utm_term,
+        meta_campaign_id: w.utm_campaign,
+        click_id: w.click_id,
+        headline: null,
+      };
+    }
+  }
+  return null;
+}
+
+async function enrichFromCreative(adId: string): Promise<{
+  campaign_id: string | null;
+  adset_id: string | null;
+  cabinet_id: string | null;
+  project_id: string | null;
+}> {
+  const { data } = await admin
+    .from("meta_creatives")
+    .select("campaign_id, adset_id, cabinet_id, project_id")
+    .eq("ad_id", adId)
+    .maybeSingle();
+  return {
+    campaign_id: data?.campaign_id ?? null,
+    adset_id: (data as { adset_id?: string | null } | null)?.adset_id ?? null,
+    cabinet_id: data?.cabinet_id ?? null,
+    project_id: data?.project_id ?? null,
+  };
+}
+
+async function applyAttributionToExistingLead(
+  leadId: string,
+  attribution: CtwaAttribution,
+  utm: Record<string, string>,
+  source: string,
+) {
+  const { data: lead } = await admin
+    .from("leads")
+    .select("id, meta_ad_id, utm, source, cabinet_id")
+    .eq("id", leadId)
+    .maybeSingle();
+  if (!lead) return;
+
+  const patch: Record<string, unknown> = {};
+  const prevUtm = ((lead as { utm?: Record<string, unknown> | null }).utm ?? {}) as Record<
+    string,
+    unknown
+  >;
+  const hasMeta = !!(lead as { meta_ad_id?: string | null }).meta_ad_id;
+
+  if (!hasMeta && attribution.meta_ad_id) {
+    patch.meta_ad_id = attribution.meta_ad_id;
+    patch.meta_adset_id = attribution.meta_adset_id;
+    patch.meta_campaign_id = attribution.meta_campaign_id;
+    if (attribution.click_id) patch.click_id = attribution.click_id;
+    const enriched = await enrichFromCreative(attribution.meta_ad_id);
+    if (enriched.cabinet_id && !(lead as { cabinet_id?: string | null }).cabinet_id) {
+      patch.cabinet_id = enriched.cabinet_id;
+    }
+    if (!attribution.meta_campaign_id && enriched.campaign_id) {
+      patch.meta_campaign_id = enriched.campaign_id;
+    }
+    if (!attribution.meta_adset_id && enriched.adset_id) {
+      patch.meta_adset_id = enriched.adset_id;
+    }
+    if (source === "meta" || source === "zapoinovai") patch.source = source;
+  }
+
+  if (Object.keys(utm).length > 0) {
+    patch.utm = { ...prevUtm, ...utm };
+  } else if (source !== "whatsapp" && !(lead as { source?: string }).source) {
+    patch.source = source;
+  }
+
+  if (Object.keys(patch).length === 0) return;
+  patch.updated_at = new Date().toISOString();
+  await admin.from("leads").update(patch).eq("id", leadId);
+}
+
 async function findOrCreateLead(
   phoneRaw: string,
   name: string,
   projectId: string,
   whatsappLid?: string | null,
+  attribution?: CtwaAttribution | null,
+  textUtm?: Record<string, string>,
+  partnerSource?: string | null,
+  textSite?: string | null,
 ): Promise<string | null> {
   const d = digits(phoneRaw);
   const phoneOk = isPlausiblePhone(d);
   const lid = String(whatsappLid ?? "").replace(/\D/g, "") || null;
+  let attr = attribution ? { ...attribution } : emptyCtwa();
+
+  if (phoneOk && attr.click_id) {
+    await admin.from("wa_clicks").upsert({
+      click_id: attr.click_id,
+      utm_source: textUtm?.source ?? "meta",
+      utm_medium: textUtm?.medium ?? "ctwa",
+      utm_campaign: attr.meta_campaign_id ?? textUtm?.campaign ?? null,
+      utm_content: attr.meta_ad_id ?? textUtm?.content ?? null,
+      utm_term: attr.meta_adset_id ?? textUtm?.term ?? null,
+      matched: true,
+      matched_at: new Date().toISOString(),
+      matched_phone: `+${d}`,
+    }, { onConflict: "click_id" });
+  }
+
+  const source = resolveLeadSourceLabel(attr, partnerSource, {
+    partnerSource: partnerSource ?? null,
+    site: textSite ?? null,
+    utm: textUtm ?? {},
+    meta_ad_id: attr.meta_ad_id,
+    meta_adset_id: attr.meta_adset_id,
+    meta_campaign_id: attr.meta_campaign_id,
+    click_id: attr.click_id,
+  });
+  const utmPayload = { ...(textUtm ?? {}) };
+  if (attr.meta_ad_id) utmPayload.ad_id = attr.meta_ad_id;
+  if (attr.meta_adset_id) utmPayload.adset_id = attr.meta_adset_id;
+  if (attr.meta_campaign_id) utmPayload.campaign_id = attr.meta_campaign_id;
+  if (!utmPayload.source) {
+    if (partnerSource) utmPayload.source = partnerSource;
+    else if (attr.meta_ad_id || textSite === "zapoinovai") utmPayload.source = "meta";
+  }
 
   if (phoneOk) {
     const variants = [`+${d}`, d];
@@ -118,6 +292,7 @@ async function findOrCreateLead(
       if (lid && !(match as { whatsapp_lid?: string | null }).whatsapp_lid) {
         await admin.from("leads").update({ whatsapp_lid: lid }).eq("id", match.id);
       }
+      await applyAttributionToExistingLead(match.id as string, attr, utmPayload, source);
       return match.id as string;
     }
   }
@@ -139,11 +314,27 @@ async function findOrCreateLead(
           await admin.from("leads").update({ phone: `+${d}` }).eq("id", byLid.id);
         }
       }
+      await applyAttributionToExistingLead(byLid.id as string, attr, utmPayload, source);
       return byLid.id as string;
     }
   }
 
   if (!phoneOk && !lid) return null;
+
+  if (phoneOk && !attr.meta_ad_id) {
+    const sticky = await attributionFromPhone(phoneRaw, projectId);
+    if (sticky) attr = mergeCtwa(attr, sticky);
+  }
+
+  let cabinetId: string | null = null;
+  let metaCampaignId = attr.meta_campaign_id;
+  let metaAdsetId = attr.meta_adset_id;
+  if (attr.meta_ad_id) {
+    const enriched = await enrichFromCreative(attr.meta_ad_id);
+    if (enriched.cabinet_id) cabinetId = enriched.cabinet_id;
+    if (!metaCampaignId && enriched.campaign_id) metaCampaignId = enriched.campaign_id;
+    if (!metaAdsetId && enriched.adset_id) metaAdsetId = enriched.adset_id;
+  }
 
   const def = await getDefaultStage(projectId);
   if (!def) return null;
@@ -152,19 +343,35 @@ async function findOrCreateLead(
   const { data: proj } = await admin.from("projects").select("created_by").eq("id", projectId).maybeSingle();
   ownerId = (proj as { created_by?: string | null } | null)?.created_by ?? null;
 
+  const finalSource = resolveLeadSourceLabel(attr, partnerSource, {
+    partnerSource: partnerSource ?? null,
+    site: textSite ?? null,
+    utm: utmPayload,
+    meta_ad_id: attr.meta_ad_id,
+    meta_adset_id: metaAdsetId,
+    meta_campaign_id: metaCampaignId,
+    click_id: attr.click_id,
+  });
+
   const { data: created, error } = await admin
     .from("leads")
     .insert({
       name: name?.trim() || (phoneOk ? `+${d}` : "WhatsApp"),
       phone: phoneOk ? `+${d}` : null,
       whatsapp_lid: lid,
-      source: "whatsapp",
+      source: finalSource,
       channel: "whatsapp",
       project_id: projectId,
+      cabinet_id: cabinetId,
       pipeline_id: def.pipeline_id,
       stage_id: def.stage_id,
       created_by: ownerId,
       assigned_to: ownerId,
+      meta_ad_id: attr.meta_ad_id,
+      meta_adset_id: metaAdsetId,
+      meta_campaign_id: metaCampaignId,
+      click_id: attr.click_id,
+      ...(Object.keys(utmPayload).length > 0 ? { utm: utmPayload } : {}),
     })
     .select("id")
     .single();
@@ -448,12 +655,65 @@ Deno.serve(async (req) => {
       if (phone && !isPlausiblePhone(d) && !whatsappLid) {
         return json({ error: "invalid phone (looks like WhatsApp LID)" }, 400);
       }
-      const leadId = await findOrCreateLead(
-        isPlausiblePhone(d) ? phone : "",
-        name,
-        projectId,
-        whatsappLid,
+
+      // Attribution: CTWA payload from daemon + text (ref:/utm_) + sticky phone.
+      const textAttr = attributionFromWhatsAppText(text);
+      let attribution = mergeCtwa(
+        parseCtwaPayload(
+          (body.message_data as Record<string, unknown> | undefined)
+            ?? (body.attribution as Record<string, unknown> | undefined)
+            ?? null,
+          body as Record<string, unknown>,
+        ),
+        ctwaFromTextAttr(textAttr),
       );
+      if (!attribution.meta_ad_id && isPlausiblePhone(d) && direction === "in") {
+        const sticky = await attributionFromPhone(phone, projectId);
+        if (sticky) attribution = mergeCtwa(attribution, sticky);
+      }
+
+      let leadId: string | null = null;
+      if (direction === "out") {
+        // Match Green API: outbound does not create new CRM leads.
+        if (isPlausiblePhone(d)) {
+          const variants = [`+${d}`, d];
+          const { data: match } = await admin
+            .from("leads")
+            .select("id")
+            .eq("project_id", projectId)
+            .eq("is_personal", false)
+            .or(variants.map((p) => `phone.eq.${p}`).join(","))
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          leadId = (match?.id as string | undefined) ?? null;
+        }
+        if (!leadId && whatsappLid) {
+          const { data: byLid } = await admin
+            .from("leads")
+            .select("id")
+            .eq("project_id", projectId)
+            .eq("whatsapp_lid", whatsappLid)
+            .order("created_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          leadId = (byLid?.id as string | undefined) ?? null;
+        }
+        if (!leadId) {
+          return json({ ok: true, skipped: "outbound_no_lead" });
+        }
+      } else {
+        leadId = await findOrCreateLead(
+          isPlausiblePhone(d) ? phone : "",
+          name,
+          projectId,
+          whatsappLid,
+          attribution,
+          textAttr.utm,
+          textAttr.partnerSource,
+          textAttr.site,
+        );
+      }
       if (!leadId) return json({ error: "lead not created" }, 500);
 
       const mediaKind = body.media_kind ? String(body.media_kind) : null;
@@ -493,6 +753,14 @@ Deno.serve(async (req) => {
         communicationId: row.id,
         deduped: row.deduped,
         mediaUrl,
+        attribution: {
+          source: resolveLeadSourceLabel(attribution, textAttr.partnerSource, textAttr),
+          meta_ad_id: attribution.meta_ad_id,
+          meta_adset_id: attribution.meta_adset_id,
+          meta_campaign_id: attribution.meta_campaign_id,
+          click_id: attribution.click_id,
+          utm: textAttr.utm,
+        },
       });
     }
 

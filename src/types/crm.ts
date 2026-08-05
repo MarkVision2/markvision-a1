@@ -20,6 +20,11 @@ export type UtmTags = {
   campaign?: string; // utm_campaign
   content?: string;  // utm_content
   term?: string;     // utm_term
+  /** n8n / zapoinovai / WA Web attribution extras */
+  site?: string;
+  ad_id?: string;
+  adset_id?: string;
+  campaign_id?: string;
 };
 
 export type StageHistoryEntry = {

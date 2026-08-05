@@ -214,15 +214,29 @@ function LeadCardImpl({
         {rec.label}
       </div>
 
-      {(lead.utm?.campaign || lead.utm?.source) && (
-        <div
-          className="mt-2 flex items-center gap-1 truncate text-[10px] text-primary/80"
-          title={`utm_source: ${lead.utm?.source ?? "—"} · utm_campaign: ${lead.utm?.campaign ?? "—"}`}
-        >
-          <Tag className="h-2.5 w-2.5 shrink-0" />
-          <span className="truncate">{lead.utm?.campaign ?? lead.utm?.source}</span>
-        </div>
-      )}
+      {(() => {
+        const campaign =
+          lead.utm?.campaign
+          || lead.utm?.campaign_id
+          || null;
+        const source = lead.utm?.source || null;
+        const adHint = lead.metaAdId || lead.utm?.content || lead.utm?.ad_id || null;
+        if (!campaign && !source && !adHint) return null;
+        const label = campaign || source || (adHint ? `ad ${adHint}` : null);
+        return (
+          <div
+            className="mt-2 flex items-center gap-1 truncate text-[10px] text-primary/80"
+            title={[
+              source ? `utm_source: ${source}` : null,
+              campaign ? `campaign: ${campaign}` : null,
+              adHint ? `ad: ${adHint}` : null,
+            ].filter(Boolean).join(" · ")}
+          >
+            <Tag className="h-2.5 w-2.5 shrink-0" />
+            <span className="truncate">{label}</span>
+          </div>
+        );
+      })()}
 
       {((lead.tags && lead.tags.length > 0) || lead.temperature || lead.webinarStatus) && (
         <div className="mt-1.5 flex flex-wrap gap-1">

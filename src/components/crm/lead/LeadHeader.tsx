@@ -305,9 +305,11 @@ function UtmStrip({ lead }: { lead: Lead }) {
           <span
             key={k}
             className="inline-flex max-w-full items-center gap-1 rounded-full bg-background/50 px-2 py-0.5 text-[10px] ring-1 ring-border/50"
-            title={`utm_${k}: ${v}`}
+            title={`utm_${UTM_LABELS[k] ?? k}: ${v}`}
           >
-            <span className="font-mono text-muted-foreground">utm_{UTM_LABELS[k] ?? k}</span>
+            <span className="font-mono text-muted-foreground">
+              {UTM_LABELS[k] ? `utm_${UTM_LABELS[k]}` : k}
+            </span>
             <span className="truncate font-semibold">{v}</span>
           </span>
         ))}

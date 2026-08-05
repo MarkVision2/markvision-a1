@@ -234,7 +234,15 @@ export function ChatsView({
                             "inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold",
                             sourceMeta.cls,
                           )}
-                          title={sourceMeta.label}
+                          title={[
+                            sourceMeta.label,
+                            lead.utm?.campaign || lead.utm?.campaign_id
+                              ? `кампания: ${lead.utm?.campaign || lead.utm?.campaign_id}`
+                              : null,
+                            lead.metaAdId || lead.utm?.ad_id || lead.utm?.content
+                              ? `ad: ${lead.metaAdId || lead.utm?.ad_id || lead.utm?.content}`
+                              : null,
+                          ].filter(Boolean).join(" · ")}
                         >
                           <SourceIcon className="h-2.5 w-2.5" />
                           {sourceMeta.label}
