@@ -1,6 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -10,24 +11,42 @@ import {
   Send,
   Phone,
   CheckCheck,
-  Sparkles,
   Plus,
   X,
+  Mic,
 } from "lucide-react";
+import { toast } from "sonner";
 import type { ChatMessage, Lead, LeadStage, WhatsAppConfig } from "@/types/crm";
 import { resolveLeadSource } from "@/lib/leadSource";
 import { getStageIcon, stageColorClasses } from "./StageIcon";
 import { useQuickReplies } from "@/hooks/useQuickReplies";
 import { AiSuggestButton } from "./AiSuggestButton";
 import { ChatMediaBubble, chatPreviewText } from "./ChatMediaBubble";
+import { ChatVoiceButton, type VoicePayload } from "./ChatVoiceButton";
 
 interface ChatsViewProps {
   leads: Lead[];
   stages: LeadStage[];
   chats: ChatMessage[];
   whatsapp: WhatsAppConfig;
-  onSend: (leadId: string, text: string) => void;
+  onSend: (leadId: string, text: string) => void | Promise<void>;
+  onSendVoice?: (leadId: string, payload: VoicePayload) => void | Promise<void>;
   onConnectWhatsApp: () => void;
+}
+
+function formatListTime(iso: string | undefined) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear()
+    && d.getMonth() === now.getMonth()
+    && d.getDate() === now.getDate();
+  if (sameDay) {
+    return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  }
+  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 }
 
 export function ChatsView({
@@ -36,14 +55,20 @@ export function ChatsView({
   chats,
   whatsapp,
   onSend,
+  onSendVoice,
   onConnectWhatsApp,
 }: ChatsViewProps) {
   const [activeStageId, setActiveStageId] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [voiceMode, setVoiceMode] = useState(false);
   const isMobile = useIsMobile();
   const { items: quickReplies, add: addReply, remove: removeReply } = useQuickReplies();
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement | null>(null);
 
   const chatsByLeadId = useMemo(() => {
     const m = new Map<string, ChatMessage[]>();
@@ -65,7 +90,6 @@ export function ChatsView({
     const list = leads.filter((l) => {
       const stageOk = activeStageId === "all" || l.stageId === activeStageId;
       const hasChat = (chatsByLeadId.get(l.id)?.length ?? 0) > 0;
-      // Inbox: only conversations with messages (search can still find by name/phone).
       const inboxOk = hasChat || !!q;
       const searchOk =
         !q ||
@@ -73,7 +97,6 @@ export function ChatsView({
         (l.phone ?? "").toLowerCase().includes(q);
       return stageOk && inboxOk && searchOk;
     });
-    // Newest activity first — otherwise a fresh WA chat is buried under old CRM leads.
     return list.sort((a, b) => {
       const aLast = chatsByLeadId.get(a.id)?.at(-1)?.at ?? a.lastActivityAt ?? a.createdAt ?? "";
       const bLast = chatsByLeadId.get(b.id)?.at(-1)?.at ?? b.lastActivityAt ?? b.createdAt ?? "";
@@ -84,17 +107,52 @@ export function ChatsView({
   const activeLead = leads.find((l) => l.id === activeLeadId) ?? null;
   const activeChats = activeLeadId ? (chatsByLeadId.get(activeLeadId) ?? []) : [];
   const stageTitle = stages.find((s) => s.id === activeLead?.stageId)?.title;
+  const hasDraft = !!draft.trim();
 
-  const handleSend = () => {
-    const text = draft.trim();
-    if (!text || !activeLead) return;
-    onSend(activeLead.id, text);
+  useEffect(() => {
     setDraft("");
+    setVoiceMode(false);
+    setSending(false);
+  }, [activeLeadId]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, [activeLeadId, activeChats.length]);
+
+  useEffect(() => {
+    const el = composerRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
+  }, [draft]);
+
+  const handleSend = async () => {
+    const text = draft.trim();
+    if (!text || !activeLead || sending) return;
+    setSending(true);
+    try {
+      await onSend(activeLead.id, text);
+      setDraft("");
+      requestAnimationFrame(() => composerRef.current?.focus());
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const handleVoice = async (payload: VoicePayload) => {
+    if (!activeLead || !onSendVoice) return;
+    try {
+      await onSendVoice(activeLead.id, payload);
+      setVoiceMode(false);
+      toast.success("Голосовое отправлено");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось отправить голосовое");
+      throw e;
+    }
   };
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card/40">
-      {/* WhatsApp connection bar */}
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-border/60 bg-card/40">
       {!whatsapp.connected ? (
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border/60 bg-primary/5 px-4 py-3">
           <div className="flex items-center gap-3 text-sm">
@@ -104,7 +162,7 @@ export function ChatsView({
             <div>
               <div className="font-semibold">WhatsApp не подключён</div>
               <div className="text-xs text-muted-foreground">
-                Подключите WhatsApp Web (QR) или Green API в Настройках — заявки и переписка появятся в CRM.
+                Подключите WhatsApp Web (QR) в Настройках — заявки и переписка появятся здесь.
               </div>
             </div>
           </div>
@@ -117,34 +175,31 @@ export function ChatsView({
           </Button>
         </div>
       ) : (
-        <div className="flex items-center gap-3 border-b border-border/60 bg-success/5 px-4 py-2.5 text-sm">
+        <div className="flex items-center gap-3 border-b border-border/60 bg-success/5 px-4 py-2 text-sm">
           <span className="relative grid h-2.5 w-2.5 place-items-center">
             <span className="absolute h-2.5 w-2.5 animate-ping rounded-full bg-success opacity-60" />
             <span className="h-2 w-2 rounded-full bg-success" />
           </span>
           <span className="text-muted-foreground">
-            WhatsApp подключён:{" "}
-            <span className="font-semibold text-foreground">
-              {whatsapp.phone}
-            </span>
+            WhatsApp:{" "}
+            <span className="font-semibold text-foreground">{whatsapp.phone}</span>
           </span>
         </div>
       )}
 
-      {/* status tabs */}
       <div className="flex gap-1 overflow-x-auto touch-pan-x border-b border-border/60 px-3 py-2 scrollbar-none">
         {stageFilters.map((s) => {
           const active = activeStageId === s.id;
           const count =
             s.id === "all"
-              ? leads.length
-              : leads.filter((l) => l.stageId === s.id).length;
+              ? filteredLeads.length
+              : leads.filter((l) => l.stageId === s.id && (chatsByLeadId.get(l.id)?.length ?? 0) > 0).length;
           return (
             <button
               key={s.id}
               onClick={() => setActiveStageId(s.id)}
               className={cn(
-                "flex min-h-10 shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition-colors sm:min-h-0 sm:py-1.5",
+                "flex min-h-9 shrink-0 items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition-colors",
                 active
                   ? "bg-primary/15 text-primary"
                   : "text-muted-foreground hover:bg-secondary/60",
@@ -164,28 +219,38 @@ export function ChatsView({
         })}
       </div>
 
-      {/* layout */}
-      <div className="grid grid-cols-1 md:grid-cols-[300px_1fr]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[320px_1fr]">
         {/* list */}
-        <div className={cn("border-b border-border/60 md:border-b-0 md:border-r", isMobile && activeLeadId && "hidden")}>
-          <div className="p-3">
+        <div
+          className={cn(
+            "flex min-h-0 flex-col border-b border-border/60 md:border-b-0 md:border-r",
+            isMobile && activeLeadId && "hidden",
+          )}
+        >
+          <div className="shrink-0 p-3">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="Поиск..."
+                placeholder="Имя или телефон…"
                 className="h-11 pl-9 text-base sm:h-10 sm:text-sm"
               />
             </div>
           </div>
-          <div className="max-h-[min(60dvh,480px)] overflow-y-auto overscroll-contain px-2 pb-3 md:max-h-[480px]">
+          <div
+            ref={listRef}
+            className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-3"
+          >
             {filteredLeads.length === 0 ? (
-              <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-                Нет чатов с сообщениями.
+              <div className="px-3 py-10 text-center text-sm text-muted-foreground">
+                {search.trim()
+                  ? "Никого не нашли по запросу."
+                  : "Нет чатов с сообщениями."}
                 <div className="mt-1 text-[11px]">
-                  WhatsApp Web пишет в текущий проект. Откройте проект, где сканировали QR
-                  (например «Виталя»), и обновите страницу.
+                  {search.trim()
+                    ? "Попробуйте другое имя или телефон."
+                    : "Входящие WhatsApp появятся здесь. Чтобы написать первым — найдите лида в поиске."}
                 </div>
               </div>
             ) : (
@@ -198,12 +263,14 @@ export function ChatsView({
                 const active = activeLeadId === lead.id;
                 const sourceMeta = resolveLeadSource(lead);
                 const SourceIcon = sourceMeta.Icon;
+                const lastAt = last?.at ?? lead.lastActivityAt ?? lead.createdAt;
                 return (
                   <button
                     key={lead.id}
+                    type="button"
                     onClick={() => setActiveLeadId(lead.id)}
                     className={cn(
-                      "mb-1 flex w-full items-start gap-3 rounded-xl px-2.5 py-2 text-left transition-colors",
+                      "mb-1 flex w-full items-start gap-3 rounded-xl px-2.5 py-2.5 text-left transition-colors",
                       active
                         ? "bg-primary/10 ring-1 ring-primary/30"
                         : "hover:bg-secondary/60",
@@ -211,21 +278,19 @@ export function ChatsView({
                   >
                     <span
                       className={cn(
-                        "mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl ring-1",
+                        "mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-full text-sm font-semibold ring-1",
                         colors.bg,
                         colors.text,
                         colors.ring,
                       )}
                     >
-                      <Icon className="h-4 w-4" />
+                      {(lead.name || "?").slice(0, 1).toUpperCase()}
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="truncate text-sm font-semibold">
-                          {lead.name}
-                        </span>
-                        <span className="shrink-0 text-[10px] text-muted-foreground">
-                          {stage?.title ?? "—"}
+                        <span className="truncate text-sm font-semibold">{lead.name}</span>
+                        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                          {formatListTime(lastAt)}
                         </span>
                       </div>
                       <div className="mt-0.5 flex items-center gap-1.5">
@@ -234,15 +299,7 @@ export function ChatsView({
                             "inline-flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[9px] font-semibold",
                             sourceMeta.cls,
                           )}
-                          title={[
-                            sourceMeta.label,
-                            lead.utm?.campaign || lead.utm?.campaign_id
-                              ? `кампания: ${lead.utm?.campaign || lead.utm?.campaign_id}`
-                              : null,
-                            lead.metaAdId || lead.utm?.ad_id || lead.utm?.content
-                              ? `ad: ${lead.metaAdId || lead.utm?.ad_id || lead.utm?.content}`
-                              : null,
-                          ].filter(Boolean).join(" · ")}
+                          title={sourceMeta.label}
                         >
                           <SourceIcon className="h-2.5 w-2.5" />
                           {sourceMeta.label}
@@ -251,6 +308,12 @@ export function ChatsView({
                           {chatPreviewText(last, lead.phone)}
                         </span>
                       </div>
+                      {stage?.title && (
+                        <div className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
+                          <Icon className="h-3 w-3" />
+                          {stage.title}
+                        </div>
+                      )}
                     </div>
                   </button>
                 );
@@ -259,67 +322,68 @@ export function ChatsView({
           </div>
         </div>
 
-        {/* chat */}
-        <div className={cn(
-          "flex min-h-[min(70dvh,620px)] flex-col md:min-h-[520px]",
-          isMobile && !activeLeadId && "hidden",
-          isMobile && activeLeadId && "min-h-[calc(100dvh-12rem)]",
-        )}>
+        {/* chat pane */}
+        <div
+          className={cn(
+            "flex min-h-0 flex-col",
+            isMobile && !activeLeadId && "hidden",
+            isMobile && activeLeadId && "min-h-[calc(100dvh-10rem)]",
+            !isMobile && "min-h-[560px]",
+          )}
+        >
           {activeLead ? (
             <>
-              <div className="flex shrink-0 items-center gap-3 border-b border-border/60 px-4 py-3">
+              <div className="flex shrink-0 items-center gap-3 border-b border-border/60 px-3 py-2.5 sm:px-4">
                 {isMobile && (
-                  <button type="button" onClick={() => setActiveLeadId(null)} className="grid h-11 w-11 shrink-0 place-items-center rounded-full hover:bg-secondary" aria-label="Назад к списку">
+                  <button
+                    type="button"
+                    onClick={() => setActiveLeadId(null)}
+                    className="grid h-10 w-10 shrink-0 place-items-center rounded-full hover:bg-secondary"
+                    aria-label="Назад к списку"
+                  >
                     <ArrowLeft className="h-5 w-5" />
                   </button>
                 )}
-                <span className="grid h-9 w-9 place-items-center rounded-xl bg-primary/15 text-primary">
+                <span className="grid h-10 w-10 place-items-center rounded-full bg-primary/15 text-sm font-semibold text-primary">
                   {activeLead.name.slice(0, 1).toUpperCase()}
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-semibold">
-                    {activeLead.name}
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                    <Phone className="h-3 w-3" />
-                    {activeLead.phone}
+                  <div className="truncate text-sm font-semibold">{activeLead.name}</div>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted-foreground">
+                    <span className="inline-flex items-center gap-1">
+                      <Phone className="h-3 w-3" />
+                      {activeLead.phone || "нет номера"}
+                    </span>
+                    {stageTitle && (
+                      <span className="rounded bg-secondary/70 px-1.5 py-0.5 font-medium text-foreground/80">
+                        {stageTitle}
+                      </span>
+                    )}
                   </div>
                 </div>
-                <span className="hidden items-center gap-1 rounded-md bg-success/10 px-2 py-1 text-[10px] font-semibold text-success sm:inline-flex">
-                  <Sparkles className="h-3 w-3" />
-                  AI-агент on
-                </span>
               </div>
 
-              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain bg-background/40 px-4 py-4">
+              <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain bg-background/50 px-3 py-4 sm:px-4">
                 {activeChats.length === 0 && (
-                  <div className="grid h-full place-items-center text-center text-sm text-muted-foreground">
-                    Сообщений ещё нет.<br />
-                    Напишите первым — AI-агент подхватит дальше.
+                  <div className="grid h-full min-h-[200px] place-items-center text-center text-sm text-muted-foreground">
+                    Напишите первым или отправьте голосовое.
                   </div>
                 )}
                 {activeChats.map((m) => (
                   <div
                     key={m.id}
-                    className={cn(
-                      "flex",
-                      m.fromMe ? "justify-end" : "justify-start",
-                    )}
+                    className={cn("flex", m.fromMe ? "justify-end" : "justify-start")}
                   >
                     <div
                       className={cn(
-                        "max-w-[min(85%,22rem)] rounded-2xl px-3 py-2 text-sm",
+                        "max-w-[min(88%,26rem)] rounded-2xl px-3 py-2 text-sm shadow-sm",
                         m.fromMe
-                          ? "rounded-br-sm bg-primary text-primary-foreground"
-                          : "rounded-bl-sm bg-secondary text-foreground",
+                          ? "rounded-br-md bg-primary text-primary-foreground"
+                          : "rounded-bl-md bg-card text-foreground ring-1 ring-border/50",
                       )}
                     >
                       <ChatMediaBubble message={m} fromMe={m.fromMe} />
-                      <div
-                        className={cn(
-                          "mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70",
-                        )}
-                      >
+                      <div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70">
                         {new Date(m.at).toLocaleTimeString("ru-RU", {
                           hour: "2-digit",
                           minute: "2-digit",
@@ -329,72 +393,119 @@ export function ChatsView({
                     </div>
                   </div>
                 ))}
+                <div ref={bottomRef} />
               </div>
 
-              <div className="shrink-0 border-t border-border/60 bg-background/95 backdrop-blur-sm">
-                <div className="flex flex-col gap-2 px-3 py-2">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {quickReplies.map((q, i) => (
-                      <span key={i} className="group inline-flex min-h-8 items-center gap-1 rounded-full border border-border/60 bg-secondary/60 pl-2.5 pr-1 py-1 text-[11px]">
-                        <button type="button" onClick={() => setDraft(q)} className="max-w-[180px] truncate text-left">
-                          {q}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => removeReply(i)}
-                          className="grid h-6 w-6 place-items-center rounded-full opacity-70 transition-opacity hover:bg-secondary md:opacity-0 md:group-hover:opacity-100"
-                          title="Удалить"
-                          aria-label="Удалить шаблон"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </span>
-                    ))}
-                    {draft.trim() && (
+              <div className="shrink-0 border-t border-border/60 bg-background/95 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-sm">
+                {!voiceMode && (
+                  <div className="flex flex-col gap-1.5 px-3 pt-2">
+                    {(quickReplies.length > 0 || hasDraft) && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {quickReplies.map((q, i) => (
+                          <span
+                            key={i}
+                            className="group inline-flex min-h-8 items-center gap-1 rounded-full border border-border/60 bg-secondary/60 py-1 pl-2.5 pr-1 text-[11px]"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setDraft(q)}
+                              className="max-w-[160px] truncate text-left"
+                            >
+                              {q}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeReply(i)}
+                              className="grid h-6 w-6 place-items-center rounded-full opacity-70 hover:bg-secondary md:opacity-0 md:group-hover:opacity-100"
+                              aria-label="Удалить шаблон"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </span>
+                        ))}
+                        {hasDraft && (
+                          <button
+                            type="button"
+                            onClick={() => addReply(draft)}
+                            className="inline-flex min-h-8 items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/20"
+                          >
+                            <Plus className="h-3 w-3" /> в шаблоны
+                          </button>
+                        )}
+                      </div>
+                    )}
+                    <AiSuggestButton
+                      messages={activeChats.map((c) => ({ fromMe: c.fromMe, text: c.text }))}
+                      stage={stageTitle}
+                      leadName={activeLead.name}
+                      channel={activeLead.channel}
+                      onPick={(text) => setDraft(text)}
+                    />
+                  </div>
+                )}
+
+                <div className="flex items-end gap-2 px-3 pb-3 pt-2">
+                  {voiceMode && onSendVoice && whatsapp.connected ? (
+                    <>
+                      <ChatVoiceButton
+                        key="voice-rec"
+                        className="min-w-0 flex-1"
+                        autoStart
+                        disabled={!whatsapp.connected || sending}
+                        onSend={handleVoice}
+                      />
                       <button
                         type="button"
-                        onClick={() => { addReply(draft); }}
-                        className="inline-flex min-h-8 items-center gap-1 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-semibold text-primary hover:bg-primary/20"
-                        title="Сохранить как шаблон"
+                        onClick={() => setVoiceMode(false)}
+                        className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-border/60 text-muted-foreground hover:bg-secondary sm:h-10 sm:w-10"
+                        aria-label="К тексту"
+                        title="Текстовое сообщение"
                       >
-                        <Plus className="h-3 w-3" /> в шаблоны
+                        <X className="h-4 w-4" />
                       </button>
-                    )}
-                  </div>
-                  <AiSuggestButton
-                    messages={activeChats.map((c) => ({ fromMe: c.fromMe, text: c.text }))}
-                    stage={stageTitle}
-                    leadName={activeLead.name}
-                    channel={activeLead.channel}
-                    onPick={(text) => setDraft(text)}
-                  />
-                </div>
-                <div className="flex items-center gap-2 px-3 pb-3 pt-1">
-                  <Input
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSend();
-                      }
-                    }}
-                    placeholder={
-                      whatsapp.connected
-                        ? "Сообщение..."
-                        : "Подключите WhatsApp, чтобы отправлять"
-                    }
-                    disabled={!whatsapp.connected}
-                    className="h-11 text-base sm:h-10 sm:text-sm"
-                  />
-                  <Button
-                    onClick={handleSend}
-                    disabled={!whatsapp.connected || !draft.trim()}
-                    className="h-11 w-11 shrink-0 bg-gradient-primary p-0 text-primary-foreground sm:h-10 sm:w-10"
-                    aria-label="Отправить"
-                  >
-                    <Send className="h-4 w-4" />
-                  </Button>
+                    </>
+                  ) : (
+                    <>
+                      {onSendVoice && whatsapp.connected && !hasDraft && (
+                        <button
+                          type="button"
+                          onClick={() => setVoiceMode(true)}
+                          className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-border/60 bg-secondary/50 text-foreground hover:bg-secondary sm:h-10 sm:w-10"
+                          aria-label="Голосовое"
+                          title="Голосовое сообщение"
+                        >
+                          <Mic className="h-4 w-4" />
+                        </button>
+                      )}
+                      <Textarea
+                        ref={composerRef}
+                        value={draft}
+                        onChange={(e) => setDraft(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && !e.shiftKey) {
+                            e.preventDefault();
+                            void handleSend();
+                          }
+                        }}
+                        placeholder={
+                          whatsapp.connected
+                            ? "Сообщение… Enter — отправить"
+                            : "Подключите WhatsApp"
+                        }
+                        disabled={!whatsapp.connected || sending}
+                        rows={1}
+                        className="max-h-[140px] min-h-[44px] flex-1 resize-none overflow-y-auto rounded-2xl px-3 py-2.5 text-base leading-snug sm:min-h-[40px] sm:text-sm"
+                      />
+                      <Button
+                        onClick={() => void handleSend()}
+                        disabled={!whatsapp.connected || !hasDraft || sending}
+                        className="h-11 w-11 shrink-0 rounded-full bg-gradient-primary p-0 text-primary-foreground sm:h-10 sm:w-10"
+                        aria-label="Отправить"
+                      >
+                        <Send className="h-4 w-4" />
+                      </Button>
+                    </>
+                  )}
                 </div>
               </div>
             </>
@@ -406,13 +517,8 @@ export function ChatsView({
                 </span>
                 <h3 className="mt-5 text-lg font-semibold">Выберите диалог</h3>
                 <p className="mx-auto mt-2 max-w-xs text-sm text-muted-foreground">
-                  Выберите лида из списка слева, чтобы просмотреть переписку и
-                  управлять статусом
+                  Слева — лиды с перепиской. Откройте чат, чтобы ответить текстом или голосом.
                 </p>
-                <div className="mt-4 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span className="h-1.5 w-1.5 rounded-full bg-success" />
-                  AI-агент обрабатывает входящие автоматически
-                </div>
               </div>
             </div>
           )}

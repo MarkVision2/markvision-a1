@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCheck, Plus, Send, X, Phone, PhoneIncoming, PhoneMissed, PhoneOutgoing,
-  FileText,
+  FileText, Mic,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 import type { ChatMessage, Lead } from "@/types/crm";
 import { useQuickReplies } from "@/hooks/useQuickReplies";
 import { AiSuggestButton } from "../AiSuggestButton";
 import { TemplatePicker } from "./TemplatePicker";
 import { ChatMediaBubble } from "../ChatMediaBubble";
+import { ChatVoiceButton, type VoicePayload } from "../ChatVoiceButton";
 
 interface Props {
   lead: Lead;
@@ -18,6 +20,7 @@ interface Props {
   whatsappConnected: boolean;
   stageTitle?: string;
   onSend: (text: string, opts?: { templateKey?: string }) => void;
+  onSendVoice?: (payload: VoicePayload) => void | Promise<void>;
   /** Trigger for the parent to focus chat (e.g. from Action panel "Написать"). */
   focusToken?: number;
   className?: string;
@@ -43,12 +46,16 @@ function fmtDuration(sec?: number) {
   return m > 0 ? `${m} мин${s ? ` ${s} сек` : ""}` : `${s} сек`;
 }
 
-export function LeadChatPanel({ lead, chats, whatsappConnected, stageTitle, onSend, focusToken, className }: Props) {
+export function LeadChatPanel({
+  lead, chats, whatsappConnected, stageTitle, onSend, onSendVoice, focusToken, className,
+}: Props) {
   const [draft, setDraft] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [voiceMode, setVoiceMode] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const { items: quickReplies, add: addReply, remove: removeReply } = useQuickReplies();
+  const hasDraft = !!draft.trim();
 
   const sorted = useMemo(
     () => [...chats].sort((a, b) => a.at.localeCompare(b.at)),
@@ -226,41 +233,83 @@ export function LeadChatPanel({ lead, chats, whatsappConnected, stageTitle, onSe
           onPick={(text) => setDraft(text)}
         />
 
-        <div className="flex items-center gap-2 pb-[max(0px,env(safe-area-inset-bottom))]">
-          <Input
-            ref={inputRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                const t = draft.trim();
-                if (!t) return;
-                const tplKey = inputRef.current?.getAttribute("data-template-key") ?? undefined;
-                onSend(t, tplKey ? { templateKey: tplKey } : undefined);
-                inputRef.current?.removeAttribute("data-template-key");
-                setDraft("");
-              }
-            }}
-            placeholder={whatsappConnected ? "Сообщение..." : "Подключите WhatsApp, чтобы отправлять"}
-            disabled={!whatsappConnected}
-            className="h-11 text-base md:h-10 md:text-sm"
-          />
-          <Button
-            onClick={() => {
-              const t = draft.trim();
-              if (!t) return;
-              const tplKey = inputRef.current?.getAttribute("data-template-key") ?? undefined;
-              onSend(t, tplKey ? { templateKey: tplKey } : undefined);
-              inputRef.current?.removeAttribute("data-template-key");
-              setDraft("");
-            }}
-            disabled={!whatsappConnected || !draft.trim()}
-            className="h-11 w-11 shrink-0 bg-gradient-primary p-0 text-primary-foreground md:h-10 md:w-10"
-            aria-label="Отправить"
-          >
-            <Send className="h-4 w-4" />
-          </Button>
+        <div className="flex items-end gap-2 pb-[max(0px,env(safe-area-inset-bottom))]">
+          {voiceMode && onSendVoice && whatsappConnected ? (
+            <>
+              <ChatVoiceButton
+                key="lead-voice"
+                className="min-w-0 flex-1"
+                autoStart
+                disabled={!whatsappConnected}
+                onSend={async (payload) => {
+                  try {
+                    await onSendVoice(payload);
+                    setVoiceMode(false);
+                    toast.success("Голосовое отправлено");
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Не удалось отправить голосовое");
+                    throw e;
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setVoiceMode(false)}
+                className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-border/60 text-muted-foreground hover:bg-secondary md:h-10 md:w-10"
+                aria-label="К тексту"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </>
+          ) : (
+            <>
+              {onSendVoice && whatsappConnected && !hasDraft && (
+                <button
+                  type="button"
+                  onClick={() => setVoiceMode(true)}
+                  className="grid h-11 w-11 shrink-0 place-items-center rounded-full border border-border/60 bg-secondary/50 text-foreground hover:bg-secondary md:h-10 md:w-10"
+                  aria-label="Голосовое"
+                  title="Голосовое сообщение"
+                >
+                  <Mic className="h-4 w-4" />
+                </button>
+              )}
+              <Input
+                ref={inputRef}
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    const t = draft.trim();
+                    if (!t) return;
+                    const tplKey = inputRef.current?.getAttribute("data-template-key") ?? undefined;
+                    onSend(t, tplKey ? { templateKey: tplKey } : undefined);
+                    inputRef.current?.removeAttribute("data-template-key");
+                    setDraft("");
+                  }
+                }}
+                placeholder={whatsappConnected ? "Сообщение… Enter — отправить" : "Подключите WhatsApp"}
+                disabled={!whatsappConnected}
+                className="h-11 flex-1 text-base md:h-10 md:text-sm"
+              />
+              <Button
+                onClick={() => {
+                  const t = draft.trim();
+                  if (!t) return;
+                  const tplKey = inputRef.current?.getAttribute("data-template-key") ?? undefined;
+                  onSend(t, tplKey ? { templateKey: tplKey } : undefined);
+                  inputRef.current?.removeAttribute("data-template-key");
+                  setDraft("");
+                }}
+                disabled={!whatsappConnected || !hasDraft}
+                className="h-11 w-11 shrink-0 rounded-full bg-gradient-primary p-0 text-primary-foreground md:h-10 md:w-10"
+                aria-label="Отправить"
+              >
+                <Send className="h-4 w-4" />
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </div>

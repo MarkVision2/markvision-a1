@@ -672,10 +672,19 @@ Deno.serve(async (req) => {
         if (sticky) attribution = mergeCtwa(attribution, sticky);
       }
 
-      let leadId: string | null = null;
+      let leadId: string | null = body.lead_id ? String(body.lead_id) : null;
       if (direction === "out") {
-        // Match Green API: outbound does not create new CRM leads.
-        if (isPlausiblePhone(d)) {
+        // Prefer explicit lead from CRM send; never create leads on outbound.
+        if (leadId) {
+          const { data: owned } = await admin
+            .from("leads")
+            .select("id")
+            .eq("id", leadId)
+            .eq("project_id", projectId)
+            .maybeSingle();
+          leadId = (owned?.id as string | undefined) ?? null;
+        }
+        if (!leadId && isPlausiblePhone(d)) {
           const variants = [`+${d}`, d];
           const { data: match } = await admin
             .from("leads")
@@ -854,7 +863,14 @@ Deno.serve(async (req) => {
   if (action === "send") {
     const phone = digits(String(body.phone ?? ""));
     const message = String(body.message ?? "").trim();
-    if (phone.length < 8 || !message) return json({ error: "phone + message required" }, 400);
+    const audioBase64 = body.audio_base64 ? String(body.audio_base64) : "";
+    const audioMime = body.audio_mime ? String(body.audio_mime) : "";
+    if (phone.length < 8 || (!message && !audioBase64)) {
+      return json({ error: "phone + (message|audio_base64) required" }, 400);
+    }
+    if (audioBase64 && audioBase64.length > 22_000_000) {
+      return json({ error: "audio too large" }, 413);
+    }
     const session = await ensureSession(projectId);
     if (session.status !== "connected") {
       return json({ error: "WhatsApp Web не подключён" }, 409);
@@ -864,15 +880,23 @@ Deno.serve(async (req) => {
       .insert({
         project_id: projectId,
         action: "send",
-        payload: { phone, message, lead_id: body.lead_id ?? null },
+        payload: {
+          phone,
+          message: message || null,
+          lead_id: body.lead_id ?? null,
+          ...(audioBase64
+            ? { audio_base64: audioBase64, audio_mime: audioMime || "audio/webm" }
+            : {}),
+        },
         status: "pending",
       })
       .select("id")
       .single();
     if (error) return json({ error: error.message }, 500);
 
-    // Wait briefly for daemon ack (best-effort)
-    const deadline = Date.now() + 12_000;
+    // Wait briefly for daemon ack (best-effort). Voice may need ffmpeg — allow longer.
+    const waitMs = audioBase64 ? 45_000 : 12_000;
+    const deadline = Date.now() + waitMs;
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 700));
       const { data: row } = await admin
@@ -893,7 +917,15 @@ Deno.serve(async (req) => {
         }, 502);
       }
     }
-    // Still pending — UI can treat command id as optimistic external id
+    // Still pending — for voice do not fake success (media may not be ingested yet).
+    if (audioBase64) {
+      return json({
+        ok: false,
+        error: "Таймаут отправки голосового — демон ещё обрабатывает. Попробуйте снова.",
+        pending: true,
+      }, 504);
+    }
+    // Text: UI can treat command id as optimistic external id
     return json({ ok: true, idMessage: cmd.id, pending: true });
   }
 

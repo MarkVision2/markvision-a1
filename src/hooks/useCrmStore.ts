@@ -846,6 +846,51 @@ export function useCrmStore() {
     }
   }, [user?.id, leads, projectId]);
 
+  /** Send a voice note (WA Web only). `base64` without data: URL prefix. */
+  const sendVoice = useCallback(async (
+    leadId: string,
+    opts: { base64: string; mime: string; durationSec?: number },
+  ) => {
+    const lead = leads.find((l) => l.id === leadId);
+    const phone = lead?.phone ?? "";
+    if (!projectId || !phone || !opts.base64) {
+      throw new Error("Нет проекта, телефона или аудио");
+    }
+
+    const { data: webStatus } = await supabase.functions.invoke("wa-web-bridge", {
+      body: { action: "status", project_id: projectId },
+    });
+    const webConnected =
+      (webStatus as { session?: { status?: string } } | null)?.session?.status === "connected";
+    if (!webConnected) {
+      throw new Error("Подключите WhatsApp Web (QR), чтобы слать голосовые");
+    }
+
+    const { data, error } = await supabase.functions.invoke("wa-web-bridge", {
+      body: {
+        action: "send",
+        project_id: projectId,
+        phone,
+        lead_id: leadId,
+        audio_base64: opts.base64,
+        audio_mime: opts.mime || "audio/webm",
+      },
+    });
+    const idMessage = (data as { idMessage?: string } | null)?.idMessage ?? null;
+    const ok =
+      !error &&
+      (data as { ok?: boolean } | null)?.ok !== false &&
+      !!idMessage;
+    if (!ok) {
+      const msg =
+        (data as { error?: string } | null)?.error
+        || error?.message
+        || "Не удалось отправить голосовое";
+      throw new Error(msg);
+    }
+    // Communication + media_url are written by daemon ingest (realtime updates UI).
+  }, [leads, projectId]);
+
   // ---------- growth ----------
   const togglePin = useCallback(async (leadId: string) => {
     const lead = leads.find((l) => l.id === leadId);
@@ -1187,6 +1232,7 @@ export function useCrmStore() {
     markPersonal,
     moveLead,
     sendMessage,
+    sendVoice,
     togglePin,
     assignLead,
     setRejectReason,

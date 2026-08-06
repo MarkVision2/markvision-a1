@@ -64,6 +64,7 @@ const Crm = () => {
     markPersonal,
     moveLead,
     sendMessage,
+    sendVoice,
     togglePin,
     assignLead,
     setRejectReason,
@@ -351,14 +352,17 @@ const Crm = () => {
 
           <Suspense fallback={<div className="p-8 text-center text-sm text-muted-foreground">Загрузка…</div>}>
             {tab === "chats" && (
-              <ChatsView
-                leads={leads}
-                stages={stages}
-                chats={chats}
-                whatsapp={whatsapp}
-                onSend={sendMessage}
-                onConnectWhatsApp={() => navigate("/settings/connection")}
-              />
+              <div className="flex min-h-0 flex-1 flex-col">
+                <ChatsView
+                  leads={leads}
+                  stages={stages}
+                  chats={chats}
+                  whatsapp={whatsapp}
+                  onSend={sendMessage}
+                  onSendVoice={(id, payload) => sendVoice(id, payload)}
+                  onConnectWhatsApp={() => navigate("/settings/connection")}
+                />
+              </div>
             )}
 
             {tab === "clients" && (
@@ -429,6 +433,7 @@ const Crm = () => {
         onTogglePin={togglePin}
         onAssign={assignLead}
         onSendMessage={(id, text) => sendMessage(id, text)}
+        onSendVoice={(id, payload) => sendVoice(id, payload)}
         onMarkCall={(id, opts) => {
           markCall(id, opts);
           toast.success(

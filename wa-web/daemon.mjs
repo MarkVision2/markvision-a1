@@ -712,17 +712,70 @@ async function handleCommand(cmd) {
       if (!sock) sock = await openSocket(projectId);
       if (!sock) throw new Error("socket not ready");
       const phone = String(cmd.payload?.phone || "").replace(/\D/g, "");
-      const message = String(cmd.payload?.message || "");
-      if (!phone || !message) throw new Error("phone/message missing");
+      const message = String(cmd.payload?.message || "").trim();
+      const audioB64 = cmd.payload?.audio_base64 ? String(cmd.payload.audio_base64) : "";
+      const audioMimeIn = String(cmd.payload?.audio_mime || "");
+      if (!phone || (!message && !audioB64)) throw new Error("phone + (message|audio) missing");
       const jid = `${phone}@s.whatsapp.net`;
-      const sent = await sock.sendMessage(jid, { text: message });
+
+      let sent;
+      let ingestExtra = {};
+      if (audioB64) {
+        let buf = Buffer.from(audioB64, "base64");
+        if (!buf.length) throw new Error("empty audio");
+        if (buf.length > 16 * 1024 * 1024) throw new Error("audio too large");
+        let mime = audioMimeIn || "audio/ogg; codecs=opus";
+        const needsConvert = !/ogg|opus/i.test(mime.split(";")[0] || "");
+        if (needsConvert) {
+          const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          const inExt = /webm/i.test(mime) ? "webm" : /mp4|m4a|aac/i.test(mime) ? "m4a" : "bin";
+          const inPath = join(tmpdir(), `wa-voice-in-${id}.${inExt}`);
+          const outPath = join(tmpdir(), `wa-voice-out-${id}.ogg`);
+          try {
+            writeFileSync(inPath, buf);
+            const r = spawnSync(
+              "ffmpeg",
+              ["-y", "-i", inPath, "-c:a", "libopus", "-b:a", "32k", "-ac", "1", "-ar", "16000", "-vn", outPath],
+              { encoding: "utf8", timeout: 60_000 },
+            );
+            if (r.status !== 0 || !existsSync(outPath)) {
+              throw new Error(`ffmpeg voice convert failed: ${(r.stderr || "").slice(0, 200)}`);
+            }
+            buf = readFileSync(outPath);
+            mime = "audio/ogg; codecs=opus";
+            log.info({ fromBytes: Buffer.from(audioB64, "base64").length, toBytes: buf.length }, "voice converted to ogg/opus");
+          } finally {
+            try { unlinkSync(inPath); } catch { /* ignore */ }
+            try { unlinkSync(outPath); } catch { /* ignore */ }
+          }
+        } else {
+          mime = "audio/ogg; codecs=opus";
+        }
+        sent = await sock.sendMessage(jid, {
+          audio: buf,
+          mimetype: mime,
+          ptt: true,
+        });
+        ingestExtra = {
+          text: "[Аудио]",
+          media_kind: "audio",
+          media_mime: mime,
+          media_filename: "voice.ogg",
+          media_base64: buf.toString("base64"),
+        };
+      } else {
+        sent = await sock.sendMessage(jid, { text: message });
+        ingestExtra = { text: message };
+      }
+
       const idMessage = sent?.key?.id || null;
       await bridge("ingest", {
         project_id: projectId,
         phone: `+${phone}`,
         direction: "out",
-        text: message,
         external_id: idMessage,
+        lead_id: cmd.payload?.lead_id || null,
+        ...ingestExtra,
       });
       await bridge("ack", {
         id: cmd.id,

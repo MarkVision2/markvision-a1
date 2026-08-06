@@ -37,6 +37,7 @@ interface Props {
   onTogglePin: (id: string) => void;
   onAssign: (id: string, assigneeId?: string) => void;
   onSendMessage: (id: string, text: string) => void;
+  onSendVoice?: (id: string, payload: { base64: string; mime: string; durationSec?: number }) => void | Promise<void>;
   onMarkCall: (id: string, opts?: { direction?: "outgoing" | "incoming"; status?: "answered" | "missed"; durationSec?: number; note?: string }) => void;
   onLogCallAttempt?: (id: string, info: { provider: string; ok: boolean; phone?: string; warning?: string; error?: string }) => void;
   onMarkPaid: (id: string, method: PaymentMethod, amount: number, opts?: { note?: string }) => void;
@@ -61,7 +62,7 @@ interface Props {
 
 export function LeadDetailSheet({
   lead, stages, members, chats, whatsapp, open, onOpenChange,
-  onUpdate, onDelete, onMarkPersonal, onTogglePin, onAssign, onSendMessage,
+  onUpdate, onDelete, onMarkPersonal, onTogglePin, onAssign, onSendMessage, onSendVoice,
   onMarkCall, onLogCallAttempt, onMarkPaid, onSetVisit, onAddTask, onToggleTask, onRemoveTask, onRequestReject, onRequestPay, onRequestDiagnostic,
   onLaunchAction, pipelineTemplateKey,
   busySlots,
@@ -256,6 +257,7 @@ export function LeadDetailSheet({
                       whatsappConnected={whatsapp.connected}
                       stageTitle={stageTitle}
                       onSend={(txt) => onSendMessage(lead.id, txt)}
+                      onSendVoice={onSendVoice ? (p) => onSendVoice(lead.id, p) : undefined}
                       className="min-h-0 flex-1"
                     />
                   </TabsContent>
@@ -332,6 +334,7 @@ export function LeadDetailSheet({
                 whatsappConnected={whatsapp.connected}
                 stageTitle={stageTitle}
                 onSend={(t) => onSendMessage(lead.id, t)}
+                onSendVoice={onSendVoice ? (p) => onSendVoice(lead.id, p) : undefined}
               />
             </div>
           </div>
