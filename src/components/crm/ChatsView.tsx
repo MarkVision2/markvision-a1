@@ -90,6 +90,7 @@ export function ChatsView({
     const list = leads.filter((l) => {
       const stageOk = activeStageId === "all" || l.stageId === activeStageId;
       const hasChat = (chatsByLeadId.get(l.id)?.length ?? 0) > 0;
+      // Inbox: conversations only. Search also surfaces leads without history (write first).
       const inboxOk = hasChat || !!q;
       const searchOk =
         !q ||
