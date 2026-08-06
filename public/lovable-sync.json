@@ -1,7 +1,7 @@
 {
-  "git_sha": "534011c",
-  "git_sha_full": "534011c5125c221278b5a98d9b913d460b2f6ecb",
-  "updated_at": "2026-08-05T16:27:14Z",
-  "label": "chore: deploy ads realtime subscribe fix [vercel-deploy]",
+  "git_sha": "22c9082",
+  "git_sha_full": "22c90823350aa172350da6c7f36363bfd5c701f4",
+  "updated_at": "2026-08-06T07:24:32Z",
+  "label": "chore(crm): clarify chat inbox search behavior",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
