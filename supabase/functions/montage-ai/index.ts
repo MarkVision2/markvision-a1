@@ -177,17 +177,18 @@ word = индекс из indexed. text — короткий капс (1–3 сл
 2) MOTION Remotion — ровно ${motionTarget} шт. (код-графика, НЕ картинки):
 {"anchorWord":<i>,"endWord":<i>,"template":"<slug>","layout":"third"|"half","data":{...},"note":"<ru quote>","spokenText":"<ru quote>"}
 - template ТОЛЬКО: ${MOTION_TEMPLATES}.
-- ~${coverPct}% с data.cover=true (тёмный фон + мысль в центре); остальные cover:false (big-statement/metric поверх спикера).
-- data.text/label/lines/items/value — ТОЛЬКО из слов фразы; цифры только если сказаны.
-- МАППИНГ: боль→metric+checklist; успех→gauge; раньше/сейчас→vs-compare/bars; процесс→timeline-steps; тезис→big-statement #EF4444; деньги→number-counter.
+- ~${coverPct}% с data.cover=true (тёмный фон); остальные cover:false поверх спикера.
+- Караоке уже показывает речь — ЗАПРЕЩЕНО big-statement/kinetic-type/quote-card с цитатой фразы.
+- data: короткие ярлыки ≤3 слова ИЛИ items/steps/value без простыни текста.
+- МАППИНГ: боль→metric+checklist; успех→gauge; раньше/сейчас→vs-compare/bars; процесс→timeline-steps; деньги→number-counter.
 - Accent: ${accentColor}. Чередуй #EF4444 #34D399 #22D3EE #FB7185.
 
 ОБЩИЕ ПРАВИЛА:
 - Сначала прочитай anchorWord..endWord. Вставка иллюстрирует ЭТУ фразу.
 - Видео и motion НЕ на одних и тех же словах (окна не пересекаются).
 - endWord > anchorWord; видео 3–6 сек, motion 2–5 сек.
-- note/spokenText = цитата фразы.
-- ЗАПРЕЩЕНО: оффтоп, >${videoTarget} видео, пустые prompt/template, зум лица.`,
+- note/spokenText = цитата фразы (для разметки, НЕ для огромного текста в кадре).
+- ЗАПРЕЩЕНО: оффтоп, плейсхолдеры «БОЛЬШОЕ ЗАЯВЛЕНИЕ», >${videoTarget} видео, пустые prompt/template, зум лица.`,
             `DURATION_SEC=${durationSec || "?"}\nBROLL_MODE=${brollMode}\nSTYLE=${styleId}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
             150_000,
           );
@@ -212,19 +213,18 @@ word = индекс из indexed. text — короткий капс (1–3 сл
 {"inserts":[{"anchorWord":<i>,"endWord":<i>,"template":"<slug>","layout":"third"|"half"|"full","data":{...},"note":"<ru quote>","spokenText":"<ru quote>"}]}
 Это code-based b-roll (НЕ картинки). template — ТОЛЬКО: ${MOTION_TEMPLATES}.
 ${sourceHint}
-ГЛАВНОЕ: каждая мысль = ВИЗУАЛЬНАЯ СЦЕНА по ИМЕННО этой фразе (не декор, не оффтоп).
+ГЛАВНОЕ: визуал по смыслу фразы. Караоке уже показывает речь — НЕ дублируй фразу огромным текстом.
+ЗАПРЕЩЕНО: big-statement/kinetic-type/quote-card с цитатой речи; плейсхолдер «БОЛЬШОЕ ЗАЯВЛЕНИЕ».
 GROUNDING (ЖЁСТКО):
 - Прочитай слова anchorWord..endWord ДО выбора template.
-- data.text/label/lines/items/value — только из этой фразы (дословно или лёгкая нормализация).
-- Цифры/% в data = цифры из речи. Нет цифры → не используй number-counter/metric-callout.
-- note и spokenText = цитата фразы. Если не можешь grounded-визуал — ПРОПУСТИ слот (лучше дыра, чем оффтоп).
+- data: items/steps/value/короткий label ≤3 слова из фразы. Цифры только если сказаны.
+- note и spokenText = цитата (метаданные). Нет grounded-визуала → ПРОПУСТИ слот.
 Правила плотности:
-- Цель ~${target} вставок (~1 на ${every} сек), без дыр >${every + 2} сек где есть смысл.
-- ~${coverPct}% с data.cover=true: тёмный фон + ЦЕНТР = мысль из фразы. Тег контекста из той же мысли.
-- Остальные cover:false: big-statement/metric-callout сверху (layout:third) — текст из фразы.
-- МАППИНГ только если фраза реально про это: боль→metric+checklist; успех→gauge; раньше/сейчас→bars; процесс→timeline; тезис→big-statement #EF4444; деньги→number-counter.
+- Цель ~${target} вставок (~1 на ${every} сек).
+- ~${coverPct}% cover:true без текстовой простыни.
+- МАППИНГ: боль→metric+checklist; успех→gauge; раньше/сейчас→bars; процесс→timeline; деньги→number-counter.
 - Accent: ${accentColor}. Чередуй #EF4444 #34D399 #22D3EE #FB7185.
-- endWord > anchorWord, окно 2–5 сек. Без зума/приближения лица.`,
+- endWord > anchorWord, окно 2–5 сек. Без зума лица.`,
           `DURATION_SEC=${durationSec || "?"}\nBROLL_MODE=${brollMode}\nSTYLE=${styleId}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
           150_000,
         );

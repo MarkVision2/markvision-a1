@@ -1,6 +1,6 @@
 import React from "react";
-import { AbsoluteFill, interpolate, staticFile, useCurrentFrame } from "remotion";
-import { Audio } from "@remotion/media";
+import { AbsoluteFill, Img, interpolate, Sequence, staticFile, useCurrentFrame } from "remotion";
+import { Audio, Video } from "@remotion/media";
 import { displayFontFamily } from "./fonts";
 import { MOTION_TEMPLATES, SceneBackground } from "./motion";
 import { resolveTheme, type ReelsTheme, type ReelsThemeId } from "./themes";
@@ -17,6 +17,9 @@ export type ReelsScene = {
   from: number;
   to: number;
   template: string;
+  /** Full-bleed B-roll cutaway from library/Pexels/Kie (under motion chrome). */
+  type?: "motion" | "video";
+  file?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   data?: Record<string, any>;
 };
@@ -167,18 +170,38 @@ export const ReelsExplainer: React.FC<ReelsExplainerProps> = ({
   const opacity = inAmt * (1 - outAmt * 0.85);
   const Comp = active && MOTION_TEMPLATES[active.template] ? MOTION_TEMPLATES[active.template] : null;
   const prog = interpolate(frame, [0, totalDurationInFrames], [0, 100], { extrapolateRight: "clamp" });
+  const isVideo = Boolean(active?.file && (active.type === "video" || !Comp));
 
   return (
     <AbsoluteFill style={{ backgroundColor: t.bg }}>
-      <SceneBackground localFrame={frame} accent={accent} theme={t} />
-      <Particles frame={frame} accent={accent} mode={t.particle} />
+      {isVideo && active?.file ? (
+        <Sequence from={active.from} durationInFrames={Math.max(1, active.to - active.from)} layout="none">
+          <AbsoluteFill style={{ backgroundColor: "#0a0a0c" }}>
+            {/\.(png|jpe?g|webp|gif)$/i.test(active.file) ? (
+              <Img src={staticFile(active.file)} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            ) : (
+              <Video
+                src={staticFile(active.file)}
+                muted
+                objectFit="cover"
+                style={{ width: "100%", height: "100%" }}
+              />
+            )}
+          </AbsoluteFill>
+        </Sequence>
+      ) : (
+        <>
+          <SceneBackground localFrame={frame} accent={accent} theme={t} />
+          <Particles frame={frame} accent={accent} mode={t.particle} />
+        </>
+      )}
 
       <div style={{
         position: "absolute", top: 0, left: 0, height: 6, width: `${prog}%`,
         background: accent, boxShadow: `0 0 16px ${accent}`, opacity: 0.9,
       }} />
 
-      {Comp && active ? (
+      {Comp && active && !isVideo ? (
         <AbsoluteFill style={{ opacity, transform: `translateX(${slide}px) translateY(${floatY}px) scale(${breathe})` }}>
           <Comp localFrame={localFrame} duration={dur} {...(active.data ?? {})} />
         </AbsoluteFill>
