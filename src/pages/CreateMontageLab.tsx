@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertTriangle, Archive, Bot, Check, CheckCircle2, ChevronDown, ChevronUp, Clock, Download, Film, FileVideo, FolderOpen, Loader2,
+  AlertTriangle, Archive, Bot, Check, CheckCircle2, ChevronDown, ChevronUp, Clapperboard, Clock, Download, Film, FileVideo, FolderOpen, Layers, Loader2,
   MonitorPlay, Play, Scissors, Send, Smartphone, Sparkles, Upload, Wand2, X, Zap,
 } from "lucide-react";
 import Header from "@/components/factory/Header";
@@ -77,11 +77,74 @@ const STATUS_STYLE: Record<MontageJob["status"], string> = {
 
 const ACTIVE_STATUSES: MontageJob["status"][] = ["queued", "processing", "rendering"];
 
-const BRIEF_PRESETS = [
-  { icon: Zap,      label: "Динамичный темп" },
-  { icon: Sparkles, label: "Акцент на цифрах и фактах" },
-  { icon: Wand2,    label: "Крупные титры на ключевые фразы" },
-  { icon: MonitorPlay, label: "Анимация сверху на каждую мысль" },
+const BRIEF_PRESETS: Array<{ icon: typeof Zap; label: string; prompt: string }> = [
+  {
+    icon: Zap,
+    label: "Динамичный темп",
+    prompt: `[Динамичный темп]
+Монтаж: плотный jump-cut, вырезать паузы, «э-э», повторы и воду; держать энергию речи.
+Ритм: новая визуальная сцена каждые 3–5 сек, без пустых кусков длиннее 5 сек.
+Динамика: чередовать крупный план спикера и cover-сцены; лёгкие панчи на сильных фразах, без creepy-zoom.
+Титры: короткие караоке 2–4 слова, UPPERCASE, жёлтый акцент текущего слова.
+B-roll / вставки: только по смыслу сказанного (не декоратив); на боль/цифры/CTA — сразу визуал.
+Моушн: быстрые появления metric/kinetic, без долгих заставок.`,
+  },
+  {
+    icon: Sparkles,
+    label: "Акцент на цифрах и фактах",
+    prompt: `[Акцент на цифрах и фактах]
+Монтаж: каждый факт, %, сумма, срок — отдельная сцена с крупным визуалом числа.
+Титры: цифру дублировать крупным callout (number-counter / metric-callout), подпись мелким pill.
+Динамика: на цифрах — короткий панч/подсветка; спикер в PiP или на треть кадра.
+B-roll / вставки: графики «раньше/сейчас», gauge/кольцо прогресса, чеклист с ✓, сравнение столбцов.
+Моушн: number-counter, metric-callout, comparison-bars; цвета: проблема красный, рост зелёный, акцент жёлтый #F5E14B.
+Не размывать факт фоновым стоковым роликом — цифра должна читаться за 1 сек.`,
+  },
+  {
+    icon: Wand2,
+    label: "Крупные титры на ключевые фразы",
+    prompt: `[Крупные титры на ключевые фразы]
+Титры: на тезисы и CTA — big-statement / kinetic-type поверх груди спикера (часто красная шапка).
+Караоке: всегда внизу на тёмной плашке, 2–4 слова, UPPERCASE; текущее слово #F5E14B; не прятать на cover.
+Монтаж: ключевую фразу не резать посередине; оставить паузу 0.2–0.4с после панчлайна.
+Динамика: спикер на весь кадр в момент тезиса (~35–45% времени), остальное — cover с визуалом мысли.
+B-roll / вставки: под тезис — одна сильная схема/метрика/иконка, не коллаж.
+Моушн: big-statement, kinetic-type, notification-toast как тег контекста («ЦЕЛЬ», «ИТОГ»).`,
+  },
+  {
+    icon: MonitorPlay,
+    label: "Анимация сверху на каждую мысль",
+    prompt: `[Анимация сверху на каждую мысль]
+Принцип: каждая мысль = отдельная сцена с визуалом, который её иллюстрирует (не «говорящая голова + титры»).
+Cover (~55–65%): тёмный фон + glow, спикер PiP справа сверху, тег контекста слева, центр = мысль (схема/метрика/UI).
+Speaker (~35–45%): полный кадр + красный тезис по груди + караоке снизу.
+Монтаж: плотность 1 сцена / 3–5 сек; чередовать cover ↔ speaker по смыслу.
+B-roll / вставки: flowchart шагов, стопка карточек углов, чеклист, % + тег-боксы, UI-мок — строго по тексту речи.
+Моушн-шаблоны: number-counter, metric-callout, checklist, flowchart, comparison-bars, pill-row, notification-toast.
+Титры караоке не отключать на cover.`,
+  },
+  {
+    icon: Clapperboard,
+    label: "B-roll и смысловые вставки",
+    prompt: `[B-roll и смысловые вставки]
+B-roll: только grounded — клип/картинка должна совпадать со сказанным словом/образом, иначе не ставить.
+Вставки: на боль → красные теги/%; на процесс → flowchart; на результат → зелёный gauge + ✓; на оффер → карточка + теги.
+Монтаж: вставка накрывает спикера 1.5–3.5 сек в момент мысли, потом возврат на лицо.
+Динамика: не залипать на одном b-roll дольше 4 сек; смена мысли = смена визуала.
+Титры: караоке снизу поверх вставок; сверху — короткий тег сцены.
+Моушн: предпочитать схемы/метрики стоковым «красивым» роликам; сток — только если усиливает смысл.`,
+  },
+  {
+    icon: Layers,
+    label: "Моушн-дизайн эксперта",
+    prompt: `[Моушн-дизайн эксперта]
+Стиль: expert-explainer — тёмный navy/чёрный #0A0C14, glow по смыслу сцены, чистая типографика.
+Палитра: боль #EF4444/#FB7185, успех #34D399, акцент слова #F5E14B, теги — жёлтый/cyan/зелёный/красный по сцене.
+Шаблоны: number-counter, metric-callout, checklist, flowchart, comparison-bars, kinetic-type, big-statement, pill-row.
+Монтаж: cover с PiP + центр-мысль чередовать с speaker+тезис; без пустых зон и без зума «в лицо».
+Титры: karaoke-box снизу всегда; на тезисе — крупный заголовок.
+B-roll: минимум декора, максимум объясняющей графики под фразу спикера.`,
+  },
 ];
 
 function formatBytes(b: number) {
@@ -398,10 +461,12 @@ const CreateMontageLab = () => {
     setUploadPct2(0);
   };
 
-  const addPreset = (text: string) => {
+  const addPreset = (preset: (typeof BRIEF_PRESETS)[number]) => {
     setBrief((b) => {
-      if (b.toLowerCase().includes(text.toLowerCase())) return b;
-      return b.trim() ? `${b.trim()}\n• ${text}` : `• ${text}`;
+      const marker = `[${preset.label}]`;
+      if (b.includes(marker)) return b;
+      const block = preset.prompt.trim();
+      return b.trim() ? `${b.trim()}\n\n${block}` : block;
     });
   };
 
@@ -889,24 +954,32 @@ const CreateMontageLab = () => {
               </div>
 
               <div className="mb-2 flex flex-wrap gap-1.5">
-                {BRIEF_PRESETS.map((p) => (
-                  <button
-                    key={p.label}
-                    type="button"
-                    onClick={() => addPreset(p.label)}
-                    className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background px-2.5 py-1 text-xs text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
-                  >
-                    <p.icon className="h-3 w-3" /> {p.label}
-                  </button>
-                ))}
+                {BRIEF_PRESETS.map((p) => {
+                  const active = brief.includes(`[${p.label}]`);
+                  return (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => addPreset(p)}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition",
+                        active
+                          ? "border-primary/50 bg-primary/10 text-foreground"
+                          : "border-border/60 bg-background text-muted-foreground hover:border-primary/40 hover:text-foreground",
+                      )}
+                    >
+                      <p.icon className="h-3 w-3" /> {p.label}
+                    </button>
+                  );
+                })}
               </div>
 
               <Textarea
                 value={brief}
                 onChange={(e) => setBrief(e.target.value)}
-                rows={4}
-                placeholder="Тема — запуск курса; вырезать всё про старую программу; акцент на цифрах; темп динамичный…"
-                className="resize-y bg-background"
+                rows={8}
+                placeholder="Нажмите чип выше — вставится полный бриф (темп, титры, B-roll, моушн). Или напишите сами: тема, что вырезать, на чём акцент…"
+                className="resize-y bg-background font-mono text-xs sm:text-sm"
               />
               <div className="mt-1 text-right text-[11px] text-muted-foreground">{brief.length} / 4000</div>
             </section>
