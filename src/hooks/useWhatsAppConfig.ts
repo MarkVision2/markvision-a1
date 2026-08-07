@@ -32,7 +32,31 @@ export function useWhatsAppConfig(projectId?: string | null) {
       return;
     }
 
-    const [configRes, statusRes, webRowRes] = await Promise.all([
+    // Prefer WA Web session (RLS) — skip Green status round-trip when QR is live.
+    const webRowRes = projectId
+      ? await supabase
+          .from("whatsapp_web_sessions" as never)
+          .select("status, phone, display_name")
+          .eq("project_id", projectId)
+          .maybeSingle()
+      : { data: null, error: null };
+
+    const webRow = (webRowRes as { data?: WaWebSessionRow | null } | null)?.data ?? null;
+    const webConnected = webRow?.status === "connected";
+    const webPhone = webRow?.phone?.trim() || null;
+    const webName = webRow?.display_name?.trim() || null;
+
+    if (webConnected) {
+      setConfig({
+        connected: true,
+        phone: webPhone || undefined,
+        displayName: webName || undefined,
+        connectedAt: new Date().toISOString(),
+      });
+      return;
+    }
+
+    const [configRes, statusRes] = await Promise.all([
       supabase
         .from("whatsapp_config_safe")
         .select("phone, display_name, connected, connected_at")
@@ -43,13 +67,6 @@ export function useWhatsAppConfig(projectId?: string | null) {
       supabase.functions
         .invoke("greenapi-proxy", { body: { action: "status" } })
         .catch(() => ({ data: null, error: null })),
-      projectId
-        ? supabase
-            .from("whatsapp_web_sessions" as never)
-            .select("status, phone, display_name")
-            .eq("project_id", projectId)
-            .maybeSingle()
-        : Promise.resolve({ data: null, error: null }),
     ]);
 
     const data = configRes.data as {
@@ -59,11 +76,6 @@ export function useWhatsAppConfig(projectId?: string | null) {
       connected_at?: string | null;
     } | null;
 
-    const webRow = (webRowRes as { data?: WaWebSessionRow | null } | null)?.data ?? null;
-    const webConnected = webRow?.status === "connected";
-    const webPhone = webRow?.phone?.trim() || null;
-    const webName = webRow?.display_name?.trim() || null;
-
     const liveState =
       (statusRes as { data?: GreenStatusResp } | null)?.data?.data?.stateInstance
       ?? null;
@@ -71,31 +83,18 @@ export function useWhatsAppConfig(projectId?: string | null) {
     const greenConnected =
       typeof liveConnected === "boolean" ? liveConnected : !!data?.connected;
 
-    // WA Web wins for the active project — Green API live "notAuthorized"
-    // must not hide a working QR session.
-    const connected = webConnected || greenConnected;
-    const phone = (webConnected && webPhone)
-      ? webPhone
-      : (data?.phone ?? undefined);
-    const displayName = (webConnected && webName)
-      ? webName
-      : (data?.display_name ?? undefined);
-
+    const connected = greenConnected;
     setConfig({
       connected,
-      phone: phone || undefined,
-      displayName: displayName || undefined,
+      phone: data?.phone ?? undefined,
+      displayName: data?.display_name ?? undefined,
       connectedAt: connected
         ? (data?.connected_at ?? new Date().toISOString())
         : undefined,
     });
 
-    // Sync legacy whatsapp_config from Green API only when WA Web is not
-    // the active channel — otherwise Green "notAuthorized" would flip the
-    // row to disconnected and confuse other callers.
     const shouldSyncRow =
-      !webConnected
-      && typeof liveConnected === "boolean"
+      typeof liveConnected === "boolean"
       && (
         (!!data && !!data.connected !== liveConnected)
         || (!data && liveConnected)

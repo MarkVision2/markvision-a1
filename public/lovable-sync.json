@@ -1,7 +1,7 @@
 {
-  "git_sha": "30f48c8",
-  "git_sha_full": "30f48c818d1fd750089237c43e794d8e15421f90",
-  "updated_at": "2026-08-07T12:46:20Z",
-  "label": "fix(crm): убрать троение чата и ускорить отправку [vercel-deploy]",
+  "git_sha": "252a439b",
+  "git_sha_full": "252a439b6084f89622fbb10350273e3cb0dda45a",
+  "updated_at": "2026-08-07T13:04:00Z",
+  "label": "perf(crm): instant chat send [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }

@@ -894,11 +894,17 @@ Deno.serve(async (req) => {
       .single();
     if (error) return json({ error: error.message }, 500);
 
-    // Wait briefly for daemon ack (best-effort). Voice may need ffmpeg — allow longer.
-    const waitMs = audioBase64 ? 45_000 : 8_000;
+    // Text: return immediately — daemon claims within ~1s. Waiting here blocked
+    // the CRM composer for up to 8s and made chat feel stuck.
+    // Voice: short poll so the UI can show hard failures (ffmpeg/socket).
+    if (!audioBase64) {
+      return json({ ok: true, pending: true, commandId: cmd.id });
+    }
+
+    const waitMs = 20_000;
     const deadline = Date.now() + waitMs;
     while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 400));
+      await new Promise((r) => setTimeout(r, 350));
       const { data: row } = await admin
         .from("whatsapp_web_commands")
         .select("status, result")
@@ -906,11 +912,7 @@ Deno.serve(async (req) => {
         .maybeSingle();
       if (row?.status === "done") {
         const idMessage = (row.result as { idMessage?: string } | null)?.idMessage ?? null;
-        return json({
-          ok: true,
-          idMessage,
-          pending: !idMessage,
-        });
+        return json({ ok: true, idMessage, pending: !idMessage });
       }
       if (row?.status === "failed") {
         return json({
@@ -919,9 +921,8 @@ Deno.serve(async (req) => {
         }, 502);
       }
     }
-    // Still pending — daemon continues; never return command UUID as message id
-    // (that used to create a duplicate vs Baileys ingest external_id).
-    return json({ ok: true, pending: true });
+    // Daemon still working — treat as accepted (ingest will land via realtime).
+    return json({ ok: true, pending: true, commandId: cmd.id });
   }
 
   return json({ error: `unknown action: ${action}` }, 400);

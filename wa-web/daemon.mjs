@@ -825,7 +825,8 @@ async function main() {
     } catch (e) {
       log.error({ err: e }, "tick failed");
     }
-    await new Promise((r) => setTimeout(r, 2500));
+    // Fast claim loop — CRM send returns immediately and needs quick pickup.
+    await new Promise((r) => setTimeout(r, 600));
   }
 }
 

@@ -62,7 +62,6 @@ export function ChatsView({
   const [search, setSearch] = useState("");
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
   /** Optimistic bubbles until realtime / DB row arrives. */
   const [optimistic, setOptimistic] = useState<ChatMessage[]>([]);
@@ -128,7 +127,6 @@ export function ChatsView({
   useEffect(() => {
     setDraft("");
     setVoiceMode(false);
-    setSending(false);
   }, [activeLeadId]);
 
   // Drop optimistic rows once the real message is in the store.
@@ -158,33 +156,34 @@ export function ChatsView({
     el.style.height = `${Math.min(el.scrollHeight, 140)}px`;
   }, [draft]);
 
-  const handleSend = async () => {
+  const handleSend = () => {
     const text = draft.trim();
-    if (!text || !activeLead || sending) return;
+    if (!text || !activeLead) return;
+    const leadId = activeLead.id;
     const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
     const optimisticMsg: ChatMessage = {
       id: tempId,
-      leadId: activeLead.id,
+      leadId,
       fromMe: true,
       text,
       at: new Date().toISOString(),
       channel: "whatsapp",
       status: "sent",
     };
+    // Clear draft immediately — do not wait for bridge/daemon.
     setDraft("");
     setOptimistic((prev) => [...prev, optimisticMsg]);
-    setSending(true);
-    try {
-      await onSend(activeLead.id, text);
-      requestAnimationFrame(() => composerRef.current?.focus());
-    } catch {
-      setOptimistic((prev) =>
-        prev.map((m) => (m.id === tempId ? { ...m, status: "failed" as const } : m)),
-      );
-      toast.error("Не отправилось — попробуйте ещё раз");
-    } finally {
-      setSending(false);
-    }
+    requestAnimationFrame(() => composerRef.current?.focus());
+    void (async () => {
+      try {
+        await onSend(leadId, text);
+      } catch {
+        setOptimistic((prev) =>
+          prev.map((m) => (m.id === tempId ? { ...m, status: "failed" as const } : m)),
+        );
+        toast.error("Не отправилось — попробуйте ещё раз");
+      }
+    })();
   };
 
   const handleVoice = async (payload: VoicePayload) => {
@@ -503,7 +502,7 @@ export function ChatsView({
                         key="voice-rec"
                         className="min-w-0 flex-1"
                         autoStart
-                        disabled={!whatsapp.connected || sending}
+                        disabled={!whatsapp.connected}
                         onSend={handleVoice}
                       />
                       <button
@@ -536,7 +535,7 @@ export function ChatsView({
                         onKeyDown={(e) => {
                           if (e.key === "Enter" && !e.shiftKey) {
                             e.preventDefault();
-                            void handleSend();
+                            handleSend();
                           }
                         }}
                         placeholder={
@@ -544,13 +543,13 @@ export function ChatsView({
                             ? "Сообщение… Enter — отправить"
                             : "Подключите WhatsApp"
                         }
-                        disabled={!whatsapp.connected || sending}
+                        disabled={!whatsapp.connected}
                         rows={1}
                         className="max-h-[140px] min-h-[44px] flex-1 resize-none overflow-y-auto rounded-2xl px-3 py-2.5 text-base leading-snug sm:min-h-[40px] sm:text-sm"
                       />
                       <Button
-                        onClick={() => void handleSend()}
-                        disabled={!whatsapp.connected || !hasDraft || sending}
+                        onClick={() => handleSend()}
+                        disabled={!whatsapp.connected || !hasDraft}
                         className="h-11 w-11 shrink-0 rounded-full bg-gradient-primary p-0 text-primary-foreground sm:h-10 sm:w-10"
                         aria-label="Отправить"
                       >
