@@ -1,20 +1,22 @@
-#!/usr/bin/env node
 /**
  * Автономный воркер очереди Reels (VPS).
  *   node scripts/reels-daemon.mjs            # loop
  *   node scripts/reels-daemon.mjs once
  *
- * Поток: next → tts → transcribe → AI scenes → reels.py → Remotion → publish.
- * B-roll Kie/Pexels в v1 не ждём — faceless моушн-шаблоны из AI-разметки.
+ * Поток: next → tts → transcribe → sources(library/pexels) → AI scenes
+ *        → inject video cutaways → reels.py → Remotion → publish.
  */
 import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import {
+  existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync,
+} from "node:fs";
+import { dirname, extname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createClient } from "@supabase/supabase-js";
+import { pickLibraryAsset } from "./lib/brollMatch.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 process.chdir(ROOT);
@@ -100,6 +102,219 @@ function probeDurationSec(path) {
   }
 }
 
+function proxyClip(abs, outMp4) {
+  sh("ffmpeg", [
+    "-y", "-i", abs,
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-g", "1", "-bf", "0",
+    "-pix_fmt", "yuv420p", "-an", "-movflags", "+faststart",
+    "-vf", "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920",
+    outMp4,
+  ]);
+  return outMp4;
+}
+
+/** Download library / stock clips. Returns [{file, name, id}]. */
+async function materializeReelsBroll(job, work) {
+  const id = job.id;
+  const config = job.config || {};
+  const mode = String(config.brollMode || "auto");
+  if (mode !== "library" && mode !== "pexels" && mode !== "kie") return [];
+
+  const outDir = resolve("remotion/public/reels/inserts", id);
+  mkdirSync(outDir, { recursive: true });
+  const clips = [];
+  const debug = { mode, ok: 0, failed: [], catalog: 0 };
+
+  if (mode === "library") {
+    await call(FN, { action: "update", id, stage: "B-roll из папок", progress: 45 });
+    const sources = await call(FN, { action: "job_sources", jobId: id });
+    writeFileSync(resolve(work, "reels-sources.json"), JSON.stringify(sources, null, 2));
+    const assets = Array.isArray(sources.assets) ? sources.assets : [];
+    debug.catalog = assets.length;
+    console.log(`reels library catalog: ${assets.length}`);
+    if (!assets.length) {
+      console.warn("library: папки пусты → только motion");
+      writeFileSync(resolve(work, "broll-debug.json"), JSON.stringify(debug, null, 2));
+      return [];
+    }
+    const used = new Set();
+    const maxClips = Math.min(6, assets.length);
+    for (let i = 0; i < maxClips; i++) {
+      const pick = pickLibraryAsset(assets, used, `scene-${i}`, { minScore: 0.99 });
+      const asset = pick.asset;
+      if (!asset?.public_url) continue;
+      used.add(asset.id);
+      const ext = (extname(String(asset.name || "")) || ".mp4").toLowerCase();
+      const raw = resolve(outDir, `${String(i + 1).padStart(2, "0")}_raw${ext}`);
+      const finalName = `${String(i + 1).padStart(2, "0")}_lib.mp4`;
+      const finalAbs = resolve(outDir, finalName);
+      try {
+        await download(asset.public_url, raw);
+        proxyClip(raw, finalAbs);
+        try { unlinkSync(raw); } catch { /* */ }
+        clips.push({
+          file: `reels/inserts/${id}/${finalName}`,
+          name: asset.name,
+          id: asset.id,
+        });
+        debug.ok += 1;
+      } catch (e) {
+        debug.failed.push({ name: asset.name, error: String(e?.message || e).slice(0, 160) });
+      }
+    }
+  } else if (mode === "pexels") {
+    await call(FN, { action: "update", id, stage: "Pexels B-roll", progress: 45 });
+    const queries = ["marketing dashboard laptop", "smartphone social media", "business presentation screen"];
+    for (let i = 0; i < queries.length; i++) {
+      try {
+        const found = await call(FN, {
+          action: "pexels_search",
+          jobId: id,
+          query: queries[i],
+          perPage: 4,
+        });
+        const url = found.videos?.[0]?.video_url;
+        if (!url) continue;
+        const finalName = `${String(i + 1).padStart(2, "0")}_pexels.mp4`;
+        const raw = resolve(outDir, `${finalName}.raw.mp4`);
+        const finalAbs = resolve(outDir, finalName);
+        await download(url, raw);
+        proxyClip(raw, finalAbs);
+        try { unlinkSync(raw); } catch { /* */ }
+        clips.push({ file: `reels/inserts/${id}/${finalName}`, name: queries[i], id: `pexels-${i}` });
+        debug.ok += 1;
+      } catch (e) {
+        debug.failed.push({ query: queries[i], error: String(e?.message || e).slice(0, 160) });
+      }
+    }
+  } else if (mode === "kie") {
+    console.warn("reels kie: skip in daemon (cost) — motion only");
+  }
+
+  writeFileSync(resolve(work, "broll-debug.json"), JSON.stringify({ ...debug, clips }, null, 2));
+  console.log(`✓ reels broll clips: ${clips.length}`);
+  return clips;
+}
+
+const HOOK_TEMPLATES = new Set([
+  "kinetic-type",
+  "big-statement",
+  "quote-card",
+  "notification-toast",
+  "metric-callout",
+  "price-tag",
+  "countdown",
+]);
+
+function punchWords(text, max = 3) {
+  return String(text || "")
+    .replace(/[«»""]/g, "")
+    .split(/\s+/)
+    .map((w) => w.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, ""))
+    .filter(Boolean)
+    .slice(0, max);
+}
+
+/**
+ * Opening must be a strong hook (text punch), never a random B-roll cutaway.
+ * Rewrites scene 0 into kinetic-type / keeps existing hook templates.
+ */
+function ensureStrongHookOpening(reelsDoc, transcript) {
+  const scenes = Array.isArray(reelsDoc.scenes) ? [...reelsDoc.scenes] : [];
+  if (!scenes.length) return reelsDoc;
+  const first = { ...scenes[0], data: { ...(scenes[0].data || {}) } };
+  const tpl = String(first.template || "");
+  const isVideo = Boolean(first.file) || first.type === "video";
+  const isHook = HOOK_TEMPLATES.has(tpl) && !isVideo;
+
+  if (isHook) {
+    if (tpl === "kinetic-type") {
+      const words = Array.isArray(first.data.words) ? first.data.words.filter(Boolean) : [];
+      if (!words.length) {
+        const fallback = punchWords(
+          first.data.text || first.data.note || transcript,
+          3,
+        ).map((w) => w.toUpperCase());
+        if (fallback.length) first.data.words = fallback;
+      }
+      first.data.cover = true;
+      first.data.caption = false;
+    } else if (tpl === "big-statement" || tpl === "quote-card") {
+      const lines = Array.isArray(first.data.lines) ? first.data.lines.filter(Boolean) : [];
+      if (!lines.length) {
+        const punch = punchWords(first.data.text || first.data.note || transcript, 3);
+        if (punch.length) first.data.lines = [punch.join(" ").toUpperCase()];
+      }
+      first.data.cover = true;
+      first.data.caption = false;
+    }
+    scenes[0] = first;
+    return { ...reelsDoc, scenes };
+  }
+
+  const punch = punchWords(
+    first.data?.text || first.data?.note || first.data?.lines?.join?.(" ") || transcript,
+    3,
+  ).map((w) => w.toUpperCase());
+  scenes[0] = {
+    anchorWord: first.anchorWord ?? 0,
+    endWord: first.endWord ?? Math.max(2, Number(first.anchorWord ?? 0) + 2),
+    template: "kinetic-type",
+    data: {
+      words: punch.length ? punch : ["СМОТРИ"],
+      cover: true,
+      accent: "#EF4444",
+      caption: false,
+    },
+  };
+  console.log("ensureStrongHookOpening: forced kinetic hook on scene 0");
+  return { ...reelsDoc, scenes };
+}
+
+/** Replace weak text scenes with library/stock video cutaways. Never touch scene 0 (hook). */
+function injectVideoScenes(reelsDoc, clips) {
+  if (!clips.length) return reelsDoc;
+  const scenes = Array.isArray(reelsDoc.scenes) ? [...reelsDoc.scenes] : [];
+  const weak = new Set(["kinetic-type", "big-statement", "quote-card", "lower-third"]);
+  let clipIdx = 0;
+  const out = [];
+  for (let i = 0; i < scenes.length; i++) {
+    const s = scenes[i];
+    const tpl = String(s.template || "");
+    // Scene 0 = strong hook — keep text/motion, never swap for B-roll.
+    const useVideo =
+      i > 0 && clipIdx < clips.length && (weak.has(tpl) || i % 2 === 1);
+    if (useVideo) {
+      const clip = clips[clipIdx++];
+      out.push({
+        anchorWord: s.anchorWord,
+        endWord: s.endWord,
+        type: "video",
+        file: clip.file,
+        data: { caption: true, note: clip.name },
+      });
+    } else {
+      out.push(s);
+    }
+  }
+  if (clipIdx < clips.length) {
+    for (let i = 1; i < out.length && clipIdx < clips.length; i++) {
+      if (out[i].file) continue;
+      if (!weak.has(String(out[i].template || ""))) continue;
+      const clip = clips[clipIdx++];
+      out[i] = {
+        anchorWord: out[i].anchorWord,
+        endWord: out[i].endWord,
+        type: "video",
+        file: clip.file,
+        data: { caption: true, note: clip.name },
+      };
+    }
+  }
+  console.log(`inject video scenes: ${out.filter((s) => s.file).length}/${out.length} (scene0 protected)`);
+  return { ...reelsDoc, scenes: out };
+}
+
 async function processJob(job) {
   const id = job.id;
   const work = resolve("work", id);
@@ -136,16 +351,26 @@ async function processJob(job) {
     ? readFileSync(resolve(work, "transcript.txt"), "utf8")
     : script;
 
-  await call(FN, { action: "update", id, stage: "разметка сцен", progress: 50 });
+  const clips = await materializeReelsBroll(job, work);
+
+  await call(FN, { action: "update", id, stage: "разметка сцен", progress: 55 });
   const reelsJsonPath = resolve(work, "reels.json");
   if (!existsSync(reelsJsonPath)) {
     const scenes = await call(AI, {
       action: "markup_reels",
       indexed,
       transcript,
-      brief: `формат=${config.format || "expert"}; broll=${config.brollMode || "auto"}`,
+      brief: [
+        `формат=${config.format || "expert"}`,
+        `broll=${config.brollMode || "auto"}`,
+        clips.length
+          ? `Есть ${clips.length} видео-клипов из медиатеки — cutaway со 2-й сцены; сцена 0 = ХУК.`
+          : "Только motion. Караоке уже показывает речь — не дублируй фразы huge text.",
+        "Сцена 0 ОБЯЗАТЕЛЬНО сильный хук (kinetic-type/big-statement/quote-card), punch ≤3 слова, cover:true.",
+        "kinetic-type → data.words[]; big-statement → data.lines ≤3 слова.",
+      ].join("; "),
     });
-    const payload = {
+    let payload = {
       id: `Reels-${id.slice(0, 8)}`,
       audio: `vo_${id}`,
       music: null,
@@ -155,7 +380,15 @@ async function processJob(job) {
       fixes: scenes.fixes || {},
       scenes: scenes.scenes || [],
     };
+    payload = ensureStrongHookOpening(payload, transcript);
+    payload = injectVideoScenes(payload, clips);
     writeFileSync(reelsJsonPath, JSON.stringify(payload, null, 2));
+  } else if (clips.length) {
+    const existing = JSON.parse(readFileSync(reelsJsonPath, "utf8"));
+    if (!(existing.scenes || []).some((s) => s.file)) {
+      const hooked = ensureStrongHookOpening(existing, transcript);
+      writeFileSync(reelsJsonPath, JSON.stringify(injectVideoScenes(hooked, clips), null, 2));
+    }
   }
 
   const audioDur = probeDurationSec(voPath);

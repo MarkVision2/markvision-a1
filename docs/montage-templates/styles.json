@@ -2,12 +2,12 @@
   "expert-explainer": {
     "captionStyle": "karaoke-box",
     "insertEverySec": 3.5,
-    "coverRatio": 0.6,
+    "coverRatio": 0.4,
     "accentEverySec": 3.5,
     "accentColor": "#F5E14B",
     "keepCaptionsOnCover": true,
     "disableZoom": true,
-    "aiRules": "СТИЛЬ «Кейс-эксперт» — ГЛАВНОЕ: каждая мысль = ВИЗУАЛЬНАЯ СЦЕНА по ИМЕННО этой фразе.\nЗАПРЕЩЕНО: оффтоп, выдуманные цифры, зум лица.\nGROUNDING: data/text/label/items/value только из слов anchorWord..endWord; note=цитата.\nA) cover:true (~60%): тёмный фон, PiP, центр=мысль.\nB) cover:false (~40%): спикер + big-statement/metric из фразы.\nМАППИНГ только если фраза про это: боль→%+теги; успех→gauge; раньше/сейчас→bars; процесс→flowchart; тезис→big-statement #EF4444; деньги→number-counter.\nТитры karaoke-box #F5E14B. 1 сцена / 3–5 сек."
+    "aiRules": "СТИЛЬ «Кейс-эксперт». ХУК первым: kinetic/big-statement/quote ≤3 слова cover:true на старте.\nКараоке уже показывает речь — после хука НЕ дублируй фразы огромным текстом.\nЗАПРЕЩЕНО: плейсхолдеры «БОЛЬШОЕ ЗАЯВЛЕНИЕ»; оффтоп; выдуманные цифры; зум лица.\nGROUNDING: data только из слов окна. Visual-first: checklist/timeline/gauge/metric/bars/pill-row — короткие ярлыки ≤3 слова.\ncover:true (~40%) без длинного текста в центре. Титры karaoke-box #F5E14B. 1 сцена / 3–5 сек."
   },
   "dense-motion": {
     "captionStyle": "pill",
@@ -17,7 +17,7 @@
     "accentColor": "#FF7A18",
     "keepCaptionsOnCover": false,
     "disableZoom": true,
-    "aiRules": "СТИЛЬ «Плотный motion»: layout:third, оверлей СТРОГО по словам окна (не оффтоп). Без зума."
+    "aiRules": "СТИЛЬ «Плотный motion». ХУК первым (kinetic/big-statement ≤3 слова). Дальше layout:third, оверлей СТРОГО по словам окна. Без зума. Не дублируй речь огромным текстом — только короткие ярлыки ≤3 слова или графики без текста."
   },
   "classic": {
     "captionStyle": "pill",
@@ -27,6 +27,6 @@
     "accentColor": "#FF7A18",
     "keepCaptionsOnCover": false,
     "disableZoom": true,
-    "aiRules": "СТИЛЬ «Классика»: вставки редко, только по смыслу фразы, без зума."
+    "aiRules": "СТИЛЬ «Классика». ХУК первым (короткий панч). Дальше вставки редко, только по смыслу фразы, без зума. Без длинных текстовых заявлений поверх речи."
   }
 }

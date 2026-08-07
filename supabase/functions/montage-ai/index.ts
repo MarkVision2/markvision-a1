@@ -64,6 +64,54 @@ const MOTION_TEMPLATES = [
   "price-tag",
 ].join(", ");
 
+const HOOK_INSERT_TEMPLATES = new Set(["kinetic-type", "big-statement", "quote-card"]);
+
+/** Earliest insert must be a short hook motion (not video / not soft open). */
+function ensureHookFirstInsert(inserts: Json[]): Json[] {
+  if (!Array.isArray(inserts) || inserts.length === 0) return inserts;
+  const sorted = [...inserts].sort(
+    (a, b) => Number(a.anchorWord ?? 0) - Number(b.anchorWord ?? 0),
+  );
+  const first = sorted[0];
+  const firstTpl = String(first.template || "");
+  if (firstTpl && HOOK_INSERT_TEMPLATES.has(firstTpl) && !first.prompt && !first.query) {
+    const data = { ...((first.data as Json) || {}), cover: true };
+    sorted[0] = { ...first, layout: "full", data };
+    return sorted;
+  }
+  const hookIdx = sorted.findIndex(
+    (it) => it.template && HOOK_INSERT_TEMPLATES.has(String(it.template)),
+  );
+  const a0 = Number(first.anchorWord ?? 0);
+  const e0 = Math.max(a0 + 1, Number(first.endWord ?? a0 + 3));
+  if (hookIdx > 0) {
+    const hook = sorted[hookIdx];
+    sorted[hookIdx] = { ...first };
+    sorted[0] = {
+      ...hook,
+      anchorWord: a0,
+      endWord: Math.min(e0, a0 + 8),
+      layout: "full",
+      data: { ...((hook.data as Json) || {}), cover: true },
+    };
+    delete (sorted[0] as Json).prompt;
+    delete (sorted[0] as Json).query;
+    return sorted.sort((a, b) => Number(a.anchorWord ?? 0) - Number(b.anchorWord ?? 0));
+  }
+  const note = String(first.note || first.spokenText || "СМОТРИ");
+  const punch = note.split(/\s+/).filter(Boolean).slice(0, 3).map((w) => w.toUpperCase());
+  sorted[0] = {
+    anchorWord: a0,
+    endWord: Math.min(e0, a0 + 8),
+    template: "kinetic-type",
+    layout: "full",
+    data: { words: punch.length ? punch : ["СМОТРИ"], cover: true, accent: "#EF4444" },
+    note: first.note || note,
+    spokenText: first.spokenText || note,
+  };
+  return sorted;
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") return json({ error: "POST only" }, 405);
 
@@ -177,17 +225,23 @@ word = индекс из indexed. text — короткий капс (1–3 сл
 2) MOTION Remotion — ровно ${motionTarget} шт. (код-графика, НЕ картинки):
 {"anchorWord":<i>,"endWord":<i>,"template":"<slug>","layout":"third"|"half","data":{...},"note":"<ru quote>","spokenText":"<ru quote>"}
 - template ТОЛЬКО: ${MOTION_TEMPLATES}.
-- ~${coverPct}% с data.cover=true (тёмный фон + мысль в центре); остальные cover:false (big-statement/metric поверх спикера).
-- data.text/label/lines/items/value — ТОЛЬКО из слов фразы; цифры только если сказаны.
-- МАППИНГ: боль→metric+checklist; успех→gauge; раньше/сейчас→vs-compare/bars; процесс→timeline-steps; тезис→big-statement #EF4444; деньги→number-counter.
+- ~${coverPct}% с data.cover=true (тёмный фон); остальные cover:false поверх спикера.
+- Караоке уже показывает речь — после хука ЗАПРЕЩЕНО big-statement/kinetic-type/quote-card
+  с длинной цитатой фразы (хук в начале — исключение: punch ≤3 слова).
+- data: короткие ярлыки ≤3 слова ИЛИ items/steps/value без простыни текста.
+- МАППИНГ: боль→metric+checklist; успех→gauge; раньше/сейчас→vs-compare/bars; процесс→timeline-steps; деньги→number-counter.
 - Accent: ${accentColor}. Чередуй #EF4444 #34D399 #22D3EE #FB7185.
 
 ОБЩИЕ ПРАВИЛА:
+- ХУК (ОБЯЗАТЕЛЬНО): самая ранняя вставка — MOTION (не видео) на первых словах речи
+  (минимальный anchorWord). template: kinetic-type | big-statement | quote-card;
+  punch ≤3 слова (не вся фраза), cover:true, layout:full. Потом видео/остальное.
 - Сначала прочитай anchorWord..endWord. Вставка иллюстрирует ЭТУ фразу.
 - Видео и motion НЕ на одних и тех же словах (окна не пересекаются).
 - endWord > anchorWord; видео 3–6 сек, motion 2–5 сек.
-- note/spokenText = цитата фразы.
-- ЗАПРЕЩЕНО: оффтоп, >${videoTarget} видео, пустые prompt/template, зум лица.`,
+- note/spokenText = цитата фразы (для разметки, НЕ для огромного текста в кадре).
+- ЗАПРЕЩЕНО: оффтоп, плейсхолдеры «БОЛЬШОЕ ЗАЯВЛЕНИЕ», >${videoTarget} видео,
+  пустые prompt/template, зум лица, видео на первом слоте, слабый разгон без панча.`,
             `DURATION_SEC=${durationSec || "?"}\nBROLL_MODE=${brollMode}\nSTYLE=${styleId}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
             150_000,
           );
@@ -195,10 +249,10 @@ word = индекс из indexed. text — короткий капс (1–3 сл
           // Страховка: не больше videoTarget видео-слотов (с prompt/query без template).
           const videos = result.inserts.filter((it: Json) => !it.template && (it.prompt || it.query));
           const motions = result.inserts.filter((it: Json) => it.template);
-          result.inserts = [
+          result.inserts = ensureHookFirstInsert([
             ...videos.slice(0, videoTarget),
             ...motions.slice(0, motionTarget),
-          ];
+          ]);
           return json(result);
         }
 
@@ -212,23 +266,27 @@ word = индекс из indexed. text — короткий капс (1–3 сл
 {"inserts":[{"anchorWord":<i>,"endWord":<i>,"template":"<slug>","layout":"third"|"half"|"full","data":{...},"note":"<ru quote>","spokenText":"<ru quote>"}]}
 Это code-based b-roll (НЕ картинки). template — ТОЛЬКО: ${MOTION_TEMPLATES}.
 ${sourceHint}
-ГЛАВНОЕ: каждая мысль = ВИЗУАЛЬНАЯ СЦЕНА по ИМЕННО этой фразе (не декор, не оффтоп).
+ГЛАВНОЕ: визуал по смыслу фразы. Караоке уже показывает речь — НЕ дублируй фразу огромным текстом.
+ХУК (ОБЯЗАТЕЛЬНО): первая вставка — на начале речи (минимальный anchorWord, первые 1–3 сек).
+template: kinetic-type | big-statement | quote-card; punch ≤3 слова; cover:true; layout:full.
+Не начинай с воды («привет», «сегодня разберём») — сразу панч/цифра/боль/оффер.
+ЗАПРЕЩЕНО после хука: big-statement/kinetic-type/quote-card с длинной цитатой речи;
+плейсхолдер «БОЛЬШОЕ ЗАЯВЛЕНИЕ».
 GROUNDING (ЖЁСТКО):
 - Прочитай слова anchorWord..endWord ДО выбора template.
-- data.text/label/lines/items/value — только из этой фразы (дословно или лёгкая нормализация).
-- Цифры/% в data = цифры из речи. Нет цифры → не используй number-counter/metric-callout.
-- note и spokenText = цитата фразы. Если не можешь grounded-визуал — ПРОПУСТИ слот (лучше дыра, чем оффтоп).
+- data: items/steps/value/короткий label ≤3 слова из фразы. Цифры только если сказаны.
+- note и spokenText = цитата (метаданные). Нет grounded-визуала → ПРОПУСТИ слот.
 Правила плотности:
-- Цель ~${target} вставок (~1 на ${every} сек), без дыр >${every + 2} сек где есть смысл.
-- ~${coverPct}% с data.cover=true: тёмный фон + ЦЕНТР = мысль из фразы. Тег контекста из той же мысли.
-- Остальные cover:false: big-statement/metric-callout сверху (layout:third) — текст из фразы.
-- МАППИНГ только если фраза реально про это: боль→metric+checklist; успех→gauge; раньше/сейчас→bars; процесс→timeline; тезис→big-statement #EF4444; деньги→number-counter.
+- Цель ~${target} вставок (~1 на ${every} сек).
+- ~${coverPct}% cover:true без текстовой простыни.
+- МАППИНГ: боль→metric+checklist; успех→gauge; раньше/сейчас→bars; процесс→timeline; деньги→number-counter.
 - Accent: ${accentColor}. Чередуй #EF4444 #34D399 #22D3EE #FB7185.
-- endWord > anchorWord, окно 2–5 сек. Без зума/приближения лица.`,
+- endWord > anchorWord, окно 2–5 сек. Без зума лица.`,
           `DURATION_SEC=${durationSec || "?"}\nBROLL_MODE=${brollMode}\nSTYLE=${styleId}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 40000)}`,
           150_000,
         );
         if (!Array.isArray(result.inserts)) result.inserts = [];
+        result.inserts = ensureHookFirstInsert(result.inserts);
         return json(result);
       }
 
@@ -256,6 +314,8 @@ GROUNDING (ЖЁСТКО):
 - accents — индексы слов из indexed для punch-зумов и караоке: МИНИМУМ 1 акцент на каждые 4–5 секунд
   (цифры, ключевые слова, панчи) — без них видео выглядит статичным;
 - fixes — опциональные правки ASR { "123": "текст" };
+- ХУК: каждый шортс ОБЯЗАН начинаться с сильного хука — первый span = вопрос/цифра/боль/оффер
+  (не приветствие и не разгон). Если хук в середине куска — режь spans так, чтобы он был первым;
 - бери хуки, цифры, панчи; учитывай brief.`,
           `MEDIA=${media}\nBRIEF:\n${brief || "(нет)"}\n\nUTTERANCES:\n${utterances.slice(0, 12000)}\n\nINDEXED:\n${indexed.slice(0, 35000)}`,
           150_000,
@@ -282,8 +342,13 @@ number-counter, vs-compare, checklist-reveal, fake-terminal, fake-dashboard-bars
 kinetic-type, annotate-arrow-highlight, loading-to-done, stat-grid, timeline-steps,
 quote-card, big-statement, lower-third, pill-row, metric-callout, phone-mockup,
 chat-bubbles, notification-toast, rating-stars, countdown, gauge, arrow-flow, price-tag.
-data — поля шаблона (price/label/value/items/lines/steps/accent="#hex"/cover/caption).
-Чередуй шаблоны. Цвета accent в data — РАЗНЫЕ между соседними сценами, но в одной
+ХУК (ОБЯЗАТЕЛЬНО): scenes[0] — сильный хук на первых словах речи.
+template ТОЛЬКО: kinetic-type | big-statement | quote-card.
+data: punch ≤3 слова (не вся фраза), cover:true, caption:false;
+kinetic-type → data.words[]; big-statement/quote-card → data.lines.
+Запрещено начинать с lower-third / checklist / dashboard / воды («привет», «сегодня»).
+data — поля шаблона (price/label/value/items/lines/words/steps/accent="#hex"/cover/caption).
+Чередуй шаблоны после хука. Цвета accent в data — РАЗНЫЕ между соседними сценами, но в одной
 гамме с выбранной theme. На ключевых цифрах — accents.`,
           `BRIEF:\n${brief || "(нет)"}\n\nTRANSCRIPT:\n${transcript.slice(0, 8000)}\n\nINDEXED:\n${indexed.slice(0, 35000)}`,
           150_000,
