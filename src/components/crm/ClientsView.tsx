@@ -70,7 +70,7 @@ export function ClientsView({ leads, stages, onOpenLead }: ClientsViewProps) {
         "utm_term",
         "Landing",
         "Referrer",
-        "LTV ($)",
+        "Сумма сделки (₸)",
         "AI-рейтинг",
         "Этап",
         "Активность",
@@ -153,7 +153,7 @@ export function ClientsView({ leads, stages, onOpenLead }: ClientsViewProps) {
               <th className="px-4 py-3 text-left">Контакты</th>
               <th className="px-4 py-3 text-left">Источник</th>
               <th className="px-4 py-3 text-left">UTM</th>
-              <th className="px-4 py-3 text-right">LTV</th>
+              <th className="px-4 py-3 text-right">Сумма</th>
               <th className="px-4 py-3 text-left">AI-рейтинг</th>
               <th className="px-4 py-3 text-left">Посл. активность</th>
               <th className="px-4 py-3 text-left">Сделки</th>
@@ -223,7 +223,7 @@ export function ClientsView({ leads, stages, onOpenLead }: ClientsViewProps) {
                       )}
                     </td>
                     <td className="px-4 py-3 text-right font-mono">
-                      {l.amount > 0 ? `${l.amount.toLocaleString("ru-RU")} $` : "—"}
+                      {l.amount > 0 ? `${l.amount.toLocaleString("ru-RU")} ₸` : "—"}
                     </td>
                     <td className="px-4 py-3">
                       <span

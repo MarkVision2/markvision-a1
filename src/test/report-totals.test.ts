@@ -237,7 +237,7 @@ describe("computeTotals — Таблица показателей (CRM + manual 
     expect(totals.revenue).toBe(505_000); // 500k + 5k diagnostic
   });
 
-  it("AOV = выручка / продажи", () => {
+  it("AOV = оплаты продаж / продажи (диагностики не входят в средний чек)", () => {
     const s1 = mkLead({ cabinetId: "cab-1", paid: true, amount: 200_000 });
     const s2 = mkLead({ cabinetId: null, paid: true, amount: 100_000 });
     const crm = aggregateCrm([s1, s2], range, "all");
@@ -246,6 +246,28 @@ describe("computeTotals — Таблица показателей (CRM + manual 
     expect(totals.sales).toBe(2);
     expect(totals.revenue).toBe(300_000);
     expect(totals.aov).toBe(150_000);
+  });
+
+  it("AOV не размывается diagnostic_amount", () => {
+    const paid = mkLead({
+      cabinetId: "cab-1",
+      paid: true,
+      amount: 500_000,
+      diagnosticAmount: 50_000,
+      paidAt: "2026-05-10T10:00:00Z",
+    });
+    const crm = aggregateCrm([paid], range, "all");
+    const totals = computeTotals({ ...emptyMeta }, crm, resolvedMetricsFromCrmAggregate(crm));
+
+    expect(totals.revenue).toBe(550_000);
+    expect(totals.aov).toBe(500_000);
+  });
+
+  it("ROMI без расхода = 0 (не 100%)", () => {
+    const s1 = mkLead({ cabinetId: "cab-1", paid: true, amount: 200_000 });
+    const crm = aggregateCrm([s1], range, "all");
+    const totals = computeTotals({ ...emptyMeta, spend: 0 }, crm, resolvedMetricsFromCrmAggregate(crm));
+    expect(totals.romi).toBe(0);
   });
 
   it("ROMI на CRM-выручке: (1М - 500k) / 500k = 100%", () => {

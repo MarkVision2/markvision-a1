@@ -384,11 +384,14 @@ export function computeTotals(
   const visits = resolved.diagnostics;
   const sales = resolved.sales;
   const revenue = resolved.revenue;
+  const salesRevenue = resolved.salesRevenue;
   const cpv = visits > 0 ? meta.spend / visits : 0;
   const cac = sales > 0 ? meta.spend / sales : 0;
   const ctr = meta.impressions > 0 ? (meta.clicks / meta.impressions) * 100 : 0;
-  const romi = meta.spend > 0 ? ((revenue - meta.spend) / meta.spend) * 100 : revenue > 0 ? 100 : 0;
-  const aov = sales > 0 ? revenue / sales : 0;
+  // Без расходов ROMI не определён (не подставляем 100%).
+  const romi = meta.spend > 0 ? ((revenue - meta.spend) / meta.spend) * 100 : 0;
+  // Средний чек = только оплаты за продажи (диагностики не размывают чек).
+  const aov = sales > 0 ? salesRevenue / sales : 0;
   return {
     spend: meta.spend,
     impressions: meta.impressions,

@@ -9,7 +9,7 @@ import {
 } from "recharts";
 import { cn } from "@/lib/utils";
 import { useMonthlyAggregates } from "@/hooks/useMonthlyAggregates";
-import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
+import { useFinancePlans } from "@/hooks/useFinancePlan";
 
 const MONTHS_RU_FULL = [
   "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
@@ -30,8 +30,8 @@ const fmtMln = (n: number) => {
 
 type Mode = "fact" | "plan_vs_fact" | "yoy";
 
-interface KpiProps { icon: React.ElementType; label: string; value: string; tone?: "default" | "success" | "warning" | "danger"; }
-const Kpi = ({ icon: Icon, label, value, tone = "default" }: KpiProps) => (
+interface KpiProps { icon: React.ElementType; label: string; value: string; tone?: "default" | "success" | "warning" | "danger"; hint?: string }
+const Kpi = ({ icon: Icon, label, value, tone = "default", hint }: KpiProps) => (
   <div className="rounded-2xl border border-border/60 bg-card/60 p-5">
     <div className="flex items-center gap-3">
       <span className="grid h-9 w-9 place-items-center rounded-xl bg-success/10 text-success">
@@ -49,6 +49,7 @@ const Kpi = ({ icon: Icon, label, value, tone = "default" }: KpiProps) => (
     )}>
       {value}
     </div>
+    {hint && <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>}
   </div>
 );
 
@@ -65,43 +66,52 @@ const MonthlyDynamics = () => {
 
   const monthsData = useMemo(() => {
     return Array.from({ length: 12 }, (_, m) => {
-      const e = current[m] ?? { revenue: 0, spend: 0 };
-      const tax = e.revenue * 0.1;
-      const profit = e.revenue - e.spend - tax;
+      const e = current[m] ?? { agencyRevenue: 0, clinicRevenue: 0, spend: 0, revenue: 0 };
+      const agencyRevenue = e.agencyRevenue ?? e.revenue ?? 0;
+      const clinicRevenue = e.clinicRevenue ?? 0;
+      const tax = agencyRevenue * 0.1;
+      const profit = agencyRevenue - e.spend - tax;
       const key = `${year}-${String(m + 1).padStart(2, "0")}`;
-      const planRevenue = planStore[key]?.revenue ?? 0;
-      const planSpend = planStore[key]?.spend ?? 0;
-      const prevRevenue = prev[m]?.revenue ?? 0;
+      const plan = planStore[key];
+      const planClinicRevenue = plan?.revenue ?? 0;
+      const planSpend = plan?.spend ?? 0;
+      const prevAgency = prev[m]?.agencyRevenue ?? prev[m]?.revenue ?? 0;
+      const prevClinic = prev[m]?.clinicRevenue ?? 0;
       return {
         idx: m,
         key,
         label: MONTHS_RU_SHORT[m],
         full: `${MONTHS_RU_FULL[m]} ${year}`,
-        revenue: e.revenue,
+        agencyRevenue,
+        clinicRevenue,
         spend: e.spend,
         tax,
         profit,
-        planRevenue,
+        planClinicRevenue,
         planSpend,
-        prevRevenue,
+        prevAgency,
+        prevClinic,
       };
     });
   }, [year, current, prev, planStore]);
 
   const totals = useMemo(() => {
-    const revenue = monthsData.reduce((s, m) => s + m.revenue, 0);
+    const agencyRevenue = monthsData.reduce((s, m) => s + m.agencyRevenue, 0);
+    const clinicRevenue = monthsData.reduce((s, m) => s + m.clinicRevenue, 0);
     const spend = monthsData.reduce((s, m) => s + m.spend, 0);
-    const tax = revenue * 0.1;
-    const afterMarketing = revenue - spend - tax;
-    return { revenue, spend, tax, afterMarketing };
+    const tax = agencyRevenue * 0.1;
+    const afterMarketing = agencyRevenue - spend - tax;
+    return { agencyRevenue, clinicRevenue, spend, tax, afterMarketing };
   }, [monthsData]);
 
   const chart1 = monthsData.map((m) => ({
     label: m.label,
-    Выручка: m.revenue,
+    Агентство: m.agencyRevenue,
+    Клиника: m.clinicRevenue,
     Расходы: m.spend,
-    ПланВыручка: m.planRevenue,
-    ПрошлыйГод: m.prevRevenue,
+    ПланКлиника: m.planClinicRevenue,
+    ПланРеклама: m.planSpend,
+    ПрошлыйГод: mode === "yoy" ? m.prevClinic : m.prevAgency,
   }));
 
   const chart2 = monthsData.map((m) => ({
@@ -111,7 +121,6 @@ const MonthlyDynamics = () => {
 
   return (
     <>
-      {/* Controls */}
       <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center gap-1 rounded-2xl border border-border/60 bg-card/60 px-2 py-1.5">
@@ -154,26 +163,44 @@ const MonthlyDynamics = () => {
           </div>
         </div>
 
-        <div className="text-xs text-muted-foreground">
-          Выручка — оплаченные клиенты из «Агентской аналитики». Расходы — общие затраты по кабинетам.
+        <div className="max-w-md text-xs text-muted-foreground">
+          {mode === "plan_vs_fact"
+            ? "План — из «Декомпозиции» (выручка клиники и рекламный бюджет). Факт клиники — оплаты CRM; факт рекламы — расход кабинетов."
+            : "Агентство — оплаты клиентов MarkVision. Клиника — продажи из CRM. Расходы — реклама по кабинетам. Налог 10% считается от агентской выручки."}
         </div>
       </div>
 
-      {/* KPI */}
       <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Kpi icon={DollarSign} label="Выручка за год" value={fmtT(totals.revenue)} tone="success" />
-        <Kpi icon={Target} label="Расходы" value={fmtT(totals.spend)} tone="danger" />
-        <Kpi icon={PiggyBank} label="После маркетинга и налогов" value={fmtT(totals.afterMarketing)} tone="success" />
-        <Kpi icon={Receipt} label="Налоги (10%)" value={fmtT(totals.tax)} tone="warning" />
+        <Kpi
+          icon={DollarSign}
+          label="Выручка агентства"
+          value={fmtT(totals.agencyRevenue)}
+          tone="success"
+          hint="оплаты agency_clients"
+        />
+        <Kpi
+          icon={PiggyBank}
+          label="Выручка клиники"
+          value={fmtT(totals.clinicRevenue)}
+          tone="success"
+          hint="CRM оплаты (amount)"
+        />
+        <Kpi icon={Target} label="Рекламный расход" value={fmtT(totals.spend)} tone="danger" />
+        <Kpi
+          icon={Receipt}
+          label="После маркетинга и налогов"
+          value={fmtT(totals.afterMarketing)}
+          tone={totals.afterMarketing >= 0 ? "success" : "danger"}
+          hint={`налог 10% = ${fmtT(totals.tax)}`}
+        />
       </div>
 
-      {/* Charts */}
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-border/60 bg-card/40 p-5">
           <div className="text-sm font-semibold">
-            {mode === "plan_vs_fact" ? "План vs Факт (выручка)"
-              : mode === "yoy" ? "Год к году (выручка)"
-              : "Выручка vs Расходы"}
+            {mode === "plan_vs_fact" ? "План vs Факт (клиника + реклама)"
+              : mode === "yoy" ? "Год к году (выручка клиники)"
+              : "Агентство · Клиника · Расходы"}
           </div>
           <div className="mt-4 h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -193,20 +220,23 @@ const MonthlyDynamics = () => {
                 <Legend wrapperStyle={{ fontSize: "11px" }} />
                 {mode === "fact" && (
                   <>
-                    <Bar dataKey="Выручка" fill="hsl(var(--success))" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="Агентство" fill="hsl(var(--success))" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="Клиника" fill="hsl(var(--primary))" radius={[6, 6, 0, 0]} />
                     <Bar dataKey="Расходы" fill="hsl(var(--destructive))" radius={[6, 6, 0, 0]} />
                   </>
                 )}
                 {mode === "plan_vs_fact" && (
                   <>
-                    <Bar dataKey="ПланВыручка" name="План" fill="hsl(var(--muted-foreground))" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="Выручка" name="Факт" fill="hsl(var(--success))" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="ПланКлиника" name="План клиники" fill="hsl(var(--muted-foreground))" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="Клиника" name="Факт клиники" fill="hsl(var(--success))" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="ПланРеклама" name="План рекламы" fill="hsl(var(--border))" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="Расходы" name="Факт рекламы" fill="hsl(var(--destructive))" radius={[6, 6, 0, 0]} />
                   </>
                 )}
                 {mode === "yoy" && (
                   <>
                     <Bar dataKey="ПрошлыйГод" name={`${year - 1}`} fill="hsl(var(--muted-foreground))" radius={[6, 6, 0, 0]} />
-                    <Bar dataKey="Выручка" name={`${year}`} fill="hsl(var(--success))" radius={[6, 6, 0, 0]} />
+                    <Bar dataKey="Клиника" name={`${year}`} fill="hsl(var(--success))" radius={[6, 6, 0, 0]} />
                   </>
                 )}
               </BarChart>
@@ -215,7 +245,7 @@ const MonthlyDynamics = () => {
         </div>
 
         <div className="rounded-2xl border border-border/60 bg-card/40 p-5">
-          <div className="text-sm font-semibold">Прибыль (после маркетинга и налогов)</div>
+          <div className="text-sm font-semibold">Прибыль агентства (после рекламы и налогов)</div>
           <div className="mt-4 h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chart2} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -244,26 +274,27 @@ const MonthlyDynamics = () => {
         </div>
       </div>
 
-      {/* Table */}
       <div className="mt-6 overflow-hidden rounded-2xl border border-border/60 bg-card/40">
         <div className="border-b border-border/60 px-6 py-4">
           <span className="text-sm font-semibold">Помесячная таблица</span>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
+          <table className="w-full min-w-[900px] text-sm">
             <thead>
               <tr className="border-b border-border/60 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                 <th className="px-6 py-3 text-left">Месяц</th>
-                <th className="px-4 py-3 text-right">Выручка</th>
-                <th className="px-4 py-3 text-right">Расходы</th>
+                <th className="px-4 py-3 text-right">Агентство</th>
+                <th className="px-4 py-3 text-right">Клиника</th>
+                <th className="px-4 py-3 text-right">Реклама</th>
+                <th className="px-4 py-3 text-right">План клиники</th>
                 <th className="px-4 py-3 text-right">Налоги</th>
-                <th className="px-4 py-3 text-right">Прибыль</th>
+                <th className="px-4 py-3 text-right">Прибыль аг.</th>
               </tr>
             </thead>
             <tbody>
               {monthsData.map((m) => {
                 const isCurrent = isCurrentYear && m.idx === currentMonthIdx;
-                const empty = m.revenue === 0 && m.spend === 0;
+                const empty = m.agencyRevenue === 0 && m.clinicRevenue === 0 && m.spend === 0;
                 return (
                   <tr key={m.key} className="border-b border-border/30 hover:bg-card/40">
                     <td className="px-6 py-3">
@@ -276,10 +307,16 @@ const MonthlyDynamics = () => {
                       </span>
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-success">
-                      {m.revenue > 0 ? fmtT(m.revenue) : <span className="text-muted-foreground/50">—</span>}
+                      {m.agencyRevenue > 0 ? fmtT(m.agencyRevenue) : <span className="text-muted-foreground/50">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      {m.clinicRevenue > 0 ? fmtT(m.clinicRevenue) : <span className="text-muted-foreground/50">—</span>}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-destructive">
                       {m.spend > 0 ? fmtT(m.spend) : <span className="text-muted-foreground/50">—</span>}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums text-muted-foreground">
+                      {m.planClinicRevenue > 0 ? fmtT(m.planClinicRevenue) : <span className="text-muted-foreground/50">—</span>}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums text-warning">
                       {m.tax > 0 ? fmtT(m.tax) : <span className="text-muted-foreground/50">—</span>}
@@ -296,8 +333,10 @@ const MonthlyDynamics = () => {
               })}
               <tr className="bg-card/60 font-bold">
                 <td className="px-6 py-4">Итого {year}</td>
-                <td className="px-4 py-4 text-right tabular-nums text-success">{fmtT(totals.revenue)}</td>
+                <td className="px-4 py-4 text-right tabular-nums text-success">{fmtT(totals.agencyRevenue)}</td>
+                <td className="px-4 py-4 text-right tabular-nums">{fmtT(totals.clinicRevenue)}</td>
                 <td className="px-4 py-4 text-right tabular-nums text-destructive">{fmtT(totals.spend)}</td>
+                <td className="px-4 py-4 text-right tabular-nums text-muted-foreground">—</td>
                 <td className="px-4 py-4 text-right tabular-nums text-warning">{fmtT(totals.tax)}</td>
                 <td className={cn(
                   "px-4 py-4 text-right tabular-nums",

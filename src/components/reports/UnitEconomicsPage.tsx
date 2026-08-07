@@ -74,16 +74,21 @@ export function UnitEconomicsPage({ data, rangeLabel }: Props) {
         <div className="rounded-2xl border border-border/40 bg-card/30 px-4">
           <EcoRow icon={BarChart3} title="Финансовая сводка" sub={`Unit Economics · ${rangeLabel}`} value="" />
           <EcoRow icon={Wallet} title="Общая выручка" sub="оплаты + диагностики за период" value={reportFmt.fmtTenge(totals.revenue)} />
-          <EcoRow icon={ShoppingCart} title="Средний чек" sub="выручка ÷ число продаж" value={totals.sales > 0 ? reportFmt.fmtTenge(totals.aov) : "—"} />
+          <EcoRow icon={ShoppingCart} title="Средний чек" sub="оплаты продаж ÷ число продаж (без диагностик)" value={totals.sales > 0 ? reportFmt.fmtTenge(totals.aov) : "—"} />
           <EcoRow icon={Users} title="Стоимость клиента" sub="расход ÷ продажи (CAC)" value={totals.sales > 0 ? reportFmt.fmtTenge(totals.cac) : "—"} />
-          <EcoRow icon={TrendingUp} title="Окупаемость рекламы" sub="(выручка − расход) ÷ расход (ROMI)" value={`${totals.romi >= 0 ? "+" : ""}${Math.round(totals.romi)}%`} />
+          <EcoRow
+            icon={TrendingUp}
+            title="Окупаемость рекламы"
+            sub="(выручка − расход) ÷ расход (ROMI)"
+            value={totals.spend > 0 ? `${totals.romi >= 0 ? "+" : ""}${Math.round(totals.romi)}%` : "—"}
+          />
         </div>
       </div>
 
       {noRevenue && (
         <div className="mt-4 flex items-center gap-2 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-xs text-warning">
           <Lock className="h-3.5 w-3.5" />
-          Данные о выручке не переданы. ROMI и Средний чек рассчитаны как 0.
+          Нет выручки за период — средний чек и ROMI без данных.
         </div>
       )}
     </ReportPageWrapper>

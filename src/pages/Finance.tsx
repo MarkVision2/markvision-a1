@@ -13,6 +13,7 @@ import {
   ArrowRight,
   Percent,
   Receipt,
+  Activity,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +21,7 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useFinancePlans, monthKey } from "@/hooks/useFinancePlan";
 import { PeriodPicker, monthRange } from "@/components/dashboard/PeriodPicker";
-import type { ReportPeriodRange } from "@/hooks/useReportData";
+import { useReportData, type ReportPeriodRange } from "@/hooks/useReportData";
 import AgencyAnalytics from "@/components/finance/AgencyAnalytics";
 const MonthlyDynamics = lazy(() => import("@/components/finance/MonthlyDynamics"));
 import { PageContainer } from "@/components/layout/PageContainer";
@@ -143,6 +144,8 @@ const Finance = () => {
   const monthCursor = period.from;
 
   const { savePlan, getPlan } = useFinancePlans();
+  const { data: factReport, loading: factLoading } = useReportData("all", period, false);
+  const fact = factReport?.totals;
 
   const [budget, setBudget] = useState(500_000);
   const [revenue, setRevenue] = useState(5_000_000);
@@ -150,9 +153,11 @@ const Finance = () => {
   const [crLeadVisit, setCrLeadVisit] = useState(20);
   const [crVisitSale, setCrVisitSale] = useState(40);
   const [avgCheck, setAvgCheck] = useState(500_000);
+  const [hydratedKey, setHydratedKey] = useState<string | null>(null);
 
   useEffect(() => {
-    const p = getPlan(monthKey(monthCursor));
+    const key = monthKey(monthCursor);
+    const p = getPlan(key);
     if (p) {
       setBudget(p.spend || 500_000);
       setCpl(p.cpl || 2_000);
@@ -160,8 +165,18 @@ const Finance = () => {
       setCrVisitSale(p.crVisitSale || 40);
       setAvgCheck(p.avgCheck || 500_000);
       if (p.revenue) setRevenue(p.revenue);
+      setHydratedKey(key);
+      return;
     }
-  }, [monthCursor, getPlan]);
+    // Нет сохранённого плана — подставим факт CPL / средний чек один раз на месяц.
+    if (hydratedKey === key) return;
+    if (fact && !factLoading) {
+      if (fact.cpl > 0) setCpl(Math.round(fact.cpl));
+      if (fact.aov > 0) setAvgCheck(Math.round(fact.aov));
+      if (fact.spend > 0) setBudget(Math.round(fact.spend));
+      setHydratedKey(key);
+    }
+  }, [monthCursor, getPlan, fact, factLoading, hydratedKey]);
 
   const calc = useMemo(() => {
     const safe = (n: number) => (isFinite(n) && !isNaN(n) ? n : 0);
@@ -185,11 +200,12 @@ const Finance = () => {
   const profit = calc.revenue - calc.budget;
   const romi = calc.budget > 0 ? ((calc.revenue - calc.budget) / calc.budget) * 100 : 0;
   const margin = calc.revenue > 0 ? (profit / calc.revenue) * 100 : 0;
+  const payback = cac > 0 ? avgCheck / cac : 0;
 
   const monthLabel = `${MONTHS_RU[monthCursor.getMonth()]} ${monthCursor.getFullYear()}`;
 
-  const handleSave = () => {
-    savePlan(monthKey(monthCursor), {
+  const handleSave = async () => {
+    await savePlan(monthKey(monthCursor), {
       spend: Math.round(calc.budget),
       leads: Math.round(calc.leads),
       cpl: Math.round(cpl),
@@ -201,7 +217,7 @@ const Finance = () => {
       crVisitSale,
     });
     toast.success(`План на ${monthLabel} сохранён`, {
-      description: "Перенесён в Таблицу показателей",
+      description: "Доступен в «Динамика → План vs Факт»",
     });
   };
 
@@ -210,7 +226,7 @@ const Finance = () => {
       <PageHeader
         icon={Wallet}
         title="Финансы"
-        description="Юнит-экономика, агентская аналитика и динамика"
+        description="План юнит-экономики · факт CRM/рекламы · агентство · динамика"
       />
 
       <div className="mt-5 inline-flex flex-wrap rounded-xl border border-border/60 bg-card/60 p-1">
@@ -244,6 +260,35 @@ const Finance = () => {
 
       {tab === "decomp" && (
         <>
+          {/* Fact strip — живая юнит-экономика выбранного месяца */}
+          <div className="mt-5 rounded-2xl border border-border/60 bg-card/40 p-4">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                <Activity className="h-3.5 w-3.5 text-success" />
+                Факт за {monthLabel}
+              </div>
+              <PeriodPicker range={period} onChange={(r) => {
+                setPeriod(r);
+                setHydratedKey(null);
+              }} />
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+              <FactCell label="Расход" value={factLoading ? "…" : fact && fact.spend > 0 ? fmtT(fact.spend) : "—"} />
+              <FactCell label="Лиды" value={factLoading ? "…" : fact ? fmt(fact.totalLeads) : "—"} />
+              <FactCell label="CPL" value={factLoading ? "…" : fact && fact.cpl > 0 ? fmtT(fact.cpl) : "—"} />
+              <FactCell label="CAC" value={factLoading ? "…" : fact && fact.cac > 0 ? fmtT(fact.cac) : "—"} />
+              <FactCell label="Средний чек" value={factLoading ? "…" : fact && fact.aov > 0 ? fmtT(fact.aov) : "—"} />
+              <FactCell
+                label="ROMI"
+                value={factLoading ? "…" : fact && fact.spend > 0 ? `${fmt(fact.romi)}%` : "—"}
+                accent={fact && fact.spend > 0 ? (fact.romi >= 0 ? "success" : "destructive") : undefined}
+              />
+            </div>
+            <p className="mt-2 text-[11px] text-muted-foreground">
+              Источник: Meta-расход + CRM (оплаты и диагностики). Средний чек = оплаты продаж ÷ продажи.
+            </p>
+          </div>
+
           {/* Mode switch */}
           <div className="mt-5 flex flex-wrap items-center gap-3">
             <div className="inline-flex rounded-xl border border-border/60 bg-card/60 p-1">
@@ -268,8 +313,8 @@ const Finance = () => {
             </div>
             <div className="text-xs text-muted-foreground">
               {mode === "budget"
-                ? "Введите бюджет — посчитаем выручку"
-                : "Введите целевую выручку — посчитаем нужный бюджет"}
+                ? "План: введите бюджет — посчитаем выручку"
+                : "План: введите целевую выручку — посчитаем нужный бюджет"}
             </div>
           </div>
 
@@ -355,10 +400,17 @@ const Finance = () => {
           </div>
 
           {/* KPI cards */}
-          <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
             <Kpi icon={DollarSign} label="CPL" value={fmtT(cpl)} sub="Стоимость лида" />
             <Kpi icon={Users} label="CPD" value={fmtT(cpv)} sub="Стоимость диагностики" />
             <Kpi icon={Target} label="CAC" value={fmtT(cac)} sub="Стоимость клиента" />
+            <Kpi
+              icon={Receipt}
+              label="Чек / CAC"
+              value={payback > 0 ? `${payback.toFixed(1)}x` : "—"}
+              sub="окупаемость клиента"
+              highlight={payback >= 3}
+            />
             <Kpi icon={TrendingUp} label="ROMI" value={`${fmt(romi)}%`}
               sub="Возврат на маркетинг" highlight={romi > 0} />
           </div>
@@ -384,20 +436,18 @@ const Finance = () => {
           <div className="mt-4 rounded-2xl border border-border/60 bg-card/40 p-5">
             <div className="flex items-center gap-2 text-sm font-semibold">
               <Save className="h-4 w-4 text-success" />
-              Сохранить план в Таблицу показателей
+              Сохранить план месяца
             </div>
             <p className="mt-1.5 text-xs text-muted-foreground">
               Бюджет {fmtT(calc.budget)} · Лиды {fmt(calc.leads)} ·
               CPL {fmtT(cpl)} · Диагностики {fmt(calc.visits)} · Продажи {fmt(calc.sales)} ·
-              Выручка {fmtT(calc.revenue)}
+              Выручка {fmtT(calc.revenue)}. План сравнится с фактом CRM в «Динамика → План vs Факт».
             </p>
 
-            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <PeriodPicker range={period} onChange={setPeriod} />
-
+            <div className="mt-4">
               <Button
-                onClick={handleSave}
-                className="h-10 flex-1 gap-2 rounded-xl bg-success text-success-foreground hover:bg-success/90"
+                onClick={() => void handleSave()}
+                className="h-10 w-full gap-2 rounded-xl bg-success text-success-foreground hover:bg-success/90 sm:w-auto"
               >
                 <Save className="h-4 w-4" />
                 Сохранить план на {MONTHS_RU[monthCursor.getMonth()]}
@@ -409,6 +459,23 @@ const Finance = () => {
     </PageContainer>
   );
 };
+
+const FactCell = ({
+  label, value, accent,
+}: {
+  label: string; value: string; accent?: "success" | "destructive";
+}) => (
+  <div className="rounded-xl border border-border/40 bg-secondary/20 px-3 py-2.5">
+    <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</div>
+    <div className={cn(
+      "mt-1 text-sm font-bold tabular-nums",
+      accent === "success" && "text-success",
+      accent === "destructive" && "text-destructive",
+    )}>
+      {value}
+    </div>
+  </div>
+);
 
 const Row = ({
   label, value, accent, big,
