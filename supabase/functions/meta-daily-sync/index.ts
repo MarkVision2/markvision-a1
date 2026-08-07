@@ -280,11 +280,16 @@ Deno.serve(async (req) => {
       }
       const actId = normalizeActId(ext);
 
-      // Токены: сначала OAuth-токен кабинета, затем общий запасной — перебор,
-      // как в meta-creative-refresh. Плохой токен кабинета не ломает синк:
-      // берём первый, который реально отвечает.
+      // Токены: кабинет → активный meta_tokens проекта → общий запасной.
+      // Плохой токен не ломает синк: берём первый, который реально отвечает.
       const cabTok = String((cab as { access_token?: string | null }).access_token || "").trim();
-      const tokens = [...new Set([cabTok, fallbackToken].filter((t): t is string => !!t))];
+      const projectId = (cab as { project_id?: string | null }).project_id ?? null;
+      const projectTok = projectId
+        ? await resolveMetaAccessToken({ projectId, admin })
+        : null;
+      const tokens = [...new Set(
+        [cabTok, projectTok, fallbackToken].filter((t): t is string => !!t),
+      )];
       if (tokens.length === 0) {
         results.push({ cabinet_id: cab.id, cabinet: cabName, ok: false, error: "нет Meta-токена — подключите кабинет через Facebook" });
         continue;

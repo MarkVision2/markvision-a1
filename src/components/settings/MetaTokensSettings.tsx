@@ -70,20 +70,30 @@ export function MetaTokensSettings() {
     if (!label.trim()) return toast.error("Укажите название токена");
     if (token.trim().length < 20) return toast.error("Похоже, токен неполный");
     setSaving(true);
+    const t = token.trim();
     const { error } = await supabase.from("meta_tokens" as never).insert({
       project_id: activeId,
       label: label.trim(),
-      access_token: token.trim(),
+      access_token: t,
     } as never);
-    setSaving(false);
     if (error) {
+      setSaving(false);
       toast.error(error.message || "Не удалось сохранить токен");
       return;
     }
+
+    // Keep Ads sync / cabinets on the same shared project token.
+    await supabase.rpc("save_meta_access_token" as never, { p_token: t } as never);
+    await supabase
+      .from("ad_cabinets")
+      .update({ access_token: t })
+      .eq("project_id", activeId);
+
+    setSaving(false);
     setLabel("");
     setToken("");
     setShowToken(false);
-    toast.success("Токен добавлен");
+    toast.success("Токен добавлен. Запустите синхронизацию в Ads.");
     void refetch();
   };
 
