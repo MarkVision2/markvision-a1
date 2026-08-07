@@ -66,5 +66,29 @@ Deno.serve(async (req) => {
     p_project_id: projectId,
   });
   if (error) return json({ error: "rpc_failed", detail: error.message }, 500);
-  return json(data ?? { from, to, posts: [], totals: {}, funnel: {} });
+
+  const payload = (data ?? { from, to, posts: [], totals: {}, funnel: {} }) as Record<string, unknown>;
+
+  // «Диагностики» — метрика клиники (is_diagnostic / diagnostic_amount).
+  // Для launch/курсов стадий диагностики нет → UI не должен показывать вечный 0 «нет оплат».
+  // RPC может уже вернуть uses_diagnostics; иначе считаем по проекту.
+  if (typeof payload.uses_diagnostics !== "boolean") {
+    const [{ data: diagStages }, { data: diagLeads }] = await Promise.all([
+      admin
+        .from("pipeline_stages")
+        .select("id, pipelines!inner(project_id)")
+        .eq("is_diagnostic", true)
+        .eq("pipelines.project_id", projectId)
+        .limit(1),
+      admin
+        .from("leads")
+        .select("id")
+        .eq("project_id", projectId)
+        .gt("diagnostic_amount", 0)
+        .limit(1),
+    ]);
+    payload.uses_diagnostics = Boolean(diagStages?.length) || Boolean(diagLeads?.length);
+  }
+
+  return json(payload);
 });

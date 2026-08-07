@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle, ArrowDown, ArrowUp, ArrowUpDown, Banknote, ExternalLink, Eye,
-  Instagram, LayoutGrid, Lightbulb, List, Loader2, MousePointerClick, MessageCircle, RefreshCw, Search,
+  Instagram, LayoutGrid, Lightbulb, List, Loader2, MessageCircle, RefreshCw, Search,
   ShoppingCart, Stethoscope, Target, Trophy,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -59,7 +59,15 @@ interface CCTotals {
   diagnostics: number; diagnostic_sum: number; sales: number; sale_sum: number; revenue: number;
 }
 interface CCFunnel { reach: number; clicks: number; leads: number; diagnostics: number; sales: number; }
-interface CCResp { from: string; to: string; posts: CCPost[]; totals: CCTotals; funnel: CCFunnel; }
+interface CCResp {
+  from: string;
+  to: string;
+  posts: CCPost[];
+  totals: CCTotals;
+  funnel: CCFunnel;
+  /** false for launch/course funnels — hide clinic «Диагностики» */
+  uses_diagnostics?: boolean;
+}
 
 const pct = (n: number, d: number) => (d > 0 ? (n / d) * 100 : 0);
 const fmtPct = (v: number) => `${v.toFixed(1)}%`;
@@ -93,6 +101,7 @@ async function fetchContentCenter(projectId: string, from: string, to: string): 
     posts: Array.isArray(d.posts) ? d.posts : [],
     totals: d.totals ?? ({} as CCTotals),
     funnel: d.funnel ?? ({} as CCFunnel),
+    uses_diagnostics: Boolean(d.uses_diagnostics),
   };
 }
 
@@ -100,16 +109,19 @@ type Derived = CCPost & {
   revenue: number; ctr: number; crLead: number; crDiag: number; crSale: number;
   avgCheck: number; e2e: number;
 };
-function enrich(p: CCPost): Derived {
+function enrich(p: CCPost, usesDiagnostics: boolean): Derived {
   const revenue = (p.diagnostic_sum || 0) + (p.sale_sum || 0);
-  const deals = (p.diagnostics || 0) + (p.sales || 0);
+  const deals = usesDiagnostics
+    ? (p.diagnostics || 0) + (p.sales || 0)
+    : (p.sales || 0);
+  const saleBase = usesDiagnostics ? (p.diagnostics || 0) : (p.leads || 0);
   return {
     ...p,
     revenue,
     ctr: pct(p.clicks, p.reach),
     crLead: pct(p.leads, p.clicks),
     crDiag: pct(p.diagnostics, p.leads),
-    crSale: pct(p.sales, p.diagnostics),
+    crSale: pct(p.sales, saleBase),
     avgCheck: deals > 0 ? revenue / deals : 0,
     e2e: pct(p.sales, p.reach),
   };
@@ -146,7 +158,7 @@ function SortableTh({
   );
 }
 
-const FUNNEL_STEPS: {
+const FUNNEL_STEPS_CLINIC: {
   key: keyof CCFunnel;
   label: string;
   transition?: string;
@@ -157,6 +169,18 @@ const FUNNEL_STEPS: {
   { key: "leads", label: "Заявки", transition: "Из кликов" },
   { key: "diagnostics", label: "Диагностики", transition: "Из заявок", moneyKey: "diagnostic_sum" },
   { key: "sales", label: "Продажи", transition: "Из диагн.", moneyKey: "sale_sum" },
+];
+
+const FUNNEL_STEPS_COMMERCE: {
+  key: keyof CCFunnel;
+  label: string;
+  transition?: string;
+  moneyKey?: keyof CCTotals;
+}[] = [
+  { key: "reach", label: "Охват" },
+  { key: "clicks", label: "Клики", transition: "CTR" },
+  { key: "leads", label: "Заявки", transition: "Из кликов" },
+  { key: "sales", label: "Продажи", transition: "Из заявок", moneyKey: "sale_sum" },
 ];
 
 const FUNNEL_GRADIENTS = [
@@ -233,13 +257,16 @@ function ContentFunnel({
   totals,
   rangeLabel,
   e2e,
+  usesDiagnostics,
 }: {
   funnel: CCFunnel | undefined;
   totals: CCTotals | undefined;
   rangeLabel: string;
   e2e: number;
+  usesDiagnostics: boolean;
 }) {
-  const steps = FUNNEL_STEPS.map((s) => ({
+  const stepDefs = usesDiagnostics ? FUNNEL_STEPS_CLINIC : FUNNEL_STEPS_COMMERCE;
+  const steps = stepDefs.map((s) => ({
     ...s,
     value: funnel?.[s.key] ?? 0,
     money: s.moneyKey && totals ? totals[s.moneyKey] : null,
@@ -412,7 +439,11 @@ const ContentCenter = () => {
     }
   };
 
-  const posts = useMemo(() => (data?.posts ?? []).map(enrich), [data]);
+  const usesDiagnostics = Boolean(data?.uses_diagnostics);
+  const posts = useMemo(
+    () => (data?.posts ?? []).map((p) => enrich(p, usesDiagnostics)),
+    [data, usesDiagnostics],
+  );
   const totals = data?.totals;
   const funnel = data?.funnel;
 
@@ -505,10 +536,14 @@ const ContentCenter = () => {
 
   const e2e = pct(funnel?.sales ?? 0, funnel?.reach ?? 0);
 
-  const avgCheck =
-    totals && totals.diagnostics + totals.sales > 0
-      ? totals.revenue / (totals.diagnostics + totals.sales)
-      : 0;
+  const avgCheck = (() => {
+    if (!totals) return 0;
+    if (usesDiagnostics) {
+      const deals = totals.diagnostics + totals.sales;
+      return deals > 0 ? totals.revenue / deals : 0;
+    }
+    return totals.sales > 0 ? totals.revenue / totals.sales : 0;
+  })();
 
   const top5Value = (p: Derived) => {
     switch (top5Mode) {
@@ -544,16 +579,15 @@ const ContentCenter = () => {
         title="Контент-центр"
         description={
           <span>
-            Контент-центр отвечает за коммерцию контента: путь от охвата до продажи в деньгах (₸).
-            {" "}
-            Для анализа форматов, ER и охватов используйте{" "}
+            Охват → клик → заявка → продажа
+            {usesDiagnostics ? " (через диагностику)" : ""}
+            {" · "}
+            {rangeLabel}
+            . Форматы и ER — в{" "}
             <Link to="/analytics/content" className="text-primary hover:underline">
-              Контент-аналитику
+              Контент-аналитике
             </Link>
-            .{" "}
-            <span className="text-pink-500 font-medium">Instagram</span>
-            {active?.name ? <> проекта «{active.name}»</> : null}
-            {" · "}охват → код-слово → заявка → диагностика → продажа · {rangeLabel}
+            .
           </span>
         }
         actions={
@@ -599,66 +633,72 @@ const ContentCenter = () => {
         </div>
       )}
 
-      {/* KPI — главные + детали */}
+      {/* KPI — одна понятная полоса, без клиники «Диагностики» для launch */}
       {loading && !totals ? (
-        <>
-          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, i) => <KpiSkeleton key={`h-${i}`} />)}
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {Array.from({ length: 4 }).map((_, i) => <KpiSkeleton key={`s-${i}`} />)}
-          </div>
-        </>
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => <KpiSkeleton key={`h-${i}`} />)}
+        </div>
       ) : totals ? (
-        <>
-          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <KpiCard
-              icon={Banknote}
-              label="Выручка с контента"
-              value={fmtKzt(totals.revenue)}
-              sub={`${fmtNum(totals.sales)} продаж · ${fmtNum(totals.diagnostics)} диагн.`}
-              emphasized
-              accent="success"
-            />
-            <KpiCard
-              icon={MessageCircle}
-              label="Заявки"
-              value={fmtNum(totals.leads)}
-              sub={`из ${fmtNum(totals.clicks)} кликов`}
-              emphasized
-              accent="primary"
-            />
-            <KpiCard
-              icon={Target}
-              label="Конверсия в продажу"
-              value={fmtPct(e2e)}
-              sub="охват → продажа за период"
-              emphasized
-              accent="pink"
-            />
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <KpiCard icon={Eye} label="Охват" value={fmtNum(totals.reach)} sub="уникальный reach" />
-            <KpiCard icon={MousePointerClick} label="Клики" value={fmtNum(totals.clicks)} sub="без ботов" />
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <KpiCard
+            icon={Banknote}
+            label="Выручка"
+            value={fmtKzt(totals.revenue)}
+            sub={
+              usesDiagnostics
+                ? `${fmtNum(totals.sales)} продаж · ${fmtNum(totals.diagnostics)} диагн.`
+                : `${fmtNum(totals.sales)} продаж`
+            }
+            emphasized
+            accent="success"
+          />
+          <KpiCard
+            icon={MessageCircle}
+            label="Заявки"
+            value={fmtNum(totals.leads)}
+            sub={`из ${fmtNum(totals.clicks)} кликов`}
+            emphasized
+            accent="primary"
+          />
+          <KpiCard
+            icon={Eye}
+            label="Охват"
+            value={fmtNum(totals.reach)}
+            sub={`${fmtNum(totals.clicks)} кликов · CTR ${fmtPct(pct(totals.clicks, totals.reach))}`}
+          />
+          {usesDiagnostics ? (
             <KpiCard
               icon={Stethoscope}
               label="Диагностики"
               value={fmtNum(totals.diagnostics)}
-              sub={totals.diagnostic_sum > 0 ? fmtKzt(totals.diagnostic_sum) : "нет оплат"}
+              sub={
+                totals.diagnostic_sum > 0
+                  ? fmtKzt(totals.diagnostic_sum)
+                  : totals.diagnostics > 0
+                    ? "записи / визиты"
+                    : "нет за период"
+              }
             />
+          ) : (
             <KpiCard
               icon={ShoppingCart}
               label="Средний чек"
               value={avgCheck > 0 ? fmtKzt(avgCheck) : "—"}
-              sub={totals.sales + totals.diagnostics > 0 ? "на сделку" : "нет сделок"}
+              sub={totals.sales > 0 ? "на продажу" : "нет продаж"}
             />
-          </div>
-        </>
+          )}
+        </div>
       ) : null}
 
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <ContentFunnel funnel={funnel} totals={totals} rangeLabel={rangeLabel} e2e={e2e} />
+          <ContentFunnel
+            funnel={funnel}
+            totals={totals}
+            rangeLabel={rangeLabel}
+            e2e={e2e}
+            usesDiagnostics={usesDiagnostics}
+          />
         </div>
         {/* Top-5 */}
         <div className="rounded-2xl border border-border/60 bg-card/60 p-4">
@@ -796,7 +836,12 @@ const ContentCenter = () => {
             </div>
           )}
           {filtered.map((p) => (
-            <PostCard key={p.ig_media_id} post={p} onOpen={() => openPost(p)} />
+            <PostCard
+              key={p.ig_media_id}
+              post={p}
+              onOpen={() => openPost(p)}
+              usesDiagnostics={usesDiagnostics}
+            />
           ))}
         </div>
       ) : (
@@ -869,7 +914,7 @@ const ContentCenter = () => {
                   </td>
                   <td className="px-3 py-3 text-right tabular-nums font-semibold align-top">{fmtNum(p.reach)}</td>
                   <td className="px-3 py-3 align-top">
-                    <MiniFunnel post={p} />
+                    <MiniFunnel post={p} usesDiagnostics={usesDiagnostics} />
                   </td>
                   <td className="px-3 py-3 text-right tabular-nums text-muted-foreground align-top">
                     {p.reach > 0 ? fmtPct(p.ctr) : "—"}
@@ -889,11 +934,14 @@ const ContentCenter = () => {
         post={selectedPost}
         open={selectedPost !== null}
         onOpenChange={(open) => { if (!open) setSelectedPost(null); }}
+        usesDiagnostics={usesDiagnostics}
       />
 
       <p className="mt-4 text-[11px] text-muted-foreground">
-        Воронка в строке: клики → заявки → диагностики → продажи. Сортировка «Воронка» — по заявкам.
-        {" "}Заявка — переписка в WhatsApp по код-слову. Суммы — в тенге.
+        {usesDiagnostics
+          ? "Воронка: клики → заявки → диагностики → продажи."
+          : "Воронка: клики → заявки → продажи."}
+        {" "}Сортировка «Воронка» — по заявкам. Суммы — в тенге.
       </p>
       </>
     </PageContainer>
@@ -902,13 +950,19 @@ const ContentCenter = () => {
 
 const POST_THUMB_PX = 56;
 
-function MiniFunnel({ post }: { post: Derived }) {
-  const steps: { v: number; label: string; tone?: "primary" | "success" }[] = [
-    { v: post.clicks, label: "клики" },
-    { v: post.leads, label: "заявки", tone: post.leads > 0 ? "primary" : undefined },
-    { v: post.diagnostics, label: "диагн." },
-    { v: post.sales, label: "продажи", tone: post.sales > 0 ? "success" : undefined },
-  ];
+function MiniFunnel({ post, usesDiagnostics }: { post: Derived; usesDiagnostics: boolean }) {
+  const steps: { v: number; label: string; tone?: "primary" | "success" }[] = usesDiagnostics
+    ? [
+        { v: post.clicks, label: "клики" },
+        { v: post.leads, label: "заявки", tone: post.leads > 0 ? "primary" : undefined },
+        { v: post.diagnostics, label: "диагн." },
+        { v: post.sales, label: "продажи", tone: post.sales > 0 ? "success" : undefined },
+      ]
+    : [
+        { v: post.clicks, label: "клики" },
+        { v: post.leads, label: "заявки", tone: post.leads > 0 ? "primary" : undefined },
+        { v: post.sales, label: "продажи", tone: post.sales > 0 ? "success" : undefined },
+      ];
 
   const allZero = steps.every((s) => s.v === 0);
 
@@ -935,10 +989,10 @@ function MiniFunnel({ post }: { post: Derived }) {
           ))
         )}
       </div>
-      {(post.diagnostic_sum > 0 || post.sale_sum > 0) && (
+      {(usesDiagnostics ? post.diagnostic_sum > 0 || post.sale_sum > 0 : post.sale_sum > 0) && (
         <div className="text-[10px] tabular-nums text-muted-foreground">
-          {post.diagnostic_sum > 0 && <span>{fmtKzt(post.diagnostic_sum)}</span>}
-          {post.diagnostic_sum > 0 && post.sale_sum > 0 && <span className="mx-1">·</span>}
+          {usesDiagnostics && post.diagnostic_sum > 0 && <span>{fmtKzt(post.diagnostic_sum)}</span>}
+          {usesDiagnostics && post.diagnostic_sum > 0 && post.sale_sum > 0 && <span className="mx-1">·</span>}
           {post.sale_sum > 0 && <span className="text-success">{fmtKzt(post.sale_sum)}</span>}
         </div>
       )}
@@ -1040,7 +1094,15 @@ function ViewModeToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: View
   );
 }
 
-function PostCard({ post, onOpen }: { post: Derived; onOpen: () => void }) {
+function PostCard({
+  post,
+  onOpen,
+  usesDiagnostics,
+}: {
+  post: Derived;
+  onOpen: () => void;
+  usesDiagnostics: boolean;
+}) {
   return (
     <button
       type="button"
@@ -1087,7 +1149,7 @@ function PostCard({ post, onOpen }: { post: Derived; onOpen: () => void }) {
         </div>
       </div>
       <div className="border-t border-border/40 px-3 py-2">
-        <MiniFunnel post={post} />
+        <MiniFunnel post={post} usesDiagnostics={usesDiagnostics} />
       </div>
     </button>
   );
@@ -1104,10 +1166,12 @@ function PostDetailSheet({
   post,
   open,
   onOpenChange,
+  usesDiagnostics,
 }: {
   post: Derived | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  usesDiagnostics: boolean;
 }) {
   if (!post) return null;
 
@@ -1117,13 +1181,20 @@ function PostDetailSheet({
     pct: number | null;
     pctLabel: string;
     money?: number;
-  }[] = [
-    { label: "Охват", value: post.reach, pct: null, pctLabel: "" },
-    { label: "Клики", value: post.clicks, pct: post.ctr, pctLabel: "CTR" },
-    { label: "Заявки", value: post.leads, pct: post.crLead, pctLabel: "из кликов" },
-    { label: "Диагностики", value: post.diagnostics, pct: post.crDiag, pctLabel: "из заявок", money: post.diagnostic_sum },
-    { label: "Продажи", value: post.sales, pct: post.crSale, pctLabel: "из диагн.", money: post.sale_sum },
-  ];
+  }[] = usesDiagnostics
+    ? [
+        { label: "Охват", value: post.reach, pct: null, pctLabel: "" },
+        { label: "Клики", value: post.clicks, pct: post.ctr, pctLabel: "CTR" },
+        { label: "Заявки", value: post.leads, pct: post.crLead, pctLabel: "из кликов" },
+        { label: "Диагностики", value: post.diagnostics, pct: post.crDiag, pctLabel: "из заявок", money: post.diagnostic_sum },
+        { label: "Продажи", value: post.sales, pct: post.crSale, pctLabel: "из диагн.", money: post.sale_sum },
+      ]
+    : [
+        { label: "Охват", value: post.reach, pct: null, pctLabel: "" },
+        { label: "Клики", value: post.clicks, pct: post.ctr, pctLabel: "CTR" },
+        { label: "Заявки", value: post.leads, pct: post.crLead, pctLabel: "из кликов" },
+        { label: "Продажи", value: post.sales, pct: post.crSale, pctLabel: "из заявок", money: post.sale_sum },
+      ];
 
   const max = Math.max(...funnelRows.map((r) => r.value), 1);
 
