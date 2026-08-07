@@ -1,7 +1,7 @@
 {
-  "git_sha": "a57d56f",
-  "git_sha_full": "a57d56ffe9135bb97dd2bdb1d0568e508e230502",
-  "updated_at": "2026-08-07T04:14:05Z",
-  "label": "chore: deploy finance unit economics to prod [vercel-deploy]",
+  "git_sha": "8a0eba47",
+  "git_sha_full": "8a0eba47a4235315521fb304e28a69e04ad4ce21",
+  "updated_at": "2026-08-07T12:36:02Z",
+  "label": "chore: deploy finance hide fact strip [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
