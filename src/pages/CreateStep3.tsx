@@ -386,6 +386,58 @@ function resolveGoalId(raw: string | undefined): GoalId {
   return "leads";
 }
 
+/** Русское склонение: 1 / 2–4 / 5+ */
+function ruCount(n: number, one: string, few: string, many: string): string {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${n} ${one}`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) {
+    return `${n} ${few}`;
+  }
+  return `${n} ${many}`;
+}
+
+/** Единицы из подписи шага 2 («Слайдов карточки», «Количество фото»…). */
+function variantUnitWords(variantsLabel: string): [string, string, string] {
+  const lower = variantsLabel.toLowerCase();
+  if (lower.includes("слайд")) return ["слайд", "слайда", "слайдов"];
+  if (lower.includes("фото")) return ["фото", "фото", "фото"];
+  if (lower.includes("кадр")) return ["кадр", "кадра", "кадров"];
+  if (lower.includes("обложк")) return ["обложка", "обложки", "обложек"];
+  if (lower.includes("превью")) return ["превью", "превью", "превью"];
+  return ["вариант", "варианта", "вариантов"];
+}
+
+/**
+ * Единая строка объёма задачи: не путаем «принятые форматы» (webhook)
+ * с «вариантами/слайдами» из шага 2.
+ */
+function buildTaskWorkloadLine(opts: {
+  styleCount: number;
+  variantsPerStyle: number;
+  variantsLabel: string;
+  isNeuroPhoto: boolean;
+}): string {
+  const styleCount = Math.max(0, opts.styleCount);
+  const variantsPerStyle =
+    typeof opts.variantsPerStyle === "number" && opts.variantsPerStyle > 0
+      ? opts.variantsPerStyle
+      : 1;
+  const [v1, vf, vm] = variantUnitWords(opts.variantsLabel);
+  const [s1, sf, sm] = opts.isNeuroPhoto
+    ? (["стиль", "стиля", "стилей"] as const)
+    : (["формат", "формата", "форматов"] as const);
+
+  if (styleCount <= 1) {
+    return `${ruCount(variantsPerStyle, v1, vf, vm)} в работе`;
+  }
+  if (variantsPerStyle <= 1) {
+    return `${ruCount(styleCount, s1, sf, sm)} в работе`;
+  }
+  const total = styleCount * variantsPerStyle;
+  return `${ruCount(styleCount, s1, sf, sm)} × ${variantsPerStyle} = ${ruCount(total, v1, vf, vm)} в работе`;
+}
+
 interface GeneratedVariant {
 
   styleId: StyleId;
@@ -611,10 +663,14 @@ const CreateStep3 = () => {
         if (allReady) {
           setStatus("success");
           const readyCount = next.filter((v) => v.imageUrl).length;
+          const typeTitle = contentType?.title?.trim() || "Задача";
+          const [s1, sf, sm] = isNeuroPhoto
+            ? (["стиль", "стиля", "стилей"] as const)
+            : (["формат", "формата", "форматов"] as const);
           setStatusMessage(
-            `Готово: ${readyCount} ${readyCount === 1 ? "вариант" : "варианта(ов)"} сгенерировано`,
+            `${typeTitle}: готово — ${ruCount(readyCount, s1, sf, sm)}`,
           );
-          toast.success("Креативы готовы", {
+          toast.success(`${typeTitle}: готово`, {
             description: next
               .filter((v) => v.imageUrl)
               .map((v) => v.styleLabel)
@@ -969,7 +1025,13 @@ const CreateStep3 = () => {
       }
 
       setStatusMessage(
-        `Запускаем ${selectedStyles.length} ${selectedStyles.length === 1 ? "генерацию" : "генерации"}...`,
+        `Запускаем ${buildTaskWorkloadLine({
+          styleCount: selectedStyles.length,
+          variantsPerStyle:
+            typeof variants === "number" && variants > 0 ? variants : 1,
+          variantsLabel: flow.step2.variantsLabel,
+          isNeuroPhoto,
+        }).replace(/ в работе$/, "")}…`,
       );
       setProgress(25);
       progressTimer = setInterval(() => {
@@ -1365,6 +1427,20 @@ const CreateStep3 = () => {
         }
       }
 
+      const okLabels = variantResults
+        .filter((v) => !v.error)
+        .map((v) => v.styleLabel)
+        .filter(Boolean);
+      const typeTitle = contentType?.title?.trim() || "Задача";
+      const variantsPerStyle =
+        typeof variants === "number" && variants > 0 ? variants : 1;
+      const workloadLine = buildTaskWorkloadLine({
+        styleCount: okCount,
+        variantsPerStyle,
+        variantsLabel: flow.step2.variantsLabel,
+        isNeuroPhoto,
+      });
+
       if (okCount === 0) {
         setStatus("error");
         setStatusMessage(
@@ -1378,19 +1454,28 @@ const CreateStep3 = () => {
         // асинхронный режим. Не врём пользователю «готово».
         setStatus("queued");
         setStatusMessage(
-          `Задача поставлена дизайнеру: ${okCount} ${okCount === 1 ? "вариант" : "вариант(а/ов)"} в работе. Результат появится автоматически.`,
+          [
+            typeTitle,
+            okLabels.length ? okLabels.join(" · ") : null,
+            workloadLine,
+          ]
+            .filter(Boolean)
+            .join(" · ") + ". Результат появится автоматически.",
         );
-        toast.success("Задача поставлена в работу", {
-          description: "Дизайнер начал генерацию. Это может занять до пары минут.",
+        toast.success(`${typeTitle}: задача в работе`, {
+          description: `${workloadLine}. Обычно до пары минут.`,
         });
       } else {
         setStatus("success");
+        const [s1, sf, sm] = isNeuroPhoto
+          ? (["стиль", "стиля", "стилей"] as const)
+          : (["формат", "формата", "форматов"] as const);
         setStatusMessage(
           failCount > 0
-            ? `Готово: ${readyCount} из ${variantResults.length} (${failCount} с ошибкой)`
-            : `Готово: ${readyCount} ${readyCount === 1 ? "вариант" : "варианта(ов)"} сгенерировано`,
+            ? `${typeTitle}: готово ${readyCount} из ${variantResults.length} (${failCount} с ошибкой)`
+            : `${typeTitle}: готово — ${ruCount(readyCount, s1, sf, sm)}`,
         );
-        toast.success("Креативы готовы", {
+        toast.success(`${typeTitle}: готово`, {
           description: variantResults
             .filter((v) => !v.error && v.imageUrl)
             .map((v) => v.styleLabel)
@@ -1458,7 +1543,10 @@ const CreateStep3 = () => {
             })()}
           </span>
           <span className="rounded-lg bg-secondary/80 px-2.5 py-1 text-foreground">
-            {variants} {variants === 1 ? "вариант" : "вариантов"}
+            {(() => {
+              const [v1, vf, vm] = variantUnitWords(flow.step2.variantsLabel);
+              return ruCount(variants, v1, vf, vm);
+            })()}
           </span>
           <span className="rounded-lg bg-secondary/80 px-2.5 py-1 text-muted-foreground">
             {lang === "kz" ? "KZ" : lang === "en" ? "EN" : "RU"}
@@ -2105,8 +2193,14 @@ const CreateStep3 = () => {
                     status === "error" && "text-destructive",
                   )}
                 >
-                  {status === "sending" && "Отправляем задачу дизайнеру…"}
-                  {status === "queued" && "Креатив в работе — ожидайте результат"}
+                  {status === "sending" &&
+                    (contentType?.title
+                      ? `Отправляем: ${contentType.title}…`
+                      : "Отправляем задачу…")}
+                  {status === "queued" &&
+                    (contentType?.title
+                      ? `${contentType.title} в работе — ожидайте результат`
+                      : "Креатив в работе — ожидайте результат")}
                   {status === "success" && "Готово"}
                   {status === "error" && "Ошибка отправки"}
                 </div>
@@ -2139,8 +2233,10 @@ const CreateStep3 = () => {
                 </h2>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {status === "queued"
-                    ? "Дизайнер в работе. Карточки обновятся, как только придёт изображение."
-                    : "По одному варианту на каждый выбранный стиль"}
+                    ? "Генерация идёт. Карточки обновятся, как только придёт изображение."
+                    : isNeuroPhoto
+                      ? "По одному результату на каждый выбранный стиль съёмки"
+                      : "По одной задаче на каждый выбранный формат"}
                 </p>
               </div>
               {status === "queued" && (
@@ -2268,62 +2364,120 @@ const CreateStep3 = () => {
               )}
             </div>
             <DialogTitle className="text-center text-xl">
-              {status === "success"
-                ? "Креативы готовы"
-                : status === "error"
-                  ? "Не удалось отправить задачу"
-                  : status === "queued"
-                    ? "Задача поставлена дизайнеру"
-                    : "Отправляем задачу дизайнеру…"}
+              {(() => {
+                const title = contentType?.title?.trim();
+                if (status === "success") {
+                  return title ? `${title}: готово` : "Креативы готовы";
+                }
+                if (status === "error") {
+                  return title
+                    ? `Не удалось отправить: ${title}`
+                    : "Не удалось отправить задачу";
+                }
+                if (status === "queued") {
+                  return title ? `${title} в работе` : "Задача в работе";
+                }
+                return title ? `Отправляем: ${title}` : "Отправляем задачу…";
+              })()}
             </DialogTitle>
             <DialogDescription className="text-center">
               {status === "success"
-                ? statusMessage || "Готово. Результаты появились ниже на странице."
+                ? "Результаты появились ниже на странице."
                 : status === "error"
                   ? statusMessage || "Произошла ошибка. Попробуйте ещё раз."
                   : status === "queued"
-                    ? "Креатив в работе. Ожидайте — это может занять до пары минут. Изображение появится в карточках ниже автоматически."
-                    : "Готовим payload и поднимаем AI-дизайнера…"}
+                    ? "Ожидайте — обычно до пары минут. Результат появится в карточках ниже автоматически."
+                    : contentType?.subtitle
+                      ? `${contentType.subtitle}. Готовим ТЗ и отправляем в генерацию…`
+                      : "Готовим ТЗ и отправляем в генерацию…"}
             </DialogDescription>
           </DialogHeader>
 
-          {(status === "sending" || status === "queued") && (
+          {(status === "sending" || status === "queued" || status === "success") && (
             <div className="space-y-3 px-1">
-              <Progress
-                value={status === "queued" ? 100 : progress}
-                className={cn(
-                  "h-2",
-                  status === "queued" && "[&>div]:animate-pulse [&>div]:bg-primary",
-                )}
-              />
-              <div className="text-center text-xs text-muted-foreground">
-                {statusMessage ||
-                  (status === "queued"
-                    ? "Дизайнер начал работу…"
-                    : "Отправляем задачу AI-дизайнеру…")}
+              {(status === "sending" || status === "queued") && (
+                <Progress
+                  value={status === "queued" ? 100 : progress}
+                  className={cn(
+                    "h-2",
+                    status === "queued" && "[&>div]:animate-pulse [&>div]:bg-primary",
+                  )}
+                />
+              )}
+
+              <div className="rounded-xl border border-border/70 bg-secondary/40 px-3.5 py-3 text-left">
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Ваша задача
+                </div>
+                <div className="mt-1 text-sm font-semibold text-foreground">
+                  {contentType?.title ?? "Контент-завод"}
+                  {contentType?.subtitle ? (
+                    <span className="font-normal text-muted-foreground">
+                      {" "}
+                      · {contentType.subtitle}
+                    </span>
+                  ) : null}
+                </div>
+                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                  <span className="rounded-md bg-background/80 px-2 py-0.5 text-[11px] font-medium text-foreground">
+                    {aspect}
+                    {(() => {
+                      const px = resolveAspectPixels(aspect);
+                      return px ? ` · ${px.width}×${px.height}` : "";
+                    })()}
+                  </span>
+                  {selectedStyles.map((sid) => {
+                    const label =
+                      activeStyles.find((s) => s.id === sid)?.label ?? sid;
+                    return (
+                      <span
+                        key={sid}
+                        className="rounded-md bg-primary/15 px-2 py-0.5 text-[11px] font-medium text-primary"
+                      >
+                        {label}
+                      </span>
+                    );
+                  })}
+                </div>
+                <div className="mt-2.5 text-xs text-muted-foreground">
+                  {buildTaskWorkloadLine({
+                    styleCount:
+                      status === "queued" && results
+                        ? results.filter((v) => !v.error).length
+                        : selectedStyles.length,
+                    variantsPerStyle:
+                      typeof variants === "number" && variants > 0
+                        ? variants
+                        : 1,
+                    variantsLabel: flow.step2.variantsLabel,
+                    isNeuroPhoto,
+                  })}
+                </div>
               </div>
-              <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
-                <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-primary" />
-                {(() => {
-                  const variantsPerStyle =
-                    typeof variants === "number" && variants > 0
-                      ? variants
-                      : 1;
-                  const total = selectedStyles.length * variantsPerStyle;
-                  return variantsPerStyle > 1
-                    ? `${selectedStyles.length} ${selectedStyles.length === 1 ? "стиль" : "стилей"} × ${variantsPerStyle} ${variantsPerStyle === 1 ? "вариант" : "вариантов"} = ${total} креативов в работе`
-                    : `${selectedStyles.length} ${selectedStyles.length === 1 ? "вариант" : "вариантов"} в работе`;
-                })()}
-              </div>
+
+              {(status === "sending" || status === "queued") && statusMessage ? (
+                <p className="text-center text-xs text-muted-foreground">
+                  {statusMessage}
+                </p>
+              ) : null}
             </div>
           )}
 
           <DialogFooter className="flex-col gap-2 sm:flex-col sm:justify-center">
             {status === "queued" ? (
-              <Button onClick={startNewDesign} className="min-w-[200px] gap-2">
-                <Plus className="h-4 w-4" />
-                Создать новый дизайн
-              </Button>
+              <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
+                <Button
+                  variant="outline"
+                  onClick={() => setTaskDialogOpen(false)}
+                  className="min-w-[160px]"
+                >
+                  Следить за результатом
+                </Button>
+                <Button onClick={startNewDesign} className="min-w-[200px] gap-2">
+                  <Plus className="h-4 w-4" />
+                  Создать новый дизайн
+                </Button>
+              </div>
             ) : status === "success" ? (
               <div className="flex w-full flex-col gap-2 sm:flex-row sm:justify-center">
                 <Button variant="outline" onClick={() => setTaskDialogOpen(false)} className="min-w-[160px]">
