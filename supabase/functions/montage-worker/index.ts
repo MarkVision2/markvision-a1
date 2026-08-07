@@ -18,6 +18,7 @@
 //   kie_create {project_id, prompt} → taskId (Kling via Kie.ai)
 //   kie_status {project_id, task_id}
 //   pexels_search {project_id, query, per_page?}
+//   library_assets {project_id, folder_ids[]} → файлы из reels_assets
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.4";
 import { decryptProviderKey } from "../_lib/reelsCredentials.ts";
 import { seedEricDemo } from "../_lib/ericDemoSeed.ts";
@@ -365,9 +366,49 @@ Deno.serve(async (req) => {
             video_url: mp4?.link ?? null,
             width: mp4?.width ?? null,
             height: mp4?.height ?? null,
+            // page url / tags help daemon skip off-topic stock (fish, fruit, …)
+            page_url: typeof video.url === "string" ? video.url : null,
+            tags: Array.isArray(video.tags)
+              ? video.tags.map((t: unknown) => String(t)).slice(0, 12)
+              : [],
           };
         }).filter((video: Json) => Boolean(video.video_url));
-        return json({ videos });
+        return json({ videos, query });
+      }
+
+      case "library_assets": {
+        const projectId = String(body.project_id ?? "");
+        const rawFolders = body.folder_ids ?? body.folderIds;
+        const folderIds = Array.isArray(rawFolders)
+          ? rawFolders.map(String).filter(Boolean).slice(0, 20)
+          : [];
+        if (!projectId || !folderIds.length) {
+          return json({ error: "project_id and folder_ids required" }, 400);
+        }
+        const { data: folders, error: foldersError } = await admin
+          .from("reels_asset_folders")
+          .select("id,name")
+          .eq("project_id", projectId)
+          .in("id", folderIds);
+        if (foldersError) return json({ error: foldersError.message }, 500);
+        const folderName = new Map(
+          (folders ?? []).map((f: { id: string; name: string }) => [String(f.id), String(f.name)]),
+        );
+        const allowed = [...folderName.keys()];
+        if (!allowed.length) return json({ assets: [], folderIds });
+        const { data, error } = await admin
+          .from("reels_assets")
+          .select("id,folder_id,name,media_type,public_url,storage_path,metadata,size_bytes,created_at")
+          .eq("project_id", projectId)
+          .in("folder_id", allowed)
+          .order("created_at", { ascending: false })
+          .limit(200);
+        if (error) return json({ error: error.message }, 500);
+        const assets = (data ?? []).map((row: Json) => ({
+          ...row,
+          folder_name: folderName.get(String(row.folder_id)) ?? null,
+        }));
+        return json({ assets, folderIds: allowed });
       }
 
       case "seed_demo_eric": {

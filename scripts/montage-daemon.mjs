@@ -17,6 +17,12 @@ import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createClient } from "@supabase/supabase-js";
+import {
+  isWeakStockQuery,
+  pickLibraryAsset,
+  scoreAssetAgainstNeed,
+  tokenize,
+} from "./lib/brollMatch.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 process.chdir(ROOT);
@@ -341,6 +347,238 @@ function kieState(task) {
   return String(task?.state ?? task?.status ?? "").toLowerCase();
 }
 
+function proxyBrollClip(abs, outDir, fileName) {
+  if (!existsSync(abs)) throw new Error("download empty");
+  const proxyPath = resolve(outDir, fileName.replace(/\.(mp4|mov|webm)$/i, "_p.mp4"));
+  const finalAbs = abs.replace(/\.(mov|webm)$/i, ".mp4");
+  try {
+    sh("ffmpeg", [
+      "-y", "-i", abs,
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-g", "1", "-bf", "0",
+      "-pix_fmt", "yuv420p", "-an", "-movflags", "+faststart",
+      proxyPath,
+    ]);
+    if (existsSync(proxyPath)) {
+      copyFileSync(proxyPath, finalAbs);
+      unlinkSync(proxyPath);
+      if (finalAbs !== abs && existsSync(abs)) {
+        try { unlinkSync(abs); } catch { /* keep */ }
+      }
+      return finalAbs;
+    }
+  } catch (e) {
+    console.warn("broll proxy failed, using original", e instanceof Error ? e.message : e);
+  }
+  return abs;
+}
+
+function stockLooksOffTopic(query, video) {
+  const need = tokenize(query);
+  if (!need.length) return true;
+  const hay = tokenize([
+    ...(Array.isArray(video?.tags) ? video.tags : []),
+    String(video?.page_url || "").replace(/https?:\/\//, "").replace(/[\/_\-?=&]/g, " "),
+  ].join(" "));
+  if (!hay.length) return false; // Pexels often has no tags — don't over-reject
+  // Off-topic food/animals unless asked
+  const bannedUnlessAsked = [
+    "fish", "fishing", "seafood", "mandarin", "orange", "fruit", "food", "sushi",
+    "cat", "dog", "puppy", "kitten", "wildlife",
+  ];
+  const asked = new Set(need);
+  for (const b of bannedUnlessAsked) {
+    if (hay.includes(b) && !asked.has(b) && !need.some((n) => n.includes(b) || b.includes(n))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+async function fetchLibraryCatalog(job, folderIds) {
+  const projectId = String(job.project_id || "");
+  if (!projectId || !folderIds?.length) return [];
+  try {
+    const res = await call(MW, {
+      action: "library_assets",
+      project_id: projectId,
+      folder_ids: folderIds,
+    });
+    if (Array.isArray(res.assets) && res.assets.length) return res.assets;
+  } catch (e) {
+    console.warn(
+      "library_assets via edge failed, trying DB fallback:",
+      e instanceof Error ? e.message : e,
+    );
+  }
+  // Fallback until montage-worker with library_assets is deployed.
+  const dbUrl = env.DATABASE_URL || env.SUPABASE_DB_URL || "";
+  if (!dbUrl) return [];
+  try {
+    const ids = folderIds.map((id) => `'${String(id).replace(/'/g, "''")}'`).join(",");
+    const sql = `SELECT a.id, a.folder_id, a.name, a.media_type, a.public_url, a.storage_path,
+      a.metadata, a.size_bytes, f.name AS folder_name
+      FROM reels_assets a
+      JOIN reels_asset_folders f ON f.id = a.folder_id
+      WHERE a.project_id = '${projectId.replace(/'/g, "''")}'
+        AND a.folder_id IN (${ids})
+      ORDER BY a.created_at DESC
+      LIMIT 200`;
+    const r = spawnSync("psql", [dbUrl, "-v", "ON_ERROR_STOP=1", "-At", "-F", "\t", "-c", sql], {
+      encoding: "utf8",
+      env: { ...process.env, ...env },
+    });
+    if (r.status !== 0) {
+      console.warn("library DB fallback failed:", (r.stderr || r.stdout || "").slice(0, 300));
+      return [];
+    }
+    const assets = String(r.stdout || "").trim().split("\n").filter(Boolean).map((line) => {
+      const [id, folder_id, name, media_type, public_url, storage_path, metadata, size_bytes, folder_name] =
+        line.split("\t");
+      let meta = {};
+      try { meta = JSON.parse(metadata || "{}"); } catch { /* */ }
+      return {
+        id, folder_id, name, media_type, public_url, storage_path,
+        metadata: meta, size_bytes: Number(size_bytes) || null, folder_name,
+      };
+    });
+    console.log(`library catalog via DB: ${assets.length}`);
+    return assets;
+  } catch (e) {
+    console.warn("library DB fallback threw:", e instanceof Error ? e.message : e);
+    return [];
+  }
+}
+
+/** If AI (old deploy) returned only motion — place library clips on strong accents. */
+function synthesizeLibrarySlots(insertsDoc, catalog, words, durationSec) {
+  const list = Array.isArray(insertsDoc?.inserts) ? [...insertsDoc.inserts] : [];
+  const hasVideoPlan = list.some((it) => !it.template && (it.assetId || it.query || it.prompt));
+  if (hasVideoPlan || !catalog.length || !Array.isArray(words) || !words.length) {
+    return insertsDoc;
+  }
+  const target = Math.min(6, catalog.length, Math.max(2, Math.round((durationSec || 60) / 12)));
+  const step = Math.max(8, Math.floor(words.length / (target + 1)));
+  const slots = [];
+  for (let i = 0; i < target; i++) {
+    const anchor = Math.min(words.length - 2, (i + 1) * step);
+    const end = Math.min(words.length - 1, anchor + 8);
+    const spoken = words.slice(anchor, end + 1).map((w) => w.word || w.text || "").join(" ");
+    slots.push({
+      anchorWord: anchor,
+      endWord: end,
+      assetId: null,
+      query: spoken.slice(0, 80),
+      layout: "full",
+      spokenText: spoken.slice(0, 160),
+      note: spoken.slice(0, 80),
+    });
+  }
+  console.log(`library: synthesized ${slots.length} video slots (AI had no asset plan)`);
+  return { inserts: [...slots, ...list] };
+}
+
+/** Скачать клипы из папок проекта → remotion/public/inserts/<jobId>/ */
+async function materializeLibraryBroll(job, insertsDoc, catalog) {
+  const id = job.id;
+  const list = Array.isArray(insertsDoc?.inserts) ? insertsDoc.inserts : [];
+  if (!list.length) return null;
+  if (!catalog.length) {
+    console.warn("library: каталог пуст");
+    return null;
+  }
+
+  const outDir = resolve("remotion/public/inserts", id);
+  mkdirSync(outDir, { recursive: true });
+  const byId = new Map(catalog.map((a) => [String(a.id), a]));
+  const usedIds = new Set();
+  const debug = {
+    mode: "library",
+    catalog: catalog.length,
+    planned: list.length,
+    attempted: 0,
+    ok: 0,
+    failed: [],
+    assignments: [],
+  };
+  const merged = [];
+  const maxClips = Math.min(8, catalog.length);
+
+  for (const it of list) {
+    if (it.template || (it.file && it.type)) {
+      merged.push(it);
+      continue;
+    }
+    if (debug.ok >= maxClips) continue;
+
+    const needText = [it.spokenText, it.note, it.query, it.prompt].filter(Boolean).join(" ");
+    let asset = null;
+    let reason = "none";
+    let score = 0;
+    const wantedId = it.assetId != null ? String(it.assetId) : "";
+    if (wantedId && byId.has(wantedId) && !usedIds.has(wantedId)) {
+      asset = byId.get(wantedId);
+      reason = "ai-assetId";
+      score = scoreAssetAgainstNeed(asset, needText);
+    } else {
+      const pick = pickLibraryAsset(catalog, usedIds, needText, { minScore: 0.2 });
+      asset = pick.asset;
+      reason = pick.reason;
+      score = pick.score;
+    }
+    if (!asset?.public_url) {
+      debug.failed.push({ need: needText.slice(0, 80), error: "no asset" });
+      continue;
+    }
+
+    debug.attempted += 1;
+    const ext = (extname(String(asset.name || asset.public_url)) || ".mp4").toLowerCase();
+    const safeExt = [".mp4", ".mov", ".webm"].includes(ext) ? ext : ".mp4";
+    const fileName = `${String(debug.attempted).padStart(2, "0")}_lib${safeExt}`;
+    const abs = resolve(outDir, fileName);
+
+    try {
+      await status(id, `Library ${debug.attempted}/${maxClips}`);
+      await download(asset.public_url, abs);
+      const finalAbs = proxyBrollClip(abs, outDir, fileName);
+      const finalName = basename(finalAbs);
+      const rel = `${id}/${finalName}`;
+      usedIds.add(String(asset.id));
+      merged.push({
+        file: rel,
+        type: String(asset.media_type || "video") === "image" ? "image" : "video",
+        anchorWord: it.anchorWord,
+        endWord: it.endWord,
+        layout: "full",
+        note: it.note || asset.name,
+        spokenText: it.spokenText || it.note || null,
+        assetId: asset.id,
+        matchReason: reason,
+        matchScore: Number(score.toFixed?.(3) ?? score),
+      });
+      debug.ok += 1;
+      debug.assignments.push({
+        assetId: asset.id,
+        name: asset.name,
+        reason,
+        score,
+        need: needText.slice(0, 100),
+      });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.warn(`library clip failed:`, msg);
+      debug.failed.push({ assetId: asset.id, name: asset.name, error: msg.slice(0, 200) });
+    }
+  }
+
+  writeFileSync(resolve("work", id, "broll-debug.json"), JSON.stringify(debug, null, 2));
+  if (!debug.ok) {
+    console.warn(`⚠ library: 0 клипов (attempted=${debug.attempted}) → motion fallback`);
+    return null;
+  }
+  console.log(`✓ library inserts: ${debug.ok}/${debug.attempted} (catalog=${catalog.length})`);
+  return { inserts: merged };
+}
+
 /** Скачать/сгенерировать внешние B-roll клипы → remotion/public/inserts/<jobId>/ */
 async function materializeExternalBroll(job, insertsDoc, brollMode) {
   const projectId = String(job.project_id || "");
@@ -354,11 +592,12 @@ async function materializeExternalBroll(job, insertsDoc, brollMode) {
 
   const outDir = resolve("remotion/public/inserts", id);
   mkdirSync(outDir, { recursive: true });
-  const debug = { mode: brollMode, planned: list.length, attempted: 0, ok: 0, failed: [], noPrompt: 0 };
+  const debug = { mode: brollMode, planned: list.length, attempted: 0, ok: 0, failed: [], noPrompt: 0, skippedWeak: 0 };
   const maxClips = brollMode === "kie"
     ? Math.min(3, list.length)   // ~$0.28/клип Kling 2.6 — не жечь бюджет
     : Math.min(8, list.length);
   const merged = [];
+  let videoSlots = 0;
 
   for (let i = 0; i < list.length; i++) {
     const it = list[i];
@@ -367,10 +606,7 @@ async function materializeExternalBroll(job, insertsDoc, brollMode) {
       merged.push(it);
       continue;
     }
-    if (i >= maxClips) {
-      // Beyond clip budget — drop empty video slots (don't invent motion here).
-      continue;
-    }
+    if (videoSlots >= maxClips) continue;
 
     const prompt = String(it.prompt || "").trim();
     const query = String(it.query || prompt || "").trim().slice(0, 120);
@@ -378,8 +614,14 @@ async function materializeExternalBroll(job, insertsDoc, brollMode) {
       debug.noPrompt += 1;
       continue;
     }
+    if (brollMode === "pexels" && isWeakStockQuery(query)) {
+      debug.skippedWeak += 1;
+      console.warn(`pexels skip weak query: «${query}»`);
+      continue;
+    }
 
     debug.attempted += 1;
+    videoSlots += 1;
     const fileName = `${String(debug.attempted).padStart(2, "0")}_broll.mp4`;
     const abs = resolve(outDir, fileName);
     const rel = `${id}/${fileName}`;
@@ -412,30 +654,18 @@ async function materializeExternalBroll(job, insertsDoc, brollMode) {
         const found = await call(MW, {
           action: "pexels_search",
           project_id: projectId,
-          query: query || "business",
-          per_page: 4,
+          query,
+          per_page: 8,
         });
-        const videoUrl = found.videos?.[0]?.video_url;
-        if (!videoUrl) throw new Error(`Pexels пусто по запросу «${query}»`);
-        await download(videoUrl, abs);
+        const candidates = Array.isArray(found.videos) ? found.videos : [];
+        const picked = candidates.find((v) => !stockLooksOffTopic(query, v)) || null;
+        if (!picked?.video_url) {
+          throw new Error(`Pexels: нет подходящего клипа по «${query}» (off-topic отфильтрован)`);
+        }
+        await download(picked.video_url, abs);
       }
 
-      if (!existsSync(abs)) throw new Error("download empty");
-      const proxyPath = resolve(outDir, fileName.replace(/\.mp4$/i, "_p.mp4"));
-      try {
-        sh("ffmpeg", [
-          "-y", "-i", abs,
-          "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-g", "1", "-bf", "0",
-          "-pix_fmt", "yuv420p", "-an", "-movflags", "+faststart",
-          proxyPath,
-        ]);
-        if (existsSync(proxyPath)) {
-          copyFileSync(proxyPath, abs);
-          unlinkSync(proxyPath);
-        }
-      } catch (e) {
-        console.warn("broll proxy failed, using original", e instanceof Error ? e.message : e);
-      }
+      proxyBrollClip(abs, outDir, fileName);
 
       merged.push({
         file: rel,
@@ -455,9 +685,9 @@ async function materializeExternalBroll(job, insertsDoc, brollMode) {
     }
   }
 
-    writeFileSync(resolve("work", id, "broll-debug.json"), JSON.stringify(debug, null, 2));
+  writeFileSync(resolve("work", id, "broll-debug.json"), JSON.stringify(debug, null, 2));
   if (!debug.ok) {
-    console.warn(`⚠ ${brollMode}: 0 клипов (attempted=${debug.attempted}, noPrompt=${debug.noPrompt}) → motion fallback`);
+    console.warn(`⚠ ${brollMode}: 0 клипов (attempted=${debug.attempted}, noPrompt=${debug.noPrompt}, weak=${debug.skippedWeak}) → motion fallback`);
     return null;
   }
   console.log(`✓ ${brollMode} inserts: ${debug.ok}/${debug.attempted} (planned=${debug.planned})`);
@@ -483,11 +713,11 @@ async function processJob(job) {
   console.log(`brollMode=${brollMode} style=${style.id} folders=${assetFolderIds.length}`);
   const brollHint = {
     auto: "B-roll: motion-графика по стилю шаблона.",
-    library: "B-roll: папки проекта + motion по стилю шаблона.",
+    library: "B-roll: клипы из выбранных папок проекта по смыслу фразы + motion.",
     pexels: "B-roll: Pexels cutaway (full) + Remotion motion-дизайн на остальные мысли.",
     kie: "B-roll: Kie/Kling cutaway (full) + Remotion motion-дизайн на остальные мысли.",
   }[brollMode];
-  // Motion-правила стиля нужны и для kie/pexels — иначе только сток без анимаций.
+  // Motion-правила стиля нужны и для kie/pexels/library — иначе только сток без анимаций.
   const insertBrief = [
     brief,
     brollHint,
@@ -561,21 +791,67 @@ async function processJob(job) {
       ?? probeDurationSec(proxy)
       ?? 0,
     );
+    let libraryCatalog = [];
+    if (brollMode === "library") {
+      await status(id, "загружаем каталог папок B-roll");
+      libraryCatalog = await fetchLibraryCatalog(job, assetFolderIds);
+      writeFileSync(
+        resolve(work, "library-catalog.json"),
+        JSON.stringify({ folderIds: assetFolderIds, assets: libraryCatalog }, null, 2),
+      );
+      console.log(`library catalog: ${libraryCatalog.length} assets from ${assetFolderIds.length} folders`);
+      if (!libraryCatalog.length) {
+        console.warn("library: папки пусты → motion-only");
+      }
+    }
     const insertsRaw = await call(AI, {
       action: "markup_inserts",
       indexed,
       utterances,
       brief: insertBrief,
       durationSec,
-      brollMode,
+      brollMode: brollMode === "library" && !libraryCatalog.length ? "auto" : brollMode,
       assetFolderIds,
+      assetCatalog: libraryCatalog.map((a) => ({
+        id: a.id,
+        name: a.name,
+        media_type: a.media_type,
+        folder_name: a.folder_name,
+      })),
       insertEverySec: style.insertEverySec,
       coverRatio: style.coverRatio,
       accentColor: style.accentColor,
       styleId: style.id,
     });
     let inserts = insertsRaw;
-    if (brollMode === "kie" || brollMode === "pexels") {
+    if (brollMode === "library" && libraryCatalog.length) {
+      inserts = synthesizeLibrarySlots(insertsRaw, libraryCatalog, words, durationSec);
+      await status(id, "подставляем B-roll из папок");
+      const external = await materializeLibraryBroll(job, inserts, libraryCatalog);
+      if (external) {
+        inserts = external;
+      } else {
+        console.warn("library пуст → motion fallback");
+        await status(id, "папки не дали клипов → motion fallback");
+        inserts = await call(AI, {
+          action: "markup_inserts",
+          indexed,
+          utterances,
+          brief: [
+            brief,
+            "B-roll: motion-графика (fallback — медиатека не подставилась).",
+            style.aiRules || "",
+          ].filter(Boolean).join("\n"),
+          durationSec,
+          brollMode: "auto",
+          assetFolderIds,
+          insertEverySec: style.insertEverySec,
+          coverRatio: style.coverRatio,
+          accentColor: style.accentColor,
+          styleId: style.id,
+        });
+      }
+    } else if (brollMode === "kie" || brollMode === "pexels") {
       await status(id, `генерация B-roll (${brollMode})`);
       const external = await materializeExternalBroll(job, insertsRaw, brollMode);
       if (external) {
@@ -602,7 +878,9 @@ async function processJob(job) {
           styleId: style.id,
         });
       }
-      // Если AI/старый план отдал только видео — добираем Remotion motion на остальные мысли.
+    }
+    // Если AI/старый план отдал только видео — добираем Remotion motion на остальные мысли.
+    if (brollMode === "kie" || brollMode === "pexels" || brollMode === "library") {
       const list = Array.isArray(inserts?.inserts) ? inserts.inserts : [];
       const hasMotion = list.some((it) => it && it.template);
       if (list.length && !hasMotion) {
@@ -639,9 +917,9 @@ async function processJob(job) {
       }
     }
     writeFileSync(resolve(work, "inserts.json"), JSON.stringify(inserts, null, 2));
-    // Для Kie/Pexels не дописываем regex-оффтоп поверх видео-клипов.
+    // Для Kie/Pexels/Library не дописываем regex-оффтоп поверх видео-клипов.
     // Для motion — только grounded fills (без invented kinetic-type).
-    const skipEnrich = brollMode === "kie" || brollMode === "pexels" ? "skip" : "0";
+    const skipEnrich = ["kie", "pexels", "library"].includes(brollMode) ? "skip" : "0";
     await status(id, skipEnrich === "skip" ? "B-roll готов" : "уплотняем motion-вставки");
     py([
       "pipeline/inserts_enrich.py",
