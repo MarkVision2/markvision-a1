@@ -793,6 +793,13 @@ async function handleCommand(cmd) {
 }
 
 async function tick() {
+  // Claim FIRST — CRM text send returns immediately and waits on this loop.
+  // Heartbeats / session reconcile after, so outbound isn't blocked by RTT.
+  const claimed = await bridge("claim", {});
+  for (const cmd of claimed.commands || []) {
+    await handleCommand(cmd);
+  }
+
   await bridge("heartbeat", {});
   const listed = await bridge("list_sessions", {});
   for (const s of listed.sessions || []) {
@@ -803,10 +810,6 @@ async function tick() {
         await bridge("heartbeat", { project_id: s.project_id });
       }
     }
-  }
-  const claimed = await bridge("claim", {});
-  for (const cmd of claimed.commands || []) {
-    await handleCommand(cmd);
   }
 }
 
@@ -826,7 +829,7 @@ async function main() {
       log.error({ err: e }, "tick failed");
     }
     // Fast claim loop — CRM send returns immediately and needs quick pickup.
-    await new Promise((r) => setTimeout(r, 600));
+    await new Promise((r) => setTimeout(r, 300));
   }
 }
 
