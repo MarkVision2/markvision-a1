@@ -833,6 +833,22 @@ Deno.serve(async (req) => {
       const messageData = body.messageData as Record<string, unknown> | undefined;
       const phone = chatIdToPhone(senderData?.chatId);
       if (!phone) return json({ ok: true, skipped: "no phone" });
+
+      // Когда CRM шлёт через WhatsApp Web, Green API видит исходящее как
+      // outgoingMessageReceived (другое устройство) и пишет второй ряд с
+      // другим external_id → троение в чате. Пропускаем echo с телефона/WA Web.
+      if (type === "outgoingMessageReceived" && projectId) {
+        const { data: waSess } = await admin
+          .from("whatsapp_web_sessions")
+          .select("status")
+          .eq("project_id", projectId)
+          .maybeSingle();
+        if ((waSess as { status?: string } | null)?.status === "connected") {
+          forwardToBotWebhook(instanceCfg.botWebhookUrl, body);
+          return json({ ok: true, skipped: "wa_web_owns_outbound", projectId });
+        }
+      }
+
       // Не создаём лид на исходящее (рассылка/бот) — иначе KPI «новые лиды»
       // раздувается. Только прикрепляем сообщение к уже существующему контакту.
       const leadId = await findExistingLeadId(phone, projectId);
