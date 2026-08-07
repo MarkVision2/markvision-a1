@@ -194,6 +194,11 @@ export function useCabinetsStore() {
           accessToken: c.accessToken,
         });
       }
+      if (fnData.has_access_token === false) {
+        console.warn(
+          "[addCabinet] cabinet saved without Meta access_token — sync/Ads may fail until token is set",
+        );
+      }
       await refetch();
       return saved.id;
     }

@@ -20,6 +20,8 @@ export interface PixelItem {
   id: string;
   name: string;
   last_fired_time: string | null;
+  /** ad_account | business | ads — used to avoid auto-picking BM siblings */
+  source?: string;
 }
 export interface PixelEventItem {
   name: string;
