@@ -895,19 +895,21 @@ Deno.serve(async (req) => {
     if (error) return json({ error: error.message }, 500);
 
     // Wait briefly for daemon ack (best-effort). Voice may need ffmpeg — allow longer.
-    const waitMs = audioBase64 ? 45_000 : 12_000;
+    const waitMs = audioBase64 ? 45_000 : 8_000;
     const deadline = Date.now() + waitMs;
     while (Date.now() < deadline) {
-      await new Promise((r) => setTimeout(r, 700));
+      await new Promise((r) => setTimeout(r, 400));
       const { data: row } = await admin
         .from("whatsapp_web_commands")
         .select("status, result")
         .eq("id", cmd.id)
         .maybeSingle();
       if (row?.status === "done") {
+        const idMessage = (row.result as { idMessage?: string } | null)?.idMessage ?? null;
         return json({
           ok: true,
-          idMessage: (row.result as { idMessage?: string } | null)?.idMessage ?? cmd.id,
+          idMessage,
+          pending: !idMessage,
         });
       }
       if (row?.status === "failed") {
@@ -917,16 +919,9 @@ Deno.serve(async (req) => {
         }, 502);
       }
     }
-    // Still pending — for voice do not fake success (media may not be ingested yet).
-    if (audioBase64) {
-      return json({
-        ok: false,
-        error: "Таймаут отправки голосового — демон ещё обрабатывает. Попробуйте снова.",
-        pending: true,
-      }, 504);
-    }
-    // Text: UI can treat command id as optimistic external id
-    return json({ ok: true, idMessage: cmd.id, pending: true });
+    // Still pending — daemon continues; never return command UUID as message id
+    // (that used to create a duplicate vs Baileys ingest external_id).
+    return json({ ok: true, pending: true });
   }
 
   return json({ error: `unknown action: ${action}` }, 400);

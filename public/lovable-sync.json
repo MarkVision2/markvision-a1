@@ -1,7 +1,7 @@
 {
-  "git_sha": "751ce37",
-  "git_sha_full": "751ce37b6c748b0ab4411e6bc1fb93d0536ee678",
-  "updated_at": "2026-08-07T12:36:02Z",
-  "label": "chore: deploy finance hide fact strip [vercel-deploy]",
+  "git_sha": "7e73ae48",
+  "git_sha_full": "7e73ae48d5340a4ad324f08576cd49fd92760f28",
+  "updated_at": "2026-08-07T12:46:20Z",
+  "label": "fix(crm): chat dedupe + fast send [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }

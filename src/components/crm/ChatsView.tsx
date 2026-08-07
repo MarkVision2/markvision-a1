@@ -64,6 +64,8 @@ export function ChatsView({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [voiceMode, setVoiceMode] = useState(false);
+  /** Optimistic bubbles until realtime / DB row arrives. */
+  const [optimistic, setOptimistic] = useState<ChatMessage[]>([]);
   const isMobile = useIsMobile();
   const { items: quickReplies, add: addReply, remove: removeReply } = useQuickReplies();
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -106,7 +108,20 @@ export function ChatsView({
   }, [leads, activeStageId, search, chatsByLeadId]);
 
   const activeLead = leads.find((l) => l.id === activeLeadId) ?? null;
-  const activeChats = activeLeadId ? (chatsByLeadId.get(activeLeadId) ?? []) : [];
+  const activeChatsRaw = activeLeadId ? (chatsByLeadId.get(activeLeadId) ?? []) : [];
+  const activeChats = useMemo(() => {
+    if (!activeLeadId) return [];
+    const pending = optimistic.filter((o) => {
+      if (o.leadId !== activeLeadId) return false;
+      const t = (o.text ?? "").trim();
+      return !activeChatsRaw.some((r) => {
+        if (!r.fromMe || r.kind === "call") return false;
+        if ((r.text ?? "").trim() !== t) return false;
+        return Math.abs(new Date(r.at).getTime() - new Date(o.at).getTime()) < 120_000;
+      });
+    });
+    return [...activeChatsRaw, ...pending].sort((a, b) => a.at.localeCompare(b.at));
+  }, [activeLeadId, activeChatsRaw, optimistic]);
   const stageTitle = stages.find((s) => s.id === activeLead?.stageId)?.title;
   const hasDraft = !!draft.trim();
 
@@ -115,6 +130,22 @@ export function ChatsView({
     setVoiceMode(false);
     setSending(false);
   }, [activeLeadId]);
+
+  // Drop optimistic rows once the real message is in the store.
+  useEffect(() => {
+    if (optimistic.length === 0) return;
+    setOptimistic((prev) =>
+      prev.filter((o) => {
+        const t = (o.text ?? "").trim();
+        const leadMsgs = chatsByLeadId.get(o.leadId) ?? [];
+        return !leadMsgs.some((r) => {
+          if (!r.fromMe || r.kind === "call") return false;
+          if ((r.text ?? "").trim() !== t) return false;
+          return Math.abs(new Date(r.at).getTime() - new Date(o.at).getTime()) < 120_000;
+        });
+      }),
+    );
+  }, [chatsByLeadId, optimistic.length]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -130,11 +161,27 @@ export function ChatsView({
   const handleSend = async () => {
     const text = draft.trim();
     if (!text || !activeLead || sending) return;
+    const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    const optimisticMsg: ChatMessage = {
+      id: tempId,
+      leadId: activeLead.id,
+      fromMe: true,
+      text,
+      at: new Date().toISOString(),
+      channel: "whatsapp",
+      status: "sent",
+    };
+    setDraft("");
+    setOptimistic((prev) => [...prev, optimisticMsg]);
     setSending(true);
     try {
       await onSend(activeLead.id, text);
-      setDraft("");
       requestAnimationFrame(() => composerRef.current?.focus());
+    } catch {
+      setOptimistic((prev) =>
+        prev.map((m) => (m.id === tempId ? { ...m, status: "failed" as const } : m)),
+      );
+      toast.error("Не отправилось — попробуйте ещё раз");
     } finally {
       setSending(false);
     }
@@ -381,15 +428,19 @@ export function ChatsView({
                         m.fromMe
                           ? "rounded-br-md bg-primary text-primary-foreground"
                           : "rounded-bl-md bg-card text-foreground ring-1 ring-border/50",
+                        m.status === "failed" && "opacity-60 ring-1 ring-destructive/50",
                       )}
                     >
                       <ChatMediaBubble message={m} fromMe={m.fromMe} />
                       <div className="mt-1 flex items-center justify-end gap-1 text-[10px] opacity-70">
+                        {m.status === "failed" && (
+                          <span className="font-semibold text-destructive">не отправлено</span>
+                        )}
                         {new Date(m.at).toLocaleTimeString("ru-RU", {
                           hour: "2-digit",
                           minute: "2-digit",
                         })}
-                        {m.fromMe && <CheckCheck className="h-3 w-3" />}
+                        {m.fromMe && m.status !== "failed" && <CheckCheck className="h-3 w-3" />}
                       </div>
                     </div>
                   </div>

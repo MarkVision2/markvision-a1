@@ -94,6 +94,7 @@ type CommRow = {
   channel: string | null; content: string | null; status: string | null;
   template_key: string | null; is_draft: boolean; is_auto: boolean;
   created_by: string | null; created_at: string;
+  external_id?: string | null;
   media_url?: string | null;
   media_kind?: string | null;
   media_mime?: string | null;
@@ -143,6 +144,29 @@ function commToChat(r: CommRow): ChatMessage {
     mediaMime: r.media_mime ?? undefined,
     mediaFilename: r.media_filename ?? undefined,
   };
+}
+
+/** Soft-dedupe: same outbound text within 90s → keep first (FE+daemon+Green echo). */
+function dedupeChatMessages(msgs: ChatMessage[]): ChatMessage[] {
+  const out: ChatMessage[] = [];
+  for (const m of msgs) {
+    if (m.kind === "call") {
+      out.push(m);
+      continue;
+    }
+    const t = (m.text ?? "").trim();
+    const ts = new Date(m.at).getTime();
+    const dup = out.find((x) => {
+      if (x.kind === "call") return false;
+      if (x.leadId !== m.leadId || x.fromMe !== m.fromMe) return false;
+      if ((x.text ?? "").trim() !== t) return false;
+      if (t === "" && !(x.mediaUrl && m.mediaUrl && x.mediaUrl === m.mediaUrl)) return false;
+      return Math.abs(new Date(x.at).getTime() - ts) < 90_000;
+    });
+    if (dup) continue;
+    out.push(m);
+  }
+  return out;
 }
 
 function leadRowToFrontIndexed(
@@ -364,7 +388,7 @@ export function useCrmStore() {
       .slice()
       .reverse()
       .filter((c) => visibleIds.has(c.lead_id));
-    setChats(commsAsc.map(commToChat));
+    setChats(dedupeChatMessages(commsAsc.map(commToChat)));
   }, [stageIdMap.idToKey, projectId]);
 
   useEffect(() => { void refetchStages(); }, [refetchStages]);
@@ -409,9 +433,25 @@ export function useCrmStore() {
         void refetchLeads();
         return;
       }
+      const incoming = commToChat(row);
       setChats((prev) => {
         if (prev.some((c) => c.id === row.id)) return prev;
-        return [...prev, commToChat(row)].sort((a, b) => a.at.localeCompare(b.at));
+        // Soft-dedupe: same outbound text / media within 90s (FE + daemon + Green echo).
+        if (incoming.kind !== "call") {
+          const t = (incoming.text ?? "").trim();
+          const ts = new Date(incoming.at).getTime();
+          const dup = prev.find((x) => {
+            if (x.kind === "call") return false;
+            if (x.leadId !== incoming.leadId || x.fromMe !== incoming.fromMe) return false;
+            if ((x.text ?? "").trim() !== t) return false;
+            if (t === "" && !(x.mediaUrl && incoming.mediaUrl && x.mediaUrl === incoming.mediaUrl)) {
+              return false;
+            }
+            return Math.abs(new Date(x.at).getTime() - ts) < 90_000;
+          });
+          if (dup) return prev;
+        }
+        return dedupeChatMessages([...prev, incoming].sort((a, b) => a.at.localeCompare(b.at)));
       });
       setLeads((prev) =>
         prev.map((l) =>
@@ -437,6 +477,13 @@ export function useCrmStore() {
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "communications" }, (payload) => {
         appendCommRow(payload.new as CommRow);
       })
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "communications" }, (payload) => {
+        const row = payload.new as CommRow;
+        setChats((prev) => {
+          if (!prev.some((c) => c.id === row.id)) return prev;
+          return prev.map((c) => (c.id === row.id ? commToChat(row) : c));
+        });
+      })
       .subscribe();
 
     return () => { void supabase.removeChannel(channel); };
@@ -445,7 +492,8 @@ export function useCrmStore() {
   // Debounced full sync — подстраховка после пачки webhook-событий.
   useRealtimeTable("pipeline_stages", refetchStages, true, 400);
   useRealtimeTable("leads", refetchLeads, true, 400);
-  useRealtimeTable("communications", refetchLeads, true, 400);
+  // communications: только dedicated channel выше (INSERT/UPDATE) —
+  // полный refetch троил ленту и тормозил UI после каждой отправки.
   useRealtimeTable("tasks", refetchLeads, true, 600);
   useRealtimeTable("events", refetchLeads, true, 600);
   useRealtimeTable("lead_status_history", refetchLeads, true, 600);
@@ -775,36 +823,44 @@ export function useCrmStore() {
     // For WhatsApp — prefer free WhatsApp Web session if connected; else Green API.
     let deliveryStatus: "sent" | "failed" = "sent";
     let externalId: string | null = null;
+    /** WA Web daemon already writes communications via ingest — do NOT FE-insert. */
+    let viaWaWeb = false;
     if (safeChannel === "whatsapp") {
       const lead = leads.find((l) => l.id === leadId);
       const phone = lead?.phone ?? "";
       try {
         let sent = false;
-        if (projectId) {
-          const { data: webStatus } = await supabase.functions.invoke("wa-web-bridge", {
-            body: { action: "status", project_id: projectId },
+        if (projectId && phone) {
+          // Один вызов send (без status) — быстрее. 409 = сессия не подключена → Green.
+          const { data, error } = await supabase.functions.invoke("wa-web-bridge", {
+            body: {
+              action: "send",
+              project_id: projectId,
+              phone,
+              message: text,
+              lead_id: leadId,
+            },
           });
-          const webConnected =
-            (webStatus as { session?: { status?: string } } | null)?.session?.status === "connected";
-          if (webConnected) {
-            const { data, error } = await supabase.functions.invoke("wa-web-bridge", {
-              body: {
-                action: "send",
-                project_id: projectId,
-                phone,
-                message: text,
-                lead_id: leadId,
-              },
-            });
-            const idMessage =
-              (data as { idMessage?: string } | null)?.idMessage ?? null;
-            const ok =
-              !error &&
-              (data as { ok?: boolean } | null)?.ok !== false &&
-              !!idMessage;
-            if (ok) {
+          const payload = data as {
+            ok?: boolean;
+            idMessage?: string;
+            pending?: boolean;
+            error?: string;
+          } | null;
+          const statusCode = (error as { context?: { status?: number } } | null)?.context?.status;
+          const notConnected =
+            statusCode === 409
+            || /не подключ/i.test(payload?.error ?? "")
+            || /not connected/i.test(payload?.error ?? "");
+          if (!notConnected && !error && payload?.ok !== false) {
+            // done with Baileys id OR still pending (daemon will ingest).
+            if (payload?.idMessage || payload?.pending) {
               sent = true;
-              externalId = idMessage;
+              viaWaWeb = true;
+              externalId = payload?.idMessage ?? null;
+            } else if (payload?.ok === true) {
+              sent = true;
+              viaWaWeb = true;
             }
           }
         }
@@ -825,6 +881,9 @@ export function useCrmStore() {
       }
     }
 
+    // WA Web: daemon ingest пишет строку с Baileys id — FE-insert с cmd.id троил чат.
+    if (viaWaWeb) return;
+
     const insert: TablesInsert<"communications"> = {
       lead_id: leadId,
       type: "message",
@@ -838,10 +897,13 @@ export function useCrmStore() {
       created_by: user?.id ?? null,
       external_id: externalId,
     };
-    // Use upsert on external_id to avoid duplicate when the webhook arrives first
     if (externalId) {
       await supabase.from("communications").upsert(insert, { onConflict: "external_id", ignoreDuplicates: true });
-    } else {
+    } else if (deliveryStatus === "failed" || safeChannel !== "whatsapp") {
+      // Без id — только failed / не-WA каналы, иначе дубль с webhook.
+      await supabase.from("communications").insert(insert);
+    } else if (deliveryStatus === "sent" && !externalId) {
+      // Green без idMessage — всё равно логируем, чтобы менеджер видел попытку.
       await supabase.from("communications").insert(insert);
     }
   }, [user?.id, leads, projectId]);
@@ -857,15 +919,6 @@ export function useCrmStore() {
       throw new Error("Нет проекта, телефона или аудио");
     }
 
-    const { data: webStatus } = await supabase.functions.invoke("wa-web-bridge", {
-      body: { action: "status", project_id: projectId },
-    });
-    const webConnected =
-      (webStatus as { session?: { status?: string } } | null)?.session?.status === "connected";
-    if (!webConnected) {
-      throw new Error("Подключите WhatsApp Web (QR), чтобы слать голосовые");
-    }
-
     const { data, error } = await supabase.functions.invoke("wa-web-bridge", {
       body: {
         action: "send",
@@ -876,19 +929,18 @@ export function useCrmStore() {
         audio_mime: opts.mime || "audio/webm",
       },
     });
-    const idMessage = (data as { idMessage?: string } | null)?.idMessage ?? null;
-    const ok =
-      !error &&
-      (data as { ok?: boolean } | null)?.ok !== false &&
-      !!idMessage;
-    if (!ok) {
-      const msg =
-        (data as { error?: string } | null)?.error
-        || error?.message
-        || "Не удалось отправить голосовое";
-      throw new Error(msg);
+    const payload = data as {
+      ok?: boolean;
+      idMessage?: string;
+      pending?: boolean;
+      error?: string;
+    } | null;
+    if (error || payload?.ok === false) {
+      throw new Error(
+        payload?.error || error?.message || "Не удалось отправить голосовое",
+      );
     }
-    // Communication + media_url are written by daemon ingest (realtime updates UI).
+    // ok / pending — daemon ingest пишет communication с media.
   }, [leads, projectId]);
 
   // ---------- growth ----------
