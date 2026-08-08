@@ -72,7 +72,8 @@ Deno.serve(async (req) => {
     switch (action) {
       case "voices":
       case "tts": {
-        const apiKey = Deno.env.get("ELEVENLABS_API_KEY");
+        // Ключ: приоритет у body.apiKey (передаёт воркер из локального .env), иначе секрет.
+        const apiKey = String(body.apiKey ?? "").trim() || Deno.env.get("ELEVENLABS_API_KEY");
         if (!apiKey) return json({ error: "ELEVENLABS_API_KEY not set in Supabase secrets" }, 500);
         if (action === "voices") {
           const r = await fetch(`${EL}/voices`, { headers: { "xi-api-key": apiKey } });
@@ -97,6 +98,23 @@ Deno.serve(async (req) => {
         if (upErr) return json({ error: `upload: ${upErr.message}` }, 500);
         const { data: pub } = admin.storage.from("renders").getPublicUrl(path);
         return json({ ok: true, path, publicUrl: pub.publicUrl, bytes: bytes.byteLength });
+      }
+
+      case "grab": {
+        // Забрать внешний медиа-URL (напр. r2.fish.audio, заблокирован egress-политикой
+        // песочницы) из сети Supabase и переложить в bucket renders, чтобы Claude-сессия
+        // могла его скачать (Supabase доступен, сторонние CDN — нет).
+        const url = String(body.url ?? "").trim();
+        const path = String(body.path ?? "").replace(/^\/+/, "");
+        if (!url || !path) return json({ error: "url and path required" }, 400);
+        const r = await fetch(url);
+        if (!r.ok) return json({ error: `grab ${r.status}`, detail: (await r.text()).slice(0, 200) }, 502);
+        const ct = r.headers.get("content-type") || "application/octet-stream";
+        const bytes = new Uint8Array(await r.arrayBuffer());
+        const { error: upErr } = await admin.storage.from("renders").upload(path, bytes, { contentType: ct, upsert: true });
+        if (upErr) return json({ error: `upload: ${upErr.message}` }, 500);
+        const { data: pub } = admin.storage.from("renders").getPublicUrl(path);
+        return json({ ok: true, path, publicUrl: pub.publicUrl, bytes: bytes.byteLength, contentType: ct });
       }
 
       case "sign_upload": {

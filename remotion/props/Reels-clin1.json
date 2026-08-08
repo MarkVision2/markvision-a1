@@ -1,0 +1,377 @@
+{
+ "audioTrack": "reels/vo_clin1.mp3",
+ "words": [
+  {
+   "text": "Есть",
+   "from": 5,
+   "to": 10,
+   "accent": true
+  },
+  {
+   "text": "Instagram",
+   "from": 10,
+   "to": 26,
+   "accent": false
+  },
+  {
+   "text": "а",
+   "from": 26,
+   "to": 31,
+   "accent": false
+  },
+  {
+   "text": "пациентов",
+   "from": 31,
+   "to": 43,
+   "accent": false
+  },
+  {
+   "text": "больше",
+   "from": 43,
+   "to": 50,
+   "accent": false
+  },
+  {
+   "text": "не",
+   "from": 50,
+   "to": 55,
+   "accent": false
+  },
+  {
+   "text": "становится?",
+   "from": 55,
+   "to": 74,
+   "accent": false
+  },
+  {
+   "text": "Знакомо?",
+   "from": 74,
+   "to": 98,
+   "accent": true
+  },
+  {
+   "text": "Профиль",
+   "from": 98,
+   "to": 113,
+   "accent": false
+  },
+  {
+   "text": "ведете",
+   "from": 113,
+   "to": 125,
+   "accent": false
+  },
+  {
+   "text": "а",
+   "from": 125,
+   "to": 127,
+   "accent": false
+  },
+  {
+   "text": "записи",
+   "from": 127,
+   "to": 137,
+   "accent": false
+  },
+  {
+   "text": "нет",
+   "from": 137,
+   "to": 149,
+   "accent": true
+  },
+  {
+   "text": "Мы",
+   "from": 149,
+   "to": 154,
+   "accent": false
+  },
+  {
+   "text": "это",
+   "from": 154,
+   "to": 158,
+   "accent": false
+  },
+  {
+   "text": "исправим",
+   "from": 158,
+   "to": 185,
+   "accent": true
+  },
+  {
+   "text": "Настроим",
+   "from": 185,
+   "to": 206,
+   "accent": false
+  },
+  {
+   "text": "SMM",
+   "from": 206,
+   "to": 230,
+   "accent": false
+  },
+  {
+   "text": "и",
+   "from": 230,
+   "to": 240,
+   "accent": false
+  },
+  {
+   "text": "таргет",
+   "from": 240,
+   "to": 262,
+   "accent": true
+  },
+  {
+   "text": "и",
+   "from": 262,
+   "to": 266,
+   "accent": false
+  },
+  {
+   "text": "к",
+   "from": 266,
+   "to": 271,
+   "accent": false
+  },
+  {
+   "text": "вам",
+   "from": 271,
+   "to": 278,
+   "accent": false
+  },
+  {
+   "text": "пойдут",
+   "from": 278,
+   "to": 295,
+   "accent": false
+  },
+  {
+   "text": "новые",
+   "from": 295,
+   "to": 310,
+   "accent": false
+  },
+  {
+   "text": "пациенты",
+   "from": 310,
+   "to": 338,
+   "accent": true
+  },
+  {
+   "text": "стабильно",
+   "from": 338,
+   "to": 367,
+   "accent": false
+  },
+  {
+   "text": "каждый",
+   "from": 367,
+   "to": 377,
+   "accent": false
+  },
+  {
+   "text": "день",
+   "from": 377,
+   "to": 391,
+   "accent": true
+  },
+  {
+   "text": "только",
+   "from": 391,
+   "to": 403,
+   "accent": false
+  },
+  {
+   "text": "в",
+   "from": 403,
+   "to": 408,
+   "accent": false
+  },
+  {
+   "text": "августе",
+   "from": 408,
+   "to": 449,
+   "accent": false
+  },
+  {
+   "text": "всего",
+   "from": 433,
+   "to": 443,
+   "accent": false
+  },
+  {
+   "text": "150 000",
+   "from": 443,
+   "to": 479,
+   "accent": false
+  },
+  {
+   "text": "тенге",
+   "from": 479,
+   "to": 505,
+   "accent": true
+  },
+  {
+   "text": "Оставьте",
+   "from": 505,
+   "to": 522,
+   "accent": false
+  },
+  {
+   "text": "заявку",
+   "from": 522,
+   "to": 541,
+   "accent": true
+  },
+  {
+   "text": "и",
+   "from": 541,
+   "to": 551,
+   "accent": false
+  },
+  {
+   "text": "поток",
+   "from": 551,
+   "to": 563,
+   "accent": false
+  },
+  {
+   "text": "первичных",
+   "from": 563,
+   "to": 582,
+   "accent": false
+  },
+  {
+   "text": "пациентов",
+   "from": 582,
+   "to": 597,
+   "accent": false
+  },
+  {
+   "text": "вырастет",
+   "from": 597,
+   "to": 618,
+   "accent": true
+  }
+ ],
+ "scenes": [
+  {
+   "from": 0,
+   "to": 74,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ЕСТЬ INSTAGRAM,",
+     "А ПАЦИЕНТОВ НЕТ?"
+    ],
+    "accent": "#FB7185",
+    "cover": true,
+    "bg": "warp"
+   }
+  },
+  {
+   "from": 74,
+   "to": 98,
+   "template": "kinetic-type",
+   "data": {
+    "words": [
+     "ЗНАКОМО"
+    ],
+    "accentIndex": 0,
+    "accent": "#22D3EE",
+    "cover": true,
+    "bg": "warp"
+   }
+  },
+  {
+   "from": 98,
+   "to": 149,
+   "template": "vs-compare",
+   "data": {
+    "leftTitle": "ПРОФИЛЬ ЕСТЬ",
+    "rightTitle": "ЗАПИСИ НЕТ",
+    "leftItems": [
+     "Посты",
+     "Сторис"
+    ],
+    "rightItems": [
+     "Пусто"
+    ],
+    "accent": "#FF7A18"
+   }
+  },
+  {
+   "from": 149,
+   "to": 185,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "МЫ ЭТО",
+     "ИСПРАВИМ"
+    ],
+    "accent": "#34D399",
+    "cover": true
+   }
+  },
+  {
+   "from": 185,
+   "to": 338,
+   "template": "pill-row",
+   "data": {
+    "items": [
+     "SMM",
+     "Таргет",
+     "Контент",
+     "Заявки"
+    ],
+    "accent": "#8B5CF6",
+    "cover": true
+   },
+   "clip": "broll/clin1/social-media-marketing-team-office-lapto-7967111.mp4"
+  },
+  {
+   "from": 338,
+   "to": 391,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "СТАБИЛЬНО,",
+     "КАЖДЫЙ ДЕНЬ"
+    ],
+    "accent": "#34D399",
+    "cover": true
+   },
+   "clip": "broll/clin1/happy-patient-doctor-clinic-reception-6763403.mp4"
+  },
+  {
+   "from": 391,
+   "to": 505,
+   "template": "price-tag",
+   "data": {
+    "price": "150 000 ₸",
+    "label": "ТОЛЬКО В АВГУСТЕ",
+    "accent": "#FFC53D"
+   }
+  },
+  {
+   "from": 505,
+   "to": 618,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ОСТАВЬТЕ ЗАЯВКУ →",
+     "ПАЦИЕНТОВ БОЛЬШЕ"
+    ],
+    "accent": "#FF7A18",
+    "cover": true
+   },
+   "clip": "broll/clin1/doctor-tablet-patient-modern-clinic-4491303.mp4"
+  }
+ ],
+ "totalDurationInFrames": 618,
+ "fps": 30,
+ "music": "reels/beat_agr1.wav",
+ "musicVolume": 0.07,
+ "captions": true,
+ "background": "aurora"
+}
