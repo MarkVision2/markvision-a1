@@ -1,7 +1,7 @@
 {
-  "git_sha": "8daff2f",
-  "git_sha_full": "8daff2f948ea5b63c89c0cea2ee5671065eebc4d",
-  "updated_at": "2026-08-12T06:23:10Z",
-  "label": "Fixed cloud sync target to Supabase",
+  "git_sha": "13a198c",
+  "git_sha_full": "13a198c57979d9988f9e0c9b86844c8c5c5f38d9",
+  "updated_at": "2026-08-12T06:25:25Z",
+  "label": "Исправил зеркало config клиент",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
