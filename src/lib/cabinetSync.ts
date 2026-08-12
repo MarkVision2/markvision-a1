@@ -1,71 +1,29 @@
 /**
- * Dual-write: после изменения в `ad_cabinets` зеркалим в `client_configs`
- * (тот же проект szfgdruhlebfvcmlvxdk). Туда смотрят n8n и content factory.
+ * Зеркало кабинета в `client_configs` ВНЕШНЕГО клиентского проекта
+ * (туда смотрят n8n и контент-завод).
  *
- * Пишем через основной supabase-клиент (JWT пользователя) — отдельный
- * anon-клиент без сессии падал на RLS (`new row violates row-level security`).
- *
- * PK — `cabinet_id`. access_token лежит в той же таблице.
+ * Раньше запись шла напрямую из браузера в основной проект — там таблицы
+ * client_configs нет, поэтому upsert молча падал и кабинеты не появлялись.
+ * Теперь запись идёт через edge-функцию `client-config-sync`, которая пишет
+ * сервисным ключом внешнего проекта.
  */
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { AdCabinet } from "@/types/ads";
 
-interface SyncedClientRow {
-  cabinet_id: string;
-  name: string;
-  type: AdCabinet["type"];
-  daily_budget: number | null;
-  city: string | null;
-  ad_account_id: string | null;
-  page_id: string | null;
-  page_name: string | null;
-  instagram_id: string | null;
-  access_token: string | null;
-  telegram_group_id: string | null;
-  whatsapp_number: string | null;
-  pixel_id: string | null;
-  pixel_event: string | null;
-  website_url: string | null;
-  brief: string | null;
+async function callSync(body: Record<string, unknown>): Promise<void> {
+  const { data, error } = await supabase.functions.invoke("client-config-sync", { body });
+  const payloadError = (data as { error?: string } | null)?.error;
+  if (error || payloadError) {
+    throw new Error(payloadError || (error instanceof Error ? error.message : "unknown"));
+  }
 }
-
-const emptyToNull = (v: unknown): string | null => {
-  if (v === undefined || v === null) return null;
-  const s = String(v).trim();
-  return s.length === 0 ? null : s;
-};
-
-const toClientRow = (c: AdCabinet): SyncedClientRow => ({
-  cabinet_id: c.id,
-  name: (c.name ?? "").trim() || "Без названия",
-  type: c.type === "Агентский" ? "Агентский" : "Личный",
-  daily_budget: c.dailyBudget ?? null,
-  city: emptyToNull(c.city),
-  ad_account_id: emptyToNull(c.adAccountId),
-  page_id: emptyToNull(c.pageId),
-  page_name: emptyToNull(c.pageName),
-  instagram_id: emptyToNull(c.instagramId),
-  access_token: emptyToNull(c.accessToken),
-  telegram_group_id: emptyToNull(c.telegramGroupId),
-  whatsapp_number: emptyToNull(c.whatsappNumber),
-  pixel_id: emptyToNull(c.pixelId),
-  pixel_event: emptyToNull(c.pixelEvent),
-  website_url: emptyToNull(c.websiteUrl),
-  brief: emptyToNull(c.brief),
-});
 
 /** Upsert строки в client_configs (всё включая access_token в одной таблице). */
 export async function syncCabinetToClientConfig(c: AdCabinet): Promise<void> {
   if (!c?.id) return;
-  const row = toClientRow(c);
-
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from("client_configs" as any) as any).upsert(row, {
-      onConflict: "cabinet_id",
-    });
-    if (error) throw error;
+    await callSync({ cabinet_id: c.id, action: "upsert" });
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error("[cabinet-sync] не удалось зеркалить в client_configs:", e);
@@ -76,14 +34,13 @@ export async function syncCabinetToClientConfig(c: AdCabinet): Promise<void> {
 }
 
 /** Удаление зеркала в client_configs. */
-export async function deleteCabinetFromClientConfig(id: string): Promise<void> {
+export async function deleteCabinetFromClientConfig(
+  id: string,
+  projectId?: string | null,
+): Promise<void> {
   if (!id) return;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { error } = await (supabase.from("client_configs" as any) as any)
-      .delete()
-      .eq("cabinet_id", id);
-    if (error) throw error;
+    await callSync({ cabinet_id: id, action: "delete", project_id: projectId ?? undefined });
   } catch (e) {
     // eslint-disable-next-line no-console
     console.error("[cabinet-sync] не удалось удалить зеркало в client_configs:", e);
