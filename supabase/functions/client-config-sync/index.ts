@@ -4,7 +4,12 @@
 // и зеркалит строку сервисным ключом внешнего проекта.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { AUTH_CORS_HEADERS, requireProjectAccess, requireUser } from "../_lib/auth.ts";
-import { deleteClientConfig, toClientConfigRow, upsertClientConfig } from "../_lib/clientConfig.ts";
+import {
+  deleteClientConfig,
+  getClientConfigDb,
+  toClientConfigRow,
+  upsertClientConfig,
+} from "../_lib/clientConfig.ts";
 
 const corsHeaders = AUTH_CORS_HEADERS;
 
@@ -59,7 +64,19 @@ Deno.serve(async (req) => {
       ? row.access_token.trim()
       : null;
     const res = await upsertClientConfig(toClientConfigRow(cabinetId, row, token));
-    return json({ ok: res.ok, error: res.error }, res.ok ? 200 : 502);
+    if (!res.ok) return json({ ok: false, error: res.error }, 502);
+
+    // Читаем обратно — чтобы фронт/лог видел, что строка реально легла.
+    const db = getClientConfigDb();
+    const { data: mirrored } = db
+      ? await db
+        .from("client_configs")
+        .select("cabinet_id, name, ad_account_id, page_id, instagram_id, pixel_id")
+        .eq("cabinet_id", cabinetId)
+        .maybeSingle()
+      : { data: null };
+    return json({ ok: true, client_config: mirrored ?? null });
+
   } catch (e) {
     return json({ error: e instanceof Error ? e.message : "unknown" }, 500);
   }
