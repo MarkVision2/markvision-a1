@@ -302,10 +302,12 @@ export function useCabinetsStore() {
   }, [refetch, cabinets, projectId]);
 
   const removeCabinet = useCallback(async (id: string) => {
+    // Сначала зеркало (пока кабинет ещё есть — по нему проверяется доступ).
+    await deleteCabinetFromClientConfig(id, projectId);
     await supabase.from("ad_cabinets").delete().eq("id", id);
-    await deleteCabinetFromClientConfig(id);
     await refetch();
-  }, [refetch]);
+  }, [refetch, projectId]);
+
 
   return { cabinets, addCabinet, updateCabinet, removeCabinet };
 }
