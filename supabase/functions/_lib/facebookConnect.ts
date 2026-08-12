@@ -3,6 +3,7 @@
 // используется и при автоподключении (ровно 1 страница/кабинет), и после
 // явного выбора пользователя в facebook-oauth-finish.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { toClientConfigRow, upsertClientConfig } from "./clientConfig.ts";
 
 const GRAPH = "https://graph.facebook.com/v21.0";
 
