@@ -8,6 +8,7 @@ import {
   requireProjectAccess,
   requireUser,
 } from "../_lib/auth.ts";
+import { toClientConfigRow, upsertClientConfig } from "../_lib/clientConfig.ts";
 
 const corsHeaders = AUTH_CORS_HEADERS;
 
@@ -154,33 +155,13 @@ Deno.serve(async (req) => {
       tokenForMirror = t?.trim() || null;
     }
 
-    // Dual-write for n8n / content factory (service role bypasses RLS).
+    // Dual-write в client_configs ВНЕШНЕГО клиентского проекта (n8n / контент-завод).
     const cab = safe as Record<string, unknown>;
-    const mirrorRow: Record<string, unknown> = {
-      cabinet_id: savedId,
-      name: String(cab.name ?? adAccountId),
-      type: cab.type === "Агентский" ? "Агентский" : "Личный",
-      daily_budget: cab.daily_budget ?? null,
-      city: cab.city ?? null,
-      ad_account_id: cab.ad_account_id ?? adAccountId,
-      page_id: cab.page_id ?? null,
-      page_name: cab.page_name ?? null,
-      instagram_id: cab.instagram_id ?? null,
-      telegram_group_id: cab.telegram_group_id ?? null,
-      whatsapp_number: cab.whatsapp_number ?? null,
-      pixel_id: cab.pixel_id ?? null,
-      pixel_event: cab.pixel_event ?? "Lead",
-      website_url: cab.website_url ?? null,
-      brief: cab.brief ?? null,
-    };
-    if (tokenForMirror) mirrorRow.access_token = tokenForMirror;
+    const mirror = await upsertClientConfig(
+      toClientConfigRow(savedId, { ...cab, ad_account_id: cab.ad_account_id ?? adAccountId }, tokenForMirror),
+    );
+    const mirrorErr = mirror.ok ? null : mirror.error;
 
-    const { error: mirrorErr } = await admin.from("client_configs").upsert(mirrorRow, {
-      onConflict: "cabinet_id",
-    });
-    if (mirrorErr) {
-      console.error("[meta-upsert-cabinet] client_configs:", mirrorErr.message);
-    }
 
     return json({
       ok: true,

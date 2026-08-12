@@ -153,32 +153,13 @@ export async function connectPageAndAdAccount(
 }
 
 async function mirrorClientConfig(
-  admin: ReturnType<typeof createClient>,
+  _admin: ReturnType<typeof createClient>,
   cabinetId: string,
   row: Record<string, unknown>,
 ) {
-  const { error } = await admin.from("client_configs").upsert(
-    {
-      cabinet_id: cabinetId,
-      name: String(row.name ?? "Кабинет"),
-      type: row.type === "Агентский" ? "Агентский" : "Личный",
-      daily_budget: row.daily_budget ?? null,
-      city: row.city ?? null,
-      ad_account_id: row.ad_account_id ?? null,
-      page_id: row.page_id ?? null,
-      page_name: row.page_name ?? null,
-      instagram_id: row.instagram_id ?? null,
-      access_token: row.access_token ?? null,
-      telegram_group_id: row.telegram_group_id ?? null,
-      whatsapp_number: row.whatsapp_number ?? null,
-      pixel_id: row.pixel_id ?? null,
-      pixel_event: row.pixel_event ?? "Lead",
-      website_url: row.website_url ?? null,
-      brief: row.brief ?? null,
-    },
-    { onConflict: "cabinet_id" },
-  );
-  if (error) {
-    console.error("[facebookConnect] client_configs:", error.message);
-  }
+  const token = typeof row.access_token === "string" && row.access_token.trim()
+    ? row.access_token.trim()
+    : null;
+  await upsertClientConfig(toClientConfigRow(cabinetId, row, token));
 }
+
