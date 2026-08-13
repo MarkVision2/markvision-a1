@@ -33,6 +33,12 @@ export async function syncCabinetToClientConfig(c: AdCabinet): Promise<void> {
   }
 }
 
+/** Повторно зеркалит все кабинеты активного проекта. */
+export async function syncAllCabinetsToClientConfig(projectId: string): Promise<void> {
+  if (!projectId) return;
+  await callSync({ action: "backfill", project_id: projectId });
+}
+
 /** Удаление зеркала в client_configs. */
 export async function deleteCabinetFromClientConfig(
   id: string,
