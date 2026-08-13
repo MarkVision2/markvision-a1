@@ -28,8 +28,42 @@ Deno.serve(async (req) => {
     if (!auth.ok) return auth.response;
 
     const body = await req.json().catch(() => ({} as Record<string, unknown>));
-    const cabinetId = String(body.cabinet_id ?? "").trim();
     const action = String(body.action ?? "upsert");
+    const cabinetId = String(body.cabinet_id ?? "").trim();
+
+    if (action === "backfill") {
+      const projectId = String(body.project_id ?? "").trim();
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+
+      const access = await requireProjectAccess(auth.authHeader, projectId);
+      if (!access.ok) return access.response;
+
+      const admin = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+      );
+      const { data: cabinets, error: cabinetsError } = await admin
+        .from("ad_cabinets")
+        .select("*")
+        .eq("project_id", projectId);
+      if (cabinetsError) return json({ error: cabinetsError.message }, 500);
+
+      const results = await Promise.all((cabinets ?? []).map(async (cab) => {
+        const row = cab as Record<string, unknown>;
+        const id = String(row.id ?? "");
+        const token = typeof row.access_token === "string" && row.access_token.trim()
+          ? row.access_token.trim()
+          : null;
+        const result = await upsertClientConfig(toClientConfigRow(id, row, token));
+        return { cabinet_id: id, ...result };
+      }));
+      const failed = results.filter((result) => !result.ok);
+      return json(
+        { ok: failed.length === 0, synced: results.length - failed.length, failed },
+        failed.length === 0 ? 200 : 502,
+      );
+    }
+
     if (!cabinetId) return json({ error: "cabinet_id обязателен" }, 400);
 
     const admin = createClient(

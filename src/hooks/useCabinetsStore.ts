@@ -6,6 +6,7 @@ import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
   syncCabinetToClientConfig,
   deleteCabinetFromClientConfig,
+  syncAllCabinetsToClientConfig,
 } from "@/lib/cabinetSync";
 import type { AdCabinet } from "@/types/ads";
 
@@ -194,6 +195,7 @@ export function useCabinetsStore() {
           accessToken: c.accessToken,
         });
       }
+      await syncAllCabinetsToClientConfig(projectId);
       await refetch();
       return saved.id;
     }
@@ -235,6 +237,7 @@ export function useCabinetsStore() {
     if (data) {
       await syncCabinetToClientConfig(toCabinet({ ...data, access_token: c.accessToken }));
     }
+    await syncAllCabinetsToClientConfig(projectId);
     await refetch();
     return (data?.id as string) ?? null;
   }, [user?.id, refetch, projectId]);
