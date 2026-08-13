@@ -30,7 +30,12 @@ export interface ClientConfigRow {
 
 export function getClientConfigDb(): SupabaseClient | null {
   const url = (Deno.env.get("CLIENT_SUPABASE_URL") || DEFAULT_CLIENT_URL).replace(/\/+$/, "");
-  const key = Deno.env.get("CLIENT_SUPABASE_SERVICE_ROLE_KEY");
+  const localUrl = (Deno.env.get("SUPABASE_URL") || "").replace(/\/+$/, "");
+  const localKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  // Если клиентский проект = текущий (прод крутится в самом szfg), пишем локальным
+  // сервисным ключом — отдельные CLIENT_* секреты там не нужны.
+  const key = (url === localUrl ? localKey : Deno.env.get("CLIENT_SUPABASE_SERVICE_ROLE_KEY")) ||
+    Deno.env.get("CLIENT_SUPABASE_SERVICE_ROLE_KEY") || localKey;
   if (!url || !key) return null;
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
