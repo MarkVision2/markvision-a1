@@ -43,8 +43,11 @@ export type TeamMember = {
   password?: string; // только для передачи в edge-функцию при создании, не хранится
   role: TeamRole;
   modules: ModuleKey[];
+  /** id проектов, к которым у пользователя есть доступ (project_members) */
+  projects: string[];
   createdAt: string;
 };
+
 
 export function defaultModulesForRole(role: TeamRole): ModuleKey[] {
   switch (role) {
