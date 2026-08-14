@@ -158,8 +158,16 @@ Deno.serve(async (req) => {
     //
     // 'ig_media' lists organic IG posts for "use existing publication" —
     // authorize via actId (preferred) or pageId cabinet match.
+    // 'instagram' — привязанный к FB-странице IG-аккаунт выбирается в мастере
+    // добавления кабинета, ДО того как строка ad_cabinets создана. Авторизуем
+    // по actId, если он передан; иначе это только метаданные общего токена.
     const isDiscovery = kind === "pages" || kind === "pixels";
-    if (kind === "pixel_events") {
+    if (kind === "instagram") {
+      if (actId) {
+        const actAccess = await requireMetaAdAccountAccess(auth.authHeader, actId);
+        if (!actAccess.ok) return actAccess.response;
+      }
+    } else if (kind === "pixel_events") {
       if (!actId) {
         return jsonResponse({ error: "actId is required for pixel_events" }, 400);
       }
