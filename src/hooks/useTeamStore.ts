@@ -68,11 +68,13 @@ export function useTeamStore() {
   const [members, setMembers] = useState<TeamMember[]>([]);
 
   const refetch = useCallback(async () => {
-    const [{ data: profiles }, { data: roles }, { data: modules }] = await Promise.all([
-      supabase.from("profiles").select("id, name, login, display_role, created_at"),
-      supabase.from("user_roles").select("user_id, role"),
-      supabase.from("team_member_modules").select("user_id, module_key"),
-    ]);
+    const [{ data: profiles }, { data: roles }, { data: modules }, { data: memberships }] =
+      await Promise.all([
+        supabase.from("profiles").select("id, name, login, display_role, created_at"),
+        supabase.from("user_roles").select("user_id, role"),
+        supabase.from("team_member_modules").select("user_id, module_key"),
+        supabase.from("project_members").select("user_id, project_id"),
+      ]);
 
     // get emails via auth metadata is not accessible client-side; we leave email empty
     // (admin pages don't strictly need it; can be added later via edge function)
@@ -86,6 +88,12 @@ export function useTeamStore() {
       arr.push(m.module_key as ModuleKey);
       modsByUser.set(m.user_id, arr);
     });
+    const projectsByUser = new Map<string, string[]>();
+    (memberships ?? []).forEach((pm: { user_id: string; project_id: string }) => {
+      const arr = projectsByUser.get(pm.user_id) ?? [];
+      arr.push(pm.project_id);
+      projectsByUser.set(pm.user_id, arr);
+    });
 
     const list: TeamMember[] = (profiles ?? []).map((p: any) => {
       const role = roleByUser.get(p.id) ?? "manager";
@@ -96,6 +104,7 @@ export function useTeamStore() {
         login: p.login ?? undefined,
         role,
         modules: modsByUser.get(p.id) ?? defaultModulesForRole(role),
+        projects: projectsByUser.get(p.id) ?? [],
         createdAt: p.created_at,
       };
     });
@@ -106,6 +115,7 @@ export function useTeamStore() {
   useRealtimeTable("profiles", refetch);
   useRealtimeTable("user_roles", refetch);
   useRealtimeTable("team_member_modules", refetch);
+  useRealtimeTable("project_members", refetch);
 
   const addMember = useCallback(async (m: Omit<TeamMember, "id" | "createdAt">) => {
     // create real auth user via edge function (admin only)
@@ -117,12 +127,14 @@ export function useTeamStore() {
         login: m.login,
         role: m.role,
         modules: m.modules,
+        project_ids: m.projects ?? [],
       },
     });
     if (error) throw error;
     await refetch();
     return { ...m, id: (data as { id: string }).id, createdAt: new Date().toISOString() };
   }, [refetch]);
+
 
   const updateMember = useCallback(async (id: string, patch: Partial<TeamMember>) => {
     const profilePatch: { name?: string; login?: string | null; display_role?: string | null } = {};
