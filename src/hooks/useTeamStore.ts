@@ -156,6 +156,19 @@ export function useTeamStore() {
         );
       }
     }
+    if (patch.projects !== undefined) {
+      await supabase.from("project_members").delete().eq("user_id", id);
+      if (patch.projects.length) {
+        await supabase.from("project_members").insert(
+          patch.projects.map((projectId) => ({
+            project_id: projectId,
+            user_id: id,
+            role: "member",
+          })),
+        );
+      }
+    }
+
     await refetch();
   }, [refetch]);
 
