@@ -127,6 +127,7 @@ const AddCabinetDialog = ({
   });
   const igAssets = useMetaPageAssets({
     kind: "instagram",
+    actId: adAccountId || undefined,
     pageId: pageId || undefined,
     enabled: step === "configure" && !!pageId,
   });
