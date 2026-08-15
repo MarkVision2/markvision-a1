@@ -93,6 +93,10 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
       toast({ title: "Выберите хотя бы один модуль", variant: "destructive" });
       return;
     }
+    if (!editing && projects.length && projectIds.length === 0) {
+      toast({ title: "Выберите хотя бы один проект", variant: "destructive" });
+      return;
+    }
     const payload = {
       name: trimmedName,
       email: trimmedEmail,
@@ -100,12 +104,17 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
       password,
       role,
       modules: modules as TeamMember["modules"],
+      projects: projectIds,
     };
     if (editing) {
       updateMember(editing.id, payload);
       toast({ title: "Сотрудник обновлён" });
     } else {
-      addMember(payload);
+      void addMember(payload)
+        .then(() => toast({ title: "Сотрудник добавлен", description: `Доступ: ${ROLE_LABELS[role]}` }))
+        .catch((e: Error) => toast({ title: "Не удалось создать сотрудника", description: e.message, variant: "destructive" }));
+    }
+
       toast({ title: "Сотрудник добавлен", description: `Доступ: ${ROLE_LABELS[role]}` });
     }
     onOpenChange(false);
