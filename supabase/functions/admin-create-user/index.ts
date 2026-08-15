@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json()
-    const { email, password, name, phone, login, role, modules } = body
+    const { email, password, name, phone, login, role, modules, project_ids } = body
     if (!email || !password || !name) {
       return new Response(JSON.stringify({ error: 'Missing required fields' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -81,6 +81,18 @@ Deno.serve(async (req) => {
           modules.map((m: string) => ({ user_id: newId, module_key: m })),
         )
       }
+    }
+
+    // project memberships
+    if (Array.isArray(project_ids) && project_ids.length) {
+      await admin.from('project_members').delete().eq('user_id', newId)
+      await admin.from('project_members').insert(
+        project_ids.map((pid: string) => ({ project_id: pid, user_id: newId, role: 'member' })),
+      )
+      await admin.from('user_active_project').upsert(
+        { user_id: newId, project_id: project_ids[0] },
+        { onConflict: 'user_id' },
+      )
     }
 
     return new Response(JSON.stringify({ id: newId }), {
