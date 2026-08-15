@@ -866,7 +866,7 @@ export function useCrmStore() {
         }
         if (!sent) {
           const { data, error } = await supabase.functions.invoke("greenapi-proxy", {
-            body: { action: "sendMessage", phone, message: text },
+            body: { action: "sendMessage", phone, message: text, project_id: projectId },
           });
           const idMessage = (data as { data?: { idMessage?: string } } | null)?.data?.idMessage ?? null;
           const ok =

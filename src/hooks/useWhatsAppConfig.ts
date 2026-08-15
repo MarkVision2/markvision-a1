@@ -65,7 +65,7 @@ export function useWhatsAppConfig(projectId?: string | null) {
         .limit(1)
         .maybeSingle(),
       supabase.functions
-        .invoke("greenapi-proxy", { body: { action: "status" } })
+        .invoke("greenapi-proxy", { body: { action: "status", project_id: projectId ?? undefined } })
         .catch(() => ({ data: null, error: null })),
     ]);
 
