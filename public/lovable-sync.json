@@ -1,7 +1,7 @@
 {
-  "git_sha": "039e4db",
-  "git_sha_full": "039e4db360a36c358780128961fa30edec507c45",
-  "updated_at": "2026-08-15T05:52:29Z",
-  "label": "Lovable update",
+  "git_sha": "d869581",
+  "git_sha_full": "d869581915976f94b080e763d5b101822a1bd70a",
+  "updated_at": "2026-08-15T05:58:08Z",
+  "label": "Исправил логику Green API",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
