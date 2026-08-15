@@ -60,7 +60,7 @@ export function useWhatsAppConfig(projectId?: string | null) {
       supabase
         .from("whatsapp_config_safe")
         .select("phone, display_name, connected, connected_at")
-        .eq("user_id", user.id)
+        .eq("project_id", projectId ?? "")
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle(),
@@ -103,6 +103,7 @@ export function useWhatsAppConfig(projectId?: string | null) {
     if (shouldSyncRow) {
       await supabase.from("whatsapp_config").upsert({
         user_id: user.id,
+        project_id: projectId ?? null,
         connected: liveConnected,
         phone: data?.phone ?? null,
         display_name: data?.display_name ?? null,
@@ -124,12 +125,13 @@ export function useWhatsAppConfig(projectId?: string | null) {
     setConfig(cfg); // optimistic
     await supabase.from("whatsapp_config").upsert({
       user_id: user.id,
+      project_id: projectId ?? null,
       connected: cfg.connected,
       phone: cfg.phone ?? null,
       display_name: cfg.displayName ?? null,
       connected_at: cfg.connectedAt ?? (cfg.connected ? new Date().toISOString() : null),
     });
-  }, [user?.id]);
+  }, [user?.id, projectId]);
 
   return { config, setWhatsapp, refetch };
 }
