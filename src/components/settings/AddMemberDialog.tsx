@@ -114,9 +114,6 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
         .then(() => toast({ title: "Сотрудник добавлен", description: `Доступ: ${ROLE_LABELS[role]}` }))
         .catch((e: Error) => toast({ title: "Не удалось создать сотрудника", description: e.message, variant: "destructive" }));
     }
-
-      toast({ title: "Сотрудник добавлен", description: `Доступ: ${ROLE_LABELS[role]}` });
-    }
     onOpenChange(false);
   };
 
