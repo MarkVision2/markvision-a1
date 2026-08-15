@@ -103,7 +103,7 @@ export function useWhatsAppConfig(projectId?: string | null) {
     if (shouldSyncRow) {
       await supabase.from("whatsapp_config").upsert({
         user_id: user.id,
-        project_id: projectId,
+        project_id: projectId ?? null,
         connected: liveConnected,
         phone: data?.phone ?? null,
         display_name: data?.display_name ?? null,
@@ -125,7 +125,7 @@ export function useWhatsAppConfig(projectId?: string | null) {
     setConfig(cfg); // optimistic
     await supabase.from("whatsapp_config").upsert({
       user_id: user.id,
-      project_id: projectId,
+      project_id: projectId ?? null,
       connected: cfg.connected,
       phone: cfg.phone ?? null,
       display_name: cfg.displayName ?? null,
