@@ -229,7 +229,48 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
               })}
             </div>
           </section>
+
+          <section className="space-y-3 rounded-xl border border-border/60 bg-card/40 p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                <span className="grid h-7 w-7 place-items-center rounded-md bg-success/15 text-success">
+                  <FolderKanban className="h-3.5 w-3.5" />
+                </span>
+                Доступ к проектам
+              </div>
+              <span className="text-xs text-muted-foreground">{projectIds.length}/{projects.length}</span>
+            </div>
+            {projects.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Нет проектов — сначала создайте проект.</p>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {projects.map((p) => {
+                  const checked = projectIds.includes(p.id);
+                  return (
+                    <label
+                      key={p.id}
+                      className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
+                        checked ? "border-success/50 bg-success/5" : "border-border/60 hover:bg-secondary/40"
+                      }`}
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={() =>
+                          setProjectIds((ids) => (ids.includes(p.id) ? ids.filter((i) => i !== p.id) : [...ids, p.id]))
+                        }
+                      />
+                      <span className="text-sm">{p.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              Пользователь увидит данные только выбранных проектов.
+            </p>
+          </section>
         </div>
+
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Отмена</Button>
