@@ -56,25 +56,38 @@ export function useWhatsAppConfig(projectId?: string | null) {
       return;
     }
 
-    const [configRes, statusRes] = await Promise.all([
-      supabase
-        .from("whatsapp_config_safe")
-        .select("phone, display_name, connected, connected_at")
-        .eq("project_id", projectId ?? "")
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
-      supabase.functions
-        .invoke("greenapi-proxy", { body: { action: "status", project_id: projectId ?? undefined } })
-        .catch(() => ({ data: null, error: null })),
-    ]);
+    if (!projectId) {
+      setConfig({ connected: false });
+      return;
+    }
 
-    const data = configRes.data as {
+    const configRes = await supabase
+      .from("whatsapp_config_safe")
+      .select("phone, display_name, connected, connected_at, id_instance, api_token_present")
+      .eq("project_id", projectId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    const storedConfig = configRes.data as {
       phone?: string | null;
       display_name?: string | null;
       connected?: boolean | null;
       connected_at?: string | null;
+      id_instance?: string | null;
+      api_token_present?: boolean | null;
     } | null;
+
+    // A Green API status request is valid only after both credentials have
+    // been saved for this exact project. Calling it earlier produces an
+    // expected NO_CREDENTIALS response that the runtime reports as an error.
+    const statusRes = storedConfig?.id_instance && storedConfig.api_token_present
+      ? await supabase.functions
+          .invoke("greenapi-proxy", { body: { action: "status", project_id: projectId } })
+          .catch(() => ({ data: null, error: null }))
+      : { data: null, error: null };
+
+    const data = storedConfig;
 
     const liveState =
       (statusRes as { data?: GreenStatusResp } | null)?.data?.data?.stateInstance
