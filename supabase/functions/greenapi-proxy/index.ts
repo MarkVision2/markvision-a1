@@ -97,6 +97,18 @@ async function resolveCreds(
       .maybeSingle();
     projectId = pm?.project_id ?? null;
   }
+  if (!projectId) {
+    // Older owner accounts can predate project_members. Ownership is still a
+    // valid tenant boundary, so use the first owned project as a final lookup.
+    const { data: owned } = await admin
+      .from("projects")
+      .select("id")
+      .eq("created_by", userId)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    projectId = owned?.id ?? null;
+  }
 
   if (projectId) {
     // Verify ownership/membership of the project before exposing credentials.
@@ -118,11 +130,19 @@ async function resolveCreds(
     }
 
 
-    const { data: row } = await admin
+    const { data: row, error: configError } = await admin
       .from("whatsapp_config")
       .select("id, project_id, id_instance, api_token, api_url")
       .eq("project_id", projectId)
       .maybeSingle();
+
+    if (configError) {
+      console.error("[greenapi-proxy] whatsapp_config lookup failed", {
+        projectId,
+        code: configError.code,
+      });
+      return { error: "Не удалось прочитать настройки Green API для проекта", status: 500 };
+    }
 
     if (row?.id_instance) {
       const baseUrlOrErr = resolveGreenApiBaseUrl(row.api_url);
@@ -245,9 +265,12 @@ Deno.serve(async (req) => {
       url.searchParams.get("action") ??
       "";
 
+    // Accept the historical camelCase key while all callers migrate to the
+    // canonical database-style project_id key.
+    const rawProjectId = body.project_id ?? body.projectId;
     const projectId =
-      typeof body.project_id === "string" && body.project_id
-        ? body.project_id
+      typeof rawProjectId === "string" && rawProjectId.trim()
+        ? rawProjectId.trim()
         : null;
 
     const credsOrErr = await resolveCreds(req, projectId);

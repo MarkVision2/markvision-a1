@@ -268,7 +268,7 @@ export default function ProjectIntegrationWizard() {
         p_api_url: null,
       });
       const { data, error } = await supabase.functions.invoke("greenapi-proxy", {
-        body: { action: "status", projectId },
+        body: { action: "status", project_id: projectId },
       });
       if (error) throw error;
       const state = (data as any)?.stateInstance || (data as any)?.state || JSON.stringify(data);
