@@ -86,6 +86,17 @@ async function resolveCreds(
       .maybeSingle();
     projectId = data?.project_id ?? null;
   }
+  if (!projectId) {
+    // New members often have no active project yet — take their first membership.
+    const { data: pm } = await admin
+      .from("project_members")
+      .select("project_id")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    projectId = pm?.project_id ?? null;
+  }
 
   if (projectId) {
     // Verify ownership/membership of the project before exposing credentials.
@@ -97,10 +108,15 @@ async function resolveCreds(
     const { data: isAdmin } = await admin.rpc("has_role" as any, {
       _user_id: userId, _role: "admin",
     });
-    const allowed = !!proj && (proj.created_by === userId || isAdmin === true);
+    const { data: isMember } = await admin.rpc("is_project_member" as any, {
+      _user_id: userId, _project_id: projectId,
+    });
+    const allowed =
+      !!proj && (proj.created_by === userId || isAdmin === true || isMember === true);
     if (!allowed) {
       return { error: "Forbidden", status: 403 };
     }
+
 
     const { data: row } = await admin
       .from("whatsapp_config")
