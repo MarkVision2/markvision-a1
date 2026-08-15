@@ -35,6 +35,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
   const { addMember, updateMember } = useTeamStore();
+  const { projects } = useProjectsStore();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [login, setLogin] = useState("");
@@ -42,6 +43,7 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
   const [showPwd, setShowPwd] = useState(false);
   const [role, setRole] = useState<TeamRole>("manager");
   const [modules, setModules] = useState<string[]>(defaultModulesForRole("manager"));
+  const [projectIds, setProjectIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (open) {
@@ -49,13 +51,16 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
         setName(editing.name); setEmail(editing.email);
         setLogin(editing.login ?? ""); setPassword(editing.password ?? genPassword());
         setRole(editing.role); setModules(editing.modules);
+        setProjectIds(editing.projects ?? []);
       } else {
         setName(""); setEmail(""); setLogin("");
         setPassword(genPassword()); setRole("manager");
         setModules(defaultModulesForRole("manager"));
+        setProjectIds([]);
       }
     }
   }, [open, editing]);
+
 
   const handleRoleChange = (r: TeamRole) => {
     setRole(r);
