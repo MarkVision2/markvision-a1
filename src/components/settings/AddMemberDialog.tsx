@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Copy, Eye, EyeOff, RefreshCw, Shield, UserPlus2 } from "lucide-react";
+import { Copy, Eye, EyeOff, FolderKanban, RefreshCw, Shield, UserPlus2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/hooks/use-toast";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
   MODULES,
   ROLE_LABELS,
@@ -15,6 +16,7 @@ import {
   defaultModulesForRole,
   useTeamStore,
 } from "@/hooks/useTeamStore";
+
 
 interface Props {
   open: boolean;
@@ -33,6 +35,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
   const { addMember, updateMember } = useTeamStore();
+  const { projects } = useProjectsStore();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [login, setLogin] = useState("");
@@ -40,6 +43,7 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
   const [showPwd, setShowPwd] = useState(false);
   const [role, setRole] = useState<TeamRole>("manager");
   const [modules, setModules] = useState<string[]>(defaultModulesForRole("manager"));
+  const [projectIds, setProjectIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (open) {
@@ -47,13 +51,16 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
         setName(editing.name); setEmail(editing.email);
         setLogin(editing.login ?? ""); setPassword(editing.password ?? genPassword());
         setRole(editing.role); setModules(editing.modules);
+        setProjectIds(editing.projects ?? []);
       } else {
         setName(""); setEmail(""); setLogin("");
         setPassword(genPassword()); setRole("manager");
         setModules(defaultModulesForRole("manager"));
+        setProjectIds([]);
       }
     }
   }, [open, editing]);
+
 
   const handleRoleChange = (r: TeamRole) => {
     setRole(r);
@@ -86,6 +93,10 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
       toast({ title: "Выберите хотя бы один модуль", variant: "destructive" });
       return;
     }
+    if (!editing && projects.length && projectIds.length === 0) {
+      toast({ title: "Выберите хотя бы один проект", variant: "destructive" });
+      return;
+    }
     const payload = {
       name: trimmedName,
       email: trimmedEmail,
@@ -93,13 +104,15 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
       password,
       role,
       modules: modules as TeamMember["modules"],
+      projects: projectIds,
     };
     if (editing) {
       updateMember(editing.id, payload);
       toast({ title: "Сотрудник обновлён" });
     } else {
-      addMember(payload);
-      toast({ title: "Сотрудник добавлен", description: `Доступ: ${ROLE_LABELS[role]}` });
+      void addMember(payload)
+        .then(() => toast({ title: "Сотрудник добавлен", description: `Доступ: ${ROLE_LABELS[role]}` }))
+        .catch((e: Error) => toast({ title: "Не удалось создать сотрудника", description: e.message, variant: "destructive" }));
     }
     onOpenChange(false);
   };
@@ -216,7 +229,48 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
               })}
             </div>
           </section>
+
+          <section className="space-y-3 rounded-xl border border-border/60 bg-card/40 p-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                <span className="grid h-7 w-7 place-items-center rounded-md bg-success/15 text-success">
+                  <FolderKanban className="h-3.5 w-3.5" />
+                </span>
+                Доступ к проектам
+              </div>
+              <span className="text-xs text-muted-foreground">{projectIds.length}/{projects.length}</span>
+            </div>
+            {projects.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Нет проектов — сначала создайте проект.</p>
+            ) : (
+              <div className="grid gap-2 sm:grid-cols-2">
+                {projects.map((p) => {
+                  const checked = projectIds.includes(p.id);
+                  return (
+                    <label
+                      key={p.id}
+                      className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
+                        checked ? "border-success/50 bg-success/5" : "border-border/60 hover:bg-secondary/40"
+                      }`}
+                    >
+                      <Checkbox
+                        checked={checked}
+                        onCheckedChange={() =>
+                          setProjectIds((ids) => (ids.includes(p.id) ? ids.filter((i) => i !== p.id) : [...ids, p.id]))
+                        }
+                      />
+                      <span className="text-sm">{p.name}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            )}
+            <p className="text-[11px] text-muted-foreground">
+              Пользователь увидит данные только выбранных проектов.
+            </p>
+          </section>
         </div>
+
 
         <DialogFooter>
           <Button variant="ghost" onClick={() => onOpenChange(false)}>Отмена</Button>
