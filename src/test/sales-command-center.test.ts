@@ -90,7 +90,7 @@ describe("buildSalesCommandCenter", () => {
       ...input([]),
       managerStats: [
         {
-          member: { id: "a", name: "Алия", role: "manager", email: "a@example.com", modules: [], createdAt: "2026-01-01T00:00:00Z" },
+          member: { id: "a", name: "Алия", role: "manager", email: "a@example.com", modules: [], projects: [], createdAt: "2026-01-01T00:00:00Z" },
           assigned: 10,
           responsesUnder5: 8,
           respondedTotal: 10,
@@ -99,7 +99,7 @@ describe("buildSalesCommandCenter", () => {
           revenue: 300_000,
         },
         {
-          member: { id: "b", name: "Марат", role: "manager", email: "b@example.com", modules: [], createdAt: "2026-01-01T00:00:00Z" },
+          member: { id: "b", name: "Марат", role: "manager", email: "b@example.com", modules: [], projects: [], createdAt: "2026-01-01T00:00:00Z" },
           assigned: 8,
           responsesUnder5: 6,
           respondedTotal: 8,
