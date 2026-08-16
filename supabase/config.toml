@@ -42,6 +42,18 @@ verify_jwt = false
 [functions.lead-intake]
 verify_jwt = false
 
+# Facebook OAuth: callback приходит редиректом от Facebook (GET без
+# Authorization) — при verify_jwt=true шлюз отдаёт
+# {"code":"UNAUTHORIZED_NO_AUTH_HEADER"}. start/finish проверяют JWT в коде.
+[functions.facebook-oauth-start]
+verify_jwt = false
+
+[functions.facebook-oauth-callback]
+verify_jwt = false
+
+[functions.facebook-oauth-finish]
+verify_jwt = false
+
 # Auth is enforced inside the functions (user JWT + project access).
 # Gateway verify_jwt=true returns 401 without CORS → browser shows
 # "Failed to send a request to the Edge Function" instead of a real error.
