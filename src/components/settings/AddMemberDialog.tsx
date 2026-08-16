@@ -74,7 +74,7 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
   const allChecked = modules.length === MODULES.length;
   const counter = useMemo(() => `${modules.length}/${MODULES.length} модулей`, [modules]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const trimmedName = name.trim();
     const trimmedEmail = email.trim();
     if (trimmedName.length < 2) {
@@ -106,15 +106,19 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
       modules: modules as TeamMember["modules"],
       projects: projectIds,
     };
-    if (editing) {
-      updateMember(editing.id, payload);
-      toast({ title: "Сотрудник обновлён" });
-    } else {
-      void addMember(payload)
-        .then(() => toast({ title: "Сотрудник добавлен", description: `Доступ: ${ROLE_LABELS[role]}` }))
-        .catch((e: Error) => toast({ title: "Не удалось создать сотрудника", description: e.message, variant: "destructive" }));
+    try {
+      if (editing) {
+        await updateMember(editing.id, payload);
+        toast({ title: "Сотрудник обновлён" });
+      } else {
+        await addMember(payload);
+        toast({ title: "Сотрудник добавлен", description: `Доступ: ${ROLE_LABELS[role]}` });
+      }
+      onOpenChange(false);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Неизвестная ошибка";
+      toast({ title: editing ? "Не удалось обновить сотрудника" : "Не удалось создать сотрудника", description: message, variant: "destructive" });
     }
-    onOpenChange(false);
   };
 
   return (
