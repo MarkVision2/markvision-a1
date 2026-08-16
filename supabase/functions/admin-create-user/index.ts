@@ -69,30 +69,37 @@ Deno.serve(async (req) => {
 
     // role
     if (role) {
-      await admin.from('user_roles').delete().eq('user_id', newId)
-      await admin.from('user_roles').insert({ user_id: newId, role })
+      const { error: roleDeleteError } = await admin.from('user_roles').delete().eq('user_id', newId)
+      if (roleDeleteError) throw roleDeleteError
+      const { error: roleInsertError } = await admin.from('user_roles').insert({ user_id: newId, role })
+      if (roleInsertError) throw roleInsertError
     }
 
     // modules
     if (Array.isArray(modules)) {
-      await admin.from('team_member_modules').delete().eq('user_id', newId)
+      const { error: modulesDeleteError } = await admin.from('team_member_modules').delete().eq('user_id', newId)
+      if (modulesDeleteError) throw modulesDeleteError
       if (modules.length) {
-        await admin.from('team_member_modules').insert(
+        const { error: modulesInsertError } = await admin.from('team_member_modules').insert(
           modules.map((m: string) => ({ user_id: newId, module_key: m })),
         )
+        if (modulesInsertError) throw modulesInsertError
       }
     }
 
     // project memberships
     if (Array.isArray(project_ids) && project_ids.length) {
-      await admin.from('project_members').delete().eq('user_id', newId)
-      await admin.from('project_members').insert(
+      const { error: membersDeleteError } = await admin.from('project_members').delete().eq('user_id', newId)
+      if (membersDeleteError) throw membersDeleteError
+      const { error: membersInsertError } = await admin.from('project_members').insert(
         project_ids.map((pid: string) => ({ project_id: pid, user_id: newId, role: 'member' })),
       )
-      await admin.from('user_active_project').upsert(
+      if (membersInsertError) throw membersInsertError
+      const { error: activeProjectError } = await admin.from('user_active_project').upsert(
         { user_id: newId, project_id: project_ids[0] },
         { onConflict: 'user_id' },
       )
+      if (activeProjectError) throw activeProjectError
     }
 
     return new Response(JSON.stringify({ id: newId }), {

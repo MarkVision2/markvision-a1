@@ -142,30 +142,37 @@ export function useTeamStore() {
     if (patch.login !== undefined) profilePatch.login = patch.login || null;
     if (patch.role !== undefined) profilePatch.display_role = patch.role;
     if (Object.keys(profilePatch).length) {
-      await supabase.from("profiles").update(profilePatch).eq("id", id);
+      const { error } = await supabase.from("profiles").update(profilePatch).eq("id", id);
+      if (error) throw error;
     }
     if (patch.role !== undefined) {
-      await supabase.from("user_roles").delete().eq("user_id", id);
-      await supabase.from("user_roles").insert({ user_id: id, role: patch.role });
+      const { error: deleteError } = await supabase.from("user_roles").delete().eq("user_id", id);
+      if (deleteError) throw deleteError;
+      const { error: insertError } = await supabase.from("user_roles").insert({ user_id: id, role: patch.role });
+      if (insertError) throw insertError;
     }
     if (patch.modules !== undefined) {
-      await supabase.from("team_member_modules").delete().eq("user_id", id);
+      const { error: deleteError } = await supabase.from("team_member_modules").delete().eq("user_id", id);
+      if (deleteError) throw deleteError;
       if (patch.modules.length) {
-        await supabase.from("team_member_modules").insert(
+        const { error: insertError } = await supabase.from("team_member_modules").insert(
           patch.modules.map((mod) => ({ user_id: id, module_key: mod })),
         );
+        if (insertError) throw insertError;
       }
     }
     if (patch.projects !== undefined) {
-      await supabase.from("project_members").delete().eq("user_id", id);
+      const { error: deleteError } = await supabase.from("project_members").delete().eq("user_id", id);
+      if (deleteError) throw deleteError;
       if (patch.projects.length) {
-        await supabase.from("project_members").insert(
+        const { error: insertError } = await supabase.from("project_members").insert(
           patch.projects.map((projectId) => ({
             project_id: projectId,
             user_id: id,
             role: "member",
           })),
         );
+        if (insertError) throw insertError;
       }
     }
 
