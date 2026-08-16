@@ -1,7 +1,7 @@
 {
-  "git_sha": "d869581",
-  "git_sha_full": "d869581915976f94b080e763d5b101822a1bd70a",
-  "updated_at": "2026-08-15T05:58:08Z",
-  "label": "Исправил логику Green API",
+  "git_sha": "b5dfa76",
+  "git_sha_full": "b5dfa76a0719afaaded59df736d545d99336e3be",
+  "updated_at": "2026-08-16T11:09:26Z",
+  "label": "Резервировал JWT для OAuth",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
