@@ -1,7 +1,7 @@
 {
-  "git_sha": "b5dfa76",
-  "git_sha_full": "b5dfa76a0719afaaded59df736d545d99336e3be",
-  "updated_at": "2026-08-16T11:09:26Z",
-  "label": "Резервировал JWT для OAuth",
+  "git_sha": "4cb9812",
+  "git_sha_full": "4cb981222b4575e21d296900819cbd90dfe2088a",
+  "updated_at": "2026-08-16T11:15:38Z",
+  "label": "Исправил доступ к разделам",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
