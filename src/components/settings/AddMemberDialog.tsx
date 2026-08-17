@@ -10,6 +10,7 @@ import { toast } from "@/hooks/use-toast";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
   MODULES,
+  ROLE_DESCRIPTIONS,
   ROLE_LABELS,
   TeamMember,
   TeamRole,
@@ -74,6 +75,14 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
 
   const allChecked = modules.length === MODULES.length;
   const counter = useMemo(() => `${modules.length}/${MODULES.length} модулей`, [modules]);
+  const selectedProjectNames = useMemo(
+    () => projects.filter((p) => projectIds.includes(p.id)).map((p) => p.name),
+    [projectIds, projects],
+  );
+  const selectedModuleLabels = useMemo(
+    () => MODULES.filter((m) => modules.includes(m.key)).map((m) => m.label),
+    [modules],
+  );
 
   const cleanLogin = login.trim().toLowerCase().replace(/\s+/g, "_");
 
@@ -212,6 +221,7 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-[11px] text-muted-foreground">{ROLE_DESCRIPTIONS[role]}</p>
               </div>
             </div>
           </section>
@@ -291,6 +301,54 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
             <p className="text-[11px] text-muted-foreground">
               Пользователь увидит данные только выбранных проектов.
             </p>
+          </section>
+
+          <section className="rounded-xl border border-success/30 bg-success/5 p-4">
+            <div className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-success">
+              <Shield className="h-3.5 w-3.5" />
+              Итог доступа
+            </div>
+            <div className="mt-3 grid gap-3 text-sm sm:grid-cols-3">
+              <div>
+                <div className="text-[11px] text-muted-foreground">Роль</div>
+                <div className="font-medium">{ROLE_LABELS[role]}</div>
+              </div>
+              <div>
+                <div className="text-[11px] text-muted-foreground">Проекты</div>
+                <div className="font-medium">
+                  {selectedProjectNames.length ? `${selectedProjectNames.length} выбрано` : "Не выбраны"}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] text-muted-foreground">Модули</div>
+                <div className="font-medium">{modules.length === MODULES.length ? "Полный доступ" : counter}</div>
+              </div>
+            </div>
+            <div className="mt-3 space-y-2">
+              <div className="flex flex-wrap gap-1.5">
+                {selectedProjectNames.length ? (
+                  selectedProjectNames.slice(0, 6).map((project) => (
+                    <span key={project} className="rounded-md border border-success/30 bg-background/70 px-2 py-0.5 text-[11px] text-foreground">
+                      {project}
+                    </span>
+                  ))
+                ) : (
+                  <span className="text-xs text-muted-foreground">Выберите хотя бы один проект для нового сотрудника.</span>
+                )}
+                {selectedProjectNames.length > 6 && (
+                  <span className="rounded-md bg-background/70 px-2 py-0.5 text-[11px] text-muted-foreground">
+                    +{selectedProjectNames.length - 6}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {selectedModuleLabels.map((mod) => (
+                  <span key={mod} className="rounded-md border border-border/60 bg-background/70 px-2 py-0.5 text-[11px] text-muted-foreground">
+                    {mod}
+                  </span>
+                ))}
+              </div>
+            </div>
           </section>
         </div>
 

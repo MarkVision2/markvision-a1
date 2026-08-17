@@ -35,6 +35,7 @@ import { clientConfigSupabase } from "@/integrations/clientConfig/client";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
   MODULES,
+  ROLE_DESCRIPTIONS,
   ROLE_LABELS,
   TeamMember,
   useTeamStore,
@@ -146,7 +147,7 @@ export default function Settings() {
   const [query, setQuery] = useState("");
   const [confirmDel, setConfirmDel] = useState<TeamMember | null>(null);
   const [statusRefreshTick, setStatusRefreshTick] = useState(0);
-  const { activeId, active } = useProjectsStore();
+  const { activeId, active, projects } = useProjectsStore();
   const [connectionStatus, setConnectionStatus] = useState<Record<SettingsTab, ConnectionStatus>>({
     team: "disconnected",
     profile: "disconnected",
@@ -300,6 +301,10 @@ export default function Settings() {
   );
 
   const activeConnection = CONNECTION_NAV.find((s) => s.tab === activeTab);
+  const projectNameById = useMemo(
+    () => new Map(projects.map((project) => [project.id, project.name])),
+    [projects],
+  );
 
   const navButton = (tab: SettingsTab, title: string, Icon: LucideIcon, showStatus?: boolean) => (
     <button
@@ -386,14 +391,37 @@ export default function Settings() {
         </div>
 
         {members.length > 0 && (
-          <div className="relative mb-3">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Поиск по имени, email или логину…"
-              className="pl-9"
-            />
+          <div className="mb-3 space-y-3">
+            <div className="rounded-xl border border-success/30 bg-success/5 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="text-sm font-medium">Доступ выдаётся в два шага</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    Сначала выберите проекты, затем отметьте модули. Пользователь увидит только выбранные проекты и разделы.
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {Object.entries(ROLE_LABELS).map(([key, label]) => (
+                    <span
+                      key={key}
+                      title={ROLE_DESCRIPTIONS[key as keyof typeof ROLE_DESCRIPTIONS]}
+                      className="rounded-md border border-border/60 bg-background/70 px-2 py-0.5 text-[11px] text-muted-foreground"
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Поиск по имени, email или логину…"
+                className="pl-9"
+              />
+            </div>
           </div>
         )}
 
@@ -434,6 +462,28 @@ export default function Settings() {
                   </div>
                   <div className="mt-0.5 truncate text-xs text-muted-foreground">{m.email}</div>
                   <div className="mt-2 flex flex-wrap gap-1">
+                    {m.projects.length === projects.length && projects.length > 0 ? (
+                      <span className="rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] text-primary">
+                        Все проекты
+                      </span>
+                    ) : m.projects.length > 0 ? (
+                      m.projects.slice(0, 4).map((projectId) => (
+                        <span key={projectId} className="rounded-md border border-border/60 bg-background/60 px-2 py-0.5 text-[10px] text-muted-foreground">
+                          {projectNameById.get(projectId) ?? "Проект"}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="rounded-md border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-[10px] text-destructive">
+                        Нет проектов
+                      </span>
+                    )}
+                    {m.projects.length > 4 && m.projects.length < projects.length && (
+                      <span className="rounded-md bg-secondary/50 px-2 py-0.5 text-[10px] text-muted-foreground">
+                        +{m.projects.length - 4}
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-1">
                     {m.modules.length === MODULES.length ? (
                       <span className="rounded-md border border-success/40 bg-success/10 px-2 py-0.5 text-[10px] text-success">
                         Полный доступ
@@ -457,10 +507,10 @@ export default function Settings() {
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button onClick={() => handleEdit(m)} className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground" aria-label="Редактировать">
+                  <button type="button" onClick={() => handleEdit(m)} className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground" aria-label="Редактировать">
                     <Edit2 className="h-4 w-4" />
                   </button>
-                  <button onClick={() => setConfirmDel(m)} className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Удалить">
+                  <button type="button" onClick={() => setConfirmDel(m)} className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive" aria-label="Удалить">
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>

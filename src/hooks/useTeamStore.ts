@@ -12,6 +12,14 @@ export const ROLE_LABELS: Record<TeamRole, string> = {
   viewer: "Наблюдатель",
 };
 
+export const ROLE_DESCRIPTIONS: Record<TeamRole, string> = {
+  admin: "Полный доступ ко всем разделам, настройкам и команде.",
+  director: "Контроль показателей, финансов и отчётности без операционной CRM.",
+  manager: "Работа с CRM, заявками и отчётами по своим проектам.",
+  marketer: "Реклама, контент, аналитика и отчёты без финансовых настроек.",
+  viewer: "Только просмотр дашборда и отчётов.",
+};
+
 export type ModuleKey =
   | "dashboard"
   | "ads"
