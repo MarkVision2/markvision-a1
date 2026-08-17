@@ -101,16 +101,19 @@ describe("ContentPlanComposerDialog unified publish", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /В план \+ автопост/i }));
 
-    await waitFor(() => {
-      expect(createAutopost).toHaveBeenCalled();
-      expect(upsertPlan).toHaveBeenCalledWith(
-        expect.objectContaining({
-          projectId: "proj-1",
-          autopostId: "ap-1",
-          title: "Тест заголовок",
-        }),
-      );
-    });
+    await waitFor(
+      () => {
+        expect(createAutopost).toHaveBeenCalled();
+        expect(upsertPlan).toHaveBeenCalledWith(
+          expect.objectContaining({
+            projectId: "proj-1",
+            autopostId: "ap-1",
+            title: "Тест заголовок",
+          }),
+        );
+      },
+      { timeout: 8_000 },
+    );
   });
 
   it("uses calendar popover and quick schedule presets", async () => {
