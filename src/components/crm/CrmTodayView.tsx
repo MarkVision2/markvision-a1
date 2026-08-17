@@ -41,11 +41,14 @@ export function CrmTodayView({ leads, onOpenFunnel, className }: Props) {
   const { byDay: spendByDay, loading: spendLoading, lastDate: lastSpendDate } = useCrmAdSpend(projectId);
 
   const spendStale = useMemo(() => {
-    if (!lastSpendDate) return true;
+    // Баннер только если данные когда-то приходили, но отстали больше чем на сутки.
+    // Если расходов нет вовсе (кабинет не подключён) — молчим, а не пугаем ошибкой.
+    if (!lastSpendDate) return false;
     const today = ymdAlmaty();
     // Нормально, если последний CDI = вчера (cron тянет вчера ночью). Старше — проблема.
     return lastSpendDate < addDaysYmd(today, -1);
   }, [lastSpendDate]);
+
 
   const [preset, setPreset] = useState<LeadPeriodPreset>("today");
   const [focusYmd, setFocusYmd] = useState<string | null>(null);
