@@ -39,12 +39,15 @@ Deno.serve(async (req) => {
     const body = await req.json()
     const { email, password, name, phone, login, role, modules, project_ids } = body
 
-    // Вход по логину: auth-email синтетический <login>@markvision.app, если реальный email не задан.
+    // Логин — ГЛАВНЫЙ идентификатор входа. Если он задан, auth-email всегда
+    // синтетический <login>@markvision.app — независимо от поля email (иначе
+    // аккаунт создавался бы на введённый email, а вход по логину не проходил).
+    // Поле email используется как auth-идентификатор только когда логина нет.
     // (Форма входа сама дописывает @markvision.app для значений без «@».)
     const cleanLogin = typeof login === 'string' ? login.trim().toLowerCase().replace(/\s+/g, '_') : ''
-    const authEmail = (typeof email === 'string' && email.includes('@'))
-      ? email.trim()
-      : (cleanLogin ? `${cleanLogin}@markvision.app` : '')
+    const authEmail = cleanLogin
+      ? `${cleanLogin}@markvision.app`
+      : (typeof email === 'string' && email.includes('@') ? email.trim().toLowerCase() : '')
 
     if (!authEmail || !password || !name) {
       return new Response(JSON.stringify({ error: 'Нужны логин (или email), пароль и имя' }), {

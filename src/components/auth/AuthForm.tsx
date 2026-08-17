@@ -65,7 +65,9 @@ export function AuthForm() {
     }
     setErrors({});
     setLoading(true);
-    const email = identifier.includes("@") ? identifier : `${identifier}@markvision.app`;
+    // Логин/email нормализуем: аккаунты создаются в нижнем регистре, поэтому и вход
+    // не должен зависеть от регистра (иначе «Ivan» ≠ «ivan» → неверные данные).
+    const email = (identifier.includes("@") ? identifier : `${identifier}@markvision.app`).trim().toLowerCase();
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {

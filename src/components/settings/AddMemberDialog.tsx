@@ -163,7 +163,7 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
                 <Input
                   id="m-login"
                   value={login}
-                  onChange={(e) => setLogin(e.target.value.replace(/\s+/g, "_"))}
+                  onChange={(e) => setLogin(e.target.value.toLowerCase().replace(/\s+/g, "_"))}
                   placeholder="client_uali"
                   disabled={!!editing}
                   autoCapitalize="none"
