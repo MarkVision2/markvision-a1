@@ -1,7 +1,7 @@
 {
-  "git_sha": "242de5a",
-  "git_sha_full": "242de5ad484cecf8ea9d7b7fbc17ffe46b5c8ab0",
-  "updated_at": "2026-08-17T23:40:42+04:00",
-  "label": "test: wait for content plan publish in CI [vercel-deploy]",
+  "git_sha": "c3784dc",
+  "git_sha_full": "c3784dc2194898c5234b6affda5d530f671be3b3",
+  "updated_at": "2026-08-17T23:43:04+04:00",
+  "label": "test: hoist content plan publish mocks [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
