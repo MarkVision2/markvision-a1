@@ -94,6 +94,42 @@ export function defaultModulesForRole(role: TeamRole): ModuleKey[] {
   }
 }
 
+const TEAM_ROLES = new Set<TeamRole>(["admin", "director", "manager", "marketer", "viewer"]);
+
+function asTeamRole(value: unknown): TeamRole | null {
+  return typeof value === "string" && TEAM_ROLES.has(value as TeamRole)
+    ? (value as TeamRole)
+    : null;
+}
+
+function systemRoleFor(role: TeamRole): "admin" | "manager" {
+  return role === "admin" ? "admin" : "manager";
+}
+
+async function describeFunctionError(error: unknown): Promise<string> {
+  if (
+    error &&
+    typeof error === "object" &&
+    "context" in error &&
+    (error as { context?: unknown }).context instanceof Response
+  ) {
+    const response = (error as { context: Response }).context.clone();
+    try {
+      const body = (await response.json()) as { error?: unknown; message?: unknown };
+      const message = typeof body.error === "string"
+        ? body.error
+        : typeof body.message === "string"
+          ? body.message
+          : "";
+      if (message) return message;
+    } catch {
+      const text = await response.text().catch(() => "");
+      if (text) return text;
+    }
+  }
+  return error instanceof Error ? error.message : "Неизвестная ошибка";
+}
+
 export function useTeamStore() {
   const [members, setMembers] = useState<TeamMember[]>([]);
 
@@ -110,7 +146,8 @@ export function useTeamStore() {
     // (admin pages don't strictly need it; can be added later via edge function)
     const roleByUser = new Map<string, TeamRole>();
     (roles ?? []).forEach((r: { user_id: string; role: string }) => {
-      roleByUser.set(r.user_id, r.role as TeamRole);
+      const role = asTeamRole(r.role);
+      if (role) roleByUser.set(r.user_id, role);
     });
     const modsByUser = new Map<string, ModuleKey[]>();
     (modules ?? []).forEach((m: { user_id: string; module_key: string }) => {
@@ -126,7 +163,7 @@ export function useTeamStore() {
     });
 
     const list: TeamMember[] = (profiles ?? []).map((p: any) => {
-      const role = roleByUser.get(p.id) ?? "manager";
+      const role = asTeamRole(p.display_role) ?? roleByUser.get(p.id) ?? "manager";
       return {
         id: p.id,
         name: p.name ?? "",
@@ -160,7 +197,7 @@ export function useTeamStore() {
         project_ids: m.projects ?? [],
       },
     });
-    if (error) throw error;
+    if (error) throw new Error(await describeFunctionError(error));
     await refetch();
     return { ...m, id: (data as { id: string }).id, createdAt: new Date().toISOString() };
   }, [refetch]);
@@ -178,7 +215,8 @@ export function useTeamStore() {
     if (patch.role !== undefined) {
       const { error: deleteError } = await supabase.from("user_roles").delete().eq("user_id", id);
       if (deleteError) throw deleteError;
-      const { error: insertError } = await supabase.from("user_roles").insert({ user_id: id, role: patch.role });
+      const systemRole = systemRoleFor(patch.role);
+      const { error: insertError } = await supabase.from("user_roles").insert({ user_id: id, role: systemRole });
       if (insertError) throw insertError;
     }
     if (patch.modules !== undefined) {

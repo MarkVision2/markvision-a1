@@ -1,6 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.95.0'
 import { corsHeaders } from 'https://esm.sh/@supabase/supabase-js@2.95.0/cors'
 
+const systemRoleFor = (role: unknown) => role === 'admin' ? 'admin' : 'manager'
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -38,6 +40,8 @@ Deno.serve(async (req) => {
 
     const body = await req.json()
     const { email, password, name, phone, login, role, modules, project_ids } = body
+    const displayRole = typeof role === 'string' && role ? role : 'manager'
+    const systemRole = systemRoleFor(displayRole)
 
     // Логин — ГЛАВНЫЙ идентификатор входа. Если он задан, auth-email всегда
     // синтетический <login>@markvision.app — независимо от поля email (иначе
@@ -70,47 +74,51 @@ Deno.serve(async (req) => {
     }
     const newId = created.user.id
 
-    // profile (handle_new_user already inserted base row via trigger)
-    await admin.from('profiles').update({
-      name,
-      phone: phone ?? null,
-      login: cleanLogin || null,
-      display_role: role ?? null,
-    }).eq('id', newId)
+    try {
+      // profile (handle_new_user already inserted base row via trigger)
+      const { error: profileError } = await admin.from('profiles').update({
+        name,
+        phone: phone ?? null,
+        login: cleanLogin || null,
+        display_role: displayRole,
+      }).eq('id', newId)
+      if (profileError) throw profileError
 
-    // role
-    if (role) {
+      // system role: keep DB/RLS role enum stable. UI role stays in profiles.display_role.
       const { error: roleDeleteError } = await admin.from('user_roles').delete().eq('user_id', newId)
       if (roleDeleteError) throw roleDeleteError
-      const { error: roleInsertError } = await admin.from('user_roles').insert({ user_id: newId, role })
+      const { error: roleInsertError } = await admin.from('user_roles').insert({ user_id: newId, role: systemRole })
       if (roleInsertError) throw roleInsertError
-    }
 
-    // modules
-    if (Array.isArray(modules)) {
-      const { error: modulesDeleteError } = await admin.from('team_member_modules').delete().eq('user_id', newId)
-      if (modulesDeleteError) throw modulesDeleteError
-      if (modules.length) {
-        const { error: modulesInsertError } = await admin.from('team_member_modules').insert(
-          modules.map((m: string) => ({ user_id: newId, module_key: m })),
-        )
-        if (modulesInsertError) throw modulesInsertError
+      // modules
+      if (Array.isArray(modules)) {
+        const { error: modulesDeleteError } = await admin.from('team_member_modules').delete().eq('user_id', newId)
+        if (modulesDeleteError) throw modulesDeleteError
+        if (modules.length) {
+          const { error: modulesInsertError } = await admin.from('team_member_modules').insert(
+            modules.map((m: string) => ({ user_id: newId, module_key: m })),
+          )
+          if (modulesInsertError) throw modulesInsertError
+        }
       }
-    }
 
-    // project memberships
-    if (Array.isArray(project_ids) && project_ids.length) {
-      const { error: membersDeleteError } = await admin.from('project_members').delete().eq('user_id', newId)
-      if (membersDeleteError) throw membersDeleteError
-      const { error: membersInsertError } = await admin.from('project_members').insert(
-        project_ids.map((pid: string) => ({ project_id: pid, user_id: newId, role: 'member' })),
-      )
-      if (membersInsertError) throw membersInsertError
-      const { error: activeProjectError } = await admin.from('user_active_project').upsert(
-        { user_id: newId, project_id: project_ids[0] },
-        { onConflict: 'user_id' },
-      )
-      if (activeProjectError) throw activeProjectError
+      // project memberships
+      if (Array.isArray(project_ids) && project_ids.length) {
+        const { error: membersDeleteError } = await admin.from('project_members').delete().eq('user_id', newId)
+        if (membersDeleteError) throw membersDeleteError
+        const { error: membersInsertError } = await admin.from('project_members').insert(
+          project_ids.map((pid: string) => ({ project_id: pid, user_id: newId, role: 'member' })),
+        )
+        if (membersInsertError) throw membersInsertError
+        const { error: activeProjectError } = await admin.from('user_active_project').upsert(
+          { user_id: newId, project_id: project_ids[0] },
+          { onConflict: 'user_id' },
+        )
+        if (activeProjectError) throw activeProjectError
+      }
+    } catch (e) {
+      await admin.auth.admin.deleteUser(newId).catch(() => null)
+      throw e
     }
 
     return new Response(JSON.stringify({ id: newId }), {
