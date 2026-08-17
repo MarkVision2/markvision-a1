@@ -21,13 +21,12 @@ vi.mock("@/hooks/useInstagramAccount", () => ({
   useInstagramAccount: () => ({ account: { username: "test" } }),
 }));
 
-vi.mock("@/lib/autopostClient", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@/lib/autopostClient")>();
-  return {
-    ...actual,
-    createAutopostPublication: (...args: unknown[]) => createAutopost(...args),
-  };
-});
+vi.mock("@/lib/autopostClient", () => ({
+  AUTOPOST_MAX_FILE_BYTES: 100 * 1024 * 1024,
+  AUTOPOST_MAX_FILE_MB: 100,
+  createAutopostPublication: (...args: unknown[]) => createAutopost(...args),
+  isVideoFile: (file: File) => file.type.startsWith("video/"),
+}));
 
 vi.mock("@/lib/contentPlanAutopostBridge", () => ({
   upsertContentPlanFromAutopost: (...args: unknown[]) => upsertPlan(...args),
