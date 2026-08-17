@@ -6,7 +6,7 @@ import "./index.css";
 // старый index.js, ссылающийся на удалённый чанк, перезагружаем страницу
 // один раз, чтобы подтянуть актуальный билд.
 const isChunkLoadError = (msg: string) =>
-  /Failed to fetch dynamically imported module|Importing a module script failed|ChunkLoadError|Loading chunk \d+ failed/i.test(
+  /Failed to fetch dynamically imported module|Importing a module script failed|ChunkLoadError|Loading chunk \d+ failed|Failed to load module script|expected a JavaScript(?:-or-Wasm)? module script|MIME type of "text\/html"/i.test(
     msg,
   );
 const reloadOnce = () => {
