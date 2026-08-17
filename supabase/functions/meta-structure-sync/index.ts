@@ -183,6 +183,11 @@ function isMetaReduceError(text: string): boolean {
   return /reduce the amount of data/i.test(text) || /"code"\s*:\s*1\b/.test(text);
 }
 
+function metaErrorMessage(body: unknown, fallback: string): string {
+  const err = (body as { error?: { message?: string } } | null)?.error;
+  return err?.message ?? fallback;
+}
+
 async function fetchAllPagesSafe<T>(
   buildUrl: (limit: number) => string,
   initialLimit = 100,
@@ -399,19 +404,46 @@ Deno.serve(async (req) => {
     }
 
     try {
-      // ---- 1. Account currency (+ выбор рабочего токена) ----
-      let token = candidateTokens[0];
-      let accountRes = await fetch(
-        `https://graph.facebook.com/${META_API_VERSION}/${actId}?fields=currency&access_token=${encodeURIComponent(token)}`,
-      );
-      for (let ti = 1; ti < candidateTokens.length && !accountRes.ok; ti++) {
-        token = candidateTokens[ti];
-        accountRes = await fetch(
+      // ---- 1. Выбор рабочего токена ----
+      // `currency` может проходить даже без ads_read. Проверяем именно Insights,
+      // чтобы плохой токен кабинета не блокировал проектный Facebook-токен.
+      let token: string | null = null;
+      let accountCurrency = "USD";
+      let lastTokenError = "";
+      const probeRange = encodeURIComponent(JSON.stringify({ since, until }));
+
+      for (const candidate of candidateTokens) {
+        const probeRes = await fetch(
+          `https://graph.facebook.com/${META_API_VERSION}/${actId}/insights` +
+          `?fields=date_start,spend&time_range=${probeRange}&time_increment=1&level=account&limit=1` +
+          `&access_token=${encodeURIComponent(candidate)}`,
+        );
+        const probeJson = await probeRes.json().catch(() => ({}));
+        if (!probeRes.ok) {
+          lastTokenError = metaErrorMessage(probeJson, `HTTP ${probeRes.status}`);
+          continue;
+        }
+
+        token = candidate;
+        const accountRes = await fetch(
           `https://graph.facebook.com/${META_API_VERSION}/${actId}?fields=currency&access_token=${encodeURIComponent(token)}`,
         );
+        const accountJson = await accountRes.json().catch(() => ({}));
+        if (accountRes.ok && accountJson?.currency) {
+          accountCurrency = String(accountJson.currency);
+        }
+        break;
       }
-      const accountJson = await accountRes.json().catch(() => ({}));
-      const accountCurrency: string = (accountJson?.currency as string) ?? "USD";
+
+      if (!token) {
+        results.push({
+          cabinet_id: cabinetId,
+          cabinet: cabName,
+          ok: false,
+          error: lastTokenError || "Meta не дала доступ к расходам кабинета",
+        });
+        continue;
+      }
 
       let campaignRows: Array<Record<string, unknown>> = [];
       let creativeRows: Array<Record<string, unknown>> = [];
