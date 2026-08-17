@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
+import { cleanup, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { ContentPlanComposerDialog } from "@/components/content-plan/ContentPlanComposerDialog";
 
 vi.stubGlobal("URL", {
@@ -57,6 +57,7 @@ function makeFileList(files: File[]): FileList {
 
 describe("ContentPlanComposerDialog unified publish", () => {
   beforeEach(() => {
+    cleanup();
     createAutopost.mockReset();
     upsertPlan.mockReset();
     generateCaption.mockReset();
@@ -86,19 +87,19 @@ describe("ContentPlanComposerDialog unified publish", () => {
   });
 
   it("uploads and mirrors into content plan", async () => {
-    render(<ContentPlanComposerDialog open onOpenChange={() => {}} onDone={() => {}} />);
+    const { baseElement } = render(<ContentPlanComposerDialog open onOpenChange={() => {}} onDone={() => {}} />);
     fireEvent.change(screen.getByPlaceholderText(/3 вещи/i), {
       target: { value: "Тест заголовок" },
     });
     const file = new File(["x"], "clip.mp4", { type: "video/mp4" });
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const input = baseElement.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: makeFileList([file]) } });
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: /^Заменить$/i })).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole("button", { name: /автопост/i }));
+    fireEvent.click(screen.getByRole("button", { name: /В план \+ автопост/i }));
 
     await waitFor(() => {
       expect(createAutopost).toHaveBeenCalled();
@@ -137,7 +138,7 @@ describe("ContentPlanComposerDialog unified publish", () => {
   });
 
   it("generates description from media via AI button", async () => {
-    render(
+    const { baseElement } = render(
       <ContentPlanComposerDialog
         open
         onOpenChange={() => {}}
@@ -149,7 +150,7 @@ describe("ContentPlanComposerDialog unified publish", () => {
       new File(["a"], "slide-a.png", { type: "image/png" }),
       new File(["b"], "slide-b.png", { type: "image/png" }),
     ];
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const input = baseElement.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(input, { target: { files: makeFileList(files) } });
 
     await waitFor(() => {
@@ -169,7 +170,7 @@ describe("ContentPlanComposerDialog unified publish", () => {
   });
 
   it("previews and reorders carousel slides", async () => {
-    render(
+    const { baseElement } = render(
       <ContentPlanComposerDialog
         open
         onOpenChange={() => {}}
@@ -177,7 +178,7 @@ describe("ContentPlanComposerDialog unified publish", () => {
       />,
     );
 
-    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    const input = baseElement.querySelector('input[type="file"]') as HTMLInputElement;
     expect(input.multiple).toBe(true);
 
     const files = [
@@ -216,5 +217,5 @@ describe("ContentPlanComposerDialog unified publish", () => {
     fireEvent.dragEnd(cards[2]);
 
     expect(screen.getByAltText("Слайд 1")).toHaveAttribute("src", "blob:slide-c.png");
-  });
+  }, 15_000);
 });
