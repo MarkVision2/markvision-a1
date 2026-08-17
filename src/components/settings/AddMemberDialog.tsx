@@ -245,19 +245,46 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
                 </button>
               </div>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
-              {MODULES.map((m) => {
-                const checked = modules.includes(m.key);
+            <div className="space-y-4">
+              {Array.from(new Set(MODULES.map((m) => m.group))).map((group) => {
+                const items = MODULES.filter((m) => m.group === group);
+                const groupKeys: string[] = items.map((i) => i.key);
+                const allInGroup = groupKeys.every((k) => modules.includes(k));
                 return (
-                  <label
-                    key={m.key}
-                    className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
-                      checked ? "border-success/50 bg-success/5" : "border-border/60 hover:bg-secondary/40"
-                    }`}
-                  >
-                    <Checkbox checked={checked} onCheckedChange={() => toggleModule(m.key)} />
-                    <span className="text-sm">{m.label}</span>
-                  </label>
+                  <div key={group} className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/80">{group}</span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setModules((prev) =>
+                            allInGroup
+                              ? prev.filter((k) => !groupKeys.includes(k))
+                              : [...new Set([...prev, ...groupKeys])],
+                          )
+                        }
+                        className="text-[11px] text-success hover:underline"
+                      >
+                        {allInGroup ? "Снять" : "Все"}
+                      </button>
+                    </div>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {items.map((m) => {
+                        const checked = modules.includes(m.key);
+                        return (
+                          <label
+                            key={m.key}
+                            className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors ${
+                              checked ? "border-success/50 bg-success/5" : "border-border/60 hover:bg-secondary/40"
+                            }`}
+                          >
+                            <Checkbox checked={checked} onCheckedChange={() => toggleModule(m.key)} />
+                            <span className="text-sm">{m.label}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
                 );
               })}
             </div>

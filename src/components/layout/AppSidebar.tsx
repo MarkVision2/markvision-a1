@@ -52,8 +52,8 @@ const main: NavItem[] = [
 const marketing: NavItem[] = [
   { title: "Управление рекламой", url: "/ads", icon: Target, module: "ads" },
   { title: "Контент-завод", url: "/", icon: Wand2, module: "factory" },
-  { title: "Контент-центр", url: "/marketing/content-center", icon: Instagram, module: "factory" },
-  { title: "Контент-план", url: "/marketing/content-plan", icon: ClipboardList, module: "factory" },
+  { title: "Контент-центр", url: "/marketing/content-center", icon: Instagram, module: "content_center" },
+  { title: "Контент-план", url: "/marketing/content-plan", icon: ClipboardList, module: "content_plan" },
 ];
 
 // Marketing OS — собирается динамически в компоненте, т.к. URL зависит от активного проекта
@@ -61,9 +61,9 @@ const marketingOsIcon = Sparkles;
 
 const sales: NavItem[] = [
   { title: "CRM", url: "/crm", icon: Users, module: "crm" },
-  { title: "AI РОП", url: "/sales-ai", icon: PhoneCall, module: "crm" },
-  { title: "AI агенты", url: "/ai-agents", icon: Bot, module: "crm" },
-  { title: "Рассылка", url: "/broadcasts", icon: Send, module: "crm" },
+  { title: "AI РОП", url: "/sales-ai", icon: PhoneCall, module: "sales_ai" },
+  { title: "AI агенты", url: "/ai-agents", icon: Bot, module: "ai_agents" },
+  { title: "Рассылка", url: "/broadcasts", icon: Send, module: "broadcasts" },
 ];
 
 // Аналитика — «Таблица показателей» (источник правды) первой, дальше от общего
@@ -71,8 +71,8 @@ const sales: NavItem[] = [
 const analytics: NavItem[] = [
   { title: "Таблица показателей", url: "/metrics", icon: TableProperties, module: "metrics" },
   { title: "Сквозная аналитика", url: "/analytics", icon: GitBranch, module: "analytics" },
-  { title: "Воронка по креативам", url: "/analytics/creatives", icon: Filter, module: "analytics" },
-  { title: "Контент-аналитика", url: "/analytics/content", icon: Hash, module: "analytics" },
+  { title: "Воронка по креативам", url: "/analytics/creatives", icon: Filter, module: "creative_funnel" },
+  { title: "Контент-аналитика", url: "/analytics/content", icon: Hash, module: "content_analytics" },
 ];
 
 // Финансы и отчётность вынесены из «Аналитики» в отдельную группу —
@@ -88,7 +88,7 @@ const system: NavItem[] = [
 
 function buildGroups(activeProjectId: string): { label: string; items: NavItem[] }[] {
   const marketingOs: NavItem[] = activeProjectId
-    ? [{ title: "Стратегия", url: `/projects/${activeProjectId}/strategy`, icon: marketingOsIcon, module: "factory" as ModuleKey }]
+    ? [{ title: "Стратегия", url: `/projects/${activeProjectId}/strategy`, icon: marketingOsIcon, module: "strategy" as ModuleKey }]
     : [];
   return [
     { label: "Главное", items: main },

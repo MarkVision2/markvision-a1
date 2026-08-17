@@ -22,25 +22,47 @@ export const ROLE_DESCRIPTIONS: Record<TeamRole, string> = {
 
 export type ModuleKey =
   | "dashboard"
+  // Маркетинг
   | "ads"
   | "factory"
+  | "content_center"
+  | "content_plan"
+  | "strategy"
+  // Продажи
   | "crm"
-  | "analytics"
+  | "sales_ai"
+  | "ai_agents"
+  | "broadcasts"
+  // Аналитика
   | "metrics"
+  | "analytics"
+  | "creative_funnel"
+  | "content_analytics"
+  // Финансы и отчёты
   | "finance"
   | "reports"
+  // Система
   | "settings";
 
-export const MODULES: { key: ModuleKey; label: string }[] = [
-  { key: "dashboard", label: "Дашборд" },
-  { key: "ads", label: "Управление рекламой" },
-  { key: "factory", label: "Контент-завод" },
-  { key: "crm", label: "CRM" },
-  { key: "analytics", label: "Сквозная аналитика" },
-  { key: "metrics", label: "Таблица показателей" },
-  { key: "finance", label: "Финансы" },
-  { key: "reports", label: "Отчётность" },
-  { key: "settings", label: "Настройки" },
+/** Доступы гранулярны: один пункт меню = один модуль. group — для группировки в форме. */
+export const MODULES: { key: ModuleKey; label: string; group: string }[] = [
+  { key: "dashboard", label: "Дашборд", group: "Главное" },
+  { key: "ads", label: "Управление рекламой", group: "Маркетинг" },
+  { key: "factory", label: "Контент-завод", group: "Маркетинг" },
+  { key: "content_center", label: "Контент-центр", group: "Маркетинг" },
+  { key: "content_plan", label: "Контент-план", group: "Маркетинг" },
+  { key: "strategy", label: "Стратегия", group: "Маркетинг" },
+  { key: "crm", label: "CRM", group: "Продажи" },
+  { key: "sales_ai", label: "AI РОП", group: "Продажи" },
+  { key: "ai_agents", label: "AI агенты", group: "Продажи" },
+  { key: "broadcasts", label: "Рассылка", group: "Продажи" },
+  { key: "metrics", label: "Таблица показателей", group: "Аналитика" },
+  { key: "analytics", label: "Сквозная аналитика", group: "Аналитика" },
+  { key: "creative_funnel", label: "Воронка по креативам", group: "Аналитика" },
+  { key: "content_analytics", label: "Контент-аналитика", group: "Аналитика" },
+  { key: "finance", label: "Финансы", group: "Финансы и отчёты" },
+  { key: "reports", label: "Отчётность", group: "Финансы и отчёты" },
+  { key: "settings", label: "Настройки", group: "Система" },
 ];
 
 export type TeamMember = {
@@ -66,7 +88,7 @@ export function defaultModulesForRole(role: TeamRole): ModuleKey[] {
     case "manager":
       return ["dashboard", "crm", "reports"];
     case "marketer":
-      return ["dashboard", "ads", "factory", "analytics", "metrics", "reports"];
+      return ["dashboard", "ads", "factory", "content_center", "content_plan", "analytics", "metrics", "reports"];
     case "viewer":
       return ["dashboard", "reports"];
   }

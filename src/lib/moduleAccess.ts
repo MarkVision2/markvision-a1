@@ -13,12 +13,14 @@ const EXACT: Partial<Record<string, ModuleKey>> = {
   "/ads": "ads",
   "/crm": "crm",
   "/calls": "crm",
-  "/sales-ai": "crm",
-  "/ai-agents": "crm",
-  "/broadcasts": "crm",
+  "/sales-ai": "sales_ai",
+  "/ai-agents": "ai_agents",
+  "/broadcasts": "broadcasts",
   "/analytics": "analytics",
-  "/marketing/content-center": "factory",
-  "/marketing/content-plan": "factory",
+  "/analytics/creatives": "creative_funnel",
+  "/analytics/content": "content_analytics",
+  "/marketing/content-center": "content_center",
+  "/marketing/content-plan": "content_plan",
   "/finance": "finance",
   "/reports": "reports",
   "/settings": "settings",
@@ -26,10 +28,12 @@ const EXACT: Partial<Record<string, ModuleKey>> = {
 
 /** Префиксы для вложенных путей. Длинные — раньше коротких. */
 const PREFIX: [string, ModuleKey][] = [
-  ["/marketing/content-plan/", "factory"],
-  ["/marketing/content-center/", "factory"],
+  ["/marketing/content-plan/", "content_plan"],
+  ["/marketing/content-center/", "content_center"],
+  ["/analytics/creatives", "creative_funnel"],
+  ["/analytics/content", "content_analytics"],
   ["/analytics/", "analytics"],
-  ["/broadcasts/", "crm"],
+  ["/broadcasts/", "broadcasts"],
   ["/settings/", "settings"],
   ["/create/", "factory"],
 ];
@@ -38,6 +42,8 @@ const PREFIX: [string, ModuleKey][] = [
 export function moduleForPath(pathname: string): ModuleKey | null {
   const exact = EXACT[pathname];
   if (exact) return exact;
+  // Marketing OS: /projects/<id>/strategy
+  if (pathname.startsWith("/projects/") && pathname.endsWith("/strategy")) return "strategy";
   for (const [prefix, mod] of PREFIX) {
     if (pathname.startsWith(prefix)) return mod;
   }
@@ -48,9 +54,17 @@ export function moduleForPath(pathname: string): ModuleKey | null {
 const LANDING_ORDER: { module: ModuleKey; url: string }[] = [
   { module: "dashboard", url: "/dashboard" },
   { module: "crm", url: "/crm" },
+  { module: "sales_ai", url: "/sales-ai" },
+  { module: "ai_agents", url: "/ai-agents" },
+  { module: "broadcasts", url: "/broadcasts" },
   { module: "factory", url: "/" },
+  { module: "content_center", url: "/marketing/content-center" },
+  { module: "content_plan", url: "/marketing/content-plan" },
+  { module: "strategy", url: "/dashboard" },
   { module: "ads", url: "/ads" },
   { module: "analytics", url: "/analytics" },
+  { module: "creative_funnel", url: "/analytics/creatives" },
+  { module: "content_analytics", url: "/analytics/content" },
   { module: "metrics", url: "/metrics" },
   { module: "finance", url: "/finance" },
   { module: "reports", url: "/reports" },
