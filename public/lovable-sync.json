@@ -1,7 +1,7 @@
 {
-  "git_sha": "ef97c68",
-  "git_sha_full": "ef97c684b21b02babdffdfacab50cba9efee7c58",
-  "updated_at": "2026-08-17T23:46:17+04:00",
-  "label": "test: make content plan autopost mock deterministic [vercel-deploy]",
+  "git_sha": "cae0c02",
+  "git_sha_full": "cae0c02b941b727984980fb95cbc8972b350ad95",
+  "updated_at": "2026-08-17T23:47:53+04:00",
+  "label": "fix(team): make login the primary auth identity for created members",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
