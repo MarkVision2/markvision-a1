@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { cleanup, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
-import { ContentPlanComposerDialog } from "@/components/content-plan/ContentPlanComposerDialog";
+
+let ContentPlanComposerDialog: typeof import("@/components/content-plan/ContentPlanComposerDialog").ContentPlanComposerDialog;
 
 const { createAutopost, upsertPlan, generateCaption } = vi.hoisted(() => ({
   createAutopost: vi.fn(),
@@ -57,8 +58,10 @@ function makeFileList(files: File[]): FileList {
 }
 
 describe("ContentPlanComposerDialog unified publish", () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     cleanup();
+    vi.resetModules();
+    ({ ContentPlanComposerDialog } = await import("@/components/content-plan/ContentPlanComposerDialog"));
     createAutopost.mockReset();
     upsertPlan.mockReset();
     generateCaption.mockReset();
