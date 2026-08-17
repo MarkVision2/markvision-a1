@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { cleanup, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { ContentPlanComposerDialog } from "@/components/content-plan/ContentPlanComposerDialog";
 
+const { createAutopost, upsertPlan, generateCaption } = vi.hoisted(() => ({
+  createAutopost: vi.fn(),
+  upsertPlan: vi.fn(),
+  generateCaption: vi.fn(),
+}));
+
 vi.stubGlobal("URL", {
   createObjectURL: vi.fn((file: File) => `blob:${file.name}`),
   revokeObjectURL: vi.fn(),
@@ -15,9 +21,6 @@ vi.mock("@/hooks/useInstagramAccount", () => ({
   useInstagramAccount: () => ({ account: { username: "test" } }),
 }));
 
-const createAutopost = vi.fn();
-const upsertPlan = vi.fn();
-
 vi.mock("@/lib/autopostClient", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/autopostClient")>();
   return {
@@ -30,7 +33,6 @@ vi.mock("@/lib/contentPlanAutopostBridge", () => ({
   upsertContentPlanFromAutopost: (...args: unknown[]) => upsertPlan(...args),
 }));
 
-const generateCaption = vi.fn();
 vi.mock("@/lib/autopostAiCaption", () => ({
   generateAutopostCaption: (...args: unknown[]) => generateCaption(...args),
   captureFrameFromVideoFile: vi.fn(async () => ({
