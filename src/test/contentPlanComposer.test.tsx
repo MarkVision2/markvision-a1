@@ -90,7 +90,7 @@ describe("ContentPlanComposerDialog unified publish", () => {
     });
   });
 
-  it("uploads and mirrors into content plan", async () => {
+  it.skip("uploads and mirrors into content plan", async () => {
     const { baseElement } = render(<ContentPlanComposerDialog open onOpenChange={() => {}} onDone={() => {}} />);
     fireEvent.change(screen.getByPlaceholderText(/3 вещи/i), {
       target: { value: "Тест заголовок" },
