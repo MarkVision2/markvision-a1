@@ -1,7 +1,7 @@
 {
-  "git_sha": "ca1c2ef",
-  "git_sha_full": "ca1c2ef3fb005be34ef2956a09fe71f2fa5dbcd5",
-  "updated_at": "2026-08-17T22:44:15+04:00",
-  "label": "feat: clarify team access settings",
+  "git_sha": "5d344ee",
+  "git_sha_full": "5d344eeee9d82cff0061545858f1dc63269cc420",
+  "updated_at": "2026-08-17T22:52:08+04:00",
+  "label": "fix: use project meta token for cabinet sync",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
