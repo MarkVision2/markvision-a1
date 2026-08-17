@@ -38,8 +38,16 @@ Deno.serve(async (req) => {
 
     const body = await req.json()
     const { email, password, name, phone, login, role, modules, project_ids } = body
-    if (!email || !password || !name) {
-      return new Response(JSON.stringify({ error: 'Missing required fields' }), {
+
+    // Вход по логину: auth-email синтетический <login>@markvision.app, если реальный email не задан.
+    // (Форма входа сама дописывает @markvision.app для значений без «@».)
+    const cleanLogin = typeof login === 'string' ? login.trim().toLowerCase().replace(/\s+/g, '_') : ''
+    const authEmail = (typeof email === 'string' && email.includes('@'))
+      ? email.trim()
+      : (cleanLogin ? `${cleanLogin}@markvision.app` : '')
+
+    if (!authEmail || !password || !name) {
+      return new Response(JSON.stringify({ error: 'Нужны логин (или email), пароль и имя' }), {
         status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
@@ -47,7 +55,7 @@ Deno.serve(async (req) => {
     const admin = createClient(supabaseUrl, serviceKey)
 
     const { data: created, error: createErr } = await admin.auth.admin.createUser({
-      email,
+      email: authEmail,
       password,
       email_confirm: true,
       user_metadata: { name, phone },
@@ -63,7 +71,7 @@ Deno.serve(async (req) => {
     await admin.from('profiles').update({
       name,
       phone: phone ?? null,
-      login: login ?? null,
+      login: cleanLogin || null,
       display_role: role ?? null,
     }).eq('id', newId)
 

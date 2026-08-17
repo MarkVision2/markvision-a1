@@ -1,4 +1,5 @@
-import { Bell, Sparkles } from "lucide-react";
+import { Bell, Lock, Sparkles } from "lucide-react";
+import { Navigate, useLocation } from "react-router-dom";
 import {
   SidebarInset,
   SidebarProvider,
@@ -8,14 +9,36 @@ import AppSidebar from "./AppSidebar";
 import { MobileBottomNav } from "./MobileBottomNav";
 import { TaskReminderToast } from "@/components/crm/TaskReminderToast";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { useMyAccess } from "@/hooks/useMyAccess";
+import { firstAllowedRoute, moduleForPath } from "@/lib/moduleAccess";
 import { ContentFactoryGalleryProvider } from "@/contexts/ContentFactoryGalleryContext";
 
 interface AppLayoutProps {
   children: React.ReactNode;
 }
 
+const AccessDenied = () => (
+  <div className="grid flex-1 place-items-center p-8 text-center">
+    <div className="max-w-sm space-y-3">
+      <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-secondary text-muted-foreground">
+        <Lock className="h-5 w-5" />
+      </div>
+      <h1 className="text-lg font-semibold">Нет доступа к этому разделу</h1>
+      <p className="text-sm text-muted-foreground">
+        Обратитесь к администратору, чтобы получить права. Доступные разделы — в меню слева.
+      </p>
+    </div>
+  </div>
+);
+
 const AppLayout = ({ children }: AppLayoutProps) => {
   const { active } = useProjectsStore();
+  const { pathname } = useLocation();
+  const { has, loading: accessLoading } = useMyAccess();
+
+  const requiredModule = moduleForPath(pathname);
+  const denied = !accessLoading && requiredModule !== null && !has(requiredModule);
+  const redirectTo = denied ? firstAllowedRoute(has) : null;
 
   return (
     <ContentFactoryGalleryProvider>
@@ -49,7 +72,13 @@ const AppLayout = ({ children }: AppLayoutProps) => {
               <Bell className="h-4 w-4" />
             </button>
           </header>
-          <main className="mobile-main flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">{children}</main>
+          <main className="mobile-main flex min-h-0 min-w-0 flex-1 flex-col overflow-x-hidden">
+            {denied
+              ? redirectTo && redirectTo !== pathname
+                ? <Navigate to={redirectTo} replace />
+                : <AccessDenied />
+              : children}
+          </main>
           <MobileBottomNav />
         </SidebarInset>
       </div>

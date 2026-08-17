@@ -32,6 +32,7 @@ function genPassword() {
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const LOGIN_RE = /^[a-z0-9_]{3,}$/;
 
 export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
   const { addMember, updateMember } = useTeamStore();
@@ -74,15 +75,21 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
   const allChecked = modules.length === MODULES.length;
   const counter = useMemo(() => `${modules.length}/${MODULES.length} модулей`, [modules]);
 
+  const cleanLogin = login.trim().toLowerCase().replace(/\s+/g, "_");
+
   const handleSubmit = async () => {
     const trimmedName = name.trim();
     const trimmedEmail = email.trim();
     if (trimmedName.length < 2) {
-      toast({ title: "Укажите имя сотрудника", description: "Минимум 2 символа", variant: "destructive" });
+      toast({ title: "Укажите имя", description: "Минимум 2 символа", variant: "destructive" });
       return;
     }
-    if (!EMAIL_RE.test(trimmedEmail)) {
-      toast({ title: "Некорректный email", variant: "destructive" });
+    if (!editing && !LOGIN_RE.test(cleanLogin)) {
+      toast({ title: "Некорректный логин", description: "Минимум 3 символа: латиница, цифры, «_»", variant: "destructive" });
+      return;
+    }
+    if (trimmedEmail && !EMAIL_RE.test(trimmedEmail)) {
+      toast({ title: "Некорректный email", description: "Оставьте пустым — вход будет по логину", variant: "destructive" });
       return;
     }
     if (!password || password.length < 8) {
@@ -100,7 +107,7 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
     const payload = {
       name: trimmedName,
       email: trimmedEmail,
-      login: login.trim() || undefined,
+      login: cleanLogin || undefined,
       password,
       role,
       modules: modules as TeamMember["modules"],
@@ -143,12 +150,24 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
                 <Input id="m-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Иван Иванов" />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="m-email">Email</Label>
-                <Input id="m-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ivan@example.com" />
+                <Label htmlFor="m-login">Логин для входа</Label>
+                <Input
+                  id="m-login"
+                  value={login}
+                  onChange={(e) => setLogin(e.target.value.replace(/\s+/g, "_"))}
+                  placeholder="client_uali"
+                  disabled={!!editing}
+                  autoCapitalize="none"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  {editing
+                    ? "Логин менять нельзя — создайте нового участника при необходимости."
+                    : "Латиница, цифры, «_». По нему клиент входит — email не нужен."}
+                </p>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="m-login">Логин (без пробелов)</Label>
-                <Input id="m-login" value={login} onChange={(e) => setLogin(e.target.value.replace(/\s+/g, "_"))} placeholder="ivan_doc" />
+                <Label htmlFor="m-email">Email (необязательно)</Label>
+                <Input id="m-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="—" />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="m-pwd">Временный пароль</Label>

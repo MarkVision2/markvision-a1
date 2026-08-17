@@ -2,28 +2,36 @@ import { LayoutGrid, Target, Users, GitBranch, Menu } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useSidebar } from "@/components/ui/sidebar";
+import { useMyAccess } from "@/hooks/useMyAccess";
 import { prefetchRoute } from "@/lib/routePrefetch";
+import type { ModuleKey } from "@/hooks/useTeamStore";
 
-const ITEMS = [
-  { title: "Дашборд", url: "/dashboard", icon: LayoutGrid },
-  { title: "Реклама", url: "/ads", icon: Target },
-  { title: "CRM", url: "/crm", icon: Users },
-  { title: "Аналитика", url: "/analytics", icon: GitBranch },
-] as const;
+const ITEMS: { title: string; url: string; icon: typeof LayoutGrid; module: ModuleKey }[] = [
+  { title: "Дашборд", url: "/dashboard", icon: LayoutGrid, module: "dashboard" },
+  { title: "Реклама", url: "/ads", icon: Target, module: "ads" },
+  { title: "CRM", url: "/crm", icon: Users, module: "crm" },
+  { title: "Аналитика", url: "/analytics", icon: GitBranch, module: "analytics" },
+];
 
 export function MobileBottomNav() {
   const { pathname } = useLocation();
   const { setOpenMobile, isMobile } = useSidebar();
+  const { has } = useMyAccess();
 
   if (!isMobile) return null;
+
+  const items = ITEMS.filter((item) => has(item.module));
 
   return (
     <nav
       aria-label="Основная навигация"
       className="fixed inset-x-0 bottom-0 z-50 border-t border-border/60 bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden"
     >
-      <div className="mx-auto grid h-14 max-w-lg grid-cols-5">
-        {ITEMS.map((item) => {
+      <div
+        className="mx-auto grid h-14 max-w-lg"
+        style={{ gridTemplateColumns: `repeat(${items.length + 1}, minmax(0, 1fr))` }}
+      >
+        {items.map((item) => {
           const active =
             pathname === item.url ||
             (item.url === "/analytics" && pathname.startsWith("/analytics"));
