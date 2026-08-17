@@ -1,7 +1,7 @@
 {
-  "git_sha": "4cb9812",
-  "git_sha_full": "4cb981222b4575e21d296900819cbd90dfe2088a",
-  "updated_at": "2026-08-16T11:15:38Z",
-  "label": "Исправил доступ к разделам",
+  "git_sha": "c0f54e8",
+  "git_sha_full": "c0f54e8242bee24b4d0e13c92c6e8e8314ca48e2",
+  "updated_at": "2026-08-17T09:04:16Z",
+  "label": "Убрал ложные ошибки рендера",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
