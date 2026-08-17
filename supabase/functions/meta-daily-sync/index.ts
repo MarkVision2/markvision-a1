@@ -213,6 +213,20 @@ Deno.serve(async (req) => {
     const bodyToken = typeof body.access_token === "string" ? body.access_token : null;
     const fallbackToken = await resolveMetaAccessToken({ bodyToken, admin });
 
+    // Токен ПРОЕКТА из meta_tokens — общий на все кабинеты проекта. Именно его
+    // не хватало: раньше синк брал только токен кабинета + глобальный запасной,
+    // из-за чего кабинет без своего токена не синкался, хотя на проекте токен есть.
+    // Кэшируем по project_id, чтобы не дёргать БД на каждый кабинет.
+    const projectTokenCache = new Map<string, string | null>();
+    async function projectToken(projectId: string | null | undefined): Promise<string | null> {
+      const key = projectId ?? "";
+      if (!key) return null;
+      if (projectTokenCache.has(key)) return projectTokenCache.get(key) ?? null;
+      const t = await resolveMetaAccessToken({ projectId: key, admin });
+      projectTokenCache.set(key, t);
+      return t;
+    }
+
     // Read params: date | since/until | cabinet_id (from query OR JSON body).
     // `body` уже распарсен выше (строка 151), здесь только новые поля.
     const url = new URL(req.url);
@@ -280,13 +294,14 @@ Deno.serve(async (req) => {
       }
       const actId = normalizeActId(ext);
 
-      // Токены: сначала OAuth-токен кабинета, затем общий запасной — перебор,
-      // как в meta-creative-refresh. Плохой токен кабинета не ломает синк:
-      // берём первый, который реально отвечает.
+      // Токены: OAuth-токен кабинета → токен ПРОЕКТА (meta_tokens) → глобальный запасной.
+      // Перебор: первый реально отвечающий выигрывает. Токен кабинета необязателен —
+      // одного подключения Facebook на проект достаточно для всех его кабинетов.
       const cabTok = String((cab as { access_token?: string | null }).access_token || "").trim();
-      const tokens = [...new Set([cabTok, fallbackToken].filter((t): t is string => !!t))];
+      const projTok = await projectToken((cab as { project_id?: string | null }).project_id);
+      const tokens = [...new Set([cabTok, projTok, fallbackToken].filter((t): t is string => !!t))];
       if (tokens.length === 0) {
-        results.push({ cabinet_id: cab.id, cabinet: cabName, ok: false, error: "нет Meta-токена — подключите кабинет через Facebook" });
+        results.push({ cabinet_id: cab.id, cabinet: cabName, ok: false, error: "нет Meta-токена — подключите Facebook в проекте" });
         continue;
       }
 

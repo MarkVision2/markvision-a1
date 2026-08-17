@@ -147,15 +147,18 @@ Deno.serve(async (req) => {
 
   const cabinetId = (row as { cabinet_id?: string | null }).cabinet_id ?? null;
 
-  // Токен кабинета (OAuth) в приоритете; общий запасной — вторым.
+  // Токен кабинета (OAuth) → токен ПРОЕКТА (meta_tokens) → общий запасной.
   let cabinetToken: string | null = null;
+  let projectId: string | null = null;
   if (cabinetId) {
-    const { data: cab } = await admin.from("ad_cabinets").select("access_token").eq("id", cabinetId).maybeSingle();
+    const { data: cab } = await admin.from("ad_cabinets").select("access_token, project_id").eq("id", cabinetId).maybeSingle();
     const ct = (cab as { access_token?: string | null } | null)?.access_token;
     if (ct && ct.trim()) cabinetToken = ct.trim();
+    projectId = (cab as { project_id?: string | null } | null)?.project_id ?? null;
   }
+  const projectTokenValue = projectId ? await resolveMetaAccessToken({ projectId, admin }) : null;
   const fallbackToken = await resolveMetaAccessToken({ admin });
-  const tokens = [...new Set([cabinetToken, fallbackToken].filter((t): t is string => !!t))];
+  const tokens = [...new Set([cabinetToken, projectTokenValue, fallbackToken].filter((t): t is string => !!t))];
   if (tokens.length === 0) return json({ ok: false, error: "META_ACCESS_TOKEN missing" }, 500);
 
   const existingPoster = ((row as { poster_url?: string | null }).poster_url ?? "").trim();

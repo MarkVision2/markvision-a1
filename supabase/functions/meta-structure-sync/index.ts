@@ -326,6 +326,18 @@ Deno.serve(async (req) => {
   const bodyToken = typeof body.access_token === "string" ? body.access_token : null;
   const fallbackToken = await resolveMetaAccessToken({ bodyToken, admin });
 
+  // Токен ПРОЕКТА из meta_tokens — общий на все кабинеты проекта (кэш по project_id).
+  // Одного подключения Facebook на проект достаточно для всех его кабинетов.
+  const projectTokenCache = new Map<string, string | null>();
+  async function projectToken(projectId: string | null | undefined): Promise<string | null> {
+    const key = projectId ?? "";
+    if (!key) return null;
+    if (projectTokenCache.has(key)) return projectTokenCache.get(key) ?? null;
+    const t = await resolveMetaAccessToken({ projectId: key, admin });
+    projectTokenCache.set(key, t);
+    return t;
+  }
+
   // ---- params ----
   const qpSince = url.searchParams.get("since") ?? (body.since as string | undefined) ?? null;
   const qpUntil = url.searchParams.get("until") ?? (body.until as string | undefined) ?? null;
@@ -376,12 +388,13 @@ Deno.serve(async (req) => {
     const cabinetId = (cab as { id: string }).id;
     const projectId = ((cab as { project_id?: string }).project_id ?? null) as string | null;
 
-    // Токены: кабинетный (OAuth) → общий запасной. Дешёвым пробингом (currency)
-    // выбираем один рабочий токен на кабинет — плохой токен кабинета не ломает синк.
+    // Токены: кабинетный (OAuth) → токен ПРОЕКТА (meta_tokens) → общий запасной.
+    // Дешёвым пробингом (currency) выбираем один рабочий токен на кабинет.
     const cabTok = String((cab as { access_token?: string | null }).access_token || "").trim();
-    const candidateTokens = [...new Set([cabTok, fallbackToken].filter((t): t is string => !!t))];
+    const projTok = await projectToken(projectId);
+    const candidateTokens = [...new Set([cabTok, projTok, fallbackToken].filter((t): t is string => !!t))];
     if (candidateTokens.length === 0) {
-      results.push({ cabinet_id: cabinetId, cabinet: cabName, ok: false, error: "нет Meta-токена — подключите кабинет через Facebook" });
+      results.push({ cabinet_id: cabinetId, cabinet: cabName, ok: false, error: "нет Meta-токена — подключите Facebook в проекте" });
       continue;
     }
 
