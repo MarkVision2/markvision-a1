@@ -1,7 +1,7 @@
 {
-  "git_sha": "a0517fb",
-  "git_sha_full": "a0517fbab4df1fc2a0bbc5744d2a5ef52ef47248",
-  "updated_at": "2026-08-17T23:56:13+04:00",
-  "label": "chore: trigger main domain deploy after spa fix [vercel-deploy]",
+  "git_sha": "116506a",
+  "git_sha_full": "116506aafa6057941ce6104ed828905345b60699",
+  "updated_at": "2026-08-17T23:59:43+04:00",
+  "label": "feat(access): granular per-page module permissions",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
