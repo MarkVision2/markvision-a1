@@ -361,7 +361,11 @@ const Crm = () => {
                       onDropLead={handleDropLead}
                       onOpenLead={handleOpenLead}
                       onTogglePin={togglePin}
-                      capiEvent={capiStageMap.get(String(stage.stageRole ?? stage.id).toLowerCase()) ?? null}
+                      capiEvent={
+                        capiStageMap.get(String(stage.id).toLowerCase())
+                        ?? capiStageMap.get(String(stage.stageRole ?? "").toLowerCase())
+                        ?? null
+                      }
                     />
                   </div>
                 ))}

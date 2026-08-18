@@ -95,9 +95,10 @@ export function ProjectSwitcher({ collapsed }: Props) {
   const [open, setOpen] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
 
-  // Статус CAPI: сбой (красный) > работает (зелёный) > не подключён (без точки).
-  const capiDot = capi.failed > 0
-    ? { cls: "bg-destructive", ping: true, title: `CAPI: ${capi.failed} событий не ушло в Meta — проверьте токен` }
+  // Статус CAPI: сбой/нет настроек (красный) > работает (зелёный) > не подключён (без точки).
+  const capiIssues = capi.failed + capi.skipped;
+  const capiDot = capiIssues > 0
+    ? { cls: "bg-destructive", ping: true, title: `CAPI: ${capiIssues} событий не ушло в Meta — проверьте Pixel ID и токен` }
     : capi.configured
       ? { cls: "bg-success", ping: true, title: "CAPI подключён и активен" }
       : null;

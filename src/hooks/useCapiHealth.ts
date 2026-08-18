@@ -9,11 +9,20 @@ export type CapiHealth = {
   sent: number;
   pending: number;
   failed: number;
+  skipped: number;
   /** Текст последней ошибки Meta — для подсказки «протух токен» и т.п. */
   lastError: string | null;
 };
 
-const EMPTY: CapiHealth = { loading: false, configured: false, sent: 0, pending: 0, failed: 0, lastError: null };
+const EMPTY: CapiHealth = {
+  loading: false,
+  configured: false,
+  sent: 0,
+  pending: 0,
+  failed: 0,
+  skipped: 0,
+  lastError: null,
+};
 
 /**
  * Здоровье CAPI по проекту: подключён ли пиксель и что с последними событиями.
@@ -36,14 +45,15 @@ export function useCapiHealth(projectId?: string | null): CapiHealth {
       .order("created_at", { ascending: false })
       .limit(200);
 
-    let sent = 0, pending = 0, failed = 0;
+    let sent = 0, pending = 0, failed = 0, skipped = 0;
     let lastError: string | null = null;
     for (const r of (rows ?? []) as Array<{ status: string; last_error: string | null }>) {
       if (r.status === "sent") sent++;
       else if (r.status === "pending") pending++;
       else if (r.status === "failed") { failed++; if (!lastError) lastError = r.last_error; }
+      else if (r.status === "skipped") { skipped++; if (!lastError) lastError = r.last_error; }
     }
-    setHealth({ loading: false, configured, sent, pending, failed, lastError });
+    setHealth({ loading: false, configured, sent, pending, failed, skipped, lastError });
   }, [projectId]);
 
   useEffect(() => { void load(); }, [load]);
