@@ -1,7 +1,7 @@
 {
-  "git_sha": "9cb3aa9",
-  "git_sha_full": "9cb3aa9703b6bb0ae5421bcfab32def1c1a43b5e",
-  "updated_at": "2026-08-18T16:45:57+04:00",
-  "label": "feat(crm): add stage message automations [vercel-deploy]",
+  "git_sha": "96471f5",
+  "git_sha_full": "96471f55b40c40cafedd709a02d42f024739910a",
+  "updated_at": "2026-08-18T16:50:53+04:00",
+  "label": "feat(crm): add manager creation in CRM [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
