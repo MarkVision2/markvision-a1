@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import { Calendar, Megaphone, CreditCard, Wallet, ArrowRight, Layers, type LucideIcon } from "lucide-react";
+import { Calendar, Megaphone, CreditCard, Wallet, ArrowRight, Layers, X, type LucideIcon } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { Lead, LeadStage, PaymentMethod } from "@/types/crm";
+import { VisitSlotPopover } from "./VisitSlotPopover";
 
 const SOURCE_PRESETS: { id: string; label: string }[] = [
   { id: "meta", label: "Meta" },
@@ -38,6 +39,8 @@ interface Props {
   stages?: LeadStage[];
   onUpdate: (patch: Partial<Lead>) => void;
   onChangeStage?: (stageId: string) => void;
+  onScheduleVisit?: (iso: string) => void;
+  busySlots?: { iso: string; leadName?: string }[];
 }
 
 function FieldLabel({ icon: Icon, children }: { icon: LucideIcon; children: ReactNode }) {
@@ -49,7 +52,19 @@ function FieldLabel({ icon: Icon, children }: { icon: LucideIcon; children: Reac
   );
 }
 
-export function LeadDealTab({ lead, stages, onUpdate, onChangeStage }: Props) {
+function formatVisitLabel(iso?: string) {
+  if (!iso) return "Выбрать дату и время";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "Выбрать дату и время";
+  return d.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "long",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function LeadDealTab({ lead, stages, onUpdate, onChangeStage, onScheduleVisit, busySlots }: Props) {
   const sourceKey = (lead.source ?? "").toLowerCase();
   const activePreset = PRESET_IDS.has(sourceKey) ? sourceKey : null;
 
@@ -143,15 +158,48 @@ export function LeadDealTab({ lead, stages, onUpdate, onChangeStage }: Props) {
       {/* Визит */}
       <div className="border-b border-border/40 px-3.5 py-3.5">
         <FieldLabel icon={Calendar}>Планируемый визит</FieldLabel>
-        <Input
-          type="datetime-local"
-          value={toLocalInputValue(lead.nextVisitAt)}
-          onChange={(e) => onUpdate({ nextVisitAt: e.target.value ? new Date(e.target.value).toISOString() : undefined })}
-          className="h-10 rounded-xl border-border/50 bg-background/40"
-        />
+        <div className="flex items-center gap-2">
+          <VisitSlotPopover
+            current={lead.nextVisitAt}
+            busy={busySlots}
+            onConfirm={(iso) => {
+              if (onScheduleVisit) {
+                onScheduleVisit(iso);
+              } else {
+                onUpdate({ nextVisitAt: iso });
+              }
+            }}
+            trigger={
+              <Button
+                type="button"
+                variant="outline"
+                className={cn(
+                  "h-11 min-w-0 flex-1 justify-start rounded-xl border-border/50 bg-background/40 px-3 text-left font-medium",
+                  !lead.nextVisitAt && "text-muted-foreground",
+                )}
+              >
+                <Calendar className="h-4 w-4 shrink-0 text-primary/80" />
+                <span className="min-w-0 truncate">{formatVisitLabel(lead.nextVisitAt)}</span>
+              </Button>
+            }
+          />
+          {lead.nextVisitAt && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="h-11 w-11 shrink-0 rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+              title="Убрать визит"
+              aria-label="Убрать планируемый визит"
+              onClick={() => onUpdate({ nextVisitAt: undefined })}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+        </div>
         {lead.nextVisitAt && (
           <div className="mt-1.5 text-[11px] text-muted-foreground">
-            {new Date(lead.nextVisitAt).toLocaleString("ru-RU")}
+            Записан на {new Date(lead.nextVisitAt).toLocaleString("ru-RU")}
           </div>
         )}
       </div>

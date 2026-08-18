@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { Button } from "@/components/ui/button";
@@ -41,6 +41,13 @@ export function VisitSlotPopover({ current, busy = [], onConfirm, trigger }: Pro
   const initial = current ? new Date(current) : new Date(Date.now() + 24 * 60 * 60 * 1000);
   const [date, setDate] = useState<Date>(startOfDay(initial));
   const [picked, setPicked] = useState<string | null>(current ?? null);
+
+  useEffect(() => {
+    if (!open) return;
+    const next = current ? new Date(current) : new Date(Date.now() + 24 * 60 * 60 * 1000);
+    setDate(startOfDay(next));
+    setPicked(current ?? null);
+  }, [current, open]);
 
   const busyMap = useMemo(() => {
     const m = new Map<string, string | undefined>();

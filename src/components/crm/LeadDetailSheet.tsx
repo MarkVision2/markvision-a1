@@ -231,7 +231,14 @@ export function LeadDetailSheet({
                   )}
                 >
                   <TabsContent value="deal" className="m-0 data-[state=inactive]:hidden">
-                    <LeadDealTab lead={lead} stages={stages} onUpdate={(p) => onUpdate(lead.id, p)} onChangeStage={handleChangeStage} />
+                    <LeadDealTab
+                      lead={lead}
+                      stages={stages}
+                      onUpdate={(p) => onUpdate(lead.id, p)}
+                      onChangeStage={handleChangeStage}
+                      onScheduleVisit={(iso) => onSetVisit(lead.id, iso)}
+                      busySlots={busySlots}
+                    />
                   </TabsContent>
                   <TabsContent value="tasks" className="m-0 data-[state=inactive]:hidden">
                     <LeadTasksTab
