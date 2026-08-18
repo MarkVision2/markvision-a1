@@ -1,7 +1,7 @@
 {
-  "git_sha": "627db7f",
-  "git_sha_full": "627db7f4e6060dcc59f163313f616c7ed5df2706",
-  "updated_at": "2026-08-18T16:36:06+04:00",
-  "label": "fix(crm): strengthen ad attribution in lead card [vercel-deploy]",
+  "git_sha": "9cb3aa9",
+  "git_sha_full": "9cb3aa9703b6bb0ae5421bcfab32def1c1a43b5e",
+  "updated_at": "2026-08-18T16:45:57+04:00",
+  "label": "feat(crm): add stage message automations [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
