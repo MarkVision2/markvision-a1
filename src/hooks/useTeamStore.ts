@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 
 export type TeamRole = "admin" | "director" | "manager" | "marketer" | "viewer";
@@ -131,6 +132,7 @@ async function describeFunctionError(error: unknown): Promise<string> {
 }
 
 export function useTeamStore() {
+  const { activeId: activeProjectId } = useProjectsStore();
   const [members, setMembers] = useState<TeamMember[]>([]);
 
   const refetch = useCallback(async () => {
@@ -162,21 +164,28 @@ export function useTeamStore() {
       projectsByUser.set(pm.user_id, arr);
     });
 
-    const list: TeamMember[] = (profiles ?? []).map((p: any) => {
+    const list: TeamMember[] = (profiles ?? []).reduce<TeamMember[]>((acc, p: any) => {
+      const userProjects = projectsByUser.get(p.id) ?? [];
       const role = asTeamRole(p.display_role) ?? roleByUser.get(p.id) ?? "manager";
-      return {
+      const isProjectMember = !!activeProjectId && userProjects.includes(activeProjectId);
+      const isProjectWideAdmin = role === "admin";
+
+      if (!isProjectMember && !isProjectWideAdmin) return acc;
+
+      acc.push({
         id: p.id,
         name: p.name ?? "",
         email: "",
         login: p.login ?? undefined,
         role,
         modules: modsByUser.get(p.id) ?? defaultModulesForRole(role),
-        projects: projectsByUser.get(p.id) ?? [],
+        projects: userProjects,
         createdAt: p.created_at,
-      };
-    });
+      });
+      return acc;
+    }, []);
     setMembers(list);
-  }, []);
+  }, [activeProjectId]);
 
   useEffect(() => { void refetch(); }, [refetch]);
   useRealtimeTable("profiles", refetch);

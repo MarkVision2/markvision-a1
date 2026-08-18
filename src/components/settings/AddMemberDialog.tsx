@@ -37,7 +37,7 @@ const LOGIN_RE = /^[a-z0-9_]{3,}$/;
 
 export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
   const { addMember, updateMember, resetPassword } = useTeamStore();
-  const { projects } = useProjectsStore();
+  const { activeId, projects } = useProjectsStore();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [login, setLogin] = useState("");
@@ -60,12 +60,12 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
         setName(""); setEmail(""); setLogin("");
         setPassword(genPassword()); setRole("manager");
         setModules(defaultModulesForRole("manager"));
-        setProjectIds([]);
+        setProjectIds(activeId ? [activeId] : []);
       }
       setPasswordReset(false);
       setShowPwd(false);
     }
-  }, [open, editing]);
+  }, [open, editing, activeId]);
 
 
   const handleRoleChange = (r: TeamRole) => {
