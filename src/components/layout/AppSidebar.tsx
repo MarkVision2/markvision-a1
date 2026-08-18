@@ -13,6 +13,7 @@ import {
   Filter,
   Hash,
   Bot,
+  Crosshair,
   Send,
   Instagram,
   ClipboardList,
@@ -64,6 +65,7 @@ const sales: NavItem[] = [
   { title: "AI РОП", url: "/sales-ai", icon: PhoneCall, module: "sales_ai" },
   { title: "AI агенты", url: "/ai-agents", icon: Bot, module: "ai_agents" },
   { title: "Рассылка", url: "/broadcasts", icon: Send, module: "broadcasts" },
+  { title: "Лидген", url: "/leadgen", icon: Crosshair, module: "leadgen" },
 ];
 
 // Аналитика — «Таблица показателей» (источник правды) первой, дальше от общего

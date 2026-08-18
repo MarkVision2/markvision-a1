@@ -34,6 +34,7 @@ export type ModuleKey =
   | "sales_ai"
   | "ai_agents"
   | "broadcasts"
+  | "leadgen"
   // Аналитика
   | "metrics"
   | "analytics"
@@ -57,6 +58,7 @@ export const MODULES: { key: ModuleKey; label: string; group: string }[] = [
   { key: "sales_ai", label: "AI РОП", group: "Продажи" },
   { key: "ai_agents", label: "AI агенты", group: "Продажи" },
   { key: "broadcasts", label: "Рассылка", group: "Продажи" },
+  { key: "leadgen", label: "Лидген", group: "Продажи" },
   { key: "metrics", label: "Таблица показателей", group: "Аналитика" },
   { key: "analytics", label: "Сквозная аналитика", group: "Аналитика" },
   { key: "creative_funnel", label: "Воронка по креативам", group: "Аналитика" },

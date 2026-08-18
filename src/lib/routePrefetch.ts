@@ -20,6 +20,7 @@ export const routeImports = {
   SalesAI: () => import("@/pages/SalesAI"),
   AiAgents: () => import("@/pages/AiAgents"),
   Broadcasts: () => import("@/pages/Broadcasts"),
+  Leadgen: () => import("@/pages/Leadgen"),
   BroadcastDetail: () => import("@/pages/BroadcastDetail"),
   Analytics: () => import("@/pages/Analytics"),
   CreativeFunnel: () => import("@/pages/CreativeFunnel"),
@@ -67,6 +68,7 @@ export function prefetchRoute(path: string) {
       break;
     case "/broadcasts":
       loaders.push(routeImports.Broadcasts);
+      loaders.push(routeImports.Leadgen);
       loaders.push(routeImports.BroadcastDetail);
       break;
     case "/calls":
