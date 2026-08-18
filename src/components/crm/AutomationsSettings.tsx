@@ -115,8 +115,13 @@ export function AutomationsSettings({ stages = [], projectId, whatsappConnected 
     try {
       const { data, error } = await supabase.functions.invoke("crm-automations", { body: {} });
       if (error) throw error;
-      const j = data as { followup_2h?: number; auto_msg_24h?: number; revival_7d?: number };
-      toast.success(`Запущено: 2ч=${j.followup_2h ?? 0}, 24ч=${j.auto_msg_24h ?? 0}, 7д=${j.revival_7d ?? 0}`);
+      const j = data as { followup_2h?: number; auto_msg_24h?: number; revival_7d?: number; errors?: string[] };
+      const summary = `Запущено: 2ч=${j.followup_2h ?? 0}, 24ч=${j.auto_msg_24h ?? 0}, 7д=${j.revival_7d ?? 0}`;
+      if (j.errors?.length) {
+        toast.warning(`${summary}. Ошибок доставки: ${j.errors.length}`);
+      } else {
+        toast.success(summary);
+      }
       await load();
     } catch (e: any) {
       toast.error(e.message);

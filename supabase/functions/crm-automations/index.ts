@@ -1,4 +1,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import {
+  DEFAULT_GREEN_API_BASE_URL,
+  validateGreenApiBaseUrl,
+} from '../_lib/green_api_url.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,6 +15,26 @@ const TEMPLATES: Record<string, string> = {
   followup_2h_msg: '{name}, ещё раз здравствуйте! Уточните, пожалуйста, удобно ли созвониться по {service}?',
 };
 
+const ENV_ID = Deno.env.get('GREENAPI_ID_INSTANCE') ?? '';
+const ENV_TOKEN = Deno.env.get('GREENAPI_API_TOKEN') ?? '';
+const ENV_URL = Deno.env.get('GREENAPI_API_URL') ?? DEFAULT_GREEN_API_BASE_URL;
+
+type GreenCreds = {
+  idInstance: string;
+  apiToken: string;
+  baseUrl: string;
+};
+
+type AutomationLead = {
+  id: string;
+  name: string;
+  service: string | null;
+  phone?: string | null;
+  project_id?: string | null;
+  assigned_to?: string | null;
+  channel?: string | null;
+};
+
 function render(tpl: string, vars: Record<string, string | undefined>): string {
   return tpl.replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? '').toString() || '—');
 }
@@ -18,6 +42,133 @@ function render(tpl: string, vars: Record<string, string | undefined>): string {
 function bucketFloor(d: Date, hours: number): string {
   const ms = hours * 3600 * 1000;
   return new Date(Math.floor(d.getTime() / ms) * ms).toISOString();
+}
+
+function digits(s: string | null | undefined): string {
+  return String(s ?? '').replace(/\D/g, '');
+}
+
+async function resolveGreenCreds(supabase: ReturnType<typeof createClient>, projectId: string | null | undefined): Promise<GreenCreds | null> {
+  if (projectId) {
+    const { data: row } = await supabase
+      .from('whatsapp_config')
+      .select('id_instance, api_token, api_url')
+      .eq('project_id', projectId)
+      .maybeSingle();
+    if (row?.id_instance) {
+      const apiToken = String(row.api_token ?? '').trim() || (row.id_instance === ENV_ID ? ENV_TOKEN : '');
+      if (apiToken) {
+        return {
+          idInstance: String(row.id_instance),
+          apiToken,
+          baseUrl: validateGreenApiBaseUrl(String(row.api_url ?? '') || ENV_URL),
+        };
+      }
+    }
+  }
+  if (ENV_ID && ENV_TOKEN) {
+    return {
+      idInstance: ENV_ID,
+      apiToken: ENV_TOKEN,
+      baseUrl: validateGreenApiBaseUrl(ENV_URL),
+    };
+  }
+  return null;
+}
+
+async function callGreen(creds: GreenCreds, path: string, body: Record<string, unknown>) {
+  const url = `${creds.baseUrl}/waInstance${creds.idInstance}/${path}/${creds.apiToken}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const text = await res.text();
+  let data: unknown = text;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    // keep raw text
+  }
+  return { ok: res.ok, status: res.status, data };
+}
+
+async function sendViaWaWeb(supabase: ReturnType<typeof createClient>, lead: AutomationLead, content: string): Promise<boolean> {
+  if (!lead.project_id) return false;
+  const phone = digits(lead.phone);
+  if (phone.length < 8) return false;
+  const { data: session } = await supabase
+    .from('whatsapp_web_sessions')
+    .select('status')
+    .eq('project_id', lead.project_id)
+    .maybeSingle();
+  if (session?.status !== 'connected') return false;
+  const { error } = await supabase
+    .from('whatsapp_web_commands')
+    .insert({
+      project_id: lead.project_id,
+      action: 'send',
+      payload: { phone, message: content, lead_id: lead.id },
+      status: 'pending',
+    });
+  return !error;
+}
+
+async function sendViaGreenApi(
+  supabase: ReturnType<typeof createClient>,
+  lead: AutomationLead,
+  content: string,
+): Promise<{ ok: boolean; externalId: string | null; error?: string }> {
+  const phone = digits(lead.phone);
+  if (phone.length < 8 || phone.length > 15) return { ok: false, externalId: null, error: 'invalid_phone' };
+  const creds = await resolveGreenCreds(supabase, lead.project_id);
+  if (!creds) return { ok: false, externalId: null, error: 'greenapi_not_configured' };
+
+  let chatId = `${phone}@c.us`;
+  try {
+    const checked = await callGreen(creds, 'checkWhatsapp', { phoneNumber: Number(phone) });
+    const data = checked.data as { existsWhatsapp?: boolean; chatId?: string } | null;
+    if (data?.existsWhatsapp === false) return { ok: false, externalId: null, error: 'no_whatsapp' };
+    if (data?.chatId && String(data.chatId).includes('@')) chatId = String(data.chatId);
+  } catch {
+    // fallback @c.us
+  }
+
+  const sent = await callGreen(creds, 'sendMessage', { chatId, message: content });
+  const idMessage = (sent.data as { idMessage?: string } | null)?.idMessage ?? null;
+  return {
+    ok: sent.ok && !!idMessage,
+    externalId: idMessage,
+    error: sent.ok ? undefined : `greenapi_${sent.status}`,
+  };
+}
+
+async function sendAutomationMessage(
+  supabase: ReturnType<typeof createClient>,
+  lead: AutomationLead,
+  content: string,
+  templateKey: string,
+): Promise<{ ok: boolean; via: 'wa_web' | 'greenapi' | 'none'; error?: string }> {
+  if (await sendViaWaWeb(supabase, lead, content)) {
+    return { ok: true, via: 'wa_web' };
+  }
+
+  const green = await sendViaGreenApi(supabase, lead, content);
+  await supabase.from('communications').insert({
+    lead_id: lead.id,
+    type: 'message',
+    channel: lead.channel ?? 'whatsapp',
+    direction: 'out',
+    content,
+    is_auto: true,
+    is_draft: false,
+    template_key: templateKey,
+    status: green.ok ? 'sent' : 'failed',
+    external_id: green.externalId,
+  });
+  return green.ok
+    ? { ok: true, via: 'greenapi' }
+    : { ok: false, via: 'none', error: green.error ?? 'send_failed' };
 }
 
 Deno.serve(async (req) => {
@@ -107,7 +258,7 @@ Deno.serve(async (req) => {
 
     const { data: leads } = await supabase
       .from('leads')
-      .select('id, name, service, phone, assigned_to, last_outbound_at, last_inbound_at, channel, pipeline_stages!inner(key)')
+      .select('id, name, service, phone, project_id, assigned_to, last_outbound_at, last_inbound_at, channel, pipeline_stages!inner(key)')
       .lte('last_outbound_at', threshold)
       .or(`last_inbound_at.is.null,last_inbound_at.lt.last_outbound_at`)
       .not('pipeline_stages.key', 'in', '(paid,rejected)')
@@ -120,22 +271,13 @@ Deno.serve(async (req) => {
       if (insErr) continue;
 
       const content = render(tplText, { name: l.name, service: l.service ?? 'услуге' });
-      await supabase.from('communications').insert({
-        lead_id: l.id,
-        type: 'message',
-        channel: l.channel ?? 'whatsapp',
-        direction: 'out',
-        content,
-        is_auto: true,
-        is_draft: false,
-        template_key: settings.auto_msg_24h_template_key,
-        status: 'sent',
-      });
+      const sent = await sendAutomationMessage(supabase, l as AutomationLead, content, settings.auto_msg_24h_template_key);
+      if (!sent.ok) stats.errors.push(`auto_msg_24h:${l.id}:${sent.error ?? 'send_failed'}`);
       await supabase.from('events').insert({
         lead_id: l.id, event_type: 'automation_24h_sent',
-        payload: { template: settings.auto_msg_24h_template_key, preview: content.slice(0, 120) },
+        payload: { template: settings.auto_msg_24h_template_key, preview: content.slice(0, 120), delivery: sent },
       });
-      stats.auto_msg_24h++;
+      if (sent.ok) stats.auto_msg_24h++;
     }
   }
 
@@ -147,7 +289,7 @@ Deno.serve(async (req) => {
 
     const { data: leads } = await supabase
       .from('leads')
-      .select('id, name, service, phone, channel, assigned_to, rejected_at, reject_reason, pipeline_stages!inner(key)')
+      .select('id, name, service, phone, project_id, channel, assigned_to, rejected_at, reject_reason, pipeline_stages!inner(key)')
       .eq('pipeline_stages.key', 'rejected')
       .lte('rejected_at', threshold)
       .not('reject_reason', 'in', '(competitor,not_target)')
@@ -169,22 +311,13 @@ Deno.serve(async (req) => {
       });
 
       const content = render(tplText, { name: l.name, service: l.service ?? 'услуге' });
-      await supabase.from('communications').insert({
-        lead_id: l.id,
-        type: 'message',
-        channel: l.channel ?? 'whatsapp',
-        direction: 'out',
-        content,
-        is_auto: true,
-        is_draft: false,
-        template_key: settings.revival_7d_template_key,
-        status: 'sent',
-      });
+      const sent = await sendAutomationMessage(supabase, l as AutomationLead, content, settings.revival_7d_template_key);
+      if (!sent.ok) stats.errors.push(`revival_7d:${l.id}:${sent.error ?? 'send_failed'}`);
       await supabase.from('events').insert({
         lead_id: l.id, event_type: 'automation_revival_7d',
-        payload: { template: settings.revival_7d_template_key, preview: content.slice(0, 120) },
+        payload: { template: settings.revival_7d_template_key, preview: content.slice(0, 120), delivery: sent },
       });
-      stats.revival_7d++;
+      if (sent.ok) stats.revival_7d++;
     }
   }
 
