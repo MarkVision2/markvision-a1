@@ -253,5 +253,13 @@ export function useTeamStore() {
     await refetch();
   }, [refetch]);
 
-  return { members, addMember, updateMember, removeMember };
+  // Реально меняет пароль auth-пользователя (пароль нельзя достать — только задать новый).
+  const resetPassword = useCallback(async (id: string, password: string) => {
+    const { error } = await supabase.functions.invoke("admin-reset-password", {
+      body: { user_id: id, password },
+    });
+    if (error) throw new Error(await describeFunctionError(error));
+  }, []);
+
+  return { members, addMember, updateMember, removeMember, resetPassword };
 }

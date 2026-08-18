@@ -48,18 +48,20 @@ export function useMetricLabels() {
       if (!activeId) throw new Error("Не выбран проект");
       const label = rawLabel.trim();
       if (!label || label === DEFAULT_METRIC_LABEL[key]) {
-        await supabase
+        const { error } = await supabase
           .from("project_metric_labels")
           .delete()
           .eq("project_id", activeId)
           .eq("column_key", key);
+        if (error) throw new Error(error.message || "Не удалось сбросить название");
       } else {
-        await supabase
+        const { error } = await supabase
           .from("project_metric_labels")
           .upsert(
             { project_id: activeId, column_key: key, label },
             { onConflict: "project_id,column_key" },
           );
+        if (error) throw new Error(error.message || "Не удалось сохранить название");
       }
       await refetch();
     },

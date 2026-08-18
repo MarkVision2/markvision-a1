@@ -36,13 +36,15 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const LOGIN_RE = /^[a-z0-9_]{3,}$/;
 
 export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
-  const { addMember, updateMember } = useTeamStore();
+  const { addMember, updateMember, resetPassword } = useTeamStore();
   const { projects } = useProjectsStore();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [login, setLogin] = useState("");
   const [password, setPassword] = useState(() => genPassword());
   const [showPwd, setShowPwd] = useState(false);
+  // При редактировании пароль скрыт: его нельзя достать, только задать новый через сброс.
+  const [passwordReset, setPasswordReset] = useState(false);
   const [role, setRole] = useState<TeamRole>("manager");
   const [modules, setModules] = useState<string[]>(defaultModulesForRole("manager"));
   const [projectIds, setProjectIds] = useState<string[]>([]);
@@ -51,7 +53,7 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
     if (open) {
       if (editing) {
         setName(editing.name); setEmail(editing.email);
-        setLogin(editing.login ?? ""); setPassword(editing.password ?? genPassword());
+        setLogin(editing.login ?? ""); setPassword("");
         setRole(editing.role); setModules(editing.modules);
         setProjectIds(editing.projects ?? []);
       } else {
@@ -60,6 +62,8 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
         setModules(defaultModulesForRole("manager"));
         setProjectIds([]);
       }
+      setPasswordReset(false);
+      setShowPwd(false);
     }
   }, [open, editing]);
 
@@ -101,7 +105,8 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
       toast({ title: "Некорректный email", description: "Оставьте пустым — вход будет по логину", variant: "destructive" });
       return;
     }
-    if (!password || password.length < 8) {
+    const needsPassword = !editing || passwordReset;
+    if (needsPassword && (!password || password.length < 8)) {
       toast({ title: "Слабый пароль", description: "Минимум 8 символов", variant: "destructive" });
       return;
     }
@@ -125,10 +130,14 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
     try {
       if (editing) {
         await updateMember(editing.id, payload);
-        toast({ title: "Сотрудник обновлён" });
+        if (passwordReset) await resetPassword(editing.id, password);
+        toast({
+          title: "Сотрудник обновлён",
+          description: passwordReset ? `Новый пароль: ${password}` : undefined,
+        });
       } else {
         await addMember(payload);
-        toast({ title: "Сотрудник добавлен", description: `Доступ: ${ROLE_LABELS[role]}` });
+        toast({ title: "Сотрудник добавлен", description: `Вход: ${cleanLogin} · пароль: ${password}` });
       }
       onOpenChange(false);
     } catch (error) {
@@ -179,37 +188,61 @@ export function AddMemberDialog({ open, onOpenChange, editing }: Props) {
                 <Input id="m-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="—" />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="m-pwd">Временный пароль</Label>
-                <div className="relative">
-                  <Input
-                    id="m-pwd"
-                    type={showPwd ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="pr-20"
-                  />
-                  <div className="absolute right-1 top-1/2 flex -translate-y-1/2 gap-1">
-                    <button type="button" onClick={() => setShowPwd((v) => !v)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:bg-secondary">
-                      {showPwd ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
-                    </button>
+                <Label htmlFor="m-pwd">{editing ? "Пароль" : "Временный пароль"}</Label>
+                {editing && !passwordReset ? (
+                  <>
+                    <div className="flex h-10 items-center rounded-md border border-border/60 bg-secondary/30 px-3 text-sm tracking-widest text-muted-foreground">
+                      ••••••••
+                    </div>
                     <button
                       type="button"
-                      onClick={() => setPassword(genPassword())}
-                      className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:bg-secondary"
-                      aria-label="Сгенерировать новый"
+                      onClick={() => { setPassword(genPassword()); setPasswordReset(true); setShowPwd(true); }}
+                      className="text-[11px] font-medium text-success hover:underline"
                     >
-                      <RefreshCw className="h-3.5 w-3.5" />
+                      Сбросить пароль
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => { navigator.clipboard.writeText(password); toast({ title: "Скопировано" }); }}
-                      className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:bg-secondary"
-                    >
-                      <Copy className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                </div>
-                <p className="text-[11px] text-muted-foreground">Минимум 8 символов. Пользователь сможет сменить его при входе.</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      Текущий пароль не показывается. Сбросьте, чтобы задать новый и выдать сотруднику.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <Input
+                        id="m-pwd"
+                        type={showPwd ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        className="pr-20"
+                      />
+                      <div className="absolute right-1 top-1/2 flex -translate-y-1/2 gap-1">
+                        <button type="button" onClick={() => setShowPwd((v) => !v)} className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:bg-secondary">
+                          {showPwd ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPassword(genPassword())}
+                          className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:bg-secondary"
+                          aria-label="Сгенерировать новый"
+                        >
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { navigator.clipboard.writeText(password); toast({ title: "Скопировано" }); }}
+                          className="grid h-7 w-7 place-items-center rounded text-muted-foreground hover:bg-secondary"
+                        >
+                          <Copy className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      {editing
+                        ? "Новый пароль применится при сохранении. Передайте его сотруднику."
+                        : "Минимум 8 символов. Передайте сотруднику логин и этот пароль."}
+                    </p>
+                  </>
+                )}
               </div>
               <div className="space-y-1.5 sm:col-span-2">
                 <Label>Роль</Label>
