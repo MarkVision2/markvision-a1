@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - "supabase/**"
-      - "scripts/apply-prod-pending-20260719.sql"
+      - "scripts/*.sql"
       - ".github/workflows/supabase-deploy.yml"
   workflow_dispatch: {}
 
@@ -39,6 +39,30 @@ jobs:
         id: ref
         run: bash .github/scripts/normalize-supabase-ref.sh
 
+      - name: Detect database SQL changes
+        id: db_changes
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          BASE="${{ github.event.before }}"
+          if [ -z "$BASE" ] || [ "$BASE" = "0000000000000000000000000000000000000000" ]; then
+            BASE="$(git rev-parse HEAD^)"
+          fi
+
+          if git diff --name-only "$BASE" "$GITHUB_SHA" -- \
+            'supabase/migrations/**/*.sql' \
+            'supabase/migrations/*.sql' \
+            'supabase/migrations_client_config/**/*.sql' \
+            'supabase/migrations_client_config/*.sql' \
+            'scripts/*.sql' | grep -q .; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # 1) Edge functions — сначала и всегда (не зависят от пароля БД).
       #    Одна упавшая функция не роняет остальные и НЕ блокирует SQL ниже:
       #    раньше exit 1 здесь пропускал миграции (dm_button_title и т.п.).
@@ -70,7 +94,7 @@ jobs:
       #    КРИТИЧНО: шаг идёт даже если functions упали (колонки вроде dm_button_title).
       - name: Apply database migrations
         id: db_push
-        if: ${{ always() && env.SUPABASE_DB_PASSWORD != '' }}
+        if: ${{ always() && steps.db_changes.outputs.changed == 'true' && env.SUPABASE_DB_PASSWORD != '' }}
         continue-on-error: true
         env:
           SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
@@ -80,7 +104,7 @@ jobs:
 
       # 2b) Fallback: без пароля пробуем Management API (нужен scope database_write).
       - name: Apply critical SQL via Management API
-        if: ${{ always() && env.SUPABASE_DB_PASSWORD == '' }}
+        if: ${{ always() && steps.db_changes.outputs.changed == 'true' && env.SUPABASE_DB_PASSWORD == '' }}
         continue-on-error: true
         id: mgmt_sql
         env:
@@ -112,7 +136,9 @@ jobs:
       - name: Note about DB migration status
         if: ${{ always() }}
         run: |
-          if [ "${{ steps.db_push.outcome }}" = "success" ] || [ "${{ steps.mgmt_sql.outcome }}" = "success" ]; then
+          if [ "${{ steps.db_changes.outputs.changed }}" != "true" ]; then
+            echo "::notice::No database SQL changes in this push."
+          elif [ "${{ steps.db_push.outcome }}" = "success" ] || [ "${{ steps.mgmt_sql.outcome }}" = "success" ]; then
             echo "::notice::Database SQL applied."
           else
             echo "::warning::Could not apply DB migration automatically (need SUPABASE_DB_PASSWORD or ACCESS_TOKEN with database_write). Apply scripts/apply-prod-pending-20260719.sql in Supabase SQL Editor."
@@ -127,10 +153,10 @@ jobs:
             FAIL=1
           fi
           SQL_OK=0
-          if [ "${{ steps.db_push.outcome }}" = "success" ] || [ "${{ steps.mgmt_sql.outcome }}" = "success" ]; then
+          if [ "${{ steps.db_changes.outputs.changed }}" != "true" ] || [ "${{ steps.db_push.outcome }}" = "success" ] || [ "${{ steps.mgmt_sql.outcome }}" = "success" ]; then
             SQL_OK=1
           fi
-          # Нет пароля и Management API упал — красный; нет обоих шагов (оба skipped) — тоже красный.
+          # SQL is required only when SQL files changed or the workflow was started manually.
           if [ "$SQL_OK" != "1" ]; then
             echo "::error::Database migration did not apply."
             FAIL=1
