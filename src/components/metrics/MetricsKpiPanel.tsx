@@ -13,10 +13,15 @@ interface Props {
   factMetaLeads: number;
   factCrmReceived: number;
   factJoins: number;
+  factPlannedVisits: number;
+  factConductedVisits: number;
+  factDiagnosticsPaid: number;
   factSales: number;
   factCpl: number;
   crLeadJoin: number;
   crJoinSale: number;
+  crLeadDiagnostic: number;
+  crDiagnosticSale: number;
   monthProgress: number;
   filledDays: number;
   daysInMonth: number;
@@ -52,16 +57,24 @@ export function MetricsKpiPanel({
   factMetaLeads,
   factCrmReceived,
   factJoins,
+  factPlannedVisits,
+  factConductedVisits,
+  factDiagnosticsPaid,
   factSales,
   factCpl,
   crLeadJoin,
   crJoinSale,
+  crLeadDiagnostic,
+  crDiagnosticSale,
   monthProgress,
   filledDays,
   daysInMonth,
 }: Props) {
   const { labelFor } = useMetricLabels();
   const joinedLabel = labelFor("joined");
+  const plannedLabel = labelFor("planned_visits");
+  const conductedLabel = labelFor("conducted_visits");
+  const diagnosticsPaidLabel = labelFor("diagnostics_paid");
   return (
     <div className="mt-4 rounded-2xl border border-border/60 bg-card/40 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -72,7 +85,7 @@ export function MetricsKpiPanel({
         <span>{monthProgress}% месяца заполнено</span>
       </div>
 
-      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-8">
         <CompactStat
           label="Расходы"
           value={factSpend > 0 ? formatTenge(factSpend) : <MetricsDash />}
@@ -94,6 +107,14 @@ export function MetricsKpiPanel({
           value={factJoins > 0 ? formatNumber(factJoins) : <MetricsDash />}
         />
         <CompactStat
+          label={plannedLabel}
+          value={factPlannedVisits > 0 ? formatNumber(factPlannedVisits) : <MetricsDash />}
+        />
+        <CompactStat
+          label={conductedLabel}
+          value={factConductedVisits > 0 ? formatNumber(factConductedVisits) : <MetricsDash />}
+        />
+        <CompactStat
           label="Выручка"
           highlight
           value={factRevenue > 0 ? formatTenge(factRevenue) : <MetricsDash />}
@@ -112,6 +133,15 @@ export function MetricsKpiPanel({
         )}
         {crJoinSale > 0 && (
           <span>{joinedLabel} → продажа: {formatPercent(crJoinSale)}</span>
+        )}
+        {crLeadDiagnostic > 0 && (
+          <span>CRM → {conductedLabel.toLowerCase()}: {formatPercent(crLeadDiagnostic)}</span>
+        )}
+        {crDiagnosticSale > 0 && (
+          <span>{conductedLabel} → продажа: {formatPercent(crDiagnosticSale)}</span>
+        )}
+        {factDiagnosticsPaid > 0 && (
+          <span>{diagnosticsPaidLabel}: {formatNumber(factDiagnosticsPaid)}</span>
         )}
       </div>
     </div>

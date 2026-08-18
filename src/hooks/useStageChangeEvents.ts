@@ -9,6 +9,7 @@ export interface StageChangeEvent {
   cabinetId: string | null;
   at: string;
   toStageKey: string;
+  toStageRole: string | null;
   isDiagnostic: boolean;
 }
 
@@ -22,7 +23,7 @@ async function fetchStageChangeEvents(
   const untilIso = `${ymdLocal(until)}T00:00:00`;
 
   const [stagesRes, eventsRes] = await Promise.all([
-    supabase.from("pipeline_stages").select("id,key,is_diagnostic"),
+    supabase.from("pipeline_stages").select("id,key,is_diagnostic,stage_role"),
     (() => {
       const q = supabase
         .from("events")
@@ -38,19 +39,22 @@ async function fetchStageChangeEvents(
 
   if (eventsRes.error) throw new Error(eventsRes.error.message);
 
-  const stageById = new Map<string, { key: string; isDiagnostic: boolean }>();
+  const stageById = new Map<string, { key: string; role: string | null; isDiagnostic: boolean }>();
   for (const s of stagesRes.data ?? []) {
     stageById.set(s.id, {
       key: String(s.key ?? "").toLowerCase(),
+      role: s.stage_role ? String(s.stage_role).toLowerCase() : null,
       isDiagnostic: Boolean(s.is_diagnostic),
     });
   }
 
-  const stageMeta = (toId: string, payload: { to_key?: string; to_is_diagnostic?: boolean } | null) => {
+  const stageMeta = (toId: string, payload: { to_key?: string; to_role?: string; to_stage_role?: string; to_is_diagnostic?: boolean } | null) => {
     const fromPayload = payload?.to_key ? String(payload.to_key).toLowerCase() : null;
+    const roleFromPayload = payload?.to_role ?? payload?.to_stage_role;
     const stage = stageById.get(toId);
     return {
       key: fromPayload ?? stage?.key ?? "",
+      role: roleFromPayload ? String(roleFromPayload).toLowerCase() : stage?.role ?? null,
       isDiagnostic: payload?.to_is_diagnostic ?? stage?.isDiagnostic ?? false,
     };
   };
@@ -88,6 +92,7 @@ async function fetchStageChangeEvents(
       cabinetId: leadCabinet.get(leadId) ?? null,
       at: e.created_at as string,
       toStageKey: meta.key,
+      toStageRole: meta.role,
       isDiagnostic: meta.isDiagnostic,
     });
   }

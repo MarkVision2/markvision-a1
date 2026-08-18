@@ -48,9 +48,9 @@ interface Props {
   onSavePrepaySum: (iso: string, next: number | null) => Promise<void>;
 }
 
-/** Бизнес: Дата + 7 метрик. Детально: реклама/CRM/деньги без клиник-диагностик. */
-const COL_COUNT_DETAILED = 12;
-const COL_COUNT_BUSINESS = 8;
+/** Бизнес: ключевая воронка. Детально: Meta / CRM-этапы / деньги. */
+const COL_COUNT_DETAILED = 16;
+const COL_COUNT_BUSINESS = 9;
 
 export function MetricsDataTable({
   mode,
@@ -63,6 +63,10 @@ export function MetricsDataTable({
   onSaveSpend,
   onSaveLeads,
   onSaveCrmReceived,
+  onSavePlannedVisits,
+  onSaveConductedVisits,
+  onSaveDiagnosticsPaid,
+  onSaveDiagnosticRevenue,
   onSaveSales,
   onSaveSalesRevenue,
   onSaveCash,
@@ -86,7 +90,16 @@ export function MetricsDataTable({
           {mode === "business" ? (
             <tr className="border-b-2 border-border/80 bg-muted/70 shadow-sm">
               <th className={stickyDateHeader}>Дата</th>
-              {(["spend", "leads_meta", "leads_crm", "cpl_crm", "joined", "sales", "sum_business"] as MetricColumnKey[]).map((k) => (
+              {([
+                "spend",
+                "leads_meta",
+                "leads_crm",
+                "cpl_crm",
+                "conducted_visits",
+                "diagnostics_paid",
+                "sales",
+                "sum_business",
+              ] as MetricColumnKey[]).map((k) => (
                 <th key={k} className={cn(headerTh, "text-right")}>{labelFor(k)}</th>
               ))}
             </tr>
@@ -99,11 +112,11 @@ export function MetricsDataTable({
             <th colSpan={2} className="border-b border-border/40 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-foreground">
               Реклама
             </th>
-            <th colSpan={3} className="border-b border-l border-border/40 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-foreground">
-              CRM
+            <th colSpan={5} className="border-b border-l border-border/40 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-foreground">
+              CRM этапы
             </th>
-            <th colSpan={6} className="border-b border-l border-border/40 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-foreground">
-              Деньги ₸
+            <th colSpan={8} className="border-b border-l border-border/40 px-2 py-2 text-center text-[11px] font-bold uppercase tracking-wide text-foreground">
+              Деньги CRM ₸
             </th>
           </tr>
           <tr className="border-b-2 border-border/80 bg-muted/70">
@@ -113,8 +126,12 @@ export function MetricsDataTable({
               { k: "leads_crm", border: true },
               { k: "cpl_crm", border: false },
               { k: "joined", border: false },
+              { k: "planned_visits", border: false },
+              { k: "conducted_visits", border: false },
               { k: "prepaid_count", border: true },
               { k: "prepaid_sum", border: false },
+              { k: "diagnostics_paid", border: false },
+              { k: "diagnostic_revenue", border: false },
               { k: "sales", border: false },
               { k: "revenue", border: false },
               { k: "cash", border: false },
@@ -148,6 +165,10 @@ export function MetricsDataTable({
               const crmLeads = d?.crmReceived ?? 0;
               const cplCrm = d && crmLeads > 0 ? d.spend / crmLeads : 0;
               const joins = d?.joins ?? 0;
+              const plannedVisits = d?.plannedVisits ?? 0;
+              const conductedVisits = d?.conductedVisits ?? 0;
+              const diagnosticsPaid = d?.diagnosticsPaid ?? 0;
+              const diagnosticRevenue = d?.diagnosticRevenue ?? d?.diagnosticRevenuePaid ?? 0;
               const dayRevenue = d?.crmRevenue ?? 0;
               const weekend = isWeekend(weekday);
               const today = iso === todayIso;
@@ -156,6 +177,9 @@ export function MetricsDataTable({
                 d.leads > 0 ||
                 crmLeads > 0 ||
                 joins > 0 ||
+                plannedVisits > 0 ||
+                conductedVisits > 0 ||
+                diagnosticsPaid > 0 ||
                 d.sales > 0 ||
                 dayRevenue > 0 ||
                 d.cashRevenue > 0 ||
@@ -202,8 +226,13 @@ export function MetricsDataTable({
                       <Cell>{num(crmLeads)}</Cell>
                       <Cell>{cplCrm > 0 ? formatNumber(cplCrm) : <MetricsDash />}</Cell>
                       <Cell>
-                        <span className={cn(joins > 0 && "text-cyan-400")}>
-                          {num(joins)}
+                        <span className={cn(conductedVisits > 0 && "text-cyan-400")}>
+                          {num(conductedVisits)}
+                        </span>
+                      </Cell>
+                      <Cell>
+                        <span className={cn(diagnosticsPaid > 0 && "text-cyan-400")}>
+                          {num(diagnosticsPaid)}
                         </span>
                       </Cell>
                       <Cell>{num(d?.sales)}</Cell>
@@ -267,6 +296,34 @@ export function MetricsDataTable({
                   </Cell>
                   <Cell>
                     <ManualFactCell
+                      title="Записано на диагностику"
+                      icon={Target}
+                      isoDate={iso}
+                      value={plannedVisits}
+                      crm={d?.autoPlannedVisits ?? plannedVisits}
+                      manual={plannedVisits}
+                      manualRaw={d?.manualPlannedVisitsRaw ?? null}
+                      autoLabel="CRM этап"
+                      disabled={editDisabled || rnpEditDisabled}
+                      onSave={(next) => onSavePlannedVisits(iso, next)}
+                    />
+                  </Cell>
+                  <Cell>
+                    <ManualFactCell
+                      title="Диагностики проведено"
+                      icon={Target}
+                      isoDate={iso}
+                      value={conductedVisits}
+                      crm={d?.autoConductedVisits ?? conductedVisits}
+                      manual={conductedVisits}
+                      manualRaw={d?.manualConductedVisitsRaw ?? null}
+                      autoLabel="CRM этап"
+                      disabled={editDisabled || rnpEditDisabled}
+                      onSave={(next) => onSaveConductedVisits(iso, next)}
+                    />
+                  </Cell>
+                  <Cell>
+                    <ManualFactCell
                       title="Предоплат получено"
                       icon={HandCoins}
                       isoDate={iso}
@@ -293,6 +350,36 @@ export function MetricsDataTable({
                       format={formatNumber}
                       allowDecimal
                       onSave={(next) => onSavePrepaySum(iso, next)}
+                    />
+                  </Cell>
+                  <Cell>
+                    <ManualFactCell
+                      title="Оплачено диагностик"
+                      icon={HandCoins}
+                      isoDate={iso}
+                      value={diagnosticsPaid}
+                      crm={d?.autoDiagnosticsPaid ?? diagnosticsPaid}
+                      manual={diagnosticsPaid}
+                      manualRaw={d?.manualDiagnosticsPaidRaw ?? null}
+                      autoLabel="CRM оплата"
+                      disabled={editDisabled || rnpEditDisabled}
+                      onSave={(next) => onSaveDiagnosticsPaid(iso, next)}
+                    />
+                  </Cell>
+                  <Cell>
+                    <ManualFactCell
+                      title="Сумма оплат диагностик"
+                      icon={DollarSign}
+                      isoDate={iso}
+                      value={diagnosticRevenue}
+                      crm={d?.crmDiagnosticRevenue ?? d?.diagnosticRevenuePaid ?? diagnosticRevenue}
+                      manual={diagnosticRevenue}
+                      manualRaw={d?.manualDiagnosticRevenueRaw ?? null}
+                      autoLabel="CRM оплата"
+                      disabled={editDisabled || rnpEditDisabled}
+                      format={formatNumber}
+                      allowDecimal
+                      onSave={(next) => onSaveDiagnosticRevenue(iso, next)}
                     />
                   </Cell>
                   <Cell>

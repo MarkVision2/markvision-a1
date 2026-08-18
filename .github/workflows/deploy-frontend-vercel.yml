@@ -38,9 +38,8 @@ jobs:
         run: |
           if [ -z "$VERCEL_TOKEN" ]; then
             echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "::error::VERCEL_TOKEN secret missing — www.markvision.kz не обновится через CLI."
-            echo "::error::Добавь VERCEL_TOKEN (+ VERCEL_ORG_ID, VERCEL_PROJECT_ID) в GitHub Actions secrets."
-            exit 1
+            echo "::warning::VERCEL_TOKEN secret missing — CLI deploy skipped. Production still deploys via Vercel Git integration on [vercel-deploy]."
+            exit 0
           fi
           echo "present=true" >> "$GITHUB_OUTPUT"
 
@@ -65,6 +64,9 @@ jobs:
           git commit --amend --no-edit --author="$NAME <$EMAIL>" || true
 
       - name: Pull Vercel project settings
+        id: vercel_pull
+        continue-on-error: true
+        if: ${{ steps.tok.outputs.present == 'true' }}
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -73,6 +75,7 @@ jobs:
 
       # Hobby CLI pins may reject project nodeVersion 24.x — force 22.x locally.
       - name: Force Node 22 for CLI build
+        if: ${{ steps.vercel_pull.outcome == 'success' }}
         run: |
           python3 - <<'PY'
           import json
@@ -85,11 +88,18 @@ jobs:
           PY
 
       - name: Build
+        if: ${{ steps.vercel_pull.outcome == 'success' }}
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: npx vercel@latest build --prod --token "$VERCEL_TOKEN"
 
       - name: Deploy prebuilt to production
+        if: ${{ steps.vercel_pull.outcome == 'success' }}
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: npx vercel@latest deploy --prebuilt --prod --token "$VERCEL_TOKEN"
+
+      - name: Note skipped CLI deploy
+        if: ${{ steps.tok.outputs.present != 'true' || steps.vercel_pull.outcome != 'success' }}
+        run: |
+          echo "::warning::Vercel CLI deploy skipped or unavailable. Check www.markvision.kz production Git deploy for the [vercel-deploy] commit."

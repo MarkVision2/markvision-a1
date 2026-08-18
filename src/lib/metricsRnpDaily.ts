@@ -4,6 +4,7 @@ import type { ReportPeriodRange } from "@/lib/crmDailyMetrics";
 import { isGroupJoinStageKey } from "@/lib/adsCabinetCrmDaily";
 import { ymdAlmatyFromIso } from "@/lib/metaSync";
 import { isLeadConductedVisit, isLeadPaid } from "@/lib/leadStageFlags";
+import { stageRoleOf, type StageRole } from "@/lib/stageRoles";
 
 export const QUAL_SCORE_MIN = 50;
 
@@ -122,7 +123,9 @@ export function metricsRnpDaily(
     const ymd = ymdAlmatyFromIso(ev.at);
     if (!ymd || !inMonthRange(ymd, range)) continue;
 
-    if (isGroupJoinStageKey(ev.toStageKey)) {
+    const role = stageRoleOf({ stageRole: ev.toStageRole as StageRole | null, id: ev.toStageKey });
+
+    if (role === "joined_group" || isGroupJoinStageKey(ev.toStageKey)) {
       const key = `${ymd}:${ev.leadId}`;
       if (!joinedDay.has(key)) {
         joinedDay.add(key);
@@ -133,8 +136,22 @@ export function metricsRnpDaily(
 
     if (!ev.isDiagnostic) continue;
     const cur = get(ymd);
-    if (ev.toStageKey === "scheduled") cur.scheduled += 1;
-    else if (ev.toStageKey === "visit" || ev.toStageKey === "conducted") cur.conducted += 1;
+    if (
+      role === "call_scheduled" ||
+      ev.toStageKey === "scheduled" ||
+      ev.toStageKey === "scheduled_diag"
+    ) {
+      cur.scheduled += 1;
+    } else if (
+      role === "call_done" ||
+      role === "attended" ||
+      ev.toStageKey === "visit" ||
+      ev.toStageKey === "conducted" ||
+      ev.toStageKey === "diagnostic" ||
+      ev.toStageKey === "diagnosed"
+    ) {
+      cur.conducted += 1;
+    }
   }
 
   return m;

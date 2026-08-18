@@ -261,6 +261,10 @@ const Metrics = () => {
       const crmSalesRev = crm?.salesRevenue ?? 0;
       const rnp = rnpByDay.get(iso);
       const proj = projectOverrides.get(iso);
+      const stageScheduled = rnp?.scheduled ?? 0;
+      const stageConducted = rnp?.conducted ?? 0;
+      const plannedVisits = stageScheduled || rnp?.plannedVisits || 0;
+      const conductedVisits = stageConducted || rnp?.conductedVisits || 0;
 
       const [y, mo, d] = iso.split("-").map(Number);
       const dayResolved = sumResolvedMetricsPerCabinets(
@@ -277,10 +281,10 @@ const Metrics = () => {
         leads: cdi.autoLeads ?? cdi.leads ?? 0,
         crmReceived: rnp?.crmReceived ?? 0,
         qualified: rnp?.qualified ?? 0,
-        plannedVisits: rnp?.plannedVisits ?? 0,
-        conductedVisits: rnp?.conductedVisits ?? 0,
+        plannedVisits,
+        conductedVisits,
         diagnosticsPaid: rnp?.diagnosticsPaid ?? 0,
-        diagnostics: dayResolved.diagnostics,
+        diagnostics: conductedVisits || dayResolved.diagnostics,
         diagnosticRevenue: dayResolved.diagnosticRevenue,
         sales: dayResolved.sales,
         salesRevenue: dayResolved.salesRevenue,
@@ -365,7 +369,7 @@ const Metrics = () => {
   const factFromDaily = useMemo(() => {
     let spend = 0, leads = 0, diagnostics = 0, diagnosticRevenue = 0;
     let sales = 0, salesRevenue = 0, revenue = 0;
-    let crmReceived = 0, qualified = 0, joins = 0;
+    let crmReceived = 0, qualified = 0, joins = 0, plannedVisits = 0, conductedVisits = 0, diagnosticsPaid = 0;
     for (const { iso } of monthDays) {
       const d = dailyMap.get(iso);
       if (!d) continue;
@@ -379,14 +383,20 @@ const Metrics = () => {
       crmReceived += d.crmReceived;
       qualified += d.qualified;
       joins += d.joins ?? 0;
+      plannedVisits += d.plannedVisits ?? 0;
+      conductedVisits += d.conductedVisits ?? 0;
+      diagnosticsPaid += d.diagnosticsPaid ?? 0;
     }
-    return { spend, leads, diagnostics, diagnosticRevenue, sales, salesRevenue, revenue, crmReceived, qualified, joins };
+    return { spend, leads, diagnostics, diagnosticRevenue, sales, salesRevenue, revenue, crmReceived, qualified, joins, plannedVisits, conductedVisits, diagnosticsPaid };
   }, [dailyMap, monthDays]);
 
   const factSales = factFromDaily.sales;
   const factRevenue = factFromDaily.revenue;
   const factCrmReceived = factFromDaily.crmReceived;
   const factJoins = factFromDaily.joins;
+  const factPlannedVisits = factFromDaily.plannedVisits;
+  const factConductedVisits = factFromDaily.conductedVisits;
+  const factDiagnosticsPaid = factFromDaily.diagnosticsPaid;
   const factMetaLeads = factFromDaily.leads;
   const factLeads = factCrmReceived;
   const factSpend = factFromDaily.spend;
@@ -395,6 +405,10 @@ const Metrics = () => {
     factCrmReceived > 0 ? (factJoins / factCrmReceived) * 100 : 0;
   const crJoinSale =
     factJoins > 0 ? (factSales / factJoins) * 100 : 0;
+  const crLeadDiagnostic =
+    factCrmReceived > 0 ? (factConductedVisits / factCrmReceived) * 100 : 0;
+  const crDiagnosticSale =
+    factConductedVisits > 0 ? (factSales / factConductedVisits) * 100 : 0;
 
   const daysWithData = useMemo(
     () =>
@@ -406,6 +420,9 @@ const Metrics = () => {
           d.leads > 0 ||
           d.crmReceived > 0 ||
           (d.joins ?? 0) > 0 ||
+          (d.plannedVisits ?? 0) > 0 ||
+          (d.conductedVisits ?? 0) > 0 ||
+          (d.diagnosticsPaid ?? 0) > 0 ||
           d.sales > 0 ||
           (d.crmRevenue ?? 0) > 0 ||
           d.cashRevenue > 0 ||
@@ -425,8 +442,8 @@ const Metrics = () => {
   const handleExportCsv = () => {
     const header = [
       "Дата", "День",
-      "Затраты", "Лиды Meta", "Лиды CRM", "CPL CRM", "Вступлений",
-      "Предоплат", "Сумма предоплат",
+      "Затраты", "Лиды Meta", "Лиды CRM", "CPL CRM", "Вступлений", "Записано", "Диагностики",
+      "Предоплат", "Сумма предоплат", "Оплачено диагностик", "Сумма диагностик",
       "Продажи", "Выручка продаж", "Касса", "Сумма",
     ];
     const rows = monthDays.map(({ day, iso, weekday }) => {
@@ -441,8 +458,12 @@ const Metrics = () => {
         crmLeads,
         cplCrm ? Math.round(cplCrm) : "",
         d?.joins ?? 0,
+        d?.plannedVisits ?? 0,
+        d?.conductedVisits ?? 0,
         d?.prepayCount ?? 0,
         d?.prepaySum ?? 0,
+        d?.diagnosticsPaid ?? 0,
+        d?.diagnosticRevenue ?? d?.diagnosticRevenuePaid ?? 0,
         d?.sales ?? 0,
         d?.salesRevenue ?? 0,
         d?.cashRevenue ?? 0,
@@ -649,10 +670,15 @@ const Metrics = () => {
         factMetaLeads={factMetaLeads}
         factCrmReceived={factLeads}
         factJoins={factJoins}
+        factPlannedVisits={factPlannedVisits}
+        factConductedVisits={factConductedVisits}
+        factDiagnosticsPaid={factDiagnosticsPaid}
         factSales={factSales}
         factCpl={factCpl}
         crLeadJoin={crLeadJoin}
         crJoinSale={crJoinSale}
+        crLeadDiagnostic={crLeadDiagnostic}
+        crDiagnosticSale={crDiagnosticSale}
         monthProgress={monthProgress}
         filledDays={filledDays}
         daysInMonth={daysInMonth}
