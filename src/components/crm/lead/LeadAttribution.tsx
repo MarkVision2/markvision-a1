@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { Lead } from "@/types/crm";
 import { cn } from "@/lib/utils";
+import { adHint, campaignHint, deriveMetaAttributionIds } from "@/lib/metaAttribution";
 
 interface CreativeInfo {
   adId: string;
@@ -15,6 +16,8 @@ interface CreativeInfo {
   videoUrl?: string | null;
   creativeType: string | null;
   effectiveStatus: string | null;
+  adsetId?: string | null;
+  campaignId?: string | null;
   campaignName?: string | null;
 }
 
@@ -29,8 +32,12 @@ export function LeadAttribution({ lead }: { lead: Lead }) {
   const [syncing, setSyncing] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
 
-  const adId = lead.metaAdId ?? null;
-  const campaignId = lead.metaCampaignId ?? null;
+  const ids = deriveMetaAttributionIds(lead);
+  const adId = ids.adId;
+  const adsetId = ids.adsetId;
+  const campaignId = ids.campaignId;
+  const rawCampaign = campaignHint(lead.utm);
+  const rawAd = adHint(lead.utm);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,7 +52,7 @@ export function LeadAttribution({ lead }: { lead: Lead }) {
       if (adId) {
         const { data, error } = await supabase
           .from("meta_creatives")
-          .select("ad_id,name,thumbnail_url,image_url,video_url,creative_type,effective_status,campaign_id")
+          .select("ad_id,name,thumbnail_url,image_url,poster_url,video_url,creative_type,effective_status,campaign_id,adset_id")
           .eq("ad_id", adId)
           .maybeSingle();
         if (error) console.warn("[LeadAttribution] meta_creatives fetch failed", error);
@@ -55,10 +62,12 @@ export function LeadAttribution({ lead }: { lead: Lead }) {
             name: data.name,
             thumbnailUrl: data.thumbnail_url,
             imageUrl: data.image_url,
-            posterUrl: data.thumbnail_url,
+            posterUrl: data.poster_url,
             videoUrl: data.video_url,
             creativeType: data.creative_type,
             effectiveStatus: data.effective_status,
+            adsetId: data.adset_id,
+            campaignId: data.campaign_id,
           };
           creativeCampaignId = data.campaign_id ?? null;
         }
@@ -81,6 +90,8 @@ export function LeadAttribution({ lead }: { lead: Lead }) {
             posterUrl: null,
             creativeType: null,
             effectiveStatus: null,
+            adsetId,
+            campaignId: campId,
             campaignName: camp.name,
           };
         }
@@ -91,9 +102,9 @@ export function LeadAttribution({ lead }: { lead: Lead }) {
       }
     })();
     return () => { cancelled = true; };
-  }, [adId, campaignId, reloadKey]);
+  }, [adId, adsetId, campaignId, reloadKey]);
 
-  if (!adId && !campaignId) return null;
+  if (!adId && !adsetId && !campaignId && !rawCampaign && !rawAd) return null;
 
   const thumb = info?.imageUrl || info?.thumbnailUrl || info?.posterUrl || null;
   const isVideo = info?.creativeType === "video";
@@ -121,7 +132,7 @@ export function LeadAttribution({ lead }: { lead: Lead }) {
     <div className="mt-3 overflow-hidden rounded-lg border border-primary/30 bg-primary/5">
       <div className="flex items-center gap-1.5 px-3 pt-2.5 text-[10px] uppercase tracking-wider text-primary">
         <Megaphone className="h-3 w-3" />
-        Откуда пришёл лид
+        Реклама и источник заявки
         {lead.paid && <span className="ml-1 rounded bg-success/15 px-1 text-success">и продажа</span>}
       </div>
 
@@ -165,11 +176,14 @@ export function LeadAttribution({ lead }: { lead: Lead }) {
           <div className="line-clamp-2 text-sm font-semibold leading-tight" title={info?.name ?? undefined}>
             {loading
               ? "Загружаем креатив…"
-              : (info?.name || (adId ? `Креатив ${adId}` : "Креатив не найден"))}
+              : (info?.name || rawAd || (adId ? `Креатив ${adId}` : "Креатив не найден"))}
           </div>
-          {info?.campaignName && (
-            <div className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground" title={info.campaignName}>
-              Кампания: <span className="text-foreground/90">{info.campaignName}</span>
+          {(info?.campaignName || rawCampaign || campaignId) && (
+            <div
+              className="mt-0.5 line-clamp-1 text-[11px] text-muted-foreground"
+              title={info?.campaignName ?? rawCampaign ?? campaignId ?? undefined}
+            >
+              Кампания: <span className="text-foreground/90">{info?.campaignName || rawCampaign || campaignId}</span>
             </div>
           )}
 
@@ -177,6 +191,16 @@ export function LeadAttribution({ lead }: { lead: Lead }) {
             {adId && (
               <code className="rounded bg-secondary/60 px-1 py-0.5 tabular-nums" title="ID объявления Meta">
                 ad.id {adId}
+              </code>
+            )}
+            {adsetId && (
+              <code className="rounded bg-secondary/60 px-1 py-0.5 tabular-nums" title="ID группы объявлений Meta">
+                adset.id {adsetId}
+              </code>
+            )}
+            {campaignId && (
+              <code className="rounded bg-secondary/60 px-1 py-0.5 tabular-nums" title="ID кампании Meta">
+                campaign.id {campaignId}
               </code>
             )}
             {info?.effectiveStatus && (
@@ -223,7 +247,9 @@ export function LeadAttribution({ lead }: { lead: Lead }) {
       <div className="border-t border-primary/20 bg-primary/5 px-3 py-1.5 text-[10px] text-muted-foreground">
         {lead.paid
           ? <>Лид оплатил {lead.paidAt ? new Date(lead.paidAt).toLocaleDateString("ru-RU") : ""} — выручка зачисляется этому креативу в «Воронке по креативам».</>
-          : <>Когда лид оплатит, продажа автоматически привяжется к этому креативу.</>}
+          : adId
+            ? <>Когда лид оплатит, продажа автоматически привяжется к этому креативу.</>
+            : <>Есть UTM/кампания, но нет ad.id. Проверьте шаблон UTM: utm_content должен быть {"{{ad.id}}"}.</>}
       </div>
     </div>
   );

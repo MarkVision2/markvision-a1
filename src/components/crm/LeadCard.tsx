@@ -12,6 +12,7 @@ import {
 import type { Lead, LeadStage } from "@/types/crm";
 import { leadSlaMinutes, recommendationFor, slaTone } from "@/hooks/useCrmAnalytics";
 import { resolveLeadSource } from "@/lib/leadSource";
+import { adHint, campaignHint, deriveMetaAttributionIds } from "@/lib/metaAttribution";
 import { classifyQuality, QUALITY_LABEL, QUALITY_BADGE_CLS } from "@/lib/quality";
 
 interface LeadCardProps {
@@ -215,21 +216,20 @@ function LeadCardImpl({
       </div>
 
       {(() => {
-        const campaign =
-          lead.utm?.campaign
-          || lead.utm?.campaign_id
-          || null;
+        const ids = deriveMetaAttributionIds(lead);
+        const campaign = campaignHint(lead.utm) || ids.campaignId;
         const source = lead.utm?.source || null;
-        const adHint = lead.metaAdId || lead.utm?.content || lead.utm?.ad_id || null;
-        if (!campaign && !source && !adHint) return null;
-        const label = campaign || source || (adHint ? `ad ${adHint}` : null);
+        const ad = ids.adId || adHint(lead.utm);
+        if (!campaign && !source && !ad) return null;
+        const label = campaign ? `Кампания: ${campaign}` : source || (ad ? `ad.id ${ad}` : null);
         return (
           <div
             className="mt-2 flex items-center gap-1 truncate text-[10px] text-primary/80"
             title={[
               source ? `utm_source: ${source}` : null,
               campaign ? `campaign: ${campaign}` : null,
-              adHint ? `ad: ${adHint}` : null,
+              ids.adsetId ? `adset.id: ${ids.adsetId}` : null,
+              ad ? `ad.id: ${ad}` : null,
             ].filter(Boolean).join(" · ")}
           >
             <Tag className="h-2.5 w-2.5 shrink-0" />

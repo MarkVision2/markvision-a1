@@ -8,6 +8,7 @@ import { fetchPendingAdvances, markAdvanceDone } from "@/integrations/clientConf
 import { markAutoMoved } from "@/lib/autoMoveTracker";
 import { useWhatsAppConfig } from "@/hooks/useWhatsAppConfig";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { deriveMetaAttributionIds } from "@/lib/metaAttribution";
 import type {
   ChatMessage,
   Lead,
@@ -596,6 +597,13 @@ export function useCrmStore() {
     const stageId = stageUuid(input.stageId) ?? stageUuid("new");
     if (!stageId) return;
     const lt = getLastTouch();
+    const leadUtm = input.utm ?? lt?.utm ?? null;
+    const metaIds = deriveMetaAttributionIds({
+      utm: leadUtm,
+      metaAdId: input.metaAdId,
+      metaAdsetId: input.metaAdsetId,
+      metaCampaignId: input.metaCampaignId,
+    });
     const { data, error } = await supabase.from("leads").insert({
       pipeline_id: pipelineId,
       stage_id: stageId,
@@ -611,12 +619,15 @@ export function useCrmStore() {
       service: input.service ?? null,
       city: input.city ?? null,
       age: input.age ?? null,
-      utm: input.utm ?? lt?.utm ?? null,
+      utm: leadUtm,
       referrer: input.referrer ?? lt?.referrer ?? null,
       landing_url: input.landingUrl ?? lt?.landingUrl ?? null,
       first_touch_at: input.firstTouchAt ?? lt?.firstTouchAt ?? new Date().toISOString(),
       assigned_to: input.assigneeId ?? user?.id ?? null,
       created_by: user?.id ?? null,
+      meta_ad_id: metaIds.adId,
+      meta_adset_id: metaIds.adsetId,
+      meta_campaign_id: metaIds.campaignId,
     }).select().single();
     if (error || !data) return;
     // Optimistically prepend the new lead so it shows immediately.
