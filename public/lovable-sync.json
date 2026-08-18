@@ -1,7 +1,7 @@
 {
-  "git_sha": "5a7dcfc",
-  "git_sha_full": "5a7dcfcf56185d6f8488da5724be33954ca2ea55",
-  "updated_at": "2026-08-18T16:56:44+04:00",
-  "label": "fix(crm): deliver follow-up automations via WhatsApp [vercel-deploy]",
+  "git_sha": "9b36600",
+  "git_sha_full": "9b36600c775bff5d9babf15923b45ba5a2390c8d",
+  "updated_at": "2026-08-18T17:00:39+04:00",
+  "label": "fix(supabase): allow crm automations cron auth [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
