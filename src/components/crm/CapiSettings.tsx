@@ -233,8 +233,8 @@ export function CapiSettings() {
     }
   };
 
-  // Готовность: пиксель обязателен. Токен — свой у кабинета ИЛИ общий подключённый Meta
-  // (его наличие проверяется на сервере кнопкой «Проверить связь»), поэтому не требуем его тут.
+  // Готовность до теста означает только, что есть Pixel ID. Наличие и валидность
+  // токена подтверждает только реальная кнопка «Проверить связь».
   const pixelReady = !!(pixelId.trim() || cabinet?.pixel_id);
   const ownToken = tokenSet || !!tokenInput.trim();
   const mappedCount = useMemo(() => stages.filter((s) => s.event).length, [stages]);
@@ -306,7 +306,8 @@ export function CapiSettings() {
       capi_test_event_code: testCode.trim() || null,
     };
     if (tokenInput.trim()) patch.access_token = tokenInput.trim();
-    await (supabase.from("ad_cabinets" as any) as any).update(patch).eq("id", cabinetId);
+    const { error } = await (supabase.from("ad_cabinets" as any) as any).update(patch).eq("id", cabinetId);
+    if (error) throw error;
     if (tokenInput.trim()) { setTokenSet(true); setTokenInput(""); }
   };
 
@@ -385,7 +386,7 @@ export function CapiSettings() {
                 : <XCircle className="h-5 w-5 text-warning" />}
               <div>
                 <div className="text-sm font-semibold">
-                  {connectionReady ? "Готово — нажмите «Проверить связь»" : "Укажите Pixel ID"}
+                  {connectionReady ? "Pixel указан — проверьте связь" : "Укажите Pixel ID"}
                 </div>
                 <div className="text-[11px] text-muted-foreground">
                   Кабинет: <b>{cabinet?.name ?? "—"}</b>
