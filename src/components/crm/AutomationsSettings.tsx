@@ -8,11 +8,21 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { Bell, MessageSquare, RotateCcw, Play, ShieldAlert } from "lucide-react";
+import { Bell, MessageSquare, RotateCcw, Play, ShieldAlert, Zap, Plus, Save, Wand2 } from "lucide-react";
 import { TelephonySettings } from "./TelephonySettings";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { SaveStatusBadge } from "@/components/settings/SaveStatusBadge";
+import type { LeadStage } from "@/types/crm";
+import {
+  STAGE_AUTOMATION_VARIABLES,
+  defaultStageAutomationRules,
+  loadStageAutomationRules,
+  renderStageAutomationTemplate,
+  saveStageAutomationRules,
+  type StageAutomationRule,
+} from "@/lib/stageAutomations";
 
 type Settings = {
   followup_2h_enabled: boolean;
@@ -40,11 +50,18 @@ const RULE_LABEL: Record<string, string> = {
   revival_7d: "Возврат 7 дней",
 };
 
-export function AutomationsSettings() {
+type AutomationsSettingsProps = {
+  stages?: LeadStage[];
+  projectId?: string | null;
+  whatsappConnected?: boolean;
+};
+
+export function AutomationsSettings({ stages = [], projectId, whatsappConnected = false }: AutomationsSettingsProps) {
   const { isAdmin } = useAuth();
   const [s, setS] = useState<Settings | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [running, setRunning] = useState(false);
+  const [stageRules, setStageRules] = useState<StageAutomationRule[]>([]);
 
   const load = async () => {
     const { data } = await (supabase.from("automation_settings" as any) as any)
@@ -63,6 +80,9 @@ export function AutomationsSettings() {
   };
 
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    setStageRules(loadStageAutomationRules(projectId, stages));
+  }, [projectId, stages]);
   useRealtimeTable("automation_settings", () => void load());
   useRealtimeTable("automation_runs", () => void load());
 
@@ -105,9 +125,149 @@ export function AutomationsSettings() {
     }
   };
 
+  const updateStageRule = (id: string, patch: Partial<StageAutomationRule>) => {
+    setStageRules((prev) => prev.map((rule) => (rule.id === id ? { ...rule, ...patch } : rule)));
+  };
+
+  const addStageRule = (stageId: string) => {
+    const stage = stages.find((item) => item.id === stageId);
+    if (!stage || stageRules.some((rule) => rule.stageId === stage.id)) return;
+    setStageRules((prev) => [
+      ...prev,
+      {
+        id: `stage:${stage.id}`,
+        stageId: stage.id,
+        enabled: true,
+        title: `Когда лид попал в «${stage.title}»`,
+        template: `{name}, добрый день. По вашей заявке обновился этап: {stage}.`,
+      },
+    ]);
+  };
+
+  const saveStageRules = () => {
+    saveStageAutomationRules(projectId, stageRules);
+    toast.success("Автоматизации этапов сохранены");
+  };
+
+  const resetStageRules = () => {
+    const defaults = defaultStageAutomationRules(stages);
+    setStageRules(defaults);
+    saveStageAutomationRules(projectId, defaults);
+    toast.success("Шаблоны этапов восстановлены");
+  };
+
+  const stageAutomationBlock = (
+    <Card className="space-y-4 p-4">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="grid h-9 w-9 place-items-center rounded-lg bg-success/15 text-success ring-1 ring-success/25">
+              <Zap className="h-4 w-4" />
+            </span>
+            <div>
+              <h2 className="text-xl font-semibold">Автоматизация сообщений</h2>
+              <p className="text-xs text-muted-foreground">
+                Правила проекта: при переходе лида в этап CRM уходит редактируемое WhatsApp-сообщение.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant={whatsappConnected ? "default" : "outline"}>
+            WhatsApp {whatsappConnected ? "подключен" : "не подключен"}
+          </Badge>
+          <Button variant="outline" size="sm" onClick={resetStageRules}>
+            <Wand2 className="h-4 w-4" /> Шаблоны
+          </Button>
+          <Button size="sm" onClick={saveStageRules}>
+            <Save className="h-4 w-4" /> Сохранить
+          </Button>
+        </div>
+      </div>
+
+      {stageRules.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border/70 p-6 text-center text-sm text-muted-foreground">
+          Нет правил для текущих этапов. Добавьте правило вручную или восстановите шаблоны.
+        </div>
+      ) : (
+        <div className="grid gap-3 xl:grid-cols-3">
+          {stageRules.map((rule) => {
+            const stage = stages.find((item) => item.id === rule.stageId);
+            const preview = renderStageAutomationTemplate(rule.template, {
+              lead: {
+                id: "preview",
+                name: "Айдана",
+                phone: "+7 777 000 00 00",
+                source: "Инстаграм",
+                stageId: rule.stageId,
+                amount: 0,
+                aiScore: 70,
+                createdAt: new Date().toISOString(),
+                lastActivityAt: new Date().toISOString(),
+                nextVisitAt: new Date(Date.now() + 86_400_000).toISOString(),
+              },
+              stage,
+              managerName: "Адал есеп",
+            });
+            return (
+              <Card key={rule.id} className="space-y-3 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <Badge variant="outline">{stage?.title ?? rule.stageId}</Badge>
+                    <Input
+                      value={rule.title}
+                      onChange={(event) => updateStageRule(rule.id, { title: event.target.value })}
+                      className="mt-2 h-9 text-sm font-semibold"
+                    />
+                  </div>
+                  <Switch checked={rule.enabled} onCheckedChange={(enabled) => updateStageRule(rule.id, { enabled })} />
+                </div>
+                <Textarea
+                  value={rule.template}
+                  onChange={(event) => updateStageRule(rule.id, { template: event.target.value })}
+                  rows={7}
+                  className="min-h-[160px] text-sm"
+                />
+                <div className="flex flex-wrap gap-1.5">
+                  {STAGE_AUTOMATION_VARIABLES.map((variable) => (
+                    <Button
+                      key={variable}
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      className="h-7 px-2 text-[11px]"
+                      onClick={() => updateStageRule(rule.id, { template: `${rule.template}${rule.template.endsWith(" ") ? "" : " "}${variable}` })}
+                    >
+                      {variable}
+                    </Button>
+                  ))}
+                </div>
+                <div className="rounded-lg bg-secondary/45 p-3 text-xs leading-relaxed text-muted-foreground">
+                  <div className="mb-1 font-semibold text-foreground">Предпросмотр</div>
+                  <p className="whitespace-pre-wrap">{preview}</p>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        {stages
+          .filter((stage) => !stageRules.some((rule) => rule.stageId === stage.id))
+          .map((stage) => (
+            <Button key={stage.id} type="button" variant="outline" size="sm" onClick={() => addStageRule(stage.id)}>
+              <Plus className="h-4 w-4" /> {stage.title}
+            </Button>
+          ))}
+      </div>
+    </Card>
+  );
+
   if (!isAdmin) {
     return (
       <div className="space-y-4">
+        {stageAutomationBlock}
         <TelephonySettings />
         <Card className="p-8 text-center">
           <ShieldAlert className="mx-auto h-10 w-10 text-muted-foreground" />
@@ -117,10 +277,19 @@ export function AutomationsSettings() {
     );
   }
 
-  if (!s) return <Card className="p-8 text-center text-sm text-muted-foreground">Загрузка…</Card>;
+  if (!s) {
+    return (
+      <div className="space-y-4">
+        {stageAutomationBlock}
+        <Card className="p-8 text-center text-sm text-muted-foreground">Загрузка…</Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4">
+      {stageAutomationBlock}
+
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold">Автоматизации дожима</h2>

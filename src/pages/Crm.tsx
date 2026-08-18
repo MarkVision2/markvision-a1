@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Plus,
@@ -41,6 +41,13 @@ const CapiSettings = lazy(() =>
 );
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import {
+  findStageAutomationRule,
+  loadStageAutomationRules,
+  markStageAutomationSent,
+  renderStageAutomationTemplate,
+  wasStageAutomationSent,
+} from "@/lib/stageAutomations";
 
 type Tab = "today" | "funnel" | "chats" | "clients" | "managers" | "analytics" | "automations" | "capi";
 
@@ -90,7 +97,7 @@ const Crm = () => {
       { id: "clients", label: "База", icon: Database },
       { id: "managers", label: "Менеджеры", icon: Users },
       { id: "analytics", label: "Аналитика", icon: BarChart3 },
-      { id: "automations", label: isAdmin ? "Автоматизации" : "Телефония", icon: Zap },
+      { id: "automations", label: "Автоматизация", icon: Zap },
       ...(isAdmin ? [{ id: "capi" as Tab, label: "Meta CAPI", icon: Radio }] : []),
     ],
     [isAdmin],
@@ -105,6 +112,11 @@ const Crm = () => {
   const [rejectFor, setRejectFor] = useState<{ leadId: string; prevStageId?: string; viaDrag: boolean } | null>(null);
   const [payFor, setPayFor] = useState<{ leadId: string; prevStageId?: string } | null>(null);
   const [diagFor, setDiagFor] = useState<{ leadId: string; stageId: string } | null>(null);
+  const leadsRef = useRef(leads);
+
+  useEffect(() => {
+    leadsRef.current = leads;
+  }, [leads]);
 
   useEffect(() => {
     const id = searchParams.get("lead");
@@ -165,6 +177,42 @@ const Crm = () => {
     toast.success("Этап добавлен");
   };
 
+  const runStageAutomation = useCallback(async (
+    leadId: string,
+    stageId: string,
+    opts?: { leadOverride?: Lead; visitAt?: string | null },
+  ) => {
+    const stage = stages.find((s) => s.id === stageId);
+    if (!stage) return;
+    const rules = loadStageAutomationRules(projectId, stages);
+    const rule = findStageAutomationRule(rules, stageId);
+    if (!rule || wasStageAutomationSent(projectId, leadId, rule.id, stageId)) return;
+
+    const lead = opts?.leadOverride ?? leadsRef.current.find((item) => item.id === leadId);
+    if (!lead?.phone) return;
+    const managerName = members.find((member) => member.id === lead.assigneeId)?.name ?? null;
+    const text = renderStageAutomationTemplate(rule.template, {
+      lead,
+      stage,
+      managerName,
+      visitAt: opts?.visitAt,
+    }).trim();
+    if (!text) return;
+
+    try {
+      const sent = await sendMessage(leadId, text, { templateKey: `stage_auto:${rule.id}`, channel: "whatsapp" });
+      if (sent === false) {
+        toast.error("Автосообщение не отправлено: проверьте WhatsApp");
+        return;
+      }
+      markStageAutomationSent(projectId, leadId, rule.id, stageId);
+      toast.success("Автосообщение отправлено");
+    } catch (error) {
+      console.error("[Crm.runStageAutomation] failed", error);
+      toast.error("Не удалось отправить автосообщение");
+    }
+  }, [members, projectId, sendMessage, stages]);
+
   const handleDropLead = useCallback((leadId: string, stageId: string) => {
     const stage = stages.find((s) => s.id === stageId);
     const role = stageRoleOf(stage);
@@ -186,8 +234,11 @@ const Crm = () => {
       setDiagFor({ leadId, stageId });
       return;
     }
-    moveLead(leadId, stageId);
-  }, [leads, moveLead, stages, pipelineTemplateKey]);
+    void (async () => {
+      await moveLead(leadId, stageId);
+      await runStageAutomation(leadId, stageId);
+    })();
+  }, [leads, moveLead, runStageAutomation, stages, pipelineTemplateKey]);
 
   const handleOpenLead = useCallback((l: Lead) => setActiveLeadId(l.id), []);
   const handleDeleteStage = useCallback((id: string) => {
@@ -386,7 +437,13 @@ const Crm = () => {
               />
             )}
 
-            {tab === "automations" && <AutomationsSettings />}
+            {tab === "automations" && (
+              <AutomationsSettings
+                stages={stages}
+                projectId={projectId}
+                whatsappConnected={whatsapp.connected}
+              />
+            )}
 
             {tab === "capi" && <CapiSettings />}
           </Suspense>
@@ -399,7 +456,10 @@ const Crm = () => {
         onOpenChange={setNewOpen}
         stages={stages}
         onCreate={(input) => {
-          addLead(input);
+          void (async () => {
+            const lead = await addLead(input);
+            if (lead) await runStageAutomation(lead.id, lead.stageId, { leadOverride: lead });
+          })();
           toast.success("Лид добавлен в воронку");
         }}
       />
@@ -421,7 +481,12 @@ const Crm = () => {
             }
           }
         }}
-        onUpdate={(id, patch) => updateLead(id, patch)}
+        onUpdate={(id, patch) => {
+          void (async () => {
+            await updateLead(id, patch);
+            if (patch.stageId) await runStageAutomation(id, patch.stageId);
+          })();
+        }}
         onDelete={async (id) => {
           const ok = await removeLead(id);
           if (ok) toast.success("Лид удалён");
@@ -450,7 +515,11 @@ const Crm = () => {
           toast.success("Оплата зафиксирована");
         }}
         onSetVisit={(id, iso) => {
-          setVisit(id, iso);
+          void (async () => {
+            await setVisit(id, iso);
+            const scheduled = stages.find((s) => s.stageRole === "call_scheduled")?.id ?? "scheduled";
+            await runStageAutomation(id, scheduled, { visitAt: iso });
+          })();
           toast.success("Визит назначен");
         }}
         onAddTask={addTask}
@@ -515,6 +584,7 @@ const Crm = () => {
           // on_lead_stage_change_attribution прочитает diagnostic_amount уже из
           // обновлённой строки — без гонки между двумя апдейтами.
           await updateLead(diagFor.leadId, { diagnosticAmount: amount, stageId: diagFor.stageId });
+          await runStageAutomation(diagFor.leadId, diagFor.stageId);
           toast.success(
             amount > 0
               ? `Диагностика на ${Math.round(amount).toLocaleString("ru-RU")} ₸ зафиксирована`

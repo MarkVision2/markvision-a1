@@ -587,7 +587,11 @@ export function useCrmStore() {
   // ---------- leads ----------
   /** Apply a patch to a single lead in local state immediately, without waiting for realtime. */
   const patchLeadLocal = useCallback((id: string, patcher: (l: Lead) => Lead) => {
-    setLeads((prev) => prev.map((l) => (l.id === id ? patcher(l) : l)));
+    setLeads((prev) => {
+      const next = prev.map((l) => (l.id === id ? patcher(l) : l));
+      leadsRef.current = next;
+      return next;
+    });
   }, []);
 
   const addLead = useCallback(async (
@@ -667,6 +671,9 @@ export function useCrmStore() {
       events: [],
       stageHistory: [],
     };
+    leadsRef.current = leadsRef.current.some((l) => l.id === newLead.id)
+      ? leadsRef.current
+      : [newLead, ...leadsRef.current];
     setLeads((prev) => (prev.some((l) => l.id === newLead.id) ? prev : [newLead, ...prev]));
     return newLead;
   }, [pipelineId, stageUuid, user?.id, projectId]);
@@ -837,7 +844,7 @@ export function useCrmStore() {
     /** WA Web daemon already writes communications via ingest — do NOT FE-insert. */
     let viaWaWeb = false;
     if (safeChannel === "whatsapp") {
-      const lead = leads.find((l) => l.id === leadId);
+      const lead = leadsRef.current.find((l) => l.id === leadId);
       const phone = lead?.phone ?? "";
       try {
         let sent = false;
@@ -893,7 +900,7 @@ export function useCrmStore() {
     }
 
     // WA Web: daemon ingest пишет строку с Baileys id — FE-insert с cmd.id троил чат.
-    if (viaWaWeb) return;
+    if (viaWaWeb) return true;
 
     const insert: TablesInsert<"communications"> = {
       lead_id: leadId,
@@ -917,7 +924,8 @@ export function useCrmStore() {
       // Green без idMessage — всё равно логируем, чтобы менеджер видел попытку.
       await supabase.from("communications").insert(insert);
     }
-  }, [user?.id, leads, projectId]);
+    return deliveryStatus === "sent";
+  }, [user?.id, projectId]);
 
   /** Send a voice note (WA Web only). `base64` without data: URL prefix. */
   const sendVoice = useCallback(async (
