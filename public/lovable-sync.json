@@ -1,7 +1,7 @@
 {
-  "git_sha": "74d912d",
-  "git_sha_full": "74d912d49cc4de096f093846ff9b184e7028e8b8",
-  "updated_at": "2026-08-18T08:59:36+04:00",
-  "label": "ci(supabase): skip sql deploy when only functions changed [vercel-deploy]",
+  "git_sha": "2874b23",
+  "git_sha_full": "2874b23f13a9cef960f970ff542d0d2549fdf4ab",
+  "updated_at": "2026-08-18T11:36:29+04:00",
+  "label": "chore: trigger production deploy verification [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
