@@ -1,7 +1,7 @@
 {
-  "git_sha": "1069a84",
-  "git_sha_full": "1069a84bfde52a6643e64eb386713b994f289f3b",
-  "updated_at": "2026-08-18T15:28:59+04:00",
-  "label": "feat(metrics): link table with Meta and CRM funnel [vercel-deploy]",
+  "git_sha": "54f1750",
+  "git_sha_full": "54f1750332d28778745f7ea924a65d44f11ae606",
+  "updated_at": "2026-08-18T15:35:01+04:00",
+  "label": "fix(team): scope employees by active project [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
