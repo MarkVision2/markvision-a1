@@ -2,6 +2,7 @@
 // Used by CRM, Analytics, Dashboard, Reports.
 import {
   Camera,
+  Database,
   Facebook,
   FileText,
   Globe,
@@ -28,6 +29,9 @@ export type SourceKey =
   | "lead_form"
   | "phone"
   | "referral"
+  | "friends"
+  | "base"
+  | "2gis"
   | "broadcast"
   | "manual"
   | "vitalya"
@@ -52,8 +56,11 @@ const TABLE: Record<string, Omit<SourceMeta, "raw">> = {
   whatsapp: { key: "whatsapp", label: "WhatsApp", Icon: MessageCircle, cls: "text-success" },
   wa: { key: "whatsapp", label: "WhatsApp", Icon: MessageCircle, cls: "text-success" },
   // Instagram
-  instagram: { key: "instagram", label: "Instagram", Icon: Camera, cls: "text-foreground" },
-  ig: { key: "instagram", label: "Instagram", Icon: Camera, cls: "text-foreground" },
+  instagram: { key: "instagram", label: "Инстаграм", Icon: Camera, cls: "text-foreground" },
+  inst: { key: "instagram", label: "Инстаграм", Icon: Camera, cls: "text-foreground" },
+  insta: { key: "instagram", label: "Инстаграм", Icon: Camera, cls: "text-foreground" },
+  "инстаграм": { key: "instagram", label: "Инстаграм", Icon: Camera, cls: "text-foreground" },
+  ig: { key: "instagram", label: "Инстаграм", Icon: Camera, cls: "text-foreground" },
   // Instagram organic (от код-словов в рилсах)
   instagram_organic: { key: "instagram_organic", label: "Instagram (organic)", Icon: Camera, cls: "text-pink-500" },
   ig_organic: { key: "instagram_organic", label: "Instagram (organic)", Icon: Camera, cls: "text-pink-500" },
@@ -105,7 +112,16 @@ const TABLE: Record<string, Omit<SourceMeta, "raw">> = {
   astana_hub: { key: "astana_hub", label: "Astana Hub", Icon: UserPlus, cls: "text-primary" },
   hub: { key: "astana_hub", label: "Astana Hub", Icon: UserPlus, cls: "text-primary" },
   // Other
-  referral: { key: "referral", label: "Рекомендация", Icon: UserPlus, cls: "text-foreground" },
+  friends: { key: "friends", label: "Знакомые", Icon: UserPlus, cls: "text-foreground" },
+  friend: { key: "friends", label: "Знакомые", Icon: UserPlus, cls: "text-foreground" },
+  "знакомые": { key: "friends", label: "Знакомые", Icon: UserPlus, cls: "text-foreground" },
+  referral: { key: "friends", label: "Знакомые", Icon: UserPlus, cls: "text-foreground" },
+  base: { key: "base", label: "База", Icon: Database, cls: "text-primary" },
+  database: { key: "base", label: "База", Icon: Database, cls: "text-primary" },
+  "база": { key: "base", label: "База", Icon: Database, cls: "text-primary" },
+  "2gis": { key: "2gis", label: "2ГИС", Icon: Globe, cls: "text-warning" },
+  "2гис": { key: "2gis", label: "2ГИС", Icon: Globe, cls: "text-warning" },
+  gis: { key: "2gis", label: "2ГИС", Icon: Globe, cls: "text-warning" },
   manual: { key: "manual", label: "Вручную", Icon: Hand, cls: "text-muted-foreground" },
 };
 
@@ -145,5 +161,8 @@ export function canonicalSourceKey(raw: string | null | undefined): string {
   // В БД партнёрский источник — «виталя» (как в lead-intake aliases).
   if (m.key === "vitalya") return "виталя";
   if (m.key === "astana_hub") return "astana_hub";
+  if (m.key === "friends") return "friends";
+  if (m.key === "base") return "base";
+  if (m.key === "2gis") return "2gis";
   return m.key;
 }

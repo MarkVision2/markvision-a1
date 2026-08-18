@@ -11,11 +11,10 @@ import type { Lead, LeadStage, PaymentMethod } from "@/types/crm";
 import { VisitSlotPopover } from "./VisitSlotPopover";
 
 const SOURCE_PRESETS: { id: string; label: string }[] = [
-  { id: "meta", label: "Meta" },
-  { id: "google", label: "Google" },
-  { id: "tiktok", label: "TikTok" },
-  { id: "виталя", label: "Виталя" },
-  { id: "sarafan", label: "Сарафан" },
+  { id: "instagram", label: "Инстаграм" },
+  { id: "friends", label: "Знакомые" },
+  { id: "base", label: "База" },
+  { id: "2gis", label: "2ГИС" },
 ];
 const PRESET_IDS = new Set(SOURCE_PRESETS.map((s) => s.id));
 

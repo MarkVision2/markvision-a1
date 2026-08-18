@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 const CHANNELS: { id: LeadChannel; label: string }[] = [
   { id: "whatsapp", label: "WhatsApp" },
   { id: "telegram", label: "Telegram" },
-  { id: "instagram", label: "Instagram" },
+  { id: "instagram", label: "Инстаграм" },
   { id: "phone", label: "Звонок" },
   { id: "web", label: "Сайт" },
 ];
@@ -23,12 +23,14 @@ const SUGGESTED_TAGS = [
   "Контент-завод",
   "Vibe Coding",
   "Кейс MarkVision AI",
-  "Instagram",
+  "Инстаграм",
   "Facebook",
   "Google",
   "YouTube",
   "Органика",
-  "Рекомендация",
+  "Знакомые",
+  "База",
+  "2ГИС",
 ];
 
 interface Props {

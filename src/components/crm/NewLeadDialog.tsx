@@ -42,20 +42,15 @@ interface NewLeadDialogProps {
 }
 
 const SOURCES = [
-  { value: "manual", label: "Вручную" },
-  { value: "site", label: "Сайт" },
-  { value: "whatsapp", label: "WhatsApp" },
-  { value: "instagram", label: "Instagram" },
-  { value: "facebook", label: "Facebook" },
-  { value: "lead_form", label: "Лид-форма" },
-  { value: "call", label: "Звонок" },
-  { value: "ads", label: "Реклама" },
-  { value: "referral", label: "Рекомендация" },
+  { value: "instagram", label: "Инстаграм" },
+  { value: "friends", label: "Знакомые" },
+  { value: "base", label: "База" },
+  { value: "2gis", label: "2ГИС" },
 ];
 const CHANNELS: { id: LeadChannel; label: string }[] = [
   { id: "whatsapp", label: "WhatsApp" },
   { id: "telegram", label: "Telegram" },
-  { id: "instagram", label: "Instagram" },
+  { id: "instagram", label: "Инстаграм" },
   { id: "phone", label: "Звонок" },
   { id: "web", label: "Сайт" },
 ];
