@@ -59,7 +59,7 @@ describe("crmLeadDynamics", () => {
     ];
     const today = buildLeadDynamics(leads, "today", { now });
     const channels = buildLeadChannelBreakdown(leads, today.fromYmd, today.toYmd);
-    expect(channels[0]).toMatchObject({ label: "Instagram", count: 2 });
+    expect(channels[0]).toMatchObject({ label: "Инстаграм", count: 2 });
     expect(channels.some((c) => c.label === "TikTok" && c.count === 1)).toBe(true);
   });
 

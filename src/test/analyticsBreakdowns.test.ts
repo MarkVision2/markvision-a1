@@ -49,7 +49,7 @@ describe("sourceLabel", () => {
   it("maps raw source values to human labels", () => {
     expect(sourceLabel("whatsapp")).toBe("WhatsApp");
     expect(sourceLabel("wa")).toBe("WhatsApp");
-    expect(sourceLabel("instagram")).toBe("Instagram");
+    expect(sourceLabel("instagram")).toBe("Инстаграм");
     expect(sourceLabel("meta")).toBe("Реклама Meta");
     expect(sourceLabel("yuriy")).toBe("Yuriy");
     expect(sourceLabel("dastan")).toBe("Дастан");
