@@ -31,6 +31,7 @@ import { CrmTodayView } from "@/components/crm/CrmTodayView";
 import { RejectReasonDialog } from "@/components/crm/RejectReasonDialog";
 import { PaymentAmountDialog } from "@/components/crm/PaymentAmountDialog";
 import { DiagnosticAmountDialog } from "@/components/crm/DiagnosticAmountDialog";
+import { AddMemberDialog } from "@/components/settings/AddMemberDialog";
 const ManagersView = lazy(() => import("@/components/crm/ManagersView").then((m) => ({ default: m.ManagersView })));
 const AnalyticsView = lazy(() => import("@/components/crm/AnalyticsView").then((m) => ({ default: m.AnalyticsView })));
 const AutomationsSettings = lazy(() =>
@@ -112,6 +113,7 @@ const Crm = () => {
   const [rejectFor, setRejectFor] = useState<{ leadId: string; prevStageId?: string; viaDrag: boolean } | null>(null);
   const [payFor, setPayFor] = useState<{ leadId: string; prevStageId?: string } | null>(null);
   const [diagFor, setDiagFor] = useState<{ leadId: string; stageId: string } | null>(null);
+  const [managerDialogOpen, setManagerDialogOpen] = useState(false);
   const leadsRef = useRef(leads);
 
   useEffect(() => {
@@ -424,7 +426,12 @@ const Crm = () => {
               />
             )}
 
-            {tab === "managers" && <ManagersView stats={analytics.managerStats} />}
+            {tab === "managers" && (
+              <ManagersView
+                stats={analytics.managerStats}
+                onAddManager={() => setManagerDialogOpen(true)}
+              />
+            )}
 
             {tab === "analytics" && (
               <AnalyticsView
@@ -593,6 +600,8 @@ const Crm = () => {
           setDiagFor(null);
         }}
       />
+
+      <AddMemberDialog open={managerDialogOpen} onOpenChange={setManagerDialogOpen} />
 
 
     </main>

@@ -1,20 +1,26 @@
-import { Users, TimerReset, TrendingUp, Wallet, Award } from "lucide-react";
+import { Users, TimerReset, TrendingUp, Wallet, Award, UserPlus2, MousePointerClick } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import type { ManagerStats } from "@/hooks/useCrmAnalytics";
 
 interface Props {
   stats: ManagerStats[];
+  onAddManager?: () => void;
 }
 
-export function ManagersView({ stats }: Props) {
+export function ManagersView({ stats, onAddManager }: Props) {
   if (stats.length === 0) {
     return (
       <div className="rounded-2xl border border-border/60 bg-card/40 p-10 text-center">
         <Users className="mx-auto h-10 w-10 text-muted-foreground/60" />
-        <div className="mt-3 text-base font-semibold">Нет менеджеров</div>
+        <div className="mt-3 text-base font-semibold">Нет CRM-менеджеров</div>
         <p className="mx-auto mt-1 max-w-sm text-sm text-muted-foreground">
-          Добавьте сотрудников с ролью «Менеджер» в разделе Команда — здесь появится их KPI.
+          Добавьте менеджера в текущий проект — после этого его можно будет выбрать ответственным в карточке лида.
         </p>
+        <Button className="mt-5 gap-2" onClick={onAddManager}>
+          <UserPlus2 className="h-4 w-4" />
+          Добавить CRM-менеджера
+        </Button>
       </div>
     );
   }
@@ -23,7 +29,34 @@ export function ManagersView({ stats }: Props) {
   const maxRevenue = Math.max(1, ...sorted.map((s) => s.revenue));
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card/40 p-2 sm:p-4">
+    <div className="space-y-3">
+      <div className="flex flex-col gap-3 rounded-2xl border border-border/60 bg-card/40 p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-start gap-3">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-success/15 text-success ring-1 ring-success/25">
+            <Users className="h-4 w-4" />
+          </span>
+          <div>
+            <h2 className="text-lg font-semibold">CRM-менеджеры</h2>
+            <p className="text-xs text-muted-foreground">
+              Добавляйте менеджеров текущего проекта и назначайте ответственного в карточке лида через поле «Ответственный».
+            </p>
+          </div>
+        </div>
+        <Button className="gap-2" onClick={onAddManager}>
+          <UserPlus2 className="h-4 w-4" />
+          Добавить CRM-менеджера
+        </Button>
+      </div>
+
+      <div className="rounded-2xl border border-success/25 bg-success/5 px-4 py-3 text-xs text-muted-foreground">
+        <span className="inline-flex items-center gap-2 font-medium text-foreground">
+          <MousePointerClick className="h-3.5 w-3.5 text-success" />
+          Где выбрать ответственного:
+        </span>{" "}
+        откройте лид в CRM, сверху рядом с этапом нажмите на плашку «Ответственный» и выберите менеджера.
+      </div>
+
+      <div className="rounded-2xl border border-border/60 bg-card/40 p-2 sm:p-4">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[640px] text-sm">
           <thead>
@@ -83,6 +116,7 @@ export function ManagersView({ stats }: Props) {
             })}
           </tbody>
         </table>
+      </div>
       </div>
     </div>
   );

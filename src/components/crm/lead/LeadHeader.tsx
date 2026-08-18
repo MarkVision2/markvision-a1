@@ -145,7 +145,7 @@ export function LeadHeader({
                   className="inline-flex items-center gap-1 rounded-full bg-secondary/70 px-2 py-0.5 text-[11px] text-foreground/90 transition-colors hover:bg-secondary"
                 >
                   <UserRound className="h-3 w-3 text-muted-foreground" />
-                  {assignee?.name ?? "не назначен"}
+                  {assignee?.name ? `Ответственный: ${assignee.name}` : "Ответственный: выбрать"}
                 </button>
               </PopoverTrigger>
               <PopoverContent className="w-56" align="start">
