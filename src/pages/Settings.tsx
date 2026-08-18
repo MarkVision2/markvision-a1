@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { LucideIcon } from "lucide-react";
-import { Camera, CheckCircle2, Edit2, Eye, Globe, GitBranch, KeyRound, Loader2, MessageCircle, Phone, Plus, RefreshCw, Search, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
+import { Camera, CheckCircle2, Edit2, Eye, Globe, GitBranch, KeyRound, Loader2, MessageCircle, Phone, Plus, RefreshCw, Search, TableProperties, Trash2, UserCircle2, Users2, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +21,7 @@ import { SipuniSettings } from "@/components/settings/SipuniSettings";
 import { ProfileSettings } from "@/components/settings/ProfileSettings";
 import { PipelinesSettings } from "@/components/settings/PipelinesSettings";
 import { LossReasonsSettings } from "@/components/settings/LossReasonsSettings";
+import { MetricLabelsSettings } from "@/components/settings/MetricLabelsSettings";
 import { ClientDashTokensSettings } from "@/components/settings/ClientDashTokensSettings";
 import { InstagramOrganicSettings } from "@/components/settings/InstagramOrganicSettings";
 import { MetaTokensSettings } from "@/components/settings/MetaTokensSettings";
@@ -50,7 +51,7 @@ const ROLE_COLOR: Record<string, string> = {
 };
 
 const SETTINGS_TABS = [
-  "team", "profile", "pipelines", "loss",
+  "team", "profile", "pipelines", "loss", "metrics-labels",
   "telephony", "whatsapp", "site", "inbound", "ig-organic", "meta-tokens", "google-ads", "clientview",
 ] as const;
 
@@ -62,6 +63,7 @@ const PROJECT_NAV: Array<{ tab: SettingsTab; title: string; icon: LucideIcon }> 
   { tab: "profile", title: "Профиль", icon: UserCircle2 },
   { tab: "pipelines", title: "Воронки", icon: GitBranch },
   { tab: "loss", title: "Причины отказа", icon: XCircle },
+  { tab: "metrics-labels", title: "Показатели", icon: TableProperties },
 ];
 
 const CONNECTION_NAV: Array<{
@@ -526,6 +528,8 @@ export default function Settings() {
           {activeTab === "pipelines" && <PipelinesSettings />}
 
           {activeTab === "loss" && <LossReasonsSettings />}
+
+          {activeTab === "metrics-labels" && <MetricLabelsSettings />}
 
           {activeTab === "telephony" && <SipuniSettings />}
 

@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { useMetricLabels } from "@/hooks/useMetricLabels";
 import { MetricsDash } from "@/components/metrics/MetricsDash";
 import {
   formatNumber,
@@ -59,6 +60,8 @@ export function MetricsKpiPanel({
   filledDays,
   daysInMonth,
 }: Props) {
+  const { labelFor } = useMetricLabels();
+  const joinedLabel = labelFor("joined");
   return (
     <div className="mt-4 rounded-2xl border border-border/60 bg-card/40 p-4">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -87,7 +90,7 @@ export function MetricsKpiPanel({
           value={factCpl > 0 ? formatTenge(factCpl) : <MetricsDash />}
         />
         <CompactStat
-          label="Вступления"
+          label={joinedLabel}
           value={factJoins > 0 ? formatNumber(factJoins) : <MetricsDash />}
         />
         <CompactStat
@@ -105,10 +108,10 @@ export function MetricsKpiPanel({
           </strong>
         </span>
         {crLeadJoin > 0 && (
-          <span>CRM → вступление: {formatPercent(crLeadJoin)}</span>
+          <span>CRM → {joinedLabel.toLowerCase()}: {formatPercent(crLeadJoin)}</span>
         )}
         {crJoinSale > 0 && (
-          <span>Вступление → продажа: {formatPercent(crJoinSale)}</span>
+          <span>{joinedLabel} → продажа: {formatPercent(crJoinSale)}</span>
         )}
       </div>
     </div>

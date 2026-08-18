@@ -3,6 +3,8 @@ import { ManualFactCell } from "@/components/metrics/ManualFactCell";
 import { MetricsDash } from "@/components/metrics/MetricsDash";
 import { formatNumber } from "@/components/metrics/metricsFormat";
 import { cn } from "@/lib/utils";
+import { useMetricLabels } from "@/hooks/useMetricLabels";
+import type { MetricColumnKey } from "@/lib/metricColumns";
 import type { DailyInsightRow } from "@/hooks/useMetaInsights";
 
 const Cell = ({ children, mono = true }: { children: React.ReactNode; mono?: boolean }) => (
@@ -68,6 +70,7 @@ export function MetricsDataTable({
   onSavePrepaySum,
 }: Props) {
   const editDisabled = !canEdit;
+  const { labelFor } = useMetricLabels();
 
   const num = (v: number | undefined) =>
     v && v > 0 ? formatNumber(v) : <MetricsDash />;
@@ -83,8 +86,8 @@ export function MetricsDataTable({
           {mode === "business" ? (
             <tr className="border-b-2 border-border/80 bg-muted/70 shadow-sm">
               <th className={stickyDateHeader}>Дата</th>
-              {["Затраты", "Лиды Meta", "Лиды CRM", "CPL CRM", "Вступлений", "Продажи", "Сумма"].map((h) => (
-                <th key={h} className={cn(headerTh, "text-right")}>{h}</th>
+              {(["spend", "leads_meta", "leads_crm", "cpl_crm", "joined", "sales", "sum_business"] as MetricColumnKey[]).map((k) => (
+                <th key={k} className={cn(headerTh, "text-right")}>{labelFor(k)}</th>
               ))}
             </tr>
           ) : (
@@ -104,28 +107,28 @@ export function MetricsDataTable({
             </th>
           </tr>
           <tr className="border-b-2 border-border/80 bg-muted/70">
-            {[
-              { h: "Затраты", border: false },
-              { h: "Лиды Meta", border: false },
-              { h: "Лиды CRM", border: true },
-              { h: "CPL CRM", border: false },
-              { h: "Вступлений", border: false },
-              { h: "Предоплат", border: true },
-              { h: "Сумма предопл.", border: false },
-              { h: "Продажи", border: false },
-              { h: "Выручка", border: false },
-              { h: "Касса", border: false },
-              { h: "Итого", border: false },
-            ].map(({ h, border }) => (
+            {([
+              { k: "spend", border: false },
+              { k: "leads_meta", border: false },
+              { k: "leads_crm", border: true },
+              { k: "cpl_crm", border: false },
+              { k: "joined", border: false },
+              { k: "prepaid_count", border: true },
+              { k: "prepaid_sum", border: false },
+              { k: "sales", border: false },
+              { k: "revenue", border: false },
+              { k: "cash", border: false },
+              { k: "total", border: false },
+            ] as { k: MetricColumnKey; border: boolean }[]).map(({ k, border }) => (
               <th
-                key={h}
+                key={k}
                 className={cn(
                   headerTh,
                   "text-right",
                   border && "border-l border-border/40",
                 )}
               >
-                {h}
+                {labelFor(k)}
               </th>
             ))}
           </tr>
