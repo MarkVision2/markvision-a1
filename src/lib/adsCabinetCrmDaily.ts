@@ -2,7 +2,8 @@
  * CRM-срез по дням для таблицы кабинета в Ads (новая launch-логика).
  *
  * - Лиды CRM — по created_at (заявка попала в CRM)
- * - Вступления — stage_changed → joined_group / warming (факт входа в группу)
+ * - Диагностика — stage_changed → диагностический этап / визит / консультация
+ * - Продажи и сумма — по paid_at из CRM
  * - CPL CRM = spend / crmLeads (считается в UI)
  *
  * Атрибуция на кабинет:
@@ -17,7 +18,17 @@ import { stageRoleOf } from "@/lib/stageRoles";
 
 export interface AdsCabinetCrmDay {
   crmLeads: number;
-  joins: number;
+  diagnostics: number;
+  sales: number;
+  salesRevenue: number;
+}
+
+export function isDiagnosticStageEvent(ev: Pick<StageChangeEvent, "toStageKey" | "toStageRole" | "isDiagnostic">): boolean {
+  if (ev.isDiagnostic) return true;
+  const role = ev.toStageRole ?? stageRoleOf({ id: ev.toStageKey });
+  if (role === "attended" || role === "call_scheduled" || role === "call_done") return true;
+  const key = ev.toStageKey.toLowerCase();
+  return /diagnostic|диагност|визит|visit|consult|консульт|разбор|scheduled/.test(key);
 }
 
 export function isGroupJoinStageKey(toStageKey: string): boolean {
@@ -62,7 +73,7 @@ export function buildAdsCabinetCrmDaily(
 ): Map<string, AdsCabinetCrmDay> {
   const m = new Map<string, AdsCabinetCrmDay>();
   const get = (ymd: string): AdsCabinetCrmDay => {
-    const cur = m.get(ymd) ?? { crmLeads: 0, joins: 0 };
+    const cur = m.get(ymd) ?? { crmLeads: 0, diagnostics: 0, sales: 0, salesRevenue: 0 };
     m.set(ymd, cur);
     return cur;
   };
@@ -76,22 +87,31 @@ export function buildAdsCabinetCrmDaily(
     const ymd = ymdAlmatyFromIso(lead.createdAt);
     if (!ymd || !inRange(ymd)) continue;
     get(ymd).crmLeads += 1;
+
+    if (lead.paid) {
+      const paidYmd = ymdAlmatyFromIso(lead.paidAt || lead.lastActivityAt);
+      if (paidYmd && inRange(paidYmd)) {
+        const day = get(paidYmd);
+        day.sales += 1;
+        day.salesRevenue += Math.max(0, Number(lead.amount) || 0);
+      }
+    }
   }
 
-  // Unique lead per day — повторный переход в joined_group не двоит день.
-  const joinedDay = new Set<string>();
+  // Unique lead per day — повторный переход в диагностический этап не двоит день.
+  const diagnosticDay = new Set<string>();
   for (const ev of stageEvents) {
     const cabOk =
       ev.cabinetId === cabinetId ||
       (sole && !ev.cabinetId && matchedLeadIds.has(ev.leadId));
     if (!cabOk) continue;
-    if (!isGroupJoinStageKey(ev.toStageKey)) continue;
+    if (!isDiagnosticStageEvent(ev)) continue;
     const ymd = ymdAlmatyFromIso(ev.at);
     if (!ymd || !inRange(ymd)) continue;
     const key = `${ymd}:${ev.leadId}`;
-    if (joinedDay.has(key)) continue;
-    joinedDay.add(key);
-    get(ymd).joins += 1;
+    if (diagnosticDay.has(key)) continue;
+    diagnosticDay.add(key);
+    get(ymd).diagnostics += 1;
   }
 
   return m;
@@ -99,10 +119,14 @@ export function buildAdsCabinetCrmDaily(
 
 export function sumAdsCabinetCrmDaily(byDay: Map<string, AdsCabinetCrmDay>): AdsCabinetCrmDay {
   let crmLeads = 0;
-  let joins = 0;
+  let diagnostics = 0;
+  let sales = 0;
+  let salesRevenue = 0;
   for (const d of byDay.values()) {
     crmLeads += d.crmLeads;
-    joins += d.joins;
+    diagnostics += d.diagnostics;
+    sales += d.sales;
+    salesRevenue += d.salesRevenue;
   }
-  return { crmLeads, joins };
+  return { crmLeads, diagnostics, sales, salesRevenue };
 }

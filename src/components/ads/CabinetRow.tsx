@@ -24,7 +24,7 @@ import {
 } from "@/lib/adsCabinetCrmDaily";
 import { supabase } from "@/integrations/supabase/client";
 import { formatMetaSyncMessages, syncMetaFull } from "@/lib/metaSync";
-import { manualValueForSave } from "@/lib/cdiManualOverride";
+import { resolveCdiMetric } from "@/lib/cdiManualOverride";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -202,6 +202,17 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
 
   const cplCrm =
     totals && crmTotals.crmLeads > 0 ? totals.spend / crmTotals.crmLeads : 0;
+  const resolvedCrmTotals = useMemo(() => {
+    let sales = 0;
+    let salesRevenue = 0;
+    for (const d of monthDays) {
+      const row = dailyByDate.get(d.iso);
+      const crm = crmByDay.get(d.iso);
+      sales += resolveCdiMetric(row?.manualSalesRaw, crm?.sales ?? 0);
+      salesRevenue += resolveCdiMetric(row?.manualSalesRevenueRaw, crm?.salesRevenue ?? 0);
+    }
+    return { sales, salesRevenue };
+  }, [crmByDay, dailyByDate, monthDays]);
 
   const upsertManual = async (
     isoDate: string,
@@ -330,19 +341,19 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
             sub={cplCrm > 0 ? `CPL ${formatMoney(cplCrm, currency)}` : "—"}
           />
           <Metric
-            label="Вступления"
+            label="Диагностика"
             value={
               <span className="text-cyan-400">
-                {formatNumber(crmTotals.joins)}
+                {formatNumber(crmTotals.diagnostics)}
               </span>
             }
           />
           <Metric
             label="Продажи"
-            value={formatNumber(totals?.sales ?? 0)}
+            value={formatNumber(resolvedCrmTotals.sales)}
             sub={
               <span className="text-success">
-                {formatMoney(totals?.crmRevenue ?? 0, currency)}
+                {formatMoney(resolvedCrmTotals.salesRevenue, currency)}
               </span>
             }
           />
@@ -504,7 +515,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                   <th className="px-3 py-3 text-right font-medium">Лиды Meta</th>
                   <th className="px-3 py-3 text-right font-medium">Лиды CRM</th>
                   <th className="px-3 py-3 text-right font-medium">CPL CRM</th>
-                  <th className="px-3 py-3 text-right font-medium">Вступлений</th>
+                  <th className="px-3 py-3 text-right font-medium">Диагностик</th>
                   <th className="px-3 py-3 text-right font-medium">Продажи</th>
                   <th className="px-3 py-3 text-right font-medium">Сумма</th>
                 </tr>
@@ -514,15 +525,15 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                   const row = dailyByDate.get(d.iso);
                   const crm = crmByDay.get(d.iso);
                   const crmLeads = crm?.crmLeads ?? 0;
-                  const joins = crm?.joins ?? 0;
+                  const diagnostics = crm?.diagnostics ?? 0;
                   const dayCplCrm =
                     row && crmLeads > 0 ? row.spend / crmLeads : 0;
-                  const sales = row?.sales ?? 0;
-                  const crmSalesOnly = row?.crmSales ?? 0;
+                  const crmSalesOnly = crm?.sales ?? 0;
                   const manualSales = row?.manualSales ?? 0;
-                  const crmRev = row?.crmRevenue ?? 0;
-                  const crmRevenueOnly = row?.crmRevenueOnly ?? 0;
-                  const manualRev = row?.manualRevenue ?? 0;
+                  const sales = resolveCdiMetric(row?.manualSalesRaw, crmSalesOnly);
+                  const crmRevenueOnly = crm?.salesRevenue ?? 0;
+                  const manualRev = row?.manualSalesRevenue ?? 0;
+                  const crmRev = resolveCdiMetric(row?.manualSalesRevenueRaw, crmRevenueOnly);
                   return (
                     <tr
                       key={d.key}
@@ -564,10 +575,10 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                       <td
                         className={cn(
                           "px-3 py-3 text-right tabular-nums",
-                          joins ? "text-cyan-400" : "text-muted-foreground",
+                          diagnostics ? "text-cyan-400" : "text-muted-foreground",
                         )}
                       >
-                        {joins ? formatNumber(joins) : "—"}
+                        {diagnostics ? formatNumber(diagnostics) : "—"}
                       </td>
                       <td className="px-3 py-3 text-right">
                         <EditableNumberCell
@@ -601,7 +612,7 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
 
           <p className="text-xs text-muted-foreground">
             Meta — расход и лиды из Ads. Лиды CRM — заявки с атрибуцией на этот кабинет.
-            CPL CRM = расход ÷ лиды CRM. Вступления — переходы в этап «Вступил в группу».
+            CPL CRM = расход ÷ лиды CRM. Диагностика — переходы в этап диагностики, визита или консультации.
             Продажи и сумма — оплаты из CRM (можно поправить вручную).
           </p>
         </div>

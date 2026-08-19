@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildAdsCabinetCrmDaily,
-  isGroupJoinStageKey,
+  isDiagnosticStageEvent,
   sumAdsCabinetCrmDaily,
 } from "@/lib/adsCabinetCrmDaily";
 import type { LeadLite } from "@/hooks/useLeadsLite";
@@ -36,31 +36,39 @@ function lead(partial: Partial<LeadLite> & Pick<LeadLite, "id" | "cabinetId" | "
 }
 
 describe("adsCabinetCrmDaily", () => {
-  it("detects joined_group / warming as group join", () => {
-    expect(isGroupJoinStageKey("joined_group")).toBe(true);
-    expect(isGroupJoinStageKey("warming")).toBe(true);
-    expect(isGroupJoinStageKey("new")).toBe(false);
-    expect(isGroupJoinStageKey("paid")).toBe(false);
+  it("detects diagnostic / visit / consultation stages", () => {
+    expect(isDiagnosticStageEvent({ toStageKey: "diagnostic", toStageRole: null, isDiagnostic: false })).toBe(true);
+    expect(isDiagnosticStageEvent({ toStageKey: "visit", toStageRole: null, isDiagnostic: false })).toBe(true);
+    expect(isDiagnosticStageEvent({ toStageKey: "new", toStageRole: null, isDiagnostic: false })).toBe(false);
+    expect(isDiagnosticStageEvent({ toStageKey: "paid", toStageRole: null, isDiagnostic: false })).toBe(false);
   });
 
-  it("counts CRM leads by created_at and joins by stage event day", () => {
+  it("counts CRM leads, diagnostics by stage event day, and paid sales by paid_at", () => {
     const leads = [
       lead({ id: "a", cabinetId: "cab1", createdAt: "2026-07-10T05:00:00+05:00" }),
-      lead({ id: "b", cabinetId: "cab1", createdAt: "2026-07-10T20:00:00+05:00" }),
+      lead({
+        id: "b",
+        cabinetId: "cab1",
+        createdAt: "2026-07-10T20:00:00+05:00",
+        paid: true,
+        paidAt: "2026-07-12T10:00:00+05:00",
+        amount: 150000,
+      }),
       lead({ id: "c", cabinetId: "cab2", createdAt: "2026-07-10T12:00:00+05:00" }),
       lead({ id: "d", cabinetId: "cab1", createdAt: "2026-07-11T12:00:00+05:00" }),
     ];
     const events: StageChangeEvent[] = [
-      { leadId: "a", cabinetId: "cab1", at: "2026-07-10T18:00:00+05:00", toStageKey: "joined_group", isDiagnostic: false },
-      { leadId: "a", cabinetId: "cab1", at: "2026-07-10T19:00:00+05:00", toStageKey: "joined_group", isDiagnostic: false },
-      { leadId: "b", cabinetId: "cab1", at: "2026-07-11T09:00:00+05:00", toStageKey: "warming", isDiagnostic: false },
-      { leadId: "c", cabinetId: "cab2", at: "2026-07-10T15:00:00+05:00", toStageKey: "joined_group", isDiagnostic: false },
+      { leadId: "a", cabinetId: "cab1", at: "2026-07-10T18:00:00+05:00", toStageKey: "diagnostic", toStageRole: null, isDiagnostic: false },
+      { leadId: "a", cabinetId: "cab1", at: "2026-07-10T19:00:00+05:00", toStageKey: "visit", toStageRole: null, isDiagnostic: false },
+      { leadId: "b", cabinetId: "cab1", at: "2026-07-11T09:00:00+05:00", toStageKey: "scheduled", toStageRole: "call_scheduled", isDiagnostic: false },
+      { leadId: "c", cabinetId: "cab2", at: "2026-07-10T15:00:00+05:00", toStageKey: "diagnostic", toStageRole: null, isDiagnostic: false },
     ];
 
     const byDay = buildAdsCabinetCrmDaily(leads, events, "cab1", "2026-07-01", "2026-07-31");
-    expect(byDay.get("2026-07-10")).toEqual({ crmLeads: 2, joins: 1 });
-    expect(byDay.get("2026-07-11")).toEqual({ crmLeads: 1, joins: 1 });
-    expect(sumAdsCabinetCrmDaily(byDay)).toEqual({ crmLeads: 3, joins: 2 });
+    expect(byDay.get("2026-07-10")).toEqual({ crmLeads: 2, diagnostics: 1, sales: 0, salesRevenue: 0 });
+    expect(byDay.get("2026-07-11")).toEqual({ crmLeads: 1, diagnostics: 1, sales: 0, salesRevenue: 0 });
+    expect(byDay.get("2026-07-12")).toEqual({ crmLeads: 0, diagnostics: 0, sales: 1, salesRevenue: 150000 });
+    expect(sumAdsCabinetCrmDaily(byDay)).toEqual({ crmLeads: 3, diagnostics: 2, sales: 1, salesRevenue: 150000 });
   });
 
   it("sole Meta cabinet counts unattributed zapoinovai/meta utm leads", () => {
@@ -88,6 +96,6 @@ describe("adsCabinetCrmDaily", () => {
     const byDay = buildAdsCabinetCrmDaily(leads, [], "cab1", "2026-08-01", "2026-08-31", {
       soleMetaCabinet: true,
     });
-    expect(sumAdsCabinetCrmDaily(byDay)).toEqual({ crmLeads: 2, joins: 0 });
+    expect(sumAdsCabinetCrmDaily(byDay)).toEqual({ crmLeads: 2, diagnostics: 0, sales: 0, salesRevenue: 0 });
   });
 });
