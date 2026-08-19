@@ -21,6 +21,7 @@ export const routeImports = {
   AiAgents: () => import("@/pages/AiAgents"),
   Broadcasts: () => import("@/pages/Broadcasts"),
   BroadcastDetail: () => import("@/pages/BroadcastDetail"),
+  Leadgen: () => import("@/pages/Leadgen"),
   Analytics: () => import("@/pages/Analytics"),
   CreativeFunnel: () => import("@/pages/CreativeFunnel"),
   ContentAnalytics: () => import("@/pages/ContentAnalytics"),
