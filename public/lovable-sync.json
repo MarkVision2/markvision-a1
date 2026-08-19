@@ -1,7 +1,7 @@
 {
-  "git_sha": "e2eb978",
-  "git_sha_full": "e2eb9781bdac0276112fb5f485e5cdb8fda6a80c",
-  "updated_at": "2026-08-18T17:16:04+04:00",
-  "label": "fix(crm): clarify meta capi verification [vercel-deploy]",
+  "git_sha": "ce10510",
+  "git_sha_full": "ce10510a49c2ae67f19dd64d68a57e5a4d64581c",
+  "updated_at": "2026-08-19T12:40:12+04:00",
+  "label": "[vercel-deploy] feat(leadgen): раздел «Лидген» в CRM",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
