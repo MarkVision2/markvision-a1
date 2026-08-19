@@ -1,7 +1,7 @@
 {
-  "git_sha": "e9a742f",
-  "git_sha_full": "e9a742faba8eca43a1e325eaacc3738e1385774a",
-  "updated_at": "2026-08-19T16:38:22+04:00",
-  "label": "fix(broadcast): записывать variant (A/B) при отправке",
+  "git_sha": "88289ec",
+  "git_sha_full": "88289ecb7aad2295f2f85c7e99ed66550fc39b59",
+  "updated_at": "2026-08-19T20:47:39+04:00",
+  "label": "[vercel-deploy] feat(leadgen): вкладка «Парсинг» — города и направления",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
