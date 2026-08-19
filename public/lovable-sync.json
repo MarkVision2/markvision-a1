@@ -1,7 +1,7 @@
 {
-  "git_sha": "a4ac455",
-  "git_sha_full": "a4ac455a21f91d24fca726cd782a429439b9c73f",
-  "updated_at": "2026-08-19T13:32:25+04:00",
-  "label": "fix(ads): connect cabinet diagnostics to CRM [vercel-deploy]",
+  "git_sha": "e9a742f",
+  "git_sha_full": "e9a742faba8eca43a1e325eaacc3738e1385774a",
+  "updated_at": "2026-08-19T16:38:22+04:00",
+  "label": "fix(broadcast): записывать variant (A/B) при отправке",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
