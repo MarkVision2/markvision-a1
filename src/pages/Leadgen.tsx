@@ -15,6 +15,7 @@ import {
 import { cn } from "@/lib/utils";
 import { fmtNum } from "@/lib/format";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { LeadgenTargets } from "@/components/leadgen/LeadgenTargets";
 import {
   useLeadgen,
   type LeadgenAnswer,
@@ -201,6 +202,7 @@ const Leadgen = () => {
                 Ответы{answerCounts.ответил ? ` · ${answerCounts.ответил}` : ""}
               </TabsTrigger>
               <TabsTrigger value="runs">Прогоны</TabsTrigger>
+              <TabsTrigger value="targets">Парсинг</TabsTrigger>
             </TabsList>
 
             {/* ── ОБЗОР ─────────────────────────────────────── */}
@@ -570,6 +572,10 @@ const Leadgen = () => {
                   </table>
                 </div>
               </Panel>
+            </TabsContent>
+
+            <TabsContent value="targets">
+              <LeadgenTargets projectId={activeId || null} />
             </TabsContent>
           </Tabs>
         )}
