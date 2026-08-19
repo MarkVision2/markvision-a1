@@ -733,9 +733,12 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const variantRaw = c.message_variants.length
-        ? c.message_variants[rnd(0, c.message_variants.length - 1)]
-        : c.message;
+      // A/B: фиксируем, какой именно вариант ушёл, чтобы считать сплит.
+      const vIdx = c.message_variants.length
+        ? rnd(0, c.message_variants.length - 1)
+        : -1;
+      const variantRaw = vIdx >= 0 ? c.message_variants[vIdx] : c.message;
+      const variantLabel = vIdx >= 0 ? String.fromCharCode(65 + vIdx) : null; // A, B, C, D…
       const norm = normalizeOutgoingLink(variantRaw, c.target_url);
       const effectiveTarget = norm.targetUrl || c.target_url;
       const track = clickLink(r.click_token);
@@ -760,6 +763,7 @@ Deno.serve(async (req) => {
           .update({
             status: "sent",
             message_id: idMessage,
+            variant: variantLabel,
             sent_at: new Date().toISOString(),
             attempt,
           })
