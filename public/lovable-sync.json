@@ -1,7 +1,7 @@
 {
-  "git_sha": "e46e155",
-  "git_sha_full": "e46e1557d5630aa2267dc32f44ade143a1555479",
-  "updated_at": "2026-08-20T07:47:35+04:00",
-  "label": "feat(leadgen): автостарт рассылки + ротация городов/рубрик (миграции)",
+  "git_sha": "b802488",
+  "git_sha_full": "b802488d37163503d10047f3b0812dcb6aa8e4e5",
+  "updated_at": "2026-08-20T11:42:00+04:00",
+  "label": "feat(analytics): единая сквозная воронка денег вместо вебинарной [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
