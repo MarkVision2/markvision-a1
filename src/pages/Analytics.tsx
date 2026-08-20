@@ -2,12 +2,14 @@ import { lazy, Suspense, useMemo, useState } from "react";
 import {
   AlertCircle,
   DollarSign,
+  Eye,
   GitBranch,
-  Loader2,
+  MousePointerClick,
   RefreshCw,
   ShoppingBag,
   Target,
   TrendingUp,
+  UserCheck,
   Users,
   Zap,
 } from "lucide-react";
@@ -26,8 +28,8 @@ import { useLeadsLite, type LeadLite } from "@/hooks/useLeadsLite";
 import { CHANNELS, resolveChannel, type ChannelKey } from "@/lib/channelAttribution";
 import { isLeadPaid } from "@/lib/leadStageFlags";
 import { buildAnalyticsInsights, buildSiteBreakdown, buildSourceBreakdown } from "@/lib/analyticsBreakdowns";
-import { buildLaunchFunnel, buildLaunchKpis } from "@/lib/launchFunnel";
-import { LaunchConversionFunnel } from "@/components/crm/LaunchConversionFunnel";
+import { useMetricLabels } from "@/hooks/useMetricLabels";
+import { CrossFunnel, type CrossFunnelStage } from "@/components/analytics/CrossFunnel";
 import { ChannelCard, type ChannelStat } from "@/components/analytics/ChannelCard";
 import { InsightsStrip } from "@/components/analytics/InsightsStrip";
 import { SitesTable } from "@/components/analytics/SitesTable";
@@ -95,47 +97,6 @@ const KpiCard = ({ icon: Icon, label, value, sub, delta, emphasized }: KpiCardPr
     <div className="mt-1 text-[11px] text-muted-foreground">{sub}</div>
   </div>
 );
-
-interface FunnelRowProps {
-  label: string;
-  value: number;
-  base: number;
-  prevValue?: number;
-  color: string;
-  transition?: string;
-}
-
-const FunnelRow = ({ label, value, base, prevValue, color, transition }: FunnelRowProps) => {
-  const widthPct = base > 0 ? Math.max((value / base) * 100, value > 0 ? 4 : 0) : 0;
-  const conv = prevValue !== undefined && prevValue > 0 ? (value / prevValue) * 100 : null;
-  return (
-    <div>
-      <div className="flex items-end justify-between text-sm">
-        <div className="flex flex-col">
-          <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-            {label}
-          </span>
-          {transition && (
-            <span className="mt-0.5 text-[9px] uppercase tracking-wider text-muted-foreground/70">
-              {transition}
-            </span>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xl font-bold tabular-nums">{fmtNumber(value)}</span>
-          {conv !== null && (
-            <span className="rounded-md bg-success/15 px-1.5 py-0.5 text-[10px] font-bold text-success">
-              {fmtPct(conv)}
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="mt-2 h-3 overflow-hidden rounded-full bg-secondary/40">
-        <div className={cn("h-full rounded-full transition-all", color)} style={{ width: `${widthPct}%` }} />
-      </div>
-    </div>
-  );
-};
 
 function pctDelta(cur: number, prev: number): number | null {
   if (prev === 0) return cur > 0 ? 100 : null;
@@ -231,9 +192,17 @@ const Analytics = () => {
   const cpl = reportTotals?.cpl ?? 0;
   const romi = reportTotals && reportTotals.spend > 0 ? reportTotals.romi : null;
   const avgCheck = reportTotals?.aov ?? 0;
+  const ctr = reportTotals?.ctr ?? 0;
+  const cpv = reportTotals?.cpv ?? 0;
+  const cac = reportTotals?.cac ?? 0;
   const conversion = leadCount > 0 ? (salesCount / leadCount) * 100 : 0;
   const crLeadVisit = leadCount > 0 ? (diagnosticsCount / leadCount) * 100 : 0;
   const crVisitSale = diagnosticsCount > 0 ? (salesCount / diagnosticsCount) * 100 : 0;
+
+  // Метка этапа квалификации берётся из настроек проекта (та же, что в «Таблице
+  // показателей»): мед-клиника — «Диагностики», вебинарный проект — «Вступлений».
+  const { labelFor } = useMetricLabels();
+  const qualLabel = labelFor("conducted_visits");
 
   const prevTotalLeads = reportPrevTotals?.totalLeads ?? 0;
   const prevSpend = reportPrevTotals?.spend ?? 0;
@@ -433,8 +402,42 @@ const Analytics = () => {
     [leads, monthStart, monthEnd, cabinetId],
   );
 
-  const launchFunnel = useMemo(() => buildLaunchFunnel(filteredLeads), [filteredLeads]);
-  const launchKpis = useMemo(() => buildLaunchKpis(filteredLeads), [filteredLeads]);
+  // Этапы единой сквозной воронки (расход → трафик → лиды → квалификация →
+  // продажи → выручка). Единый источник цифр — те же KPI, что в шапке.
+  const funnelStages = useMemo<CrossFunnelStage[]>(() => [
+    {
+      key: "spend", label: "Расход", hint: "инвестиции в трафик",
+      value: spend, kind: "money", icon: DollarSign, tone: "spend",
+    },
+    {
+      key: "impressions", label: "Показы", hint: "охват рекламы",
+      value: impressions, kind: "count", icon: Eye, tone: "traffic",
+    },
+    {
+      key: "clicks", label: "Клики", hint: "переходы по объявлению",
+      value: clicks, kind: "count", icon: MousePointerClick, tone: "traffic",
+      econ: ctr > 0 ? { label: "CTR", value: fmtPct(ctr) } : null,
+    },
+    {
+      key: "leads", label: "Лиды", hint: "заявки в CRM",
+      value: leadCount, kind: "count", icon: Users, tone: "lead",
+      econ: cpl > 0 ? { label: "CPL", value: fmtMoney(cpl) } : null,
+    },
+    {
+      key: "qual", label: qualLabel, hint: "дошли до квалификации",
+      value: diagnosticsCount, kind: "count", icon: UserCheck, tone: "qual",
+      econ: cpv > 0 ? { label: "Цена", value: fmtMoney(cpv) } : null,
+    },
+    {
+      key: "sales", label: "Продажи", hint: "закрытые сделки",
+      value: salesCount, kind: "count", icon: ShoppingBag, tone: "sale",
+      econ: cac > 0 ? { label: "CPA", value: fmtMoney(cac) } : null,
+    },
+    {
+      key: "revenue", label: "Выручка", hint: "деньги в кассе",
+      value: revenue, kind: "money", icon: TrendingUp, tone: "revenue",
+    },
+  ], [spend, impressions, clicks, leadCount, diagnosticsCount, salesCount, revenue, ctr, cpl, cpv, cac, qualLabel]);
 
   // Автовыводы за период: лучший канал / источник / креатив + точка роста.
   const insights = useMemo(
@@ -444,7 +447,6 @@ const Analytics = () => {
 
   const hasLinkedData = actIds.length > 0;
   const hasMonthData = !!data?.daily.length || filteredLeads.length > 0;
-  const funnelBase = Math.max(impressions, clicks, leadCount, diagnosticsCount, salesCount, 1);
 
   return (
     <PageContainer>
@@ -519,78 +521,64 @@ const Analytics = () => {
         </div>
       )}
 
-      {/* Funnel + Trend */}
-      <div className="mt-6 grid gap-4 lg:grid-cols-2">
+      {/* Сквозная воронка денег — единая логическая цепочка */}
+      <section className="mt-6">
+        <CrossFunnel stages={funnelStages} periodLabel={monthLabel} loading={loading} />
+      </section>
+
+      {/* Точки входа (сайт/WhatsApp) + динамика по дням */}
+      <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-border/60 bg-card/40 p-6">
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-sm font-bold uppercase tracking-wider">Воронка конверсий</h2>
-              <p className="mt-1 text-xs text-muted-foreground">От охвата до реальных продаж · {monthLabel}</p>
+              <h2 className="text-sm font-bold uppercase tracking-wider">Точки входа лида</h2>
+              <p className="mt-1 text-xs text-muted-foreground">Конверсия клика в лид по каналу назначения</p>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-success">Live</span>
-            </div>
+            <span className="rounded-full border border-success/30 bg-success/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-success">Live</span>
           </div>
-
-          {/* Split-by-destination конверсии: сайт (по каждому URL) и WhatsApp отдельно */}
-          {(splitData.sites.length > 0 || splitData.whatsapp.clicks > 0) && (
-            <div className="mt-4 grid gap-2 sm:grid-cols-2">
-              <div className="rounded-xl border border-success/20 bg-success/5 p-3">
-                <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-success">
-                  <span>Сайт · клик → лид</span>
-                  {splitData.siteTotals.clicks > 0 && (
-                    <span className="text-xs font-bold tabular-nums">{fmtPct(splitData.siteTotals.cr)}</span>
-                  )}
-                </div>
-                {splitData.sites.length > 0 ? (
-                  <div className="mt-2 space-y-1.5">
-                    {splitData.sites.map((s) => (
-                      <div key={s.url} className="flex items-center justify-between gap-2 text-xs">
-                        <span className="truncate font-medium" title={s.url}>{s.label}</span>
-                        <span className="shrink-0 tabular-nums text-muted-foreground">
-                          {fmtNumber(s.leads)}/{fmtNumber(s.clicks)} ·{" "}
-                          <span className="font-bold text-success">{fmtPct(s.cr)}</span>
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-2 text-xs text-muted-foreground">Нет сайтовых кампаний</div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <div className="rounded-xl border border-success/20 bg-success/5 p-3">
+              <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-success">
+                <span>Сайт · клик → лид</span>
+                {splitData.siteTotals.clicks > 0 && (
+                  <span className="text-xs font-bold tabular-nums">{fmtPct(splitData.siteTotals.cr)}</span>
                 )}
               </div>
-              <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
-                <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-primary">
-                  <span>WhatsApp · клик → диалог</span>
-                  {splitData.whatsapp.clicks > 0 && (
-                    <span className="text-xs font-bold tabular-nums">{fmtPct(splitData.whatsapp.cr)}</span>
-                  )}
+              {splitData.sites.length > 0 ? (
+                <div className="mt-2 space-y-1.5">
+                  {splitData.sites.map((s) => (
+                    <div key={s.url} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="truncate font-medium" title={s.url}>{s.label}</span>
+                      <span className="shrink-0 tabular-nums text-muted-foreground">
+                        {fmtNumber(s.leads)}/{fmtNumber(s.clicks)} ·{" "}
+                        <span className="font-bold text-success">{fmtPct(s.cr)}</span>
+                      </span>
+                    </div>
+                  ))}
                 </div>
-                {splitData.whatsapp.clicks > 0 ? (
-                  <div className="mt-2 flex items-center justify-between text-xs">
-                    <span className="text-muted-foreground">Диалогов / кликов</span>
-                    <span className="tabular-nums">
-                      {fmtNumber(splitData.whatsapp.messages)}/{fmtNumber(splitData.whatsapp.clicks)}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="mt-2 text-xs text-muted-foreground">Нет WhatsApp-кампаний</div>
+              ) : (
+                <div className="mt-2 text-xs text-muted-foreground">Нет сайтовых кампаний</div>
+              )}
+            </div>
+            <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+              <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-primary">
+                <span>WhatsApp · клик → диалог</span>
+                {splitData.whatsapp.clicks > 0 && (
+                  <span className="text-xs font-bold tabular-nums">{fmtPct(splitData.whatsapp.cr)}</span>
                 )}
               </div>
+              {splitData.whatsapp.clicks > 0 ? (
+                <div className="mt-2 flex items-center justify-between text-xs">
+                  <span className="text-muted-foreground">Диалогов / кликов</span>
+                  <span className="tabular-nums">
+                    {fmtNumber(splitData.whatsapp.messages)}/{fmtNumber(splitData.whatsapp.clicks)}
+                  </span>
+                </div>
+              ) : (
+                <div className="mt-2 text-xs text-muted-foreground">Нет WhatsApp-кампаний</div>
+              )}
             </div>
-          )}
-
-          <div className="mt-6 space-y-5">
-            <FunnelRow label="Показы" value={impressions} base={funnelBase} color="bg-gradient-to-r from-success to-success/60" />
-            <FunnelRow label="Клики" transition="CTR" value={clicks} base={funnelBase} prevValue={impressions} color="bg-gradient-to-r from-success/80 to-success/40" />
-            <FunnelRow label="Лиды" transition="всего" value={leadCount} base={funnelBase} prevValue={clicks || impressions} color="bg-gradient-to-r from-success/60 to-success/30" />
-            <FunnelRow label="Диагностики" transition="Дошли" value={diagnosticsCount} base={funnelBase} prevValue={leadCount} color="bg-gradient-to-r from-primary/70 to-primary/30" />
-            <FunnelRow label="Продажи" transition="Закрыли" value={salesCount} base={funnelBase} prevValue={diagnosticsCount} color="bg-gradient-to-r from-warning/70 to-warning/30" />
           </div>
-          {loading && (
-            <div className="mt-6 flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" /> Обновляем данные...
-            </div>
-          )}
         </div>
 
         <div className="rounded-2xl border border-border/60 bg-card/40 p-6">
@@ -607,34 +595,6 @@ const Analytics = () => {
           </div>
         </div>
       </div>
-
-      {/* Воронка запуска AI Marketing Lab */}
-      <section className="mt-8">
-        <LaunchConversionFunnel leads={filteredLeads} periodLabel={monthLabel} />
-        <details className="mt-3 rounded-2xl border border-border/50 bg-card/30 p-4">
-          <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Полная воронка (12 этапов) · горячих {launchKpis.hot} · студентов {launchKpis.students}
-          </summary>
-          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {launchFunnel.map((row) => (
-              <div key={row.role} className="rounded-xl border border-border/50 bg-background/40 px-3 py-2.5">
-                <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{row.label}</div>
-                <div className="mt-1 flex items-baseline justify-between gap-2">
-                  <span className="text-lg font-bold tabular-nums">{fmtNumber(row.leads)}</span>
-                  <span className="text-[11px] text-muted-foreground">
-                    {row.conversionFromTop != null ? `${row.conversionFromTop.toFixed(0)}% от лидов` : "—"}
-                  </span>
-                </div>
-                {row.conversionFromPrev != null && (
-                  <div className="mt-1 text-[10px] text-muted-foreground">
-                    из предыдущего: <span className="font-semibold text-foreground/80">{row.conversionFromPrev.toFixed(0)}%</span>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </details>
-      </section>
 
       {/* Channels */}
       <section className="mt-8">
