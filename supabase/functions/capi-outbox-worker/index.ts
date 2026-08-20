@@ -63,7 +63,7 @@ async function hashUserData(raw: Record<string, unknown>): Promise<Record<string
     if (parts[0]) out.fn = [await sha256Lower(parts[0])];
     if (parts[1]) out.ln = [await sha256Lower(parts[1])];
   }
-  // fbc/fbp передаём как есть, без хеширования — Meta так требует.
+  // fbc/fbp/ctwa_clid передаём как есть, без хеширования — Meta так требует.
   // Сырой fbclid (без префикса fb.) нормализуем в формат Meta.
   const rawFbc = raw.fbc != null ? String(raw.fbc).trim() : "";
   if (rawFbc) {
@@ -72,6 +72,10 @@ async function hashUserData(raw: Record<string, unknown>): Promise<Record<string
       : `fb.1.${Math.floor(Date.now() / 1000)}.${rawFbc}`;
   }
   if (raw.fbp) out.fbp = String(raw.fbp);
+  // ctwa_clid — Click-to-WhatsApp click id. Top-level поле user_data, без хеша.
+  // Даёт Meta привязку WhatsApp-конверсии к объявлению без сайта и пикселя.
+  const ctwa = raw.ctwa_clid != null ? String(raw.ctwa_clid).trim() : "";
+  if (ctwa) out.ctwa_clid = ctwa;
   // external_id хешируем для лучшего matching без раскрытия PII.
   if (raw.external_id) out.external_id = [await sha256Lower(String(raw.external_id))];
   return out;
@@ -156,7 +160,8 @@ async function resolvePixelCreds(
 }
 
 async function sendToMeta(creds: PixelCreds, row: OutboxRow): Promise<{ ok: boolean; response: unknown; error?: string }> {
-  const userData = await hashUserData(row.raw_user_data || {});
+  const raw = row.raw_user_data || {};
+  const userData = await hashUserData(raw);
   const eventTime = Math.floor(new Date(row.event_time).getTime() / 1000);
 
   // custom_data: для Purchase важно передать value/currency, для Schedule/Diagnostic — content_ids
@@ -168,6 +173,10 @@ async function sendToMeta(creds: PixelCreds, row: OutboxRow): Promise<{ ok: bool
   }
   if (row.meta_ad_id) customData.content_ids = [row.meta_ad_id];
 
+  // action_source = 'website': Meta это принимает и для WhatsApp-лида привязывает его
+  // к Click-to-WhatsApp рекламе по хешу телефона. ctwa_clid (из user_data) уходит как
+  // доп.сигнал. business_messaging здесь неприменим — Meta требует для него
+  // whatsapp_business_account_id/page_id, которых нет при стеке на Green API.
   const event: Record<string, unknown> = {
     event_name: row.event_name,
     event_time: eventTime,

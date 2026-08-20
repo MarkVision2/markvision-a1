@@ -45,6 +45,8 @@ interface UserData {
   email?: string;
   fbc?: string;
   fbp?: string;
+  ctwa_clid?: string;
+  channel?: string;
   client_user_agent?: string;
   client_ip_address?: string;
   external_id?: string;
@@ -148,6 +150,10 @@ Deno.serve(async (req) => {
       if (user_data.external_id) ud.external_id = [await sha256(String(user_data.external_id))];
       if (user_data.fbc) ud.fbc = String(user_data.fbc);
       if (user_data.fbp) ud.fbp = String(user_data.fbp);
+      // ctwa_clid — Click-to-WhatsApp click id, top-level поле без хеша. Доп.сигнал
+      // привязки WhatsApp-лида к рекламе; action_source остаётся 'website' (Meta
+      // принимает и матчит по телефону). business_messaging неприменим — нужен WABA/page_id.
+      if (user_data.ctwa_clid) ud.ctwa_clid = String(user_data.ctwa_clid);
       if (user_data.client_user_agent) ud.client_user_agent = String(user_data.client_user_agent);
       if (user_data.client_ip_address) ud.client_ip_address = String(user_data.client_ip_address);
 
