@@ -1,3 +1,4 @@
+import { supabase } from "@/integrations/supabase/client";
 import type { Lead, LeadStage } from "@/types/crm";
 
 export type StageAutomationRule = {
@@ -19,6 +20,19 @@ export const STAGE_AUTOMATION_VARIABLES = [
 
 const RULES_PREFIX = "crm.stage-automations.v1";
 const SENT_PREFIX = "crm.stage-automation-sent.v1";
+
+const DEFAULT_PROJECT_SETTINGS = {
+  followup_2h_enabled: true,
+  followup_2h_minutes: 120,
+  auto_msg_24h_enabled: true,
+  auto_msg_24h_hours: 24,
+  auto_msg_24h_template_key: "followup_24h",
+  revival_7d_enabled: true,
+  revival_7d_days: 7,
+  revival_7d_template_key: "revival_7d",
+} as const;
+
+export type ProjectAutomationSettings = typeof DEFAULT_PROJECT_SETTINGS;
 
 function storageProjectKey(prefix: string, projectId?: string | null) {
   return `${prefix}:${projectId || "global"}`;
@@ -79,7 +93,7 @@ export function defaultStageAutomationRules(stages: LeadStage[]): StageAutomatio
   }));
 }
 
-export function loadStageAutomationRules(
+function loadStageAutomationRulesFromLocalStorage(
   projectId: string | null | undefined,
   stages: LeadStage[],
 ): StageAutomationRule[] {
@@ -97,9 +111,110 @@ export function loadStageAutomationRules(
   }
 }
 
+/** @deprecated Prefer fetchStageAutomationRulesFromDb */
+export function loadStageAutomationRules(
+  projectId: string | null | undefined,
+  stages: LeadStage[],
+): StageAutomationRule[] {
+  return loadStageAutomationRulesFromLocalStorage(projectId, stages);
+}
+
+export async function fetchStageAutomationRulesFromDb(
+  projectId: string | null | undefined,
+  stages: LeadStage[],
+): Promise<StageAutomationRule[]> {
+  if (!projectId) return defaultStageAutomationRules(stages);
+  const stageIds = new Set(stages.map((s) => s.id));
+
+  const { data, error } = await supabase
+    .from("project_stage_automation_rules")
+    .select("id, stage_id, enabled, title, template")
+    .eq("project_id", projectId);
+
+  if (error) throw new Error(error.message);
+
+  if (!data?.length) {
+    const fromLocal = loadStageAutomationRulesFromLocalStorage(projectId, stages);
+    if (fromLocal.length > 0) {
+      await saveStageAutomationRulesToDb(projectId, fromLocal);
+    }
+    return fromLocal;
+  }
+
+  return data
+    .filter((row) => stageIds.has(row.stage_id))
+    .map((row) => ({
+      id: row.id,
+      stageId: row.stage_id,
+      enabled: row.enabled,
+      title: row.title,
+      template: row.template,
+    }));
+}
+
+/** @deprecated Prefer saveStageAutomationRulesToDb */
 export function saveStageAutomationRules(projectId: string | null | undefined, rules: StageAutomationRule[]) {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(storageProjectKey(RULES_PREFIX, projectId), JSON.stringify(rules));
+}
+
+export async function saveStageAutomationRulesToDb(
+  projectId: string,
+  rules: StageAutomationRule[],
+): Promise<void> {
+  const rows = rules.map((rule) => ({
+    project_id: projectId,
+    stage_id: rule.stageId,
+    enabled: rule.enabled,
+    title: rule.title,
+    template: rule.template,
+  }));
+
+  const { error: delErr } = await supabase
+    .from("project_stage_automation_rules")
+    .delete()
+    .eq("project_id", projectId);
+  if (delErr) throw new Error(delErr.message);
+
+  if (rows.length === 0) return;
+
+  const { error: insErr } = await supabase
+    .from("project_stage_automation_rules")
+    .insert(rows);
+  if (insErr) throw new Error(insErr.message);
+
+  saveStageAutomationRules(projectId, rules);
+}
+
+export async function fetchProjectAutomationSettings(
+  projectId: string,
+): Promise<ProjectAutomationSettings> {
+  const { data, error } = await supabase
+    .from("project_automation_settings")
+    .select(
+      "followup_2h_enabled, followup_2h_minutes, auto_msg_24h_enabled, auto_msg_24h_hours, auto_msg_24h_template_key, revival_7d_enabled, revival_7d_days, revival_7d_template_key",
+    )
+    .eq("project_id", projectId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (data) return data as ProjectAutomationSettings;
+
+  const { error: insErr } = await supabase
+    .from("project_automation_settings")
+    .insert({ project_id: projectId, ...DEFAULT_PROJECT_SETTINGS });
+  if (insErr) throw new Error(insErr.message);
+  return { ...DEFAULT_PROJECT_SETTINGS };
+}
+
+export async function saveProjectAutomationSettings(
+  projectId: string,
+  settings: ProjectAutomationSettings,
+): Promise<void> {
+  const { error } = await supabase
+    .from("project_automation_settings")
+    .upsert({ project_id: projectId, ...settings, updated_at: new Date().toISOString() });
+  if (error) throw new Error(error.message);
 }
 
 export function findStageAutomationRule(rules: StageAutomationRule[], stageId: string) {
@@ -136,24 +251,42 @@ export function renderStageAutomationTemplate(
   return template.replace(/\{(name|phone|stage|manager|visit_datetime|source)\}/g, (_, key: string) => values[key] ?? "");
 }
 
-export function wasStageAutomationSent(
+export async function wasStageAutomationSent(
   projectId: string | null | undefined,
   leadId: string,
-  ruleId: string,
+  _ruleId: string,
   stageId: string,
-) {
+): Promise<boolean> {
+  if (!projectId) return false;
+
+  const { data, error } = await supabase
+    .from("project_stage_automation_sent")
+    .select("lead_id")
+    .eq("project_id", projectId)
+    .eq("lead_id", leadId)
+    .eq("stage_id", stageId)
+    .maybeSingle();
+
+  if (!error && data) return true;
+
   if (typeof window === "undefined") return false;
   const raw = window.localStorage.getItem(storageProjectKey(SENT_PREFIX, projectId));
   const sent = raw ? JSON.parse(raw) as Record<string, boolean> : {};
-  return Boolean(sent[`${leadId}:${ruleId}:${stageId}`]);
+  return Boolean(sent[`${leadId}:${_ruleId}:${stageId}`]);
 }
 
-export function markStageAutomationSent(
+export async function markStageAutomationSent(
   projectId: string | null | undefined,
   leadId: string,
   ruleId: string,
   stageId: string,
-) {
+): Promise<void> {
+  if (!projectId) return;
+
+  await supabase
+    .from("project_stage_automation_sent")
+    .upsert({ project_id: projectId, lead_id: leadId, stage_id: stageId });
+
   if (typeof window === "undefined") return;
   const key = storageProjectKey(SENT_PREFIX, projectId);
   const raw = window.localStorage.getItem(key);

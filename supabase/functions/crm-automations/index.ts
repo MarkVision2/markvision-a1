@@ -35,6 +35,20 @@ type AutomationLead = {
   channel?: string | null;
 };
 
+type ProjectSettings = {
+  project_id: string;
+  followup_2h_enabled: boolean;
+  followup_2h_minutes: number;
+  auto_msg_24h_enabled: boolean;
+  auto_msg_24h_hours: number;
+  auto_msg_24h_template_key: string;
+  revival_7d_enabled: boolean;
+  revival_7d_days: number;
+  revival_7d_template_key: string;
+};
+
+type RunStats = { followup_2h: number; auto_msg_24h: number; revival_7d: number; errors: string[] };
+
 function render(tpl: string, vars: Record<string, string | undefined>): string {
   return tpl.replace(/\{(\w+)\}/g, (_, k) => (vars[k] ?? '').toString() || '—');
 }
@@ -171,6 +185,156 @@ async function sendAutomationMessage(
     : { ok: false, via: 'none', error: green.error ?? 'send_failed' };
 }
 
+async function runFollowup2h(
+  supabase: ReturnType<typeof createClient>,
+  settings: ProjectSettings,
+  now: Date,
+  stats: RunStats,
+) {
+  if (!settings.followup_2h_enabled) return;
+  const threshold = new Date(now.getTime() - settings.followup_2h_minutes * 60_000).toISOString();
+  const bucket = bucketFloor(now, 12);
+
+  const { data: leads } = await supabase
+    .from('leads')
+    .select('id, name, service, assigned_to, stage_id, project_id, last_outbound_at, last_inbound_at, pipeline_stages!inner(key)')
+    .eq('project_id', settings.project_id)
+    .lte('last_outbound_at', threshold)
+    .or(`last_inbound_at.is.null,last_inbound_at.lt.last_outbound_at`)
+    .not('pipeline_stages.key', 'in', '(paid,rejected)')
+    .limit(200);
+
+  for (const l of leads ?? []) {
+    const { error: insErr } = await supabase.from('automation_runs').insert({
+      lead_id: l.id,
+      project_id: settings.project_id,
+      rule: 'followup_2h',
+      bucket_at: bucket,
+      payload: { stage: (l as { pipeline_stages?: { key?: string } }).pipeline_stages?.key },
+    });
+    if (insErr) continue;
+
+    await supabase.from('tasks').insert({
+      lead_id: l.id,
+      type: 'followup',
+      title: `Дожать клиента: ${l.name}`,
+      due_at: new Date(now.getTime() + 15 * 60_000).toISOString(),
+      assigned_to: l.assigned_to,
+      source: 'automation',
+    });
+    await supabase.from('events').insert({
+      lead_id: l.id,
+      event_type: 'automation_followup_2h',
+      payload: { rule: 'followup_2h', minutes: settings.followup_2h_minutes, project_id: settings.project_id },
+    });
+    stats.followup_2h++;
+  }
+}
+
+async function runAutoMsg24h(
+  supabase: ReturnType<typeof createClient>,
+  settings: ProjectSettings,
+  now: Date,
+  stats: RunStats,
+) {
+  if (!settings.auto_msg_24h_enabled) return;
+  const threshold = new Date(now.getTime() - settings.auto_msg_24h_hours * 3600_000).toISOString();
+  const bucket = bucketFloor(now, 24 * 7);
+  const tplText = TEMPLATES[settings.auto_msg_24h_template_key] ?? TEMPLATES.followup_24h;
+
+  const { data: leads } = await supabase
+    .from('leads')
+    .select('id, name, service, phone, project_id, assigned_to, last_outbound_at, last_inbound_at, channel, pipeline_stages!inner(key)')
+    .eq('project_id', settings.project_id)
+    .lte('last_outbound_at', threshold)
+    .or(`last_inbound_at.is.null,last_inbound_at.lt.last_outbound_at`)
+    .not('pipeline_stages.key', 'in', '(paid,rejected)')
+    .limit(200);
+
+  for (const l of leads ?? []) {
+    const { error: insErr } = await supabase.from('automation_runs').insert({
+      lead_id: l.id,
+      project_id: settings.project_id,
+      rule: 'auto_msg_24h',
+      bucket_at: bucket,
+    });
+    if (insErr) continue;
+
+    const content = render(tplText, { name: l.name, service: l.service ?? 'услуге' });
+    const sent = await sendAutomationMessage(supabase, l as AutomationLead, content, settings.auto_msg_24h_template_key);
+    if (!sent.ok) stats.errors.push(`auto_msg_24h:${l.id}:${sent.error ?? 'send_failed'}`);
+    await supabase.from('events').insert({
+      lead_id: l.id,
+      event_type: 'automation_24h_sent',
+      payload: { template: settings.auto_msg_24h_template_key, preview: content.slice(0, 120), delivery: sent, project_id: settings.project_id },
+    });
+    if (sent.ok) stats.auto_msg_24h++;
+  }
+}
+
+async function runRevival7d(
+  supabase: ReturnType<typeof createClient>,
+  settings: ProjectSettings,
+  now: Date,
+  stats: RunStats,
+) {
+  if (!settings.revival_7d_enabled) return;
+  const threshold = new Date(now.getTime() - settings.revival_7d_days * 86400_000).toISOString();
+  const bucket = bucketFloor(now, 24 * 30);
+  const tplText = TEMPLATES[settings.revival_7d_template_key] ?? TEMPLATES.revival_7d;
+
+  const { data: leads } = await supabase
+    .from('leads')
+    .select('id, name, service, phone, project_id, channel, assigned_to, rejected_at, reject_reason, pipeline_stages!inner(key)')
+    .eq('project_id', settings.project_id)
+    .eq('pipeline_stages.key', 'rejected')
+    .lte('rejected_at', threshold)
+    .not('reject_reason', 'in', '(competitor,not_target)')
+    .limit(200);
+
+  for (const l of leads ?? []) {
+    const { error: insErr } = await supabase.from('automation_runs').insert({
+      lead_id: l.id,
+      project_id: settings.project_id,
+      rule: 'revival_7d',
+      bucket_at: bucket,
+      payload: { reason: l.reject_reason },
+    });
+    if (insErr) continue;
+
+    await supabase.from('tasks').insert({
+      lead_id: l.id,
+      type: 'revival',
+      title: `Вернуть лид: ${l.name}`,
+      due_at: new Date(now.getTime() + 60 * 60_000).toISOString(),
+      assigned_to: l.assigned_to,
+      source: 'automation',
+    });
+
+    const content = render(tplText, { name: l.name, service: l.service ?? 'услуге' });
+    const sent = await sendAutomationMessage(supabase, l as AutomationLead, content, settings.revival_7d_template_key);
+    if (!sent.ok) stats.errors.push(`revival_7d:${l.id}:${sent.error ?? 'send_failed'}`);
+    await supabase.from('events').insert({
+      lead_id: l.id,
+      event_type: 'automation_revival_7d',
+      payload: { template: settings.revival_7d_template_key, preview: content.slice(0, 120), delivery: sent, project_id: settings.project_id },
+    });
+    if (sent.ok) stats.revival_7d++;
+  }
+}
+
+async function runProjectAutomations(
+  supabase: ReturnType<typeof createClient>,
+  settings: ProjectSettings,
+  now: Date,
+): Promise<RunStats> {
+  const stats: RunStats = { followup_2h: 0, auto_msg_24h: 0, revival_7d: 0, errors: [] };
+  await runFollowup2h(supabase, settings, now, stats);
+  await runAutoMsg24h(supabase, settings, now, stats);
+  await runRevival7d(supabase, settings, now, stats);
+  return stats;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
@@ -178,18 +342,16 @@ Deno.serve(async (req) => {
   const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
-  // Загружаем настройки + секрет (service role видит cron_secret)
-  const { data: settings, error: setErr } = await supabase
-    .from('automation_settings').select('*').eq('id', true).single();
-  if (setErr || !settings) {
+  const { data: globalSettings, error: setErr } = await supabase
+    .from('automation_settings').select('cron_secret').eq('id', true).single();
+  if (setErr || !globalSettings) {
     return new Response(JSON.stringify({ error: 'settings_missing', detail: setErr?.message }), {
       status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 
-  // Authorize: either valid cron secret (cron) OR signed-in admin (manual run).
   const provided = req.headers.get('x-automation-key');
-  const cronOk = !!provided && !!settings.cron_secret && provided === settings.cron_secret;
+  const cronOk = !!provided && !!globalSettings.cron_secret && provided === globalSettings.cron_secret;
   let adminOk = false;
   if (!cronOk) {
     const authHeader = req.headers.get('Authorization') ?? '';
@@ -212,116 +374,37 @@ Deno.serve(async (req) => {
     });
   }
 
+  let bodyProjectId: string | null = null;
+  try {
+    const body = await req.json();
+    bodyProjectId = typeof body?.project_id === 'string' ? body.project_id : null;
+  } catch {
+    // cron may send empty body
+  }
+
   const now = new Date();
-  const stats = { followup_2h: 0, auto_msg_24h: 0, revival_7d: 0, errors: [] as string[] };
+  const totals: RunStats = { followup_2h: 0, auto_msg_24h: 0, revival_7d: 0, errors: [] };
 
-  // ---------------- Rule 1: followup 2h -----------------
-  if (settings.followup_2h_enabled) {
-    const threshold = new Date(now.getTime() - settings.followup_2h_minutes * 60_000).toISOString();
-    const bucket = bucketFloor(now, 12); // одно срабатывание на лид раз в 12ч
-    const { data: leads } = await supabase
-      .from('leads')
-      .select('id, name, service, assigned_to, stage_id, last_outbound_at, last_inbound_at, pipeline_stages!inner(key)')
-      .lte('last_outbound_at', threshold)
-      .or(`last_inbound_at.is.null,last_inbound_at.lt.last_outbound_at`)
-      .not('pipeline_stages.key', 'in', '(paid,rejected)')
-      .limit(200);
-
-    for (const l of leads ?? []) {
-      const { error: insErr } = await supabase.from('automation_runs').insert({
-        lead_id: l.id, rule: 'followup_2h', bucket_at: bucket, payload: { stage: (l as any).pipeline_stages?.key },
-      });
-      if (insErr) continue; // дубликат окна — пропускаем
-
-      // Создаём задачу
-      await supabase.from('tasks').insert({
-        lead_id: l.id,
-        type: 'followup',
-        title: `Дожать клиента: ${l.name}`,
-        due_at: new Date(now.getTime() + 15 * 60_000).toISOString(),
-        assigned_to: l.assigned_to,
-        source: 'automation',
-      });
-      await supabase.from('events').insert({
-        lead_id: l.id, event_type: 'automation_followup_2h',
-        payload: { rule: 'followup_2h', minutes: settings.followup_2h_minutes },
-      });
-      stats.followup_2h++;
-    }
+  let settingsQuery = supabase.from('project_automation_settings').select('*');
+  if (bodyProjectId) {
+    settingsQuery = settingsQuery.eq('project_id', bodyProjectId);
+  }
+  const { data: projectSettings, error: projErr } = await settingsQuery;
+  if (projErr) {
+    return new Response(JSON.stringify({ error: 'project_settings_missing', detail: projErr.message }), {
+      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 
-  // ---------------- Rule 2: auto-message 24h -----------------
-  if (settings.auto_msg_24h_enabled) {
-    const threshold = new Date(now.getTime() - settings.auto_msg_24h_hours * 3600_000).toISOString();
-    const bucket = bucketFloor(now, 24 * 7); // не чаще раза в неделю
-    const tplText = TEMPLATES[settings.auto_msg_24h_template_key] ?? TEMPLATES.followup_24h;
-
-    const { data: leads } = await supabase
-      .from('leads')
-      .select('id, name, service, phone, project_id, assigned_to, last_outbound_at, last_inbound_at, channel, pipeline_stages!inner(key)')
-      .lte('last_outbound_at', threshold)
-      .or(`last_inbound_at.is.null,last_inbound_at.lt.last_outbound_at`)
-      .not('pipeline_stages.key', 'in', '(paid,rejected)')
-      .limit(200);
-
-    for (const l of leads ?? []) {
-      const { error: insErr } = await supabase.from('automation_runs').insert({
-        lead_id: l.id, rule: 'auto_msg_24h', bucket_at: bucket,
-      });
-      if (insErr) continue;
-
-      const content = render(tplText, { name: l.name, service: l.service ?? 'услуге' });
-      const sent = await sendAutomationMessage(supabase, l as AutomationLead, content, settings.auto_msg_24h_template_key);
-      if (!sent.ok) stats.errors.push(`auto_msg_24h:${l.id}:${sent.error ?? 'send_failed'}`);
-      await supabase.from('events').insert({
-        lead_id: l.id, event_type: 'automation_24h_sent',
-        payload: { template: settings.auto_msg_24h_template_key, preview: content.slice(0, 120), delivery: sent },
-      });
-      if (sent.ok) stats.auto_msg_24h++;
-    }
+  for (const row of projectSettings ?? []) {
+    const stats = await runProjectAutomations(supabase, row as ProjectSettings, now);
+    totals.followup_2h += stats.followup_2h;
+    totals.auto_msg_24h += stats.auto_msg_24h;
+    totals.revival_7d += stats.revival_7d;
+    totals.errors.push(...stats.errors);
   }
 
-  // ---------------- Rule 3: revival 7d -----------------
-  if (settings.revival_7d_enabled) {
-    const threshold = new Date(now.getTime() - settings.revival_7d_days * 86400_000).toISOString();
-    const bucket = bucketFloor(now, 24 * 30); // не чаще раза в 30 дней
-    const tplText = TEMPLATES[settings.revival_7d_template_key] ?? TEMPLATES.revival_7d;
-
-    const { data: leads } = await supabase
-      .from('leads')
-      .select('id, name, service, phone, project_id, channel, assigned_to, rejected_at, reject_reason, pipeline_stages!inner(key)')
-      .eq('pipeline_stages.key', 'rejected')
-      .lte('rejected_at', threshold)
-      .not('reject_reason', 'in', '(competitor,not_target)')
-      .limit(200);
-
-    for (const l of leads ?? []) {
-      const { error: insErr } = await supabase.from('automation_runs').insert({
-        lead_id: l.id, rule: 'revival_7d', bucket_at: bucket, payload: { reason: l.reject_reason },
-      });
-      if (insErr) continue;
-
-      await supabase.from('tasks').insert({
-        lead_id: l.id,
-        type: 'revival',
-        title: `Вернуть лид: ${l.name}`,
-        due_at: new Date(now.getTime() + 60 * 60_000).toISOString(),
-        assigned_to: l.assigned_to,
-        source: 'automation',
-      });
-
-      const content = render(tplText, { name: l.name, service: l.service ?? 'услуге' });
-      const sent = await sendAutomationMessage(supabase, l as AutomationLead, content, settings.revival_7d_template_key);
-      if (!sent.ok) stats.errors.push(`revival_7d:${l.id}:${sent.error ?? 'send_failed'}`);
-      await supabase.from('events').insert({
-        lead_id: l.id, event_type: 'automation_revival_7d',
-        payload: { template: settings.revival_7d_template_key, preview: content.slice(0, 120), delivery: sent },
-      });
-      if (sent.ok) stats.revival_7d++;
-    }
-  }
-
-  return new Response(JSON.stringify({ ok: true, ...stats, ran_at: now.toISOString() }), {
+  return new Response(JSON.stringify({ ok: true, ...totals, projects: (projectSettings ?? []).length, ran_at: now.toISOString() }), {
     status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 });

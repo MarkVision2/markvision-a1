@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
@@ -18,23 +18,14 @@ import type { LeadStage } from "@/types/crm";
 import {
   STAGE_AUTOMATION_VARIABLES,
   defaultStageAutomationRules,
-  loadStageAutomationRules,
+  fetchProjectAutomationSettings,
+  fetchStageAutomationRulesFromDb,
   renderStageAutomationTemplate,
-  saveStageAutomationRules,
+  saveProjectAutomationSettings,
+  saveStageAutomationRulesToDb,
+  type ProjectAutomationSettings,
   type StageAutomationRule,
 } from "@/lib/stageAutomations";
-
-type Settings = {
-  followup_2h_enabled: boolean;
-  followup_2h_minutes: number;
-  auto_msg_24h_enabled: boolean;
-  auto_msg_24h_hours: number;
-  auto_msg_24h_template_key: string;
-  revival_7d_enabled: boolean;
-  revival_7d_days: number;
-  revival_7d_template_key: string;
-  cron_secret?: string | null;
-};
 
 type Run = {
   id: string;
@@ -58,63 +49,92 @@ type AutomationsSettingsProps = {
 
 export function AutomationsSettings({ stages = [], projectId, whatsappConnected = false }: AutomationsSettingsProps) {
   const { isAdmin } = useAuth();
-  const [s, setS] = useState<Settings | null>(null);
+  const [s, setS] = useState<ProjectAutomationSettings | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [running, setRunning] = useState(false);
   const [stageRules, setStageRules] = useState<StageAutomationRule[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [savingStageRules, setSavingStageRules] = useState(false);
 
-  const load = async () => {
-    const { data } = await (supabase.from("automation_settings" as any) as any)
-      .select(
-        "followup_2h_enabled, followup_2h_minutes, auto_msg_24h_enabled, auto_msg_24h_hours, auto_msg_24h_template_key, revival_7d_enabled, revival_7d_days, revival_7d_template_key",
-      )
-      .eq("id", true)
-      .single();
-    if (data) {
-      const next = data as unknown as Settings;
-      setS(next);
-      markSaved(next);
+  const load = useCallback(async () => {
+    if (!projectId) {
+      setS(null);
+      setRuns([]);
+      setLoading(false);
+      return;
     }
-    const { data: r } = await (supabase.from("automation_runs" as any) as any).select("*").order("fired_at", { ascending: false }).limit(50);
-    if (r) setRuns(r as unknown as Run[]);
-  };
+    setLoading(true);
+    try {
+      const settings = await fetchProjectAutomationSettings(projectId);
+      setS(settings);
+      markSaved(settings);
 
-  useEffect(() => { load(); }, []);
-  useEffect(() => {
-    setStageRules(loadStageAutomationRules(projectId, stages));
+      const { data: r, error: runsErr } = await supabase
+        .from("automation_runs")
+        .select("id, lead_id, rule, fired_at, payload")
+        .eq("project_id", projectId)
+        .order("fired_at", { ascending: false })
+        .limit(50);
+      if (runsErr) throw new Error(runsErr.message);
+      setRuns((r ?? []) as Run[]);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось загрузить автоматизации");
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  const loadStageRules = useCallback(async () => {
+    if (!projectId) {
+      setStageRules(defaultStageAutomationRules(stages));
+      return;
+    }
+    try {
+      const rules = await fetchStageAutomationRulesFromDb(projectId, stages);
+      setStageRules(rules);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось загрузить правила этапов");
+      setStageRules(defaultStageAutomationRules(stages));
+    }
   }, [projectId, stages]);
-  useRealtimeTable("automation_settings", () => void load());
-  useRealtimeTable("automation_runs", () => void load());
 
-  const update = (patch: Partial<Settings>) => setS((prev) => prev ? { ...prev, ...patch } : prev);
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-  const { status, error, markSaved } = useAutoSave<Settings | null>({
+  useEffect(() => {
+    void loadStageRules();
+  }, [loadStageRules]);
+
+  useRealtimeTable("project_automation_settings", () => void load(), !!projectId);
+  useRealtimeTable("project_stage_automation_rules", () => void loadStageRules(), !!projectId);
+  useRealtimeTable("automation_runs", () => void load(), !!projectId);
+
+  const update = (patch: Partial<ProjectAutomationSettings>) => setS((prev) => prev ? { ...prev, ...patch } : prev);
+
+  const { status, error, markSaved } = useAutoSave<ProjectAutomationSettings | null>({
     value: s,
-    enabled: !!s && isAdmin,
+    enabled: !!s && !!projectId && isAdmin,
     delay: 800,
     onSave: async (v) => {
-      if (!v) return;
-      const { error: err } = await (supabase.from("automation_settings" as any) as any).update({
-        followup_2h_enabled: v.followup_2h_enabled,
-        followup_2h_minutes: v.followup_2h_minutes,
-        auto_msg_24h_enabled: v.auto_msg_24h_enabled,
-        auto_msg_24h_hours: v.auto_msg_24h_hours,
-        auto_msg_24h_template_key: v.auto_msg_24h_template_key,
-        revival_7d_enabled: v.revival_7d_enabled,
-        revival_7d_days: v.revival_7d_days,
-        revival_7d_template_key: v.revival_7d_template_key,
-      }).eq("id", true);
-      if (err) throw err;
+      if (!v || !projectId) return;
+      await saveProjectAutomationSettings(projectId, v);
     },
   });
 
   useEffect(() => { if (error) toast.error(error); }, [error]);
 
   const runNow = async () => {
+    if (!projectId) {
+      toast.error("Выберите проект");
+      return;
+    }
     setRunning(true);
     try {
-      const { data, error } = await supabase.functions.invoke("crm-automations", { body: {} });
-      if (error) throw error;
+      const { data, error: fnErr } = await supabase.functions.invoke("crm-automations", {
+        body: { project_id: projectId },
+      });
+      if (fnErr) throw fnErr;
       const j = data as { followup_2h?: number; auto_msg_24h?: number; revival_7d?: number; errors?: string[] };
       const summary = `Запущено: 2ч=${j.followup_2h ?? 0}, 24ч=${j.auto_msg_24h ?? 0}, 7д=${j.revival_7d ?? 0}`;
       if (j.errors?.length) {
@@ -123,8 +143,8 @@ export function AutomationsSettings({ stages = [], projectId, whatsappConnected 
         toast.success(summary);
       }
       await load();
-    } catch (e: any) {
-      toast.error(e.message);
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Ошибка запуска");
     } finally {
       setRunning(false);
     }
@@ -149,16 +169,34 @@ export function AutomationsSettings({ stages = [], projectId, whatsappConnected 
     ]);
   };
 
-  const saveStageRules = () => {
-    saveStageAutomationRules(projectId, stageRules);
-    toast.success("Автоматизации этапов сохранены");
+  const saveStageRules = async () => {
+    if (!projectId) {
+      toast.error("Выберите проект для сохранения правил");
+      return;
+    }
+    setSavingStageRules(true);
+    try {
+      await saveStageAutomationRulesToDb(projectId, stageRules);
+      toast.success("Автоматизации этапов сохранены для этого проекта");
+      await loadStageRules();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось сохранить правила");
+    } finally {
+      setSavingStageRules(false);
+    }
   };
 
-  const resetStageRules = () => {
+  const resetStageRules = async () => {
     const defaults = defaultStageAutomationRules(stages);
     setStageRules(defaults);
-    saveStageAutomationRules(projectId, defaults);
-    toast.success("Шаблоны этапов восстановлены");
+    if (projectId) {
+      try {
+        await saveStageAutomationRulesToDb(projectId, defaults);
+        toast.success("Шаблоны этапов восстановлены для этого проекта");
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "Не удалось сохранить шаблоны");
+      }
+    }
   };
 
   const stageAutomationBlock = (
@@ -172,7 +210,7 @@ export function AutomationsSettings({ stages = [], projectId, whatsappConnected 
             <div>
               <h2 className="text-xl font-semibold">Автоматизация сообщений</h2>
               <p className="text-xs text-muted-foreground">
-                Правила проекта: при переходе лида в этап CRM уходит редактируемое WhatsApp-сообщение.
+                Правила только для текущего проекта: при переходе лида в этап CRM уходит WhatsApp-сообщение.
               </p>
             </div>
           </div>
@@ -181,16 +219,20 @@ export function AutomationsSettings({ stages = [], projectId, whatsappConnected 
           <Badge variant={whatsappConnected ? "default" : "outline"}>
             WhatsApp {whatsappConnected ? "подключен" : "не подключен"}
           </Badge>
-          <Button variant="outline" size="sm" onClick={resetStageRules}>
+          <Button variant="outline" size="sm" onClick={() => void resetStageRules()} disabled={!projectId}>
             <Wand2 className="h-4 w-4" /> Шаблоны
           </Button>
-          <Button size="sm" onClick={saveStageRules}>
-            <Save className="h-4 w-4" /> Сохранить
+          <Button size="sm" onClick={() => void saveStageRules()} disabled={!projectId || savingStageRules}>
+            <Save className="h-4 w-4" /> {savingStageRules ? "Сохранение…" : "Сохранить"}
           </Button>
         </div>
       </div>
 
-      {stageRules.length === 0 ? (
+      {!projectId ? (
+        <div className="rounded-lg border border-dashed border-warning/40 bg-warning/5 p-4 text-sm text-muted-foreground">
+          Выберите проект в шапке — настройки автоматизации привязаны к проекту и не переносятся на другие.
+        </div>
+      ) : stageRules.length === 0 ? (
         <div className="rounded-lg border border-dashed border-border/70 p-6 text-center text-sm text-muted-foreground">
           Нет правил для текущих этапов. Добавьте правило вручную или восстановите шаблоны.
         </div>
@@ -257,15 +299,17 @@ export function AutomationsSettings({ stages = [], projectId, whatsappConnected 
         </div>
       )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        {stages
-          .filter((stage) => !stageRules.some((rule) => rule.stageId === stage.id))
-          .map((stage) => (
-            <Button key={stage.id} type="button" variant="outline" size="sm" onClick={() => addStageRule(stage.id)}>
-              <Plus className="h-4 w-4" /> {stage.title}
-            </Button>
-          ))}
-      </div>
+      {projectId && (
+        <div className="flex flex-wrap items-center gap-2">
+          {stages
+            .filter((stage) => !stageRules.some((rule) => rule.stageId === stage.id))
+            .map((stage) => (
+              <Button key={stage.id} type="button" variant="outline" size="sm" onClick={() => addStageRule(stage.id)}>
+                <Plus className="h-4 w-4" /> {stage.title}
+              </Button>
+            ))}
+        </div>
+      )}
     </Card>
   );
 
@@ -282,11 +326,20 @@ export function AutomationsSettings({ stages = [], projectId, whatsappConnected 
     );
   }
 
-  if (!s) {
+  if (!projectId) {
     return (
       <div className="space-y-4">
         {stageAutomationBlock}
-        <Card className="p-8 text-center text-sm text-muted-foreground">Загрузка…</Card>
+        <TelephonySettings />
+      </div>
+    );
+  }
+
+  if (loading || !s) {
+    return (
+      <div className="space-y-4">
+        {stageAutomationBlock}
+        <Card className="p-8 text-center text-sm text-muted-foreground">Загрузка настроек проекта…</Card>
       </div>
     );
   }
@@ -298,7 +351,7 @@ export function AutomationsSettings({ stages = [], projectId, whatsappConnected 
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold">Автоматизации дожима</h2>
-          <p className="text-xs text-muted-foreground">Фоновые правила, запускаются каждые 10 минут</p>
+          <p className="text-xs text-muted-foreground">Правила только для текущего проекта · фоновый запуск каждые 10 минут</p>
         </div>
         <div className="flex items-center gap-2">
           <SaveStatusBadge status={status} error={error} />
@@ -359,7 +412,7 @@ export function AutomationsSettings({ stages = [], projectId, whatsappConnected 
 
       <Card className="p-4">
         <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold">Последние срабатывания</h3>
+          <h3 className="text-sm font-semibold">Последние срабатывания (этот проект)</h3>
           <span className="text-xs text-muted-foreground">{runs.length}</span>
         </div>
         {runs.length === 0 ? (

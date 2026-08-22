@@ -1078,6 +1078,7 @@ export type Database = {
           id: string
           lead_id: string
           payload: Json | null
+          project_id: string | null
           rule: string
         }
         Insert: {
@@ -1086,6 +1087,7 @@ export type Database = {
           id?: string
           lead_id: string
           payload?: Json | null
+          project_id?: string | null
           rule: string
         }
         Update: {
@@ -1094,6 +1096,7 @@ export type Database = {
           id?: string
           lead_id?: string
           payload?: Json | null
+          project_id?: string | null
           rule?: string
         }
         Relationships: []
@@ -2763,6 +2766,96 @@ export type Database = {
           phone?: string | null
           sip_extension?: string | null
           updated_at?: string
+        }
+        Relationships: []
+      }
+      project_automation_settings: {
+        Row: {
+          auto_msg_24h_enabled: boolean
+          auto_msg_24h_hours: number
+          auto_msg_24h_template_key: string
+          followup_2h_enabled: boolean
+          followup_2h_minutes: number
+          project_id: string
+          revival_7d_days: number
+          revival_7d_enabled: boolean
+          revival_7d_template_key: string
+          updated_at: string
+        }
+        Insert: {
+          auto_msg_24h_enabled?: boolean
+          auto_msg_24h_hours?: number
+          auto_msg_24h_template_key?: string
+          followup_2h_enabled?: boolean
+          followup_2h_minutes?: number
+          project_id: string
+          revival_7d_days?: number
+          revival_7d_enabled?: boolean
+          revival_7d_template_key?: string
+          updated_at?: string
+        }
+        Update: {
+          auto_msg_24h_enabled?: boolean
+          auto_msg_24h_hours?: number
+          auto_msg_24h_template_key?: string
+          followup_2h_enabled?: boolean
+          followup_2h_minutes?: number
+          project_id?: string
+          revival_7d_days?: number
+          revival_7d_enabled?: boolean
+          revival_7d_template_key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      project_stage_automation_rules: {
+        Row: {
+          enabled: boolean
+          id: string
+          project_id: string
+          stage_id: string
+          template: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          enabled?: boolean
+          id?: string
+          project_id: string
+          stage_id: string
+          template?: string
+          title?: string
+          updated_at?: string
+        }
+        Update: {
+          enabled?: boolean
+          id?: string
+          project_id?: string
+          stage_id?: string
+          template?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      project_stage_automation_sent: {
+        Row: {
+          lead_id: string
+          project_id: string
+          sent_at: string
+          stage_id: string
+        }
+        Insert: {
+          lead_id: string
+          project_id: string
+          sent_at?: string
+          stage_id: string
+        }
+        Update: {
+          lead_id?: string
+          project_id?: string
+          sent_at?: string
+          stage_id?: string
         }
         Relationships: []
       }

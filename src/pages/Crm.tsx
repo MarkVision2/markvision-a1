@@ -43,11 +43,12 @@ const CapiSettings = lazy(() =>
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import {
+  fetchStageAutomationRulesFromDb,
   findStageAutomationRule,
-  loadStageAutomationRules,
   markStageAutomationSent,
   renderStageAutomationTemplate,
   wasStageAutomationSent,
+  type StageAutomationRule,
 } from "@/lib/stageAutomations";
 
 type Tab = "today" | "funnel" | "chats" | "clients" | "managers" | "analytics" | "automations" | "capi";
@@ -115,10 +116,28 @@ const Crm = () => {
   const [diagFor, setDiagFor] = useState<{ leadId: string; stageId: string } | null>(null);
   const [managerDialogOpen, setManagerDialogOpen] = useState(false);
   const leadsRef = useRef(leads);
+  const [stageAutomationRules, setStageAutomationRules] = useState<StageAutomationRule[]>([]);
+  const stageAutomationRulesRef = useRef(stageAutomationRules);
 
   useEffect(() => {
     leadsRef.current = leads;
   }, [leads]);
+
+  useEffect(() => {
+    stageAutomationRulesRef.current = stageAutomationRules;
+  }, [stageAutomationRules]);
+
+  useEffect(() => {
+    if (!projectId) {
+      setStageAutomationRules([]);
+      return;
+    }
+    let cancelled = false;
+    void fetchStageAutomationRulesFromDb(projectId, stages).then((rules) => {
+      if (!cancelled) setStageAutomationRules(rules);
+    });
+    return () => { cancelled = true; };
+  }, [projectId, stages]);
 
   useEffect(() => {
     const id = searchParams.get("lead");
@@ -185,10 +204,10 @@ const Crm = () => {
     opts?: { leadOverride?: Lead; visitAt?: string | null },
   ) => {
     const stage = stages.find((s) => s.id === stageId);
-    if (!stage) return;
-    const rules = loadStageAutomationRules(projectId, stages);
+    if (!stage || !projectId) return;
+    const rules = stageAutomationRulesRef.current;
     const rule = findStageAutomationRule(rules, stageId);
-    if (!rule || wasStageAutomationSent(projectId, leadId, rule.id, stageId)) return;
+    if (!rule || await wasStageAutomationSent(projectId, leadId, rule.id, stageId)) return;
 
     const lead = opts?.leadOverride ?? leadsRef.current.find((item) => item.id === leadId);
     if (!lead?.phone) return;
@@ -207,7 +226,7 @@ const Crm = () => {
         toast.error("Автосообщение не отправлено: проверьте WhatsApp");
         return;
       }
-      markStageAutomationSent(projectId, leadId, rule.id, stageId);
+      await markStageAutomationSent(projectId, leadId, rule.id, stageId);
       toast.success("Автосообщение отправлено");
     } catch (error) {
       console.error("[Crm.runStageAutomation] failed", error);
