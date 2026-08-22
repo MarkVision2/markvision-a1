@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useReportData, type ReportPeriodRange } from "./useReportData";
-import { useLeadsLite } from "./useLeadsLite";
+import type { LeadLite } from "./useLeadsLite";
 import { useInstagramOrganic } from "./useInstagramOrganic";
-import { useMetaDashboard } from "./useMetaDashboard";
+import type { MetaCampaignRow } from "./useMetaStructure";
 import { buildAlerts } from "@/lib/dashboardAlerts";
 import { buildDashboardChannels } from "@/lib/dashboardChannels";
 import { resolveCdiMetric } from "@/lib/cdiManualOverride";
@@ -33,10 +33,10 @@ export function useDashboardData(
   cabinetId: string,
   range: ReportPeriodRange,
   compare: boolean,
+  leads: LeadLite[],
+  metaCampaigns: MetaCampaignRow[],
 ) {
-  const { data, loading, error } = useReportData(cabinetId, range, compare);
-  const { leads } = useLeadsLite();
-  const { campaigns: metaCampaigns } = useMetaDashboard(range);
+  const { data, loading, error } = useReportData(cabinetId, range, compare, leads);
   const { funnel: igFunnel, events: igEvents } = useInstagramOrganic(range);
   const { activeId: projectId } = useProjectsStore();
   const { cabinets } = usePersonalCabinets();
