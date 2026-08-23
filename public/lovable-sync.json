@@ -1,7 +1,7 @@
 {
-  "git_sha": "fff3338",
-  "git_sha_full": "fff33385a8ecefadabd7cda86bc85abb0648d399",
-  "updated_at": "2026-08-23T08:08:17Z",
-  "label": "fix(crm): надёжное поступление всех лидов в CRM (#236)",
+  "git_sha": "b61c37e",
+  "git_sha_full": "b61c37e7ca68af97baa13d5212b331ac35628102",
+  "updated_at": "2026-08-23T08:14:03Z",
+  "label": "fix(ci): include apply-wa-web-greenapi-fix.sql in Management API list",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
