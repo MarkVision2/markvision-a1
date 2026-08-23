@@ -60,7 +60,7 @@ export async function fetchLeadsLite(activeId: string | null): Promise<LeadLite[
     .order("created_at", { ascending: false })
     .limit(10000);
   if (activeId) {
-    leadsQuery = leadsQuery.or(`project_id.eq.${activeId},project_id.is.null`);
+    leadsQuery = leadsQuery.eq("project_id", activeId);
   }
   const [stagesRes, leadsRes] = await Promise.all([
     supabase.from("pipeline_stages").select("id,key,stage_role"),

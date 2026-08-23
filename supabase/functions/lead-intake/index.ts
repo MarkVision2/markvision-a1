@@ -406,11 +406,15 @@ Deno.serve(async (req) => {
 
   // Inbound token: один из самых надёжных способов привязки лида к клиенту.
   if (v.token) {
+    const tokenTrim = v.token.trim();
+    if (!projectId) {
+      projectId = await projectFromToken(tokenTrim);
+    }
     try {
       const { data: tok } = await admin
         .from("inbound_tokens")
         .select("client_id, project_id, is_active")
-        .eq("token", v.token.trim())
+        .eq("token", tokenTrim)
         .maybeSingle();
       if (tok && tok.is_active !== false) {
         if (!cabinetId && tok.client_id) cabinetId = String(tok.client_id);
@@ -446,6 +450,13 @@ Deno.serve(async (req) => {
       cabinetId = data[0].id;
       if (!projectId) projectId = data[0].project_id ?? null;
     }
+  }
+
+  if (!projectId) {
+    return json({
+      error: "project_not_resolved",
+      hint: "Use /lead-intake/t/<token>, or pass token / project_id / cabinet_id / ad_account_id in the body",
+    }, 400);
   }
 
   try {
@@ -507,8 +518,16 @@ Deno.serve(async (req) => {
     // Create new — pipeline is resolved within the project's scope.
     const def = await getDefaultStage(projectId);
     if (!def) {
-      return json({ error: "No default pipeline/stage configured" }, 500);
+      return json({ error: "No default pipeline/stage configured for project" }, 500);
     }
+
+    let ownerId: string | null = null;
+    const { data: proj } = await admin
+      .from("projects")
+      .select("created_by")
+      .eq("id", projectId)
+      .maybeSingle();
+    ownerId = (proj as { created_by?: string | null } | null)?.created_by ?? null;
 
     const { data: created, error } = await admin
       .from("leads")
@@ -529,6 +548,8 @@ Deno.serve(async (req) => {
         referrer: v.referrer || null,
         landing_url: landingUrl,
         first_touch_at: new Date().toISOString(),
+        created_by: ownerId,
+        assigned_to: ownerId,
         meta_ad_id: metaAdId,
         meta_adset_id: metaAdsetId,
         meta_campaign_id: metaCampaignId,
