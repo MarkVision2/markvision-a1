@@ -205,6 +205,8 @@ async function runFollowup2h(
     .limit(200);
 
   for (const l of leads ?? []) {
+    const leadProjectId = (l as { project_id?: string | null }).project_id;
+    if (!leadProjectId || leadProjectId !== settings.project_id) continue;
     const { error: insErr } = await supabase.from('automation_runs').insert({
       lead_id: l.id,
       project_id: settings.project_id,
@@ -252,6 +254,8 @@ async function runAutoMsg24h(
     .limit(200);
 
   for (const l of leads ?? []) {
+    const leadProjectId = (l as { project_id?: string | null }).project_id;
+    if (!leadProjectId || leadProjectId !== settings.project_id) continue;
     const { error: insErr } = await supabase.from('automation_runs').insert({
       lead_id: l.id,
       project_id: settings.project_id,
@@ -293,6 +297,8 @@ async function runRevival7d(
     .limit(200);
 
   for (const l of leads ?? []) {
+    const leadProjectId = (l as { project_id?: string | null }).project_id;
+    if (!leadProjectId || leadProjectId !== settings.project_id) continue;
     const { error: insErr } = await supabase.from('automation_runs').insert({
       lead_id: l.id,
       project_id: settings.project_id,

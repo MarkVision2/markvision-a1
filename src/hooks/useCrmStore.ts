@@ -203,6 +203,7 @@ function leadRowToFrontIndexed(
     firstResponseAt: r.first_response_at ?? undefined,
     channel: (r.channel as Lead["channel"]) ?? undefined,
     cabinetId: r.cabinet_id ?? undefined,
+    projectId: r.project_id ?? undefined,
     metaAdId: r.meta_ad_id ?? undefined,
     metaAdsetId: r.meta_adset_id ?? undefined,
     metaCampaignId: r.meta_campaign_id ?? undefined,
