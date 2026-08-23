@@ -206,7 +206,13 @@ export function useProjectsStore() {
         rpcError.message ?? "",
       );
       if (!rpcMissing) {
-        throw new Error(rpcError.message || "Не удалось удалить проект");
+        const msg = rpcError.message || "Не удалось удалить проект";
+        if (/text\s*=\s*uuid|uuid\s*=\s*text|operator does not exist/i.test(msg)) {
+          throw new Error(
+            "Не удалось удалить проект: в БД нужен фикс триггера (миграция 20260804100000 / scripts/apply-fix-project-delete-text-uuid.sql).",
+          );
+        }
+        throw new Error(msg);
       }
 
       // Fallback without RPC: wipe CRM rows that block pipelines CASCADE
@@ -227,6 +233,11 @@ export function useProjectsStore() {
         if (/leads_pipeline_id_fkey|foreign key/i.test(msg)) {
           throw new Error(
             "Не удалось удалить: лиды держат воронку. Нужна миграция 20260803140000 на Supabase.",
+          );
+        }
+        if (/text\s*=\s*uuid|uuid\s*=\s*text|operator does not exist/i.test(msg)) {
+          throw new Error(
+            "Не удалось удалить проект: в БД нужен фикс триггера (миграция 20260804100000 / scripts/apply-fix-project-delete-text-uuid.sql).",
           );
         }
         throw new Error(msg);
