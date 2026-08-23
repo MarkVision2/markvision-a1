@@ -1,11 +1,4 @@
--- Backfill orphan leads that were routed into a project pipeline but lost project_id.
-UPDATE public.leads l
-   SET project_id = pl.project_id
-  FROM public.pipelines pl
- WHERE pl.id = l.pipeline_id
-   AND l.project_id IS NULL
-   AND pl.project_id IS NOT NULL;
-
+-- Fix kill-switch: do not block Green API WhatsApp leads when WA Web session
 -- exists but is disconnected. Green API uses the same channel/source labels but
 -- must keep creating leads; WA Web ingest is already guarded in wa-web-bridge.
 
@@ -50,3 +43,11 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+-- Backfill orphan leads that were routed into a project pipeline but lost project_id.
+UPDATE public.leads l
+   SET project_id = pl.project_id
+  FROM public.pipelines pl
+ WHERE pl.id = l.pipeline_id
+   AND l.project_id IS NULL
+   AND pl.project_id IS NOT NULL;
