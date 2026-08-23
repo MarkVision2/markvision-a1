@@ -153,7 +153,7 @@ jobs:
           elif [ "${{ steps.db_push.outcome }}" = "success" ] || [ "${{ steps.mgmt_sql.outcome }}" = "success" ]; then
             echo "::notice::Database SQL applied."
           else
-            echo "::warning::Could not apply DB migration automatically (need SUPABASE_DB_PASSWORD or ACCESS_TOKEN with database_write). Apply scripts/apply-prod-pending-20260719.sql in Supabase SQL Editor."
+            echo "::warning::Could not apply DB migration automatically (need SUPABASE_DB_PASSWORD or ACCESS_TOKEN with database_write). Apply scripts/apply-wa-web-greenapi-fix.sql in Supabase SQL Editor."
           fi
 
       - name: Fail if functions or SQL did not succeed
