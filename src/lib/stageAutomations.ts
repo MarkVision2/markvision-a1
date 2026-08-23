@@ -119,6 +119,11 @@ export function loadStageAutomationRules(
   return loadStageAutomationRulesFromLocalStorage(projectId, stages);
 }
 
+export function leadBelongsToProject(lead: { projectId?: string | null }, projectId: string | null | undefined): boolean {
+  if (!projectId || !lead.projectId) return false;
+  return lead.projectId === projectId;
+}
+
 export async function fetchStageAutomationRulesFromDb(
   projectId: string | null | undefined,
   stages: LeadStage[],
@@ -135,10 +140,13 @@ export async function fetchStageAutomationRulesFromDb(
 
   if (!data?.length) {
     const fromLocal = loadStageAutomationRulesFromLocalStorage(projectId, stages);
-    if (fromLocal.length > 0) {
+    // Не переносим «global» bucket — только правила, явно сохранённые для этого projectId.
+    const hasProjectKey = typeof window !== "undefined"
+      && window.localStorage.getItem(storageProjectKey(RULES_PREFIX, projectId)) != null;
+    if (fromLocal.length > 0 && hasProjectKey) {
       await saveStageAutomationRulesToDb(projectId, fromLocal);
     }
-    return fromLocal;
+    return hasProjectKey ? fromLocal : defaultStageAutomationRules(stages);
   }
 
   return data

@@ -45,6 +45,7 @@ import { toast } from "sonner";
 import {
   fetchStageAutomationRulesFromDb,
   findStageAutomationRule,
+  leadBelongsToProject,
   markStageAutomationSent,
   renderStageAutomationTemplate,
   wasStageAutomationSent,
@@ -128,10 +129,8 @@ const Crm = () => {
   }, [stageAutomationRules]);
 
   useEffect(() => {
-    if (!projectId) {
-      setStageAutomationRules([]);
-      return;
-    }
+    setStageAutomationRules([]);
+    if (!projectId) return;
     let cancelled = false;
     void fetchStageAutomationRulesFromDb(projectId, stages).then((rules) => {
       if (!cancelled) setStageAutomationRules(rules);
@@ -210,7 +209,7 @@ const Crm = () => {
     if (!rule || await wasStageAutomationSent(projectId, leadId, rule.id, stageId)) return;
 
     const lead = opts?.leadOverride ?? leadsRef.current.find((item) => item.id === leadId);
-    if (!lead?.phone) return;
+    if (!lead?.phone || !leadBelongsToProject(lead, projectId)) return;
     const managerName = members.find((member) => member.id === lead.assigneeId)?.name ?? null;
     const text = renderStageAutomationTemplate(rule.template, {
       lead,

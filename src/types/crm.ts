@@ -120,6 +120,7 @@ export type Lead = {
   firstResponseAt?: string;  // when manager first replied
   channel?: LeadChannel;
   cabinetId?: string | null;
+  projectId?: string | null;
   // Meta attribution — set by trigger from utm_content / utm_campaign
   metaAdId?: string | null;
   metaAdsetId?: string | null;

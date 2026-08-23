@@ -99,10 +99,14 @@ export function AutomationsSettings({ stages = [], projectId, whatsappConnected 
   }, [projectId, stages]);
 
   useEffect(() => {
+    setS(null);
+    setRuns([]);
+    setStageRules([]);
     void load();
   }, [load]);
 
   useEffect(() => {
+    setStageRules([]);
     void loadStageRules();
   }, [loadStageRules]);
 

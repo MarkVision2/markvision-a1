@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { defaultStageAutomationRules, findStageAutomationRule } from "@/lib/stageAutomations";
+import { defaultStageAutomationRules, findStageAutomationRule, leadBelongsToProject } from "@/lib/stageAutomations";
 import type { LeadStage } from "@/types/crm";
 
 const stagesA: LeadStage[] = [
@@ -20,5 +20,12 @@ describe("project-scoped stage automations", () => {
     expect(rulesA.some((r) => r.stageId === "stage-b-new")).toBe(false);
     expect(rulesB.some((r) => r.stageId === "stage-b-new")).toBe(true);
     expect(findStageAutomationRule(rulesA, "stage-b-new")).toBeUndefined();
+  });
+
+  it("leadBelongsToProject blocks cross-project stage automation", () => {
+    expect(leadBelongsToProject({ projectId: "proj-a" }, "proj-a")).toBe(true);
+    expect(leadBelongsToProject({ projectId: "proj-a" }, "proj-b")).toBe(false);
+    expect(leadBelongsToProject({ projectId: null }, "proj-a")).toBe(false);
+    expect(leadBelongsToProject({ projectId: "proj-a" }, null)).toBe(false);
   });
 });
