@@ -321,9 +321,9 @@ export function useCrmStore() {
       .select("*")
       .eq("is_personal", false)
       .order("created_at", { ascending: false })
-      .limit(500);
+      .limit(2000);
     if (projectId) {
-      leadsQuery = leadsQuery.or(`project_id.eq.${projectId},project_id.is.null`);
+      leadsQuery = leadsQuery.eq("project_id", projectId);
     }
     const [leadsRes, commRes, evRes, tasksRes, histRes] = await Promise.all([
       leadsQuery,
@@ -401,7 +401,7 @@ export function useCrmStore() {
     const belongsToProject = (row: LeadRow) => {
       const pid = projectIdRef.current;
       if (!pid) return true;
-      return !row.project_id || row.project_id === pid;
+      return row.project_id === pid;
     };
 
     const upsertLeadRow = (row: LeadRow) => {
@@ -426,7 +426,7 @@ export function useCrmStore() {
               : l,
           );
         }
-        return [mapped, ...prev].slice(0, 500);
+        return [mapped, ...prev].slice(0, 2000);
       });
     };
 
@@ -599,6 +599,7 @@ export function useCrmStore() {
     input: Omit<Lead, "id" | "createdAt" | "lastActivityAt">,
   ): Promise<Lead | undefined> => {
     if (!pipelineId) return;
+    if (!projectId) return;
     const stageId = stageUuid(input.stageId) ?? stageUuid("new");
     if (!stageId) return;
     const lt = getLastTouch();
@@ -634,7 +635,10 @@ export function useCrmStore() {
       meta_adset_id: metaIds.adsetId,
       meta_campaign_id: metaIds.campaignId,
     }).select().single();
-    if (error || !data) return;
+    if (error || !data) {
+      console.error("[useCrmStore.addLead]", error);
+      return;
+    }
     // Optimistically prepend the new lead so it shows immediately.
     const row = data as LeadRow;
     const newLead: Lead = {

@@ -487,9 +487,13 @@ const Crm = () => {
         onCreate={(input) => {
           void (async () => {
             const lead = await addLead(input);
-            if (lead) await runStageAutomation(lead.id, lead.stageId, { leadOverride: lead });
+            if (!lead) {
+              toast.error("Не удалось создать лид — выберите проект и проверьте данные");
+              return;
+            }
+            toast.success("Лид добавлен в воронку");
+            await runStageAutomation(lead.id, lead.stageId, { leadOverride: lead });
           })();
-          toast.success("Лид добавлен в воронку");
         }}
       />
 

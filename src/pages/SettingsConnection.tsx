@@ -921,8 +921,10 @@ export function WhatsappProjectBindCard({
 
 export function SiteIntakeCard() {
   const { active, rotateIntakeToken } = useProjectsStore();
-  const url = `${supabaseUrl}/functions/v1/lead-intake`;
   const token = active?.intakeToken ?? "";
+  const url = token
+    ? `${supabaseUrl}/functions/v1/lead-intake/t/${token}`
+    : `${supabaseUrl}/functions/v1/lead-intake`;
   const projectName = active?.name ?? "—";
   const [testing, setTesting] = useState(false);
   const [rotating, setRotating] = useState(false);
