@@ -8,6 +8,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { Lead, LeadStage, PaymentMethod } from "@/types/crm";
+import { DeferredField } from "./DeferredField";
 import { VisitSlotPopover } from "./VisitSlotPopover";
 
 const SOURCE_PRESETS: { id: string; label: string }[] = [
@@ -101,21 +102,22 @@ export function LeadDealTab({ lead, stages, onUpdate, onChangeStage, onScheduleV
         </div>
       )}
 
-      {/* Сумма */}
+      {/* Сумма — локальный черновик, сохранение по blur (без прыжка курсора) */}
       <div className="border-b border-border/40 px-3.5 py-3.5">
         <FieldLabel icon={Wallet}>Сумма сделки</FieldLabel>
         <div className="relative">
-          <Input
-            type="text"
+          <DeferredField
+            key={`amount-${lead.id}`}
+            digitsOnly
             inputMode="numeric"
             value={lead.amount ? String(lead.amount) : ""}
-            onChange={(e) => {
-              const digits = e.target.value.replace(/[^\d]/g, "");
-              onUpdate({ amount: digits ? Number(digits) : 0 });
+            onCommit={(digits) => {
+              const next = digits ? Number(digits) : 0;
+              if (next !== (lead.amount || 0)) onUpdate({ amount: next });
             }}
             placeholder="0"
             className="h-11 rounded-xl border-border/50 bg-background/40 pr-10 text-lg font-semibold tabular-nums"
-            aria-label="Сумма сделки"
+            ariaLabel="Сумма сделки"
           />
           <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
             ₸

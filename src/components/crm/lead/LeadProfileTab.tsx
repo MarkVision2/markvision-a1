@@ -1,6 +1,5 @@
 import { Tag, Globe } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { siteDomain } from "@/lib/analyticsBreakdowns";
 import { TEMPERATURE_LABEL, type LeadTemperature } from "@/lib/stageRoles";
 import type { Lead, LeadChannel } from "@/types/crm";
@@ -9,6 +8,7 @@ import {
 } from "@/components/ui/select";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
+import { DeferredField } from "./DeferredField";
 
 const CHANNELS: { id: LeadChannel; label: string }[] = [
   { id: "whatsapp", label: "WhatsApp" },
@@ -72,34 +72,54 @@ export function LeadProfileTab({ lead, onUpdate }: Props) {
         <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Контакты</div>
         <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="Телефон">
-            <Input value={lead.phone} onChange={(e) => onUpdate({ phone: e.target.value })} />
+            <DeferredField
+              key={`phone-${lead.id}`}
+              value={lead.phone}
+              onCommit={(v) => {
+                if (v !== lead.phone) onUpdate({ phone: v });
+              }}
+              ariaLabel="Телефон"
+            />
           </Field>
           <Field label="Email">
-            <Input
+            <DeferredField
+              key={`email-${lead.id}`}
               type="email"
               value={lead.email ?? ""}
-              onChange={(e) => onUpdate({ email: e.target.value || undefined })}
+              onCommit={(v) => {
+                const next = v || undefined;
+                if (next !== lead.email) onUpdate({ email: next });
+              }}
               placeholder="—"
+              ariaLabel="Email"
             />
           </Field>
           <Field label="Город">
-            <Input
+            <DeferredField
+              key={`city-${lead.id}`}
               value={lead.city ?? ""}
-              onChange={(e) => onUpdate({ city: e.target.value || undefined })}
+              onCommit={(v) => {
+                const next = v || undefined;
+                if (next !== lead.city) onUpdate({ city: next });
+              }}
               placeholder="Алматы"
+              ariaLabel="Город"
             />
           </Field>
           <Field label="Возраст">
-            <Input
-              type="number"
-              value={lead.age ?? ""}
-              onChange={(e) => {
-                const n = Number(e.target.value);
-                onUpdate({ age: Number.isFinite(n) && n > 0 ? n : undefined });
+            <DeferredField
+              key={`age-${lead.id}`}
+              digitsOnly
+              inputMode="numeric"
+              value={lead.age != null ? String(lead.age) : ""}
+              onCommit={(digits) => {
+                const n = digits ? Number(digits) : NaN;
+                const next = Number.isFinite(n) && n > 0 ? n : undefined;
+                if (next !== lead.age) onUpdate({ age: next });
               }}
               placeholder="—"
-              min={0}
-              max={120}
+              maxLength={3}
+              ariaLabel="Возраст"
             />
           </Field>
           <Field label="Канал">
@@ -133,11 +153,17 @@ export function LeadProfileTab({ lead, onUpdate }: Props) {
 
         <div className="mt-3 grid gap-1">
           <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Комментарий</label>
-          <Textarea
+          <DeferredField
+            key={`note-${lead.id}`}
+            multiline
             value={lead.note ?? ""}
-            onChange={(e) => onUpdate({ note: e.target.value || undefined })}
+            onCommit={(v) => {
+              const next = v || undefined;
+              if (next !== lead.note) onUpdate({ note: next });
+            }}
             rows={3}
             maxLength={500}
+            ariaLabel="Комментарий"
           />
         </div>
       </div>
