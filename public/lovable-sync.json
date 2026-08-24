@@ -1,7 +1,7 @@
 {
-  "git_sha": "b61c37e",
-  "git_sha_full": "b61c37e7ca68af97baa13d5212b331ac35628102",
-  "updated_at": "2026-08-23T08:14:03Z",
-  "label": "fix(ci): include apply-wa-web-greenapi-fix.sql in Management API list",
+  "git_sha": "1cba8df",
+  "git_sha_full": "1cba8df19c7481787f950b91a99ca215bc089cf3",
+  "updated_at": "2026-08-24T06:08:24Z",
+  "label": "fix(crm): stop cursor jump when editing amount and comment (#237)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
