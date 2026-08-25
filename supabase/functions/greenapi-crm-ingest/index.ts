@@ -405,6 +405,41 @@ async function fetchJournal(
   return Array.isArray(data) ? (data as JournalMsg[]) : [];
 }
 
+/** Ensure Green API sends incomingCall webhooks (idempotent). */
+async function ensureIncomingCallWebhook(
+  baseUrl: string,
+  idInstance: string,
+  apiToken: string,
+): Promise<void> {
+  try {
+    const getUrl = `${baseUrl}/waInstance${idInstance}/getSettings/${apiToken}`;
+    const getRes = await fetch(getUrl);
+    if (!getRes.ok) return;
+    const live = (await getRes.json().catch(() => ({}))) as Record<string, unknown>;
+    const webhookUrl = String(live.webhookUrl ?? "").trim();
+    if (!webhookUrl.startsWith("http")) return;
+    if (String(live.incomingCallWebhook ?? "").toLowerCase() === "yes") return;
+
+    const setUrl = `${baseUrl}/waInstance${idInstance}/setSettings/${apiToken}`;
+    await fetch(setUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        webhookUrl,
+        webhookUrlToken: String(live.webhookUrlToken ?? ""),
+        outgoingWebhook: live.outgoingWebhook ?? "yes",
+        outgoingMessageWebhook: live.outgoingMessageWebhook ?? "yes",
+        outgoingAPIMessageWebhook: live.outgoingAPIMessageWebhook ?? "yes",
+        incomingWebhook: "yes",
+        incomingCallWebhook: "yes",
+        stateWebhook: live.stateWebhook ?? "yes",
+      }),
+    });
+  } catch (e) {
+    console.warn("greenapi-crm-ingest ensureIncomingCallWebhook", e);
+  }
+}
+
 async function ingestProject(row: WaRow, minutes: number) {
   let baseUrl = DEFAULT_GREEN_API_BASE_URL;
   try {
@@ -412,6 +447,10 @@ async function ingestProject(row: WaRow, minutes: number) {
   } catch {
     return { projectId: row.project_id, error: "bad_api_url", leads: 0, messages: 0 };
   }
+
+  // By default: WhatsApp calls create CRM leads — turn on call webhooks if missing.
+  await ensureIncomingCallWebhook(baseUrl, row.id_instance, row.api_token);
+  await new Promise((r) => setTimeout(r, 200));
 
   const incoming = await fetchJournal(baseUrl, row.id_instance, row.api_token, "incoming", minutes);
   // Small pause to avoid Green API 429 between journal calls.
