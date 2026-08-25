@@ -1,7 +1,7 @@
 {
-  "git_sha": "1cba8df",
-  "git_sha_full": "1cba8df19c7481787f950b91a99ca215bc089cf3",
-  "updated_at": "2026-08-24T06:08:24Z",
-  "label": "fix(crm): stop cursor jump when editing amount and comment (#237)",
+  "git_sha": "4ce164c",
+  "git_sha_full": "4ce164c18eae2f58da169bd17dc07f312293ba19",
+  "updated_at": "2026-08-25T08:11:32Z",
+  "label": "feat(crm): входящий звонок WhatsApp создаёт лид (#238)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
