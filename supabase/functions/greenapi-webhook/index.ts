@@ -881,7 +881,10 @@ Deno.serve(async (req) => {
     // Incoming WhatsApp call → create CRM lead + call communication.
     // Green API sends offer first, then pickUp / hungUp / declined.
     if (type === "incomingCall") {
-      const fromRaw = typeof body.from === "string" ? body.from : "";
+      const fromRaw =
+        (typeof body.from === "string" ? body.from : "")
+        || (typeof (body as { chatId?: string }).chatId === "string" ? (body as { chatId: string }).chatId : "")
+        || "";
       const phone = chatIdToPhone(fromRaw);
       const callStatus = String(body.status ?? "offer");
       if (!phone) {
@@ -890,7 +893,7 @@ Deno.serve(async (req) => {
       }
 
       // Calls are strong intent — always create/attach lead (even ads_only).
-      let attribution: CtwaAttribution | null = await attributionFromPhone(phone, projectId);
+      const attribution: CtwaAttribution | null = await attributionFromPhone(phone, projectId);
       const existingLeadId = await findExistingLeadId(phone, projectId);
       const leadId = existingLeadId ??
         await findOrCreateLead(phone, "", projectId, attribution ?? undefined);

@@ -378,6 +378,49 @@ Deno.serve(async (req) => {
         return json({ ok: r.ok, status: r.status, data: r.data, webhookUrl });
       }
 
+      case "enableCallWebhook": {
+        // Enable call notifications without stealing webhookUrl from n8n bot.
+        const cur = await callGreen(creds, "getSettings");
+        const live = (cur.data ?? {}) as Record<string, unknown>;
+        const webhookUrl = String(live.webhookUrl ?? "").trim();
+        if (!webhookUrl.startsWith("http")) {
+          return json({
+            error: "webhookUrl not configured on instance — set webhook first",
+            data: live,
+          }, 400);
+        }
+        let webhookUrlToken = String(live.webhookUrlToken ?? "");
+        if (!webhookUrlToken && creds.rowId) {
+          const { data: tokRow } = await admin
+            .from("whatsapp_config")
+            .select("webhook_token")
+            .eq("id", creds.rowId)
+            .maybeSingle();
+          webhookUrlToken = String((tokRow as { webhook_token?: string | null } | null)?.webhook_token ?? "");
+        }
+        const r = await callGreen(creds, "setSettings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            webhookUrl,
+            webhookUrlToken,
+            outgoingWebhook: live.outgoingWebhook ?? "yes",
+            outgoingMessageWebhook: live.outgoingMessageWebhook ?? "yes",
+            outgoingAPIMessageWebhook: live.outgoingAPIMessageWebhook ?? "yes",
+            incomingWebhook: "yes",
+            incomingCallWebhook: "yes",
+            stateWebhook: live.stateWebhook ?? "yes",
+          }),
+        });
+        return json({
+          ok: r.ok,
+          status: r.status,
+          data: r.data,
+          webhookUrl,
+          incomingCallWebhook: "yes",
+        });
+      }
+
       case "ensureCrmWebhook": {
         // DISABLED: auto-reclaim to greenapi-webhook fought the n8n bot watcher
         // (setSettings every minute → instance reload thrash → 0 greetings).
