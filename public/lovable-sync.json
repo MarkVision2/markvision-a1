@@ -1,7 +1,7 @@
 {
-  "git_sha": "4ce164c",
-  "git_sha_full": "4ce164c18eae2f58da169bd17dc07f312293ba19",
-  "updated_at": "2026-08-25T08:11:32Z",
-  "label": "feat(crm): входящий звонок WhatsApp создаёт лид (#238)",
+  "git_sha": "a6409d8",
+  "git_sha_full": "a6409d8fb337273ce75c0e93331d0ad829bfce61",
+  "updated_at": "2026-08-25T08:22:16Z",
+  "label": "feat(crm): enable WhatsApp call→lead by default (#239)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
