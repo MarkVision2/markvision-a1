@@ -5,6 +5,9 @@
 import "@fontsource-variable/manrope/index.css";
 import "@fontsource/montserrat/cyrillic-800.css";
 import "@fontsource/montserrat/cyrillic-900.css";
+// Cyrillic-ext subset covers Kazakh letters (ә ғ қ ң ө ұ ү һ і).
+import "@fontsource/montserrat/cyrillic-ext-800.css";
+import "@fontsource/montserrat/cyrillic-ext-900.css";
 import "@fontsource/montserrat/latin-800.css";
 import "@fontsource/montserrat/latin-900.css";
 

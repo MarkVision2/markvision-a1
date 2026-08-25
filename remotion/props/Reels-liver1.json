@@ -1,0 +1,164 @@
+{
+ "audioTrack": "reels/vo_liver1.mp3",
+ "words": [],
+ "scenes": [
+  {
+   "from": 0,
+   "to": 110,
+   "template": "kinetic-type",
+   "data": {
+    "words": [
+     "ШАРШАУ?",
+     "АУЫРЛЫҚ?",
+     "ЖАЙСЫЗДЫҚ?"
+    ],
+    "accentIndex": 2,
+    "accent": "#FB7185",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/liver1/tired-man-waking-up-morning-bed-3801360.mp4"
+  },
+  {
+   "from": 110,
+   "to": 214,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "БАУЫРҒА НАЗАР АУДАРАТЫН",
+     "УАҚЫТ КЕЛДІ МЕ?"
+    ],
+    "accent": "#38BDF8",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/liver1/doctor-ultrasound-abdomen-examination-6998336.mp4"
+  },
+  {
+   "from": 214,
+   "to": 311,
+   "template": "arrow-flow",
+   "data": {
+    "steps": [
+     "Бауыр",
+     "Өзгеріс",
+     "Белгі жоқ"
+    ],
+    "accent": "#22D3EE",
+    "cover": true,
+    "caption": false
+   }
+  },
+  {
+   "from": 311,
+   "to": 363,
+   "template": "metric-callout",
+   "data": {
+    "value": "20%",
+    "label": "КҮШ-ҚУАТ АЗАЯДЫ",
+    "up": false,
+    "accent": "#FB7185",
+    "caption": false
+   },
+   "clip": "broll/liver1/tired-exhausted-person-office-desk-9063506.mp4"
+  },
+  {
+   "from": 363,
+   "to": 415,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ТАМАҚТАН КЕЙІН",
+     "АУЫРЛЫҚ"
+    ],
+    "accent": "#FFC53D",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/liver1/person-stomach-discomfort-after-eating-8410467.mp4"
+  },
+  {
+   "from": 415,
+   "to": 467,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ОҢ ЖАҚТА",
+     "ЖАЙСЫЗДЫҚ"
+    ],
+    "accent": "#FF7A18",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/liver1/person-holding-right-side-abdominal-pain-8410467.mp4"
+  },
+  {
+   "from": 467,
+   "to": 570,
+   "template": "vs-compare",
+   "data": {
+    "leftTitle": "БОЛЖАУ",
+    "rightTitle": "ТЕКСЕРУ",
+    "leftItems": [
+     "Белгісіздік"
+    ],
+    "rightItems": [
+     "Нақты жауап"
+    ],
+    "accent": "#34D399",
+    "caption": false
+   }
+  },
+  {
+   "from": 570,
+   "to": 694,
+   "template": "arrow-flow",
+   "data": {
+    "steps": [
+     "Тексеру",
+     "Бағалау",
+     "Нәтиже"
+    ],
+    "accent": "#22D3EE",
+    "caption": false
+   },
+   "clip": "broll/liver1/medical-laboratory-equipment-scan-7089603.mp4"
+  },
+  {
+   "from": 694,
+   "to": 780,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "БАУЫРЫҢЫЗДЫҢ",
+     "ЖАҒДАЙЫН БІЛІҢІЗ"
+    ],
+    "accent": "#38BDF8",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/liver1/doctor-reviewing-medical-results-monitor-5453584.mp4"
+  },
+  {
+   "from": 780,
+   "to": 871,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ДИАГНОСТИКАҒА",
+     "ЖАЗЫЛЫҢЫЗ ↓"
+    ],
+    "accent": "#34D399",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/liver1/modern-clinic-doctor-patient-consultatio-7579338.mp4"
+  }
+ ],
+ "totalDurationInFrames": 871,
+ "fps": 30,
+ "music": null,
+ "musicVolume": 0.1,
+ "captions": true,
+ "background": "grid"
+}
