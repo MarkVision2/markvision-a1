@@ -69,6 +69,7 @@ Deno.serve(async (req) => {
         outgoingAPIMessageWebhook: "yes",
         outgoingMessageWebhook: "yes",
         incomingWebhook: "yes",
+        incomingCallWebhook: "yes",
         stateWebhook: "yes",
         deviceWebhook: "no",
         statusInstanceWebhook: "no",

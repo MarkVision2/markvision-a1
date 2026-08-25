@@ -4,6 +4,7 @@
 //
 // Supported notification types:
 // - incomingMessageReceived       → save inbound message, create lead if missing
+// - incomingCall                  → create lead on WhatsApp call + communications.type=call
 // - outgoingMessageReceived       → save outbound (sent from phone)
 // - outgoingAPIMessageReceived    → save outbound (sent via API)
 // - outgoingMessageStatus         → update communications.status
@@ -17,6 +18,10 @@ import {
   isGenericLeadSource,
   partnerSourceFromWhatsAppText,
 } from "../_lib/partnerSource.ts";
+import {
+  callCommStatus,
+  callContent,
+} from "../_lib/whatsappCallStatus.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -524,6 +529,54 @@ async function insertCommunication(opts: {
   });
 }
 
+/** Upsert WhatsApp call into communications (type=call). Creates lead activity in CRM. */
+async function upsertCallCommunication(opts: {
+  leadId: string;
+  direction: "in" | "out";
+  callStatus: string;
+  externalId: string | null;
+}): Promise<void> {
+  const content = callContent(opts.callStatus);
+  const status = callCommStatus(opts.callStatus);
+
+  if (opts.externalId) {
+    const { data: existing } = await admin
+      .from("communications")
+      .select("id")
+      .eq("external_id", opts.externalId)
+      .maybeSingle();
+    if (existing?.id) {
+      await admin.from("communications").update({
+        content,
+        status,
+        type: "call",
+        channel: "whatsapp",
+      }).eq("id", existing.id);
+      await admin.from("leads").update({
+        last_activity_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }).eq("id", opts.leadId);
+      return;
+    }
+  }
+
+  await admin.from("communications").insert({
+    lead_id: opts.leadId,
+    type: "call",
+    direction: opts.direction,
+    channel: "whatsapp",
+    content,
+    status,
+    is_draft: false,
+    is_auto: false,
+    external_id: opts.externalId,
+  });
+  await admin.from("leads").update({
+    last_activity_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  }).eq("id", opts.leadId);
+}
+
 /**
  * Launch funnel: move lead new → bot_activated when they start the bot
  * (СТАРТ_… / /start) or when the bot sends the first API message.
@@ -823,6 +876,42 @@ Deno.serve(async (req) => {
       triggerChatAnalysis(leadId, "in");
       forwardToBotWebhook(instanceCfg.botWebhookUrl, body);
       return json({ ok: true, leadId, projectId, attribution });
+    }
+
+    // Incoming WhatsApp call → create CRM lead + call communication.
+    // Green API sends offer first, then pickUp / hungUp / declined.
+    if (type === "incomingCall") {
+      const fromRaw = typeof body.from === "string" ? body.from : "";
+      const phone = chatIdToPhone(fromRaw);
+      const callStatus = String(body.status ?? "offer");
+      if (!phone) {
+        forwardToBotWebhook(instanceCfg.botWebhookUrl, body);
+        return json({ ok: true, skipped: "no phone", type, callStatus });
+      }
+
+      // Calls are strong intent — always create/attach lead (even ads_only).
+      let attribution: CtwaAttribution | null = await attributionFromPhone(phone, projectId);
+      const existingLeadId = await findExistingLeadId(phone, projectId);
+      const leadId = existingLeadId ??
+        await findOrCreateLead(phone, "", projectId, attribution ?? undefined);
+      if (!leadId) return json({ ok: false, error: "lead not created", type: "incomingCall" }, 500);
+
+      await upsertCallCommunication({
+        leadId,
+        direction: "in",
+        callStatus,
+        externalId: idMessage,
+      });
+
+      forwardToBotWebhook(instanceCfg.botWebhookUrl, body);
+      return json({
+        ok: true,
+        leadId,
+        projectId,
+        type: "incomingCall",
+        callStatus,
+        created: !existingLeadId,
+      });
     }
 
     if (

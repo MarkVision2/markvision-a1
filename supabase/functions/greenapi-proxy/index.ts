@@ -365,6 +365,7 @@ Deno.serve(async (req) => {
             outgoingMessageWebhook: "yes",
             outgoingAPIMessageWebhook: "yes",
             incomingWebhook: "yes",
+            incomingCallWebhook: "yes",
             stateWebhook: "yes",
           }),
         });
@@ -416,6 +417,7 @@ Deno.serve(async (req) => {
             outgoingMessageWebhook: "yes",
             outgoingAPIMessageWebhook: "yes",
             incomingWebhook: "yes",
+            incomingCallWebhook: "yes",
             stateWebhook: "yes",
           }),
         });
