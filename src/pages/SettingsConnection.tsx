@@ -501,6 +501,7 @@ function WebhookCard({
   const [saving, setSaving] = useState(false);
   const [botUrl, setBotUrl] = useState("");
   const [botSaving, setBotSaving] = useState(false);
+  const [callSaving, setCallSaving] = useState(false);
 
   useEffect(() => {
     setBotUrl(row?.bot_webhook_url ?? "");
@@ -574,6 +575,40 @@ function WebhookCard({
       toast.error("Ошибка", { description: (e as Error).message });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const enableCallWebhook = async () => {
+    if (!projectId) {
+      toast.error("Выберите активный проект");
+      return;
+    }
+    if (!row?.id_instance || !row?.api_token_present) {
+      toast.error("Сначала привяжите idInstance и apiToken к проекту");
+      return;
+    }
+    setCallSaving(true);
+    try {
+      const { data, error } = await supabase.functions.invoke("greenapi-proxy", {
+        body: { action: "enableCallWebhook", project_id: projectId },
+      });
+      const ok = !error && (data as { ok?: boolean } | null)?.ok !== false;
+      if (ok) {
+        toast.success("Уведомления о звонках WhatsApp включены", {
+          description: "Входящий звонок создаст лид в CRM. URL webhook не менялся.",
+        });
+        await checkSettings();
+      } else {
+        const detail = (data as { error?: string; data?: { message?: string } } | null)?.error
+          ?? (data as { data?: { message?: string } } | null)?.data?.message
+          ?? (error as { message?: string } | null)?.message
+          ?? "unknown";
+        toast.error("Не удалось включить звонки", { description: String(detail) });
+      }
+    } catch (e) {
+      toast.error("Ошибка", { description: (e as Error).message });
+    } finally {
+      setCallSaving(false);
     }
   };
 
@@ -683,6 +718,15 @@ function WebhookCard({
             >
               {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
               Только CRM (опасно)
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void enableCallWebhook()}
+              disabled={callSaving || !row?.api_token_present}
+              title="Включает incomingCallWebhook, не меняя URL webhook"
+            >
+              {callSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+              Звонки → CRM
             </Button>
           </div>
         </div>
