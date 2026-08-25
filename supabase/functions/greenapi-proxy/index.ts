@@ -292,6 +292,44 @@ Deno.serve(async (req) => {
             widToPhone(
               (ws?.data as { wid?: string } | null | undefined)?.wid,
             ) ?? null;
+
+          // Default: incoming WhatsApp calls create CRM leads.
+          // Enable call webhooks without changing webhookUrl (safe with n8n bot).
+          try {
+            const settings = await callGreen(creds, "getSettings");
+            const live = (settings.data ?? {}) as Record<string, unknown>;
+            const wh = String(live.webhookUrl ?? "").trim();
+            const callOn = String(live.incomingCallWebhook ?? "").toLowerCase() === "yes";
+            if (wh.startsWith("http") && !callOn) {
+              let webhookUrlToken = String(live.webhookUrlToken ?? "");
+              if (!webhookUrlToken && creds.rowId) {
+                const { data: tokRow } = await admin
+                  .from("whatsapp_config")
+                  .select("webhook_token")
+                  .eq("id", creds.rowId)
+                  .maybeSingle();
+                webhookUrlToken = String(
+                  (tokRow as { webhook_token?: string | null } | null)?.webhook_token ?? "",
+                );
+              }
+              await callGreen(creds, "setSettings", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  webhookUrl: wh,
+                  webhookUrlToken,
+                  outgoingWebhook: live.outgoingWebhook ?? "yes",
+                  outgoingMessageWebhook: live.outgoingMessageWebhook ?? "yes",
+                  outgoingAPIMessageWebhook: live.outgoingAPIMessageWebhook ?? "yes",
+                  incomingWebhook: "yes",
+                  incomingCallWebhook: "yes",
+                  stateWebhook: live.stateWebhook ?? "yes",
+                }),
+              });
+            }
+          } catch (e) {
+            console.warn("auto enableCallWebhook failed", e);
+          }
         }
         await syncState(creds, stateInstance, phone);
         return json({
@@ -380,6 +418,7 @@ Deno.serve(async (req) => {
 
       case "enableCallWebhook": {
         // Enable call notifications without stealing webhookUrl from n8n bot.
+        // Idempotent: if already on, do not call setSettings (avoids instance thrash).
         const cur = await callGreen(creds, "getSettings");
         const live = (cur.data ?? {}) as Record<string, unknown>;
         const webhookUrl = String(live.webhookUrl ?? "").trim();
@@ -388,6 +427,15 @@ Deno.serve(async (req) => {
             error: "webhookUrl not configured on instance — set webhook first",
             data: live,
           }, 400);
+        }
+        const alreadyOn = String(live.incomingCallWebhook ?? "").toLowerCase() === "yes";
+        if (alreadyOn) {
+          return json({
+            ok: true,
+            skipped: true,
+            webhookUrl,
+            incomingCallWebhook: "yes",
+          });
         }
         let webhookUrlToken = String(live.webhookUrlToken ?? "");
         if (!webhookUrlToken && creds.rowId) {
@@ -418,6 +466,7 @@ Deno.serve(async (req) => {
           data: r.data,
           webhookUrl,
           incomingCallWebhook: "yes",
+          updated: true,
         });
       }
 

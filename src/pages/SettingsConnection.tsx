@@ -520,7 +520,7 @@ function WebhookCard({
       const { data } = await supabase.functions.invoke("greenapi-proxy", {
         body: { action: "settings", project_id: projectId },
       });
-      const s = (data as { data?: { webhookUrl?: string } } | null)?.data;
+      const s = (data as { data?: { webhookUrl?: string; incomingCallWebhook?: string } } | null)?.data;
       const live = s?.webhookUrl ?? "";
       setCurrent(live);
       const botUrl = (row.bot_webhook_url ?? "").replace(/\/+$/, "");
@@ -532,6 +532,13 @@ function WebhookCard({
         /n8n\.|webhook\//i.test(liveNorm)
       );
       onWebhookStatus(matched);
+
+      // Default: calls → CRM leads. Enable silently if webhook URL exists.
+      if (matched && String(s?.incomingCallWebhook ?? "").toLowerCase() !== "yes") {
+        void supabase.functions.invoke("greenapi-proxy", {
+          body: { action: "enableCallWebhook", project_id: projectId },
+        }).catch(() => undefined);
+      }
     } catch {
       setCurrent(null);
       onWebhookStatus(!!row?.webhook_url);
@@ -664,8 +671,8 @@ function WebhookCard({
         <CardTitle className="text-lg">Шаг 3 — Webhook WhatsApp</CardTitle>
         <CardDescription>
           На общем инстансе с ботом webhook должен указывать на n8n (бот). Платформа больше не
-          переставляет его на greenapi-webhook — это ломало приветствия (борьба setSettings каждую минуту).
-          CRM URL ниже — только если нужен отдельный инстанс только под CRM.
+          переставляет его на greenapi-webhook — это ломало приветствия.
+          Входящие сообщения и звонки WhatsApp по умолчанию создают лид в CRM (этап «Новая»).
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -837,12 +844,14 @@ export function WhatsappProjectBindCard({
       });
       if (error) throw error;
       toast.success(`WhatsApp ${idInstance} привязан к «${projectName ?? "проект"}»`, {
-        description: "Дальше: авторизуйте WA и настройте webhook CRM.",
+        description: "Звонки и сообщения создают лиды в CRM. Дальше — авторизуйте WA.",
       });
       await refreshAll();
       await onBound?.();
-      // Do NOT auto-set Green webhook to CRM — shared instance + n8n watcher
-      // fight causes setSettings thrash and kills bot greetings.
+      // Enable call→lead by default (does not steal webhookUrl from n8n).
+      void supabase.functions.invoke("greenapi-proxy", {
+        body: { action: "enableCallWebhook", project_id: projectId },
+      }).catch(() => undefined);
     } catch (e) {
       toast.error("Не удалось привязать", { description: (e as Error).message });
     } finally {
@@ -943,6 +952,7 @@ export function WhatsappProjectBindCard({
                   ) : currentRow ? (
                     <>
                       Текущая привязка: <code>{currentRow.id_instance ?? "—"}</code>
+                      . Сообщения и звонки → CRM проекта.
                       {currentRow.phone ? `, номер ${currentRow.phone}` : ""}
                       {currentRow.connected ? " · подключён" : ""}
                     </>
