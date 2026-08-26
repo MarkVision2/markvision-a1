@@ -1,0 +1,126 @@
+{
+ "audioTrack": "reels/vo_acct3.mp3",
+ "words": [],
+ "scenes": [
+  {
+   "from": 0,
+   "to": 96,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "БАРДАК В УЧЁТЕ?",
+     "БОИТЕСЬ ПРОВЕРКИ?"
+    ],
+    "accent": "#FB7185",
+    "cover": true,
+    "bg": "warp",
+    "caption": false
+   },
+   "clip": "broll/acct3/stressed-accountant-messy-documents-desk-7247817.mp4"
+  },
+  {
+   "from": 96,
+   "to": 232,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ВОССТАНОВЛЕНИЕ",
+     "БУХГАЛТЕРИИ"
+    ],
+    "accent": "#22D3EE",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct3/accountant-organizing-documents-folders--8298301.mp4"
+  },
+  {
+   "from": 232,
+   "to": 414,
+   "template": "checklist-reveal",
+   "data": {
+    "items": [
+     "Первичка",
+     "Налоги",
+     "Отчёты",
+     "1С"
+    ],
+    "icons": [
+     "check",
+     "check",
+     "check",
+     "check"
+    ],
+    "accent": "#34D399",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct3/accounting-documents-archive-folders-she-8869995.mp4"
+  },
+  {
+   "from": 414,
+   "to": 483,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ДИАГНОСТИКА",
+     "БАЗЫ"
+    ],
+    "accent": "#FFC53D",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct3/accountant-reviewing-database-computer-s-33315117.mp4"
+  },
+  {
+   "from": 483,
+   "to": 553,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ЧТО НУЖНО",
+     "ВОССТАНОВИТЬ"
+    ],
+    "accent": "#38BDF8",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct3/financial-audit-checklist-laptop-analysi-6781916.mp4"
+  },
+  {
+   "from": 553,
+   "to": 627,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ОСТАВЬТЕ",
+     "ЗАЯВКУ →"
+    ],
+    "accent": "#FF7A18",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct3/hand-filling-online-form-smartphone-busi-8061108.mp4"
+  },
+  {
+   "from": 627,
+   "to": 715,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "РАССЧИТАЕМ",
+     "СТОИМОСТЬ"
+    ],
+    "accent": "#34D399",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct3/business-consultation-calculator-office--6781920.mp4"
+  }
+ ],
+ "totalDurationInFrames": 715,
+ "fps": 30,
+ "music": null,
+ "musicVolume": 0.1,
+ "captions": true,
+ "background": "aurora"
+}
