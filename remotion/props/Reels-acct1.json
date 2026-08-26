@@ -1,0 +1,126 @@
+{
+ "audioTrack": "reels/vo_acct1.mp3",
+ "words": [],
+ "scenes": [
+  {
+   "from": 0,
+   "to": 141,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ИП ИЛИ ТОО В АЛМАТЫ?",
+     "НУЖЕН БУХГАЛТЕР?"
+    ],
+    "accent": "#22D3EE",
+    "cover": true,
+    "bg": "warp",
+    "caption": false
+   },
+   "clip": "broll/acct1/accountant-calculator-financial-document-8298300.mp4"
+  },
+  {
+   "from": 141,
+   "to": 255,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "БУХГАЛТЕРСКОЕ",
+     "СОПРОВОЖДЕНИЕ БИЗНЕСА"
+    ],
+    "accent": "#38BDF8",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct1/accountant-working-laptop-office-busines-8298301.mp4"
+  },
+  {
+   "from": 255,
+   "to": 427,
+   "template": "checklist-reveal",
+   "data": {
+    "items": [
+     "Учёт",
+     "Налоги",
+     "1С",
+     "Отчётность"
+    ],
+    "icons": [
+     "check",
+     "check",
+     "check",
+     "check"
+    ],
+    "accent": "#34D399",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct1/bookkeeping-tax-documents-calculator-des-6781912.mp4"
+  },
+  {
+   "from": 427,
+   "to": 521,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "НЕ ЗНАЕТЕ",
+     "СОСТОЯНИЕ УЧЁТА?"
+    ],
+    "accent": "#FFC53D",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct1/messy-paperwork-documents-pile-office-12909800.mp4"
+  },
+  {
+   "from": 521,
+   "to": 614,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ПРОВЕДЁМ",
+     "ДИАГНОСТИКУ"
+    ],
+    "accent": "#FB7185",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct1/financial-audit-analysis-charts-laptop-6781916.mp4"
+  },
+  {
+   "from": 614,
+   "to": 676,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ОСТАВЬТЕ",
+     "ЗАЯВКУ →"
+    ],
+    "accent": "#FF7A18",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct1/hand-filling-online-form-smartphone-busi-8061108.mp4"
+  },
+  {
+   "from": 676,
+   "to": 751,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ПОДБЕРЁМ ФОРМАТ",
+     "СОПРОВОЖДЕНИЯ"
+    ],
+    "accent": "#34D399",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct1/business-consultation-handshake-office-m-6931109.mp4"
+  }
+ ],
+ "totalDurationInFrames": 751,
+ "fps": 30,
+ "music": null,
+ "musicVolume": 0.1,
+ "captions": true,
+ "background": "grid"
+}
