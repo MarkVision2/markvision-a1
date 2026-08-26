@@ -1,0 +1,126 @@
+{
+ "audioTrack": "reels/vo_acct5.mp3",
+ "words": [],
+ "scenes": [
+  {
+   "from": 0,
+   "to": 101,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "НЕКОГДА ВЕСТИ",
+     "БУХГАЛТЕРИЮ?"
+    ],
+    "accent": "#FB7185",
+    "cover": true,
+    "bg": "warp",
+    "caption": false
+   },
+   "clip": "broll/acct5/busy-businessman-overwhelmed-paperwork-o-6100413.mp4"
+  },
+  {
+   "from": 101,
+   "to": 225,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ВЕДЕНИЕ БУХГАЛТЕРИИ",
+     "ПОД КЛЮЧ"
+    ],
+    "accent": "#22D3EE",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct5/accountant-working-laptop-office-busines-8298301.mp4"
+  },
+  {
+   "from": 225,
+   "to": 367,
+   "template": "checklist-reveal",
+   "data": {
+    "items": [
+     "Проводки",
+     "Зарплата",
+     "Отчёты",
+     "Налоговая"
+    ],
+    "icons": [
+     "check",
+     "check",
+     "check",
+     "check"
+    ],
+    "accent": "#34D399",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct5/bookkeeping-accounting-documents-calcula-6781912.mp4"
+  },
+  {
+   "from": 367,
+   "to": 436,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ЛИЧНЫЙ",
+     "БУХГАЛТЕР"
+    ],
+    "accent": "#FFC53D",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct5/accountant-consulting-client-phone-offic-7686677.mp4"
+  },
+  {
+   "from": 436,
+   "to": 505,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ЦИФРЫ БИЗНЕСА",
+     "ПОД РУКОЙ"
+    ],
+    "accent": "#38BDF8",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct5/financial-dashboard-charts-laptop-analyt-35544532.mp4"
+  },
+  {
+   "from": 505,
+   "to": 561,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ОСТАВЬТЕ",
+     "ЗАЯВКУ →"
+    ],
+    "accent": "#FF7A18",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct5/hand-filling-online-form-smartphone-busi-8061108.mp4"
+  },
+  {
+   "from": 561,
+   "to": 622,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ТАРИФ ВЕДЕНИЯ",
+     "ПОД ВАШ БИЗНЕС"
+    ],
+    "accent": "#34D399",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct5/business-consultation-handshake-office-m-6931109.mp4"
+  }
+ ],
+ "totalDurationInFrames": 622,
+ "fps": 30,
+ "music": null,
+ "musicVolume": 0.1,
+ "captions": true,
+ "background": "aurora"
+}
