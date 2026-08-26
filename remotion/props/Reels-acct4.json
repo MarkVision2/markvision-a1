@@ -1,0 +1,126 @@
+{
+ "audioTrack": "reels/vo_acct4.mp3",
+ "words": [],
+ "scenes": [
+  {
+   "from": 0,
+   "to": 96,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ПЛАТИТЕ МНОГО",
+     "НАЛОГОВ?"
+    ],
+    "accent": "#FB7185",
+    "cover": true,
+    "bg": "warp",
+    "caption": false
+   },
+   "clip": "broll/acct4/worried-businessman-taxes-money-calculat-6964001.mp4"
+  },
+  {
+   "from": 96,
+   "to": 211,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "НАЛОГОВАЯ",
+     "ОПТИМИЗАЦИЯ"
+    ],
+    "accent": "#A78BFA",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct4/tax-planning-documents-calculator-office-7247861.mp4"
+  },
+  {
+   "from": 211,
+   "to": 329,
+   "template": "checklist-reveal",
+   "data": {
+    "items": [
+     "Режим",
+     "Льготы",
+     "Вычеты",
+     "Законно"
+    ],
+    "icons": [
+     "check",
+     "check",
+     "check",
+     "check"
+    ],
+    "accent": "#34D399",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct4/tax-forms-calculator-money-desk-document-7247861.mp4"
+  },
+  {
+   "from": 329,
+   "to": 392,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "АУДИТ",
+     "НАЛОГОВ"
+    ],
+    "accent": "#FFC53D",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct4/financial-analysis-charts-calculator-des-6781912.mp4"
+  },
+  {
+   "from": 392,
+   "to": 455,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "СКОЛЬКО",
+     "СЭКОНОМИТЕ"
+    ],
+    "accent": "#38BDF8",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct4/saving-money-coins-growth-chart-finance-6282164.mp4"
+  },
+  {
+   "from": 455,
+   "to": 507,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ОСТАВЬТЕ",
+     "ЗАЯВКУ →"
+    ],
+    "accent": "#FF7A18",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct4/hand-filling-online-form-smartphone-busi-8061108.mp4"
+  },
+  {
+   "from": 507,
+   "to": 564,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ПОКАЖЕМ",
+     "ЭКОНОМИЮ"
+    ],
+    "accent": "#34D399",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct4/business-meeting-savings-consultation-of-6781920.mp4"
+  }
+ ],
+ "totalDurationInFrames": 564,
+ "fps": 30,
+ "music": null,
+ "musicVolume": 0.1,
+ "captions": true,
+ "background": "grid"
+}
