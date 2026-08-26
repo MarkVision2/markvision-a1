@@ -1,0 +1,154 @@
+{
+ "audioTrack": "reels/vo_1c1.mp3",
+ "words": [],
+ "scenes": [
+  {
+   "from": 0,
+   "to": 42,
+   "template": "kinetic-type",
+   "data": {
+    "words": [
+     "1С",
+     "РУХНУЛА?"
+    ],
+    "accentIndex": 1,
+    "accent": "#FB7185",
+    "cover": true,
+    "bg": "warp",
+    "caption": false
+   },
+   "clip": "broll/1c1/computer-server-error-crash-screen-stres-28709421.mp4"
+  },
+  {
+   "from": 42,
+   "to": 83,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "А ОТЧЁТЫ",
+     "УЖЕ ЗАВТРА?!"
+    ],
+    "accent": "#FF7A18",
+    "cover": true,
+    "bg": "warp",
+    "caption": false
+   }
+  },
+  {
+   "from": 83,
+   "to": 120,
+   "template": "kinetic-type",
+   "data": {
+    "words": [
+     "НЕ",
+     "ПАНИКУЙ"
+    ],
+    "accentIndex": 1,
+    "accent": "#22D3EE",
+    "cover": true,
+    "caption": false
+   }
+  },
+  {
+   "from": 120,
+   "to": 176,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ВОССТАНОВИМ 1С",
+     "БЫСТРО"
+    ],
+    "accent": "#34D399",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/1c1/it-specialist-fixing-computer-server-off-6931111.mp4"
+  },
+  {
+   "from": 176,
+   "to": 300,
+   "template": "checklist-reveal",
+   "data": {
+    "items": [
+     "База",
+     "Проводки",
+     "Периоды",
+     "Отчёты"
+    ],
+    "icons": [
+     "check",
+     "check",
+     "check",
+     "check"
+    ],
+    "accent": "#34D399",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/1c1/accounting-software-computer-screen-data-5377697.mp4"
+  },
+  {
+   "from": 300,
+   "to": 359,
+   "template": "metric-callout",
+   "data": {
+    "value": "1 ЧАС",
+    "label": "ДИАГНОСТИКА БАЗЫ",
+    "accent": "#FFC53D",
+    "caption": false
+   },
+   "clip": "broll/1c1/laptop-clock-fast-diagnostic-work-36025108.mp4"
+  },
+  {
+   "from": 359,
+   "to": 417,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ЧЁТКИЙ ПЛАН",
+     "ВОССТАНОВЛЕНИЯ"
+    ],
+    "accent": "#38BDF8",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/1c1/business-plan-strategy-laptop-checklist-7818624.mp4"
+  },
+  {
+   "from": 417,
+   "to": 458,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ВЕРНЁМ 1С",
+     "К ЖИЗНИ"
+    ],
+    "accent": "#22D3EE",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/1c1/programmer-success-relief-computer-offic-30284959.mp4"
+  },
+  {
+   "from": 458,
+   "to": 494,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ОСТАВЬ",
+     "ЗАЯВКУ →"
+    ],
+    "accent": "#FF7A18",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/1c1/hand-filling-online-form-smartphone-busi-8061108.mp4"
+  }
+ ],
+ "totalDurationInFrames": 494,
+ "fps": 30,
+ "music": null,
+ "musicVolume": 0.1,
+ "captions": true,
+ "background": "aurora"
+}
