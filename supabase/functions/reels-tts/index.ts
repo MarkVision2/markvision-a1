@@ -100,6 +100,31 @@ Deno.serve(async (req) => {
         return json({ ok: true, path, publicUrl: pub.publicUrl, bytes: bytes.byteLength });
       }
 
+      case "fish_tts": {
+        // Стабильная озвучка через Fish Audio из сети Supabase (без MCP-коннектора,
+        // который в сессии мигает). reference_id = voiceId (те же id, что у Fish-голосов,
+        // напр. Меллстрой). Ключ: body.apiKey (из .env воркера) или секрет FISH_API_KEY.
+        const apiKey = String(body.apiKey ?? "").trim() || Deno.env.get("FISH_API_KEY");
+        if (!apiKey) return json({ error: "FISH_API_KEY not set in Supabase secrets" }, 500);
+        const text = String(body.text ?? "").trim();
+        const voiceId = String(body.voiceId ?? "").trim();
+        const path = String(body.path ?? "").replace(/^\/+/, "");
+        const model = String(body.model ?? "speech-1.6");
+        if (!text || !voiceId || !path) return json({ error: "text, voiceId, path required" }, 400);
+        const r = await fetch("https://api.fish.audio/v1/tts", {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${apiKey}`, "Content-Type": "application/json", "model": model },
+          body: JSON.stringify({ text, reference_id: voiceId, format: "mp3", mp3_bitrate: 128, normalize: true, latency: "normal" }),
+        });
+        if (!r.ok) return json({ error: `fish tts ${r.status}`, detail: (await r.text()).slice(0, 300) }, 502);
+        const bytes = new Uint8Array(await r.arrayBuffer());
+        if (bytes.byteLength < 200) return json({ error: "fish tts: empty audio", detail: new TextDecoder().decode(bytes) }, 502);
+        const { error: upErr } = await admin.storage.from("renders").upload(path, bytes, { contentType: "audio/mpeg", upsert: true });
+        if (upErr) return json({ error: `upload: ${upErr.message}` }, 500);
+        const { data: pub } = admin.storage.from("renders").getPublicUrl(path);
+        return json({ ok: true, path, publicUrl: pub.publicUrl, bytes: bytes.byteLength });
+      }
+
       case "grab": {
         // Забрать внешний медиа-URL (напр. r2.fish.audio, заблокирован egress-политикой
         // песочницы) из сети Supabase и переложить в bucket renders, чтобы Claude-сессия
