@@ -1,0 +1,126 @@
+{
+ "audioTrack": "reels/vo_acct2.mp3",
+ "words": [],
+ "scenes": [
+  {
+   "from": 0,
+   "to": 100,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ШТРАФЫ ИЗ-ЗА",
+     "ОШИБОК В УЧЁТЕ?"
+    ],
+    "accent": "#FB7185",
+    "cover": true,
+    "bg": "warp",
+    "caption": false
+   },
+   "clip": "broll/acct2/stressed-businessman-tax-documents-fine-7247817.mp4"
+  },
+  {
+   "from": 100,
+   "to": 183,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "БУХГАЛТЕРИЯ",
+     "ПОД КЛЮЧ"
+    ],
+    "accent": "#22D3EE",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct2/accountant-team-working-office-laptop-6781916.mp4"
+  },
+  {
+   "from": 183,
+   "to": 345,
+   "template": "checklist-reveal",
+   "data": {
+    "items": [
+     "Налоги",
+     "Зарплата",
+     "Первичка",
+     "Отчёты в срок"
+    ],
+    "icons": [
+     "check",
+     "check",
+     "check",
+     "check"
+    ],
+    "accent": "#34D399",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct2/payroll-accounting-calculator-documents--6693624.mp4"
+  },
+  {
+   "from": 345,
+   "to": 411,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "НЕ УВЕРЕНЫ",
+     "В УЧЁТЕ?"
+    ],
+    "accent": "#FFC53D",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct2/confused-businessman-paperwork-office-8731302.mp4"
+  },
+  {
+   "from": 411,
+   "to": 477,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ПРОВЕДЁМ",
+     "АУДИТ"
+    ],
+    "accent": "#38BDF8",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct2/financial-audit-magnifier-documents-anal-6282308.mp4"
+  },
+  {
+   "from": 477,
+   "to": 541,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ОСТАВЬТЕ",
+     "ЗАЯВКУ →"
+    ],
+    "accent": "#FF7A18",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct2/hand-filling-online-form-smartphone-busi-8061108.mp4"
+  },
+  {
+   "from": 541,
+   "to": 616,
+   "template": "big-statement",
+   "data": {
+    "lines": [
+     "ТАРИФ ПОД",
+     "ВАШ БИЗНЕС"
+    ],
+    "accent": "#34D399",
+    "cover": true,
+    "caption": false
+   },
+   "clip": "broll/acct2/business-consultation-handshake-office-m-6931109.mp4"
+  }
+ ],
+ "totalDurationInFrames": 616,
+ "fps": 30,
+ "music": null,
+ "musicVolume": 0.1,
+ "captions": true,
+ "background": "grid"
+}
