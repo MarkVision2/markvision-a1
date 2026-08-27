@@ -3,6 +3,7 @@ import {
   DEFAULT_GREEN_API_BASE_URL,
   validateGreenApiBaseUrl,
 } from '../_lib/green_api_url.ts';
+import { awaitingReply, type ReplyState } from '../_lib/automationRules.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -163,23 +164,30 @@ async function sendAutomationMessage(
   content: string,
   templateKey: string,
 ): Promise<{ ok: boolean; via: 'wa_web' | 'greenapi' | 'none'; error?: string }> {
+  // Лог в communications нужен на ОБЕИХ ветках: иначе автосообщения, ушедшие
+  // через WA Web, не видны в карточке лида и не двигают last_outbound_at,
+  // из-за чего следующий дожим считает лид «без ответа» и шлёт повтор.
+  const logComm = (status: string, externalId: string | null) =>
+    supabase.from('communications').insert({
+      lead_id: lead.id,
+      type: 'message',
+      channel: lead.channel ?? 'whatsapp',
+      direction: 'out',
+      content,
+      is_auto: true,
+      is_draft: false,
+      template_key: templateKey,
+      status,
+      external_id: externalId,
+    });
+
   if (await sendViaWaWeb(supabase, lead, content)) {
+    await logComm('queued', null);
     return { ok: true, via: 'wa_web' };
   }
 
   const green = await sendViaGreenApi(supabase, lead, content);
-  await supabase.from('communications').insert({
-    lead_id: lead.id,
-    type: 'message',
-    channel: lead.channel ?? 'whatsapp',
-    direction: 'out',
-    content,
-    is_auto: true,
-    is_draft: false,
-    template_key: templateKey,
-    status: green.ok ? 'sent' : 'failed',
-    external_id: green.externalId,
-  });
+  await logComm(green.ok ? 'sent' : 'failed', green.externalId);
   return green.ok
     ? { ok: true, via: 'greenapi' }
     : { ok: false, via: 'none', error: green.error ?? 'send_failed' };
@@ -195,16 +203,19 @@ async function runFollowup2h(
   const threshold = new Date(now.getTime() - settings.followup_2h_minutes * 60_000).toISOString();
   const bucket = bucketFloor(now, 12);
 
-  const { data: leads } = await supabase
+  const { data: leads, error: selErr } = await supabase
     .from('leads')
     .select('id, name, service, assigned_to, stage_id, project_id, last_outbound_at, last_inbound_at, pipeline_stages!inner(key)')
     .eq('project_id', settings.project_id)
     .lte('last_outbound_at', threshold)
-    .or(`last_inbound_at.is.null,last_inbound_at.lt.last_outbound_at`)
     .not('pipeline_stages.key', 'in', '(paid,rejected)')
     .limit(200);
+  if (selErr) {
+    stats.errors.push(`followup_2h:query:${selErr.message}`);
+    return;
+  }
 
-  for (const l of leads ?? []) {
+  for (const l of (leads ?? []).filter((l) => awaitingReply(l as ReplyState))) {
     const leadProjectId = (l as { project_id?: string | null }).project_id;
     if (!leadProjectId || leadProjectId !== settings.project_id) continue;
     const { error: insErr } = await supabase.from('automation_runs').insert({
@@ -244,16 +255,19 @@ async function runAutoMsg24h(
   const bucket = bucketFloor(now, 24 * 7);
   const tplText = TEMPLATES[settings.auto_msg_24h_template_key] ?? TEMPLATES.followup_24h;
 
-  const { data: leads } = await supabase
+  const { data: leads, error: selErr } = await supabase
     .from('leads')
     .select('id, name, service, phone, project_id, assigned_to, last_outbound_at, last_inbound_at, channel, pipeline_stages!inner(key)')
     .eq('project_id', settings.project_id)
     .lte('last_outbound_at', threshold)
-    .or(`last_inbound_at.is.null,last_inbound_at.lt.last_outbound_at`)
     .not('pipeline_stages.key', 'in', '(paid,rejected)')
     .limit(200);
+  if (selErr) {
+    stats.errors.push(`auto_msg_24h:query:${selErr.message}`);
+    return;
+  }
 
-  for (const l of leads ?? []) {
+  for (const l of (leads ?? []).filter((l) => awaitingReply(l as ReplyState))) {
     const leadProjectId = (l as { project_id?: string | null }).project_id;
     if (!leadProjectId || leadProjectId !== settings.project_id) continue;
     const { error: insErr } = await supabase.from('automation_runs').insert({
@@ -287,7 +301,7 @@ async function runRevival7d(
   const bucket = bucketFloor(now, 24 * 30);
   const tplText = TEMPLATES[settings.revival_7d_template_key] ?? TEMPLATES.revival_7d;
 
-  const { data: leads } = await supabase
+  const { data: leads, error: selErr } = await supabase
     .from('leads')
     .select('id, name, service, phone, project_id, channel, assigned_to, rejected_at, reject_reason, pipeline_stages!inner(key)')
     .eq('project_id', settings.project_id)
@@ -295,6 +309,10 @@ async function runRevival7d(
     .lte('rejected_at', threshold)
     .not('reject_reason', 'in', '(competitor,not_target)')
     .limit(200);
+  if (selErr) {
+    stats.errors.push(`revival_7d:query:${selErr.message}`);
+    return;
+  }
 
   for (const l of leads ?? []) {
     const leadProjectId = (l as { project_id?: string | null }).project_id;

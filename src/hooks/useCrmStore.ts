@@ -325,34 +325,49 @@ export function useCrmStore() {
     if (projectId) {
       leadsQuery = leadsQuery.eq("project_id", projectId);
     }
+    // Связанные таблицы тоже режем по проекту через inner join на leads.
+    // Без этого лимиты ниже выбирались по ВСЕМ проектам сразу: у аккаунта с
+    // несколькими проектами свежие строки соседей вытесняли переписку и события
+    // активного проекта, и чаты в карточках выглядели пустыми.
+    const scopeToProject = <T extends { eq: (c: string, v: string) => T }>(q: T): T =>
+      projectId ? q.eq("leads.project_id", projectId) : q;
+
     const [leadsRes, commRes, evRes, tasksRes, histRes] = await Promise.all([
       leadsQuery,
-      supabase
-        .from("communications")
-        .select("id,lead_id,type,direction,channel,content,status,template_key,is_draft,is_auto,created_by,created_at,media_url,media_kind,media_mime,media_filename")
-        .order("created_at", { ascending: false })
-        .limit(2000),
-      supabase
-        .from("events")
-        .select("id,lead_id,event_type,payload,actor_id,created_at")
-        .order("created_at", { ascending: false })
-        .limit(1000),
-      supabase
-        .from("tasks")
-        .select("id,lead_id,title,due_at,status,done_at")
-        .is("done_at", null)
-        .limit(1000),
-      supabase
-        .from("lead_status_history")
-        .select("id,lead_id,from_stage_id,to_stage_id,changed_at")
-        .order("changed_at", { ascending: false })
-        .limit(1000),
+      scopeToProject(
+        supabase
+          .from("communications")
+          .select("id,lead_id,type,direction,channel,content,status,template_key,is_draft,is_auto,created_by,created_at,media_url,media_kind,media_mime,media_filename,leads!inner(project_id)")
+          .order("created_at", { ascending: false })
+          .limit(2000),
+      ),
+      scopeToProject(
+        supabase
+          .from("events")
+          .select("id,lead_id,event_type,payload,actor_id,created_at,leads!inner(project_id)")
+          .order("created_at", { ascending: false })
+          .limit(1000),
+      ),
+      scopeToProject(
+        supabase
+          .from("tasks")
+          .select("id,lead_id,title,due_at,status,done_at,leads!inner(project_id)")
+          .is("done_at", null)
+          .limit(1000),
+      ),
+      scopeToProject(
+        supabase
+          .from("lead_status_history")
+          .select("id,lead_id,from_stage_id,to_stage_id,changed_at,leads!inner(project_id)")
+          .order("changed_at", { ascending: false })
+          .limit(1000),
+      ),
     ]);
     if (projectIdRef.current !== projectId) return;
 
-    const events = (evRes.data ?? []) as EventRow[];
-    const tasks = (tasksRes.data ?? []) as TaskRow[];
-    const history = (histRes.data ?? []) as StageHistRow[];
+    const events = (evRes.data ?? []) as unknown as EventRow[];
+    const tasks = (tasksRes.data ?? []) as unknown as TaskRow[];
+    const history = (histRes.data ?? []) as unknown as StageHistRow[];
 
     // Build per-lead indexes once: O(N + M) instead of O(N × M).
     const eventsByLead = new Map<string, EventRow[]>();
@@ -379,7 +394,7 @@ export function useCrmStore() {
       arr.sort((a, b) => a.changed_at.localeCompare(b.changed_at));
     }
 
-    const visibleLeads = ((leadsRes.data ?? []) as LeadRow[]).map((r) =>
+    const visibleLeads = ((leadsRes.data ?? []) as unknown as LeadRow[]).map((r) =>
       leadRowToFrontIndexed(r, stageIdMap.idToKey, eventsByLead, tasksByLead, historyByLead),
     );
     setLeads(visibleLeads);

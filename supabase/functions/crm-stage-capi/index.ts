@@ -7,6 +7,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { requireUser, requireCabinetAccess, requireLeadAccess } from "../_lib/auth.ts";
+import { pickStageMapRow, type StageMapRow } from "../_lib/automationRules.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -96,6 +97,16 @@ Deno.serve(async (req) => {
       if (!access.ok) return access.response;
     }
 
+    // Доступ к лиду проверяем ДО отправки события: иначе чужой lead_id успевал
+    // улететь в Meta и только потом получал 403. Заодно отсюда берём project_id
+    // для проектного маппинга стадий.
+    let leadProjectId: string | null = null;
+    if (lead_id) {
+      const leadAccess = await requireLeadAccess(auth.authHeader, String(lead_id));
+      if (!leadAccess.ok) return leadAccess.response;
+      leadProjectId = leadAccess.projectId;
+    }
+
     if (cabinet_id && (!token || !adAccount || !pixelId)) {
       // На main supabase данные кабинета лежат в ad_cabinets (там и access_token,
       // и ad_account_id, и pixel_id одной строкой — отдельной clients_secrets нет).
@@ -114,24 +125,33 @@ Deno.serve(async (req) => {
     if (adAccount && !adAccount.startsWith("act_")) adAccount = "act_" + adAccount;
 
     // 2. Определяем capi_event и score_delta
-    // Сначала пытаемся в pipeline_stages по name (=stage_key) или по позиции
     let capiEvent: string | null = null;
     let scoreDelta = 0;
     let isPaid = false;
 
-    const { data: stage } = await supa
-      .from("pipeline_stages")
-      .select("capi_event, score_delta, is_paid, name")
-      .or(`name.eq.${stage_key}`)
-      .limit(1)
-      .maybeSingle();
+    // Источник правды — crm_stage_map (status_key → capi_event/is_paid).
+    // Раньше здесь читались колонки capi_event/score_delta/is_paid/name из
+    // pipeline_stages, которых в схеме нет: PostgREST отдавал 400, ошибка не
+    // читалась, и настройка из БД молча игнорировалась — всегда работал
+    // хардкод STAGE_MAP. Проектная строка приоритетнее глобальной (project_id IS NULL).
+    const statusKey = String(stage_key).trim().toLowerCase();
+    let mapQuery = supa
+      .from("crm_stage_map")
+      .select("capi_event, is_paid, project_id")
+      .eq("status_key", statusKey);
+    mapQuery = leadProjectId
+      ? mapQuery.or(`project_id.eq.${leadProjectId},project_id.is.null`)
+      : mapQuery.is("project_id", null);
+    const { data: stageRows } = await mapQuery;
+
+    const stage = pickStageMapRow((stageRows ?? []) as StageMapRow[], leadProjectId);
 
     if (stage) {
       capiEvent = stage.capi_event;
-      scoreDelta = stage.score_delta || 0;
       isPaid = !!stage.is_paid;
+      scoreDelta = STAGE_MAP[statusKey]?.score ?? 0;
     } else {
-      const m = STAGE_MAP[stage_key];
+      const m = STAGE_MAP[statusKey];
       if (m) {
         capiEvent = m.capi;
         scoreDelta = m.score;
@@ -184,8 +204,6 @@ Deno.serve(async (req) => {
 
     // 4. История + обновление leads_crm (опционально, если lead_id есть и привязан к таблице нового Supabase)
     if (lead_id) {
-      const leadAccess = await requireLeadAccess(auth.authHeader, String(lead_id));
-      if (!leadAccess.ok) return leadAccess.response;
       try {
         await supa.from("lead_status_history").insert({
           lead_id,

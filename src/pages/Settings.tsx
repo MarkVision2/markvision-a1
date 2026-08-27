@@ -32,7 +32,7 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Settings as SettingsIcon } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { clientConfigSupabase } from "@/integrations/clientConfig/client";
+import { getClientConfigDb } from "@/integrations/clientConfig/client";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
   MODULES,
@@ -256,8 +256,8 @@ export default function Settings() {
           .eq("project_id", activeId)
           .eq("provider", "google")
           .limit(1),
-        clientConfigSupabase
-          ? clientConfigSupabase
+        getClientConfigDb()
+          ? getClientConfigDb()!
               .from("client_dashboard_tokens")
               .select("token")
               .eq("is_active", true)

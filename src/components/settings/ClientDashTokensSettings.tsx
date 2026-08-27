@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { clientConfigSupabase } from "@/integrations/clientConfig/client";
+import { getClientConfigDb } from "@/integrations/clientConfig/client";
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
 
 interface Row {
@@ -31,11 +31,13 @@ export function ClientDashTokensSettings() {
   const [loading, setLoading] = useState(true);
 
   const refetch = useCallback(async () => {
-    if (!clientConfigSupabase) return setLoading(false);
-    const { data } = await clientConfigSupabase
+    const db = getClientConfigDb();
+    if (!db) return setLoading(false);
+    const { data, error } = await db
       .from("client_dashboard_tokens")
       .select("token, client_id, label, is_active, expires_at, created_at")
       .order("created_at", { ascending: false });
+    if (error) toast.error(`Не удалось загрузить ссылки: ${error.message}`);
     setRows((data ?? []) as Row[]);
     setLoading(false);
   }, []);
@@ -43,13 +45,14 @@ export function ClientDashTokensSettings() {
   useEffect(() => { void refetch(); }, [refetch]);
 
   const create = async () => {
-    if (!clientConfigSupabase) return;
+    const db = getClientConfigDb();
+    if (!db) return;
     if (!clientId) return toast.error("Выберите клиента");
     const tok = randomToken();
     const expiresAt = days
       ? new Date(Date.now() + Number(days) * 24 * 3600 * 1000).toISOString()
       : null;
-    const { error } = await clientConfigSupabase.from("client_dashboard_tokens").insert({
+    const { error } = await db.from("client_dashboard_tokens").insert({
       token: tok, client_id: clientId, label: label.trim() || null,
       expires_at: expiresAt, is_active: true,
     });
@@ -60,9 +63,17 @@ export function ClientDashTokensSettings() {
   };
 
   const revoke = async (tok: string) => {
-    if (!clientConfigSupabase) return;
+    const db = getClientConfigDb();
+    if (!db) return;
     if (!confirm("Отозвать доступ? Клиент потеряет возможность открывать дашборд по этой ссылке.")) return;
-    await clientConfigSupabase.from("client_dashboard_tokens").update({ is_active: false }).eq("token", tok);
+    // Ошибку обязательно показываем: молчаливый провал означал, что ссылка
+    // остаётся рабочей, хотя интерфейс показывал доступ отозванным.
+    const { error } = await db
+      .from("client_dashboard_tokens")
+      .update({ is_active: false })
+      .eq("token", tok);
+    if (error) return toast.error(`Не удалось отозвать доступ: ${error.message}`);
+    toast.success("Доступ отозван");
     void refetch();
   };
 

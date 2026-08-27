@@ -49,6 +49,13 @@ export function TelegramConnect({
   const projectIdRef = useRef(projectId);
   const linkBaselineRef = useRef<string | null>(null);
   projectIdRef.current = projectId;
+  // Запрос статуса живёт дольше карточки: без этого флага ответ, пришедший
+  // после размонтирования, дёргал setState на мёртвом компоненте.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const loadStatus = async (quiet = false) => {
     if (!projectId) {
@@ -60,7 +67,7 @@ export function TelegramConnect({
     const requestedProjectId = projectId;
     try {
       const next = await invoke({ project_id: projectId, action: "status" }) as TelegramConnectionStatus;
-      if (projectIdRef.current !== requestedProjectId) return;
+      if (!mountedRef.current || projectIdRef.current !== requestedProjectId) return;
       setStatus(next);
       onStatusChange?.(next);
       if (next.connected && linkBaselineRef.current !== null) {
@@ -72,9 +79,9 @@ export function TelegramConnect({
         }
       }
     } catch (e) {
-      if (!quiet) toast.error((e as Error).message || "Не удалось проверить Telegram");
+      if (mountedRef.current && !quiet) toast.error((e as Error).message || "Не удалось проверить Telegram");
     } finally {
-      if (!quiet) setStatusLoading(false);
+      if (mountedRef.current && !quiet) setStatusLoading(false);
     }
   };
 

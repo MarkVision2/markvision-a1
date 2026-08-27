@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { clientSupabasePublishableKey, clientSupabaseUrl } from '@/lib/supabaseConfig';
+import { supabase } from '@/integrations/supabase/client';
+import { clientSupabasePublishableKey, clientSupabaseUrl, supabaseUrl } from '@/lib/supabaseConfig';
 
 const URL = clientSupabaseUrl;
 const KEY = clientSupabasePublishableKey;
@@ -17,6 +18,20 @@ export const clientConfigSupabase: SupabaseClient | null =
         auth: { persistSession: false, autoRefreshToken: false },
       })
     : null;
+
+/**
+ * Клиент для таблиц «клиентского» проекта.
+ *
+ * clientConfigSupabase создан с persistSession:false и НЕ несёт JWT пользователя —
+ * все его запросы уходят как anon. Сейчас клиентский URL совпадает с основным
+ * проектом, где RLS выдана роли `authenticated`, поэтому anon-клиент упирался в
+ * deny-all: списки приходили пустыми, а запись падала. Если проект тот же —
+ * работаем авторизованным клиентом.
+ */
+export function getClientConfigDb(): SupabaseClient | null {
+  if (clientSupabaseUrl === supabaseUrl) return supabase;
+  return clientConfigSupabase;
+}
 
 export interface PendingAdvance {
   id: string;
