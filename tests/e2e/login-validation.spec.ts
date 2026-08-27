@@ -7,11 +7,19 @@ test.describe("Login form validation", () => {
   });
 
   test("показывает ошибки при пустой отправке", async ({ page }) => {
+    // Тексты ошибок приходят из zod-схемы AuthForm («Минимум 3 символа» и т.п.) и
+    // названий полей не содержат, поэтому проверяем факт ошибки под каждым полем,
+    // а не конкретную формулировку.
+    const errors = page.locator("form p.text-destructive");
+    await expect(errors).toHaveCount(0);
+
     await page.getByRole("button", { name: /Войти в платформу/i }).click();
-    // Один из двух селекторов гарантированно покажет ошибку валидации
-    const idError = page.locator("p.text-destructive", { hasText: /логин|email/i }).first();
-    const pwError = page.locator("p.text-destructive", { hasText: /пароль/i }).first();
-    await expect(idError.or(pwError)).toBeVisible();
+
+    await expect(errors).toHaveCount(2);
+    await expect(errors.first()).toBeVisible();
+    await expect(errors.first()).not.toBeEmpty();
+    // Форма не отправилась — остались на /login
+    await expect(page).toHaveURL(/\/login$/);
   });
 
   test("кнопка показывает/скрывает пароль", async ({ page }) => {
