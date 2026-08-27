@@ -35,6 +35,7 @@ import {
 import { cn } from "@/lib/utils";
 import { mobileDialogFooterPad } from "@/lib/dialogClasses";
 import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseConfig";
+import { supabase } from "@/integrations/supabase/client";
 import { DEFAULT_META_UTM_TEMPLATE } from "@/lib/utmDefaults";
 import type { AdCabinet } from "@/types/ads";
 import { saveCampaign } from "@/hooks/useCabinetsStore";
@@ -1032,13 +1033,23 @@ const CreateCampaignDialog = ({
     let accepted = false;
     let serverError: string | null = null;
     try {
+      // Функция запускает кампанию от имени пользователя (requireUser + роль
+      // manager/admin + проверка доступа к рекламному аккаунту). Публичный
+      // ключ в Authorization не является JWT — с ним функция всегда отвечала
+      // 401 и запуск не работал. Шлём токен сессии, apikey оставляем шлюзу.
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) {
+        throw new Error("Сессия истекла — войдите заново");
+      }
+      const launchHeaders: Record<string, string> = { Authorization: `Bearer ${accessToken}` };
+      if (LAUNCH_KEY) launchHeaders.apikey = LAUNCH_KEY;
+
       const res = await fetch(WEBHOOK_URL, {
         method: "POST",
         body: fd,
         signal: ctrl.signal,
-        headers: LAUNCH_KEY
-          ? { Authorization: `Bearer ${LAUNCH_KEY}`, apikey: LAUNCH_KEY }
-          : undefined,
+        headers: launchHeaders,
       });
       const data = await res.json().catch(() => null) as
         | { ok?: boolean; accepted?: boolean; error?: string }

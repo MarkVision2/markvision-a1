@@ -5,7 +5,7 @@
 // 4. Обогащает payload секретным META_ACCESS_TOKEN и всеми алиасами полей.
 // 5. Отвечает фронту быстро (короткий таймаут на ACK от n8n, дальше n8n работает в фоне).
 
-import { requireUser, userHasRole } from "../_lib/auth.ts";
+import { requireUser, userHasRole, requireMetaAdAccountAccess } from "../_lib/auth.ts";
 
 const N8N_WEBHOOK = "https://n8n.zapoinov.com/webhook/ai-target-launch";
 const META_GRAPH = "https://graph.facebook.com/v19.0";
@@ -141,6 +141,14 @@ Deno.serve(async (req) => {
         }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
       );
+    }
+
+    // Кабинет должен быть доступен пользователю: без этой проверки менеджер
+    // одного проекта мог запустить кампанию (и потратить бюджет) на рекламном
+    // аккаунте чужого проекта, просто передав его ad_account_id в payload.
+    if (!isAdmin) {
+      const accountAccess = await requireMetaAdAccountAccess(auth.authHeader, adAccount);
+      if (!accountAccess.ok) return accountAccess.response;
     }
 
     client.ad_account_id = adAccount;

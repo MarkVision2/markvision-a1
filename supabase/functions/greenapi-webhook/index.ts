@@ -821,9 +821,14 @@ Deno.serve(async (req) => {
   // and the presented one doesn't match — reject. Otherwise (no token set) we
   // stay backwards-compatible and accept the call.
   const url = new URL(req.url);
+  // Green API отдаёт webhookUrlToken заголовком `Authorization: Bearer <token>`,
+  // а не в теле — без разбора заголовка проверка токена отклоняла бы весь
+  // входящий трафик, поэтому её и приходилось держать выключенной.
+  const bearer = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "").trim();
   const presentedToken =
     url.searchParams.get("token") ??
-    (typeof body.webhookUrlToken === "string" ? (body.webhookUrlToken as string) : null);
+    (typeof body.webhookUrlToken === "string" ? (body.webhookUrlToken as string) : null) ??
+    (bearer || null);
   const instanceCfg = await projectFromInstance(instanceData?.idInstance, presentedToken);
   if (!instanceCfg.ok) {
     console.warn("greenapi-webhook: invalid webhook token", { idInstance: instanceData?.idInstance });
