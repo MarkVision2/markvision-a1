@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { clientConfigSupabase } from "@/integrations/clientConfig/client";
+import { supabase } from "@/integrations/supabase/client";
 import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseConfig";
 import { fmtNum } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -110,11 +111,27 @@ async function fetchWithRetry(input: RequestInfo | URL, init: RequestInit, attem
   }
   throw lastErr instanceof Error ? lastErr : new Error("Сетевая ошибка");
 }
+/**
+ * Заголовки для edge-функций контент-завода: JWT пользователя вместо
+ * публикуемого ключа, который был вшит в бандл (см. src/lib/autopostClient.ts).
+ */
+async function authHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error("Сессия истекла — войдите заново");
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+  if (CLIENT_KEY) headers.apikey = CLIENT_KEY;
+  return headers;
+}
+
 async function schedulerApi<T = unknown>(action: string, payload: Record<string, unknown> = {}, projectId?: string | null): Promise<T> {
   if (!CLIENT_URL) throw new Error("VITE_CLIENT_SUPABASE_URL не задан");
   const r = await fetch(`${CLIENT_URL}/functions/v1/content-scheduler`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-app-key": CLIENT_KEY },
+    headers: await authHeaders(),
     body: JSON.stringify({ action, ...(projectId ? { project_id: projectId } : {}), ...payload }),
   });
   const j = await r.json().catch(() => ({}));
@@ -125,7 +142,7 @@ async function presignR2(filename: string, contentType: string, size: number): P
   if (!CLIENT_URL) throw new Error("VITE_CLIENT_SUPABASE_URL не задан");
   const res = await fetchWithRetry(`${CLIENT_URL}/functions/v1/r2-presign-upload`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-app-key": CLIENT_KEY },
+    headers: await authHeaders(),
     body: JSON.stringify({ filename, contentType, size }),
   });
   const j = await res.json().catch(() => ({}));

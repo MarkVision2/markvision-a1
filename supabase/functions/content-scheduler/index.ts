@@ -1,11 +1,15 @@
 // API планировщика автопостинга v5: CRUD cf_scheduled_posts + publish_now + stats + cover_url для Reels.
-// verify_jwt=false, защита заголовком x-app-key == cf_settings.client_pub_key.
+// verify_jwt=false: авторизация внутри — JWT пользователя + доступ к проекту.
+// Прежняя защита по x-app-key == cf_settings.client_pub_key ничего не давала:
+// это публикуемый ключ из бандла, то есть очередь постов любого проекта была
+// доступна снаружи на чтение, публикацию и удаление.
 //
 // project_id (опционально): очередь постов теперь может быть привязана к
 // проекту CRM — publisher публикует такие посты через Instagram-аккаунт
 // именно этого проекта (instagram_accounts), а не через один глобальный
 // аккаунт из cf_settings. Записи без project_id — легаси, как раньше.
 import { aiChatCompletion, hasAiProvider, aiModelName } from "../_lib/aiProvider.ts";
+import { requireUser, requireProjectAccess } from "../_lib/auth.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -101,13 +105,19 @@ async function generateIgCaption(b: Record<string, unknown>) {
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
-  const appKey = req.headers.get("x-app-key") ?? "";
-  const expected = await setting("client_pub_key");
-  if (!expected || appKey !== expected) return json({ ok: false, error: "forbidden" }, 403);
+  const auth = await requireUser(req);
+  if (!auth.ok) return json({ ok: false, error: "unauthorized" }, 401);
 
   const b = await req.json().catch(() => ({} as Record<string, unknown>));
   const action = String(b.action ?? "list");
   const projectId = typeof b.project_id === "string" && b.project_id ? b.project_id : null;
+
+  // Очередь постов — проектная. Без проверки доступа project_id из тела
+  // позволял бы читать и публиковать чужую очередь.
+  if (projectId) {
+    const access = await requireProjectAccess(auth.authHeader, projectId);
+    if (!access.ok) return json({ ok: false, error: "forbidden" }, 403);
+  }
 
   if (action === "ai_caption") {
     try {

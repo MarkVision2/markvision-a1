@@ -1,5 +1,6 @@
 // Shared Autopost upload + scheduler client (used by AutoPost and Content Plan composer).
 import { clientConfigSupabase } from "@/integrations/clientConfig/client";
+import { supabase } from "@/integrations/supabase/client";
 import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseConfig";
 
 const CLIENT_URL = clientSupabaseUrl;
@@ -30,6 +31,25 @@ async function fetchWithRetry(input: RequestInfo | URL, init: RequestInit, attem
   throw lastErr instanceof Error ? lastErr : new Error("Сетевая ошибка");
 }
 
+/**
+ * Заголовки для edge-функций контент-завода.
+ *
+ * Раньше сюда уходил x-app-key = публикуемый ключ проекта, вшитый в бандл:
+ * планировщик постов и выдача presigned-URL в R2 были фактически открыты
+ * наружу. Теперь функции требуют JWT пользователя.
+ */
+async function authHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error("Сессия истекла — войдите заново");
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+  if (CLIENT_KEY) headers.apikey = CLIENT_KEY;
+  return headers;
+}
+
 export async function schedulerApi<T = unknown>(
   action: string,
   payload: Record<string, unknown> = {},
@@ -38,7 +58,7 @@ export async function schedulerApi<T = unknown>(
   if (!CLIENT_URL) throw new Error("VITE_CLIENT_SUPABASE_URL не задан");
   const r = await fetch(`${CLIENT_URL}/functions/v1/content-scheduler`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-app-key": CLIENT_KEY },
+    headers: await authHeaders(),
     body: JSON.stringify({ action, ...(projectId ? { project_id: projectId } : {}), ...payload }),
   });
   const j = await r.json().catch(() => ({} as Record<string, unknown>));
@@ -59,7 +79,7 @@ async function presignR2(filename: string, contentType: string, size: number): P
   if (!CLIENT_URL) throw new Error("VITE_CLIENT_SUPABASE_URL не задан");
   const res = await fetchWithRetry(`${CLIENT_URL}/functions/v1/r2-presign-upload`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-app-key": CLIENT_KEY },
+    headers: await authHeaders(),
     body: JSON.stringify({ filename, contentType, size }),
   });
   const j = await res.json().catch(() => ({}));

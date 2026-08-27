@@ -3,9 +3,12 @@
 // Storage на Free-плане не принимает (жёсткий лимит платформы). Сами байты
 // идут из браузера напрямую в R2, минуя наш сервер и лимит Supabase.
 //
-// verify_jwt=false, защита заголовком x-app-key == cf_settings.client_pub_key
-// (тот же механизм, что и у content-scheduler/publisher).
+// verify_jwt=false. Доступ: JWT пользователя (браузер) ИЛИ x-montage-key
+// (локальные воркеры монтажа). Прежняя защита по x-app-key == cf_settings.
+// client_pub_key ничего не давала: это публикуемый ключ, вшитый в бандл, —
+// пресайн на запись в R2 мог получить кто угодно.
 import { AwsClient } from "https://esm.sh/aws4fetch@1.0.20";
+import { requireUser } from "../_lib/auth.ts";
 
 const SB_URL = Deno.env.get("SUPABASE_URL")!;
 const SB_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -13,7 +16,7 @@ const H: Record<string, string> = { apikey: SB_KEY, Authorization: `Bearer ${SB_
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-app-key",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-montage-key",
 };
 
 // 2 ГБ: сырые исходники «Монтажа съёмки» (говорящая голова с телефона) легко
@@ -23,18 +26,22 @@ const MAX_BYTES = 2 * 1024 * 1024 * 1024;
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data), { status, headers: { ...CORS, "Content-Type": "application/json" } });
 }
-async function setting(k: string) {
-  const r = await fetch(`${SB_URL}/rest/v1/cf_settings?key=eq.${k}&select=value`, { headers: H });
-  const body = (await r.json().catch(() => null)) as { value: string }[] | null;
-  return body?.[0]?.value;
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
 
-  const appKey = req.headers.get("x-app-key") ?? "";
-  const expected = await setting("client_pub_key");
-  if (!expected || appKey !== expected) return json({ error: "forbidden" }, 403);
+  const montageKey = req.headers.get("x-montage-key") ?? "";
+  let authorized = false;
+  if (montageKey) {
+    const r = await fetch(`${SB_URL}/rest/v1/montage_settings?id=eq.1&select=worker_key`, { headers: H });
+    const rows = (await r.json().catch(() => null)) as { worker_key?: string }[] | null;
+    const workerKey = rows?.[0]?.worker_key;
+    authorized = !!workerKey && montageKey === workerKey;
+  }
+  if (!authorized) {
+    const auth = await requireUser(req);
+    if (!auth.ok) return json({ error: "forbidden" }, 403);
+    authorized = true;
+  }
 
   const accountId = Deno.env.get("R2_ACCOUNT_ID");
   const accessKeyId = Deno.env.get("R2_ACCESS_KEY_ID");

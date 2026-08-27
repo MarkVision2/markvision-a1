@@ -15,7 +15,11 @@ if (!URL || !KEY) {
 export const clientConfigSupabase: SupabaseClient | null =
   URL && KEY
     ? createClient(URL, KEY, {
-        auth: { persistSession: false, autoRefreshToken: false },
+        // Отдельный storageKey обязателен: клиентский URL сейчас совпадает с
+        // основным, и два GoTrue-клиента на одном ключе хранилища — это
+        // предупреждение «Multiple GoTrueClient instances» и риск затереть
+        // сессию пользователя.
+        auth: { persistSession: false, autoRefreshToken: false, storageKey: 'mv-client-config-anon' },
       })
     : null;
 

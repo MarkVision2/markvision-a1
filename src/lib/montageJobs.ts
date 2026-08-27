@@ -94,9 +94,19 @@ const sanitize = (name: string): string =>
 const SUPABASE_UPLOAD_LIMIT = 45 * 1024 * 1024;
 
 async function presignR2(filename: string, contentType: string, size: number): Promise<{ uploadUrl: string; publicUrl: string }> {
+  // Пресайн выдаётся под JWT пользователя: публикуемый ключ, вшитый в бандл,
+  // давал бы доступ на запись в R2 кому угодно.
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) throw new Error("Сессия истекла — войдите заново");
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
+  if (clientSupabasePublishableKey) headers.apikey = clientSupabasePublishableKey;
   const res = await fetch(`${clientSupabaseUrl}/functions/v1/r2-presign-upload`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", "x-app-key": clientSupabasePublishableKey },
+    headers,
     body: JSON.stringify({ filename, contentType, size }),
   });
   const j = await res.json().catch(() => ({}));

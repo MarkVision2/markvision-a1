@@ -90,7 +90,9 @@ async function uploadToR2(localPath) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "x-app-key": ANON,
+      // r2-presign-upload больше не пускает по публичному ключу: воркер
+      // авторизуется тем же x-montage-key, что и остальные его вызовы.
+      "x-montage-key": KEY,
       apikey: ANON,
       Authorization: `Bearer ${ANON}`,
     },
