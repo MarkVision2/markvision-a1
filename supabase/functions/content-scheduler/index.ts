@@ -263,7 +263,11 @@ Deno.serve(async (req) => {
     await db(`cf_scheduled_posts?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(patchRow) });
     const secret = await setting("cron_secret");
     let result: unknown = null;
-    try { result = await (await fetch(`${SB_URL}/functions/v1/publisher?key=${secret}`)).json(); } catch { /* крон подхватит */ }
+    try {
+      result = await (await fetch(`${SB_URL}/functions/v1/publisher`, {
+        headers: { "x-cron-key": String(secret ?? "") },
+      })).json();
+    } catch { /* крон подхватит */ }
     return json({ ok: true, result });
   }
 

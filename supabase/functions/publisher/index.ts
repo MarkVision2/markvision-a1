@@ -113,7 +113,11 @@ async function resolveAccount(projectId: string | null): Promise<Account | null>
 
 Deno.serve(async (req) => {
   const url = new URL(req.url);
-  if (url.searchParams.get("key") !== (await setting("cron_secret"))) return new Response("forbidden", { status: 403 });
+  // Секрет принимаем заголовком: в query он оседает в логах шлюза и прокси.
+  // Query оставлен для совместимости с уже настроенным pg_cron.
+  const provided = req.headers.get("x-cron-key") ?? url.searchParams.get("key");
+  const expected = await setting("cron_secret");
+  if (!expected || provided !== expected) return new Response("forbidden", { status: 403 });
 
   const now = new Date().toISOString();
   const out: Record<string, number> = { published: 0, processing: 0, failed: 0, tested: 0 };
