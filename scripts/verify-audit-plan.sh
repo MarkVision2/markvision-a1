@@ -35,4 +35,9 @@ run 'rg -q "useCodewordLeads" src/hooks/useInstagramOrganic.ts'
 run 'rg -q "recordInstagramOrganicLead" supabase/functions/lead-intake/index.ts'
 run 'rg -q "cw: z.string" supabase/functions/lead-intake/index.ts'
 
+# Tenant-scoped RLS: sipuni CDR must not allow NULL project_id bypass
+run 'rg -q "sipuni_cdr_log_select_via_lead" supabase/migrations/20260606230000_sipuni_cdr_log_tenant_scope.sql'
+run 'rg -q "l\\.project_id IS NOT NULL" supabase/migrations/20260606230000_sipuni_cdr_log_tenant_scope.sql'
+run '! rg -q "l\\.project_id IS NULL OR" supabase/migrations/20260606230000_sipuni_cdr_log_tenant_scope.sql'
+
 echo "Full site audit plan: all checks passed"
