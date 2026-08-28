@@ -51,6 +51,20 @@ Deno.serve(async (req) => {
     const { project_id, return_url } = body ?? {};
     if (!project_id || !return_url) return json({ error: "project_id, return_url required" }, 400);
 
+    // return_url потом используется для 302-редиректа из callback. Фронт всегда
+    // передаёт window.location.href, поэтому требуем совпадения origin с тем,
+    // откуда пришёл вызов — иначе ссылку можно было бы увести на чужой домен.
+    const origin = req.headers.get("Origin");
+    if (origin) {
+      let sameOrigin = false;
+      try {
+        sameOrigin = new URL(String(return_url)).origin === new URL(origin).origin;
+      } catch {
+        sameOrigin = false;
+      }
+      if (!sameOrigin) return json({ error: "return_url must match request origin" }, 400);
+    }
+
     const supa = createClient(SUPABASE_URL, SERVICE_ROLE);
     const { data: proj } = await supa.from("projects").select("created_by").eq("id", project_id).maybeSingle();
     if (proj?.created_by !== user.id) {
