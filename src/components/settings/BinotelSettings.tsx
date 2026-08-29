@@ -35,6 +35,27 @@ const SELECT_COLS =
   "telephony_provider, binotel_enabled, binotel_operator, binotel_pbx_number, binotel_crm_base_url, " +
   "binotel_credentials_present, binotel_auto_create_leads, binotel_project_id";
 
+/**
+ * supabase-js на не-2xx отдаёт лишь «Edge Function returned a non-2xx status code»,
+ * а тело ответа прячет в error.context. Достаём оттуда наш detail/error, иначе
+ * пользователь видит бессмысленный текст вместо причины.
+ */
+async function edgeErrorText(error: unknown, fallback: string): Promise<string> {
+  const ctx = (error as { context?: Response } | null)?.context;
+  if (ctx && typeof ctx.json === "function") {
+    try {
+      const body = await ctx.json();
+      const text = (body?.detail as string) || (body?.error as string);
+      if (text) return text;
+    } catch { /* тело не JSON — покажем fallback */ }
+  }
+  const msg = (error as { message?: string } | null)?.message ?? "";
+  if (/failed to send a request/i.test(msg)) {
+    return "Функция не ответила. Проверьте, что binotel-call задеплоена, и посмотрите её логи в Supabase.";
+  }
+  return msg || fallback;
+}
+
 export function BinotelSettings() {
   const { isAdmin } = useAuth();
   const { projects } = useProjectsStore();
@@ -115,8 +136,8 @@ export function BinotelSettings() {
     setEmployees(null);
     const { data, error } = await supabase.functions.invoke("binotel-call", { body: { mode: "test" } });
     setTesting(false);
-    if (error) { toast.error("Ошибка: " + error.message); return; }
-    if (!data?.ok) { toast.error("Binotel: " + (data?.error ?? "не настроен")); return; }
+    if (error) { toast.error(await edgeErrorText(error, "не удалось вызвать функцию")); return; }
+    if (!data?.ok) { toast.error("Binotel: " + (data?.detail ?? data?.error ?? "не настроен")); return; }
     setEmployees((data.employees ?? []) as Employee[]);
     toast.success(
       data.operatorKnown
@@ -131,8 +152,8 @@ export function BinotelSettings() {
       body: { days: 7 },
     });
     setImporting(false);
-    if (error) { toast.error("Ошибка импорта: " + error.message); return; }
-    if (!data?.ok) { toast.error("Binotel: " + (data?.error ?? "импорт не выполнен")); return; }
+    if (error) { toast.error(await edgeErrorText(error, "импорт не выполнен")); return; }
+    if (!data?.ok) { toast.error("Binotel: " + (data?.detail ?? data?.error ?? "импорт не выполнен")); return; }
     toast.success(
       `Импорт за ${data.days} дн.: добавлено ${data.imported} из ${data.fetched}` +
       (data.skipped_no_lead ? ` · без лида ${data.skipped_no_lead}` : "") +

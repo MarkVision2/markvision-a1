@@ -27,7 +27,7 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
 
 const MAX_DAYS = 31;
 // «Нагружаемый» метод: 5 запросов в минуту без ограничений, дальше пауза.
@@ -43,11 +43,10 @@ function json(body: unknown, status = 200) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-
+async function handle(req: Request): Promise<Response> {
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) return json({ ok: false, error: "unauthorized" }, 401);
+  if (!ANON_KEY) return json({ ok: false, error: "anon_key_missing" }, 500);
 
   const userClient = createClient(SUPABASE_URL, ANON_KEY, {
     global: { headers: { Authorization: authHeader } },
@@ -74,7 +73,14 @@ Deno.serve(async (req) => {
     .from("automation_settings")
     .select("binotel_enabled, binotel_key, binotel_secret")
     .eq("id", true).single();
-  if (!settings?.binotel_enabled) return json({ ok: false, error: "binotel_disabled" }, 400);
+  if (!settings) {
+    return json({
+      ok: false,
+      error: "migration_missing",
+      detail: "Колонки Binotel отсутствуют — примените scripts/apply-binotel-telephony.sql",
+    }, 500);
+  }
+  if (!settings.binotel_enabled) return json({ ok: false, error: "binotel_disabled" }, 400);
   if (!settings.binotel_key || !settings.binotel_secret) {
     return json({ ok: false, error: "binotel_not_configured" }, 400);
   }
@@ -158,4 +164,19 @@ Deno.serve(async (req) => {
     skipped_duplicate: skippedDuplicate,
     errors: errors.slice(0, 10),
   });
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  try {
+    return await handle(req);
+  } catch (e) {
+    // См. комментарий в binotel-call: generic-500 без CORS прячет причину.
+    console.error("[binotel-import-calls] unhandled", e);
+    return json({
+      ok: false,
+      error: "internal_error",
+      detail: e instanceof Error ? e.message : String(e),
+    }, 500);
+  }
 });
