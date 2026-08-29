@@ -37,6 +37,8 @@ function stageEvent(partial: Partial<StageChangeEvent> & Pick<StageChangeEvent, 
     cabinetId: partial.cabinetId ?? "cab-1",
     isDiagnostic: partial.isDiagnostic ?? true,
     ...partial,
+    // после спреда: в Partial<> поле опционально, а в StageChangeEvent — обязательное
+    toStageRole: partial.toStageRole ?? null,
   };
 }
 

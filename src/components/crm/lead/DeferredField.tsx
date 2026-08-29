@@ -52,7 +52,9 @@ export function DeferredField(props: InputProps | TextareaProps) {
 
   const onChange = (raw: string) => setDraft(normalize(raw));
 
-  if (props.multiline) {
+  // Сравнение с true, а не просто truthy: при strictNullChecks: false TS не сужает
+  // объединение по опциональному дискриминанту, и ветка Input теряет type/min/max.
+  if (props.multiline === true) {
     return (
       <Textarea
         value={draft}
