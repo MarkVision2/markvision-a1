@@ -208,7 +208,7 @@ export function BinotelSettings() {
             <PhoneForwarded className="h-4 w-4" />
           </span>
           <div>
-            <h2 className="text-base font-semibold">Binotel — телефония (Украина)</h2>
+            <h2 className="text-base font-semibold">Binotel — телефония</h2>
             <p className="text-xs text-muted-foreground">
               Click-to-call, карточка клиента при входящем и запись разговора в карточке лида.
             </p>
