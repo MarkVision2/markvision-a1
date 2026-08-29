@@ -29,6 +29,7 @@ import {
   toE164,
   toInt,
 } from "../_lib/binotel.ts";
+import { archiveRecording, type ArchivedRecording } from "../_lib/callRecording.ts";
 import {
   credentialsOf,
   resolveProjectByPbxNumber,
@@ -45,10 +46,7 @@ const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const WEBHOOK_SECRET = Deno.env.get("BINOTEL_WEBHOOK_SECRET") ?? "";
 
-const MIN_DURATION_FOR_ANALYSIS = 15;          // сек — короче не отдаём в разбор
-const RECORDING_BUCKET = "call-recordings";
-const MAX_RECORDING_BYTES = 100 * 1024 * 1024; // совпадает с лимитом бакета
-const RECORDING_TIMEOUT_MS = 25_000;
+const MIN_DURATION_FOR_ANALYSIS = 15; // сек — короче не отдаём в разбор
 
 // Серверы Binotel (документация: API CALL SETTINGS / список IP).
 const BINOTEL_IPS = new Set([
@@ -197,57 +195,6 @@ async function createLeadFromCall(phone: string, projectId: string): Promise<Lea
   return data as LeadRow;
 }
 
-// ── запись разговора ────────────────────────────────────────────────────────
-
-type Archived = { url: string; mime: string; filename: string; bytes: number };
-
-/**
- * Ссылка Binotel на запись живёт 15 минут — храним файл у себя, иначе через
- * час в карточке лида останется мёртвый URL.
- */
-async function archiveRecording(
-  sourceUrl: string,
-  leadId: string,
-  callId: string,
-): Promise<Archived | null> {
-  const ctrl = new AbortController();
-  const tid = setTimeout(() => ctrl.abort(), RECORDING_TIMEOUT_MS);
-  try {
-    const res = await fetch(sourceUrl, { signal: ctrl.signal });
-    if (!res.ok) {
-      console.warn("[binotel] recording download non-2xx", res.status);
-      return null;
-    }
-    const buf = new Uint8Array(await res.arrayBuffer());
-    if (buf.byteLength === 0) return null;
-    if (buf.byteLength > MAX_RECORDING_BYTES) {
-      console.warn("[binotel] recording too large", buf.byteLength);
-      return null;
-    }
-
-    const mime = (res.headers.get("content-type") ?? "audio/mpeg").split(";")[0].trim();
-    const ext = mime.includes("wav") ? "wav" : mime.includes("ogg") ? "ogg" : "mp3";
-    const filename = `binotel-${callId}.${ext}`;
-    const path = `${leadId}/${callId}.${ext}`;
-
-    const { error } = await admin.storage.from(RECORDING_BUCKET).upload(path, buf, {
-      contentType: mime,
-      upsert: true,
-    });
-    if (error) {
-      console.error("[binotel] recording upload failed", error.message);
-      return null;
-    }
-    const { data } = admin.storage.from(RECORDING_BUCKET).getPublicUrl(path);
-    return { url: data.publicUrl, mime, filename, bytes: buf.byteLength };
-  } catch (e) {
-    console.warn("[binotel] recording archive failed", e);
-    return null;
-  } finally {
-    clearTimeout(tid);
-  }
-}
-
 // ── служебное ───────────────────────────────────────────────────────────────
 
 async function logCall(row: Record<string, unknown>) {
@@ -377,13 +324,13 @@ async function handleCallCompleted(payload: Record<string, unknown>) {
 
   // Запись есть только у состоявшихся разговоров. Забираем ссылку и сразу
   // складываем файл к себе — через 15 минут ссылка Binotel протухнет.
-  let archived: Archived | null = null;
+  let archived: ArchivedRecording | null = null;
   let rawRecording: string | null = null;
   if (isRecordable(disposition) && generalCallID) {
     const creds = project ? credentialsOf(project) : null;
     if (creds) {
       rawRecording = await fetchCallRecordUrl(generalCallID, creds);
-      if (rawRecording) archived = await archiveRecording(rawRecording, lead.id, generalCallID);
+      if (rawRecording) archived = await archiveRecording(admin, rawRecording, lead.id, generalCallID, "binotel");
     }
   }
 

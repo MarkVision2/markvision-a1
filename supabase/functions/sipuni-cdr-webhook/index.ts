@@ -13,6 +13,7 @@
 // verify_jwt = false (см. config.toml). Sipuni не шлёт JWT.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
+import { archiveRecording, type ArchivedRecording } from "../_lib/callRecording.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -233,10 +234,22 @@ Deno.serve(async (req) => {
       return json({ ok: true, skipped: "lead not found", phone });
     }
 
-    // 2. Insert communication (триггер on_communication_inserted сам напишет event call_made)
+    // 2. Запись разговора складываем к себе: ссылка АТС недолговечна, а плеер
+    // в ленте лида играет только постоянный media_url.
+    const callId = rawPayload.id ? String(rawPayload.id) : "";
+    let archived: ArchivedRecording | null = null;
+    if (recording) {
+      archived = await archiveRecording(
+        admin, recording, lead.id, callId || crypto.randomUUID(), "sipuni",
+      );
+    }
+
+    // 3. Insert communication (триггер on_communication_inserted сам напишет event call_made)
+    const answered = (duration ?? 0) > 0;
     const commContent = [
-      recording ? `🎙 Запись: ${recording}` : "",
-      duration != null ? `Длительность: ${duration} сек` : "",
+      answered ? "" : "Не дозвонились",
+      duration != null && duration > 0 ? `Длительность: ${duration} сек` : "",
+      archived ? "🎙 Запись разговора приложена" : (recording ? `🎙 Запись: ${recording}` : ""),
     ]
       .filter(Boolean)
       .join("\n");
@@ -247,11 +260,19 @@ Deno.serve(async (req) => {
       channel: "phone",
       direction: direction ?? "in",
       content: commContent || null,
-      external_id: rawPayload.id ? String(rawPayload.id) : null,
+      // Поля, которые читает карточка лида: без них звонок в ленте был без
+      // длительности и всегда выглядел отвеченным.
+      status: answered ? "answered" : "missed",
+      duration_sec: duration,
+      external_id: callId || null,
       created_at: startedAt,
       is_draft: false,
       is_auto: false,
       created_by: lead.assigned_to ?? null,
+      media_url: archived?.url ?? null,
+      media_kind: archived ? "audio" : null,
+      media_mime: archived?.mime ?? null,
+      media_filename: archived?.filename ?? null,
     });
     if (commErr) {
       console.error("[sipuni-cdr] communication insert error", commErr);
@@ -261,7 +282,7 @@ Deno.serve(async (req) => {
     await logCdr({
       raw_payload: rawPayload,
       phone_normalized: phone,
-      recording_url: recording || null,
+      recording_url: archived?.url ?? (recording || null),
       duration_sec: duration,
       started_at: startedAt,
       processing_status: "lead_found",
@@ -275,7 +296,7 @@ Deno.serve(async (req) => {
       analysisTriggered = true;
       triggerAnalyzeCall({
         lead_id: lead.id,
-        recording_url: recording,
+        recording_url: archived?.url ?? recording,
         duration_sec: duration,
         manager_id: lead.assigned_to ?? null,
         call_at: startedAt,

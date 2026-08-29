@@ -146,6 +146,12 @@ https://<project>.supabase.co/functions/v1/binotel-webhook?secret=<BINOTEL_WEBHO
   разбор записи отклонил бы ссылку как SSRF.
 * Bucket `call-recordings` публичный на чтение (как `crm-chat-media` с голосовыми клиентов),
   писать может только service_role. Путь файла — `<lead_id>/<generalCallID>.<ext>`.
+* Базовая таблица `project_binotel_settings` клиенту недоступна вовсе (`REVOKE ALL`):
+  колоночный REVOKE — пустышка при табличном гранте, а Supabase выдаёт его новым
+  таблицам по умолчанию. Читается только view, пишется только через RPC.
+* Ссылка на запись прогоняется через `validateRecordingUrl` перед скачиванием: она
+  может прийти из payload вебхука, а функция ходит под service_role — без проверки
+  это SSRF.
 
 ## Диагностика
 
