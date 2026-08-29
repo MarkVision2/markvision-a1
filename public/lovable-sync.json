@@ -1,7 +1,7 @@
 {
-  "git_sha": "a6409d8",
-  "git_sha_full": "a6409d8fb337273ce75c0e93331d0ad829bfce61",
-  "updated_at": "2026-08-25T08:22:16Z",
-  "label": "feat(crm): enable WhatsApp call→lead by default (#239)",
+  "git_sha": "8a265b3",
+  "git_sha_full": "8a265b3727f3ea62bed633282f7b4797756d75da",
+  "updated_at": "2026-08-29T10:18:00Z",
+  "label": "Merge: интеграция телефонии Binotel",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
