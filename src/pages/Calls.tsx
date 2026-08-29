@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   PhoneCall, PhoneOutgoing, PhoneIncoming, PhoneMissed, ExternalLink, Search,
-  CheckCircle2, AlertTriangle, Server, Headphones, Phone as PhoneIcon, Filter,
+  CheckCircle2, AlertTriangle, Server, Headphones, Phone as PhoneIcon, Filter, PhoneForwarded,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,7 +15,7 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
 
 type Status = "success" | "error" | "answered" | "missed";
-type Provider = "tel" | "sip" | "sipuni" | "manual";
+type Provider = "tel" | "sip" | "sipuni" | "binotel" | "manual";
 
 type Row = {
   id: string;
@@ -36,6 +36,7 @@ const PROVIDER_META: Record<Provider, { label: string; icon: typeof PhoneIcon; t
   tel: { label: "Системный", icon: PhoneIcon, tone: "bg-secondary text-foreground" },
   sip: { label: "SIP-софтфон", icon: Headphones, tone: "bg-primary/10 text-primary" },
   sipuni: { label: "Sipuni", icon: Server, tone: "bg-primary/10 text-primary" },
+  binotel: { label: "Binotel", icon: PhoneForwarded, tone: "bg-primary/10 text-primary" },
   manual: { label: "Без набора", icon: PhoneCall, tone: "bg-muted text-muted-foreground" },
 };
 

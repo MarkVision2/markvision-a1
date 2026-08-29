@@ -183,6 +183,8 @@ export async function requireMetaCreativeAdAccess(
 
 const RECORDING_HOST_ALLOW = [
   /\.sipuni\.com$/i,
+  /(^|\.)binotel\.com$/i,
+  /(^|\.)binotel\.ua$/i,
   /\.sipuni\.ru$/i,
   /\.sipuni\.kz$/i,
   /\.supabase\.co$/i,

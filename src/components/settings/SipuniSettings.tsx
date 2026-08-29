@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { SaveStatusBadge } from "./SaveStatusBadge";
 
-type Provider = "tel" | "sip" | "sipuni";
+type Provider = "tel" | "sip" | "sipuni" | "binotel";
 
 type Row = {
   telephony_provider: Provider;
