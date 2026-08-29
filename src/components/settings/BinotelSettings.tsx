@@ -39,6 +39,7 @@ export function BinotelSettings() {
   const { isAdmin } = useAuth();
   const { projects } = useProjectsStore();
   const [row, setRow] = useState<Row | null>(null);
+  const [needsMigration, setNeedsMigration] = useState(false);
   const [keyInput, setKeyInput] = useState("");
   const [secretInput, setSecretInput] = useState("");
   const [savingCreds, setSavingCreds] = useState(false);
@@ -49,7 +50,17 @@ export function BinotelSettings() {
   const load = async () => {
     const { data, error } = await (supabase.from("automation_settings" as any) as any)
       .select(SELECT_COLS).eq("id", true).single();
-    if (error) { toast.error(error.message); return; }
+    if (error) {
+      // Фронт мог выкатиться раньше миграции — не сыпем тостами, а честно
+      // говорим, чего не хватает.
+      if (/column|does not exist|schema cache/i.test(error.message)) {
+        setNeedsMigration(true);
+        return;
+      }
+      toast.error(error.message);
+      return;
+    }
+    setNeedsMigration(false);
     const r = data as Row;
     setRow(r);
     markSaved(r);
@@ -139,6 +150,21 @@ export function BinotelSettings() {
       toast.error("Не удалось скопировать");
     }
   };
+
+  if (needsMigration) {
+    return (
+      <Card className="flex items-start gap-3 p-4">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+        <div className="text-xs text-muted-foreground">
+          <p className="font-medium text-foreground">Binotel: миграция ещё не применена</p>
+          <p className="mt-0.5">
+            Выполните <code>supabase/migrations/20260829120000_binotel_telephony.sql</code> и{" "}
+            <code>20260829130000_binotel_recordings_and_leads.sql</code> — после этого карточка появится.
+          </p>
+        </div>
+      </Card>
+    );
+  }
 
   if (!row) return null;
 

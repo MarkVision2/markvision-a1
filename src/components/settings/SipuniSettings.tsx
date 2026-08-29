@@ -10,7 +10,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { invalidateTelephonyCache } from "@/lib/telephony";
 import { toast } from "sonner";
-import { Server, ShieldCheck, KeyRound, Lock, AlertTriangle, Phone, Headphones, PhoneForwarded } from "lucide-react";
+import { Server, ShieldCheck, KeyRound, Lock, AlertTriangle, Phone, Headphones } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { SaveStatusBadge } from "./SaveStatusBadge";
@@ -19,7 +19,6 @@ type Provider = "tel" | "sip" | "sipuni" | "binotel";
 
 type Row = {
   telephony_provider: Provider;
-  binotel_enabled: boolean;
   sipuni_enabled: boolean;
   sipuni_user: string | null;
   sipuni_operator: string | null;
@@ -30,7 +29,6 @@ const PROVIDERS: { id: Provider; title: string; desc: string; icon: typeof Phone
   { id: "tel", title: "Системный", desc: "tel: — мобильный/системный dialer", icon: Phone },
   { id: "sip", title: "SIP-софтфон", desc: "sip: — Zoiper, MicroSIP", icon: Headphones },
   { id: "sipuni", title: "Sipuni АТС", desc: "Click-to-call через бэкенд", icon: Server },
-  { id: "binotel", title: "Binotel АТС", desc: "Украинская АТС — настройки выше", icon: PhoneForwarded },
 ];
 
 export function SipuniSettings() {
@@ -42,7 +40,7 @@ export function SipuniSettings() {
 
   const load = async () => {
     const { data, error } = await (supabase.from("automation_settings" as any) as any)
-      .select("telephony_provider, sipuni_enabled, sipuni_user, sipuni_operator, sipuni_token_present, binotel_enabled")
+      .select("telephony_provider, sipuni_enabled, sipuni_user, sipuni_operator, sipuni_token_present")
       .eq("id", true).single();
     if (error) { toast.error(error.message); return; }
     const r = data as Row;
@@ -161,13 +159,11 @@ export function SipuniSettings() {
         <Label className="mb-2 block text-[11px] uppercase tracking-wide text-muted-foreground">
           Активный провайдер для кнопки «Позвонить»
         </Label>
-        <div className="grid gap-2 md:grid-cols-4">
+        <div className="grid gap-2 md:grid-cols-3">
           {PROVIDERS.map((p) => {
             const active = row.telephony_provider === p.id;
             const Icon = p.icon;
-            const disabled =
-              (p.id === "sipuni" && !row.sipuni_enabled) ||
-              (p.id === "binotel" && !row.binotel_enabled);
+            const disabled = p.id === "sipuni" && !row.sipuni_enabled;
             return (
               <button
                 key={p.id}
