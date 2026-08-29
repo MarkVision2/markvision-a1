@@ -1,7 +1,7 @@
 {
-  "git_sha": "8a265b3",
-  "git_sha_full": "8a265b3727f3ea62bed633282f7b4797756d75da",
-  "updated_at": "2026-08-29T10:18:00Z",
-  "label": "Merge: интеграция телефонии Binotel",
+  "git_sha": "dac1c7b",
+  "git_sha_full": "dac1c7bd47ee726eb17634fd8a42461f1500b531",
+  "updated_at": "2026-08-29T10:19:55Z",
+  "label": "chore(db): обе миграции Binotel одним файлом для SQL Editor",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
