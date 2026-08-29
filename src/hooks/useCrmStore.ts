@@ -96,6 +96,7 @@ type CommRow = {
   template_key: string | null; is_draft: boolean; is_auto: boolean;
   created_by: string | null; created_at: string;
   external_id?: string | null;
+  duration_sec?: number | null;
   media_url?: string | null;
   media_kind?: string | null;
   media_mime?: string | null;
@@ -139,6 +140,7 @@ function commToChat(r: CommRow): ChatMessage {
     callStatus: isCall
       ? (r.status === "missed" ? "missed" : (r.direction === "in" ? "incoming" : "outgoing"))
       : undefined,
+    callDurationSec: isCall && r.duration_sec != null ? r.duration_sec : undefined,
     templateKey: r.template_key ?? undefined,
     mediaUrl: r.media_url ?? undefined,
     mediaKind: mediaKind || undefined,
@@ -329,7 +331,7 @@ export function useCrmStore() {
       leadsQuery,
       supabase
         .from("communications")
-        .select("id,lead_id,type,direction,channel,content,status,template_key,is_draft,is_auto,created_by,created_at,media_url,media_kind,media_mime,media_filename")
+        .select("id,lead_id,type,direction,channel,content,status,template_key,is_draft,is_auto,created_by,created_at,duration_sec,media_url,media_kind,media_mime,media_filename")
         .order("created_at", { ascending: false })
         .limit(2000),
       supabase

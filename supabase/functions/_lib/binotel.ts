@@ -97,6 +97,19 @@ export function toBinotelPhone(raw: string): string {
   return d;
 }
 
+/**
+ * Номер клиента для записи в CRM. Binotel отдаёт украинские номера в
+ * национальном формате (0XXXXXXXXX) — приводим к E.164, чтобы карточка,
+ * созданная из звонка, выглядела как остальные лиды.
+ */
+export function toE164(raw: string): string {
+  const d = String(raw ?? "").replace(/\D/g, "");
+  if (!d) return "";
+  if (d.length === 10 && d.startsWith("0")) return `+38${d}`;   // 0671234567  → +380671234567
+  if (d.length === 9) return `+380${d}`;                        // 671234567   → +380671234567
+  return `+${d}`;
+}
+
 /** Последние 9 цифр — общий знаменатель форматов +380XXXXXXXXX и 0XXXXXXXXX. */
 export function phoneTail(raw: string): string {
   return String(raw ?? "").replace(/\D/g, "").slice(-9);
@@ -115,4 +128,94 @@ export async function fetchCallRecordUrl(
     if (typeof c === "string" && c.startsWith("http")) return c;
   }
   return null;
+}
+
+// ── Разбор callDetails (apiCallCompleted) ───────────────────────────────────
+// Всё ниже — чистые функции без сети и Deno API: они покрыты тестами
+// (src/test/binotel.test.ts), потому и живут отдельно от тела webhook-а.
+
+export type CallDisposition =
+  | "ANSWER" | "TRANSFER" | "ONLINE" | "BUSY" | "NOANSWER" | "CANCEL"
+  | "CONGESTION" | "CHANUNAVAIL" | "VM" | "VM-SUCCESS"
+  | "SMS-SENDING" | "SMS-SUCCESS" | "SMS-FAILED" | "SUCCESS" | "FAILED" | string;
+
+/** Разговор состоялся — звонок идёт в CRM как «отвечен». */
+export function isAnswered(disposition: string): boolean {
+  return ["ANSWER", "TRANSFER"].includes(disposition);
+}
+
+/** У таких звонков может быть запись (см. примечание к stats/call-record). */
+export function isRecordable(disposition: string): boolean {
+  return ["ANSWER", "TRANSFER", "VM-SUCCESS", "SUCCESS"].includes(disposition);
+}
+
+/** Человекочитаемая причина, почему звонок не состоялся. */
+export function dispositionLabel(disposition: string): string {
+  const map: Record<string, string> = {
+    BUSY: "занято",
+    NOANSWER: "нет ответа",
+    CANCEL: "отменён",
+    CONGESTION: "не прошёл",
+    CHANUNAVAIL: "линия недоступна",
+    VM: "голосовая почта без сообщения",
+    "VM-SUCCESS": "голосовая почта",
+    ONLINE: "в разговоре",
+    FAILED: "ошибка",
+  };
+  return map[disposition] ?? (disposition ? disposition.toLowerCase() : "нет ответа");
+}
+
+/**
+ * callDetails приходит либо объектом звонка, либо картой { <generalCallID>: {...} }
+ * (как в разделе STATS). Плюс form-encoded вариант, где вложенность плоская.
+ */
+export function parseCallDetails(
+  payload: Record<string, unknown>,
+): Record<string, unknown> | null {
+  const raw = payload?.callDetails;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+  const obj = raw as Record<string, unknown>;
+  if ("generalCallID" in obj || "externalNumber" in obj || "disposition" in obj) return obj;
+  const first = Object.values(obj)[0];
+  if (first && typeof first === "object" && !Array.isArray(first)) {
+    return first as Record<string, unknown>;
+  }
+  return null;
+}
+
+/** callType: 0 — входящий, 1 — исходящий. */
+export function callDirection(callType: unknown): "in" | "out" {
+  return String(callType ?? "") === "1" ? "out" : "in";
+}
+
+/** Целое число из строки/числа; всё остальное — null. */
+export function toInt(v: unknown): number | null {
+  if (v == null || v === "" || typeof v === "boolean") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.round(n) : null;
+}
+
+/** startTime приходит в unix-секундах; на всякий случай терпим и миллисекунды. */
+export function callStartedAt(startTime: unknown, now = Date.now()): string {
+  const n = toInt(startTime);
+  if (n == null || n <= 0) return new Date(now).toISOString();
+  return new Date(n < 1e12 ? n * 1000 : n).toISOString();
+}
+
+/** Текст коммуникации в ленте лида. */
+export function callContent(opts: {
+  answered: boolean;
+  disposition: string;
+  durationSec: number | null;
+  recordingArchived: boolean;
+}): string {
+  const lines: string[] = [];
+  if (!opts.answered) lines.push(`Не дозвонились: ${dispositionLabel(opts.disposition)}`);
+  if (opts.durationSec != null && opts.durationSec > 0) {
+    const m = Math.floor(opts.durationSec / 60);
+    const sec = opts.durationSec % 60;
+    lines.push(`Длительность: ${m > 0 ? `${m} мин ${sec} с` : `${sec} с`}`);
+  }
+  if (opts.recordingArchived) lines.push("🎙 Запись разговора приложена");
+  return lines.join("\n");
 }

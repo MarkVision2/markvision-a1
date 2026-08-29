@@ -6,7 +6,7 @@
 //    покажет это менеджеру до поднятия трубки. Отвечать надо быстро.
 //
 //  • apiCallCompleted — прилетает ПОСЛЕ звонка. Пишем communication type=call,
-//    подтягиваем ссылку на запись (stats/call-record живёт 15 минут) и, если
+//    скачиваем запись к себе в storage (ссылка Binotel живёт 15 минут) и, если
 //    разговор осмысленной длины, зовём ai-rop-analyze-call.
 //    ОБЯЗАН вернуть {"status":"success"}, иначе Binotel повторит до 7 раз.
 //
@@ -17,7 +17,19 @@
 // серверов Binotel. Ни то, ни другое не совпало — 403 (fail-closed).
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
-import { fetchCallRecordUrl, phoneTail, type BinotelCredentials } from "../_lib/binotel.ts";
+import {
+  callContent,
+  callDirection,
+  callStartedAt,
+  fetchCallRecordUrl,
+  isAnswered,
+  isRecordable,
+  parseCallDetails,
+  phoneTail,
+  toE164,
+  toInt,
+  type BinotelCredentials,
+} from "../_lib/binotel.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -28,7 +40,11 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const WEBHOOK_SECRET = Deno.env.get("BINOTEL_WEBHOOK_SECRET") ?? "";
-const MIN_DURATION_FOR_ANALYSIS = 15; // сек
+
+const MIN_DURATION_FOR_ANALYSIS = 15;          // сек — короче не отдаём в разбор
+const RECORDING_BUCKET = "call-recordings";
+const MAX_RECORDING_BYTES = 100 * 1024 * 1024; // совпадает с лимитом бакета
+const RECORDING_TIMEOUT_MS = 25_000;
 
 // Серверы Binotel (документация: API CALL SETTINGS / список IP).
 const BINOTEL_IPS = new Set([
@@ -56,6 +72,13 @@ function clientIps(req: Request): string[] {
   const xff = req.headers.get("x-forwarded-for") ?? "";
   const real = req.headers.get("x-real-ip") ?? "";
   return [...xff.split(","), real].map((s) => s.trim()).filter(Boolean);
+}
+
+/** Фоновая задача: не держим ответ webhook-а, но и не теряем работу. */
+function runInBackground(task: Promise<unknown>) {
+  const rt = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+  const guarded = task.catch((e) => console.warn("[binotel] background task failed", e));
+  if (typeof rt?.waitUntil === "function") rt.waitUntil(guarded);
 }
 
 async function parseBody(req: Request): Promise<Record<string, unknown>> {
@@ -90,6 +113,8 @@ async function parseBody(req: Request): Promise<Record<string, unknown>> {
   return out;
 }
 
+// ── лид ─────────────────────────────────────────────────────────────────────
+
 type LeadRow = {
   id: string;
   project_id: string | null;
@@ -99,16 +124,8 @@ type LeadRow = {
   source: string | null;
 };
 
-/** Фоновая задача: не держим ответ webhook-а, но и не теряем работу. */
-function runInBackground(task: Promise<unknown>) {
-  const rt = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
-  const guarded = task.catch((e) => console.warn("[binotel] background task failed", e));
-  if (typeof rt?.waitUntil === "function") rt.waitUntil(guarded);
-}
-
 async function findLead(phone: string): Promise<LeadRow | null> {
-  const digits = phoneTail(phone);
-  if (digits.length < 9) return null;
+  if (phoneTail(phone).length < 9) return null;
   const { data, error } = await admin.rpc("find_lead_by_phone_digits", { p_phone: phone });
   if (error) {
     console.warn("[binotel] find_lead rpc failed", error.message);
@@ -118,6 +135,114 @@ async function findLead(phone: string): Promise<LeadRow | null> {
   return (row as LeadRow) ?? null;
 }
 
+/** Дефолтная воронка проекта и её первая стадия (как в greenapi-crm-ingest). */
+async function defaultStage(projectId: string): Promise<{ pipeline_id: string; stage_id: string } | null> {
+  const { data: pipe } = await admin
+    .from("pipelines").select("id")
+    .eq("project_id", projectId).eq("is_default", true)
+    .order("created_at", { ascending: true }).limit(1).maybeSingle();
+  const pipelineId = (pipe as { id?: string } | null)?.id;
+  if (!pipelineId) return null;
+
+  const { data: stages } = await admin
+    .from("pipeline_stages").select("id, key, stage_role, order_index")
+    .eq("pipeline_id", pipelineId).order("order_index", { ascending: true });
+  const list = (stages ?? []) as { id: string; key: string; stage_role: string | null }[];
+  const first = list.find((s) => s.stage_role === "new" || s.key === "new") ?? list[0];
+  return first ? { pipeline_id: pipelineId, stage_id: first.id } : null;
+}
+
+/**
+ * Клиент позвонил впервые — заводим карточку, чтобы звонок не потерялся.
+ * Только для входящих и только если админ включил это явно.
+ */
+async function createLeadFromCall(phone: string, projectId: string): Promise<LeadRow | null> {
+  const stage = await defaultStage(projectId);
+  if (!stage) {
+    console.warn("[binotel] auto-create skipped: no default pipeline in project", projectId);
+    return null;
+  }
+  const { data: proj } = await admin
+    .from("projects").select("created_by").eq("id", projectId).maybeSingle();
+  const ownerId = (proj as { created_by?: string | null } | null)?.created_by ?? null;
+
+  const e164 = toE164(phone);
+  const { data, error } = await admin
+    .from("leads")
+    .insert({
+      name: e164,
+      phone: e164,
+      source: "binotel",
+      channel: "phone",
+      project_id: projectId,
+      pipeline_id: stage.pipeline_id,
+      stage_id: stage.stage_id,
+      created_by: ownerId,
+      assigned_to: ownerId,
+      last_activity_at: new Date().toISOString(),
+    })
+    .select("id, project_id, assigned_to, phone, name, source")
+    .single();
+  if (error) {
+    console.error("[binotel] auto-create lead failed", error.message);
+    return null;
+  }
+  return data as LeadRow;
+}
+
+// ── запись разговора ────────────────────────────────────────────────────────
+
+type Archived = { url: string; mime: string; filename: string; bytes: number };
+
+/**
+ * Ссылка Binotel на запись живёт 15 минут — храним файл у себя, иначе через
+ * час в карточке лида останется мёртвый URL.
+ */
+async function archiveRecording(
+  sourceUrl: string,
+  leadId: string,
+  callId: string,
+): Promise<Archived | null> {
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), RECORDING_TIMEOUT_MS);
+  try {
+    const res = await fetch(sourceUrl, { signal: ctrl.signal });
+    if (!res.ok) {
+      console.warn("[binotel] recording download non-2xx", res.status);
+      return null;
+    }
+    const buf = new Uint8Array(await res.arrayBuffer());
+    if (buf.byteLength === 0) return null;
+    if (buf.byteLength > MAX_RECORDING_BYTES) {
+      console.warn("[binotel] recording too large", buf.byteLength);
+      return null;
+    }
+
+    const mime = (res.headers.get("content-type") ?? "audio/mpeg").split(";")[0].trim();
+    const ext = mime.includes("wav") ? "wav" : mime.includes("ogg") ? "ogg" : "mp3";
+    const filename = `binotel-${callId}.${ext}`;
+    const path = `${leadId}/${callId}.${ext}`;
+
+    const { error } = await admin.storage.from(RECORDING_BUCKET).upload(path, buf, {
+      contentType: mime,
+      upsert: true,
+    });
+    if (error) {
+      console.error("[binotel] recording upload failed", error.message);
+      return null;
+    }
+    const { data } = admin.storage.from(RECORDING_BUCKET).getPublicUrl(path);
+    return { url: data.publicUrl, mime, filename, bytes: buf.byteLength };
+  } catch (e) {
+    console.warn("[binotel] recording archive failed", e);
+    return null;
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
+// ── служебное ───────────────────────────────────────────────────────────────
+
 async function logCall(row: Record<string, unknown>) {
   const { error } = await admin.from("binotel_call_log").insert(row);
   if (error) console.error("[binotel] call_log insert failed", error.message);
@@ -125,21 +250,29 @@ async function logCall(row: Record<string, unknown>) {
 
 async function loadCredentials(): Promise<BinotelCredentials | null> {
   const { data } = await admin
-    .from("automation_settings")
-    .select("binotel_key, binotel_secret")
+    .from("automation_settings").select("binotel_key, binotel_secret")
     .eq("id", true).single();
   const key = data?.binotel_key as string | null;
   const secret = data?.binotel_secret as string | null;
   return key && secret ? { key, secret } : null;
 }
 
+async function triggerAnalyzeCall(body: Record<string, unknown>) {
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/ai-rop-analyze-call`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-internal-key": SERVICE_KEY },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    console.warn("[binotel] analyze-call non-2xx", r.status, (await r.text()).slice(0, 200));
+  }
+}
+
 // ── apiCallSettings ─────────────────────────────────────────────────────────
 
 async function handleCallSettings(payload: Record<string, unknown>) {
   const externalNumber = String(payload.externalNumber ?? "");
-  const callType = String(payload.callType ?? "");
-  const direction = callType === "1" ? "out" : "in";
-
+  const direction = callDirection(payload.callType);
   const lead = await findLead(externalNumber);
 
   // Аудит — в фон: телефон уже звонит, лишний roundtrip тут ни к чему.
@@ -184,37 +317,8 @@ async function handleCallSettings(payload: Record<string, unknown>) {
 
 // ── apiCallCompleted ────────────────────────────────────────────────────────
 
-function pickCallDetails(payload: Record<string, unknown>): Record<string, unknown> | null {
-  const raw = payload.callDetails;
-  if (!raw || typeof raw !== "object") return null;
-  const obj = raw as Record<string, unknown>;
-  if ("generalCallID" in obj || "externalNumber" in obj) return obj;
-  // Иногда приходит map { <generalCallID>: {...} } — как в разделе STATS.
-  const first = Object.values(obj)[0];
-  return first && typeof first === "object" ? (first as Record<string, unknown>) : null;
-}
-
-function num(v: unknown): number | null {
-  if (v == null || v === "") return null;
-  const n = Number(v);
-  return Number.isFinite(n) ? Math.round(n) : null;
-}
-
-async function triggerAnalyzeCall(body: Record<string, unknown>) {
-  try {
-    const r = await fetch(`${SUPABASE_URL}/functions/v1/ai-rop-analyze-call`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-internal-key": SERVICE_KEY },
-      body: JSON.stringify(body),
-    });
-    if (!r.ok) console.warn("[binotel] analyze-call non-2xx", r.status, (await r.text()).slice(0, 200));
-  } catch (e) {
-    console.warn("[binotel] analyze-call failed", e);
-  }
-}
-
 async function handleCallCompleted(payload: Record<string, unknown>) {
-  const details = pickCallDetails(payload);
+  const details = parseCallDetails(payload);
   if (!details) {
     await logCall({
       request_type: "apiCallCompleted",
@@ -222,31 +326,42 @@ async function handleCallCompleted(payload: Record<string, unknown>) {
       processing_status: "parse_error",
       error_text: "no callDetails in payload",
     });
+    // Ретрай пришлёт тот же битый payload — подтверждаем, чтобы не долбился 7 раз.
     return json({ status: "success" });
   }
 
   const generalCallID = details.generalCallID != null ? String(details.generalCallID) : null;
   const externalNumber = String(details.externalNumber ?? "");
-  const direction = String(details.callType ?? "") === "1" ? "out" : "in";
+  const direction = callDirection(details.callType);
   const disposition = String(details.disposition ?? "");
-  const billsec = num(details.billsec);
-  const startTime = num(details.startTime);
-  const startedAt = startTime
-    ? new Date((startTime < 1e12 ? startTime * 1000 : startTime)).toISOString()
-    : new Date().toISOString();
+  const billsec = toInt(details.billsec);
+  const startedAt = callStartedAt(details.startTime);
+  const answered = isAnswered(disposition);
 
   // Идемпотентность: Binotel повторяет тот же звонок до 7 раз, пока не увидит success.
   if (generalCallID) {
     const { data: seen } = await admin
-      .from("binotel_call_log")
-      .select("id")
-      .eq("request_type", "apiCallCompleted")
-      .eq("general_call_id", generalCallID)
+      .from("binotel_call_log").select("id")
+      .eq("request_type", "apiCallCompleted").eq("general_call_id", generalCallID)
       .maybeSingle();
     if (seen) return json({ status: "success", duplicate: true });
   }
 
-  const lead = await findLead(externalNumber);
+  const { data: settings } = await admin
+    .from("automation_settings")
+    .select("binotel_key, binotel_secret, binotel_auto_create_leads, binotel_project_id")
+    .eq("id", true).single();
+
+  let lead = await findLead(externalNumber);
+  let leadCreated = false;
+  if (
+    !lead && direction === "in" &&
+    settings?.binotel_auto_create_leads && settings?.binotel_project_id
+  ) {
+    lead = await createLeadFromCall(externalNumber, settings.binotel_project_id as string);
+    leadCreated = Boolean(lead);
+  }
+
   if (!lead) {
     await logCall({
       request_type: "apiCallCompleted",
@@ -259,35 +374,47 @@ async function handleCallCompleted(payload: Record<string, unknown>) {
       started_at: startedAt,
       processing_status: "lead_not_found",
     });
-    return json({ status: "success" });
+    return json({ status: "success", skipped: "lead not found" });
   }
 
-  // Ссылка на запись есть только у состоявшихся разговоров.
-  const recordable = ["ANSWER", "TRANSFER", "VM-SUCCESS", "SUCCESS"].includes(disposition);
-  let recording: string | null = null;
-  if (recordable && generalCallID) {
-    const creds = await loadCredentials();
-    if (creds) recording = await fetchCallRecordUrl(generalCallID, creds);
+  // Запись есть только у состоявшихся разговоров. Забираем ссылку и сразу
+  // складываем файл к себе — через 15 минут ссылка Binotel протухнет.
+  let archived: Archived | null = null;
+  let rawRecording: string | null = null;
+  if (isRecordable(disposition) && generalCallID) {
+    const creds = settings?.binotel_key && settings?.binotel_secret
+      ? { key: settings.binotel_key as string, secret: settings.binotel_secret as string }
+      : await loadCredentials();
+    if (creds) {
+      rawRecording = await fetchCallRecordUrl(generalCallID, creds);
+      if (rawRecording) archived = await archiveRecording(rawRecording, lead.id, generalCallID);
+    }
   }
 
-  const answered = ["ANSWER", "TRANSFER"].includes(disposition);
-  const content = [
-    answered ? null : `Не состоялся: ${disposition || "нет ответа"}`,
-    billsec != null ? `Длительность: ${billsec} сек` : null,
-    recording ? `🎙 Запись: ${recording}` : null,
-  ].filter(Boolean).join("\n");
+  const content = callContent({
+    answered,
+    disposition,
+    durationSec: billsec,
+    recordingArchived: Boolean(archived),
+  });
 
   const { error: commErr } = await admin.from("communications").insert({
     lead_id: lead.id,
     type: "call",
     channel: "phone",
-    direction: direction === "out" ? "out" : "in",
+    direction,
     content: content || null,
+    status: answered ? "answered" : "missed",
+    duration_sec: billsec,
     external_id: generalCallID,
     created_at: startedAt,
     is_draft: false,
     is_auto: false,
     created_by: lead.assigned_to ?? null,
+    media_url: archived?.url ?? null,
+    media_kind: archived ? "audio" : null,
+    media_mime: archived?.mime ?? null,
+    media_filename: archived?.filename ?? null,
   });
   if (commErr) console.error("[binotel] communication insert error", commErr.message);
 
@@ -298,7 +425,7 @@ async function handleCallCompleted(payload: Record<string, unknown>) {
     phone_normalized: phoneTail(externalNumber) || null,
     direction,
     disposition: disposition || null,
-    recording_url: recording,
+    recording_url: archived?.url ?? rawRecording,
     duration_sec: billsec,
     started_at: startedAt,
     processing_status: "lead_found",
@@ -306,14 +433,17 @@ async function handleCallCompleted(payload: Record<string, unknown>) {
     error_text: commErr ? `comm_insert: ${commErr.message}` : null,
   });
 
+  // Разбор идёт минуты — держать webhook нельзя (Binotel начнёт ретраи).
+  // Строка в binotel_call_log уже записана, поэтому ретрай отсечётся как дубль.
+  // В разбор отдаём свою постоянную ссылку: пока ИИ дойдёт до файла,
+  // оригинальная ссылка Binotel уже может протухнуть.
+  const analysisUrl = archived?.url ?? rawRecording;
   let analysisTriggered = false;
-  if (recording && (billsec ?? 0) >= MIN_DURATION_FOR_ANALYSIS) {
+  if (analysisUrl && (billsec ?? 0) >= MIN_DURATION_FOR_ANALYSIS) {
     analysisTriggered = true;
-    // Разбор идёт минуты — держать webhook нельзя (Binotel начнёт ретраи).
-    // Строка в binotel_call_log уже записана, поэтому ретрай отсечётся как дубль.
     runInBackground(triggerAnalyzeCall({
       lead_id: lead.id,
-      recording_url: recording,
+      recording_url: analysisUrl,
       duration_sec: billsec,
       manager_id: lead.assigned_to ?? null,
       call_at: startedAt,
@@ -323,7 +453,8 @@ async function handleCallCompleted(payload: Record<string, unknown>) {
   return json({
     status: "success",
     lead_id: lead.id,
-    recording: Boolean(recording),
+    lead_created: leadCreated,
+    recording_archived: Boolean(archived),
     analysis_triggered: analysisTriggered,
   });
 }

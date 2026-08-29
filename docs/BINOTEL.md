@@ -12,8 +12,11 @@ Sipuni остаётся на месте — провайдер выбирает�
 |---|---|
 | Click-to-call из карточки лида | edge `binotel-call` → `calls/internal-number-to-external-number`. АТС сначала звонит менеджеру на внутренний номер, после ответа соединяет с клиентом |
 | Имя клиента и ссылка в CRM при входящем | webhook `apiCallSettings` → отвечаем `customerData` (имя лида, источник, ответственный, ссылка `/crm?lead=<id>`). Показывает плагин Binotel для Chrome |
-| Звонок в ленте лида | webhook `apiCallCompleted` → строка в `communications` (`type=call`) с длительностью и ссылкой на запись |
+| Звонок в ленте лида | webhook `apiCallCompleted` → строка в `communications` (`type=call`) с длительностью и статусом «отвечен / не дозвонились» |
+| Запись разговора прямо в карточке | файл скачивается в bucket `call-recordings` и играет плеером в ленте лида |
 | Разбор разговора AI-РОПом | запись длиннее 15 с уходит в `ai-rop-analyze-call` |
+| Лид из звонка с неизвестного номера | опция «Заводить лида…» — карточка создаётся в первой стадии дефолтной воронки выбранного проекта |
+| Импорт истории | кнопка «Импорт истории за 7 дней» → `stats/list-of-calls-per-day` |
 | Аудит | таблица `binotel_call_log` — все входящие webhook-и с сырым payload |
 
 ## Карта файлов
@@ -22,10 +25,17 @@ Sipuni остаётся на месте — провайдер выбирает�
 supabase/functions/_lib/binotel.ts        клиент REST API 4.0 (key+secret в теле, коды ошибок, ссылка на запись)
 supabase/functions/binotel-call/          click-to-call + режим "test" (проверка ключей через list-of-employees)
 supabase/functions/binotel-webhook/       оба webhook-а Binotel на одном URL (различаются по requestType)
+supabase/functions/binotel-import-calls/  разовый импорт истории звонков (админ)
 supabase/migrations/20260829120000_binotel_telephony.sql
+supabase/migrations/20260829130000_binotel_recordings_and_leads.sql
 src/components/settings/BinotelSettings.tsx   карточка настроек (Настройки → Телефония)
 src/lib/telephony.ts                      выбор провайдера для кнопки «Позвонить»
+src/test/binotel.test.ts                  тесты разбора номеров, callDetails и текстов
 ```
+
+Чистая логика разбора (номера, `callDetails`, состояния звонка, текст в ленте) вынесена
+в `_lib/binotel.ts` без сети и Deno API — именно поэтому она покрыта обычными vitest-тестами:
+`npx vitest run src/test/binotel.test.ts`.
 
 ## Подключение
 
@@ -33,8 +43,11 @@ src/lib/telephony.ts                      выбор провайдера для
 
 ```bash
 supabase db push        # или применить 20260829120000_binotel_telephony.sql через SQL Editor
-supabase functions deploy binotel-call binotel-webhook
+supabase functions deploy binotel-call binotel-webhook binotel-import-calls
 ```
+
+Миграции две: первая заводит провайдера и аудит, вторая — bucket `call-recordings`,
+`communications.duration_sec` и автосоздание лидов.
 
 ### 2. Секрет для webhook-ов
 
@@ -61,6 +74,10 @@ Webhook принимает запрос, если совпал секрет **и
 6. «Проверить подключение» — реальный запрос `settings/list-of-employees`: покажет список
    сотрудников АТС и скажет, есть ли среди них ваш внутренний номер.
 7. «Сделать провайдером по умолчанию» — кнопка «Позвонить» в CRM начнёт звонить через Binotel.
+8. По желанию — «Заводить лида при звонке с неизвестного номера» + проект, куда они падают.
+   Выключено по умолчанию: включённая опция тащит в воронку и ошибочные наборы.
+9. «Импорт истории за 7 дней» — подтянет прошлые звонки в ленты уже существующих лидов
+   (без записей: ссылка на каждую живёт 15 минут и запрашивается отдельно).
 
 Каждый менеджер задаёт свой внутренний номер сам: Настройки → Профиль (или карточка
 «Телефония» в CRM), поле «Мой внутренний номер». Без него звонок уйдёт на общий номер из п. 3.
@@ -94,8 +111,15 @@ https://<project>.supabase.co/functions/v1/binotel-webhook?secret=<BINOTEL_WEBHO
 
 **После звонка.** `apiCallCompleted` → дедуп по `generalCallID` (Binotel повторяет доставку
 до 7 раз за 38 часов, пока не увидит `{"status":"success"}`) → ссылка на запись через
-`stats/call-record` (живёт 15 минут) → строка в `communications` → разбор AI-РОПа в фоне,
-если разговор дольше 15 секунд.
+`stats/call-record` → **файл сразу скачивается в bucket `call-recordings`**: ссылка Binotel
+живёт 15 минут, и складывать её в карточку как есть бессмысленно — через час она мертва.
+Дальше строка в `communications` (длительность, статус, `media_kind=audio` с постоянной
+ссылкой) → разбор AI-РОПа в фоне, если разговор дольше 15 секунд. В разбор уходит наша
+постоянная ссылка, а не исходная.
+
+Если лида с таким номером нет, входящий звонок и включённая опция автосоздания заводят
+карточку: имя = номер в E.164, `source=binotel`, `channel=phone`, первая стадия дефолтной
+воронки, ответственный — владелец проекта.
 
 ## Безопасность
 
@@ -107,6 +131,8 @@ https://<project>.supabase.co/functions/v1/binotel-webhook?secret=<BINOTEL_WEBHO
   писать может только service_role.
 * Хосты `binotel.com` / `binotel.ua` добавлены в allow-list `validateRecordingUrl` — иначе
   разбор записи отклонил бы ссылку как SSRF.
+* Bucket `call-recordings` публичный на чтение (как `crm-chat-media` с голосовыми клиентов),
+  писать может только service_role. Путь файла — `<lead_id>/<generalCallID>.<ext>`.
 
 ## Диагностика
 
@@ -118,6 +144,8 @@ https://<project>.supabase.co/functions/v1/binotel-webhook?secret=<BINOTEL_WEBHO
 | Плагин не показывает имя | `binotel_call_log` → `request_type='apiCallSettings'`, `processing_status` |
 | Звонки не появляются в лиде | `binotel_call_log` → `lead_not_found` означает, что номер не совпал ни с одним лидом |
 | Webhook отдаёт 403 | не совпал `?secret=` в URL, зарегистрированном в кабинете Binotel |
+| Запись не играет в карточке | `binotel_call_log.recording_url`: если там ссылка `api.binotel.com`, значит скачать файл не удалось и в карточку он не попал |
+| Импорт вернул `skipped_no_lead` | номера из истории не совпали ни с одним лидом — это нормально для звонков от неклиентов |
 
 ```sql
 select created_at, request_type, phone_normalized, disposition, processing_status, error_text

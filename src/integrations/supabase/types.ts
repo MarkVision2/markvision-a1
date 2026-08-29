@@ -1106,12 +1106,14 @@ export type Database = {
           auto_msg_24h_enabled: boolean
           auto_msg_24h_hours: number
           auto_msg_24h_template_key: string
+          binotel_auto_create_leads: boolean
           binotel_crm_base_url: string | null
           binotel_credentials_present: boolean | null
           binotel_enabled: boolean
           binotel_key: string | null
           binotel_operator: string | null
           binotel_pbx_number: string | null
+          binotel_project_id: string | null
           binotel_secret: string | null
           cron_secret: string | null
           followup_2h_enabled: boolean
@@ -1134,12 +1136,14 @@ export type Database = {
           auto_msg_24h_enabled?: boolean
           auto_msg_24h_hours?: number
           auto_msg_24h_template_key?: string
+          binotel_auto_create_leads?: boolean
           binotel_crm_base_url?: string | null
           binotel_credentials_present?: boolean | null
           binotel_enabled?: boolean
           binotel_key?: string | null
           binotel_operator?: string | null
           binotel_pbx_number?: string | null
+          binotel_project_id?: string | null
           binotel_secret?: string | null
           cron_secret?: string | null
           followup_2h_enabled?: boolean
@@ -1162,12 +1166,14 @@ export type Database = {
           auto_msg_24h_enabled?: boolean
           auto_msg_24h_hours?: number
           auto_msg_24h_template_key?: string
+          binotel_auto_create_leads?: boolean
           binotel_crm_base_url?: string | null
           binotel_credentials_present?: boolean | null
           binotel_enabled?: boolean
           binotel_key?: string | null
           binotel_operator?: string | null
           binotel_pbx_number?: string | null
+          binotel_project_id?: string | null
           binotel_secret?: string | null
           cron_secret?: string | null
           followup_2h_enabled?: boolean
@@ -1343,6 +1349,7 @@ export type Database = {
           content: string | null
           created_at: string
           created_by: string | null
+          duration_sec: number | null
           direction:
             | Database["public"]["Enums"]["communication_direction"]
             | null
@@ -1360,6 +1367,7 @@ export type Database = {
           content?: string | null
           created_at?: string
           created_by?: string | null
+          duration_sec?: number | null
           direction?:
             | Database["public"]["Enums"]["communication_direction"]
             | null
@@ -1377,6 +1385,7 @@ export type Database = {
           content?: string | null
           created_at?: string
           created_by?: string | null
+          duration_sec?: number | null
           direction?:
             | Database["public"]["Enums"]["communication_direction"]
             | null

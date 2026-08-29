@@ -102,8 +102,11 @@ export function LeadChatPanel({
         ? "border-destructive/40 bg-destructive/10 text-destructive"
         : "border-border/60 bg-secondary/60 text-foreground";
     const dur = fmtDuration(m.callDurationSec);
+    // Запись разговора приезжает из АТС (Binotel) и лежит в нашем storage —
+    // слушать её нужно прямо в ленте, не уходя в кабинет телефонии.
+    const recording = m.mediaKind === "audio" && m.mediaUrl ? m.mediaUrl : null;
     return (
-      <div key={m.id} className="flex justify-center">
+      <div key={m.id} className="flex flex-col items-center gap-1">
         <div className={cn("flex items-center gap-2 rounded-full border px-3 py-1 text-[11px]", tone)}>
           <Icon className="h-3.5 w-3.5" />
           <span className="font-semibold">{label}</span>
@@ -112,6 +115,17 @@ export function LeadChatPanel({
             · {new Date(m.at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
           </span>
         </div>
+        {recording && (
+          <audio
+            controls
+            preload="none"
+            playsInline
+            className="h-8 w-full max-w-[280px]"
+            aria-label="Запись разговора"
+          >
+            <source src={recording} type={m.mediaMime?.split(";")[0] || "audio/mpeg"} />
+          </audio>
+        )}
       </div>
     );
   };

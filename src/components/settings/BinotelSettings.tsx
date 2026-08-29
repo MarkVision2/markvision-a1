@@ -2,16 +2,18 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
+import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { invalidateTelephonyCache } from "@/lib/telephony";
 import { supabaseUrl } from "@/lib/supabaseConfig";
 import { toast } from "sonner";
-import { PhoneForwarded, ShieldCheck, KeyRound, Lock, AlertTriangle, Copy } from "lucide-react";
+import { PhoneForwarded, ShieldCheck, KeyRound, Lock, AlertTriangle, Copy, UserPlus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { SaveStatusBadge } from "./SaveStatusBadge";
@@ -23,20 +25,25 @@ type Row = {
   binotel_pbx_number: string | null;
   binotel_crm_base_url: string | null;
   binotel_credentials_present: boolean;
+  binotel_auto_create_leads: boolean;
+  binotel_project_id: string | null;
 };
 
 type Employee = { name: string; email: string; internalNumber: string; status: string };
 
 const SELECT_COLS =
-  "telephony_provider, binotel_enabled, binotel_operator, binotel_pbx_number, binotel_crm_base_url, binotel_credentials_present";
+  "telephony_provider, binotel_enabled, binotel_operator, binotel_pbx_number, binotel_crm_base_url, " +
+  "binotel_credentials_present, binotel_auto_create_leads, binotel_project_id";
 
 export function BinotelSettings() {
   const { isAdmin } = useAuth();
+  const { projects } = useProjectsStore();
   const [row, setRow] = useState<Row | null>(null);
   const [keyInput, setKeyInput] = useState("");
   const [secretInput, setSecretInput] = useState("");
   const [savingCreds, setSavingCreds] = useState(false);
   const [testing, setTesting] = useState(false);
+  const [importing, setImporting] = useState(false);
   const [employees, setEmployees] = useState<Employee[] | null>(null);
 
   const load = async () => {
@@ -66,6 +73,8 @@ export function BinotelSettings() {
           binotel_operator: v.binotel_operator,
           binotel_pbx_number: v.binotel_pbx_number,
           binotel_crm_base_url: v.binotel_crm_base_url,
+          binotel_auto_create_leads: v.binotel_auto_create_leads,
+          binotel_project_id: v.binotel_project_id,
         })
         .eq("id", true);
       if (error) throw error;
@@ -102,6 +111,21 @@ export function BinotelSettings() {
       data.operatorKnown
         ? `Binotel на связи · внутренний номер ${data.operator} найден в АТС`
         : `Binotel на связи, но номера ${data.operator} нет среди сотрудников АТС`,
+    );
+  };
+
+  const importCalls = async () => {
+    setImporting(true);
+    const { data, error } = await supabase.functions.invoke("binotel-import-calls", {
+      body: { days: 7 },
+    });
+    setImporting(false);
+    if (error) { toast.error("Ошибка импорта: " + error.message); return; }
+    if (!data?.ok) { toast.error("Binotel: " + (data?.error ?? "импорт не выполнен")); return; }
+    toast.success(
+      `Импорт за ${data.days} дн.: добавлено ${data.imported} из ${data.fetched}` +
+      (data.skipped_no_lead ? ` · без лида ${data.skipped_no_lead}` : "") +
+      (data.skipped_duplicate ? ` · уже были ${data.skipped_duplicate}` : ""),
     );
   };
 
@@ -168,6 +192,7 @@ export function BinotelSettings() {
           <li>• Key и Secret не выгружаются в браузер — только запись через RPC администратором.</li>
           <li>• Все запросы к api.binotel.com уходят из Edge Function (нет CORS, нет `VITE_*`).</li>
           <li>• Webhook принимает только запросы с секретом в URL либо с IP серверов Binotel.</li>
+          <li>• Запись разговора складывается в наш storage — ссылка Binotel живёт 15 минут.</li>
         </ul>
       </div>
 
@@ -240,6 +265,50 @@ export function BinotelSettings() {
         </p>
       </div>
 
+      <div className="rounded-xl border border-border/60 bg-secondary/20 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-2">
+            <UserPlus className="mt-0.5 h-4 w-4 text-muted-foreground" />
+            <div>
+              <div className="text-xs font-medium">Заводить лида при звонке с неизвестного номера</div>
+              <p className="text-[11px] text-muted-foreground">
+                Только входящие. Карточка создаётся в первой стадии дефолтной воронки проекта.
+              </p>
+            </div>
+          </div>
+          <Switch
+            checked={row.binotel_auto_create_leads}
+            onCheckedChange={(v) => update({ binotel_auto_create_leads: v })}
+          />
+        </div>
+
+        {row.binotel_auto_create_leads && (
+          <div className="mt-3">
+            <Label className="mb-1 block text-[11px] uppercase tracking-wide text-muted-foreground">
+              Проект для новых лидов
+            </Label>
+            <Select
+              value={row.binotel_project_id ?? ""}
+              onValueChange={(v) => update({ binotel_project_id: v || null })}
+            >
+              <SelectTrigger className="max-w-[320px]">
+                <SelectValue placeholder="Выберите проект" />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {!row.binotel_project_id && (
+              <p className="mt-1 text-[11px] text-warning">
+                Проект не выбран — лиды создаваться не будут.
+              </p>
+            )}
+          </div>
+        )}
+      </div>
+
       {row.binotel_enabled && !row.binotel_credentials_present && !keyInput && (
         <div className="flex items-start gap-2 rounded-lg border border-warning/40 bg-warning/10 p-2.5 text-[11px] text-warning">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
@@ -277,6 +346,14 @@ export function BinotelSettings() {
             {savingCreds ? "Сохраняю ключи…" : "Сохранить ключи"}
           </Button>
         )}
+        <Button
+          variant="outline"
+          onClick={importCalls}
+          disabled={importing || !row.binotel_enabled || !row.binotel_credentials_present}
+          title="Подтянуть звонки за последнюю неделю в ленты существующих лидов"
+        >
+          {importing ? "Импортирую…" : "Импорт истории за 7 дней"}
+        </Button>
         <Button
           variant="outline"
           onClick={testConnection}
