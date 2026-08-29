@@ -23,7 +23,7 @@
     },
     {
       "source": "/(.*)",
-      "destination": "/index.html"
+      "destination": "/app.html"
     }
   ],
   "ignoreCommand": "git log -1 --pretty=%B | grep -q '\\[vercel-deploy\\]' && exit 1 || exit 0"

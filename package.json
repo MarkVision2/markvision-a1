@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
-    "build:dev": "vite build --mode development",
+    "build": "vite build && node scripts/generate-seo.mjs",
+    "build:dev": "vite build --mode development && node scripts/generate-seo.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
@@ -16,7 +16,8 @@
     "test:e2e:install": "playwright install chromium",
     "typecheck": "tsc --noEmit",
     "ci": "npm run verify:audit && npm run lint && npm run typecheck && npm run test && npm run build",
-    "verify:audit": "bash scripts/verify-audit-plan.sh"
+    "verify:audit": "bash scripts/verify-audit-plan.sh",
+    "seo": "node scripts/generate-seo.mjs"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",

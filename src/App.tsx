@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "./hooks/useAuth";
 import { RequireAuth } from "./components/auth/RequireAuth";
+import { SeoManager } from "./components/seo/SeoManager";
 import { RequireModule } from "./components/auth/RequireModule";
 import { routeImports } from "./lib/routePrefetch";
 
@@ -73,6 +74,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <BrowserRouter>
+        <SeoManager />
         <AuthProvider>
           <Suspense fallback={<RouteFallback />}>
             <Routes>

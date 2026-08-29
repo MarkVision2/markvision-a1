@@ -9,9 +9,16 @@
     <title>MarkVision AI — Платформа для рекламы, CRM и аналитики</title>
     <meta name="description" content="MarkVision AI — платформа для запуска рекламы Meta, CRM, сквозной аналитики и автоматизации продаж в одном окне." />
     <meta name="author" content="MarkVision AI" />
+    <!-- Значения ниже — дефолт для главной. Для каждой страницы их
+         перезаписывает SeoManager (рантайм) и scripts/generate-seo.mjs
+         (статические HTML под краулеры соцсетей). Источник правды —
+         src/lib/seo.ts. -->
+    <meta name="robots" content="index, follow, max-image-preview:large" />
     <link rel="canonical" href="https://www.markvision.kz/" />
 
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="MarkVision AI" />
+    <meta property="og:locale" content="ru_RU" />
     <meta property="og:url" content="https://www.markvision.kz/" />
     <meta property="og:title" content="MarkVision AI — реклама, CRM и аналитика" />
     <meta property="og:description" content="Запуск рекламы Meta, CRM, сквозная аналитика и автоматизация продаж в одной платформе." />
