@@ -8,6 +8,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import { binotelRequest, toBinotelPhone } from "../_lib/binotel.ts";
+import { requireUser } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -16,7 +17,6 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -26,19 +26,12 @@ function json(body: unknown, status = 200) {
 }
 
 async function handle(req: Request): Promise<Response> {
-  // 1. Авторизация пользователя
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) return json({ ok: false, error: "unauthorized" }, 401);
-  if (!ANON_KEY) return json({ ok: false, error: "anon_key_missing" }, 500);
-
-  const userClient = createClient(SUPABASE_URL, ANON_KEY, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const { data: claims, error: claimErr } = await userClient.auth.getClaims(
-    authHeader.replace("Bearer ", ""),
-  );
-  if (claimErr || !claims?.claims?.sub) return json({ ok: false, error: "unauthorized" }, 401);
-  const userId = claims.claims.sub as string;
+  // 1. Авторизация пользователя — через общий хелпер _lib/auth.ts.
+  // Свой getClaims тут был багом: метод появился в supabase-js ~2.49,
+  // а функция импортирует 2.45.0 — падало с «getClaims is not a function».
+  const auth = await requireUser(req);
+  if (!auth.ok) return auth.response;
+  const userId = auth.userId;
 
   // 2. Тело запроса
   let body: Record<string, unknown>;

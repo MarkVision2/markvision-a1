@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.0';
+import { requireUser } from '../_lib/auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -23,25 +24,14 @@ Deno.serve(async (req) => {
 
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
   const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY')!;
 
-  // 1. Auth check
-  const authHeader = req.headers.get('Authorization');
-  if (!authHeader?.startsWith('Bearer ')) {
-    return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), {
-      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-  const userClient = createClient(SUPABASE_URL, ANON_KEY, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const { data: claims, error: claimErr } = await userClient.auth.getClaims(authHeader.replace('Bearer ', ''));
-  if (claimErr || !claims?.claims?.sub) {
-    return new Response(JSON.stringify({ ok: false, error: 'unauthorized' }), {
-      status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
-  }
-  const userId = claims.claims.sub;
+  // 1. Auth check — через общий хелпер _lib/auth.ts.
+  // Здесь был свой getClaims: метод появился в supabase-js ~2.49, а функция
+  // импортирует 2.45.0, поэтому вызов падал с «getClaims is not a function»
+  // и click-to-call через Sipuni не работал вовсе.
+  const auth = await requireUser(req);
+  if (!auth.ok) return auth.response;
+  const userId = auth.userId;
 
   // 2. Validate body
   let body: any;
