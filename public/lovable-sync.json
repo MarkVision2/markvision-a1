@@ -1,7 +1,7 @@
 {
-  "git_sha": "2478b88",
-  "git_sha_full": "2478b880fee3ba8fe8f726c9ff797b846dddef50",
-  "updated_at": "2026-08-29T10:50:22Z",
-  "label": "Merge: проверка подключения Binotel без внутреннего номера",
+  "git_sha": "a0a87b7",
+  "git_sha_full": "a0a87b7797f5f3d6b7ba5373df9ca22e15e72a73",
+  "updated_at": "2026-08-29T10:55:51Z",
+  "label": "Merge: нормализация номеров Binotel под Казахстан",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
