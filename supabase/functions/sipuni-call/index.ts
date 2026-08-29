@@ -19,8 +19,7 @@ function normPhone(s: string): string {
   return (s ?? '').replace(/[^\d+]/g, '');
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+async function handle(req: Request): Promise<Response> {
 
   const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!;
   const SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
@@ -137,4 +136,20 @@ Deno.serve(async (req) => {
   return new Response(JSON.stringify({ ok: true, provider: 'sipuni', operator }), {
     status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  try {
+    return await handle(req);
+  } catch (e) {
+    // Необработанный throw уходит generic-500 без CORS-заголовков, и браузер
+    // показывает лишь «Failed to send a request to the Edge Function», пряча причину.
+    console.error('[sipuni-call] unhandled', e);
+    return new Response(JSON.stringify({
+      ok: false,
+      error: 'internal_error',
+      detail: e instanceof Error ? e.message : String(e),
+    }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  }
 });

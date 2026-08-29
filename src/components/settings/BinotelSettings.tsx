@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -113,7 +112,6 @@ export function BinotelSettings() {
     void load();
     /* eslint-disable-next-line react-hooks/exhaustive-deps */
   }, [activeId]);
-  useRealtimeTable("project_binotel_settings", () => void load());
 
   const update = (patch: Partial<Row>) => setRow((p) => p ? { ...p, ...patch } : p);
 
