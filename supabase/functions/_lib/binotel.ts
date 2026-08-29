@@ -88,8 +88,11 @@ export async function binotelRequest(
 }
 
 /**
- * Номер для Binotel: только цифры. Украинские номера АТС отдаёт как 0XXXXXXXXX,
- * из CRM же приходит +380XXXXXXXXX — приводим к национальному формату.
+ * Номер для Binotel: только цифры.
+ * Украинскую АТС Binotel обслуживает в национальном формате (0XXXXXXXXX), а в CRM
+ * номер лежит как +380XXXXXXXXX — приводим. Номера остальных стран (в т.ч. казахские
+ * +7 7XX ...) отдаём как есть: там национальный формат совпадает с международным
+ * без плюса.
  */
 export function toBinotelPhone(raw: string): string {
   let d = String(raw ?? "").replace(/\D/g, "");
@@ -105,8 +108,14 @@ export function toBinotelPhone(raw: string): string {
 export function toE164(raw: string): string {
   const d = String(raw ?? "").replace(/\D/g, "");
   if (!d) return "";
-  if (d.length === 10 && d.startsWith("0")) return `+38${d}`;   // 0671234567  → +380671234567
-  if (d.length === 9) return `+380${d}`;                        // 671234567   → +380671234567
+  // Казахстан / Россия: 8 700 606 88 69 — местный транковый префикс вместо +7.
+  if (d.length === 11 && d.startsWith("8")) return `+7${d.slice(1)}`;
+  if (d.length === 11 && d.startsWith("7")) return `+${d}`;      // 77006068869 → +77006068869
+  if (d.length === 10 && d.startsWith("7")) return `+7${d}`;     // 7006068869  → +77006068869
+  // Украина: 0XX XXX XX XX либо уже 380...
+  if (d.length === 12 && d.startsWith("380")) return `+${d}`;
+  if (d.length === 10 && d.startsWith("0")) return `+38${d}`;    // 0671234567  → +380671234567
+  if (d.length === 9) return `+380${d}`;                         // 671234567   → +380671234567
   return `+${d}`;
 }
 
