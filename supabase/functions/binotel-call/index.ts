@@ -16,7 +16,7 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -25,12 +25,11 @@ function json(body: unknown, status = 200) {
   });
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-
+async function handle(req: Request): Promise<Response> {
   // 1. Авторизация пользователя
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) return json({ ok: false, error: "unauthorized" }, 401);
+  if (!ANON_KEY) return json({ ok: false, error: "anon_key_missing" }, 500);
 
   const userClient = createClient(SUPABASE_URL, ANON_KEY, {
     global: { headers: { Authorization: authHeader } },
@@ -57,7 +56,16 @@ Deno.serve(async (req) => {
     .from("automation_settings")
     .select("telephony_provider, binotel_enabled, binotel_key, binotel_secret, binotel_operator, binotel_pbx_number")
     .eq("id", true).single();
-  if (setErr || !settings) return json({ ok: false, error: "settings_missing" }, 500);
+  if (setErr || !settings) {
+    const noColumns = /column .* does not exist|schema cache/i.test(setErr?.message ?? "");
+    return json({
+      ok: false,
+      error: noColumns ? "migration_missing" : "settings_missing",
+      detail: noColumns
+        ? "Колонки Binotel отсутствуют — примените scripts/apply-binotel-telephony.sql"
+        : (setErr?.message ?? "automation_settings недоступна"),
+    }, 500);
+  }
 
   if (!settings.binotel_enabled) return json({ ok: false, error: "binotel_disabled" }, 400);
   if (mode === "call" && settings.telephony_provider !== "binotel") {
@@ -144,4 +152,21 @@ Deno.serve(async (req) => {
   }
 
   return json({ ok: true, provider: "binotel", operator: internalNumber, generalCallID });
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  try {
+    return await handle(req);
+  } catch (e) {
+    // Без этого любая внутренняя ошибка уходит generic-500 без CORS-заголовков,
+    // и браузер показывает лишь «Failed to send a request to the Edge Function»,
+    // пряча настоящую причину.
+    console.error("[binotel-call] unhandled", e);
+    return json({
+      ok: false,
+      error: "internal_error",
+      detail: e instanceof Error ? e.message : String(e),
+    }, 500);
+  }
 });
