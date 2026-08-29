@@ -77,15 +77,10 @@ async function handle(req: Request): Promise<Response> {
   const internalNumber =
     (profile?.sip_extension && String(profile.sip_extension).trim()) ||
     (settings.binotel_operator ? String(settings.binotel_operator).trim() : "");
-  if (!internalNumber) {
-    return json({
-      ok: false,
-      error: "operator_missing",
-      hint: "укажите внутренний номер в профиле (sip_extension) или дефолтный binotel_operator",
-    }, 400);
-  }
 
   // 4. Тест подключения: реальный вызов settings/list-of-employees (только админ).
+  // Внутренний номер тут НЕ обязателен: тест как раз и нужен, чтобы увидеть
+  // список сотрудников АТС и узнать, какой номер вписывать в настройки.
   if (mode === "test") {
     const { data: roleRow } = await admin
       .from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle();
@@ -101,11 +96,11 @@ async function handle(req: Request): Promise<Response> {
       internalNumber: String((e?.endpointData as Record<string, unknown>)?.internalNumber ?? ""),
       status: String((e?.endpointData as Record<string, unknown>)?.status ?? ""),
     }));
-    const known = list.some((e) => e.internalNumber === internalNumber);
+    const known = Boolean(internalNumber) && list.some((e) => e.internalNumber === internalNumber);
     return json({
       ok: true,
       mode: "test",
-      operator: internalNumber,
+      operator: internalNumber || null,
       operatorKnown: known,
       employees: list.slice(0, 50),
       pbxNumber: settings.binotel_pbx_number ?? null,
@@ -114,7 +109,16 @@ async function handle(req: Request): Promise<Response> {
     });
   }
 
-  // 5. Звонок
+  // 5. Звонок — вот здесь внутренний номер уже обязателен: именно на него
+  // АТС звонит первым, прежде чем соединить с клиентом.
+  if (!internalNumber) {
+    return json({
+      ok: false,
+      error: "operator_missing",
+      detail: "Не задан внутренний номер: укажите свой в профиле или дефолтный в настройках Binotel",
+    }, 400);
+  }
+
   const payload: Record<string, unknown> = {
     internalNumber,
     externalNumber: phone,

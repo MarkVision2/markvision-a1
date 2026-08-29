@@ -139,11 +139,13 @@ export function BinotelSettings() {
     if (error) { toast.error(await edgeErrorText(error, "не удалось вызвать функцию")); return; }
     if (!data?.ok) { toast.error("Binotel: " + (data?.detail ?? data?.error ?? "не настроен")); return; }
     setEmployees((data.employees ?? []) as Employee[]);
-    toast.success(
-      data.operatorKnown
-        ? `Binotel на связи · внутренний номер ${data.operator} найден в АТС`
-        : `Binotel на связи, но номера ${data.operator} нет среди сотрудников АТС`,
-    );
+    if (!data.operator) {
+      toast.success("Binotel на связи. Внутренний номер не задан — возьмите его из списка сотрудников ниже");
+    } else if (data.operatorKnown) {
+      toast.success(`Binotel на связи · внутренний номер ${data.operator} найден в АТС`);
+    } else {
+      toast.warning(`Binotel на связи, но номера ${data.operator} нет среди сотрудников АТС`);
+    }
   };
 
   const importCalls = async () => {
@@ -368,6 +370,10 @@ export function BinotelSettings() {
           <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
             Сотрудники в АТС ({employees.length})
           </div>
+          <p className="mb-2 text-[11px] text-muted-foreground">
+            Число слева — внутренний номер. Впишите нужный в поле «Внутренний номер по умолчанию»
+            или в свой профиль.
+          </p>
           <div className="flex flex-wrap gap-1.5">
             {employees.map((e) => (
               <Badge key={`${e.email}-${e.internalNumber}`} variant="outline" className="gap-1 text-[11px]">
