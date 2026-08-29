@@ -28,8 +28,12 @@ import {
   phoneTail,
   toE164,
   toInt,
-  type BinotelCredentials,
 } from "../_lib/binotel.ts";
+import {
+  credentialsOf,
+  resolveProjectByPbxNumber,
+  type ProjectBinotel,
+} from "../_lib/binotelProject.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -124,9 +128,12 @@ type LeadRow = {
   source: string | null;
 };
 
-async function findLead(phone: string): Promise<LeadRow | null> {
+async function findLead(phone: string, projectId: string | null): Promise<LeadRow | null> {
   if (phoneTail(phone).length < 9) return null;
-  const { data, error } = await admin.rpc("find_lead_by_phone_digits", { p_phone: phone });
+  const { data, error } = await admin.rpc("find_lead_by_phone_digits", {
+    p_phone: phone,
+    p_project_id: projectId,
+  });
   if (error) {
     console.warn("[binotel] find_lead rpc failed", error.message);
     return null;
@@ -248,15 +255,6 @@ async function logCall(row: Record<string, unknown>) {
   if (error) console.error("[binotel] call_log insert failed", error.message);
 }
 
-async function loadCredentials(): Promise<BinotelCredentials | null> {
-  const { data } = await admin
-    .from("automation_settings").select("binotel_key, binotel_secret")
-    .eq("id", true).single();
-  const key = data?.binotel_key as string | null;
-  const secret = data?.binotel_secret as string | null;
-  return key && secret ? { key, secret } : null;
-}
-
 async function triggerAnalyzeCall(body: Record<string, unknown>) {
   const r = await fetch(`${SUPABASE_URL}/functions/v1/ai-rop-analyze-call`, {
     method: "POST",
@@ -273,7 +271,13 @@ async function triggerAnalyzeCall(body: Record<string, unknown>) {
 async function handleCallSettings(payload: Record<string, unknown>) {
   const externalNumber = String(payload.externalNumber ?? "");
   const direction = callDirection(payload.callType);
-  const lead = await findLead(externalNumber);
+
+  // Чей звонок: у каждого проекта своя АТС, различаем по номеру.
+  const project = await resolveProjectByPbxNumber(
+    admin,
+    (payload.pbxNumber as string) ?? null,
+  );
+  const lead = await findLead(externalNumber, project?.project_id ?? null);
 
   // Аудит — в фон: телефон уже звонит, лишний roundtrip тут ни к чему.
   runInBackground(logCall({
@@ -288,13 +292,9 @@ async function handleCallSettings(payload: Record<string, unknown>) {
 
   if (!lead) return json({});
 
-  // Binotel держит живой звонок, пока мы отвечаем — оба запроса параллельно.
-  const [baseUrlRes, profileRes] = await Promise.all([
-    admin.from("automation_settings").select("binotel_crm_base_url").eq("id", true).single(),
-    lead.assigned_to
-      ? admin.from("profiles").select("sip_extension").eq("id", lead.assigned_to).single()
-      : Promise.resolve({ data: null }),
-  ]);
+  const profileRes = lead.assigned_to
+    ? await admin.from("profiles").select("sip_extension").eq("id", lead.assigned_to).single()
+    : { data: null };
 
   const customerData: Record<string, unknown> = {
     // Плагин Binotel для Chrome обрезает имя примерно на 43 символах.
@@ -305,7 +305,7 @@ async function handleCallSettings(payload: Record<string, unknown>) {
   const ext = (profileRes.data as { sip_extension?: string | null } | null)?.sip_extension?.trim();
   if (ext) customerData.assignedToEmployeeNumber = ext;
 
-  const rawBase = (baseUrlRes.data as { binotel_crm_base_url?: string | null } | null)?.binotel_crm_base_url;
+  const rawBase = project?.crm_base_url;
   const base = typeof rawBase === "string" ? rawBase.replace(/\/+$/, "") : "";
   if (base) {
     customerData.linkToCrmUrl = `${base}/crm?lead=${lead.id}`;
@@ -347,18 +347,16 @@ async function handleCallCompleted(payload: Record<string, unknown>) {
     if (seen) return json({ status: "success", duplicate: true });
   }
 
-  const { data: settings } = await admin
-    .from("automation_settings")
-    .select("binotel_key, binotel_secret, binotel_auto_create_leads, binotel_project_id")
-    .eq("id", true).single();
+  // Чей звонок: сопоставляем номер АТС из payload с подключением проекта.
+  const pbxNumber = (details.pbxNumberData as { number?: string } | undefined)?.number
+    ?? (details.pbxNumber as string | undefined)
+    ?? null;
+  const project: ProjectBinotel | null = await resolveProjectByPbxNumber(admin, pbxNumber);
 
-  let lead = await findLead(externalNumber);
+  let lead = await findLead(externalNumber, project?.project_id ?? null);
   let leadCreated = false;
-  if (
-    !lead && direction === "in" &&
-    settings?.binotel_auto_create_leads && settings?.binotel_project_id
-  ) {
-    lead = await createLeadFromCall(externalNumber, settings.binotel_project_id as string);
+  if (!lead && direction === "in" && project?.auto_create_leads) {
+    lead = await createLeadFromCall(externalNumber, project.project_id);
     leadCreated = Boolean(lead);
   }
 
@@ -382,9 +380,7 @@ async function handleCallCompleted(payload: Record<string, unknown>) {
   let archived: Archived | null = null;
   let rawRecording: string | null = null;
   if (isRecordable(disposition) && generalCallID) {
-    const creds = settings?.binotel_key && settings?.binotel_secret
-      ? { key: settings.binotel_key as string, secret: settings.binotel_secret as string }
-      : await loadCredentials();
+    const creds = project ? credentialsOf(project) : null;
     if (creds) {
       rawRecording = await fetchCallRecordUrl(generalCallID, creds);
       if (rawRecording) archived = await archiveRecording(rawRecording, lead.id, generalCallID);
@@ -452,6 +448,7 @@ async function handleCallCompleted(payload: Record<string, unknown>) {
 
   return json({
     status: "success",
+    project_id: project?.project_id ?? null,
     lead_id: lead.id,
     lead_created: leadCreated,
     recording_archived: Boolean(archived),

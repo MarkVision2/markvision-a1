@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { invalidateTelephonyCache } from "@/lib/telephony";
 import { toast } from "sonner";
-import { Phone, Headphones, Server, PhoneForwarded } from "lucide-react";
+import { Phone, Headphones, Server } from "lucide-react";
 import { useAutoSave } from "@/hooks/useAutoSave";
 import { SaveStatusBadge } from "@/components/settings/SaveStatusBadge";
 
@@ -25,7 +25,6 @@ const PROVIDERS: { id: Provider; title: string; desc: string; icon: typeof Phone
   { id: "tel", title: "Системный звонок", desc: "tel: — мобильный/FaceTime/системный dialer", icon: Phone },
   { id: "sip", title: "SIP-софтфон", desc: "sip: — Zoiper, MicroSIP, Sipuni Desktop", icon: Headphones },
   { id: "sipuni", title: "Sipuni АТС", desc: "Click-to-call: Sipuni звонит вам, потом клиенту", icon: Server },
-  { id: "binotel", title: "Binotel АТС", desc: "Click-to-call: Binotel звонит вам, потом клиенту", icon: PhoneForwarded },
 ];
 
 export function TelephonySettings() {
@@ -110,7 +109,7 @@ export function TelephonySettings() {
         {isAdmin && <SaveStatusBadge status={settingsStatus} error={settingsError} />}
       </div>
 
-      <div className="grid gap-2 md:grid-cols-4">
+      <div className="grid gap-2 md:grid-cols-3">
         {PROVIDERS.map((p) => {
           const active = s.telephony_provider === p.id;
           const Icon = p.icon;
@@ -161,11 +160,10 @@ export function TelephonySettings() {
         <p className="text-xs text-muted-foreground">Параметры Sipuni может менять только администратор.</p>
       )}
 
-      {s.telephony_provider === "binotel" && (
-        <p className="text-xs text-muted-foreground">
-          Ключи и номера Binotel настраиваются в разделе «Настройки → Телефония».
-        </p>
-      )}
+      <p className="text-[11px] text-muted-foreground">
+        Binotel настраивается отдельно в каждом проекте — «Настройки → Телефония».
+        Если он подключён, звонки по лидам этого проекта идут через него.
+      </p>
 
       <div className="rounded-xl border border-border/60 bg-secondary/30 p-3">
         <div className="mb-1 flex items-center justify-between gap-2">

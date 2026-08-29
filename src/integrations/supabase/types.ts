@@ -2858,6 +2858,53 @@ export type Database = {
         }
         Relationships: []
       }
+      project_binotel_settings: {
+        Row: {
+          api_key: string | null
+          api_secret: string | null
+          auto_create_leads: boolean
+          crm_base_url: string | null
+          credentials_present: boolean | null
+          enabled: boolean
+          operator: string | null
+          pbx_number: string | null
+          project_id: string
+          updated_at: string
+        }
+        Insert: {
+          api_key?: string | null
+          api_secret?: string | null
+          auto_create_leads?: boolean
+          crm_base_url?: string | null
+          credentials_present?: boolean | null
+          enabled?: boolean
+          operator?: string | null
+          pbx_number?: string | null
+          project_id: string
+          updated_at?: string
+        }
+        Update: {
+          api_key?: string | null
+          api_secret?: string | null
+          auto_create_leads?: boolean
+          crm_base_url?: string | null
+          credentials_present?: boolean | null
+          enabled?: boolean
+          operator?: string | null
+          pbx_number?: string | null
+          project_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_binotel_settings_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       project_automation_settings: {
         Row: {
           auto_msg_24h_enabled: boolean
@@ -4111,6 +4158,27 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects_public"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_binotel_settings_safe: {
+        Row: {
+          auto_create_leads: boolean | null
+          credentials_present: boolean | null
+          crm_base_url: string | null
+          enabled: boolean | null
+          operator: string | null
+          pbx_number: string | null
+          project_id: string | null
+          updated_at: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_binotel_settings_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]

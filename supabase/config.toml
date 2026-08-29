@@ -34,6 +34,11 @@ verify_jwt = false
 [functions.binotel-webhook]
 verify_jwt = false
 
+# Импорт звонков дёргает pg_cron без пользовательского JWT — внутри функция
+# сама проверяет x-automation-key = cron_secret, а ручной запуск — JWT админа.
+[functions.binotel-import-calls]
+verify_jwt = false
+
 [functions.ai-rop-score-manager]
 verify_jwt = false
 

@@ -4,7 +4,10 @@
 лида, карточка клиента на экране менеджера при входящем и запись разговора, которая
 попадает в ленту лида и уходит в разбор AI-РОПа.
 
-Sipuni остаётся на месте — провайдер выбирается переключателем, работает один активный.
+**Подключение своё у каждого проекта, и оно одно.** Таблица `project_binotel_settings`
+с `project_id` в первичном ключе — двух подключений в проекте быть не может. Если у проекта
+лида есть подключённый Binotel, кнопка «Позвонить» идёт через него, минуя глобальный выбор
+провайдера (tel / sip / sipuni), — тот остаётся для проектов без Binotel.
 
 ## Что умеет
 
@@ -17,17 +20,21 @@ Sipuni остаётся на месте — провайдер выбирает�
 | Разбор разговора AI-РОПом | запись длиннее 15 с уходит в `ai-rop-analyze-call` |
 | Лид из звонка с неизвестного номера | опция «Заводить лида…» — карточка создаётся в первой стадии дефолтной воронки выбранного проекта |
 | Импорт истории | кнопка «Импорт истории за 7 дней» → `stats/list-of-calls-per-day` |
+| Синхронизация без webhook | pg_cron `binotel-import-15min` опрашивает API каждые 15 минут по всем подключённым проектам |
 | Аудит | таблица `binotel_call_log` — все входящие webhook-и с сырым payload |
 
 ## Карта файлов
 
 ```
 supabase/functions/_lib/binotel.ts        клиент REST API 4.0 (key+secret в теле, коды ошибок, ссылка на запись)
+supabase/functions/_lib/binotelProject.ts подключение проекта + маршрутизация звонка по номеру АТС
 supabase/functions/binotel-call/          click-to-call + режим "test" (проверка ключей через list-of-employees)
 supabase/functions/binotel-webhook/       оба webhook-а Binotel на одном URL (различаются по requestType)
 supabase/functions/binotel-import-calls/  разовый импорт истории звонков (админ)
 supabase/migrations/20260829120000_binotel_telephony.sql
 supabase/migrations/20260829130000_binotel_recordings_and_leads.sql
+supabase/migrations/20260829140000_binotel_per_project.sql
+supabase/migrations/20260829150000_binotel_import_cron.sql
 src/components/settings/BinotelSettings.tsx   карточка настроек (Настройки → Телефония)
 src/lib/telephony.ts                      выбор провайдера для кнопки «Позвонить»
 src/test/binotel.test.ts                  тесты разбора номеров, callDetails и текстов
@@ -46,8 +53,9 @@ supabase db push        # или применить 20260829120000_binotel_telep
 supabase functions deploy binotel-call binotel-webhook binotel-import-calls
 ```
 
-Миграции две: первая заводит провайдера и аудит, вторая — bucket `call-recordings`,
-`communications.duration_sec` и автосоздание лидов.
+Миграций четыре: провайдер и аудит → bucket `call-recordings` и автосоздание лидов →
+подключение по проектам → расписание синхронизации. Если `db push` недоступен, всё
+собрано в `scripts/apply-binotel-telephony.sql` для SQL Editor.
 
 ### 2. Секрет для webhook-ов
 
@@ -104,6 +112,11 @@ https://<project>.supabase.co/functions/v1/binotel-webhook?secret=<BINOTEL_WEBHO
 в `events` как `call_initiated`. Любая осечка АТС — не тупик: фронт открывает `tel:` и
 показывает предупреждение, звонок всё равно состоится.
 
+**Чей это звонок.** Binotel не передаёт идентификатор проекта, зато передаёт номер АТС —
+он уникален на проект (unique index на `pbx_number`), по нему и маршрутизируем. Если номер
+не пришёл (бывает на исходящих), а подключение в системе всего одно — берём его:
+двусмысленности всё равно нет. Поиск лида ограничен проектом этой АТС.
+
 **Входящий звонок.** Binotel шлёт `apiCallSettings` ещё до поднятия трубки. Ищем лида по
 последним 9 цифрам номера (`find_lead_by_phone_digits` — устойчиво к `+380…` / `0…` / скобкам
 и пробелам) и отвечаем карточкой. Путь горячий: аудит-запись уходит в фон, оставшиеся два
@@ -145,7 +158,9 @@ https://<project>.supabase.co/functions/v1/binotel-webhook?secret=<BINOTEL_WEBHO
 | Звонки не появляются в лиде | `binotel_call_log` → `lead_not_found` означает, что номер не совпал ни с одним лидом |
 | Webhook отдаёт 403 | не совпал `?secret=` в URL, зарегистрированном в кабинете Binotel |
 | Запись не играет в карточке | `binotel_call_log.recording_url`: если там ссылка `api.binotel.com`, значит скачать файл не удалось и в карточку он не попал |
-| Импорт вернул `skipped_no_lead` | номера из истории не совпали ни с одним лидом — это нормально для звонков от неклиентов |
+| Импорт вернул `skipped_no_lead` | номера из истории не совпали ни с одним лидом проекта — нормально для звонков от неклиентов |
+| Звонок ушёл не в тот проект | `binotel_call_log.raw_payload` → сверьте `pbxNumber` с полем «Номер АТС» в настройках проекта |
+| Крон не подтягивает звонки | `select * from cron.job where jobname = 'binotel-import-15min'`; функция авторизует крон по `automation_settings.cron_secret` |
 
 ```sql
 select created_at, request_type, phone_normalized, disposition, processing_status, error_text

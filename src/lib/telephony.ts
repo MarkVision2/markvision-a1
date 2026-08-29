@@ -1,9 +1,12 @@
 /**
- * Telephony layer with 4 providers configurable in admin:
- *  - tel     → системный звонок (tel:)
- *  - sip     → SIP-URI для софтфона (sip:)
- *  - sipuni  → click-to-call через edge function sipuni-call
- *  - binotel → click-to-call через edge function binotel-call (украинская АТС)
+ * Слой телефонии.
+ *
+ * Binotel подключается НА УРОВНЕ ПРОЕКТА: у каждого проекта своя АТС, и если она
+ * подключена — звонок идёт через неё, минуя глобальный выбор. Остальные варианты
+ * остаются общими для всех проектов:
+ *  - tel    → системный звонок (tel:)
+ *  - sip    → SIP-URI для софтфона (sip:)
+ *  - sipuni → click-to-call через edge function sipuni-call
  */
 import { supabase } from "@/integrations/supabase/client";
 
@@ -34,9 +37,31 @@ export async function getTelephonyProvider(): Promise<DialProvider> {
   return cachedProvider;
 }
 
+/** Подключён ли Binotel в проекте. Кэш на проект, чтобы не дёргать базу на каждый клик. */
+const binotelByProject = new Map<string, { value: boolean; at: number }>();
+
+export async function projectHasBinotel(projectId?: string | null): Promise<boolean> {
+  if (!projectId) return false;
+  const hit = binotelByProject.get(projectId);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.value;
+
+  const { data } = await (supabase.from("project_binotel_settings_safe" as any) as any)
+    .select("enabled, credentials_present").eq("project_id", projectId).maybeSingle();
+  const value = Boolean(data?.enabled && data?.credentials_present);
+  binotelByProject.set(projectId, { value, at: Date.now() });
+  return value;
+}
+
+/** Какой провайдер сработает для лида этого проекта. */
+export async function resolveDialProvider(projectId?: string | null): Promise<DialProvider> {
+  if (await projectHasBinotel(projectId)) return "binotel";
+  return getTelephonyProvider();
+}
+
 export function invalidateTelephonyCache() {
   cachedProvider = null;
   cachedAt = 0;
+  binotelByProject.clear();
 }
 
 function openUri(uri: string) {
@@ -44,13 +69,16 @@ function openUri(uri: string) {
 }
 
 /** Initiate a call. Always falls back to tel: on failure. */
-export async function dial(phone: string, opts?: { leadId?: string }): Promise<DialResult> {
+export async function dial(
+  phone: string,
+  opts?: { leadId?: string; projectId?: string | null },
+): Promise<DialResult> {
   const digits = normalizePhone(phone);
   if (!phone || digits.length < 4) {
     return { ok: false, provider: "tel", error: "Нет корректного номера" };
   }
 
-  const provider = await getTelephonyProvider();
+  const provider = await resolveDialProvider(opts?.projectId);
 
   if (provider === "tel") {
     openUri(`tel:${digits}`);

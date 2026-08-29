@@ -1,13 +1,16 @@
 // binotel-import-calls
-// Разовый импорт истории звонков из Binotel в CRM: после подключения раздел
-// «Звонки» и ленты лидов не пустые, а сразу с историей.
+// Подтягивает звонки из Binotel в CRM. Два режима:
 //
-// Вход: { days?: number }  (1..31, по умолчанию 7)
-// Auth: JWT администратора.
+//  • вручную — админ из карточки настроек: { projectId, days } под своим JWT;
+//  • по расписанию — pg_cron с заголовком x-automation-key = cron_secret,
+//    тогда обходятся все проекты с включённым подключением.
 //
-// Записи разговоров не тянем: ссылка на каждую живёт 15 минут и запрашивается
+// Расписание закрывает работу webhook-ов, пока их не настроила поддержка Binotel:
+// звонки попадают в ленты лидов сами, с задержкой в интервал крона.
+//
+// Записи разговоров тут не тянем: ссылка на каждую живёт 15 минут и запрашивается
 // отдельным вызовом — сотни файлов не влезут в бюджет функции. Записи копятся
-// с текущего момента через binotel-webhook.
+// с момента, когда заработают webhook-и.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 import {
@@ -19,11 +22,13 @@ import {
   phoneTail,
   toInt,
 } from "../_lib/binotel.ts";
-import { requireUser } from "../_lib/auth.ts";
+import { credentialsOf, isMissingSchema, type ProjectBinotel } from "../_lib/binotelProject.ts";
+import { requireProjectAccess, requireUser } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers":
+    "authorization, x-client-info, apikey, content-type, x-automation-key",
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -34,6 +39,10 @@ const MAX_DAYS = 31;
 const PAUSE_AFTER = 5;
 const PAUSE_MS = 5_000;
 
+const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
+  auth: { persistSession: false, autoRefreshToken: false },
+});
+
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,
@@ -43,46 +52,25 @@ function json(body: unknown, status = 200) {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function handle(req: Request): Promise<Response> {
-  // Авторизация через общий хелпер: свой getClaims недоступен в supabase-js 2.45.0.
-  const auth = await requireUser(req);
-  if (!auth.ok) return auth.response;
-  const userId = auth.userId;
+type Summary = {
+  project_id: string;
+  fetched: number;
+  imported: number;
+  skipped_no_lead: number;
+  skipped_duplicate: number;
+  errors: string[];
+};
 
-  const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  const { data: roleRow } = await admin
-    .from("user_roles").select("role").eq("user_id", userId).eq("role", "admin").maybeSingle();
-  if (!roleRow) return json({ ok: false, error: "admin_only" }, 403);
-
-  let body: Record<string, unknown>;
-  try { body = await req.json(); } catch { body = {}; }
-  const days = Math.min(Math.max(toInt(body?.days) ?? 7, 1), MAX_DAYS);
-
-  const { data: settings } = await admin
-    .from("automation_settings")
-    .select("binotel_enabled, binotel_key, binotel_secret")
-    .eq("id", true).single();
-  if (!settings) {
-    return json({
-      ok: false,
-      error: "migration_missing",
-      detail: "Колонки Binotel отсутствуют — примените scripts/apply-binotel-telephony.sql",
-    }, 500);
+async function importProject(project: ProjectBinotel, days: number): Promise<Summary> {
+  const out: Summary = {
+    project_id: project.project_id,
+    fetched: 0, imported: 0, skipped_no_lead: 0, skipped_duplicate: 0, errors: [],
+  };
+  const creds = credentialsOf(project);
+  if (!creds) {
+    out.errors.push("ключи не заданы");
+    return out;
   }
-  if (!settings.binotel_enabled) return json({ ok: false, error: "binotel_disabled" }, 400);
-  if (!settings.binotel_key || !settings.binotel_secret) {
-    return json({ ok: false, error: "binotel_not_configured" }, 400);
-  }
-  const creds = { key: settings.binotel_key as string, secret: settings.binotel_secret as string };
-
-  let fetched = 0;
-  let imported = 0;
-  let skippedNoLead = 0;
-  let skippedDuplicate = 0;
-  const errors: string[] = [];
 
   for (let i = 0; i < days; i++) {
     if (i > 0 && i % PAUSE_AFTER === 0) await sleep(PAUSE_MS);
@@ -94,12 +82,14 @@ async function handle(req: Request): Promise<Response> {
 
     const r = await binotelRequest("stats/list-of-calls-per-day", { dayInTimestamp }, creds);
     if (!r.ok) {
-      errors.push(`${day.toISOString().slice(0, 10)}: ${r.error}`);
+      out.errors.push(`${day.toISOString().slice(0, 10)}: ${r.error}`);
       continue;
     }
 
-    const calls = Object.values((r.data.callDetails ?? {}) as Record<string, Record<string, unknown>>);
-    fetched += calls.length;
+    const calls = Object.values(
+      (r.data.callDetails ?? {}) as Record<string, Record<string, unknown>>,
+    );
+    out.fetched += calls.length;
 
     for (const call of calls) {
       const generalCallID = call.generalCallID != null ? String(call.generalCallID) : null;
@@ -113,13 +103,15 @@ async function handle(req: Request): Promise<Response> {
         .from("communications").select("id")
         .eq("type", "call").eq("external_id", generalCallID)
         .limit(1).maybeSingle();
-      if (seen) { skippedDuplicate++; continue; }
+      if (seen) { out.skipped_duplicate++; continue; }
 
-      const { data: leadRows } = await admin
-        .rpc("find_lead_by_phone_digits", { p_phone: externalNumber });
+      const { data: leadRows } = await admin.rpc("find_lead_by_phone_digits", {
+        p_phone: externalNumber,
+        p_project_id: project.project_id,
+      });
       const lead = (Array.isArray(leadRows) ? leadRows[0] : leadRows) as
         { id: string; assigned_to: string | null } | null;
-      if (!lead) { skippedNoLead++; continue; }
+      if (!lead) { out.skipped_no_lead++; continue; }
 
       const disposition = String(call.disposition ?? "");
       const billsec = toInt(call.billsec);
@@ -130,7 +122,9 @@ async function handle(req: Request): Promise<Response> {
         type: "call",
         channel: "phone",
         direction: callDirection(call.callType),
-        content: callContent({ answered, disposition, durationSec: billsec, recordingArchived: false }) || null,
+        content: callContent({
+          answered, disposition, durationSec: billsec, recordingArchived: false,
+        }) || null,
         status: answered ? "answered" : "missed",
         duration_sec: billsec,
         external_id: generalCallID,
@@ -140,21 +134,97 @@ async function handle(req: Request): Promise<Response> {
         created_by: lead.assigned_to ?? null,
       });
       if (error) {
-        if (errors.length < 10) errors.push(`${generalCallID}: ${error.message}`);
+        if (out.errors.length < 10) out.errors.push(`${generalCallID}: ${error.message}`);
       } else {
-        imported++;
+        out.imported++;
       }
     }
   }
+  return out;
+}
+
+async function handle(req: Request): Promise<Response> {
+  let body: Record<string, unknown>;
+  try { body = await req.json(); } catch { body = {}; }
+  const days = Math.min(Math.max(toInt(body?.days) ?? 7, 1), MAX_DAYS);
+
+  // Крон приходит без пользовательского JWT — авторизация по общему секрету.
+  const automationKey = req.headers.get("x-automation-key") ?? "";
+  let isCron = false;
+  if (automationKey) {
+    const { data: cfg } = await admin
+      .from("automation_settings").select("cron_secret").eq("id", true).single();
+    const secret = (cfg?.cron_secret as string | null) ?? "";
+    if (!secret || automationKey !== secret) return json({ ok: false, error: "forbidden" }, 403);
+    isCron = true;
+  }
+
+  let projects: ProjectBinotel[] = [];
+
+  if (isCron) {
+    const { data, error } = await admin
+      .from("project_binotel_settings").select("*").eq("enabled", true);
+    if (error) {
+      return json({
+        ok: false,
+        error: isMissingSchema(error.message) ? "migration_missing" : "settings_unavailable",
+        detail: error.message,
+      }, 500);
+    }
+    projects = (data ?? []) as ProjectBinotel[];
+  } else {
+    const auth = await requireUser(req);
+    if (!auth.ok) return auth.response;
+
+    const { data: roleRow } = await admin
+      .from("user_roles").select("role").eq("user_id", auth.userId)
+      .eq("role", "admin").maybeSingle();
+    if (!roleRow) return json({ ok: false, error: "admin_only" }, 403);
+
+    const projectId = typeof body?.projectId === "string" ? body.projectId : "";
+    if (!projectId) return json({ ok: false, error: "project_required" }, 400);
+
+    const access = await requireProjectAccess(auth.authHeader, projectId);
+    if (!access.ok) return access.response;
+
+    const { data, error } = await admin
+      .from("project_binotel_settings").select("*").eq("project_id", projectId).maybeSingle();
+    if (error) {
+      return json({
+        ok: false,
+        error: isMissingSchema(error.message) ? "migration_missing" : "settings_unavailable",
+        detail: error.message,
+      }, 500);
+    }
+    const row = data as ProjectBinotel | null;
+    if (!row || !row.enabled) {
+      return json({ ok: false, error: "binotel_disabled", detail: "В этом проекте Binotel не подключён" }, 400);
+    }
+    projects = [row];
+  }
+
+  const results: Summary[] = [];
+  for (const project of projects) {
+    results.push(await importProject(project, isCron ? Math.min(days, 2) : days));
+  }
+
+  const total = results.reduce(
+    (acc, r) => ({
+      fetched: acc.fetched + r.fetched,
+      imported: acc.imported + r.imported,
+      skipped_no_lead: acc.skipped_no_lead + r.skipped_no_lead,
+      skipped_duplicate: acc.skipped_duplicate + r.skipped_duplicate,
+    }),
+    { fetched: 0, imported: 0, skipped_no_lead: 0, skipped_duplicate: 0 },
+  );
 
   return json({
     ok: true,
+    mode: isCron ? "cron" : "manual",
     days,
-    fetched,
-    imported,
-    skipped_no_lead: skippedNoLead,
-    skipped_duplicate: skippedDuplicate,
-    errors: errors.slice(0, 10),
+    projects: results.length,
+    ...total,
+    errors: results.flatMap((r) => r.errors).slice(0, 10),
   });
 }
 
@@ -166,8 +236,7 @@ Deno.serve(async (req) => {
     // См. комментарий в binotel-call: generic-500 без CORS прячет причину.
     console.error("[binotel-import-calls] unhandled", e);
     return json({
-      ok: false,
-      error: "internal_error",
+      ok: false, error: "internal_error",
       detail: e instanceof Error ? e.message : String(e),
     }, 500);
   }

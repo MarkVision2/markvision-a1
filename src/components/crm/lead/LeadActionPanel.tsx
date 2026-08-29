@@ -75,6 +75,7 @@ export function LeadActionPanel({
         <CallDialPopover
           phone={lead.phone}
           leadId={lead.id}
+          projectId={lead.projectId}
           onConfirm={(r: CallResult) => onCall(r)}
           onAttempt={onCallAttempt}
           trigger={<ActionButton icon={Phone} label="Позвонить" />}

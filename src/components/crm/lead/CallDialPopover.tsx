@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { Phone, PhoneCall, PhoneMissed, PhoneIncoming, PhoneOutgoing, Loader2, AlertTriangle, ShieldCheck } from "lucide-react";
-import { dial, normalizePhone, getTelephonyProvider, type DialProvider } from "@/lib/telephony";
+import { dial, normalizePhone, resolveDialProvider, type DialProvider } from "@/lib/telephony";
 import { toast } from "sonner";
 
 type Direction = "outgoing" | "incoming";
@@ -24,13 +24,15 @@ interface Props {
   phone: string;
   onConfirm: (r: CallResult) => void;
   leadId?: string;
+  /** Проект лида: у каждого проекта своя АТС Binotel. */
+  projectId?: string | null;
   /** Log every dial attempt (success/error) for audit. */
   onAttempt?: (info: { provider: string; ok: boolean; phone?: string; warning?: string; error?: string }) => void;
 }
 
 const SKIP_CONFIRM_KEY = "crm.call.skipConfirm.v1";
 
-export function CallDialPopover({ trigger, phone, onConfirm, leadId, onAttempt }: Props) {
+export function CallDialPopover({ trigger, phone, onConfirm, leadId, projectId, onAttempt }: Props) {
   const [open, setOpen] = useState(false);
   const [step, setStep] = useState<"dial" | "confirm" | "result">("dial");
   const [dialing, setDialing] = useState(false);
@@ -45,8 +47,8 @@ export function CallDialPopover({ trigger, phone, onConfirm, leadId, onAttempt }
   const [provider, setProvider] = useState<DialProvider>("tel");
 
   useEffect(() => {
-    if (open) getTelephonyProvider().then(setProvider).catch(() => setProvider("tel"));
-  }, [open]);
+    if (open) resolveDialProvider(projectId).then(setProvider).catch(() => setProvider("tel"));
+  }, [open, projectId]);
 
   const reset = () => {
     setStep("dial");
@@ -71,7 +73,7 @@ export function CallDialPopover({ trigger, phone, onConfirm, leadId, onAttempt }
 
   const performDial = async () => {
     setDialing(true);
-    const r = await dial(phone, { leadId });
+    const r = await dial(phone, { leadId, projectId });
     setDialing(false);
     onAttempt?.({
       provider: r.provider,
