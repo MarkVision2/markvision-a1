@@ -19,6 +19,7 @@ import {
   phoneTail,
   toInt,
 } from "../_lib/binotel.ts";
+import { requireUser } from "../_lib/auth.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -27,7 +28,6 @@ const corsHeaders = {
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
 
 const MAX_DAYS = 31;
 // «Нагружаемый» метод: 5 запросов в минуту без ограничений, дальше пауза.
@@ -44,18 +44,10 @@ function json(body: unknown, status = 200) {
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 async function handle(req: Request): Promise<Response> {
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) return json({ ok: false, error: "unauthorized" }, 401);
-  if (!ANON_KEY) return json({ ok: false, error: "anon_key_missing" }, 500);
-
-  const userClient = createClient(SUPABASE_URL, ANON_KEY, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const { data: claims, error: claimErr } = await userClient.auth.getClaims(
-    authHeader.replace("Bearer ", ""),
-  );
-  if (claimErr || !claims?.claims?.sub) return json({ ok: false, error: "unauthorized" }, 401);
-  const userId = claims.claims.sub as string;
+  // Авторизация через общий хелпер: свой getClaims недоступен в supabase-js 2.45.0.
+  const auth = await requireUser(req);
+  if (!auth.ok) return auth.response;
+  const userId = auth.userId;
 
   const admin = createClient(SUPABASE_URL, SERVICE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
