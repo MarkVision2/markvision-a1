@@ -1,7 +1,7 @@
 {
-  "git_sha": "51a10f0",
-  "git_sha_full": "51a10f0e70779fc65966d12dbc3529819c7a8ed7",
-  "updated_at": "2026-08-29T10:43:51Z",
-  "label": "Merge: фикс авторизации edge-функций телефонии (getClaims)",
+  "git_sha": "1bcebae",
+  "git_sha_full": "1bcebaeb0c223e788d381600c9920150bedc26f0",
+  "updated_at": "2026-08-29T10:46:08Z",
+  "label": "Merge: заголовок карточки Binotel без страны",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
