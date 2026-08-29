@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { useIsMounted } from "@/hooks/useIsMounted";
 
 export interface GroupInviteLinkStat {
   id: string;
@@ -151,12 +152,8 @@ export function useGroupInviteStats() {
   // Запрос идёт в несколько раундов и может завершиться уже после размонтирования
   // или после переключения проекта. Тогда результат писать нельзя: это и обновление
   // состояния мёртвого компонента, и риск показать статистику чужого проекта.
-  const mountedRef = useRef(true);
+  const isMounted = useIsMounted();
   const runRef = useRef(0);
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => { mountedRef.current = false; };
-  }, []);
 
   const refetch = useCallback(async () => {
     if (!activeId) {
@@ -166,7 +163,7 @@ export function useGroupInviteStats() {
       return;
     }
     const run = ++runRef.current;
-    const fresh = () => mountedRef.current && runRef.current === run;
+    const fresh = () => isMounted() && runRef.current === run;
     setLoading(true);
     setError(null);
     try {
