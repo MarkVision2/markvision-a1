@@ -1,7 +1,7 @@
 {
-  "git_sha": "b671a87",
-  "git_sha_full": "b671a878c2c7b5ac67001ab39df9fa2481501ed2",
-  "updated_at": "2026-08-29T16:01:29Z",
-  "label": "[vercel-deploy] Merge: полный аудит сайта — рабочий typecheck, доступы, цикл рендера, e2e по всем разделам",
+  "git_sha": "b75da2c",
+  "git_sha_full": "b75da2c851cdf4ecdee768acb6d63aa282cc9c50",
+  "updated_at": "2026-08-29T16:27:39Z",
+  "label": "Merge: схемы heygen/reels/client-tokens в репозиторий",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
