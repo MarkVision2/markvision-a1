@@ -1,7 +1,7 @@
 {
-  "git_sha": "23f0f7a",
-  "git_sha_full": "23f0f7ac7205540f1434dfeb399b810b003ccb23",
-  "updated_at": "2026-08-29T11:14:00Z",
-  "label": "Merge branch 'main' of https://github.com/MarkVision2/markvision-a1",
+  "git_sha": "c608af2",
+  "git_sha_full": "c608af2ac1b227e9bd103a07c79b5a824d352618",
+  "updated_at": "2026-08-29T11:26:51Z",
+  "label": "Merge: безопасность ключей Binotel и Sipuni на том же уровне",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
