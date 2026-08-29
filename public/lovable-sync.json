@@ -1,7 +1,7 @@
 {
-  "git_sha": "02d8191",
-  "git_sha_full": "02d819143a1103149828b3b3f14ae12a84f2a4f9",
-  "updated_at": "2026-08-29T10:37:41Z",
-  "label": "Merge branch 'main' of https://github.com/MarkVision2/markvision-a1",
+  "git_sha": "51a10f0",
+  "git_sha_full": "51a10f0e70779fc65966d12dbc3529819c7a8ed7",
+  "updated_at": "2026-08-29T10:43:51Z",
+  "label": "Merge: фикс авторизации edge-функций телефонии (getClaims)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
