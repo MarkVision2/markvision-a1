@@ -2,16 +2,18 @@
  * Бренд-шаблоны контент-завода: типы и поля для n8n webhook.
  */
 
-export interface BrandColors {
+// type, а не interface: только у псевдонимов типов есть неявная индексная
+// сигнатура, без которой значение нельзя записать в jsonb-колонку (Json).
+export type BrandColors = {
   primary?: string;
   secondary?: string;
   accent?: string;
-}
+};
 
-export interface BrandFonts {
+export type BrandFonts = {
   heading?: string;
   body?: string;
-}
+};
 
 export interface BrandTemplate {
   id: string;

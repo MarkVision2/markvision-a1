@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
+import { useIsMounted } from "@/hooks/useIsMounted";
 
 export interface GroupInviteLinkStat {
   id: string;
@@ -148,6 +149,12 @@ export function useGroupInviteStats() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Запрос идёт в несколько раундов и может завершиться уже после размонтирования
+  // или после переключения проекта. Тогда результат писать нельзя: это и обновление
+  // состояния мёртвого компонента, и риск показать статистику чужого проекта.
+  const isMounted = useIsMounted();
+  const runRef = useRef(0);
+
   const refetch = useCallback(async () => {
     if (!activeId) {
       setLinks([]);
@@ -155,10 +162,13 @@ export function useGroupInviteStats() {
       setClicksByLink({});
       return;
     }
+    const run = ++runRef.current;
+    const fresh = () => isMounted() && runRef.current === run;
     setLoading(true);
     setError(null);
     try {
       const list = await fetchLinks(activeId);
+      if (!fresh()) return;
       setLinks(list);
       const joins: Record<string, GroupInviteJoinRow[]> = {};
       const clicks: Record<string, GroupInviteClickDay[]> = {};
@@ -168,13 +178,15 @@ export function useGroupInviteStats() {
           clicks[l.id] = await fetchClickDays(l.id);
         }),
       );
+      if (!fresh()) return;
       setJoinsByLink(joins);
       setClicksByLink(clicks);
     } catch (e) {
+      if (!fresh()) return;
       setError(e instanceof Error ? e.message : "Не удалось загрузить");
       setLinks([]);
     } finally {
-      setLoading(false);
+      if (fresh()) setLoading(false);
     }
   }, [activeId]);
 

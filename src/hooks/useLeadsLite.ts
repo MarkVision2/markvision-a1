@@ -109,6 +109,17 @@ export async function fetchLeadsLite(activeId: string | null): Promise<LeadLite[
   }));
 }
 
+/**
+ * Стабильная ссылка на пустой список.
+ *
+ * `useQuery({...})` с дефолтом `= []` создаёт НОВЫЙ массив на каждом рендере,
+ * пока данные грузятся. useCrmFlow держит этот массив в зависимостях эффекта и
+ * внутри вызывает setState — получался цикл «эффект → рендер → новый [] →
+ * эффект», который крутился до конца загрузки (на дашборде это ~180 рендеров
+ * и предупреждение React «Maximum update depth exceeded»).
+ */
+const NO_LEADS: LeadLite[] = [];
+
 export function useLeadsLite() {
   const { activeId } = useProjectsStore();
   const queryClient = useQueryClient();
@@ -119,7 +130,7 @@ export function useLeadsLite() {
 
   useRealtimeTable("leads", refetch, true, 600);
 
-  const { data: leads = [], isLoading: loading } = useQuery({
+  const { data: leads = NO_LEADS, isLoading: loading } = useQuery({
     queryKey: [LEADS_LITE_QUERY_KEY, activeId],
     queryFn: () => fetchLeadsLite(activeId),
   });

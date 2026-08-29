@@ -8,10 +8,10 @@ test.describe("Login form validation", () => {
 
   test("показывает ошибки при пустой отправке", async ({ page }) => {
     await page.getByRole("button", { name: /Войти в платформу/i }).click();
-    // Один из двух селекторов гарантированно покажет ошибку валидации
-    const idError = page.locator("p.text-destructive", { hasText: /логин|email/i }).first();
-    const pwError = page.locator("p.text-destructive", { hasText: /пароль/i }).first();
-    await expect(idError.or(pwError)).toBeVisible();
+    // Пустая отправка подсвечивает оба поля и называет их, а не «минимум N символов»
+    const fieldErrors = page.locator("p.text-destructive");
+    await expect(fieldErrors.filter({ hasText: /логин|email/i }).first()).toBeVisible();
+    await expect(fieldErrors.filter({ hasText: /пароль/i }).first()).toBeVisible();
   });
 
   test("кнопка показывает/скрывает пароль", async ({ page }) => {

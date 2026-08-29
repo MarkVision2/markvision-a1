@@ -12,13 +12,13 @@ import { ArrowLeft, ArrowRight, Eye, EyeOff, HelpCircle, Loader2, Mail, MailChec
 type Mode = "signin" | "signup" | "forgot" | "sent";
 
 const signinSchema = z.object({
-  identifier: z.string().trim().min(3, "Минимум 3 символа").max(255),
-  password: z.string().min(6, "Минимум 6 символов").max(128),
+  identifier: z.string().trim().min(1, "Введите email или логин").min(3, "Минимум 3 символа").max(255),
+  password: z.string().min(1, "Введите пароль").min(6, "Минимум 6 символов").max(128),
 });
 const signupSchema = z.object({
-  name: z.string().trim().min(2, "Минимум 2 символа").max(80),
-  email: z.string().trim().email("Некорректный email").max(255),
-  password: z.string().min(8, "Минимум 8 символов").max(128),
+  name: z.string().trim().min(1, "Введите имя").min(2, "Минимум 2 символа").max(80),
+  email: z.string().trim().min(1, "Введите email").email("Некорректный email").max(255),
+  password: z.string().min(1, "Введите пароль").min(8, "Минимум 8 символов").max(128),
 });
 const emailSchema = z.string().trim().email("Некорректный email").max(255);
 
@@ -59,7 +59,7 @@ export function AuthForm() {
     const parsed = signinSchema.safeParse({ identifier, password });
     if (!parsed.success) {
       const errs: Record<string, string> = {};
-      parsed.error.issues.forEach((i) => { errs[i.path[0] as string] = i.message; });
+      parsed.error.issues.forEach((i) => { const k = i.path[0] as string; if (!errs[k]) errs[k] = i.message; });
       setErrors(errs);
       return;
     }
@@ -104,7 +104,7 @@ export function AuthForm() {
     });
     if (!parsed.success) {
       const errs: Record<string, string> = {};
-      parsed.error.issues.forEach((i) => { errs[i.path[0] as string] = i.message; });
+      parsed.error.issues.forEach((i) => { const k = i.path[0] as string; if (!errs[k]) errs[k] = i.message; });
       setErrors(errs);
       return;
     }

@@ -3,6 +3,8 @@
  * Нужен когда: пользователь ушёл со step-3 до realtime, или INSERT в Supabase не прошёл.
  */
 
+import type { Json } from "@/integrations/supabase/types";
+
 export interface GalleryBatchItem {
   requestId: string;
   styleId: string;
@@ -32,7 +34,7 @@ export interface CachedGalleryItem {
   image_url: string;
   prompt_snapshot: string | null;
   brand_template_id: string | null;
-  metadata: Record<string, unknown>;
+  metadata: Record<string, Json>;
   created_at: string;
   source: "cache" | "results";
 }

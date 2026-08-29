@@ -7,6 +7,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import type { Json } from "@/integrations/supabase/types";
 import { useAuth } from "@/hooks/useAuth";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { getContentFactoryDb } from "@/lib/contentFactoryDb";
@@ -43,7 +44,7 @@ export interface GalleryItem {
   image_url: string;
   prompt_snapshot: string | null;
   brand_template_id: string | null;
-  metadata: Record<string, unknown>;
+  metadata: Record<string, Json>;
   created_at: string;
   source?: "db" | "results" | "cache";
 }
@@ -58,7 +59,7 @@ export interface SaveGalleryInput {
   imageUrl: string;
   promptSnapshot?: string;
   brandTemplateId?: string | null;
-  metadata?: Record<string, unknown>;
+  metadata?: Record<string, Json>;
 }
 
 const MIGRATION_HINT =
@@ -105,7 +106,7 @@ function rowToGalleryItem(row: Record<string, unknown>, source: GalleryItem["sou
     image_url: String(row.image_url),
     prompt_snapshot: (row.prompt_snapshot as string | null) ?? null,
     brand_template_id: (row.brand_template_id as string | null) ?? null,
-    metadata: (row.metadata as Record<string, unknown>) ?? {},
+    metadata: (row.metadata as Record<string, Json>) ?? {},
     created_at: String(row.created_at ?? new Date().toISOString()),
     source,
   };

@@ -21,7 +21,21 @@ export const STAGE_AUTOMATION_VARIABLES = [
 const RULES_PREFIX = "crm.stage-automations.v1";
 const SENT_PREFIX = "crm.stage-automation-sent.v1";
 
-const DEFAULT_PROJECT_SETTINGS = {
+export type ProjectAutomationSettings = {
+  followup_2h_enabled: boolean;
+  followup_2h_minutes: number;
+  auto_msg_24h_enabled: boolean;
+  auto_msg_24h_hours: number;
+  auto_msg_24h_template_key: string;
+  revival_7d_enabled: boolean;
+  revival_7d_days: number;
+  revival_7d_template_key: string;
+};
+
+// Без `as const`: это значения по умолчанию, а не допустимые значения. С `as const`
+// тип сужался до литералов (true / 120 / "followup_24h"), и форма настроек не могла
+// записать в них ничего другого.
+const DEFAULT_PROJECT_SETTINGS: ProjectAutomationSettings = {
   followup_2h_enabled: true,
   followup_2h_minutes: 120,
   auto_msg_24h_enabled: true,
@@ -30,9 +44,7 @@ const DEFAULT_PROJECT_SETTINGS = {
   revival_7d_enabled: true,
   revival_7d_days: 7,
   revival_7d_template_key: "revival_7d",
-} as const;
-
-export type ProjectAutomationSettings = typeof DEFAULT_PROJECT_SETTINGS;
+};
 
 function storageProjectKey(prefix: string, projectId?: string | null) {
   return `${prefix}:${projectId || "global"}`;

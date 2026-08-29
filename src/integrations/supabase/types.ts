@@ -1408,6 +1408,200 @@ export type Database = {
           },
         ]
       }
+      content_factory_brand_templates: {
+        Row: {
+          brandbook_urls: string[]
+          colors: Json
+          created_at: string
+          created_by: string | null
+          description: string | null
+          fonts: Json
+          id: string
+          is_default: boolean
+          logo_url: string | null
+          name: string
+          project_id: string
+          prompt_addon: string | null
+          reference_urls: string[]
+          style_notes: string | null
+          tone: string | null
+          updated_at: string
+        }
+        Insert: {
+          brandbook_urls?: string[]
+          colors?: Json
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          fonts?: Json
+          id?: string
+          is_default?: boolean
+          logo_url?: string | null
+          name: string
+          project_id: string
+          prompt_addon?: string | null
+          reference_urls?: string[]
+          style_notes?: string | null
+          tone?: string | null
+          updated_at?: string
+        }
+        Update: {
+          brandbook_urls?: string[]
+          colors?: Json
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          fonts?: Json
+          id?: string
+          is_default?: boolean
+          logo_url?: string | null
+          name?: string
+          project_id?: string
+          prompt_addon?: string | null
+          reference_urls?: string[]
+          style_notes?: string | null
+          tone?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      content_factory_gallery: {
+        Row: {
+          brand_template_id: string | null
+          created_at: string
+          created_by: string | null
+          id: string
+          image_url: string
+          metadata: Json
+          project_id: string
+          prompt_snapshot: string | null
+          request_id: string | null
+          session_id: string | null
+          style_id: string | null
+          style_label: string | null
+          type_id: string | null
+          type_title: string | null
+        }
+        Insert: {
+          brand_template_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          image_url: string
+          metadata?: Json
+          project_id: string
+          prompt_snapshot?: string | null
+          request_id?: string | null
+          session_id?: string | null
+          style_id?: string | null
+          style_label?: string | null
+          type_id?: string | null
+          type_title?: string | null
+        }
+        Update: {
+          brand_template_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          image_url?: string
+          metadata?: Json
+          project_id?: string
+          prompt_snapshot?: string | null
+          request_id?: string | null
+          session_id?: string | null
+          style_id?: string | null
+          style_label?: string | null
+          type_id?: string | null
+          type_title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "content_factory_gallery_brand_template_id_fkey"
+            columns: ["brand_template_id"]
+            isOneToOne: false
+            referencedRelation: "content_factory_brand_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      content_factory_gallery_hidden: {
+        Row: {
+          hidden_at: string
+          hidden_by: string | null
+          project_id: string
+          request_id: string
+          slide_index: number
+        }
+        Insert: {
+          hidden_at?: string
+          hidden_by?: string | null
+          project_id: string
+          request_id: string
+          slide_index?: number
+        }
+        Update: {
+          hidden_at?: string
+          hidden_by?: string | null
+          project_id?: string
+          request_id?: string
+          slide_index?: number
+        }
+        Relationships: []
+      }
+      content_factory_results: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          image_url: string | null
+          project_id: string | null
+          raw: Json | null
+          request_id: string
+          session_id: string | null
+          slide_index: number
+          status: string
+          style_id: string | null
+          style_label: string | null
+          type_id: string | null
+          type_title: string | null
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          image_url?: string | null
+          project_id?: string | null
+          raw?: Json | null
+          request_id: string
+          session_id?: string | null
+          slide_index?: number
+          status?: string
+          style_id?: string | null
+          style_label?: string | null
+          type_id?: string | null
+          type_title?: string | null
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          image_url?: string | null
+          project_id?: string | null
+          raw?: Json | null
+          request_id?: string
+          session_id?: string | null
+          slide_index?: number
+          status?: string
+          style_id?: string | null
+          style_label?: string | null
+          type_id?: string | null
+          type_title?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       deals: {
         Row: {
           amount: number
@@ -2166,6 +2360,82 @@ export type Database = {
           },
         ]
       }
+      lg_cities: {
+        Row: {
+          city: string
+          created_at: string
+          enabled: boolean
+          id: string
+          last_parsed_at: string | null
+          project_id: string
+          sort: number
+        }
+        Insert: {
+          city: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          last_parsed_at?: string | null
+          project_id: string
+          sort?: number
+        }
+        Update: {
+          city?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          last_parsed_at?: string | null
+          project_id?: string
+          sort?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lg_cities_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lg_rubrics: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          id: string
+          label: string
+          project_id: string
+          rubric: string
+          sort: number
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          label: string
+          project_id: string
+          rubric: string
+          sort?: number
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          label?: string
+          project_id?: string
+          rubric?: string
+          sort?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lg_rubrics_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       loss_reasons: {
         Row: {
           created_at: string
@@ -2731,6 +3001,7 @@ export type Database = {
           key: string
           order_index: number
           pipeline_id: string
+          stage_role: string
           title: string
           updated_at: string
         }
@@ -2744,6 +3015,7 @@ export type Database = {
           key: string
           order_index: number
           pipeline_id: string
+          stage_role?: string
           title: string
           updated_at?: string
         }
@@ -2757,6 +3029,7 @@ export type Database = {
           key?: string
           order_index?: number
           pipeline_id?: string
+          stage_role?: string
           title?: string
           updated_at?: string
         }
@@ -3051,6 +3324,41 @@ export type Database = {
           usp?: string | null
         }
         Relationships: []
+      }
+      project_metric_labels: {
+        Row: {
+          column_key: string
+          created_at: string
+          id: string
+          label: string
+          project_id: string
+          updated_at: string
+        }
+        Insert: {
+          column_key: string
+          created_at?: string
+          id?: string
+          label: string
+          project_id: string
+          updated_at?: string
+        }
+        Update: {
+          column_key?: string
+          created_at?: string
+          id?: string
+          label?: string
+          project_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_metric_labels_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       project_members: {
         Row: {

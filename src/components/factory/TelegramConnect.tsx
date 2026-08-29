@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useIsMounted } from "@/hooks/useIsMounted";
 
 interface LinkResp {
   code: string;
@@ -48,6 +49,7 @@ export function TelegramConnect({
   const [link, setLink] = useState<LinkResp | null>(null);
   const projectIdRef = useRef(projectId);
   const linkBaselineRef = useRef<string | null>(null);
+  const isMounted = useIsMounted();
   projectIdRef.current = projectId;
 
   const loadStatus = async (quiet = false) => {
@@ -60,7 +62,7 @@ export function TelegramConnect({
     const requestedProjectId = projectId;
     try {
       const next = await invoke({ project_id: projectId, action: "status" }) as TelegramConnectionStatus;
-      if (projectIdRef.current !== requestedProjectId) return;
+      if (!isMounted() || projectIdRef.current !== requestedProjectId) return;
       setStatus(next);
       onStatusChange?.(next);
       if (next.connected && linkBaselineRef.current !== null) {
@@ -72,9 +74,9 @@ export function TelegramConnect({
         }
       }
     } catch (e) {
-      if (!quiet) toast.error((e as Error).message || "Не удалось проверить Telegram");
+      if (!quiet && isMounted()) toast.error((e as Error).message || "Не удалось проверить Telegram");
     } finally {
-      if (!quiet) setStatusLoading(false);
+      if (!quiet && isMounted()) setStatusLoading(false);
     }
   };
 

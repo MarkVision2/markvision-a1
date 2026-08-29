@@ -156,6 +156,7 @@ export default function Settings() {
     profile: "disconnected",
     pipelines: "disconnected",
     loss: "disconnected",
+    "metrics-labels": "disconnected",
     telephony: "checking",
     whatsapp: "checking",
     site: "checking",

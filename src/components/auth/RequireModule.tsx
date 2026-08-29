@@ -14,6 +14,7 @@ const FALLBACK_BY_MODULE: Record<ModuleKey, string> = {
   sales_ai: "/sales-ai",
   ai_agents: "/ai-agents",
   broadcasts: "/broadcasts",
+  leadgen: "/leadgen",
   analytics: "/analytics",
   creative_funnel: "/analytics/creatives",
   content_analytics: "/analytics/content",

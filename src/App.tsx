@@ -86,17 +86,17 @@ const App = () => (
               <Route path="/ads" element={<RequireAuth><AppLayout><RequireModule module="ads"><Ads /></RequireModule></AppLayout></RequireAuth>} />
               <Route path="/crm" element={<RequireAuth><AppLayout><RequireModule module="crm"><Crm /></RequireModule></AppLayout></RequireAuth>} />
               <Route path="/calls" element={<RequireAuth><AppLayout><RequireModule module="crm"><CallsHistory /></RequireModule></AppLayout></RequireAuth>} />
-              <Route path="/sales-ai" element={<RequireAuth><AppLayout><RequireModule module="crm"><SalesAI /></RequireModule></AppLayout></RequireAuth>} />
-              <Route path="/ai-agents" element={<RequireAuth><AppLayout><RequireModule module="crm"><AiAgents /></RequireModule></AppLayout></RequireAuth>} />
-              <Route path="/broadcasts" element={<RequireAuth><AppLayout><RequireModule module="crm"><Broadcasts /></RequireModule></AppLayout></RequireAuth>} />
+              <Route path="/sales-ai" element={<RequireAuth><AppLayout><RequireModule module="sales_ai"><SalesAI /></RequireModule></AppLayout></RequireAuth>} />
+              <Route path="/ai-agents" element={<RequireAuth><AppLayout><RequireModule module="ai_agents"><AiAgents /></RequireModule></AppLayout></RequireAuth>} />
+              <Route path="/broadcasts" element={<RequireAuth><AppLayout><RequireModule module="broadcasts"><Broadcasts /></RequireModule></AppLayout></RequireAuth>} />
               <Route path="/leadgen" element={<RequireAuth><AppLayout><RequireModule module="leadgen"><Leadgen /></RequireModule></AppLayout></RequireAuth>} />
-              <Route path="/broadcasts/:id" element={<RequireAuth><AppLayout><RequireModule module="crm"><BroadcastDetail /></RequireModule></AppLayout></RequireAuth>} />
+              <Route path="/broadcasts/:id" element={<RequireAuth><AppLayout><RequireModule module="broadcasts"><BroadcastDetail /></RequireModule></AppLayout></RequireAuth>} />
               <Route path="/analytics" element={<RequireAuth><AppLayout><RequireModule module="analytics"><Analytics /></RequireModule></AppLayout></RequireAuth>} />
-              <Route path="/analytics/creatives" element={<RequireAuth><AppLayout><RequireModule module="analytics"><CreativeFunnel /></RequireModule></AppLayout></RequireAuth>} />
-              <Route path="/analytics/content" element={<RequireAuth><AppLayout><RequireModule module="analytics"><ContentAnalytics /></RequireModule></AppLayout></RequireAuth>} />
-              <Route path="/marketing/content-center" element={<RequireAuth><AppLayout><RequireModule module="factory"><ContentCenter /></RequireModule></AppLayout></RequireAuth>} />
-              <Route path="/marketing/content-plan" element={<RequireAuth><AppLayout><RequireModule module="factory"><ContentPlan /></RequireModule></AppLayout></RequireAuth>} />
-              <Route path="/marketing/content-plan/:id" element={<RequireAuth><AppLayout><RequireModule module="factory"><ContentPlanDetail /></RequireModule></AppLayout></RequireAuth>} />
+              <Route path="/analytics/creatives" element={<RequireAuth><AppLayout><RequireModule module="creative_funnel"><CreativeFunnel /></RequireModule></AppLayout></RequireAuth>} />
+              <Route path="/analytics/content" element={<RequireAuth><AppLayout><RequireModule module="content_analytics"><ContentAnalytics /></RequireModule></AppLayout></RequireAuth>} />
+              <Route path="/marketing/content-center" element={<RequireAuth><AppLayout><RequireModule module="content_center"><ContentCenter /></RequireModule></AppLayout></RequireAuth>} />
+              <Route path="/marketing/content-plan" element={<RequireAuth><AppLayout><RequireModule module="content_plan"><ContentPlan /></RequireModule></AppLayout></RequireAuth>} />
+              <Route path="/marketing/content-plan/:id" element={<RequireAuth><AppLayout><RequireModule module="content_plan"><ContentPlanDetail /></RequireModule></AppLayout></RequireAuth>} />
               <Route path="/marketing/autopost" element={<RequireAuth><Navigate to="/marketing/content-plan?view=calendar" replace /></RequireAuth>} />
               <Route path="/finance" element={<RequireAuth><AppLayout><RequireModule module="finance"><Finance /></RequireModule></AppLayout></RequireAuth>} />
               <Route path="/reports" element={<RequireAuth><AppLayout><RequireModule module="reports"><Reports /></RequireModule></AppLayout></RequireAuth>} />
@@ -110,7 +110,7 @@ const App = () => (
               <Route path="/create/montage-lab" element={<RequireAuth><AppLayout><RequireModule module="factory"><CreateMontageLab /></RequireModule></AppLayout></RequireAuth>} />
               <Route path="/create/reels" element={<RequireAuth><AppLayout><RequireModule module="factory"><CreateReels /></RequireModule></AppLayout></RequireAuth>} />
               <Route path="/projects/new" element={<RequireAuth><AppLayout><RequireModule module="settings"><ProjectIntegrationWizard /></RequireModule></AppLayout></RequireAuth>} />
-              <Route path="/projects/:id/strategy" element={<RequireAuth><AppLayout><RequireModule module="factory"><ProjectStrategy /></RequireModule></AppLayout></RequireAuth>} />
+              <Route path="/projects/:id/strategy" element={<RequireAuth><AppLayout><RequireModule module="strategy"><ProjectStrategy /></RequireModule></AppLayout></RequireAuth>} />
               <Route path="*" element={<NotFound />} />
             </Routes>
           </Suspense>

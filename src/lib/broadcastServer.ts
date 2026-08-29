@@ -6,7 +6,7 @@
 // прогресс подтягивается realtime-подпиской (stats обновляет воркер).
 //
 // Таблиц ещё нет в сгенерированных типах Supabase — используем принятый в
-// проекте каст (supabase.from("x" as any) as any), как в CapiSettings.
+// проекте каст (supabase.from(<таблица> as any) as any), как в CapiSettings.
 import { supabase } from "@/integrations/supabase/client";
 import type { LeadContact } from "@/hooks/useLeadContacts";
 import {

@@ -16,6 +16,11 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   use: {
     baseURL: BASE_URL,
+    // Позволяет прогнать e2e на предустановленном Chromium (CI/контейнер без
+    // `playwright install`): PLAYWRIGHT_CHROMIUM_PATH=/path/to/chrome npx playwright test
+    launchOptions: process.env.PLAYWRIGHT_CHROMIUM_PATH
+      ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_PATH }
+      : {},
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",

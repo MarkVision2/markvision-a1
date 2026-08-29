@@ -29,7 +29,8 @@ interface ChatsViewProps {
   stages: LeadStage[];
   chats: ChatMessage[];
   whatsapp: WhatsAppConfig;
-  onSend: (leadId: string, text: string) => void | Promise<void>;
+  /** Возвращает false, если доставка не удалась (исключения при этом не будет). */
+  onSend: (leadId: string, text: string) => void | boolean | Promise<void | boolean>;
   onSendVoice?: (leadId: string, payload: VoicePayload) => void | Promise<void>;
   onConnectWhatsApp: () => void;
 }
@@ -175,13 +176,18 @@ export function ChatsView({
     setOptimistic((prev) => [...prev, optimisticMsg]);
     requestAnimationFrame(() => composerRef.current?.focus());
     void (async () => {
-      try {
-        await onSend(leadId, text);
-      } catch {
+      const markFailed = () => {
         setOptimistic((prev) =>
           prev.map((m) => (m.id === tempId ? { ...m, status: "failed" as const } : m)),
         );
         toast.error("Не отправилось — попробуйте ещё раз");
+      };
+      try {
+        // Недоставленное сообщение возвращается как false, а не бросается исключением,
+        // иначе оптимистичная реплика навсегда осталась бы в статусе «отправлено».
+        if ((await onSend(leadId, text)) === false) markFailed();
+      } catch {
+        markFailed();
       }
     })();
   };
