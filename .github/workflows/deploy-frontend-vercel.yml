@@ -94,12 +94,26 @@ jobs:
         run: npx vercel@latest build --prod --token "$VERCEL_TOKEN"
 
       - name: Deploy prebuilt to production
+        id: deploy
         if: ${{ steps.vercel_pull.outcome == 'success' }}
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: npx vercel@latest deploy --prebuilt --prod --token "$VERCEL_TOKEN"
 
-      - name: Note skipped CLI deploy
-        if: ${{ steps.tok.outputs.present != 'true' || steps.vercel_pull.outcome != 'success' }}
+      # Раньше прогон был зелёным, даже когда не выкатывалось ничего: `vercel pull`
+      # стоит под continue-on-error, поэтому его conclusion — success, а outcome —
+      # failure, и три шага деплоя тихо пропускались. Изменения оставались в репозитории
+      # и в Lovable, но на домен не уезжали, и по CI это было не видно.
+      - name: Fail if nothing reached production
+        if: ${{ always() }}
         run: |
-          echo "::warning::Vercel CLI deploy skipped or unavailable. Check www.markvision.kz production Git deploy for the [vercel-deploy] commit."
+          if [ "${{ steps.deploy.outcome }}" = "success" ]; then
+            echo "::notice::Выкачено через Vercel CLI."
+            exit 0
+          fi
+          if git log -1 --pretty=%B | grep -q '\[vercel-deploy\]'; then
+            echo "::notice::CLI-деплой не отработал, но в сообщении коммита есть [vercel-deploy] — соберёт Git-интеграция Vercel."
+            exit 0
+          fi
+          echo "::error::Фронт не выкатился ни одним путём. CLI-деплой не отработал (проверьте секреты VERCEL_TOKEN / VERCEL_ORG_ID / VERCEL_PROJECT_ID), а в сообщении коммита нет метки [vercel-deploy], из-за чего ignoreCommand в vercel.json заставил Git-интеграцию пропустить сборку."
+          exit 1
