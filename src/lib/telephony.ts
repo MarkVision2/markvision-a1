@@ -1,12 +1,13 @@
 /**
- * Telephony layer with 3 providers configurable in admin:
- *  - tel    → системный звонок (tel:)
- *  - sip    → SIP-URI для софтфона (sip:)
- *  - sipuni → click-to-call через edge function sipuni-call
+ * Telephony layer with 4 providers configurable in admin:
+ *  - tel     → системный звонок (tel:)
+ *  - sip     → SIP-URI для софтфона (sip:)
+ *  - sipuni  → click-to-call через edge function sipuni-call
+ *  - binotel → click-to-call через edge function binotel-call (украинская АТС)
  */
 import { supabase } from "@/integrations/supabase/client";
 
-export type DialProvider = "tel" | "sip" | "sipuni";
+export type DialProvider = "tel" | "sip" | "sipuni" | "binotel";
 
 export type DialResult = {
   ok: boolean;
@@ -28,7 +29,7 @@ export async function getTelephonyProvider(): Promise<DialProvider> {
   const { data } = await (supabase.from("automation_settings" as any) as any)
     .select("telephony_provider").eq("id", true).single();
   const p = (data?.telephony_provider as DialProvider) ?? "tel";
-  cachedProvider = ["tel", "sip", "sipuni"].includes(p) ? p : "tel";
+  cachedProvider = ["tel", "sip", "sipuni", "binotel"].includes(p) ? p : "tel";
   cachedAt = Date.now();
   return cachedProvider;
 }
@@ -61,9 +62,13 @@ export async function dial(phone: string, opts?: { leadId?: string }): Promise<D
     return { ok: true, provider: "sip" };
   }
 
-  // sipuni
+  // АТС (sipuni / binotel): звонок инициирует бэкенд, при любой осечке — tel:
+  const pbx = provider === "binotel"
+    ? { fn: "binotel-call", label: "Binotel" }
+    : { fn: "sipuni-call", label: "Sipuni" };
+
   try {
-    const { data, error } = await supabase.functions.invoke("sipuni-call", {
+    const { data, error } = await supabase.functions.invoke(pbx.fn, {
       body: { phone: digits, leadId: opts?.leadId },
     });
     if (error || !data?.ok) {
@@ -71,16 +76,16 @@ export async function dial(phone: string, opts?: { leadId?: string }): Promise<D
       return {
         ok: true,
         provider: "tel",
-        warning: `Sipuni: ${(data?.error as string) ?? error?.message ?? "ошибка"}. Открыт системный звонок.`,
+        warning: `${pbx.label}: ${(data?.detail as string) ?? (data?.error as string) ?? error?.message ?? "ошибка"}. Открыт системный звонок.`,
       };
     }
-    return { ok: true, provider: "sipuni" };
+    return { ok: true, provider };
   } catch (e) {
     openUri(`tel:${digits}`);
     return {
       ok: true,
       provider: "tel",
-      warning: "Sipuni недоступен — открыт системный звонок.",
+      warning: `${pbx.label} недоступен — открыт системный звонок.`,
       error: e instanceof Error ? e.message : String(e),
     };
   }

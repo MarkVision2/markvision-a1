@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { AddMemberDialog } from "@/components/settings/AddMemberDialog";
 import { SipuniSettings } from "@/components/settings/SipuniSettings";
+import { BinotelSettings } from "@/components/settings/BinotelSettings";
 import { ProfileSettings } from "@/components/settings/ProfileSettings";
 import { PipelinesSettings } from "@/components/settings/PipelinesSettings";
 import { LossReasonsSettings } from "@/components/settings/LossReasonsSettings";
@@ -75,7 +76,7 @@ const CONNECTION_NAV: Array<{
   {
     tab: "telephony",
     title: "Телефония",
-    desc: "SIP/звонки и базовые параметры коммуникаций.",
+    desc: "Binotel/Sipuni, click-to-call и записи разговоров.",
     icon: Phone,
   },
   {
@@ -226,7 +227,7 @@ export default function Settings() {
       const [telephonyRes, waRes, waWebRes, igRes, metaRes, googleRes, clientViewRes] = await Promise.all([
         supabase
           .from("automation_settings" as never)
-          .select("sipuni_enabled,sipuni_token_present")
+          .select("sipuni_enabled,sipuni_token_present,binotel_enabled,binotel_credentials_present")
           .limit(1)
           .maybeSingle(),
         supabase
@@ -267,8 +268,16 @@ export default function Settings() {
 
       if (cancelled) return;
 
-      const telephonyData = telephonyRes.data as { sipuni_enabled?: boolean; sipuni_token_present?: boolean } | null;
-      const telephonyConnected = !!(telephonyData?.sipuni_enabled && telephonyData?.sipuni_token_present);
+      const telephonyData = telephonyRes.data as {
+        sipuni_enabled?: boolean;
+        sipuni_token_present?: boolean;
+        binotel_enabled?: boolean;
+        binotel_credentials_present?: boolean;
+      } | null;
+      const telephonyConnected = !!(
+        (telephonyData?.sipuni_enabled && telephonyData?.sipuni_token_present) ||
+        (telephonyData?.binotel_enabled && telephonyData?.binotel_credentials_present)
+      );
       const waGreenConnected = !!(waRes.data?.id_instance && waRes.data?.api_token_present && waRes.data?.connected);
       const waWebConnected = (waWebRes.data as { status?: string } | null)?.status === "connected";
       const waConnected = waGreenConnected || waWebConnected;
@@ -531,7 +540,12 @@ export default function Settings() {
 
           {activeTab === "metrics-labels" && <MetricLabelsSettings />}
 
-          {activeTab === "telephony" && <SipuniSettings />}
+          {activeTab === "telephony" && (
+            <div className="space-y-4">
+              <BinotelSettings />
+              <SipuniSettings />
+            </div>
+          )}
 
           {activeTab === "whatsapp" && (
             <div className="rounded-2xl border border-border bg-card p-6">

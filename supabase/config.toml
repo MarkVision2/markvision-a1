@@ -29,6 +29,11 @@ verify_jwt = false
 [functions.sipuni-cdr-webhook]
 verify_jwt = false
 
+# Оба webhook-а Binotel (apiCallSettings / apiCallCompleted) приходят без JWT.
+# Авторизация внутри функции: ?secret= (BINOTEL_WEBHOOK_SECRET) либо IP серверов Binotel.
+[functions.binotel-webhook]
+verify_jwt = false
+
 [functions.ai-rop-score-manager]
 verify_jwt = false
 

@@ -1106,6 +1106,13 @@ export type Database = {
           auto_msg_24h_enabled: boolean
           auto_msg_24h_hours: number
           auto_msg_24h_template_key: string
+          binotel_crm_base_url: string | null
+          binotel_credentials_present: boolean | null
+          binotel_enabled: boolean
+          binotel_key: string | null
+          binotel_operator: string | null
+          binotel_pbx_number: string | null
+          binotel_secret: string | null
           cron_secret: string | null
           followup_2h_enabled: boolean
           followup_2h_minutes: number
@@ -1127,6 +1134,13 @@ export type Database = {
           auto_msg_24h_enabled?: boolean
           auto_msg_24h_hours?: number
           auto_msg_24h_template_key?: string
+          binotel_crm_base_url?: string | null
+          binotel_credentials_present?: boolean | null
+          binotel_enabled?: boolean
+          binotel_key?: string | null
+          binotel_operator?: string | null
+          binotel_pbx_number?: string | null
+          binotel_secret?: string | null
           cron_secret?: string | null
           followup_2h_enabled?: boolean
           followup_2h_minutes?: number
@@ -1148,6 +1162,13 @@ export type Database = {
           auto_msg_24h_enabled?: boolean
           auto_msg_24h_hours?: number
           auto_msg_24h_template_key?: string
+          binotel_crm_base_url?: string | null
+          binotel_credentials_present?: boolean | null
+          binotel_enabled?: boolean
+          binotel_key?: string | null
+          binotel_operator?: string | null
+          binotel_pbx_number?: string | null
+          binotel_secret?: string | null
           cron_secret?: string | null
           followup_2h_enabled?: boolean
           followup_2h_minutes?: number
@@ -1166,6 +1187,65 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      binotel_call_log: {
+        Row: {
+          created_at: string
+          direction: string | null
+          disposition: string | null
+          duration_sec: number | null
+          error_text: string | null
+          general_call_id: string | null
+          id: string
+          lead_id_resolved: string | null
+          phone_normalized: string | null
+          processing_status: string
+          raw_payload: Json | null
+          recording_url: string | null
+          request_type: string
+          started_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          direction?: string | null
+          disposition?: string | null
+          duration_sec?: number | null
+          error_text?: string | null
+          general_call_id?: string | null
+          id?: string
+          lead_id_resolved?: string | null
+          phone_normalized?: string | null
+          processing_status: string
+          raw_payload?: Json | null
+          recording_url?: string | null
+          request_type: string
+          started_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          direction?: string | null
+          disposition?: string | null
+          duration_sec?: number | null
+          error_text?: string | null
+          general_call_id?: string | null
+          id?: string
+          lead_id_resolved?: string | null
+          phone_normalized?: string | null
+          processing_status?: string
+          raw_payload?: Json | null
+          recording_url?: string | null
+          request_type?: string
+          started_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "binotel_call_log_lead_id_resolved_fkey"
+            columns: ["lead_id_resolved"]
+            isOneToOne: false
+            referencedRelation: "leads"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       cabinet_daily_insights: {
         Row: {
