@@ -509,7 +509,8 @@ const CreateMontageLab = () => {
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
           {/* ЛЕВАЯ КОЛОНКА — форма */}
-          <div className="space-y-6">
+          {/* min-w-0: без него элемент грида не сжимается ниже min-content и на телефоне распирает страницу */}
+          <div className="min-w-0 space-y-6">
             {/* Шаг 1. Загрузка */}
             <section className="rounded-2xl border border-border/60 bg-card/30 p-4 sm:p-5">
               <div className="mb-3 flex items-center gap-2">
@@ -947,7 +948,7 @@ const CreateMontageLab = () => {
           </div>
 
           {/* ПРАВАЯ КОЛОНКА — сводка + очередь */}
-          <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
+          <aside className="min-w-0 space-y-4 lg:sticky lg:top-4 lg:self-start">
             {/* Сводка + CTA */}
             <div className="rounded-2xl border border-border/60 bg-card/50 p-4">
               <div className="mb-3 flex items-center gap-2">
