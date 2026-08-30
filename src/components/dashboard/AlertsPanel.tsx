@@ -55,7 +55,7 @@ export function AlertsPanel({ alerts }: Props) {
           >
             <button
               onClick={() => setHidden((prev) => new Set(prev).add(a.idx))}
-              className="absolute right-3 top-3 text-muted-foreground hover:text-foreground"
+              className="absolute right-1.5 top-1.5 grid h-9 w-9 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-background/60 hover:text-foreground"
               aria-label="Скрыть"
             >
               <X className="h-3.5 w-3.5" />

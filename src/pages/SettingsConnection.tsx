@@ -711,7 +711,8 @@ function WebhookCard({
                       : "Webhook не настроен"}
             </span>
           </div>
-          <div className="flex gap-2">
+          {/* flex-wrap: три кнопки в один ряд не помещаются в 390px — последняя уезжала за экран */}
+          <div className="flex flex-wrap gap-2">
             <Button variant="ghost" size="sm" onClick={checkSettings} disabled={loading}>
               <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
               Проверить

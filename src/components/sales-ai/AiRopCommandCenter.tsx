@@ -101,8 +101,9 @@ export function AiRopCommandCenter({
     <div className="space-y-4">
       <section className="relative overflow-hidden rounded-3xl border border-primary/25 bg-card/45">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_right,hsl(var(--primary)/0.14),transparent_42%)]" />
-        <div className="relative grid gap-5 p-5 sm:p-6 lg:grid-cols-[1fr_250px] lg:items-center">
-          <div>
+        <div className="relative grid gap-5 p-5 sm:p-6 lg:grid-cols-[minmax(0,1fr)_250px] lg:items-center">
+          {/* min-w-0: иначе ряд вкладок ниже не даёт колонке сжаться и текст уезжает за экран */}
+          <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.16em] text-primary">
                 <Sparkles className="h-4 w-4" />
