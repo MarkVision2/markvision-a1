@@ -10,6 +10,7 @@ const mk = (over: Partial<LeadLite> = {}): LeadLite => ({
   referrer: over.referrer ?? null,
   utm: over.utm ?? null,
   metaAdId: over.metaAdId ?? null,
+  clickId: over.clickId ?? null,
   cabinetId: over.cabinetId ?? "cab-1",
   stageKey: over.stageKey ?? "new",
   amount: over.amount ?? 0,

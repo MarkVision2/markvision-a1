@@ -15,6 +15,7 @@ function lead(partial: Partial<LeadLite> & Pick<LeadLite, "id" | "cabinetId" | "
     referrer: null,
     utm: null,
     metaAdId: null,
+    clickId: null,
     stageKey: "new",
     stageRole: "new",
     amount: 0,
@@ -97,5 +98,50 @@ describe("adsCabinetCrmDaily", () => {
       soleMetaCabinet: true,
     });
     expect(sumAdsCabinetCrmDaily(byDay)).toEqual({ crmLeads: 2, diagnostics: 0, sales: 0, salesRevenue: 0 });
+  });
+
+  // Реальный случай (кабинет GULNARA, август 2026): у заявок Click-to-WhatsApp
+  // нет ни cabinet_id, ни utm, ни meta_ad_id — source='whatsapp' и ctwa_clid
+  // в click_id. Раньше такие лиды не попадали в «Лиды CRM» карточки кабинета.
+  it("считает Click-to-WhatsApp заявки лидами единственного Meta-кабинета", () => {
+    const leads: LeadLite[] = [
+      lead({
+        id: "ctwa-1", cabinetId: null, createdAt: "2026-08-05T09:00:00.000Z",
+        source: "whatsapp", channel: "whatsapp", utm: null, clickId: "AfjEvFh2T2-k6z_Axkqt",
+      }),
+      lead({
+        id: "ctwa-2", cabinetId: null, createdAt: "2026-08-06T09:00:00.000Z",
+        source: "whatsapp", channel: "whatsapp", utm: null, clickId: "AfjsJq10bQ",
+      }),
+      // Органика: тот же канал, но клика по рекламе не было — не должна попасть
+      lead({
+        id: "organic", cabinetId: null, createdAt: "2026-08-07T09:00:00.000Z",
+        source: "whatsapp", channel: "whatsapp", utm: null, clickId: null,
+      }),
+    ];
+
+    const sole = sumAdsCabinetCrmDaily(
+      buildAdsCabinetCrmDaily(leads, [], "cab-1", "2026-08-01", "2026-08-31", { soleMetaCabinet: true }),
+    );
+    expect(sole.crmLeads).toBe(2);
+
+    // Кабинетов несколько — гадать нельзя, запасная атрибуция не работает
+    const multi = sumAdsCabinetCrmDaily(
+      buildAdsCabinetCrmDaily(leads, [], "cab-1", "2026-08-01", "2026-08-31", { soleMetaCabinet: false }),
+    );
+    expect(multi.crmLeads).toBe(0);
+  });
+
+  it("рассылку в WhatsApp не считает рекламным лидом даже с click_id", () => {
+    const leads: LeadLite[] = [
+      lead({
+        id: "bc", cabinetId: null, createdAt: "2026-08-05T09:00:00.000Z",
+        source: "broadcast:wa", channel: "whatsapp", utm: null, clickId: "Afsomething",
+      }),
+    ];
+    const res = sumAdsCabinetCrmDaily(
+      buildAdsCabinetCrmDaily(leads, [], "cab-1", "2026-08-01", "2026-08-31", { soleMetaCabinet: true }),
+    );
+    expect(res.crmLeads).toBe(0);
   });
 });
