@@ -24,6 +24,8 @@ export interface LeadLite {
   landingUrl?: string | null;
   utm: LeadLiteUtm | null;
   metaAdId: string | null;
+  /** ctwa_clid / fbclid для WhatsApp-лида — признак перехода по рекламе Meta. */
+  clickId: string | null;
   cabinetId: string | null;
   stageKey: string;
   stageRole?: string | null;
@@ -54,7 +56,7 @@ export async function fetchLeadsLite(activeId: string | null): Promise<LeadLite[
   let leadsQuery = supabase
     .from("leads")
     .select(
-      "id,source,channel,referrer,landing_url,utm,meta_ad_id,cabinet_id,stage_id,amount,diagnostic_amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,reject_reason,rejected_at,next_visit_at,payment_method,tags,temperature,webinar_status,deposit_amount",
+      "id,source,channel,referrer,landing_url,utm,meta_ad_id,click_id,cabinet_id,stage_id,amount,diagnostic_amount,created_at,paid_at,last_activity_at,first_response_at,assigned_to,paid,project_id,ai_score,reject_reason,rejected_at,next_visit_at,payment_method,tags,temperature,webinar_status,deposit_amount",
     )
     .eq("is_personal", false)
     .order("created_at", { ascending: false })
@@ -84,6 +86,7 @@ export async function fetchLeadsLite(activeId: string | null): Promise<LeadLite[
     landingUrl: (r.landing_url as string | null) ?? null,
     utm: (r.utm as LeadLiteUtm | null) ?? null,
     metaAdId: (r.meta_ad_id as string | null) ?? null,
+    clickId: (r.click_id as string | null) ?? null,
     cabinetId: (r.cabinet_id as string | null) ?? null,
     stageKey: idToKey.get(r.stage_id as string) ?? "new",
     stageRole: idToRole.get(r.stage_id as string) ?? null,

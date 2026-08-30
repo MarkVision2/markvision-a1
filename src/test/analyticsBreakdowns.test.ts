@@ -20,6 +20,7 @@ function lead(partial: Partial<LeadLite> & Pick<LeadLite, "id" | "createdAt">): 
     landingUrl: null,
     utm: null,
     metaAdId: null,
+    clickId: null,
     cabinetId: null,
     stageKey: "new",
     amount: 0,

@@ -12,6 +12,7 @@ function lead(partial: Partial<LeadLite> & Pick<LeadLite, "id" | "createdAt">): 
     referrer: null,
     utm: null,
     metaAdId: null,
+    clickId: null,
     cabinetId: partial.cabinetId ?? "cab-1",
     stageKey: partial.stageKey ?? "new",
     amount: partial.amount ?? 0,

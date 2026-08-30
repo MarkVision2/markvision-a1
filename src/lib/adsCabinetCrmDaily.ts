@@ -8,8 +8,9 @@
  *
  * Атрибуция на кабинет:
  * 1) leads.cabinet_id === cabinetId
- * 2) иначе — Meta-трафик без cabinet_id (utm.source=meta / n8n), если кабинет
- *    единственный Meta у проекта (soleMetaCabinet=true)
+ * 2) иначе — Meta-трафик без cabinet_id, если кабинет единственный Meta у проекта
+ *    (soleMetaCabinet=true): utm.source=meta / n8n, а также Click-to-WhatsApp —
+ *    заявка в WhatsApp с ctwa_clid в click_id
  */
 import type { LeadLite } from "@/hooks/useLeadsLite";
 import type { StageChangeEvent } from "@/hooks/useStageChangeEvents";
@@ -37,14 +38,30 @@ export function isGroupJoinStageKey(toStageKey: string): boolean {
 
 const META_UTM = new Set(["meta", "facebook", "instagram", "fb", "ig", "an"]);
 
+/**
+ * Лид пришёл по рекламе Click-to-WhatsApp: source/channel = whatsapp, а в click_id
+ * лежит ctwa_clid (или fbclid) — его проставляет только CTWA-атрибуция Meta
+ * (см. supabase/functions/_lib/waAttribution.ts). У органического обращения
+ * в WhatsApp click_id пустой, поэтому признак не завышает рекламные цифры.
+ */
+function isClickToWhatsAppLead(
+  lead: Pick<LeadLite, "source" | "channel" | "clickId">,
+): boolean {
+  if (!lead.clickId?.trim()) return false;
+  const src = (lead.source ?? "").trim().toLowerCase();
+  const channel = (lead.channel ?? "").trim().toLowerCase();
+  return src === "whatsapp" || channel === "whatsapp";
+}
+
 /** Лид похож на Meta-трафик, но cabinet_id ещё не проставлен. */
 export function isUnattributedMetaLead(
-  lead: Pick<LeadLite, "cabinetId" | "source" | "utm" | "metaAdId">,
+  lead: Pick<LeadLite, "cabinetId" | "source" | "channel" | "utm" | "metaAdId" | "clickId">,
 ): boolean {
   if (lead.cabinetId) return false;
   const src = (lead.source ?? "").trim().toLowerCase();
   if (src.startsWith("broadcast")) return false;
   if (META_UTM.has(src)) return true;
+  if (isClickToWhatsAppLead(lead)) return true;
   const utmSrc = String((lead.utm as { source?: string | null } | null)?.source ?? "")
     .trim()
     .toLowerCase();
@@ -54,7 +71,7 @@ export function isUnattributedMetaLead(
 }
 
 export function leadMatchesCabinet(
-  lead: Pick<LeadLite, "cabinetId" | "source" | "utm" | "metaAdId">,
+  lead: Pick<LeadLite, "cabinetId" | "source" | "channel" | "utm" | "metaAdId" | "clickId">,
   cabinetId: string,
   opts?: { soleMetaCabinet?: boolean },
 ): boolean {

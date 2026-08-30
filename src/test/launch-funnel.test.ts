@@ -27,6 +27,7 @@ function lead(partial: Partial<LeadLite> & { stageKey: string }): LeadLite {
     landingUrl: null,
     utm: null,
     metaAdId: null,
+    clickId: null,
     cabinetId: null,
     stageKey: partial.stageKey,
     stageRole: partial.stageRole ?? null,
