@@ -1,7 +1,7 @@
 # MarkVision + Montage pipeline
 
 В этом репозитории два контура:
-- **MarkVision** — веб-приложение (Vite + React + Supabase): Контент-завод (`src/pages/CreateStep*`, `src/components/factory/`), AI монтаж через HeyGen (`src/pages/CreateMontage.tsx`), Reels, аналитика. Правила фронта — `LOVABLE.md`, ТЗ — `docs/*.md`.
+- **MarkVision** — веб-приложение (Vite + React + Supabase): Контент-завод (`src/pages/CreateStep*`, `src/components/factory/`), AI монтаж через HeyGen (`src/pages/CreateMontage.tsx`), Reels, аналитика. Правила фронта — `LOVABLE.md`, ТЗ — `docs/*.md`. Воркфлоу n8n правятся напрямую через API — `scripts/n8n.mjs`, `docs/N8N-CONTROL.md`.
 - **Montage pipeline** — локальный автомонтаж «говорящей головы»: Python анализирует видео (транскрипт, дубли, лицо), Claude размечает вырезки и акценты, Remotion рендерит финал одним проходом (jump-cut, зумы на лицо, акцентные слова). Стек: Python 3.11 (`.venv`) + Remotion 4 (`remotion/`, Node 22) + FFmpeg + Deepgram API (`DEEPGRAM_API_KEY` в `.env`).
 
 ## Montage: старт
