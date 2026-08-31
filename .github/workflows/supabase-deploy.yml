@@ -165,11 +165,27 @@ jobs:
           BASELINE=supabase/migrations_baseline_applied.txt
           VETTED=$(grep -E '^[0-9]{14}$' "$BASELINE" | sort -u)
           plan_versions() { grep -oE '[0-9]{14}_[^ ]*\.sql' "$PLAN" | cut -c1-14 | sort -u; }
+          # Помечаем по одной версии, а не пачкой: CLI перечисляет все локальные
+          # файлы раньше последней записи в учёте, включая уже записанные, и на
+          # первой такой пачка падает целиком с duplicate key. Строка уже в учёте —
+          # это и есть нужное состояние, поэтому такую ошибку пропускаем.
           mark_applied() { # $1 — версии через пробел
-            # shellcheck disable=SC2086
-            echo "::notice::Marking $(echo $1 | wc -w) baseline migrations as applied"
-            # shellcheck disable=SC2086
-            supabase migration repair --status applied --password "$SUPABASE_DB_PASSWORD" $1
+            local v out marked=0 already=0
+            echo "::group::migration repair --status applied"
+            for v in $1; do
+              if out=$(supabase migration repair --status applied --password "$SUPABASE_DB_PASSWORD" "$v" 2>&1); then
+                marked=$((marked + 1))
+              elif echo "$out" | grep -q 'duplicate key value violates unique constraint'; then
+                already=$((already + 1))
+              else
+                echo "$out"
+                echo "::endgroup::"
+                echo "::error::Не удалось пометить миграцию $v как applied. Ничего больше не применяется."
+                return 1
+              fi
+            done
+            echo "::endgroup::"
+            echo "::notice::Baseline: помечено $marked, уже было в учёте $already"
             echo "::group::db push --dry-run (после базовой линии)"
             dry_run
             echo "::endgroup::"
@@ -203,21 +219,6 @@ jobs:
           # хочет применить много миграций, НЕ применяем ничего — такой хвост
           # должен посмотреть человек, а не выкатиться сам ночью.
           PENDING=$(grep -cE '[0-9]{14}_.*\.sql' "$PLAN" || true)
-          echo "::notice::Pending migrations: $PENDING"
-          if [ "$PENDING" -gt "${DB_PUSH_MAX_PENDING:-10}" ]; then
-            echo "::error::db push хочет применить $PENDING миграций — это похоже на накопившийся хвост, а не на текущий деплой. Ничего не применено. Проверьте список выше и примените осознанно (или поднимите DB_PUSH_MAX_PENDING)."
-            exit 1
-          fi
-
-          # Предохранитель. Из-за расхождения выше db push не проходил давно, и в
-          # истории прода может не быть части старых локальных миграций — тогда
-          # push попытается прогнать по проду большой хвост старых файлов.
-          # Сначала смотрим план и, если он неожиданно большой, НИЧЕГО не применяем:
-          # такой хвост должен посмотреть человек, а не выкатиться сам ночью.
-          echo "::group::db push --dry-run"
-          supabase db push --dry-run --password "$SUPABASE_DB_PASSWORD" | tee /tmp/db-push-plan.txt
-          echo "::endgroup::"
-          PENDING=$(grep -cE '[0-9]{14}_.*\.sql' /tmp/db-push-plan.txt || true)
           echo "::notice::Pending migrations: $PENDING"
           if [ "$PENDING" -gt "${DB_PUSH_MAX_PENDING:-10}" ]; then
             echo "::error::db push хочет применить $PENDING миграций — это похоже на накопившийся хвост, а не на текущий деплой. Ничего не применено. Проверьте список выше и примените осознанно (или поднимите DB_PUSH_MAX_PENDING)."
