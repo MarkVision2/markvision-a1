@@ -10,6 +10,10 @@ verify_jwt = false
 [functions.ads-launch-worker]
 verify_jwt = false
 
+# Ежедневная оптимизация рекламы: те же два способа вызова, что у воркера.
+[functions.ads-optimizer]
+verify_jwt = false
+
 # CRM дожимы запускаются pg_cron по x-automation-key; ручной запуск админом
 # проверяется внутри функции по пользовательскому JWT.
 [functions.crm-automations]
