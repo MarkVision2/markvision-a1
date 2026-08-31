@@ -110,15 +110,41 @@ jobs:
           SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
         run: |
           supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+          # История миграций на проде расходится с репозиторием: часть миграций
+          # применяется мимо CLI (Lovable), их версии оседают в
+          # supabase_migrations.schema_migrations, а файлов в supabase/migrations нет.
+          # В таком состоянии db push отказывается работать целиком
+          # ("Remote migration versions not found in local migrations directory")
+          # и не применяет НИ ОДНОЙ миграции. Помечаем такие версии как reverted —
+          # это правка только служебной таблицы учёта, схема БД не трогается
+          # (ровно то, что предлагает сам CLI в тексте ошибки).
+          ORPHANS=$(supabase migration list --linked --password "$SUPABASE_DB_PASSWORD" \
+            | sed 's/│/|/g' \
+            | awk -F'|' 'NF>=3 {
+                n = NF;
+                if ($n ~ /^[ \t]*$/) n--;       # таблица может быть с рамкой по краям
+                if (n < 3) next;
+                local_v = $(n-2); remote_v = $(n-1);
+                gsub(/[^0-9]/, "", local_v); gsub(/[^0-9]/, "", remote_v);
+                if (local_v == "" && length(remote_v) == 14) print remote_v;
+              }')
+          if [ -n "$ORPHANS" ]; then
+            echo "::notice::Repairing $(echo "$ORPHANS" | wc -l) remote-only migration versions as reverted"
+            # shellcheck disable=SC2086
+            supabase migration repair --status reverted --password "$SUPABASE_DB_PASSWORD" $ORPHANS
+          fi
+
           supabase db push --password "$SUPABASE_DB_PASSWORD"
 
-      # 2b) Fallback: без пароля пробуем Management API (нужен scope database_write).
-      #     Сейчас этот путь отвечает HTTP 403 (error code 1010) — у токена нет
-      #     database_write, поэтому миграции на прод автоматически НЕ доезжают.
-      #     Пока это так, каждый набор миграций дублируется одним идемпотентным
-      #     файлом в scripts/apply-*.sql для вставки в Supabase SQL Editor.
-      #     Чинится либо секретом SUPABASE_DB_PASSWORD (тогда работает db push
-      #     выше и список ниже не нужен), либо токеном с правом database_write.
+      # 2b) Fallback на случай, если секрет SUPABASE_DB_PASSWORD не задан.
+      #     Наблюдалось, что этот путь отвечает HTTP 403 (error code 1010) —
+      #     ответ Cloudflare, не Supabase; причина не подтверждена (либо у токена
+      #     нет database_write, либо запрос режется по client signature: скрипт
+      #     ходит через python urllib без User-Agent). Пока путь ненадёжен,
+      #     каждый набор миграций дублируется идемпотентным файлом
+      #     scripts/apply-*.sql для ручной вставки в Supabase SQL Editor.
+      #     Основной путь — db push выше, он требует только SUPABASE_DB_PASSWORD.
       - name: Apply critical SQL via Management API
         if: ${{ always() && steps.db_changes.outputs.changed == 'true' && env.SUPABASE_DB_PASSWORD == '' }}
         continue-on-error: true
@@ -160,7 +186,7 @@ jobs:
           elif [ "${{ steps.db_push.outcome }}" = "success" ] || [ "${{ steps.mgmt_sql.outcome }}" = "success" ]; then
             echo "::notice::Database SQL applied."
           else
-            echo "::warning::Could not apply DB migration automatically (need SUPABASE_DB_PASSWORD or ACCESS_TOKEN with database_write). Apply scripts/apply-wa-web-greenapi-fix.sql in Supabase SQL Editor."
+            echo "::warning::Could not apply DB migration automatically. Check the 'Apply database migrations' step log; as a fallback apply the matching scripts/apply-*.sql in Supabase SQL Editor."
           fi
 
       - name: Fail if functions or SQL did not succeed
