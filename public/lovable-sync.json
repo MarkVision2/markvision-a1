@@ -1,7 +1,7 @@
 {
-  "git_sha": "3cce0d1",
-  "git_sha_full": "3cce0d1fb4273d8022bd5a48d3bbc2c307ecab04",
-  "updated_at": "2026-08-31T16:44:37+04:00",
-  "label": "Запуск рекламы с сайта напрямую в Meta, без n8n (#240)",
+  "git_sha": "0c33da2",
+  "git_sha_full": "0c33da27c76d7baefa224da1bd0de3ddd14f32fc",
+  "updated_at": "2026-08-31T16:52:20+04:00",
+  "label": "fix(ci): миграции запуска рекламы доезжают до прода (#241)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
