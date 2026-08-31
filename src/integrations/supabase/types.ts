@@ -2214,6 +2214,10 @@ export type Database = {
           campaign: string | null
           channel: Database["public"]["Enums"]["lead_channel"] | null
           city: string | null
+          client_request: string | null
+          company_name: string | null
+          contact_person: string | null
+          industry: string | null
           click_id: string | null
           created_at: string
           created_by: string | null
@@ -2260,6 +2264,10 @@ export type Database = {
           campaign?: string | null
           channel?: Database["public"]["Enums"]["lead_channel"] | null
           city?: string | null
+          client_request?: string | null
+          company_name?: string | null
+          contact_person?: string | null
+          industry?: string | null
           click_id?: string | null
           created_at?: string
           created_by?: string | null
@@ -2306,6 +2314,10 @@ export type Database = {
           campaign?: string | null
           channel?: Database["public"]["Enums"]["lead_channel"] | null
           city?: string | null
+          client_request?: string | null
+          company_name?: string | null
+          contact_person?: string | null
+          industry?: string | null
           click_id?: string | null
           created_at?: string
           created_by?: string | null

@@ -68,6 +68,66 @@ export function LeadProfileTab({ lead, onUpdate }: Props) {
 
   return (
     <div className="space-y-4">
+      {/* Компания отдельно от контактного лица: раньше и то и другое приходилось
+          писать в одно имя лида, в скобках. */}
+      <div className="rounded-xl border border-border/60 bg-card/40 p-3">
+        <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Компания</div>
+        <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <Field label="Название компании">
+            <DeferredField
+              key={`company-${lead.id}`}
+              value={lead.companyName ?? ""}
+              onCommit={(v) => {
+                const next = v || undefined;
+                if (next !== lead.companyName) onUpdate({ companyName: next });
+              }}
+              placeholder="ТОО «Пример»"
+              ariaLabel="Название компании"
+            />
+          </Field>
+          <Field label="Сфера деятельности">
+            <DeferredField
+              key={`industry-${lead.id}`}
+              value={lead.industry ?? ""}
+              onCommit={(v) => {
+                const next = v || undefined;
+                if (next !== lead.industry) onUpdate({ industry: next });
+              }}
+              placeholder="Строительство, IT, розница…"
+              ariaLabel="Сфера деятельности"
+            />
+          </Field>
+          <Field label="Контактное лицо (ФИО)">
+            <DeferredField
+              key={`contact-${lead.id}`}
+              value={lead.contactPerson ?? ""}
+              onCommit={(v) => {
+                const next = v || undefined;
+                if (next !== lead.contactPerson) onUpdate({ contactPerson: next });
+              }}
+              placeholder="Иванова Мария Петровна"
+              ariaLabel="Контактное лицо"
+            />
+          </Field>
+        </div>
+        <div className="mt-3">
+          <label className="text-[10px] uppercase tracking-wider text-muted-foreground">Запрос клиента</label>
+          <DeferredField
+            key={`request-${lead.id}`}
+            multiline
+            rows={3}
+            value={lead.clientRequest ?? ""}
+            onCommit={(v) => {
+              const next = v || undefined;
+              if (next !== lead.clientRequest) onUpdate({ clientRequest: next });
+            }}
+            placeholder="С чем клиент обратился"
+            ariaLabel="Запрос клиента"
+            className="mt-1"
+          />
+        </div>
+      </div>
+
       <div className="rounded-xl border border-border/60 bg-card/40 p-3">
         <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Контакты</div>
         <div className="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">

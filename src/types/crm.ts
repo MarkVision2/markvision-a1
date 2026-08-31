@@ -127,6 +127,14 @@ export type Lead = {
   metaCampaignId?: string | null;
   // Card extensions (rich lead workspace)
   service?: string;
+  /** Название компании — отдельно от имени контактного лица. */
+  companyName?: string;
+  /** ФИО контактного лица в компании. */
+  contactPerson?: string;
+  /** Сфера деятельности компании. */
+  industry?: string;
+  /** С чем клиент пришёл — его запрос. */
+  clientRequest?: string;
   city?: string;
   age?: number;
   nextVisitAt?: string;
