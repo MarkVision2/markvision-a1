@@ -178,7 +178,15 @@ jobs:
           # из них проверялась на проде. Незнакомая версия останавливает деплой:
           # молча пропустить непроверенную миграцию хуже, чем не выкатиться.
           BASELINE=supabase/migrations_baseline_applied.txt
+          RUNNABLE_FILE=supabase/migrations_out_of_order_ok.txt
           VETTED=$(grep -E '^[0-9]{14}$' "$BASELINE" | sort -u)
+          RUNNABLE=$(grep -E '^[0-9]{14}$' "$RUNNABLE_FILE" | sort -u)
+          BOTH=$(comm -12 <(echo "$VETTED") <(echo "$RUNNABLE"))
+          if [ -n "$BOTH" ]; then
+            echo "::error::Версия не может быть одновременно в $BASELINE и $RUNNABLE_FILE: $BOTH"
+            exit 1
+          fi
+          PUSH_FLAGS=""
           plan_versions() { grep -oE '[0-9]{14}_[^ ]*\.sql' "$PLAN" | cut -c1-14 | sort -u; }
           # Помечаем по одной версии, а не пачкой: CLI перечисляет все локальные
           # файлы раньше последней записи в учёте, включая уже записанные, и на
@@ -207,27 +215,42 @@ jobs:
           }
 
           # Файлы, датированные раньше последней записи в учёте. Обычным push их не
-          # применить — только --include-all, то есть прогоном по проду заново.
-          # Незнакомая версия здесь останавливает деплой: молча пропустить
-          # непроверенную миграцию хуже, чем не выкатиться.
+          # применить: CLI требует --include-all и правильно делает — применить их
+          # молча значит выполнить по проду произвольный старый SQL.
+          # Сначала выносим из этого списка те, что уже на проде: их надо только
+          # записать в учёт, выполнять нельзя.
           if grep -q "Rerun the command with --include-all" "$PLAN"; then
-            OUT_OF_ORDER=$(plan_versions)
-            UNVETTED=$(comm -23 <(echo "$OUT_OF_ORDER") <(echo "$VETTED"))
-            if [ -n "$UNVETTED" ]; then
-              echo "::error::Эти миграции датированы раньше последней записи в учёте прода и не входят в базовую линию:"
-              echo "$UNVETTED"
-              echo "::error::Ничего не применено. Проверьте, применены ли они к проду, и либо добавьте в $BASELINE, либо перевыпустите их с более поздней датой."
-              exit 1
+            BASE_PART=$(comm -12 <(plan_versions) <(echo "$VETTED") | tr '\n' ' ')
+            if [ -n "${BASE_PART// /}" ]; then
+              mark_applied "$BASE_PART"
             fi
-            mark_applied "$(echo "$OUT_OF_ORDER" | tr '\n' ' ')"
           fi
 
-          # Остаток плана: то, что push применил бы вперёд. Здесь незнакомая версия —
-          # это нормальная новая миграция, её и надо применить. А вот версии из
+          # Что осталось out-of-order — придётся выполнить. Разрешено только то,
+          # что человек внёс в список безопасных для повторного прогона.
+          # Незнакомая версия останавливает деплой.
+          if grep -q "Rerun the command with --include-all" "$PLAN"; then
+            REST=$(plan_versions)
+            UNKNOWN=$(comm -23 <(echo "$REST") <(echo "$RUNNABLE"))
+            if [ -n "$UNKNOWN" ]; then
+              echo "::error::Эти миграции датированы раньше последней записи в учёте прода и не разрешены ни к пометке, ни к применению:"
+              echo "$UNKNOWN"
+              echo "::error::Ничего не применено. Если они уже на проде — впишите их в $BASELINE; если их надо выполнить и они безопасны при повторе — в $RUNNABLE_FILE; иначе перевыпустите с более поздней датой."
+              exit 1
+            fi
+            # shellcheck disable=SC2086
+            echo "::notice::Applying $(echo $REST | wc -w) out-of-order migrations from $RUNNABLE_FILE"
+            PUSH_FLAGS="--include-all"
+          fi
+
+          # Остаток обычного плана: то, что push применил бы вперёд. Здесь незнакомая
+          # версия — нормальная новая миграция, её и надо применить. А вот версии из
           # базовой линии применять нельзя: они уже на проде, повтор их сломает.
-          KNOWN=$(comm -12 <(plan_versions) <(echo "$VETTED") | tr '\n' ' ')
-          if [ -n "${KNOWN// /}" ]; then
-            mark_applied "$KNOWN"
+          if [ -z "$PUSH_FLAGS" ]; then
+            KNOWN=$(comm -12 <(plan_versions) <(echo "$VETTED") | tr '\n' ' ')
+            if [ -n "${KNOWN// /}" ]; then
+              mark_applied "$KNOWN"
+            fi
           fi
 
           # Предохранитель на размер плана: если после ремонта учёта push всё равно
@@ -240,7 +263,8 @@ jobs:
             exit 1
           fi
 
-          supabase db push --password "$SUPABASE_DB_PASSWORD"
+          # shellcheck disable=SC2086
+          supabase db push $PUSH_FLAGS --password "$SUPABASE_DB_PASSWORD"
 
       # 2b) Fallback на случай, если секрет SUPABASE_DB_PASSWORD не задан.
       #     Наблюдалось, что этот путь отвечает HTTP 403 (error code 1010) —
