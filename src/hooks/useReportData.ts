@@ -1,7 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { usePersonalCabinets } from "@/hooks/useCabinetsStore";
-import { useLeadsLite, type LeadLite } from "@/hooks/useLeadsLite";
+import {
+  fetchLeadsLite,
+  LEADS_LITE_QUERY_KEY,
+  type LeadLite,
+} from "@/hooks/useLeadsLite";
 import { useRealtimeTable } from "@/hooks/useRealtimeTable";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { normalizeSource } from "@/lib/leadSource";
@@ -435,11 +440,23 @@ export function useReportData(
   cabinetId: string,
   range: ReportPeriodRange,
   compare: boolean,
+  leadsOverride?: LeadLite[],
 ) {
-  const { leads } = useLeadsLite();
+  const { activeId: projectId } = useProjectsStore();
+  const queryClient = useQueryClient();
+  const hasLeadsOverride = leadsOverride !== undefined;
+  const invalidateLeads = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: [LEADS_LITE_QUERY_KEY, projectId] });
+  }, [queryClient, projectId]);
+  useRealtimeTable("leads", invalidateLeads, !hasLeadsOverride, 600);
+
+  const { data: fetchedLeads = [] } = useQuery({
+    queryKey: [LEADS_LITE_QUERY_KEY, projectId],
+    queryFn: hasLeadsOverride ? skipToken : () => fetchLeadsLite(projectId),
+  });
+  const leads = leadsOverride ?? fetchedLeads;
   // Только Личные кабинеты активного проекта попадают в аналитику.
   const { cabinets } = usePersonalCabinets();
-  const { activeId: projectId } = useProjectsStore();
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

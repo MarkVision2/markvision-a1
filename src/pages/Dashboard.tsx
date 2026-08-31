@@ -72,12 +72,12 @@ const Dashboard = () => {
     }
   };
 
-  const { data, loading, error, alerts, crmFunnel, channels, timeseries, instagramFunnel } =
-    useDashboardData("all", range, comparing);
-  const { stats: codewordStats } = useCodewordStats();
   const { leads: liteLeads } = useLeadsLite();
+  const { creatives: metaCreatives, campaigns: metaCampaigns } = useMetaDashboard(range);
+  const { data, loading, error, alerts, crmFunnel, channels, timeseries, instagramFunnel } =
+    useDashboardData("all", range, comparing, liteLeads, metaCampaigns);
+  const { stats: codewordStats } = useCodewordStats();
   const crmFlow = useCrmFlow(range, liteLeads);
-  const { creatives: metaCreatives } = useMetaDashboard(range);
   const periodLeads = useMemo(() => {
     const fromTs = range.from.getTime();
     // toTs = начало следующего дня после range.to, чтобы захватить весь последний день
