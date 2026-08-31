@@ -70,7 +70,8 @@ type LeadRow = {
   name: string; phone: string; email: string | null;
   source: string; campaign: string | null; channel: string | null;
   amount: number | string; ai_score: number; note: string | null;
-  service: string | null; city: string | null; age: number | null;
+  service: string | null; company_name: string | null; contact_person: string | null;
+  industry: string | null; client_request: string | null; city: string | null; age: number | null;
   utm: Record<string, string> | null; referrer: string | null; landing_url: string | null;
   first_touch_at: string | null; first_response_at: string | null;
   last_contact_at: string | null; next_visit_at: string | null;
@@ -211,6 +212,10 @@ function leadRowToFrontIndexed(
     metaCampaignId: r.meta_campaign_id ?? undefined,
     isPersonal: r.is_personal ?? false,
     service: r.service ?? undefined,
+    companyName: r.company_name ?? undefined,
+    contactPerson: r.contact_person ?? undefined,
+    industry: r.industry ?? undefined,
+    clientRequest: r.client_request ?? undefined,
     city: r.city ?? undefined,
     age: r.age ?? undefined,
     nextVisitAt: r.next_visit_at ?? undefined,
@@ -248,6 +253,10 @@ export function useCrmStore() {
   const { config: whatsapp, setWhatsapp } = useWhatsAppConfig(projectId);
 
   const [stages, setStages] = useState<LeadStage[]>(DEFAULT_STAGES);
+  // Ref: эффект автоперемещения создаётся один раз (пустые зависимости),
+  // поэтому обычное замыкание видело бы только начальный список этапов.
+  const stagesRef = useRef<LeadStage[]>(DEFAULT_STAGES);
+  stagesRef.current = stages;
   const [leads, setLeads] = useState<Lead[]>([]);
   const [chats, setChats] = useState<ChatMessage[]>([]);
   const [pipelineId, setPipelineId] = useState<string | null>(null);
@@ -526,6 +535,14 @@ export function useCrmStore() {
             await markAdvanceDone(p.id);
             continue;
           }
+          // Решение менеджера важнее автоматики: из «Отказа» и «Оплаты» лид
+          // не вытаскиваем. Иначе разобранная переписка возвращала в очередь
+          // клиентов, которых уже закрыли руками, вместе с причиной отказа.
+          const currentRole = stagesRef.current.find((st) => st.id === oldLead.stageId)?.stageRole;
+          if (currentRole === "rejected" || currentRole === "paid") {
+            await markAdvanceDone(p.id);
+            continue;
+          }
           await moveLead(oldLead.id, p.auto_advance_stage);
           markAutoMoved(oldLead.id, p.auto_advance_stage);
           await markAdvanceDone(p.id);
@@ -625,6 +642,12 @@ export function useCrmStore() {
       ai_score: input.aiScore ?? 50,
       note: input.note ?? null,
       service: input.service ?? null,
+      // Новые колонки подставляем только когда они заполнены: иначе создание
+      // лида упало бы на окружении, где миграция 20260831090000 ещё не применена.
+      ...(input.companyName ? { company_name: input.companyName } : {}),
+      ...(input.contactPerson ? { contact_person: input.contactPerson } : {}),
+      ...(input.industry ? { industry: input.industry } : {}),
+      ...(input.clientRequest ? { client_request: input.clientRequest } : {}),
       city: input.city ?? null,
       age: input.age ?? null,
       utm: leadUtm,
@@ -668,6 +691,10 @@ export function useCrmStore() {
       metaCampaignId: row.meta_campaign_id ?? undefined,
       isPersonal: row.is_personal ?? false,
       service: row.service ?? undefined,
+      companyName: row.company_name ?? undefined,
+      contactPerson: row.contact_person ?? undefined,
+      industry: row.industry ?? undefined,
+      clientRequest: row.client_request ?? undefined,
       city: row.city ?? undefined,
       age: row.age ?? undefined,
       nextVisitAt: row.next_visit_at ?? undefined,
@@ -696,6 +723,10 @@ export function useCrmStore() {
     if (patch.aiScore !== undefined) dbPatch.ai_score = patch.aiScore;
     if (patch.note !== undefined) dbPatch.note = patch.note ?? null;
     if (patch.service !== undefined) dbPatch.service = patch.service ?? null;
+    if (patch.companyName !== undefined) (dbPatch as Record<string, unknown>).company_name = patch.companyName ?? null;
+    if (patch.contactPerson !== undefined) (dbPatch as Record<string, unknown>).contact_person = patch.contactPerson ?? null;
+    if (patch.industry !== undefined) (dbPatch as Record<string, unknown>).industry = patch.industry ?? null;
+    if (patch.clientRequest !== undefined) (dbPatch as Record<string, unknown>).client_request = patch.clientRequest ?? null;
     if (patch.city !== undefined) dbPatch.city = patch.city ?? null;
     if (patch.age !== undefined) dbPatch.age = patch.age ?? null;
     if (patch.channel !== undefined) dbPatch.channel = patch.channel ?? null;
