@@ -5,6 +5,11 @@ project_id = "szfgdruhlebfvcmlvxdk"
 [functions.capi-outbox-worker]
 verify_jwt = false
 
+# Очередь запусков рекламы разбирается pg_cron по x-automation-key; ручной
+# запуск менеджером проверяется внутри функции по пользовательскому JWT.
+[functions.ads-launch-worker]
+verify_jwt = false
+
 # CRM дожимы запускаются pg_cron по x-automation-key; ручной запуск админом
 # проверяется внутри функции по пользовательскому JWT.
 [functions.crm-automations]

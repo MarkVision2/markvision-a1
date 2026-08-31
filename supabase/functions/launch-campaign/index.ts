@@ -7,6 +7,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireUser, userHasRole } from "../_lib/auth.ts";
+import { uploadVideoFile } from "../_lib/metaGraph.ts";
 
 const N8N_WEBHOOK = "https://n8n.zapoinov.com/webhook/ai-target-launch";
 const META_GRAPH = "https://graph.facebook.com/v19.0";
@@ -554,7 +555,131 @@ Deno.serve(async (req) => {
       access_token: accessToken,
     };
 
-    // ===== 8. Шлём в n8n с коротким таймаутом ACK =====
+    // ===== 8. Нативный контур: ставим задание в очередь вместо n8n =====
+    // Переключается настройкой automation_settings.ads_launch_native, чтобы
+    // раскатывать по одному кабинету и возвращаться назад одной правкой.
+    const { data: settings } = await adminClient()
+      .from("automation_settings")
+      .select("ads_launch_native, cron_secret")
+      .eq("id", true)
+      .maybeSingle();
+    const nativeLaunch =
+      (settings as { ads_launch_native?: boolean } | null)?.ads_launch_native === true;
+
+    if (nativeLaunch) {
+      const creativeFormat = adSetupMode === "existing" && sourceIgMediaId
+        ? "existing_post"
+        : orderedCarouselHashes.length >= 2
+        ? "carousel"
+        : null;
+
+      // Видео грузим сразу: файл уже в памяти, а воркеру останется дождаться
+      // обработки на стороне Meta.
+      let videoId: string | null = null;
+      let videoFileName: string | null = null;
+      if (!creativeFormat) {
+        const feed = incoming.get("creative_feed");
+        if (feed instanceof File && feed.type.startsWith("video/")) {
+          try {
+            videoId = await uploadVideoFile(adAccount, accessToken, feed);
+            videoFileName = feed.name;
+          } catch (e) {
+            const message = `Видео не загрузилось в Meta: ${(e as Error).message}`;
+            await patchLaunch(launchId, {
+              status: "error",
+              status_step: "media",
+              status_message: message,
+              last_error: message,
+              completed_at: new Date().toISOString(),
+            });
+            return new Response(JSON.stringify({ ok: false, error: message }), {
+              status: 502,
+              headers: { ...corsHeaders, "Content-Type": "application/json" },
+            });
+          }
+        }
+      }
+
+      const format = creativeFormat ?? (videoId ? "video" : "single");
+
+      const { error: jobErr } = await adminClient().from("ad_launch_jobs").insert({
+        launch_id: launchId,
+        project_id: projectId || null,
+        cabinet_id: cabinetId,
+        status: "queued",
+        step: "resolve",
+        request: {
+          goal,
+          budgetUsd: Number(payload.budget) || 0,
+          text: pickStr(payload.text),
+          headline: pickStr(payload.headline),
+          service: pickStr(payload.serviceName, payload.headline),
+          codeWord: pickStr(payload.codeWord),
+          format,
+          imageHash: feedImageHash,
+          imageHashes: orderedCarouselHashes.map((h) => h.hash),
+          videoId,
+          videoFileName,
+          sourceInstagramMediaId: sourceIgMediaId || null,
+          adAccountId: adAccount,
+          pageId,
+          instagramUserId: igUserForCreative || instagramId,
+          pixelId,
+          pixelEvent,
+          websiteUrl,
+          whatsappNumber,
+          leadFormId,
+        },
+      });
+      if (jobErr) {
+        const message = `Не удалось поставить запуск в очередь: ${jobErr.message}`;
+        await patchLaunch(launchId, {
+          status: "error",
+          status_step: "enqueue",
+          status_message: message,
+          last_error: message,
+          completed_at: new Date().toISOString(),
+        });
+        return new Response(JSON.stringify({ ok: false, error: message }), {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        });
+      }
+
+      await patchLaunch(launchId, {
+        status: "queued",
+        status_step: "queued",
+        status_message: "Запуск в очереди",
+      });
+
+      // Мгновенный пинок воркера, чтобы не ждать ближайший тик крона.
+      // Не дожидаемся ответа: очередь всё равно разберётся по расписанию.
+      const cronSecret =
+        (settings as { cron_secret?: string | null } | null)?.cron_secret ?? "";
+      fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/ads-launch-worker`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-automation-key": cronSecret },
+        body: JSON.stringify({ batch_size: 3 }),
+        signal: AbortSignal.timeout(3_000),
+      }).catch(() => {});
+
+      return new Response(
+        JSON.stringify({
+          ok: true,
+          accepted: true,
+          queued: true,
+          launchId,
+          summary: payload.launchSummary,
+          creativeFormat: format,
+          feedImageHash,
+          carouselImageHashes: orderedCarouselHashes.map((h) => h.hash),
+          videoId,
+        }),
+        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    // ===== 9. Старый контур: шлём в n8n с коротким таймаутом ACK =====
     const out = new FormData();
     out.append("payload", JSON.stringify(payload));
     // Пересылаем оригинальные файлы — n8n обработает видео самостоятельно
