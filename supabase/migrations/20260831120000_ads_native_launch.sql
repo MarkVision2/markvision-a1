@@ -153,6 +153,9 @@ as $$
 $$;
 
 revoke all on function public.claim_ad_launch_jobs(integer, interval) from public, anon, authenticated;
+-- Право выполнения выдаём явно: без него забор заданий сломался бы там, где
+-- сервисная роль опиралась на грант для PUBLIC, который мы только что сняли.
+grant execute on function public.claim_ad_launch_jobs(integer, interval) to service_role;
 
 -- ── 6. Консолидация кампаний без гонки ──────────────────────
 -- Возвращает id уже созданной кампании и признак «эта задача создаёт её сама».
@@ -204,6 +207,8 @@ $$;
 
 revoke all on function public.claim_ad_campaign_group(text, date, text, text, uuid)
   from public, anon, authenticated;
+grant execute on function public.claim_ad_campaign_group(text, date, text, text, uuid)
+  to service_role;
 
 -- Владелец записывает созданную кампанию — с этого момента её берут все.
 create or replace function public.set_ad_campaign_group_campaign(
@@ -228,3 +233,5 @@ $$;
 
 revoke all on function public.set_ad_campaign_group_campaign(text, date, text, text, text)
   from public, anon, authenticated;
+grant execute on function public.set_ad_campaign_group_campaign(text, date, text, text, text)
+  to service_role;

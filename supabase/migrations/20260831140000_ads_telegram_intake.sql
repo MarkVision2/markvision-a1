@@ -89,6 +89,7 @@ as $$
 $$;
 
 revoke all on function public.cleanup_ad_telegram_media() from public, anon, authenticated;
+grant execute on function public.cleanup_ad_telegram_media() to service_role;
 
 select cron.unschedule('ads-telegram-media-cleanup')
 where exists (select 1 from cron.job where jobname = 'ads-telegram-media-cleanup');

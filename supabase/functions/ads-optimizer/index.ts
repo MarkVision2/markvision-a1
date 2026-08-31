@@ -10,7 +10,12 @@
  * вызов из интерфейса. `dry_run: true` считает, но ничего не меняет.
  */
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
-import { AUTH_CORS_HEADERS, requireUser, userHasAnyRole } from "../_lib/auth.ts";
+import {
+  AUTH_CORS_HEADERS,
+  requireCabinetAccess,
+  requireUser,
+  userHasAnyRole,
+} from "../_lib/auth.ts";
 import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
 import { graph, MetaApiError } from "../_lib/metaGraph.ts";
 import { normalizeActId } from "../_lib/metaAds.ts";
@@ -43,7 +48,18 @@ function admin(): SupabaseClient {
   );
 }
 
-async function authorize(req: Request, db: SupabaseClient): Promise<boolean> {
+/**
+ * Кто зовёт функцию. Различать важно: крон обходит все кабинеты, а человек —
+ * только те, к чьему проекту у него есть доступ. Оптимизатор меняет бюджеты и
+ * останавливает кампании, поэтому ручной запуск не должен дотягиваться до
+ * чужих проектов.
+ */
+type Caller =
+  | { kind: "cron" }
+  | { kind: "user"; authHeader: string }
+  | null;
+
+async function authorize(req: Request, db: SupabaseClient): Promise<Caller> {
   const key = req.headers.get("x-automation-key");
   if (key) {
     const { data } = await db
@@ -52,11 +68,12 @@ async function authorize(req: Request, db: SupabaseClient): Promise<boolean> {
       .eq("id", true)
       .maybeSingle();
     const secret = (data as { cron_secret?: string | null } | null)?.cron_secret ?? null;
-    if (secret && key === secret) return true;
+    if (secret && key === secret) return { kind: "cron" };
   }
   const auth = await requireUser(req);
-  if (!auth.ok) return false;
-  return await userHasAnyRole(auth.userId, ["admin", "manager"]);
+  if (!auth.ok) return null;
+  if (!(await userHasAnyRole(auth.userId, ["admin", "manager"]))) return null;
+  return { kind: "user", authHeader: auth.authHeader };
 }
 
 /** Утро или вечер по времени Алматы — как в ноде n8n `Detect Mode`. */
@@ -479,7 +496,8 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   const db = admin();
-  if (!(await authorize(req, db))) return json({ error: "Unauthorized" }, 401);
+  const caller = await authorize(req, db);
+  if (!caller) return json({ error: "Unauthorized" }, 401);
 
   const body = await req.json().catch(() => ({})) as {
     mode?: "morning" | "night";
@@ -490,6 +508,19 @@ Deno.serve(async (req) => {
     ? body.mode
     : detectMode(new Date());
   const dryRun = body.dry_run === true;
+
+  // Обойти все кабинеты может только крон. Человек называет кабинет и должен
+  // иметь доступ к его проекту — проверяем это его же токеном, через RLS.
+  if (caller.kind === "user") {
+    if (!body.cabinet_id) {
+      return json(
+        { error: "Укажите cabinet_id: ручной запуск работает по одному кабинету." },
+        400,
+      );
+    }
+    const access = await requireCabinetAccess(caller.authHeader, body.cabinet_id);
+    if (!access.ok) return access.response;
+  }
 
   let query = db.from("ad_cabinets").select("*");
   if (body.cabinet_id) query = query.eq("id", body.cabinet_id);
