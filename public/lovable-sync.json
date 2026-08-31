@@ -1,7 +1,7 @@
 {
-  "git_sha": "6f46959",
-  "git_sha_full": "6f46959c1ea04c199091e9f322557c84d4961663",
-  "updated_at": "2026-08-31T17:45:26+04:00",
-  "label": "fix(ci): базовая линия истории миграций — деплой снова доводит SQL до прода (#245)",
+  "git_sha": "c4a3b88",
+  "git_sha_full": "c4a3b883abbc79d765f6e3e2bed5fba5e639dc33",
+  "updated_at": "2026-08-31T17:53:36+04:00",
+  "label": "fix(ci): пометка базовой линии по одной версии + проверочный SQL (#246)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
