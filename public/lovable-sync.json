@@ -1,7 +1,7 @@
 {
-  "git_sha": "05bf1be",
-  "git_sha_full": "05bf1be6309e221d57d125227f4edd3299adfabc",
-  "updated_at": "2026-08-31T17:19:45+04:00",
-  "label": "fix(ci): db push перестал спотыкаться о расхождение истории миграций (#242)",
+  "git_sha": "0f5597c",
+  "git_sha_full": "0f5597c394601fdebde128da60bc62e4b948eff8",
+  "updated_at": "2026-08-31T17:23:06+04:00",
+  "label": "fix(ci): предохранитель на хвост миграций и прогон логики в этом же деплое (#243)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
