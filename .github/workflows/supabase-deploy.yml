@@ -113,6 +113,12 @@ jobs:
           supabase db push --password "$SUPABASE_DB_PASSWORD"
 
       # 2b) Fallback: без пароля пробуем Management API (нужен scope database_write).
+      #     Сейчас этот путь отвечает HTTP 403 (error code 1010) — у токена нет
+      #     database_write, поэтому миграции на прод автоматически НЕ доезжают.
+      #     Пока это так, каждый набор миграций дублируется одним идемпотентным
+      #     файлом в scripts/apply-*.sql для вставки в Supabase SQL Editor.
+      #     Чинится либо секретом SUPABASE_DB_PASSWORD (тогда работает db push
+      #     выше и список ниже не нужен), либо токеном с правом database_write.
       - name: Apply critical SQL via Management API
         if: ${{ always() && steps.db_changes.outputs.changed == 'true' && env.SUPABASE_DB_PASSWORD == '' }}
         continue-on-error: true
@@ -131,7 +137,8 @@ jobs:
             supabase/migrations/20260719190000_ig_dm_button_title.sql \
             supabase/migrations/20260719193000_montage_jobs_broll_source.sql \
             supabase/migrations/20260823120000_wa_web_block_greenapi_fix.sql \
-            scripts/apply-wa-web-greenapi-fix.sql
+            scripts/apply-wa-web-greenapi-fix.sql \
+            scripts/apply-ads-native-launch.sql
           do
             echo "::group::Apply $SQL_FILE"
             if ! SQL_FILE="$SQL_FILE" .github/scripts/apply-sql-via-management-api.sh; then
