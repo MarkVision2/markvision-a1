@@ -205,3 +205,9 @@ verify_jwt = false
 
 [functions.meta-token-health]
 verify_jwt = false
+
+# Генерация статичного контента без n8n: воркер очереди дёргает pg_cron
+# без пользовательского JWT — авторизация внутри по x-automation-key.
+# Приёмник заявки (content-factory-generate) проверяет JWT пользователя сам.
+[functions.content-factory-worker]
+verify_jwt = false
