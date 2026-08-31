@@ -13,6 +13,8 @@
 //
 // Чистые функции — покрыты src/test/adLaunchMedia.test.ts.
 
+import { isPrivateHostname } from "./safeUrl.ts";
+
 /** Хосты, с которых разрешено брать креативы, по умолчанию. */
 export const DEFAULT_MEDIA_HOSTS = [
   ".supabase.co",
@@ -30,17 +32,6 @@ export function allowedMediaHosts(extraRaw?: string | null): string[] {
     .map((h) => h.trim().toLowerCase())
     .filter(Boolean);
   return [...DEFAULT_MEDIA_HOSTS, ...extra];
-}
-
-/** Литералы приватных и служебных адресов — их не должно быть даже в allowlist. */
-function isPrivateHost(host: string): boolean {
-  const h = host.toLowerCase();
-  if (h === "localhost" || h.endsWith(".localhost") || h.endsWith(".internal")) return true;
-  // IPv6 в URL приходит в скобках; любые literal-адреса запрещаем целиком —
-  // легитимный креатив всегда лежит на доменном имени.
-  if (h.startsWith("[")) return true;
-  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) return true;
-  return false;
 }
 
 function hostAllowed(host: string, allowed: string[]): boolean {
@@ -65,7 +56,7 @@ export function isAllowedMediaUrl(raw: string, allowed: string[]): boolean {
     return false;
   }
   if (url.protocol !== "https:") return false;
-  if (isPrivateHost(url.hostname)) return false;
+  if (isPrivateHostname(url.hostname)) return false;
   return hostAllowed(url.hostname, allowed);
 }
 

@@ -28,6 +28,8 @@ import {
   parseStrategy,
 } from "../_lib/contentFactoryGen.ts";
 import { VISION_ANALYSIS_PROMPT } from "../_lib/contentFactoryPrompts.ts";
+import { allowedMediaHosts, isAllowedMediaUrl } from "../_lib/adLaunchMedia.ts";
+import { fetchPublicUrl } from "../_lib/safeUrl.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -95,23 +97,36 @@ async function fetchAsBase64(
   }
 }
 
+/**
+ * Референсные фото. Тело заявки приходит от клиента, а качает ссылки сервер,
+ * поэтому берём только наши хранилища: мастер и так заливает фото в Storage
+ * перед отправкой, а чужой адрес здесь означал бы SSRF.
+ */
 function referenceUrls(body: Record<string, unknown>): string[] {
   const raw = body.image_urls;
   const list = Array.isArray(raw) ? raw : [];
+  const allowed = allowedMediaHosts(Deno.env.get("AD_LAUNCH_MEDIA_HOSTS"));
   return list
-    .filter((u): u is string => typeof u === "string" && /^https:\/\//i.test(u.trim()))
+    .filter((u): u is string => typeof u === "string")
     .map((u) => u.trim())
+    .filter((u) => isAllowedMediaUrl(u, allowed))
     .slice(0, MAX_REFERENCES);
 }
 
-/** Текст страницы по ссылке — замена ноды ScrapingBee в n8n. */
+/**
+ * Текст страницы по ссылке — замена ноды ScrapingBee в n8n.
+ *
+ * Здесь allowlist не подходит: человек указывает свой сайт, это может быть
+ * любой домен. Но внутренние адреса закрыты, и редиректы разбираются вручную —
+ * иначе внешний сайт увёл бы нас в локальную сеть уже после проверки.
+ */
 async function fetchSiteText(url: string): Promise<string> {
   try {
-    const res = await fetch(url, {
+    const res = await fetchPublicUrl(url, {
       signal: AbortSignal.timeout(30_000),
       headers: { "User-Agent": "MarkVisionBot/1.0" },
     });
-    if (!res.ok) return "";
+    if (!res || !res.ok) return "";
     const html = await res.text();
     return html
       .replace(/<script[\s\S]*?<\/script>/gi, " ")
@@ -275,6 +290,20 @@ async function processJob(
   const chatId = await resolveTelegramChat(admin, job.project_id);
   const styleLabel = str(body.style_label) || str(body.style);
   let done = job.slides_done;
+  // Индекс кадра, который попадёт в галерею: первый удавшийся за всё задание.
+  // При продолжении после дедлайна карточка уже записана — второй раз не пишем.
+  const firstSaved = done;
+
+  // Модель могла вернуть меньше кадров, чем заказал мастер. Лишние заглушки
+  // так и висели бы «в работе» — убираем их, чтобы карточки не зависали.
+  if (job.slides_total > strategy.length) {
+    await admin
+      .from("content_factory_results")
+      .delete()
+      .eq("request_id", job.request_id)
+      .eq("status", "queued")
+      .gte("slide_index", strategy.length);
+  }
 
   for (let index = done; index < strategy.length; index++) {
     if (Date.now() > deadline) {
@@ -332,12 +361,17 @@ async function processJob(
       error_message: null,
     }, { onConflict: "request_id,slide_index" });
 
-    if (job.project_id) {
-      await admin.from("content_factory_gallery").insert({
+    // Галерея хранит одну карточку на заявку — так устроен уникальный индекс
+    // (project_id, request_id), и так же её пишет мастер по realtime. Поэтому
+    // сохраняем только первый удавшийся кадр и не спорим с фронтом: если
+    // человек не закрыл страницу, он допишет ту же строку своими метаданными.
+    // Раньше здесь вставлялась строка на каждый кадр — для карусели это давало
+    // дубли поверх записи мастера.
+    if (job.project_id && index === firstSaved) {
+      const { error: galleryErr } = await admin.from("content_factory_gallery").insert({
         project_id: job.project_id,
         created_by: job.created_by,
-        // request_id уникален на проект — для карусели добавляем индекс кадра.
-        request_id: strategy.length > 1 ? `${job.request_id}#${index}` : job.request_id,
+        request_id: job.request_id,
         session_id: job.session_id,
         type_id: str(body.type_id) || str(body.content_type),
         type_title: str(body.type_title) || null,
@@ -347,6 +381,11 @@ async function processJob(
         prompt_snapshot: str(body.prompt).slice(0, 4000),
         metadata: { source: "direct", slide_index: index, slide_type: slide.slide_type },
       });
+      // Конфликт означает, что мастер успел записать карточку раньше — это
+      // штатная гонка, а не сбой генерации.
+      if (galleryErr && galleryErr.code !== "23505") {
+        console.error("[content-factory-worker] gallery:", galleryErr.message);
+      }
     }
 
     if (chatId) {
