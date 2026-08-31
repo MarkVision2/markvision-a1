@@ -97,22 +97,12 @@ export function launchStatusLabel(launch: CampaignLaunchRow): string {
   return launch.statusMessage || launch.status || "Статус неизвестен";
 }
 
-/**
- * Шаги конечного автомата ad-launch-worker (см. docs/AD-LAUNCH-DIRECT-META.md)
- * плюс исторические названия из n8n-контура. Порядок проверок важен:
- * "creating_adset" содержит и "adset", и "ad".
- */
 function humanizeStep(step: string): string {
   const value = step.toLowerCase();
-  if (value.includes("targeting")) return "подбирается аудитория";
-  if (value.includes("waiting_media")) return "Meta обрабатывает видео";
-  if (value.includes("upload")) return "загрузка креатива";
   if (value.includes("campaign")) return "создаётся кампания";
   if (value.includes("adset")) return "создаётся адсет";
-  if (value.includes("creative")) return "собирается объявление";
-  if (value.includes("activating")) return "включение кампании";
-  if (value.includes("saving")) return "сохранение креатива";
-  if (value.includes("ad")) return "публикуется объявление";
+  if (value.includes("creative") || value.includes("ad")) return "создаётся объявление";
+  if (value.includes("upload")) return "загрузка креатива";
   return step.replace(/_/g, " ");
 }
 

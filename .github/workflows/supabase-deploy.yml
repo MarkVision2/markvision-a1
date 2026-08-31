@@ -62,16 +62,35 @@ jobs:
             exit 0
           fi
 
+          # Сам воркфлоу в списке намеренно: если менялась логика применения
+          # миграций, её надо прогнать по проду в этом же деплое, а не ждать
+          # следующего изменения SQL, чтобы узнать, что она не работает.
           if git diff --name-only "$BASE" "$GITHUB_SHA" -- \
             'supabase/migrations/**/*.sql' \
             'supabase/migrations/*.sql' \
             'supabase/migrations_client_config/**/*.sql' \
             'supabase/migrations_client_config/*.sql' \
-            'scripts/*.sql' | grep -q .; then
+            'scripts/*.sql' \
+            '.github/workflows/supabase-deploy.yml' | grep -q .; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
+
+      # 0) Номера версий миграций должны быть уникальны. CLI хранит историю по
+      #    номеру версии, поэтому из двух файлов с одинаковым номером второй не
+      #    может быть записан никогда: он вечно висит в плане push и блокирует
+      #    применение всего остального. Ловим это сразу, а не на проде.
+      - name: Check migration versions are unique
+        run: |
+          DUPES=$(ls supabase/migrations/*.sql 2>/dev/null | sed 's#.*/##' | cut -c1-14 | sort | uniq -d)
+          if [ -n "$DUPES" ]; then
+            echo "::error::Одинаковые номера версий у разных файлов миграций:"
+            for v in $DUPES; do ls -1 supabase/migrations/${v}_*.sql; done
+            echo "::error::Переименуйте лишние файлы на свободные номера."
+            exit 1
+          fi
+          echo "::notice::Migration versions are unique."
 
       # 1) Edge functions — сначала и всегда (не зависят от пароля БД).
       #    Одна упавшая функция не роняет остальные и НЕ блокирует SQL ниже:
@@ -110,9 +129,127 @@ jobs:
           SUPABASE_PROJECT_REF: ${{ steps.ref.outputs.ref }}
         run: |
           supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+
+          PLAN=/tmp/db-push-plan.txt
+          dry_run() {
+            supabase db push --dry-run --password "$SUPABASE_DB_PASSWORD" > "$PLAN" 2>&1 || true
+            cat "$PLAN"
+          }
+
+          echo "::group::db push --dry-run"
+          dry_run
+          echo "::endgroup::"
+
+          # История миграций на проде расходится с репозиторием: часть миграций
+          # применяется мимо CLI (Lovable), их версии оседают в
+          # supabase_migrations.schema_migrations, а файлов в supabase/migrations нет.
+          # В таком состоянии db push отказывается работать целиком
+          # ("Remote migration versions not found in local migrations directory")
+          # и не применяет НИ ОДНОЙ миграции. Помечаем такие версии как reverted —
+          # это правка только служебной таблицы учёта, схема БД не трогается.
+          # Список версий берём из самой ошибки: CLI печатает готовую команду
+          # ремонта. Это надёжнее разбора таблицы migration list, формат которой
+          # зависит от версии CLI.
+          if grep -q "Remote migration versions not found" "$PLAN"; then
+            ORPHANS=$(grep -o 'supabase migration repair --status reverted.*' "$PLAN" \
+              | head -1 | grep -oE '[0-9]{14}' | tr '\n' ' ')
+            if [ -z "$ORPHANS" ]; then
+              echo "::error::История миграций расходится, но список версий из вывода CLI не разобрался — см. лог выше."
+              exit 1
+            fi
+            # shellcheck disable=SC2086
+            echo "::notice::Repairing $(echo $ORPHANS | wc -w) remote-only migration versions as reverted"
+            # shellcheck disable=SC2086
+            supabase migration repair --status reverted --password "$SUPABASE_DB_PASSWORD" $ORPHANS
+            echo "::group::db push --dry-run (после ремонта истории)"
+            dry_run
+            echo "::endgroup::"
+            if grep -q "Remote migration versions not found" "$PLAN"; then
+              echo "::error::История миграций всё ещё расходится после ремонта. Ничего не применено."
+              exit 1
+            fi
+          fi
+
+          # Обратная сторона того же расхождения: часть локальных миграций уже
+          # применена к проду мимо CLI и в учёте не записана. db push видит их как
+          # неприменённые и либо требует --include-all, либо прогнал бы их по проду
+          # заново. Помечаем как applied только те версии, что перечислены в
+          # supabase/migrations_baseline_applied.txt — там же написано, как каждая
+          # из них проверялась на проде. Незнакомая версия останавливает деплой:
+          # молча пропустить непроверенную миграцию хуже, чем не выкатиться.
+          BASELINE=supabase/migrations_baseline_applied.txt
+          VETTED=$(grep -E '^[0-9]{14}$' "$BASELINE" | sort -u)
+          plan_versions() { grep -oE '[0-9]{14}_[^ ]*\.sql' "$PLAN" | cut -c1-14 | sort -u; }
+          # Помечаем по одной версии, а не пачкой: CLI перечисляет все локальные
+          # файлы раньше последней записи в учёте, включая уже записанные, и на
+          # первой такой пачка падает целиком с duplicate key. Строка уже в учёте —
+          # это и есть нужное состояние, поэтому такую ошибку пропускаем.
+          mark_applied() { # $1 — версии через пробел
+            local v out marked=0 already=0
+            echo "::group::migration repair --status applied"
+            for v in $1; do
+              if out=$(supabase migration repair --status applied --password "$SUPABASE_DB_PASSWORD" "$v" 2>&1); then
+                marked=$((marked + 1))
+              elif echo "$out" | grep -q 'duplicate key value violates unique constraint'; then
+                already=$((already + 1))
+              else
+                echo "$out"
+                echo "::endgroup::"
+                echo "::error::Не удалось пометить миграцию $v как applied. Ничего больше не применяется."
+                return 1
+              fi
+            done
+            echo "::endgroup::"
+            echo "::notice::Baseline: помечено $marked, уже было в учёте $already"
+            echo "::group::db push --dry-run (после базовой линии)"
+            dry_run
+            echo "::endgroup::"
+          }
+
+          # Файлы, датированные раньше последней записи в учёте. Обычным push их не
+          # применить — только --include-all, то есть прогоном по проду заново.
+          # Незнакомая версия здесь останавливает деплой: молча пропустить
+          # непроверенную миграцию хуже, чем не выкатиться.
+          if grep -q "Rerun the command with --include-all" "$PLAN"; then
+            OUT_OF_ORDER=$(plan_versions)
+            UNVETTED=$(comm -23 <(echo "$OUT_OF_ORDER") <(echo "$VETTED"))
+            if [ -n "$UNVETTED" ]; then
+              echo "::error::Эти миграции датированы раньше последней записи в учёте прода и не входят в базовую линию:"
+              echo "$UNVETTED"
+              echo "::error::Ничего не применено. Проверьте, применены ли они к проду, и либо добавьте в $BASELINE, либо перевыпустите их с более поздней датой."
+              exit 1
+            fi
+            mark_applied "$(echo "$OUT_OF_ORDER" | tr '\n' ' ')"
+          fi
+
+          # Остаток плана: то, что push применил бы вперёд. Здесь незнакомая версия —
+          # это нормальная новая миграция, её и надо применить. А вот версии из
+          # базовой линии применять нельзя: они уже на проде, повтор их сломает.
+          KNOWN=$(comm -12 <(plan_versions) <(echo "$VETTED") | tr '\n' ' ')
+          if [ -n "${KNOWN// /}" ]; then
+            mark_applied "$KNOWN"
+          fi
+
+          # Предохранитель на размер плана: если после ремонта учёта push всё равно
+          # хочет применить много миграций, НЕ применяем ничего — такой хвост
+          # должен посмотреть человек, а не выкатиться сам ночью.
+          PENDING=$(grep -cE '[0-9]{14}_.*\.sql' "$PLAN" || true)
+          echo "::notice::Pending migrations: $PENDING"
+          if [ "$PENDING" -gt "${DB_PUSH_MAX_PENDING:-10}" ]; then
+            echo "::error::db push хочет применить $PENDING миграций — это похоже на накопившийся хвост, а не на текущий деплой. Ничего не применено. Проверьте список выше и примените осознанно (или поднимите DB_PUSH_MAX_PENDING)."
+            exit 1
+          fi
+
           supabase db push --password "$SUPABASE_DB_PASSWORD"
 
-      # 2b) Fallback: без пароля пробуем Management API (нужен scope database_write).
+      # 2b) Fallback на случай, если секрет SUPABASE_DB_PASSWORD не задан.
+      #     Наблюдалось, что этот путь отвечает HTTP 403 (error code 1010) —
+      #     ответ Cloudflare, не Supabase; причина не подтверждена (либо у токена
+      #     нет database_write, либо запрос режется по client signature: скрипт
+      #     ходит через python urllib без User-Agent). Пока путь ненадёжен,
+      #     каждый набор миграций дублируется идемпотентным файлом
+      #     scripts/apply-*.sql для ручной вставки в Supabase SQL Editor.
+      #     Основной путь — db push выше, он требует только SUPABASE_DB_PASSWORD.
       - name: Apply critical SQL via Management API
         if: ${{ always() && steps.db_changes.outputs.changed == 'true' && env.SUPABASE_DB_PASSWORD == '' }}
         continue-on-error: true
@@ -131,7 +268,8 @@ jobs:
             supabase/migrations/20260719190000_ig_dm_button_title.sql \
             supabase/migrations/20260719193000_montage_jobs_broll_source.sql \
             supabase/migrations/20260823120000_wa_web_block_greenapi_fix.sql \
-            scripts/apply-wa-web-greenapi-fix.sql
+            scripts/apply-wa-web-greenapi-fix.sql \
+            scripts/apply-ads-native-launch.sql
           do
             echo "::group::Apply $SQL_FILE"
             if ! SQL_FILE="$SQL_FILE" .github/scripts/apply-sql-via-management-api.sh; then
@@ -153,7 +291,7 @@ jobs:
           elif [ "${{ steps.db_push.outcome }}" = "success" ] || [ "${{ steps.mgmt_sql.outcome }}" = "success" ]; then
             echo "::notice::Database SQL applied."
           else
-            echo "::warning::Could not apply DB migration automatically (need SUPABASE_DB_PASSWORD or ACCESS_TOKEN with database_write). Apply scripts/apply-wa-web-greenapi-fix.sql in Supabase SQL Editor."
+            echo "::warning::Could not apply DB migration automatically. Check the 'Apply database migrations' step log; as a fallback apply the matching scripts/apply-*.sql in Supabase SQL Editor."
           fi
 
       - name: Fail if functions or SQL did not succeed

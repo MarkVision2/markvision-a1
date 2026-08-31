@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import {
   AlertCircle,
   BarChart3,
-  CalendarClock,
   ChevronDown,
   Copy,
   Loader2,
@@ -36,7 +35,6 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { AutoLaunchDialog } from "@/components/ads/AutoLaunchDialog";
 
 const CURRENCY_SYMBOLS: Record<string, string> = {
   USD: "$",
@@ -103,12 +101,9 @@ interface Props {
   onSynced?: () => void;
   /** У проекта один Meta-кабинет — считать unattributed Meta-лиды своими. */
   soleMetaCabinet?: boolean;
-  /** Сохранение настроек кабинета — нужно для диалога авто-запуска. */
-  onUpdate?: (id: string, patch: Partial<AdCabinet>) => Promise<void> | void;
 }
 
-const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, onRemove, onSynced, soleMetaCabinet, onUpdate }: Props) => {
-  const [autoLaunchOpen, setAutoLaunchOpen] = useState(false);
+const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, onRemove, onSynced, soleMetaCabinet }: Props) => {
   const monthParam = `${monthCursor.getFullYear()}-${String(
     monthCursor.getMonth() + 1,
   ).padStart(2, "0")}`;
@@ -389,10 +384,6 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
                 <RefreshCw className={cn("mr-2 h-4 w-4", syncing && "animate-spin")} />
                 Получить статистику
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setAutoLaunchOpen(true)} disabled={!onUpdate}>
-                <CalendarClock className="mr-2 h-4 w-4" />
-                Авто-запуск{cabinet.autoLaunchEnabled ? " · включён" : ""}
-              </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem
                 onClick={() => {
@@ -625,15 +616,6 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
             Продажи и сумма — оплаты из CRM (можно поправить вручную).
           </p>
         </div>
-      )}
-
-      {onUpdate && (
-        <AutoLaunchDialog
-          open={autoLaunchOpen}
-          onOpenChange={setAutoLaunchOpen}
-          cabinet={cabinet}
-          onSave={onUpdate}
-        />
       )}
     </article>
   );

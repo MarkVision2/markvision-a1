@@ -29,7 +29,7 @@ import {
   parseStrategy,
 } from "../_lib/contentFactoryGen.ts";
 import { VISION_ANALYSIS_PROMPT } from "../_lib/contentFactoryPrompts.ts";
-import { allowedMediaHosts, isAllowedMediaUrl } from "../_lib/adLaunchMedia.ts";
+import { allowedMediaHosts, isAllowedMediaUrl } from "../_lib/mediaHosts.ts";
 import { fetchPublicUrl } from "../_lib/safeUrl.ts";
 
 const corsHeaders = {
@@ -106,7 +106,7 @@ async function fetchAsBase64(
 function referenceUrls(body: Record<string, unknown>): string[] {
   const raw = body.image_urls;
   const list = Array.isArray(raw) ? raw : [];
-  const allowed = allowedMediaHosts(Deno.env.get("AD_LAUNCH_MEDIA_HOSTS"));
+  const allowed = allowedMediaHosts(Deno.env.get("CONTENT_FACTORY_MEDIA_HOSTS"));
   return list
     .filter((u): u is string => typeof u === "string")
     .map((u) => u.trim())

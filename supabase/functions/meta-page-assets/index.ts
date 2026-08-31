@@ -173,6 +173,12 @@ Deno.serve(async (req) => {
       }
       const actAccess = await requireMetaAdAccountAccess(auth.authHeader, actId);
       if (!actAccess.ok) return actAccess.response;
+    } else if (kind === "ad_account") {
+      // Валюта и минимальный бюджет кабинета — нужны мастеру запуска, чтобы
+      // менеджер вводил сумму в валюте аккаунта, а не в предполагаемых долларах.
+      if (!actId) return jsonResponse({ error: "actId is required" }, 400);
+      const actAccess = await requireMetaAdAccountAccess(auth.authHeader, actId);
+      if (!actAccess.ok) return actAccess.response;
     } else if (kind === "lead_forms") {
       if (!pageId) {
         return jsonResponse({ error: "pageId is required for lead_forms" }, 400);
@@ -441,6 +447,46 @@ Deno.serve(async (req) => {
     }
 
     // ============ PIXELS ============
+    // ============ AD ACCOUNT ============
+    // Meta принимает daily_budget в МИНОРНЫХ единицах валюты аккаунта: для
+    // счёта в тенге «50» — это 50 тиын, а не 50 долларов. Поэтому мастер
+    // обязан знать валюту и минимальный дневной бюджет до запуска.
+    if (kind === "ad_account") {
+      if (!actId) return jsonResponse({ error: "actId is required" }, 400);
+      const r = await metaGet(
+        `/${normalizeActId(actId)}?fields=id,account_id,name,currency,account_status,` +
+          `timezone_name,min_daily_budget_low_freq,min_daily_budget_high_freq`,
+        META_ACCESS_TOKEN,
+      );
+      if (!r.ok) {
+        return jsonResponse(
+          { ...formatMetaError(r.body?.error), status: r.status },
+          502,
+        );
+      }
+      const b = r.body ?? {};
+      // Валюты без копеек Meta считает целыми единицами.
+      const ZERO_DECIMAL = new Set([
+        "JPY", "KRW", "VND", "CLP", "ISK", "PYG", "UGX", "RWF",
+        "XAF", "XOF", "XPF", "BIF", "DJF", "GNF", "KMF", "MGA", "VUV",
+      ]);
+      const currency = String(b.currency ?? "USD").toUpperCase();
+      const minorUnits = ZERO_DECIMAL.has(currency) ? 1 : 100;
+      const minMinor = Number(b.min_daily_budget_low_freq ?? 0);
+      return jsonResponse({
+        items: [{
+          id: String(b.id ?? normalizeActId(actId)),
+          name: String(b.name ?? ""),
+          currency,
+          minor_units: minorUnits,
+          account_status: Number(b.account_status ?? 0),
+          timezone_name: b.timezone_name ?? null,
+          // Минимум в единицах валюты — то, что видит человек.
+          min_daily_budget: minMinor > 0 ? minMinor / minorUnits : null,
+        }],
+      });
+    }
+
     if (kind === "pixels") {
       if (!actId) return jsonResponse({ error: "actId is required" }, 400);
       const r = await metaGet(

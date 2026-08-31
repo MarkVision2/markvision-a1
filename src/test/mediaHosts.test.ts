@@ -11,7 +11,7 @@ import {
   DEFAULT_MEDIA_HOSTS,
   isAllowedMediaUrl,
   partitionMediaUrls,
-} from "../../supabase/functions/_lib/adLaunchMedia.ts";
+} from "../../supabase/functions/_lib/mediaHosts.ts";
 
 const allowed = allowedMediaHosts();
 

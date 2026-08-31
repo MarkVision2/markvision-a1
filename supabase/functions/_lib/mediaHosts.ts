@@ -1,4 +1,4 @@
-// Проверка ссылок на креативы перед тем, как их скачает сервер.
+// Allowlist хостов, с которых сервер готов скачивать медиа.
 //
 // Воркер запуска делает server-side fetch по каждой ссылке из задания и
 // отправляет полученные байты в Meta как изображение объявления. Если ссылку
@@ -9,9 +9,9 @@
 //
 // Поэтому ссылки принимаются только с наших же хостов: Supabase Storage этого
 // проекта, клиентский проект Контент-завода и Cloudinary, куда складывает
-// картинки генерация. Расширяется через AD_LAUNCH_MEDIA_HOSTS.
+// картинки генерация. Расширяется через CONTENT_FACTORY_MEDIA_HOSTS.
 //
-// Чистые функции — покрыты src/test/adLaunchMedia.test.ts.
+// Чистые функции — покрыты src/test/mediaHosts.test.ts.
 
 import { isPrivateHostname } from "./safeUrl.ts";
 
@@ -23,7 +23,7 @@ export const DEFAULT_MEDIA_HOSTS = [
 ];
 
 /**
- * Список разрешённых хостов: дефолтные плюс заданные в AD_LAUNCH_MEDIA_HOSTS
+ * Список разрешённых хостов: дефолтные плюс заданные в CONTENT_FACTORY_MEDIA_HOSTS
  * (через запятую). Запись, начинающаяся с точки, означает домен и поддомены.
  */
 export function allowedMediaHosts(extraRaw?: string | null): string[] {

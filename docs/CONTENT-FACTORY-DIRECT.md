@@ -70,6 +70,8 @@ CreateStep3 → edge content-factory-generate ──► content_factory_jobs (qu
 | `supabase/functions/_lib/geminiParse.ts` | разбор ответа Gemini и тело запроса на генерацию (чистое, под тестами) |
 | `supabase/functions/_lib/gemini.ts` | клиент моделей Google: прямой Google API или Lovable AI Gateway |
 | `supabase/functions/_lib/safeUrl.ts` | проверка ссылок перед серверным запросом (SSRF) |
+| `supabase/functions/_lib/mediaHosts.ts` | allowlist хранилищ для референсных фото |
+| `supabase/functions/_lib/kie.ts` + `kieParse.ts` | клиент kie.ai: createTask → опрос → скачивание кадра |
 | `supabase/functions/content-factory-generate/index.ts` | приём заявки вместо вебхука в n8n |
 | `supabase/functions/content-factory-worker/index.ts` | конечный автомат генерации |
 | `supabase/migrations/20260901100000_content_factory_direct.sql` | очередь, уникальность слайда, кроны воркера и очистки |
@@ -174,10 +176,10 @@ GET  /api/v1/jobs/recordInfo?taskId=…
 После первого прохода код перечитан отдельно. Найдено и исправлено четыре вещи:
 
 **1. SSRF через референсные фото.** `image_urls` приходит от клиента, а качает
-ссылки сервер — проверка была только на `https://`. Теперь работает тот же
-allowlist хранилищ, что и в контуре запуска рекламы: мастер и так заливает
-фото в Storage перед отправкой, чужой адрес там означал бы попытку достучаться
-до внутренней сети.
+ссылки сервер — проверка была только на `https://`. Теперь работает allowlist
+хранилищ (`_lib/mediaHosts.ts`): мастер и так заливает фото в Storage перед
+отправкой, чужой адрес там означал бы попытку достучаться до внутренней сети.
+Список расширяется через `CONTENT_FACTORY_MEDIA_HOSTS`.
 
 **2. SSRF через ссылку на страницу товара.** Здесь allowlist не подходит —
 человек указывает свой сайт, это любой домен. Закрыты внутренние адреса

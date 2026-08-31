@@ -5,6 +5,20 @@ project_id = "szfgdruhlebfvcmlvxdk"
 [functions.capi-outbox-worker]
 verify_jwt = false
 
+# Очередь запусков рекламы разбирается pg_cron по x-automation-key; ручной
+# запуск менеджером проверяется внутри функции по пользовательскому JWT.
+[functions.ads-launch-worker]
+verify_jwt = false
+
+# Ежедневная оптимизация рекламы: те же два способа вызова, что у воркера.
+[functions.ads-optimizer]
+verify_jwt = false
+
+# Webhook Telegram-бота: апдейты приходят без JWT, подпись проверяется внутри
+# по заголовку x-telegram-bot-api-secret-token = TELEGRAM_ADS_WEBHOOK_SECRET.
+[functions.ads-telegram-intake]
+verify_jwt = false
+
 # CRM дожимы запускаются pg_cron по x-automation-key; ручной запуск админом
 # проверяется внутри функции по пользовательскому JWT.
 [functions.crm-automations]
@@ -194,20 +208,8 @@ verify_jwt = false
 [functions.group-invite-sync]
 verify_jwt = false
 
-# Прямой контур запуска рекламы: воркер очереди, планировщик авто-запуска и
-# проверка токенов Meta. Все три дёргает pg_cron без пользовательского JWT —
+# Воркер генерации Контент-завода дёргает pg_cron без пользовательского JWT —
 # авторизация внутри по x-automation-key = automation_settings.cron_secret.
-[functions.ad-launch-worker]
-verify_jwt = false
-
-[functions.ad-launch-scheduler]
-verify_jwt = false
-
-[functions.meta-token-health]
-verify_jwt = false
-
-# Генерация статичного контента без n8n: воркер очереди дёргает pg_cron
-# без пользовательского JWT — авторизация внутри по x-automation-key.
 # Приёмник заявки (content-factory-generate) проверяет JWT пользователя сам.
 [functions.content-factory-worker]
 verify_jwt = false

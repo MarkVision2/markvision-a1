@@ -1,300 +1,398 @@
-// Общая обёртка над Meta Graph API для прямого контура запуска рекламы.
-//
-// Зачем отдельный модуль: воркер запуска обязан отличать «повторяемую» ошибку
-// (throttle, временный сбой Meta) от фатальной (протух токен, битые параметры).
-// Без этой классификации ретраи либо бесполезно долбят Graph, либо задание
-// навсегда застревает в очереди.
-//
-// Модуль намеренно без импортов Deno/Supabase — чистые функции покрыты тестами
-// из src/test/metaGraph.test.ts.
-
-export const META_API_VERSION = "v21.0";
-export const META_GRAPH = `https://graph.facebook.com/${META_API_VERSION}`;
-
-export interface MetaError {
-  message: string;
-  /** Код ошибки Graph API. */
-  code: number | null;
-  subcode: number | null;
-  type: string | null;
-  /** fbtrace_id — по нему Meta ищет запрос в своих логах. */
-  traceId: string | null;
-  /** HTTP-статус ответа. */
-  httpStatus: number;
-}
-
-export interface GraphResult<T = Record<string, unknown>> {
-  ok: boolean;
-  data: T | null;
-  error: MetaError | null;
-}
-
 /**
- * Коды Graph, означающие «повтори позже».
- *   4     — лимит вызовов приложения
- *   17    — лимит вызовов пользователя
- *   613   — превышен лимит вызовов (rate limit ad account)
- *   80004 — Ads Management API throttle
- *   1, 2  — временная/неизвестная ошибка на стороне Meta
- *   341   — временный лимит приложения
+ * Тонкий клиент Meta Marketing API: запросы, разбор ошибок и деление их на
+ * временные (можно повторить) и окончательные (повтор не поможет).
+ *
+ * Логика сборки тел живёт в metaAds.ts, резолв гео — в metaGeo.ts. Здесь
+ * только сеть, поэтому модуль не покрывается unit-тестами напрямую;
+ * классификация ошибок вынесена в чистую функцию и тестируется отдельно.
  */
-const RETRYABLE_CODES = new Set([1, 2, 4, 17, 341, 613, 80000, 80001, 80002, 80003, 80004]);
+import { META_API_VERSION } from "./metaAds.ts";
+import type { GeoSearch, GeoSearchItem } from "./metaGeo.ts";
 
-/**
- * Коды, при которых ретрай бессмыслен и нужно показать человеку внятную причину.
- *   190 — токен протух/отозван
- *   200, 272, 294 — нет прав на кабинет/страницу
- *   100 — битые параметры запроса
- *   368 — аккаунт ограничен Meta
- */
-const FATAL_CODES = new Set([100, 190, 200, 272, 294, 368]);
+const GRAPH = `https://graph.facebook.com/${META_API_VERSION}`;
 
-export type MetaFailureKind = "retryable" | "fatal" | "unknown";
-
-export function classifyMetaError(err: MetaError | null): MetaFailureKind {
-  if (!err) return "unknown";
-  if (err.code != null && FATAL_CODES.has(err.code)) return "fatal";
-  if (err.code != null && RETRYABLE_CODES.has(err.code)) return "retryable";
-  // 5xx Meta — почти всегда временное.
-  if (err.httpStatus >= 500) return "retryable";
-  // 429 без распознанного кода.
-  if (err.httpStatus === 429) return "retryable";
-  return "unknown";
+export interface MetaErrorPayload {
+  message?: string;
+  type?: string;
+  code?: number;
+  error_subcode?: number;
+  error_user_title?: string;
+  error_user_msg?: string;
+  is_transient?: boolean;
+  fbtrace_id?: string;
 }
 
-/** Человекочитаемая причина для status_message в UI. */
-export function describeMetaError(err: MetaError | null): string {
-  if (!err) return "Неизвестная ошибка Meta";
-  switch (err.code) {
-    case 190:
-      return "Токен Meta протух или отозван — переподключите кабинет в разделе «Реклама → Кабинеты»";
-    case 200:
-    case 272:
-    case 294:
-      return `Недостаточно прав в Meta: ${err.message}`;
-    case 368:
-      return "Рекламный аккаунт ограничен Meta — запуск невозможен до снятия ограничения";
-    case 100:
-      return `Meta отклонила параметры запроса: ${err.message}`;
-    default:
-      return err.message || `Ошибка Meta (HTTP ${err.httpStatus})`;
+export class MetaApiError extends Error {
+  readonly status: number;
+  readonly code: number | null;
+  readonly subcode: number | null;
+  readonly transient: boolean;
+
+  constructor(status: number, payload: MetaErrorPayload | null, fallback: string) {
+    // Пользовательское сообщение Meta понятнее технического — показываем его.
+    const text = payload?.error_user_msg || payload?.message || fallback;
+    super(text);
+    this.name = "MetaApiError";
+    this.status = status;
+    this.code = payload?.code ?? null;
+    this.subcode = payload?.error_subcode ?? null;
+    this.transient = isTransientMetaError(status, payload);
   }
 }
 
 /**
- * Задержка перед следующей попыткой: экспонента 2^attempts минут с потолком.
- * attempts — сколько попыток уже сделано (1 после первой неудачи).
+ * Временные коды Meta: лимиты запросов, внутренние сбои и явный флаг
+ * `is_transient`. Всё остальное (протухший токен, отклонённая настройка)
+ * повтором не лечится и должно сразу становиться ошибкой запуска.
  */
-export function backoffMinutes(attempts: number, maxMinutes = 60): number {
-  const raw = Math.pow(2, Math.max(0, attempts));
-  return Math.min(raw, maxMinutes);
+export function isTransientMetaError(
+  status: number,
+  payload: MetaErrorPayload | null,
+): boolean {
+  if (payload?.is_transient) return true;
+  const code = payload?.code ?? null;
+  // 1 — неизвестная ошибка, 2 — сервис недоступен, 4/17/32/613 — лимиты запросов,
+  // 80000-80004 — лимиты рекламного API.
+  if (code !== null) {
+    if ([1, 2, 4, 17, 32, 613].includes(code)) return true;
+    if (code >= 80000 && code <= 80004) return true;
+    return false;
+  }
+  return status === 429 || status >= 500;
 }
 
-function parseMetaError(body: unknown, httpStatus: number): MetaError {
-  const err = (body as { error?: Record<string, unknown> } | null)?.error ?? {};
-  const num = (v: unknown): number | null =>
-    typeof v === "number" ? v : (typeof v === "string" && v.trim() !== "" && !Number.isNaN(Number(v)) ? Number(v) : null);
-  return {
-    message: typeof err.message === "string" ? err.message : `HTTP ${httpStatus}`,
-    code: num(err.code),
-    subcode: num(err.error_subcode),
-    type: typeof err.type === "string" ? err.type : null,
-    traceId: typeof err.fbtrace_id === "string" ? err.fbtrace_id : null,
-    httpStatus,
+export interface GraphOptions {
+  token: string;
+  method?: "GET" | "POST" | "DELETE";
+  query?: Record<string, string | number | undefined | null>;
+  body?: Record<string, unknown>;
+  timeoutMs?: number;
+}
+
+/** Запрос к Graph API. Бросает MetaApiError, иначе отдаёт разобранный JSON. */
+export async function graph<T = Record<string, unknown>>(
+  path: string,
+  opts: GraphOptions,
+): Promise<T> {
+  const url = new URL(`${GRAPH}/${path.replace(/^\/+/, "")}`);
+  for (const [k, v] of Object.entries(opts.query ?? {})) {
+    if (v !== undefined && v !== null && v !== "") url.searchParams.set(k, String(v));
+  }
+  url.searchParams.set("access_token", opts.token);
+
+  const method = opts.method ?? "GET";
+  const res = await fetch(url.toString(), {
+    method,
+    ...(opts.body
+      ? {
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(opts.body),
+      }
+      : {}),
+    signal: AbortSignal.timeout(opts.timeoutMs ?? 60_000),
+  });
+
+  const text = await res.text();
+  let parsed: unknown = null;
+  try {
+    parsed = text ? JSON.parse(text) : null;
+  } catch {
+    parsed = null;
+  }
+
+  const errorPayload = (parsed as { error?: MetaErrorPayload } | null)?.error ?? null;
+  if (!res.ok || errorPayload) {
+    throw new MetaApiError(
+      res.status,
+      errorPayload,
+      `Meta ${method} ${path} → HTTP ${res.status}: ${text.slice(0, 300)}`,
+    );
+  }
+  return (parsed ?? {}) as T;
+}
+
+/* ────────────────────────────── справочник гео ───────────────────────── */
+
+/** Поиск городов и стран для metaGeo.buildGeoLocations. */
+export function makeGeoSearch(token: string): GeoSearch {
+  return async (query: string) => {
+    const res = await graph<{ data?: GeoSearchItem[] }>("search", {
+      token,
+      query: {
+        type: "adgeolocation",
+        q: query,
+        location_types: JSON.stringify(["country", "region", "city"]),
+        limit: 15,
+      },
+      timeoutMs: 20_000,
+    });
+    return res.data ?? [];
   };
 }
 
-/** POST в Graph API формой application/x-www-form-urlencoded. */
-export async function graphPost<T = Record<string, unknown>>(
-  path: string,
+/* ────────────────────────────── медиа ────────────────────────────────── */
+
+/** Загружает картинку в рекламный аккаунт, отдаёт image_hash. */
+export async function uploadImage(
+  adAccountId: string,
   token: string,
-  params: Record<string, unknown>,
-  timeoutMs = 60_000,
-): Promise<GraphResult<T>> {
-  const form = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === null) continue;
-    form.set(key, typeof value === "object" ? JSON.stringify(value) : String(value));
-  }
-  form.set("access_token", token);
-
-  try {
-    const res = await fetch(`${META_GRAPH}/${path.replace(/^\/+/, "")}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: form.toString(),
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const body = await res.json().catch(() => null);
-    if (!res.ok || (body as { error?: unknown } | null)?.error) {
-      return { ok: false, data: null, error: parseMetaError(body, res.status) };
-    }
-    return { ok: true, data: body as T, error: null };
-  } catch (e) {
-    return {
-      ok: false,
-      data: null,
-      error: {
-        message: (e as Error)?.message ?? "network error",
-        code: null,
-        subcode: null,
-        type: "network",
-        traceId: null,
-        // 0 не попадает ни в fatal, ни в retryable по кодам, но сеть стоит
-        // повторить — поэтому отдаём 503, который classifyMetaError считает
-        // повторяемым.
-        httpStatus: 503,
-      },
-    };
-  }
-}
-
-/** GET из Graph API. */
-export async function graphGet<T = Record<string, unknown>>(
-  path: string,
-  token: string,
-  params: Record<string, unknown> = {},
-  timeoutMs = 30_000,
-): Promise<GraphResult<T>> {
-  const qs = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value === undefined || value === null) continue;
-    qs.set(key, typeof value === "object" ? JSON.stringify(value) : String(value));
-  }
-  qs.set("access_token", token);
-
-  try {
-    const res = await fetch(`${META_GRAPH}/${path.replace(/^\/+/, "")}?${qs.toString()}`, {
-      method: "GET",
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    const body = await res.json().catch(() => null);
-    if (!res.ok || (body as { error?: unknown } | null)?.error) {
-      return { ok: false, data: null, error: parseMetaError(body, res.status) };
-    }
-    return { ok: true, data: body as T, error: null };
-  } catch (e) {
-    return {
-      ok: false,
-      data: null,
-      error: {
-        message: (e as Error)?.message ?? "network error",
-        code: null,
-        subcode: null,
-        type: "network",
-        traceId: null,
-        httpStatus: 503,
-      },
-    };
-  }
-}
-
-/**
- * Загрузка картинки в /act_X/adimages. Meta принимает только байты,
- * параметра «скачай по ссылке» для картинок нет — поэтому байты качает воркер.
- */
-export async function uploadAdImage(
-  adAccount: string,
-  token: string,
-  file: Blob,
-  filename: string,
-): Promise<GraphResult<{ hash: string; url: string }>> {
+  file: File,
+): Promise<{ hash: string; url: string } | null> {
   const fd = new FormData();
-  fd.append(filename, file, filename);
+  fd.append(file.name, file, file.name);
   fd.append("access_token", token);
 
-  try {
-    const res = await fetch(`${META_GRAPH}/${adAccount}/adimages`, {
-      method: "POST",
-      body: fd,
-      signal: AbortSignal.timeout(120_000),
-    });
-    const body = await res.json().catch(() => null) as
-      | { images?: Record<string, { hash?: string; url?: string }>; error?: unknown }
-      | null;
-    if (!res.ok || body?.error) {
-      return { ok: false, data: null, error: parseMetaError(body, res.status) };
-    }
-    const entry = body?.images ? Object.values(body.images)[0] : null;
-    if (!entry?.hash) {
-      return {
-        ok: false,
-        data: null,
-        error: {
-          message: "Meta не вернула image_hash",
-          code: null, subcode: null, type: "protocol", traceId: null, httpStatus: res.status,
-        },
-      };
-    }
-    return { ok: true, data: { hash: entry.hash, url: entry.url ?? "" }, error: null };
-  } catch (e) {
-    return {
-      ok: false,
-      data: null,
-      error: {
-        message: (e as Error)?.message ?? "network error",
-        code: null, subcode: null, type: "network", traceId: null, httpStatus: 503,
-      },
-    };
+  const res = await fetch(`${GRAPH}/${adAccountId}/adimages`, {
+    method: "POST",
+    body: fd,
+    signal: AbortSignal.timeout(60_000),
+  });
+  const data = await res.json().catch(() => null) as {
+    images?: Record<string, { hash?: string; url?: string }>;
+    error?: MetaErrorPayload;
+  } | null;
+
+  if (!res.ok || data?.error) {
+    throw new MetaApiError(res.status, data?.error ?? null, "Не удалось загрузить изображение");
   }
+  const entry = data?.images ? Object.values(data.images)[0] : null;
+  return entry?.hash ? { hash: entry.hash, url: entry.url ?? "" } : null;
+}
+
+/** Загружает видео файлом — как оно пришло из мастера запуска. */
+export async function uploadVideoFile(
+  adAccountId: string,
+  token: string,
+  file: File,
+): Promise<string> {
+  const fd = new FormData();
+  fd.append("source", file, file.name);
+  fd.append("name", file.name);
+  fd.append("access_token", token);
+
+  const res = await fetch(`${GRAPH}/${adAccountId}/advideos`, {
+    method: "POST",
+    body: fd,
+    signal: AbortSignal.timeout(180_000),
+  });
+  const data = await res.json().catch(() => null) as
+    | { id?: string; error?: MetaErrorPayload }
+    | null;
+  if (!res.ok || data?.error || !data?.id) {
+    throw new MetaApiError(res.status, data?.error ?? null, "Не удалось загрузить видео");
+  }
+  return data.id;
 }
 
 /**
- * Загрузка видео в /act_X/advideos по публичной ссылке — Meta скачивает ролик
- * сама (параметр file_url). Так мы не тащим сотни мегабайт через память
- * edge-функции. Возвращает video_id; готовность проверяется отдельно
- * через pollVideoStatus — обработка на стороне Meta асинхронная.
+ * Ставит видео в обработку по публичной ссылке. Meta скачивает файл сама,
+ * поэтому тело запроса остаётся маленьким и не упирается в лимиты edge-функции.
  */
-export async function uploadAdVideoByUrl(
-  adAccount: string,
+export async function uploadVideoByUrl(
+  adAccountId: string,
   token: string,
   fileUrl: string,
-  name: string,
-): Promise<GraphResult<{ id: string }>> {
-  return await graphPost<{ id: string }>(
-    `${adAccount}/advideos`,
+  name?: string,
+): Promise<string> {
+  const res = await graph<{ id?: string }>(`${adAccountId}/advideos`, {
     token,
-    { file_url: fileUrl, name },
-    120_000,
-  );
+    method: "POST",
+    body: { file_url: fileUrl, ...(name ? { name } : {}) },
+    timeoutMs: 120_000,
+  });
+  if (!res.id) throw new Error("Meta не вернула id видео");
+  return res.id;
 }
 
-export type VideoStatus = "ready" | "processing" | "error";
+export interface VideoState {
+  ready: boolean;
+  failed: boolean;
+  thumbnailUrl: string | null;
+  message: string | null;
+}
 
-/** Статус обработки видео: ready | processing | error. */
-export async function pollVideoStatus(
-  videoId: string,
-  token: string,
-): Promise<{ status: VideoStatus; error: MetaError | null; detail: string | null }> {
-  const res = await graphGet<{ status?: { video_status?: string; processing_progress?: number; error?: { message?: string } } }>(
-    videoId,
-    token,
-    { fields: "status" },
-  );
-  if (!res.ok) return { status: "error", error: res.error, detail: null };
+/** Статус обработки видео: Meta готовит его асинхронно, иногда минуты. */
+export async function getVideoState(videoId: string, token: string): Promise<VideoState> {
+  const res = await graph<{
+    status?: { video_status?: string; processing_progress?: number; error?: { message?: string } };
+    picture?: string;
+  }>(videoId, { token, query: { fields: "status,picture" }, timeoutMs: 20_000 });
 
-  const raw = String(res.data?.status?.video_status ?? "").toLowerCase();
-  if (raw === "ready") return { status: "ready", error: null, detail: null };
-  if (raw === "error") {
-    return {
-      status: "error",
-      error: null,
-      detail: res.data?.status?.error?.message ?? "Meta не смогла обработать видео",
-    };
-  }
-  const progress = res.data?.status?.processing_progress;
+  const status = res.status?.video_status ?? "";
   return {
-    status: "processing",
-    error: null,
-    detail: typeof progress === "number" ? `${progress}%` : null,
+    ready: status === "ready",
+    failed: status === "error",
+    thumbnailUrl: res.picture ?? null,
+    message: res.status?.error?.message ?? null,
   };
 }
 
-/** Нормализация ad account id к виду act_<digits>. */
-export function normalizeAdAccount(raw: string): string {
-  const t = (raw ?? "").trim();
-  if (!t) return "";
-  if (/^act_\d+$/i.test(t)) return `act_${t.replace(/^act_/i, "")}`;
-  const digits = t.replace(/\D/g, "");
-  return digits ? `act_${digits}` : "";
+/* ────────────────────────────── страница и формы ─────────────────────── */
+
+/** Page access token — нужен, чтобы читать лид-формы страницы. */
+export async function getPageAccessToken(
+  pageId: string,
+  token: string,
+): Promise<string | null> {
+  const res = await graph<{ data?: Array<{ id?: string; access_token?: string }> }>(
+    "me/accounts",
+    { token, query: { limit: 100 }, timeoutMs: 20_000 },
+  );
+  const page = (res.data ?? []).find((p) => p.id === pageId);
+  return page?.access_token ?? null;
+}
+
+/** Первая активная лид-форма страницы — фолбэк, если форма не выбрана вручную. */
+export async function resolveActiveLeadForm(
+  pageId: string,
+  token: string,
+): Promise<string | null> {
+  const pageToken = await getPageAccessToken(pageId, token).catch(() => null);
+  const res = await graph<{ data?: Array<{ id?: string; status?: string }> }>(
+    `${pageId}/leadgen_forms`,
+    { token: pageToken ?? token, query: { fields: "id,name,status", limit: 25 }, timeoutMs: 20_000 },
+  );
+  const forms = res.data ?? [];
+  const active = forms.find((f) => f.status === "ACTIVE") ?? forms[0];
+  return active?.id ?? null;
+}
+
+/* ────────────────────────────── рекламный аккаунт ────────────────────── */
+
+/** Валюты, которые Meta считает целыми единицами — копеек у них нет. */
+const ZERO_DECIMAL_CURRENCIES = new Set([
+  "JPY", "KRW", "VND", "CLP", "ISK", "PYG", "UGX", "RWF",
+  "XAF", "XOF", "XPF", "BIF", "DJF", "GNF", "KMF", "MGA", "VUV",
+]);
+
+export interface AdAccountMoney {
+  currency: string;
+  /** Дробность валюты: 100 обычно, 1 для валют без копеек. */
+  minorUnits: number;
+  /** Минимальный дневной бюджет в единицах валюты, если Meta его сообщила. */
+  minDailyBudget: number | null;
+}
+
+/**
+ * Валюта кабинета. Без неё дневной бюджет уходит в Meta не в тех единицах:
+ * `daily_budget` считается в минорных единицах валюты СЧЁТА, а не в центах
+ * доллара.
+ */
+export async function getAdAccountMoney(
+  adAccountId: string,
+  token: string,
+): Promise<AdAccountMoney> {
+  const res = await graph<{
+    currency?: string;
+    min_daily_budget_low_freq?: string | number;
+  }>(adAccountId, {
+    token,
+    query: { fields: "currency,min_daily_budget_low_freq" },
+    timeoutMs: 20_000,
+  });
+  const currency = String(res.currency ?? "USD").toUpperCase();
+  const minorUnits = ZERO_DECIMAL_CURRENCIES.has(currency) ? 1 : 100;
+  const minMinor = Number(res.min_daily_budget_low_freq ?? 0);
+  return {
+    currency,
+    minorUnits,
+    minDailyBudget: minMinor > 0 ? minMinor / minorUnits : null,
+  };
+}
+
+/* ────────────────────────────── сущности рекламы ─────────────────────── */
+
+export async function createCampaign(
+  adAccountId: string,
+  token: string,
+  body: Record<string, unknown>,
+): Promise<string> {
+  const res = await graph<{ id?: string }>(`${adAccountId}/campaigns`, {
+    token,
+    method: "POST",
+    body,
+  });
+  if (!res.id) throw new Error("Meta не вернула id кампании");
+  return res.id;
+}
+
+export async function createAdSet(
+  adAccountId: string,
+  token: string,
+  body: Record<string, unknown>,
+): Promise<string> {
+  const res = await graph<{ id?: string }>(`${adAccountId}/adsets`, {
+    token,
+    method: "POST",
+    body,
+  });
+  if (!res.id) throw new Error("Meta не вернула id группы объявлений");
+  return res.id;
+}
+
+export async function createAdCreative(
+  adAccountId: string,
+  token: string,
+  body: Record<string, unknown>,
+): Promise<string> {
+  const res = await graph<{ id?: string }>(`${adAccountId}/adcreatives`, {
+    token,
+    method: "POST",
+    body,
+  });
+  if (!res.id) throw new Error("Meta не вернула id креатива");
+  return res.id;
+}
+
+export async function createAd(
+  adAccountId: string,
+  token: string,
+  body: Record<string, unknown>,
+): Promise<string> {
+  const res = await graph<{ id?: string }>(`${adAccountId}/ads`, {
+    token,
+    method: "POST",
+    body,
+  });
+  if (!res.id) throw new Error("Meta не вернула id объявления");
+  return res.id;
+}
+
+/** Живые группы кампании — по ним считаем индекс новой группы (g1, g2, …). */
+export async function countLiveAdSets(
+  campaignId: string,
+  token: string,
+): Promise<number> {
+  const res = await graph<{ data?: Array<{ effective_status?: string }> }>(
+    `${campaignId}/adsets`,
+    { token, query: { fields: "id,effective_status", limit: 200 }, timeoutMs: 30_000 },
+  );
+  return (res.data ?? []).filter((a) =>
+    a.effective_status !== "DELETED" && a.effective_status !== "ARCHIVED"
+  ).length;
+}
+
+/**
+ * Существует ли кампания и жива ли она — страховка от устаревшей записи в БД.
+ *
+ * Временные сбои пробрасываем наверх: посчитать кампанию мёртвой из-за
+ * сетевой ошибки значит создать её дубль в кабинете. «Не жива» отвечаем
+ * только на окончательный ответ Meta (объект удалён или недоступен).
+ */
+export async function campaignIsLive(
+  campaignId: string,
+  token: string,
+): Promise<boolean> {
+  try {
+    const res = await graph<{ effective_status?: string }>(campaignId, {
+      token,
+      query: { fields: "id,effective_status" },
+      timeoutMs: 20_000,
+    });
+    const st = res.effective_status ?? "";
+    return st !== "DELETED" && st !== "ARCHIVED";
+  } catch (e) {
+    if (e instanceof MetaApiError && !e.transient) return false;
+    throw e;
+  }
 }
