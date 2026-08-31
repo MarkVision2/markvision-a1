@@ -6,6 +6,7 @@
 // Без remote-импортов — покрыто src/test/adLaunchScheduler.test.ts.
 
 import { normalizeAdAccount } from "./metaGraph.ts";
+import { allowedMediaHosts, isAllowedMediaUrl } from "./adLaunchMedia.ts";
 import type { LaunchMedia, LaunchSpec } from "./adLaunchSpec.ts";
 
 export interface CabinetRow {
@@ -90,8 +91,20 @@ export function inferGoal(cab: CabinetRow): LaunchSpec["goal"] {
   return "site-leads";
 }
 
-export function mediaFromUrls(urls: string[] | null | undefined): LaunchMedia[] {
-  const list = (urls ?? []).filter((u) => typeof u === "string" && u.trim());
+/**
+ * Ссылки из настроек кабинета → медиа задания.
+ * Хосты фильтруются здесь же: creative_media_urls заполняет человек через
+ * диалог авто-запуска, а качает их потом сервер — чужой адрес до fetch
+ * доходить не должен.
+ */
+export function mediaFromUrls(
+  urls: string[] | null | undefined,
+  extraHosts?: string | null,
+): LaunchMedia[] {
+  const allowed = allowedMediaHosts(extraHosts);
+  const list = (urls ?? [])
+    .filter((u) => typeof u === "string" && u.trim())
+    .filter((u) => isAllowedMediaUrl(u, allowed));
   return list.map((url, index) => {
     const isVideo = /\.(mp4|mov|m4v)(\?|$)/i.test(url);
     return {

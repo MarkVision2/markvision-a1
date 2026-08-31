@@ -469,13 +469,14 @@ automation_settings.meta_access_token → env META_ACCESS_TOKEN`. Ничего �
 | `supabase/functions/ad-launch-scheduler/index.ts` | материализация авто-запусков в очередь |
 | `supabase/functions/meta-token-health/index.ts` | `debug_token` по кабинетам + алерт в Telegram |
 | `supabase/functions/launch-campaign/index.ts` | приём из мастера: медиа в bucket, задание в очередь, немедленный kick воркера |
+| `supabase/functions/_lib/adLaunchMedia.ts` | allowlist хостов для креативов — защита от SSRF при серверной загрузке |
 | `src/lib/adLaunchBridge.ts` | мост «галерея Контент-завода → мастер запуска» |
 | `src/lib/autoLaunchSettings.ts` + `src/components/ads/AutoLaunchDialog.tsx` | настройка авто-запуска на кабинете: расписание, аудитория, креатив по умолчанию |
 
 Тесты (`npm run test`): `adLaunchSpec` (23), `metaTargeting` (22), `autoLaunchSettings` (16),
-`adLaunchScheduler` (15), `metaGraph` (10), `adLaunchBridge` (8), `autoLaunchDialog` (5)
-плюс расширенный `campaignWorkspace`. Весь набор — 567 тестов, зелёный; `typecheck`, `lint`
-и `build` тоже проходят.
+`adLaunchScheduler` (15), `metaGraph` (10), `adLaunchBridge` (8),
+`adLaunchMedia` (9), `autoLaunchDialog` (5) плюс расширенный `campaignWorkspace`.
+Весь набор — 577 тестов, зелёный; `typecheck`, `lint` и `build` тоже проходят.
 
 ### Отличия от плана
 
@@ -492,6 +493,43 @@ automation_settings.meta_access_token → env META_ACCESS_TOKEN`. Ничего �
   скачивает ссылку в обычный `File`, поэтому работает весь существующий путь — кроп, форматы,
   валидация. Отдельной ветки «креатив по ссылке» не появилось.
 
+## 9.1 Разбор безопасности
+
+По ветке проведён security-разбор. Найдено и исправлено три вещи, все — в коде
+этой работы:
+
+**1. Права на кабинет при запуске (было: любой менеджер → любой кабинет).**
+`launch-campaign` проверял только глобальную роль `manager`/`admin`, а
+`cabinet_id`, `project_id` и `ad_account_id` брал из тела запроса. В прямом
+контуре воркер резолвит токен Meta **по этому cabinet_id** — то есть менеджер
+одного проекта мог запустить рекламу на кабинете другого и потратить чужой
+бюджет чужим токеном. В n8n-контуре этого не было: там запуск шёл под общим
+токеном из окружения. Исправлено штатными хелперами проекта —
+`requireCabinetAccess`, `requireMetaAdAccountAccess`, `requireProjectAccess`
+(проверка идёт под RLS самого пользователя). Действует в обоих режимах.
+
+**2. SSRF через ссылку на креатив.** `payload.creativeUrls` попадал в задание
+без проверки, а воркер делает по этой ссылке серверный `fetch` и отправляет
+байты в Meta как картинку объявления — то есть ответ с внутреннего адреса
+было бы видно в готовом креативе. Добавлен allowlist хостов
+(`_lib/adLaunchMedia.ts`): только `https`, только Supabase Storage, клиентский
+проект Контент-завода и Cloudinary; литеральные IP, `localhost` и `*.internal`
+запрещены отдельно. Проверка стоит в трёх местах — на приёме заявки, в воркере
+перед `fetch` и перед выдачей `file_url` в Meta для видео, — потому что медиа
+в задание пишет не только мастер, но и планировщик. Тот же список подключён
+к валидации диалога авто-запуска, чтобы чужая ссылка отклонялась сразу,
+а не терялась молча. Расширяется через `AD_LAUNCH_MEDIA_HOSTS`.
+
+**3. RLS с лишней веткой `project_id IS NULL`.** Политики чтения
+`ad_launch_jobs` и `ad_launch_schedules` открывали задания без проекта любому
+авторизованному пользователю, а в `spec` лежат бюджет, тексты объявления, сайт
+и номер WhatsApp. Приведено к правилу `ad_campaigns_select_scoped`. Исправлено
+и в исходной миграции, и отдельной `20260901090200_ad_launch_rls_tighten.sql` —
+на случай, если первая уже применена.
+
+Токены Meta в `ad_launch_jobs.spec` не попадают ни в каком виде: воркер
+резолвит их из `ad_cabinets`/`meta_tokens` в момент выполнения.
+
 ## 10. Как включить
 
 1. **Применить миграции** — обе, по порядку. Кроны создаются сразу и начинают ходить в функции;
@@ -503,7 +541,11 @@ automation_settings.meta_access_token → env META_ACCESS_TOKEN`. Ничего �
    - `AD_LAUNCH_MODE` — `direct` (по умолчанию, если переменной нет) или `n8n` для отката;
    - `CREATIVE_UPSERT_KEY` — уже есть, воркер передаёт его в `meta-creative-upsert`;
    - `TELEGRAM_BOT_TOKEN` — уже есть, нужен для алертов о токенах;
-   - `META_ACCESS_TOKEN` — общий запасной токен, как и раньше.
+   - `META_ACCESS_TOKEN` — общий запасной токен, как и раньше;
+   - `AD_LAUNCH_MEDIA_HOSTS` — необязательный, дополнительные хосты для
+     ссылок на креативы через запятую (запись с точки — домен и поддомены).
+     По умолчанию разрешены `*.supabase.co`, `*.supabase.in` и
+     `res.cloudinary.com`.
 4. **Проверить `automation_settings.cron_secret`** — им авторизуются все три крона.
 5. **Первый запуск сделать на тестовом кабинете.** Всё создаётся в `PAUSED`: после ответа
    «Кампания создана» откройте Meta Ads Manager и сверьте цель, аудиторию, бюджет и креатив

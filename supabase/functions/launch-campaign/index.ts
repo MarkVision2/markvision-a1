@@ -15,7 +15,14 @@
 // Проектное решение и порядок шагов — docs/AD-LAUNCH-DIRECT-META.md.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
-import { requireUser, userHasRole } from "../_lib/auth.ts";
+import {
+  requireCabinetAccess,
+  requireMetaAdAccountAccess,
+  requireProjectAccess,
+  requireUser,
+  userHasRole,
+} from "../_lib/auth.ts";
+import { allowedMediaHosts, partitionMediaUrls } from "../_lib/adLaunchMedia.ts";
 import { normalizeAdAccount, uploadAdImage } from "../_lib/metaGraph.ts";
 import {
   buildAdBody,
@@ -123,6 +130,26 @@ Deno.serve(async (req) => {
     const projectId = pickStr(payload.projectId, payload.project_id) || null;
     const mode = (Deno.env.get("AD_LAUNCH_MODE") ?? "direct").toLowerCase();
 
+    // ===== Права на кабинет и рекламный аккаунт =====
+    // Роли manager/admin выданы глобально, а кабинет и ad_account приходят
+    // из тела запроса. Без этой проверки менеджер одного проекта мог бы
+    // запустить рекламу на кабинете другого: воркер резолвит токен Meta
+    // по cabinet_id и потратил бы чужой бюджет. Проверяем через RLS
+    // пользователя — теми же хелперами, что и остальные Meta-эндпоинты.
+    if (!cabinetId) {
+      return json({ ok: false, error: "Не указан кабинет для запуска" }, 400);
+    }
+    const cabinetAccess = await requireCabinetAccess(auth.authHeader, cabinetId);
+    if (!cabinetAccess.ok) return cabinetAccess.response;
+
+    const adAccountAccess = await requireMetaAdAccountAccess(auth.authHeader, adAccount);
+    if (!adAccountAccess.ok) return adAccountAccess.response;
+
+    if (projectId) {
+      const projectAccess = await requireProjectAccess(auth.authHeader, projectId);
+      if (!projectAccess.ok) return projectAccess.response;
+    }
+
     const admin = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
@@ -154,15 +181,30 @@ Deno.serve(async (req) => {
       }
 
       // Креатив может прийти ссылкой (галерея Контент-завода) — файлов тогда нет.
-      const galleryUrls = Array.isArray(payload.creativeUrls) ? payload.creativeUrls : [];
-      galleryUrls.forEach((raw, i) => {
-        if (typeof raw !== "string" || !raw.trim()) return;
+      // Ссылку скачивает сервер, поэтому пропускаем только свои хосты: иначе
+      // это SSRF — чужой адрес был бы загружен воркером, а ответ виден
+      // в готовом креативе.
+      const rawGalleryUrls = (Array.isArray(payload.creativeUrls) ? payload.creativeUrls : [])
+        .filter((u): u is string => typeof u === "string" && u.trim().length > 0)
+        .map((u) => u.trim());
+      const { accepted: galleryUrls, rejected } = partitionMediaUrls(
+        rawGalleryUrls,
+        allowedMediaHosts(Deno.env.get("AD_LAUNCH_MEDIA_HOSTS")),
+      );
+      if (rejected.length) {
+        return json({
+          ok: false,
+          error: `Ссылка на креатив не с разрешённого хранилища: ${rejected[0]}`,
+        }, 400);
+      }
+      galleryUrls.forEach((url, i) => {
+        const isVideo = /\.(mp4|mov)(\?|$)/i.test(url);
         media.push({
           role: galleryUrls.length > 1 ? "carousel" : "feed",
           index: i,
-          url: raw.trim(),
-          mime: /\.(mp4|mov)(\?|$)/i.test(raw) ? "video/mp4" : "image/jpeg",
-          name: `gallery-${i}.${/\.(mp4|mov)(\?|$)/i.test(raw) ? "mp4" : "jpg"}`,
+          url,
+          mime: isVideo ? "video/mp4" : "image/jpeg",
+          name: `gallery-${i}.${isVideo ? "mp4" : "jpg"}`,
         });
       });
 

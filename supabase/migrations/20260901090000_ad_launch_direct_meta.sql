@@ -105,7 +105,7 @@ ALTER TABLE public.ad_launch_jobs ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS ad_launch_jobs_select_scoped ON public.ad_launch_jobs;
 CREATE POLICY ad_launch_jobs_select_scoped ON public.ad_launch_jobs
   FOR SELECT TO authenticated
-  USING (project_id IS NULL OR public.user_can_access_project(project_id));
+  USING (public.user_can_access_project(project_id));
 
 -- ============================================================
 -- 2. Кэш справочников таргетинга Meta
@@ -179,7 +179,7 @@ ALTER TABLE public.ad_launch_schedules ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS ad_launch_schedules_select_scoped ON public.ad_launch_schedules;
 CREATE POLICY ad_launch_schedules_select_scoped ON public.ad_launch_schedules
   FOR SELECT TO authenticated
-  USING (project_id IS NULL OR public.user_can_access_project(project_id));
+  USING (public.user_can_access_project(project_id));
 
 DROP POLICY IF EXISTS ad_launch_schedules_write_admin ON public.ad_launch_schedules;
 CREATE POLICY ad_launch_schedules_write_admin ON public.ad_launch_schedules

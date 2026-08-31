@@ -45,6 +45,7 @@ import {
   type TargetingCacheStore,
 } from "../_lib/metaTargeting.ts";
 import { pickBestVideoThumb } from "../_lib/creativePoster.ts";
+import { allowedMediaHosts, isAllowedMediaUrl } from "../_lib/adLaunchMedia.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -175,8 +176,19 @@ async function failJob(
   return { id: job.id, status: canRetry ? "retry" : "error", reason };
 }
 
-/** Скачивание креатива по публичному URL для отправки в /adimages. */
+/**
+ * Скачивание креатива по публичному URL для отправки в /adimages.
+ *
+ * Хост проверяется здесь ещё раз, хотя enqueue уже фильтрует ссылки: задание
+ * лежит в БД, и media в него пишет не только мастер, но и планировщик из
+ * creative_media_urls кабинета. Серверный fetch по произвольному адресу — это
+ * SSRF, и одной проверки на входе для него мало.
+ */
 async function fetchMedia(url: string): Promise<Blob | null> {
+  if (!isAllowedMediaUrl(url, allowedMediaHosts(Deno.env.get("AD_LAUNCH_MEDIA_HOSTS")))) {
+    console.error("[ad-launch-worker] media host not allowed:", url);
+    return null;
+  }
   try {
     const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
     if (!res.ok) return null;
@@ -268,6 +280,15 @@ async function processJob(admin: SupabaseClient, job: JobRow): Promise<Record<st
     }
 
     if (video && !assets.videoId) {
+      // Ссылку на ролик Meta скачивает сама, но подсовывать ей произвольный
+      // адрес всё равно нельзя — правило то же, что и для картинок.
+      if (!isAllowedMediaUrl(video.url, allowedMediaHosts(Deno.env.get("AD_LAUNCH_MEDIA_HOSTS")))) {
+        return await failJob(
+          admin, job,
+          `Ссылка на видео не с разрешённого хранилища: ${video.url}`,
+          null, false,
+        );
+      }
       await setStep(admin, job, "uploading_media", "Отправляем видео в Meta");
       // file_url: Meta скачивает ролик сама — сотни мегабайт не проходят
       // через память edge-функции.

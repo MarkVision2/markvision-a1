@@ -38,7 +38,7 @@ const cab = (over: Record<string, unknown> = {}): any => ({
   creative_headline: null,
   creative_primary_text: "Текст",
   creative_description: null,
-  creative_media_urls: ["https://cdn/a.jpg"],
+  creative_media_urls: ["https://res.cloudinary.com/demo/a.jpg"],
   target_geo: ["Алматы"],
   target_age_min: 25,
   target_age_max: 45,
@@ -113,7 +113,7 @@ describe("inferGoal", () => {
 
 describe("specFromCabinet", () => {
   const media = [{
-    role: "feed" as const, index: 0, url: "https://cdn/a.jpg", mime: "image/jpeg", name: "a.jpg",
+    role: "feed" as const, index: 0, url: "https://res.cloudinary.com/demo/a.jpg", mime: "image/jpeg", name: "a.jpg",
   }];
 
   it("переносит настройки кабинета в задание", () => {

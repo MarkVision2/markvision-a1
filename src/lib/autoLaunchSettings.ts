@@ -9,6 +9,12 @@
  * аудитории, а это списанный бюджет.
  */
 import type { AdCabinet } from "@/types/ads";
+// Тот же allowlist, что применяет воркер: ссылку с чужого хоста он всё равно
+// отбросит, и лучше сказать об этом здесь, чем потерять креатив молча.
+import {
+  allowedMediaHosts,
+  partitionMediaUrls,
+} from "../../supabase/functions/_lib/adLaunchMedia";
 
 /** ISO-нумерация: 1 — понедельник, 7 — воскресенье (так же считает планировщик). */
 export const WEEKDAYS: Array<{ value: number; short: string; full: string }> = [
@@ -152,7 +158,15 @@ export function validateAutoLaunch(form: AutoLaunchForm, cabinet: AdCabinet): st
   if (!cabinet.pageId?.trim()) errors.push("У кабинета не указана Facebook Page");
   if (!(Number(cabinet.dailyBudget) > 0)) errors.push("Укажите дневной бюджет кабинета");
 
-  const hasCreative = parseList(form.mediaUrls).length > 0;
+  const mediaUrls = parseList(form.mediaUrls);
+  const { rejected } = partitionMediaUrls(mediaUrls, allowedMediaHosts());
+  if (rejected.length) {
+    errors.push(
+      `Ссылка на креатив не с разрешённого хранилища: ${rejected[0]} — загрузите файл в Контент-завод и возьмите ссылку оттуда`,
+    );
+  }
+
+  const hasCreative = mediaUrls.length > 0;
   if (!hasCreative) {
     errors.push(
       "Добавьте ссылку на креатив — иначе планировщик возьмёт последнюю картинку из галереи Контент-завода",

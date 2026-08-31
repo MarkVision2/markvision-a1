@@ -33,7 +33,7 @@ const cabinet: AdCabinet = {
   launchHour: 9,
   daysOfWeek: [1, 2, 3, 4, 5],
   targetGeo: ["Алматы"],
-  creativeMediaUrls: ["https://cdn/a.jpg"],
+  creativeMediaUrls: ["https://res.cloudinary.com/demo/a.jpg"],
 };
 
 beforeEach(() => {

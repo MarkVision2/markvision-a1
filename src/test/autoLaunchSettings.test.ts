@@ -101,7 +101,7 @@ describe("validateAutoLaunch", () => {
 
   it("требует аккаунт, страницу и бюджет", () => {
     const errors = validateAutoLaunch(
-      form({ enabled: true, mediaUrls: "https://cdn/a.jpg" }),
+      form({ enabled: true, mediaUrls: "https://res.cloudinary.com/demo/a.jpg" }),
       cabinet({ adAccountId: "", pageId: "", dailyBudget: 0 }),
     );
     expect(errors.some((e) => e.includes("рекламный аккаунт"))).toBe(true);
@@ -111,13 +111,13 @@ describe("validateAutoLaunch", () => {
 
   it("для цели «Лиды с сайта» требует сайт и пиксель", () => {
     const withoutSite = validateAutoLaunch(
-      form({ enabled: true, mediaUrls: "https://cdn/a.jpg" }),
+      form({ enabled: true, mediaUrls: "https://res.cloudinary.com/demo/a.jpg" }),
       cabinet({ websiteUrl: "", landingUrl: "" }),
     );
     expect(withoutSite.some((e) => e.includes("ссылка на сайт"))).toBe(true);
 
     const withoutPixel = validateAutoLaunch(
-      form({ enabled: true, mediaUrls: "https://cdn/a.jpg" }),
+      form({ enabled: true, mediaUrls: "https://res.cloudinary.com/demo/a.jpg" }),
       cabinet({ pixelId: "" }),
     );
     expect(withoutPixel.some((e) => e.includes("пиксель"))).toBe(true);
@@ -125,7 +125,7 @@ describe("validateAutoLaunch", () => {
 
   it("для WhatsApp сайт и пиксель не нужны", () => {
     const errors = validateAutoLaunch(
-      form({ enabled: true, mediaUrls: "https://cdn/a.jpg" }),
+      form({ enabled: true, mediaUrls: "https://res.cloudinary.com/demo/a.jpg" }),
       cabinet({ whatsappNumber: "+77001112233", websiteUrl: "", pixelId: "" }),
     );
     expect(errors).toEqual([]);
@@ -133,11 +133,19 @@ describe("validateAutoLaunch", () => {
 
   it("ловит пустые дни недели и перевёрнутый возраст", () => {
     const errors = validateAutoLaunch(
-      form({ enabled: true, daysOfWeek: [], ageMin: "45", ageMax: "25", mediaUrls: "https://cdn/a.jpg" }),
+      form({ enabled: true, daysOfWeek: [], ageMin: "45", ageMax: "25", mediaUrls: "https://res.cloudinary.com/demo/a.jpg" }),
       cabinet(),
     );
     expect(errors.some((e) => e.includes("день недели"))).toBe(true);
     expect(errors.some((e) => e.includes("больше"))).toBe(true);
+  });
+
+  it("не даёт включить креатив с чужого хоста — воркер его всё равно отбросит", () => {
+    const errors = validateAutoLaunch(
+      form({ enabled: true, mediaUrls: "https://evil.example.com/a.jpg" }),
+      cabinet(),
+    );
+    expect(errors.some((e) => e.includes("разрешённого хранилища"))).toBe(true);
   });
 
   it("предупреждает про пустой креатив — иначе возьмётся картинка из галереи", () => {
