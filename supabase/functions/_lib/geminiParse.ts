@@ -166,3 +166,54 @@ export function imageFromChatResponse(
   const match = /data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+/i.exec(text);
   return match ? parseDataUrl(match[0]) : null;
 }
+
+// ============================================================
+// Разбор ошибок квоты
+// ============================================================
+
+export interface QuotaVerdict {
+  /** Повторять ли задание. */
+  retryable: boolean;
+  /** Текст для человека — на нём заканчивается разбирательство. */
+  message: string;
+}
+
+/**
+ * 429 бывает двух совершенно разных видов, и путать их дорого:
+ *
+ *   — обычный rate limit: слишком часто дёргаем, через минуту всё пройдёт;
+ *   — free tier с лимитом 0: модель на бесплатном плане недоступна вообще.
+ *     Ретраи тут бесполезны — задание будет полчаса тыкаться и упадёт
+ *     с английским текстом Google, из которого непонятно, что делать.
+ *
+ * Второй случай определяем по «limit: 0» и упоминанию free tier в ответе.
+ */
+export function classifyQuotaError(
+  body: Record<string, unknown> | null,
+  rawMessage: string,
+  model: string,
+): QuotaVerdict {
+  const text = JSON.stringify(body ?? {}) + " " + rawMessage;
+  const freeTier = /free_tier|FreeTier/i.test(text);
+  const zeroLimit = /limit:\s*0\b/i.test(text);
+
+  if (freeTier && zeroLimit) {
+    return {
+      retryable: false,
+      message:
+        `Модель ${model} недоступна на бесплатном плане Google (квота 0). ` +
+        "Включите оплату в Google AI Studio для проекта этого ключа " +
+        "или укажите более доступную модель в CONTENT_FACTORY_IMAGE_MODEL.",
+    };
+  }
+  if (freeTier) {
+    return {
+      retryable: true,
+      message: `Исчерпана бесплатная квота Google для ${model} — повторим позже`,
+    };
+  }
+  return {
+    retryable: true,
+    message: rawMessage || "Google временно ограничил запросы — повторим позже",
+  };
+}

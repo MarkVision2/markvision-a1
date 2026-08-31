@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import {
   base64ToBytes,
   blockReasonOf,
+  classifyQuotaError,
   buildImageRequest,
   imageFromChatResponse,
   imageOf,
@@ -159,5 +160,47 @@ describe("ответы OpenAI-совместимого шлюза", () => {
   it("ответ без картинки даёт null, а не пустую строку", () => {
     expect(imageFromChatResponse(chat({ content: "не смог" }))).toBeNull();
     expect(imageFromChatResponse(null)).toBeNull();
+  });
+});
+
+describe("classifyQuotaError", () => {
+  const freeTierZero = {
+    error: {
+      code: 429,
+      message: "You exceeded your current quota. Quota exceeded for metric: " +
+        "generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, " +
+        "limit: 0, model: gemini-3-pro-image",
+      details: [{ violations: [{ quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier" }] }],
+    },
+  };
+
+  it("квота 0 на бесплатном плане — не ретраить, объяснить человеку", () => {
+    const v = classifyQuotaError(freeTierZero, freeTierZero.error.message, "gemini-3-pro-image-preview");
+    expect(v.retryable).toBe(false);
+    expect(v.message).toContain("бесплатном плане");
+    expect(v.message).toContain("gemini-3-pro-image-preview");
+  });
+
+  it("исчерпанная бесплатная квота — повторить позже", () => {
+    const body = {
+      error: {
+        message: "Quota exceeded for generate_content_free_tier_requests, limit: 50",
+        details: [{ violations: [{ quotaId: "GenerateRequestsPerDayPerProjectPerModel-FreeTier" }] }],
+      },
+    };
+    const v = classifyQuotaError(body, body.error.message, "m");
+    expect(v.retryable).toBe(true);
+  });
+
+  it("обычный rate limit остаётся повторяемым и сохраняет текст", () => {
+    const v = classifyQuotaError({}, "Too many requests", "m");
+    expect(v.retryable).toBe(true);
+    expect(v.message).toBe("Too many requests");
+  });
+
+  it("пустой ответ не роняет разбор", () => {
+    const v = classifyQuotaError(null, "", "m");
+    expect(v.retryable).toBe(true);
+    expect(v.message.length).toBeGreaterThan(0);
   });
 });

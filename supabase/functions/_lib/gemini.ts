@@ -19,6 +19,7 @@ import {
   blockReasonOf,
   buildImageRequest,
   type GeminiPart,
+  classifyQuotaError,
   imageFromChatResponse,
   imageOf,
   parseDataUrl,
@@ -29,6 +30,7 @@ import {
 
 export {
   base64ToBytes,
+  classifyQuotaError,
   blockReasonOf,
   buildImageRequest,
   imageFromChatResponse,
@@ -80,14 +82,25 @@ export function hasImageProvider(): boolean {
 export const NO_PROVIDER_MESSAGE =
   "Генерация изображений недоступна: не задан ни GEMINI_API_KEY, ни LOVABLE_API_KEY";
 
-function httpFailure(status: number, message: string): GeminiResult<never> {
+function httpFailure(
+  status: number,
+  message: string,
+  body: Record<string, unknown> | null,
+  model: string,
+): GeminiResult<never> {
+  // 429 разбираем отдельно: «нет квоты на бесплатном плане» ретраями
+  // не лечится, и человеку нужно сказать это прямо.
+  if (status === 429) {
+    const verdict = classifyQuotaError(body, message, model);
+    return { ok: false, data: null, error: verdict.message, retryable: verdict.retryable };
+  }
   return {
     ok: false,
     data: null,
     error: message,
-    // 429 и 5xx — перегрузка на стороне провайдера, повтор осмыслен.
+    // 5xx — перегрузка на стороне провайдера, повтор осмыслен.
     // 400/401/403 — битый запрос или ключ, повтор не поможет.
-    retryable: status === 429 || status >= 500,
+    retryable: status >= 500,
   };
 }
 
@@ -124,7 +137,7 @@ async function googleCall(
     if (!res.ok) {
       const message = ((json?.error as { message?: string } | undefined)?.message)
         ?? `HTTP ${res.status}`;
-      return httpFailure(res.status, message);
+      return httpFailure(res.status, message, json, model);
     }
     return { ok: true, data: json ?? {}, error: null, retryable: false };
   } catch (e) {
@@ -163,7 +176,7 @@ async function gatewayCall(
     if (!res.ok) {
       const message = ((json?.error as { message?: string } | undefined)?.message)
         ?? `HTTP ${res.status}`;
-      return httpFailure(res.status, message);
+      return httpFailure(res.status, message, json, model);
     }
     return { ok: true, data: json ?? {}, error: null, retryable: false };
   } catch (e) {
