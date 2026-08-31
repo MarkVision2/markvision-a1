@@ -1,9 +1,13 @@
-// Прокси-эндпоинт для запуска кампании в n8n.
-// 1. Принимает FormData от фронта.
-// 2. Загружает creative_feed / creative_stories / creative_carousel_* в Meta → image_hash.
-// 3. Вставляет hash в creativeBody (одиночный image_hash или child_attachments для карусели).
-// 4. Обогащает payload секретным META_ACCESS_TOKEN и всеми алиасами полей.
-// 5. Отвечает фронту быстро (короткий таймаут на ACK от n8n, дальше n8n работает в фоне).
+// Запуск рекламной кампании из мастера на сайте — напрямую в Meta.
+//
+// 1. Принимает FormData от фронта (payload + креативы).
+// 2. Заводит строку запуска в ad_campaigns сервисным ключом.
+// 3. Грузит креативы в Meta: картинки → image_hash, видео → /advideos.
+// 4. Ставит задание в ad_launch_jobs и тут же прогоняет воркер по нему,
+//    возвращая менеджеру готовые id кампании, группы и объявления.
+//
+// Аварийный откат на n8n остался за настройкой automation_settings
+// .ads_launch_native = false — тогда работает старый прокси-путь в конце файла.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireUser, userHasRole } from "../_lib/auth.ts";
@@ -19,8 +23,15 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-/** Сколько ждём первичный ACK от n8n. */
+/** Сколько ждём первичный ACK от n8n (аварийный контур). */
 const N8N_ACK_TIMEOUT_MS = 8_000;
+
+/**
+ * Сколько ждём воркер, запущенный прямо из этого запроса. Полный проход по
+ * Meta — это 5-8 вызовов Graph API, обычно 5-15 c. Не уложились — не беда:
+ * задание остаётся в очереди, интерфейс дождётся статуса по launchId.
+ */
+const WORKER_INLINE_TIMEOUT_MS = 50_000;
 
 function pickStr(...vals: unknown[]): string {
   for (const v of vals) {
@@ -652,30 +663,66 @@ Deno.serve(async (req) => {
         status_message: "Запуск в очереди",
       });
 
-      // Мгновенный пинок воркера, чтобы не ждать ближайший тик крона.
-      // Не дожидаемся ответа: очередь всё равно разберётся по расписанию.
+      // Прогоняем задание прямо сейчас и дожидаемся результата: менеджер нажал
+      // «Запустить» и должен увидеть готовую кампанию, а не «принято, ждите».
+      // Если не уложились — задание никуда не делось, его подберёт крон.
       const cronSecret =
         (settings as { cron_secret?: string | null } | null)?.cron_secret ?? "";
-      fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/ads-launch-worker`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-automation-key": cronSecret },
-        body: JSON.stringify({ batch_size: 3 }),
-        signal: AbortSignal.timeout(3_000),
-      }).catch(() => {});
+      try {
+        await fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/ads-launch-worker`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-automation-key": cronSecret },
+          body: JSON.stringify({ launch_id: launchId }),
+          signal: AbortSignal.timeout(WORKER_INLINE_TIMEOUT_MS),
+        });
+      } catch (e) {
+        console.warn("[launch-campaign] inline worker:", (e as Error).message);
+      }
+
+      // Читаем, чем всё кончилось: воркер уже записал ids и статус.
+      const { data: jobRow } = await adminClient()
+        .from("ad_launch_jobs")
+        .select("status, step, last_error, meta_campaign_id, meta_adset_id, meta_ad_id")
+        .eq("launch_id", launchId)
+        .maybeSingle();
+      const job = (jobRow ?? {}) as {
+        status?: string;
+        step?: string;
+        last_error?: string | null;
+        meta_campaign_id?: string | null;
+        meta_adset_id?: string | null;
+        meta_ad_id?: string | null;
+      };
+
+      const launched = job.status === "success";
+      const failed = job.status === "error";
 
       return new Response(
         JSON.stringify({
-          ok: true,
+          ok: !failed,
           accepted: true,
           queued: true,
+          launched,
+          // Осталось в работе — интерфейс дождётся статуса по launchId.
+          pending: !launched && !failed,
+          status: job.status ?? "queued",
+          step: job.step ?? null,
+          error: failed ? (job.last_error ?? "Запуск не удался") : null,
           launchId,
+          metaCampaignId: job.meta_campaign_id ?? null,
+          metaAdsetId: job.meta_adset_id ?? null,
+          metaAdId: job.meta_ad_id ?? null,
+          adAccountId: adAccount,
           summary: payload.launchSummary,
           creativeFormat: format,
           feedImageHash,
           carouselImageHashes: orderedCarouselHashes.map((h) => h.hash),
           videoId,
         }),
-        { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        {
+          status: failed ? 502 : 200,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        },
       );
     }
 

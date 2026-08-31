@@ -42,6 +42,7 @@ import {
   createAdCreative,
   createAdSet,
   createCampaign,
+  getAdAccountMoney,
   getVideoState,
   makeGeoSearch,
   MetaApiError,
@@ -520,6 +521,11 @@ async function stepAdSet(db: SupabaseClient, job: JobRow, ctx: Loaded): Promise<
     makeGeoSearch(ctx.token),
   );
 
+  // Валюта кабинета: Meta принимает daily_budget в её минорных единицах, и для
+  // счёта в тенге «50» без этого превратилось бы в 50 тиын.
+  const money = await getAdAccountMoney(ctx.cabinet.adAccountId, ctx.token)
+    .catch(() => ({ currency: "USD", minorUnits: 100, minDailyBudget: null }));
+
   const adSetId = await createAdSet(
     ctx.cabinet.adAccountId,
     ctx.token,
@@ -529,6 +535,7 @@ async function stepAdSet(db: SupabaseClient, job: JobRow, ctx: Loaded): Promise<
       destination: linkCtx.destination,
       cabinet: ctx.cabinet,
       budgetUsd: ctx.input.budgetUsd,
+      minorUnits: money.minorUnits,
       targeting: buildTargeting(geo),
       startTime: resolveStartTime(new Date(), ctx.cabinet.timezone ?? "Asia/Almaty"),
     }),
@@ -811,14 +818,27 @@ Deno.serve(async (req) => {
     return json({ error: "Unauthorized" }, 401);
   }
 
-  const body = await req.json().catch(() => ({})) as { batch_size?: number };
-  const batchSize = Math.min(Math.max(1, Number(body.batch_size ?? 5)), 20);
+  const body = await req.json().catch(() => ({})) as {
+    batch_size?: number;
+    /** Прогнать конкретный запуск: его прямо сейчас ждёт человек в мастере. */
+    launch_id?: string;
+  };
+  const launchId = typeof body.launch_id === "string" && body.launch_id
+    ? body.launch_id
+    : null;
+  const batchSize = launchId
+    ? 1
+    : Math.min(Math.max(1, Number(body.batch_size ?? 5)), 20);
 
-  const { data, error } = await db.rpc("claim_ad_launch_jobs", { p_limit: batchSize });
+  const { data, error } = await db.rpc("claim_ad_launch_jobs", {
+    p_limit: batchSize,
+    p_launch_id: launchId,
+  });
   if (error) return json({ error: `Очередь недоступна: ${error.message}` }, 500);
 
   const jobs = (data ?? []) as JobRow[];
   const deadline = Date.now() + WALL_CLOCK_BUDGET_MS;
+
   const results: Array<{ launch_id: string; outcome: string }> = [];
 
   for (const job of jobs) {

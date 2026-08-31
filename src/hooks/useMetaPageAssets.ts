@@ -3,6 +3,7 @@ import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
 export type AssetKind =
+  | "ad_account"
   | "whatsapp"
   | "pixels"
   | "pixel_events"
@@ -10,6 +11,19 @@ export type AssetKind =
   | "pages"
   | "instagram"
   | "ig_media";
+
+/** Денежные параметры кабинета: в них Meta принимает дневной бюджет. */
+export interface AdAccountItem {
+  id: string;
+  name: string;
+  currency: string;
+  /** Дробность валюты: 100 обычно, 1 для валют без копеек. */
+  minor_units: number;
+  account_status: number;
+  timezone_name: string | null;
+  /** Минимальный дневной бюджет в единицах валюты, если Meta его сообщила. */
+  min_daily_budget: number | null;
+}
 
 export interface WhatsAppItem {
   id: string;
@@ -115,6 +129,7 @@ async function parseInvokeError(error: unknown): Promise<string> {
 }
 
 type ItemMap = {
+  ad_account: AdAccountItem;
   whatsapp: WhatsAppItem;
   pixels: PixelItem;
   pixel_events: PixelEventItem;

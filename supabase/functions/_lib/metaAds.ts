@@ -78,13 +78,25 @@ export function normalizeActId(raw: unknown): string {
 }
 
 /**
- * Дневной бюджет в центах. Meta принимает только целые центы и не пускает
- * бюджет ниже минимального порога аккаунта — ниже $1 не опускаемся.
+ * Дневной бюджет в МИНОРНЫХ единицах валюты рекламного аккаунта.
+ *
+ * Meta принимает `daily_budget` именно так: для счёта в тенге «5000» — это
+ * 50 ₸, а не 50 $. Раньше здесь было жёсткое умножение на 100 «в центы», что
+ * для аккаунтов не в долларах давало бюджет не той величины. Валюта и её
+ * дробность приходят из самого кабинета (`kind=ad_account`).
+ *
+ * `minorUnits` — 100 для обычных валют и 1 для валют без копеек (JPY, KRW…).
  */
-export function dailyBudgetCents(budgetUsd: unknown, fallbackCents = 500): number {
-  const n = Number(budgetUsd);
-  if (!Number.isFinite(n) || n <= 0) return fallbackCents;
-  return Math.max(100, Math.round(n * 100));
+export function dailyBudgetMinor(
+  amount: unknown,
+  minorUnits = 100,
+  fallbackMinor = 5 * minorUnits,
+): number {
+  const units = minorUnits === 1 ? 1 : 100;
+  const n = Number(amount);
+  if (!Number.isFinite(n) || n <= 0) return Math.round(fallbackMinor);
+  // Меньше одной единицы валюты Meta не примет ни при каком аккаунте.
+  return Math.max(units, Math.round(n * units));
 }
 
 /** Ссылка на чат WhatsApp с предзаполненным сообщением. */
@@ -408,7 +420,10 @@ export function buildAdSetBody(args: {
   campaignId?: string | null;
   destination: Destination;
   cabinet: CabinetConfig;
+  /** Сумма в единицах валюты кабинета, как её ввёл менеджер. */
   budgetUsd: number;
+  /** Дробность валюты кабинета: 100 обычно, 1 для валют без копеек. */
+  minorUnits?: number;
   targeting: Record<string, unknown>;
   startTime: string;
 }): Record<string, unknown> {
@@ -454,7 +469,7 @@ export function buildAdSetBody(args: {
   return {
     name: args.name,
     ...(args.campaignId ? { campaign_id: args.campaignId } : {}),
-    daily_budget: String(dailyBudgetCents(args.budgetUsd)),
+    daily_budget: String(dailyBudgetMinor(args.budgetUsd, args.minorUnits ?? 100)),
     bid_strategy: "LOWEST_COST_WITHOUT_CAP",
     billing_event: "IMPRESSIONS",
     optimization_goal: optimizationGoal,

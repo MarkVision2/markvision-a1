@@ -11,7 +11,7 @@ import {
   buildTargeting,
   campaignGroupKey,
   cleanUrl,
-  dailyBudgetCents,
+  dailyBudgetMinor,
   deriveHeadline,
   normalizeActId,
   resolveDestination,
@@ -60,12 +60,20 @@ describe("примитивы", () => {
   });
 
   it("не режет дневной бюджет — предохранителя n8n на $5 больше нет", () => {
-    expect(dailyBudgetCents(50)).toBe(5000);
-    expect(dailyBudgetCents(7.5)).toBe(750);
-    expect(dailyBudgetCents(0)).toBe(500);
-    expect(dailyBudgetCents("нет")).toBe(500);
-    // Meta не принимает совсем мелкие бюджеты — поднимаем до $1.
-    expect(dailyBudgetCents(0.2)).toBe(100);
+    expect(dailyBudgetMinor(50)).toBe(5000);
+    expect(dailyBudgetMinor(7.5)).toBe(750);
+    expect(dailyBudgetMinor(0)).toBe(500);
+    expect(dailyBudgetMinor("нет")).toBe(500);
+    // Меньше одной единицы валюты Meta не примет.
+    expect(dailyBudgetMinor(0.2)).toBe(100);
+  });
+
+  it("считает бюджет в минорных единицах валюты кабинета", () => {
+    // Счёт в тенге: 5000 ₸ в сутки — это 500000 тиын, а не 5000.
+    expect(dailyBudgetMinor(5000, 100)).toBe(500000);
+    // Валюта без копеек: иена уходит целыми единицами.
+    expect(dailyBudgetMinor(3000, 1)).toBe(3000);
+    expect(dailyBudgetMinor(0, 1)).toBe(5);
   });
 
   it("собирает ссылку WhatsApp с кодовым словом", () => {

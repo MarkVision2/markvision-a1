@@ -257,6 +257,49 @@ export async function resolveActiveLeadForm(
   return active?.id ?? null;
 }
 
+/* ────────────────────────────── рекламный аккаунт ────────────────────── */
+
+/** Валюты, которые Meta считает целыми единицами — копеек у них нет. */
+const ZERO_DECIMAL_CURRENCIES = new Set([
+  "JPY", "KRW", "VND", "CLP", "ISK", "PYG", "UGX", "RWF",
+  "XAF", "XOF", "XPF", "BIF", "DJF", "GNF", "KMF", "MGA", "VUV",
+]);
+
+export interface AdAccountMoney {
+  currency: string;
+  /** Дробность валюты: 100 обычно, 1 для валют без копеек. */
+  minorUnits: number;
+  /** Минимальный дневной бюджет в единицах валюты, если Meta его сообщила. */
+  minDailyBudget: number | null;
+}
+
+/**
+ * Валюта кабинета. Без неё дневной бюджет уходит в Meta не в тех единицах:
+ * `daily_budget` считается в минорных единицах валюты СЧЁТА, а не в центах
+ * доллара.
+ */
+export async function getAdAccountMoney(
+  adAccountId: string,
+  token: string,
+): Promise<AdAccountMoney> {
+  const res = await graph<{
+    currency?: string;
+    min_daily_budget_low_freq?: string | number;
+  }>(adAccountId, {
+    token,
+    query: { fields: "currency,min_daily_budget_low_freq" },
+    timeoutMs: 20_000,
+  });
+  const currency = String(res.currency ?? "USD").toUpperCase();
+  const minorUnits = ZERO_DECIMAL_CURRENCIES.has(currency) ? 1 : 100;
+  const minMinor = Number(res.min_daily_budget_low_freq ?? 0);
+  return {
+    currency,
+    minorUnits,
+    minDailyBudget: minMinor > 0 ? minMinor / minorUnits : null,
+  };
+}
+
 /* ────────────────────────────── сущности рекламы ─────────────────────── */
 
 export async function createCampaign(
