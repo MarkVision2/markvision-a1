@@ -27,6 +27,7 @@ import {
   textFromChatResponse,
   textOf,
 } from "./geminiParse.ts";
+import { hasKieKey, kieImage, type KieImageOptions } from "./kie.ts";
 
 export {
   base64ToBytes,
@@ -63,24 +64,63 @@ export interface GeminiResult<T> {
   error: string | null;
   /** true — ошибка временная, задание стоит повторить. */
   retryable: boolean;
+  /** Задача поставлена, но ещё не готова (асинхронный провайдер). */
+  pending?: boolean;
+  /** Идентификатор задачи у асинхронного провайдера. */
+  taskId?: string;
 }
 
-export type ImageProvider = "google" | "gateway" | null;
+export type ImageProvider = "kie" | "google" | "gateway" | null;
+export type TextProvider = "google" | "gateway" | null;
 
-/** Какой путь доступен: прямой ключ Google приоритетнее шлюза. */
+/** Явное указание провайдера переменной окружения — сильнее автоподбора. */
+function forced(name: string): string {
+  return (Deno.env.get(name) ?? "").trim().toLowerCase();
+}
+
+/**
+ * Провайдер картинок. По умолчанию: kie.ai → прямой Google → шлюз.
+ *
+ * kie.ai впереди намеренно: у Gemini API на бесплатном плане квота 0,
+ * а кредиты Google Cloud с марта 2026 на него не распространяются, — то есть
+ * ключ Google без предоплаты картинок не даст, а kie.ai даст.
+ * Порядок переопределяется CONTENT_FACTORY_IMAGE_PROVIDER.
+ */
 export function imageProvider(): ImageProvider {
+  const pick = forced("CONTENT_FACTORY_IMAGE_PROVIDER");
+  if (pick === "kie" && hasKieKey()) return "kie";
+  if (pick === "google" && Deno.env.get("GEMINI_API_KEY")) return "google";
+  if (pick === "gateway" && Deno.env.get("LOVABLE_API_KEY")) return "gateway";
+
+  if (hasKieKey()) return "kie";
+  if (Deno.env.get("GEMINI_API_KEY")) return "google";
+  if (Deno.env.get("LOVABLE_API_KEY")) return "gateway";
+  return null;
+}
+
+/**
+ * Провайдер текста (анализ фото и стратегия слайдов). kie.ai сюда не годится —
+ * он про картинки. Переопределяется CONTENT_FACTORY_TEXT_PROVIDER: это нужно,
+ * когда ключ Google задан, но без квоты, а работать должен шлюз.
+ */
+export function textProvider(): TextProvider {
+  const pick = forced("CONTENT_FACTORY_TEXT_PROVIDER");
+  if (pick === "google" && Deno.env.get("GEMINI_API_KEY")) return "google";
+  if (pick === "gateway" && Deno.env.get("LOVABLE_API_KEY")) return "gateway";
+
   if (Deno.env.get("GEMINI_API_KEY")) return "google";
   if (Deno.env.get("LOVABLE_API_KEY")) return "gateway";
   return null;
 }
 
 export function hasImageProvider(): boolean {
-  return imageProvider() !== null;
+  return imageProvider() !== null && textProvider() !== null;
 }
 
 /** Человекочитаемое объяснение, чего не хватает. */
 export const NO_PROVIDER_MESSAGE =
-  "Генерация изображений недоступна: не задан ни GEMINI_API_KEY, ни LOVABLE_API_KEY";
+  "Генерация недоступна: нужен ключ для картинок (KIE_API_KEY или GEMINI_API_KEY) " +
+  "и ключ для текста (GEMINI_API_KEY или LOVABLE_API_KEY)";
 
 function httpFailure(
   status: number,
@@ -199,7 +239,7 @@ export async function geminiText(
   prompt: string,
   timeoutMs = 120_000,
 ): Promise<GeminiResult<string>> {
-  const provider = imageProvider();
+  const provider = textProvider();
   if (!provider) {
     return { ok: false, data: null, error: NO_PROVIDER_MESSAGE, retryable: false };
   }
@@ -234,7 +274,7 @@ export async function geminiVision(
   images: Array<{ data: string; mime: string }>,
   timeoutMs = 120_000,
 ): Promise<GeminiResult<string>> {
-  const provider = imageProvider();
+  const provider = textProvider();
   if (!provider) {
     return { ok: false, data: null, error: NO_PROVIDER_MESSAGE, retryable: false };
   }
@@ -255,15 +295,47 @@ export async function geminiVision(
   return { ok: true, data: textOf(res.data), error: null, retryable: false };
 }
 
+export interface ImageOptions {
+  timeoutMs?: number;
+  /** Аспект кадра — нужен kie.ai, там он задаётся отдельным полем. */
+  aspect?: string;
+  /** Ссылки на референсы: kie.ai принимает их URL-ами, а не байтами. */
+  referenceUrls?: string[];
+  /** Продолжение уже созданной задачи асинхронного провайдера. */
+  taskId?: string | null;
+  /** Колбэк сохранения taskId, чтобы ретрай не оплачивал генерацию дважды. */
+  onTask?: KieImageOptions["onTask"];
+}
+
 /** Генерация кадра. Референсы уходят вместе с промптом — как в n8n. */
 export async function geminiImage(
   prompt: string,
   references: Array<{ data: string; mime: string }>,
-  timeoutMs = 180_000,
+  options: ImageOptions = {},
 ): Promise<GeminiResult<{ data: string; mime: string }>> {
+  const timeoutMs = options.timeoutMs ?? 180_000;
   const provider = imageProvider();
   if (!provider) {
     return { ok: false, data: null, error: NO_PROVIDER_MESSAGE, retryable: false };
+  }
+
+  if (provider === "kie") {
+    // kie.ai работает по ссылкам на референсы, а не по байтам: наши картинки
+    // и так лежат в публичном Storage, лишняя перекодировка не нужна.
+    const res = await kieImage(prompt, options.referenceUrls ?? [], {
+      taskId: options.taskId,
+      onTask: options.onTask,
+      deadline: Date.now() + timeoutMs,
+      aspect: options.aspect,
+    });
+    return {
+      ok: res.ok,
+      data: res.data,
+      error: res.error,
+      retryable: res.retryable,
+      pending: res.pending,
+      taskId: res.taskId,
+    };
   }
 
   if (provider === "gateway") {

@@ -323,10 +323,37 @@ async function processJob(
 
     await setStep(admin, job, `generating:${index + 1}/${strategy.length}`);
     const slide = strategy[index];
-    const image = await geminiImage(buildSlidePrompt(slide, references.length), references);
+    // taskId асинхронного провайдера (kie.ai) держим в задании: если кадр
+    // не успел за отведённое время, следующий проход продолжит ту же задачу,
+    // а не создаст и не оплатит новую.
+    const taskKey = `task_${index}`;
+    const image = await geminiImage(buildSlidePrompt(slide, references.length), references, {
+      aspect: slide.aspect_ratio,
+      referenceUrls: refs,
+      taskId: analysis[taskKey] ?? null,
+      timeoutMs: Math.max(30_000, deadline - Date.now()),
+      onTask: async (taskId: string) => {
+        analysis[taskKey] = taskId;
+        await admin.from("content_factory_jobs").update({ analysis }).eq("id", job.id);
+      },
+    });
 
     if (!image.ok || !image.data) {
       const reason = image.error ?? "Модель не вернула изображение";
+      if (image.pending) {
+        // Провайдер ещё считает. Возвращаем задание в очередь без траты
+        // попытки — прогресс есть, это не сбой.
+        await admin.from("content_factory_jobs").update({
+          status: "queued",
+          step: `waiting:${index + 1}/${strategy.length}`,
+          slides_done: done,
+          analysis,
+          locked_at: null,
+          attempts: 0,
+          next_attempt_at: new Date(Date.now() + 30_000).toISOString(),
+        }).eq("id", job.id);
+        return { id: job.id, status: "waiting", slide: index, taskId: image.taskId };
+      }
       if (image.retryable) return await failJob(admin, job, reason, true);
       // Фильтр отказал именно на этом кадре — остальные ещё могут получиться.
       await markResultError(admin, job.request_id, index, reason);
@@ -400,10 +427,11 @@ async function processJob(
     }
 
     done = index + 1;
+    delete analysis[taskKey];
     // Прогресс сбрасывает счётчик попыток: сбои считаем подряд идущими,
     // иначе длинная карусель исчерпала бы лимит на ровном месте.
     await admin.from("content_factory_jobs")
-      .update({ slides_done: done, attempts: 0 })
+      .update({ slides_done: done, attempts: 0, analysis })
       .eq("id", job.id);
   }
 
