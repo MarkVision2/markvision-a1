@@ -981,7 +981,8 @@ const CreateCampaignDialog = ({
         page_name: effectivePageName || cab.pageName || "",
         instagram_actor_id: effectiveIgUserId || cab.instagramId || "",
         instagram_user_id: effectiveIgUserId || cab.instagramId || "",
-        fb_token: cab.accessToken ?? "",
+        // Токен Meta не отправляем: его резолвит сервер по кабинету. В браузере
+        // ему делать нечего, а у роли manager его в списке кабинетов и нет.
         fb_pixel_id: goal === "site-leads" ? pixelId : (cab.pixelId ?? ""),
         pixel_event: goal === "site-leads" ? pixelEvent : (cab.pixelEvent ?? "Lead"),
         // Если для цели «Лиды с сайта» пользователь ввёл свой URL — отправляем его,

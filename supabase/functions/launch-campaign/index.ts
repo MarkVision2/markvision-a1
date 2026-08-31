@@ -12,6 +12,7 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireUser, userHasRole } from "../_lib/auth.ts";
 import { uploadVideoFile } from "../_lib/metaGraph.ts";
+import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
 
 const N8N_WEBHOOK = "https://n8n.zapoinov.com/webhook/ai-target-launch";
 const META_GRAPH = "https://graph.facebook.com/v19.0";
@@ -127,14 +128,6 @@ Deno.serve(async (req) => {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN");
-    if (!META_ACCESS_TOKEN) {
-      return new Response(
-        JSON.stringify({ error: "META_ACCESS_TOKEN is not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
     const incoming = await req.formData();
     const payloadStr = incoming.get("payload");
     if (typeof payloadStr !== "string") {
@@ -148,14 +141,26 @@ Deno.serve(async (req) => {
     const client = (payload.clientConfig ?? {}) as Record<string, unknown>;
 
     // ===== 1. ACCESS_TOKEN =====
-    const accessToken = pickStr(
-      client.fb_token,
-      client.access_token,
-      client.fbtoken,
-      client.accesstoken,
-      payload.ACCESS_TOKEN,
-      META_ACCESS_TOKEN,
-    );
+    // Токен Meta резолвим на сервере тем же порядком, что и воркер: кабинет →
+    // проект → общие настройки → env. Присланному в теле запроса не доверяем:
+    // менеджеру незачем диктовать, под каким токеном пойдёт трата бюджета,
+    // а список кабинетов на фронте намеренно приходит без секретов.
+    const accessToken = await resolveMetaAccessToken({
+      cabinetId: pickStr(payload.cabinet_id, client.cabinet_id) || null,
+      projectId: pickStr(payload.project_id, client.project_id) || null,
+      admin: adminClient(),
+    }) ?? "";
+
+    if (!accessToken) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          error:
+            "Нет токена Meta: подключите Facebook в настройках кабинета или задайте META_ACCESS_TOKEN.",
+        }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
 
     client.fb_token = accessToken;
     client.fbtoken = accessToken;
