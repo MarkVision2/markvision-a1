@@ -23,14 +23,26 @@ import { isPublicHttpUrl } from "./safeUrl.ts";
 
 const KIE_BASE = "https://api.kie.ai/api/v1";
 
+/**
+ * Чтение переменной окружения без голого обращения к Deno.
+ *
+ * Модуль покрыт тестами из vitest, а там глобального Deno нет — прямое
+ * обращение ломало бы typecheck. В рантайме Supabase Edge это тот же
+ * Deno.env.get.
+ */
+function env(name: string): string | undefined {
+  return (globalThis as { Deno?: { env: { get(k: string): string | undefined } } })
+    .Deno?.env.get(name);
+}
+
 /** Модель генерации. Меняется переменной окружения без правки кода. */
-export const KIE_MODEL = Deno.env.get("CONTENT_FACTORY_KIE_MODEL") ?? "google/nano-banana";
+export const KIE_MODEL = env("CONTENT_FACTORY_KIE_MODEL") ?? "google/nano-banana";
 
 /** Пауза между опросами статуса задачи. */
 const POLL_INTERVAL_MS = 5_000;
 
 export function hasKieKey(): boolean {
-  return Boolean(Deno.env.get("KIE_API_KEY"));
+  return Boolean(env("KIE_API_KEY"));
 }
 
 export interface KieResult<T> {
@@ -53,7 +65,7 @@ async function kieFetch(
       ...init,
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${Deno.env.get("KIE_API_KEY")}`,
+        Authorization: `Bearer ${env("KIE_API_KEY")}`,
         ...(init.headers as Record<string, string> ?? {}),
       },
       signal: AbortSignal.timeout(timeoutMs),
