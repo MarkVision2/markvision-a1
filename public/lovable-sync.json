@@ -1,7 +1,7 @@
 {
-  "git_sha": "0c5b171",
-  "git_sha_full": "0c5b171aface4efeebfa49cab8babd4c35019187",
-  "updated_at": "2026-08-30T08:59:59Z",
-  "label": "[vercel-deploy] Merge: вёрстка внутренних страниц на телефоне",
+  "git_sha": "e003b9c",
+  "git_sha_full": "e003b9c71458b0f6d3dc2855861c2b098ccdaa69",
+  "updated_at": "2026-08-31T09:27:22Z",
+  "label": "[vercel-deploy] Merge: карточка компании в CRM и защита этапов от автоматики",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
