@@ -37,7 +37,8 @@ import { mobileDialogFooterPad } from "@/lib/dialogClasses";
 import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseConfig";
 import { DEFAULT_META_UTM_TEMPLATE } from "@/lib/utmDefaults";
 import type { AdCabinet } from "@/types/ads";
-import { saveCampaign } from "@/hooks/useCabinetsStore";
+import { supabase } from "@/integrations/supabase/client";
+import { probeLaunchRow, waitForLaunchRow } from "@/lib/adLaunch";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { useMetaPageAssets, type IgMediaItem } from "@/hooks/useMetaPageAssets";
 import GoalAssetsPicker from "./GoalAssetsPicker";
@@ -1025,10 +1026,20 @@ const CreateCampaignDialog = ({
       }
     }
 
-    // Жёсткий фронт-таймаут 12с: edge-функция отвечает за ≤8с, плюс запас на сеть.
-    // Если n8n тормозит — мы всё равно покажем «принято» и не вешаем UI.
+    // Edge-функция проверяет пользователя и роль (admin/manager) по JWT сессии.
+    // Публикуемый ключ проекта для этого не годится — он не JWT, и проверка
+    // возвращала 401 на каждый запуск.
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) {
+      setSubmitting(false);
+      toast.error("Сессия истекла — войдите заново и повторите запуск");
+      return;
+    }
+
+    // Таймаут 20с: edge успевает залить креативы в Meta и создать строку запуска.
     const ctrl = new AbortController();
-    const timeoutId = setTimeout(() => ctrl.abort(), 12_000);
+    const timeoutId = setTimeout(() => ctrl.abort(), 20_000);
     let accepted = false;
     let serverError: string | null = null;
     try {
@@ -1036,9 +1047,10 @@ const CreateCampaignDialog = ({
         method: "POST",
         body: fd,
         signal: ctrl.signal,
-        headers: LAUNCH_KEY
-          ? { Authorization: `Bearer ${LAUNCH_KEY}`, apikey: LAUNCH_KEY }
-          : undefined,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          ...(LAUNCH_KEY ? { apikey: LAUNCH_KEY } : {}),
+        },
       });
       const data = await res.json().catch(() => null) as
         | { ok?: boolean; accepted?: boolean; error?: string }
@@ -1050,10 +1062,14 @@ const CreateCampaignDialog = ({
           data?.error || `Не удалось отправить (HTTP ${res.status})`;
       }
     } catch (e) {
-      // Таймаут на нашей стороне — считаем «принято» (n8n часто молча работает дальше).
       const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes("aborted") || ctrl.signal.aborted) {
-        accepted = true;
+        // Ответ не пришёл — не выдаём это за успех. Строку запуска создаёт
+        // edge сервисным ключом до тяжёлых шагов, поэтому спрашиваем БД.
+        accepted = await waitForLaunchRow(payload.launchId, probeLaunchRow);
+        if (!accepted) {
+          serverError = "Ответ не получен за 20 с — запуск не подтверждён";
+        }
       } else {
         serverError = `Сеть: ${msg}`;
       }
@@ -1067,27 +1083,8 @@ const CreateCampaignDialog = ({
       return;
     }
 
-    // Сохраняем кампанию со статусом queued + launchId,
-    // чтобы потом n8n мог обновить статус через callback.
-    try {
-      await saveCampaign(
-        {
-          cabinetId,
-          goal,
-          budget,
-          text,
-          whatsappId: goal === "whatsapp" ? whatsappId : undefined,
-          pixelId: goal === "site-leads" ? pixelId : undefined,
-          pixelEvent: goal === "site-leads" ? pixelEvent : undefined,
-          leadFormId: goal === "meta-form" ? leadFormId : undefined,
-          launchId: payload.launchId,
-          status: "queued",
-        },
-        projectId || null,
-      );
-    } catch {
-      /* не блокируем UX, если запись не сохранилась локально */
-    }
+    // Строку в ad_campaigns пишет edge-функция сервисным ключом: у роли manager
+    // нет прав на запись по RLS, и раньше запуск просто пропадал из интерфейса.
 
     // ===== Красивая сводка пользователю =====
     const goalLabel =

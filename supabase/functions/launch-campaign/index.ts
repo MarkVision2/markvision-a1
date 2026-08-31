@@ -5,6 +5,7 @@
 // 4. Обогащает payload секретным META_ACCESS_TOKEN и всеми алиасами полей.
 // 5. Отвечает фронту быстро (короткий таймаут на ACK от n8n, дальше n8n работает в фоне).
 
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireUser, userHasRole } from "../_lib/auth.ts";
 
 const N8N_WEBHOOK = "https://n8n.zapoinov.com/webhook/ai-target-launch";
@@ -65,6 +66,37 @@ async function uploadImageToMeta(
   } catch (e) {
     console.error("[uploadImage] exception:", (e as Error).message);
     return null;
+  }
+}
+
+/** Admin-клиент: строку запуска пишем сервисным ключом (у manager нет прав по RLS). */
+let _admin: ReturnType<typeof createClient> | null = null;
+function adminClient() {
+  if (!_admin) {
+    _admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+  }
+  return _admin;
+}
+
+/**
+ * Обновляет строку запуска по launch_id. Best-effort: проблемы с БД не должны
+ * ронять уже начатый запуск, но и молчать о них не будем — пишем в лог.
+ */
+async function patchLaunch(
+  launchId: string,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  try {
+    const { error } = await adminClient()
+      .from("ad_campaigns")
+      .update({ ...patch, status_updated_at: new Date().toISOString() })
+      .eq("launch_id", launchId);
+    if (error) console.error("[launch-campaign] patch:", error.message);
+  } catch (e) {
+    console.error("[launch-campaign] patch exception:", (e as Error).message);
   }
 }
 
@@ -148,6 +180,53 @@ Deno.serve(async (req) => {
     payload.clientConfig = client;
     payload.adAccount = adAccount;
     payload.ad_account_id = adAccount;
+
+    // ===== 2.5. Строка запуска в ad_campaigns — ДО тяжёлых шагов =====
+    // Создаём её здесь, а не на фронте: у роли manager нет прав на запись по RLS,
+    // и раньше запуск просто не появлялся в интерфейсе. Плюс строка гарантированно
+    // существует до того, как прилетит первый статус-колбэк.
+    const launchId = pickStr(payload.launchId) || crypto.randomUUID();
+    payload.launchId = launchId;
+
+    const cabinetId = pickStr(payload.cabinet_id, client.cabinet_id);
+    const projectId = pickStr(payload.project_id, client.project_id);
+    if (!cabinetId) {
+      return new Response(
+        JSON.stringify({ ok: false, error: "cabinet_id обязателен для запуска" }),
+        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+      );
+    }
+
+    {
+      const { error: insertErr } = await adminClient()
+        .from("ad_campaigns")
+        .insert({
+          launch_id: launchId,
+          cabinet_id: cabinetId,
+          project_id: projectId || null,
+          goal: pickStr(payload.goal),
+          budget: String(payload.budget ?? ""),
+          text: pickStr(payload.text),
+          whatsapp_id: pickStr(payload.whatsappNumber, client.whatsapp_number) || null,
+          pixel_id: pickStr(payload.pixelId, client.fb_pixel_id) || null,
+          pixel_event: pickStr(payload.pixelEvent, client.pixel_event) || null,
+          lead_form_id: pickStr(payload.leadFormId, client.lead_form_id) || null,
+          created_by: auth.userId,
+          status: "queued",
+          status_step: "accepted",
+          status_message: "Запуск принят, готовим креативы",
+          status_updated_at: new Date().toISOString(),
+        });
+      if (insertErr) {
+        return new Response(
+          JSON.stringify({
+            ok: false,
+            error: `Не удалось создать запуск: ${insertErr.message}`,
+          }),
+          { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      }
+    }
 
     // ===== 3. UPPER_CASE aliases =====
     const pageId = pickStr(client.page_id, client.pageid);
@@ -301,23 +380,28 @@ Deno.serve(async (req) => {
     let storiesCreativeBody: Record<string, unknown> | null = null;
 
     if (adSetupMode === "existing" && sourceIgMediaId) {
-      if (!pageId) {
+      // Строка запуска уже создана — при отказе гасим её, чтобы не висела в queued.
+      const failLaunch = async (message: string) => {
+        await patchLaunch(launchId, {
+          status: "error",
+          status_step: "validation_failed",
+          status_message: message,
+          last_error: message,
+          completed_at: new Date().toISOString(),
+        });
         return new Response(
-          JSON.stringify({
-            ok: false,
-            error: "Для продвижения публикации нужна Facebook Page (page_id).",
-          }),
+          JSON.stringify({ ok: false, error: message }),
           { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        );
+      };
+      if (!pageId) {
+        return await failLaunch(
+          "Для продвижения публикации нужна Facebook Page (page_id).",
         );
       }
       if (!igUserForCreative) {
-        return new Response(
-          JSON.stringify({
-            ok: false,
-            error:
-              "Нет Instagram User ID у страницы. Привяжите Instagram Business к Page.",
-          }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
+        return await failLaunch(
+          "Нет Instagram User ID у страницы. Привяжите Instagram Business к Page.",
         );
       }
 
@@ -470,12 +554,7 @@ Deno.serve(async (req) => {
       access_token: accessToken,
     };
 
-    // ===== 8. launchId =====
-    if (!payload.launchId) {
-      payload.launchId = crypto.randomUUID();
-    }
-
-    // ===== 9. Шлём в n8n с коротким таймаутом ACK =====
+    // ===== 8. Шлём в n8n с коротким таймаутом ACK =====
     const out = new FormData();
     out.append("payload", JSON.stringify(payload));
     // Пересылаем оригинальные файлы — n8n обработает видео самостоятельно
@@ -496,6 +575,15 @@ Deno.serve(async (req) => {
       ackOk = res.ok;
       ackStatus = res.status;
       ackBody = (await res.text()).slice(0, 500);
+      await patchLaunch(launchId, ackOk
+        ? { status_step: "dispatched", status_message: "Передано в обработку" }
+        : {
+          status: "error",
+          status_step: "dispatch_failed",
+          status_message: `Обработчик отклонил запуск (HTTP ${ackStatus})`,
+          last_error: ackBody.slice(0, 500),
+          completed_at: new Date().toISOString(),
+        });
     } catch (e) {
       const err = e as { name?: string; message?: string };
       const msg = (err?.message ?? "").toLowerCase();
@@ -507,13 +595,27 @@ Deno.serve(async (req) => {
         msg.includes("timeout") ||
         msg.includes("timed out")
       ) {
+        // Обработчик не ответил за отведённое время. Он может доработать в фоне,
+        // поэтому запуск не хороним — но и «успехом» не называем: помечаем
+        // неподтверждённым, чтобы статус в интерфейсе был честным.
         ackOk = true;
         ackStatus = 202;
-        ackBody = "queued (ack timeout — n8n продолжает в фоне)";
+        ackBody = "queued (ack timeout — обработчик продолжает в фоне)";
+        await patchLaunch(launchId, {
+          status_step: "dispatched_unconfirmed",
+          status_message: "Передано, подтверждение не получено — ждём статус",
+        });
       } else {
         ackOk = false;
         ackStatus = 502;
         ackBody = msg || "network error";
+        await patchLaunch(launchId, {
+          status: "error",
+          status_step: "dispatch_failed",
+          status_message: "Обработчик недоступен",
+          last_error: ackBody.slice(0, 500),
+          completed_at: new Date().toISOString(),
+        });
       }
     }
 
@@ -522,7 +624,7 @@ Deno.serve(async (req) => {
         ok: ackOk,
         status: ackStatus,
         accepted: ackOk,
-        launchId: payload.launchId,
+        launchId,
         summary: payload.launchSummary,
         feedImageHash,
         storiesImageHash,
