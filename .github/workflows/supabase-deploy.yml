@@ -77,6 +77,21 @@ jobs:
             echo "changed=false" >> "$GITHUB_OUTPUT"
           fi
 
+      # 0) Номера версий миграций должны быть уникальны. CLI хранит историю по
+      #    номеру версии, поэтому из двух файлов с одинаковым номером второй не
+      #    может быть записан никогда: он вечно висит в плане push и блокирует
+      #    применение всего остального. Ловим это сразу, а не на проде.
+      - name: Check migration versions are unique
+        run: |
+          DUPES=$(ls supabase/migrations/*.sql 2>/dev/null | sed 's#.*/##' | cut -c1-14 | sort | uniq -d)
+          if [ -n "$DUPES" ]; then
+            echo "::error::Одинаковые номера версий у разных файлов миграций:"
+            for v in $DUPES; do ls -1 supabase/migrations/${v}_*.sql; done
+            echo "::error::Переименуйте лишние файлы на свободные номера."
+            exit 1
+          fi
+          echo "::notice::Migration versions are unique."
+
       # 1) Edge functions — сначала и всегда (не зависят от пароля БД).
       #    Одна упавшая функция не роняет остальные и НЕ блокирует SQL ниже:
       #    раньше exit 1 здесь пропускал миграции (dm_button_title и т.п.).
