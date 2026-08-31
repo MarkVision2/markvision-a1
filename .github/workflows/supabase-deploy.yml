@@ -155,11 +155,53 @@ jobs:
             fi
           fi
 
-          # Предохранитель. Из-за расхождения выше db push не проходил давно, и в
-          # истории прода может не быть части старых локальных миграций — тогда
-          # push попытается прогнать по проду большой хвост старых файлов.
-          # Если план неожиданно большой, НЕ применяем ничего: такой хвост должен
-          # посмотреть человек, а не выкатиться сам ночью.
+          # Обратная сторона того же расхождения: часть локальных миграций уже
+          # применена к проду мимо CLI и в учёте не записана. db push видит их как
+          # неприменённые и либо требует --include-all, либо прогнал бы их по проду
+          # заново. Помечаем как applied только те версии, что перечислены в
+          # supabase/migrations_baseline_applied.txt — там же написано, как каждая
+          # из них проверялась на проде. Незнакомая версия останавливает деплой:
+          # молча пропустить непроверенную миграцию хуже, чем не выкатиться.
+          BASELINE=supabase/migrations_baseline_applied.txt
+          VETTED=$(grep -E '^[0-9]{14}$' "$BASELINE" | sort -u)
+          plan_versions() { grep -oE '[0-9]{14}_[^ ]*\.sql' "$PLAN" | cut -c1-14 | sort -u; }
+          mark_applied() { # $1 — версии через пробел
+            # shellcheck disable=SC2086
+            echo "::notice::Marking $(echo $1 | wc -w) baseline migrations as applied"
+            # shellcheck disable=SC2086
+            supabase migration repair --status applied --password "$SUPABASE_DB_PASSWORD" $1
+            echo "::group::db push --dry-run (после базовой линии)"
+            dry_run
+            echo "::endgroup::"
+          }
+
+          # Файлы, датированные раньше последней записи в учёте. Обычным push их не
+          # применить — только --include-all, то есть прогоном по проду заново.
+          # Незнакомая версия здесь останавливает деплой: молча пропустить
+          # непроверенную миграцию хуже, чем не выкатиться.
+          if grep -q "Rerun the command with --include-all" "$PLAN"; then
+            OUT_OF_ORDER=$(plan_versions)
+            UNVETTED=$(comm -23 <(echo "$OUT_OF_ORDER") <(echo "$VETTED"))
+            if [ -n "$UNVETTED" ]; then
+              echo "::error::Эти миграции датированы раньше последней записи в учёте прода и не входят в базовую линию:"
+              echo "$UNVETTED"
+              echo "::error::Ничего не применено. Проверьте, применены ли они к проду, и либо добавьте в $BASELINE, либо перевыпустите их с более поздней датой."
+              exit 1
+            fi
+            mark_applied "$(echo "$OUT_OF_ORDER" | tr '\n' ' ')"
+          fi
+
+          # Остаток плана: то, что push применил бы вперёд. Здесь незнакомая версия —
+          # это нормальная новая миграция, её и надо применить. А вот версии из
+          # базовой линии применять нельзя: они уже на проде, повтор их сломает.
+          KNOWN=$(comm -12 <(plan_versions) <(echo "$VETTED") | tr '\n' ' ')
+          if [ -n "${KNOWN// /}" ]; then
+            mark_applied "$KNOWN"
+          fi
+
+          # Предохранитель на размер плана: если после ремонта учёта push всё равно
+          # хочет применить много миграций, НЕ применяем ничего — такой хвост
+          # должен посмотреть человек, а не выкатиться сам ночью.
           PENDING=$(grep -cE '[0-9]{14}_.*\.sql' "$PLAN" || true)
           echo "::notice::Pending migrations: $PENDING"
           if [ "$PENDING" -gt "${DB_PUSH_MAX_PENDING:-10}" ]; then
