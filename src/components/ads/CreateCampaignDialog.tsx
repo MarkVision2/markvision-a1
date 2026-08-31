@@ -37,7 +37,8 @@ import { mobileDialogFooterPad } from "@/lib/dialogClasses";
 import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseConfig";
 import { DEFAULT_META_UTM_TEMPLATE } from "@/lib/utmDefaults";
 import type { AdCabinet } from "@/types/ads";
-import { saveCampaign } from "@/hooks/useCabinetsStore";
+import { supabase } from "@/integrations/supabase/client";
+import { probeLaunchRow, waitForLaunchRow } from "@/lib/adLaunch";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { useMetaPageAssets, type IgMediaItem } from "@/hooks/useMetaPageAssets";
 import GoalAssetsPicker from "./GoalAssetsPicker";
@@ -83,6 +84,22 @@ interface CreateCampaignDialogProps {
 }
 
 type Goal = "whatsapp" | "site-leads" | "meta-form";
+
+/** Ответ launch-campaign: запуск идёт напрямую в Meta и возвращает готовые id. */
+interface LaunchResponse {
+  ok?: boolean;
+  accepted?: boolean;
+  /** Кампания уже создана в кабинете. */
+  launched?: boolean;
+  /** Ещё в работе — статус догонит по launchId. */
+  pending?: boolean;
+  error?: string;
+  launchId?: string;
+  metaCampaignId?: string | null;
+  metaAdsetId?: string | null;
+  metaAdId?: string | null;
+  adAccountId?: string | null;
+}
 type CreativeFormat = "single" | "carousel";
 /** Как в Meta Ads Manager: создать креатив или взять существующую публикацию IG. */
 type AdSetupMode = "create" | "existing";
@@ -605,6 +622,12 @@ const ExistingPostPicker = ({
   </div>
 );
 
+/** Знаки валют, в которых реально ведут кабинеты. Остальные показываем кодом. */
+const CURRENCY_SIGNS: Record<string, string> = {
+  USD: "$", EUR: "€", KZT: "₸", RUB: "₽", UAH: "₴", GBP: "£",
+  UZS: "so'm", KGS: "с", AZN: "₼", TRY: "₺", PLN: "zł",
+};
+
 const CreateCampaignDialog = ({
   open,
   onOpenChange,
@@ -643,6 +666,18 @@ const CreateCampaignDialog = ({
     actId: selectedCabinet?.adAccountId,
     enabled: !!selectedCabinet?.adAccountId,
   });
+
+  // Валюта кабинета. Meta принимает дневной бюджет в её минорных единицах,
+  // поэтому сумму менеджер вводит в валюте счёта, а не в предполагаемых долларах.
+  const accountAssets = useMetaPageAssets({
+    kind: "ad_account",
+    actId: selectedCabinet?.adAccountId,
+    enabled: !!selectedCabinet?.adAccountId,
+  });
+  const account = accountAssets.data[0];
+  const currencyCode = account?.currency ?? selectedCabinet?.currency ?? "USD";
+  const currencySign = CURRENCY_SIGNS[currencyCode] ?? currencyCode;
+  const minDailyBudget = account?.min_daily_budget ?? null;
 
   // При смене кабинета сбрасываем выбранную страницу на дефолтную из настроек кабинета.
   useEffect(() => {
@@ -686,6 +721,58 @@ const CreateCampaignDialog = ({
 
   const selectedExistingPost = igMedia.data.find((m) => m.id === existingMediaId);
 
+  // Что реально подтянулось под выбранный кабинет — менеджер видит это сразу,
+  // не открывая настройки и не гадая, с какой страницы уйдёт реклама.
+  const readinessRows: { label: string; value: string; ok: boolean }[] = [];
+  if (selectedCabinet) {
+    readinessRows.push({
+      label: "Рекламный аккаунт",
+      value: selectedCabinet.adAccountId || "не заполнен",
+      ok: !!selectedCabinet.adAccountId,
+    });
+    readinessRows.push({
+      label: "Страница",
+      value: pagesAssets.isLoading
+        ? "загрузка…"
+        : effectivePageName || effectivePageId || "не выбрана",
+      ok: !!effectivePageId,
+    });
+    readinessRows.push({
+      label: "Instagram",
+      value: effectiveIgUserId ? "привязан" : "нет",
+      ok: !!effectiveIgUserId,
+    });
+    readinessRows.push({
+      label: "Валюта",
+      value: accountAssets.isLoading ? "загрузка…" : currencyCode,
+      ok: !accountAssets.error,
+    });
+    if (goal === "whatsapp") {
+      readinessRows.push({
+        label: "WhatsApp",
+        value: whatsappId || "не выбран",
+        ok: !!whatsappId,
+      });
+    } else if (goal === "site-leads") {
+      readinessRows.push({
+        label: "Пиксель",
+        value: pixelId ? `${pixelId} · ${pixelEvent || "?"}` : "не выбран",
+        ok: !!pixelId && !!pixelEvent,
+      });
+    } else if (goal === "meta-form") {
+      readinessRows.push({
+        label: "Лид-форма",
+        value: leadFormId || "не выбрана",
+        ok: !!leadFormId,
+      });
+    }
+  }
+
+  const budgetValue = Number(String(budget).replace(",", "."));
+  const budgetTooLow =
+    Number.isFinite(budgetValue) && budgetValue > 0 && minDailyBudget != null &&
+    budgetValue < minDailyBudget;
+
   const [submitting, setSubmitting] = useState(false);
   const [successOpen, setSuccessOpen] = useState(false);
   const [successInfo, setSuccessInfo] = useState<{
@@ -694,6 +781,11 @@ const CreateCampaignDialog = ({
     budget: string;
     currencySymbol: string;
     rows: { label: string; value: string }[];
+    /** true — кампания уже в кабинете; false — ещё доезжает. */
+    launched: boolean;
+    campaignId?: string | null;
+    adId?: string | null;
+    adAccountId?: string | null;
   } | null>(null);
 
   // Запуск кампании идёт через edge-функцию НОВОГО Supabase, где живут
@@ -718,6 +810,22 @@ const CreateCampaignDialog = ({
     }
     if (goal === "meta-form" && !leadFormId) {
       toast.error("Выберите лид-форму");
+      return;
+    }
+    if (!Number.isFinite(budgetValue) || budgetValue <= 0) {
+      toast.error("Укажите дневной бюджет");
+      return;
+    }
+    if (budgetTooLow) {
+      toast.error(
+        `Meta не примет бюджет меньше ${minDailyBudget} ${currencySign} в сутки`,
+      );
+      return;
+    }
+    if (adSetupMode === "create" && !text.trim()) {
+      // Текст уходит в объявление как есть — пустой Meta отклонит уже после
+      // создания кампании, и в кабинете останется мусор.
+      toast.error("Добавьте текст объявления");
       return;
     }
     if (adSetupMode === "existing") {
@@ -873,7 +981,8 @@ const CreateCampaignDialog = ({
         page_name: effectivePageName || cab.pageName || "",
         instagram_actor_id: effectiveIgUserId || cab.instagramId || "",
         instagram_user_id: effectiveIgUserId || cab.instagramId || "",
-        fb_token: cab.accessToken ?? "",
+        // Токен Meta не отправляем: его резолвит сервер по кабинету. В браузере
+        // ему делать нечего, а у роли manager его в списке кабинетов и нет.
         fb_pixel_id: goal === "site-leads" ? pixelId : (cab.pixelId ?? ""),
         pixel_event: goal === "site-leads" ? pixelEvent : (cab.pixelEvent ?? "Lead"),
         // Если для цели «Лиды с сайта» пользователь ввёл свой URL — отправляем его,
@@ -1025,35 +1134,51 @@ const CreateCampaignDialog = ({
       }
     }
 
-    // Жёсткий фронт-таймаут 12с: edge-функция отвечает за ≤8с, плюс запас на сеть.
-    // Если n8n тормозит — мы всё равно покажем «принято» и не вешаем UI.
+    // Edge-функция проверяет пользователя и роль (admin/manager) по JWT сессии.
+    // Публикуемый ключ проекта для этого не годится — он не JWT, и проверка
+    // возвращала 401 на каждый запуск.
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) {
+      setSubmitting(false);
+      toast.error("Сессия истекла — войдите заново и повторите запуск");
+      return;
+    }
+
+    // Запуск идёт напрямую в Meta: заливка креатива плюс создание кампании,
+    // группы и объявления — обычно 5-15 с. Даём запас и не рвём раньше времени.
     const ctrl = new AbortController();
-    const timeoutId = setTimeout(() => ctrl.abort(), 12_000);
+    const timeoutId = setTimeout(() => ctrl.abort(), 70_000);
     let accepted = false;
     let serverError: string | null = null;
+    let result: LaunchResponse | null = null;
     try {
       const res = await fetch(WEBHOOK_URL, {
         method: "POST",
         body: fd,
         signal: ctrl.signal,
-        headers: LAUNCH_KEY
-          ? { Authorization: `Bearer ${LAUNCH_KEY}`, apikey: LAUNCH_KEY }
-          : undefined,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          ...(LAUNCH_KEY ? { apikey: LAUNCH_KEY } : {}),
+        },
       });
-      const data = await res.json().catch(() => null) as
-        | { ok?: boolean; accepted?: boolean; error?: string }
-        | null;
+      const data = await res.json().catch(() => null) as LaunchResponse | null;
       if (res.ok && (data?.ok || data?.accepted)) {
         accepted = true;
+        result = data;
       } else {
         serverError =
           data?.error || `Не удалось отправить (HTTP ${res.status})`;
       }
     } catch (e) {
-      // Таймаут на нашей стороне — считаем «принято» (n8n часто молча работает дальше).
       const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes("aborted") || ctrl.signal.aborted) {
-        accepted = true;
+        // Ответ не пришёл — не выдаём это за успех. Строку запуска создаёт
+        // edge сервисным ключом до тяжёлых шагов, поэтому спрашиваем БД.
+        accepted = await waitForLaunchRow(payload.launchId, probeLaunchRow);
+        if (!accepted) {
+          serverError = "Ответ не получен — запуск не подтверждён";
+        }
       } else {
         serverError = `Сеть: ${msg}`;
       }
@@ -1067,27 +1192,8 @@ const CreateCampaignDialog = ({
       return;
     }
 
-    // Сохраняем кампанию со статусом queued + launchId,
-    // чтобы потом n8n мог обновить статус через callback.
-    try {
-      await saveCampaign(
-        {
-          cabinetId,
-          goal,
-          budget,
-          text,
-          whatsappId: goal === "whatsapp" ? whatsappId : undefined,
-          pixelId: goal === "site-leads" ? pixelId : undefined,
-          pixelEvent: goal === "site-leads" ? pixelEvent : undefined,
-          leadFormId: goal === "meta-form" ? leadFormId : undefined,
-          launchId: payload.launchId,
-          status: "queued",
-        },
-        projectId || null,
-      );
-    } catch {
-      /* не блокируем UX, если запись не сохранилась локально */
-    }
+    // Строку в ad_campaigns пишет edge-функция сервисным ключом: у роли manager
+    // нет прав на запись по RLS, и раньше запуск просто пропадал из интерфейса.
 
     // ===== Красивая сводка пользователю =====
     const goalLabel =
@@ -1096,9 +1202,8 @@ const CreateCampaignDialog = ({
         : goal === "meta-form"
           ? "Лид-форма Meta"
           : "WhatsApp";
-    // Бюджет в мастере всегда в $ (валюта ввода для Meta), независимо от
-    // currency кабинета в CRM — иначе у KZT-кабинетов показывался ₸.
-    const currencySymbol = "$";
+    // Бюджет показываем в валюте кабинета — той же, в которой его принимает Meta.
+    const currencySymbol = currencySign;
     const rows: { label: string; value: string }[] = [];
     rows.push({ label: "Цель", value: goalLabel });
     rows.push({
@@ -1133,12 +1238,20 @@ const CreateCampaignDialog = ({
       if (leadFormId) rows.push({ label: "Лид-форма", value: leadFormId });
     }
 
+    if (result?.metaCampaignId) {
+      rows.push({ label: "Кампания в Meta", value: result.metaCampaignId });
+    }
+
     setSuccessInfo({
       cabinet: cab?.name,
       goal: goalLabel,
       budget,
       currencySymbol,
       rows,
+      launched: result?.launched === true,
+      campaignId: result?.metaCampaignId ?? null,
+      adId: result?.metaAdId ?? null,
+      adAccountId: result?.adAccountId ?? cab?.adAccountId ?? null,
     });
     setSuccessOpen(true);
 
@@ -1189,6 +1302,30 @@ const CreateCampaignDialog = ({
                   </SelectContent>
                 </Select>
               </div>
+
+              {selectedCabinet && (
+                <div className="rounded-xl border border-border/50 bg-background/40 px-3 py-2.5">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                    Подтянулось из Meta
+                  </div>
+                  <dl className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-4">
+                    {readinessRows.map((row) => (
+                      <div key={row.label} className="min-w-0">
+                        <dt className="text-[10px] text-muted-foreground">{row.label}</dt>
+                        <dd
+                          className={cn(
+                            "truncate text-xs font-medium",
+                            row.ok ? "text-foreground" : "text-warning",
+                          )}
+                          title={row.value}
+                        >
+                          {row.value}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              )}
 
               {selectedCabinet && (
                 <div className="space-y-2">
@@ -1327,13 +1464,27 @@ const CreateCampaignDialog = ({
                   <Input
                     value={budget}
                     onChange={(e) => setBudget(e.target.value)}
-                    inputMode="numeric"
-                    className="h-11 rounded-xl border-border/50 bg-background/50 pr-12"
+                    inputMode="decimal"
+                    className={cn(
+                      "h-11 rounded-xl border-border/50 bg-background/50 pr-16",
+                      budgetTooLow && "border-destructive/60",
+                    )}
                   />
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-muted-foreground">
-                    $
+                    {accountAssets.isLoading ? "…" : currencySign}
                   </span>
                 </div>
+                {budgetTooLow ? (
+                  <p className="text-[11px] text-destructive">
+                    Meta не примет меньше {minDailyBudget} {currencySign} в сутки
+                    для этого кабинета.
+                  </p>
+                ) : (
+                  <p className="text-[11px] text-muted-foreground">
+                    Сумма в валюте кабинета ({currencyCode})
+                    {minDailyBudget ? `, минимум ${minDailyBudget} ${currencySign}` : ""}.
+                  </p>
+                )}
               </div>
 
               {adSetupMode === "create" && (
@@ -1464,15 +1615,28 @@ const CreateCampaignDialog = ({
         <DialogContent className="max-w-md overflow-hidden border-border/50 bg-card p-0">
           <div className="border-b border-border/50 px-6 py-5">
             <div className="flex items-start gap-3">
-              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-success/15 text-success">
-                <CheckCircle2 className="h-5 w-5" />
+              <div
+                className={cn(
+                  "grid h-11 w-11 shrink-0 place-items-center rounded-xl",
+                  successInfo.launched
+                    ? "bg-success/15 text-success"
+                    : "bg-warning/15 text-warning",
+                )}
+              >
+                {successInfo.launched
+                  ? <CheckCircle2 className="h-5 w-5" />
+                  : <RefreshCw className="h-5 w-5 animate-spin" />}
               </div>
               <div>
                 <DialogTitle className="text-lg leading-tight tracking-tight">
-                  Реклама отправлена на проверку
+                  {successInfo.launched
+                    ? "Реклама запущена"
+                    : "Запуск принят, кампания создаётся"}
                 </DialogTitle>
                 <DialogDescription className="mt-1 text-xs">
-                  AI-модерация займёт пару минут. Статус появится в карточке кабинета.
+                  {successInfo.launched
+                    ? "Кампания, группа и объявление уже в рекламном кабинете — Meta отправила их на модерацию."
+                    : "Заканчиваем создание в Meta. Прогресс виден во вкладке «Кампании»."}
                 </DialogDescription>
               </div>
             </div>
@@ -1517,6 +1681,20 @@ const CreateCampaignDialog = ({
                   </div>
                 ))}
               </div>
+            )}
+
+            {successInfo.launched && successInfo.campaignId && successInfo.adAccountId && (
+              <a
+                href={`https://adsmanager.facebook.com/adsmanager/manage/campaigns?act=${
+                  successInfo.adAccountId.replace(/^act_/, "")
+                }&selected_campaign_ids=${successInfo.campaignId}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-border/60 bg-background/60 text-sm font-medium text-foreground transition-colors hover:border-border hover:bg-background"
+              >
+                Открыть в Ads Manager
+                <ExternalLink className="h-3.5 w-3.5" />
+              </a>
             )}
 
             <Button

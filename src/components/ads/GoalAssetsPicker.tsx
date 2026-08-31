@@ -426,6 +426,23 @@ const GoalAssetsPicker = ({
     actId,
     enabled: goal === "site-leads" && !!actId,
   });
+
+  // Пиксель подставляем сам: сохранённый у кабинета, иначе единственный
+  // доступный, иначе тот, что стрелял последним — по нему и идёт трафик.
+  useEffect(() => {
+    if (goal !== "site-leads" || pixels.isLoading) return;
+    const list = pixels.data;
+    if (list.length === 0) return;
+    if (pixelId && list.some((p) => p.id === pixelId)) return;
+
+    const saved = list.find((p) => p.id === cabinet?.pixelId);
+    const freshest = [...list].sort((a, b) =>
+      String(b.last_fired_time ?? "").localeCompare(String(a.last_fired_time ?? "")),
+    )[0];
+    const preferred = saved ?? (list.length === 1 ? list[0] : freshest);
+    if (preferred) setPixelId(preferred.id);
+  }, [goal, pixels.isLoading, pixels.data, pixelId, cabinet?.pixelId, setPixelId]);
+
   const events = useMetaPageAssets({
     kind: "pixel_events",
     actId,
@@ -439,6 +456,19 @@ const GoalAssetsPicker = ({
     pageId,
     enabled: goal === "meta-form" && !!pageId && !!actId,
   });
+
+  // Лид-форму тоже подставляем: сохранённую у кабинета, иначе первую активную.
+  useEffect(() => {
+    if (goal !== "meta-form" || forms.isLoading) return;
+    const list = forms.data;
+    if (list.length === 0) return;
+    if (leadFormId && list.some((f) => f.id === leadFormId)) return;
+
+    const saved = list.find((f) => f.id === cabinet?.leadFormId);
+    const active = list.find((f) => (f.status ?? "").toUpperCase() === "ACTIVE");
+    const preferred = saved ?? active ?? list[0];
+    if (preferred) setLeadFormId(preferred.id);
+  }, [goal, forms.isLoading, forms.data, leadFormId, cabinet?.leadFormId, setLeadFormId]);
 
   if (!cabinet) return null;
 
