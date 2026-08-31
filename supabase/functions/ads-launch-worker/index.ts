@@ -60,6 +60,7 @@ const VIDEO_WAIT_LIMIT_MS = 30 * 60_000;
 
 type Step =
   | "resolve"
+  | "collect"
   | "media"
   | "awaiting_video"
   | "creative"
@@ -83,6 +84,7 @@ interface JobRow {
   meta_campaign_id: string | null;
   meta_adset_id: string | null;
   meta_ad_id: string | null;
+  telegram_media_group_id: string | null;
   created_at: string;
 }
 
@@ -144,6 +146,7 @@ async function mirrorStatus(
 
 const STEP_MESSAGES: Record<Step, string> = {
   resolve: "Проверяем настройки кабинета",
+  collect: "Собираем кадры альбома",
   media: "Загружаем креатив в Meta",
   awaiting_video: "Meta обрабатывает видео",
   creative: "Собираем объявление",
@@ -252,15 +255,69 @@ async function stepResolve(db: SupabaseClient, job: JobRow, ctx: Loaded): Promis
   }
 
   const problems = validateLaunch(ctx.input, ctx.cabinet);
-  // Видео ещё не загружено — на этом шаге это норма, проверим после /advideos.
+  // Часть претензий на этом шаге преждевременна: видео ещё не отправлено в
+  // Meta, а кадры альбома Telegram ещё долетают. Их проверит шаг creative.
   const pending = new Set(["Видео не загрузилось в Meta."]);
+  if (job.telegram_media_group_id) {
+    pending.add("Для карусели нужно минимум два изображения.");
+  }
   const blocking = problems.filter((p) => !pending.has(p));
   if (blocking.length > 0) throw new PermanentError(blocking.join(" "));
 
+  // Альбом из Telegram прилетает несколькими апдейтами — кадры собираем отдельно.
+  if (job.telegram_media_group_id && ctx.input.creative.format === "carousel") {
+    return "collect";
+  }
   if (ctx.input.creative.format !== "video") return "creative";
   // Видео чаще всего уже отправлено в Meta мастером запуска — остаётся дождаться
   // обработки. Ссылку на файл обрабатывает шаг media.
   return ctx.input.creative.videoId ? "awaiting_video" : "media";
+}
+
+/**
+ * Кадры альбома Telegram. Порядок задаёт message_id: Telegram не гарантирует
+ * очерёдность апдейтов, а в карусели порядок картинок виден пользователю.
+ */
+async function stepCollect(db: SupabaseClient, job: JobRow, ctx: Loaded): Promise<Step> {
+  const groupId = job.telegram_media_group_id;
+  if (!groupId) return "creative";
+
+  const { data, error } = await db
+    .from("ad_telegram_media")
+    .select("message_id, meta_image_hash")
+    .eq("media_group_id", groupId)
+    .order("message_id", { ascending: true });
+  if (error) throw new Error(`Кадры альбома не прочитались: ${error.message}`);
+
+  const hashes = (data ?? [])
+    .map((r) => String((r as Record<string, unknown>).meta_image_hash ?? ""))
+    .filter(Boolean);
+
+  if (hashes.length === 0) {
+    throw new PermanentError("Ни один кадр альбома не загрузился в Meta.");
+  }
+
+  // Пользователь прислал «альбом» из одного снимка — это обычное объявление.
+  if (hashes.length === 1) {
+    ctx.input.creative.format = "single";
+    ctx.input.creative.imageHash = hashes[0];
+    await db.from("ad_launch_jobs")
+      .update({
+        meta_image_hash: hashes[0],
+        request: { ...job.request, format: "single", imageHash: hashes[0] },
+      })
+      .eq("id", job.id);
+    job.request = { ...job.request, format: "single", imageHash: hashes[0] };
+    job.meta_image_hash = hashes[0];
+    return "creative";
+  }
+
+  ctx.input.creative.imageHashes = hashes;
+  await db.from("ad_launch_jobs")
+    .update({ request: { ...job.request, imageHashes: hashes } })
+    .eq("id", job.id);
+  job.request = { ...job.request, imageHashes: hashes };
+  return "creative";
 }
 
 async function stepMedia(db: SupabaseClient, job: JobRow, ctx: Loaded): Promise<Step> {
@@ -603,6 +660,9 @@ async function runJob(db: SupabaseClient, job: JobRow, deadline: number): Promis
       switch (step) {
         case "resolve":
           next = await stepResolve(db, job, ctx);
+          break;
+        case "collect":
+          next = await stepCollect(db, job, ctx);
           break;
         case "media":
           next = await stepMedia(db, job, ctx);

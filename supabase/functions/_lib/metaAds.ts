@@ -13,7 +13,7 @@
 export const META_API_VERSION = "v22.0";
 
 /** Цели, которые предлагает мастер запуска на сайте. */
-export type LaunchGoal = "whatsapp" | "site-leads" | "meta-form";
+export type LaunchGoal = "whatsapp" | "site-leads" | "meta-form" | "instagram-direct";
 
 /** Как собран креатив. `existing_post` — продвижение готовой публикации Instagram. */
 export type CreativeFormat = "single" | "carousel" | "video" | "existing_post";
@@ -131,7 +131,7 @@ export function deriveHeadline(text: unknown, maxLength = 40): string {
 
 /* ────────────────────────────── назначение ───────────────────────────── */
 
-export type Destination = "whatsapp" | "website" | "leadform";
+export type Destination = "whatsapp" | "website" | "leadform" | "instagram";
 
 /**
  * Цель мастера → назначение объявления, с той же защитой, что стояла в n8n:
@@ -144,6 +144,7 @@ export function resolveDestination(
 ): Destination {
   if (goal === "meta-form") return "leadform";
   if (goal === "site-leads") return "website";
+  if (goal === "instagram-direct") return "instagram";
   if (!cleanUrl(cabinet.whatsappNumber) && cleanUrl(cabinet.leadFormId)) {
     return "leadform";
   }
@@ -167,6 +168,9 @@ export function buildLinkContext(
   if (destination === "leadform") {
     // Meta требует непустую ссылку даже для лид-формы — это официальный плейсхолдер.
     return { destination, finalLink: "http://fb.me/", leadFormId };
+  }
+  if (destination === "instagram") {
+    return { destination, finalLink: "https://www.instagram.com/", leadFormId };
   }
   if (destination === "website") {
     const site = cleanUrl(cabinet.websiteUrl);
@@ -196,6 +200,9 @@ export function buildCallToAction(
   if (ctx.destination === "website") {
     return { type: "LEARN_MORE", value: { link: ctx.finalLink } };
   }
+  if (ctx.destination === "instagram") {
+    return { type: "INSTAGRAM_MESSAGE", value: { link: ctx.finalLink } };
+  }
   return { type: "WHATSAPP_MESSAGE", value: { app_destination: "WHATSAPP" } };
 }
 
@@ -205,6 +212,7 @@ export const GOAL_LABELS: Record<Destination, string> = {
   leadform: "Лид-форма",
   website: "Сайт",
   whatsapp: "WhatsApp",
+  instagram: "Инстаграм",
 };
 
 export function formatLabel(format: CreativeFormat): string {
@@ -362,6 +370,7 @@ export function buildCampaignObjective(
   cabinet: CabinetConfig,
 ): string {
   if (destination === "leadform") return "OUTCOME_LEADS";
+  if (destination === "instagram") return "OUTCOME_ENGAGEMENT";
   if (destination === "website") {
     return pixelEventType(cabinet.pixelEvent) === "PURCHASE"
       ? "OUTCOME_SALES"
@@ -410,6 +419,8 @@ export function buildAdSetBody(args: {
     ? "OFFSITE_CONVERSIONS"
     : destination === "leadform"
     ? "LEAD_GENERATION"
+    : destination === "instagram"
+    ? "LINK_CLICKS"
     : hasWaba
     ? "CONVERSATIONS"
     : "LINK_CLICKS";
@@ -418,11 +429,15 @@ export function buildAdSetBody(args: {
     ? "WEBSITE"
     : destination === "leadform"
     ? "ON_AD"
+    : destination === "instagram"
+    ? "INSTAGRAM_DIRECT"
     : hasWaba
     ? "WHATSAPP"
     : "WEBSITE";
 
-  const promotedObject: Record<string, unknown> = destination === "website"
+  const promotedObject: Record<string, unknown> = destination === "instagram"
+    ? { page_id: cleanUrl(cabinet.pageId) }
+    : destination === "website"
     ? {
       pixel_id: cleanUrl(cabinet.pixelId),
       custom_event_type: pixelEventType(cabinet.pixelEvent),
@@ -597,6 +612,9 @@ export function validateLaunch(
   }
   if (destination === "whatsapp" && !cleanUrl(cabinet.whatsappNumber)) {
     errors.push("Для цели «WhatsApp» нужен номер WhatsApp.");
+  }
+  if (destination === "instagram" && !cleanUrl(cabinet.instagramUserId)) {
+    errors.push("Для цели «Инстаграм» нужен привязанный аккаунт Instagram.");
   }
 
   const c = input.creative;

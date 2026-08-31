@@ -14,6 +14,11 @@ verify_jwt = false
 [functions.ads-optimizer]
 verify_jwt = false
 
+# Webhook Telegram-бота: апдейты приходят без JWT, подпись проверяется внутри
+# по заголовку x-telegram-bot-api-secret-token = TELEGRAM_ADS_WEBHOOK_SECRET.
+[functions.ads-telegram-intake]
+verify_jwt = false
+
 # CRM дожимы запускаются pg_cron по x-automation-key; ручной запуск админом
 # проверяется внутри функции по пользовательскому JWT.
 [functions.crm-automations]
