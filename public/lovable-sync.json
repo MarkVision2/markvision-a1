@@ -1,7 +1,7 @@
 {
-  "git_sha": "14f1255",
-  "git_sha_full": "14f1255a0f2492b42554707a2bc55b33ebbe49c5",
-  "updated_at": "2026-08-31T18:00:57+04:00",
-  "label": "fix(db): развод дублирующихся номеров версий миграций (#247)",
+  "git_sha": "dc289ee",
+  "git_sha_full": "dc289ee764b4e1bc3c2051a3d0a4176536d78633",
+  "updated_at": "2026-08-31T18:13:45+04:00",
+  "label": "fix(ci): out-of-order миграции применяются по разрешённому списку (#249)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
