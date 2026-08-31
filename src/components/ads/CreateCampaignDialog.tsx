@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { mobileDialogFooterPad } from "@/lib/dialogClasses";
 import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseConfig";
 import { DEFAULT_META_UTM_TEMPLATE } from "@/lib/utmDefaults";
+import { fetchCreativeAsFile } from "@/lib/adLaunchBridge";
 import type { AdCabinet } from "@/types/ads";
 import { saveCampaign } from "@/hooks/useCabinetsStore";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -80,6 +81,12 @@ interface CreateCampaignDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   cabinets: AdCabinet[];
+  /**
+   * Ссылка на готовый креатив из галереи Контент-завода. При открытии мастер
+   * скачивает её в обычный File — дальше работает штатный путь с кропом
+   * и валидацией, отдельной ветки для «креатива по ссылке» не нужно.
+   */
+  initialCreativeUrl?: string | null;
 }
 
 type Goal = "whatsapp" | "site-leads" | "meta-form";
@@ -609,6 +616,7 @@ const CreateCampaignDialog = ({
   open,
   onOpenChange,
   cabinets,
+  initialCreativeUrl = null,
 }: CreateCampaignDialogProps) => {
   const { activeId: projectId, active: activeProject } = useProjectsStore();
   const [cabinetId, setCabinetId] = useState<string>(cabinets[0]?.id ?? "");
@@ -643,6 +651,26 @@ const CreateCampaignDialog = ({
     actId: selectedCabinet?.adAccountId,
     enabled: !!selectedCabinet?.adAccountId,
   });
+
+  // Креатив из галереи Контент-завода: скачиваем ссылку в File и кладём
+  // в поле «Лента», как будто пользователь выбрал файл сам.
+  useEffect(() => {
+    if (!open || !initialCreativeUrl) return;
+    let cancelled = false;
+    void (async () => {
+      const file = await fetchCreativeAsFile(initialCreativeUrl);
+      if (cancelled) return;
+      if (!file) {
+        toast.error("Не удалось загрузить креатив из галереи — приложите файл вручную");
+        return;
+      }
+      setAdSetupMode("create");
+      setCreativeFormat("single");
+      setFeed(file);
+      toast.success("Креатив из Контент-завода подставлен");
+    })();
+    return () => { cancelled = true; };
+  }, [open, initialCreativeUrl]);
 
   // При смене кабинета сбрасываем выбранную страницу на дефолтную из настроек кабинета.
   useEffect(() => {
@@ -1026,11 +1054,15 @@ const CreateCampaignDialog = ({
     }
 
     // Жёсткий фронт-таймаут 12с: edge-функция отвечает за ≤8с, плюс запас на сеть.
-    // Если n8n тормозит — мы всё равно покажем «принято» и не вешаем UI.
+    // В прямом контуре ответ приходит за доли секунды (задание просто встаёт
+    // в очередь), таймаут остаётся страховкой для режима n8n.
     const ctrl = new AbortController();
     const timeoutId = setTimeout(() => ctrl.abort(), 12_000);
     let accepted = false;
     let serverError: string | null = null;
+    // Прямой контур сам создаёт строку ad_campaigns — иначе воркер, который
+    // стартует немедленно, не нашёл бы её и потерял статусы.
+    let campaignSaved = false;
     try {
       const res = await fetch(WEBHOOK_URL, {
         method: "POST",
@@ -1041,10 +1073,11 @@ const CreateCampaignDialog = ({
           : undefined,
       });
       const data = await res.json().catch(() => null) as
-        | { ok?: boolean; accepted?: boolean; error?: string }
+        | { ok?: boolean; accepted?: boolean; error?: string; campaignSaved?: boolean }
         | null;
       if (res.ok && (data?.ok || data?.accepted)) {
         accepted = true;
+        campaignSaved = data?.campaignSaved === true;
       } else {
         serverError =
           data?.error || `Не удалось отправить (HTTP ${res.status})`;
@@ -1067,24 +1100,27 @@ const CreateCampaignDialog = ({
       return;
     }
 
-    // Сохраняем кампанию со статусом queued + launchId,
-    // чтобы потом n8n мог обновить статус через callback.
+    // Сохраняем кампанию со статусом queued + launchId, чтобы запуск было
+    // видно в «Запусках из MarkVision» и по нему приходили статусы.
+    // В прямом контуре строку уже создала edge-функция — второй раз не пишем.
     try {
-      await saveCampaign(
-        {
-          cabinetId,
-          goal,
-          budget,
-          text,
-          whatsappId: goal === "whatsapp" ? whatsappId : undefined,
-          pixelId: goal === "site-leads" ? pixelId : undefined,
-          pixelEvent: goal === "site-leads" ? pixelEvent : undefined,
-          leadFormId: goal === "meta-form" ? leadFormId : undefined,
-          launchId: payload.launchId,
-          status: "queued",
-        },
-        projectId || null,
-      );
+      if (!campaignSaved) {
+        await saveCampaign(
+          {
+            cabinetId,
+            goal,
+            budget,
+            text,
+            whatsappId: goal === "whatsapp" ? whatsappId : undefined,
+            pixelId: goal === "site-leads" ? pixelId : undefined,
+            pixelEvent: goal === "site-leads" ? pixelEvent : undefined,
+            leadFormId: goal === "meta-form" ? leadFormId : undefined,
+            launchId: payload.launchId,
+            status: "queued",
+          },
+          projectId || null,
+        );
+      }
     } catch {
       /* не блокируем UX, если запись не сохранилась локально */
     }

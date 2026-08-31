@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
 import {
@@ -30,6 +30,7 @@ import { Input } from "@/components/ui/input";
 import { useCabinetsStore } from "@/hooks/useCabinetsStore";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import { humanizeMetaApiError } from "@/lib/metaApiError";
+import { CREATIVE_PARAM, parseCreativeParam } from "@/lib/adLaunchBridge";
 import { cn } from "@/lib/utils";
 
 const SEARCH_THRESHOLD = 3;
@@ -59,6 +60,21 @@ const Ads = () => {
       ),
     [cabinets, query],
   );
+
+  // Переход из галереи Контент-завода: ?creative=<url> открывает мастер
+  // запуска с уже подставленным креативом. Параметр гасим сразу, чтобы
+  // мастер не открывался повторно при возврате назад.
+  const [pendingCreativeUrl, setPendingCreativeUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const incoming = parseCreativeParam(searchParams.get(CREATIVE_PARAM));
+    if (!incoming) return;
+    setPendingCreativeUrl(incoming);
+    setCampaignOpen(true);
+    setSearchParams((sp) => {
+      sp.delete(CREATIVE_PARAM);
+      return sp;
+    }, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   const active = cabinets.filter((c) => c.online).length;
   const showSearch = cabinets.length > SEARCH_THRESHOLD;
@@ -315,8 +331,12 @@ const Ads = () => {
       />
       <CreateCampaignDialog
         open={campaignOpen}
-        onOpenChange={setCampaignOpen}
+        onOpenChange={(next) => {
+          setCampaignOpen(next);
+          if (!next) setPendingCreativeUrl(null);
+        }}
         cabinets={cabinets}
+        initialCreativeUrl={pendingCreativeUrl}
       />
     </PageContainer>
   );

@@ -1,14 +1,36 @@
-// Прокси-эндпоинт для запуска кампании в n8n.
-// 1. Принимает FormData от фронта.
-// 2. Загружает creative_feed / creative_stories / creative_carousel_* в Meta → image_hash.
-// 3. Вставляет hash в creativeBody (одиночный image_hash или child_attachments для карусели).
-// 4. Обогащает payload секретным META_ACCESS_TOKEN и всеми алиасами полей.
-// 5. Отвечает фронту быстро (короткий таймаут на ACK от n8n, дальше n8n работает в фоне).
+// launch-campaign — приём запуска рекламной кампании из мастера.
+//
+// Два режима, переключаются переменной окружения AD_LAUNCH_MODE:
+//
+//   direct (по умолчанию) — прямой контур без n8n:
+//     файлы → bucket ad-launch-media, задание → ad_launch_jobs,
+//     сразу дёргается ad-launch-worker (fire-and-forget), дальше очередь
+//     и pg_cron доводят запуск до конца с ретраями.
+//     Ответ фронту приходит за доли секунды, статус течёт в UI через
+//     realtime по ad_campaigns.launch_id.
+//
+//   n8n — прежний путь: картинки грузятся в Meta прямо здесь, готовые тела
+//     Graph API уходят вебхуком в n8n. Оставлен как аварийный откат.
+//
+// Проектное решение и порядок шагов — docs/AD-LAUNCH-DIRECT-META.md.
 
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireUser, userHasRole } from "../_lib/auth.ts";
+import { normalizeAdAccount, uploadAdImage } from "../_lib/metaGraph.ts";
+import {
+  buildAdBody,
+  buildAdSetBody,
+  buildCampaignBody,
+  buildCreativeBody,
+  goalLabel,
+  type LaunchMedia,
+  normalizeLaunchPayload,
+  validateLaunchSpec,
+} from "../_lib/adLaunchSpec.ts";
+import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
 
 const N8N_WEBHOOK = "https://n8n.zapoinov.com/webhook/ai-target-launch";
-const META_GRAPH = "https://graph.facebook.com/v19.0";
+const MEDIA_BUCKET = "ad-launch-media";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -17,8 +39,15 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
 
-/** Сколько ждём первичный ACK от n8n. */
+/** Сколько ждём первичный ACK от n8n (только в режиме n8n). */
 const N8N_ACK_TIMEOUT_MS = 8_000;
+
+function json(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
 
 function pickStr(...vals: unknown[]): string {
   for (const v of vals) {
@@ -27,45 +56,34 @@ function pickStr(...vals: unknown[]): string {
   return "";
 }
 
-/**
- * Загружает изображение в Meta adimages API.
- * Возвращает { hash, url } или null при ошибке.
- */
-async function uploadImageToMeta(
-  adAccount: string,
-  accessToken: string,
-  file: File,
-): Promise<{ hash: string; url: string } | null> {
-  try {
-    const fd = new FormData();
-    fd.append(file.name, file, file.name);
-    fd.append("access_token", accessToken);
+function extFor(file: File): string {
+  const fromName = (file.name.match(/\.([a-z0-9]+)$/i)?.[1] ?? "").toLowerCase();
+  if (fromName) return fromName;
+  if (file.type.startsWith("video/")) return "mp4";
+  return "jpg";
+}
 
-    const res = await fetch(`${META_GRAPH}/${adAccount}/adimages`, {
-      method: "POST",
-      body: fd,
-      signal: AbortSignal.timeout(30_000),
-    });
+/** Файлы из FormData → упорядоченный список медиа задания. */
+function collectMediaFiles(incoming: FormData): Array<{ role: LaunchMedia["role"]; index: number; file: File }> {
+  const out: Array<{ role: LaunchMedia["role"]; index: number; file: File }> = [];
 
-    const data = (await res.json()) as {
-      images?: Record<string, { hash?: string; url?: string }>;
-      error?: { message?: string };
-    };
+  const feed = incoming.get("creative_feed");
+  if (feed instanceof File && feed.size > 0) out.push({ role: "feed", index: 0, file: feed });
 
-    if (!res.ok || data.error) {
-      console.error("[uploadImage] Meta error:", data.error?.message ?? JSON.stringify(data));
-      return null;
-    }
+  const stories = incoming.get("creative_stories");
+  if (stories instanceof File && stories.size > 0) out.push({ role: "stories", index: 0, file: stories });
 
-    const entry = data.images ? Object.values(data.images)[0] : null;
-    if (entry?.hash) {
-      return { hash: entry.hash, url: entry.url ?? "" };
-    }
-    return null;
-  } catch (e) {
-    console.error("[uploadImage] exception:", (e as Error).message);
-    return null;
+  const carousel: Array<{ index: number; file: File }> = [];
+  for (const [key, value] of incoming.entries()) {
+    const m = /^creative_carousel_(\d+)$/.exec(key);
+    if (!m || !(value instanceof File) || value.size === 0) continue;
+    if (!value.type.startsWith("image/")) continue;
+    carousel.push({ index: Number(m[1]), file: value });
   }
+  carousel.sort((a, b) => a.index - b.index);
+  for (const c of carousel) out.push({ role: "carousel", index: c.index, file: c.file });
+
+  return out;
 }
 
 Deno.serve(async (req) => {
@@ -78,407 +96,258 @@ Deno.serve(async (req) => {
     if (!auth.ok) return auth.response;
     const isAdmin = await userHasRole(auth.userId, "admin");
     const isManager = isAdmin || (await userHasRole(auth.userId, "manager"));
-    if (!isManager) {
-      return new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    const META_ACCESS_TOKEN = Deno.env.get("META_ACCESS_TOKEN");
-    if (!META_ACCESS_TOKEN) {
-      return new Response(
-        JSON.stringify({ error: "META_ACCESS_TOKEN is not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
+    if (!isManager) return json({ error: "Forbidden" }, 403);
 
     const incoming = await req.formData();
     const payloadStr = incoming.get("payload");
     if (typeof payloadStr !== "string") {
-      return new Response(JSON.stringify({ error: "Missing 'payload' field" }), {
-        status: 400,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      return json({ error: "Missing 'payload' field" }, 400);
+    }
+    const payload = JSON.parse(payloadStr) as Record<string, unknown>;
+    const client = (payload.clientConfig ?? {}) as Record<string, unknown>;
+    const cabinet = (payload.cabinet ?? {}) as Record<string, unknown>;
+
+    const adAccount = normalizeAdAccount(pickStr(
+      client.ad_account_id, client.adaccountid, payload.ad_account_id, payload.AD_ACCOUNT,
+      cabinet.adAccountId,
+    ));
+    if (!adAccount) {
+      return json({
+        ok: false,
+        error: "AD_ACCOUNT пуст: у выбранного кабинета не указан ad_account_id. Заполните его в настройках кабинета.",
+      }, 400);
+    }
+
+    const launchId = pickStr(payload.launchId) || crypto.randomUUID();
+    const cabinetId = pickStr(cabinet.id, payload.cabinet_id, payload.cabinetId) || null;
+    const projectId = pickStr(payload.projectId, payload.project_id) || null;
+    const mode = (Deno.env.get("AD_LAUNCH_MODE") ?? "direct").toLowerCase();
+
+    const admin = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+    );
+
+    const files = collectMediaFiles(incoming);
+
+    // ================================================================
+    // Режим direct: очередь + воркер
+    // ================================================================
+    if (mode !== "n8n") {
+      const media: LaunchMedia[] = [];
+      for (const { role, index, file } of files) {
+        const path = `${launchId}/${role}-${index}.${extFor(file)}`;
+        const { error: upErr } = await admin.storage
+          .from(MEDIA_BUCKET)
+          .upload(path, file, { contentType: file.type, upsert: true });
+        if (upErr) {
+          return json({ ok: false, error: `Не удалось сохранить креатив: ${upErr.message}` }, 500);
+        }
+        const { data: pub } = admin.storage.from(MEDIA_BUCKET).getPublicUrl(path);
+        media.push({
+          role,
+          index,
+          url: pub.publicUrl,
+          mime: file.type,
+          name: file.name || `${role}-${index}.${extFor(file)}`,
+        });
+      }
+
+      // Креатив может прийти ссылкой (галерея Контент-завода) — файлов тогда нет.
+      const galleryUrls = Array.isArray(payload.creativeUrls) ? payload.creativeUrls : [];
+      galleryUrls.forEach((raw, i) => {
+        if (typeof raw !== "string" || !raw.trim()) return;
+        media.push({
+          role: galleryUrls.length > 1 ? "carousel" : "feed",
+          index: i,
+          url: raw.trim(),
+          mime: /\.(mp4|mov)(\?|$)/i.test(raw) ? "video/mp4" : "image/jpeg",
+          name: `gallery-${i}.${/\.(mp4|mov)(\?|$)/i.test(raw) ? "mp4" : "jpg"}`,
+        });
+      });
+
+      const spec = normalizeLaunchPayload(payload, media);
+      spec.adAccount = adAccount;
+
+      const problems = validateLaunchSpec(spec);
+      if (problems.length) {
+        return json({ ok: false, error: problems.join("; ") }, 400);
+      }
+
+      // Строку кампании создаём здесь, а не на фронте: воркер стартует
+      // немедленно и должен найти её, чтобы писать статус по launch_id.
+      const { error: campErr } = await admin.from("ad_campaigns").insert({
+        cabinet_id: cabinetId,
+        project_id: projectId,
+        goal: spec.goal,
+        budget: String(payload.budget ?? ""),
+        text: spec.text,
+        whatsapp_id: spec.goal === "whatsapp" ? spec.whatsappNumber : null,
+        pixel_id: spec.goal === "site-leads" ? spec.pixelId : null,
+        pixel_event: spec.goal === "site-leads" ? spec.pixelEvent : null,
+        lead_form_id: spec.goal === "meta-form" ? spec.leadFormId : null,
+        launch_id: launchId,
+        status: "queued",
+        status_step: "queued",
+        status_message: "Запуск поставлен в очередь",
+        status_updated_at: new Date().toISOString(),
+        created_by: auth.userId,
+      });
+      if (campErr) console.error("[launch-campaign] ad_campaigns insert:", campErr.message);
+
+      const { data: job, error: jobErr } = await admin
+        .from("ad_launch_jobs")
+        .insert({
+          launch_id: launchId,
+          project_id: projectId,
+          cabinet_id: cabinetId,
+          created_by: auth.userId,
+          source: pickStr(payload.source) === "content_factory" ? "content_factory" : "manual",
+          spec,
+          status: "queued",
+          step: "queued",
+        })
+        .select("id")
+        .single();
+
+      if (jobErr || !job) {
+        return json({ ok: false, error: `Не удалось поставить задание: ${jobErr?.message}` }, 500);
+      }
+
+      // Fire-and-forget: не ждём воркер, иначе пользователь снова смотрит
+      // в спиннер. Крон раз в минуту всё равно подберёт задание, если этот
+      // вызов не дойдёт.
+      const kick = fetch(`${Deno.env.get("SUPABASE_URL")}/functions/v1/ad-launch-worker`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+        },
+        body: JSON.stringify({ job_id: (job as { id: string }).id, source: "enqueue" }),
+        signal: AbortSignal.timeout(120_000),
+      }).catch((e) => console.error("[launch-campaign] kick worker:", (e as Error).message));
+
+      const rt = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+      if (typeof rt?.waitUntil === "function") rt.waitUntil(kick);
+
+      return json({
+        ok: true,
+        accepted: true,
+        mode: "direct",
+        launchId,
+        jobId: (job as { id: string }).id,
+        // Фронту не нужно повторно писать ad_campaigns — строка уже создана.
+        campaignSaved: true,
+        summary: {
+          goal: spec.goal,
+          goalLabel: goalLabel(spec.goal),
+          cabinetName: spec.cabinetName,
+          adAccountId: adAccount,
+          pageId: spec.pageId,
+          instagramId: spec.instagramUserId,
+          pixelId: spec.pixelId,
+          pixelEvent: spec.pixelEvent,
+          websiteUrl: spec.websiteUrl,
+          whatsappNumber: spec.whatsappNumber,
+          leadFormId: spec.leadFormId,
+          budget: payload.budget ?? null,
+          currency: spec.currency,
+        },
+        creativeFormat: spec.creativeFormat,
+        adSetupMode: spec.adSetupMode,
+        mediaCount: media.length,
       });
     }
 
-    const payload = JSON.parse(payloadStr) as Record<string, unknown>;
-    const client = (payload.clientConfig ?? {}) as Record<string, unknown>;
+    // ================================================================
+    // Режим n8n: прежний путь (аварийный откат)
+    // ================================================================
+    const accessToken = await resolveMetaAccessToken({
+      cabinetId,
+      projectId,
+      bodyToken: pickStr(client.fb_token, client.access_token, client.fbtoken, client.accesstoken),
+      admin,
+    });
+    if (!accessToken) {
+      return json({ error: "META_ACCESS_TOKEN is not configured" }, 500);
+    }
 
-    // ===== 1. ACCESS_TOKEN =====
-    const accessToken = pickStr(
-      client.fb_token,
-      client.access_token,
-      client.fbtoken,
-      client.accesstoken,
-      payload.ACCESS_TOKEN,
-      META_ACCESS_TOKEN,
-    );
+    const spec = normalizeLaunchPayload(payload, []);
+    spec.adAccount = adAccount;
 
+    const imageHashes: string[] = [];
+    let storiesImageHash: string | null = null;
+    for (const { role, file } of files) {
+      if (!file.type.startsWith("image/")) continue;
+      const up = await uploadAdImage(adAccount, accessToken, file, file.name);
+      if (!up.ok || !up.data) continue;
+      if (role === "stories") storiesImageHash = up.data.hash;
+      else imageHashes.push(up.data.hash);
+    }
+
+    // Алиасы полей — ноды n8n читают их вразнобой, менять нельзя.
     client.fb_token = accessToken;
     client.fbtoken = accessToken;
     client.access_token = accessToken;
     client.accesstoken = accessToken;
-    payload.clientConfig = client;
-
-    // ===== 2. AD_ACCOUNT =====
-    const adAccountRaw = pickStr(
-      client.ad_account_id,
-      client.adaccountid,
-      payload.ad_account_id,
-      payload.AD_ACCOUNT,
-    );
-    const adAccount = adAccountRaw
-      ? (adAccountRaw.startsWith("act_")
-          ? adAccountRaw
-          : `act_${adAccountRaw.replace(/^act_/, "").replace(/\D/g, "")}`)
-      : "";
-
-    if (!adAccount) {
-      return new Response(
-        JSON.stringify({
-          ok: false,
-          error:
-            "AD_ACCOUNT пуст: у выбранного кабинета не указан ad_account_id. Заполните его в настройках кабинета.",
-        }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
-
     client.ad_account_id = adAccount;
     client.adaccountid = adAccount;
     payload.clientConfig = client;
-    payload.adAccount = adAccount;
-    payload.ad_account_id = adAccount;
-
-    // ===== 3. UPPER_CASE aliases =====
-    const pageId = pickStr(client.page_id, client.pageid);
-    const pageName = pickStr(client.page_name, client.pagename);
-    const instagramId = pickStr(
-      client.instagram_actor_id,
-      client.instagram_user_id,
-      client.instagramid,
-    );
-    const pixelId = pickStr(client.fb_pixel_id, client.pixel_id, client.pixelid);
-    const pixelEvent = pickStr(client.pixel_event, client.pixelevent) || "Lead";
-    const websiteUrl = pickStr(client.website_url, client.landing_url);
-    const whatsappNumber = pickStr(client.whatsapp_number, client.whatsappnumber);
-    const leadFormId = pickStr(client.lead_form_id, client.leadformid);
-
     payload.ACCESS_TOKEN = accessToken;
     payload.accesstoken = accessToken;
     payload.AD_ACCOUNT = adAccount;
-    payload.PAGE_ID = pageId;
-    payload.PAGE_NAME = pageName;
-    payload.INSTAGRAM_ID = instagramId;
-    payload.PIXEL_ID = pixelId;
-    payload.PIXEL_EVENT = pixelEvent;
-    payload.WEBSITE_URL = websiteUrl;
-    payload.WHATSAPP_NUMBER = whatsappNumber;
+    payload.adAccount = adAccount;
+    payload.ad_account_id = adAccount;
+    payload.PAGE_ID = spec.pageId;
+    payload.PAGE_NAME = pickStr(client.page_name, client.pagename);
+    payload.INSTAGRAM_ID = spec.instagramUserId;
+    payload.PIXEL_ID = spec.pixelId;
+    payload.PIXEL_EVENT = spec.pixelEvent;
+    payload.WEBSITE_URL = spec.websiteUrl;
+    payload.WHATSAPP_NUMBER = spec.whatsappNumber;
     payload.BUSINESS_ID = pickStr(client.business_id);
     payload.APP_ID = pickStr(client.app_id);
-    payload.LEAD_FORM_ID = leadFormId;
+    payload.LEAD_FORM_ID = spec.leadFormId;
+    payload.isWebsiteGoal = spec.goal === "site-leads";
+    payload.isMetaForm = spec.goal === "meta-form";
+    payload.isWhatsApp = spec.goal === "whatsapp";
+    payload.launchId = launchId;
+    payload.feedImageHash = imageHashes[0] ?? null;
+    payload.storiesImageHash = storiesImageHash;
+    payload.carouselImageHashes = spec.creativeFormat === "carousel" ? imageHashes : [];
+    payload.creativeFormat = spec.creativeFormat;
+    payload.adSetupMode = spec.adSetupMode;
 
-    // ===== 4. Цель кампании =====
-    const goal = pickStr(payload.goal);
-    const isWebsiteGoal = goal === "site-leads";
-    const isMetaForm = goal === "meta-form";
-    const isWhatsApp = goal === "whatsapp";
-    payload.isWebsiteGoal = isWebsiteGoal;
-    payload.isMetaForm = isMetaForm;
-    payload.isWhatsApp = isWhatsApp;
-
-    const goalLabel = isWebsiteGoal
-      ? "Лиды с сайта"
-      : isMetaForm
-        ? "Лид-форма Meta"
-        : isWhatsApp
-          ? "WhatsApp"
-          : goal;
-
+    // Тела Graph собираются тем же кодом, что и в прямом контуре, — чтобы
+    // два режима не разъезжались по логике целей и креативов.
+    const assets = {
+      imageHashes,
+      videoId: null,
+      videoThumbUrl: null,
+      storiesImageHash,
+    };
+    payload.campaignBody = { ...buildCampaignBody(spec), access_token: accessToken };
+    payload.adSetBody = { ...buildAdSetBody(spec, "", {}), access_token: accessToken };
+    payload.creativeBody = { ...buildCreativeBody(spec, assets), access_token: accessToken };
+    payload.adBody = { ...buildAdBody(spec, "", ""), access_token: accessToken };
     payload.launchSummary = {
-      goal,
-      goalLabel,
-      cabinetName: pickStr(client.client_name),
+      goal: spec.goal,
+      goalLabel: goalLabel(spec.goal),
+      cabinetName: spec.cabinetName,
       adAccountId: adAccount,
-      pageId,
-      instagramId,
-      pixelId,
-      pixelEvent,
-      websiteUrl,
-      whatsappNumber,
-      leadFormId,
+      pageId: spec.pageId,
+      instagramId: spec.instagramUserId,
+      pixelId: spec.pixelId,
+      pixelEvent: spec.pixelEvent,
+      websiteUrl: spec.websiteUrl,
+      whatsappNumber: spec.whatsappNumber,
+      leadFormId: spec.leadFormId,
       budget: payload.budget ?? null,
-      currency: payload.currency ?? client.currency ?? "USD",
+      currency: spec.currency,
     };
 
-    // ===== 5. Meta campaign / adSet / ad bodies =====
-    const dailyBudgetCents = (() => {
-      const v = client.daily_budget;
-      if (typeof v === "number" && v > 0) return Math.round(v);
-      const b = Number(payload.budget);
-      return Number.isFinite(b) && b > 0 ? Math.round(b * 100) : 500;
-    })();
-
-    const campaignBody: Record<string, unknown> = {
-      name: `${goalLabel} | ${new Date().toISOString().slice(0, 10)}`,
-      objective: isWebsiteGoal
-        ? "OUTCOME_SALES"
-        : isMetaForm
-          ? "OUTCOME_LEADS"
-          : "OUTCOME_ENGAGEMENT",
-      special_ad_categories: [],
-      status: "PAUSED",
-      access_token: accessToken,
-    };
-
-    const adSetBody: Record<string, unknown> = {
-      name: `${goalLabel} | adset`,
-      daily_budget: String(dailyBudgetCents),
-      bid_strategy: "LOWEST_COST_WITHOUT_CAP",
-      billing_event: "IMPRESSIONS",
-      status: "PAUSED",
-      access_token: accessToken,
-    };
-
-    if (isWebsiteGoal) {
-      adSetBody.optimization_goal = "OFFSITE_CONVERSIONS";
-      adSetBody.destination_type = "WEBSITE";
-      adSetBody.promoted_object = {
-        pixel_id: pixelId,
-        custom_event_type: (pixelEvent || "Lead").toUpperCase(),
-      };
-    } else if (isMetaForm) {
-      adSetBody.optimization_goal = "LEAD_GENERATION";
-      adSetBody.destination_type = "ON_AD";
-      adSetBody.promoted_object = { page_id: pageId };
-    } else if (isWhatsApp) {
-      adSetBody.optimization_goal = "CONVERSATIONS";
-      adSetBody.destination_type = "WHATSAPP";
-      adSetBody.promoted_object = {
-        page_id: pageId,
-        whatsapp_phone_number: whatsappNumber,
-      };
-    }
-
-    const ctaType = isWebsiteGoal
-      ? "LEARN_MORE"
-      : isMetaForm
-        ? "SIGN_UP"
-        : "WHATSAPP_MESSAGE";
-    const linkUrl = isWebsiteGoal
-      ? (websiteUrl || pickStr(client.landing_url) || "https://facebook.com/")
-      : "https://facebook.com/";
-
-    const ctaValue = isWebsiteGoal
-      ? { link: linkUrl }
-      : isWhatsApp
-        ? { app_destination: "WHATSAPP" }
-        : {};
-    const callToAction = { type: ctaType, value: ctaValue };
-
-    // ===== 6–7. Креатив =====
-    // Режим «существующая публикация IG» (как в Meta Ads Manager):
-    // https://developers.facebook.com/docs/instagram/ads-api/guides/use-posts-as-ads/
-    // creative = { object_id, instagram_user_id, source_instagram_media_id, call_to_action? }
-    const sourceIgMediaId = pickStr(
-      payload.sourceInstagramMediaId,
-      payload.source_instagram_media_id,
-    );
-    const adSetupMode = pickStr(payload.adSetupMode, payload.ad_setup_mode) ||
-      (sourceIgMediaId ? "existing" : "create");
-    const igUserForCreative = pickStr(
-      payload.instagramUserId,
-      instagramId,
-      client.instagram_actor_id,
-      client.instagram_user_id,
-    );
-
-    let feedImageHash: string | null = null;
-    let feedImageUrl: string | null = null;
-    let storiesImageHash: string | null = null;
-    let storiesImageUrl: string | null = null;
-    const orderedCarouselHashes: { hash: string; url: string }[] = [];
-    let creativeBody: Record<string, unknown>;
-    let storiesCreativeBody: Record<string, unknown> | null = null;
-
-    if (adSetupMode === "existing" && sourceIgMediaId) {
-      if (!pageId) {
-        return new Response(
-          JSON.stringify({
-            ok: false,
-            error: "Для продвижения публикации нужна Facebook Page (page_id).",
-          }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-      if (!igUserForCreative) {
-        return new Response(
-          JSON.stringify({
-            ok: false,
-            error:
-              "Нет Instagram User ID у страницы. Привяжите Instagram Business к Page.",
-          }),
-          { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-        );
-      }
-
-      creativeBody = {
-        access_token: accessToken,
-        name: `creative_existing_${Date.now()}`,
-        object_id: pageId,
-        instagram_user_id: igUserForCreative,
-        source_instagram_media_id: sourceIgMediaId,
-        call_to_action: callToAction,
-      };
-      payload.creativeFormat = "existing_post";
-      payload.adSetupMode = "existing";
-      payload.sourceInstagramMediaId = sourceIgMediaId;
-      payload.source_instagram_media_id = sourceIgMediaId;
-      payload.feedImageHash = null;
-      payload.storiesImageHash = null;
-      payload.carouselImageHashes = [];
-      payload.carouselImageUrls = [];
-    } else {
-      // ===== Создать объявление: загружаем файлы → image_hash / carousel =====
-      const creativeFeedFile = incoming.get("creative_feed");
-      const creativeStoriesFile = incoming.get("creative_stories");
-
-      // Карусель: creative_carousel_0 … creative_carousel_N
-      const carouselEntries: { idx: number; file: File }[] = [];
-      for (const [key, value] of incoming.entries()) {
-        const m = /^creative_carousel_(\d+)$/.exec(key);
-        if (!m || !(value instanceof File)) continue;
-        if (!value.type.startsWith("image/")) continue;
-        carouselEntries.push({ idx: Number(m[1]), file: value });
-      }
-      carouselEntries.sort((a, b) => a.idx - b.idx);
-      const isCarousel =
-        payload.creativeFormat === "carousel" || carouselEntries.length >= 2;
-
-      if (isCarousel && carouselEntries.length >= 2) {
-        for (const { file } of carouselEntries) {
-          const r = await uploadImageToMeta(adAccount, accessToken, file);
-          if (r) orderedCarouselHashes.push(r);
-        }
-        if (orderedCarouselHashes[0]) {
-          feedImageHash = orderedCarouselHashes[0].hash;
-          feedImageUrl = orderedCarouselHashes[0].url;
-        }
-      } else {
-        const uploadTasks: Promise<void>[] = [];
-        if (creativeFeedFile instanceof File && creativeFeedFile.type.startsWith("image/")) {
-          uploadTasks.push(
-            uploadImageToMeta(adAccount, accessToken, creativeFeedFile).then((r) => {
-              if (r) { feedImageHash = r.hash; feedImageUrl = r.url; }
-            }),
-          );
-        }
-        if (creativeStoriesFile instanceof File && creativeStoriesFile.type.startsWith("image/")) {
-          uploadTasks.push(
-            uploadImageToMeta(adAccount, accessToken, creativeStoriesFile).then((r) => {
-              if (r) { storiesImageHash = r.hash; storiesImageUrl = r.url; }
-            }),
-          );
-        }
-        if (uploadTasks.length > 0) await Promise.all(uploadTasks);
-      }
-
-      payload.feedImageHash = feedImageHash;
-      payload.feedImageUrl = feedImageUrl;
-      payload.storiesImageHash = storiesImageHash;
-      payload.storiesImageUrl = storiesImageUrl;
-      payload.creativeFormat = isCarousel && orderedCarouselHashes.length >= 2
-        ? "carousel"
-        : (payload.creativeFormat ?? "single");
-      payload.carouselImageHashes = orderedCarouselHashes.map((h) => h.hash);
-      payload.carouselImageUrls = orderedCarouselHashes.map((h) => h.url);
-      payload.adSetupMode = "create";
-
-      const linkData: Record<string, unknown> = {
-        link: linkUrl,
-        message: pickStr(payload.text),
-        name: pickStr(payload.text).slice(0, 60) || goalLabel,
-        call_to_action: callToAction,
-      };
-
-      if (isCarousel && orderedCarouselHashes.length >= 2) {
-        linkData.child_attachments = orderedCarouselHashes.map((h) => ({
-          link: linkUrl,
-          image_hash: h.hash,
-          name: pickStr(payload.text).slice(0, 40) || goalLabel,
-          call_to_action: callToAction,
-        }));
-        payload.creativeFormat = "carousel";
-      } else if (feedImageHash) {
-        linkData.image_hash = feedImageHash;
-      }
-
-      creativeBody = {
-        access_token: accessToken,
-        name: `creative_${Date.now()}`,
-        object_story_spec: {
-          page_id: pageId,
-          ...(igUserForCreative ? { instagram_user_id: igUserForCreative } : {}),
-          link_data: linkData,
-        },
-      };
-
-      if (
-        creativeFeedFile instanceof File &&
-        creativeFeedFile.type.startsWith("video/")
-      ) {
-        payload.feedIsVideo = true;
-        payload.feedVideoFileName = creativeFeedFile.name;
-      }
-      if (
-        creativeStoriesFile instanceof File &&
-        creativeStoriesFile.type.startsWith("video/")
-      ) {
-        payload.storiesIsVideo = true;
-        payload.storiesVideoFileName = creativeStoriesFile.name;
-      }
-
-      const storiesLinkData: Record<string, unknown> = {
-        link: linkUrl,
-        message: pickStr(payload.text),
-        name: pickStr(payload.text).slice(0, 60) || goalLabel,
-        call_to_action: callToAction,
-      };
-      if (storiesImageHash) {
-        storiesLinkData.image_hash = storiesImageHash;
-      } else if (feedImageHash) {
-        storiesLinkData.image_hash = feedImageHash;
-      }
-
-      storiesCreativeBody = {
-        access_token: accessToken,
-        name: `creative_stories_${Date.now()}`,
-        object_story_spec: {
-          page_id: pageId,
-          ...(igUserForCreative ? { instagram_user_id: igUserForCreative } : {}),
-          link_data: storiesLinkData,
-        },
-      };
-    }
-
-    payload.campaignBody = campaignBody;
-    payload.adSetBody = adSetBody;
-    payload.creativeBody = creativeBody;
-    payload.storiesCreativeBody = storiesCreativeBody;
-    payload.adBody = {
-      name: `${goalLabel} | ad`,
-      status: "PAUSED",
-      access_token: accessToken,
-    };
-
-    // ===== 8. launchId =====
-    if (!payload.launchId) {
-      payload.launchId = crypto.randomUUID();
-    }
-
-    // ===== 9. Шлём в n8n с коротким таймаутом ACK =====
     const out = new FormData();
     out.append("payload", JSON.stringify(payload));
-    // Пересылаем оригинальные файлы — n8n обработает видео самостоятельно
     for (const [key, value] of incoming.entries()) {
       if (key === "payload") continue;
       out.append(key, value);
@@ -499,13 +368,9 @@ Deno.serve(async (req) => {
     } catch (e) {
       const err = e as { name?: string; message?: string };
       const msg = (err?.message ?? "").toLowerCase();
-      const name = err?.name ?? "";
       if (
-        name === "TimeoutError" ||
-        name === "AbortError" ||
-        msg.includes("aborted") ||
-        msg.includes("timeout") ||
-        msg.includes("timed out")
+        err?.name === "TimeoutError" || err?.name === "AbortError" ||
+        msg.includes("aborted") || msg.includes("timeout") || msg.includes("timed out")
       ) {
         ackOk = true;
         ackStatus = 202;
@@ -517,30 +382,23 @@ Deno.serve(async (req) => {
       }
     }
 
-    return new Response(
-      JSON.stringify({
-        ok: ackOk,
-        status: ackStatus,
-        accepted: ackOk,
-        launchId: payload.launchId,
-        summary: payload.launchSummary,
-        feedImageHash,
-        storiesImageHash,
-        carouselImageHashes: orderedCarouselHashes.map((h) => h.hash),
-        creativeFormat: payload.creativeFormat,
-        adSetupMode: payload.adSetupMode,
-        sourceInstagramMediaId: payload.sourceInstagramMediaId ?? null,
-        response: ackBody,
-      }),
-      {
-        status: ackOk ? 200 : 502,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      },
-    );
+    return json({
+      ok: ackOk,
+      status: ackStatus,
+      accepted: ackOk,
+      mode: "n8n",
+      launchId,
+      campaignSaved: false,
+      summary: payload.launchSummary,
+      feedImageHash: imageHashes[0] ?? null,
+      storiesImageHash,
+      carouselImageHashes: payload.carouselImageHashes,
+      creativeFormat: spec.creativeFormat,
+      adSetupMode: spec.adSetupMode,
+      sourceInstagramMediaId: spec.sourceInstagramMediaId || null,
+      response: ackBody,
+    }, ackOk ? 200 : 502);
   } catch (e) {
-    return new Response(
-      JSON.stringify({ error: (e as Error).message }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-    );
+    return json({ error: (e as Error).message }, 500);
   }
 });

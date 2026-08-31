@@ -193,3 +193,15 @@ verify_jwt = false
 # Cron: detect real joins for tracked group invite links
 [functions.group-invite-sync]
 verify_jwt = false
+
+# Прямой контур запуска рекламы: воркер очереди, планировщик авто-запуска и
+# проверка токенов Meta. Все три дёргает pg_cron без пользовательского JWT —
+# авторизация внутри по x-automation-key = automation_settings.cron_secret.
+[functions.ad-launch-worker]
+verify_jwt = false
+
+[functions.ad-launch-scheduler]
+verify_jwt = false
+
+[functions.meta-token-health]
+verify_jwt = false

@@ -110,4 +110,32 @@ describe("campaign workspace helpers", () => {
     };
     expect(launchStatusLabel(launch)).toMatch(/запускается|создаётся|идёт/i);
   });
+
+  it("описывает шаги прямого контура запуска в Meta", () => {
+    const base: CampaignLaunchRow = {
+      id: "l2",
+      goal: "site-leads",
+      status: "running",
+      statusStep: null,
+      statusMessage: null,
+      lastError: null,
+      metaCampaignId: null,
+      budget: "50",
+      text: "Тест",
+      createdAt: "2026-09-01T00:00:00Z",
+      cabinetId: "cab",
+    };
+    const label = (step: string) => launchStatusLabel({ ...base, statusStep: step });
+
+    expect(label("resolving_targeting")).toContain("аудитория");
+    expect(label("uploading_media")).toContain("загрузка креатива");
+    expect(label("waiting_media")).toContain("видео");
+    expect(label("creating_campaign")).toContain("кампания");
+    // "creating_adset" содержит и "adset", и "ad" — порядок проверок важен.
+    expect(label("creating_adset")).toContain("адсет");
+    expect(label("creating_creative")).toContain("объявление");
+    expect(label("creating_ad")).toContain("объявление");
+    expect(label("activating")).toContain("включение");
+  });
 });
+
