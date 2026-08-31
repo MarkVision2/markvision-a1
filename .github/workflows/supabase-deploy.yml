@@ -115,28 +115,56 @@ jobs:
         run: |
           supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
 
+          PLAN=/tmp/db-push-plan.txt
+          dry_run() {
+            supabase db push --dry-run --password "$SUPABASE_DB_PASSWORD" > "$PLAN" 2>&1 || true
+            cat "$PLAN"
+          }
+
+          echo "::group::db push --dry-run"
+          dry_run
+          echo "::endgroup::"
+
           # История миграций на проде расходится с репозиторием: часть миграций
           # применяется мимо CLI (Lovable), их версии оседают в
           # supabase_migrations.schema_migrations, а файлов в supabase/migrations нет.
           # В таком состоянии db push отказывается работать целиком
           # ("Remote migration versions not found in local migrations directory")
           # и не применяет НИ ОДНОЙ миграции. Помечаем такие версии как reverted —
-          # это правка только служебной таблицы учёта, схема БД не трогается
-          # (ровно то, что предлагает сам CLI в тексте ошибки).
-          ORPHANS=$(supabase migration list --linked --password "$SUPABASE_DB_PASSWORD" \
-            | sed 's/│/|/g' \
-            | awk -F'|' 'NF>=3 {
-                n = NF;
-                if ($n ~ /^[ \t]*$/) n--;       # таблица может быть с рамкой по краям
-                if (n < 3) next;
-                local_v = $(n-2); remote_v = $(n-1);
-                gsub(/[^0-9]/, "", local_v); gsub(/[^0-9]/, "", remote_v);
-                if (local_v == "" && length(remote_v) == 14) print remote_v;
-              }')
-          if [ -n "$ORPHANS" ]; then
-            echo "::notice::Repairing $(echo "$ORPHANS" | wc -l) remote-only migration versions as reverted"
+          # это правка только служебной таблицы учёта, схема БД не трогается.
+          # Список версий берём из самой ошибки: CLI печатает готовую команду
+          # ремонта. Это надёжнее разбора таблицы migration list, формат которой
+          # зависит от версии CLI.
+          if grep -q "Remote migration versions not found" "$PLAN"; then
+            ORPHANS=$(grep -o 'supabase migration repair --status reverted.*' "$PLAN" \
+              | head -1 | grep -oE '[0-9]{14}' | tr '\n' ' ')
+            if [ -z "$ORPHANS" ]; then
+              echo "::error::История миграций расходится, но список версий из вывода CLI не разобрался — см. лог выше."
+              exit 1
+            fi
+            # shellcheck disable=SC2086
+            echo "::notice::Repairing $(echo $ORPHANS | wc -w) remote-only migration versions as reverted"
             # shellcheck disable=SC2086
             supabase migration repair --status reverted --password "$SUPABASE_DB_PASSWORD" $ORPHANS
+            echo "::group::db push --dry-run (после ремонта истории)"
+            dry_run
+            echo "::endgroup::"
+            if grep -q "Remote migration versions not found" "$PLAN"; then
+              echo "::error::История миграций всё ещё расходится после ремонта. Ничего не применено."
+              exit 1
+            fi
+          fi
+
+          # Предохранитель. Из-за расхождения выше db push не проходил давно, и в
+          # истории прода может не быть части старых локальных миграций — тогда
+          # push попытается прогнать по проду большой хвост старых файлов.
+          # Если план неожиданно большой, НЕ применяем ничего: такой хвост должен
+          # посмотреть человек, а не выкатиться сам ночью.
+          PENDING=$(grep -cE '[0-9]{14}_.*\.sql' "$PLAN" || true)
+          echo "::notice::Pending migrations: $PENDING"
+          if [ "$PENDING" -gt "${DB_PUSH_MAX_PENDING:-10}" ]; then
+            echo "::error::db push хочет применить $PENDING миграций — это похоже на накопившийся хвост, а не на текущий деплой. Ничего не применено. Проверьте список выше и примените осознанно (или поднимите DB_PUSH_MAX_PENDING)."
+            exit 1
           fi
 
           # Предохранитель. Из-за расхождения выше db push не проходил давно, и в
