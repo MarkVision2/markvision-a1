@@ -62,12 +62,16 @@ jobs:
             exit 0
           fi
 
+          # Сам воркфлоу в списке намеренно: если менялась логика применения
+          # миграций, её надо прогнать по проду в этом же деплое, а не ждать
+          # следующего изменения SQL, чтобы узнать, что она не работает.
           if git diff --name-only "$BASE" "$GITHUB_SHA" -- \
             'supabase/migrations/**/*.sql' \
             'supabase/migrations/*.sql' \
             'supabase/migrations_client_config/**/*.sql' \
             'supabase/migrations_client_config/*.sql' \
-            'scripts/*.sql' | grep -q .; then
+            'scripts/*.sql' \
+            '.github/workflows/supabase-deploy.yml' | grep -q .; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
           else
             echo "changed=false" >> "$GITHUB_OUTPUT"
@@ -133,6 +137,21 @@ jobs:
             echo "::notice::Repairing $(echo "$ORPHANS" | wc -l) remote-only migration versions as reverted"
             # shellcheck disable=SC2086
             supabase migration repair --status reverted --password "$SUPABASE_DB_PASSWORD" $ORPHANS
+          fi
+
+          # Предохранитель. Из-за расхождения выше db push не проходил давно, и в
+          # истории прода может не быть части старых локальных миграций — тогда
+          # push попытается прогнать по проду большой хвост старых файлов.
+          # Сначала смотрим план и, если он неожиданно большой, НИЧЕГО не применяем:
+          # такой хвост должен посмотреть человек, а не выкатиться сам ночью.
+          echo "::group::db push --dry-run"
+          supabase db push --dry-run --password "$SUPABASE_DB_PASSWORD" | tee /tmp/db-push-plan.txt
+          echo "::endgroup::"
+          PENDING=$(grep -cE '[0-9]{14}_.*\.sql' /tmp/db-push-plan.txt || true)
+          echo "::notice::Pending migrations: $PENDING"
+          if [ "$PENDING" -gt "${DB_PUSH_MAX_PENDING:-10}" ]; then
+            echo "::error::db push хочет применить $PENDING миграций — это похоже на накопившийся хвост, а не на текущий деплой. Ничего не применено. Проверьте список выше и примените осознанно (или поднимите DB_PUSH_MAX_PENDING)."
+            exit 1
           fi
 
           supabase db push --password "$SUPABASE_DB_PASSWORD"
