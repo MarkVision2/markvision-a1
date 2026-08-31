@@ -12,6 +12,7 @@ import {
   campaignGroupKey,
   cleanUrl,
   dailyBudgetCents,
+  deriveHeadline,
   normalizeActId,
   resolveDestination,
   resolveStartTime,
@@ -391,5 +392,37 @@ describe("тело кампании", () => {
       is_adset_budget_sharing_enabled: false,
       status: "ACTIVE",
     });
+  });
+});
+
+describe("deriveHeadline", () => {
+  it("берёт первое предложение текста", () => {
+    expect(deriveHeadline("Чистка зубов за 5000₸. Запишитесь сегодня!"))
+      .toBe("Чистка зубов за 5000₸");
+  });
+
+  it("режет по границе слова, не обрывая посередине", () => {
+    const h = deriveHeadline(
+      "Комплексная диагностика организма для всей семьи с расшифровкой врача",
+    );
+    expect(h.length).toBeLessThanOrEqual(40);
+    expect(h.endsWith(" ")).toBe(false);
+    expect("Комплексная диагностика организма для всей семьи".startsWith(h)).toBe(true);
+  });
+
+  it("выкидывает ссылки, разметку и эмодзи", () => {
+    expect(deriveHeadline("🔥 Скидка 30% https://example.kz на импланты"))
+      .toBe("Скидка 30% на импланты");
+  });
+
+  it("берёт первую строку многострочного текста", () => {
+    expect(deriveHeadline("Импланты под ключ\nЗвоните прямо сейчас"))
+      .toBe("Импланты под ключ");
+  });
+
+  it("пустой текст даёт пустой заголовок — вызывающий подставит своё", () => {
+    expect(deriveHeadline("")).toBe("");
+    expect(deriveHeadline(null)).toBe("");
+    expect(deriveHeadline("   ")).toBe("");
   });
 });

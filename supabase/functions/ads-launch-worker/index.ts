@@ -25,6 +25,7 @@ import {
   buildTargeting,
   campaignGroupKey,
   cleanUrl,
+  deriveHeadline,
   normalizeActId,
   resolveStartTime,
   validateLaunch,
@@ -195,13 +196,18 @@ async function loadJobContext(db: SupabaseClient, job: JobRow): Promise<Loaded> 
     timezone: str(cab.timezone) || "Asia/Almaty",
   };
 
+  // Заголовок и услугу мастер не собирает — выводим из текста объявления,
+  // иначе все кампании клиента назывались бы одинаково.
+  const text = str(req.text);
+  const derived = deriveHeadline(text);
+
   const input: LaunchInput = {
     goal: (str(req.goal) || "whatsapp") as LaunchGoal,
     budgetUsd: Number(req.budgetUsd ?? 0),
-    text: str(req.text),
-    headline: str(req.headline) || null,
+    text,
+    headline: str(req.headline) || derived || null,
     codeWord: str(req.codeWord) || null,
-    service: str(req.service) || str(req.headline) || str(cab.brief).slice(0, 40) || null,
+    service: str(req.service) || derived || deriveHeadline(str(cab.brief)) || null,
     creative: {
       format: (str(req.format) || "single") as CreativeFormat,
       imageHash: job.meta_image_hash ?? (str(req.imageHash) || null),

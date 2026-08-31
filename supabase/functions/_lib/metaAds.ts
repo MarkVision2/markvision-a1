@@ -97,6 +97,38 @@ export function whatsappLink(number: unknown, prefill?: string | null): string {
     : `https://wa.me/${digits}`;
 }
 
+/**
+ * Заголовок и название услуги из текста объявления.
+ *
+ * В мастере запуска этих полей нет — менеджер пишет только текст. В n8n их
+ * придумывал AI; здесь берём первую содержательную фразу, чтобы в Ads Manager
+ * и в отчётах кампании отличались друг от друга, а не назывались «Реклама».
+ */
+export function deriveHeadline(text: unknown, maxLength = 40): string {
+  const raw = String(text ?? "")
+    .replace(/https?:\/\/\S+/g, " ")
+    .replace(/[*_`#>]+/g, " ")
+    // Эмодзи и прочие символы вне текста заголовку не нужны.
+    .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}]/gu, " ")
+    // Схлопываем пробелы, но переводы строк сохраняем — по ним режем первым делом.
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/\n+/g, "\n")
+    .trim();
+  if (!raw) return "";
+
+  // Первая строка, затем первое предложение внутри неё.
+  const firstLine = raw.split("\n")[0]?.trim() || raw;
+  const sentence = firstLine.split(/(?<=[.!?])\s+/)[0]?.trim() ?? firstLine;
+  const source = sentence.length > 0 ? sentence : firstLine;
+  if (source.length <= maxLength) return source.replace(/[.,;:!?\s]+$/, "");
+
+  // Режем по границе слова, чтобы не обрывать посередине.
+  const cut = source.slice(0, maxLength);
+  const lastSpace = cut.lastIndexOf(" ");
+  const trimmed = lastSpace > maxLength * 0.5 ? cut.slice(0, lastSpace) : cut;
+  return trimmed.replace(/[.,;:!?\s]+$/, "");
+}
+
 /* ────────────────────────────── назначение ───────────────────────────── */
 
 export type Destination = "whatsapp" | "website" | "leadform";
