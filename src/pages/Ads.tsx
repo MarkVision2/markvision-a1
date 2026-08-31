@@ -230,6 +230,7 @@ const Ads = () => {
               onToggleOnline={handleToggleOnline}
               onRemove={removeCabinet}
               soleMetaCabinet={soleMetaCabinet}
+              onUpdate={updateCabinet}
             />
           ))}
           {filtered.length === 0 && (
