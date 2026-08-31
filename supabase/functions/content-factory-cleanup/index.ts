@@ -4,13 +4,15 @@
  * - Storage: content-factory-uploads/requests/ (временные референс-фото)
  *
  * Вызов: cron (GitHub Actions / pg_cron) с заголовком x-cleanup-key
+ * либо x-automation-key == automation_settings.cron_secret — тем же ключом,
+ * что и остальные кроны БД, чтобы очистка не зависела от отдельного секрета.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type, x-cleanup-key",
+    "authorization, x-client-info, apikey, content-type, x-cleanup-key, x-automation-key, x-cron-key",
 };
 
 const DEFAULT_GALLERY_DAYS = 30;
@@ -30,11 +32,37 @@ function parseDays(value: string | undefined, fallback: number): number {
   return Number.isFinite(n) && n >= 1 ? Math.floor(n) : fallback;
 }
 
-function isAuthorized(req: Request): boolean {
-  const expected = Deno.env.get("CONTENT_FACTORY_CLEANUP_KEY");
-  if (!expected) return false;
-  const key = req.headers.get("x-cleanup-key");
-  return key === expected;
+/**
+ * Два способа авторизации, оба ключевые.
+ *
+ * x-cleanup-key — исторический, из отдельного секрета CONTENT_FACTORY_CLEANUP_KEY.
+ * x-automation-key — тот же ключ, которым БД дёргает все остальные кроны
+ * (automation_settings.cron_secret). Второй появился потому, что первый секрет
+ * оказался незаполненным: еженедельный GitHub Actions падал на его проверке
+ * все 13 запусков подряд, и файлы в Storage не удалялись вообще. Крон в самой
+ * БД лишних секретов не требует, поэтому очистка перестаёт зависеть от того,
+ * что кто-то однажды не прописал.
+ */
+async function isAuthorized(req: Request): Promise<boolean> {
+  const cleanupKey = Deno.env.get("CONTENT_FACTORY_CLEANUP_KEY");
+  const provided = req.headers.get("x-cleanup-key");
+  if (cleanupKey && provided === cleanupKey) return true;
+
+  const automation = req.headers.get("x-automation-key") ?? req.headers.get("x-cron-key");
+  if (!automation) return false;
+
+  const url = Deno.env.get("SUPABASE_URL");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!url || !serviceKey) return false;
+  const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
+  const { data } = await admin
+    .from("automation_settings")
+    .select("cron_secret")
+    .eq("id", true)
+    .maybeSingle();
+  const expected = (data as { cron_secret?: string } | null)?.cron_secret
+    ?? Deno.env.get("AUTOMATION_CRON_KEY");
+  return Boolean(expected) && automation === expected;
 }
 
 type StorageClient = ReturnType<typeof createClient>;
@@ -88,7 +116,7 @@ async function deleteOldStorageObjects(
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
-  if (!isAuthorized(req)) return json({ error: "Unauthorized" }, 401);
+  if (!(await isAuthorized(req))) return json({ error: "Unauthorized" }, 401);
 
   const clientUrl = Deno.env.get("CLIENT_SUPABASE_URL");
   const clientKey = Deno.env.get("CLIENT_SUPABASE_SERVICE_ROLE_KEY");
