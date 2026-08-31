@@ -86,3 +86,83 @@ export function buildImageRequest(
     generationConfig: { responseModalities: ["TEXT", "IMAGE"] },
   };
 }
+
+// ============================================================
+// Ответы OpenAI-совместимого шлюза (Lovable AI Gateway)
+// ============================================================
+// Шлюз проксирует те же модели Google, но отвечает в формате OpenAI.
+// Где именно лежит картинка, зависит от версии шлюза, поэтому проверяем
+// все правдоподобные места: молчаливый промах здесь означает «генерация
+// прошла, а кадра нет».
+
+/** Текст ответа chat/completions. */
+export function textFromChatResponse(response: Record<string, unknown> | null): string {
+  const choices = (response?.choices as Array<Record<string, unknown>> | undefined) ?? [];
+  const message = choices[0]?.message as Record<string, unknown> | undefined;
+  const content = message?.content;
+  if (typeof content === "string") return content.trim();
+  // Мультимодальный ответ приходит массивом частей.
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        const p = part as Record<string, unknown>;
+        return typeof p?.text === "string" ? p.text : "";
+      })
+      .filter(Boolean)
+      .join("\n")
+      .trim();
+  }
+  return "";
+}
+
+/** base64 и mime из data-URL вида data:image/png;base64,XXXX */
+export function parseDataUrl(value: string): { data: string; mime: string } | null {
+  const m = /^data:([^;,]+);base64,(.+)$/i.exec((value ?? "").trim());
+  if (!m) return null;
+  return { mime: m[1] || "image/png", data: m[2] };
+}
+
+/**
+ * Картинка из ответа шлюза. Проверяются, по убыванию вероятности:
+ *   message.images[].image_url.url  — так отдаёт Lovable AI Gateway;
+ *   message.content[] с частью image_url — мультимодальный формат OpenAI;
+ *   data:-URL прямо в тексте ответа — запасной вариант.
+ */
+export function imageFromChatResponse(
+  response: Record<string, unknown> | null,
+): { data: string; mime: string } | null {
+  const choices = (response?.choices as Array<Record<string, unknown>> | undefined) ?? [];
+  const message = choices[0]?.message as Record<string, unknown> | undefined;
+  if (!message) return null;
+
+  const urlOf = (node: unknown): string => {
+    if (typeof node === "string") return node;
+    const obj = node as Record<string, unknown> | null;
+    const nested = obj?.image_url ?? obj?.imageUrl;
+    if (typeof nested === "string") return nested;
+    const url = (nested as Record<string, unknown> | undefined)?.url ?? obj?.url;
+    return typeof url === "string" ? url : "";
+  };
+
+  const images = message.images;
+  if (Array.isArray(images)) {
+    for (const item of images) {
+      const parsed = parseDataUrl(urlOf(item));
+      if (parsed) return parsed;
+    }
+  }
+
+  if (Array.isArray(message.content)) {
+    for (const part of message.content) {
+      const p = part as Record<string, unknown>;
+      if (p?.type === "image_url" || p?.image_url) {
+        const parsed = parseDataUrl(urlOf(p));
+        if (parsed) return parsed;
+      }
+    }
+  }
+
+  const text = textFromChatResponse(response);
+  const match = /data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+/i.exec(text);
+  return match ? parseDataUrl(match[0]) : null;
+}

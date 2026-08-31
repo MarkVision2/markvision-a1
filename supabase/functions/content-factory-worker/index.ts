@@ -19,7 +19,8 @@ import {
   geminiImage,
   geminiText,
   geminiVision,
-  hasGeminiKey,
+  hasImageProvider,
+  NO_PROVIDER_MESSAGE,
 } from "../_lib/gemini.ts";
 import {
   buildBranchPrompt,
@@ -441,7 +442,7 @@ Deno.serve(async (req) => {
     return json({ error: "Unauthorized" }, 401);
   }
 
-  if (!hasGeminiKey()) return json({ error: "GEMINI_API_KEY не задан" }, 503);
+  if (!hasImageProvider()) return json({ error: NO_PROVIDER_MESSAGE }, 503);
 
   let payload: { batch_size?: number; job_id?: string } = {};
   try { payload = await req.json(); } catch { /* пустое тело допустимо */ }

@@ -13,7 +13,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { AUTH_CORS_HEADERS, requireUser } from "../_lib/auth.ts";
-import { hasGeminiKey } from "../_lib/gemini.ts";
+import { hasImageProvider, NO_PROVIDER_MESSAGE } from "../_lib/gemini.ts";
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -44,10 +44,8 @@ Deno.serve(async (req) => {
   const auth = await requireUser(req);
   if (!auth.ok) return auth.response;
 
-  if (!hasGeminiKey()) {
-    return json({
-      error: "Не настроен GEMINI_API_KEY — генерация изображений недоступна",
-    }, 503);
+  if (!hasImageProvider()) {
+    return json({ error: NO_PROVIDER_MESSAGE }, 503);
   }
 
   let payload: Record<string, unknown>;

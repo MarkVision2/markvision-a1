@@ -1,35 +1,59 @@
-// Клиент Google Gemini REST для Контент-завода.
+// Доступ к моделям Google для Контент-завода — двумя путями.
 //
-// Воспроизводит ровно то, что делал n8n: анализ референсного фото
-// (models/gemini-pro-latest), текстовая стратегия слайдов и генерация
-// изображений через gemini-3-pro-image-preview с responseModalities
-// ["TEXT","IMAGE"] — картинка приходит base64 в inline_data.
+// 1. Прямой Google API по GEMINI_API_KEY — ровно то, что делал n8n
+//    (credential googlePalmApi, модель gemini-3-pro-image-preview,
+//    responseModalities ["TEXT","IMAGE"], картинка base64 в inline_data).
+// 2. Lovable AI Gateway по LOVABLE_API_KEY — OpenAI-совместимый шлюз,
+//    который проксирует те же модели Google. Этот ключ в проекте уже есть
+//    (им пользуются функции ai-rop и content-scheduler), поэтому генерация
+//    работает без заведения нового секрета.
 //
-// Ключ — GEMINI_API_KEY (в n8n это была credential googlePalmApi).
+// Прямой ключ приоритетнее: он ближе к тому, на чём подбирались промпты.
+// Модели можно переопределить переменными окружения, не трогая код, —
+// preview-модели Google периодически переименовывает.
 //
-// Чистые функции разбора ответа покрыты src/test/gemini.test.ts: именно они
-// ломаются молча, когда модель отвечает не в том формате.
+// Чистые функции разбора ответов — в geminiParse.ts, под тестами.
 
 import {
   base64ToBytes,
   blockReasonOf,
   buildImageRequest,
   type GeminiPart,
+  imageFromChatResponse,
   imageOf,
+  parseDataUrl,
   partsOf,
+  textFromChatResponse,
   textOf,
 } from "./geminiParse.ts";
 
-// Реэкспорт, чтобы вызывающий код брал всё из одного места.
-export { base64ToBytes, blockReasonOf, buildImageRequest, imageOf, partsOf, textOf };
+export {
+  base64ToBytes,
+  blockReasonOf,
+  buildImageRequest,
+  imageFromChatResponse,
+  imageOf,
+  parseDataUrl,
+  partsOf,
+  textFromChatResponse,
+  textOf,
+};
 export type { GeminiPart };
 
-const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const GOOGLE_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const GATEWAY_BASE = "https://ai.gateway.lovable.dev/v1";
 
-/** Модель генерации изображений — та же, что стояла в n8n. */
-export const IMAGE_MODEL = "gemini-3-pro-image-preview";
-/** Модель для анализа фото и текстовых цепочек. */
-export const TEXT_MODEL = "gemini-pro-latest";
+/** Модель генерации изображений у прямого Google API — как в n8n. */
+export const IMAGE_MODEL = Deno.env.get("CONTENT_FACTORY_IMAGE_MODEL")
+  ?? "gemini-3-pro-image-preview";
+/** Модель анализа и текстовых цепочек у прямого Google API. */
+export const TEXT_MODEL = Deno.env.get("CONTENT_FACTORY_TEXT_MODEL")
+  ?? "gemini-pro-latest";
+/** Те же роли на шлюзе — там имена моделей с префиксом провайдера. */
+export const GATEWAY_IMAGE_MODEL = Deno.env.get("CONTENT_FACTORY_GATEWAY_IMAGE_MODEL")
+  ?? "google/gemini-2.5-flash-image-preview";
+export const GATEWAY_TEXT_MODEL = Deno.env.get("CONTENT_FACTORY_GATEWAY_TEXT_MODEL")
+  ?? "google/gemini-2.5-flash";
 
 export interface GeminiResult<T> {
   ok: boolean;
@@ -39,24 +63,60 @@ export interface GeminiResult<T> {
   retryable: boolean;
 }
 
-export function hasGeminiKey(): boolean {
-  return Boolean(Deno.env.get("GEMINI_API_KEY"));
+export type ImageProvider = "google" | "gateway" | null;
+
+/** Какой путь доступен: прямой ключ Google приоритетнее шлюза. */
+export function imageProvider(): ImageProvider {
+  if (Deno.env.get("GEMINI_API_KEY")) return "google";
+  if (Deno.env.get("LOVABLE_API_KEY")) return "gateway";
+  return null;
 }
 
-/** Сырой вызов generateContent. */
-async function generateContent(
+export function hasImageProvider(): boolean {
+  return imageProvider() !== null;
+}
+
+/** Человекочитаемое объяснение, чего не хватает. */
+export const NO_PROVIDER_MESSAGE =
+  "Генерация изображений недоступна: не задан ни GEMINI_API_KEY, ни LOVABLE_API_KEY";
+
+function httpFailure(status: number, message: string): GeminiResult<never> {
+  return {
+    ok: false,
+    data: null,
+    error: message,
+    // 429 и 5xx — перегрузка на стороне провайдера, повтор осмыслен.
+    // 400/401/403 — битый запрос или ключ, повтор не поможет.
+    retryable: status === 429 || status >= 500,
+  };
+}
+
+function networkFailure(e: unknown): GeminiResult<never> {
+  return {
+    ok: false,
+    data: null,
+    error: (e as Error)?.message ?? "network error",
+    retryable: true,
+  };
+}
+
+// ============================================================
+// Транспорт
+// ============================================================
+
+/** Прямой вызов Google generateContent. */
+async function googleCall(
   model: string,
   body: Record<string, unknown>,
   timeoutMs: number,
 ): Promise<GeminiResult<Record<string, unknown>>> {
-  const key = Deno.env.get("GEMINI_API_KEY");
-  if (!key) {
-    return { ok: false, data: null, error: "Не задан GEMINI_API_KEY", retryable: false };
-  }
   try {
-    const res = await fetch(`${GEMINI_BASE}/${model}:generateContent`, {
+    const res = await fetch(`${GOOGLE_BASE}/${model}:generateContent`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": Deno.env.get("GEMINI_API_KEY")!,
+      },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
@@ -64,24 +124,57 @@ async function generateContent(
     if (!res.ok) {
       const message = ((json?.error as { message?: string } | undefined)?.message)
         ?? `HTTP ${res.status}`;
-      // 429 и 5xx — перегрузка на стороне Google, имеет смысл повторить.
-      // 400/403 — битый запрос или ключ, повтор не поможет.
-      return {
-        ok: false,
-        data: null,
-        error: message,
-        retryable: res.status === 429 || res.status >= 500,
-      };
+      return httpFailure(res.status, message);
     }
     return { ok: true, data: json ?? {}, error: null, retryable: false };
   } catch (e) {
-    return {
-      ok: false,
-      data: null,
-      error: (e as Error)?.message ?? "network error",
-      retryable: true,
-    };
+    return networkFailure(e);
   }
+}
+
+interface GatewayPart {
+  type: "text" | "image_url";
+  text?: string;
+  image_url?: { url: string };
+}
+
+/** Вызов OpenAI-совместимого шлюза. */
+async function gatewayCall(
+  model: string,
+  parts: GatewayPart[],
+  timeoutMs: number,
+  extra: Record<string, unknown> = {},
+): Promise<GeminiResult<Record<string, unknown>>> {
+  try {
+    const res = await fetch(`${GATEWAY_BASE}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${Deno.env.get("LOVABLE_API_KEY")}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: "user", content: parts }],
+        ...extra,
+      }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    const json = await res.json().catch(() => null) as Record<string, unknown> | null;
+    if (!res.ok) {
+      const message = ((json?.error as { message?: string } | undefined)?.message)
+        ?? `HTTP ${res.status}`;
+      return httpFailure(res.status, message);
+    }
+    return { ok: true, data: json ?? {}, error: null, retryable: false };
+  } catch (e) {
+    return networkFailure(e);
+  }
+}
+
+/** Референс → часть сообщения шлюза (тот же data-URL, что понимает OpenAI). */
+function toGatewayImage(img: { data: string; mime: string }): GatewayPart {
+  const clean = img.data.replace(/^data:[^;]+;base64,/, "");
+  return { type: "image_url", image_url: { url: `data:${img.mime || "image/jpeg"};base64,${clean}` } };
 }
 
 // ============================================================
@@ -93,11 +186,21 @@ export async function geminiText(
   prompt: string,
   timeoutMs = 120_000,
 ): Promise<GeminiResult<string>> {
-  const res = await generateContent(
-    TEXT_MODEL,
-    { contents: [{ parts: [{ text: prompt }] }] },
-    timeoutMs,
-  );
+  const provider = imageProvider();
+  if (!provider) {
+    return { ok: false, data: null, error: NO_PROVIDER_MESSAGE, retryable: false };
+  }
+
+  if (provider === "gateway") {
+    const res = await gatewayCall(GATEWAY_TEXT_MODEL, [{ type: "text", text: prompt }], timeoutMs);
+    if (!res.ok) return { ...res, data: null };
+    const text = textFromChatResponse(res.data);
+    return text
+      ? { ok: true, data: text, error: null, retryable: false }
+      : { ok: false, data: null, error: "Пустой ответ модели", retryable: true };
+  }
+
+  const res = await googleCall(TEXT_MODEL, { contents: [{ parts: [{ text: prompt }] }] }, timeoutMs);
   if (!res.ok) return { ...res, data: null };
   const text = textOf(res.data);
   if (!text) {
@@ -118,25 +221,56 @@ export async function geminiVision(
   images: Array<{ data: string; mime: string }>,
   timeoutMs = 120_000,
 ): Promise<GeminiResult<string>> {
+  const provider = imageProvider();
+  if (!provider) {
+    return { ok: false, data: null, error: NO_PROVIDER_MESSAGE, retryable: false };
+  }
+
+  if (provider === "gateway") {
+    const parts: GatewayPart[] = [{ type: "text", text: prompt }, ...images.map(toGatewayImage)];
+    const res = await gatewayCall(GATEWAY_TEXT_MODEL, parts, timeoutMs);
+    if (!res.ok) return { ...res, data: null };
+    return { ok: true, data: textFromChatResponse(res.data), error: null, retryable: false };
+  }
+
   const parts: GeminiPart[] = [{ text: prompt }];
   for (const img of images) {
     parts.push({ inline_data: { mime_type: img.mime, data: img.data } });
   }
-  const res = await generateContent(TEXT_MODEL, { contents: [{ parts }] }, timeoutMs);
+  const res = await googleCall(TEXT_MODEL, { contents: [{ parts }] }, timeoutMs);
   if (!res.ok) return { ...res, data: null };
   return { ok: true, data: textOf(res.data), error: null, retryable: false };
 }
 
+/** Генерация кадра. Референсы уходят вместе с промптом — как в n8n. */
 export async function geminiImage(
   prompt: string,
   references: Array<{ data: string; mime: string }>,
   timeoutMs = 180_000,
 ): Promise<GeminiResult<{ data: string; mime: string }>> {
-  const res = await generateContent(
-    IMAGE_MODEL,
-    buildImageRequest(prompt, references),
-    timeoutMs,
-  );
+  const provider = imageProvider();
+  if (!provider) {
+    return { ok: false, data: null, error: NO_PROVIDER_MESSAGE, retryable: false };
+  }
+
+  if (provider === "gateway") {
+    const parts: GatewayPart[] = [{ type: "text", text: prompt }, ...references.map(toGatewayImage)];
+    const res = await gatewayCall(GATEWAY_IMAGE_MODEL, parts, timeoutMs, {
+      modalities: ["image", "text"],
+    });
+    if (!res.ok) return { ...res, data: null };
+    const image = imageFromChatResponse(res.data);
+    return image
+      ? { ok: true, data: image, error: null, retryable: false }
+      : {
+        ok: false,
+        data: null,
+        error: "Шлюз вернул ответ без изображения",
+        retryable: true,
+      };
+  }
+
+  const res = await googleCall(IMAGE_MODEL, buildImageRequest(prompt, references), timeoutMs);
   if (!res.ok) return { ...res, data: null };
 
   const image = imageOf(res.data);
@@ -145,7 +279,7 @@ export async function geminiImage(
     return {
       ok: false,
       data: null,
-      // Отказ фильтра повторять бессмысленно — промпт не изменится сам.
+      // Отказ фильтра повторять бессмысленно — промпт сам не изменится.
       error: blocked
         ? `Модель не сгенерировала изображение: ${blocked}`
         : "Модель вернула ответ без изображения",

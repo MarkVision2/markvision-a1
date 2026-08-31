@@ -11,8 +11,11 @@ import {
   base64ToBytes,
   blockReasonOf,
   buildImageRequest,
+  imageFromChatResponse,
   imageOf,
+  parseDataUrl,
   partsOf,
+  textFromChatResponse,
   textOf,
 } from "../../supabase/functions/_lib/geminiParse.ts";
 
@@ -99,5 +102,62 @@ describe("base64ToBytes", () => {
   it("декодирует и с префиксом data-URL, и без него", () => {
     expect(Array.from(base64ToBytes("AQID"))).toEqual([1, 2, 3]);
     expect(Array.from(base64ToBytes("data:image/png;base64,AQID"))).toEqual([1, 2, 3]);
+  });
+});
+
+describe("ответы OpenAI-совместимого шлюза", () => {
+  const chat = (message: Record<string, unknown>) => ({ choices: [{ message }] });
+
+  it("берёт текст из строкового content", () => {
+    expect(textFromChatResponse(chat({ content: "  ответ  " }))).toBe("ответ");
+  });
+
+  it("берёт текст из мультимодального content", () => {
+    expect(textFromChatResponse(chat({
+      content: [{ type: "text", text: "первая" }, { type: "text", text: "вторая" }],
+    }))).toBe("первая\nвторая");
+  });
+
+  it("пустой ответ не роняет разбор", () => {
+    expect(textFromChatResponse(null)).toBe("");
+    expect(textFromChatResponse({ choices: [] })).toBe("");
+  });
+
+  it("разбирает data-URL", () => {
+    expect(parseDataUrl("data:image/jpeg;base64,QUJD")).toEqual({
+      mime: "image/jpeg",
+      data: "QUJD",
+    });
+    expect(parseDataUrl("https://example.com/x.jpg")).toBeNull();
+    expect(parseDataUrl("")).toBeNull();
+  });
+
+  it("находит картинку в message.images — так отдаёт шлюз", () => {
+    const res = imageFromChatResponse(chat({
+      images: [{ image_url: { url: "data:image/png;base64,AAA" } }],
+    }));
+    expect(res).toEqual({ mime: "image/png", data: "AAA" });
+  });
+
+  it("находит картинку в мультимодальном content", () => {
+    const res = imageFromChatResponse(chat({
+      content: [
+        { type: "text", text: "вот кадр" },
+        { type: "image_url", image_url: { url: "data:image/jpeg;base64,BBB" } },
+      ],
+    }));
+    expect(res).toEqual({ mime: "image/jpeg", data: "BBB" });
+  });
+
+  it("подбирает data-URL прямо из текста — запасной вариант", () => {
+    const res = imageFromChatResponse(chat({
+      content: "готово: data:image/png;base64,CCC=",
+    }));
+    expect(res?.data).toBe("CCC=");
+  });
+
+  it("ответ без картинки даёт null, а не пустую строку", () => {
+    expect(imageFromChatResponse(chat({ content: "не смог" }))).toBeNull();
+    expect(imageFromChatResponse(null)).toBeNull();
   });
 });
