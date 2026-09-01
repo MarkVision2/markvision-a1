@@ -14,7 +14,24 @@
  * Ключ можно передать переменной окружения AUTOMATION_KEY.
  */
 
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
 const SB = process.env.SUPABASE_URL || "https://szfgdruhlebfvcmlvxdk.supabase.co";
+
+/** Публикуемый ключ (он же в сборке фронта) — им проверяем наличие таблиц. */
+function publishableKey() {
+  if (process.env.VITE_SUPABASE_PUBLISHABLE_KEY) return process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+  try {
+    const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+    const line = readFileSync(join(root, ".env.production"), "utf8")
+      .split("\n").find((l) => l.startsWith("VITE_SUPABASE_PUBLISHABLE_KEY="));
+    return line ? line.slice("VITE_SUPABASE_PUBLISHABLE_KEY=".length).trim() : "";
+  } catch {
+    return "";
+  }
+}
 
 function arg(name) {
   const i = process.argv.indexOf(`--${name}`);
@@ -63,14 +80,58 @@ for (const fn of FUNCTIONS) {
   }
 }
 
-/* 2. Ключ автоматизации. Проверяем безобидным режимом монитора. */
+/* 2. Схема в базе. Спрашиваем PostgREST напрямую: функции и миграции едут
+      разными шагами деплоя, и функции спокойно живут без таблиц. Отсутствие
+      таблицы — это PGRST205, а не пустой ответ. */
+console.log("\nСхема в базе");
+const anon = publishableKey();
+if (!anon) {
+  console.log(warn("не нашёл публикуемый ключ — пропускаю (VITE_SUPABASE_PUBLISHABLE_KEY)"));
+} else {
+  const RELATIONS = ["publish_accounts_safe", "publish_videos", "publish_jobs", "publish_logs", "publish_account_groups"];
+  const missing = [];
+  for (const rel of RELATIONS) {
+    let res;
+    try {
+      res = await fetch(`${SB}/rest/v1/${rel}?select=*&limit=1`, {
+        headers: { apikey: anon, Authorization: `Bearer ${anon}` },
+      });
+    } catch (e) {
+      console.log(bad(`${rel} — сеть недоступна: ${String(e).slice(0, 120)}`));
+      continue;
+    }
+    if (res.status === 404) {
+      console.log(bad(`${rel} — нет в схеме`));
+      missing.push(rel);
+    } else {
+      console.log(ok(`${rel} — есть`));
+    }
+  }
+  if (missing.length) {
+    problems.push(
+      "миграция не применилась: смотрите шаг «Apply database migrations» в последнем запуске supabase-deploy",
+    );
+  }
+}
+
+/* 3. Ключ автоматизации. Проверяем безобидным режимом монитора. */
 console.log("\nКлюч автоматизации");
 if (!key) {
   console.log(warn("не передан — пропускаю (--key или AUTOMATION_KEY)"));
   problems.push("не проверен ключ автоматизации: запустите с --key");
 } else {
   const r = await call("publish-monitor", { mode: "errors" });
-  if (r.status === 200) {
+  if (r.status === 200 && r.json?.error) {
+    // Функция ответила, но упёрлась в БД. Самый частый случай — миграция не
+    // применилась: функции выкатываются отдельным шагом деплоя и живут без схемы.
+    console.log(ok("ключ принят"));
+    console.log(bad(`база не отвечает как надо: ${r.json.error}`));
+    problems.push(
+      /does not exist|relation .* does not exist|schema cache/i.test(r.json.error)
+        ? "схема не применена: смотрите шаг «Apply database migrations» в деплое Supabase"
+        : `монитор не смог прочитать таблицы: ${r.json.error}`,
+    );
+  } else if (r.status === 200) {
     const d = r.json ?? {};
     console.log(ok("ключ принят"));
     console.log(`  аккаунтов отключено монитором сейчас: ${d.disabled ?? 0}; заданий на ручном разборе: ${d.manual_review ?? 0}`);
@@ -84,7 +145,7 @@ if (!key) {
   }
 }
 
-/* 3. Аккаунты и очередь по проекту. */
+/* 4. Аккаунты и очередь по проекту. */
 if (projectId && key) {
   console.log("\nАккаунты проекта");
   const r = await call("publish-accounts", { action: "list", project_id: projectId });

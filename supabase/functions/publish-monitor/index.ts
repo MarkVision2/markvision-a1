@@ -54,8 +54,11 @@ async function instagramTokenAlive(
 }
 
 async function checkTokens(admin: SupabaseClient) {
-  const { data } = await admin.from("publish_accounts")
+  const { data, error } = await admin.from("publish_accounts")
     .select("*").in("status", ["active", "limited"]);
+  // Ошибку БД возвращаем наружу, а не глотаем: пустой ответ и «таблицы нет» —
+  // разные вещи, и диагностика готовности должна их различать.
+  if (error) return { checked: 0, token_expired: 0, expiring_soon: 0, accounts: [], error: error.message };
   const accounts = (data ?? []) as PublishAccount[];
 
   const dead: PublishAccount[] = [];
@@ -107,10 +110,11 @@ async function checkTokens(admin: SupabaseClient) {
 }
 
 async function checkErrors(admin: SupabaseClient) {
-  const { data } = await admin.from("publish_accounts")
+  const { data, error } = await admin.from("publish_accounts")
     .select("*")
     .gte("consecutive_errors", ERROR_STREAK_LIMIT)
     .eq("status", "active");
+  if (error) return { disabled: 0, manual_review: 0, accounts: [], error: error.message };
   const broken = (data ?? []) as PublishAccount[];
 
   for (const account of broken) {

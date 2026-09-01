@@ -378,6 +378,11 @@ comment on function public.claim_publish_jobs(integer, interval) is
 -- текстом. Переносим их как есть — расшифровка в edge-функциях умеет читать
 -- значение без префикса 'v1:'. После первого reconnect строка перезапишется
 -- уже шифротекстом.
+--
+-- join по projects обязателен: у instagram_accounts нет внешнего ключа на
+-- projects, и в проде остались строки удалённых проектов. Без join вся
+-- миграция падает на FK одной осиротевшей строкой (SQLSTATE 23503), а
+-- публиковать в проект, которого нет, всё равно некуда.
 insert into public.publish_accounts (
   project_id, platform, account_name, handle, external_account_id,
   fb_page_id, access_token_encrypted, status, publish_enabled, notes
@@ -393,6 +398,7 @@ select ia.project_id,
        ia.active,
        'перенесено из instagram_accounts'
   from public.instagram_accounts ia
+  join public.projects p on p.id = ia.project_id
  where ia.ig_user_id is not null
    and ia.page_access_token is not null
 on conflict (project_id, platform, external_account_id) do nothing;
