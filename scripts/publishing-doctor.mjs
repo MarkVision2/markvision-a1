@@ -48,6 +48,10 @@ const warn = (s) => `\x1b[33m•\x1b[0m ${s}`;
 async function call(fn, body, withKey = true) {
   const headers = { "Content-Type": "application/json" };
   if (withKey && key) headers["x-automation-key"] = key;
+  // publish-accounts проверяет JWT на шлюзе Supabase; публикуемого ключа хватает,
+  // а внутри функции авторизует уже x-automation-key.
+  const anonKey = publishableKey();
+  if (anonKey) headers.Authorization = `Bearer ${anonKey}`;
   try {
     const res = await fetch(`${SB}/functions/v1/${fn}`, {
       method: "POST", headers, body: JSON.stringify(body ?? {}),
@@ -83,8 +87,9 @@ for (const fn of FUNCTIONS) {
 /* 2. Схема в базе. Спрашиваем PostgREST напрямую: функции и миграции едут
       разными шагами деплоя, и функции спокойно живут без таблиц. Отсутствие
       таблицы — это PGRST205, а не пустой ответ. */
-console.log("\nСхема в базе");
 const anon = publishableKey();
+
+console.log("\nСхема в базе");
 if (!anon) {
   console.log(warn("не нашёл публикуемый ключ — пропускаю (VITE_SUPABASE_PUBLISHABLE_KEY)"));
 } else {
@@ -145,14 +150,66 @@ if (!key) {
   }
 }
 
-/* 4. Аккаунты и очередь по проекту. */
+/* 4. Готовность подключать аккаунты: секрет шифрования и Meta-токен проекта.
+      Обе проверки читающие — connect без page_ids и available только
+      перечисляет страницы. */
+if (projectId && key && anon) {
+  console.log("\nПодключение аккаунтов");
+  const authHeaders = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${anon}`,
+    "x-automation-key": key,
+  };
+  const post = async (body) => {
+    try {
+      const res = await fetch(`${SB}/functions/v1/publish-accounts`, {
+        method: "POST", headers: authHeaders, body: JSON.stringify(body),
+      });
+      return { status: res.status, json: await res.json().catch(() => null) };
+    } catch (e) {
+      return { status: 0, json: { error: String(e) } };
+    }
+  };
+
+  // Ключ шифрования проверяем без побочек: connect доходит до проверки ключа
+  // раньше, чем до списка страниц, и падает на page_ids, если ключ на месте.
+  const probe = await post({ action: "connect", project_id: projectId });
+  const probeErr = probe.json?.error ?? "";
+  if (/PUBLISH_TOKEN_KEY/.test(probeErr)) {
+    console.log(bad("PUBLISH_TOKEN_KEY не задан — новые аккаунты подключить нельзя"));
+    problems.push("добавьте секрет PUBLISH_TOKEN_KEY в Supabase → Edge Functions → Secrets");
+  } else if (/page_ids/.test(probeErr)) {
+    console.log(ok("PUBLISH_TOKEN_KEY задан"));
+  } else {
+    console.log(warn(`неожиданный ответ проверки ключа: ${probeErr || probe.status}`));
+  }
+
+  const pages = await post({ action: "available", project_id: projectId });
+  const pagesErr = pages.json?.error ?? "";
+  if (pagesErr) {
+    // Протухший Meta-токен — самая частая причина: страницы перечисляются
+    // пользовательским токеном, а публикует потом page-токен аккаунта.
+    const stale = /OAuth|access token|Meta-токен/i.test(pagesErr);
+    console.log(bad(`список страниц недоступен: ${pagesErr}`));
+    problems.push(stale
+      ? "Meta-токен проекта недействителен: переподключите Facebook в MarkVision → Настройки → Meta"
+      : `не удалось получить список страниц: ${pagesErr}`);
+  } else {
+    const list = pages.json?.pages ?? [];
+    const free = list.filter((p) => p.connectable && !p.already_connected);
+    const noIg = list.filter((p) => !p.connectable);
+    console.log(ok(`страниц в охвате токена: ${list.length}`));
+    console.log(`  готовы к подключению: ${free.length}${free.length ? " — " + free.map((p) => p.ig_username ?? p.page_name).join(", ") : ""}`);
+    if (noIg.length) console.log(warn(`без Instagram Business/Creator: ${noIg.length}`));
+  }
+}
+
+/* 5. Аккаунты и очередь по проекту. */
 if (projectId && key) {
   console.log("\nАккаунты проекта");
   const r = await call("publish-accounts", { action: "list", project_id: projectId });
   if (r.status !== 200) {
     console.log(bad(`не получил список (${r.status}): ${(r.text ?? "").slice(0, 200)}`));
-    // publish-accounts проверяет JWT на шлюзе — из скрипта это ожидаемо.
-    if (r.status === 401) console.log(warn("для этой функции нужен пользовательский JWT — смотрите список в интерфейсе или через SQL"));
   } else {
     const list = r.json?.accounts ?? [];
     if (!list.length) {
