@@ -68,3 +68,20 @@ export function pickCaption(
   if (!list.length) return baseCaption;
   return list[index % list.length];
 }
+
+/**
+ * Чем ограничить выборку аккаунтов у цели.
+ *
+ * Возвращает null — «не ограничивать» (все активные аккаунты проекта) и
+ * массив — «только эти», в том числе пустой: явно переданный `account_ids: []`
+ * означает «ни одного», а не «все». Разница не косметическая: заявка с пустым
+ * списком однажды создала живое задание на реальный аккаунт.
+ */
+export function resolveAccountFilter(
+  target: Target,
+  groupAccountIds: string[] | null,
+): string[] | null {
+  if (target.group_id) return groupAccountIds ?? [];
+  if (Array.isArray(target.account_ids)) return target.account_ids.map(String);
+  return null;
+}

@@ -122,3 +122,30 @@ describe("проверка ссылки на видео", () => {
     expect(validateVideoRef("https://cdn.example.com/a.mp4", 16 * 60).ok).toBe(false);
   });
 });
+
+describe("какие аккаунты берёт цель", () => {
+  it("явно пустой список означает «ни одного», а не «все»", async () => {
+    const { resolveAccountFilter } = await import("../../supabase/functions/_lib/publishSchedule.ts");
+    // Именно это однажды превратило заведомо пустую тестовую заявку в живое
+    // задание на реальный аккаунт.
+    expect(resolveAccountFilter({ account_ids: [] }, null)).toEqual([]);
+  });
+
+  it("отсутствие списка означает «все активные аккаунты проекта»", async () => {
+    const { resolveAccountFilter } = await import("../../supabase/functions/_lib/publishSchedule.ts");
+    expect(resolveAccountFilter({}, null)).toBeNull();
+    expect(resolveAccountFilter({ platforms: ["instagram"] }, null)).toBeNull();
+  });
+
+  it("список аккаунтов проходит как есть", async () => {
+    const { resolveAccountFilter } = await import("../../supabase/functions/_lib/publishSchedule.ts");
+    expect(resolveAccountFilter({ account_ids: ["a", "b"] }, null)).toEqual(["a", "b"]);
+  });
+
+  it("группа задаёт список, а пустая группа не расширяется до всех", async () => {
+    const { resolveAccountFilter } = await import("../../supabase/functions/_lib/publishSchedule.ts");
+    expect(resolveAccountFilter({ group_id: "g" }, ["x"])).toEqual(["x"]);
+    expect(resolveAccountFilter({ group_id: "g" }, [])).toEqual([]);
+    expect(resolveAccountFilter({ group_id: "g" }, null)).toEqual([]);
+  });
+});
