@@ -1,9 +1,21 @@
 /**
- * Content-factory workflow (n8n «Clony AI»).
- * Все запросы идут ТОЛЬКО через Edge Function `content-factory-proxy`, чтобы
- * пользовательский контент не уходил напрямую на внешний n8n без авторизации.
+ * Транспорт Контент-завода.
+ *
+ * По умолчанию заявка уходит в прямой контур — Edge Function
+ * `content-factory-generate`: она ставит задание в очередь, а картинки
+ * генерирует content-factory-worker (Gemini) и кладёт их в
+ * content_factory_results, откуда фронт забирает их через realtime.
+ *
+ * Прежний путь через n8n (`content-factory-proxy` → webhook «Clony AI»)
+ * остаётся аварийным откатом и включается VITE_CONTENT_FACTORY_MODE=n8n.
+ * Наружу на n8n браузер в любом случае не ходит — только через edge.
  */
 import { supabase } from "@/integrations/supabase/client";
+
+/** direct — своя генерация; n8n — прежний вебхук. */
+export function contentFactoryMode(): "direct" | "n8n" {
+  return import.meta.env.VITE_CONTENT_FACTORY_MODE === "n8n" ? "n8n" : "direct";
+}
 
 /** Hard timeout for a single style generation request (ms). */
 export const N8N_TIMEOUT_MS = 120_000;
@@ -20,7 +32,10 @@ function formatFetchError(e: unknown): string {
 }
 
 async function postViaEdgeFunction(payload: unknown): Promise<unknown> {
-  const { data, error } = await supabase.functions.invoke("content-factory-proxy", {
+  const fn = contentFactoryMode() === "n8n"
+    ? "content-factory-proxy"
+    : "content-factory-generate";
+  const { data, error } = await supabase.functions.invoke(fn, {
     body: payload,
   });
   if (error) {
@@ -33,8 +48,9 @@ async function postViaEdgeFunction(payload: unknown): Promise<unknown> {
 }
 
 /**
- * Send a single style payload to the n8n workflow via the authenticated proxy.
- * Throws an Error with a human-readable message on failure.
+ * Отправка заявки на один стиль. Ответ приходит сразу: в прямом контуре это
+ * подтверждение постановки в очередь, картинки догоняют через realtime.
+ * Кидает Error с текстом, который можно показать человеку.
  */
 export async function postContentFactory(
   payload: unknown | FormData,

@@ -1,4 +1,9 @@
-# Еженедельная очистка контент-завода (edge function на szfgdruhlebfvcmlvxdk).
+# Очистка контент-завода (edge function на szfgdruhlebfvcmlvxdk).
+#
+# Сроки хранения короткие: галерея неделю, промежуточные results трое суток —
+# созданный контент не должен копиться. Основной прогон делает pg_cron
+# ежедневно (миграция 20260901100000), этот workflow остаётся страховкой
+# на случай, если крон в базе отключат, и ручной кнопкой.
 # Секреты: CONTENT_FACTORY_CLEANUP_KEY (тот же, что в secrets edge function)
 name: Content factory weekly cleanup
 
@@ -11,15 +16,15 @@ on:
       gallery_days:
         description: "Сколько дней хранить галерею"
         required: false
-        default: "30"
+        default: "7"
       results_days:
         description: "Сколько дней хранить results"
         required: false
-        default: "14"
+        default: "3"
       uploads_days:
         description: "Сколько дней хранить uploads/requests"
         required: false
-        default: "14"
+        default: "7"
 
 concurrency:
   group: content-factory-cleanup
@@ -40,9 +45,9 @@ jobs:
 
       - name: Run cleanup
         env:
-          GALLERY_DAYS: ${{ github.event.inputs.gallery_days || '30' }}
-          RESULTS_DAYS: ${{ github.event.inputs.results_days || '14' }}
-          UPLOADS_DAYS: ${{ github.event.inputs.uploads_days || '14' }}
+          GALLERY_DAYS: ${{ github.event.inputs.gallery_days || '7' }}
+          RESULTS_DAYS: ${{ github.event.inputs.results_days || '3' }}
+          UPLOADS_DAYS: ${{ github.event.inputs.uploads_days || '7' }}
         run: |
           set -e
           payload=$(jq -n \

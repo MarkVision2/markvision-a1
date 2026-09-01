@@ -33,6 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { fetchCreativeAsFile } from "@/lib/adLaunchBridge";
 import { mobileDialogFooterPad } from "@/lib/dialogClasses";
 import { clientSupabasePublishableKey, clientSupabaseUrl } from "@/lib/supabaseConfig";
 import { DEFAULT_META_UTM_TEMPLATE } from "@/lib/utmDefaults";
@@ -81,6 +82,12 @@ interface CreateCampaignDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   cabinets: AdCabinet[];
+  /**
+   * Ссылка на готовый креатив из галереи Контент-завода. При открытии мастер
+   * скачивает её в обычный File — дальше работает штатный путь с кропом
+   * и валидацией, отдельной ветки для «креатива по ссылке» не нужно.
+   */
+  initialCreativeUrl?: string | null;
 }
 
 type Goal = "whatsapp" | "site-leads" | "meta-form";
@@ -632,6 +639,7 @@ const CreateCampaignDialog = ({
   open,
   onOpenChange,
   cabinets,
+  initialCreativeUrl = null,
 }: CreateCampaignDialogProps) => {
   const { activeId: projectId, active: activeProject } = useProjectsStore();
   const [cabinetId, setCabinetId] = useState<string>(cabinets[0]?.id ?? "");
@@ -678,6 +686,26 @@ const CreateCampaignDialog = ({
   const currencyCode = account?.currency ?? selectedCabinet?.currency ?? "USD";
   const currencySign = CURRENCY_SIGNS[currencyCode] ?? currencyCode;
   const minDailyBudget = account?.min_daily_budget ?? null;
+
+  // Креатив из галереи Контент-завода: скачиваем ссылку в File и кладём
+  // в поле «Лента», как будто пользователь выбрал файл сам.
+  useEffect(() => {
+    if (!open || !initialCreativeUrl) return;
+    let cancelled = false;
+    void (async () => {
+      const file = await fetchCreativeAsFile(initialCreativeUrl);
+      if (cancelled) return;
+      if (!file) {
+        toast.error("Не удалось загрузить креатив из галереи — приложите файл вручную");
+        return;
+      }
+      setAdSetupMode("create");
+      setCreativeFormat("single");
+      setFeed(file);
+      toast.success("Креатив из Контент-завода подставлен");
+    })();
+    return () => { cancelled = true; };
+  }, [open, initialCreativeUrl]);
 
   // При смене кабинета сбрасываем выбранную страницу на дефолтную из настроек кабинета.
   useEffect(() => {

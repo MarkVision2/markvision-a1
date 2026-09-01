@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ExternalLink, FolderOpen, ImageOff, Loader2, RefreshCw, Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { ChevronDown, ExternalLink, FolderOpen, ImageOff, Loader2, Megaphone, RefreshCw, Trash2 } from "lucide-react";
 import { toast } from "sonner";
+import { buildAdsLaunchUrl } from "@/lib/adLaunchBridge";
 import { useContentFactoryGallery } from "@/hooks/useContentFactoryGallery";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -20,6 +22,7 @@ interface Props {
 export function ContentFactoryGallery({ active = true }: Props) {
   const { items, loading, load, removeItems, projectId, needsMigration, lastError } =
     useContentFactoryGallery();
+  const navigate = useNavigate();
 
   const [category, setCategory] = useState<GalleryFilterCategory>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -217,6 +220,7 @@ export function ContentFactoryGallery({ active = true }: Props) {
                                   toast.error(e instanceof Error ? e.message : "Ошибка");
                                 }
                               }}
+                              onLaunchAd={() => navigate(buildAdsLaunchUrl(item.image_url))}
                             />
                           ))}
                         </div>
@@ -253,7 +257,7 @@ export function ContentFactoryGallery({ active = true }: Props) {
 }
 
 function GalleryCard({
-  item, selected, onToggleSelect, onDelete,
+  item, selected, onToggleSelect, onDelete, onLaunchAd,
 }: {
   item: {
     id: string;
@@ -267,6 +271,7 @@ function GalleryCard({
   selected: boolean;
   onToggleSelect: () => void;
   onDelete: () => void;
+  onLaunchAd: () => void;
 }) {
   return (
     <article
@@ -294,6 +299,14 @@ function GalleryCard({
         <div className="absolute inset-x-0 bottom-0 flex gap-1.5 bg-gradient-to-t from-black/70 to-transparent p-2 pt-8 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
           <Button size="sm" variant="secondary" className="h-8 flex-1 rounded-lg text-xs" asChild>
             <a href={item.image_url} target="_blank" rel="noreferrer"><ExternalLink className="mr-1 h-3.5 w-3.5" /> Открыть</a>
+          </Button>
+          <Button
+            size="sm"
+            className="h-8 flex-1 rounded-lg text-xs"
+            onClick={() => onLaunchAd()}
+            title="Открыть мастер запуска с этим креативом"
+          >
+            <Megaphone className="mr-1 h-3.5 w-3.5" /> В рекламу
           </Button>
           <Button size="sm" variant="destructive" className="h-8 rounded-lg px-2.5" onClick={() => void onDelete()}>
             <Trash2 className="h-3.5 w-3.5" />
