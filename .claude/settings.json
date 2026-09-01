@@ -26,7 +26,9 @@
       "Bash(npx remotion:*)",
       "Bash(npx tsc:*)",
       "Bash(curl -fL --retry 3 -o .tools/ffmpeg.tar.xz:*)",
-      "Bash(tar -xf .tools/ffmpeg.tar.xz:*)"
+      "Bash(tar -xf .tools/ffmpeg.tar.xz:*)",
+      "Bash(git push:*)",
+      "Bash(curl:*)"
     ]
   }
 }
