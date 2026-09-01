@@ -258,8 +258,10 @@ GitHub Actions по воскресеньям остаётся страховко
 1. **Применить миграцию** `20260901100000_content_factory_direct.sql`.
    Она заодно схлопывает дубли в `content_factory_results` — они могли
    накопиться, потому что прежний контур писал строки без уникального ключа.
-2. **Задеплоить функции**: `content-factory-generate`, `content-factory-worker`.
-   `verify_jwt = false` для воркера прописан в `supabase/config.toml`.
+2. **Задеплоить функции**: `content-factory-generate`, `content-factory-worker`
+   и `content-factory-cleanup`. `verify_jwt = false` для воркера прописан в
+   `supabase/config.toml`. Очистку передеплоить обязательно: у неё изменилась
+   авторизация, и без этого ночной крон очистки Storage будет получать 401.
 3. **Секреты**:
    - `KIE_API_KEY` — картинки через kie.ai. Рекомендуемый путь: дешевле
      и не требует prepaid-баланса Google.
