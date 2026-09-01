@@ -33,6 +33,10 @@
 `montage_settings.worker_key`). Тексты для публикации (описание, теги, ТГ-пост) — скилл
 **`publish-pack`** → `work/<id>/publish.md`.
 
+- **Автопубликация готового видео в аккаунты площадок** (Instagram/TikTok/YouTube/Threads):
+  очередь `publish_jobs` + edge-функции `publish-*`, оркестрация заявок и отчётов — в n8n.
+  Детали, контракты endpoint'ов и онбординг аккаунтов — `docs/PUBLISHING-SYSTEM.md`.
+
 ## Карта (montage-часть)
 - `pipeline/` — Python-скрипты анализа (transcribe → indexed → edl → review → faces → props → audio); shorts.py (шортсы), download.py + reference.py (ремейк референса по ссылке)
 - `remotion/` — Node-проект Remotion; `src/Main169.tsx` (16:9), `src/Shorts916.tsx` (9:16), `src/Root.tsx` — регистрация композиций. Пропсы генерятся пайплайном; `props/*.example.json` — для запуска Studio из коробки. Новое видео = новый `main169_*.json` + своя `<Composition>` в Root.tsx (id без `_`)
