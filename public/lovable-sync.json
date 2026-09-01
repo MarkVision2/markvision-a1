@@ -1,7 +1,7 @@
 {
-  "git_sha": "dc289ee",
-  "git_sha_full": "dc289ee764b4e1bc3c2051a3d0a4176536d78633",
-  "updated_at": "2026-08-31T18:13:45+04:00",
-  "label": "fix(ci): out-of-order миграции применяются по разрешённому списку (#249)",
+  "git_sha": "ea8567b",
+  "git_sha_full": "ea8567b9344170ce3e829932cebb4ce3557d6430",
+  "updated_at": "2026-09-01T20:55:45+04:00",
+  "label": "Система автопостинга: очередь публикаций на много аккаунтов площадок (#250)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
