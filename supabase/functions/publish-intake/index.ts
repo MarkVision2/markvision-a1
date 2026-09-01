@@ -20,22 +20,13 @@ import {
   json,
   type Platform,
 } from "../_lib/publishing.ts";
-
-/** Форматы, которые площадки принимают по ссылке. */
-const VIDEO_EXT = /\.(mp4|mov|m4v)(\?|$)/i;
-/** Instagram Reels: 3 c … 15 мин. Границы одинаковы у всех наших площадок. */
-const MIN_DURATION_SEC = 3;
-const MAX_DURATION_SEC = 15 * 60;
-const MAX_SIZE_BYTES = 1024 * 1024 * 1024;
-
-interface Target {
-  group_id?: string;
-  account_ids?: string[];
-  platforms?: Platform[];
-  mode?: "now" | "drip" | "daily";
-  per_hour?: number;
-  start_at?: string;
-}
+import {
+  MAX_SIZE_BYTES,
+  pickCaption,
+  scheduleFor,
+  type Target,
+  validateVideoRef,
+} from "../_lib/publishSchedule.ts";
 
 interface AccountRow {
   id: string;
@@ -43,10 +34,13 @@ interface AccountRow {
   account_name: string;
 }
 
-/** Проверка ссылки: формат по расширению, вес и тип — по HEAD, если отдают. */
-async function inspectVideo(fileUrl: string): Promise<{ ok: boolean; error?: string; sizeBytes?: number }> {
-  if (!/^https:\/\//i.test(fileUrl)) return { ok: false, error: "file_url должен быть https-ссылкой" };
-  if (!VIDEO_EXT.test(fileUrl)) return { ok: false, error: "ожидается ссылка на .mp4/.mov/.m4v" };
+/** Формат — правилами модуля расписания, вес и тип — по HEAD, если отдают. */
+async function inspectVideo(
+  fileUrl: string,
+  durationSec: number | null,
+): Promise<{ ok: boolean; error?: string; sizeBytes?: number }> {
+  const basic = validateVideoRef(fileUrl, durationSec);
+  if (!basic.ok) return { ok: false, error: basic.error };
   try {
     const res = await fetch(fileUrl, { method: "HEAD" });
     if (!res.ok) return { ok: true }; // HEAD режут многие хранилища — не повод отказывать
@@ -93,17 +87,6 @@ async function resolveAccounts(
   return (data ?? []) as AccountRow[];
 }
 
-/** Раскладка i-го аккаунта по времени. */
-function scheduleFor(target: Target, index: number): string {
-  const start = target.start_at ? new Date(target.start_at) : new Date();
-  const mode = target.mode ?? "drip";
-  if (mode === "now") return start.toISOString();
-  if (mode === "daily") return new Date(start.getTime() + index * 86_400_000).toISOString();
-  const perHour = Math.min(Math.max(target.per_hour ?? 10, 1), 120);
-  const stepMs = Math.round(3_600_000 / perHour);
-  return new Date(start.getTime() + index * stepMs).toISOString();
-}
-
 interface VideoRow {
   id: string;
   project_id: string;
@@ -118,17 +101,13 @@ async function createJobs(
   target: Target,
 ): Promise<{ created: number; skipped: number; accounts: { id: string; account_name: string; scheduled_at: string }[] }> {
   const accounts = await resolveAccounts(admin, video.project_id, target);
-  const variants = Array.isArray(video.caption_variants)
-    ? (video.caption_variants as unknown[]).map(String).filter(Boolean)
-    : [];
-
   const rows = accounts.map((acc, i) => ({
     project_id: video.project_id,
     video_id: video.id,
     account_id: acc.id,
     platform: acc.platform,
     // Разные подписи у разных аккаунтов — вариант по кругу, иначе базовый текст.
-    caption: variants.length ? variants[i % variants.length] : video.base_caption,
+    caption: pickCaption(video.caption_variants, video.base_caption, i),
     hashtags: video.hashtags ?? [],
     scheduled_at: scheduleFor(target, i),
   }));
@@ -214,15 +193,9 @@ Deno.serve(async (req) => {
       .from("projects").select("id").eq("id", projectId).maybeSingle();
     if (!project) return json({ error: "проект не найден" }, 404);
 
-    const check = await inspectVideo(fileUrl);
-    if (!check.ok) return json({ error: check.error }, 422);
-
     const duration = body?.duration_sec == null ? null : Number(body.duration_sec);
-    if (duration != null && Number.isFinite(duration)) {
-      if (duration < MIN_DURATION_SEC || duration > MAX_DURATION_SEC) {
-        return json({ error: `длительность ${duration} c вне допустимых ${MIN_DURATION_SEC}–${MAX_DURATION_SEC} c` }, 422);
-      }
-    }
+    const check = await inspectVideo(fileUrl, duration);
+    if (!check.ok) return json({ error: check.error }, 422);
 
     const hashtags = Array.isArray(body?.hashtags) ? body.hashtags.map(String) : [];
     const variants = Array.isArray(body?.caption_variants) ? body.caption_variants.map(String) : [];

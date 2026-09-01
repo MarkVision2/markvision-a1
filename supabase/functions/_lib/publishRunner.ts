@@ -108,6 +108,11 @@ export async function runPublishJob(
     return { jobId: job.id, status: "retry", message: "нет токена" };
   }
 
+  // Видео в работе — статус для интерфейса; ставим один раз, при первом задании.
+  if ((video as { status?: string }).status === "queued") {
+    await admin.from("publish_videos").update({ status: "publishing" }).eq("id", video.id);
+  }
+
   const caption = composeCaption(job.caption ?? video.base_caption, job.hashtags ?? []);
 
   let outcome: PublishOutcome;

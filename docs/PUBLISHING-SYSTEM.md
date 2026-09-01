@@ -14,6 +14,43 @@ Edge-функции       → публикаторы (API площадок) и �
 Storage            → файлы видео (Supabase buckets / R2)
 ```
 
+## Чтобы заработало
+
+Проверка готовности одной командой (ничего не публикует, только читает):
+
+```bash
+node scripts/publishing-doctor.mjs --key <automation_settings.cron_secret> --project <uuid>
+```
+
+**Уже сделано и лежит в репозитории/n8n:**
+
+* схема, очередь и кроны — миграцией;
+* публикаторы и endpoint'ы — edge-функциями, `verify_jwt` проставлен;
+* воркфлоу «🚀 Система автопостинга» создан, ключ автоматизации в ноде
+  «Настройки» подставлен, воркфлоу включён (до деплоя его тики — пустые);
+* существующие `instagram_accounts` перенесены в `publish_accounts` миграцией.
+
+**Что нужно сделать руками — по порядку:**
+
+1. **Влить ветку в `main`.** Миграция и функции выкатятся сами
+   (`.github/workflows/supabase-deploy.yml`). До этого весь контур отвечает
+   «Requested function was not found» — это единственная причина, по которой
+   сейчас ничего не работает.
+2. **Добавить секрет `PUBLISH_TOKEN_KEY`** (Supabase → Edge Functions → Secrets,
+   любая длинная случайная строка). Нужен, чтобы подключать *новые* аккаунты:
+   перенесённый из `instagram_accounts` аккаунт публикуется и без него.
+3. **Проверить ключ автоматизации.** В ноду «Настройки» подставлено значение из
+   миграции `20260429175117`. Если вы меняли `automation_settings.cron_secret` —
+   замените его в n8n; `publishing-doctor` покажет это как «ключ не принят».
+4. **Подключить аккаунты**: `publish-accounts` → `available` → `connect`.
+   Требование площадки: Instagram в режиме Business/Creator + привязанная
+   Facebook-страница. Аккаунт без этого в `available` придёт с
+   `connectable: false`.
+5. **Пустить первое видео** — раздел «MVP-чеклист» ниже.
+
+Чего в контуре сознательно нет: интерфейса в MarkVision, публикаторов
+TikTok/YouTube/Threads и автопродления Meta-токенов. Детали — в конце документа.
+
 ## Что где
 
 | Слой | Где живёт |
@@ -28,6 +65,8 @@ Storage            → файлы видео (Supabase buckets / R2)
 | Аккаунты (подключение, вкл/выкл) | `supabase/functions/publish-accounts/` |
 | Сторожа токенов и ошибок | `supabase/functions/publish-monitor/` |
 | n8n-воркфлоу (копия) | `docs/n8n-autoposting.json` |
+| Диагностика готовности | `scripts/publishing-doctor.mjs` |
+| Тесты чистой логики | `src/test/publishing.test.ts` |
 
 Существующий автопостинг контент-плана (`cf_scheduled_posts` + edge `publisher`)
 не тронут: это отдельная дорога, один Instagram на проект.
@@ -194,11 +233,13 @@ pending ──claim──► processing ──► published
 Тик расписания вебхуку не отвечает и идёт сразу в отчёт; отчёт молчит, когда
 сказать нечего.
 
-**Воркфлоу создан выключенным.** Перед включением заполните ноду «Настройки»:
+**Воркфлоу включён, ключ подставлен.** В ноде «Настройки»:
 
-* `automation_key` — вместо `PASTE_CRON_SECRET_HERE` вставьте
-  `automation_settings.cron_secret` из Supabase;
-* `tg_bot_token` и `tg_chat_id` — необязательно; пусты — отчёт в Telegram не
+* `automation_key` — уже заполнен значением `automation_settings.cron_secret` из
+  миграции. В копии `docs/n8n-autoposting.json` на его месте намеренно оставлен
+  `PASTE_CRON_SECRET_HERE`: секрет не размножается по файлам репозитория, но
+  при повторном импорте JSON ключ придётся вписать снова;
+* `tg_bot_token` и `tg_chat_id` — не заполнены; пусты — отчёт в Telegram не
   уходит (уведомления об ошибках публикации edge-функции всё равно шлют в чат
   проекта).
 
@@ -239,8 +280,9 @@ pending ──claim──► processing ──► published
    `publish-accounts connect` откажется сохранять токены.
 2. **Миграция и функции** выкатываются сами при пуше в `main`
    (`.github/workflows/supabase-deploy.yml`, пути `supabase/**`).
-3. **n8n**: заполнить `automation_key` в ноде «Настройки» воркфлоу
-   «🚀 Система автопостинга» и активировать его.
+3. **n8n**: воркфлоу «🚀 Система автопостинга» уже включён с подставленным
+   ключом — делать ничего не нужно, если `cron_secret` не менялся.
+4. **Проверить**: `node scripts/publishing-doctor.mjs --key … --project …`
 
 `verify_jwt = false` проставлен в `supabase/config.toml` для `publish-worker`,
 `publish-intake`, `publish-dispatch`, `publish-monitor` — их зовут pg_cron и n8n без
@@ -260,6 +302,18 @@ pending ──claim──► processing ──► published
 7. Разбор проблем — `publish_logs` по `job_id`: там сырой ответ площадки.
 
 Не начинать со 100 аккаунтов. Сначала доказать, что стабильно работают 5.
+
+## Группы аккаунтов
+
+«Залить во все клиники» — это группа. Управление там же, в `publish-accounts`:
+
+```jsonc
+{ "action": "group_upsert", "project_id": "uuid", "name": "Все клиники",
+  "account_ids": ["uuid", "uuid"], "publish_strategy": "drip", "per_hour": 10 }
+```
+
+Дальше в заявке достаточно `target: { "group_id": "…" }`. Чужие аккаунты в
+группу не попадут: принадлежность проекту проверяется при сохранении.
 
 ## Что осталось за рамками первого захода
 

@@ -11,6 +11,11 @@
  *   { action: "list",       project_id }                     — что подключено
  *   { action: "update",     account_id, ... }                — вкл/выкл, лимит, статус
  *   { action: "disconnect", account_id }                     — отключить
+ *
+ * Группы («залить во все клиники») — тот же endpoint:
+ *   { action: "group_list",   project_id }
+ *   { action: "group_upsert", project_id, id?, name, account_ids, platform?, publish_strategy?, per_hour? }
+ *   { action: "group_delete", group_id }
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireProjectAccess, requireUser } from "../_lib/auth.ts";
@@ -19,6 +24,7 @@ import {
   automationKeyValid,
   CORS_HEADERS,
   encryptSecret,
+  isPlatform as isPlatformName,
   json,
   tokenKeyConfigured,
 } from "../_lib/publishing.ts";
@@ -68,6 +74,11 @@ Deno.serve(async (req) => {
 
     // Действия по аккаунту проверяем через проект, которому он принадлежит.
     let scopeProject = projectId;
+    if (!scopeProject && body?.group_id) {
+      const { data } = await admin
+        .from("publish_account_groups").select("project_id").eq("id", String(body.group_id)).maybeSingle();
+      scopeProject = (data as { project_id?: string } | null)?.project_id ?? null;
+    }
     if (!scopeProject && body?.account_id) {
       const { data } = await admin
         .from("publish_accounts").select("project_id").eq("id", String(body.account_id)).maybeSingle();
@@ -194,6 +205,61 @@ Deno.serve(async (req) => {
         .select("id, account_name, status, publish_enabled, daily_limit").maybeSingle();
       if (error) return json({ error: error.message }, 500);
       return json({ ok: true, account: data });
+    }
+
+    /* ── группы аккаунтов ── */
+
+    if (action === "group_list") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      const { data, error } = await admin.from("publish_account_groups")
+        .select("*").eq("project_id", projectId).order("name");
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, groups: data ?? [] });
+    }
+
+    if (action === "group_upsert") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      const name = typeof body?.name === "string" ? body.name.trim() : "";
+      if (!name) return json({ error: "name обязателен" }, 400);
+      const accountIds = (Array.isArray(body?.account_ids) ? body.account_ids : []).map(String);
+
+      // Группа не должна тянуть чужие аккаунты: сверяем принадлежность проекту.
+      if (accountIds.length) {
+        const { data: own } = await admin.from("publish_accounts")
+          .select("id").eq("project_id", projectId).in("id", accountIds);
+        const known = new Set(((own ?? []) as { id: string }[]).map((r) => r.id));
+        const alien = accountIds.filter((id: string) => !known.has(id));
+        if (alien.length) return json({ error: `аккаунты не из этого проекта: ${alien.join(", ")}` }, 400);
+      }
+
+      const row: Record<string, unknown> = {
+        project_id: projectId,
+        name,
+        account_ids: accountIds,
+        platform: isPlatformName(body?.platform) ? body.platform : null,
+      };
+      if (typeof body?.publish_strategy === "string") {
+        const allowed = ["all_at_once", "drip", "daily"];
+        if (!allowed.includes(body.publish_strategy)) {
+          return json({ error: `недопустимая стратегия: ${body.publish_strategy}` }, 400);
+        }
+        row.publish_strategy = body.publish_strategy;
+      }
+      if (typeof body?.per_hour === "number") row.per_hour = Math.min(Math.max(body.per_hour, 1), 120);
+      if (typeof body?.id === "string") row.id = body.id;
+
+      const { data, error } = await admin.from("publish_account_groups")
+        .upsert(row).select("*").maybeSingle();
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, group: data });
+    }
+
+    if (action === "group_delete") {
+      const groupId = String(body?.group_id ?? "");
+      if (!groupId) return json({ error: "group_id обязателен" }, 400);
+      const { error } = await admin.from("publish_account_groups").delete().eq("id", groupId);
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true });
     }
 
     if (action === "disconnect") {
