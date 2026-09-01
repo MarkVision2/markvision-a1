@@ -1,0 +1,68 @@
+/**
+ * Разбор очереди публикаций: publish_jobs → пост в аккаунте площадки.
+ *
+ * Вызывается кроном `publish-worker-minutely` (заголовок x-automation-key) и
+ * пинком из publish-intake сразу после постановки заданий. Забор заданий —
+ * rpc claim_publish_jobs: аренда, статус аккаунта и дневная норма проверяются
+ * в SQL, поэтому два параллельных вызова не возьмут одно задание.
+ *
+ * Переходы статусов — _lib/publishRunner.ts, площадки — _lib/publishers/.
+ */
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
+import { requireUser, userHasAnyRole } from "../_lib/auth.ts";
+import { automationKeyValid, CORS_HEADERS, json, type PublishJob } from "../_lib/publishing.ts";
+import { runPublishJob } from "../_lib/publishRunner.ts";
+
+/** Сколько работаем за один вызов: остаток доберёт следующий тик крона. */
+const WALL_CLOCK_BUDGET_MS = 45_000;
+/** Бюджет ожидания обработки медиа на одном задании. */
+const JOB_BUDGET_MS = 20_000;
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS_HEADERS });
+
+  const admin = createClient(
+    Deno.env.get("SUPABASE_URL")!,
+    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+  );
+
+  if (!(await automationKeyValid(req, admin))) {
+    // Ручной прогон очереди из интерфейса — по роли пользователя.
+    const auth = await requireUser(req);
+    if (!auth.ok) return json({ error: "unauthorized" }, 401);
+    if (!(await userHasAnyRole(auth.userId, ["admin", "manager"]))) {
+      return json({ error: "forbidden" }, 403);
+    }
+  }
+
+  const body = await req.json().catch(() => ({}));
+  const batchSize = Math.min(Math.max(Number(body?.batch_size ?? 5), 1), 25);
+
+  const { data, error } = await admin.rpc("claim_publish_jobs", { p_batch: batchSize });
+  if (error) return json({ error: error.message }, 500);
+
+  const jobs = (data ?? []) as PublishJob[];
+  const out = { claimed: jobs.length, published: 0, processing: 0, retry: 0, failed: 0, manual_review: 0 };
+  const results: unknown[] = [];
+  const deadline = Date.now() + WALL_CLOCK_BUDGET_MS;
+
+  for (const job of jobs) {
+    if (Date.now() > deadline) {
+      // Не успели — вернём задание в очередь, не тратя попытку зря.
+      await admin.from("publish_jobs")
+        .update({ status: "retry", locked_at: null, attempts: Math.max(job.attempts - 1, 0) })
+        .eq("id", job.id);
+      out.retry++;
+      continue;
+    }
+    const result = await runPublishJob(admin, job, { budgetMs: JOB_BUDGET_MS });
+    results.push(result);
+    if (result.status === "published") out.published++;
+    else if (result.status === "processing") out.processing++;
+    else if (result.status === "retry") out.retry++;
+    else if (result.status === "manual_review") out.manual_review++;
+    else out.failed++;
+  }
+
+  return json({ ok: true, ...out, results });
+});

@@ -208,6 +208,21 @@ verify_jwt = false
 [functions.group-invite-sync]
 verify_jwt = false
 
+# Контур автопубликации (docs/PUBLISHING-SYSTEM.md). Очередь разбирает pg_cron,
+# заявки шлёт n8n — оба ходят без пользовательского JWT, авторизация внутри
+# функций по x-automation-key = automation_settings.cron_secret.
+[functions.publish-worker]
+verify_jwt = false
+
+[functions.publish-intake]
+verify_jwt = false
+
+[functions.publish-dispatch]
+verify_jwt = false
+
+[functions.publish-monitor]
+verify_jwt = false
+
 # Воркер генерации Контент-завода дёргает pg_cron без пользовательского JWT —
 # авторизация внутри по x-automation-key = automation_settings.cron_secret.
 # Приёмник заявки (content-factory-generate) проверяет JWT пользователя сам.
