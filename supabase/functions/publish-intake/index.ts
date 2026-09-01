@@ -5,6 +5,7 @@
  * по аккаунтам), и n8n-воркфлоу «Video Intake» обычно делает обе за раз:
  *   { action: "video_ready", ... }  — принять видео (+ сразу поставить задания)
  *   { action: "create_jobs", ... }  — поставить задания на уже принятое видео
+ *   { action: "cancel_jobs", ... }  — снять незавершённые задания (стоп-кран)
  *
  * Раскладка по времени (target.mode) — это защита от «100 постов в одну
  * минуту»: drip разносит публикации по per_hour в час, daily — по одной в
@@ -23,6 +24,7 @@ import {
 import {
   MAX_SIZE_BYTES,
   pickCaption,
+  resolveAccountFilter,
   scheduleFor,
   type Target,
   validateVideoRef,
@@ -62,16 +64,17 @@ async function resolveAccounts(
   projectId: string,
   target: Target,
 ): Promise<AccountRow[]> {
-  let ids: string[] | null = null;
-
+  let groupIds: string[] | null = null;
   if (target.group_id) {
     const { data } = await admin
       .from("publish_account_groups").select("account_ids, platform")
       .eq("id", target.group_id).eq("project_id", projectId).maybeSingle();
-    ids = ((data as { account_ids?: string[] } | null)?.account_ids ?? []);
-  } else if (Array.isArray(target.account_ids) && target.account_ids.length) {
-    ids = target.account_ids.map(String);
+    groupIds = ((data as { account_ids?: string[] } | null)?.account_ids ?? []);
   }
+
+  const ids = resolveAccountFilter(target, groupIds);
+  // Пустой список — это «ни одного», а не «все»: выходим, не трогая базу.
+  if (ids && !ids.length) return [];
 
   let q = admin.from("publish_accounts")
     .select("id, platform, account_name")
@@ -79,7 +82,7 @@ async function resolveAccounts(
     .eq("status", "active")
     .eq("publish_enabled", true);
 
-  if (ids) q = q.in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
+  if (ids) q = q.in("id", ids);
   const platforms = (target.platforms ?? []).filter(isPlatform);
   if (platforms.length) q = q.in("platform", platforms);
 
@@ -179,6 +182,42 @@ Deno.serve(async (req) => {
       const result = await createJobs(admin, video, (body?.target ?? {}) as Target);
       if (result.created) await kickWorker(admin);
       return json({ ok: true, video_id: video.id, ...result });
+    }
+
+    if (action === "cancel_jobs") {
+      // Стоп-кран: снять из очереди то, что ещё не ушло в площадку. Нужен там,
+      // где заявка поставлена по ошибке, а крон разбирает очередь ежеминутно.
+      const videoId = body?.video_id ? String(body.video_id) : null;
+      const jobIds = Array.isArray(body?.job_ids) ? body.job_ids.map(String) : null;
+      if (!videoId && !jobIds?.length) return json({ error: "нужен video_id или job_ids" }, 400);
+
+      let q = admin.from("publish_jobs")
+        .update({
+          status: "cancelled",
+          locked_at: null,
+          error_message: String(body?.reason ?? "снято вручную"),
+        })
+        .in("status", ["pending", "retry", "processing"]);
+      q = videoId ? q.eq("video_id", videoId) : q.in("id", jobIds!);
+
+      const { data, error } = await q.select("id, account_id");
+      if (error) return json({ error: error.message }, 500);
+      const cancelled = (data ?? []) as { id: string }[];
+
+      // Видео без незавершённых заданий больше не «в публикации».
+      if (videoId) {
+        const { data: rest } = await admin.from("publish_jobs")
+          .select("status").eq("video_id", videoId);
+        const rows = (rest ?? []) as { status: string }[];
+        const open = rows.some((r) => ["pending", "retry", "processing"].includes(r.status));
+        if (!open) {
+          const anyPublished = rows.some((r) => r.status === "published");
+          await admin.from("publish_videos")
+            .update({ status: anyPublished ? "done" : "ready" }).eq("id", videoId);
+        }
+      }
+
+      return json({ ok: true, cancelled: cancelled.length, job_ids: cancelled.map((j) => j.id) });
     }
 
     if (action !== "video_ready") return json({ error: `неизвестное действие: ${action}` }, 400);
