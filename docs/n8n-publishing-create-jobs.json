@@ -1,0 +1,248 @@
+{
+  "name": "📹 Публикация · 2 · Постановка заданий",
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "nodes": [
+    {
+      "id": "wh",
+      "name": "Поставить задания",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -220,
+        0
+      ],
+      "webhookId": "publishing-create-jobs",
+      "notes": "POST /webhook/publishing-create-jobs — тело: video_id, target {group_id | account_ids | platforms, mode, per_hour, start_at}.",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "publishing-create-jobs",
+        "responseMode": "lastNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "cfg",
+      "name": "Настройки",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        0
+      ],
+      "notes": "Единственное место с секретами: ключ автоматизации Supabase и (опционально) бот/чат Telegram для отчёта.",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c0",
+              "name": "supabase_url",
+              "value": "https://szfgdruhlebfvcmlvxdk.supabase.co",
+              "type": "string"
+            },
+            {
+              "id": "c1",
+              "name": "automation_key",
+              "value": "PASTE_CRON_SECRET_HERE",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "tg_bot_token",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "c3",
+              "name": "tg_chat_id",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "build",
+      "name": "Собрать цель",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Разложить уже принятое видео по аккаунтам: группа, явный список или все\n// активные аккаунты проекта. mode: now | drip | daily.\nconst src = $('Поставить задания').first().json;\nconst b = src.body || src || {};\nif (!b.video_id) return [{ json: { valid: false, error: 'video_id обязателен' } }];\nconst t = b.target || {};\nreturn [{ json: { valid: true, payload: {\n  action: 'create_jobs',\n  video_id: b.video_id,\n  target: {\n    group_id: t.group_id ?? undefined,\n    account_ids: Array.isArray(t.account_ids) ? t.account_ids : undefined,\n    platforms: Array.isArray(t.platforms) ? t.platforms : undefined,\n    mode: t.mode ?? 'drip',\n    per_hour: t.per_hour ?? 10,\n    start_at: t.start_at ?? undefined,\n  },\n} } }];"
+      }
+    },
+    {
+      "id": "ifv",
+      "name": "Заявка валидна?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "v1",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "rej",
+      "name": "Отказ",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        660,
+        200
+      ],
+      "notes": "Заявка не прошла проверку — вебхук отвечает причиной, а не generic-500.",
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ JSON.stringify({ ok: false, error: $json.error }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "intake",
+      "name": "publish-intake",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        0
+      ],
+      "notes": "",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Настройки').first().json.supabase_url + '/functions/v1/publish-intake' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-automation-key",
+              "value": "={{ $('Настройки').first().json.automation_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "shape",
+      "name": "Сводка",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nconst body = r.body ?? r;\nconst ok = (r.statusCode ?? 200) < 300 && !body.error;\nconst err = body.error ?? body.message ?? (ok ? null : `HTTP ${r.statusCode}`);\nconst accounts = body.accounts ?? [];\nreturn [{ json: {\n  ok,\n  video_id: body.video_id ?? null,\n  created: body.created ?? 0,\n  skipped: body.skipped ?? 0,\n  error: err,\n  text: ok\n    ? `🗓 Заданий поставлено: ${body.created ?? 0}${body.skipped ? `, пропущено: ${body.skipped}` : ''}` +\n      (accounts.length ? `\\n• ${accounts.map((a) => `${a.account_name} — ${new Date(a.scheduled_at).toLocaleString('ru-RU')}`).join('\\n• ')}` : '')\n    : `❌ Задания не поставлены: ${err}`,\n} }];"
+      }
+    }
+  ],
+  "connections": {
+    "Поставить задания": {
+      "main": [
+        [
+          {
+            "node": "Настройки",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Настройки": {
+      "main": [
+        [
+          {
+            "node": "Собрать цель",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Собрать цель": {
+      "main": [
+        [
+          {
+            "node": "Заявка валидна?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Заявка валидна?": {
+      "main": [
+        [
+          {
+            "node": "publish-intake",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Отказ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "publish-intake": {
+      "main": [
+        [
+          {
+            "node": "Сводка",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

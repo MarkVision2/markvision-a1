@@ -1,0 +1,382 @@
+{
+  "name": "📹 Публикация · 1 · Приём видео",
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "nodes": [
+    {
+      "id": "wh",
+      "name": "Видео готово",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -220,
+        0
+      ],
+      "webhookId": "publishing-video-ready",
+      "notes": "POST /webhook/publishing-video-ready — тело: project_id, file_url, base_caption, hashtags, caption_variants, target.",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "publishing-video-ready",
+        "responseMode": "lastNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "cfg",
+      "name": "Настройки",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        0,
+        0
+      ],
+      "notes": "Единственное место с секретами: ключ автоматизации Supabase и (опционально) бот/чат Telegram для отчёта.",
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c0",
+              "name": "supabase_url",
+              "value": "https://szfgdruhlebfvcmlvxdk.supabase.co",
+              "type": "string"
+            },
+            {
+              "id": "c1",
+              "name": "automation_key",
+              "value": "PASTE_CRON_SECRET_HERE",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "tg_bot_token",
+              "value": "",
+              "type": "string"
+            },
+            {
+              "id": "c3",
+              "name": "tg_chat_id",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "val",
+      "name": "Проверить заявку",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Заявка «видео готово». Обязательны project_id и file_url; остальное — по вкусу.\n// target определяет раскладку по аккаунтам и времени (см. docs/PUBLISHING-SYSTEM.md).\nconst src = $('Видео готово').first().json;\nconst b = src.body || src || {};\nconst need = ['project_id', 'file_url'];\nconst missing = need.filter((k) => !b[k]);\nif (missing.length) {\n  return [{ json: { valid: false, error: 'не хватает полей: ' + missing.join(', ') } }];\n}\n\nconst target = b.target || {\n  // По умолчанию — все активные Instagram-аккаунты проекта, дриппинг 10 постов в час.\n  platforms: ['instagram'],\n  mode: 'drip',\n  per_hour: 10,\n};\n\nreturn [{ json: { valid: true, payload: {\n  action: 'video_ready',\n  project_id: b.project_id,\n  file_url: b.file_url,\n  thumbnail_url: b.thumbnail_url ?? null,\n  title: b.title ?? null,\n  base_caption: b.base_caption ?? b.caption ?? null,\n  caption_variants: Array.isArray(b.caption_variants) ? b.caption_variants : [],\n  hashtags: Array.isArray(b.hashtags) ? b.hashtags : [],\n  duration_sec: b.duration_sec ?? null,\n  width: b.width ?? null,\n  height: b.height ?? null,\n  source: b.source ?? 'n8n',\n  source_ref: b.source_ref ?? null,\n  target,\n} } }];"
+      }
+    },
+    {
+      "id": "ifv",
+      "name": "Заявка валидна?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        440,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "v1",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "true",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "rej",
+      "name": "Отказ",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        660,
+        200
+      ],
+      "notes": "Заявка не прошла проверку — вебхук отвечает причиной, а не generic-500.",
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ JSON.stringify({ ok: false, error: $json.error }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "intake",
+      "name": "publish-intake",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        660,
+        0
+      ],
+      "notes": "Принимает видео и ставит задания в очередь publish_jobs.",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Настройки').first().json.supabase_url + '/functions/v1/publish-intake' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-automation-key",
+              "value": "={{ $('Настройки').first().json.automation_key }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.payload) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "shape",
+      "name": "Сводка",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Ответ edge-функции → человеку и в вебхук.\nconst r = $input.first().json;\nconst body = r.body ?? r;\nconst ok = (r.statusCode ?? 200) < 300 && !body.error;\nconst err = body.error ?? body.message ?? (ok ? null : `HTTP ${r.statusCode}`);\nconst accounts = body.accounts ?? [];\nconst text = ok\n  ? `🎬 Видео принято в публикацию\\nЗаданий создано: ${body.created ?? 0}` +\n    (body.skipped ? `\\nПропущено (уже стояли): ${body.skipped}` : '') +\n    (accounts.length ? `\\nАккаунты:\\n• ${accounts.map((a) => `${a.account_name} — ${new Date(a.scheduled_at).toLocaleString('ru-RU')}`).join('\\n• ')}` : '')\n  : `❌ Видео не принято: ${err}`;\nreturn [{ json: { ok, video_id: body.video_id ?? null, created: body.created ?? 0, skipped: body.skipped ?? 0, error: err, text } }];"
+      }
+    },
+    {
+      "id": "iftg",
+      "name": "Telegram настроен?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1100,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "tg1",
+              "leftValue": "={{ $('Настройки').first().json.tg_bot_token }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "tg2",
+              "leftValue": "={{ $('Настройки').first().json.tg_chat_id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "tg",
+      "name": "Отчёт в Telegram",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        -100
+      ],
+      "notes": "Отчёт уходит только если в «Настройках» заполнены tg_bot_token и tg_chat_id.",
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://api.telegram.org/bot' + $('Настройки').first().json.tg_bot_token + '/sendMessage' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $('Настройки').first().json.tg_chat_id, text: $('Сводка').first().json.text, disable_web_page_preview: true }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": false,
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "resp",
+      "name": "Ответ",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1540,
+        0
+      ],
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{ JSON.stringify($('Сводка').first().json) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Видео готово": {
+      "main": [
+        [
+          {
+            "node": "Настройки",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Настройки": {
+      "main": [
+        [
+          {
+            "node": "Проверить заявку",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Проверить заявку": {
+      "main": [
+        [
+          {
+            "node": "Заявка валидна?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Заявка валидна?": {
+      "main": [
+        [
+          {
+            "node": "publish-intake",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Отказ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "publish-intake": {
+      "main": [
+        [
+          {
+            "node": "Сводка",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сводка": {
+      "main": [
+        [
+          {
+            "node": "Telegram настроен?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram настроен?": {
+      "main": [
+        [
+          {
+            "node": "Отчёт в Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Ответ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Отчёт в Telegram": {
+      "main": [
+        [
+          {
+            "node": "Ответ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
