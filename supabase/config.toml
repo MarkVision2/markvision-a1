@@ -105,6 +105,11 @@ verify_jwt = false
 [functions.ig-webhook]
 verify_jwt = false
 
+# Catch-up for dropped Instagram DM webhooks (codeword «хаб» etc).
+# Auth: x-automation-key = automation_settings.cron_secret (pg_cron).
+[functions.ig-dm-catchup]
+verify_jwt = false
+
 # Контент-центр: auth + доступ к проекту проверяются внутри (requireUser +
 # requireProjectAccess), данные считает RPC под service role строго по project_id.
 [functions.content-center]

@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
     // Subscribe this IG account to comment/message webhooks (Instagram Login path).
     // Without this, codeword auto-replies never fire for page-less accounts.
     await fetch(
-      `${GRAPH_IG}/${encodeURIComponent(igUserId)}/subscribed_apps?subscribed_fields=comments,messages&access_token=${encodeURIComponent(token)}`,
+      `${GRAPH_IG}/${encodeURIComponent(igUserId)}/subscribed_apps?subscribed_fields=comments,live_comments,messages,messaging_postbacks,messaging_referral,messaging_seen,standby&access_token=${encodeURIComponent(token)}`,
       { method: "POST" },
     ).catch(() => {});
 

@@ -392,7 +392,7 @@ async function syncOne(supa: any, account: any) {
       webhook.attempted = true;
       webhook.via = "page";
       const subRes = await fetch(
-        `${GRAPH_FB}/${pageId}/subscribed_apps?subscribed_fields=comments,messages&access_token=${encodeURIComponent(pageTok)}`,
+        `${GRAPH_FB}/${pageId}/subscribed_apps?subscribed_fields=comments,live_comments,messages,messaging_postbacks,messaging_referral,messaging_seen,standby&access_token=${encodeURIComponent(pageTok)}`,
         { method: "POST" },
       );
       const subJson = await subRes.json().catch(() => ({}));
@@ -406,7 +406,7 @@ async function syncOne(supa: any, account: any) {
       webhook.attempted = true;
       webhook.via = "instagram_login";
       const subRes = await fetch(
-        `${GRAPH_IG}/${encodeURIComponent(igId)}/subscribed_apps?subscribed_fields=comments,messages&access_token=${encodeURIComponent(loginTok)}`,
+        `${GRAPH_IG}/${encodeURIComponent(igId)}/subscribed_apps?subscribed_fields=comments,live_comments,messages,messaging_postbacks,messaging_referral,messaging_seen,standby&access_token=${encodeURIComponent(loginTok)}`,
         { method: "POST" },
       );
       const subJson = await subRes.json().catch(() => ({}));
