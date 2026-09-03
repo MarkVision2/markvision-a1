@@ -10,6 +10,8 @@ function ins(partial: Partial<DailyInsightRow> & Pick<DailyInsightRow, "date">):
     manualSpend: 0,
     manualSpendRaw: null,
     impressions: 0,
+    linkClicks: 0,
+    messages: 0,
     clicks: 0,
     leads: 0,
     autoLeads: 0,

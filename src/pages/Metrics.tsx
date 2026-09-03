@@ -232,7 +232,7 @@ const Metrics = () => {
     const emptyDay = (date: string): DailyInsightRow => ({
       date,
       spend: 0, autoSpend: 0, manualSpend: 0, manualSpendRaw: null,
-      impressions: 0, clicks: 0, leads: 0, autoLeads: 0, manualLeads: 0, manualLeadsRaw: null,
+      impressions: 0, clicks: 0, linkClicks: 0, messages: 0, leads: 0, autoLeads: 0, manualLeads: 0, manualLeadsRaw: null,
       pixelRevenue: 0, revenue: 0,
       diagnostics: 0, crmDiagnostics: 0, manualDiagnostics: 0, manualDiagnosticsRaw: null,
       diagnosticRevenue: 0, crmDiagnosticRevenue: 0, manualDiagnosticRevenue: 0, manualDiagnosticRevenueRaw: null,

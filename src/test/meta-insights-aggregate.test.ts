@@ -56,3 +56,25 @@ describe("aggregateCdiRows", () => {
     expect(daily[0].leads).toBe(3);
   });
 });
+
+describe("CTR и CPC", () => {
+  it("считаются по кликам по ссылке, как в Ads Manager", () => {
+    const { totals } = aggregateCdiRows([
+      cdiRow({ date: "2026-09-01", spend: 22648, impressions: 10000, clicks: 435, link_clicks: 120 }),
+    ]);
+
+    // Раньше брали все клики (435) и получали CTR 4.35% против 1.2% в Meta.
+    expect(totals.ctr).toBeCloseTo(1.2);
+    expect(totals.cpc).toBeCloseTo(22648 / 120);
+    expect(totals.clicks).toBe(435);
+  });
+
+  it("откатывается на все клики для строк, синхронизированных до link_clicks", () => {
+    const { totals } = aggregateCdiRows([
+      cdiRow({ date: "2026-09-01", spend: 1000, impressions: 1000, clicks: 50 }),
+    ]);
+
+    expect(totals.ctr).toBeCloseTo(5);
+    expect(totals.cpc).toBeCloseTo(20);
+  });
+});

@@ -1,6 +1,20 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireUser, userHasAnyRole } from "../_lib/auth.ts";
 import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
+// Ветка list_ad_accounts звала эти функции, но нигде их не импортировала —
+// запрос списка кабинетов через эту функцию падал с ReferenceError.
+import { fetchAllMetaAdAccounts, mapAdAccounts } from "../_lib/meta_list_ad_accounts.ts";
+import {
+  buildInsightsUrl,
+  fetchAllInsightPages,
+  leadsByDateFromCampaignRows,
+  isUnknownColumnError,
+  leadsOfObject,
+  messagesOfObject,
+  PURCHASE_ACTIONS,
+  sumActions,
+  withoutColumns,
+} from "../_lib/metaInsights.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -9,41 +23,6 @@ const corsHeaders = {
 
 const META_API_VERSION = "v21.0";
 
-// "Лиды с сайта / лид-формы" — берём максимум среди вариантов одного и того же события,
-// чтобы не задвоить (Meta часто дублирует одно и то же действие под разными именами).
-const LEAD_ACTIONS = [
-  "lead",
-  "leadgen.other",
-  "onsite_conversion.lead_grouped",
-  "offsite_conversion.fb_pixel_lead",
-  "onsite_web_lead",
-];
-// "Начатые переписки" — отдельное событие, считаем как лид и СУММИРУЕМ с лидами выше.
-// Только то событие, что Meta UI показывает в графе "Начало переписки".
-const MESSAGING_ACTIONS = [
-  "onsite_conversion.messaging_conversation_started_7d",
-];
-const PURCHASE_ACTIONS = [
-  "purchase",
-  "offsite_conversion.fb_pixel_purchase",
-  "omni_purchase",
-];
-
-function maxAction(actions: Array<{ action_type: string; value: string }> | undefined, types: string[]) {
-  if (!actions) return 0;
-  let max = 0;
-  for (const a of actions) {
-    if (types.includes(a.action_type)) {
-      const v = Number(a.value || 0);
-      if (v > max) max = v;
-    }
-  }
-  return max;
-}
-function sumActions(actions: Array<{ action_type: string; value: string }> | undefined, types: string[]) {
-  if (!actions) return 0;
-  return actions.filter((a) => types.includes(a.action_type)).reduce((s, a) => s + Number(a.value || 0), 0);
-}
 function normalizeActId(id: string) {
   const t = id.trim();
   if (/^act_\d+$/i.test(t)) return `act_${t.replace(/^act_/i, "")}`;
@@ -144,7 +123,7 @@ Deno.serve(async (req) => {
       const excludeRaw: string[] = Array.isArray(body.exclude_act_ids)
         ? body.exclude_act_ids
         : [];
-      const exclude = excludeRaw.map((x) => normalizeActIdList(String(x)));
+      const exclude = excludeRaw.map((x) => normalizeActId(String(x)));
       const token = await resolveMetaAccessToken(
         typeof body.access_token === "string" ? body.access_token : null,
       );
@@ -305,12 +284,16 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      const fields = ["date_start", "spend", "impressions", "clicks", "actions", "action_values"].join(",");
-      const timeRange = encodeURIComponent(JSON.stringify({ since, until }));
-      const insightsUrl = (tk: string) =>
-        `https://graph.facebook.com/${META_API_VERSION}/${actId}/insights` +
-        `?fields=${fields}&time_range=${timeRange}&time_increment=1&level=account&limit=500` +
-        `&access_token=${encodeURIComponent(tk)}`;
+      const insightsUrl = (tk: string, level: "account" | "campaign" = "account") =>
+        buildInsightsUrl({
+          apiVersion: META_API_VERSION,
+          actId,
+          since,
+          until,
+          token: tk,
+          level,
+          extraFields: level === "campaign" ? ["campaign_id"] : [],
+        });
       const currencyUrl = (tk: string) =>
         `https://graph.facebook.com/${META_API_VERSION}/${actId}` +
         `?fields=currency&access_token=${encodeURIComponent(tk)}`;
@@ -339,6 +322,26 @@ Deno.serve(async (req) => {
         ));
         const needConvert = accountCurrency !== "KZT";
         const ratesMap = needConvert ? await getRatesForDates(admin, dates) : new Map<string, number>();
+        const fallbackRate = needConvert
+          ? [...ratesMap.values()].find((r) => Number.isFinite(r) && r > 0) ?? null
+          : null;
+
+        // Лиды — отдельным запросом по кампаниям. Каждая кампания ведёт либо в
+        // переписку, либо в форму/на сайт, поэтому её результат — максимум по
+        // лид-событиям; сумма кампаний и есть лиды кабинета за день.
+        let campaignLeads: Map<string, { leads: number; messages: number }> | null = null;
+        let leadsSource = "campaigns";
+        try {
+          const campRows = await fetchAllInsightPages(
+            insightsUrl(usedTok, "campaign"),
+            (u) => fetchWithRetry(u),
+          );
+          campaignLeads = leadsByDateFromCampaignRows(campRows);
+        } catch (e) {
+          // Не валим синк: расход и клики уже есть, лиды посчитаем по аккаунту.
+          leadsSource = "account-fallback";
+          console.warn(`[meta-daily-sync] cabinet=${ext} campaign-level leads failed: ${(e as Error).message}`);
+        }
 
         const rows: Array<Record<string, unknown>> = [];
         let totalSpend = 0, totalLeads = 0, totalClicks = 0, totalRevenue = 0;
@@ -348,16 +351,20 @@ Deno.serve(async (req) => {
           let spend = Number(row?.spend ?? 0);
           const impressions = Number(row?.impressions ?? 0);
           const clicks = Number(row?.clicks ?? 0);
-          // Лиды = заявки (форма/сайт/пиксель) + начатые переписки в мессенджерах.
-          // Внутри каждой группы берём MAX, чтобы не задвоить (Meta дублирует одно и то же
-          // событие под разными action_type), а между группами — суммируем.
-          const formLeads = maxAction(row?.actions as any, LEAD_ACTIONS);
-          const msgLeads = maxAction(row?.actions as any, MESSAGING_ACTIONS);
-          const leads = formLeads + msgLeads;
-          let revenue = sumActions(row?.action_values as any, PURCHASE_ACTIONS);
+          // Клики по ссылке — именно по ним Ads Manager считает CTR и CPC.
+          const linkClicks = Number(row?.inline_link_clicks ?? 0);
+          // Лиды считаем по кампаниям (см. campaignLeads выше): кампания на переписки
+          // и кампания на форму меряются по-разному, а на уровне аккаунта их события
+          // складывались и двоили результат. Аккаунт — только запасной вариант.
+          const dayLeads = campaignLeads?.get(date);
+          const leads = dayLeads ? dayLeads.leads : leadsOfObject(row?.actions as never);
+          const messages = dayLeads ? dayLeads.messages : messagesOfObject(row?.actions as never);
+          let revenue = sumActions(row?.action_values as never, PURCHASE_ACTIONS);
           let storedCurrency = accountCurrency;
           if (needConvert) {
-            const rate = ratesMap.get(date);
+            // fallbackRate — первый доступный курс периода. Без него день без курса
+            // сохранялся в USD рядом с KZT-днями, и месяц суммировал разные валюты.
+            const rate = ratesMap.get(date) ?? fallbackRate;
             if (rate) {
               spend = spend * rate;
               revenue = revenue * rate;
@@ -366,14 +373,17 @@ Deno.serve(async (req) => {
           }
           const cpl = leads > 0 ? spend / leads : 0;
           const cpm = impressions > 0 ? (spend / impressions) * 1000 : 0;
-          const cpc = clicks > 0 ? spend / clicks : 0;
-          const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0;
+          // CTR/CPC — по кликам по ссылке (как в Ads Manager); если Meta их не отдала,
+          // откатываемся на все клики, чтобы колонка не обнулилась.
+          const ctrClicks = linkClicks > 0 ? linkClicks : clicks;
+          const cpc = ctrClicks > 0 ? spend / ctrClicks : 0;
+          const ctr = impressions > 0 ? (ctrClicks / impressions) * 100 : 0;
           rows.push({
             cabinet_id: cab.id,
             external_id: actId,
             project_id: (cab as any).project_id ?? null,
             date,
-            spend, impressions, clicks, leads, revenue,
+            spend, impressions, clicks, link_clicks: linkClicks, leads, messages, revenue,
             cpl, cpm, cpc, ctr,
             currency: storedCurrency,
             synced_at: new Date().toISOString(),
@@ -381,9 +391,17 @@ Deno.serve(async (req) => {
           totalSpend += spend; totalLeads += leads; totalClicks += clicks; totalRevenue += revenue;
         }
         if (rows.length > 0) {
-          const { error: upErr } = await admin
+          let { error: upErr } = await admin
             .from("cabinet_daily_insights")
             .upsert(rows, { onConflict: "external_id,date" });
+          // Функция может уехать раньше миграции с link_clicks/messages —
+          // тогда пишем в старую схему, а не теряем весь синк.
+          if (upErr && isUnknownColumnError(upErr.message)) {
+            console.warn(`[meta-daily-sync] cabinet=${ext} новые колонки ещё не в схеме, пишу без них`);
+            ({ error: upErr } = await admin
+              .from("cabinet_daily_insights")
+              .upsert(withoutColumns(rows), { onConflict: "external_id,date" }));
+          }
           if (upErr) {
             results.push({ cabinet_id: cab.id, cabinet: cabName, ok: false, error: upErr.message });
             console.error(`[meta-daily-sync] cabinet=${ext} upsert error: ${upErr.message}`);
@@ -392,7 +410,7 @@ Deno.serve(async (req) => {
         }
         results.push({
           cabinet_id: cab.id, cabinet: cabName, ok: true,
-          since, until, days: rows.length,
+          since, until, days: rows.length, leads_source: leadsSource,
           spend: totalSpend, leads: totalLeads, clicks: totalClicks, revenue: totalRevenue,
         });
         console.log(

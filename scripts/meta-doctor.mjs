@@ -5,7 +5,8 @@
  * Ничего не меняет — только читает Graph API и Supabase. Нужен, чтобы понять,
  * почему цифры в «Управлении рекламой» расходятся с Ads Manager:
  *   1) показывает ВСЕ action_type за период (видно, двоятся ли лиды);
- *   2) считает лиды по формуле пайплайна (max(LEAD_ACTIONS) + max(MESSAGING));
+ *   2) считает лиды по кампаниям (как пайплайн) и показывает, сколько давала
+ *      старая формула «заявки + переписки»;
  *   3) сравнивает clicks (все клики) с inline_link_clicks (клики по ссылке) —
  *      Ads Manager по умолчанию показывает CTR/CPC именно по link clicks;
  *   4) тянет те же данные с use_unified_attribution_setting=true — это режим,
@@ -66,7 +67,7 @@ async function graph(path, params, token) {
   return j;
 }
 
-async function insights(actId, since, until, token, unified) {
+async function insights(actId, since, until, token, unified, level = "account") {
   const params = {
     fields: [
       "date_start",
@@ -79,9 +80,10 @@ async function insights(actId, since, until, token, unified) {
     ].join(","),
     time_range: JSON.stringify({ since, until }),
     time_increment: "1",
-    level: "account",
+    level,
     limit: "500",
   };
+  if (level === "campaign") params.fields += ",campaign_id";
   if (unified) params.use_unified_attribution_setting = "true";
   const rows = [];
   let j = await graph(`${actId}/insights`, params, token);
@@ -96,24 +98,43 @@ async function insights(actId, since, until, token, unified) {
   return rows;
 }
 
-/** Считает лиды ровно так, как это делает meta-daily-sync. */
+/**
+ * Лиды одного объекта — как считает meta-daily-sync после фикса: максимум по всем
+ * лид-событиям, включая переписки (складывать нельзя — Meta кладёт один диалог
+ * сразу в несколько action_type).
+ */
 function pipelineLeads(row) {
   const form = maxAction(row.actions, LEAD_ACTIONS);
   const msg = maxAction(row.actions, MESSAGING_ACTIONS);
-  return { form, msg, leads: form + msg };
+  return { form, msg, leads: Math.max(form, msg), legacyLeads: form + msg };
 }
 
-function totals(rows) {
-  const t = { spend: 0, impressions: 0, clicks: 0, linkClicks: 0, form: 0, msg: 0, leads: 0 };
-  for (const r of rows) {
+/** Лиды по дням = сумма кампаний за день (как в meta-daily-sync). */
+function leadsByDate(campaignRows) {
+  const byDate = new Map();
+  for (const r of campaignRows) {
     const l = pipelineLeads(r);
+    const cur = byDate.get(r.date_start) ?? { leads: 0, messages: 0, legacyLeads: 0 };
+    cur.leads += l.leads;
+    cur.messages += l.msg;
+    cur.legacyLeads += l.legacyLeads;
+    byDate.set(r.date_start, cur);
+  }
+  return byDate;
+}
+
+function totals(rows, byDate) {
+  const t = { spend: 0, impressions: 0, clicks: 0, linkClicks: 0, msg: 0, leads: 0, legacyLeads: 0 };
+  for (const r of rows) {
     t.spend += num(r.spend);
     t.impressions += num(r.impressions);
     t.clicks += num(r.clicks);
     t.linkClicks += num(r.inline_link_clicks);
-    t.form += l.form;
-    t.msg += l.msg;
+    const day = byDate?.get(r.date_start);
+    const l = day ?? pipelineLeads(r);
+    t.msg += day ? day.messages : l.msg;
     t.leads += l.leads;
+    t.legacyLeads += l.legacyLeads;
   }
   return t;
 }
@@ -158,49 +179,56 @@ async function main() {
     );
   }
 
-  const [rowsDefault, rowsUnified] = await Promise.all([
-    insights(actId, since, until, token, false),
-    insights(actId, since, until, token, true).catch((e) => {
-      console.log(`  ⚠ unified-запрос не прошёл: ${e.message}`);
+  // Аккаунт — расход/клики; кампании — лиды (так же считает meta-daily-sync).
+  const [rowsDefault, campaignRows, rowsUnified] = await Promise.all([
+    insights(actId, since, until, token, true),
+    insights(actId, since, until, token, true, "campaign").catch((e) => {
+      console.log(`  ⚠ запрос по кампаниям не прошёл: ${e.message}`);
       return null;
     }),
+    insights(actId, since, until, token, false).catch(() => null),
   ]);
 
-  const tDef = totals(rowsDefault);
-  const tUni = rowsUnified ? totals(rowsUnified) : null;
+  const byDate = campaignRows ? leadsByDate(campaignRows) : null;
+  const tDef = totals(rowsDefault, byDate);
+  const tUni = rowsUnified ? totals(rowsUnified, null) : null;
 
-  console.log(`\n=== Meta, ${since}..${until} (окно атрибуции по умолчанию, как в синке) ===`);
+  console.log(`\n=== Meta, ${since}..${until} (окно атрибуции Ads Manager) ===`);
   console.log(
     `  ${pad("дата", 12)}${padL("расход", 12)}${padL("показы", 10)}${padL("клики", 8)}` +
-    `${padL("по ссылке", 11)}${padL("лиды-форма", 12)}${padL("переписки", 11)}${padL("итог лидов", 12)}`,
+    `${padL("по ссылке", 11)}${padL("переписки", 11)}${padL("лиды", 8)}${padL("было", 8)}`,
   );
   for (const r of rowsDefault) {
-    const l = pipelineLeads(r);
+    const day = byDate?.get(r.date_start) ?? pipelineLeads(r);
+    const msg = day.messages ?? day.msg;
     console.log(
       `  ${pad(r.date_start, 12)}${padL(fmt(num(r.spend)), 12)}${padL(num(r.impressions), 10)}` +
-      `${padL(num(r.clicks), 8)}${padL(num(r.inline_link_clicks), 11)}${padL(l.form, 12)}` +
-      `${padL(l.msg, 11)}${padL(l.leads, 12)}`,
+      `${padL(num(r.clicks), 8)}${padL(num(r.inline_link_clicks), 11)}${padL(msg, 11)}` +
+      `${padL(day.leads, 8)}${padL(day.legacyLeads, 8)}`,
     );
   }
   console.log(
     `  ${pad("ИТОГО", 12)}${padL(fmt(tDef.spend), 12)}${padL(tDef.impressions, 10)}${padL(tDef.clicks, 8)}` +
-    `${padL(tDef.linkClicks, 11)}${padL(tDef.form, 12)}${padL(tDef.msg, 11)}${padL(tDef.leads, 12)}`,
+    `${padL(tDef.linkClicks, 11)}${padL(tDef.msg, 11)}${padL(tDef.leads, 8)}${padL(tDef.legacyLeads, 8)}`,
   );
+  console.log(`  «было» — старая формула (заявки + переписки), из-за неё лиды двоились.`);
 
   const ctrAll = tDef.impressions ? (tDef.clicks / tDef.impressions) * 100 : 0;
   const ctrLink = tDef.impressions ? (tDef.linkClicks / tDef.impressions) * 100 : 0;
   const cpcAll = tDef.clicks ? tDef.spend / tDef.clicks : 0;
   const cpcLink = tDef.linkClicks ? tDef.spend / tDef.linkClicks : 0;
-  console.log("\n=== CTR / CPC: как считает система vs как показывает Ads Manager ===");
-  console.log(`  CTR  система (все клики): ${fmt(ctrAll)}%     Ads Manager (клики по ссылке): ${fmt(ctrLink)}%`);
-  console.log(`  CPC  система (все клики): ${fmt(cpcAll)}      Ads Manager (клики по ссылке): ${fmt(cpcLink)}`);
+  console.log("\n=== CTR / CPC ===");
+  console.log(`  по кликам по ссылке (так теперь считает система и так показывает Ads Manager):`);
+  console.log(`    CTR ${fmt(ctrLink)}%    CPC ${fmt(cpcLink)}`);
+  console.log(`  по всем кликам (как было раньше — лайки и клики по профилю тоже считались):`);
+  console.log(`    CTR ${fmt(ctrAll)}%    CPC ${fmt(cpcAll)}`);
 
   if (tUni) {
-    console.log("\n=== Влияние окна атрибуции (use_unified_attribution_setting=true = как в Ads Manager) ===");
-    console.log(`  лиды:   синк ${tDef.leads}   ↔  Ads Manager ${tUni.leads}`);
-    console.log(`  расход: синк ${fmt(tDef.spend)}   ↔  Ads Manager ${fmt(tUni.spend)}`);
-    if (tUni.leads !== tDef.leads) {
-      console.log("  ⚠ расхождение: система пишет лиды в другом окне атрибуции, чем видит пользователь в Meta");
+    console.log("\n=== Окно атрибуции ===");
+    console.log(`  окно Ads Manager (unified):   расход ${fmt(tDef.spend)}   лид-событий ${tDef.legacyLeads}`);
+    console.log(`  окно API по умолчанию:        расход ${fmt(tUni.spend)}   лид-событий ${tUni.legacyLeads}`);
+    if (tUni.legacyLeads !== tDef.legacyLeads) {
+      console.log("  ⚠ окна дают разные конверсии — без unified цифры не сходились бы с Meta");
     }
   }
 
@@ -214,28 +242,19 @@ async function main() {
   const sorted = [...byType.entries()].sort((a, b) => b[1] - a[1]);
   for (const [type, value] of sorted) {
     const mark = LEAD_ACTIONS.includes(type)
-      ? " ← в лиды (max)"
+      ? " ← лид-событие"
       : MESSAGING_ACTIONS.includes(type)
-        ? " ← в лиды (+ переписки)"
+        ? " ← начатые переписки (тот же лид)"
         : "";
     console.log(`  ${padL(fmt(value, 0), 8)}  ${type}${mark}`);
   }
 
-  // Двойной счёт: если «lead» уже включает переписки, сумма form+msg завышена.
-  const leadTotal = byType.get("lead") ?? 0;
-  const grouped = byType.get("onsite_conversion.lead_grouped") ?? 0;
-  const msgTotal = byType.get(MESSAGING_ACTIONS[0]) ?? 0;
-  if (msgTotal > 0 && leadTotal > 0) {
-    console.log("\n=== Проверка на двойной счёт лидов ===");
-    console.log(`  lead=${fmt(leadTotal, 0)}  lead_grouped=${fmt(grouped, 0)}  переписки=${fmt(msgTotal, 0)}`);
-    if (leadTotal >= grouped + msgTotal && grouped > 0) {
-      console.log(
-        "  ⚠ похоже, «lead» уже включает переписки — тогда система двоит: " +
-        `реально ${fmt(leadTotal, 0)}, а записывает ${tDef.leads}`,
-      );
-    } else {
-      console.log("  события выглядят независимыми, сумма корректна (сверьте с Ads Manager)");
-    }
+  if (tDef.legacyLeads !== tDef.leads) {
+    console.log("\n=== Двойной счёт лидов ===");
+    console.log(
+      `  старая формула: ${tDef.legacyLeads}   новая (по кампаниям): ${tDef.leads}   ` +
+      `завышение: ${fmt(((tDef.legacyLeads - tDef.leads) / Math.max(1, tDef.leads)) * 100, 0)}%`,
+    );
   }
 
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

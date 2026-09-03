@@ -21,6 +21,7 @@ on:
       - "supabase/functions/_lib/meta_list_ad_accounts.ts"
       - "supabase/functions/_lib/facebookConnect.ts"
       - "supabase/functions/_lib/metaToken.ts"
+      - "supabase/functions/_lib/metaInsights.ts"
       - "supabase/functions/_lib/creativePoster.ts"
       - "supabase/functions/_lib/auth.ts"
       - ".github/workflows/deploy-meta-edge-functions.yml"

@@ -334,6 +334,11 @@ const CabinetRow = ({ cabinet, expanded, onToggle, monthCursor, onToggleOnline, 
           <Metric
             label="Лиды Meta"
             value={formatNumber(totals?.leads ?? 0)}
+            sub={
+              totals && totals.messages > 0
+                ? `из них переписок ${formatNumber(totals.messages)}`
+                : undefined
+            }
           />
           <Metric
             label="Лиды CRM"

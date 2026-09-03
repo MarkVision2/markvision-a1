@@ -11,6 +11,17 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireUser, userHasAnyRole } from "../_lib/auth.ts";
 import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
 import { pickBestUrl, pickBestVideoThumb, ensurePosterInStorage } from "../_lib/creativePoster.ts";
+import {
+  buildInsightsUrl,
+  isUnknownColumnError,
+  leadsOfObject,
+  messagesOfObject,
+  purchasesOfObject,
+  PURCHASE_ACTIONS,
+  sumActions,
+  withoutColumns,
+  type MetaAction,
+} from "../_lib/metaInsights.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -19,44 +30,10 @@ const corsHeaders = {
 
 const META_API_VERSION = "v21.0";
 
-const LEAD_ACTIONS = [
-  "lead",
-  "leadgen.other",
-  "onsite_conversion.lead_grouped",
-  "offsite_conversion.fb_pixel_lead",
-  "onsite_web_lead",
-];
-const MESSAGING_ACTIONS = ["onsite_conversion.messaging_conversation_started_7d"];
-const PURCHASE_ACTIONS = ["purchase", "offsite_conversion.fb_pixel_purchase", "omni_purchase"];
-
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status, headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
-}
-
-function maxAction(
-  actions: Array<{ action_type: string; value: string }> | undefined,
-  types: string[],
-) {
-  if (!actions) return 0;
-  let max = 0;
-  for (const a of actions) {
-    if (types.includes(a.action_type)) {
-      const v = Number(a.value || 0);
-      if (v > max) max = v;
-    }
-  }
-  return max;
-}
-function sumActions(
-  actions: Array<{ action_type: string; value: string }> | undefined,
-  types: string[],
-) {
-  if (!actions) return 0;
-  return actions
-    .filter((a) => types.includes(a.action_type))
-    .reduce((s, a) => s + Number(a.value || 0), 0);
 }
 
 function normalizeActId(id: string) {
@@ -235,6 +212,8 @@ interface ProcessedInsight {
   spend: number;
   impressions: number;
   clicks: number;
+  /** Клики по ссылке — по ним Ads Manager считает CTR и CPC. */
+  linkClicks: number;
   leads: number;
   messages: number;
   purchases: number;
@@ -252,15 +231,21 @@ function processInsightRow(
   let spend = Number(row?.spend ?? 0);
   const impressions = Number(row?.impressions ?? 0);
   const clicks = Number(row?.clicks ?? 0);
-  const actions = row?.actions as Array<{ action_type: string; value: string }> | undefined;
-  const actionValues = row?.action_values as Array<{ action_type: string; value: string }> | undefined;
-  const formLeads = maxAction(actions, LEAD_ACTIONS);
-  const messages = maxAction(actions, MESSAGING_ACTIONS);
-  const purchases = maxAction(actions, PURCHASE_ACTIONS);
+  const linkClicks = Number(row?.inline_link_clicks ?? 0);
+  const actions = row?.actions as MetaAction[] | undefined;
+  const actionValues = row?.action_values as MetaAction[] | undefined;
+  // Одна кампания (или объявление) ведёт либо в переписку, либо в форму/на сайт,
+  // поэтому её результат — максимум по лид-событиям, а не сумма: складывая, мы
+  // двоили диалоги, которые Meta кладёт и в `lead`, и в messaging-событие.
+  const leads = leadsOfObject(actions);
+  const messages = messagesOfObject(actions);
+  const purchases = purchasesOfObject(actions);
   let revenue = sumActions(actionValues, PURCHASE_ACTIONS);
   let currency = accountCurrency;
   if (accountCurrency !== "KZT") {
-    const rate = rates.get(date);
+    // Нет курса на день — берём первый доступный за период: иначе строка
+    // осталась бы в USD рядом с KZT-строками и итог смешал бы валюты.
+    const rate = rates.get(date) ?? [...rates.values()].find((r) => Number.isFinite(r) && r > 0);
     if (rate) {
       spend = spend * rate;
       revenue = revenue * rate;
@@ -272,7 +257,8 @@ function processInsightRow(
     spend,
     impressions,
     clicks,
-    leads: formLeads + messages,
+    linkClicks,
+    leads,
     messages,
     purchases,
     revenue,
@@ -581,18 +567,24 @@ Deno.serve(async (req) => {
       } // end !insightsOnly
 
       // ---- 4. Insights at campaign + ad level ----
-      const insightFields = ["date_start", "spend", "impressions", "clicks", "actions", "action_values"].join(",");
-
       const fetchInsightsWindow = async (
         level: "campaign" | "ad",
         from: string,
         to: string,
       ): Promise<Record<string, unknown>[]> => {
         const idField = level === "campaign" ? "campaign_id" : "ad_id";
-        const tr = encodeURIComponent(JSON.stringify({ since: from, until: to }));
         try {
           return await fetchAllPagesSafe<Record<string, unknown>>(
-            (limit) => `https://graph.facebook.com/${META_API_VERSION}/${actId}/insights?fields=${insightFields},${idField}&time_range=${tr}&time_increment=1&level=${level}&limit=${limit}&access_token=${encodeURIComponent(token)}`,
+            (limit) => buildInsightsUrl({
+              apiVersion: META_API_VERSION,
+              actId,
+              since: from,
+              until: to,
+              token,
+              level,
+              extraFields: [idField],
+              limit,
+            }),
             200,
             25,
           );
@@ -640,6 +632,7 @@ Deno.serve(async (req) => {
             spend: processed.spend,
             impressions: processed.impressions,
             clicks: processed.clicks,
+            link_clicks: processed.linkClicks,
             leads: processed.leads,
             messages: processed.messages,
             purchases: processed.purchases,
@@ -651,9 +644,15 @@ Deno.serve(async (req) => {
         .filter((r): r is NonNullable<typeof r> => r !== null);
 
       if (campDailyRows.length > 0) {
-        const { error } = await admin
+        let { error } = await admin
           .from("meta_campaign_daily")
           .upsert(campDailyRows, { onConflict: "campaign_id,date" });
+        // link_clicks мог ещё не приехать миграцией — пишем в старую схему.
+        if (error && isUnknownColumnError(error.message, ["link_clicks"])) {
+          ({ error } = await admin
+            .from("meta_campaign_daily")
+            .upsert(withoutColumns(campDailyRows, ["link_clicks"]), { onConflict: "campaign_id,date" }));
+        }
         if (error) throw error;
       }
 
@@ -670,6 +669,7 @@ Deno.serve(async (req) => {
             spend: processed.spend,
             impressions: processed.impressions,
             clicks: processed.clicks,
+            link_clicks: processed.linkClicks,
             leads: processed.leads,
             messages: processed.messages,
             purchases: processed.purchases,
@@ -681,9 +681,14 @@ Deno.serve(async (req) => {
         .filter((r): r is NonNullable<typeof r> => r !== null);
 
       if (adDailyRows.length > 0) {
-        const { error } = await admin
+        let { error } = await admin
           .from("meta_creative_daily")
           .upsert(adDailyRows, { onConflict: "ad_id,date" });
+        if (error && isUnknownColumnError(error.message, ["link_clicks"])) {
+          ({ error } = await admin
+            .from("meta_creative_daily")
+            .upsert(withoutColumns(adDailyRows, ["link_clicks"]), { onConflict: "ad_id,date" }));
+        }
         if (error) throw error;
       }
 

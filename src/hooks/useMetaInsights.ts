@@ -13,6 +13,10 @@ export interface DailyInsightRow {
   manualSpendRaw: number | null;
   impressions: number;
   clicks: number;
+  /** Клики по ссылке — по ним считаются CTR и CPC (как в Ads Manager). */
+  linkClicks: number;
+  /** Начатые переписки; уже входят в leads, отдельно не суммируются. */
+  messages: number;
   leads: number;
   autoLeads: number;
   manualLeads: number;
@@ -88,6 +92,8 @@ export interface InsightTotals {
   spend: number;
   impressions: number;
   clicks: number;
+  linkClicks: number;
+  messages: number;
   leads: number;
   /** FB pixel revenue. Не используется в KPI выручки. */
   pixelRevenue: number;
@@ -144,7 +150,7 @@ const RNP_DAY_ZERO = {
 } as const;
 
 const EMPTY_TOTALS: InsightTotals = {
-  spend: 0, impressions: 0, clicks: 0, leads: 0, pixelRevenue: 0, revenue: 0,
+  spend: 0, impressions: 0, clicks: 0, linkClicks: 0, messages: 0, leads: 0, pixelRevenue: 0, revenue: 0,
   cpl: 0, cpm: 0, cpc: 0, ctr: 0, romi: 0,
   diagnostics: 0, diagnosticRevenue: 0, sales: 0, salesRevenue: 0, crmRevenue: 0,
 };
@@ -172,6 +178,8 @@ export interface CdiRow {
   spend: number | string;
   impressions: number;
   clicks: number;
+  link_clicks?: number | null;
+  messages?: number | null;
   leads: number;
   revenue: number | string;
   currency: string;
@@ -204,6 +212,8 @@ function aggregate(rows: CdiRow[]): InsightsData {
     const pixelRevenue = Number(r.revenue) || 0;
     const impressions = Number(r.impressions) || 0;
     const clicks = Number(r.clicks) || 0;
+    const linkClicks = Number(r.link_clicks) || 0;
+    const messages = Number(r.messages) || 0;
     const leads = resolveCdiMetric(r.manual_leads, autoLeadsVal);
     // Override-семантика: ручные значения ПЕРЕЗАПИСЫВАЮТ CRM, а не суммируются с ним.
     // Раньше складывали (crm + manual) — это приводило к задвоению, когда менеджер вводил
@@ -237,6 +247,8 @@ function aggregate(rows: CdiRow[]): InsightsData {
     totals.spend += spend;
     totals.impressions += impressions;
     totals.clicks += clicks;
+    totals.linkClicks += linkClicks;
+    totals.messages += messages;
     totals.leads += leads;
     totals.pixelRevenue += pixelRevenue;
     totals.revenue += pixelRevenue;
@@ -255,6 +267,8 @@ function aggregate(rows: CdiRow[]): InsightsData {
       cur.autoLeads = (cur.autoLeads ?? 0) + autoLeadsVal;
       cur.impressions += impressions;
       cur.clicks += clicks;
+      cur.linkClicks += linkClicks;
+      cur.messages += messages;
       cur.leads += leads;
       if (isManualOverrideActive(r.manual_leads)) {
         cur.manualLeadsRaw = Number(r.manual_leads);
@@ -295,7 +309,7 @@ function aggregate(rows: CdiRow[]): InsightsData {
         ...RNP_DAY_ZERO,
         date: r.date, spend, autoSpend: autoSpendVal, manualSpend: 0,
         manualSpendRaw: isManualOverrideActive(r.manual_spend) ? Number(r.manual_spend) : null,
-        impressions, clicks, leads, autoLeads: autoLeadsVal, manualLeads: 0,
+        impressions, clicks, linkClicks, messages, leads, autoLeads: autoLeadsVal, manualLeads: 0,
         manualLeadsRaw: isManualOverrideActive(r.manual_leads) ? Number(r.manual_leads) : null,
         pixelRevenue, revenue: pixelRevenue,
         diagnostics, crmDiagnostics: crmDiag, manualDiagnostics: manDiag,
@@ -314,8 +328,13 @@ function aggregate(rows: CdiRow[]): InsightsData {
   }
   totals.cpl = totals.leads > 0 ? totals.spend / totals.leads : 0;
   totals.cpm = totals.impressions > 0 ? (totals.spend / totals.impressions) * 1000 : 0;
-  totals.cpc = totals.clicks > 0 ? totals.spend / totals.clicks : 0;
-  totals.ctr = totals.impressions > 0 ? (totals.clicks / totals.impressions) * 100 : 0;
+  // CTR и CPC — по кликам по ссылке: Ads Manager в основных колонках показывает
+  // именно их, а «все клики» включают лайки, комментарии и клики по профилю,
+  // из-за чего CTR в интерфейсе выглядел в разы выше метовского. Строки,
+  // синхронизированные до появления link_clicks, считаются по всем кликам.
+  const ctrClicks = totals.linkClicks > 0 ? totals.linkClicks : totals.clicks;
+  totals.cpc = ctrClicks > 0 ? totals.spend / ctrClicks : 0;
+  totals.ctr = totals.impressions > 0 ? (ctrClicks / totals.impressions) * 100 : 0;
   // ROMI считается строго по реальной выручке (CRM/manual), без FB pixel fallback.
   // Это даёт ту же ROMI на Dashboard/Reports/Analytics/Metrics для одного периода.
   totals.romi = totals.spend > 0 ? ((totals.crmRevenue - totals.spend) / totals.spend) * 100 : 0;

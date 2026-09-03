@@ -47,6 +47,7 @@ interface RawDailyAgg {
   spend: number | string;
   impressions: number | string;
   clicks: number | string;
+  link_clicks?: number | string | null;
   leads: number | string;
   messages: number | string;
   purchases: number | string;
@@ -69,6 +70,7 @@ interface RawCampaignDaily {
   spend: number | string;
   impressions: number | string;
   clicks: number | string;
+  link_clicks?: number | string | null;
   leads: number | string;
   messages: number | string;
   purchases: number | string;
@@ -79,6 +81,8 @@ type DailyMetricBag = {
   spend: number;
   impressions: number;
   clicks: number;
+  /** Клики по ссылке — по ним CTR/CPC, как в Ads Manager. */
+  linkClicks: number;
   leads: number;
   messages: number;
   purchases: number;
@@ -86,7 +90,7 @@ type DailyMetricBag = {
 };
 
 function emptyMetrics(): DailyMetricBag {
-  return { spend: 0, impressions: 0, clicks: 0, leads: 0, messages: 0, purchases: 0, revenue: 0 };
+  return { spend: 0, impressions: 0, clicks: 0, linkClicks: 0, leads: 0, messages: 0, purchases: 0, revenue: 0 };
 }
 
 function accumulateDaily(
@@ -96,6 +100,7 @@ function accumulateDaily(
     spend: number | string;
     impressions: number | string;
     clicks: number | string;
+    link_clicks?: number | string | null;
     leads: number | string;
     messages: number | string;
     purchases: number | string;
@@ -106,6 +111,7 @@ function accumulateDaily(
   cur.spend += Number(d.spend) || 0;
   cur.impressions += Number(d.impressions) || 0;
   cur.clicks += Number(d.clicks) || 0;
+  cur.linkClicks += Number(d.link_clicks) || 0;
   cur.leads += Number(d.leads) || 0;
   cur.messages += Number(d.messages) || 0;
   cur.purchases += Number(d.purchases) || 0;
@@ -119,12 +125,34 @@ function sumSpend(agg: Map<string, DailyMetricBag>): number {
   return s;
 }
 
+/**
+ * link_clicks появился миграцией 20260903120000. Пока она не применена, читаем
+ * без него — иначе вкладки «Креативы»/«Кампании» падали бы на неизвестной колонке.
+ */
+let linkClicksAvailable = true;
+
+const CREATIVE_DAILY_BASE = "ad_id, spend, impressions, clicks, leads, messages, purchases, revenue";
+const CAMPAIGN_DAILY_BASE = "campaign_id, spend, impressions, clicks, leads, messages, purchases, revenue";
+
+const creativeDailySelect = () =>
+  linkClicksAvailable ? `${CREATIVE_DAILY_BASE}, link_clicks` : CREATIVE_DAILY_BASE;
+const campaignDailySelect = () =>
+  linkClicksAvailable ? `${CAMPAIGN_DAILY_BASE}, link_clicks` : CAMPAIGN_DAILY_BASE;
+
+function isMissingLinkClicks(message: string): boolean {
+  return /link_clicks/i.test(message);
+}
+
 async function fetchPaged<T>(
   runPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
 ): Promise<T[]> {
   const out: T[] = [];
   for (let from = 0; ; from += PAGE_SIZE) {
-    const { data, error } = await runPage(from, from + PAGE_SIZE - 1);
+    let { data, error } = await runPage(from, from + PAGE_SIZE - 1);
+    if (error && isMissingLinkClicks(error.message) && linkClicksAvailable) {
+      linkClicksAvailable = false;
+      ({ data, error } = await runPage(from, from + PAGE_SIZE - 1));
+    }
     if (error) throw new Error(error.message);
     const chunk = data ?? [];
     out.push(...chunk);
@@ -179,7 +207,7 @@ async function fetchCreativeDailyByProject(
   return fetchPaged((from, to) =>
     supabase
       .from("meta_creative_daily")
-      .select("ad_id, spend, impressions, clicks, leads, messages, purchases, revenue")
+      .select(creativeDailySelect() as "*")
       .eq("project_id", projectId)
       .gte("date", since)
       .lte("date", until)
@@ -200,7 +228,7 @@ async function fetchCreativeDailyByAdIds(
     const page = await fetchPaged<RawDailyAgg>((from, to) =>
       supabase
         .from("meta_creative_daily")
-        .select("ad_id, spend, impressions, clicks, leads, messages, purchases, revenue")
+        .select(creativeDailySelect() as "*")
         .in("ad_id", ids)
         .gte("date", since)
         .lte("date", until)
@@ -221,7 +249,7 @@ async function fetchCampaignDailyByProject(
   return fetchPaged((from, to) =>
     supabase
       .from("meta_campaign_daily")
-      .select("campaign_id, spend, impressions, clicks, leads, messages, purchases, revenue")
+      .select(campaignDailySelect() as "*")
       .eq("project_id", projectId)
       .gte("date", since)
       .lte("date", until)
@@ -242,7 +270,7 @@ async function fetchCampaignDailyByIds(
     const page = await fetchPaged<RawCampaignDaily>((from, to) =>
       supabase
         .from("meta_campaign_daily")
-        .select("campaign_id, spend, impressions, clicks, leads, messages, purchases, revenue")
+        .select(campaignDailySelect() as "*")
         .in("campaign_id", ids)
         .gte("date", since)
         .lte("date", until)
@@ -400,9 +428,10 @@ export async function fetchMetaDashboard(
       crmDiagnostics: 0,
       crmRevenue: 0,
     };
-    const ctr = a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0;
+    const ctrClicks = a.linkClicks > 0 ? a.linkClicks : a.clicks;
+    const ctr = a.impressions > 0 ? (ctrClicks / a.impressions) * 100 : 0;
     const cpl = a.leads > 0 ? a.spend / a.leads : 0;
-    const cpc = a.clicks > 0 ? a.spend / a.clicks : 0;
+    const cpc = ctrClicks > 0 ? a.spend / ctrClicks : 0;
     const cpm = a.impressions > 0 ? (a.spend / a.impressions) * 1000 : 0;
     const romi = a.spend > 0 ? ((a.revenue - a.spend) / a.spend) * 100 : 0;
     const crmCpl = cr.crmLeads > 0 ? a.spend / cr.crmLeads : 0;
@@ -458,7 +487,8 @@ export async function fetchMetaDashboard(
   const campaignRows: MetaCampaignRow[] = camps.map((c) => {
     const a = campAgg.get(c.campaign_id) ?? emptyMetrics();
     const cr = crmByCampaign.get(c.campaign_id) ?? { crmLeads: 0, crmQualified: 0, crmSales: 0, crmRevenue: 0 };
-    const ctr = a.impressions > 0 ? (a.clicks / a.impressions) * 100 : 0;
+    const ctrClicks = a.linkClicks > 0 ? a.linkClicks : a.clicks;
+    const ctr = a.impressions > 0 ? (ctrClicks / a.impressions) * 100 : 0;
     const cpl = a.leads > 0 ? a.spend / a.leads : 0;
     const romi = a.spend > 0 ? ((a.revenue - a.spend) / a.spend) * 100 : 0;
     const crmRomi = a.spend > 0 ? ((cr.crmRevenue - a.spend) / a.spend) * 100 : 0;
