@@ -59,6 +59,8 @@ export interface AvailablePage {
   ig_user_id: string | null;
   ig_username: string | null;
   ig_name: string | null;
+  ig_avatar_url?: string | null;
+  ig_followers?: number | null;
   connectable: boolean;
   already_connected: boolean;
 }
@@ -241,6 +243,14 @@ export const PUBLISH_MODE_META: Record<PublishMode, { label: string }> = {
 
 /* ───────────────────────────── чистые хелперы ───────────────────────────── */
 
+/** 12 345 → «12,3 тыс.», 1 234 567 → «1,2 млн» — для строк аккаунтов. */
+export function formatFollowers(n: number | null | undefined): string {
+  if (n == null) return "";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} млн`;
+  if (n >= 1_000) return `${(n / 1_000).toLocaleString("ru-RU", { maximumFractionDigits: 1 })} тыс.`;
+  return n.toLocaleString("ru-RU");
+}
+
 export type HealthTone = "good" | "warn" | "bad";
 
 /** Тон индикатора здоровья аккаунта: ≥70 — хорошо, ≥40 — внимание, иначе плохо. */
@@ -387,8 +397,10 @@ export const publishingApi = {
   /** meta_token — вставленный вручную User Access Token, когда токены проекта площадка отклоняет. */
   available: (project_id: string, meta_token?: string | null) =>
     call<{ pages: AvailablePage[] }>("available", { project_id, ...(meta_token ? { meta_token } : {}) }),
-  connect: (project_id: string, page_ids: string[], meta_token?: string | null) =>
-    call<{ connected: unknown[]; skipped: { page_id: string; reason: string }[] }>("connect", { project_id, page_ids, ...(meta_token ? { meta_token } : {}) }),
+  connect: (project_id: string, page_ids: string[], meta_token?: string | null, group_id?: string | null) =>
+    call<{ connected: unknown[]; skipped: { page_id: string; reason: string }[] }>("connect", {
+      project_id, page_ids, ...(meta_token ? { meta_token } : {}), ...(group_id ? { group_id } : {}),
+    }),
   connectThreads: (
     project_id: string,
     input: { threads_user_id: string; access_token: string; account_name?: string; group_id?: string },
