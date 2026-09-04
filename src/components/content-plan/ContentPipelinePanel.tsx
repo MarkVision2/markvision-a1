@@ -6,11 +6,13 @@ import {
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useContentPipeline } from "@/hooks/useContentPipeline";
 import {
   formatDuration,
   isActivePipelineState,
+  loadPersonas,
   loadPublishGroups,
   PIPELINE_ENGINE_META,
   PIPELINE_STATE_META,
@@ -18,7 +20,9 @@ import {
   pipelineStepIndex,
   runDurationSeconds,
   type PipelineDetail,
+  type PipelineEngine,
   type PipelineRun,
+  type PipelineSettingsInput,
 } from "@/lib/contentPipeline";
 import { cn } from "@/lib/utils";
 
@@ -179,8 +183,80 @@ function VariantsBlock({ detail, busy, onCreate }: {
   );
 }
 
+const NONE = "__none__";
+
+/**
+ * Цель и движок темы: группа аккаунтов (куда уйдёт ролик после одобрения),
+ * персона (голос/аватар/тон) и движок рендера. Редактируется пока запуск не
+ * идёт — воркер читает эти поля в момент claim.
+ */
+function TargetBlock({ detail, busy, onSave }: {
+  detail: PipelineDetail;
+  busy: boolean;
+  onSave: (input: PipelineSettingsInput) => Promise<unknown>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [groups, setGroups] = useState<{ id: string; name: string; review_mode?: string }[]>([]);
+  const [personas, setPersonas] = useState<{ id: string; name: string; engine_default?: PipelineEngine }[]>([]);
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    void Promise.all([loadPublishGroups(detail.item.project_id), loadPersonas(detail.item.project_id)]).then(([g, p]) => {
+      if (!alive) return;
+      setGroups(g);
+      setPersonas(p);
+    });
+    return () => { alive = false; };
+  }, [open, detail.item.project_id]);
+  const active = isActivePipelineState(detail.current_run?.state);
+  if (active) return null;
+  return (
+    <div className="rounded-xl border border-border/60 p-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm font-semibold">Цель и движок</div>
+        <Button size="sm" variant="ghost" disabled={busy} onClick={() => setOpen((v) => !v)}>{open ? "Скрыть" : "Изменить"}</Button>
+      </div>
+      {open && (
+        <div className="mt-2 grid gap-3 sm:grid-cols-3">
+          <div className="space-y-1">
+            <Label className="text-xs">Движок</Label>
+            <Select value={detail.item.engine} disabled={busy} onValueChange={(v) => void onSave({ engine: v as PipelineEngine })}>
+              <SelectTrigger aria-label="Движок" className="h-8"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {(Object.keys(PIPELINE_ENGINE_META) as PipelineEngine[]).map((e) => (
+                  <SelectItem key={e} value={e}>{PIPELINE_ENGINE_META[e].label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Группа аккаунтов</Label>
+            <Select value={detail.item.target_group_id ?? NONE} disabled={busy} onValueChange={(v) => void onSave({ target_group_id: v === NONE ? null : v })}>
+              <SelectTrigger aria-label="Группа аккаунтов" className="h-8"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Без группы (в очередь без автопубликации)</SelectItem>
+                {groups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}{g.review_mode === "auto_publish" ? " · авто" : ""}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Персона</Label>
+            <Select value={detail.item.persona_id ?? NONE} disabled={busy} onValueChange={(v) => void onSave({ persona_id: v === NONE ? null : v })}>
+              <SelectTrigger aria-label="Персона" className="h-8"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE}>Без персоны</SelectItem>
+                {personas.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ContentPipelinePanel({ itemId, enabled = true }: { itemId: string; enabled?: boolean }) {
-  const { detail, loading, error, busy, refetch, generate, approve, reject, retry, cancel, variants } =
+  const { detail, loading, error, busy, refetch, generate, approve, reject, retry, cancel, variants, settings } =
     useContentPipeline(itemId, enabled);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [comment, setComment] = useState("");
@@ -312,6 +388,8 @@ export function ContentPipelinePanel({ itemId, enabled = true }: { itemId: strin
         )}
         {detail.item.publish_video_id && <span className="text-emerald-700">передано в публикацию</span>}
       </div>
+
+      <TargetBlock detail={detail} busy={disabled} onSave={(input) => wrap("Настройки темы сохранены", () => settings(input))} />
 
       <VariantsBlock detail={detail} busy={disabled} onCreate={(ids) => wrap("Варианты созданы и поставлены в очередь", () => variants(ids))} />
 

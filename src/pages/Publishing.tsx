@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { AlertCircle, ExternalLink, KeyRound, Loader2, Plus, RefreshCw, Send, Trash2, Upload } from "lucide-react";
+import { AlertCircle, ExternalLink, KeyRound, Loader2, PauseCircle, Plus, RefreshCw, Send, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -40,6 +40,7 @@ import {
   readOAuthResult,
   startPublishOAuth,
   type AvailablePage,
+  type GroupMetrics,
   type OAuthPlatform,
   type NotifyMode,
   type Persona,
@@ -184,17 +185,26 @@ export default function Publishing() {
           </div>
         )}
 
+        {(pub.metrics?.publish?.paused || pub.settings?.settings.paused) && (
+          <div className="flex items-start gap-2 rounded-2xl border border-amber-500/40 bg-amber-500/10 p-4 text-sm text-amber-800">
+            <PauseCircle className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>Публикации проекта приостановлены: воркер не берёт задания, новые слоты не планируются. Снять паузу — во вкладке «Настройки».</span>
+          </div>
+        )}
+
         <SummaryTiles pub={pub} />
 
         <Tabs defaultValue="accounts">
           <TabsList className="flex-wrap">
             <TabsTrigger value="accounts">Аккаунты</TabsTrigger>
+            <TabsTrigger value="network">Сеть</TabsTrigger>
             <TabsTrigger value="groups">Группы</TabsTrigger>
             <TabsTrigger value="personas">Персоны</TabsTrigger>
             <TabsTrigger value="jobs">Задания</TabsTrigger>
             <TabsTrigger value="settings">Настройки</TabsTrigger>
           </TabsList>
           <TabsContent value="accounts" className="mt-4"><AccountsTab pub={pub} /></TabsContent>
+          <TabsContent value="network" className="mt-4"><NetworkTab pub={pub} /></TabsContent>
           <TabsContent value="groups" className="mt-4"><GroupsTab pub={pub} /></TabsContent>
           <TabsContent value="personas" className="mt-4"><PersonasTab pub={pub} /></TabsContent>
           <TabsContent value="jobs" className="mt-4"><JobsTab pub={pub} /></TabsContent>
@@ -835,6 +845,70 @@ function PersonasTab({ pub }: { pub: UsePublishing }) {
   );
 }
 
+/* ───────────────────────────── сеть: сводка по группам ───────────────────────────── */
+
+function NetworkTab({ pub }: { pub: UsePublishing }) {
+  const rows: GroupMetrics[] = pub.metrics?.groups ?? [];
+  if (!rows.length) {
+    return <EmptyState text="Групп аккаунтов пока нет — создайте их во вкладке «Группы», и здесь появится сводка по каждой." />;
+  }
+  return (
+    <div className="overflow-x-auto rounded-2xl border">
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Группа</TableHead>
+            <TableHead>Аккаунты</TableHead>
+            <TableHead>Здоровье</TableHead>
+            <TableHead>Очередь</TableHead>
+            <TableHead>За 7 дней</TableHead>
+            <TableHead>Охват d3 (7 дн.)</TableHead>
+            <TableHead>Ближайший слот</TableHead>
+            <TableHead>Одобрено тем</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {rows.map((g) => {
+            const review = REVIEW_MODE_META[g.review_mode];
+            const platform = g.platform ? PLATFORM_META[g.platform] : null;
+            const tone = healthTone(g.health_avg);
+            return (
+              <TableRow key={g.group_id}>
+                <TableCell className="min-w-[180px]">
+                  <div className="font-medium">{g.name}</div>
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                    {platform && <Chip label={platform.label} cls={platform.cls} />}
+                    {review && <Chip label={review.label} cls={review.cls} />}
+                  </div>
+                </TableCell>
+                <TableCell className="tabular-nums">
+                  {g.accounts_active} / {g.accounts_total}
+                  {g.accounts_token_expired > 0 && <div className="text-xs text-amber-700">токен истёк: {g.accounts_token_expired}</div>}
+                </TableCell>
+                <TableCell>
+                  {g.health_avg == null ? "—" : (
+                    <span className={cn("font-medium tabular-nums", tone === "good" ? "text-emerald-700" : tone === "warn" ? "text-amber-700" : "text-destructive")}>
+                      {Math.round(g.health_avg)}%
+                    </span>
+                  )}
+                </TableCell>
+                <TableCell className="tabular-nums">{g.jobs_queued}</TableCell>
+                <TableCell className="tabular-nums">
+                  <span className="text-emerald-700">✓ {g.published_7d}</span>
+                  {g.failed_7d > 0 && <span className="ml-2 text-destructive">✗ {g.failed_7d}</span>}
+                </TableCell>
+                <TableCell className="tabular-nums">{g.reach_d3_7d.toLocaleString("ru-RU")}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">{fmtDate(g.next_slot_at)}</TableCell>
+                <TableCell className="tabular-nums">{g.items_approved}</TableCell>
+              </TableRow>
+            );
+          })}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
 /* ───────────────────────────── задания ───────────────────────────── */
 
 function JobsTab({ pub }: { pub: UsePublishing }) {
@@ -920,6 +994,7 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
   const [chat, setChat] = useState("");
   const [daily, setDaily] = useState("");
   const [monthly, setMonthly] = useState("");
+  const [paused, setPaused] = useState(false);
 
   useEffect(() => {
     if (!s) return;
@@ -927,6 +1002,7 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
     setChat(s.settings.digest_chat_id ?? "");
     setDaily(String(s.budget.daily_usd));
     setMonthly(String(s.budget.monthly_usd));
+    setPaused(Boolean(s.settings.paused));
   }, [s]);
 
   if (!s) return <EmptyState text="Настройки не загружены — выберите проект или обновите страницу." />;
@@ -945,8 +1021,27 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
     }
   };
 
+  // Пауза применяется сразу, отдельно от формы: это аварийный рубильник.
+  const togglePause = async (next: boolean) => {
+    setPaused(next);
+    try {
+      await pub.settingsUpsert({ paused: next });
+      toast.success(next ? "Публикации приостановлены" : "Публикации возобновлены");
+    } catch (e) {
+      setPaused(!next);
+      toast.error(errMsg(e));
+    }
+  };
+
   return (
     <div className="max-w-xl space-y-4 rounded-2xl border bg-card p-4">
+      <div className={cn("flex items-center justify-between gap-3 rounded-xl border p-3", paused ? "border-amber-500/40 bg-amber-500/10" : "border-border")}>
+        <div>
+          <div className="text-sm font-medium">Пауза публикаций проекта</div>
+          <div className="text-xs text-muted-foreground">Воркер не берёт задания, новые слоты не планируются. Очередь сохраняется.</div>
+        </div>
+        <Switch checked={paused} disabled={disabled} onCheckedChange={(v) => void togglePause(v)} aria-label="Пауза публикаций проекта" />
+      </div>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Уведомления">
           <Select value={notify} onValueChange={(v) => setNotify(v as NotifyMode)}>

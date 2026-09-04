@@ -48,6 +48,9 @@ const account: PublishAccount = {
   followers: 1200,
 };
 
+// Переключатели состояния мока между тестами (vi.mock поднимается выше объявлений).
+const mockFlags = vi.hoisted(() => ({ paused: false }));
+
 vi.mock("@/hooks/usePublishing", () => ({
   usePublishing: () => ({
     projectId: "proj-1",
@@ -75,9 +78,15 @@ vi.mock("@/hooks/usePublishing", () => ({
         tokens_expiring_7d: 3,
         reach_d3_7d: 0,
         spent_month_usd: 12.34,
+        paused: mockFlags.paused,
       },
       radar: null,
       videos: [],
+      groups: [{
+        group_id: "g1", name: "Алматы · IG", platform: "instagram", review_mode: "auto_publish", persona_id: null,
+        accounts_total: 10, accounts_active: 8, accounts_token_expired: 1, health_avg: 77.2, jobs_queued: 4,
+        published_7d: 21, failed_7d: 2, next_slot_at: null, reach_d3_7d: 15400, items_approved: 3,
+      }],
     },
     jobs: [],
     jobsStatus: "all",
@@ -124,6 +133,31 @@ describe("страница «Публикации»", () => {
     expect(screen.getByText("81%")).toBeTruthy();
     expect(screen.getByText("3")).toBeTruthy();
     expect(screen.getByText("$12.34")).toBeTruthy();
+  });
+
+  it("вкладка «Сеть»: строка группы с составом, здоровьем и публикациями за неделю", async () => {
+    renderPage();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: "Сеть" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Сеть" }));
+    await waitFor(() => expect(screen.getByText("Алматы · IG")).toBeTruthy());
+    expect(screen.getByText("8 / 10")).toBeTruthy();
+    expect(screen.getByText("77%")).toBeTruthy();
+    expect(screen.getByText("✓ 21")).toBeTruthy();
+    expect(screen.getByText("✗ 2")).toBeTruthy();
+    expect(screen.getByText("токен истёк: 1")).toBeTruthy();
+  });
+
+  it("баннер паузы показывается только когда проект на паузе", () => {
+    const { unmount } = renderPage();
+    expect(screen.queryByText(/Публикации проекта приостановлены/)).toBeNull();
+    unmount();
+    mockFlags.paused = true;
+    try {
+      renderPage();
+      expect(screen.getByText(/Публикации проекта приостановлены/)).toBeTruthy();
+    } finally {
+      mockFlags.paused = false;
+    }
   });
 
   it("таблица аккаунтов: чип статуса и ступень разгона", () => {

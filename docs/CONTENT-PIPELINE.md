@@ -98,6 +98,7 @@ queued → claimed → script_generating → script_ready → video_requested �
 | `POST /items/:id/review` `{decision, comment?}` | только на `awaiting_review`; для `rejected` комментарий обязателен; второй раз → 409 |
 | `POST /items/:id/retry` | только для `failed` / `rejected` / `cancelled` |
 | `POST /items/:id/cancel` | отменить активный запуск |
+| `POST /items/:id/settings` `{target_group_id?, persona_id?, engine?}` | цель публикации, персона и движок — только без активного запуска (иначе 409); группа подтягивает персону, персона — движок |
 
 Закрытый callback для n8n — `POST /internal/callback`, заголовки `x-pipeline-timestamp`
 (мс или с), `x-pipeline-nonce` (8–128 символов, один раз), `x-pipeline-signature` =

@@ -19,6 +19,7 @@ const hookState = vi.hoisted(() => ({
   retry: vi.fn(async () => hookState.detail!),
   cancel: vi.fn(async () => hookState.detail!),
   variants: vi.fn(async () => hookState.detail!),
+  settings: vi.fn(async () => hookState.detail!),
 }));
 
 vi.mock("@/hooks/useContentPipeline", () => ({

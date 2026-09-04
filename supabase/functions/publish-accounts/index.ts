@@ -21,7 +21,7 @@
  * Дистрибуция 100+ (docs/AUTOPOSTING-PLATFORM-PLAN.md):
  *   { action: "connect_threads", project_id, threads_user_id, access_token, account_name?, expires_at? }
  *   { action: "persona_list" | "persona_upsert" | "persona_delete", project_id, ... }
- *   { action: "settings_get" | "settings_upsert", project_id, notify_mode?, daily_usd?, monthly_usd? }
+ *   { action: "settings_get" | "settings_upsert", project_id,  notify_mode?, digest_chat_id?, paused?, daily_usd?, monthly_usd? }
  *   { action: "jobs_list", project_id, status?, limit? }
  *   { action: "publish_video", project_id, file_url | video_id, group_id?, account_ids?, mode?, title?, caption?, hashtags? }
  *   { action: "metrics", project_id } — витрины publish_metrics / radar_metrics
@@ -103,7 +103,7 @@ Deno.serve(async (req) => {
       if (!projectId) return json({ error: "project_id обязателен" }, 400);
       const { data, error } = await admin.from("publish_accounts")
         .select(
-          "id, platform, account_name, handle, external_account_id, fb_page_id, status, publish_enabled, daily_limit, last_post_at, consecutive_errors, last_error, token_expires_at, group_id, persona_id, timezone, window_start, window_end, ramp_enabled, ramp_started_at, health_score, published_today, published_day, token_refreshed_at, followers",
+          "id, platform, account_name, handle, external_account_id, fb_page_id, status, publish_enabled, daily_limit, last_post_at, consecutive_errors, last_error, token_expires_at, group_id, persona_id, timezone, window_start, window_end, ramp_enabled, ramp_started_at, health_score, published_today, published_day, token_refreshed_at, followers, oauth_scope",
         )
         .eq("project_id", projectId).order("platform").order("account_name");
       if (error) return json({ error: error.message }, 500);
@@ -365,20 +365,22 @@ Deno.serve(async (req) => {
       const sp = (Array.isArray(spend) ? spend[0] : spend) as { spent_today_usd?: number; spent_month_usd?: number } | null;
       return json({
         ok: true,
-        settings: s ?? { project_id: projectId, notify_mode: "digest", digest_chat_id: null, max_parallel_workers: 3 },
+        settings: s ?? { project_id: projectId, notify_mode: "digest", digest_chat_id: null, max_parallel_workers: 3, paused: false },
         budget: b ?? { project_id: projectId, daily_usd: 20, monthly_usd: 300 },
         spend: { today_usd: Number(sp?.spent_today_usd ?? 0), month_usd: Number(sp?.spent_month_usd ?? 0) },
       });
     }
     if (action === "settings_upsert") {
       if (!projectId) return json({ error: "project_id обязателен" }, 400);
-      if (typeof body?.notify_mode === "string" || typeof body?.digest_chat_id === "string" || body?.digest_chat_id === null) {
+      if (typeof body?.notify_mode === "string" || typeof body?.digest_chat_id === "string" || body?.digest_chat_id === null || typeof body?.paused === "boolean") {
         const row: Record<string, unknown> = { project_id: projectId };
         if (typeof body?.notify_mode === "string") {
           if (!["digest", "each", "silent"].includes(body.notify_mode)) return json({ error: "недопустимый notify_mode" }, 400);
           row.notify_mode = body.notify_mode;
         }
         if (body?.digest_chat_id === null || typeof body?.digest_chat_id === "string") row.digest_chat_id = body.digest_chat_id;
+        // Аварийная пауза: claim_publish_jobs и plan_publish_slots читают этот флаг напрямую.
+        if (typeof body?.paused === "boolean") row.paused = body.paused;
         const { error } = await admin.from("publish_project_settings").upsert(row, { onConflict: "project_id" });
         if (error) return json({ error: error.message }, 500);
       }
@@ -408,12 +410,13 @@ Deno.serve(async (req) => {
     }
     if (action === "metrics") {
       if (!projectId) return json({ error: "project_id обязателен" }, 400);
-      const [{ data: pm }, { data: rm }, { data: videos }] = await Promise.all([
+      const [{ data: pm }, { data: rm }, { data: videos }, { data: gm }] = await Promise.all([
         admin.from("publish_metrics").select("*").eq("project_id", projectId).maybeSingle(),
         admin.from("radar_metrics").select("*").eq("project_id", projectId).maybeSingle(),
         admin.from("publish_videos").select("id, title, status, file_url, created_at, source").eq("project_id", projectId).order("created_at", { ascending: false }).limit(50),
+        admin.from("publish_group_metrics").select("*").eq("project_id", projectId).order("name"),
       ]);
-      return json({ ok: true, publish: pm ?? null, radar: rm ?? null, videos: videos ?? [] });
+      return json({ ok: true, publish: pm ?? null, radar: rm ?? null, videos: videos ?? [], groups: gm ?? [] });
     }
 
     /* ── «Залить видео в группу»: библиотека + планировщик слотов ── */

@@ -245,7 +245,23 @@ export const contentPipelineApi = {
     call<PipelineDetail & { created: unknown[]; skipped: { group_id: string; reason: string }[] }>(
       `items/${itemId}/variants`, "POST", { group_ids: groupIds },
     ),
+  /** Цель публикации, персона и движок — до запуска генерации. */
+  settings: (itemId: string, input: PipelineSettingsInput) =>
+    call<PipelineDetail>(`items/${itemId}/settings`, "POST", { ...input }),
 };
+
+export interface PipelineSettingsInput {
+  target_group_id?: string | null;
+  persona_id?: string | null;
+  engine?: PipelineEngine | null;
+}
+
+/** Персоны проекта — для выбора голоса/аватара темы (publish-accounts persona_list). */
+export async function loadPersonas(projectId: string): Promise<{ id: string; name: string; engine_default?: PipelineEngine }[]> {
+  const { data, error } = await supabase.functions.invoke("publish-accounts", { body: { action: "persona_list", project_id: projectId } });
+  if (error) return [];
+  return ((data as { personas?: { id: string; name: string; engine_default?: PipelineEngine }[] } | null)?.personas ?? []);
+}
 
 /** Группы аккаунтов проекта — для выбора целей вариантов (publish-accounts group_list). */
 export async function loadPublishGroups(projectId: string): Promise<{ id: string; name: string; review_mode?: string }[]> {

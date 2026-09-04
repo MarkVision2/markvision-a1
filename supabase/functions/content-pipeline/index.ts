@@ -11,6 +11,7 @@
  *     POST /items/:id/retry            новая попытка для failed / rejected / cancelled
  *     POST /items/:id/cancel           отменить активный запуск
  *     POST /items/:id/variants         { group_ids } — варианты темы под группы аккаунтов (персона группы)
+ *     POST /items/:id/settings         { target_group_id?, persona_id?, engine? } — цель и движок до генерации
  *   Одобренный ролик сам уходит в publish_videos и раскладывается по целевой группе
  *   (plan_publish_slots); доверенные группы (auto_publish) минуют ворота.
  *
@@ -754,6 +755,44 @@ async function handleUser(req: Request, segments: string[]): Promise<Response> {
     for (const missing of requested) skipped.push({ group_id: missing, reason: "группа не найдена в проекте" });
     if (created.length) await kickN8n({ reason: "variants", project_id: item.project_id, item_id: itemId, user_id: auth.userId });
     return json({ ok: true, created, skipped, ...(await itemDetail(db, item)) });
+  }
+
+  if (action === "settings") {
+    // Цель публикации, персона и движок — только пока запуск не идёт: воркер
+    // берёт их в момент claim, менять под ним бессмысленно.
+    if (current) return json({ error: "Сначала остановите активную попытку" }, 409);
+    const patch: Record<string, unknown> = {};
+    if ("target_group_id" in body) {
+      const gid = body.target_group_id;
+      if (gid !== null && typeof gid !== "string") return json({ error: "target_group_id: uuid | null" }, 400);
+      if (gid) {
+        const { data: g } = await db.from("publish_account_groups").select("id, persona_id").eq("id", gid).eq("project_id", item.project_id).maybeSingle();
+        if (!g) return json({ error: "Группа не найдена в проекте" }, 400);
+        // Персона группы подхватывается, если тема её ещё не выбрала явно.
+        if (!("persona_id" in body) && !item.persona_id && (g as { persona_id: string | null }).persona_id) patch.persona_id = (g as { persona_id: string | null }).persona_id;
+      }
+      patch.target_group_id = gid;
+    }
+    if ("persona_id" in body) {
+      const pid = body.persona_id;
+      if (pid !== null && typeof pid !== "string") return json({ error: "persona_id: uuid | null" }, 400);
+      if (pid) {
+        const { data: p } = await db.from("personas").select("id, engine_default").eq("id", pid).eq("project_id", item.project_id).maybeSingle();
+        if (!p) return json({ error: "Персона не найдена в проекте" }, 400);
+        if (!("engine" in body) && !item.engine) patch.engine = (p as { engine_default: string }).engine_default;
+      }
+      patch.persona_id = pid;
+    }
+    if ("engine" in body) {
+      const engine = body.engine;
+      if (engine !== null && !["heygen", "reels_faceless", "montage"].includes(String(engine))) return json({ error: "engine: heygen | reels_faceless | montage | null" }, 400);
+      patch.engine = engine;
+    }
+    if (!Object.keys(patch).length) return json({ error: "Нечего менять" }, 400);
+    const { error } = await db.from("content_plan_items").update(patch).eq("id", itemId);
+    if (error) return json({ error: error.message }, 400);
+    const fresh = (await loadItem(db, itemId)) ?? item;
+    return json({ ok: true, ...(await itemDetail(db, fresh)) });
   }
 
   if (action === "cancel") {

@@ -49,6 +49,8 @@ export interface PublishAccount {
   published_day: string | null;
   token_refreshed_at: string | null;
   followers: number | null;
+  /** Права OAuth площадки (TikTok без video.list не отдаёт метрики). */
+  oauth_scope?: string | null;
 }
 
 export interface AvailablePage {
@@ -96,7 +98,7 @@ export interface Persona {
 }
 
 export interface PublishSettings {
-  settings: { notify_mode: NotifyMode; digest_chat_id: string | null; max_parallel_workers: number };
+  settings: { notify_mode: NotifyMode; digest_chat_id: string | null; max_parallel_workers: number; paused?: boolean };
   budget: { daily_usd: number; monthly_usd: number };
   spend: { today_usd: number; month_usd: number };
 }
@@ -134,6 +136,27 @@ export interface PublishMetrics {
   tokens_expiring_7d: number;
   reach_d3_7d: number;
   spent_month_usd: number | null;
+  /** Аварийная пауза проекта (publish_project_settings.paused). */
+  paused?: boolean;
+}
+
+/** Витрина publish_group_metrics — строка по группе аккаунтов («Сеть»). */
+export interface GroupMetrics {
+  group_id: string;
+  name: string;
+  platform: PublishPlatform | null;
+  review_mode: ReviewMode;
+  persona_id: string | null;
+  accounts_total: number;
+  accounts_active: number;
+  accounts_token_expired: number;
+  health_avg: number | null;
+  jobs_queued: number;
+  published_7d: number;
+  failed_7d: number;
+  next_slot_at: string | null;
+  reach_d3_7d: number;
+  items_approved: number;
 }
 
 export interface PublishVideo {
@@ -149,6 +172,7 @@ export interface MetricsResponse {
   publish: PublishMetrics | null;
   radar: Record<string, unknown> | null;
   videos: PublishVideo[];
+  groups?: GroupMetrics[];
 }
 
 export interface PublishVideoResult {
@@ -341,6 +365,7 @@ export interface PersonaUpsertInput {
 export interface SettingsUpsertInput {
   notify_mode?: NotifyMode;
   digest_chat_id?: string | null;
+  paused?: boolean;
   daily_usd?: number;
   monthly_usd?: number;
 }

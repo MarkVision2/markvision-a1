@@ -297,6 +297,8 @@ DECLARE
 BEGIN
   SELECT * INTO v FROM public.publish_videos WHERE id = p_video_id;
   IF NOT FOUND THEN RAISE EXCEPTION 'video % not found', p_video_id; END IF;
+  -- Аварийная пауза проекта: ничего не планируем (publish_project_settings.paused).
+  IF EXISTS (SELECT 1 FROM public.publish_project_settings s WHERE s.project_id = v.project_id AND s.paused) THEN RETURN; END IF;
   IF p_group_id IS NOT NULL THEN
     SELECT * INTO g FROM public.publish_account_groups WHERE id = p_group_id AND project_id = v.project_id;
     IF NOT FOUND THEN RAISE EXCEPTION 'group % not found', p_group_id; END IF;
@@ -462,6 +464,7 @@ BEGIN
         AND acc.status = 'active'
         AND acc.health_score >= 20
         AND coalesce(g.review_mode, 'review_required') <> 'paused'
+        AND NOT EXISTS (SELECT 1 FROM public.publish_project_settings s WHERE s.project_id = cand.project_id AND s.paused)
         AND (p_partition IS NULL OR p_partitions <= 1
              OR mod(abs(hashtext(acc.id::text)), greatest(p_partitions, 1)) = p_partition)
         AND (
@@ -580,9 +583,14 @@ CREATE TABLE IF NOT EXISTS public.publish_project_settings (
   notify_mode text NOT NULL DEFAULT 'digest',
   digest_chat_id text,
   max_parallel_workers integer NOT NULL DEFAULT 3,
+  paused boolean NOT NULL DEFAULT false,
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT publish_project_settings_notify_check CHECK (notify_mode IN ('digest', 'each', 'silent'))
 );
+ALTER TABLE public.publish_project_settings ADD COLUMN IF NOT EXISTS paused boolean NOT NULL DEFAULT false;
+
+COMMENT ON COLUMN public.publish_project_settings.paused IS
+  'Аварийная пауза проекта: claim_publish_jobs не отдаёт задания, plan_publish_slots не ставит новые; очередь сохраняется.';
 
 ALTER TABLE public.publish_project_settings ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS publish_project_settings_select ON public.publish_project_settings;
@@ -697,10 +705,50 @@ SELECT
   (SELECT min(j.scheduled_at) FROM public.publish_jobs j WHERE j.project_id = p.id AND j.status IN ('pending', 'retry') AND j.scheduled_at > now()) AS next_slot_at,
   (SELECT count(*) FROM public.publish_accounts a WHERE a.project_id = p.id AND a.token_expires_at IS NOT NULL AND a.token_expires_at < now() + interval '7 days') AS tokens_expiring_7d,
   (SELECT coalesce(sum(m.reach), 0) FROM public.post_metrics m WHERE m.project_id = p.id AND m.checkpoint = 'd3' AND m.captured_at >= now() - interval '7 days') AS reach_d3_7d,
-  (SELECT spent_month_usd FROM public.project_spend(p.id)) AS spent_month_usd
+  (SELECT spent_month_usd FROM public.project_spend(p.id)) AS spent_month_usd,
+  coalesce((SELECT s.paused FROM public.publish_project_settings s WHERE s.project_id = p.id), false) AS paused
 FROM public.projects p;
 
 GRANT SELECT ON public.publish_metrics TO authenticated;
+
+-- Витрина по группам аккаунтов («Сеть» на странице «Публикации»): состав,
+-- публикации и ошибки за 7 дней, охват d3, здоровье, ближайший слот.
+-- Членство: publish_accounts.group_id или старый список group.account_ids.
+CREATE OR REPLACE VIEW public.publish_group_metrics
+WITH (security_invoker = true)
+AS
+WITH members AS (
+  SELECT g.id AS group_id, a.id AS account_id, a.status, a.publish_enabled, a.health_score, a.token_expires_at
+    FROM public.publish_account_groups g
+    JOIN public.publish_accounts a
+      ON a.project_id = g.project_id
+     AND (a.group_id = g.id OR a.id = ANY (coalesce(g.account_ids, '{}')))
+)
+SELECT
+  g.id AS group_id,
+  g.project_id,
+  g.name,
+  g.platform,
+  g.review_mode,
+  g.persona_id,
+  (SELECT count(*) FROM members m WHERE m.group_id = g.id) AS accounts_total,
+  (SELECT count(*) FROM members m WHERE m.group_id = g.id AND m.status = 'active' AND m.publish_enabled) AS accounts_active,
+  (SELECT count(*) FROM members m WHERE m.group_id = g.id AND m.status = 'token_expired') AS accounts_token_expired,
+  (SELECT round(avg(m.health_score), 1) FROM members m WHERE m.group_id = g.id) AS health_avg,
+  (SELECT count(*) FROM public.publish_jobs j JOIN members m ON m.account_id = j.account_id AND m.group_id = g.id
+    WHERE j.status IN ('pending', 'retry')) AS jobs_queued,
+  (SELECT count(*) FROM public.publish_jobs j JOIN members m ON m.account_id = j.account_id AND m.group_id = g.id
+    WHERE j.status = 'published' AND j.published_at >= now() - interval '7 days') AS published_7d,
+  (SELECT count(*) FROM public.publish_jobs j JOIN members m ON m.account_id = j.account_id AND m.group_id = g.id
+    WHERE j.status = 'failed' AND j.updated_at >= now() - interval '7 days') AS failed_7d,
+  (SELECT min(j.scheduled_at) FROM public.publish_jobs j JOIN members m ON m.account_id = j.account_id AND m.group_id = g.id
+    WHERE j.status IN ('pending', 'retry') AND j.scheduled_at > now()) AS next_slot_at,
+  (SELECT coalesce(sum(pm.reach), 0) FROM public.post_metrics pm JOIN members m ON m.account_id = pm.account_id AND m.group_id = g.id
+    WHERE pm.checkpoint = 'd3' AND pm.captured_at >= now() - interval '7 days') AS reach_d3_7d,
+  (SELECT count(*) FROM public.content_plan_items c WHERE c.target_group_id = g.id AND c.status = 'approved') AS items_approved
+FROM public.publish_account_groups g;
+
+GRANT SELECT ON public.publish_group_metrics TO authenticated;
 
 -- ── 9. Идея → тема контент-плана ────────────────────────────
 CREATE OR REPLACE FUNCTION public.radar_promote_idea(

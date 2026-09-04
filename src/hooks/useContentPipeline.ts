@@ -4,6 +4,7 @@ import {
   contentPipelineApi,
   isActivePipelineState,
   type PipelineDetail,
+  type PipelineSettingsInput,
 } from "@/lib/contentPipeline";
 
 const ACTIVE_POLL_MS = 15_000;
@@ -80,5 +81,6 @@ export function useContentPipeline(itemId: string | undefined, enabled = true) {
     retry: (comment?: string) => act("retry", () => contentPipelineApi.retry(itemId!, comment)),
     cancel: () => act("cancel", () => contentPipelineApi.cancel(itemId!)),
     variants: (groupIds: string[]) => act("variants", () => contentPipelineApi.variants(itemId!, groupIds)),
+    settings: (input: PipelineSettingsInput) => act("settings", () => contentPipelineApi.settings(itemId!, input)),
   };
 }

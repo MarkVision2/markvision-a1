@@ -111,13 +111,20 @@ state — `publish_oauth_states` (миграция `20260905120000_publish_oauth
 обновляет `refresh_token`'ом прямо перед публикацией; Threads и Instagram Login (`IG…`) —
 long-lived, обновляются за 10 дней до истечения (`publish-monitor mode:tokens`, где для
 TikTok/YouTube живость = успешное обновление); page-токены Facebook не истекают. **Дайджест**: `mode:digest` раз в час — один отчёт на проект (опубликовано / упало с
-кодами / повторы / ручной разбор / аккаунты, требующие внимания). Поштучные сообщения runner
-шлёт только при `publish_project_settings.notify_mode = each`.
+кодами / повторы / ручной разбор / аккаунты, требующие внимания) — в чат
+`publish_project_settings.digest_chat_id`, если задан, иначе в чат проекта из `telegram_links`.
+Поштучные сообщения runner шлёт только при `publish_project_settings.notify_mode = each`.
 
 ## M4. Управление
 
 `publish_account_groups.review_mode`: `review_required` | `auto_publish` | `paused` (пауза
-останавливает и планирование, и забор). `publish_project_settings`: режим уведомлений.
+останавливает и планирование, и забор). `publish_project_settings`: режим уведомлений, чат
+дайджеста и **аварийная пауза проекта** `paused` — `claim_publish_jobs` не отдаёт задания,
+`plan_publish_slots` не ставит слоты, очередь сохраняется; рубильник во вкладке «Настройки»
+страницы «Публикации» (`settings_upsert { paused }`), баннер на странице и флаг в `publish_metrics`.
+Цель темы до генерации меняется в карточке («Цель и движок»): `POST /content-pipeline/items/:id/settings
+{ target_group_id?, persona_id?, engine? }` — группа подтягивает свою персону, персона — движок по
+умолчанию; во время активного запуска — 409.
 `project_budgets` (день/месяц, USD) + `usage_ledger` (единый журнал: OpenAI, HeyGen, Apify,
 ScrapeCreators, Whisper, LLM); расход контент-конвейера зеркалится триггером из
 `pipeline_runs.cost_usd`. `project_budget_ok()` проверяют радар (разбор и сбор) и очередь
@@ -126,11 +133,25 @@ ScrapeCreators, Whisper, LLM); расход контент-конвейера з
 ## M5. Аналитика
 
 `publish-metrics` (крон каждые 6 часов): `post_metrics_due()` отдаёт публикации с наступившей
-точкой d1 / d3 / d7; insights Instagram (`reach, views, likes, comments, shares, saved`) и Threads
-(`views, likes, replies, reposts, quotes, shares`) → `post_metrics`; подписчики аккаунта раз в
-сутки → `publish_accounts.followers`. Затем `idea_recompute_outcomes()`: медиана `reach /
-followers` по d3–d7, 5 % ≈ 100 → `idea_bank.outcome_score`. Витрины `publish_metrics` и
-`radar_metrics` — на страницах «Публикации» и «Радар идей».
+точкой d1 / d3 / d7; статистика площадки → `post_metrics`: Instagram insights (`reach, views,
+likes, comments, shares, saved`), Threads (`views, likes, replies, reposts, quotes, shares`),
+TikTok `POST /v2/video/query/` (`view/like/comment/share_count`; нужен scope `video.list` —
+входит в `SCOPES.tiktok`, аккаунты, подключённые без него, помечаются в ответе `reasons` как
+требующие reconnect), YouTube `videos?part=statistics` (`viewCount, likeCount, commentCount`).
+Перед сбором токен обновляется тем же `ensureFreshToken`, что и у воркера. Подписчики аккаунта
+раз в сутки → `publish_accounts.followers` (TikTok `user/info follower_count`, YouTube
+`channels statistics.subscriberCount`). Затем `idea_recompute_outcomes()`: медиана `reach /
+followers` по d3–d7, 5 % ≈ 100 → `idea_bank.outcome_score`.
+
+**Лента своих публикаций в радар**: на точке d3 каждый свой ролик кладётся в `radar_posts`
+(источник `radar_sources.kind = own_account` с тем же handle, если заведён; иначе без источника)
+с метриками и `radar_recompute_post()`; на разбор LLM (`analysis_status = pending`) уходят только
+хиты — охват ≥ 5 % подписчиков или ≥ 10 000 просмотров (`_lib/publishMetricsCore.ts`), остальные
+`skipped`. Так банк идей учится и на своих результатах.
+
+Витрины: `publish_metrics` (проект, включая `paused`), `publish_group_metrics` (по группе:
+состав, активные, `health_avg`, очередь, публикаций/ошибок за 7 дней, `reach_d3_7d`, ближайший
+слот, одобренных тем) — вкладка «Сеть» на странице «Публикации»; `radar_metrics` — «Радар идей».
 
 ## Endpoint'ы (новое)
 
@@ -147,7 +168,8 @@ followers` по d3–d7, 5 % ≈ 100 → `idea_bank.outcome_score`. Витрин
 | `POST /publish-accounts` `connect_threads`, `persona_*`, `settings_get/upsert`, `jobs_list`, `metrics`, `publish_video` | JWT / ключ | см. шапку функции |
 | `POST /publish-worker { partition, partitions }` | ключ | партиция воркера |
 | `POST /publish-monitor { mode: "digest" }` | ключ | часовой дайджест |
-| `POST /publish-metrics` | ключ | сбор метрик публикаций |
+| `POST /publish-metrics` | ключ | сбор метрик публикаций (IG / Threads / TikTok / YouTube) + лента своих постов в радар |
+| `POST /content-pipeline/items/:id/settings` | JWT | цель (группа), персона, движок темы до генерации |
 | `POST /publish-oauth/start`, `GET /publish-oauth/callback/:platform` | JWT / state | OAuth Threads / TikTok / YouTube |
 
 Контракты вебхуков `publishing-video-ready` / `publishing-create-jobs` для воркфлоу «🚀 Система
@@ -232,5 +254,5 @@ Edge-функции проходят строгий tsc с типами supabase
 - Движок `montage` как воркер очереди конвейера (темы с этим движком ждут).
 - Рендер Reels faceless по-прежнему делает Reels-очередь (Claude-сессия по
   `docs/REELS-PIPELINE.md`); воркер конвейера ставит заявку и забирает результат.
-- Дашборд «Сеть» с графиками по группам: цифры есть в витринах, страница показывает плитки.
+- Графики по группам во вкладке «Сеть»: сейчас таблица по `publish_group_metrics`.
 - Нагрузочный тест на живых площадках (этап 5).

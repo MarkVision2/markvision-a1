@@ -21,7 +21,7 @@ export function isOAuthPlatform(v: unknown): v is OAuthPlatform {
 
 export const SCOPES: Record<OAuthPlatform, string> = {
   threads: "threads_basic,threads_content_publish",
-  tiktok: "user.info.basic,video.publish,video.upload",
+  tiktok: "user.info.basic,video.publish,video.upload,video.list",
   youtube: "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly",
 };
 

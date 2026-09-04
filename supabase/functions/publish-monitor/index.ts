@@ -25,7 +25,6 @@ import {
   decryptSecret,
   encryptSecret,
   json,
-  notifyModeOf,
   notifyProject,
   type PublishAccount,
 } from "../_lib/publishing.ts";
@@ -209,7 +208,12 @@ async function sendDigests(admin: SupabaseClient) {
   let sent = 0;
   for (const [projectId, p] of byProject) {
     if (!p.failed && !p.manual && !p.retry) continue; // тихий час — не пишем
-    const mode = await notifyModeOf(admin, projectId);
+    // Режим и отдельный чат дайджеста (publish_project_settings.digest_chat_id);
+    // без него — чат проекта из telegram_links.
+    const { data: st } = await admin.from("publish_project_settings")
+      .select("notify_mode, digest_chat_id").eq("project_id", projectId).maybeSingle();
+    const settings = st as { notify_mode?: string; digest_chat_id?: string | null } | null;
+    const mode = settings?.notify_mode === "each" || settings?.notify_mode === "silent" ? settings.notify_mode : "digest";
     if (mode !== "digest") continue;
     const { data: acc } = await admin.from("publish_accounts")
       .select("account_name, platform, status")
@@ -221,6 +225,7 @@ async function sendDigests(admin: SupabaseClient) {
       admin, projectId,
       `📊 Публикации за час: ✅ ${p.published} · ❌ ${p.failed}${reasons ? ` (${reasons})` : ""} · 🔁 повторы ${p.retry} · 🖐 ручной разбор ${p.manual}` +
         (attention ? `\n\nТребуют внимания:\n${attention}` : ""),
+      settings?.digest_chat_id ?? null,
     );
     sent++;
   }

@@ -85,13 +85,17 @@ export async function notifyProject(
   admin: SupabaseClient,
   projectId: string,
   text: string,
+  chatIdOverride?: string | null,
 ): Promise<void> {
   const botToken = (globalThis as { Deno?: { env: { get(k: string): string | undefined } } })
     .Deno?.env.get("TELEGRAM_BOT_TOKEN") ?? "";
   if (!botToken) return;
-  const { data } = await admin
-    .from("telegram_links").select("chat_id").eq("project_id", projectId).limit(1).maybeSingle();
-  const chatId = (data as { chat_id?: string } | null)?.chat_id;
+  let chatId = chatIdOverride?.trim() || null;
+  if (!chatId) {
+    const { data } = await admin
+      .from("telegram_links").select("chat_id").eq("project_id", projectId).limit(1).maybeSingle();
+    chatId = (data as { chat_id?: string } | null)?.chat_id ?? null;
+  }
   if (!chatId) return;
   await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
     method: "POST",
