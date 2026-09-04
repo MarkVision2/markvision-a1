@@ -3,7 +3,8 @@
  * YouTube (Instagram подключается через Meta OAuth в publish-accounts).
  *
  *   POST /publish-oauth/start   (JWT)  { project_id, platform, return_url, group_id? } → { url }
- *   GET  /publish-oauth/diag    (JWT)  → что настроено, без значений секретов
+ *   GET  /publish-oauth/diag           (JWT | x-automation-key) → что настроено, без секретов
+ *   GET  /publish-oauth/probe-tiktok  (JWT | x-automation-key) → что отвечает TikTok на наш client key
  *   GET  /publish-oauth/callback/:platform?code&state   → 302 на return_url с
  *        ?publish_connected=<platform>&account=<name> или ?publish_error=<msg>
  *
@@ -17,7 +18,7 @@
  */
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireProjectAccess, requireUser } from "../_lib/auth.ts";
-import { CORS_HEADERS, encryptSecret, json, tokenKeyConfigured } from "../_lib/publishing.ts";
+import { automationKeyValid, CORS_HEADERS, encryptSecret, json, tokenKeyConfigured } from "../_lib/publishing.ts";
 import {
   authorizeUrl,
   codeExchangeRequest,
@@ -80,11 +81,14 @@ function credentialShapeProblem(platform: OAuthPlatform, clientId: string): stri
  * консоли приложения. Значения секретов наружу не отдаются.
  *
  * Функция публичная (verify_jwt = false нужен для callback площадки), поэтому
- * диагностику закрываем JWT вручную — конфиг проекта не для случайного гостя.
+ * доступ закрываем вручную: JWT пользователя или ops-ключ (x-automation-key),
+ * которым ходят крон и publishing-doctor.
  */
-async function diag(req: Request): Promise<Response> {
-  const auth = await requireUser(req);
-  if (!auth.ok) return auth.response;
+async function diag(req: Request, admin: SupabaseClient): Promise<Response> {
+  if (!(await automationKeyValid(req, admin))) {
+    const auth = await requireUser(req);
+    if (!auth.ok) return auth.response;
+  }
   const platforms = (["threads", "tiktok", "youtube"] as OAuthPlatform[]).map((platform) => {
     const [idKey, secretKey] = envKeys(platform);
     const rawId = Deno.env.get(idKey);
@@ -107,6 +111,60 @@ async function diag(req: Request): Promise<Response> {
     };
   });
   return json({ ok: true, token_key_configured: tokenKeyConfigured(), platforms });
+}
+
+/**
+ * Живая проверка client key у TikTok: запрашиваем страницу согласия и смотрим,
+ * куда площадка отправляет. Неизвестный ключ уводит на error_code=client_key —
+ * это единственный способ отличить «ключ не тот» от «redirect_uri не
+ * зарегистрирован», не заставляя человека проходить вход руками.
+ */
+async function probeTiktok(req: Request, admin: SupabaseClient): Promise<Response> {
+  if (!(await automationKeyValid(req, admin))) {
+    const auth = await requireUser(req);
+    if (!auth.ok) return auth.response;
+  }
+  const creds = appCredentials("tiktok");
+  if (!creds) return json({ error: "TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET не заданы" }, 503);
+
+  const url = authorizeUrl("tiktok", {
+    clientId: creds.clientId,
+    redirectUri: redirectUri("tiktok"),
+    state: "probe",
+  });
+  let status = 0;
+  let location: string | null = null;
+  let verdict = "неизвестно";
+  try {
+    const r = await fetch(url, { redirect: "manual" });
+    status = r.status;
+    location = r.headers.get("location");
+    const seen = `${location ?? ""} ${status === 200 ? await r.text() : ""}`;
+    if (/error_code=client_key|"client_key"/.test(seen)) {
+      verdict = "TikTok не принимает client key — значение в TIKTOK_CLIENT_KEY не соответствует приложению";
+    } else if (/error_code=redirect_uri|redirect_uri/.test(seen)) {
+      verdict = `TikTok не принимает redirect_uri — зарегистрируйте в приложении: ${redirectUri("tiktok")}`;
+    } else if (/scope/.test(seen)) {
+      verdict = "TikTok не выдаёт запрошенные права — проверьте продукты Login Kit / Content Posting API";
+    } else if (status >= 300 && status < 400) {
+      verdict = "ключ принят: TikTok уводит на страницу входа";
+    } else if (status === 200) {
+      verdict = "ключ принят: TikTok отдал страницу согласия";
+    }
+  } catch (e) {
+    verdict = `запрос к TikTok не удался: ${e instanceof Error ? e.message : String(e)}`;
+  }
+  return json({
+    ok: true,
+    verdict,
+    status,
+    /** Хост назначения без query — в query уходит client_key. */
+    location_host: location ? new URL(location, "https://www.tiktok.com").host : null,
+    location_error: location ? new URL(location, "https://www.tiktok.com").searchParams.get("error_code") : null,
+    redirect_uri: redirectUri("tiktok"),
+    client_key_prefix: `${creds.clientId.slice(0, 2)}…`,
+    client_key_length: creds.clientId.length,
+  });
 }
 
 function redirectUri(platform: OAuthPlatform): string {
@@ -230,7 +288,8 @@ Deno.serve(async (req) => {
   const idx = parts.indexOf("publish-oauth");
   const seg = idx >= 0 ? parts.slice(idx + 1) : parts;
   try {
-    if (seg[0] === "diag" && req.method === "GET") return await diag(req);
+    if (seg[0] === "diag" && req.method === "GET") return await diag(req, admin);
+    if (seg[0] === "probe-tiktok" && req.method === "GET") return await probeTiktok(req, admin);
     if (seg[0] === "start" && req.method === "POST") return await start(req, admin);
     if (seg[0] === "callback" && isOAuthPlatform(seg[1]) && req.method === "GET") return await callback(url, seg[1], admin);
     return json({ error: "not found" }, 404);
