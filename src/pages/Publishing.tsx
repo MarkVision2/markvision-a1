@@ -325,11 +325,22 @@ const EMPTY_GROUP: GroupDraft = {
   jitter_minutes: "",
 };
 
-function groupToDraft(g: PublishGroup): GroupDraft {
+/**
+ * Состав группы = объединение двух источников: publish_accounts.group_id
+ * (селект в «Аккаунтах») и group.account_ids (галочки в форме). Так же
+ * считают плановщик и витрина «Сеть» — иначе карточка врёт про «0 акк.».
+ */
+function groupMemberIds(g: PublishGroup, accounts: PublishAccount[]): string[] {
+  const ids = new Set(g.account_ids ?? []);
+  for (const a of accounts) if (a.group_id === g.id) ids.add(a.id);
+  return [...ids];
+}
+
+function groupToDraft(g: PublishGroup, accounts: PublishAccount[] = []): GroupDraft {
   return {
     id: g.id,
     name: g.name,
-    account_ids: g.account_ids ?? [],
+    account_ids: groupMemberIds(g, accounts),
     platform: g.platform ?? NONE,
     publish_strategy: g.publish_strategy,
     per_hour: g.per_hour != null ? String(g.per_hour) : "",
@@ -402,7 +413,7 @@ function GroupsTab({ pub }: { pub: UsePublishing }) {
             <button
               key={g.id}
               type="button"
-              onClick={() => setDraft(groupToDraft(g))}
+              onClick={() => setDraft(groupToDraft(g, pub.accounts))}
               className={cn(
                 "w-full rounded-2xl border bg-card p-3 text-left transition hover:bg-muted/50",
                 draft?.id === g.id && "ring-2 ring-primary",
@@ -413,7 +424,7 @@ function GroupsTab({ pub }: { pub: UsePublishing }) {
                 {rm && <Chip label={rm.label} cls={rm.cls} />}
               </div>
               <div className="mt-1 text-xs text-muted-foreground">
-                {g.account_ids?.length ?? 0} акк. · {STRATEGY_META[g.publish_strategy]?.label ?? g.publish_strategy}
+                {groupMemberIds(g, pub.accounts).length} акк. · {STRATEGY_META[g.publish_strategy]?.label ?? g.publish_strategy}
                 {g.platform ? ` · ${PLATFORM_META[g.platform].label}` : ""} · одобрено подряд: {g.approved_streak}
               </div>
             </button>

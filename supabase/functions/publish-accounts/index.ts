@@ -341,6 +341,24 @@ Deno.serve(async (req) => {
       const { data, error } = await admin.from("publish_account_groups")
         .upsert(row).select("*").maybeSingle();
       if (error) return json({ error: error.message }, 500);
+      const group = data as { id: string } | null;
+
+      // Членство живёт в двух местах: publish_accounts.group_id (селект во
+      // вкладке «Аккаунты») и group.account_ids (галочки в форме группы).
+      // Планировщик и витрины берут объединение, поэтому форма группы —
+      // источник истины: выставляем group_id отмеченным и снимаем с тех, кто
+      // был в этой группе, но галочку потерял. Иначе карточка группы показывает
+      // «0 акк.», хотя пять аккаунтов назначены в неё через таблицу.
+      if (group?.id) {
+        const { data: members } = await admin.from("publish_accounts")
+          .select("id").eq("project_id", projectId).eq("group_id", group.id);
+        const current = new Set(((members ?? []) as { id: string }[]).map((r) => r.id));
+        const wanted = new Set(accountIds);
+        const toSet = accountIds.filter((id: string) => !current.has(id));
+        const toClear = [...current].filter((id) => !wanted.has(id));
+        if (toSet.length) await admin.from("publish_accounts").update({ group_id: group.id }).in("id", toSet);
+        if (toClear.length) await admin.from("publish_accounts").update({ group_id: null }).in("id", toClear);
+      }
       return json({ ok: true, group: data });
     }
 
