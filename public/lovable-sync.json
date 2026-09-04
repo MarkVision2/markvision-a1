@@ -1,7 +1,7 @@
 {
-  "git_sha": "a2743f9",
-  "git_sha_full": "a2743f9be5fc9ffabe22a3e9914a70e429920044",
-  "updated_at": "2026-09-04T22:04:08+04:00",
-  "label": "Merge: подключение Instagram пробует OAuth-сессию Facebook и называет отклонённый источник (#256)",
+  "git_sha": "954d32c",
+  "git_sha_full": "954d32caabed1ec4fe28e42c7410fe681a3f4120",
+  "updated_at": "2026-09-04T22:41:47+04:00",
+  "label": "[vercel-deploy] Merge: новый диалог подключения Instagram (#257)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
