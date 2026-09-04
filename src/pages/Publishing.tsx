@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertCircle, ExternalLink, KeyRound, Loader2, PauseCircle, Plus, RefreshCw, Send, Trash2, Upload } from "lucide-react";
+import { AlertCircle, ExternalLink, Instagram, KeyRound, Loader2, PauseCircle, Plus, RefreshCw, Search, Send, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -18,6 +19,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -35,6 +37,7 @@ import {
   REVIEW_MODE_META,
   STRATEGY_META,
   effectiveDailyLimit,
+  formatFollowers,
   healthTone,
   rampStage,
   readOAuthResult,
@@ -1083,10 +1086,33 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
 
 /* ───────────────────────────── диалоги ───────────────────────────── */
 
+function initials(name: string): string {
+  const parts = name.replace(/^@/, "").split(/[\s._-]+/).filter(Boolean);
+  return (parts.slice(0, 2).map((w) => w[0]).join("") || name.slice(0, 2)).toUpperCase();
+}
+
+function PageAvatar({ page }: { page: AvailablePage }) {
+  const label = page.ig_username ?? page.ig_name ?? page.page_name;
+  return (
+    <Avatar className="h-9 w-9 shrink-0 ring-1 ring-border">
+      {page.ig_avatar_url && <AvatarImage src={page.ig_avatar_url} alt="" />}
+      <AvatarFallback className="bg-gradient-to-br from-pink-500/20 to-amber-500/20 text-xs font-semibold">{initials(label)}</AvatarFallback>
+    </Avatar>
+  );
+}
+
+/**
+ * Подключение Instagram-аккаунтов пачкой: страницы Facebook проекта с привязанным
+ * Instagram. Строка — целиком кликабельна; уже подключённые и страницы без
+ * Instagram показаны отдельно, чтобы список из 100+ страниц читался.
+ */
 function ConnectInstagramDialog({ open, onClose, pub }: { open: boolean; onClose: () => void; pub: UsePublishing }) {
   const [pages, setPages] = useState<AvailablePage[] | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [showRest, setShowRest] = useState(false);
+  const [groupId, setGroupId] = useState<string>(NONE);
   // Запасной путь: сохранённые токены проекта площадка отклонила — пользователь
   // вставляет свежий User Access Token, он идёт и в список страниц, и в подключение.
   const [manualToken, setManualToken] = useState("");
@@ -1106,16 +1132,33 @@ function ConnectInstagramDialog({ open, onClose, pub }: { open: boolean; onClose
     if (!open) return;
     setManualToken("");
     setUsedToken(null);
+    setQuery("");
+    setShowRest(false);
+    setGroupId(NONE);
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  const connectable = (pages ?? []).filter((p) => p.connectable && !p.already_connected);
+  const all = pages ?? [];
+  const q = query.trim().toLowerCase();
+  const matches = (p: AvailablePage) =>
+    !q || [p.ig_username, p.ig_name, p.page_name].some((v) => v?.toLowerCase().includes(q));
+  const connectable = all.filter((p) => p.connectable && !p.already_connected);
+  const connected = all.filter((p) => p.already_connected);
+  const noInstagram = all.filter((p) => !p.connectable);
+  const visible = connectable.filter(matches);
+  const allVisiblePicked = visible.length > 0 && visible.every((p) => picked.includes(p.page_id));
+
+  const toggle = (id: string) => setPicked((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const toggleAll = () => {
+    if (allVisiblePicked) setPicked((s) => s.filter((id) => !visible.some((p) => p.page_id === id)));
+    else setPicked((s) => Array.from(new Set([...s, ...visible.map((p) => p.page_id)])));
+  };
 
   const submit = async () => {
     if (!picked.length) return;
     try {
-      const r = await pub.connect(picked, usedToken);
+      const r = await pub.connect(picked, usedToken, groupId === NONE ? null : groupId);
       const skipped = r.skipped?.length ? `, пропущено: ${r.skipped.length}` : "";
       toast.success(`Подключено: ${r.connected?.length ?? 0}${skipped}`);
       onClose();
@@ -1124,13 +1167,66 @@ function ConnectInstagramDialog({ open, onClose, pub }: { open: boolean; onClose
     }
   };
 
+  const Row = ({ p, state }: { p: AvailablePage; state: "pick" | "connected" | "none" }) => {
+    const on = picked.includes(p.page_id);
+    const inner = (
+      <>
+        <PageAvatar page={p} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5">
+            <span className="truncate text-sm font-medium">{p.ig_username ? `@${p.ig_username}` : p.ig_name ?? p.page_name}</span>
+            {p.ig_followers != null && p.ig_followers > 0 && (
+              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{formatFollowers(p.ig_followers)}</span>
+            )}
+          </div>
+          <div className="truncate text-xs text-muted-foreground">{p.page_name}{p.ig_name && p.ig_username ? ` · ${p.ig_name}` : ""}</div>
+        </div>
+        {state === "pick" && <Checkbox checked={on} tabIndex={-1} aria-hidden className="pointer-events-none" />}
+        {state === "connected" && <Badge variant="secondary" className="shrink-0 bg-emerald-500/10 text-emerald-700">Подключён</Badge>}
+        {state === "none" && <Badge variant="outline" className="shrink-0 text-muted-foreground">Нет Instagram</Badge>}
+      </>
+    );
+    if (state !== "pick") {
+      return <div className="flex items-center gap-3 rounded-xl px-3 py-2 opacity-70">{inner}</div>;
+    }
+    return (
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={on}
+        aria-label={p.ig_username ? `@${p.ig_username}` : p.page_name}
+        onClick={() => toggle(p.page_id)}
+        className={cn(
+          "flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors",
+          on ? "border-primary/50 bg-primary/5" : "border-transparent hover:bg-muted/60",
+        )}
+      >
+        {inner}
+      </button>
+    );
+  };
+
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Подключить Instagram</DialogTitle>
-          <DialogDescription>Страницы Facebook с привязанным Instagram-аккаунтом из подключённого Meta-токена проекта.</DialogDescription>
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-pink-500 via-rose-500 to-amber-400 text-white shadow-sm">
+              <Instagram className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <DialogTitle>Подключить Instagram</DialogTitle>
+              <DialogDescription>
+                {pages == null && !err
+                  ? "Ищем страницы Facebook с привязанным Instagram…"
+                  : connectable.length
+                  ? `Доступно ${connectable.length}, уже подключено ${connected.length}. Отметьте аккаунты и нажмите «Подключить».`
+                  : "Страницы Facebook с привязанным Instagram-аккаунтом из подключённого Meta-токена проекта."}
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
+
         {err && <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{err}</div>}
         {err && (
           <div className="space-y-2 rounded-xl border p-3 text-sm">
@@ -1153,33 +1249,99 @@ function ConnectInstagramDialog({ open, onClose, pub }: { open: boolean; onClose
             </div>
           </div>
         )}
+
         {!err && pages == null && (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Загрузка страниц…</div>
-        )}
-        {pages != null && !connectable.length && !err && (
-          <p className="text-sm text-muted-foreground">Нет страниц для подключения — все доступные уже подключены или без Instagram-аккаунта.</p>
-        )}
-        {connectable.length > 0 && (
           <div className="space-y-2">
-            {connectable.map((p) => (
-              <label key={p.page_id} className="flex items-center gap-2 text-sm">
-                <Checkbox
-                  checked={picked.includes(p.page_id)}
-                  onCheckedChange={(v) => setPicked((s) => (v ? [...s, p.page_id] : s.filter((x) => x !== p.page_id)))}
-                />
-                <span className="font-medium">{p.ig_username ? `@${p.ig_username}` : p.ig_name ?? p.page_name}</span>
-                <span className="text-xs text-muted-foreground">{p.page_name}</span>
-              </label>
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} className="flex items-center gap-3 px-3 py-2">
+                <div className="h-9 w-9 animate-pulse rounded-full bg-muted" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3 w-1/2 animate-pulse rounded bg-muted" />
+                  <div className="h-2.5 w-1/3 animate-pulse rounded bg-muted" />
+                </div>
+              </div>
             ))}
           </div>
         )}
-        {pages != null && pages.some((p) => p.already_connected) && (
-          <p className="text-xs text-muted-foreground">Уже подключено: {pages.filter((p) => p.already_connected).length}</p>
+
+        {pages != null && !err && (
+          <div className="space-y-3">
+            {connectable.length > 6 && (
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label="Поиск страниц"
+                  className="pl-9"
+                  placeholder="Поиск по @имени или названию страницы"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                />
+              </div>
+            )}
+
+            {connectable.length > 0 ? (
+              <>
+                <div className="flex items-center justify-between px-1 text-xs text-muted-foreground">
+                  <span>Выбрано <b className="text-foreground">{picked.length}</b> из {connectable.length}</span>
+                  <button type="button" className="underline-offset-2 hover:underline" onClick={toggleAll} disabled={!visible.length}>
+                    {allVisiblePicked ? "Снять выбор" : q ? `Выбрать найденные (${visible.length})` : "Выбрать все"}
+                  </button>
+                </div>
+                <ScrollArea className="max-h-[46vh] rounded-xl border">
+                  <div className="space-y-0.5 p-1.5">
+                    {visible.map((p) => <Row key={p.page_id} p={p} state="pick" />)}
+                    {visible.length === 0 && (
+                      <p className="px-3 py-6 text-center text-sm text-muted-foreground">Ничего не найдено по «{query}»</p>
+                    )}
+                  </div>
+                </ScrollArea>
+              </>
+            ) : (
+              <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
+                {connected.length
+                  ? "Все доступные Instagram-аккаунты уже подключены."
+                  : "У страниц этого Meta-токена нет привязанного Instagram Business или Creator."}
+              </div>
+            )}
+
+            {(connected.length > 0 || noInstagram.length > 0) && (
+              <div>
+                <button
+                  type="button"
+                  className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                  onClick={() => setShowRest((v) => !v)}
+                >
+                  {showRest ? "Скрыть" : "Показать"} остальные ({connected.length + noInstagram.length}): подключено {connected.length}, без Instagram {noInstagram.length}
+                </button>
+                {showRest && (
+                  <div className="mt-2 space-y-0.5 rounded-xl border p-1.5">
+                    {connected.map((p) => <Row key={p.page_id} p={p} state="connected" />)}
+                    {noInstagram.map((p) => <Row key={p.page_id} p={p} state="none" />)}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {connectable.length > 0 && pub.groups.length > 0 && (
+              <div className="flex items-center gap-3 rounded-xl border bg-muted/30 px-3 py-2">
+                <Label className="shrink-0 text-xs text-muted-foreground">Сразу в группу</Label>
+                <Select value={groupId} onValueChange={setGroupId} disabled={disabled}>
+                  <SelectTrigger className="h-8" aria-label="Группа для новых аккаунтов"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>Без группы</SelectItem>
+                    {pub.groups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
         )}
-        <DialogFooter>
+
+        <DialogFooter className="gap-2 sm:gap-0">
           <Button variant="ghost" onClick={onClose} disabled={disabled}>Отмена</Button>
           <Button onClick={() => void submit()} disabled={disabled || !picked.length}>
-            {pub.busy === "connect" && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />} Подключить ({picked.length})
+            {pub.busy === "connect" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Plus className="mr-1.5 h-4 w-4" />}
+            {picked.length ? `Подключить ${picked.length}` : "Подключить"}
           </Button>
         </DialogFooter>
       </DialogContent>

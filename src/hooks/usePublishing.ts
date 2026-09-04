@@ -125,7 +125,8 @@ export function usePublishing() {
 
     // Мутации — возвращают ответ функции и перечитывают состояние.
     loadAvailable: (metaToken?: string | null) => act("available", (pid) => publishingApi.available(pid, metaToken), false),
-    connect: (pageIds: string[], metaToken?: string | null) => act("connect", (pid) => publishingApi.connect(pid, pageIds, metaToken)),
+    connect: (pageIds: string[], metaToken?: string | null, groupId?: string | null) =>
+      act("connect", (pid) => publishingApi.connect(pid, pageIds, metaToken, groupId)),
     connectThreads: (input: { threads_user_id: string; access_token: string; account_name?: string; group_id?: string }) =>
       act("connect_threads", (pid) => publishingApi.connectThreads(pid, input)),
     updateAccount: (accountId: string, patch: AccountUpdateInput) =>

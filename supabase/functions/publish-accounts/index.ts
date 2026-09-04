@@ -7,7 +7,7 @@
  * ig_user_id + page-токен (шифротекстом). Дальше руками не трогаем ничего.
  *
  *   { action: "available",  project_id, meta_token? }        — что можно подключить (перебирает токены проекта)
- *   { action: "connect",    project_id, page_ids: [...], meta_token? } — подключить пачкой
+ *   { action: "connect",    project_id, page_ids: [...], meta_token?, group_id? } — подключить пачкой
  *   { action: "list",       project_id }                     — что подключено
  *   { action: "update",     account_id, ... }                — вкл/выкл, лимит, статус
  *   { action: "disconnect", account_id }                     — отключить
@@ -44,6 +44,8 @@ interface IgBusinessAccount {
   id: string;
   username?: string;
   name?: string;
+  profile_picture_url?: string;
+  followers_count?: number;
 }
 
 interface MetaPage {
@@ -57,7 +59,7 @@ async function metaPages(token: string): Promise<{ pages: MetaPage[]; error?: st
   // Токен кодируется: символы вроде «|» или пробел в сыром виде ломают разбор
   // на стороне Graph («Cannot parse access token»).
   const res = await fetch(
-    `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name}&limit=200&access_token=${encodeURIComponent(token)}`,
+    `${GRAPH}/me/accounts?fields=id,name,access_token,instagram_business_account{id,username,name,profile_picture_url,followers_count}&limit=200&access_token=${encodeURIComponent(token)}`,
   );
   const body = await res.json().catch(() => ({}));
   if (body?.error) return { pages: [], error: body.error.message as string };
@@ -188,6 +190,8 @@ Deno.serve(async (req) => {
           ig_user_id: p.instagram_business_account?.id ?? null,
           ig_username: p.instagram_business_account?.username ?? null,
           ig_name: p.instagram_business_account?.name ?? null,
+          ig_avatar_url: p.instagram_business_account?.profile_picture_url ?? null,
+          ig_followers: p.instagram_business_account?.followers_count ?? null,
           // Страница без Business/Creator-аккаунта публиковать не может.
           connectable: Boolean(p.instagram_business_account?.id),
           already_connected: connected.has(p.instagram_business_account?.id ?? ""),
@@ -202,6 +206,13 @@ Deno.serve(async (req) => {
       }
       const pageIds = (Array.isArray(body?.page_ids) ? body.page_ids : []).map(String);
       if (!pageIds.length) return json({ error: "page_ids обязателен" }, 400);
+      // Сразу в группу аккаунтов — чужую группу не примем.
+      let groupId: string | null = null;
+      if (typeof body?.group_id === "string" && body.group_id) {
+        const { data: g } = await admin.from("publish_account_groups").select("id").eq("id", body.group_id).eq("project_id", projectId).maybeSingle();
+        if (!g) return json({ error: "Группа не найдена в проекте" }, 400);
+        groupId = body.group_id;
+      }
 
       const found = await metaPagesForProject(admin, projectId, typeof body?.meta_token === "string" ? body.meta_token : null);
       if ("error" in found) return json({ error: found.error, tried: found.tried, failures: found.failures }, 400);
@@ -229,6 +240,8 @@ Deno.serve(async (req) => {
           publish_enabled: true,
           consecutive_errors: 0,
           last_error: null,
+          followers: ig.followers_count ?? null,
+          ...(groupId ? { group_id: groupId } : {}),
         }, { onConflict: "project_id,platform,external_account_id" })
           .select("id, account_name, handle").maybeSingle();
 

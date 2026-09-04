@@ -20,6 +20,7 @@ vi.mock("@/hooks/useProjectsStore", () => ({
 
 const disconnect = vi.fn().mockResolvedValue({ ok: true });
 const loadAvailable = vi.fn().mockResolvedValue({ pages: [] });
+const connect = vi.fn().mockResolvedValue({ connected: [{}], skipped: [] });
 const publishVideo = vi.fn().mockResolvedValue({ video_id: "v1", created: 1, skipped: 0, jobs: [] });
 
 const tiktokOld: PublishAccount = {
@@ -125,7 +126,7 @@ vi.mock("@/hooks/usePublishing", () => ({
     busy: null,
     refetch: vi.fn(),
     loadAvailable,
-    connect: vi.fn(),
+    connect,
     connectThreads: vi.fn(),
     updateAccount: vi.fn().mockResolvedValue({ account: {} }),
     disconnect,
@@ -235,6 +236,29 @@ describe("страница «Публикации»", () => {
     fireEvent.click(screen.getByRole("button", { name: "Проверить" }));
     await waitFor(() => expect(loadAvailable).toHaveBeenLastCalledWith("EAABtoken"));
     await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
+  it("подключение Instagram: поиск, «выбрать все», уже подключённые отдельно, connect с выбранными", async () => {
+    loadAvailable.mockResolvedValueOnce({
+      pages: [
+        { page_id: "p1", page_name: "VM Клиника", ig_user_id: "1", ig_username: "vm.clinic.ast", ig_name: "VM", ig_followers: 12400, connectable: true, already_connected: false },
+        { page_id: "p2", page_name: "Dagestan.topteam", ig_user_id: "2", ig_username: "dagestan.topteam", ig_name: null, connectable: true, already_connected: false },
+        { page_id: "p3", page_name: "Старый", ig_user_id: "3", ig_username: "old", ig_name: null, connectable: true, already_connected: true },
+        { page_id: "p4", page_name: "Без IG", ig_user_id: null, ig_username: null, ig_name: null, connectable: false, already_connected: false },
+      ],
+    });
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /Подключить Instagram/ }));
+    await screen.findByRole("checkbox", { name: "@vm.clinic.ast" });
+    expect(screen.getByText("12,4 тыс.")).toBeTruthy();
+    // Подключённые и страницы без Instagram свёрнуты и не предлагаются к выбору.
+    expect(screen.queryByRole("checkbox", { name: "@old" })).toBeNull();
+    expect(screen.getByText(/подключено 1, без Instagram 1/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Выбрать все" }));
+    expect(screen.getByRole("button", { name: /Подключить 2/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("checkbox", { name: "@dagestan.topteam" }));
+    fireEvent.click(screen.getByRole("button", { name: /Подключить 1/ }));
+    await waitFor(() => expect(connect).toHaveBeenCalledWith(["p1"], null, null));
   });
 
   it("«Залить видео» отклоняет не-mp4 ссылку", async () => {
