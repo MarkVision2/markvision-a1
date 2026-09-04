@@ -124,7 +124,9 @@ export async function publishYouTube(req: PublishRequest): Promise<PublishOutcom
   //    нельзя — тогда заливаем заново с нуля в ту же сессию (она это допускает).
   if (offset > 0) {
     if (body instanceof Uint8Array) {
-      body = body.subarray(offset);
+      // slice, а не subarray: под новыми lib-типами Deno subarray отдаёт
+      // Uint8Array<ArrayBufferLike>, который fetch в BodyInit не принимает.
+      body = body.slice(offset);
     } else {
       const again = await fetch(req.videoUrl);
       body = again.body ?? body;

@@ -9,7 +9,8 @@ import type { AccountMetrics, PublishGroup } from "@/lib/publishingClient";
 
 const base: AccountMetrics = {
   account_id: "a1", platform: "instagram", account_name: "Клиника Айва", handle: "aiva",
-  status: "active", publish_enabled: true, health_score: 90, followers: 12400, group_id: null,
+  status: "active", publish_enabled: true, health_score: 90, health_reasons: ["токен живой, отказов нет, проверка свежая"],
+  last_checked_at: "2026-09-05T09:00:00Z", followers: 12400, group_id: null,
   last_post_at: null, token_expires_at: null, consecutive_errors: 0,
   posts_total: 10, posts_30d: 4, jobs_queued: 0, failed_30d: 0,
   measured_posts: 10, reach: 50000, views: 62000, likes: 2400, comments: 180, shares: 60, saves: 40,

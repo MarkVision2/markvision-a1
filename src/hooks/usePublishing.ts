@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
   publishingApi,
+  runHealthCheck,
   type AccountUpdateInput,
   type GroupUpsertInput,
   type MetricsResponse,
@@ -138,6 +139,7 @@ export function usePublishing() {
     personaDelete: (personaId: string) => act("persona_delete", (pid) => publishingApi.personaDelete(pid, personaId)),
     settingsUpsert: (input: SettingsUpsertInput) => act("settings_upsert", (pid) => publishingApi.settingsUpsert(pid, input)),
     publishVideo: (input: PublishVideoInput) => act("publish_video", (pid) => publishingApi.publishVideo(pid, input)),
+    healthCheck: (accountIds?: string[]) => act("health_check", (pid) => runHealthCheck(pid, accountIds)),
   };
 }
 

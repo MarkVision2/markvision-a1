@@ -7,7 +7,7 @@
  * рапортует, сколько строк изменилось, а сколько упало.
  */
 import { useState } from "react";
-import { Loader2, X } from "lucide-react";
+import { Loader2, ShieldCheck, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -71,6 +71,26 @@ export function BulkAccountsBar({ pub, selected, onClear }: Props) {
     <div className="flex flex-wrap items-center gap-2 rounded-2xl border bg-muted/40 p-3 text-sm">
       <span className="font-medium tabular-nums">Выбрано: {n}</span>
       <span className="h-4 w-px bg-border" />
+
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={busy}
+        onClick={async () => {
+          setRunning("check");
+          try {
+            const r = await pub.healthCheck(selected);
+            if (r.token_expired) toast.warning(`Проверено ${r.checked}, протухших токенов: ${r.token_expired}`);
+            else toast.success(`Проверено ${r.checked} — все токены живые`);
+          } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Ошибка проверки");
+          } finally {
+            setRunning(null);
+          }
+        }}
+      >
+        {running === "check" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />} Проверить
+      </Button>
 
       <Button size="sm" variant="outline" disabled={busy} onClick={() => void applyAll("Публикации включены", { publish_enabled: true }, "on")}>
         {running === "on" && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />} Включить

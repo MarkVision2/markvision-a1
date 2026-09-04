@@ -13,6 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { HealthHint } from "@/components/publishing/AccountsTable";
 import {
   ACCOUNT_STATUS_META,
   PLATFORM_META,
@@ -107,6 +109,7 @@ export function ConnectedAccountsTab({ rows, groups }: { rows: AccountMetrics[];
   }
 
   return (
+    <TooltipProvider delayDuration={200}>
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         <Total label="Аккаунтов" value={String(visible.length)} />
@@ -195,10 +198,15 @@ export function ConnectedAccountsTab({ rows, groups }: { rows: AccountMetrics[];
                     {r.er_percent == null ? "—" : `${r.er_percent.toLocaleString("ru-RU")}%`}
                   </TableCell>
                   <TableCell>
-                    <div className="flex items-center justify-end gap-2">
-                      <Progress value={r.health_score} className={cn("h-2 w-16", HEALTH_CLS[tone])} aria-label={`Здоровье ${r.account_name}`} />
-                      <span className="w-7 text-right text-xs tabular-nums">{Math.round(r.health_score)}</span>
-                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <div className="flex cursor-help items-center justify-end gap-2" tabIndex={0} aria-label={`Здоровье ${r.account_name}`}>
+                          <Progress value={r.health_score} className={cn("h-2 w-16", HEALTH_CLS[tone])} />
+                          <span className="w-7 text-right text-xs tabular-nums">{Math.round(r.health_score)}</span>
+                        </div>
+                      </TooltipTrigger>
+                      <TooltipContent className="max-w-xs" side="left"><HealthHint a={r} /></TooltipContent>
+                    </Tooltip>
                   </TableCell>
                   <TableCell className="min-w-[150px]">
                     <Badge variant="outline" className={cn("border-transparent font-medium", status.cls)}>{status.label}</Badge>
@@ -222,5 +230,6 @@ export function ConnectedAccountsTab({ rows, groups }: { rows: AccountMetrics[];
         колонки пустые, пока воркер не собрал первую точку.
       </p>
     </div>
+    </TooltipProvider>
   );
 }

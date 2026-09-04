@@ -165,7 +165,7 @@ Deno.serve(async (req) => {
       if (!projectId) return json({ error: "project_id обязателен" }, 400);
       const { data, error } = await admin.from("publish_accounts")
         .select(
-          "id, platform, account_name, handle, external_account_id, fb_page_id, status, publish_enabled, daily_limit, last_post_at, consecutive_errors, last_error, token_expires_at, group_id, persona_id, timezone, window_start, window_end, ramp_enabled, ramp_started_at, health_score, published_today, published_day, token_refreshed_at, followers, oauth_scope",
+          "id, platform, account_name, handle, external_account_id, fb_page_id, status, publish_enabled, daily_limit, last_post_at, consecutive_errors, last_error, token_expires_at, group_id, persona_id, timezone, window_start, window_end, ramp_enabled, ramp_started_at, health_score, health_reasons, last_checked_at, published_today, published_day, token_refreshed_at, followers, oauth_scope",
         )
         .eq("project_id", projectId).order("platform").order("account_name");
       if (error) return json({ error: error.message }, 500);

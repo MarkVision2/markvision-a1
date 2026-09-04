@@ -43,8 +43,12 @@ export interface PublishAccount {
   window_end: string | null;
   ramp_enabled: boolean;
   ramp_started_at: string | null;
-  /** 0..100 */
+  /** 0..100 — формула _lib/publishHealth.ts, пересчитывается при проверке. */
   health_score: number;
+  /** Из чего сложилось здоровье — подсказка у числа. */
+  health_reasons?: string[];
+  /** Последняя живая проверка токена у площадки. */
+  last_checked_at?: string | null;
   published_today: number;
   published_day: string | null;
   token_refreshed_at: string | null;
@@ -174,6 +178,8 @@ export interface AccountMetrics {
   status: PublishAccountStatus;
   publish_enabled: boolean;
   health_score: number;
+  health_reasons: string[];
+  last_checked_at: string | null;
   followers: number | null;
   group_id: string | null;
   last_post_at: string | null;
@@ -466,6 +472,39 @@ export const publishingApi = {
   publishVideo: (project_id: string, input: PublishVideoInput) =>
     call<PublishVideoResult>("publish_video", { project_id, ...input }),
 };
+
+/* ───────────────────────────── проверка здоровья ───────────────────────────── */
+
+export interface HealthCheckResult {
+  checked: number;
+  token_expired: number;
+  accounts: { id: string; account_name: string; platform: PublishPlatform; alive: boolean | null; health_score: number; reasons: string[] }[];
+}
+
+/**
+ * Живая проверка аккаунтов у площадок (publish-monitor, mode=health):
+ * токен, срок, отказы → health_score + причины. Без account_ids — весь проект.
+ */
+export async function runHealthCheck(projectId: string, accountIds?: string[]): Promise<HealthCheckResult> {
+  const { data, error } = await supabase.functions.invoke("publish-monitor", {
+    body: { mode: "health", project_id: projectId, ...(accountIds?.length ? { account_ids: accountIds } : {}) },
+  });
+  if (error) {
+    const ctx = (error as { context?: Response }).context;
+    let message = error.message || "Ошибка проверки";
+    if (ctx && typeof ctx.json === "function") {
+      try {
+        const j = (await ctx.json()) as { error?: string };
+        if (j?.error) message = j.error;
+      } catch { /* не JSON */ }
+    }
+    throw new Error(message);
+  }
+  const r = data as (HealthCheckResult & { error?: string }) | null;
+  if (!r) throw new Error("Пустой ответ");
+  if (r.error) throw new Error(r.error);
+  return r;
+}
 
 /* ───────────────────────────── OAuth площадок ───────────────────────────── */
 

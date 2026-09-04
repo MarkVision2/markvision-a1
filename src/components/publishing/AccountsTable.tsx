@@ -7,7 +7,7 @@
  * смотрит каждый день: кто, в каком состоянии, сколько сегодня, когда постил.
  */
 import { useEffect, useMemo, useState } from "react";
-import { MoreHorizontal, Search, Sparkles } from "lucide-react";
+import { Loader2, MoreHorizontal, Search, ShieldCheck, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -44,6 +44,7 @@ import {
   type PublishAccount,
   type PublishPlatform,
 } from "@/lib/publishingClient";
+import { fmtExact, fmtRelative } from "@/lib/publishingFormat";
 import { ANY, EMPTY_FILTERS, filterAccounts, type AccountFilters } from "@/lib/publishingSelection";
 import { cn } from "@/lib/utils";
 
@@ -84,6 +85,23 @@ function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : "Ошибка";
 }
 
+/** Из чего сложилось здоровье и когда проверяли — подсказка у числа. */
+export function HealthHint({ a }: { a: { health_reasons?: string[] | null; last_checked_at?: string | null } }) {
+  const reasons = a.health_reasons ?? [];
+  return (
+    <div className="space-y-1 text-xs">
+      {reasons.length ? (
+        <ul className="list-disc space-y-0.5 pl-4">{reasons.map((r) => <li key={r}>{r}</li>)}</ul>
+      ) : (
+        <div>Оценка ещё не считалась — нажмите «Проверить».</div>
+      )}
+      <div className="text-muted-foreground">
+        {a.last_checked_at ? `Проверен ${fmtRelative(a.last_checked_at)} (${fmtExact(a.last_checked_at)})` : "У площадки ещё не проверялся"}
+      </div>
+    </div>
+  );
+}
+
 /* ───────────────────────────── таблица ───────────────────────────── */
 
 export function AccountsTable({ pub }: { pub: UsePublishing }) {
@@ -93,8 +111,14 @@ export function AccountsTable({ pub }: { pub: UsePublishing }) {
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     try {
-      await fn();
-      toast.success(label);
+      const r = (await fn()) as { checked?: number; token_expired?: number } | undefined;
+      if (r && typeof r.checked === "number") {
+        const dead = r.token_expired ?? 0;
+        if (dead) toast.warning(`Проверено ${r.checked}, протухших токенов: ${dead}`);
+        else toast.success(`Проверено ${r.checked} — все токены живые`);
+      } else {
+        toast.success(label);
+      }
     } catch (e) {
       toast.error(errMsg(e));
     }
@@ -160,6 +184,16 @@ export function AccountsTable({ pub }: { pub: UsePublishing }) {
           </SelectContent>
         </Select>
         <span className="text-xs tabular-nums text-muted-foreground">{visible.length} из {pub.accounts.length}</span>
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-9"
+          disabled={disabled}
+          onClick={() => void run("Проверка завершена", () => pub.healthCheck())}
+        >
+          {pub.busy === "health_check" ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-1.5 h-4 w-4" />}
+          Проверить все
+        </Button>
       </div>
 
       <BulkAccountsBar pub={pub} selected={chosen} onClear={() => setSelected(new Set())} />
@@ -337,10 +371,21 @@ function AccountRow({
 
       {/* Здоровье: точка + число вместо полосы — одинаковые «100» переставали читаться */}
       <TableCell className="py-2 text-right">
-        <span className="inline-flex items-center gap-1.5 text-sm tabular-nums">
-          <span className={cn("h-2 w-2 rounded-full", HEALTH_DOT[tone])} aria-hidden />
-          {Math.round(a.health_score)}
-        </span>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span
+              tabIndex={0}
+              aria-label={`Здоровье ${a.account_name}`}
+              className="inline-flex cursor-help items-center gap-1.5 text-sm tabular-nums"
+            >
+              <span className={cn("h-2 w-2 rounded-full", HEALTH_DOT[tone])} aria-hidden />
+              {Math.round(a.health_score)}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs" side="left">
+            <HealthHint a={a} />
+          </TooltipContent>
+        </Tooltip>
       </TableCell>
 
       <TableCell className="py-2 text-xs text-muted-foreground">{fmtLastPost(a.last_post_at)}</TableCell>
@@ -365,6 +410,10 @@ function AccountRow({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuItem disabled={disabled} onSelect={() => void run("Проверено", () => pub.healthCheck([a.id]))}>
+              <ShieldCheck className="mr-2 h-3.5 w-3.5" /> Проверить сейчас
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Лимит в день</DropdownMenuLabel>
             <div className="px-2 pb-1.5">
               <Input

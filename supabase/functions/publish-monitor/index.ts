@@ -10,6 +10,10 @@
  *   { mode: "digest" } — крон раз в час. Один отчёт на проект вместо сообщения
  *     на каждый сбой: сколько опубликовано, сколько упало и почему, какие
  *     аккаунты требуют внимания.
+ *   { mode: "health", project_id?, account_ids? } — крон раз в 6 часов и кнопка
+ *     «Проверить» в интерфейсе (JWT с доступом к проекту). Живая проверка
+ *     токена у площадки + пересчёт health_score формулой _lib/publishHealth.ts
+ *     с причинами в health_reasons. Без project_id — вся сеть (только ops-ключ).
  *
  * В режиме tokens заодно обновляются long-lived токены Instagram Login (IG…)
  * и Threads за 10 дней до истечения — refresh_access_token соответствующего
@@ -29,6 +33,8 @@ import {
   type PublishAccount,
 } from "../_lib/publishing.ts";
 import { ensureFreshToken } from "../_lib/publishRunner.ts";
+import { requireProjectAccess } from "../_lib/auth.ts";
+import { computeHealth } from "../_lib/publishHealth.ts";
 
 /** Сколько отказов подряд считаем поломкой аккаунта, а не невезением. */
 const ERROR_STREAK_LIMIT = 3;
@@ -104,6 +110,99 @@ async function instagramTokenAlive(
   }
 }
 
+/**
+ * Живость токена одного аккаунта у площадки. TikTok/YouTube — через обновление
+ * refresh_token'ом (у них нет дешёвого «кто я» без свежего access), остальные —
+ * запрос id от имени аккаунта. Сетевая ошибка — не смерть токена (null).
+ */
+async function probeAccount(admin: SupabaseClient, account: PublishAccount): Promise<{ alive: boolean | null; reason: string | null }> {
+  let token: string | null = null;
+  try { token = await decryptSecret(account.access_token_encrypted); } catch { token = null; }
+  if (!token) return { alive: false, reason: "токен не расшифрован — нужен reconnect" };
+
+  if (account.platform === "tiktok" || account.platform === "youtube") {
+    const fresh = await ensureFreshToken(admin, { ...account, token_expires_at: new Date(0).toISOString() }, token);
+    if (fresh.error && /invalid_grant|invalid_token|access_token_invalid|revoked|reconnect/i.test(fresh.error)) return { alive: false, reason: fresh.error };
+    if (fresh.error) return { alive: null, reason: fresh.error };
+    return { alive: true, reason: null };
+  }
+  const r = account.platform === "threads"
+    ? await threadsTokenAlive(account.external_account_id, token)
+    : await instagramTokenAlive(account.external_account_id, token);
+  return { alive: r.alive, reason: r.reason ?? null };
+}
+
+/** Исходы за 30 дней — вход для доли ошибок в формуле. */
+async function outcomes30d(admin: SupabaseClient, accountIds: string[]): Promise<Map<string, { failed: number; published: number }>> {
+  const since = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const { data } = await admin.from("publish_jobs")
+    .select("account_id, status").in("account_id", accountIds)
+    .in("status", ["failed", "published"]).gte("updated_at", since);
+  const m = new Map<string, { failed: number; published: number }>();
+  for (const j of (data ?? []) as { account_id: string; status: string }[]) {
+    const o = m.get(j.account_id) ?? { failed: 0, published: 0 };
+    if (j.status === "failed") o.failed++; else o.published++;
+    m.set(j.account_id, o);
+  }
+  return m;
+}
+
+/**
+ * Проверка здоровья: живой запрос к площадке по каждому аккаунту, затем
+ * health_score по формуле с причинами. Мёртвый токен переводит аккаунт в
+ * token_expired (триггер в БД дополнительно уронит счётчик, формула его всё
+ * равно перезапишет). Ожившему token_expired возвращаем active.
+ */
+async function checkHealth(admin: SupabaseClient, projectId: string | null, accountIds: string[] | null) {
+  let q = admin.from("publish_accounts").select("*").neq("status", "disabled");
+  if (projectId) q = q.eq("project_id", projectId);
+  if (accountIds?.length) q = q.in("id", accountIds);
+  const { data, error } = await q;
+  if (error) return { checked: 0, token_expired: 0, accounts: [], error: error.message };
+  const accounts = (data ?? []) as PublishAccount[];
+  const stats = await outcomes30d(admin, accounts.map((a) => a.id));
+
+  const out: { id: string; account_name: string; platform: string; alive: boolean | null; health_score: number; reasons: string[] }[] = [];
+  const dead: PublishAccount[] = [];
+  const now = new Date().toISOString();
+
+  for (const account of accounts) {
+    const probe = await probeAccount(admin, account);
+    const nextStatus = probe.alive === false
+      ? "token_expired"
+      : probe.alive === true && account.status === "token_expired" ? "active" : account.status;
+    const o = stats.get(account.id) ?? { failed: 0, published: 0 };
+    const h = computeHealth({
+      status: nextStatus,
+      tokenAlive: probe.alive,
+      tokenExpiresAt: account.token_expires_at,
+      lastCheckedAt: probe.alive == null ? account.last_checked_at ?? null : now,
+      consecutiveErrors: account.consecutive_errors,
+      failed30d: o.failed,
+      published30d: o.published,
+    });
+    await admin.from("publish_accounts").update({
+      status: nextStatus,
+      health_score: h.score,
+      health_reasons: h.reasons,
+      // Не удалось достучаться до площадки — не считаем это проверкой.
+      ...(probe.alive == null ? {} : { last_checked_at: now }),
+      ...(probe.alive === false ? { last_error: probe.reason ?? "токен не проходит проверку — нужен reconnect" } : {}),
+    }).eq("id", account.id);
+    if (probe.alive === false && account.status !== "token_expired") dead.push(account);
+    out.push({ id: account.id, account_name: account.account_name, platform: account.platform, alive: probe.alive, health_score: h.score, reasons: h.reasons });
+  }
+
+  // Об умерших токенах сообщаем один раз — при переходе, а не при каждой проверке.
+  const byProject = new Map<string, string[]>();
+  for (const a of dead) byProject.set(a.project_id, [...(byProject.get(a.project_id) ?? []), `${a.account_name} (${a.platform})`]);
+  for (const [pid, names] of byProject) {
+    await notifyProject(admin, pid, `🔑 Требуется переподключение аккаунтов (${names.length}):\n• ${names.join("\n• ")}`);
+  }
+
+  return { checked: accounts.length, token_expired: dead.length, accounts: out };
+}
+
 async function checkTokens(admin: SupabaseClient) {
   const { data, error } = await admin.from("publish_accounts")
     .select("*").in("status", ["active", "limited"]);
@@ -155,10 +254,26 @@ async function checkTokens(admin: SupabaseClient) {
     if (!alive.alive) dead.push(account);
   }
 
-  for (const account of dead) {
+  const deadIds = new Set(dead.map((a) => a.id));
+  const stats = await outcomes30d(admin, accounts.map((a) => a.id));
+  const now = new Date().toISOString();
+  for (const account of accounts) {
+    const isDead = deadIds.has(account.id);
+    const o = stats.get(account.id) ?? { failed: 0, published: 0 };
+    const h = computeHealth({
+      status: isDead ? "token_expired" : account.status,
+      tokenAlive: !isDead,
+      tokenExpiresAt: account.token_expires_at,
+      lastCheckedAt: now,
+      consecutiveErrors: account.consecutive_errors,
+      failed30d: o.failed,
+      published30d: o.published,
+    });
     await admin.from("publish_accounts").update({
-      status: "token_expired",
-      last_error: "токен не проходит проверку — нужен reconnect",
+      health_score: h.score,
+      health_reasons: h.reasons,
+      last_checked_at: now,
+      ...(isDead ? { status: "token_expired", last_error: "токен не проходит проверку — нужен reconnect" } : {}),
     }).eq("id", account.id);
   }
 
@@ -270,16 +385,25 @@ Deno.serve(async (req) => {
     Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   );
 
+  const body = await req.json().catch(() => ({}));
+  const mode = String(body?.mode ?? "errors");
+  const projectId = typeof body?.project_id === "string" && body.project_id ? body.project_id : null;
+  const accountIds = Array.isArray(body?.account_ids) ? body.account_ids.map(String).filter(Boolean) : null;
+
   if (!(await automationKeyValid(req, admin))) {
     const auth = await requireUser(req);
     if (!auth.ok) return json({ error: "unauthorized" }, 401);
-    if (!(await userHasAnyRole(auth.userId, ["admin", "manager"]))) {
+    // Проверка здоровья своего проекта — любому, у кого есть к нему доступ;
+    // остальные режимы и вся сеть целиком — только admin/manager.
+    if (mode === "health" && projectId) {
+      const access = await requireProjectAccess(auth.authHeader, projectId);
+      if (!access.ok) return access.response;
+    } else if (!(await userHasAnyRole(auth.userId, ["admin", "manager"]))) {
       return json({ error: "forbidden" }, 403);
     }
   }
 
-  const body = await req.json().catch(() => ({}));
-  const mode = String(body?.mode ?? "errors");
+  if (mode === "health") return json({ ok: true, mode, ...(await checkHealth(admin, projectId, accountIds)) });
 
   if (mode === "tokens") return json({ ok: true, mode, ...(await checkTokens(admin)) });
   if (mode === "errors") return json({ ok: true, mode, ...(await checkErrors(admin)) });

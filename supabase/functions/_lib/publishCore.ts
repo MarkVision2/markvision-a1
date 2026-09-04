@@ -125,4 +125,7 @@ export interface PublishAccount {
   token_refreshed_at?: string | null;
   followers?: number | null;
   oauth_scope?: string | null;
+  /** Проверка здоровья (миграция publish_account_health): когда и почему. */
+  last_checked_at?: string | null;
+  health_reasons?: string[];
 }
