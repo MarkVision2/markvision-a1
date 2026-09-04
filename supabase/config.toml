@@ -228,3 +228,12 @@ verify_jwt = false
 # Telegram — x-telegram-bot-api-secret-token, обслуживание — x-automation-key.
 [functions.content-pipeline]
 verify_jwt = false
+
+# Радар идей (docs/AUTOPOSTING-PLATFORM-PLAN.md, M1): пользовательские маршруты
+# проверяют JWT внутри; ingest от n8n — HMAC-подпись; maintenance — x-automation-key.
+[functions.radar]
+verify_jwt = false
+
+# Сбор метрик публикаций (post_metrics) — pg_cron по x-automation-key.
+[functions.publish-metrics]
+verify_jwt = false

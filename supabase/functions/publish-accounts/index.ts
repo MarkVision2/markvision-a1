@@ -14,8 +14,17 @@
  *
  * Группы («залить во все клиники») — тот же endpoint:
  *   { action: "group_list",   project_id }
- *   { action: "group_upsert", project_id, id?, name, account_ids, platform?, publish_strategy?, per_hour? }
+ *   { action: "group_upsert", project_id, id?, name, account_ids, platform?, publish_strategy?, per_hour?,
+ *                             persona_id?, review_mode?, timezone?, window_start?, window_end?, min_gap_minutes?, jitter_minutes? }
  *   { action: "group_delete", group_id }
+ *
+ * Дистрибуция 100+ (docs/AUTOPOSTING-PLATFORM-PLAN.md):
+ *   { action: "connect_threads", project_id, threads_user_id, access_token, account_name?, expires_at? }
+ *   { action: "persona_list" | "persona_upsert" | "persona_delete", project_id, ... }
+ *   { action: "settings_get" | "settings_upsert", project_id, notify_mode?, daily_usd?, monthly_usd? }
+ *   { action: "jobs_list", project_id, status?, limit? }
+ *   { action: "publish_video", project_id, file_url | video_id, group_id?, account_ids?, mode?, title?, caption?, hashtags? }
+ *   { action: "metrics", project_id } — витрины publish_metrics / radar_metrics
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireProjectAccess, requireUser } from "../_lib/auth.ts";
@@ -94,7 +103,7 @@ Deno.serve(async (req) => {
       if (!projectId) return json({ error: "project_id обязателен" }, 400);
       const { data, error } = await admin.from("publish_accounts")
         .select(
-          "id, platform, account_name, handle, external_account_id, fb_page_id, status, publish_enabled, daily_limit, last_post_at, consecutive_errors, last_error, token_expires_at",
+          "id, platform, account_name, handle, external_account_id, fb_page_id, status, publish_enabled, daily_limit, last_post_at, consecutive_errors, last_error, token_expires_at, group_id, persona_id, timezone, window_start, window_end, ramp_enabled, ramp_started_at, health_score, published_today, published_day, token_refreshed_at, followers",
         )
         .eq("project_id", projectId).order("platform").order("account_name");
       if (error) return json({ error: error.message }, 500);
@@ -191,6 +200,13 @@ Deno.serve(async (req) => {
       if (typeof body?.daily_limit === "number") patch.daily_limit = Math.min(Math.max(body.daily_limit, 0), 200);
       if (typeof body?.account_name === "string") patch.account_name = body.account_name;
       if (typeof body?.notes === "string") patch.notes = body.notes;
+      if (body?.group_id === null || typeof body?.group_id === "string") patch.group_id = body.group_id;
+      if (body?.persona_id === null || typeof body?.persona_id === "string") patch.persona_id = body.persona_id;
+      if (body?.timezone === null || typeof body?.timezone === "string") patch.timezone = body.timezone;
+      if (body?.window_start === null || typeof body?.window_start === "string") patch.window_start = body.window_start;
+      if (body?.window_end === null || typeof body?.window_end === "string") patch.window_end = body.window_end;
+      if (typeof body?.ramp_enabled === "boolean") patch.ramp_enabled = body.ramp_enabled;
+      if (body?.ramp_restart === true) patch.ramp_started_at = new Date().toISOString();
       if (typeof body?.status === "string") {
         const allowed = ["active", "token_expired", "limited", "error", "disabled"];
         if (!allowed.includes(body.status)) return json({ error: `недопустимый статус: ${body.status}` }, 400);
@@ -246,6 +262,18 @@ Deno.serve(async (req) => {
         row.publish_strategy = body.publish_strategy;
       }
       if (typeof body?.per_hour === "number") row.per_hour = Math.min(Math.max(body.per_hour, 1), 120);
+      if (body?.persona_id === null || typeof body?.persona_id === "string") row.persona_id = body.persona_id;
+      if (typeof body?.review_mode === "string") {
+        if (!["review_required", "auto_publish", "paused"].includes(body.review_mode)) {
+          return json({ error: `недопустимый режим согласования: ${body.review_mode}` }, 400);
+        }
+        row.review_mode = body.review_mode;
+      }
+      if (typeof body?.timezone === "string") row.timezone = body.timezone;
+      if (typeof body?.window_start === "string") row.window_start = body.window_start;
+      if (typeof body?.window_end === "string") row.window_end = body.window_end;
+      if (typeof body?.min_gap_minutes === "number") row.min_gap_minutes = Math.min(Math.max(body.min_gap_minutes, 0), 1440);
+      if (typeof body?.jitter_minutes === "number") row.jitter_minutes = Math.min(Math.max(body.jitter_minutes, 0), 180);
       if (typeof body?.id === "string") row.id = body.id;
 
       const { data, error } = await admin.from("publish_account_groups")
@@ -260,6 +288,165 @@ Deno.serve(async (req) => {
       const { error } = await admin.from("publish_account_groups").delete().eq("id", groupId);
       if (error) return json({ error: error.message }, 500);
       return json({ ok: true });
+    }
+
+    /* ── Threads: токен площадки вводится вручную (Threads OAuth — отдельное приложение Meta) ── */
+    if (action === "connect_threads") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      if (!tokenKeyConfigured()) return json({ error: "PUBLISH_TOKEN_KEY не задан в секретах Supabase" }, 500);
+      const userId = String(body?.threads_user_id ?? "").trim();
+      const token = String(body?.access_token ?? "").trim();
+      if (!/^\d{5,}$/.test(userId)) return json({ error: "threads_user_id — числовой id пользователя Threads" }, 400);
+      if (token.length < 20) return json({ error: "access_token обязателен" }, 400);
+      // Проверяем токен и подтягиваем username до сохранения.
+      const probe = await fetch(`https://graph.threads.net/v1.0/${userId}?fields=id,username,name&access_token=${token}`);
+      const info = await probe.json().catch(() => ({}));
+      if (info?.error || !info?.id) return json({ error: `токен Threads не принят: ${info?.error?.message ?? "нет id"}` }, 400);
+      const { data, error } = await admin.from("publish_accounts").upsert({
+        project_id: projectId,
+        platform: "threads",
+        account_name: String(body?.account_name ?? info.name ?? info.username ?? "Threads"),
+        handle: info.username ?? null,
+        external_account_id: String(info.id),
+        access_token_encrypted: await encryptSecret(token),
+        token_expires_at: body?.expires_at ? String(body.expires_at) : new Date(Date.now() + 60 * 86_400_000).toISOString(),
+        status: "active",
+        publish_enabled: true,
+        consecutive_errors: 0,
+        last_error: null,
+        group_id: typeof body?.group_id === "string" ? body.group_id : null,
+      }, { onConflict: "project_id,platform,external_account_id" })
+        .select("id, account_name, handle").maybeSingle();
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, account: data });
+    }
+
+    /* ── персоны ── */
+    if (action === "persona_list") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      const { data, error } = await admin.from("personas").select("*").eq("project_id", projectId).order("name");
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, personas: data ?? [] });
+    }
+    if (action === "persona_upsert") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      const name = typeof body?.name === "string" ? body.name.trim() : "";
+      if (!name) return json({ error: "name обязателен" }, 400);
+      const row: Record<string, unknown> = { project_id: projectId, name };
+      for (const k of ["description", "niche", "tone_of_voice", "language", "heygen_avatar_id", "heygen_voice_id", "eleven_voice_id", "reels_theme", "caption_style"]) {
+        if (body?.[k] === null || typeof body?.[k] === "string") row[k] = body[k];
+      }
+      if (Array.isArray(body?.forbidden_phrases)) row.forbidden_phrases = body.forbidden_phrases.map(String).filter(Boolean);
+      if (typeof body?.engine_default === "string") {
+        if (!["heygen", "reels_faceless", "montage"].includes(body.engine_default)) return json({ error: "недопустимый engine_default" }, 400);
+        row.engine_default = body.engine_default;
+      }
+      if (typeof body?.id === "string") row.id = body.id;
+      const { data, error } = await admin.from("personas").upsert(row, { onConflict: "id" }).select("*").maybeSingle();
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, persona: data });
+    }
+    if (action === "persona_delete") {
+      const id = String(body?.persona_id ?? "");
+      if (!id) return json({ error: "persona_id обязателен" }, 400);
+      const { error } = await admin.from("personas").delete().eq("id", id).eq("project_id", projectId ?? "");
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true });
+    }
+
+    /* ── настройки проекта: уведомления и бюджеты ── */
+    if (action === "settings_get") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      const [{ data: s }, { data: b }, { data: spend }] = await Promise.all([
+        admin.from("publish_project_settings").select("*").eq("project_id", projectId).maybeSingle(),
+        admin.from("project_budgets").select("*").eq("project_id", projectId).maybeSingle(),
+        admin.rpc("project_spend", { p_project_id: projectId }),
+      ]);
+      const sp = (Array.isArray(spend) ? spend[0] : spend) as { spent_today_usd?: number; spent_month_usd?: number } | null;
+      return json({
+        ok: true,
+        settings: s ?? { project_id: projectId, notify_mode: "digest", digest_chat_id: null, max_parallel_workers: 3 },
+        budget: b ?? { project_id: projectId, daily_usd: 20, monthly_usd: 300 },
+        spend: { today_usd: Number(sp?.spent_today_usd ?? 0), month_usd: Number(sp?.spent_month_usd ?? 0) },
+      });
+    }
+    if (action === "settings_upsert") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      if (typeof body?.notify_mode === "string" || typeof body?.digest_chat_id === "string" || body?.digest_chat_id === null) {
+        const row: Record<string, unknown> = { project_id: projectId };
+        if (typeof body?.notify_mode === "string") {
+          if (!["digest", "each", "silent"].includes(body.notify_mode)) return json({ error: "недопустимый notify_mode" }, 400);
+          row.notify_mode = body.notify_mode;
+        }
+        if (body?.digest_chat_id === null || typeof body?.digest_chat_id === "string") row.digest_chat_id = body.digest_chat_id;
+        const { error } = await admin.from("publish_project_settings").upsert(row, { onConflict: "project_id" });
+        if (error) return json({ error: error.message }, 500);
+      }
+      if (typeof body?.daily_usd === "number" || typeof body?.monthly_usd === "number") {
+        const row: Record<string, unknown> = { project_id: projectId };
+        if (typeof body?.daily_usd === "number") row.daily_usd = Math.max(0, body.daily_usd);
+        if (typeof body?.monthly_usd === "number") row.monthly_usd = Math.max(0, body.monthly_usd);
+        const { error } = await admin.from("project_budgets").upsert(row, { onConflict: "project_id" });
+        if (error) return json({ error: error.message }, 500);
+      }
+      return json({ ok: true });
+    }
+
+    /* ── задания и метрики для интерфейса ── */
+    if (action === "jobs_list") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      let q = admin.from("publish_jobs")
+        .select("id, video_id, account_id, platform, status, scheduled_at, attempts, next_attempt_at, external_post_url, error_code, error_message, published_at, created_at, publish_accounts(account_name, handle), publish_videos(title, file_url)")
+        .eq("project_id", projectId)
+        .order("scheduled_at", { ascending: false })
+        .limit(Math.min(Math.max(Number(body?.limit ?? 100), 1), 500));
+      if (typeof body?.status === "string") q = q.eq("status", body.status);
+      if (typeof body?.video_id === "string") q = q.eq("video_id", body.video_id);
+      const { data, error } = await q;
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, jobs: data ?? [] });
+    }
+    if (action === "metrics") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      const [{ data: pm }, { data: rm }, { data: videos }] = await Promise.all([
+        admin.from("publish_metrics").select("*").eq("project_id", projectId).maybeSingle(),
+        admin.from("radar_metrics").select("*").eq("project_id", projectId).maybeSingle(),
+        admin.from("publish_videos").select("id, title, status, file_url, created_at, source").eq("project_id", projectId).order("created_at", { ascending: false }).limit(50),
+      ]);
+      return json({ ok: true, publish: pm ?? null, radar: rm ?? null, videos: videos ?? [] });
+    }
+
+    /* ── «Залить видео в группу»: библиотека + планировщик слотов ── */
+    if (action === "publish_video") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      let videoId = typeof body?.video_id === "string" ? body.video_id : null;
+      if (!videoId) {
+        const fileUrl = String(body?.file_url ?? "").trim();
+        if (!/^https:\/\/.+\.(mp4|mov|m4v)(\?|$)/i.test(fileUrl)) return json({ error: "file_url — https-ссылка на .mp4/.mov" }, 400);
+        const { data, error } = await admin.from("publish_videos").insert({
+          project_id: projectId,
+          file_url: fileUrl,
+          title: body?.title ? String(body.title) : null,
+          base_caption: body?.caption ? String(body.caption) : null,
+          caption_variants: Array.isArray(body?.caption_variants) ? body.caption_variants.map(String) : [],
+          hashtags: Array.isArray(body?.hashtags) ? body.hashtags.map(String) : [],
+          source: "manual",
+        }).select("id").maybeSingle();
+        if (error) return json({ error: error.message }, 500);
+        videoId = (data as { id: string }).id;
+      }
+      const mode = ["now", "drip", "daily"].includes(String(body?.mode)) ? String(body.mode) : "drip";
+      const accountIds = Array.isArray(body?.account_ids) && body.account_ids.length ? body.account_ids.map(String) : null;
+      const { data: planned, error: planErr } = await admin.rpc("plan_publish_slots", {
+        p_video_id: videoId,
+        p_group_id: typeof body?.group_id === "string" ? body.group_id : null,
+        p_account_ids: accountIds,
+        p_start: body?.start_at ? String(body.start_at) : new Date().toISOString(),
+        p_mode: mode,
+      });
+      if (planErr) return json({ error: planErr.message }, 500);
+      const rows = (planned ?? []) as { job_id: string; account_id: string; scheduled_at: string; created: boolean }[];
+      return json({ ok: true, video_id: videoId, created: rows.filter((r) => r.created).length, skipped: rows.filter((r) => !r.created).length, jobs: rows });
     }
 
     if (action === "disconnect") {

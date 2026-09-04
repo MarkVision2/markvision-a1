@@ -188,7 +188,7 @@
         -100
       ],
       "parameters": {
-        "jsCode": "const s = $('Настройки').first().json;\nconst g = $('Проверка входа').first().json;\nreturn [{ json: { event: 'claim', worker_id: s.worker_id, project_id: g.project_id || null } }];"
+        "jsCode": "const s = $('Настройки').first().json;\nconst g = $('Проверка входа').first().json;\nreturn [{ json: { event: 'claim', worker_id: s.worker_id, project_id: g.project_id || null, engine: 'heygen' } }];"
       }
     },
     {

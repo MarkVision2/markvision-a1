@@ -92,3 +92,36 @@ export function composeCaption(caption: string | null, hashtags: string[]): stri
   if (!tags.length) return body;
   return body ? `${body}\n\n${tags.join(" ")}` : tags.join(" ");
 }
+
+/* ─────────────────────────── строка аккаунта площадки ──────────────────────────── */
+// Живёт здесь, а не в publishing.ts: публикаторы и их тесты не должны тянуть
+// supabase-js через URL-импорт.
+export interface PublishAccount {
+  id: string;
+  project_id: string;
+  platform: Platform;
+  account_name: string;
+  handle: string | null;
+  external_account_id: string;
+  fb_page_id: string | null;
+  access_token_encrypted: string | null;
+  refresh_token_encrypted: string | null;
+  token_expires_at: string | null;
+  status: "active" | "token_expired" | "limited" | "error" | "disabled";
+  publish_enabled: boolean;
+  daily_limit: number;
+  last_post_at: string | null;
+  consecutive_errors: number;
+  last_error: string | null;
+  /** Дистрибуция 100+ (миграция publishing_scale): группа, персона, разгон, здоровье. */
+  group_id?: string | null;
+  persona_id?: string | null;
+  timezone?: string | null;
+  ramp_enabled?: boolean;
+  ramp_started_at?: string | null;
+  health_score?: number;
+  published_today?: number;
+  published_day?: string | null;
+  token_refreshed_at?: string | null;
+  followers?: number | null;
+}

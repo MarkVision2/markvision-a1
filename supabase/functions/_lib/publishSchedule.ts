@@ -22,6 +22,8 @@ export interface Target {
   mode?: "now" | "drip" | "daily";
   per_hour?: number;
   start_at?: string;
+  /** "legacy" — старая раскладка по индексу (scheduleFor) без планировщика слотов. */
+  plan?: "slots" | "legacy";
 }
 
 /** Проверка того, что можно проверить без сети. */

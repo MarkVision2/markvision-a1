@@ -18,6 +18,7 @@ const hookState = vi.hoisted(() => ({
   reject: vi.fn(async () => hookState.detail!),
   retry: vi.fn(async () => hookState.detail!),
   cancel: vi.fn(async () => hookState.detail!),
+  variants: vi.fn(async () => hookState.detail!),
 }));
 
 vi.mock("@/hooks/useContentPipeline", () => ({
@@ -54,7 +55,10 @@ function detailWith(state: PipelineDetail["current_run"] extends infer R ? (R ex
     item: {
       id: "item-1", project_id: "p1", title: "Тема", description: null, prompts: null, category: "content",
       hashtags: null, status: "in_progress", media_url: null, created_at: "", updated_at: "",
+      parent_item_id: null, target_group_id: null, target_group_name: null, review_mode: null,
+      persona_id: null, persona_name: null, engine: "heygen", idea_id: null, publish_video_id: null,
     },
+    variants: [],
     current_run: run,
     script: run?.script ?? null,
     runs: run ? [run] : [],

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
-  AlertCircle, Check, Clapperboard, Loader2, RefreshCw, Sparkles, X, XCircle,
+  AlertCircle, Check, Clapperboard, Layers, Loader2, RefreshCw, Sparkles, X, XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,8 @@ import { useContentPipeline } from "@/hooks/useContentPipeline";
 import {
   formatDuration,
   isActivePipelineState,
+  loadPublishGroups,
+  PIPELINE_ENGINE_META,
   PIPELINE_STATE_META,
   PIPELINE_STEPS,
   pipelineStepIndex,
@@ -88,8 +91,96 @@ function ScriptBlock({ detail }: { detail: PipelineDetail }) {
   );
 }
 
+function VariantsBlock({ detail, busy, onCreate }: {
+  detail: PipelineDetail;
+  busy: boolean;
+  onCreate: (groupIds: string[]) => Promise<unknown>;
+}) {
+  const [groups, setGroups] = useState<{ id: string; name: string; review_mode?: string }[]>([]);
+  const [picked, setPicked] = useState<string[]>([]);
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    let alive = true;
+    void loadPublishGroups(detail.item.project_id).then((g) => { if (alive) setGroups(g); });
+    return () => { alive = false; };
+  }, [open, detail.item.project_id]);
+  const taken = new Set(detail.variants.map((v) => v.target_group_id));
+  if (detail.item.parent_item_id) return null;
+  return (
+    <div className="space-y-2 rounded-xl border border-border/60 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-semibold">
+          <Layers className="h-4 w-4 text-pink-500" />
+          Варианты под группы аккаунтов
+          <span className="text-xs font-normal text-muted-foreground">
+            {detail.variants.length ? `${detail.variants.length} шт.` : "разные персоны и подписи для разных групп"}
+          </span>
+        </div>
+        <Button size="sm" variant="outline" disabled={busy} onClick={() => setOpen((v) => !v)}>Создать варианты</Button>
+      </div>
+      {open && (
+        <div className="space-y-2 text-sm">
+          {groups.length === 0 ? (
+            <p className="text-xs text-muted-foreground">Групп аккаунтов пока нет — создайте их на странице «Публикации».</p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {groups.map((g) => {
+                const disabled = taken.has(g.id);
+                const on = picked.includes(g.id);
+                return (
+                  <button
+                    key={g.id}
+                    type="button"
+                    disabled={disabled}
+                    className={cn(
+                      "rounded-full border px-3 py-1 text-xs",
+                      disabled ? "opacity-50" : on ? "border-pink-500 bg-pink-500/10" : "border-border",
+                    )}
+                    onClick={() => setPicked((p) => (on ? p.filter((x) => x !== g.id) : [...p, g.id]))}
+                  >
+                    {g.name}{disabled ? " · есть" : ""}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <Button
+            size="sm"
+            disabled={busy || picked.length === 0}
+            onClick={() => void onCreate(picked).then(() => { setPicked([]); setOpen(false); })}
+          >
+            Создать для выбранных ({picked.length})
+          </Button>
+        </div>
+      )}
+      {detail.variants.length > 0 && (
+        <ul className="divide-y divide-border/60 rounded-lg border border-border/60 text-sm">
+          {detail.variants.map((v) => {
+            const st = v.pipeline_runs?.state;
+            return (
+              <li key={v.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-1.5">
+                <Link to={`/marketing/content-plan/${v.id}`} className="font-medium underline-offset-2 hover:underline">
+                  {v.publish_account_groups?.name ?? "без группы"}
+                </Link>
+                {st && (
+                  <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-semibold", PIPELINE_STATE_META[st].cls)}>
+                    {PIPELINE_STATE_META[st].label}
+                  </span>
+                )}
+                <span className="text-xs text-muted-foreground">{v.engine ? PIPELINE_ENGINE_META[v.engine].label : ""}</span>
+                {v.publish_video_id && <span className="text-xs text-emerald-700">в библиотеке публикации</span>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 export function ContentPipelinePanel({ itemId, enabled = true }: { itemId: string; enabled?: boolean }) {
-  const { detail, loading, error, busy, refetch, generate, approve, reject, retry, cancel } =
+  const { detail, loading, error, busy, refetch, generate, approve, reject, retry, cancel, variants } =
     useContentPipeline(itemId, enabled);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [comment, setComment] = useState("");
@@ -207,6 +298,22 @@ export function ContentPipelinePanel({ itemId, enabled = true }: { itemId: strin
       )}
 
       <Steps run={run} />
+
+      <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        <span>Движок <span className="font-semibold text-foreground">{PIPELINE_ENGINE_META[detail.item.engine]?.label ?? detail.item.engine}</span></span>
+        {detail.item.target_group_name && (
+          <span>Группа <span className="font-semibold text-foreground">{detail.item.target_group_name}</span>
+            {detail.item.review_mode === "auto_publish" ? " · автопубликация" : ""}
+          </span>
+        )}
+        {detail.item.persona_name && <span>Персона <span className="font-semibold text-foreground">{detail.item.persona_name}</span></span>}
+        {detail.item.parent_item_id && (
+          <Link to={`/marketing/content-plan/${detail.item.parent_item_id}`} className="underline">исходная тема</Link>
+        )}
+        {detail.item.publish_video_id && <span className="text-emerald-700">передано в публикацию</span>}
+      </div>
+
+      <VariantsBlock detail={detail} busy={disabled} onCreate={(ids) => wrap("Варианты созданы и поставлены в очередь", () => variants(ids))} />
 
       {run ? (
         <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-4">

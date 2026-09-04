@@ -13,6 +13,7 @@ import {
   logJob,
   markAccountFailure,
   markAccountSuccess,
+  notifyModeOf,
   notifyProject,
   type PublishAccount,
   type PublishJob,
@@ -43,6 +44,15 @@ function inMinutes(minutes: number): string {
 
 async function patchJob(admin: SupabaseClient, jobId: string, patch: Record<string, unknown>) {
   await admin.from("publish_jobs").update(patch).eq("id", jobId);
+}
+
+/**
+ * Поштучные уведомления — только в режиме each. В digest (по умолчанию для
+ * сети из десятков аккаунтов) сбои собирает publish-monitor mode:digest раз в час.
+ */
+async function notifyIfEach(admin: SupabaseClient, projectId: string, text: string): Promise<void> {
+  if ((await notifyModeOf(admin, projectId)) !== "each") return;
+  await notifyProject(admin, projectId, text);
 }
 
 /**
@@ -196,7 +206,7 @@ export async function runPublishJob(
   // задание ждёт в очереди и уедет само, как только аккаунт починят.
   if (outcome.kind === "token" || outcome.kind === "limit") {
     await patchJob(admin, job.id, { ...base, status: "retry", next_attempt_at: inMinutes(60) });
-    await notifyProject(
+    await notifyIfEach(
       admin, job.project_id,
       outcome.kind === "token"
         ? `🔑 Публикация остановлена: у аккаунта «${account.account_name}» (${account.platform}) недействителен токен. Нужен reconnect в настройках.`
@@ -213,7 +223,7 @@ export async function runPublishJob(
   }
 
   await patchJob(admin, job.id, { ...base, status: "failed" });
-  await notifyProject(
+  await notifyIfEach(
     admin, job.project_id,
     `❌ Публикация не удалась: «${account.account_name}» (${account.platform}) — ${outcome.message.slice(0, 200)}`,
   );

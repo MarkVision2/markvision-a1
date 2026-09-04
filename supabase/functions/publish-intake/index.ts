@@ -6,9 +6,11 @@
  *   { action: "video_ready", ... }  — принять видео (+ сразу поставить задания)
  *   { action: "create_jobs", ... }  — поставить задания на уже принятое видео
  *
- * Раскладка по времени (target.mode) — это защита от «100 постов в одну
- * минуту»: drip разносит публикации по per_hour в час, daily — по одной в
- * сутки на аккаунт.
+ * Раскладка по времени — планировщик слотов plan_publish_slots (миграция
+ * publishing_scale): окно публикаций в поясе аккаунта, минимальный интервал,
+ * дневной лимит с разгоном, темп группы per_hour, джиттер. Стратегия и темп
+ * берутся из группы, если в target их не передали (раньше поля группы были
+ * записаны, но не читались). target.mode = "now" — все сразу, как и было.
  */
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireUser, userHasAnyRole } from "../_lib/auth.ts";
@@ -64,11 +66,13 @@ async function resolveAccounts(
 ): Promise<AccountRow[]> {
   let ids: string[] | null = null;
 
+  let groupId: string | null = null;
   if (target.group_id) {
     const { data } = await admin
       .from("publish_account_groups").select("account_ids, platform")
       .eq("id", target.group_id).eq("project_id", projectId).maybeSingle();
     ids = ((data as { account_ids?: string[] } | null)?.account_ids ?? []);
+    groupId = target.group_id;
   } else if (Array.isArray(target.account_ids) && target.account_ids.length) {
     ids = target.account_ids.map(String);
   }
@@ -77,9 +81,16 @@ async function resolveAccounts(
     .select("id, platform, account_name")
     .eq("project_id", projectId)
     .eq("status", "active")
-    .eq("publish_enabled", true);
+    .eq("publish_enabled", true)
+    .gte("health_score", 20);
 
-  if (ids) q = q.in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
+  // Членство в группе — и по списку account_ids группы, и по publish_accounts.group_id.
+  if (groupId) {
+    const list = ids && ids.length ? ids : ["00000000-0000-0000-0000-000000000000"];
+    q = q.or(`group_id.eq.${groupId},id.in.(${list.join(",")})`);
+  } else if (ids) {
+    q = q.in("id", ids.length ? ids : ["00000000-0000-0000-0000-000000000000"]);
+  }
   const platforms = (target.platforms ?? []).filter(isPlatform);
   if (platforms.length) q = q.in("platform", platforms);
 
@@ -95,12 +106,51 @@ interface VideoRow {
   hashtags: string[] | null;
 }
 
+/** Стратегия группы — значение по умолчанию для target.mode / per_hour. */
+async function applyGroupStrategy(admin: SupabaseClient, projectId: string, target: Target): Promise<Target> {
+  if (!target.group_id) return target;
+  const { data } = await admin.from("publish_account_groups")
+    .select("publish_strategy, per_hour, review_mode")
+    .eq("id", target.group_id).eq("project_id", projectId).maybeSingle();
+  const g = data as { publish_strategy?: string; per_hour?: number; review_mode?: string } | null;
+  if (!g) return target;
+  if (g.review_mode === "paused") throw new Error("группа на паузе (review_mode = paused)");
+  const mode = target.mode ?? (g.publish_strategy === "all_at_once" ? "now" : g.publish_strategy === "daily" ? "daily" : "drip");
+  return { ...target, mode, per_hour: target.per_hour ?? g.per_hour };
+}
+
 async function createJobs(
   admin: SupabaseClient,
   video: VideoRow,
-  target: Target,
+  rawTarget: Target,
 ): Promise<{ created: number; skipped: number; accounts: { id: string; account_name: string; scheduled_at: string }[] }> {
+  const target = await applyGroupStrategy(admin, video.project_id, rawTarget);
   const accounts = await resolveAccounts(admin, video.project_id, target);
+  if (!accounts.length) return { created: 0, skipped: 0, accounts: [] };
+
+  // Планировщик слотов: окна, интервалы, лимиты и разгон — в SQL, один вызов на видео.
+  if (target.plan !== "legacy") {
+    const { data, error } = await admin.rpc("plan_publish_slots", {
+      p_video_id: video.id,
+      p_group_id: target.group_id ?? null,
+      p_account_ids: accounts.map((a) => a.id),
+      p_start: target.start_at ?? new Date().toISOString(),
+      p_mode: target.mode ?? "drip",
+    });
+    if (error) throw new Error(error.message);
+    const planned = (data ?? []) as { job_id: string; account_id: string; scheduled_at: string; created: boolean }[];
+    const byId = new Map(accounts.map((a) => [a.id, a]));
+    return {
+      created: planned.filter((p) => p.created).length,
+      skipped: planned.filter((p) => !p.created).length + (accounts.length - planned.length),
+      accounts: planned.map((p) => ({
+        id: p.account_id,
+        account_name: byId.get(p.account_id)?.account_name ?? "",
+        scheduled_at: p.scheduled_at,
+      })),
+    };
+  }
+
   const rows = accounts.map((acc, i) => ({
     project_id: video.project_id,
     video_id: video.id,

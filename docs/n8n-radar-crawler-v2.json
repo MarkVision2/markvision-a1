@@ -1,0 +1,513 @@
+{
+  "name": "Radar · сборщик v2 (конкуренты → MarkVision)",
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": 900
+  },
+  "nodes": [
+    {
+      "id": "О воркфлоу",
+      "name": "О воркфлоу",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -700,
+        -600
+      ],
+      "parameters": {
+        "content": "## Радар идей · сборщик v2\n\nЗаменяет «Мониторинг конкурентов»: собирает посты конкурентов/хештегов через Apify (с фолбэком на ScrapeCreators) и отдаёт их **подписанным** вызовом в `radar/internal/ingest`. Разбор (Whisper + LLM), скоринг и банк идей делает edge-функция `radar` — здесь только сбор.\n\nВходы: `POST /webhook/radar-crawl` от MarkVision (`mode: crawl` со списком источников или `mode: url` с одной ссылкой) и расписание раз в 6 часов как страховка (спрашивает у MarkVision, кому пора: `radar/maintenance` сам пинает вебхук, поэтому расписание обычно пусто).\n\n**Секреты только в ноде «Настройки»**: ключ вебхука, токен Apify (раньше был захардкожен в URL ноды старого воркфлоу — его нужно ротировать), ключ ScrapeCreators. Подпись ingest — под-воркфлоу «Content Pipeline · callback» с отдельной копией, у которой `callback_url` = `…/functions/v1/radar/internal/ingest`.",
+        "width": 640,
+        "height": 420
+      }
+    },
+    {
+      "id": "wh",
+      "name": "Webhook radar-crawl",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -700,
+        0
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "radar-crawl",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "webhookId": "radar-crawl"
+    },
+    {
+      "id": "cfg",
+      "name": "Настройки",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -460,
+        0
+      ],
+      "parameters": {
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c0",
+              "name": "webhook_key",
+              "value": "PASTE_N8N_RADAR_WEBHOOK_KEY",
+              "type": "string"
+            },
+            {
+              "id": "c1",
+              "name": "apify_token",
+              "value": "PASTE_APIFY_TOKEN",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "scrapecreators_key",
+              "value": "PASTE_SCRAPECREATORS_API_KEY",
+              "type": "string"
+            },
+            {
+              "id": "c3",
+              "name": "results_limit",
+              "value": 12,
+              "type": "number"
+            },
+            {
+              "id": "c4",
+              "name": "apify_cost_per_1000",
+              "value": 2.5,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "notes": "Единственное место с секретами."
+    },
+    {
+      "id": "gate",
+      "name": "Проверка входа",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const j = $input.first().json;\nconst key = (j.headers || {})['x-pipeline-key'];\nif (!j.webhook_key || key !== j.webhook_key) return [{ json: { ok: false, error: 'bad webhook key' } }];\nconst b = j.body || {};\nif (b.mode === 'url') return [{ json: { ok: true, mode: 'url', project_id: b.project_id, url: b.url } }];\nconst sources = Array.isArray(b.sources) ? b.sources : [];\nif (!b.project_id || !sources.length) return [{ json: { ok: false, error: 'no sources' } }];\nreturn sources.map(s => ({ json: { ok: true, mode: 'crawl', project_id: b.project_id, source_id: s.source_id, kind: s.kind, platform: s.platform, handle: s.handle } }));"
+      }
+    },
+    {
+      "id": "ifok",
+      "name": "Вход валиден?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        20,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ifokc",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "deny",
+      "name": "Отказ",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        260,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "ifurl",
+      "name": "Одна ссылка?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        260,
+        -100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ifurlc",
+              "leftValue": "={{ $json.mode }}",
+              "rightValue": "url",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "mkapify",
+      "name": "→ запрос Apify",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Один источник → один вызов Apify. Актор по площадке; хештеги — тот же instagram-scraper.\nconst s = $json;\nlet actor, input;\nif (s.platform === 'tiktok') {\n  actor = 'clockworks~tiktok-scraper';\n  input = s.kind === 'hashtag' ? { hashtags: [s.handle], resultsPerPage: $('Настройки').first().json.results_limit }\n                                : { profiles: [s.handle], resultsPerPage: $('Настройки').first().json.results_limit };\n} else {\n  actor = 'apify~instagram-scraper';\n  input = s.kind === 'hashtag'\n    ? { directUrls: [`https://www.instagram.com/explore/tags/${s.handle}/`], resultsType: 'posts', resultsLimit: $('Настройки').first().json.results_limit }\n    : { directUrls: [`https://www.instagram.com/${s.handle}/`], resultsType: 'posts', resultsLimit: $('Настройки').first().json.results_limit, onlyPostsNewerThan: '7 days' };\n}\nreturn [{ json: { ...s, actor, input } }];"
+      }
+    },
+    {
+      "id": "apify",
+      "name": "Apify: run-sync-get-dataset-items",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        740,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.apify.com/v2/acts/{{ $json.actor }}/run-sync-get-dataset-items?memory=256&timeout=240",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Настройки').first().json.apify_token }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 300000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.input) }}"
+      },
+      "notes": "Токен — в заголовке, не в URL (в старом воркфлоу он был в URL ноды).",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "mkingest",
+      "name": "→ ingest",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        980,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Ответ Apify → items для radar/internal/ingest. Нормализация полей — на стороне MarkVision.\nconst src = $('→ запрос Apify').first().json;\nconst r = $input.first().json;\nconst body = Array.isArray(r.body) ? r.body : (r.body?.items || []);\nconst items = body.map(it => ({ ...it, platform: src.platform }));\nconst cost = Math.round(items.length / 1000 * $('Настройки').first().json.apify_cost_per_1000 * 10000) / 10000;\nreturn [{ json: { project_id: src.project_id, source_id: src.source_id, provider: 'apify', platform: src.platform, cost_usd: cost, items,\n  error: (r.statusCode >= 300 || !Array.isArray(body)) ? `Apify HTTP ${r.statusCode}` : null } }];"
+      }
+    },
+    {
+      "id": "cbingest",
+      "name": "ingest (подписанный)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        1220,
+        0
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": "PASTE_CALLBACK_WORKFLOW_ID",
+        "mode": "once"
+      },
+      "notes": "Подписанный вызов через под-воркфлоу «Content Pipeline · callback» (callback_url в его настройках → …/functions/v1/radar/internal/ingest)."
+    },
+    {
+      "id": "done",
+      "name": "Готово",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        1460,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "mkurl",
+      "name": "→ разбор ссылки",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        500,
+        -300
+      ],
+      "parameters": {
+        "jsCode": "// Одна ссылка: ScrapeCreators отдаёт пост с метриками и video_url для Whisper.\nconst j = $json;\nconst u = j.url;\nconst platform = /tiktok\\.com/.test(u) ? 'tiktok' : /youtu/.test(u) ? 'youtube' : /threads\\./.test(u) ? 'threads' : /facebook|fb\\.watch/.test(u) ? 'facebook' : 'instagram';\nconst endpoint = platform === 'tiktok' ? 'https://api.scrapecreators.com/v2/tiktok/video' : platform === 'youtube' ? 'https://api.scrapecreators.com/v1/youtube/video' : 'https://api.scrapecreators.com/v1/instagram/post';\nreturn [{ json: { project_id: j.project_id, url: u, platform, endpoint } }];"
+      }
+    },
+    {
+      "id": "sc",
+      "name": "ScrapeCreators: пост",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        740,
+        -300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.endpoint }}?url={{ encodeURIComponent($json.url) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-api-key",
+              "value": "={{ $('Настройки').first().json.scrapecreators_key }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "mkingesturl",
+      "name": "→ ingest (ссылка)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        980,
+        -300
+      ],
+      "parameters": {
+        "jsCode": "const src = $('→ разбор ссылки').first().json;\nconst r = $input.first().json;\nconst b = (r.body && typeof r.body === 'object') ? r.body : {};\nconst post = b.data || b.post || b;\nreturn [{ json: { project_id: src.project_id, source_id: null, provider: 'scrapecreators', platform: src.platform, cost_usd: 0.002,\n  items: r.statusCode < 300 ? [{ ...post, url: src.url, platform: src.platform }] : [],\n  error: r.statusCode >= 300 ? `ScrapeCreators HTTP ${r.statusCode}` : null } }];"
+      }
+    },
+    {
+      "id": "cbingesturl",
+      "name": "ingest ссылки (подписанный)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        1220,
+        -300
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": "PASTE_CALLBACK_WORKFLOW_ID",
+        "mode": "once"
+      },
+      "notes": "Подписанный вызов через под-воркфлоу «Content Pipeline · callback» (callback_url в его настройках → …/functions/v1/radar/internal/ingest)."
+    }
+  ],
+  "connections": {
+    "Webhook radar-crawl": {
+      "main": [
+        [
+          {
+            "node": "Настройки",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Настройки": {
+      "main": [
+        [
+          {
+            "node": "Проверка входа",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Проверка входа": {
+      "main": [
+        [
+          {
+            "node": "Вход валиден?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Вход валиден?": {
+      "main": [
+        [
+          {
+            "node": "Одна ссылка?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Отказ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Одна ссылка?": {
+      "main": [
+        [
+          {
+            "node": "→ разбор ссылки",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "→ запрос Apify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "→ запрос Apify": {
+      "main": [
+        [
+          {
+            "node": "Apify: run-sync-get-dataset-items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apify: run-sync-get-dataset-items": {
+      "main": [
+        [
+          {
+            "node": "→ ingest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "→ ingest": {
+      "main": [
+        [
+          {
+            "node": "ingest (подписанный)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ingest (подписанный)": {
+      "main": [
+        [
+          {
+            "node": "Готово",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "→ разбор ссылки": {
+      "main": [
+        [
+          {
+            "node": "ScrapeCreators: пост",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ScrapeCreators: пост": {
+      "main": [
+        [
+          {
+            "node": "→ ingest (ссылка)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "→ ingest (ссылка)": {
+      "main": [
+        [
+          {
+            "node": "ingest ссылки (подписанный)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ingest ссылки (подписанный)": {
+      "main": [
+        [
+          {
+            "node": "Готово",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

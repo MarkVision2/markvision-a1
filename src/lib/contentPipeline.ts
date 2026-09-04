@@ -124,6 +124,27 @@ export interface PipelineReview {
   created_at: string;
 }
 
+export type PipelineEngine = "heygen" | "reels_faceless" | "montage";
+
+export const PIPELINE_ENGINE_META: Record<PipelineEngine, { label: string }> = {
+  heygen: { label: "HeyGen (аватар)" },
+  reels_faceless: { label: "Reels faceless (графика + озвучка)" },
+  montage: { label: "Монтаж съёмки" },
+};
+
+export interface PipelineVariant {
+  id: string;
+  title: string;
+  status: string;
+  target_group_id: string | null;
+  persona_id: string | null;
+  engine: PipelineEngine | null;
+  publish_video_id: string | null;
+  pipeline_run_id: string | null;
+  publish_account_groups: { name: string } | null;
+  pipeline_runs: { state: PipelineRunState } | null;
+}
+
 export interface PipelineDetail {
   item: {
     id: string;
@@ -135,9 +156,20 @@ export interface PipelineDetail {
     hashtags: string | null;
     status: string;
     media_url: string | null;
+    parent_item_id: string | null;
+    target_group_id: string | null;
+    target_group_name: string | null;
+    review_mode: "review_required" | "auto_publish" | "paused" | null;
+    persona_id: string | null;
+    persona_name: string | null;
+    engine: PipelineEngine;
+    idea_id: string | null;
+    publish_video_id: string | null;
     created_at: string;
     updated_at: string;
   };
+  /** Дочерние темы-варианты под группы аккаунтов (фабрика вариантов). */
+  variants: PipelineVariant[];
   current_run: PipelineRun | null;
   script: PipelineScript | null;
   runs: PipelineRun[];
@@ -209,4 +241,15 @@ export const contentPipelineApi = {
   retry: (itemId: string, comment?: string) =>
     call<PipelineDetail>(`items/${itemId}/retry`, "POST", { comment: comment ?? null }),
   cancel: (itemId: string) => call<PipelineDetail>(`items/${itemId}/cancel`, "POST", {}),
+  variants: (itemId: string, groupIds: string[]) =>
+    call<PipelineDetail & { created: unknown[]; skipped: { group_id: string; reason: string }[] }>(
+      `items/${itemId}/variants`, "POST", { group_ids: groupIds },
+    ),
 };
+
+/** Группы аккаунтов проекта — для выбора целей вариантов (publish-accounts group_list). */
+export async function loadPublishGroups(projectId: string): Promise<{ id: string; name: string; review_mode?: string }[]> {
+  const { data, error } = await supabase.functions.invoke("publish-accounts", { body: { action: "group_list", project_id: projectId } });
+  if (error) return [];
+  return ((data as { groups?: { id: string; name: string; review_mode?: string }[] } | null)?.groups ?? []);
+}

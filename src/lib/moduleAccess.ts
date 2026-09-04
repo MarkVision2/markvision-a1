@@ -22,6 +22,9 @@ const EXACT: Partial<Record<string, ModuleKey>> = {
   "/analytics/content": "content_analytics",
   "/marketing/content-center": "content_center",
   "/marketing/content-plan": "content_plan",
+  // Платформа автопостинга живёт под доступом контент-плана.
+  "/marketing/radar": "content_plan",
+  "/marketing/publishing": "content_plan",
   "/finance": "finance",
   "/reports": "reports",
   "/settings": "settings",

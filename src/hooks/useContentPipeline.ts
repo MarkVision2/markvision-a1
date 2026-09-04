@@ -79,5 +79,6 @@ export function useContentPipeline(itemId: string | undefined, enabled = true) {
     reject: (comment: string) => act("reject", () => contentPipelineApi.review(itemId!, "rejected", comment)),
     retry: (comment?: string) => act("retry", () => contentPipelineApi.retry(itemId!, comment)),
     cancel: () => act("cancel", () => contentPipelineApi.cancel(itemId!)),
+    variants: (groupIds: string[]) => act("variants", () => contentPipelineApi.variants(itemId!, groupIds)),
   };
 }

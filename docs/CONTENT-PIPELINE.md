@@ -288,6 +288,14 @@ Rollback: выключить v5 и включить v4 в n8n (v4 пишет в 
 — длительность каждого этапа; воркер `/health` — диск и бинарники; доступность n8n —
 `/healthz`. `scripts/content-pipeline-smoke.mjs doctor` собирает это в одну команду.
 
+## Связка с платформой автопостинга
+
+`POST /items/:id/variants { group_ids }` — варианты темы под группы аккаунтов с персоной
+группы; `claim` подмешивает персону в промпт и фильтруется по движку (`engine`); после
+`approved` ролик сам уходит в `publish_videos` и раскладывается по группе
+(`plan_publish_slots`); группы `auto_publish` минуют ворота. Подробно —
+`docs/AUTOPOSTING-PLATFORM.md`.
+
 ## Что не сделано в этом заходе
 
 * Объектное хранилище (Supabase Storage/S3, signed URL) — медиа по-прежнему на диске

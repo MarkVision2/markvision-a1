@@ -4,7 +4,7 @@
  * работают с любой платформой одинаково, а различия API живут в модуле
  * площадки.
  */
-import type { Platform, PublishAccount } from "../publishing.ts";
+import type { Platform, PublishAccount } from "../publishCore.ts";
 
 export type FailureKind =
   /** Токен мёртв — аккаунт уходит в token_expired, нужен reconnect. */

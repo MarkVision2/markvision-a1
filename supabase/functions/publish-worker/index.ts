@@ -37,8 +37,17 @@ Deno.serve(async (req) => {
 
   const body = await req.json().catch(() => ({}));
   const batchSize = Math.min(Math.max(Number(body?.batch_size ?? 5), 1), 25);
+  // Партиции по аккаунту: крон запускает три воркера в минуту, каждый берёт
+  // свою треть аккаунтов и не спорит с соседями за одни и те же строки.
+  const partitions = Math.min(Math.max(Number(body?.partitions ?? 1), 1), 16);
+  const partition = body?.partition == null ? null : Math.min(Math.max(Number(body.partition), 0), partitions - 1);
 
-  const { data, error } = await admin.rpc("claim_publish_jobs", { p_batch: batchSize });
+  const { data, error } = await admin.rpc("claim_publish_jobs", {
+    p_batch: batchSize,
+    p_lock_timeout: "10 minutes",
+    p_partition: partition,
+    p_partitions: partitions,
+  });
   if (error) return json({ error: error.message }, 500);
 
   const jobs = (data ?? []) as PublishJob[];
@@ -64,5 +73,5 @@ Deno.serve(async (req) => {
     else out.failed++;
   }
 
-  return json({ ok: true, ...out, results });
+  return json({ ok: true, partition, partitions, ...out, results });
 });

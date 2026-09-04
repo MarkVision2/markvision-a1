@@ -39,6 +39,11 @@
   callback для n8n, Telegram-кнопки), вкладка «AI-видео» в карточке темы, воркер `worker/content-worker/`,
   n8n `docs/n8n-content-pipeline-v5.json`. Всё — `docs/CONTENT-PIPELINE.md`;
   диагностика и smoke test — `node scripts/content-pipeline-smoke.mjs doctor|e2e`.
+- **Платформа автопостинга (радар идей → варианты по группам → согласование → дистрибуция 100+)**:
+  edge `radar` (идеи конкурентов, `idea_bank`, «в контент-план»), персоны и варианты тем, автопередача
+  одобренного ролика в `publish_videos`, планировщик слотов `plan_publish_slots`, воркер в партициях,
+  Threads, дайджест, `post_metrics`. Страницы «Радар идей» и «Публикации». План —
+  `docs/AUTOPOSTING-PLATFORM-PLAN.md`, реализация — `docs/AUTOPOSTING-PLATFORM.md`.
 - **Автопубликация готового видео в аккаунты площадок** (Instagram/TikTok/YouTube/Threads):
   очередь `publish_jobs` + edge-функции `publish-*`, оркестрация заявок и отчётов — в n8n.
   Детали, контракты endpoint'ов и онбординг аккаунтов — `docs/PUBLISHING-SYSTEM.md`.

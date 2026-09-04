@@ -3,8 +3,8 @@
  * Контент-конвейер: проверка готовности и боевой smoke test (Этап 0 ТЗ).
  *
  *   node scripts/content-pipeline-smoke.mjs doctor --key <automation_settings.cron_secret> [--worker-url http://172.18.0.1:9120]
- *       Ничего не меняет и не тратит: edge-функция задеплоена, миграция применена
- *       (maintenance отвечает), очередь/зависшие, воркер жив, n8n-вебхук отвечает.
+ *       Ничего не меняет и не тратит: edge-функции (content-pipeline, radar, publish-*) задеплоены,
+ *       миграции применены (maintenance отвечает), очередь/зависшие, воркер жив, n8n отвечает.
  *
  *   node scripts/content-pipeline-smoke.mjs e2e --jwt <access_token> --project <uuid> \
  *        [--title "Тема"] [--description "..."] [--decision approved|rejected --comment "..."] [--timeout-min 30]
@@ -67,6 +67,21 @@ async function doctor() {
     } else {
       console.log(bad(`maintenance: HTTP ${m.status} ${m.text.slice(0, 200)} — вероятно, миграция 20260904120000 не применена`)); failures++;
     }
+  }
+
+  // Платформа автопостинга: радар и сбор метрик публикаций задеплоены?
+  for (const fn of ["radar", "publish-metrics", "publish-accounts", "publish-worker"]) {
+    const r = await req(`${SB}/functions/v1/${fn}`, { method: "POST", body: {} });
+    if (r.status === 404 && /not found/i.test(r.text)) { console.log(bad(`edge-функция ${fn} не задеплоена`)); failures++; }
+    else console.log(ok(`edge-функция ${fn} отвечает (HTTP ${r.status})`));
+  }
+  if (key) {
+    const rm = await req(`${SB}/functions/v1/radar/maintenance`, { method: "POST", headers: { "x-automation-key": key }, body: { source: "doctor" } });
+    if (rm.status === 200 && rm.json?.ok) console.log(ok(`радар: разобрано ${rm.json.analyzed}, идей ${rm.json.ideas}, источников к сбору ${rm.json.crawl_kicked}, AI-провайдер ${rm.json.ai ? "есть" : "НЕТ"}`));
+    else if (rm.status !== 401 && rm.status !== 403) { console.log(bad(`radar/maintenance: HTTP ${rm.status} ${rm.text.slice(0, 160)} — миграция 20260905100000 не применена?`)); failures++; }
+    const pm = await req(`${SB}/functions/v1/publish-metrics`, { method: "POST", headers: { "x-automation-key": key }, body: { limit: 1 } });
+    if (pm.status === 200 && pm.json?.ok) console.log(ok(`метрики публикаций: due ${pm.json.due}, собрано ${pm.json.collected}`));
+    else if (pm.status !== 401 && pm.status !== 403) { console.log(bad(`publish-metrics: HTTP ${pm.status} ${pm.text.slice(0, 160)} — миграция 20260905110000 не применена?`)); failures++; }
   }
 
   const workerUrl = arg("worker-url") || process.env.WORKER_URL;

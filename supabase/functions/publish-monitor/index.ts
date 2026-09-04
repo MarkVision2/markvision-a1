@@ -7,6 +7,13 @@
  *   { mode: "errors" } — крон каждые 15 минут. Аккаунт с серией отказов
  *     гасится (status=error, publish_enabled=false), чтобы очередь не долбила
  *     площадку и не копила бан.
+ *   { mode: "digest" } — крон раз в час. Один отчёт на проект вместо сообщения
+ *     на каждый сбой: сколько опубликовано, сколько упало и почему, какие
+ *     аккаунты требуют внимания.
+ *
+ * В режиме tokens заодно обновляются long-lived токены Instagram Login (IG…)
+ * и Threads за 10 дней до истечения — refresh_access_token соответствующего
+ * графа. Page-токены Facebook не истекают, их не трогаем.
  *
  * Пороги здесь, а не в SQL: их меняют по опыту эксплуатации.
  */
@@ -16,7 +23,9 @@ import {
   automationKeyValid,
   CORS_HEADERS,
   decryptSecret,
+  encryptSecret,
   json,
+  notifyModeOf,
   notifyProject,
   type PublishAccount,
 } from "../_lib/publishing.ts";
@@ -28,6 +37,48 @@ const TOKEN_WARN_DAYS = 7;
 
 const GRAPH_IG = "https://graph.instagram.com/v21.0";
 const GRAPH_FB = "https://graph.facebook.com/v21.0";
+const GRAPH_THREADS = "https://graph.threads.net/v1.0";
+/** За сколько дней до истечения обновляем long-lived токен. */
+const TOKEN_REFRESH_DAYS = 10;
+
+/**
+ * Обновление long-lived токена. Instagram Login: graph.instagram.com/refresh_access_token
+ * (ig_refresh_token), Threads: graph.threads.net/refresh_access_token (th_refresh_token).
+ * Оба возвращают новый токен и expires_in (секунды). Page-токены Facebook — null.
+ */
+async function refreshLongLivedToken(
+  platform: string,
+  token: string,
+): Promise<{ token: string; expiresAt: string } | { error: string } | null> {
+  let url: string | null = null;
+  if (platform === "threads") url = `${GRAPH_THREADS}/refresh_access_token?grant_type=th_refresh_token&access_token=${token}`;
+  else if (platform === "instagram" && /^IG/i.test(token)) url = `${GRAPH_IG}/refresh_access_token?grant_type=ig_refresh_token&access_token=${token}`;
+  if (!url) return null;
+  try {
+    const res = await fetch(url);
+    const body = await res.json().catch(() => ({}));
+    if (body?.error || !body?.access_token) return { error: String(body?.error?.message ?? "refresh failed") };
+    const expiresIn = Number(body.expires_in ?? 60 * 86400);
+    return { token: String(body.access_token), expiresAt: new Date(Date.now() + expiresIn * 1000).toISOString() };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+async function threadsTokenAlive(userId: string, token: string): Promise<{ alive: boolean; reason?: string }> {
+  try {
+    const res = await fetch(`${GRAPH_THREADS}/${userId}?fields=id&access_token=${token}`);
+    const body = await res.json().catch(() => ({}));
+    if (body?.error) {
+      const code = body.error.code;
+      if (code === 190 || code === 102 || code === 10 || code === 200) return { alive: false, reason: body.error.message };
+      return { alive: true };
+    }
+    return { alive: Boolean(body?.id) };
+  } catch {
+    return { alive: true };
+  }
+}
 
 /** Живость токена: самый дешёвый вызов графа от имени аккаунта. */
 async function instagramTokenAlive(
@@ -63,19 +114,38 @@ async function checkTokens(admin: SupabaseClient) {
 
   const dead: PublishAccount[] = [];
   const expiring: PublishAccount[] = [];
+  let refreshed = 0;
   const soon = Date.now() + TOKEN_WARN_DAYS * 86_400_000;
+  const refreshBefore = Date.now() + TOKEN_REFRESH_DAYS * 86_400_000;
 
   for (const account of accounts) {
-    if (account.token_expires_at && new Date(account.token_expires_at).getTime() < soon) {
-      expiring.push(account);
-    }
-    if (account.platform !== "instagram") continue; // остальные площадки — по мере подключения
+    if (account.platform !== "instagram" && account.platform !== "threads") continue; // TikTok/YouTube — по мере подключения
 
     let token: string | null = null;
     try { token = await decryptSecret(account.access_token_encrypted); } catch { token = null; }
     if (!token) { dead.push(account); continue; }
 
-    const alive = await instagramTokenAlive(account.external_account_id, token);
+    // Обновление long-lived токена до истечения — иначе через 60 дней вся сеть встанет.
+    const expiresAt = account.token_expires_at ? new Date(account.token_expires_at).getTime() : null;
+    if (expiresAt != null && expiresAt < refreshBefore) {
+      const r = await refreshLongLivedToken(account.platform, token);
+      if (r && "token" in r) {
+        await admin.from("publish_accounts").update({
+          access_token_encrypted: await encryptSecret(r.token),
+          token_expires_at: r.expiresAt,
+          token_refreshed_at: new Date().toISOString(),
+        }).eq("id", account.id);
+        token = r.token;
+        refreshed++;
+      }
+    }
+    if (account.token_expires_at && new Date(account.token_expires_at).getTime() < soon && !(expiresAt != null && expiresAt < refreshBefore)) {
+      expiring.push(account);
+    }
+
+    const alive = account.platform === "threads"
+      ? await threadsTokenAlive(account.external_account_id, token)
+      : await instagramTokenAlive(account.external_account_id, token);
     if (!alive.alive) dead.push(account);
   }
 
@@ -105,8 +175,49 @@ async function checkTokens(admin: SupabaseClient) {
     checked: accounts.length,
     token_expired: dead.length,
     expiring_soon: expiring.length,
+    refreshed,
     accounts: dead.map((a) => ({ id: a.id, account_name: a.account_name, platform: a.platform })),
   };
+}
+
+/** Часовой дайджест по проекту: что опубликовано, что упало, кому нужно внимание. */
+async function sendDigests(admin: SupabaseClient) {
+  const since = new Date(Date.now() - 3_600_000).toISOString();
+  const { data: jobs, error } = await admin.from("publish_jobs")
+    .select("project_id, account_id, status, error_code, error_message, updated_at")
+    .gte("updated_at", since)
+    .in("status", ["published", "failed", "manual_review", "retry"]);
+  if (error) return { projects: 0, sent: 0, error: error.message };
+
+  const byProject = new Map<string, { published: number; failed: number; manual: number; retry: number; reasons: Map<string, number> }>();
+  for (const j of (jobs ?? []) as { project_id: string; status: string; error_code: string | null }[]) {
+    const p = byProject.get(j.project_id) ?? { published: 0, failed: 0, manual: 0, retry: 0, reasons: new Map() };
+    if (j.status === "published") p.published++;
+    else if (j.status === "failed") { p.failed++; p.reasons.set(j.error_code ?? "unknown", (p.reasons.get(j.error_code ?? "unknown") ?? 0) + 1); }
+    else if (j.status === "manual_review") p.manual++;
+    else if (j.status === "retry" && j.error_code) p.retry++;
+    byProject.set(j.project_id, p);
+  }
+
+  let sent = 0;
+  for (const [projectId, p] of byProject) {
+    if (!p.failed && !p.manual && !p.retry) continue; // тихий час — не пишем
+    const mode = await notifyModeOf(admin, projectId);
+    if (mode !== "digest") continue;
+    const { data: acc } = await admin.from("publish_accounts")
+      .select("account_name, platform, status")
+      .eq("project_id", projectId).in("status", ["token_expired", "limited", "error"]).limit(10);
+    const attention = ((acc ?? []) as { account_name: string; platform: string; status: string }[])
+      .map((a) => `• ${a.account_name} (${a.platform}) — ${a.status}`).join("\n");
+    const reasons = Array.from(p.reasons.entries()).map(([k, n]) => `${k}×${n}`).join(", ");
+    await notifyProject(
+      admin, projectId,
+      `📊 Публикации за час: ✅ ${p.published} · ❌ ${p.failed}${reasons ? ` (${reasons})` : ""} · 🔁 повторы ${p.retry} · 🖐 ручной разбор ${p.manual}` +
+        (attention ? `\n\nТребуют внимания:\n${attention}` : ""),
+    );
+    sent++;
+  }
+  return { projects: byProject.size, sent };
 }
 
 async function checkErrors(admin: SupabaseClient) {
@@ -160,5 +271,6 @@ Deno.serve(async (req) => {
 
   if (mode === "tokens") return json({ ok: true, mode, ...(await checkTokens(admin)) });
   if (mode === "errors") return json({ ok: true, mode, ...(await checkErrors(admin)) });
+  if (mode === "digest") return json({ ok: true, mode, ...(await sendDigests(admin)) });
   return json({ error: `неизвестный режим: ${mode}` }, 400);
 });

@@ -17,29 +17,20 @@ export {
   PLATFORMS,
   tokenKeyConfigured,
 } from "./publishCore.ts";
-export type { Platform } from "./publishCore.ts";
+export type { Platform, PublishAccount } from "./publishCore.ts";
 
-import type { Platform } from "./publishCore.ts";
+import type { Platform, PublishAccount } from "./publishCore.ts";
 
 /* ────────────────────────────── строки таблиц ──────────────────────────── */
 
-export interface PublishAccount {
-  id: string;
-  project_id: string;
-  platform: Platform;
-  account_name: string;
-  handle: string | null;
-  external_account_id: string;
-  fb_page_id: string | null;
-  access_token_encrypted: string | null;
-  refresh_token_encrypted: string | null;
-  token_expires_at: string | null;
-  status: "active" | "token_expired" | "limited" | "error" | "disabled";
-  publish_enabled: boolean;
-  daily_limit: number;
-  last_post_at: string | null;
-  consecutive_errors: number;
-  last_error: string | null;
+export type NotifyMode = "digest" | "each" | "silent";
+
+/** Режим уведомлений проекта: digest (по умолчанию) — сбои копятся в часовой дайджест. */
+export async function notifyModeOf(admin: SupabaseClient, projectId: string): Promise<NotifyMode> {
+  const { data } = await admin
+    .from("publish_project_settings").select("notify_mode").eq("project_id", projectId).maybeSingle();
+  const mode = (data as { notify_mode?: string } | null)?.notify_mode;
+  return mode === "each" || mode === "silent" ? mode : "digest";
 }
 
 export interface PublishJob {

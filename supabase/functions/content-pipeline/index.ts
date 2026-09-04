@@ -10,6 +10,9 @@
  *     POST /items/:id/review           { decision: approved|rejected, comment? }
  *     POST /items/:id/retry            новая попытка для failed / rejected / cancelled
  *     POST /items/:id/cancel           отменить активный запуск
+ *     POST /items/:id/variants         { group_ids } — варианты темы под группы аккаунтов (персона группы)
+ *   Одобренный ролик сам уходит в publish_videos и раскладывается по целевой группе
+ *   (plan_publish_slots); доверенные группы (auto_publish) минуют ворота.
  *
  *   Закрытый callback для n8n (HMAC SHA-256 + timestamp + nonce, см. _lib/contentPipeline.ts):
  *     POST /internal/callback          { event: claim|heartbeat|state|script|video_requested|
@@ -213,15 +216,105 @@ interface ItemRow {
   status: string;
   media_url: string | null;
   pipeline_run_id: string | null;
+  parent_item_id: string | null;
+  target_group_id: string | null;
+  persona_id: string | null;
+  engine: string | null;
+  idea_id: string | null;
+  publish_video_id: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface PersonaRow {
+  id: string;
+  name: string;
+  niche: string | null;
+  tone_of_voice: string | null;
+  forbidden_phrases: string[] | null;
+  language: string | null;
+  engine_default: string;
+  heygen_avatar_id: string | null;
+  heygen_voice_id: string | null;
+  eleven_voice_id: string | null;
+  reels_theme: string | null;
+}
+
+interface GroupRow {
+  id: string;
+  name: string;
+  persona_id: string | null;
+  review_mode: "review_required" | "auto_publish" | "paused";
+  auto_publish_after: number;
+  approved_streak: number;
+}
+
+async function loadPersona(db: SupabaseClient, personaId: string | null): Promise<PersonaRow | null> {
+  if (!personaId) return null;
+  const { data } = await db.from("personas")
+    .select("id, name, niche, tone_of_voice, forbidden_phrases, language, engine_default, heygen_avatar_id, heygen_voice_id, eleven_voice_id, reels_theme")
+    .eq("id", personaId).maybeSingle();
+  return (data as PersonaRow | null) ?? null;
+}
+
+async function loadGroup(db: SupabaseClient, groupId: string | null): Promise<GroupRow | null> {
+  if (!groupId) return null;
+  const { data } = await db.from("publish_account_groups")
+    .select("id, name, persona_id, review_mode, auto_publish_after, approved_streak")
+    .eq("id", groupId).maybeSingle();
+  return (data as GroupRow | null) ?? null;
+}
+
+/**
+ * Одобренный ролик → библиотека публикации → слоты по целевой группе
+ * (docs/AUTOPOSTING-PLATFORM-PLAN.md, M2: шов publish_videos.source/source_ref).
+ * Идемпотентно: у темы уже есть publish_video_id — второй раз не создаём.
+ */
+async function handoffToPublishing(db: SupabaseClient, run: RunRow, item: ItemRow): Promise<{ video_id: string | null; planned: number }> {
+  if (item.publish_video_id) return { video_id: item.publish_video_id, planned: 0 };
+  const { data: asset } = await db.from("content_assets")
+    .select("id, public_url, duration_seconds, width, height, size_bytes")
+    .eq("pipeline_run_id", run.id).eq("asset_type", "normalized_video")
+    .order("version", { ascending: false }).limit(1).maybeSingle();
+  const a = asset as { id: string; public_url: string | null; duration_seconds: number | null; width: number | null; height: number | null; size_bytes: number | null } | null;
+  if (!a?.public_url) return { video_id: null, planned: 0 };
+  const script = ((run.metadata?.script as Json | undefined) ?? {}) as { title?: string; description?: string; hashtags?: string[] };
+  const { data: video, error } = await db.from("publish_videos").insert({
+    project_id: item.project_id,
+    file_url: a.public_url,
+    title: script.title ?? item.title,
+    base_caption: script.description ?? item.description,
+    hashtags: Array.isArray(script.hashtags) ? script.hashtags.map((h) => String(h).replace(/^#/, "")) : [],
+    duration_sec: a.duration_seconds,
+    width: a.width,
+    height: a.height,
+    size_bytes: a.size_bytes,
+    source: "content_pipeline",
+    source_ref: a.id,
+  }).select("id").maybeSingle();
+  if (error || !video) {
+    console.error("handoff: publish_videos insert failed", error?.message);
+    return { video_id: null, planned: 0 };
+  }
+  const videoId = (video as { id: string }).id;
+  await db.from("content_plan_items").update({ publish_video_id: videoId }).eq("id", item.id);
+  let planned = 0;
+  if (item.target_group_id) {
+    const { data: rows, error: planErr } = await db.rpc("plan_publish_slots", {
+      p_video_id: videoId, p_group_id: item.target_group_id, p_account_ids: null,
+      p_start: new Date().toISOString(), p_mode: "drip",
+    });
+    if (planErr) console.error("handoff: plan_publish_slots failed", planErr.message);
+    planned = ((rows ?? []) as { created: boolean }[]).filter((r) => r.created).length;
+  }
+  return { video_id: videoId, planned };
 }
 
 const RUN_COLUMNS =
   "id, content_item_id, project_id, state, provider, provider_job_id, provider_request_id, attempt, locked_by, heartbeat_at, next_retry_at, started_at, finished_at, state_changed_at, error_code, error_message, error_user, error_node, error_at, cost_usd, metadata, created_at, updated_at";
 
 const ITEM_COLUMNS =
-  "id, project_id, title, description, prompts, category, content_type, hashtags, status, media_url, pipeline_run_id, created_at, updated_at";
+  "id, project_id, title, description, prompts, category, content_type, hashtags, status, media_url, pipeline_run_id, parent_item_id, target_group_id, persona_id, engine, idea_id, publish_video_id, created_at, updated_at";
 
 async function loadRun(db: SupabaseClient, runId: string): Promise<RunRow | null> {
   const { data } = await db.from("pipeline_runs").select(RUN_COLUMNS).eq("id", runId).maybeSingle();
@@ -362,6 +455,13 @@ async function itemDetail(db: SupabaseClient, item: ItemRow): Promise<Json> {
     events = data ?? [];
   }
   const script = (current?.metadata?.script as Json | undefined) ?? null;
+  const [{ data: variants }, group, persona] = await Promise.all([
+    db.from("content_plan_items")
+      .select("id, title, status, target_group_id, persona_id, engine, publish_video_id, pipeline_run_id, publish_account_groups(name), pipeline_runs!content_plan_items_pipeline_run_fk(state)")
+      .eq("parent_item_id", item.id).order("created_at"),
+    loadGroup(db, item.target_group_id),
+    loadPersona(db, item.persona_id),
+  ]);
   return {
     item: {
       id: item.id,
@@ -373,9 +473,19 @@ async function itemDetail(db: SupabaseClient, item: ItemRow): Promise<Json> {
       hashtags: item.hashtags,
       status: item.status,
       media_url: item.media_url,
+      parent_item_id: item.parent_item_id,
+      target_group_id: item.target_group_id,
+      target_group_name: group?.name ?? null,
+      review_mode: group?.review_mode ?? null,
+      persona_id: item.persona_id,
+      persona_name: persona?.name ?? null,
+      engine: item.engine ?? persona?.engine_default ?? "heygen",
+      idea_id: item.idea_id,
+      publish_video_id: item.publish_video_id,
       created_at: item.created_at,
       updated_at: item.updated_at,
     },
+    variants: variants ?? [],
     current_run: current
       ? {
         ...publicRun(current),
@@ -427,7 +537,7 @@ function publicRun(r: RunRow): Json {
 async function applyReview(
   db: SupabaseClient,
   run: RunRow,
-  input: { decision: "approved" | "rejected"; comment: string | null; reviewerId: string | null; reviewerLabel: string | null; source: "markvision" | "telegram" },
+  input: { decision: "approved" | "rejected"; comment: string | null; reviewerId: string | null; reviewerLabel: string | null; source: "markvision" | "telegram" | "auto" },
 ): Promise<{ ok: true; run: RunRow } | { ok: false; error: string; status: number }> {
   if (run.state !== "awaiting_review") {
     return { ok: false, error: "Решение по этой попытке уже принято", status: 409 };
@@ -443,7 +553,7 @@ async function applyReview(
     comment: input.comment?.trim() || null,
     reviewer_id: input.reviewerId,
     reviewer_label: input.reviewerLabel,
-    source: input.source,
+    source: input.source === "auto" ? "markvision" : input.source,
   });
   if (insErr) {
     // unique(pipeline_run_id): решение уже записано другим каналом.
@@ -457,9 +567,25 @@ async function applyReview(
   // Кнопки Telegram по этой попытке больше не действуют.
   await db.from("pipeline_review_tokens")
     .update({ used_at: new Date().toISOString() }).eq("pipeline_run_id", run.id).is("used_at", null);
+  const item = await loadItem(db, run.content_item_id);
   if (input.decision === "rejected") {
     // Новая попытка: тема возвращается в очередь; комментарий подхватит claim.
+    if (item?.target_group_id) {
+      await db.from("publish_account_groups").update({ approved_streak: 0 }).eq("id", item.target_group_id);
+    }
     await kickN8n({ reason: "rejected", project_id: run.project_id, item_id: run.content_item_id });
+  } else if (item) {
+    if (item.target_group_id && input.source !== "auto") {
+      const group = await loadGroup(db, item.target_group_id);
+      if (group) {
+        await db.from("publish_account_groups").update({ approved_streak: group.approved_streak + 1 }).eq("id", group.id);
+      }
+    }
+    // Одобрено → библиотека публикации → слоты по группе.
+    const handoff = await handoffToPublishing(db, r.run, item);
+    await db.from("pipeline_runs").update({
+      metadata: { ...(r.run.metadata ?? {}), handoff: { ...handoff, at: new Date().toISOString() } },
+    }).eq("id", run.id);
   }
   return { ok: true, run: r.run };
 }
@@ -591,6 +717,45 @@ async function handleUser(req: Request, segments: string[]): Promise<Response> {
     return json({ ok: true, queued: true, kicked, ...(await itemDetail(db, fresh)) });
   }
 
+  if (action === "variants") {
+    // Фабрика вариантов: тема × группы → дочерние темы с персоной группы (M2).
+    const groupIds = (Array.isArray(body.group_ids) ? body.group_ids : []).map(String).filter(Boolean);
+    if (!groupIds.length) return json({ error: "group_ids обязателен" }, 400);
+    if (item.parent_item_id) return json({ error: "Вариант нельзя разветвить ещё раз" }, 400);
+    const { data: groups } = await db.from("publish_account_groups")
+      .select("id, name, persona_id, review_mode").eq("project_id", item.project_id).in("id", groupIds);
+    const created: Json[] = [];
+    const skipped: Json[] = [];
+    for (const g of (groups ?? []) as { id: string; name: string; persona_id: string | null; review_mode: string }[]) {
+      const persona = await loadPersona(db, g.persona_id);
+      const { data: child, error } = await db.from("content_plan_items").insert({
+        project_id: item.project_id,
+        title: item.title,
+        description: item.description,
+        prompts: [item.prompts ?? "", `Вариант для группы «${g.name}»${persona ? ` (персона ${persona.name})` : ""}.`].filter(Boolean).join("\n"),
+        category: item.category,
+        content_type: "REELS",
+        status: "idea",
+        parent_item_id: item.id,
+        target_group_id: g.id,
+        persona_id: g.persona_id,
+        engine: persona?.engine_default ?? item.engine ?? "heygen",
+        idea_id: item.idea_id,
+        created_by: auth.userId,
+      }).select("id, title, target_group_id").maybeSingle();
+      if (error) {
+        skipped.push({ group_id: g.id, reason: error.code === "23505" ? "вариант для этой группы уже есть" : error.message });
+      } else {
+        created.push({ ...(child as Json), group_name: g.name });
+      }
+    }
+    const requested = new Set(groupIds);
+    for (const g of (groups ?? []) as { id: string }[]) requested.delete(g.id);
+    for (const missing of requested) skipped.push({ group_id: missing, reason: "группа не найдена в проекте" });
+    if (created.length) await kickN8n({ reason: "variants", project_id: item.project_id, item_id: itemId, user_id: auth.userId });
+    return json({ ok: true, created, skipped, ...(await itemDetail(db, item)) });
+  }
+
   if (action === "cancel") {
     if (!current) return json({ error: "Нет активной попытки" }, 409);
     const r = await transition(db, current, "cancelled", {
@@ -634,12 +799,18 @@ async function handleCallback(req: Request): Promise<Response> {
   if (event === "claim") {
     const workerId = String(body.worker_id ?? "n8n").slice(0, 80);
     const projectId = body.project_id ? String(body.project_id) : null;
-    const { data, error } = await db.rpc("claim_next_content_job", { p_worker_id: workerId, p_project_id: projectId });
+    // Движок воркера: n8n v5 рендерит HeyGen; reels_faceless/montage забирают свои воркеры.
+    const wantEngine = ["heygen", "reels_faceless", "montage"].includes(String(body.engine)) ? String(body.engine) : "heygen";
+    const { data, error } = await db.rpc("claim_next_content_job", { p_worker_id: workerId, p_project_id: projectId, p_engine: wantEngine });
     if (error) return json({ error: error.message }, 500);
     const rows = (data ?? []) as Json[];
     if (!rows.length) return json({ ok: true, job: null });
     const job = rows[0];
     const settings = (job.settings ?? {}) as Json;
+    // Персона группы (фабрика вариантов): tone of voice, ниша, запреты, голос/аватар.
+    const claimedItem = await loadItem(db, String(job.content_item_id));
+    const persona = await loadPersona(db, claimedItem?.persona_id ?? null);
+    const engine = claimedItem?.engine ?? persona?.engine_default ?? "heygen";
     // Комментарий последнего отклонения — вход для нового сценария.
     const { data: lastReview } = await db.from("content_reviews").select("comment")
       .eq("content_item_id", String(job.content_item_id)).eq("decision", "rejected")
@@ -649,13 +820,19 @@ async function handleCallback(req: Request): Promise<Response> {
       businessContext: (settings.business_context as string | null) ?? null,
       topic: String(job.title ?? ""),
       description: (job.description as string | null) ?? null,
-      wishes: (job.prompts as string | null) ?? null,
+      wishes: [
+        (job.prompts as string | null) ?? "",
+        persona ? `Персона: ${persona.name}${persona.niche ? `, ниша: ${persona.niche}` : ""}.` : "",
+      ].filter(Boolean).join("\n") || null,
       category: (job.category as string | null) ?? null,
-      language: (settings.language as string | null) ?? "ru",
+      language: persona?.language ?? (settings.language as string | null) ?? "ru",
       wordsMin: Number(settings.script_words_min ?? 90),
       wordsMax: Number(settings.script_words_max ?? 130),
-      toneOfVoice: (settings.tone_of_voice as string | null) ?? null,
-      forbiddenPhrases: (settings.forbidden_phrases as string[] | null) ?? [],
+      toneOfVoice: persona?.tone_of_voice ?? (settings.tone_of_voice as string | null) ?? null,
+      forbiddenPhrases: [
+        ...((settings.forbidden_phrases as string[] | null) ?? []),
+        ...(persona?.forbidden_phrases ?? []),
+      ],
       previousRejectionComment: (lastReview as { comment?: string | null } | null)?.comment ?? null,
       promptVersion: String(settings.prompt_version ?? "v5.0"),
     });
@@ -673,11 +850,14 @@ async function handleCallback(req: Request): Promise<Response> {
         script: runMeta.script ?? null,
         video_url: runMeta.video_url ?? null,
         title: job.title,
+        engine,
+        persona: persona ? { id: persona.id, name: persona.name, eleven_voice_id: persona.eleven_voice_id, reels_theme: persona.reels_theme } : null,
+        target_group_id: claimedItem?.target_group_id ?? null,
         settings: {
-          language: settings.language ?? "ru",
+          language: persona?.language ?? settings.language ?? "ru",
           openai_model: settings.openai_model ?? "gpt-4o-mini",
-          heygen_avatar_id: settings.heygen_avatar_id ?? null,
-          heygen_voice_id: settings.heygen_voice_id ?? null,
+          heygen_avatar_id: persona?.heygen_avatar_id ?? settings.heygen_avatar_id ?? null,
+          heygen_voice_id: persona?.heygen_voice_id ?? settings.heygen_voice_id ?? null,
           video_width: settings.video_width ?? 720,
           video_height: settings.video_height ?? 1280,
           video_timeout_minutes: settings.video_timeout_minutes ?? 20,
@@ -878,6 +1058,14 @@ async function handleCallback(req: Request): Promise<Response> {
       const item = await loadItem(db, run.content_item_id);
       if (item) {
         await db.from("content_plan_items").update({ media_url: publicUrl }).eq("id", item.id);
+        const group = await loadGroup(db, item.target_group_id);
+        // Доверенная группа: после auto_publish_after одобрений подряд ворота не нужны.
+        if (group && group.review_mode === "auto_publish" && group.approved_streak >= group.auto_publish_after) {
+          const auto = await applyReview(db, r.run, {
+            decision: "approved", comment: null, reviewerId: null, reviewerLabel: `auto (${group.name})`, source: "auto",
+          });
+          return json({ ok: true, asset, state: auto.ok ? "approved" : "awaiting_review", auto_approved: auto.ok });
+        }
         await sendReviewRequest(db, r.run, item, publicUrl);
       }
       return json({ ok: true, asset, state: "awaiting_review" });
