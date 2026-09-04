@@ -1,7 +1,7 @@
 {
-  "git_sha": "ad9959c",
-  "git_sha_full": "ad9959c88db8d07395e2ece9b43bc15f81c88238",
-  "updated_at": "2026-09-05T00:41:31+04:00",
-  "label": "feat(publishing): здоровье аккаунта — живая проверка у площадки и формула с причинами [vercel-deploy]",
+  "git_sha": "6d877ac",
+  "git_sha_full": "6d877acca94213396b550f6cbb7dfa5132792b45",
+  "updated_at": "2026-09-05T00:47:50+04:00",
+  "label": "fix(publishing): состав группы — один источник истины [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
