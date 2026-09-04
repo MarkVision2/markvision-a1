@@ -33,6 +33,12 @@
 `montage_settings.worker_key`). Тексты для публикации (описание, теги, ТГ-пост) — скилл
 **`publish-pack`** → `work/<id>/publish.md`.
 
+- **Контент-конвейер Reels (тема из контент-плана → сценарий OpenAI → видео HeyGen → FFmpeg-worker →
+  согласование в MarkVision/Telegram)**: очередь `pipeline_runs` с атомарным забором
+  (`claim_next_content_job`), edge-функция `content-pipeline` (пользовательский API, подписанный
+  callback для n8n, Telegram-кнопки), вкладка «AI-видео» в карточке темы, воркер `worker/content-worker/`,
+  n8n `docs/n8n-content-pipeline-v5.json`. Всё — `docs/CONTENT-PIPELINE.md`;
+  диагностика и smoke test — `node scripts/content-pipeline-smoke.mjs doctor|e2e`.
 - **Автопубликация готового видео в аккаунты площадок** (Instagram/TikTok/YouTube/Threads):
   очередь `publish_jobs` + edge-функции `publish-*`, оркестрация заявок и отчётов — в n8n.
   Детали, контракты endpoint'ов и онбординг аккаунтов — `docs/PUBLISHING-SYSTEM.md`.

@@ -1,0 +1,219 @@
+{
+  "name": "Content Pipeline · callback",
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "nodes": [
+    {
+      "id": "О под-воркфлоу",
+      "name": "О под-воркфлоу",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        -400
+      ],
+      "parameters": {
+        "content": "## Content Pipeline · callback\n\nЕдинственная точка, где подписывается и уходит запрос в закрытый endpoint MarkVision\n`POST {supabase}/functions/v1/content-pipeline/internal/callback`.\n\nВход: один item `{ event, ...payload }`. Выход: `{ status, ...ответ }`.\n\nПодпись: HMAC-SHA256(`timestamp.nonce.body`) секретом `CONTENT_PIPELINE_CALLBACK_SECRET`\n(тот же секрет — в Supabase Edge Secrets). Тело отправляется той же строкой, что подписана.",
+        "width": 520,
+        "height": 260
+      }
+    },
+    {
+      "id": "trg",
+      "name": "Вызов из основного воркфлоу",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        -200,
+        0
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "cfg",
+      "name": "Настройки callback",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        40,
+        0
+      ],
+      "parameters": {
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s0",
+              "name": "callback_url",
+              "value": "https://szfgdruhlebfvcmlvxdk.supabase.co/functions/v1/content-pipeline/internal/callback",
+              "type": "string"
+            },
+            {
+              "id": "s1",
+              "name": "callback_secret",
+              "value": "PASTE_CONTENT_PIPELINE_CALLBACK_SECRET",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "notes": "Секрет здесь один. В экспорте docs/ — плейсхолдер."
+    },
+    {
+      "id": "prep",
+      "name": "Подготовить подпись",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        280,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Тело = входной item без служебных полей настроек; подпись строится по строке\n// timestamp.nonce.body — ровно так же её проверяет edge-функция.\nconst src = { ...$input.first().json };\ndelete src.callback_url; delete src.callback_secret;\nconst body = JSON.stringify(src);\nconst timestamp = String(Date.now());\nconst nonce = Array.from({ length: 24 }, () => Math.floor(Math.random() * 16).toString(16)).join('') + timestamp.slice(-6);\nreturn [{ json: { body, timestamp, nonce, signing: `${timestamp}.${nonce}.${body}` } }];"
+      }
+    },
+    {
+      "id": "hmac",
+      "name": "HMAC SHA-256",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "position": [
+        520,
+        0
+      ],
+      "parameters": {
+        "action": "hmac",
+        "type": "SHA256",
+        "value": "={{ $json.signing }}",
+        "secret": "={{ $('Настройки callback').first().json.callback_secret }}",
+        "dataPropertyName": "signature",
+        "encoding": "hex"
+      }
+    },
+    {
+      "id": "post",
+      "name": "POST internal/callback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        760,
+        0
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Настройки callback').first().json.callback_url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-pipeline-timestamp",
+              "value": "={{ $('Подготовить подпись').first().json.timestamp }}"
+            },
+            {
+              "name": "x-pipeline-nonce",
+              "value": "={{ $('Подготовить подпись').first().json.nonce }}"
+            },
+            {
+              "name": "x-pipeline-signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $('Подготовить подпись').first().json.body }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "notes": "Тело — той же строкой, что подписана (raw), иначе подпись не сойдётся.",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "out",
+      "name": "Ответ",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1000,
+        0
+      ],
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nconst body = (r.body && typeof r.body === 'object') ? r.body : {};\nreturn [{ json: { status: r.statusCode ?? 0, ...body } }];"
+      }
+    }
+  ],
+  "connections": {
+    "Вызов из основного воркфлоу": {
+      "main": [
+        [
+          {
+            "node": "Настройки callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Настройки callback": {
+      "main": [
+        [
+          {
+            "node": "Подготовить подпись",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Подготовить подпись": {
+      "main": [
+        [
+          {
+            "node": "HMAC SHA-256",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HMAC SHA-256": {
+      "main": [
+        [
+          {
+            "node": "POST internal/callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST internal/callback": {
+      "main": [
+        [
+          {
+            "node": "Ответ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

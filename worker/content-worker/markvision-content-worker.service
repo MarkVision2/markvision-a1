@@ -1,0 +1,57 @@
+# /etc/systemd/system/markvision-content-worker.service
+#
+# FFmpeg-worker контент-конвейера. Слушает только приватную Docker-сеть
+# (172.18.0.1:9120), авторизация — WORKER_TOKEN из EnvironmentFile.
+#
+# Установка:
+#   useradd --system --home /opt/markvision-content-worker --shell /usr/sbin/nologin cworker
+#   install -d -o cworker -g cworker /opt/markvision-content-worker
+#   cp worker/content-worker/*.mjs /opt/markvision-content-worker/
+#   install -m 600 -o root -g root worker/content-worker/.env.example /etc/markvision-content-worker.env  # заполнить!
+#   install -d -o cworker -g www-data -m 750 /var/www/media/content-pipeline
+#   systemctl daemon-reload && systemctl enable --now markvision-content-worker
+#
+# Caddy раздаёт /var/www/media только на чтение (file_server, без browse).
+
+[Unit]
+Description=MarkVision content pipeline FFmpeg worker
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cworker
+Group=cworker
+EnvironmentFile=/etc/markvision-content-worker.env
+WorkingDirectory=/opt/markvision-content-worker
+ExecStart=/usr/bin/node /opt/markvision-content-worker/server.mjs
+Restart=always
+RestartSec=3
+TimeoutStopSec=30
+
+# Ресурсы: перекодирование не должно душить n8n и БД на том же сервере.
+CPUQuota=200%
+MemoryMax=2G
+TasksMax=256
+LimitNOFILE=4096
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+LockPersonality=true
+SystemCallArchitectures=native
+ReadWritePaths=/var/www/media/content-pipeline
+PrivateDevices=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,1499 @@
+{
+  "name": "AI Content Pipeline v5: MarkVision plan -> script -> video -> review",
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionTimeout": 3600,
+    "saveExecutionProgress": true
+  },
+  "nodes": [
+    {
+      "id": "О воркфлоу",
+      "name": "О воркфлоу",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -700,
+        -700
+      ],
+      "parameters": {
+        "content": "## AI Content Pipeline v5\n\nMarkVision `content_plan_items` (REELS, idea) → сценарий (OpenAI, JSON Schema) → видео (HeyGen) → FFmpeg-worker → согласование (Telegram/MarkVision).\n\n**Что изменилось против v4:** состояние живёт в `pipeline_runs`, а не в `ai_analysis`; очередь берётся атомарно (`claim_next_content_job`, FOR UPDATE SKIP LOCKED) через подписанный callback — service-role ключ Supabase в n8n больше не нужен; HeyGen job ID сохраняется ДО ожидания, повтор не создаёт второе платное видео; ожидание — Wait-цикл по 30 с, а не долгий Code; сценарий валидируется на стороне MarkVision (90–130 слов, запреты).\n\n**Секреты только в ноде «Настройки»** (в экспорте — плейсхолдеры). Под-воркфлоу «Content Pipeline · callback» — импортировать первым и подставить его ID во все ноды «callback: …».\n\nОдин запуск = одна тема. Расписание раз в час; ручной запуск — `POST /webhook/generate-content` с заголовком `x-pipeline-key`.",
+        "width": 620,
+        "height": 380
+      }
+    },
+    {
+      "id": "sched",
+      "name": "Каждый час",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -700,
+        -100
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "wh",
+      "name": "Webhook generate-content",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -700,
+        100
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "generate-content",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "notes": "Ручной запуск из MarkVision (edge-функция шлёт x-pipeline-key). Из браузера напрямую не вызывается.",
+      "webhookId": "content-pipeline-generate"
+    },
+    {
+      "id": "cfg",
+      "name": "Настройки",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -460,
+        0
+      ],
+      "parameters": {
+        "includeOtherFields": true,
+        "assignments": {
+          "assignments": [
+            {
+              "id": "c0",
+              "name": "webhook_key",
+              "value": "PASTE_N8N_CONTENT_PIPELINE_WEBHOOK_KEY",
+              "type": "string"
+            },
+            {
+              "id": "c1",
+              "name": "openai_api_key",
+              "value": "PASTE_OPENAI_API_KEY",
+              "type": "string"
+            },
+            {
+              "id": "c2",
+              "name": "heygen_api_key",
+              "value": "PASTE_HEYGEN_API_KEY",
+              "type": "string"
+            },
+            {
+              "id": "c3",
+              "name": "worker_url",
+              "value": "http://172.18.0.1:9120",
+              "type": "string"
+            },
+            {
+              "id": "c4",
+              "name": "worker_token",
+              "value": "PASTE_WORKER_TOKEN",
+              "type": "string"
+            },
+            {
+              "id": "c5",
+              "name": "worker_id",
+              "value": "n8n-v5",
+              "type": "string"
+            },
+            {
+              "id": "c6",
+              "name": "poll_seconds",
+              "value": 30,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "notes": "Единственное место с секретами."
+    },
+    {
+      "id": "gate",
+      "name": "Проверка входа",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -220,
+        0
+      ],
+      "parameters": {
+        "jsCode": "// Тик расписания — без body/headers; вебхук обязан принести x-pipeline-key.\nconst j = $input.first().json;\nconst isWebhook = Boolean(j.body || j.headers);\nif (!isWebhook) return [{ json: { ok: true, project_id: null, source: 'schedule' } }];\nconst key = (j.headers || {})['x-pipeline-key'];\nif (!j.webhook_key || key !== j.webhook_key) return [{ json: { ok: false, error: 'bad webhook key' } }];\nconst b = j.body || {};\nreturn [{ json: { ok: true, project_id: b.project_id || null, item_id: b.item_id || null, source: 'webhook' } }];"
+      }
+    },
+    {
+      "id": "ifgate",
+      "name": "Вход валиден?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        20,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ifgatec",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "deny",
+      "name": "Отказ: ключ не принят",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        260,
+        200
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "mkclaim",
+      "name": "→ claim",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const s = $('Настройки').first().json;\nconst g = $('Проверка входа').first().json;\nreturn [{ json: { event: 'claim', worker_id: s.worker_id, project_id: g.project_id || null } }];"
+      }
+    },
+    {
+      "id": "cbclaim",
+      "name": "callback: claim",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        500,
+        -100
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": "PASTE_CALLBACK_WORKFLOW_ID",
+        "mode": "once"
+      },
+      "notes": "Подписанный вызов content-pipeline/internal/callback через под-воркфлоу «Content Pipeline · callback»."
+    },
+    {
+      "id": "ifjob",
+      "name": "Есть задание?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        740,
+        -100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ifjobc",
+              "leftValue": "={{ $json.job ? 'yes' : 'no' }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "notes": "Пустая очередь — не ошибка: завершаемся тихо, платные ноды не трогаем."
+    },
+    {
+      "id": "empty",
+      "name": "Очередь пуста",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        980,
+        100
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "job",
+      "name": "Задание",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        980,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "// Одна точка правды по заданию: дальше все ноды читают $('Задание').\nconst j = $input.first().json.job;\nreturn [{ json: j }];"
+      }
+    },
+    {
+      "id": "ifscript",
+      "name": "Сценарий уже есть?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1220,
+        -100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ifscriptc",
+              "leftValue": "={{ $json.script ? 'yes' : 'no' }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "notes": "Возобновление после retry_wait: сценарий сохранён в metadata — OpenAI не зовём."
+    },
+    {
+      "id": "mkgen",
+      "name": "→ state script_generating",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1460,
+        100
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { event: 'state', run_id: $('Задание').first().json.run_id, state: 'script_generating' } }];"
+      }
+    },
+    {
+      "id": "cbgen",
+      "name": "callback: state",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        1700,
+        100
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": "PASTE_CALLBACK_WORKFLOW_ID",
+        "mode": "once"
+      },
+      "notes": "Подписанный вызов content-pipeline/internal/callback через под-воркфлоу «Content Pipeline · callback»."
+    },
+    {
+      "id": "openai",
+      "name": "OpenAI: сценарий",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1940,
+        100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Настройки').first().json.openai_api_key }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  model: $('Задание').first().json.settings.openai_model,\n  temperature: 0.7,\n  response_format: { type: 'json_schema', json_schema: $('Задание').first().json.script_schema },\n  messages: [\n    { role: 'system', content: $('Задание').first().json.script_prompt.system },\n    { role: 'user', content: $('Задание').first().json.script_prompt.user }\n  ]\n}) }}"
+      },
+      "notes": "Структурированный JSON по схеме из claim. Сеть/5xx — 3 попытки с паузой (retry ноды).",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "parseai",
+      "name": "Разбор ответа OpenAI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2180,
+        100
+      ],
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nconst status = r.statusCode ?? 0;\nconst body = (r.body && typeof r.body === 'object') ? r.body : {};\nconst run_id = $('Задание').first().json.run_id;\nif (status === 429) return [{ json: { ok: false, event: 'fail', run_id, error_code: 'script_provider', kind: 'rate_limited', retry_after: (r.headers || {})['retry-after'] || null, node: 'OpenAI: сценарий', error_message: 'OpenAI HTTP 429' } }];\nif (status < 200 || status >= 300) return [{ json: { ok: false, event: 'fail', run_id, error_code: 'script_provider', kind: status >= 500 ? 'server' : (status === 401 || status === 403 ? 'auth' : 'validation'), node: 'OpenAI: сценарий', error_message: `OpenAI HTTP ${status}: ${JSON.stringify(body).slice(0, 300)}` } }];\nconst raw = body.choices?.[0]?.message?.content ?? '';\nreturn [{ json: { ok: true, event: 'script', run_id, script_raw: raw, model: body.model, usage: body.usage || null, prompt_version: $('Задание').first().json.script_prompt.prompt_version } }];"
+      }
+    },
+    {
+      "id": "ifai",
+      "name": "OpenAI ответил?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2420,
+        100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ifaic",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cbscript",
+      "name": "callback: script",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        2660,
+        0
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": "PASTE_CALLBACK_WORKFLOW_ID",
+        "mode": "once"
+      },
+      "notes": "Валидация сценария (длина, поля, запреты) — на стороне MarkVision."
+    },
+    {
+      "id": "ifvalid",
+      "name": "Сценарий валиден?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2900,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ifvalidc",
+              "leftValue": "={{ $json.valid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ifretry",
+      "name": "Повторить генерацию?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3140,
+        200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ifretryc",
+              "leftValue": "={{ $runIndex }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "lt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "notes": "Не более одной повторной генерации при невалидном JSON (ТЗ 7.3)."
+    },
+    {
+      "id": "mkfailscript",
+      "name": "→ fail script_invalid",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3380,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const v = $('callback: script').first().json;\nreturn [{ json: { event: 'fail', run_id: $('Задание').first().json.run_id, error_code: 'script_invalid', kind: 'validation', node: 'callback: script', error_message: 'сценарий не прошёл валидацию: ' + (v.errors || []).join('; ') } }];"
+      }
+    },
+    {
+      "id": "cbfailscript",
+      "name": "callback: fail (сценарий)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        3620,
+        300
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": "PASTE_CALLBACK_WORKFLOW_ID",
+        "mode": "once"
+      },
+      "notes": "Подписанный вызов content-pipeline/internal/callback через под-воркфлоу «Content Pipeline · callback»."
+    },
+    {
+      "id": "cbfailai",
+      "name": "callback: fail (OpenAI)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        2660,
+        300
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": "PASTE_CALLBACK_WORKFLOW_ID",
+        "mode": "once"
+      },
+      "notes": "Ошибка провайдера: edge-функция сама решает retry_wait/failed по kind и попытке."
+    },
+    {
+      "id": "ifvideo",
+      "name": "Видео уже заказано?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3380,
+        -100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ifvideoc",
+              "leftValue": "={{ $('Задание').first().json.provider_job_id ? 'yes' : 'no' }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "notes": "Идемпотентность: provider_job_id сохранён до ожидания — второй платный заказ невозможен."
+    },
+    {
+      "id": "heygen",
+      "name": "HeyGen: создать видео",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3620,
+        -100
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.heygen.com/v2/video/generate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Api-Key",
+              "value": "={{ $('Настройки').first().json.heygen_api_key }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 120000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ (() => {\n  const job = $('Задание').first().json;\n  const script = job.script || $('callback: script').first().json.script;\n  const s = job.settings;\n  const character = s.heygen_avatar_id ? { type: 'avatar', avatar_id: s.heygen_avatar_id, avatar_style: 'normal' } : undefined;\n  const voice = { type: 'text', input_text: script.script, voice_id: s.heygen_voice_id || undefined, speed: 1.0 };\n  return JSON.stringify({\n    title: `mv-${job.item_id}-a${job.attempt}`,\n    video_inputs: [{ character, voice }],\n    dimension: { width: s.video_width, height: s.video_height },\n    caption: false\n  });\n})() }}"
+      },
+      "notes": "Один запрос на попытку. title = id темы + попытка (для сверки в кабинете HeyGen).",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "parsehg",
+      "name": "Разбор HeyGen",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3860,
+        -100
+      ],
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nconst status = r.statusCode ?? 0;\nconst body = (r.body && typeof r.body === 'object') ? r.body : {};\nconst run_id = $('Задание').first().json.run_id;\nconst vid = body.data?.video_id;\nif (status >= 200 && status < 300 && vid) return [{ json: { ok: true, event: 'video_requested', run_id, provider: 'heygen', provider_job_id: vid, provider_request_id: (r.headers || {})['x-request-id'] || null } }];\nconst kind = status === 429 ? 'rate_limited' : status >= 500 ? 'server' : (status === 401 || status === 403) ? 'auth' : 'provider_failed';\nreturn [{ json: { ok: false, event: 'fail', run_id, error_code: 'video_provider', kind, retry_after: (r.headers || {})['retry-after'] || null, node: 'HeyGen: создать видео', error_message: `HeyGen HTTP ${status}: ${JSON.stringify(body.error || body).slice(0, 300)}` } }];"
+      }
+    },
+    {
+      "id": "ifhg",
+      "name": "HeyGen принял?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4100,
+        -100
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ifhgc",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cbreq",
+      "name": "callback: video_requested",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        4340,
+        -200
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": "PASTE_CALLBACK_WORKFLOW_ID",
+        "mode": "once"
+      },
+      "notes": "Сохраняем job ID ДО ожидания результата."
+    },
+    {
+      "id": "cbfailhg",
+      "name": "callback: fail (HeyGen)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        4340,
+        0
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": "PASTE_CALLBACK_WORKFLOW_ID",
+        "mode": "once"
+      },
+      "notes": "Подписанный вызов content-pipeline/internal/callback через под-воркфлоу «Content Pipeline · callback»."
+    },
+    {
+      "id": "wait",
+      "name": "Ждать 30 с",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        4580,
+        -200
+      ],
+      "parameters": {
+        "amount": "={{ $('Настройки').first().json.poll_seconds }}",
+        "unit": "seconds"
+      },
+      "notes": "Wait-нода освобождает task runner: n8n не держит Code node в цикле десять минут.",
+      "webhookId": "content-pipeline-wait"
+    },
+    {
+      "id": "hgstatus",
+      "name": "HeyGen: статус",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4820,
+        -200
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.heygen.com/v1/video_status.get?video_id={{ encodeURIComponent($('Задание').first().json.provider_job_id || $('Разбор HeyGen').first().json.provider_job_id) }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Api-Key",
+              "value": "={{ $('Настройки').first().json.heygen_api_key }}"
+            },
+            {
+              "name": "Accept",
+              "value": "application/json"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "parsestatus",
+      "name": "Разбор статуса",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5060,
+        -200
+      ],
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nconst status = r.statusCode ?? 0;\nconst body = (r.body && typeof r.body === 'object') ? r.body : {};\nconst d = body.data || {};\nconst run_id = $('Задание').first().json.run_id;\nif (status < 200 || status >= 300) {\n  // Сетевой сбой на опросе — не ошибка видео: сообщаем как processing, лимит времени решает edge-функция.\n  return [{ json: { event: 'video_status', run_id, status: 'processing', error: `status HTTP ${status}` } }];\n}\nreturn [{ json: { event: 'video_status', run_id, status: String(d.status || 'processing'), video_url: d.video_url || null, duration_seconds: d.duration ?? null, error: d.error ? JSON.stringify(d.error).slice(0, 300) : null } }];"
+      }
+    },
+    {
+      "id": "cbstatus",
+      "name": "callback: video_status",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        5300,
+        -200
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": "PASTE_CALLBACK_WORKFLOW_ID",
+        "mode": "once"
+      },
+      "notes": "Edge-функция ведёт video_rendering → video_ready, считает таймаут 20 мин и стоимость."
+    },
+    {
+      "id": "ifready",
+      "name": "Видео готово?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5540,
+        -200
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ifreadyc",
+              "leftValue": "={{ $json.state }}",
+              "rightValue": "video_ready",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "ifpoll",
+      "name": "Опрашивать дальше?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5780,
+        0
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ifpollc",
+              "leftValue": "={{ $json.poll_again ? 'yes' : 'no' }}",
+              "rightValue": "yes",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "vfail",
+      "name": "Видео не удалось / таймаут",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        6020,
+        100
+      ],
+      "parameters": {},
+      "notes": "Состояние уже записано callback'ом (retry_wait или failed)."
+    },
+    {
+      "id": "mknorm",
+      "name": "→ state normalizing",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5780,
+        -300
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: { event: 'state', run_id: $('Задание').first().json.run_id, state: 'normalizing', metadata: { worker: 'markvision-content-worker' } } }];"
+      }
+    },
+    {
+      "id": "cbnorm",
+      "name": "callback: state normalizing",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        6020,
+        -300
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": "PASTE_CALLBACK_WORKFLOW_ID",
+        "mode": "once"
+      },
+      "notes": "Подписанный вызов content-pipeline/internal/callback через под-воркфлоу «Content Pipeline · callback»."
+    },
+    {
+      "id": "worker",
+      "name": "Worker: normalize",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        6260,
+        -300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Настройки').first().json.worker_url }}/normalize",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "x-worker-token",
+              "value": "={{ $('Настройки').first().json.worker_token }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true
+            }
+          },
+          "timeout": 600000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  source_url: $('callback: video_status').first().json.video_url,\n  content_id: $('Задание').first().json.item_id,\n  version: $('Задание').first().json.attempt\n}) }}"
+      },
+      "notes": "Приватная Docker-сеть, allowlist HeyGen, лимиты — в самом воркере. version = попытка: файл никогда не перезаписывается."
+    },
+    {
+      "id": "parseworker",
+      "name": "Разбор воркера",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6500,
+        -300
+      ],
+      "parameters": {
+        "jsCode": "const r = $input.first().json;\nconst status = r.statusCode ?? 0;\nconst b = (r.body && typeof r.body === 'object') ? r.body : {};\nconst run_id = $('Задание').first().json.run_id;\nif (status === 200 && b.ok) return [{ json: { ok: true, event: 'asset', run_id, asset_type: 'normalized_video', storage_path: b.path, public_url: b.url, mime_type: 'video/mp4', size_bytes: b.size_bytes, width: b.width, height: b.height, duration_seconds: b.duration_seconds, video_codec: b.video_codec, audio_codec: b.audio_codec, checksum_sha256: b.checksum_sha256 } }];\nconst kind = status === 0 || status >= 500 ? 'server' : status === 429 ? 'rate_limited' : 'validation';\nreturn [{ json: { ok: false, event: 'fail', run_id, error_code: 'normalize_failed', kind, node: 'Worker: normalize', error_message: `worker HTTP ${status}: ${b.error || ''} ${b.message || ''}`.slice(0, 400) } }];"
+      }
+    },
+    {
+      "id": "ifworker",
+      "name": "Файл готов?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6740,
+        -300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ifworkerc",
+              "leftValue": "={{ $json.ok }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "cbasset",
+      "name": "callback: asset",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        6980,
+        -400
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": "PASTE_CALLBACK_WORKFLOW_ID",
+        "mode": "once"
+      },
+      "notes": "Edge-функция: content_assets (версия), media_url темы, awaiting_review, Telegram с кнопками."
+    },
+    {
+      "id": "cbfailworker",
+      "name": "callback: fail (worker)",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1,
+      "position": [
+        6980,
+        -200
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": "PASTE_CALLBACK_WORKFLOW_ID",
+        "mode": "once"
+      },
+      "notes": "Подписанный вызов content-pipeline/internal/callback через под-воркфлоу «Content Pipeline · callback»."
+    },
+    {
+      "id": "done",
+      "name": "Готово: на согласовании",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        7220,
+        -400
+      ],
+      "parameters": {}
+    }
+  ],
+  "connections": {
+    "Каждый час": {
+      "main": [
+        [
+          {
+            "node": "Настройки",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook generate-content": {
+      "main": [
+        [
+          {
+            "node": "Настройки",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Настройки": {
+      "main": [
+        [
+          {
+            "node": "Проверка входа",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Проверка входа": {
+      "main": [
+        [
+          {
+            "node": "Вход валиден?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Вход валиден?": {
+      "main": [
+        [
+          {
+            "node": "→ claim",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Отказ: ключ не принят",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "→ claim": {
+      "main": [
+        [
+          {
+            "node": "callback: claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "callback: claim": {
+      "main": [
+        [
+          {
+            "node": "Есть задание?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Есть задание?": {
+      "main": [
+        [
+          {
+            "node": "Задание",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Очередь пуста",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Задание": {
+      "main": [
+        [
+          {
+            "node": "Сценарий уже есть?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сценарий уже есть?": {
+      "main": [
+        [
+          {
+            "node": "Видео уже заказано?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "→ state script_generating",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "→ state script_generating": {
+      "main": [
+        [
+          {
+            "node": "callback: state",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "callback: state": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: сценарий",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI: сценарий": {
+      "main": [
+        [
+          {
+            "node": "Разбор ответа OpenAI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Разбор ответа OpenAI": {
+      "main": [
+        [
+          {
+            "node": "OpenAI ответил?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI ответил?": {
+      "main": [
+        [
+          {
+            "node": "callback: script",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "callback: fail (OpenAI)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "callback: script": {
+      "main": [
+        [
+          {
+            "node": "Сценарий валиден?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Сценарий валиден?": {
+      "main": [
+        [
+          {
+            "node": "Видео уже заказано?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Повторить генерацию?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Повторить генерацию?": {
+      "main": [
+        [
+          {
+            "node": "OpenAI: сценарий",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "→ fail script_invalid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "→ fail script_invalid": {
+      "main": [
+        [
+          {
+            "node": "callback: fail (сценарий)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Видео уже заказано?": {
+      "main": [
+        [
+          {
+            "node": "Ждать 30 с",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "HeyGen: создать видео",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HeyGen: создать видео": {
+      "main": [
+        [
+          {
+            "node": "Разбор HeyGen",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Разбор HeyGen": {
+      "main": [
+        [
+          {
+            "node": "HeyGen принял?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HeyGen принял?": {
+      "main": [
+        [
+          {
+            "node": "callback: video_requested",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "callback: fail (HeyGen)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "callback: video_requested": {
+      "main": [
+        [
+          {
+            "node": "Ждать 30 с",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ждать 30 с": {
+      "main": [
+        [
+          {
+            "node": "HeyGen: статус",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HeyGen: статус": {
+      "main": [
+        [
+          {
+            "node": "Разбор статуса",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Разбор статуса": {
+      "main": [
+        [
+          {
+            "node": "callback: video_status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "callback: video_status": {
+      "main": [
+        [
+          {
+            "node": "Видео готово?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Видео готово?": {
+      "main": [
+        [
+          {
+            "node": "→ state normalizing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Опрашивать дальше?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Опрашивать дальше?": {
+      "main": [
+        [
+          {
+            "node": "Ждать 30 с",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Видео не удалось / таймаут",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "→ state normalizing": {
+      "main": [
+        [
+          {
+            "node": "callback: state normalizing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "callback: state normalizing": {
+      "main": [
+        [
+          {
+            "node": "Worker: normalize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Worker: normalize": {
+      "main": [
+        [
+          {
+            "node": "Разбор воркера",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Разбор воркера": {
+      "main": [
+        [
+          {
+            "node": "Файл готов?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Файл готов?": {
+      "main": [
+        [
+          {
+            "node": "callback: asset",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "callback: fail (worker)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "callback: asset": {
+      "main": [
+        [
+          {
+            "node": "Готово: на согласовании",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

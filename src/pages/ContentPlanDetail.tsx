@@ -22,6 +22,7 @@ import {
   ContentPlanFunnelView,
   ContentPlanMetricsGrid,
 } from "@/components/content-plan/ContentPlanFunnelView";
+import { ContentPipelinePanel } from "@/components/content-plan/ContentPipelinePanel";
 import { useContentPlanItem } from "@/hooks/useContentPlan";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
@@ -232,6 +233,9 @@ export default function ContentPlanDetail() {
       <Tabs defaultValue="content" className="mt-8">
         <TabsList className="flex h-auto flex-wrap gap-1">
           <TabsTrigger value="content">Контент</TabsTrigger>
+          {item.contentType === "REELS" && !item.synthetic && (
+            <TabsTrigger value="pipeline">AI-видео</TabsTrigger>
+          )}
           <TabsTrigger value="autopost">Автопостинг</TabsTrigger>
           <TabsTrigger value="analytics">Аналитика</TabsTrigger>
           <TabsTrigger value="funnel">Воронка</TabsTrigger>
@@ -289,6 +293,12 @@ export default function ContentPlanDetail() {
             <Textarea value={draftDescription} onChange={(e) => setDescription(e.target.value)} rows={5} />
           </div>
         </TabsContent>
+
+        {item.contentType === "REELS" && !item.synthetic && (
+          <TabsContent value="pipeline" className="mt-4 rounded-2xl border border-border/60 p-4">
+            <ContentPipelinePanel itemId={item.id} />
+          </TabsContent>
+        )}
 
         <TabsContent value="autopost" className="mt-4 space-y-4 rounded-2xl border border-border/60 p-4">
           <div className="flex items-center gap-2 text-sm font-semibold">

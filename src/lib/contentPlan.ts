@@ -28,7 +28,9 @@ export type ContentPlanStatus =
   | "ready"
   | "scheduled"
   | "published"
-  | "error";
+  | "error"
+  | "failed"
+  | "cancelled";
 
 export type ContentPlanCategory =
   | "content"
@@ -60,6 +62,9 @@ export const CONTENT_PLAN_STATUS_META: Record<
   scheduled: { label: "Запланирован", cls: "bg-violet-500/10 text-violet-700" },
   published: { label: "Опубликован", cls: "bg-emerald-500/10 text-emerald-700" },
   error: { label: "Ошибка", cls: "bg-destructive/10 text-destructive" },
+  // Контент-конвейер (AI-видео): попытки исчерпаны / отменено пользователем.
+  failed: { label: "Не удалось", cls: "bg-destructive/10 text-destructive" },
+  cancelled: { label: "Отменено", cls: "bg-muted text-muted-foreground" },
 };
 
 export const CONTENT_PLAN_CATEGORY_META: Record<ContentPlanCategory, { label: string }> = {
