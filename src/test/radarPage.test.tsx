@@ -72,10 +72,13 @@ const post: RadarPost = {
 vi.mock("@/hooks/useRadar", () => ({
   useRadar: () => ({
     projectId: "proj-1",
-    sources: [],
+    sources: [{
+      id: "src-own", project_id: "proj-1", kind: "own_account", platform: "instagram", handle: "aiva",
+      label: null, enabled: true, crawl_interval_hours: 24, last_crawled_at: null, last_error: null, created_at: "2026-09-01T10:00:00.000Z",
+    }],
     metrics: { sources: 3, posts_7d: 42, posts_unanalyzed: 5, ideas_new: 7, ideas_used: 2, spent_month_usd: 1.5 },
     ideas: [idea],
-    posts: [post],
+    posts: [post, { ...post, id: "post-own", source_id: "src-own", author_handle: "aiva", external_id: "own-1" }],
     groups: [
       { id: "g-1", name: "Группа А", persona_id: null, review_mode: null },
       { id: "g-2", name: "Группа Б", persona_id: null, review_mode: null },
@@ -149,5 +152,14 @@ describe("Radar page", () => {
     expect(within(row).getByText("5,0 %")).toBeTruthy();
     fireEvent.click(within(row).getByRole("button", { name: /Разобрать/ }));
     await waitFor(() => expect(analyzePost).toHaveBeenCalledWith("post-1"));
+  });
+
+  it("пост из собственного аккаунта помечен чипом «свой аккаунт»", async () => {
+    renderPage();
+    fireEvent.mouseDown(screen.getByRole("tab", { name: /Посты/ }), { button: 0 });
+    const own = (await screen.findByText("@aiva")).closest("tr") as HTMLTableRowElement;
+    expect(within(own).getByText("свой аккаунт")).toBeTruthy();
+    const competitor = screen.getByText("@clinic").closest("tr") as HTMLTableRowElement;
+    expect(within(competitor).queryByText("свой аккаунт")).toBeNull();
   });
 });

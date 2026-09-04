@@ -85,6 +85,12 @@ const HEALTH_CLS = {
   bad: "[&>div]:bg-destructive",
 } as const;
 
+/** TikTok, подключённый до появления права video.list, метрик не отдаёт — нужен reconnect. */
+function metricsScopeHint(a: Pick<PublishAccount, "platform" | "oauth_scope">): string | null {
+  if (a.platform !== "tiktok" || !a.oauth_scope) return null;
+  return a.oauth_scope.split(/[,\s]+/).includes("video.list") ? null : "без права video.list — метрики не собираются, переподключите аккаунт";
+}
+
 function rampLabel(a: Pick<PublishAccount, "ramp_enabled" | "ramp_started_at">): string {
   const st = rampStage(a.ramp_enabled, a.ramp_started_at);
   if (st.stage === 4) return a.ramp_enabled ? "Полный лимит" : "Без разгона";
@@ -325,6 +331,7 @@ function AccountRow({
           {platform && <Chip label={platform.label} cls={platform.cls} />}
         </div>
         {a.last_error && <div className="mt-1 max-w-[220px] truncate text-xs text-destructive" title={a.last_error}>{a.last_error}</div>}
+        {metricsScopeHint(a) && <div className="mt-1 text-xs text-amber-700">{metricsScopeHint(a)}</div>}
       </TableCell>
       <TableCell><Chip label={status.label} cls={status.cls} /></TableCell>
       <TableCell>

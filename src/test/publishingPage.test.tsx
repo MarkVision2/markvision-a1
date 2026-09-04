@@ -21,6 +21,34 @@ vi.mock("@/hooks/useProjectsStore", () => ({
 const disconnect = vi.fn().mockResolvedValue({ ok: true });
 const publishVideo = vi.fn().mockResolvedValue({ video_id: "v1", created: 1, skipped: 0, jobs: [] });
 
+const tiktokOld: PublishAccount = {
+  id: "acc-tt",
+  platform: "tiktok",
+  account_name: "Клиника TikTok",
+  handle: "aiva.tt",
+  external_account_id: "open-1",
+  status: "active",
+  publish_enabled: true,
+  daily_limit: 2,
+  last_post_at: null,
+  consecutive_errors: 0,
+  last_error: null,
+  token_expires_at: null,
+  group_id: null,
+  persona_id: null,
+  timezone: null,
+  window_start: null,
+  window_end: null,
+  ramp_enabled: false,
+  ramp_started_at: null,
+  health_score: 90,
+  published_today: 0,
+  published_day: null,
+  token_refreshed_at: null,
+  followers: null,
+  oauth_scope: "user.info.basic,video.publish,video.upload", // подключён до появления video.list
+};
+
 const account: PublishAccount = {
   id: "acc-1",
   platform: "instagram",
@@ -54,7 +82,7 @@ const mockFlags = vi.hoisted(() => ({ paused: false }));
 vi.mock("@/hooks/usePublishing", () => ({
   usePublishing: () => ({
     projectId: "proj-1",
-    accounts: [account],
+    accounts: [account, tiktokOld],
     groups: [],
     personas: [],
     settings: {
@@ -163,14 +191,14 @@ describe("страница «Публикации»", () => {
   it("таблица аккаунтов: чип статуса и ступень разгона", () => {
     renderPage();
     expect(screen.getByText("Клиника Айва")).toBeTruthy();
-    expect(screen.getByText("Активен")).toBeTruthy();
+    expect(screen.getAllByText("Активен")[0]).toBeTruthy();
     expect(screen.getByText(/Ступень 1 · 1\/день/)).toBeTruthy();
   });
 
   it("«Отключить» вызывает disconnect после подтверждения", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: "Отключить" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Отключить" })[0]);
     expect(confirmSpy).toHaveBeenCalled();
     await waitFor(() => expect(disconnect).toHaveBeenCalledWith("acc-1"));
     confirmSpy.mockRestore();
@@ -179,7 +207,7 @@ describe("страница «Публикации»", () => {
   it("«Отключить» не вызывает disconnect при отказе", () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: "Отключить" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Отключить" })[0]);
     expect(disconnect).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
@@ -201,5 +229,13 @@ describe("страница «Публикации»", () => {
     fireEvent.click(screen.getByRole("button", { name: /Создать задания/ }));
     expect(publishVideo).not.toHaveBeenCalled();
     expect(screen.getByRole("alert").textContent).toMatch(/https-ссылка/);
+  });
+
+  it("TikTok без права video.list получает подсказку о переподключении", () => {
+    renderPage();
+    const row = screen.getByText("Клиника TikTok").closest("tr") as HTMLTableRowElement;
+    expect(row.textContent).toMatch(/без права video.list/);
+    const ig = screen.getByText("Клиника Айва").closest("tr") as HTMLTableRowElement;
+    expect(ig.textContent).not.toMatch(/video.list/);
   });
 });

@@ -761,6 +761,7 @@ async function handleUser(req: Request, segments: string[]): Promise<Response> {
     // Цель публикации, персона и движок — только пока запуск не идёт: воркер
     // берёт их в момент claim, менять под ним бессмысленно.
     if (current) return json({ error: "Сначала остановите активную попытку" }, 409);
+    if (!body || typeof body !== "object" || Array.isArray(body)) return json({ error: "Ожидается объект настроек" }, 400);
     const patch: Record<string, unknown> = {};
     if ("target_group_id" in body) {
       const gid = body.target_group_id;

@@ -70,7 +70,7 @@ async function doctor() {
   }
 
   // Платформа автопостинга: радар и сбор метрик публикаций задеплоены?
-  for (const fn of ["radar", "publish-metrics", "publish-accounts", "publish-worker"]) {
+  for (const fn of ["radar", "publish-metrics", "publish-accounts", "publish-worker", "publish-oauth"]) {
     const r = await req(`${SB}/functions/v1/${fn}`, { method: "POST", body: {} });
     if (r.status === 404 && /not found/i.test(r.text)) { console.log(bad(`edge-функция ${fn} не задеплоена`)); failures++; }
     else console.log(ok(`edge-функция ${fn} отвечает (HTTP ${r.status})`));
@@ -80,7 +80,11 @@ async function doctor() {
     if (rm.status === 200 && rm.json?.ok) console.log(ok(`радар: разобрано ${rm.json.analyzed}, идей ${rm.json.ideas}, источников к сбору ${rm.json.crawl_kicked}, AI-провайдер ${rm.json.ai ? "есть" : "НЕТ"}`));
     else if (rm.status !== 401 && rm.status !== 403) { console.log(bad(`radar/maintenance: HTTP ${rm.status} ${rm.text.slice(0, 160)} — миграция 20260905100000 не применена?`)); failures++; }
     const pm = await req(`${SB}/functions/v1/publish-metrics`, { method: "POST", headers: { "x-automation-key": key }, body: { limit: 1 } });
-    if (pm.status === 200 && pm.json?.ok) console.log(ok(`метрики публикаций: due ${pm.json.due}, собрано ${pm.json.collected}`));
+    if (pm.status === 200 && pm.json?.ok) {
+      console.log(ok(`метрики публикаций: due ${pm.json.due}, собрано ${pm.json.collected}, в радар своих ${pm.json.own_posts_fed ?? 0}`));
+      // Причины отказов (нет права video.list, протухший токен) — сразу видно, кого переподключать.
+      for (const [reason, n] of Object.entries(pm.json.reasons ?? {})) console.log(info(`  не собрано ×${n}: ${reason}`));
+    }
     else if (pm.status !== 401 && pm.status !== 403) { console.log(bad(`publish-metrics: HTTP ${pm.status} ${pm.text.slice(0, 160)} — миграция 20260905110000 не применена?`)); failures++; }
   }
 

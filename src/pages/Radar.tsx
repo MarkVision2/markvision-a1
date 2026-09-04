@@ -312,10 +312,12 @@ function IdeaCard({
 /* ───────────────────────────── посты ───────────────────────────── */
 
 function PostRow({
-  post, busy, onAnalyze,
+  post, busy, own = false, onAnalyze,
 }: {
   post: RadarPost;
   busy: boolean;
+  /** Публикация из собственного аккаунта (лента publish-metrics → radar_posts). */
+  own?: boolean;
   onAnalyze: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -338,6 +340,7 @@ function PostRow({
           <div className="flex flex-wrap items-center gap-1.5">
             <span className="font-medium">{post.author_handle ? `@${post.author_handle}` : "—"}</span>
             {pm && <Chip label={pm.label} cls={pm.cls} />}
+            {own && <Chip label="свой аккаунт" cls="bg-sky-500/10 text-sky-700" />}
           </div>
           {post.caption && <div className="mt-0.5 line-clamp-1 max-w-[360px] text-xs text-muted-foreground">{post.caption}</div>}
         </TableCell>
@@ -427,6 +430,7 @@ export default function Radar() {
   const { activeId: projectId } = useProjectsStore();
   const r = useRadar();
   const { sources, metrics, ideas, posts, groups, runs, loading, error, busy } = r;
+  const ownSourceIds = useMemo(() => new Set(sources.filter((s) => s.kind === "own_account").map((s) => s.id)), [sources]);
 
   const [addOpen, setAddOpen] = useState(false);
   const [urlOpen, setUrlOpen] = useState(false);
@@ -631,7 +635,13 @@ export default function Radar() {
                 </TableHeader>
                 <TableBody>
                   {posts.map((p) => (
-                    <PostRow key={p.id} post={p} busy={busy === `analyze:${p.id}`} onAnalyze={() => void analyzePost(p.id)} />
+                    <PostRow
+                      key={p.id}
+                      post={p}
+                      own={ownSourceIds.has(p.source_id ?? "")}
+                      busy={busy === `analyze:${p.id}`}
+                      onAnalyze={() => void analyzePost(p.id)}
+                    />
                   ))}
                 </TableBody>
               </Table>
