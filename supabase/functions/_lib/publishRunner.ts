@@ -10,6 +10,7 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.95.0
 import {
   composeCaption,
   decryptSecret,
+  encryptSecret,
   logJob,
   markAccountFailure,
   markAccountSuccess,
@@ -21,6 +22,52 @@ import {
 } from "./publishing.ts";
 import { publisherFor } from "./publishers/index.ts";
 import type { PublishOutcome } from "./publishers/types.ts";
+import { isOAuthPlatform, parseTokenResponse, refreshRequest, tokenError, tokenNeedsRefresh } from "./publishOAuth.ts";
+
+/**
+ * Короткоживущие токены (TikTok — сутки, YouTube — час) обновляются перед
+ * публикацией refresh_token'ом; Threads — самим long-lived токеном за 10 дней
+ * до истечения. Обновлённый токен сразу шифруется в аккаунт.
+ */
+export async function ensureFreshToken(
+  admin: SupabaseClient,
+  account: PublishAccount,
+  token: string,
+): Promise<{ token: string; error?: string }> {
+  if (!isOAuthPlatform(account.platform)) return { token };
+  const margin = account.platform === "threads" ? 10 * 86_400 : 600;
+  if (!tokenNeedsRefresh(account.token_expires_at, Date.now(), margin)) return { token };
+  const env = (globalThis as { Deno?: { env: { get(k: string): string | undefined } } }).Deno?.env;
+  const creds = account.platform === "tiktok"
+    ? { clientId: env?.get("TIKTOK_CLIENT_KEY") ?? "", clientSecret: env?.get("TIKTOK_CLIENT_SECRET") ?? "" }
+    : account.platform === "youtube"
+    ? { clientId: env?.get("GOOGLE_OAUTH_CLIENT_ID") ?? "", clientSecret: env?.get("GOOGLE_OAUTH_CLIENT_SECRET") ?? "" }
+    : { clientId: env?.get("THREADS_APP_ID") ?? "", clientSecret: env?.get("THREADS_APP_SECRET") ?? "" };
+  let refreshToken: string | null = account.platform === "threads" ? token : null;
+  if (account.platform !== "threads") {
+    try { refreshToken = await decryptSecret(account.refresh_token_encrypted); } catch { refreshToken = null; }
+    if (!refreshToken) return { token, error: "нет refresh_token — нужен reconnect" };
+    if (!creds.clientId || !creds.clientSecret) return { token, error: `не заданы ключи приложения ${account.platform}` };
+  }
+  const rq = refreshRequest(account.platform, { ...creds, refreshToken: refreshToken! });
+  try {
+    const r = await fetch(rq.url, rq.init);
+    const body = await r.json().catch(() => ({}));
+    const err = tokenError(body);
+    if (err) return { token, error: err };
+    const parsed = parseTokenResponse(account.platform, body);
+    if (!parsed) return { token, error: "площадка не вернула access_token" };
+    await admin.from("publish_accounts").update({
+      access_token_encrypted: await encryptSecret(parsed.accessToken),
+      ...(parsed.refreshToken ? { refresh_token_encrypted: await encryptSecret(parsed.refreshToken) } : {}),
+      token_expires_at: parsed.expiresAt,
+      token_refreshed_at: new Date().toISOString(),
+    }).eq("id", account.id);
+    return { token: parsed.accessToken };
+  } catch (e) {
+    return { token, error: e instanceof Error ? e.message : String(e) };
+  }
+}
 
 /** Сколько раз пробуем задание, прежде чем признать отказ окончательным. */
 export const MAX_ATTEMPTS = 5;
@@ -117,6 +164,13 @@ export async function runPublishJob(
     });
     return { jobId: job.id, status: "retry", message: "нет токена" };
   }
+
+  // Короткоживущий OAuth-токен обновляем до вызова площадки.
+  const fresh = await ensureFreshToken(admin, account, token);
+  if (fresh.error) {
+    await logJob(admin, { jobId: job.id, accountId: account.id, level: "warning", message: `обновление токена: ${fresh.error}` });
+  }
+  token = fresh.token;
 
   // Видео в работе — статус для интерфейса; ставим один раз, при первом задании.
   if ((video as { status?: string }).status === "queued") {

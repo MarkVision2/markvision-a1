@@ -29,6 +29,7 @@ import {
   notifyProject,
   type PublishAccount,
 } from "../_lib/publishing.ts";
+import { ensureFreshToken } from "../_lib/publishRunner.ts";
 
 /** Сколько отказов подряд считаем поломкой аккаунта, а не невезением. */
 const ERROR_STREAK_LIMIT = 3;
@@ -119,11 +120,17 @@ async function checkTokens(admin: SupabaseClient) {
   const refreshBefore = Date.now() + TOKEN_REFRESH_DAYS * 86_400_000;
 
   for (const account of accounts) {
-    if (account.platform !== "instagram" && account.platform !== "threads") continue; // TikTok/YouTube — по мере подключения
-
     let token: string | null = null;
     try { token = await decryptSecret(account.access_token_encrypted); } catch { token = null; }
     if (!token) { dead.push(account); continue; }
+
+    // TikTok / YouTube: живость = успешное обновление refresh_token'ом.
+    if (account.platform === "tiktok" || account.platform === "youtube") {
+      const fresh = await ensureFreshToken(admin, { ...account, token_expires_at: new Date(0).toISOString() }, token);
+      if (fresh.error && /invalid_grant|invalid_token|access_token_invalid|revoked|reconnect/i.test(fresh.error)) dead.push(account);
+      else if (!fresh.error) refreshed++;
+      continue;
+    }
 
     // Обновление long-lived токена до истечения — иначе через 60 дней вся сеть встанет.
     const expiresAt = account.token_expires_at ? new Date(account.token_expires_at).getTime() : null;

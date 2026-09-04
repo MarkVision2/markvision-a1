@@ -124,4 +124,5 @@ export interface PublishAccount {
   published_day?: string | null;
   token_refreshed_at?: string | null;
   followers?: number | null;
+  oauth_scope?: string | null;
 }

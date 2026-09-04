@@ -237,3 +237,8 @@ verify_jwt = false
 # Сбор метрик публикаций (post_metrics) — pg_cron по x-automation-key.
 [functions.publish-metrics]
 verify_jwt = false
+
+# OAuth Threads / TikTok / YouTube для очереди публикаций: start проверяет JWT
+# внутри, callback доверяет одноразовому state (publish_oauth_states).
+[functions.publish-oauth]
+verify_jwt = false

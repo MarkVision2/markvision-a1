@@ -321,6 +321,9 @@ pending ──claim──► processing ──► published
 
 ## Второй заход: дистрибуция 100+
 
+Все четыре площадки публикуют: Instagram, Threads, TikTok (Direct Post по ссылке), YouTube
+(resumable upload). Подключение Threads / TikTok / YouTube — OAuth через `publish-oauth`.
+
 Планировщик слотов (окна, интервалы, разгон, джиттер), партиции воркера, Threads-publisher,
 обновление long-lived токенов, часовой дайджест, персоны и группы с режимом согласования,
 метрики публикаций и страница «Публикации» — в `docs/AUTOPOSTING-PLATFORM.md`

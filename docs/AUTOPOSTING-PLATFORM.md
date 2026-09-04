@@ -24,6 +24,8 @@ post_metrics ◀──── publish-metrics ◀──── publish_jobs ◀─
 | Интерфейс | `src/pages/Radar.tsx` + `src/lib/radarClient.ts` + `src/hooks/useRadar.ts`; `src/pages/Publishing.tsx` + `src/lib/publishingClient.ts` + `src/hooks/usePublishing.ts`; блок вариантов в `src/components/content-plan/ContentPipelinePanel.tsx` |
 | n8n | `docs/n8n-radar-crawler-v2.json` (сборщик), `docs/n8n-content-pipeline-v5.json` (claim с `engine: heygen`), существующий «🚀 Система автопостинга» без изменений |
 | Диагностика | `scripts/content-pipeline-smoke.mjs doctor` проверяет radar / publish-metrics / publish-* ; `scripts/publishing-doctor.mjs` |
+| Воркер Reels faceless | `scripts/content-pipeline-worker.mjs` (claim по движку → OpenAI → reels_jobs → asset) |
+| OAuth площадок | `supabase/functions/publish-oauth/index.ts`, чистая логика `_lib/publishOAuth.ts`, миграция `20260905120000_publish_oauth.sql` |
 | Тесты | `src/test/radar.test.ts`, `src/test/radarPage.test.tsx`, `src/test/radarClient.test.ts`, `src/test/publishingPage.test.tsx`, `src/test/publishingClient.test.ts`, `src/test/contentPipelinePanel.test.tsx`; SQL-симуляция 100 аккаунтов — раздел «Проверено» |
 
 ## M1. Радар
@@ -57,7 +59,10 @@ ElevenLabs, тема Reels, движок по умолчанию. Группа �
 завести второй вариант на группу. Каждый вариант — обычная тема конвейера: `claim` подмешивает
 персону в промпт (tone of voice, запреты, ниша, язык) и отдаёт n8n аватар/голос персоны.
 Очередь фильтруется по движку (`claim_next_content_job(..., p_engine)`): n8n v5 берёт только
-`heygen`; `reels_faceless` и `montage` ждут своих воркеров.
+`heygen`; `reels_faceless` забирает `scripts/content-pipeline-worker.mjs` (тот же подписанный
+callback-протокол: сценарий OpenAI → заявка в `reels_jobs` с голосом и темой персоны →
+ожидание рендера Reels-очереди → `video_status` → `asset`; рендер Remotion уже 1080×1920, поэтому
+FFmpeg-воркер не нужен); `montage` ждёт своего воркера.
 
 После `approved` (кнопка, Telegram или автоодобрение) `handoffToPublishing` создаёт
 `publish_videos` (`source = content_pipeline`, `source_ref = content_asset_id`, подпись и
@@ -82,15 +87,30 @@ ElevenLabs, тема Reels, движок по умолчанию. Группа �
 ведёт счётчики, `last_post_at` и здоровье (+1 успех, −10 отказ, −3 повтор после сбоя);
 статусы `token_expired` / `limited` / `error` снимают 40 / 15 / 25.
 
-**Threads** — `_lib/publishers/threads.ts`: контейнер → `FINISHED` → `threads_publish`,
-текст до 500 символов, классификация отказов как у Instagram. Подключение —
-`publish-accounts { action: "connect_threads", threads_user_id, access_token }` (токен
-проверяется запросом к графу до сохранения; Threads OAuth — отдельное приложение Meta, в этой
-версии токен вводится оператором).
+**Publishers всех четырёх площадок** (`_lib/publishers/`):
+Instagram и Threads — контейнер → `FINISHED` → publish (Threads: текст до 500 символов);
+TikTok (`tiktok.ts`) — Content Posting API Direct Post: `creator_info/query` выбирает
+публичный `privacy_level`, если он доступен аккаунту, `video/init` с `PULL_FROM_URL`
+(домен видео должен быть верифицирован в приложении TikTok), опрос `status/fetch` до
+`PUBLISH_COMPLETE`, `publish_id` = containerId; неаудированное приложение получает понятный
+fatal, а не повторы. YouTube (`youtube.ts`) — Data API v3 `videos.insert` resumable upload:
+файл скачивается с `file_url` и заливается потоком (без Content-Length — буфер до 200 МБ),
+адрес сессии = containerId (повтор продолжает сессию), `quotaExceeded` /
+`uploadLimitExceeded` → `limit`; приватность — `YOUTUBE_PRIVACY_STATUS` (по умолчанию
+public). Классификация отказов всех площадок покрыта тестами.
 
-**Токены**: `publish-monitor mode:tokens` за 10 дней до истечения обновляет long-lived токены
-Instagram Login (`IG…`) и Threads через `refresh_access_token`; page-токены Facebook не
-истекают. **Дайджест**: `mode:digest` раз в час — один отчёт на проект (опубликовано / упало с
+**Подключение аккаунтов**: Instagram — Meta OAuth (`publish-accounts available/connect`);
+Threads, TikTok, YouTube — edge-функция `publish-oauth` (`POST /start` → ссылка на согласие,
+`GET /callback/:platform` → обмен кода, long-lived токен Threads, идентичность аккаунта,
+шифрование токенов, `oauth_scope`, редирект обратно с `?publish_connected=`). Одноразовый
+state — `publish_oauth_states` (миграция `20260905120000_publish_oauth.sql`, TTL 15 мин).
+Кнопки «Подключить Threads / TikTok / YouTube» — на странице «Публикации»; ручной ввод
+токена Threads оставлен как запасной путь.
+
+**Токены**: короткоживущие токены (TikTok — сутки, YouTube — час) `publishRunner.ensureFreshToken`
+обновляет `refresh_token`'ом прямо перед публикацией; Threads и Instagram Login (`IG…`) —
+long-lived, обновляются за 10 дней до истечения (`publish-monitor mode:tokens`, где для
+TikTok/YouTube живость = успешное обновление); page-токены Facebook не истекают. **Дайджест**: `mode:digest` раз в час — один отчёт на проект (опубликовано / упало с
 кодами / повторы / ручной разбор / аккаунты, требующие внимания). Поштучные сообщения runner
 шлёт только при `publish_project_settings.notify_mode = each`.
 
@@ -128,6 +148,7 @@ followers` по d3–d7, 5 % ≈ 100 → `idea_bank.outcome_score`. Витрин
 | `POST /publish-worker { partition, partitions }` | ключ | партиция воркера |
 | `POST /publish-monitor { mode: "digest" }` | ключ | часовой дайджест |
 | `POST /publish-metrics` | ключ | сбор метрик публикаций |
+| `POST /publish-oauth/start`, `GET /publish-oauth/callback/:platform` | JWT / state | OAuth Threads / TikTok / YouTube |
 
 Контракты вебхуков `publishing-video-ready` / `publishing-create-jobs` для воркфлоу «🚀 Система
 автопостинга» не изменились; `target.group_id` теперь дополнительно даёт стратегию и темп группы.
@@ -139,6 +160,11 @@ followers` по d3–d7, 5 % ≈ 100 → `idea_bank.outcome_score`. Витрин
 | Edge secrets | `RADAR_CALLBACK_SECRET` | HMAC ingest радара (иначе используется `CONTENT_PIPELINE_CALLBACK_SECRET`) |
 | Edge secrets | `N8N_RADAR_WEBHOOK_URL`, `N8N_RADAR_WEBHOOK_KEY` | `https://n8n.zapoinov.com/webhook/radar-crawl` и `x-pipeline-key` |
 | Edge secrets | `OPENAI_API_KEY` (или `LOVABLE_API_KEY`) | Whisper и LLM-разбор радара через `_lib/aiProvider.ts` |
+| Edge secrets | `THREADS_APP_ID`, `THREADS_APP_SECRET` | приложение Meta с Threads API (redirect URI: `…/functions/v1/publish-oauth/callback/threads`) |
+| Edge secrets | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | приложение TikTok for Developers (Login Kit + Content Posting API; redirect URI `…/callback/tiktok`; верифицировать домен видео) |
+| Edge secrets | `GOOGLE_OAUTH_CLIENT_ID`, `GOOGLE_OAUTH_CLIENT_SECRET` | тот же клиент, что у Google Ads; включить YouTube Data API v3, добавить redirect URI `…/callback/youtube` |
+| Edge secrets | `YOUTUBE_PRIVACY_STATUS` | `public` (по умолчанию) / `unlisted` / `private` |
+| VPS `.env` воркера Reels | `SUPABASE_SERVICE_ROLE_KEY`, `CONTENT_PIPELINE_CALLBACK_SECRET`, `OPENAI_API_KEY`, `REELS_DEFAULT_VOICE` | `scripts/content-pipeline-worker.mjs` |
 | n8n «Настройки» сборщика | `webhook_key`, `apify_token`, `scrapecreators_key` | токен Apify в заголовке, не в URL |
 | n8n под-воркфлоу callback (копия для радара) | `callback_url` = `…/functions/v1/radar/internal/ingest`, `callback_secret` | подпись ingest |
 
@@ -201,8 +227,10 @@ Edge-функции проходят строгий tsc с типами supabase
 
 ## Что осталось за рамками
 
-- TikTok и YouTube publishers (аудит приложения / квота) — заглушки с контрактом.
-- Threads OAuth-поток (сейчас токен вводится оператором).
-- Reels faceless и монтаж как воркеры очереди конвейера (сейчас темы с этими движками ждут).
+- Аудит приложения TikTok (до него — только приватные публикации) и расширение квоты YouTube
+  Data API — внешние процедуры; код готов к обоим исходам.
+- Движок `montage` как воркер очереди конвейера (темы с этим движком ждут).
+- Рендер Reels faceless по-прежнему делает Reels-очередь (Claude-сессия по
+  `docs/REELS-PIPELINE.md`); воркер конвейера ставит заявку и забирает результат.
 - Дашборд «Сеть» с графиками по группам: цифры есть в витринах, страница показывает плитки.
 - Нагрузочный тест на живых площадках (этап 5).

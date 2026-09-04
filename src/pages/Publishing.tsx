@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { AlertCircle, ExternalLink, Loader2, Plus, RefreshCw, Send, Trash2, Upload } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
+import { AlertCircle, ExternalLink, KeyRound, Loader2, Plus, RefreshCw, Send, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -36,7 +37,10 @@ import {
   effectiveDailyLimit,
   healthTone,
   rampStage,
+  readOAuthResult,
+  startPublishOAuth,
   type AvailablePage,
+  type OAuthPlatform,
   type NotifyMode,
   type Persona,
   type PersonaEngine,
@@ -104,11 +108,41 @@ function Chip({ label, cls }: { label: string; cls: string }) {
 
 /* ───────────────────────────── страница ───────────────────────────── */
 
+const OAUTH_LABELS: Record<OAuthPlatform, string> = { threads: "Threads", tiktok: "TikTok", youtube: "YouTube" };
+
 export default function Publishing() {
   const { activeId: projectId } = useProjectsStore();
   const pub = usePublishing();
   const disabled = pub.busy != null;
   const [dialog, setDialog] = useState<"instagram" | "threads" | "video" | null>(null);
+  const [oauthBusy, setOauthBusy] = useState<OAuthPlatform | null>(null);
+  const [params, setParams] = useSearchParams();
+
+  // Возврат с OAuth площадки: ?publish_connected=… / ?publish_error=… → тост и обновление.
+  useEffect(() => {
+    const result = readOAuthResult(params.toString() ? `?${params.toString()}` : "");
+    if (!result) return;
+    if (result.connected) {
+      toast.success(`Подключён ${OAUTH_LABELS[result.connected.platform as OAuthPlatform] ?? result.connected.platform}${result.connected.account ? `: ${result.connected.account}` : ""}`);
+      void pub.refetch();
+    } else if (result.error) {
+      toast.error(`Подключение не удалось: ${result.error}`);
+    }
+    setParams((p) => { p.delete("publish_connected"); p.delete("publish_error"); p.delete("account"); return p; }, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
+
+  const connectOAuth = async (platform: OAuthPlatform) => {
+    if (!projectId) return;
+    setOauthBusy(platform);
+    try {
+      const url = await startPublishOAuth(projectId, platform);
+      window.location.assign(url);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Не удалось начать подключение");
+      setOauthBusy(null);
+    }
+  };
 
   return (
     <PageContainer wide>
@@ -126,8 +160,13 @@ export default function Publishing() {
               <Button variant="outline" size="sm" onClick={() => setDialog("instagram")} disabled={disabled || !projectId}>
                 <Plus className="mr-1.5 h-4 w-4" /> Подключить Instagram
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setDialog("threads")} disabled={disabled || !projectId}>
-                <Plus className="mr-1.5 h-4 w-4" /> Подключить Threads
+              {(["threads", "tiktok", "youtube"] as OAuthPlatform[]).map((pl) => (
+                <Button key={pl} variant="outline" size="sm" onClick={() => void connectOAuth(pl)} disabled={disabled || !projectId || oauthBusy != null}>
+                  {oauthBusy === pl ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Plus className="mr-1.5 h-4 w-4" />} Подключить {OAUTH_LABELS[pl]}
+                </Button>
+              ))}
+              <Button variant="ghost" size="sm" onClick={() => setDialog("threads")} disabled={disabled || !projectId} title="Threads по готовому токену">
+                <KeyRound className="mr-1.5 h-4 w-4" /> Threads токеном
               </Button>
               <Button size="sm" onClick={() => setDialog("video")} disabled={disabled || !projectId}>
                 <Upload className="mr-1.5 h-4 w-4" /> Залить видео

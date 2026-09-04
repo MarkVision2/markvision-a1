@@ -1,15 +1,18 @@
 /**
  * Реестр публикаторов по площадкам.
  *
- * Работают Instagram и Threads. TikTok и YouTube объявлены заглушками с
- * готовым контрактом: задание уходит в manual_review, а не жжёт попытки, и в
- * журнал попадает ровно то, чего не хватает для запуска площадки. Порядок
- * подключения каждой — в docs/PUBLISHING-SYSTEM.md, раздел «Площадки».
+ * Работают все четыре площадки: Instagram и Threads (контейнер → publish),
+ * TikTok (Direct Post по ссылке), YouTube (resumable upload). notImplemented
+ * оставлен для будущих площадок: задание уходит в manual_review, не жжёт
+ * попытки. Подключение аккаунтов — publish-accounts (Instagram) и publish-oauth
+ * (Threads / TikTok / YouTube).
  */
 import type { Platform } from "../publishing.ts";
 import type { PublishOutcome, Publisher, PublishRequest } from "./types.ts";
 import { publishInstagram } from "./instagram.ts";
 import { publishThreads } from "./threads.ts";
+import { publishTikTok } from "./tiktok.ts";
+import { publishYouTube } from "./youtube.ts";
 
 function notImplemented(platform: Platform, missing: string): Publisher {
   return (_req: PublishRequest): Promise<PublishOutcome> =>
@@ -24,14 +27,11 @@ function notImplemented(platform: Platform, missing: string): Publisher {
 const REGISTRY: Record<Platform, Publisher> = {
   instagram: publishInstagram,
 
-  // TikTok Content Posting API: POST /v2/post/publish/video/init/ с
-  // PULL_FROM_URL (домен видео должен быть верифицирован в приложении),
-  // затем опрос /v2/post/publish/status/fetch/ до PUBLISH_COMPLETE.
-  tiktok: notImplemented("tiktok", "нужны client_key/secret приложения TikTok и верифицированный домен видео"),
+  // TikTok Content Posting API (PULL_FROM_URL, домен видео верифицирован в приложении).
+  tiktok: publishTikTok,
 
-  // YouTube Data API v3 videos.insert — загрузка тела файла (publish_videos.local_path),
-  // не по URL. Непроверенные проекты публикуют только в private: нужен audit.
-  youtube: notImplemented("youtube", "нужен OAuth-клиент Google Cloud и audit проекта для public-загрузок"),
+  // YouTube Data API v3 videos.insert — resumable upload тела файла.
+  youtube: publishYouTube,
 
   // Threads API: тот же двухшаговый порядок, что у Instagram, отдельный токен
   // площадки (publish-accounts action connect_threads).
@@ -39,7 +39,7 @@ const REGISTRY: Record<Platform, Publisher> = {
 };
 
 export function publisherFor(platform: Platform): Publisher {
-  return REGISTRY[platform];
+  return REGISTRY[platform] ?? notImplemented(platform, "площадка не зарегистрирована");
 }
 
 export type { PublishOutcome, PublishRequest } from "./types.ts";

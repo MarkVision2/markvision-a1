@@ -391,3 +391,38 @@ export const publishingApi = {
   publishVideo: (project_id: string, input: PublishVideoInput) =>
     call<PublishVideoResult>("publish_video", { project_id, ...input }),
 };
+
+/* ───────────────────────────── OAuth площадок ───────────────────────────── */
+
+export type OAuthPlatform = "threads" | "tiktok" | "youtube";
+
+/** Ссылка на согласие площадки (edge publish-oauth/start); открывать в новом окне. */
+export async function startPublishOAuth(projectId: string, platform: OAuthPlatform, groupId?: string | null): Promise<string> {
+  const { data, error } = await supabase.functions.invoke("publish-oauth/start", {
+    body: { project_id: projectId, platform, return_url: `${window.location.origin}/marketing/publishing`, group_id: groupId ?? null },
+  });
+  if (error) {
+    const ctx = (error as { context?: Response }).context;
+    let message = error.message || "Ошибка запроса";
+    if (ctx && typeof ctx.json === "function") {
+      try {
+        const j = (await ctx.json()) as { error?: string; hint?: string };
+        if (j?.error) message = j.hint ? `${j.error}. ${j.hint}` : j.error;
+      } catch { /* не JSON */ }
+    }
+    throw new Error(message);
+  }
+  const url = (data as { url?: string } | null)?.url;
+  if (!url) throw new Error("Площадка не вернула ссылку на согласие");
+  return url;
+}
+
+/** Итог OAuth-редиректа из адресной строки: ?publish_connected=… или ?publish_error=…. */
+export function readOAuthResult(search: string): { connected?: { platform: string; account: string | null }; error?: string } | null {
+  const p = new URLSearchParams(search);
+  const connected = p.get("publish_connected");
+  const err = p.get("publish_error");
+  if (connected) return { connected: { platform: connected, account: p.get("account") } };
+  if (err) return { error: err };
+  return null;
+}
