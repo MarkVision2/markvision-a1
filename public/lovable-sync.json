@@ -1,7 +1,7 @@
 {
-  "git_sha": "ed6da78",
-  "git_sha_full": "ed6da786b6135dd46af98d50598b46476b777f94",
-  "updated_at": "2026-09-05T00:28:59+04:00",
-  "label": "fix(publishing): вкладки «Сеть» и «Задания» в общем стиле; причина client_key у TikTok [vercel-deploy]",
+  "git_sha": "ad9959c",
+  "git_sha_full": "ad9959c88db8d07395e2ece9b43bc15f81c88238",
+  "updated_at": "2026-09-05T00:41:31+04:00",
+  "label": "feat(publishing): здоровье аккаунта — живая проверка у площадки и формула с причинами [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
