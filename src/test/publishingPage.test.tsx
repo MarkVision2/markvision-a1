@@ -19,6 +19,7 @@ vi.mock("@/hooks/useProjectsStore", () => ({
 }));
 
 const disconnect = vi.fn().mockResolvedValue({ ok: true });
+const loadAvailable = vi.fn().mockResolvedValue({ pages: [] });
 const publishVideo = vi.fn().mockResolvedValue({ video_id: "v1", created: 1, skipped: 0, jobs: [] });
 
 const tiktokOld: PublishAccount = {
@@ -123,7 +124,7 @@ vi.mock("@/hooks/usePublishing", () => ({
     error: null,
     busy: null,
     refetch: vi.fn(),
-    loadAvailable: vi.fn().mockResolvedValue({ pages: [] }),
+    loadAvailable,
     connect: vi.fn(),
     connectThreads: vi.fn(),
     updateAccount: vi.fn().mockResolvedValue({ account: {} }),
@@ -147,6 +148,7 @@ const renderPage = () =>
 describe("страница «Публикации»", () => {
   beforeEach(() => {
     disconnect.mockClear();
+    loadAvailable.mockReset().mockResolvedValue({ pages: [] });
     publishVideo.mockClear();
     toastError.mockClear();
     toastSuccess.mockClear();
@@ -219,6 +221,20 @@ describe("страница «Публикации»", () => {
     expect(publishVideo).not.toHaveBeenCalled();
     expect(screen.getByRole("alert").textContent).toMatch(/Укажите ссылку/);
     expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/Укажите ссылку/));
+  });
+
+  it("подключение Instagram: отказ Meta показывает причину и принимает вставленный токен", async () => {
+    loadAvailable
+      .mockRejectedValueOnce(new Error("Meta отклонила токен проекта: Invalid OAuth access token"))
+      .mockResolvedValueOnce({ pages: [] });
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /Подключить Instagram/ }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toMatch(/Invalid OAuth access token/);
+    fireEvent.change(screen.getByLabelText("User Access Token"), { target: { value: "EAABtoken" } });
+    fireEvent.click(screen.getByRole("button", { name: "Проверить" }));
+    await waitFor(() => expect(loadAvailable).toHaveBeenLastCalledWith("EAABtoken"));
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
   });
 
   it("«Залить видео» отклоняет не-mp4 ссылку", async () => {

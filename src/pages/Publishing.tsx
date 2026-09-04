@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { AlertCircle, ExternalLink, KeyRound, Loader2, PauseCircle, Plus, RefreshCw, Send, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
@@ -1087,16 +1087,26 @@ function ConnectInstagramDialog({ open, onClose, pub }: { open: boolean; onClose
   const [pages, setPages] = useState<AvailablePage[] | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  // Запасной путь: сохранённые токены проекта площадка отклонила — пользователь
+  // вставляет свежий User Access Token, он идёт и в список страниц, и в подключение.
+  const [manualToken, setManualToken] = useState("");
+  const [usedToken, setUsedToken] = useState<string | null>(null);
   const disabled = pub.busy != null;
 
-  useEffect(() => {
-    if (!open) return;
+  const load = (token?: string | null) => {
     setPages(null);
     setPicked([]);
     setErr(null);
-    pub.loadAvailable()
-      .then((r) => setPages(r.pages ?? []))
-      .catch((e) => setErr(errMsg(e, "Не удалось получить страницы Meta")));
+    pub.loadAvailable(token)
+      .then((r) => { setPages(r.pages ?? []); setUsedToken(token ?? null); })
+      .catch((e) => { setPages([]); setErr(errMsg(e, "Не удалось получить страницы Meta")); });
+  };
+
+  useEffect(() => {
+    if (!open) return;
+    setManualToken("");
+    setUsedToken(null);
+    load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -1105,7 +1115,7 @@ function ConnectInstagramDialog({ open, onClose, pub }: { open: boolean; onClose
   const submit = async () => {
     if (!picked.length) return;
     try {
-      const r = await pub.connect(picked);
+      const r = await pub.connect(picked, usedToken);
       const skipped = r.skipped?.length ? `, пропущено: ${r.skipped.length}` : "";
       toast.success(`Подключено: ${r.connected?.length ?? 0}${skipped}`);
       onClose();
@@ -1121,7 +1131,28 @@ function ConnectInstagramDialog({ open, onClose, pub }: { open: boolean; onClose
           <DialogTitle>Подключить Instagram</DialogTitle>
           <DialogDescription>Страницы Facebook с привязанным Instagram-аккаунтом из подключённого Meta-токена проекта.</DialogDescription>
         </DialogHeader>
-        {err && <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{err}</div>}
+        {err && <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{err}</div>}
+        {err && (
+          <div className="space-y-2 rounded-xl border p-3 text-sm">
+            <div className="font-medium">Что делать</div>
+            <p className="text-xs text-muted-foreground">
+              Площадка не приняла сохранённый Meta-токен проекта. Подключите Facebook заново в{" "}
+              <Link to="/settings" className="underline" onClick={onClose}>Настройках → Meta</Link>{" "}
+              или вставьте User Access Token (Graph API Explorer) — он будет использован только для этого подключения.
+            </p>
+            <div className="flex gap-2">
+              <Input
+                aria-label="User Access Token"
+                placeholder="EAAB…"
+                value={manualToken}
+                onChange={(e) => setManualToken(e.target.value)}
+              />
+              <Button variant="outline" disabled={disabled || !manualToken.trim()} onClick={() => load(manualToken.trim())}>
+                Проверить
+              </Button>
+            </div>
+          </div>
+        )}
         {!err && pages == null && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Загрузка страниц…</div>
         )}

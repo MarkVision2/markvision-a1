@@ -384,9 +384,11 @@ export interface PublishVideoInput {
 
 export const publishingApi = {
   list: (project_id: string) => call<{ accounts: PublishAccount[] }>("list", { project_id }),
-  available: (project_id: string) => call<{ pages: AvailablePage[] }>("available", { project_id }),
-  connect: (project_id: string, page_ids: string[]) =>
-    call<{ connected: unknown[]; skipped: { page_id: string; reason: string }[] }>("connect", { project_id, page_ids }),
+  /** meta_token — вставленный вручную User Access Token, когда токены проекта площадка отклоняет. */
+  available: (project_id: string, meta_token?: string | null) =>
+    call<{ pages: AvailablePage[] }>("available", { project_id, ...(meta_token ? { meta_token } : {}) }),
+  connect: (project_id: string, page_ids: string[], meta_token?: string | null) =>
+    call<{ connected: unknown[]; skipped: { page_id: string; reason: string }[] }>("connect", { project_id, page_ids, ...(meta_token ? { meta_token } : {}) }),
   connectThreads: (
     project_id: string,
     input: { threads_user_id: string; access_token: string; account_name?: string; group_id?: string },
