@@ -199,6 +199,15 @@ followers` по d3–d7, 5 % ≈ 100 → `idea_bank.outcome_score`.
 проект szfgdruhlebfvcmlvxdk (`doctor` без ключа: все функции отвечают). Секреты площадок (TikTok,
 Google, Threads, `PUBLISH_TOKEN_KEY`) и n8n-импорты — отдельными шагами ниже.
 
+Состояние n8n (n8n.zapoinov.com, сверено 2026-09-04): из 35 воркфлоу к платформе относятся
+«🚀 Система автопостинга» (pafUBGlU0DlbzGIc, активен, контракты `publish-intake` /
+`publish-worker` совпадают с выкаченными функциями) и старый «Мониторинг конкурентов»
+(qZ3WyT7_vF18f7MXF9Mqe, активен с марта, Apify-токен зашит в URL нод — ротировать и вынести
+в Credentials). **Не импортированы**: `docs/n8n-content-pipeline-v5.json`,
+`docs/n8n-content-pipeline-callback.json`, `docs/n8n-radar-crawler-v2.json` — без них темы
+с движком `heygen` не рендерятся и радар не собирает источники (разбор уже собранного и
+собственная лента работают на кронах Supabase).
+
 1. Влить ветку в `main`: миграции `20260905100000_radar.sql`, `20260905110000_publishing_scale.sql`
    и функции `radar`, `publish-metrics`, обновлённые `content-pipeline`, `publish-*` выкатит
    `supabase-deploy.yml`. Миграции идемпотентны, применяются после `20260904120000`.
