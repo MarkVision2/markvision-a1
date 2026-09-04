@@ -194,6 +194,11 @@ followers` по d3–d7, 5 % ≈ 100 → `idea_bank.outcome_score`.
 
 ## Деплой
 
+Состояние: 2026-09-04 ветка влита в `main`, GitHub Actions `supabase-deploy` применил миграции
+`20260904120000`, `20260905100000`, `20260905110000`, `20260905120000` и выкатил edge-функции в
+проект szfgdruhlebfvcmlvxdk (`doctor` без ключа: все функции отвечают). Секреты площадок (TikTok,
+Google, Threads, `PUBLISH_TOKEN_KEY`) и n8n-импорты — отдельными шагами ниже.
+
 1. Влить ветку в `main`: миграции `20260905100000_radar.sql`, `20260905110000_publishing_scale.sql`
    и функции `radar`, `publish-metrics`, обновлённые `content-pipeline`, `publish-*` выкатит
    `supabase-deploy.yml`. Миграции идемпотентны, применяются после `20260904120000`.

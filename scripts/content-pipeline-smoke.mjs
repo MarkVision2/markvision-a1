@@ -72,7 +72,9 @@ async function doctor() {
   // Платформа автопостинга: радар и сбор метрик публикаций задеплоены?
   for (const fn of ["radar", "publish-metrics", "publish-accounts", "publish-worker", "publish-oauth"]) {
     const r = await req(`${SB}/functions/v1/${fn}`, { method: "POST", body: {} });
-    if (r.status === 404 && /not found/i.test(r.text)) { console.log(bad(`edge-функция ${fn} не задеплоена`)); failures++; }
+    // Отсутствующую функцию шлюз Supabase отдаёт как NOT_FOUND / «Requested function was not found»;
+    // собственный 404 функции на пустой путь (publish-oauth) — это «задеплоена и отвечает».
+    if (r.status === 404 && /Requested function was not found|"code":"NOT_FOUND"/i.test(r.text)) { console.log(bad(`edge-функция ${fn} не задеплоена`)); failures++; }
     else console.log(ok(`edge-функция ${fn} отвечает (HTTP ${r.status})`));
   }
   if (key) {
