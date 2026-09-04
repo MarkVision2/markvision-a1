@@ -1,7 +1,7 @@
 {
-  "git_sha": "dee3028",
-  "git_sha_full": "dee3028582d779f18c8528ebb9ea521fd5ee81d1",
-  "updated_at": "2026-09-04T23:40:47+04:00",
-  "label": "chore: выкатить массовую заливку публикаций [vercel-deploy]",
+  "git_sha": "07eee65",
+  "git_sha_full": "07eee652a5eb7ed9a2cc0af0f507e43e7aa1725e",
+  "updated_at": "2026-09-05T00:10:28+04:00",
+  "label": "fix(publishing): читаемая таблица аккаунтов и диагностика OAuth площадок [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
