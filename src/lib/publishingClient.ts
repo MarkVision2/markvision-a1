@@ -161,6 +161,41 @@ export interface GroupMetrics {
   items_approved: number;
 }
 
+/**
+ * Витрина publish_account_metrics — строка на подключённый аккаунт
+ * («Подключённые»): посты, охват, вовлечение, подписчики, статус, здоровье.
+ * Охват берётся по последней снятой контрольной точке поста (d7 > d3 > d1).
+ */
+export interface AccountMetrics {
+  account_id: string;
+  platform: PublishPlatform;
+  account_name: string;
+  handle: string | null;
+  status: PublishAccountStatus;
+  publish_enabled: boolean;
+  health_score: number;
+  followers: number | null;
+  group_id: string | null;
+  last_post_at: string | null;
+  token_expires_at: string | null;
+  consecutive_errors: number;
+  posts_total: number;
+  posts_30d: number;
+  jobs_queued: number;
+  failed_30d: number;
+  /** Постов, по которым метрики реально сняты (остальные ещё «в пути»). */
+  measured_posts: number;
+  reach: number;
+  views: number;
+  likes: number;
+  comments: number;
+  shares: number;
+  saves: number;
+  /** Реакции / охват, %. null — охвата ещё нет, ноль соврал бы. */
+  er_percent: number | null;
+  metrics_updated_at: string | null;
+}
+
 export interface PublishVideo {
   id: string;
   title: string | null;
@@ -175,6 +210,7 @@ export interface MetricsResponse {
   radar: Record<string, unknown> | null;
   videos: PublishVideo[];
   groups?: GroupMetrics[];
+  accounts?: AccountMetrics[];
 }
 
 export interface PublishVideoResult {
@@ -187,33 +223,33 @@ export interface PublishVideoResult {
 /* ───────────────────────────── словари ───────────────────────────── */
 
 export const ACCOUNT_STATUS_META: Record<PublishAccountStatus, { label: string; cls: string }> = {
-  active: { label: "Активен", cls: "bg-emerald-500/10 text-emerald-700" },
-  token_expired: { label: "Токен истёк", cls: "bg-amber-500/10 text-amber-700" },
-  limited: { label: "Ограничен", cls: "bg-orange-500/10 text-orange-700" },
+  active: { label: "Активен", cls: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
+  token_expired: { label: "Токен истёк", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-300" },
+  limited: { label: "Ограничен", cls: "bg-orange-500/10 text-orange-700 dark:text-orange-300" },
   error: { label: "Ошибка", cls: "bg-destructive/10 text-destructive" },
   disabled: { label: "Выключен", cls: "bg-muted text-muted-foreground" },
 };
 
 export const PLATFORM_META: Record<PublishPlatform, { label: string; cls: string }> = {
-  instagram: { label: "Instagram", cls: "bg-pink-500/10 text-pink-700" },
-  tiktok: { label: "TikTok", cls: "bg-slate-500/10 text-slate-700" },
-  youtube: { label: "YouTube", cls: "bg-red-500/10 text-red-700" },
-  threads: { label: "Threads", cls: "bg-zinc-500/10 text-zinc-700" },
+  instagram: { label: "Instagram", cls: "bg-pink-500/10 text-pink-700 dark:text-pink-300" },
+  tiktok: { label: "TikTok", cls: "bg-slate-500/10 text-slate-700 dark:text-slate-300" },
+  youtube: { label: "YouTube", cls: "bg-red-500/10 text-red-700 dark:text-red-300" },
+  threads: { label: "Threads", cls: "bg-zinc-500/10 text-zinc-700 dark:text-zinc-300" },
 };
 
 export const REVIEW_MODE_META: Record<ReviewMode, { label: string; cls: string }> = {
-  review_required: { label: "Нужно согласование", cls: "bg-sky-500/10 text-sky-700" },
-  auto_publish: { label: "Автопубликация", cls: "bg-emerald-500/10 text-emerald-700" },
+  review_required: { label: "Нужно согласование", cls: "bg-sky-500/10 text-sky-700 dark:text-sky-300" },
+  auto_publish: { label: "Автопубликация", cls: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
   paused: { label: "Пауза", cls: "bg-muted text-muted-foreground" },
 };
 
 export const JOB_STATUS_META: Record<PublishJobStatus, { label: string; cls: string }> = {
   pending: { label: "В очереди", cls: "bg-muted text-muted-foreground" },
-  retry: { label: "Повтор", cls: "bg-violet-500/10 text-violet-700" },
-  processing: { label: "Публикуется", cls: "bg-amber-500/10 text-amber-700" },
-  published: { label: "Опубликовано", cls: "bg-emerald-500/10 text-emerald-700" },
+  retry: { label: "Повтор", cls: "bg-violet-500/10 text-violet-700 dark:text-violet-300" },
+  processing: { label: "Публикуется", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-300" },
+  published: { label: "Опубликовано", cls: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
   failed: { label: "Ошибка", cls: "bg-destructive/10 text-destructive" },
-  manual_review: { label: "Ручная проверка", cls: "bg-sky-500/10 text-sky-700" },
+  manual_review: { label: "Ручная проверка", cls: "bg-sky-500/10 text-sky-700 dark:text-sky-300" },
   cancelled: { label: "Отменено", cls: "bg-muted text-muted-foreground" },
 };
 

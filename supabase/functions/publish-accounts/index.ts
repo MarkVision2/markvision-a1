@@ -24,6 +24,7 @@
  *   { action: "settings_get" | "settings_upsert", project_id,  notify_mode?, digest_chat_id?, paused?, daily_usd?, monthly_usd? }
  *   { action: "jobs_list", project_id, status?, limit? }
  *   { action: "publish_video", project_id, file_url | video_id, group_id?, account_ids?, mode?, title?, caption?, hashtags? }
+ *   { action: "metrics", project_id } → { publish, radar, videos, groups, accounts } — accounts из publish_account_metrics
  *   { action: "metrics", project_id } — витрины publish_metrics / radar_metrics
  */
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
@@ -471,13 +472,15 @@ Deno.serve(async (req) => {
     }
     if (action === "metrics") {
       if (!projectId) return json({ error: "project_id обязателен" }, 400);
-      const [{ data: pm }, { data: rm }, { data: videos }, { data: gm }] = await Promise.all([
+      const [{ data: pm }, { data: rm }, { data: videos }, { data: gm }, { data: am }] = await Promise.all([
         admin.from("publish_metrics").select("*").eq("project_id", projectId).maybeSingle(),
         admin.from("radar_metrics").select("*").eq("project_id", projectId).maybeSingle(),
         admin.from("publish_videos").select("id, title, status, file_url, created_at, source").eq("project_id", projectId).order("created_at", { ascending: false }).limit(50),
         admin.from("publish_group_metrics").select("*").eq("project_id", projectId).order("name"),
+        // Витрина по каждому аккаунту для вкладки «Подключённые».
+        admin.from("publish_account_metrics").select("*").eq("project_id", projectId).order("account_name"),
       ]);
-      return json({ ok: true, publish: pm ?? null, radar: rm ?? null, videos: videos ?? [], groups: gm ?? [] });
+      return json({ ok: true, publish: pm ?? null, radar: rm ?? null, videos: videos ?? [], groups: gm ?? [], accounts: am ?? [] });
     }
 
     /* ── «Залить видео в группу»: библиотека + планировщик слотов ── */

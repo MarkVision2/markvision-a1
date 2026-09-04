@@ -215,13 +215,13 @@ describe("страница «Публикации»", () => {
     confirmSpy.mockRestore();
   });
 
-  it("«Залить видео» не отправляет пустую ссылку и показывает ошибку", async () => {
+  it("«Залить видео»: без файла отправка не уходит и объясняет причину", async () => {
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: /Залить видео/ }));
-    fireEvent.click(await screen.findByRole("button", { name: /Создать задания/ }));
+    // Аккаунты предвыбраны, но ролика нет — сабмит ругается, а не молчит.
+    fireEvent.click(await screen.findByRole("button", { name: /Отправить на публикацию/ }));
     expect(publishVideo).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert").textContent).toMatch(/Укажите ссылку/);
-    expect(toastError).toHaveBeenCalledWith(expect.stringMatching(/Укажите ссылку/));
+    expect(screen.getByRole("alert").textContent).toMatch(/Выберите видеофайл/);
   });
 
   it("подключение Instagram: отказ Meta показывает причину и принимает вставленный токен", async () => {
@@ -264,11 +264,44 @@ describe("страница «Публикации»", () => {
   it("«Залить видео» отклоняет не-mp4 ссылку", async () => {
     renderPage();
     fireEvent.click(screen.getByRole("button", { name: /Залить видео/ }));
-    const input = await screen.findByLabelText("Ссылка на видео");
-    fireEvent.change(input, { target: { value: "http://example.com/video.avi" } });
-    fireEvent.click(screen.getByRole("button", { name: /Создать задания/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Ссылка/ }));
+    fireEvent.change(screen.getByLabelText("Ссылка на видео"), { target: { value: "http://example.com/video.avi" } });
+    fireEvent.click(screen.getByRole("button", { name: /Отправить на публикацию/ }));
     expect(publishVideo).not.toHaveBeenCalled();
     expect(screen.getByRole("alert").textContent).toMatch(/https-ссылка/);
+  });
+
+  it("«Залить видео»: аккаунты предвыбраны, снятая галочка уходит из account_ids", async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /Залить видео/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /^Ссылка/ }));
+    fireEvent.change(screen.getByLabelText("Ссылка на видео"), { target: { value: "https://cdn.example.com/reel.mp4" } });
+
+    // Оба годных аккаунта выбраны по умолчанию — снимаем TikTok чипом.
+    expect(screen.getByRole("button", { name: /Отправить на публикацию \(2\)/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /aiva.tt — TikTok/ }));
+
+    fireEvent.click(screen.getByRole("button", { name: /Отправить на публикацию \(1\)/ }));
+    await waitFor(() =>
+      expect(publishVideo).toHaveBeenCalledWith(
+        expect.objectContaining({
+          file_url: "https://cdn.example.com/reel.mp4",
+          mode: "drip",
+          account_ids: ["acc-1"],
+        }),
+      ),
+    );
+  });
+
+  it("«Залить видео»: предпросмотр рисует карточку под каждую выбранную площадку", async () => {
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: /Залить видео/ }));
+    await screen.findByText("Предпросмотр");
+    // Заголовки карточек — по площадке выбранного аккаунта.
+    expect(screen.getAllByText("Клиника Айва").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Клиника TikTok").length).toBeGreaterThan(0);
+    // Пока файла нет — вместо кадра заглушка.
+    expect(screen.getAllByText(/Кадр появится после выбора видео/).length).toBeGreaterThan(0);
   });
 
   it("TikTok без права video.list получает подсказку о переподключении", () => {

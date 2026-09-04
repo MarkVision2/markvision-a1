@@ -25,6 +25,10 @@ import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { AccountPicker } from "@/components/publishing/AccountPicker";
+import { BulkAccountsBar } from "@/components/publishing/BulkAccountsBar";
+import { ConnectedAccountsTab } from "@/components/publishing/ConnectedAccountsTab";
+import { UploadPublishDialog } from "@/components/publishing/UploadPublishDialog";
 import { usePublishing, type UsePublishing } from "@/hooks/usePublishing";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
 import {
@@ -56,6 +60,7 @@ import {
   type PublishStrategy,
   type ReviewMode,
 } from "@/lib/publishingClient";
+import { ANY, EMPTY_FILTERS, filterAccounts, type AccountFilters } from "@/lib/publishingSelection";
 import { cn } from "@/lib/utils";
 
 /* ───────────────────────────── утилиты ───────────────────────────── */
@@ -98,14 +103,6 @@ function rampLabel(a: Pick<PublishAccount, "ramp_enabled" | "ramp_started_at">):
   const st = rampStage(a.ramp_enabled, a.ramp_started_at);
   if (st.stage === 4) return a.ramp_enabled ? "Полный лимит" : "Без разгона";
   return `Ступень ${st.stage} · ${st.limit}/день · ещё ${st.daysLeft} дн.`;
-}
-
-/** Валидация ссылки на видео — зеркало проверки в publish-accounts. */
-export function validateFileUrl(url: string): string | null {
-  const u = url.trim();
-  if (!u) return "Укажите ссылку на видео";
-  if (!/^https:\/\/.+\.(mp4|mov|m4v)(\?|$)/i.test(u)) return "Нужна https-ссылка на файл .mp4 или .mov";
-  return null;
 }
 
 function EmptyState({ text }: { text: string }) {
@@ -206,6 +203,7 @@ export default function Publishing() {
         <Tabs defaultValue="accounts">
           <TabsList className="flex-wrap">
             <TabsTrigger value="accounts">Аккаунты</TabsTrigger>
+            <TabsTrigger value="connected">Подключённые</TabsTrigger>
             <TabsTrigger value="network">Сеть</TabsTrigger>
             <TabsTrigger value="groups">Группы</TabsTrigger>
             <TabsTrigger value="personas">Персоны</TabsTrigger>
@@ -213,6 +211,9 @@ export default function Publishing() {
             <TabsTrigger value="settings">Настройки</TabsTrigger>
           </TabsList>
           <TabsContent value="accounts" className="mt-4"><AccountsTab pub={pub} /></TabsContent>
+          <TabsContent value="connected" className="mt-4">
+            <ConnectedAccountsTab rows={pub.metrics?.accounts ?? []} groups={pub.groups} />
+          </TabsContent>
           <TabsContent value="network" className="mt-4"><NetworkTab pub={pub} /></TabsContent>
           <TabsContent value="groups" className="mt-4"><GroupsTab pub={pub} /></TabsContent>
           <TabsContent value="personas" className="mt-4"><PersonasTab pub={pub} /></TabsContent>
@@ -223,7 +224,7 @@ export default function Publishing() {
 
       <ConnectInstagramDialog open={dialog === "instagram"} onClose={() => setDialog(null)} pub={pub} />
       <ConnectThreadsDialog open={dialog === "threads"} onClose={() => setDialog(null)} pub={pub} />
-      <PublishVideoDialog open={dialog === "video"} onClose={() => setDialog(null)} pub={pub} />
+      <UploadPublishDialog open={dialog === "video"} onClose={() => setDialog(null)} pub={pub} />
     </PageContainer>
   );
 }
@@ -259,6 +260,9 @@ function SummaryTiles({ pub }: { pub: UsePublishing }) {
 
 function AccountsTab({ pub }: { pub: UsePublishing }) {
   const disabled = pub.busy != null;
+  const [filters, setFilters] = useState<AccountFilters>(EMPTY_FILTERS);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+
   const run = async (label: string, fn: () => Promise<unknown>) => {
     try {
       await fn();
@@ -268,15 +272,81 @@ function AccountsTab({ pub }: { pub: UsePublishing }) {
     }
   };
 
+  const visible = useMemo(() => filterAccounts(pub.accounts, filters), [pub.accounts, filters]);
+  // Выделение переживает перерисовку, но не должно тянуть отключённые аккаунты.
+  const live = useMemo(() => new Set(pub.accounts.map((a) => a.id)), [pub.accounts]);
+  const chosen = useMemo(() => [...selected].filter((id) => live.has(id)), [selected, live]);
+  const allVisibleChosen = visible.length > 0 && visible.every((a) => selected.has(a.id));
+
+  const toggleAllVisible = () => {
+    const next = new Set(selected);
+    if (allVisibleChosen) visible.forEach((a) => next.delete(a.id));
+    else visible.forEach((a) => next.add(a.id));
+    setSelected(next);
+  };
+
+  const toggleOne = (id: string) => {
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    setSelected(next);
+  };
+
   if (!pub.accounts.length) {
     return <EmptyState text="Аккаунтов пока нет — подключите Instagram-страницы через Meta или аккаунт Threads." />;
   }
 
   return (
-    <div className="overflow-x-auto rounded-2xl border">
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[200px] flex-1">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            className="h-9 pl-8"
+            placeholder="Поиск по имени или @хэндлу"
+            aria-label="Поиск аккаунтов"
+            value={filters.search}
+            onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
+          />
+        </div>
+        <Select value={filters.platform} onValueChange={(v) => setFilters((f) => ({ ...f, platform: v as AccountFilters["platform"] }))}>
+          <SelectTrigger className="h-9 w-[150px]" aria-label="Фильтр по площадке"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ANY}>Все площадки</SelectItem>
+            {(Object.keys(PLATFORM_META) as PublishPlatform[]).map((p) => (
+              <SelectItem key={p} value={p}>{PLATFORM_META[p].label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={filters.groupId} onValueChange={(v) => setFilters((f) => ({ ...f, groupId: v }))}>
+          <SelectTrigger className="h-9 w-[160px]" aria-label="Фильтр по группе"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value={ANY}>Все группы</SelectItem>
+            <SelectItem value="__none">Без группы</SelectItem>
+            {pub.groups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {visible.length} из {pub.accounts.length}
+        </span>
+      </div>
+
+      <BulkAccountsBar pub={pub} selected={chosen} onClear={() => setSelected(new Set())} />
+
+      {visible.length === 0 ? (
+        <EmptyState text="Под фильтры ничего не подошло." />
+      ) : (
+      <div className="overflow-x-auto rounded-2xl border">
       <Table>
         <TableHeader>
           <TableRow>
+            <TableHead className="w-10">
+              <Checkbox
+                checked={allVisibleChosen}
+                onCheckedChange={toggleAllVisible}
+                aria-label="Выбрать все показанные аккаунты"
+              />
+            </TableHead>
             <TableHead>Аккаунт</TableHead>
             <TableHead>Статус</TableHead>
             <TableHead>Группа</TableHead>
@@ -291,18 +361,35 @@ function AccountsTab({ pub }: { pub: UsePublishing }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {pub.accounts.map((a) => (
-            <AccountRow key={a.id} a={a} pub={pub} disabled={disabled} run={run} />
+          {visible.map((a) => (
+            <AccountRow
+              key={a.id}
+              a={a}
+              pub={pub}
+              disabled={disabled}
+              run={run}
+              checked={selected.has(a.id)}
+              onToggle={() => toggleOne(a.id)}
+            />
           ))}
         </TableBody>
       </Table>
+      </div>
+      )}
     </div>
   );
 }
 
 function AccountRow({
-  a, pub, disabled, run,
-}: { a: PublishAccount; pub: UsePublishing; disabled: boolean; run: (label: string, fn: () => Promise<unknown>) => Promise<void> }) {
+  a, pub, disabled, run, checked, onToggle,
+}: {
+  a: PublishAccount;
+  pub: UsePublishing;
+  disabled: boolean;
+  run: (label: string, fn: () => Promise<unknown>) => Promise<void>;
+  checked: boolean;
+  onToggle: () => void;
+}) {
   const [limit, setLimit] = useState(String(a.daily_limit));
   useEffect(() => setLimit(String(a.daily_limit)), [a.daily_limit]);
   const status = ACCOUNT_STATUS_META[a.status] ?? ACCOUNT_STATUS_META.error;
@@ -326,7 +413,10 @@ function AccountRow({
   };
 
   return (
-    <TableRow>
+    <TableRow data-state={checked ? "selected" : undefined}>
+      <TableCell className="w-10">
+        <Checkbox checked={checked} onCheckedChange={onToggle} aria-label={`Выбрать ${a.account_name}`} />
+      </TableCell>
       <TableCell className="min-w-[180px]">
         <div className="font-medium">{a.account_name}</div>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1416,117 +1506,6 @@ function ConnectThreadsDialog({ open, onClose, pub }: { open: boolean; onClose: 
           <Button variant="ghost" onClick={onClose} disabled={disabled}>Отмена</Button>
           <Button onClick={() => void submit()} disabled={disabled}>
             {pub.busy === "connect_threads" && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />} Подключить
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-const ALL_ACTIVE = "__all"; // все включённые аккаунты вместо группы
-
-function PublishVideoDialog({ open, onClose, pub }: { open: boolean; onClose: () => void; pub: UsePublishing }) {
-  const [fileUrl, setFileUrl] = useState("");
-  const [title, setTitle] = useState("");
-  const [caption, setCaption] = useState("");
-  const [hashtags, setHashtags] = useState("");
-  const [group, setGroup] = useState(ALL_ACTIVE);
-  const [mode, setMode] = useState<PublishMode>("drip");
-  const [err, setErr] = useState<string | null>(null);
-  const disabled = pub.busy != null;
-
-  useEffect(() => {
-    if (open) {
-      setFileUrl("");
-      setTitle("");
-      setCaption("");
-      setHashtags("");
-      setGroup(pub.groups[0]?.id ?? ALL_ACTIVE);
-      setMode("drip");
-      setErr(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
-
-  const activeIds = useMemo(() => pub.accounts.filter((a) => a.publish_enabled && a.status === "active").map((a) => a.id), [pub.accounts]);
-
-  const submit = async () => {
-    const v = validateFileUrl(fileUrl);
-    if (v) {
-      setErr(v);
-      toast.error(v);
-      return;
-    }
-    if (group === ALL_ACTIVE && !activeIds.length) {
-      const m = "Нет активных аккаунтов — подключите аккаунт или выберите группу";
-      setErr(m);
-      toast.error(m);
-      return;
-    }
-    try {
-      const r = await pub.publishVideo({
-        file_url: fileUrl.trim(),
-        title: title.trim() || undefined,
-        caption: caption.trim() || undefined,
-        hashtags: splitCsv(hashtags).map((h) => h.replace(/^#/, "")),
-        mode,
-        ...(group === ALL_ACTIVE ? { account_ids: activeIds } : { group_id: group }),
-      });
-      toast.success(`Создано заданий: ${r.created}${r.skipped ? `, пропущено: ${r.skipped}` : ""}`);
-      onClose();
-    } catch (e) {
-      setErr(errMsg(e));
-      toast.error(errMsg(e));
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Залить видео</DialogTitle>
-          <DialogDescription>Ссылка на готовый ролик — задания разложатся по аккаунтам группы с учётом лимитов и окна.</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          <Field label="Ссылка на видео (https, .mp4/.mov)">
-            <Input value={fileUrl} placeholder="https://…/video.mp4" onChange={(e) => setFileUrl(e.target.value)} aria-label="Ссылка на видео" />
-          </Field>
-          <Field label="Название">
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-          </Field>
-          <Field label="Подпись">
-            <Textarea rows={3} value={caption} onChange={(e) => setCaption(e.target.value)} />
-          </Field>
-          <Field label="Хэштеги (через запятую)">
-            <Input value={hashtags} placeholder="маркетинг, reels" onChange={(e) => setHashtags(e.target.value)} />
-          </Field>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label="Группа">
-              <Select value={group} onValueChange={setGroup}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL_ACTIVE}>Все активные аккаунты ({activeIds.length})</SelectItem>
-                  {pub.groups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field label="Режим">
-              <Select value={mode} onValueChange={(v) => setMode(v as PublishMode)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {(Object.keys(PUBLISH_MODE_META) as PublishMode[]).map((m) => (
-                    <SelectItem key={m} value={m}>{PUBLISH_MODE_META[m].label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-          </div>
-          {err && <p role="alert" className="text-sm text-destructive">{err}</p>}
-        </div>
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose} disabled={disabled}>Отмена</Button>
-          <Button onClick={() => void submit()} disabled={disabled}>
-            {pub.busy === "publish_video" && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />} Создать задания
           </Button>
         </DialogFooter>
       </DialogContent>
