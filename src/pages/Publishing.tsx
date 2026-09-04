@@ -36,6 +36,8 @@ import { AccountPicker } from "@/components/publishing/AccountPicker";
 import { BulkAccountsBar } from "@/components/publishing/BulkAccountsBar";
 import { AccountsTable } from "@/components/publishing/AccountsTable";
 import { ConnectedAccountsTab } from "@/components/publishing/ConnectedAccountsTab";
+import { JobsTab } from "@/components/publishing/JobsTab";
+import { NetworkTab } from "@/components/publishing/NetworkTab";
 import { UploadPublishDialog } from "@/components/publishing/UploadPublishDialog";
 import { usePublishing, type UsePublishing } from "@/hooks/usePublishing";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -231,7 +233,7 @@ export default function Publishing() {
           <TabsContent value="connected" className="mt-4">
             <ConnectedAccountsTab rows={pub.metrics?.accounts ?? []} groups={pub.groups} />
           </TabsContent>
-          <TabsContent value="network" className="mt-4"><NetworkTab pub={pub} /></TabsContent>
+          <TabsContent value="network" className="mt-4"><NetworkTab rows={pub.metrics?.groups ?? []} /></TabsContent>
           <TabsContent value="groups" className="mt-4"><GroupsTab pub={pub} /></TabsContent>
           <TabsContent value="personas" className="mt-4"><PersonasTab pub={pub} /></TabsContent>
           <TabsContent value="jobs" className="mt-4"><JobsTab pub={pub} /></TabsContent>
@@ -729,146 +731,6 @@ function PersonasTab({ pub }: { pub: UsePublishing }) {
         </div>
       ) : (
         <EmptyState text="Выберите персону слева или создайте новую." />
-      )}
-    </div>
-  );
-}
-
-/* ───────────────────────────── сеть: сводка по группам ───────────────────────────── */
-
-function NetworkTab({ pub }: { pub: UsePublishing }) {
-  const rows: GroupMetrics[] = pub.metrics?.groups ?? [];
-  if (!rows.length) {
-    return <EmptyState text="Групп аккаунтов пока нет — создайте их во вкладке «Группы», и здесь появится сводка по каждой." />;
-  }
-  return (
-    <div className="overflow-x-auto rounded-2xl border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Группа</TableHead>
-            <TableHead>Аккаунты</TableHead>
-            <TableHead>Здоровье</TableHead>
-            <TableHead>Очередь</TableHead>
-            <TableHead>За 7 дней</TableHead>
-            <TableHead>Охват d3 (7 дн.)</TableHead>
-            <TableHead>Ближайший слот</TableHead>
-            <TableHead>Одобрено тем</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((g) => {
-            const review = REVIEW_MODE_META[g.review_mode];
-            const platform = g.platform ? PLATFORM_META[g.platform] : null;
-            const tone = healthTone(g.health_avg);
-            return (
-              <TableRow key={g.group_id}>
-                <TableCell className="min-w-[180px]">
-                  <div className="font-medium">{g.name}</div>
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                    {platform && <Chip label={platform.label} cls={platform.cls} />}
-                    {review && <Chip label={review.label} cls={review.cls} />}
-                  </div>
-                </TableCell>
-                <TableCell className="tabular-nums">
-                  {g.accounts_active} / {g.accounts_total}
-                  {g.accounts_token_expired > 0 && <div className="text-xs text-amber-700">токен истёк: {g.accounts_token_expired}</div>}
-                </TableCell>
-                <TableCell>
-                  {g.health_avg == null ? "—" : (
-                    <span className={cn("font-medium tabular-nums", tone === "good" ? "text-emerald-700" : tone === "warn" ? "text-amber-700" : "text-destructive")}>
-                      {Math.round(g.health_avg)}%
-                    </span>
-                  )}
-                </TableCell>
-                <TableCell className="tabular-nums">{g.jobs_queued}</TableCell>
-                <TableCell className="tabular-nums">
-                  <span className="text-emerald-700">✓ {g.published_7d}</span>
-                  {g.failed_7d > 0 && <span className="ml-2 text-destructive">✗ {g.failed_7d}</span>}
-                </TableCell>
-                <TableCell className="tabular-nums">{g.reach_d3_7d.toLocaleString("ru-RU")}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">{fmtDate(g.next_slot_at)}</TableCell>
-                <TableCell className="tabular-nums">{g.items_approved}</TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    </div>
-  );
-}
-
-/* ───────────────────────────── задания ───────────────────────────── */
-
-function JobsTab({ pub }: { pub: UsePublishing }) {
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <Label className="text-xs text-muted-foreground">Статус</Label>
-        <Select value={pub.jobsStatus} onValueChange={(v) => pub.setJobsStatus(v as PublishJobStatus | "all")}>
-          <SelectTrigger className="h-8 w-[200px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Все</SelectItem>
-            {(Object.keys(JOB_STATUS_META) as PublishJobStatus[]).map((s) => (
-              <SelectItem key={s} value={s}>{JOB_STATUS_META[s].label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      {!pub.jobs.length ? (
-        <EmptyState text="Заданий нет — они появятся после «Залить видео» или из конвейера контента." />
-      ) : (
-        <div className="overflow-x-auto rounded-2xl border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Статус</TableHead>
-                <TableHead>Аккаунт</TableHead>
-                <TableHead>Видео</TableHead>
-                <TableHead>Запланировано</TableHead>
-                <TableHead>Попыток</TableHead>
-                <TableHead>Ошибка</TableHead>
-                <TableHead>Пост</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {pub.jobs.map((j) => {
-                const st = JOB_STATUS_META[j.status] ?? JOB_STATUS_META.pending;
-                return (
-                  <TableRow key={j.id}>
-                    <TableCell><Chip label={st.label} cls={st.cls} /></TableCell>
-                    <TableCell>
-                      <div className="font-medium">{j.publish_accounts?.account_name ?? "—"}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {j.publish_accounts?.handle ? `@${j.publish_accounts.handle} · ` : ""}{PLATFORM_META[j.platform]?.label}
-                      </div>
-                    </TableCell>
-                    <TableCell className="max-w-[240px] truncate" title={j.publish_videos?.file_url}>
-                      {j.publish_videos?.title || j.publish_videos?.file_url?.split("/").pop() || "—"}
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-xs">{fmtDate(j.scheduled_at)}</TableCell>
-                    <TableCell className="tabular-nums">{j.attempts}</TableCell>
-                    <TableCell className="max-w-[260px] text-xs">
-                      {j.error_code || j.error_message ? (
-                        <span className="text-destructive" title={j.error_message ?? undefined}>
-                          {j.error_code && <code className="mr-1">{j.error_code}</code>}
-                          <span className="line-clamp-2">{j.error_message}</span>
-                        </span>
-                      ) : "—"}
-                    </TableCell>
-                    <TableCell>
-                      {j.external_post_url ? (
-                        <a href={j.external_post_url} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-primary underline">
-                          Открыть <ExternalLink className="h-3 w-3" />
-                        </a>
-                      ) : "—"}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
       )}
     </div>
   );

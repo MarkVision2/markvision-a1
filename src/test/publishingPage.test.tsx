@@ -185,8 +185,9 @@ describe("страница «Публикации»", () => {
     await waitFor(() => expect(screen.getByText("Алматы · IG")).toBeTruthy());
     expect(screen.getByText("8 / 10")).toBeTruthy();
     expect(screen.getByText("77%")).toBeTruthy();
-    expect(screen.getByText("✓ 21")).toBeTruthy();
-    expect(screen.getByText("✗ 2")).toBeTruthy();
+    // «За 7 дней»: опубликовано и ошибки в одной ячейке.
+    const week = screen.getByText("21").closest("td") as HTMLTableCellElement;
+    expect(week.textContent).toMatch(/21.*✗2/);
     expect(screen.getByText("токен истёк: 1")).toBeTruthy();
   });
 

@@ -104,6 +104,17 @@ Threads, TikTok, YouTube — edge-функция `publish-oauth` (`POST /start` 
 `GET /callback/:platform` → обмен кода, long-lived токен Threads, идентичность аккаунта,
 шифрование токенов, `oauth_scope`, редирект обратно с `?publish_connected=`). Одноразовый
 state — `publish_oauth_states` (миграция `20260905120000_publish_oauth.sql`, TTL 15 мин).
+**TikTok: «Что-то пошло не так — client_key» после входа.** Это не про значение ключа.
+Пока приложение не Live (не прошло App review), авторизоваться через него могут только
+**target users** песочницы; любой другой аккаунт TikTok после входа получает эту страницу.
+Production-ключ (`aw…`) заработает для всех только после одобрения. До этого — Sandbox:
+Manage apps → переключатель Sandbox → Create Sandbox → добавить продукты Login Kit и
+Content Posting API → Target users → Add account (до 10) → sandbox Client Key (`sbaw…`) и
+Secret → в `TIKTOK_CLIENT_KEY` / `TIKTOK_CLIENT_SECRET` → redirect_uri в Login Kit песочницы.
+Sandbox не публикует публичные видео — для боевой публикации нужен App review.
+Проверка без входа: `GET /publish-oauth/diag` (JWT или `x-automation-key`) — что задано,
+были ли пробелы в секретах, redirect_uri для регистрации.
+
 Кнопки «Подключить Threads / TikTok / YouTube» — на странице «Публикации»; ручной ввод
 токена Threads оставлен как запасной путь.
 

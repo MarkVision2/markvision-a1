@@ -110,14 +110,26 @@ async function diag(req: Request, admin: SupabaseClient): Promise<Response> {
       redirect_uri: redirectUri(platform),
     };
   });
-  return json({ ok: true, token_key_configured: tokenKeyConfigured(), platforms });
+  return json({
+    ok: true,
+    token_key_configured: tokenKeyConfigured(),
+    platforms,
+    notes: {
+      tiktok: [
+        "Ошибка «client_key» на странице TikTok ПОСЛЕ входа — это не про значение ключа: у приложения, которое ещё не Live, авторизоваться могут только target users песочницы.",
+        "Ключ с префиксом aw — production; он заработает для всех только после одобрения приложения (App review).",
+        "До одобрения: Manage apps → переключить в Sandbox → Create Sandbox → добавить продукты Login Kit + Content Posting API → Target users → Add account (до 10) → взять sandbox Client Key (sbaw…) и Secret → положить в TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET → зарегистрировать redirect_uri в Login Kit песочницы.",
+        "Sandbox не публикует публичные видео через Content Posting API — только для проверки связки; для боевой публикации нужен App review.",
+      ],
+    },
+  });
 }
 
 /**
- * Живая проверка client key у TikTok: запрашиваем страницу согласия и смотрим,
- * куда площадка отправляет. Неизвестный ключ уводит на error_code=client_key —
- * это единственный способ отличить «ключ не тот» от «redirect_uri не
- * зарегистрирован», не заставляя человека проходить вход руками.
+ * Живая проверка у TikTok: запрашиваем страницу согласия и смотрим, куда
+ * площадка отправляет. Ловит только то, что TikTok отсекает ДО входа
+ * (явные error_code в редиректе); неизвестный или неактивный ключ до входа
+ * не отличается от рабочего — оба уводят на /login.
  */
 async function probeTiktok(req: Request, admin: SupabaseClient): Promise<Response> {
   if (!(await automationKeyValid(req, admin))) {
@@ -147,9 +159,11 @@ async function probeTiktok(req: Request, admin: SupabaseClient): Promise<Respons
     } else if (/scope/.test(seen)) {
       verdict = "TikTok не выдаёт запрошенные права — проверьте продукты Login Kit / Content Posting API";
     } else if (status >= 300 && status < 400) {
-      verdict = "ключ принят: TikTok уводит на страницу входа";
+      // На любой client_key, даже заведомо левый, TikTok отвечает 302 на /login —
+      // проверка приложения происходит уже после входа пользователя.
+      verdict = "до входа TikTok ключ не проверяет — редирект на /login ничего не доказывает; смотрите статус приложения и sandbox";
     } else if (status === 200) {
-      verdict = "ключ принят: TikTok отдал страницу согласия";
+      verdict = "TikTok отдал страницу согласия без ошибки";
     }
   } catch (e) {
     verdict = `запрос к TikTok не удался: ${e instanceof Error ? e.message : String(e)}`;
