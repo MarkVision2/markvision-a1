@@ -1,7 +1,7 @@
 {
-  "git_sha": "6aa8068",
-  "git_sha_full": "6aa80689771b7bcbed27e7e6c9dc14518b5f4de3",
-  "updated_at": "2026-09-04T21:27:43+04:00",
-  "label": "[vercel-deploy] Merge: автопостинг — отметка о деплое, doctor различает 404 функции и её отсутствие (#253)",
+  "git_sha": "f818187",
+  "git_sha_full": "f818187fb472d6087862c86da291281796e55668",
+  "updated_at": "2026-09-04T21:30:42+04:00",
+  "label": "Merge: автопостинг — состояние n8n в доке (#254)",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
