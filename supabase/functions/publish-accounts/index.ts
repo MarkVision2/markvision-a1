@@ -67,46 +67,57 @@ async function metaPages(token: string): Promise<{ pages: MetaPage[]; error?: st
 /**
  * Все Meta-токены, которыми проект может открыть /me/accounts, по убыванию
  * доверия: вставленный пользователем → meta_tokens проекта (активный, затем
- * прошлые) → OAuth-токены рекламных кабинетов проекта → общий токен
- * automation_settings / env. resolveMetaAccessToken отдаёт только первый
- * непустой — если он протух или записан с мусором, подключение падало, хотя
- * рядом лежал рабочий токен.
+ * прошлые) → свежие OAuth-сессии Facebook (meta_oauth_pending_selections, сутки)
+ * → OAuth-токены рекламных кабинетов проекта → общий токен automation_settings /
+ * env. resolveMetaAccessToken отдаёт только первый непустой — если он протух
+ * или записан с мусором, подключение падало, хотя рядом лежал рабочий.
  */
-async function metaTokenCandidates(admin: SupabaseClient, projectId: string, bodyToken: string | null): Promise<string[]> {
-  const out: string[] = [];
-  const push = (t: unknown) => {
+async function metaTokenCandidates(admin: SupabaseClient, projectId: string, bodyToken: string | null): Promise<{ source: string; token: string }[]> {
+  const out: { source: string; token: string }[] = [];
+  const push = (source: string, t: unknown) => {
     const v = typeof t === "string" ? t.trim().replace(/^Bearer\s+/i, "") : "";
-    if (v && !out.includes(v)) out.push(v);
+    if (v && !out.some((c) => c.token === v)) out.push({ source, token: v });
   };
-  push(bodyToken);
+  push("вставленный токен", bodyToken);
   const { data: tokens } = await admin.from("meta_tokens")
     .select("access_token, is_active, updated_at").eq("project_id", projectId)
     .order("is_active", { ascending: false }).order("updated_at", { ascending: false }).limit(5);
-  for (const t of (tokens ?? []) as { access_token: string | null }[]) push(t.access_token);
+  for (const t of (tokens ?? []) as { access_token: string | null; is_active: boolean }[]) push(t.is_active ? "Meta-токен проекта" : "прошлый Meta-токен проекта", t.access_token);
+  const { data: pending } = await admin.from("meta_oauth_pending_selections")
+    .select("user_token").eq("project_id", projectId)
+    .gte("created_at", new Date(Date.now() - 86_400_000).toISOString())
+    .order("created_at", { ascending: false }).limit(3);
+  for (const p of (pending ?? []) as { user_token: string | null }[]) push("OAuth-сессия Facebook", p.user_token);
   const { data: cabinets } = await admin.from("ad_cabinets")
     .select("access_token").eq("project_id", projectId).not("access_token", "is", null).limit(5);
-  for (const c of (cabinets ?? []) as { access_token: string | null }[]) push(c.access_token);
-  push(await resolveMetaAccessToken({ admin, projectId: null, bodyToken: null }));
+  for (const c of (cabinets ?? []) as { access_token: string | null }[]) push("токен рекламного кабинета", c.access_token);
+  push("общий токен automation_settings/env", await resolveMetaAccessToken({ admin, projectId: null, bodyToken: null }));
   return out;
 }
 
-/** Страницы Facebook первым токеном, который принимает Graph; иначе — последняя причина отказа. */
+/**
+ * Страницы Facebook первым токеном, который принимает Graph; иначе — отказ
+ * по каждому источнику (без самих токенов), чтобы по тексту ошибки было
+ * видно, какой именно токен протух.
+ */
 async function metaPagesForProject(
   admin: SupabaseClient, projectId: string, bodyToken: string | null,
-): Promise<{ token: string; pages: MetaPage[] } | { error: string; tried: number }> {
+): Promise<{ token: string; pages: MetaPage[] } | { error: string; tried: number; failures: { source: string; error: string }[] }> {
   const candidates = await metaTokenCandidates(admin, projectId, bodyToken);
   if (!candidates.length) {
-    return { error: "Meta-токен не найден. Подключите Facebook в Настройках → Meta или вставьте User Access Token.", tried: 0 };
+    return { error: "Meta-токен не найден. Подключите Facebook в Настройках → Meta или вставьте User Access Token.", tried: 0, failures: [] };
   }
-  let lastError = "";
-  for (const token of candidates) {
-    const { pages, error } = await metaPages(token);
-    if (!error) return { token, pages };
-    lastError = error;
+  const failures: { source: string; error: string }[] = [];
+  for (const c of candidates) {
+    const { pages, error } = await metaPages(c.token);
+    if (!error) return { token: c.token, pages };
+    failures.push({ source: c.source, error });
   }
+  const detail = failures.map((f) => `${f.source}: ${f.error}`).join("; ");
   return {
-    error: `Meta отклонила токен проекта: ${lastError}. Подключите Facebook заново (Настройки → Meta) или вставьте свежий User Access Token.`,
+    error: `Meta отклонила все токены проекта (${detail}). Подключите Facebook заново (Настройки → Meta) или вставьте свежий User Access Token.`,
     tried: candidates.length,
+    failures,
   };
 }
 
@@ -161,7 +172,7 @@ Deno.serve(async (req) => {
     if (action === "available") {
       if (!projectId) return json({ error: "project_id обязателен" }, 400);
       const found = await metaPagesForProject(admin, projectId, typeof body?.meta_token === "string" ? body.meta_token : null);
-      if ("error" in found) return json({ error: found.error, tried: found.tried }, 400);
+      if ("error" in found) return json({ error: found.error, tried: found.tried, failures: found.failures }, 400);
       const { pages } = found;
 
       // Уже подключённые помечаем, чтобы интерфейс не предлагал их снова.
@@ -193,7 +204,7 @@ Deno.serve(async (req) => {
       if (!pageIds.length) return json({ error: "page_ids обязателен" }, 400);
 
       const found = await metaPagesForProject(admin, projectId, typeof body?.meta_token === "string" ? body.meta_token : null);
-      if ("error" in found) return json({ error: found.error, tried: found.tried }, 400);
+      if ("error" in found) return json({ error: found.error, tried: found.tried, failures: found.failures }, 400);
       const { pages } = found;
 
       const connected: unknown[] = [];
