@@ -1,7 +1,7 @@
 {
-  "git_sha": "b269072",
-  "git_sha_full": "b269072091d11ac582a7678388c48e0336b0b93c",
-  "updated_at": "2026-09-01T21:16:42+04:00",
-  "label": "Автопостинг: миграция падала на осиротевших instagram_accounts (#251)",
+  "git_sha": "e0b5512",
+  "git_sha_full": "e0b5512538080e27116dbf97fabcec80899a6cc1",
+  "updated_at": "2026-09-04T16:51:49Z",
+  "label": "Автопостинг: пометка своих постов в радаре, подсказка TikTok без video.list, doctor и доки",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
