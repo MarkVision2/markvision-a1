@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertCircle, ExternalLink, Instagram, KeyRound, Loader2, PauseCircle, Plus, RefreshCw, Search, Send, Trash2, Upload } from "lucide-react";
+import { AlertCircle, ChevronDown, ExternalLink, Instagram, KeyRound, Loader2, PauseCircle, Plus, RefreshCw, Search, Send, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -16,6 +16,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
@@ -27,6 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { AccountPicker } from "@/components/publishing/AccountPicker";
 import { BulkAccountsBar } from "@/components/publishing/BulkAccountsBar";
+import { AccountsTable } from "@/components/publishing/AccountsTable";
 import { ConnectedAccountsTab } from "@/components/publishing/ConnectedAccountsTab";
 import { UploadPublishDialog } from "@/components/publishing/UploadPublishDialog";
 import { usePublishing, type UsePublishing } from "@/hooks/usePublishing";
@@ -161,20 +169,29 @@ export default function Publishing() {
           description="Сеть аккаунтов площадок, группы, персоны и очередь автопубликации."
           actions={
             <>
-              <Button variant="outline" size="sm" onClick={() => void pub.refetch()} disabled={disabled || pub.loading}>
-                <RefreshCw className={cn("mr-1.5 h-4 w-4", pub.loading && "animate-spin")} /> Обновить
+              <Button variant="ghost" size="sm" onClick={() => void pub.refetch()} disabled={disabled || pub.loading} aria-label="Обновить">
+                <RefreshCw className={cn("h-4 w-4", pub.loading && "animate-spin")} />
               </Button>
-              <Button variant="outline" size="sm" onClick={() => setDialog("instagram")} disabled={disabled || !projectId}>
-                <Plus className="mr-1.5 h-4 w-4" /> Подключить Instagram
-              </Button>
-              {(["threads", "tiktok", "youtube"] as OAuthPlatform[]).map((pl) => (
-                <Button key={pl} variant="outline" size="sm" onClick={() => void connectOAuth(pl)} disabled={disabled || !projectId || oauthBusy != null}>
-                  {oauthBusy === pl ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Plus className="mr-1.5 h-4 w-4" />} Подключить {OAUTH_LABELS[pl]}
-                </Button>
-              ))}
-              <Button variant="ghost" size="sm" onClick={() => setDialog("threads")} disabled={disabled || !projectId} title="Threads по готовому токену">
-                <KeyRound className="mr-1.5 h-4 w-4" /> Threads токеном
-              </Button>
+              {/* Пять одинаковых кнопок в шапке кричали наперебой — площадки под одним меню. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" disabled={disabled || !projectId || oauthBusy != null}>
+                    {oauthBusy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <Plus className="mr-1.5 h-4 w-4" />}
+                    Подключить аккаунт
+                    <ChevronDown className="ml-1.5 h-3.5 w-3.5 opacity-60" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuItem onSelect={() => setDialog("instagram")}>Instagram</DropdownMenuItem>
+                  {(["threads", "tiktok", "youtube"] as OAuthPlatform[]).map((pl) => (
+                    <DropdownMenuItem key={pl} onSelect={() => void connectOAuth(pl)}>{OAUTH_LABELS[pl]}</DropdownMenuItem>
+                  ))}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onSelect={() => setDialog("threads")}>
+                    <KeyRound className="mr-2 h-3.5 w-3.5" /> Threads по токену
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               <Button size="sm" onClick={() => setDialog("video")} disabled={disabled || !projectId}>
                 <Upload className="mr-1.5 h-4 w-4" /> Залить видео
               </Button>
@@ -210,7 +227,7 @@ export default function Publishing() {
             <TabsTrigger value="jobs">Задания</TabsTrigger>
             <TabsTrigger value="settings">Настройки</TabsTrigger>
           </TabsList>
-          <TabsContent value="accounts" className="mt-4"><AccountsTab pub={pub} /></TabsContent>
+          <TabsContent value="accounts" className="mt-4"><AccountsTable pub={pub} /></TabsContent>
           <TabsContent value="connected" className="mt-4">
             <ConnectedAccountsTab rows={pub.metrics?.accounts ?? []} groups={pub.groups} />
           </TabsContent>
@@ -234,270 +251,42 @@ export default function Publishing() {
 function SummaryTiles({ pub }: { pub: UsePublishing }) {
   const m = pub.metrics?.publish;
   const spend = m?.spent_month_usd ?? pub.settings?.spend.month_usd ?? null;
-  const tiles: { label: string; value: string; hint?: string }[] = [
+
+  // Тон подсвечивает только то, что требует реакции: семь одинаково громких
+  // плиток с нулями не давали понять, куда смотреть.
+  const tiles: { label: string; value: string; hint?: string; tone?: "warn" | "bad" }[] = [
     { label: "Активных аккаунтов", value: m ? `${m.accounts_active} / ${m.accounts_total}` : "—" },
     { label: "В очереди", value: m ? String(m.jobs_queued) : "—", hint: m?.jobs_processing ? `публикуется: ${m.jobs_processing}` : undefined },
     { label: "Опубликовано за 24 ч", value: m ? String(m.published_24h) : "—" },
-    { label: "Ошибок за 24 ч", value: m ? String(m.failed_24h) : "—", hint: m?.manual_review ? `на ручной проверке: ${m.manual_review}` : undefined },
-    { label: "Среднее здоровье", value: m?.health_avg != null ? `${Math.round(m.health_avg)}%` : "—" },
-    { label: "Токены истекают (7 дней)", value: m ? String(m.tokens_expiring_7d) : "—" },
+    {
+      label: "Ошибок за 24 ч",
+      value: m ? String(m.failed_24h) : "—",
+      hint: m?.manual_review ? `на ручной проверке: ${m.manual_review}` : undefined,
+      tone: m?.failed_24h ? "bad" : undefined,
+    },
+    { label: "Среднее здоровье", value: m?.health_avg != null ? `${Math.round(m.health_avg)}%` : "—", tone: m?.health_avg != null && m.health_avg < 70 ? "warn" : undefined },
+    { label: "Токены истекают", value: m ? String(m.tokens_expiring_7d) : "—", hint: "за 7 дней", tone: m?.tokens_expiring_7d ? "warn" : undefined },
     { label: "Расход за месяц", value: spend != null ? `$${spend.toFixed(2)}` : "—" },
   ];
+
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
+    <div className="grid grid-cols-2 divide-x divide-y overflow-hidden rounded-2xl border bg-card sm:grid-cols-4 xl:grid-cols-7 xl:divide-y-0">
       {tiles.map((t) => (
-        <div key={t.label} className="rounded-2xl border bg-card p-4">
-          <div className="text-xs text-muted-foreground">{t.label}</div>
-          <div className="mt-1 text-2xl font-semibold tabular-nums">{t.value}</div>
-          {t.hint && <div className="mt-0.5 text-xs text-muted-foreground">{t.hint}</div>}
+        <div key={t.label} className="px-4 py-3">
+          <div className="truncate text-xs text-muted-foreground">{t.label}</div>
+          <div
+            className={cn(
+              "mt-0.5 text-xl font-semibold tabular-nums",
+              t.tone === "bad" && "text-destructive",
+              t.tone === "warn" && "text-amber-600 dark:text-amber-400",
+            )}
+          >
+            {t.value}
+          </div>
+          <div className="truncate text-xs text-muted-foreground">{t.hint ?? "\u00A0"}</div>
         </div>
       ))}
     </div>
-  );
-}
-
-/* ───────────────────────────── аккаунты ───────────────────────────── */
-
-function AccountsTab({ pub }: { pub: UsePublishing }) {
-  const disabled = pub.busy != null;
-  const [filters, setFilters] = useState<AccountFilters>(EMPTY_FILTERS);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-
-  const run = async (label: string, fn: () => Promise<unknown>) => {
-    try {
-      await fn();
-      toast.success(label);
-    } catch (e) {
-      toast.error(errMsg(e));
-    }
-  };
-
-  const visible = useMemo(() => filterAccounts(pub.accounts, filters), [pub.accounts, filters]);
-  // Выделение переживает перерисовку, но не должно тянуть отключённые аккаунты.
-  const live = useMemo(() => new Set(pub.accounts.map((a) => a.id)), [pub.accounts]);
-  const chosen = useMemo(() => [...selected].filter((id) => live.has(id)), [selected, live]);
-  const allVisibleChosen = visible.length > 0 && visible.every((a) => selected.has(a.id));
-
-  const toggleAllVisible = () => {
-    const next = new Set(selected);
-    if (allVisibleChosen) visible.forEach((a) => next.delete(a.id));
-    else visible.forEach((a) => next.add(a.id));
-    setSelected(next);
-  };
-
-  const toggleOne = (id: string) => {
-    const next = new Set(selected);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setSelected(next);
-  };
-
-  if (!pub.accounts.length) {
-    return <EmptyState text="Аккаунтов пока нет — подключите Instagram-страницы через Meta или аккаунт Threads." />;
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-[200px] flex-1">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="h-9 pl-8"
-            placeholder="Поиск по имени или @хэндлу"
-            aria-label="Поиск аккаунтов"
-            value={filters.search}
-            onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))}
-          />
-        </div>
-        <Select value={filters.platform} onValueChange={(v) => setFilters((f) => ({ ...f, platform: v as AccountFilters["platform"] }))}>
-          <SelectTrigger className="h-9 w-[150px]" aria-label="Фильтр по площадке"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ANY}>Все площадки</SelectItem>
-            {(Object.keys(PLATFORM_META) as PublishPlatform[]).map((p) => (
-              <SelectItem key={p} value={p}>{PLATFORM_META[p].label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={filters.groupId} onValueChange={(v) => setFilters((f) => ({ ...f, groupId: v }))}>
-          <SelectTrigger className="h-9 w-[160px]" aria-label="Фильтр по группе"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ANY}>Все группы</SelectItem>
-            <SelectItem value="__none">Без группы</SelectItem>
-            {pub.groups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
-        <span className="text-xs tabular-nums text-muted-foreground">
-          {visible.length} из {pub.accounts.length}
-        </span>
-      </div>
-
-      <BulkAccountsBar pub={pub} selected={chosen} onClear={() => setSelected(new Set())} />
-
-      {visible.length === 0 ? (
-        <EmptyState text="Под фильтры ничего не подошло." />
-      ) : (
-      <div className="overflow-x-auto rounded-2xl border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-10">
-              <Checkbox
-                checked={allVisibleChosen}
-                onCheckedChange={toggleAllVisible}
-                aria-label="Выбрать все показанные аккаунты"
-              />
-            </TableHead>
-            <TableHead>Аккаунт</TableHead>
-            <TableHead>Статус</TableHead>
-            <TableHead>Группа</TableHead>
-            <TableHead>Персона</TableHead>
-            <TableHead>Лимит/день</TableHead>
-            <TableHead>Разгон</TableHead>
-            <TableHead>Здоровье</TableHead>
-            <TableHead>Сегодня</TableHead>
-            <TableHead>Последний пост</TableHead>
-            <TableHead>Вкл</TableHead>
-            <TableHead />
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {visible.map((a) => (
-            <AccountRow
-              key={a.id}
-              a={a}
-              pub={pub}
-              disabled={disabled}
-              run={run}
-              checked={selected.has(a.id)}
-              onToggle={() => toggleOne(a.id)}
-            />
-          ))}
-        </TableBody>
-      </Table>
-      </div>
-      )}
-    </div>
-  );
-}
-
-function AccountRow({
-  a, pub, disabled, run, checked, onToggle,
-}: {
-  a: PublishAccount;
-  pub: UsePublishing;
-  disabled: boolean;
-  run: (label: string, fn: () => Promise<unknown>) => Promise<void>;
-  checked: boolean;
-  onToggle: () => void;
-}) {
-  const [limit, setLimit] = useState(String(a.daily_limit));
-  useEffect(() => setLimit(String(a.daily_limit)), [a.daily_limit]);
-  const status = ACCOUNT_STATUS_META[a.status] ?? ACCOUNT_STATUS_META.error;
-  const platform = PLATFORM_META[a.platform];
-  const tone = healthTone(a.health_score);
-  const effLimit = effectiveDailyLimit(a);
-
-  const commitLimit = () => {
-    const n = Number(limit);
-    if (!Number.isInteger(n) || n < 0) {
-      setLimit(String(a.daily_limit));
-      return;
-    }
-    if (n === a.daily_limit) return;
-    void run("Лимит обновлён", () => pub.updateAccount(a.id, { daily_limit: n }));
-  };
-
-  const onDisconnect = () => {
-    if (!window.confirm(`Отключить аккаунт «${a.account_name}»? Задания в очереди будут отменены.`)) return;
-    void run("Аккаунт отключён", () => pub.disconnect(a.id));
-  };
-
-  return (
-    <TableRow data-state={checked ? "selected" : undefined}>
-      <TableCell className="w-10">
-        <Checkbox checked={checked} onCheckedChange={onToggle} aria-label={`Выбрать ${a.account_name}`} />
-      </TableCell>
-      <TableCell className="min-w-[180px]">
-        <div className="font-medium">{a.account_name}</div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          {a.handle && <span>@{a.handle}</span>}
-          {platform && <Chip label={platform.label} cls={platform.cls} />}
-        </div>
-        {a.last_error && <div className="mt-1 max-w-[220px] truncate text-xs text-destructive" title={a.last_error}>{a.last_error}</div>}
-        {metricsScopeHint(a) && <div className="mt-1 text-xs text-amber-700">{metricsScopeHint(a)}</div>}
-      </TableCell>
-      <TableCell><Chip label={status.label} cls={status.cls} /></TableCell>
-      <TableCell>
-        <Select
-          value={a.group_id ?? NONE}
-          disabled={disabled}
-          onValueChange={(v) => void run("Группа обновлена", () => pub.updateAccount(a.id, { group_id: v === NONE ? null : v }))}
-        >
-          <SelectTrigger className="h-8 w-[150px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE}>Без группы</SelectItem>
-            {pub.groups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </TableCell>
-      <TableCell>
-        <Select
-          value={a.persona_id ?? NONE}
-          disabled={disabled}
-          onValueChange={(v) => void run("Персона обновлена", () => pub.updateAccount(a.id, { persona_id: v === NONE ? null : v }))}
-        >
-          <SelectTrigger className="h-8 w-[150px]"><SelectValue /></SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE}>Без персоны</SelectItem>
-            {pub.personas.map((p) => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
-      </TableCell>
-      <TableCell>
-        <Input
-          type="number"
-          min={0}
-          aria-label={`Лимит в день для ${a.account_name}`}
-          className="h-8 w-20"
-          value={limit}
-          disabled={disabled}
-          onChange={(e) => setLimit(e.target.value)}
-          onBlur={commitLimit}
-        />
-      </TableCell>
-      <TableCell className="min-w-[170px]">
-        <div className="flex items-center gap-2">
-          <Switch
-            checked={a.ramp_enabled}
-            disabled={disabled}
-            aria-label={`Разгон для ${a.account_name}`}
-            onCheckedChange={(v) => void run(v ? "Разгон включён" : "Разгон выключен", () => pub.updateAccount(a.id, { ramp_enabled: v }))}
-          />
-          <span className="text-xs text-muted-foreground">{rampLabel(a)}</span>
-        </div>
-      </TableCell>
-      <TableCell className="min-w-[130px]">
-        <div className="flex items-center gap-2">
-          <Progress value={a.health_score} className={cn("h-2 w-20", HEALTH_CLS[tone])} aria-label="Здоровье аккаунта" />
-          <span className="text-xs tabular-nums">{Math.round(a.health_score)}</span>
-        </div>
-      </TableCell>
-      <TableCell className="tabular-nums">{a.published_today} / {effLimit}</TableCell>
-      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{fmtDate(a.last_post_at)}</TableCell>
-      <TableCell>
-        <Switch
-          checked={a.publish_enabled}
-          disabled={disabled}
-          aria-label={`Публикации для ${a.account_name}`}
-          onCheckedChange={(v) => void run(v ? "Публикации включены" : "Публикации выключены", () => pub.updateAccount(a.id, { publish_enabled: v }))}
-        />
-      </TableCell>
-      <TableCell>
-        <Button variant="ghost" size="sm" className="text-destructive" disabled={disabled} onClick={onDisconnect}>
-          Отключить
-        </Button>
-      </TableCell>
-    </TableRow>
   );
 }
 

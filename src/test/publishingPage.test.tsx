@@ -146,6 +146,18 @@ const renderPage = () =>
     </MemoryRouter>,
   );
 
+/** Radix DropdownMenu в jsdom не реагирует на click — открываем с клавиатуры. */
+const openMenu = (trigger: HTMLElement) => fireEvent.keyDown(trigger, { key: "Enter" });
+
+/** Radix Tooltip раскрывается по фокусу триггера. */
+const openTooltip = (trigger: HTMLElement) => fireEvent.focus(trigger);
+
+/** Площадки собраны под меню «Подключить аккаунт». */
+const openConnectInstagram = async () => {
+  openMenu(screen.getByRole("button", { name: /Подключить аккаунт/ }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Instagram" }));
+};
+
 describe("страница «Публикации»", () => {
   beforeEach(() => {
     disconnect.mockClear();
@@ -191,26 +203,32 @@ describe("страница «Публикации»", () => {
     }
   });
 
-  it("таблица аккаунтов: чип статуса и ступень разгона", () => {
+  it("таблица аккаунтов: чип статуса, а ступень разгона — в тултипе «Сегодня»", async () => {
     renderPage();
     expect(screen.getByText("Клиника Айва")).toBeTruthy();
     expect(screen.getAllByText("Активен")[0]).toBeTruthy();
-    expect(screen.getByText(/Ступень 1 · 1\/день/)).toBeTruthy();
+    // Разгон режет действующий лимит до 1/день — это и видно в ячейке.
+    const cell = screen.getByText("Клиника Айва").closest("tr")!.querySelector(".cursor-help") as HTMLElement;
+    expect(cell.textContent).toMatch(/1 \/ 1/);
+    openTooltip(cell);
+    expect((await screen.findAllByText(/Ступень 1 · 1\/день/))[0]).toBeTruthy();
   });
 
-  it("«Отключить» вызывает disconnect после подтверждения", async () => {
+  it("«Отключить» из меню строки вызывает disconnect после подтверждения", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
     renderPage();
-    fireEvent.click(screen.getAllByRole("button", { name: "Отключить" })[0]);
+    openMenu(screen.getByRole("button", { name: "Действия для Клиника Айва" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Отключить" }));
     expect(confirmSpy).toHaveBeenCalled();
     await waitFor(() => expect(disconnect).toHaveBeenCalledWith("acc-1"));
     confirmSpy.mockRestore();
   });
 
-  it("«Отключить» не вызывает disconnect при отказе", () => {
+  it("«Отключить» не вызывает disconnect при отказе", async () => {
     const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
     renderPage();
-    fireEvent.click(screen.getAllByRole("button", { name: "Отключить" })[0]);
+    openMenu(screen.getByRole("button", { name: "Действия для Клиника Айва" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Отключить" }));
     expect(disconnect).not.toHaveBeenCalled();
     confirmSpy.mockRestore();
   });
@@ -229,7 +247,7 @@ describe("страница «Публикации»", () => {
       .mockRejectedValueOnce(new Error("Meta отклонила токен проекта: Invalid OAuth access token"))
       .mockResolvedValueOnce({ pages: [] });
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: /Подключить Instagram/ }));
+    await openConnectInstagram();
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toMatch(/Invalid OAuth access token/);
     fireEvent.change(screen.getByLabelText("User Access Token"), { target: { value: "EAABtoken" } });
@@ -248,7 +266,7 @@ describe("страница «Публикации»", () => {
       ],
     });
     renderPage();
-    fireEvent.click(screen.getByRole("button", { name: /Подключить Instagram/ }));
+    await openConnectInstagram();
     await screen.findByRole("checkbox", { name: "@vm.clinic.ast" });
     expect(screen.getByText("12,4 тыс.")).toBeTruthy();
     // Подключённые и страницы без Instagram свёрнуты и не предлагаются к выбору.
@@ -304,11 +322,12 @@ describe("страница «Публикации»", () => {
     expect(screen.getAllByText(/Кадр появится после выбора видео/).length).toBeGreaterThan(0);
   });
 
-  it("TikTok без права video.list получает подсказку о переподключении", () => {
+  it("TikTok без права video.list получает подсказку о переподключении", async () => {
     renderPage();
-    const row = screen.getByText("Клиника TikTok").closest("tr") as HTMLTableRowElement;
-    expect(row.textContent).toMatch(/без права video.list/);
-    const ig = screen.getByText("Клиника Айва").closest("tr") as HTMLTableRowElement;
-    expect(ig.textContent).not.toMatch(/video.list/);
+    // Строку не засоряем: подсказка живёт в тултипе у значка возле статуса.
+    openTooltip(screen.getByLabelText("Подробности статуса Клиника TikTok"));
+    expect((await screen.findAllByText(/без права video.list/))[0]).toBeTruthy();
+    // У здорового Instagram-аккаунта значка нет вовсе.
+    expect(screen.queryByLabelText("Подробности статуса Клиника Айва")).toBeNull();
   });
 });

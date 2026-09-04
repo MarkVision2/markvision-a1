@@ -3,6 +3,7 @@
  * YouTube (Instagram подключается через Meta OAuth в publish-accounts).
  *
  *   POST /publish-oauth/start   (JWT)  { project_id, platform, return_url, group_id? } → { url }
+ *   GET  /publish-oauth/diag    (JWT)  → что настроено, без значений секретов
  *   GET  /publish-oauth/callback/:platform?code&state   → 302 на return_url с
  *        ?publish_connected=<platform>&account=<name> или ?publish_error=<msg>
  *
@@ -33,16 +34,79 @@ import {
 
 const STATE_TTL_MS = 15 * 60_000;
 
-function appCredentials(platform: OAuthPlatform): { clientId: string; clientSecret: string } | null {
-  const [idKey, secretKey] = platform === "threads"
+function envKeys(platform: OAuthPlatform): [string, string] {
+  return platform === "threads"
     ? ["THREADS_APP_ID", "THREADS_APP_SECRET"]
     : platform === "tiktok"
     ? ["TIKTOK_CLIENT_KEY", "TIKTOK_CLIENT_SECRET"]
     : ["GOOGLE_OAUTH_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_SECRET"];
-  const clientId = Deno.env.get(idKey);
-  const clientSecret = Deno.env.get(secretKey);
+}
+
+/**
+ * Ключи приложения из секретов.
+ *
+ * trim обязателен: при вставке в Supabase Secrets в значение почти всегда
+ * приезжает перевод строки или пробел, и площадка отвечает «client_key» —
+ * ошибка выглядит так, будто ключ не тот, хотя он верный.
+ */
+function appCredentials(platform: OAuthPlatform): { clientId: string; clientSecret: string } | null {
+  const [idKey, secretKey] = envKeys(platform);
+  const clientId = Deno.env.get(idKey)?.trim();
+  const clientSecret = Deno.env.get(secretKey)?.trim();
   if (!clientId || !clientSecret) return null;
   return { clientId, clientSecret };
+}
+
+/**
+ * Явно неверный ключ — чтобы не гонять человека на страницу ошибки площадки.
+ * TikTok: client key начинается с `aw` (прод) или `sbaw` (песочница); чисто
+ * числовое значение — это App ID из той же карточки приложения, его площадка
+ * не принимает. Возвращает текст проблемы или null.
+ */
+function credentialShapeProblem(platform: OAuthPlatform, clientId: string): string | null {
+  if (platform !== "tiktok") return null;
+  if (/^\d+$/.test(clientId)) {
+    return "в TIKTOK_CLIENT_KEY лежит числовой App ID — нужен Client key со страницы приложения (начинается с aw или sbaw)";
+  }
+  if (!/^(sb)?aw/i.test(clientId)) {
+    return `TIKTOK_CLIENT_KEY не похож на client key TikTok (начинается с «${clientId.slice(0, 2)}», ожидается aw или sbaw)`;
+  }
+  return null;
+}
+
+/**
+ * Диагностика настройки OAuth без утечки секретов: что задано, какой длины,
+ * похоже ли на ключ площадки и какой redirect_uri нужно зарегистрировать в
+ * консоли приложения. Значения секретов наружу не отдаются.
+ *
+ * Функция публичная (verify_jwt = false нужен для callback площадки), поэтому
+ * диагностику закрываем JWT вручную — конфиг проекта не для случайного гостя.
+ */
+async function diag(req: Request): Promise<Response> {
+  const auth = await requireUser(req);
+  if (!auth.ok) return auth.response;
+  const platforms = (["threads", "tiktok", "youtube"] as OAuthPlatform[]).map((platform) => {
+    const [idKey, secretKey] = envKeys(platform);
+    const rawId = Deno.env.get(idKey);
+    const rawSecret = Deno.env.get(secretKey);
+    const id = rawId?.trim() ?? "";
+    return {
+      platform,
+      client_id_env: idKey,
+      client_id_set: Boolean(id),
+      client_id_length: id.length,
+      /** Первые два символа — их хватает, чтобы отличить aw / sbaw / цифры. */
+      client_id_prefix: id ? `${id.slice(0, 2)}…` : null,
+      /** Самая частая беда: пробел или перевод строки внутри секрета. */
+      client_id_had_whitespace: Boolean(rawId && rawId !== rawId.trim()),
+      secret_env: secretKey,
+      secret_set: Boolean(rawSecret?.trim()),
+      secret_had_whitespace: Boolean(rawSecret && rawSecret !== rawSecret.trim()),
+      shape_problem: id ? credentialShapeProblem(platform, id) : null,
+      redirect_uri: redirectUri(platform),
+    };
+  });
+  return json({ ok: true, token_key_configured: tokenKeyConfigured(), platforms });
 }
 
 function redirectUri(platform: OAuthPlatform): string {
@@ -72,6 +136,10 @@ async function start(req: Request, admin: SupabaseClient): Promise<Response> {
       error: `OAuth ${platform} не настроен`,
       hint: platform === "threads" ? "Секреты THREADS_APP_ID / THREADS_APP_SECRET" : platform === "tiktok" ? "Секреты TIKTOK_CLIENT_KEY / TIKTOK_CLIENT_SECRET" : "Секреты GOOGLE_OAUTH_CLIENT_ID / GOOGLE_OAUTH_CLIENT_SECRET",
     }, 503);
+  }
+  const shape = credentialShapeProblem(platform, creds.clientId);
+  if (shape) {
+    return json({ error: `OAuth ${platform} настроен неверно`, hint: shape }, 503);
   }
   if (!tokenKeyConfigured()) return json({ error: "PUBLISH_TOKEN_KEY не задан — токены сохранять некуда" }, 500);
 
@@ -162,6 +230,7 @@ Deno.serve(async (req) => {
   const idx = parts.indexOf("publish-oauth");
   const seg = idx >= 0 ? parts.slice(idx + 1) : parts;
   try {
+    if (seg[0] === "diag" && req.method === "GET") return await diag(req);
     if (seg[0] === "start" && req.method === "POST") return await start(req, admin);
     if (seg[0] === "callback" && isOAuthPlatform(seg[1]) && req.method === "GET") return await callback(url, seg[1], admin);
     return json({ error: "not found" }, 404);
