@@ -21,7 +21,7 @@ post_metrics ◀──── publish-metrics ◀──── publish_jobs ◀─
 | Радар | `supabase/functions/radar/index.ts`, чистая логика `supabase/functions/_lib/radar.ts` (нормализация, разбор), `supabase/functions/_lib/radarCrawl.ts` (прямой сборщик Apify: акторы, вход, разворачивание ответа, стоимость); миграция `20260907110000_radar_crawler.sql` (статус и id запуска в `radar_runs`) |
 | Конвейер: варианты, персоны, автопередача | `supabase/functions/content-pipeline/index.ts` (маршрут `/items/:id/variants`, `handoffToPublishing`, автоодобрение доверенных групп) |
 | Дистрибуция | `publish-intake` (планировщик слотов, стратегия группы), `publish-worker` (партиции), `_lib/publishers/threads.ts`, `publish-monitor` (обновление токенов, дайджест), `publish-metrics` (новая), `publish-accounts` (персоны, настройки, задания, Threads, «залить в группу»), `_lib/publishRunner.ts` (режим уведомлений) |
-| Интерфейс | `src/pages/Radar.tsx` + `src/lib/radarClient.ts` + `src/hooks/useRadar.ts`; `src/pages/Publishing.tsx` + `src/lib/publishingClient.ts` + `src/hooks/usePublishing.ts`; блок вариантов в `src/components/content-plan/ContentPipelinePanel.tsx` |
+| Интерфейс | `src/pages/Radar.tsx` + компоненты `src/components/radar/*` (строка статуса и поле ссылки `RadarHero`, лента `TrendsTab`/`TrendCard`, «рентген» поста `PostXraySheet`, `IdeaCard`, рейтинг `AuthorsTab`, `SourcesTab`, `RunsTab`) + `src/lib/radarClient.ts` + чистые вычисления `src/lib/radarStats.ts` + `src/hooks/useRadar.ts`; `src/pages/Publishing.tsx` + `src/lib/publishingClient.ts` + `src/hooks/usePublishing.ts`; блок вариантов в `src/components/content-plan/ContentPipelinePanel.tsx` |
 | n8n | `docs/n8n-radar-crawler-v2.json` (сборщик), `docs/n8n-content-pipeline-v5.json` (claim с `engine: heygen`), существующий «🚀 Система автопостинга» без изменений |
 | Диагностика | `scripts/content-pipeline-smoke.mjs doctor` проверяет radar / publish-metrics / publish-* ; `scripts/publishing-doctor.mjs` |
 | Воркер Reels faceless | `scripts/content-pipeline-worker.mjs` (claim по движку → OpenAI → reels_jobs → asset) |
@@ -70,6 +70,26 @@ Facebook-акторов сопоставлены по полям GraphQL/акт�
 скорость, оценка `radar_post_score()` (насыщение около 5 % ER, 200 взаимодействий/час, оценка
 модели даёт половину веса). Пост с оценкой ≥ 55 становится идеей в `idea_bank`. Бюджет проекта
 (`project_budget_ok`) проверяется перед каждым разбором и сбором.
+
+**X-фактор (миграция `20260908120000_radar_xfactor.sql`, идея — viralex.ai «обычно / сейчас / ×N»).**
+`radar_recompute_author()` считает по каждому автору медиану просмотров и лайков за 90 дней
+(`baseline_views` / `baseline_likes`), норму просмотров по аудитории `radar_norm_views(followers) =
+3.75 · followers^0.68` (кривая снята с публичных данных viralex) и `x_factor` = просмотры / медиана
+(без просмотров — лайки / медиана; у автора с одним постом — просмотры / норма). Пост с
+`x_factor ≥ 2` — «залетевший» (`radar_metrics.posts_viral`). Оценка `radar_post_score_v2` = старая
+формула + бонус до 15 за X-фактор. Пересчёт автора запускается после каждого ingest и разбора.
+
+**Интерфейс «как рентген» (`/marketing/radar`).** Строка статуса «● Радар · N постов под
+наблюдением · источников · залетевших · последний сбор» и поле «вставьте ссылку → Разобрать».
+Вкладки: **Тренды** — карточки постов (превью, просмотры/лайки, «обычно / сейчас / ER», X-фактор,
+ниша из разбора; фильтры площадка / период / ниша / только залетевшие / поиск; сортировки
+горячее (X-фактор с затуханием ≈ 3 дня) / X-фактор / просмотры / свежие / оценка); клик —
+**рентген поста** (`GET /radar/posts/:id`: динамика «обычно у автора / этот пост», реакции,
+почему залетел, хук, структура, триггеры, транскрипт, «Ваш сценарий» + «В контент-план»);
+**Идеи** — карточки с превью исходного поста и планом ролика; **Авторы** — рейтинг «принесли
+больше всего / пробивают свою аудиторию»: залетевших, просмотров сверх нормы, сила автора
+(лучший X-фактор), плотность хитов, корзины по подписчикам, «В источники» для авторов не из
+источников; **Источники**, **Сборы**.
 
 «В контент-план» — `radar_promote_idea(idea, group, persona, engine)`: тема REELS в `idea` с
 хуком/углом/структурой в `prompts`, группой и персоной; идемпотентно. Дальше работает
@@ -396,7 +416,8 @@ YouTube / Threads, нули видны), очередь и ближайший с
 
 | Вызов | Кто | Что |
 |---|---|---|
-| `GET /radar?project_id` | JWT | источники, витрина, идеи, лучшие посты, группы, сборы |
+| `GET /radar?project_id` | JWT | источники, витрина, идеи, посты (до 200, с X-фактором), группы, сборы; дособирает завершившиеся запуски Apify |
+| `GET /radar/posts/:id` | JWT | пост целиком (транскрипт, X-фактор) и его идеи — панель «рентген» |
 | `POST /radar/sources`, `/sources/:id/delete`, `/sources/:id/crawl` | JWT | источники; upsert сразу запускает сбор (`kicked`, `kick_error`, `run_id`); `crawl` отвечает 400 с причиной, если запуск невозможен, 402 — бюджет |
 | `POST /radar/analyze-url` | JWT | одна ссылка Instagram / TikTok / YouTube → запуск Apify (`mode: url`), 400 с причиной |
 | `POST /radar/posts/:id/analyze` | JWT | повторный разбор поста |
