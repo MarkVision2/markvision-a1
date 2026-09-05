@@ -250,7 +250,25 @@ Deno.serve(async (req) => {
     const hashtags = Array.isArray(body?.hashtags) ? body.hashtags.map(String) : [];
     const variants = Array.isArray(body?.caption_variants) ? body.caption_variants.map(String) : [];
 
+    // Идемпотентность клиента (API/MCP): тот же client_ref в проекте — то же видео,
+    // второй ролик и второй набор заданий не заводятся (UNIQUE (project_id, client_ref)).
+    const clientRef = typeof body?.client_ref === "string" && body.client_ref.trim() ? body.client_ref.trim().slice(0, 200) : null;
+    if (clientRef) {
+      const { data: same } = await admin.from("publish_videos")
+        .select("id, project_id, base_caption, caption_variants, hashtags")
+        .eq("project_id", projectId).eq("client_ref", clientRef).maybeSingle();
+      if (same) {
+        const existing = same as VideoRow;
+        const preview = composeCaption(existing.base_caption, existing.hashtags ?? []).slice(0, 300);
+        if (!body?.target) return json({ ok: true, video_id: existing.id, caption_preview: preview, created: 0, skipped: 0, idempotent: true });
+        const result = await createJobs(admin, existing, body.target as Target);
+        if (result.created) await kickWorker(admin);
+        return json({ ok: true, video_id: existing.id, caption_preview: preview, idempotent: true, ...result });
+      }
+    }
+
     const { data: inserted, error } = await admin.from("publish_videos").insert({
+      client_ref: clientRef,
       project_id: projectId,
       file_url: fileUrl,
       local_path: body?.local_path ? String(body.local_path) : null,

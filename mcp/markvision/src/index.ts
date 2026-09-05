@@ -25,7 +25,7 @@ if (!apiUrl) {
 }
 
 const client = new MarkVisionClient({ apiKey, baseUrl: apiUrl });
-const server = new McpServer({ name: "markvision", version: "0.1.0" });
+const server = new McpServer({ name: "markvision", version: "0.2.0" });
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
 
@@ -224,6 +224,46 @@ server.registerTool("markvision_metrics", {
   description: "Витрины проекта: публикации, радар идей, видео, группы и аккаунты (охваты, просмотры, здоровье).",
   inputSchema: {},
 }, () => run(() => client.metrics()));
+
+server.registerTool("markvision_get_job", {
+  title: "Трасса задания",
+  description:
+    "Одно задание публикации целиком: статус, верификация (verified / unverified / skipped), класс ошибки, " +
+    "шаги воркера по времени (JOB_CLAIMED → AUTH_OK → MEDIA_CREATED → VERIFIED → SUCCESS), сырые записи журнала и снятые метрики.",
+  inputSchema: { job_id: uuid },
+}, ({ job_id }) => run(() => client.job(job_id)));
+
+server.registerTool("markvision_content_analytics", {
+  title: "Аналитика контента",
+  description:
+    "Каждое видео во всех аккаунтах: публикаций, сумма и среднее просмотров, реакции, лучший аккаунт, Performance Score 0–100 " +
+    "и is_winner (верхние 10 % проекта). winners=true — только победители. Основа для решений «что масштабировать».",
+  inputSchema: { limit: z.number().int().min(1).max(200).optional(), winners: z.boolean().optional() },
+}, ({ limit, winners }) => run(() => client.contentAnalytics({ limit, winners })));
+
+server.registerTool("markvision_content_analytics_item", {
+  title: "Аналитика одного видео",
+  description: "Сводка по видео и все его публикации по аккаунтам с последней контрольной точкой метрик и score.",
+  inputSchema: { publication_id: uuid.describe("id видео (publication id из markvision_list_publications)") },
+}, ({ publication_id }) => run(() => client.contentAnalyticsItem(publication_id)));
+
+server.registerTool("markvision_account_analytics", {
+  title: "Аналитика аккаунта",
+  description: "Витрина аккаунта: посты, охват, ER, подписчики, здоровье с причинами — и последние публикации с метриками.",
+  inputSchema: { account_id: uuid },
+}, ({ account_id }) => run(() => client.accountAnalytics(account_id)));
+
+server.registerTool("markvision_notifications", {
+  title: "Уведомления проекта",
+  description: "Центр уведомлений: reconnect аккаунтов, упавшие и неподтверждённые публикации, ручной разбор. unread=true — только непрочитанные.",
+  inputSchema: { limit: z.number().int().min(1).max(200).optional(), unread: z.boolean().optional() },
+}, ({ limit, unread }) => run(() => client.notifications({ limit, unread })));
+
+server.registerTool("markvision_notification_read", {
+  title: "Отметить уведомление прочитанным",
+  description: "Снимает уведомление из непрочитанных.",
+  inputSchema: { notification_id: uuid },
+}, ({ notification_id }) => run(() => client.readNotification(notification_id)));
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

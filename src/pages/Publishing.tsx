@@ -34,6 +34,7 @@ import { AccountsTable, PLATFORM_DOT } from "@/components/publishing/AccountsTab
 import { ApiKeysSection } from "@/components/publishing/ApiKeysSection";
 import { JobsTab } from "@/components/publishing/JobsTab";
 import { NetworkTab } from "@/components/publishing/NetworkTab";
+import { NotificationsPanel } from "@/components/publishing/NotificationsPanel";
 import { UploadPublishDialog } from "@/components/publishing/UploadPublishDialog";
 import { usePublishing, type UsePublishing } from "@/hooks/usePublishing";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -182,6 +183,7 @@ export default function Publishing() {
         )}
 
         {projectId && <SummaryBar pub={pub} />}
+        <NotificationsPanel projectId={projectId} refreshKey={pub.jobs.length + pub.accounts.length} />
 
         {/* Пять вкладок вместо семи: статистика по аккаунтам живёт видом внутри
             «Аккаунтов», сводка по группам — над их настройками. Вкладка аккаунтов

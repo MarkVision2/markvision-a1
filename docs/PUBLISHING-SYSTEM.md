@@ -102,12 +102,19 @@ TikTok/YouTube/Threads и автопродления Meta-токенов. Дет
 ## Жизненный цикл задания
 
 ```
-pending ──claim──► processing ──► published
-   ▲                   │
+pending ──claim──► processing ──площадка приняла──► verifying ──пост прочитан──► published
+   ▲                   │                                                          (verification_status)
    │                   ├──► retry ──(scheduled_at, backoff)──► claim снова
-   │                   ├──► manual_review   (площадка не подключена)
+   │                   ├──► manual_review   (площадка не подключена / аккаунт не восстановлен)
    └──────retry────────┴──► failed          (отказ по существу или 5 попыток)
 ```
+
+Ответ площадки — ещё не публикация: после `external_post_id` задание переходит в `verifying`, воркер
+читает пост обратно (`getPublication` коннектора) и только тогда ставит `published` с
+`verification_status = verified`; не подтверждённый за 5 проверок пост — `unverified` + уведомление.
+Канонические классы ошибок (`error_class`), политика повторов с джиттером, трасса шагов
+(`publish_job_events`, `trace_id`) и центр уведомлений — `docs/JOBS.md`, слой коннекторов —
+`docs/CONNECTORS.md`, общая карта и план — `docs/ARCHITECTURE.md`.
 
 Кто и что решает:
 

@@ -33,7 +33,9 @@ import {
   type PublishAccount,
 } from "../_lib/publishing.ts";
 import { ensureFreshToken } from "../_lib/publishRunner.ts";
-import { identityRequest, parseIdentity, tokenNeedsRefresh } from "../_lib/publishOAuth.ts";
+import { identityRequest, isOAuthPlatform, parseIdentity, tokenNeedsRefresh } from "../_lib/publishOAuth.ts";
+import { resolveCapabilities, tokenKindOf } from "../_lib/publishCapabilities.ts";
+import { notifyCenter } from "../_lib/publishTrace.ts";
 import { requireProjectAccess } from "../_lib/auth.ts";
 import { computeHealth } from "../_lib/publishHealth.ts";
 
@@ -206,15 +208,43 @@ async function checkHealth(admin: SupabaseClient, projectId: string | null, acco
       failed30d: o.failed,
       published30d: o.published,
     });
+    // auth_status и возможности — для реестра аккаунтов (Account Registry, docs/ARCHITECTURE.md).
+    const authStatus = probe.alive === false
+      ? "reconnect_required"
+      : tokenNeedsRefresh(account.token_expires_at, Date.now(), 0) && !isOAuthPlatform(account.platform)
+      ? "expired"
+      : tokenNeedsRefresh(account.token_expires_at, Date.now(), TOKEN_WARN_DAYS * 86_400) && !isOAuthPlatform(account.platform)
+      ? "expiring"
+      : "connected";
+    let tokenKind: ReturnType<typeof tokenKindOf> = "unknown";
+    try { tokenKind = tokenKindOf(await decryptSecret(account.access_token_encrypted)); } catch { tokenKind = "unknown"; }
+    const capabilities = resolveCapabilities({
+      platform: account.platform, tokenKind, oauthScope: account.oauth_scope ?? null,
+      hasRefreshToken: Boolean(account.refresh_token_encrypted),
+    });
     await admin.from("publish_accounts").update({
       status: nextStatus,
       health_score: h.score,
       health_reasons: h.reasons,
+      auth_status: authStatus,
+      capabilities,
       // Не удалось достучаться до площадки — не считаем это проверкой.
       ...(probe.alive == null ? {} : { last_checked_at: now }),
       ...(probe.alive === false ? { last_error: probe.reason ?? "токен не проходит проверку — нужен reconnect" } : {}),
     }).eq("id", account.id);
     if (probe.alive === false && account.status !== "token_expired") dead.push(account);
+    if (probe.alive === false) {
+      await notifyCenter(admin, {
+        projectId: account.project_id, kind: "account.reconnect_required", severity: "error",
+        title: `Нужен reconnect: ${account.account_name} (${account.platform})`,
+        body: probe.reason ?? "токен не проходит проверку у площадки",
+        entityType: "publish_account", entityId: account.id, dedupeKey: `account:${account.id}:reconnect`,
+      });
+    } else if (probe.alive === true && account.status === "token_expired") {
+      // Аккаунт ожил — снимаем уведомление, чтобы следующий отказ завёл новое.
+      await admin.from("publish_notifications").update({ read_at: now })
+        .eq("project_id", account.project_id).eq("dedupe_key", `account:${account.id}:reconnect`).is("read_at", null);
+    }
     out.push({ id: account.id, account_name: account.account_name, platform: account.platform, alive: probe.alive, health_score: h.score, reasons: h.reasons });
   }
 

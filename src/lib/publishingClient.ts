@@ -18,6 +18,7 @@ export type PublishJobStatus =
   | "pending"
   | "retry"
   | "processing"
+  | "verifying"
   | "published"
   | "failed"
   | "manual_review"
@@ -55,7 +56,14 @@ export interface PublishAccount {
   followers: number | null;
   /** Права OAuth площадки (TikTok без video.list не отдаёт метрики). */
   oauth_scope?: string | null;
+  /** Ядро Phase 1: возможности аккаунта этим токеном, тип подключения, состояние авторизации. */
+  capabilities?: Record<string, boolean> | null;
+  connection_type?: "oauth" | "device" | "hybrid";
+  auth_status?: PublishAuthStatus;
 }
+
+export type PublishAuthStatus = "connected" | "expiring" | "expired" | "reconnect_required";
+export type PublishVerificationStatus = "pending" | "verified" | "unverified" | "skipped";
 
 export interface AvailablePage {
   page_id: string;
@@ -121,10 +129,18 @@ export interface PublishJob {
   scheduled_at: string | null;
   attempts: number;
   next_attempt_at: string | null;
+  external_post_id?: string | null;
   external_post_url: string | null;
   error_code: string | null;
+  /** Канонический класс ошибки (AUTH_EXPIRED, RATE_LIMIT, MEDIA_INVALID…). */
+  error_class?: string | null;
   error_message: string | null;
   published_at: string | null;
+  /** Верификация: пост прочитан обратно у площадки (verified) или нет. */
+  verification_status?: PublishVerificationStatus;
+  verified_at?: string | null;
+  verify_attempts?: number;
+  trace_id?: string | null;
   /** Площадка не отдаёт статистику по посту (удалён / чужой токен / нет прав) — метрики не собираем до reconnect. */
   metrics_unavailable_reason?: string | null;
   /** Аренда воркера; processing без свежей аренды — зависшее задание. */
@@ -270,6 +286,7 @@ export const JOB_STATUS_META: Record<PublishJobStatus, { label: string; cls: str
   pending: { label: "В очереди", cls: "bg-muted text-muted-foreground" },
   retry: { label: "Повтор", cls: "bg-violet-500/10 text-violet-700 dark:text-violet-300" },
   processing: { label: "Публикуется", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-300" },
+  verifying: { label: "Проверяется", cls: "bg-blue-500/10 text-blue-700 dark:text-blue-300" },
   published: { label: "Опубликовано", cls: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
   failed: { label: "Ошибка", cls: "bg-destructive/10 text-destructive" },
   manual_review: { label: "Ручная проверка", cls: "bg-sky-500/10 text-sky-700 dark:text-sky-300" },
@@ -292,6 +309,8 @@ export const JOB_ACTIONS: Record<PublishJobStatus, { retry: boolean; cancel: boo
   pending: { retry: false, cancel: true },
   retry: { retry: true, cancel: true },
   processing: { retry: false, cancel: false },
+  // Площадка уже приняла пост — повтор дал бы дубль, отмена бессмысленна.
+  verifying: { retry: false, cancel: false },
   published: { retry: false, cancel: false },
   failed: { retry: true, cancel: false },
   manual_review: { retry: true, cancel: true },
@@ -537,6 +556,11 @@ export const publishingApi = {
   jobsList: (project_id: string, opts: { status?: PublishJobStatus; limit?: number } = {}) =>
     call<{ jobs: PublishJob[] }>("jobs_list", { project_id, ...opts }),
   metrics: (project_id: string) => call<MetricsResponse>("metrics", { project_id }),
+  jobGet: (project_id: string, job_id: string) => call<JobDetail>("job_get", { project_id, job_id }),
+  notificationsList: (project_id: string, opts: { unread_only?: boolean; limit?: number } = {}) =>
+    call<{ notifications: PublishNotification[]; unread: number }>("notifications_list", { project_id, ...opts }),
+  notificationRead: (project_id: string, input: { notification_id?: string; all?: boolean }) =>
+    call<{ ok: true }>("notification_read", { project_id, ...input }),
   jobRetry: (project_id: string, job_id: string) => call<{ ok: true; status: "pending" }>("job_retry", { project_id, job_id }),
   jobCancel: (project_id: string, job_id: string) => call<{ ok: true; status: "cancelled" }>("job_cancel", { project_id, job_id }),
   publishVideo: (project_id: string, input: PublishVideoInput) =>
@@ -547,6 +571,75 @@ export const publishingApi = {
   apiKeyCreate: (project_id: string, input: ApiKeyCreateInput) =>
     call<{ key: string; api_key: ApiKey }>("api_key_create", { project_id, ...input }),
   apiKeyRevoke: (project_id: string, key_id: string) => call<{ ok: true }>("api_key_revoke", { project_id, key_id }),
+};
+
+/* ───────────────────────────── трасса задания и уведомления ───────────────────────────── */
+
+export interface JobEvent {
+  id: number;
+  step: string;
+  level: "info" | "warning" | "error";
+  message: string | null;
+  data: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface JobDetail {
+  job: PublishJob & {
+    poll_count?: number;
+    container_id?: string | null;
+    updated_at?: string;
+    publish_accounts: { account_name: string; handle: string | null; platform?: PublishPlatform } | null;
+  };
+  events: JobEvent[];
+  logs: { id: string; level: string; message: string; created_at: string }[];
+  metrics: { checkpoint: string; captured_at: string; views: number; reach: number; likes: number; comments: number; shares: number; saves: number; followers: number | null }[];
+}
+
+export interface PublishNotification {
+  id: string;
+  kind: string;
+  severity: "info" | "warning" | "error";
+  title: string;
+  body: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  read_at: string | null;
+  created_at: string;
+}
+
+/** Подпись верификации для интерфейса; pending на опубликованном — старые задания до миграции. */
+export const VERIFICATION_META: Record<PublishVerificationStatus, { label: string; cls: string; hint: string }> = {
+  pending: { label: "ждёт проверки", cls: "text-muted-foreground", hint: "Площадка приняла пост, воркер ещё не прочитал его обратно." },
+  verified: { label: "подтверждено", cls: "text-emerald-600 dark:text-emerald-400", hint: "Пост найден у площадки после публикации." },
+  unverified: { label: "не подтверждено", cls: "text-amber-600 dark:text-amber-400", hint: "Площадка вернула id поста, но прочитать его обратно не удалось — проверьте вручную." },
+  skipped: { label: "без проверки", cls: "text-muted-foreground", hint: "Площадка не даёт прочитать пост этим токеном (нет прав) или задание старше верификации." },
+};
+
+/** Человекочитаемые шаги трассы (publish_job_events.step). */
+export const TRACE_STEP_LABELS: Record<string, string> = {
+  JOB_CREATED: "Задание создано",
+  JOB_CLAIMED: "Воркер взял задание",
+  AUTH_OK: "Токен проверен",
+  AUTH_REFRESHED: "Токен обновлён",
+  AUTH_FAILED: "Ошибка авторизации",
+  CAPABILITY_OK: "Возможности аккаунта проверены",
+  CAPABILITY_MISSING: "Аккаунт не имеет нужного права",
+  MEDIA_OK: "Медиа проверено",
+  UPLOAD_STARTED: "Загрузка на площадку",
+  PROVIDER_PROCESSING: "Площадка обрабатывает медиа",
+  MEDIA_CREATED: "Площадка приняла пост",
+  VERIFY_STARTED: "Проверка публикации",
+  VERIFIED: "Публикация подтверждена",
+  VERIFY_PENDING: "Пост ещё не виден — проверим позже",
+  VERIFY_SKIPPED: "Проверка недоступна",
+  UNVERIFIED: "Публикация не подтверждена",
+  SUCCESS: "Готово",
+  RETRY: "Повтор",
+  FAILED: "Ошибка",
+  MANUAL_REVIEW: "Ручной разбор",
+  CANCELLED: "Отменено",
+  BUDGET_EXCEEDED: "Не успели за тик — вернули в очередь",
 };
 
 /* ───────────────────────────── проверка здоровья ───────────────────────────── */

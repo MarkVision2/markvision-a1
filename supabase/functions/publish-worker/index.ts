@@ -6,12 +6,16 @@
  * rpc claim_publish_jobs: аренда, статус аккаунта и дневная норма проверяются
  * в SQL, поэтому два параллельных вызова не возьмут одно задание.
  *
- * Переходы статусов — _lib/publishRunner.ts, площадки — _lib/publishers/.
+ * Второй проход того же тика — верификация: задания в статусе verifying
+ * (площадка приняла пост) читаются обратно у площадки (claim_publish_verifications
+ * → verifyPublishJob) и только после этого становятся published.
+ *
+ * Переходы статусов — _lib/publishRunner.ts, площадки — _lib/connectors/.
  */
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireUser, userHasAnyRole } from "../_lib/auth.ts";
 import { automationKeyValid, CORS_HEADERS, json, type PublishJob } from "../_lib/publishing.ts";
-import { runPublishJob } from "../_lib/publishRunner.ts";
+import { runPublishJob, verifyPublishJob } from "../_lib/publishRunner.ts";
 
 /** Сколько работаем за один вызов: остаток доберёт следующий тик крона. */
 const WALL_CLOCK_BUDGET_MS = 45_000;
@@ -52,7 +56,7 @@ Deno.serve(async (req) => {
   if (error) return json({ error: error.message }, 500);
 
   const jobs = (data ?? []) as PublishJob[];
-  const out = { claimed: jobs.length, published: 0, processing: 0, retry: 0, failed: 0, manual_review: 0 };
+  const out = { claimed: jobs.length, published: 0, verifying: 0, processing: 0, retry: 0, failed: 0, manual_review: 0, verified: 0, unverified: 0, verify_pending: 0 };
   const results: unknown[] = [];
   const deadline = Date.now() + WALL_CLOCK_BUDGET_MS;
 
@@ -68,10 +72,28 @@ Deno.serve(async (req) => {
     const result = await runPublishJob(admin, job, { budgetMs: JOB_BUDGET_MS });
     results.push(result);
     if (result.status === "published") out.published++;
+    else if (result.status === "verifying") out.verifying++;
     else if (result.status === "processing") out.processing++;
     else if (result.status === "retry") out.retry++;
     else if (result.status === "manual_review") out.manual_review++;
     else out.failed++;
+  }
+
+  // Второй проход: верификация принятых площадкой постов. Партиция 0 (или без
+  // партиций) — чтобы три воркера в минуту не читали одни и те же посты.
+  if ((partition ?? 0) === 0 && Date.now() < deadline) {
+    const { data: due } = await admin.rpc("claim_publish_verifications", { p_batch: 20, p_lock_timeout: "5 minutes" });
+    for (const job of (due ?? []) as PublishJob[]) {
+      if (Date.now() > deadline) {
+        await admin.from("publish_jobs").update({ locked_at: null }).eq("id", job.id);
+        continue;
+      }
+      const v = await verifyPublishJob(admin, job);
+      results.push(v);
+      if (v.verification === "verified") out.verified++;
+      else if (v.verification === "unverified") out.unverified++;
+      else if (v.verification === "pending") out.verify_pending++;
+    }
   }
 
   return json({ ok: true, partition, partitions, ...out, results });

@@ -31,6 +31,27 @@ describe("matchRoute", () => {
     expect(matchRoute("POST", `/api/v1/publications/${ID}/jobs`)).toEqual({ name: "publication_jobs_create", id: ID });
     expect(matchRoute("POST", `/api/v1/jobs/${ID}/cancel`)).toEqual({ name: "job_cancel", id: ID });
     expect(matchRoute("POST", `/api/v1/jobs/${ID}/retry`)).toEqual({ name: "job_retry", id: ID });
+    expect(matchRoute("GET", `/api/v1/jobs/${ID}`)).toEqual({ name: "job_get", id: ID });
+    expect(matchRoute("GET", "/api/v1/analytics/content")).toEqual({ name: "analytics_content" });
+    expect(matchRoute("GET", `/api/v1/analytics/content/${ID}`)).toEqual({ name: "analytics_content_item", id: ID });
+    expect(matchRoute("GET", `/api/v1/analytics/accounts/${ID}`)).toEqual({ name: "analytics_account", id: ID });
+    expect(matchRoute("GET", "/api/v1/notifications")).toEqual({ name: "notifications_list" });
+    expect(matchRoute("POST", `/api/v1/notifications/${ID}/read`)).toEqual({ name: "notification_read", id: ID });
+  });
+
+  it("аналитика и трасса — только чтение; POST на них — null", () => {
+    expect(matchRoute("POST", "/api/v1/analytics/content")).toBeNull();
+    expect(matchRoute("GET", `/api/v1/notifications/${ID}/read`)).toBeNull();
+    for (const name of ["job_get", "analytics_content", "notifications_list", "notification_read"] as const) {
+      expect(requiredScope({ name, id: ID } as never)).toBe("read");
+    }
+  });
+
+  it("client_ref попадает во вход публикации обрезанным, пустой — null", () => {
+    const ok = parsePublicationInput({ file_url: "https://cdn/x.mp4", client_ref: "  order-42  " });
+    expect(ok.ok && ok.input.client_ref).toBe("order-42");
+    const none = parsePublicationInput({ file_url: "https://cdn/x.mp4", client_ref: "   " });
+    expect(none.ok && none.input.client_ref).toBeNull();
   });
 
   it("чужие пути, не-uuid и не тот метод — null", () => {

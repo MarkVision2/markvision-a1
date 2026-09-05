@@ -54,6 +54,11 @@ Claude Desktop — тот же блок в `claude_desktop_config.json`.
 | `markvision_create_group`, `markvision_update_group`, `markvision_delete_group` | группы аккаунтов |
 | `markvision_get_settings`, `markvision_update_settings` | пауза проекта, уведомления, бюджеты |
 | `markvision_metrics` | витрины публикаций, радара, аккаунтов |
+| `markvision_get_job` | одно задание: статус, верификация, класс ошибки, трасса шагов воркера, журнал площадки, метрики |
+| `markvision_content_analytics` | аналитика по видео во всех аккаунтах: score 0–100, победители (`winners: true`) |
+| `markvision_content_analytics_item` | одно видео и его публикации по аккаунтам |
+| `markvision_account_analytics` | витрина аккаунта и последние публикации с метриками |
+| `markvision_notifications`, `markvision_notification_read` | центр уведомлений проекта |
 
 Типичный диалог: «загрузи `~/Movies/clip.mp4` в MarkVision и опубликуй в группу «Стоматологии» по капле с завтрашнего утра».
 

@@ -47,6 +47,9 @@
 - **Автопубликация готового видео в аккаунты площадок** (Instagram/TikTok/YouTube/Threads):
   очередь `publish_jobs` + edge-функции `publish-*`, оркестрация заявок и отчётов — в n8n.
   Детали, контракты endpoint'ов и онбординг аккаунтов — `docs/PUBLISHING-SYSTEM.md`.
+- **Social Content Factory OS (ядро)**: карта архитектуры, аудит по ТЗ и план фаз — `docs/ARCHITECTURE.md`;
+  очередь/статусы/верификация/трасса — `docs/JOBS.md`; коннекторы площадок — `docs/CONNECTORS.md`;
+  схема — `docs/DATABASE.md`; MCP и policy — `docs/MCP.md`; переменные — `docs/ENVIRONMENT.md`.
 - **Публичный API и MCP-сервер** (внешний клиент по API-ключу проекта загружает видео и ставит
   публикацию): edge `api` + таблица `api_keys`, ключи выдаются в «Публикации → Настройки»,
   MCP-сервер `mcp/markvision/`. Контракт — `docs/PUBLIC-API.md`.

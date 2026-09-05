@@ -41,7 +41,7 @@ describe("действия над заданиями", () => {
 
   it("опубликованное — ни того, ни другого", () => {
     render(<JobsTab pub={pub} />);
-    expect(screen.queryByRole("button", { name: /Готовый/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^(Повторить|Отменить) Готовый/ })).toBeNull();
   });
 
   it("ручной разбор — и повторить, и отменить", () => {

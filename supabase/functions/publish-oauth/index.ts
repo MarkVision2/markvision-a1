@@ -20,6 +20,7 @@
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
 import { requireProjectAccess, requireUser } from "../_lib/auth.ts";
 import { automationKeyValid, CORS_HEADERS, encryptSecret, json, tokenKeyConfigured } from "../_lib/publishing.ts";
+import { resolveCapabilities } from "../_lib/publishCapabilities.ts";
 import {
   authorizeUrl,
   codeExchangeRequest,
@@ -297,6 +298,8 @@ async function callback(url: URL, platform: OAuthPlatform, admin: SupabaseClient
     health_score: 100,
     health_reasons: ["аккаунт переподключён, токен свежий"],
     last_checked_at: new Date().toISOString(),
+    auth_status: "connected",
+    capabilities: resolveCapabilities({ platform, tokenKind: "oauth", oauthScope: parsed.scope, hasRefreshToken: Boolean(parsed.refreshToken) }),
     ...(st.group_id ? { group_id: st.group_id } : {}),
   }, { onConflict: "project_id,platform,external_account_id" }).select("id, account_name").maybeSingle();
   if (error) return fail(`сохранение аккаунта: ${error.message}`);

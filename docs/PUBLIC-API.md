@@ -60,6 +60,12 @@ Authorization: Bearer mv_live_…        (или заголовок x-api-key: m
 | `POST /publications/:id/jobs` | publish | задания на уже принятое видео |
 | `POST /jobs/:id/cancel` | publish | отменить не ушедшее задание |
 | `POST /jobs/:id/retry` | publish | вернуть упавшее задание в очередь |
+| `GET /jobs/:id` | read | задание целиком: статус, верификация, `error_class`, трасса шагов (`events`), журнал площадки (`logs`), снятые метрики |
+| `GET /analytics/content?limit=&winners=1` | read | витрина по видео: публикаций, сумма/среднее просмотров, реакции, лучший аккаунт, `score` 0–100, `is_winner` |
+| `GET /analytics/content/:id` | read | одно видео и его публикации по аккаунтам с последней точкой метрик |
+| `GET /analytics/accounts/:id` | read | витрина аккаунта (`publish_account_metrics`) и последние публикации |
+| `GET /notifications?unread=1&limit=` | read | центр уведомлений проекта (`unread` — счётчик непрочитанных) |
+| `POST /notifications/:id/read` | read | отметить уведомление прочитанным |
 
 ### Загрузка файла
 
@@ -95,6 +101,9 @@ curl -X POST "$API/publications" -H "Authorization: Bearer $KEY" -H "Content-Typ
   с минимальным интервалом и дневным лимитом; `daily` — по одному в день.
 - Без `group_id` и `account_ids` задания ставятся на **все активные аккаунты проекта**.
 - `caption_variants` раздаются аккаунтам по кругу, хэштеги подклеиваются к подписи.
+- `client_ref` (до 200 символов) — ключ идемпотентности: повторный вызов с тем же `client_ref` в проекте
+  вернёт то же `video_id` с `idempotent: true` и не заведёт второй ролик; задания по-прежнему уникальны
+  на пару видео + аккаунт.
 - Ответ: `{ ok, video_id, caption_preview, created, skipped, accounts: [{ id, account_name, scheduled_at }] }`.
 
 Проверка входа: `file_url` — https; по ссылке должно лежать видео (`content-type: video/*`)
@@ -124,8 +133,15 @@ curl -X POST "$API/settings" -H "Authorization: Bearer $KEY" -H "Content-Type: a
 и `publication.jobs[]` с `status, scheduled_at, published_at, external_post_url, error_code,
 error_message, publish_accounts.account_name`.
 
-Статусы заданий: `pending → processing → published`, а также `retry`, `failed`,
-`manual_review`, `cancelled`.
+Статусы заданий: `pending → processing → verifying → published`, а также `retry`, `failed`,
+`manual_review`, `cancelled`. `verifying` — площадка приняла пост, воркер ещё не прочитал его обратно;
+у `published` поле `verification_status` = `verified` / `unverified` / `skipped` (`docs/JOBS.md`).
+Класс ошибки — `error_class` (`AUTH_EXPIRED`, `RATE_LIMIT`, `MEDIA_INVALID`, …), сырой код площадки — `error_code`.
+
+### Аудит
+
+Каждый вызов пишется в `api_request_logs` (ключ, маршрут, статус, sha256 параметров, длительность) —
+основа AI audit log: кто, что и когда запустил через MCP.
 
 ## MCP-сервер
 
@@ -150,6 +166,7 @@ Cursor. Установка, конфиг и список инструменто�
 | Что | Где |
 |---|---|
 | Таблица ключей | `supabase/migrations/20260907130000_api_keys.sql` |
+| Аудит вызовов, уведомления, витрины аналитики | `supabase/migrations/20260908100000_content_factory_core.sql` |
 | Генерация, хэш, проверка, лимит | `supabase/functions/_lib/apiKeys.ts` |
 | Маршруты и разбор тела | `supabase/functions/_lib/publicApi.ts` |
 | Сама функция | `supabase/functions/api/index.ts` (вход) + `handler.ts` (логика с зависимостями наружу); `verify_jwt = false` в `config.toml` |

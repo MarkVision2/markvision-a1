@@ -23,6 +23,9 @@
  *   { action: "persona_list" | "persona_upsert" | "persona_delete", project_id, ... }
  *   { action: "settings_get" | "settings_upsert", project_id,  notify_mode?, digest_chat_id?, paused?, daily_usd?, monthly_usd? }
  *   { action: "jobs_list", project_id, status?, limit? }
+ *   { action: "job_get", job_id }                                — задание + трасса шагов (publish_job_events)
+ *   { action: "notifications_list", project_id, unread_only?, limit? } — центр уведомлений
+ *   { action: "notification_read", project_id, notification_id? | all: true }
  *   { action: "job_retry" | "job_cancel", project_id, job_id }   — повтор остановленного / отмена не ушедшего
  *   { action: "publish_video", project_id, file_url | video_id, group_id?, account_ids?, mode?, title?, caption?, hashtags? }
  *   { action: "metrics", project_id } → { publish, radar, videos, groups, accounts } — accounts из publish_account_metrics
@@ -34,6 +37,7 @@ import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supa
 import { requireProjectAccess, requireUser } from "../_lib/auth.ts";
 import { generateApiKey, hashApiKey, normalizeScopes } from "../_lib/apiKeys.ts";
 import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
+import { resolveCapabilities, tokenKindOf } from "../_lib/publishCapabilities.ts";
 import {
   automationKeyValid,
   CORS_HEADERS,
@@ -191,7 +195,7 @@ Deno.serve(async (req) => {
       if (!projectId) return json({ error: "project_id обязателен" }, 400);
       const { data, error } = await admin.from("publish_accounts")
         .select(
-          "id, platform, account_name, handle, external_account_id, fb_page_id, status, publish_enabled, daily_limit, last_post_at, consecutive_errors, last_error, token_expires_at, group_id, persona_id, timezone, window_start, window_end, ramp_enabled, ramp_started_at, health_score, health_reasons, last_checked_at, published_today, published_day, token_refreshed_at, followers, oauth_scope",
+          "id, platform, account_name, handle, external_account_id, fb_page_id, status, publish_enabled, daily_limit, last_post_at, consecutive_errors, last_error, token_expires_at, group_id, persona_id, timezone, window_start, window_end, ramp_enabled, ramp_started_at, health_score, health_reasons, last_checked_at, published_today, published_day, token_refreshed_at, followers, oauth_scope, capabilities, connection_type, auth_status",
         )
         .eq("project_id", projectId).order("platform").order("account_name");
       if (error) return json({ error: error.message }, 500);
@@ -285,6 +289,8 @@ Deno.serve(async (req) => {
           consecutive_errors: 0,
           last_error: null,
           followers: ig.followers_count ?? null,
+          auth_status: "connected",
+          capabilities: resolveCapabilities({ platform: "instagram", tokenKind: tokenKindOf(page.access_token) }),
           ...(groupId ? { group_id: groupId } : {}),
         }, { onConflict: "project_id,platform,external_account_id" })
           .select("id, account_name, handle").maybeSingle();
@@ -481,6 +487,8 @@ Deno.serve(async (req) => {
         publish_enabled: true,
         consecutive_errors: 0,
         last_error: null,
+        auth_status: "connected",
+        capabilities: resolveCapabilities({ platform: "threads", tokenKind: "oauth" }),
         group_id: threadsGroup.value ?? null,
       }, { onConflict: "project_id,platform,external_account_id" })
         .select("id, account_name, handle").maybeSingle();
@@ -611,11 +619,58 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    /* ── трасса одного задания: шаги воркера и сырые ответы площадки ── */
+    if (action === "job_get") {
+      const jobId = String(body?.job_id ?? "");
+      if (!jobId) return json({ error: "job_id обязателен" }, 400);
+      const [{ data: job, error }, { data: events }, { data: logs }] = await Promise.all([
+        admin.from("publish_jobs")
+          .select("id, project_id, video_id, account_id, platform, status, scheduled_at, attempts, poll_count, next_attempt_at, locked_at, container_id, external_post_id, external_post_url, error_code, error_class, error_message, published_at, verification_status, verified_at, verify_attempts, trace_id, metrics_unavailable_reason, created_at, updated_at, publish_accounts(account_name, handle, platform), publish_videos(title, file_url)")
+          .eq("id", jobId).eq("project_id", pid).maybeSingle(),
+        admin.from("publish_job_events").select("id, step, level, message, data, created_at").eq("job_id", jobId).order("created_at").limit(200),
+        admin.from("publish_logs").select("id, level, message, created_at").eq("job_id", jobId).order("created_at").limit(100),
+      ]);
+      if (error) return json({ error: error.message }, 500);
+      if (!job) return json({ error: "задание не найдено" }, 404);
+      const { data: metrics } = await admin.from("post_metrics")
+        .select("checkpoint, captured_at, views, reach, likes, comments, shares, saves, followers").eq("job_id", jobId).order("captured_at");
+      return json({ ok: true, job, events: events ?? [], logs: logs ?? [], metrics: metrics ?? [] });
+    }
+
+    /* ── центр уведомлений ── */
+    if (action === "notifications_list") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      let q = admin.from("publish_notifications")
+        .select("id, kind, severity, title, body, entity_type, entity_id, read_at, created_at")
+        .eq("project_id", projectId).order("created_at", { ascending: false })
+        .limit(Math.min(Math.max(Number(body?.limit ?? 50), 1), 200));
+      if (body?.unread_only) q = q.is("read_at", null);
+      const [{ data, error }, { count }] = await Promise.all([
+        q,
+        admin.from("publish_notifications").select("id", { count: "exact", head: true }).eq("project_id", projectId).is("read_at", null),
+      ]);
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, notifications: data ?? [], unread: count ?? 0 });
+    }
+    if (action === "notification_read") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      const now = new Date().toISOString();
+      let q = admin.from("publish_notifications").update({ read_at: now }).eq("project_id", projectId).is("read_at", null);
+      if (body?.all !== true) {
+        const id = String(body?.notification_id ?? "");
+        if (!id) return json({ error: "notification_id или all: true" }, 400);
+        q = q.eq("id", id);
+      }
+      const { error } = await q;
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true });
+    }
+
     /* ── задания и метрики для интерфейса ── */
     if (action === "jobs_list") {
       if (!projectId) return json({ error: "project_id обязателен" }, 400);
       let q = admin.from("publish_jobs")
-        .select("id, video_id, account_id, platform, status, scheduled_at, attempts, next_attempt_at, locked_at, external_post_url, error_code, error_message, published_at, metrics_unavailable_reason, created_at, publish_accounts(account_name, handle), publish_videos(title, file_url)")
+        .select("id, video_id, account_id, platform, status, scheduled_at, attempts, next_attempt_at, locked_at, external_post_id, external_post_url, error_code, error_class, error_message, published_at, verification_status, verified_at, verify_attempts, trace_id, metrics_unavailable_reason, created_at, publish_accounts(account_name, handle), publish_videos(title, file_url)")
         .eq("project_id", projectId)
         // DESC в Postgres по умолчанию NULLS FIRST — задания без времени всплывали бы наверх.
         .order("scheduled_at", { ascending: false, nullsFirst: false })

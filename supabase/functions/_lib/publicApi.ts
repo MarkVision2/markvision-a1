@@ -28,7 +28,13 @@ export type ApiRoute =
   | { name: "publication_get"; id: string }
   | { name: "publication_jobs_create"; id: string }
   | { name: "job_cancel"; id: string }
-  | { name: "job_retry"; id: string };
+  | { name: "job_retry"; id: string }
+  | { name: "job_get"; id: string }
+  | { name: "analytics_content" }
+  | { name: "analytics_content_item"; id: string }
+  | { name: "analytics_account"; id: string }
+  | { name: "notifications_list" }
+  | { name: "notification_read"; id: string };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -90,9 +96,24 @@ export function matchRoute(method: string, pathname: string): ApiRoute | null {
     return null;
   }
 
-  if (a === "jobs" && m === "POST" && seg.length === 3 && UUID.test(b ?? "")) {
-    if (c === "cancel") return { name: "job_cancel", id: b };
-    if (c === "retry") return { name: "job_retry", id: b };
+  if (a === "jobs" && UUID.test(b ?? "")) {
+    if (m === "GET" && seg.length === 2) return { name: "job_get", id: b };
+    if (m === "POST" && seg.length === 3 && c === "cancel") return { name: "job_cancel", id: b };
+    if (m === "POST" && seg.length === 3 && c === "retry") return { name: "job_retry", id: b };
+    return null;
+  }
+
+  if (a === "analytics" && m === "GET") {
+    if (seg.length === 2 && b === "content") return { name: "analytics_content" };
+    if (seg.length === 3 && b === "content" && UUID.test(c ?? "")) return { name: "analytics_content_item", id: c };
+    if (seg.length === 3 && b === "accounts" && UUID.test(c ?? "")) return { name: "analytics_account", id: c };
+    return null;
+  }
+
+  if (a === "notifications") {
+    if (m === "GET" && seg.length === 1) return { name: "notifications_list" };
+    if (m === "POST" && seg.length === 3 && UUID.test(b ?? "") && c === "read") return { name: "notification_read", id: b };
+    return null;
   }
   return null;
 }
@@ -111,6 +132,12 @@ export function requiredScope(route: ApiRoute): ApiScope {
     case "metrics":
     case "publications_list":
     case "publication_get":
+    case "job_get":
+    case "analytics_content":
+    case "analytics_content_item":
+    case "analytics_account":
+    case "notifications_list":
+    case "notification_read":
       return "read";
     case "account_update":
     case "accounts_health_check":
@@ -142,6 +169,8 @@ export interface PublicationInput {
   hashtags: string[];
   duration_sec: number | null;
   target: PublicationTarget | null;
+  /** Ключ идемпотентности клиента: тот же client_ref → то же видео, без второго набора заданий. */
+  client_ref: string | null;
 }
 
 const MODES = ["now", "drip", "daily"] as const;
@@ -213,6 +242,7 @@ export function parsePublicationInput(body: unknown): { ok: true; input: Publica
       hashtags,
       duration_sec: duration,
       target,
+      client_ref: b.client_ref != null && String(b.client_ref).trim() ? String(b.client_ref).trim().slice(0, 200) : null,
     },
   };
 }

@@ -100,6 +100,18 @@ export class MarkVisionClient {
     return this.request<{ jobs: unknown[] }>("GET", `/jobs?${q}`);
   }
   metrics() { return this.request<Record<string, unknown>>("GET", "/metrics"); }
+  job(id: string) { return this.request<Record<string, unknown>>("GET", `/jobs/${id}`); }
+  contentAnalytics(opts: { limit?: number; winners?: boolean } = {}) {
+    const q = new URLSearchParams({ limit: String(opts.limit ?? 50), ...(opts.winners ? { winners: "1" } : {}) });
+    return this.request<{ content: unknown[] }>("GET", `/analytics/content?${q}`);
+  }
+  contentAnalyticsItem(id: string) { return this.request<Record<string, unknown>>("GET", `/analytics/content/${id}`); }
+  accountAnalytics(id: string) { return this.request<Record<string, unknown>>("GET", `/analytics/accounts/${id}`); }
+  notifications(opts: { limit?: number; unread?: boolean } = {}) {
+    const q = new URLSearchParams({ limit: String(opts.limit ?? 50), ...(opts.unread ? { unread: "1" } : {}) });
+    return this.request<{ notifications: unknown[]; unread: number }>("GET", `/notifications?${q}`);
+  }
+  readNotification(id: string) { return this.request<Record<string, unknown>>("POST", `/notifications/${id}/read`); }
 
   /** Файл с диска → presigned URL → PUT байтов напрямую в хранилище → публичная ссылка. */
   async uploadFile(filePath: string): Promise<UploadResult> {

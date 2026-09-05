@@ -5,8 +5,8 @@
  * оператор ищет здесь ошибки, и число рядом со статусом видно до клика.
  * Ошибка живёт в подсказке, а не третьей строкой в ячейке.
  */
-import { useMemo } from "react";
-import { ExternalLink, RotateCcw, XCircle } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ExternalLink, ListTree, RotateCcw, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -15,15 +15,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { initials } from "@/components/publishing/PostPreview";
 import type { UsePublishing } from "@/hooks/usePublishing";
-import { jobActions, JOB_STATUS_META, PLATFORM_META, type PublishJobStatus } from "@/lib/publishingClient";
+import { JobDetailDialog } from "@/components/publishing/JobDetailDialog";
+import { jobActions, JOB_STATUS_META, PLATFORM_META, VERIFICATION_META, type PublishJobStatus } from "@/lib/publishingClient";
 import { fmtExact, fmtRelative } from "@/lib/publishingFormat";
 import { cn } from "@/lib/utils";
 
 /** Статусы в порядке разбора очереди: сначала то, что требует внимания. */
-const ORDER: PublishJobStatus[] = ["failed", "manual_review", "retry", "processing", "pending", "published", "cancelled"];
+const ORDER: PublishJobStatus[] = ["failed", "manual_review", "retry", "processing", "verifying", "pending", "published", "cancelled"];
 
 export function JobsTab({ pub }: { pub: UsePublishing }) {
   const busy = pub.busy != null;
+  const [openJob, setOpenJob] = useState<string | null>(null);
   const act = async (label: string, fn: () => Promise<unknown>) => {
     try {
       await fn();
@@ -90,7 +92,7 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
                   <TableHead className="h-9 w-[130px]">Запланировано</TableHead>
                   <TableHead className="h-9 w-[70px] text-right">Попыток</TableHead>
                   <TableHead className="h-9 w-[90px]">Пост</TableHead>
-                  <TableHead className="h-9 w-[190px]" />
+                  <TableHead className="h-9 w-[230px]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -103,13 +105,26 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
                       <TableCell className="py-2">
                         <div className="flex items-center gap-1">
                           <Badge variant="outline" className={cn("whitespace-nowrap border-transparent font-medium", st.cls)}>{st.label}</Badge>
+                          {j.status === "published" && j.verification_status && j.verification_status !== "verified" && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span tabIndex={0} className={cn("cursor-help text-xs", VERIFICATION_META[j.verification_status].cls)}>
+                                  {j.verification_status === "unverified" ? "⚠" : "·"}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs">
+                                {VERIFICATION_META[j.verification_status].label}: {VERIFICATION_META[j.verification_status].hint}
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
                           {failed && (
                             <Tooltip>
                               <TooltipTrigger asChild>
                                 <span tabIndex={0} aria-label={`Ошибка задания ${acc?.account_name ?? ""}`} className="cursor-help text-xs text-destructive">⚠</span>
                               </TooltipTrigger>
                               <TooltipContent className="max-w-xs">
-                                {j.error_code && <code className="mr-1">{j.error_code}</code>}
+                                {j.error_class && <code className="mr-1">{j.error_class}</code>}
+                                {j.error_code && <code className="mr-1 text-muted-foreground">{j.error_code}</code>}
                                 {j.error_message}
                               </TooltipContent>
                             </Tooltip>
@@ -170,6 +185,13 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
                         )}
                       </TableCell>
                       <TableCell className="py-2 text-right">
+                        <Button
+                          size="sm" variant="ghost" className="h-7 px-2 text-muted-foreground"
+                          aria-label={`Трасса ${acc?.account_name ?? ""}`}
+                          onClick={() => setOpenJob(j.id)}
+                        >
+                          <ListTree className="h-3.5 w-3.5" />
+                        </Button>
                         {jobActions(j).stale && (
                           <span className="mr-1 text-xs text-amber-600 dark:text-amber-400" title="Воркер не отвечает больше 10 минут">зависло</span>
                         )}
@@ -199,6 +221,7 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
             </Table>
           </div>
         )}
+        <JobDetailDialog projectId={pub.projectId} jobId={openJob} onClose={() => setOpenJob(null)} />
       </div>
     </TooltipProvider>
   );
