@@ -421,6 +421,7 @@ async function analyzePost(db: SupabaseClient, post: PostRow, context: { busines
     ownNiche: context.niche,
   });
   let analysis = null;
+  let rawContent = "";
   try {
     const completion = await aiChatCompletion({
       messages: [{ role: "system", content: prompt.system }, { role: "user", content: prompt.user }],
@@ -429,14 +430,19 @@ async function analyzePost(db: SupabaseClient, post: PostRow, context: { busines
       openAiModel: "gpt-4o-mini",
       timeoutMs: 60_000,
     }) as { choices?: { message?: { content?: string } }[] };
-    analysis = parseAnalysis(completion?.choices?.[0]?.message?.content ?? "");
+    rawContent = String(completion?.choices?.[0]?.message?.content ?? "");
+    analysis = parseAnalysis(rawContent);
   } catch (e) {
     const message = safeTechMessage(e);
     await db.from("radar_posts").update({ analysis_status: "failed", error: message.slice(0, 500) }).eq("id", post.id);
     return { ok: false, error: message };
   }
   if (!analysis) {
-    await db.from("radar_posts").update({ analysis_status: "failed", error: "модель вернула невалидный JSON" }).eq("id", post.id);
+    const preview = rawContent.replace(/\s+/g, " ").trim().slice(0, 300);
+    await db.from("radar_posts").update({
+      analysis_status: "failed",
+      error: preview ? `модель вернула невалидный JSON: ${preview}` : "модель вернула пустой ответ",
+    }).eq("id", post.id);
     return { ok: false, error: "invalid analysis" };
   }
   const cost = estimateAnalysisCostUsd(seconds, prompt.system.length + prompt.user.length);
