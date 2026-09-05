@@ -43,6 +43,16 @@ export function validateWindow(start: string, end: string): string | null {
   return null;
 }
 
+/** Пояс известен браузеру (тот же список IANA, что и у Postgres). */
+export function isValidTimeZone(tz: string): boolean {
+  try {
+    new Intl.DateTimeFormat("en", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 const hhmm = (t: string | null | undefined) => (t ? t.slice(0, 5) : "");
 
 export function AccountWindowDialog({
@@ -79,6 +89,8 @@ export function AccountWindowDialog({
   const submit = async () => {
     const tz = tzChoice === INHERIT ? null : tzChoice === CUSTOM ? tzCustom.trim() : tzChoice;
     if (tzChoice === CUSTOM && !tz) { setErr("Введите пояс в формате Region/City, например Asia/Almaty"); return; }
+    // Опечатка в поясе иначе всплыла бы не здесь, а при планировании слотов (AT TIME ZONE в SQL).
+    if (tz && !isValidTimeZone(tz)) { setErr(`Неизвестный часовой пояс «${tz}» — нужен идентификатор IANA, например Asia/Almaty`); return; }
     const wErr = validateWindow(start, end);
     if (wErr) { setErr(wErr); return; }
     setErr(null);

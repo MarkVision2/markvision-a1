@@ -107,6 +107,9 @@ interface VideoRow {
   hashtags: string[] | null;
 }
 
+/** Пауза группы — штатное состояние, а не сбой: наружу уходит 409, не 500. */
+class PausedGroupError extends Error {}
+
 /** Стратегия группы — значение по умолчанию для target.mode / per_hour. */
 async function applyGroupStrategy(admin: SupabaseClient, projectId: string, target: Target): Promise<Target> {
   if (!target.group_id) return target;
@@ -115,7 +118,7 @@ async function applyGroupStrategy(admin: SupabaseClient, projectId: string, targ
     .eq("id", target.group_id).eq("project_id", projectId).maybeSingle();
   const g = data as { publish_strategy?: string; per_hour?: number; review_mode?: string } | null;
   if (!g) return target;
-  if (g.review_mode === "paused") throw new Error("группа на паузе (review_mode = paused)");
+  if (g.review_mode === "paused") throw new PausedGroupError("группа на паузе (review_mode = paused)");
   const mode = target.mode ?? (g.publish_strategy === "all_at_once" ? "now" : g.publish_strategy === "daily" ? "daily" : "drip");
   return { ...target, mode, per_hour: target.per_hour ?? g.per_hour };
 }
@@ -406,6 +409,7 @@ Deno.serve(async (req) => {
     if (result.created) await kickWorker(admin);
     return json({ ok: true, video_id: video.id, caption_preview: preview, ...result });
   } catch (e) {
+    if (e instanceof PausedGroupError) return json({ error: e.message, reason: "group_paused" }, 409);
     return json({ error: e instanceof Error ? e.message : String(e) }, 500);
   }
 });
