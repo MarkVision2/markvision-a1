@@ -39,6 +39,31 @@ describe("matchRoute", () => {
     expect(matchRoute("POST", `/api/v1/notifications/${ID}/read`)).toEqual({ name: "notification_read", id: ID });
   });
 
+  it("кампании, вебхуки, отчёт", () => {
+    expect(matchRoute("GET", "/api/v1/campaigns")).toEqual({ name: "campaigns_list" });
+    expect(matchRoute("POST", "/api/v1/campaigns")).toEqual({ name: "campaign_create" });
+    expect(matchRoute("GET", `/api/v1/campaigns/${ID}`)).toEqual({ name: "campaign_get", id: ID });
+    expect(matchRoute("POST", `/api/v1/campaigns/${ID}`)).toEqual({ name: "campaign_update", id: ID });
+    expect(matchRoute("POST", `/api/v1/campaigns/${ID}/items`)).toEqual({ name: "campaign_items_add", id: ID });
+    expect(matchRoute("POST", `/api/v1/campaigns/${ID}/items-remove`)).toEqual({ name: "campaign_items_remove", id: ID });
+    expect(matchRoute("POST", `/api/v1/campaigns/${ID}/start`)).toEqual({ name: "campaign_status", id: ID, status: "active" });
+    expect(matchRoute("POST", `/api/v1/campaigns/${ID}/pause`)).toEqual({ name: "campaign_status", id: ID, status: "paused" });
+    expect(matchRoute("POST", `/api/v1/campaigns/${ID}/complete`)).toEqual({ name: "campaign_status", id: ID, status: "completed" });
+    expect(matchRoute("POST", `/api/v1/campaigns/${ID}/plan`)).toEqual({ name: "campaign_plan", id: ID });
+    expect(matchRoute("GET", `/api/v1/campaigns/${ID}/plan`)).toBeNull();
+    expect(matchRoute("GET", "/api/v1/webhooks")).toEqual({ name: "webhooks_list" });
+    expect(matchRoute("POST", "/api/v1/webhooks")).toEqual({ name: "webhook_create" });
+    expect(matchRoute("POST", `/api/v1/webhooks/${ID}`)).toEqual({ name: "webhook_update", id: ID });
+    expect(matchRoute("POST", `/api/v1/webhooks/${ID}/delete`)).toEqual({ name: "webhook_delete", id: ID });
+    expect(matchRoute("GET", `/api/v1/webhooks/${ID}/deliveries`)).toEqual({ name: "webhook_deliveries", id: ID });
+    expect(matchRoute("GET", "/api/v1/reports/daily")).toEqual({ name: "report_daily" });
+    expect(requiredScope({ name: "campaign_create" })).toBe("publish");
+    expect(requiredScope({ name: "campaign_status", id: ID, status: "active" })).toBe("publish");
+    expect(requiredScope({ name: "webhook_create" })).toBe("manage");
+    expect(requiredScope({ name: "webhooks_list" })).toBe("read");
+    expect(requiredScope({ name: "report_daily" })).toBe("read");
+  });
+
   it("аналитика и трасса — только чтение; POST на них — null", () => {
     expect(matchRoute("POST", "/api/v1/analytics/content")).toBeNull();
     expect(matchRoute("GET", `/api/v1/notifications/${ID}/read`)).toBeNull();

@@ -75,10 +75,48 @@ password|cookie`. Сырые ответы площадок — по-прежне
 `claim_publish_verifications` + `verifyPublishJob`. Ответ функции — счётчики
 `claimed / published / verifying / processing / retry / failed / manual_review / verified / unverified / verify_pending`.
 
+## Кампании (Phase 2)
+
+`publish_campaigns` = период × аккаунты (группа и/или список) × правило (`posts_per_day`, `slot_times`,
+`weekdays`, `mode`, `distribution`) × очередь `publish_campaign_items`. Планировщик — SQL:
+
+- `plan_campaign_day(campaign, day)` — для каждого времени слота дня берёт следующее видео очереди
+  (`fanout`: одно видео во все годные аккаунты через `plan_publish_slots`; `spread`: каждому аккаунту
+  своё видео по кругу) и помечает задания `campaign_id`. Идемпотентно: занятые слоты дня считаются
+  по `planned_at` / заданиям аккаунта, прошедшие слоты (старше часа) не догоняются.
+- `plan_publish_campaigns(days_ahead)` — все активные кампании на сегодня и завтра; крон
+  `publish-campaign-planner-hourly` (`10 * * * *`). Запуск кампании из интерфейса/API планирует сразу.
+- Автозавершение: очередь пуста (или период кончился) и нет открытых заданий → `completed`,
+  уведомление и событие `campaign.completed`.
+- Витрина `publish_campaign_metrics`: очередь, задания по статусам, ближайший слот, просмотры/охват/реакции.
+
+Статусы: `draft → active ⇄ paused → completed → archived` (`campaign_status` в `publish-accounts`,
+`POST /api/v1/campaigns/:id/start|pause|complete|archive`).
+
+## Вебхуки (Phase 2)
+
+`publish_webhooks` (адрес https, события, зашифрованный секрет) + `publish_webhook_deliveries`.
+События ставят триггеры: `publish_jobs` (`publication.published | failed | needs_human | unverified`),
+`publish_notifications` (`account.reconnect_required`, `campaign.completed`, `report.daily` — kind
+уведомления = событие). Доставка — edge `publish-webhooks` по крону ежеминутно (только когда есть
+due-доставки): `POST` с заголовками `X-MarkVision-Event`, `X-MarkVision-Delivery`,
+`X-MarkVision-Timestamp`, `X-MarkVision-Signature: t=<unix>,v1=<hex HMAC-SHA256(secret, "t.body")>`.
+2xx — `delivered`; 5xx / 429 / сеть — `retry` по лестнице 1 → 5 → 15 → 60 → 180 мин (5 попыток →
+`failed`); прочие 4xx — `failed` сразу. Чистая часть — `_lib/webhooks.ts` (`src/test/webhooks.test.ts`).
+
+## Ежедневный отчёт
+
+`publish-monitor { mode: "daily_report" }` (крон `publish-monitor-daily-report`, 05:00 UTC): по каждому
+проекту с аккаунтами — аккаунты (всего / здоровы / внимание), задания за 24 ч (запланировано /
+опубликовано / ошибок / ждут, успешность), просмотры и охват за 7 дней, топ‑3 контента по score.
+Уходит в Telegram (чат дайджеста или проекта, кроме `notify_mode = silent`), в центр уведомлений
+(`report.daily`, один раз в день) и вебхукам. `GET /api/v1/reports/daily` — тот же JSON без отправки.
+
 ## Ретеншн
 
 `publish_maintenance_gc(events_days=90, logs_days=90, api_logs_days=90, notif_days=180)` — крон
-`publish-maintenance-daily` (03:50 UTC). Значения — аргументы функции в `cron.job.command`.
+`publish-maintenance-daily` (03:50 UTC); доставки вебхуков (`delivered`/`failed`) — 30 дней.
+Значения — аргументы функции в `cron.job.command`.
 
 ## Нагрузочный тест (Mock)
 

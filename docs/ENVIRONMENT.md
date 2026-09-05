@@ -5,7 +5,7 @@
 | Переменная | Кому | Назначение |
 |---|---|---|
 | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | все | системные, только на сервере |
-| `PUBLISH_TOKEN_KEY` | publish-accounts, publish-oauth, worker, monitor, metrics | ключ AES-GCM для токенов площадок (любая длинная строка; смена = токены не читаются → reconnect) |
+| `PUBLISH_TOKEN_KEY` | publish-accounts, publish-oauth, worker, monitor, metrics, publish-webhooks | ключ AES-GCM для токенов площадок и секретов вебхуков (любая длинная строка; смена = токены не читаются → reconnect, секреты вебхуков — ротация) |
 | `TELEGRAM_BOT_TOKEN` | runner, monitor | уведомления в чат проекта (`telegram_links`) |
 | `THREADS_APP_ID`, `THREADS_APP_SECRET` | publish-oauth, runner | приложение Threads |
 | `TIKTOK_CLIENT_KEY`, `TIKTOK_CLIENT_SECRET` | publish-oauth, runner, tiktok-connect | TikTok for Developers (Login Kit + Content Posting) |

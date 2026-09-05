@@ -115,7 +115,7 @@ export interface Persona {
 }
 
 export interface PublishSettings {
-  settings: { notify_mode: NotifyMode; digest_chat_id: string | null; max_parallel_workers: number; paused?: boolean };
+  settings: { notify_mode: NotifyMode; digest_chat_id: string | null; max_parallel_workers: number; paused?: boolean; features?: Record<string, boolean> };
   budget: { daily_usd: number; monthly_usd: number };
   spend: { today_usd: number; month_usd: number };
 }
@@ -557,6 +557,26 @@ export const publishingApi = {
     call<{ jobs: PublishJob[] }>("jobs_list", { project_id, ...opts }),
   metrics: (project_id: string) => call<MetricsResponse>("metrics", { project_id }),
   jobGet: (project_id: string, job_id: string) => call<JobDetail>("job_get", { project_id, job_id }),
+
+  campaignList: (project_id: string) => call<{ campaigns: PublishCampaign[]; metrics: CampaignMetrics[] }>("campaign_list", { project_id }),
+  campaignGet: (project_id: string, campaign_id: string) =>
+    call<{ campaign: PublishCampaign; metrics: CampaignMetrics | null; items: CampaignItem[]; jobs: PublishJob[] }>("campaign_get", { project_id, campaign_id }),
+  campaignUpsert: (project_id: string, input: CampaignUpsertInput) => call<{ campaign: PublishCampaign }>("campaign_upsert", { project_id, ...input }),
+  campaignItemsAdd: (project_id: string, campaign_id: string, video_ids: string[]) =>
+    call<{ added: number; skipped: number }>("campaign_items_add", { project_id, campaign_id, video_ids }),
+  campaignItemsRemove: (project_id: string, campaign_id: string, video_ids: string[]) =>
+    call<{ removed: number }>("campaign_items_remove", { project_id, campaign_id, video_ids }),
+  campaignStatus: (project_id: string, campaign_id: string, status: CampaignStatus) =>
+    call<{ campaign: PublishCampaign; planned: { planned: number; jobs_created: number } | null }>("campaign_status", { project_id, campaign_id, status }),
+  campaignPlanNow: (project_id: string, campaign_id: string) =>
+    call<{ result: { planned: number; jobs_created: number; completed: boolean } }>("campaign_plan_now", { project_id, campaign_id }),
+
+  webhookList: (project_id: string) => call<{ webhooks: PublishWebhook[] }>("webhook_list", { project_id }),
+  webhookUpsert: (project_id: string, input: { webhook_id?: string; name?: string; url?: string; events?: string[]; enabled?: boolean; rotate_secret?: boolean }) =>
+    call<{ webhook: PublishWebhook; secret?: string }>("webhook_upsert", { project_id, ...input }),
+  webhookDelete: (project_id: string, webhook_id: string) => call<{ ok: true }>("webhook_delete", { project_id, webhook_id }),
+  webhookDeliveries: (project_id: string, webhook_id: string) =>
+    call<{ deliveries: WebhookDelivery[] }>("webhook_deliveries", { project_id, webhook_id }),
   notificationsList: (project_id: string, opts: { unread_only?: boolean; limit?: number } = {}) =>
     call<{ notifications: PublishNotification[]; unread: number }>("notifications_list", { project_id, ...opts }),
   notificationRead: (project_id: string, input: { notification_id?: string; all?: boolean }) =>
@@ -641,6 +661,135 @@ export const TRACE_STEP_LABELS: Record<string, string> = {
   CANCELLED: "Отменено",
   BUDGET_EXCEEDED: "Не успели за тик — вернули в очередь",
 };
+
+/* ───────────────────────────── кампании и вебхуки ───────────────────────────── */
+
+export type CampaignStatus = "draft" | "active" | "paused" | "completed" | "archived";
+
+export interface PublishCampaign {
+  id: string;
+  name: string;
+  objective: string | null;
+  status: CampaignStatus;
+  start_date: string;
+  end_date: string | null;
+  timezone: string | null;
+  group_id: string | null;
+  account_ids: string[];
+  posts_per_day: number;
+  slot_times: string[];
+  weekdays: number[];
+  mode: "drip" | "now";
+  distribution: "fanout" | "spread";
+  planned_until: string | null;
+  completed_at: string | null;
+  created_at: string;
+}
+
+export interface CampaignMetrics {
+  campaign_id: string;
+  accounts_eligible: number;
+  items_total: number;
+  items_queued: number;
+  items_planned: number;
+  jobs_total: number;
+  jobs_published: number;
+  jobs_failed: number;
+  jobs_open: number;
+  next_slot_at: string | null;
+  views_total: number;
+  reach_total: number;
+  engagements_total: number;
+}
+
+export interface CampaignItem {
+  id: string;
+  video_id: string;
+  position: number;
+  status: "queued" | "planned" | "skipped";
+  planned_at: string | null;
+  jobs_count: number;
+  note: string | null;
+  publish_videos: { title: string | null; file_url: string; thumbnail_url: string | null } | null;
+}
+
+export interface CampaignUpsertInput {
+  campaign_id?: string;
+  name?: string;
+  objective?: string | null;
+  start_date?: string;
+  end_date?: string | null;
+  timezone?: string | null;
+  group_id?: string | null;
+  account_ids?: string[];
+  posts_per_day?: number;
+  slot_times?: string[];
+  weekdays?: number[];
+  mode?: "drip" | "now";
+  distribution?: "fanout" | "spread";
+}
+
+export const CAMPAIGN_STATUS_META: Record<CampaignStatus, { label: string; cls: string }> = {
+  draft: { label: "Черновик", cls: "bg-muted text-muted-foreground" },
+  active: { label: "Идёт", cls: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" },
+  paused: { label: "Пауза", cls: "bg-amber-500/10 text-amber-700 dark:text-amber-300" },
+  completed: { label: "Завершена", cls: "bg-sky-500/10 text-sky-700 dark:text-sky-300" },
+  archived: { label: "Архив", cls: "bg-muted text-muted-foreground" },
+};
+
+/** Переходы статуса кампании (зеркало publish-accounts campaign_status). */
+export const CAMPAIGN_TRANSITIONS: Record<CampaignStatus, CampaignStatus[]> = {
+  draft: ["active", "archived"],
+  active: ["paused", "completed", "archived"],
+  paused: ["active", "completed", "archived"],
+  completed: ["archived", "active"],
+  archived: ["draft"],
+};
+
+/** Времена слотов по правилу кампании — зеркало SQL publish_campaign_slot_times. */
+export function campaignSlotTimes(slotTimes: string[], postsPerDay: number): string[] {
+  if (slotTimes.length) return [...slotTimes].sort();
+  const n = Math.max(postsPerDay, 1);
+  if (n === 1) return ["12:00"];
+  return Array.from({ length: n }, (_, i) => {
+    const minutes = 10 * 60 + Math.round((9 * 60 * i) / (n - 1));
+    return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  });
+}
+
+export interface PublishWebhook {
+  id: string;
+  name: string;
+  url: string;
+  events: string[];
+  enabled: boolean;
+  created_at: string;
+  last_delivery_at: string | null;
+  last_status: number | null;
+}
+
+export interface WebhookDelivery {
+  id: number;
+  event: string;
+  status: "pending" | "retry" | "delivered" | "failed";
+  attempts: number;
+  next_attempt_at: string;
+  response_status: number | null;
+  last_error: string | null;
+  delivered_at: string | null;
+  created_at: string;
+}
+
+export const WEBHOOK_EVENT_OPTIONS: { value: string; label: string }[] = [
+  { value: "*", label: "Все события" },
+  { value: "publication.published", label: "Публикация подтверждена" },
+  { value: "publication.failed", label: "Публикация не удалась" },
+  { value: "publication.needs_human", label: "Нужен ручной разбор" },
+  { value: "publication.unverified", label: "Публикация не подтверждена" },
+  { value: "account.reconnect_required", label: "Нужен reconnect аккаунта" },
+  { value: "campaign.completed", label: "Кампания завершена" },
+  { value: "report.daily", label: "Ежедневный отчёт" },
+];
 
 /* ───────────────────────────── проверка здоровья ───────────────────────────── */
 

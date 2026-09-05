@@ -8,7 +8,7 @@ AI не имеет доступа к базе, токенам площадок �
 `MARKVISION_API_KEY` (права `read` / `publish` / `manage`, `project_id` зашит в ключ) и адрес
 `MARKVISION_API_URL`. Контракт API — `PUBLIC-API.md`; установка и конфиг — `mcp/markvision/README.md`.
 
-## Инструменты (25)
+## Инструменты (37)
 
 | Группа | Инструменты |
 |---|---|
@@ -18,7 +18,9 @@ AI не имеет доступа к базе, токенам площадок �
 | Задания | `markvision_list_jobs`, `markvision_get_job` (трасса шагов, верификация, метрики), `markvision_cancel_job`, `markvision_retry_job` |
 | Аналитика | `markvision_metrics`, `markvision_content_analytics` (score, победители), `markvision_content_analytics_item` |
 | Уведомления | `markvision_notifications`, `markvision_notification_read` |
-| Настройки | `markvision_get_settings`, `markvision_update_settings` |
+| Кампании | `markvision_list_campaigns`, `markvision_get_campaign`, `markvision_create_campaign`, `markvision_update_campaign`, `markvision_campaign_add_content`, `markvision_campaign_remove_content`, `markvision_campaign_action` |
+| Вебхуки, отчёты | `markvision_list_webhooks`, `markvision_create_webhook`, `markvision_webhook_deliveries`, `markvision_daily_report` |
+| Настройки | `markvision_get_settings`, `markvision_update_settings` (в т.ч. `features` — флаги проекта) |
 
 ## Policy
 

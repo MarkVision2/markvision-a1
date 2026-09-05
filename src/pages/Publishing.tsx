@@ -35,6 +35,8 @@ import { ApiKeysSection } from "@/components/publishing/ApiKeysSection";
 import { JobsTab } from "@/components/publishing/JobsTab";
 import { NetworkTab } from "@/components/publishing/NetworkTab";
 import { NotificationsPanel } from "@/components/publishing/NotificationsPanel";
+import { CampaignsTab } from "@/components/publishing/CampaignsTab";
+import { WebhooksSection } from "@/components/publishing/WebhooksSection";
 import { UploadPublishDialog } from "@/components/publishing/UploadPublishDialog";
 import { usePublishing, type UsePublishing } from "@/hooks/usePublishing";
 import { useProjectsStore } from "@/hooks/useProjectsStore";
@@ -193,6 +195,7 @@ export default function Publishing() {
             <TabsTrigger value="accounts">Аккаунты</TabsTrigger>
             <TabsTrigger value="groups">Группы</TabsTrigger>
             <TabsTrigger value="personas">Персоны</TabsTrigger>
+            <TabsTrigger value="campaigns">Кампании</TabsTrigger>
             <TabsTrigger value="jobs">Задания</TabsTrigger>
             <TabsTrigger value="settings">Настройки</TabsTrigger>
           </TabsList>
@@ -209,10 +212,12 @@ export default function Publishing() {
             </div>
           </TabsContent>
           <TabsContent value="personas" className="mt-3"><PersonasTab pub={pub} /></TabsContent>
+          <TabsContent value="campaigns" className="mt-3"><CampaignsTab pub={pub} /></TabsContent>
           <TabsContent value="jobs" className="mt-3"><JobsTab pub={pub} /></TabsContent>
           <TabsContent value="settings" className="mt-3 space-y-4">
             <SettingsTab pub={pub} />
             <ApiKeysSection projectId={pub.projectId} />
+            <WebhooksSection projectId={pub.projectId} />
           </TabsContent>
         </Tabs>}
       </div>

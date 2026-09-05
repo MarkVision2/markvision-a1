@@ -34,7 +34,21 @@ export type ApiRoute =
   | { name: "analytics_content_item"; id: string }
   | { name: "analytics_account"; id: string }
   | { name: "notifications_list" }
-  | { name: "notification_read"; id: string };
+  | { name: "notification_read"; id: string }
+  | { name: "campaigns_list" }
+  | { name: "campaign_create" }
+  | { name: "campaign_get"; id: string }
+  | { name: "campaign_update"; id: string }
+  | { name: "campaign_items_add"; id: string }
+  | { name: "campaign_items_remove"; id: string }
+  | { name: "campaign_status"; id: string; status: string }
+  | { name: "campaign_plan"; id: string }
+  | { name: "webhooks_list" }
+  | { name: "webhook_create" }
+  | { name: "webhook_update"; id: string }
+  | { name: "webhook_delete"; id: string }
+  | { name: "webhook_deliveries"; id: string }
+  | { name: "report_daily" };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -115,6 +129,44 @@ export function matchRoute(method: string, pathname: string): ApiRoute | null {
     if (m === "POST" && seg.length === 3 && UUID.test(b ?? "") && c === "read") return { name: "notification_read", id: b };
     return null;
   }
+
+  if (a === "campaigns") {
+    if (seg.length === 1) {
+      if (m === "GET") return { name: "campaigns_list" };
+      if (m === "POST") return { name: "campaign_create" };
+      return null;
+    }
+    if (!UUID.test(b ?? "")) return null;
+    if (seg.length === 2) {
+      if (m === "GET") return { name: "campaign_get", id: b };
+      if (m === "POST") return { name: "campaign_update", id: b };
+      return null;
+    }
+    if (m !== "POST" || seg.length !== 3) return null;
+    if (c === "items") return { name: "campaign_items_add", id: b };
+    if (c === "items-remove") return { name: "campaign_items_remove", id: b };
+    if (c === "plan") return { name: "campaign_plan", id: b };
+    if (["start", "pause", "complete", "archive"].includes(c ?? "")) {
+      const status = c === "start" ? "active" : c === "pause" ? "paused" : c === "complete" ? "completed" : "archived";
+      return { name: "campaign_status", id: b, status };
+    }
+    return null;
+  }
+
+  if (a === "webhooks") {
+    if (seg.length === 1) {
+      if (m === "GET") return { name: "webhooks_list" };
+      if (m === "POST") return { name: "webhook_create" };
+      return null;
+    }
+    if (!UUID.test(b ?? "")) return null;
+    if (m === "POST" && seg.length === 2) return { name: "webhook_update", id: b };
+    if (m === "POST" && seg.length === 3 && c === "delete") return { name: "webhook_delete", id: b };
+    if (m === "GET" && seg.length === 3 && c === "deliveries") return { name: "webhook_deliveries", id: b };
+    return null;
+  }
+
+  if (a === "reports" && m === "GET" && seg.length === 2 && b === "daily") return { name: "report_daily" };
   return null;
 }
 
@@ -138,7 +190,16 @@ export function requiredScope(route: ApiRoute): ApiScope {
     case "analytics_account":
     case "notifications_list":
     case "notification_read":
+    case "campaigns_list":
+    case "campaign_get":
+    case "webhooks_list":
+    case "webhook_deliveries":
+    case "report_daily":
       return "read";
+    case "webhook_create":
+    case "webhook_update":
+    case "webhook_delete":
+      return "manage";
     case "account_update":
     case "accounts_health_check":
     case "group_create":

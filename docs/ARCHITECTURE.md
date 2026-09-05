@@ -54,9 +54,9 @@ MCP: mcp/markvision (stdio) → /api/v1
 | 11–14. Content Library | **PARTIAL** | `publish_videos` (медиа для очереди), `content_plan_items` (редплан, варианты через `parent_item_id`), `content_assets` (версии артефактов) | Не сливать в одну таблицу сейчас: три жизненных цикла. Phase 2 — витрина `content_items` (view) + метаданные (`topic`, `hook_type`, `cta_type`) в `publish_videos` |
 | 15. Media processor | **PARTIAL** | Проверка ссылки/типа/веса/длительности при приёме (`publishSchedule.ts`), ffmpeg-нормализация только в content-worker | Phase 2: `MEDIA_PREPARE` как отдельный шаг очереди (ffprobe в worker/) |
 | 16. Object storage | **EXISTS** | Storage + R2, presigned PUT | — |
-| 17. Campaigns | **MISSING** | Ближайшее — группа + персона + режим согласования | Phase 2 (таблица `publish_campaigns` поверх групп и видео) |
+| 17. Campaigns | **MISSING → добавлено** | Ближайшее было — группа + персона + режим согласования | `publish_campaigns` + очередь + SQL-планировщик по правилу «N постов в день в заданные часы» (миграция `20260908110000`), вкладка «Кампании», API, MCP |
 | 18. Account groups | **EXISTS** | `publish_account_groups`, bulk-назначение | — |
-| 19–21. Scheduler | **EXISTS** | `plan_publish_slots` / `publish_next_slot`: окна, интервалы, дневной лимит с разгоном, джиттер, режимы now/drip/daily | Recurring-шаблоны («3 поста в день по будням») — Phase 2 |
+| 19–21. Scheduler | **EXISTS, дополнено** | `plan_publish_slots` / `publish_next_slot`: окна, интервалы, дневной лимит с разгоном, джиттер, режимы now/drip/daily | Recurring-правило («3 поста в день по будням в 10/14/19») — правило кампании, крон `publish-campaign-planner-hourly` |
 | 22–24. Job engine | **EXISTS, дополнено** | `publish_jobs`: pending → processing → published/retry/failed/manual_review/cancelled, попытки, аренда, контейнер площадки | Добавлен статус `verifying`, `verification_status`, `trace_id`, журнал шагов `publish_job_events` |
 | 25. Queue | **EXISTS** | pg_cron ×3 партиции, `SKIP LOCKED`, backoff, DLQ = `failed`/`manual_review` с кнопками повтор/отмена | — |
 | 26. Idempotency | **EXISTS, дополнено** | `UNIQUE(video_id, account_id)`, `container_id` до публикации, dispatch не трогает занятое воркером | Ключ идемпотентности клиента на `POST /publications` (`client_ref`) |
@@ -72,7 +72,7 @@ MCP: mcp/markvision (stdio) → /api/v1
 | 58–59. API v1 | **EXISTS** | `/api/v1/…` | Добавлены `/jobs/:id`, `/analytics/*`, `/notifications` |
 | 60. Webhooks (исходящие) | **MISSING** | Входящие подписанные callback'и есть | Phase 2 (`publish_webhooks` + доставка из воркера событий) |
 | 61. Event-driven | **PARTIAL** | Триггеры БД (учёт аккаунта), кроны | Журнал событий задания — основа для уведомлений/вебхуков |
-| 62–63. Notification center, daily report | **PARTIAL → добавлено** | Telegram дайджест раз в час | Таблица `publish_notifications` (reconnect, ошибка, unverified) + выдача в UI/API |
+| 62–63. Notification center, daily report | **PARTIAL → добавлено** | Telegram дайджест раз в час | `publish_notifications` (reconnect, ошибка, unverified, campaign.completed) + UI/API; ежедневный отчёт `publish-monitor mode:daily_report` (Telegram, уведомление, `GET /reports/daily`) |
 | 64. Календарь | **EXISTS (редплан)** | `/marketing/content-plan?view=calendar` | Календарь публикаций по аккаунтам — Phase 2 |
 | 65–66. Bulk, фильтры | **EXISTS** | Панель массовых действий, фильтры площадка/группа/внимание | Серверная пагинация — при > 500 аккаунтов (Phase 2) |
 | 67–68. Health | **EXISTS** | `publishHealth.ts`, формула 0–100, крон 6 ч | — |
@@ -81,7 +81,7 @@ MCP: mcp/markvision (stdio) → /api/v1
 | 73. RBAC | **PARTIAL** | Глобальные `admin`/`manager` + модули доступа; `project_members.role` не используется | Phase 2: роль в `project_members` + проверка в `publish-accounts` |
 | 74–76. Rate limits, locks | **EXISTS** | Лимиты площадок в публикаторах, `daily_limit`, аренда | — |
 | 77–79. Scaling, concurrency | **EXISTS** | Партиции воркера (добавить кроны `p3…`), `max_parallel_workers` | — |
-| 80–81. Environments, flags | **PARTIAL** | Один прод-проект; флагов нет | Mock-коннектор включается только переменной окружения; флаги — таблица `feature_flags` в Phase 2 |
+| 80–81. Environments, flags | **PARTIAL → добавлено** | Один прод-проект; флагов не было | Mock-коннектор только переменной окружения; флаги проекта — `publish_project_settings.features` (`ai_autopublish_enabled`, `winner_replication_enabled`, `tiktok_direct_publish_enabled`, `phonegrid_enabled`), по умолчанию выключены |
 | 82–88. AI content factory | **PARTIAL** | Радар → идея → контент-план → конвейер (HeyGen/Reels) → варианты по группам → согласование → публикация → метрики → `outcome_score` | Winner replication — Phase 4 |
 | 93–94. Миграции, совместимость | **EXISTS** | Только миграции, идемпотентные, CI-проверка версий | — |
 | 99–100. Тесты, mock | **PARTIAL → расширено** | vitest на чистых модулях, deno test на `api` | Тесты policy/capabilities/verification/score; `MockSocialConnector` |
@@ -142,15 +142,22 @@ Backend:
 Frontend: вкладка «Задания» — статус «Проверяется», отметка верификации, панель задания с таймлайном
 шагов; блок уведомлений на странице «Публикации».
 
+## 5a. Второй заход (Phase 2, миграция `20260908110000`)
+
+- **Кампании**: `publish_campaigns` + очередь `publish_campaign_items`; правило «N постов в день в заданные
+  часы по дням недели», `fanout` (видео во все аккаунты) / `spread` (по кругу); SQL-планировщик
+  `plan_publish_campaigns` ежечасно на сегодня и завтра, идемпотентный; автозавершение; витрина;
+  вкладка «Кампании», `/api/v1/campaigns/*`, 7 MCP-инструментов.
+- **Исходящие вебхуки**: `publish_webhooks` + `publish_webhook_deliveries`, события из триггеров, edge
+  `publish-webhooks` (HMAC-SHA256, повторы 1→5→15→60→180 мин), секция в настройках, API, MCP.
+- **Ежедневный отчёт** и **feature flags** проекта.
+
 ## 6. План дальше (по приоритету)
 
-**Phase 2 — массовое управление.** Роль в `project_members` + проверка ролей в `publish-accounts`
+**Phase 2 — остаток.** Роль в `project_members` + проверка ролей в `publish-accounts`
 (OWNER/ADMIN/MANAGER/CONTENT_MANAGER/OPERATOR/VIEWER); таблица `publish_routines` (шаги относительно
-времени публикации) вместо зашитых кронов; `publish_campaigns` (период, аккаунты/группы, правила);
-recurring-шаблоны расписания; серверная пагинация аккаунтов и заданий; исходящие вебхуки
-(`publish_webhooks` + доставка с подписью и повторами из `publish_job_events`); `feature_flags`;
-ежедневный отчёт (Telegram + `/api/v1/reports/daily`); ретеншн `publish_logs`; ужесточение
-`projects_select_authed`.
+времени публикации) вместо зашитых кронов; серверная пагинация аккаунтов и заданий; календарь
+публикаций по аккаунтам; ужесточение `projects_select_authed`.
 
 **Phase 3 — Device engine.** `DeviceProvider` (PhoneGrid/Multilogin) как отдельный сервис только для
 health-check / native-only сценариев; `secondary_executor` у аккаунта; Execution Router выбирает

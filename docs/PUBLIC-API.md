@@ -66,6 +66,20 @@ Authorization: Bearer mv_live_…        (или заголовок x-api-key: m
 | `GET /analytics/accounts/:id` | read | витрина аккаунта (`publish_account_metrics`) и последние публикации |
 | `GET /notifications?unread=1&limit=` | read | центр уведомлений проекта (`unread` — счётчик непрочитанных) |
 | `POST /notifications/:id/read` | read | отметить уведомление прочитанным |
+| `GET /campaigns` | read | кампании проекта с метриками (`publish_campaign_metrics`) |
+| `POST /campaigns` | publish | создать кампанию: `name`, `objective`, `start_date`, `end_date`, `timezone`, `group_id`, `account_ids`, `posts_per_day`, `slot_times` (`["10:00","19:00"]`), `weekdays` (1..7), `mode` (`drip|now`), `distribution` (`fanout|spread`) |
+| `GET /campaigns/:id` | read | кампания, очередь контента (`items`) и задания |
+| `POST /campaigns/:id` | publish | частичная правка правил |
+| `POST /campaigns/:id/items` | publish | `video_ids` → в очередь кампании |
+| `POST /campaigns/:id/items-remove` | publish | убрать ещё не запланированные видео |
+| `POST /campaigns/:id/start` \| `pause` \| `complete` \| `archive` | publish | статус; `start` сразу планирует сегодня и завтра |
+| `POST /campaigns/:id/plan` | publish | спланировать ближайшие дни сейчас |
+| `GET /webhooks` | read | подписки проекта |
+| `POST /webhooks` | manage | создать: `name`, `url` (https), `events` (список или `["*"]`); ответ несёт `secret` один раз |
+| `POST /webhooks/:id` | manage | `name`, `url`, `events`, `enabled`, `rotate_secret: true` (новый секрет в ответе) |
+| `POST /webhooks/:id/delete` | manage | удалить |
+| `GET /webhooks/:id/deliveries` | read | последние доставки: статус, попытки, код ответа |
+| `GET /reports/daily` | read | отчёт за сутки (аккаунты, задания, успешность, просмотры за 7 дней, топ контента) |
 
 ### Загрузка файла
 
@@ -160,6 +174,14 @@ Cursor. Установка, конфиг и список инструменто�
   каждой площадке.
 - Подключение аккаунтов через API (OAuth-онбординг только из интерфейса).
 - Удалённый MCP (HTTP): сейчас сервер локальный, stdio.
+
+## Вебхуки: проверка подписи
+
+Каждая доставка — `POST` JSON `{ event, project_id, occurred_at, data, delivery_id, attempt }` с заголовками
+`X-MarkVision-Event`, `X-MarkVision-Delivery`, `X-MarkVision-Timestamp`, `X-MarkVision-Signature: t=<unix>,v1=<hex>`,
+где `v1 = HMAC-SHA256(secret, "<t>.<raw body>")`. Отбрасывайте `t` старше 5 минут. Ответ 2xx — доставлено;
+5xx/429 — повтор (1 → 5 → 15 → 60 → 180 мин, 5 попыток); прочие 4xx — отказ без повтора. События и
+их данные — `docs/JOBS.md`.
 
 ## Где код
 

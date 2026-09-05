@@ -113,6 +113,20 @@ export class MarkVisionClient {
   }
   readNotification(id: string) { return this.request<Record<string, unknown>>("POST", `/notifications/${id}/read`); }
 
+  campaigns() { return this.request<{ campaigns: unknown[]; metrics: unknown[] }>("GET", "/campaigns"); }
+  campaign(id: string) { return this.request<Record<string, unknown>>("GET", `/campaigns/${id}`); }
+  createCampaign(input: Record<string, unknown>) { return this.request<Record<string, unknown>>("POST", "/campaigns", input); }
+  updateCampaign(id: string, patch: Record<string, unknown>) { return this.request<Record<string, unknown>>("POST", `/campaigns/${id}`, patch); }
+  campaignAddItems(id: string, videoIds: string[]) { return this.request<Record<string, unknown>>("POST", `/campaigns/${id}/items`, { video_ids: videoIds }); }
+  campaignRemoveItems(id: string, videoIds: string[]) { return this.request<Record<string, unknown>>("POST", `/campaigns/${id}/items-remove`, { video_ids: videoIds }); }
+  campaignAction(id: string, action: "start" | "pause" | "complete" | "archive" | "plan") { return this.request<Record<string, unknown>>("POST", `/campaigns/${id}/${action}`); }
+  webhooks() { return this.request<{ webhooks: unknown[] }>("GET", "/webhooks"); }
+  createWebhook(input: Record<string, unknown>) { return this.request<Record<string, unknown>>("POST", "/webhooks", input); }
+  updateWebhook(id: string, patch: Record<string, unknown>) { return this.request<Record<string, unknown>>("POST", `/webhooks/${id}`, patch); }
+  deleteWebhook(id: string) { return this.request<Record<string, unknown>>("POST", `/webhooks/${id}/delete`); }
+  webhookDeliveries(id: string) { return this.request<{ deliveries: unknown[] }>("GET", `/webhooks/${id}/deliveries`); }
+  dailyReport() { return this.request<{ report: unknown }>("GET", "/reports/daily"); }
+
   /** Файл с диска → presigned URL → PUT байтов напрямую в хранилище → публичная ссылка. */
   async uploadFile(filePath: string): Promise<UploadResult> {
     const info = await stat(filePath).catch(() => null);
