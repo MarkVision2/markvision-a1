@@ -149,7 +149,7 @@ Cursor. Установка, конфиг и список инструменто�
 
 | Что | Где |
 |---|---|
-| Таблица ключей | `supabase/migrations/20260907100000_api_keys.sql` |
+| Таблица ключей | `supabase/migrations/20260907130000_api_keys.sql` |
 | Генерация, хэш, проверка, лимит | `supabase/functions/_lib/apiKeys.ts` |
 | Маршруты и разбор тела | `supabase/functions/_lib/publicApi.ts` |
 | Сама функция | `supabase/functions/api/index.ts` (вход) + `handler.ts` (логика с зависимостями наружу); `verify_jwt = false` в `config.toml` |
