@@ -84,7 +84,7 @@ function RunTarget({ run, source }: { run: RadarRun; source: RadarSource | undef
   if (source) {
     return (
       <span className="inline-flex flex-wrap items-center gap-1.5">
-        <span className="font-medium">@{source.handle}</span>
+        <span className="font-medium">{source.kind === "ad_library_query" ? source.handle : `@${source.handle}`}</span>
         <Chip label={PLATFORM_META[source.platform]?.label ?? source.platform} cls={PLATFORM_META[source.platform]?.cls ?? ""} />
       </span>
     );
@@ -145,9 +145,9 @@ function AddSourceDialog({
   const [interval, setInterval] = useState("24");
 
   const submit = async () => {
-    const h = sourceHandleFromUrl(handle);
+    const h = kind === "ad_library_query" ? handle.trim() : sourceHandleFromUrl(handle);
     if (!h) {
-      toast.error("Укажите ник или ссылку на аккаунт");
+      toast.error(kind === "ad_library_query" ? "Укажите запрос для Библиотеки рекламы" : "Укажите ник или ссылку на аккаунт");
       return;
     }
     await onSubmit({
@@ -187,14 +187,23 @@ function AddSourceDialog({
             </div>
           </div>
           <div className="grid gap-1.5">
-            <Label htmlFor="radar-src-handle">Ник или ссылка</Label>
+            <Label htmlFor="radar-src-handle">{kind === "ad_library_query" ? "Запрос или ссылка" : kind === "hashtag" ? "Хештег" : "Ник или ссылка"}</Label>
             <Input
               id="radar-src-handle"
-              placeholder="@clinic или https://instagram.com/clinic"
+              placeholder={
+                kind === "ad_library_query"
+                  ? "имплантация зубов — или ссылка на страницу / Ad Library"
+                  : kind === "hashtag"
+                    ? "#стоматология"
+                    : "@clinic или https://instagram.com/clinic"
+              }
               value={handle}
               onChange={(e) => setHandle(e.target.value)}
-              onBlur={() => setHandle((v) => sourceHandleFromUrl(v))}
+              onBlur={() => setHandle((v) => (kind === "ad_library_query" ? v.trim() : sourceHandleFromUrl(v)))}
             />
+            {kind === "ad_library_query" && (
+              <p className="text-xs text-muted-foreground">Поиск по Библиотеке рекламы Meta по всем странам; у объявлений нет реакций — оценка только по разбору.</p>
+            )}
           </div>
           <div className="grid grid-cols-[1fr_120px] gap-3">
             <div className="grid gap-1.5">
@@ -727,7 +736,9 @@ export default function Radar() {
                       <TableRow key={s.id} className={cn(!s.enabled && "opacity-60")}>
                         <TableCell><Chip label={PLATFORM_META[s.platform]?.label ?? s.platform} cls={PLATFORM_META[s.platform]?.cls ?? ""} /></TableCell>
                         <TableCell><Chip label={SOURCE_KIND_META[s.kind]?.label ?? s.kind} cls={SOURCE_KIND_META[s.kind]?.cls ?? ""} /></TableCell>
-                        <TableCell className="font-medium">@{s.handle}</TableCell>
+                        <TableCell className="max-w-[260px] truncate font-medium" title={s.handle}>
+                          {s.kind === "ad_library_query" || /^https?:\/\//i.test(s.handle) ? s.handle : `@${s.handle}`}
+                        </TableCell>
                         <TableCell className="text-muted-foreground">{s.label || "—"}</TableCell>
                         <TableCell className="whitespace-nowrap tabular-nums">{s.crawl_interval_hours} ч</TableCell>
                         <TableCell className="whitespace-nowrap text-xs text-muted-foreground">

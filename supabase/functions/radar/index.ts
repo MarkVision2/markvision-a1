@@ -323,16 +323,19 @@ async function syncRuns(db: SupabaseClient, opts: { projectId?: string; limit: n
 
       let platform: string | null = null;
       let handle: string | undefined;
+      let kind: string | undefined;
       if (run.mode === "url") platform = detectUrlPlatform(run.url ?? "");
       else if (run.source_id) {
-        const { data: src } = await db.from("radar_sources").select("platform, handle").eq("id", run.source_id).maybeSingle();
-        platform = (src as { platform: string } | null)?.platform ?? null;
-        handle = (src as { handle: string } | null)?.handle;
+        const { data: src } = await db.from("radar_sources").select("platform, handle, kind").eq("id", run.source_id).maybeSingle();
+        const row = src as { platform: string; handle: string; kind: string } | null;
+        platform = row?.platform ?? null;
+        handle = row?.handle;
+        kind = row?.kind;
       }
       if (!platform) { await failRun(db, run, "источник удалён до завершения сбора"); out.finished++; continue; }
 
       const items = await apify<unknown[]>(`/datasets/${ar.defaultDatasetId}/items?clean=true&limit=200`, {}, 30_000);
-      const flat = flattenApifyItems(platform as "instagram", Array.isArray(items) ? items : [], handle);
+      const flat = flattenApifyItems(platform as "instagram", Array.isArray(items) ? items : [], handle, kind);
       const r = await ingestItems(db, { projectId: run.project_id, sourceId: run.source_id, platformDefault: platform, items: flat });
       const cost = apifyCostUsd(run.actor ?? "", Array.isArray(items) ? items.length : 0);
       const empty = r.ids.length === 0;
@@ -450,7 +453,10 @@ async function analyzePost(db: SupabaseClient, post: PostRow, context: { busines
   }
 
   const { data: fresh } = await db.from("radar_posts").select("score").eq("id", post.id).maybeSingle();
-  const postScore = Number((fresh as { score?: number } | null)?.score ?? analysis.score);
+  // Без сигналов аудитории (объявления из Ad Library, посты без метрик) оценка — только модель.
+  const m = post.metrics ?? {};
+  const noSignals = !Number(m.likes) && !Number(m.comments) && !Number(m.shares) && !Number(m.saves) && !Number(m.views);
+  const postScore = noSignals ? analysis.score : Number((fresh as { score?: number } | null)?.score ?? analysis.score);
   if (postScore < IDEA_SCORE_THRESHOLD) return { ok: true };
   const { data: existingIdea } = await db.from("idea_bank").select("id")
     .eq("project_id", post.project_id).contains("source_post_ids", [post.id]).limit(1).maybeSingle();

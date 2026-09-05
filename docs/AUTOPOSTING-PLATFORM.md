@@ -37,7 +37,12 @@ post_metrics ◀──── publish-metrics ◀──── publish_jobs ◀─
 `_lib/radarCrawl.ts`): актор по площадке — `apify~instagram-scraper` (аккаунт → `details`:
 профиль с подписчиками и последними постами одним запуском; хештег → `posts`; ссылка на
 `/p/`, `/reel/`), `clockworks~tiktok-scraper` (`profiles` / `hashtags` / `postURLs`),
-`streamers~youtube-scraper` (канал `@ник` или `UC…` → shorts + videos; ссылка на видео).
+`streamers~youtube-scraper` (канал `@ник` или `UC…` → shorts + videos; хештег → `/hashtag/…`;
+ссылка на видео), `thenetaji~threads-scraper` (профиль / ссылка на пост Threads),
+`apify~facebook-posts-scraper` (страница Facebook по нику или ссылке / ссылка на пост),
+`apify~facebook-ads-scraper` (источник «Библиотека рекламы»: запрос → поисковая ссылка Ad Library
+по всем странам, для площадки Instagram — только объявления Instagram; готовая ссылка на страницу
+или Ad Library — как есть; у объявлений нет реакций, поэтому оценка поста = оценка модели).
 Запуск асинхронный: `POST /acts/{actor}/runs` → строка `radar_runs` со `status = running`
 и `external_id` (id запуска). Результат дособирается в `syncRuns()`: при `GET /radar`
 (обзор, до 6 запусков — поэтому «Обновить» и опрос страницы показывают посты, не дожидаясь
@@ -46,8 +51,11 @@ post_metrics ◀──── publish-metrics ◀──── publish_jobs ◀─
 стоимость по тарифу актора → `radar_runs.cost_usd` и `usage_ledger` (`engine = apify`).
 Пустой результат → `failed` с текстом («аккаунт закрыт или ник неверный»), зависший запуск
 (> 20 минут) закрывается ошибкой. Один источник/ссылка не запускается второй раз, пока
-первый работает. Threads, Facebook и «Библиотека рекламы» прямым сборщиком пока не
-собираются — источник получает `last_error` с причиной.
+первый работает. Не поддерживаются хештеги Threads и Facebook и «Библиотека рекламы» вне
+Facebook/Instagram — источник получает `last_error` с причиной. Форматы ответов Threads и
+Facebook-акторов сопоставлены по полям GraphQL/актора с запасными ключами
+(`flattenApifyItems`), боевой прогон по ним не делался (лимит Apify) — при пустых постах
+смотреть `radar_posts.raw` первого удачного сбора.
 
 Запасной сборщик — n8n «Radar · сборщик v2» (`N8N_RADAR_WEBHOOK_URL`), используется только
 если `APIFY_TOKEN` не задан: результат уходит подписанным вызовом в
@@ -193,6 +201,22 @@ followers` по d3–d7, 5 % ≈ 100 → `idea_bank.outcome_score`.
 контрольной точке каждого поста** (d7 > d3 > d1): точки кумулятивны, суммировать их подряд —
 значит посчитать один просмотр трижды. Пока метрик по посту нет, колонки честно пустые
 (`—` и «ждём метрики: N»), а не нулевые.
+
+## TikTok: FILE_UPLOAD вместо PULL_FROM_URL, короткие токены без штрафа
+
+Публикатор TikTok заливает ролик сам (`FILE_UPLOAD`: init → PUT кусков на
+`upload_url` → опрос статуса), а не отдаёт площадке ссылку. Причина: для
+`PULL_FROM_URL` TikTok требует верифицировать домен видео в приложении, а ролики
+лежат на `supabase.co` и `r2.cloudflarestorage.com` — чужие домены, их
+верифицировать нельзя, `url_ownership_unverified` был бы навсегда. Куски — по
+правилам площадки (`planTikTokChunks`, тесты `src/test/publishTiktokUpload.test.ts`):
+до 64 МБ одним куском, дальше по 32 МБ с хвостом в последнем; байты идут
+Range-запросами с исходника, целиком не буферизуются.
+
+Скоринг здоровья не штрафует TikTok и YouTube за «токен истекает через N ч»:
+их access-token короткий по замыслу (24 ч и 1 ч), монитор продлевает его
+refresh-токеном сам. Штраф оставался бы вечным (здоровье 65 у здорового
+аккаунта). Настоящий сигнал у них — провал обновления, это `token_expired`.
 
 ## Аудит готовности (05.09.2026) — что закрыто и что осталось
 
@@ -433,7 +457,7 @@ Google, Threads, `PUBLISH_TOKEN_KEY`) и n8n-импорты — отдельны
 | Симптом | Где смотреть | Действие |
 |---|---|---|
 | Посты не разбираются | `radar_posts.analysis_status = failed/skipped`, `error`; `radar_metrics.posts_unanalyzed` | `skipped` = бюджет; `failed` = ошибка провайдера (текст в `error`); `POST /radar/posts/:id/analyze` |
-| Источник не собирается | `radar_sources.last_error`; `radar_runs.status/error` (running дольше 20 мин → закроется ошибкой) | `APIFY_TOKEN` задан? (страница показывает баннер); Threads/Facebook/Ad Library прямым сборщиком не собираются; «аккаунт закрыт или ник неверный» — проверить ник; лимиты и баланс Apify (`console.apify.com`) |
+| Источник не собирается | `radar_sources.last_error`; `radar_runs.status/error` (running дольше 20 мин → закроется ошибкой) | `APIFY_TOKEN` задан? (страница показывает баннер); «месячный лимит расхода исчерпан» — лимит/тариф Apify; «аккаунт закрыт или ник неверный» — проверить ник; лимиты и баланс Apify (`console.apify.com`) |
 | Идея не стала темой | `idea_bank.status`, `content_item_id` | `radar_promote_idea` идемпотентна: повторный вызов вернёт ту же тему |
 | Вариант не рендерится | `content_plan_items.engine`, `personas.engine_default` | n8n v5 берёт только `heygen`; для `reels_faceless` нужен Reels-воркер |
 | Одобрено, но публикаций нет | `pipeline_runs.metadata.handoff`, `content_plan_items.publish_video_id`, `target_group_id` | без группы видео попадает только в библиотеку; группа `paused` не планируется |
