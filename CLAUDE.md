@@ -48,7 +48,7 @@
   очередь `publish_jobs` + edge-функции `publish-*`, оркестрация заявок и отчётов — в n8n.
   Детали, контракты endpoint'ов и онбординг аккаунтов — `docs/PUBLISHING-SYSTEM.md`.
 - **Публичный API и MCP-сервер** (внешний клиент по API-ключу проекта загружает видео и ставит
-  публикацию): edge `api` + таблица `api_keys`, ключи выдаются в «Публикации → Настройки»,
+  публикацию): edge `api` + таблица `api_keys`, ключи выдаются в «Настройки → API и MCP»,
   MCP-сервер `mcp/markvision/`. Контракт — `docs/PUBLIC-API.md`.
 - **Подключение TikTok** (Настройки → Подключения → TikTok, `/settings?tab=tiktok`; компонент
   `src/components/settings/TikTokConnect.tsx`, старый `/marketing/tiktok` редиректит; витрина для App review TikTok for Developers):
