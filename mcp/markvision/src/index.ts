@@ -25,7 +25,7 @@ if (!apiUrl) {
 }
 
 const client = new MarkVisionClient({ apiKey, baseUrl: apiUrl });
-const server = new McpServer({ name: "markvision", version: "0.3.0" });
+const server = new McpServer({ name: "markvision", version: "0.4.0" });
 
 type ToolResult = { content: { type: "text"; text: string }[]; isError?: boolean };
 
@@ -347,6 +347,47 @@ server.registerTool("markvision_daily_report", {
   description: "Сводка проекта за последние 24 часа: аккаунты, запланировано / опубликовано / ошибок, успешность, просмотры за 7 дней, лучший контент.",
   inputSchema: {},
 }, () => run(() => client.dailyReport()));
+
+server.registerTool("markvision_list_members", {
+  title: "Участники проекта и роли",
+  description: "Кто имеет доступ к проекту и с какой ролью (owner / admin / manager / content_manager / operator / viewer). Роли меняются в интерфейсе владельцем или администратором.",
+  inputSchema: {},
+}, () => run(() => client.members()));
+
+const stepSchema = z.object({
+  action: z.enum(["ACCOUNT_HEALTH_CHECK", "TOKEN_CHECK", "METRICS_SYNC"]),
+  offset_minutes: z.number().int().describe("Минуты относительно публикации: отрицательные — до (проверки), положительные — после (метрики)."),
+});
+
+server.registerTool("markvision_list_routines", {
+  title: "Рутины",
+  description: "Рутины проекта (шаги вокруг публикации: проверка аккаунта до, метрики после) и кому они назначены (группы, аккаунты). is_default — для всех без своей рутины.",
+  inputSchema: {},
+}, () => run(() => client.routines()));
+
+server.registerTool("markvision_create_routine", {
+  title: "Создать рутину",
+  description: "Например IG_STANDARD: ACCOUNT_HEALTH_CHECK −15 мин, METRICS_SYNC +20 мин, +240 мин, +1440 мин. Затем markvision_assign_routine.",
+  inputSchema: { name: z.string().min(1).max(80), description: z.string().max(1000).optional(), steps: z.array(stepSchema).min(1).max(20), is_default: z.boolean().optional() },
+}, (input) => run(() => client.createRoutine(input)));
+
+server.registerTool("markvision_update_routine", {
+  title: "Изменить рутину",
+  description: "Частичная правка: имя, описание, шаги (список целиком), флаг по умолчанию.",
+  inputSchema: { routine_id: uuid, name: z.string().min(1).max(80).optional(), description: z.string().max(1000).optional(), steps: z.array(stepSchema).max(20).optional(), is_default: z.boolean().optional() },
+}, ({ routine_id, ...patch }) => run(() => client.updateRoutine(routine_id, patch)));
+
+server.registerTool("markvision_assign_routine", {
+  title: "Назначить рутину",
+  description: "Рутина → группам аккаунтов и/или отдельным аккаунтам проекта.",
+  inputSchema: { routine_id: uuid, group_ids: z.array(uuid).optional(), account_ids: z.array(uuid).optional() },
+}, ({ routine_id, ...target }) => run(() => client.assignRoutine(routine_id, target)));
+
+server.registerTool("markvision_list_tasks", {
+  title: "Задачи рутин",
+  description: "Очередь задач рутин: проверки аккаунтов до публикации и снятия метрик после — статус pending / running / done / failed / skipped.",
+  inputSchema: { status: z.enum(["pending", "running", "done", "failed", "skipped"]).optional(), limit: z.number().int().min(1).max(500).optional() },
+}, ({ status, limit }) => run(() => client.tasks(status, limit ?? 100)));
 
 const transport = new StdioServerTransport();
 await server.connect(transport);

@@ -9,9 +9,11 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
+  formatOffset,
   JOB_STATUS_META,
   PLATFORM_META,
   publishingApi,
+  ROUTINE_ACTION_LABELS,
   TRACE_STEP_LABELS,
   VERIFICATION_META,
   type JobDetail,
@@ -111,6 +113,25 @@ export function JobDetailDialog({ projectId, jobId, onClose }: { projectId: stri
                 <p className="text-xs text-muted-foreground">Шагов пока нет: задание ещё не бралось воркером или создано до включения трассы.</p>
               )}
             </section>
+
+            {(detail.tasks?.length ?? 0) > 0 && (
+              <section>
+                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Рутина</h4>
+                <ul className="divide-y rounded-xl border text-xs">
+                  {detail.tasks!.map((t) => {
+                    const base = t.task_type === "METRICS_SYNC" ? job.published_at : job.scheduled_at;
+                    const off = base ? Math.round((Date.parse(t.run_at) - Date.parse(base)) / 60_000) : null;
+                    return (
+                      <li key={t.id} className="flex items-center gap-2 px-3 py-1.5">
+                        <span className="w-[62px] shrink-0 tabular-nums text-muted-foreground">{fmtExact(t.run_at).split(" ").pop()}</span>
+                        <span className="flex-1">{ROUTINE_ACTION_LABELS[t.task_type] ?? t.task_type}{off != null ? ` (${formatOffset(off)})` : ""}</span>
+                        <span className={cn(t.status === "done" ? "text-emerald-600" : t.status === "failed" ? "text-destructive" : "text-muted-foreground")} title={t.error ?? ""}>{t.status}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            )}
 
             {detail.metrics.length > 0 && (
               <section>

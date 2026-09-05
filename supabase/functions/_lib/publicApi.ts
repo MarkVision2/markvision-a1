@@ -48,7 +48,15 @@ export type ApiRoute =
   | { name: "webhook_update"; id: string }
   | { name: "webhook_delete"; id: string }
   | { name: "webhook_deliveries"; id: string }
-  | { name: "report_daily" };
+  | { name: "report_daily" }
+  | { name: "members_list" }
+  | { name: "member_role_set"; id: string }
+  | { name: "routines_list" }
+  | { name: "routine_create" }
+  | { name: "routine_update"; id: string }
+  | { name: "routine_delete"; id: string }
+  | { name: "routine_assign"; id: string }
+  | { name: "tasks_list" };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -167,6 +175,27 @@ export function matchRoute(method: string, pathname: string): ApiRoute | null {
   }
 
   if (a === "reports" && m === "GET" && seg.length === 2 && b === "daily") return { name: "report_daily" };
+
+  if (a === "members") {
+    if (m === "GET" && seg.length === 1) return { name: "members_list" };
+    if (m === "POST" && seg.length === 3 && UUID.test(b ?? "") && c === "role") return { name: "member_role_set", id: b };
+    return null;
+  }
+
+  if (a === "routines") {
+    if (seg.length === 1) {
+      if (m === "GET") return { name: "routines_list" };
+      if (m === "POST") return { name: "routine_create" };
+      return null;
+    }
+    if (m !== "POST" || !UUID.test(b ?? "")) return null;
+    if (seg.length === 2) return { name: "routine_update", id: b };
+    if (seg.length === 3 && c === "delete") return { name: "routine_delete", id: b };
+    if (seg.length === 3 && c === "assign") return { name: "routine_assign", id: b };
+    return null;
+  }
+
+  if (a === "tasks" && m === "GET" && seg.length === 1) return { name: "tasks_list" };
   return null;
 }
 
@@ -195,7 +224,16 @@ export function requiredScope(route: ApiRoute): ApiScope {
     case "webhooks_list":
     case "webhook_deliveries":
     case "report_daily":
+    case "members_list":
+    case "routines_list":
+    case "tasks_list":
       return "read";
+    case "member_role_set":
+    case "routine_create":
+    case "routine_update":
+    case "routine_delete":
+    case "routine_assign":
+      return "manage";
     case "webhook_create":
     case "webhook_update":
     case "webhook_delete":

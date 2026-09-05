@@ -61,7 +61,8 @@ MCP: mcp/markvision (stdio) → /api/v1
 | 25. Queue | **EXISTS** | pg_cron ×3 партиции, `SKIP LOCKED`, backoff, DLQ = `failed`/`manual_review` с кнопками повтор/отмена | — |
 | 26. Idempotency | **EXISTS, дополнено** | `UNIQUE(video_id, account_id)`, `container_id` до публикации, dispatch не трогает занятое воркером | Ключ идемпотентности клиента на `POST /publications` (`client_ref`) |
 | 27–29. Execution router | **PARTIAL** | Один исполнитель — официальный API | Введён `connectorFor(platform)`; выбор device/human — Phase 3 (когда появится DeviceProvider) |
-| 30–35. Device engine, routines | **MISSING (осознанно)** | Решение проекта: браузерной автоматизации нет; кроны как «рутина» зашиты в миграции | Phase 3. Routines как таблица — Phase 2 |
+| 30–33. Device engine | **MISSING (осознанно)** | Решение проекта: браузерной автоматизации нет | Phase 3 |
+| 34–35. Routines | **MISSING → добавлено** | Кроны как «рутина» были зашиты в миграции | `publish_routines` (шаги относительно публикации) → `publish_tasks` → воркер `publish-tasks`; назначение аккаунту/группе/проекту; секция «Рутины» (миграция `20260908120000`) |
 | 36–37. Publication model | **PARTIAL** | Публикация = строка `publish_jobs` (external_post_id/url, published_at) | Не дублировать в отдельную таблицу: одна строка = одна публикация на аккаунт; витрина `publish_publications` даёт «модель публикации» без переноса данных |
 | 38–39. Verification | **MISSING → добавлено** | Успех = ответ API площадки | `verifying` → `getPublication()` → `published` только после подтверждения; без подтверждения — `unverified` + уведомление |
 | 40–42. Error classification, retry, DLQ | **PARTIAL → добавлено** | `FailureKind` token/limit/temporary/fatal/unsupported + сырой код площадки | Канонические коды (`AUTH_EXPIRED`, `RATE_LIMIT`, `MEDIA_INVALID`, …) в `publish_jobs.error_class`, retry policy с jitter — `_lib/publishPolicy.ts` |
@@ -78,7 +79,7 @@ MCP: mcp/markvision (stdio) → /api/v1
 | 67–68. Health | **EXISTS** | `publishHealth.ts`, формула 0–100, крон 6 ч | — |
 | 69–71. Observability | **MISSING → добавлено** | `publish_logs` (сырой ответ), нет trace/request id, Sentry нет | `trace_id` у задания, `publish_job_events` (шаги), структурные console-логи JSON |
 | 72. Security review | **EXISTS** | Секреты в Supabase secrets, hardening 20260907 | Замечания — раздел 4 |
-| 73. RBAC | **PARTIAL** | Глобальные `admin`/`manager` + модули доступа; `project_members.role` не используется | Phase 2: роль в `project_members` + проверка в `publish-accounts` |
+| 73. RBAC | **PARTIAL → добавлено** | Глобальные роли команды + модули доступа; `project_members.role` не использовалась | Роли owner/admin/manager/content_manager/operator/viewer (`_lib/rbac.ts`, `project_role_of`), гейт каждого действия `publish-accounts`, секция «Роли в проекте», `member_role_set` |
 | 74–76. Rate limits, locks | **EXISTS** | Лимиты площадок в публикаторах, `daily_limit`, аренда | — |
 | 77–79. Scaling, concurrency | **EXISTS** | Партиции воркера (добавить кроны `p3…`), `max_parallel_workers` | — |
 | 80–81. Environments, flags | **PARTIAL → добавлено** | Один прод-проект; флагов не было | Mock-коннектор только переменной окружения; флаги проекта — `publish_project_settings.features` (`ai_autopublish_enabled`, `winner_replication_enabled`, `tiktok_direct_publish_enabled`, `phonegrid_enabled`), по умолчанию выключены |
@@ -152,12 +153,18 @@ Frontend: вкладка «Задания» — статус «Проверяе�
   `publish-webhooks` (HMAC-SHA256, повторы 1→5→15→60→180 мин), секция в настройках, API, MCP.
 - **Ежедневный отчёт** и **feature flags** проекта.
 
+## 5b. Третий заход (миграция `20260908120000`)
+
+- **RBAC**: роль в проекте из владения, `project_members.role` и глобальной роли команды; матрица
+  уровней read/operate/publish/manage/admin; гейт каждого действия в `publish-accounts`; управление
+  ролями владельцем/администратором (UI, `POST /api/v1/members/:id/role`).
+- **Routine Engine**: рутины как данные, задачи в `publish_tasks`, воркер `publish-tasks`, ранние
+  метрики `r<N>m`, задачи в трассе задания; API `/routines/*`, `/tasks`, 6 MCP-инструментов.
+
 ## 6. План дальше (по приоритету)
 
-**Phase 2 — остаток.** Роль в `project_members` + проверка ролей в `publish-accounts`
-(OWNER/ADMIN/MANAGER/CONTENT_MANAGER/OPERATOR/VIEWER); таблица `publish_routines` (шаги относительно
-времени публикации) вместо зашитых кронов; серверная пагинация аккаунтов и заданий; календарь
-публикаций по аккаунтам; ужесточение `projects_select_authed`.
+**Phase 2 — остаток.** Серверная пагинация аккаунтов и заданий; календарь публикаций по аккаунтам;
+ужесточение `projects_select_authed`; массовый онбординг аккаунтов (batch assignment после подключения).
 
 **Phase 3 — Device engine.** `DeviceProvider` (PhoneGrid/Multilogin) как отдельный сервис только для
 health-check / native-only сценариев; `secondary_executor` у аккаунта; Execution Router выбирает

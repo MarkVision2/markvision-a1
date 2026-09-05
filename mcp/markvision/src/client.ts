@@ -126,6 +126,15 @@ export class MarkVisionClient {
   deleteWebhook(id: string) { return this.request<Record<string, unknown>>("POST", `/webhooks/${id}/delete`); }
   webhookDeliveries(id: string) { return this.request<{ deliveries: unknown[] }>("GET", `/webhooks/${id}/deliveries`); }
   dailyReport() { return this.request<{ report: unknown }>("GET", "/reports/daily"); }
+  members() { return this.request<{ members: unknown[] }>("GET", "/members"); }
+  routines() { return this.request<{ routines: unknown[]; groups: unknown[]; accounts: unknown[] }>("GET", "/routines"); }
+  createRoutine(input: Record<string, unknown>) { return this.request<Record<string, unknown>>("POST", "/routines", input); }
+  updateRoutine(id: string, patch: Record<string, unknown>) { return this.request<Record<string, unknown>>("POST", `/routines/${id}`, patch); }
+  assignRoutine(id: string, target: { group_ids?: string[]; account_ids?: string[] }) { return this.request<Record<string, unknown>>("POST", `/routines/${id}/assign`, target); }
+  tasks(status?: string, limit = 100) {
+    const q = new URLSearchParams({ limit: String(limit), ...(status ? { status } : {}) });
+    return this.request<{ tasks: unknown[] }>("GET", `/tasks?${q}`);
+  }
 
   /** Файл с диска → presigned URL → PUT байтов напрямую в хранилище → публичная ссылка. */
   async uploadFile(filePath: string): Promise<UploadResult> {

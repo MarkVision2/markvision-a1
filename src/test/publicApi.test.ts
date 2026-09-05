@@ -64,6 +64,20 @@ describe("matchRoute", () => {
     expect(requiredScope({ name: "report_daily" })).toBe("read");
   });
 
+  it("участники, рутины, задачи", () => {
+    expect(matchRoute("GET", "/api/v1/members")).toEqual({ name: "members_list" });
+    expect(matchRoute("POST", `/api/v1/members/${ID}/role`)).toEqual({ name: "member_role_set", id: ID });
+    expect(matchRoute("GET", "/api/v1/routines")).toEqual({ name: "routines_list" });
+    expect(matchRoute("POST", "/api/v1/routines")).toEqual({ name: "routine_create" });
+    expect(matchRoute("POST", `/api/v1/routines/${ID}`)).toEqual({ name: "routine_update", id: ID });
+    expect(matchRoute("POST", `/api/v1/routines/${ID}/assign`)).toEqual({ name: "routine_assign", id: ID });
+    expect(matchRoute("POST", `/api/v1/routines/${ID}/delete`)).toEqual({ name: "routine_delete", id: ID });
+    expect(matchRoute("GET", "/api/v1/tasks")).toEqual({ name: "tasks_list" });
+    expect(requiredScope({ name: "routine_create" })).toBe("manage");
+    expect(requiredScope({ name: "member_role_set", id: ID })).toBe("manage");
+    expect(requiredScope({ name: "tasks_list" })).toBe("read");
+  });
+
   it("аналитика и трасса — только чтение; POST на них — null", () => {
     expect(matchRoute("POST", "/api/v1/analytics/content")).toBeNull();
     expect(matchRoute("GET", `/api/v1/notifications/${ID}/read`)).toBeNull();

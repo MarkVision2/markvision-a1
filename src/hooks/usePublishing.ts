@@ -13,6 +13,7 @@ import {
   type PublishJobStatus,
   type PublishSettings,
   type PublishVideoInput,
+  type ProjectRole,
   type Persona,
   type SettingsUpsertInput,
 } from "@/lib/publishingClient";
@@ -31,6 +32,7 @@ export function usePublishing() {
   const [settings, setSettings] = useState<PublishSettings | null>(null);
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [jobs, setJobs] = useState<PublishJob[]>([]);
+  const [role, setRole] = useState<ProjectRole | null>(null);
   const [jobsStatus, setJobsStatus] = useState<PublishJobStatus | "all">("all");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +57,7 @@ export function usePublishing() {
       setSettings(null);
       setMetrics(null);
       setJobs([]);
+      setRole(null);
       return;
     }
     setLoading(true);
@@ -71,6 +74,7 @@ export function usePublishing() {
       // Отказ источника обнуляет его данные: иначе после смены проекта на экране
       // оставалась сеть аккаунтов прошлого проекта под баннером ошибки.
       setAccounts(a.status === "fulfilled" ? a.value.accounts ?? [] : []);
+      setRole(a.status === "fulfilled" ? a.value.role ?? null : null);
       setGroups(g.status === "fulfilled" ? g.value.groups ?? [] : []);
       setPersonas(p.status === "fulfilled" ? p.value.personas ?? [] : []);
       setSettings(s.status === "fulfilled" ? s.value : null);
@@ -121,6 +125,8 @@ export function usePublishing() {
     settings,
     metrics,
     jobs,
+    /** Роль пользователя в проекте (RBAC): интерфейс прячет действия не по роли, сервер решает окончательно. */
+    role,
     jobsStatus,
     setJobsStatus,
     loading,

@@ -80,6 +80,14 @@ Authorization: Bearer mv_live_…        (или заголовок x-api-key: m
 | `POST /webhooks/:id/delete` | manage | удалить |
 | `GET /webhooks/:id/deliveries` | read | последние доставки: статус, попытки, код ответа |
 | `GET /reports/daily` | read | отчёт за сутки (аккаунты, задания, успешность, просмотры за 7 дней, топ контента) |
+| `GET /members` | read | участники проекта и их роли (RBAC) |
+| `POST /members/:userId/role` | manage | `role`: `admin` (только владелец) \| `manager` \| `content_manager` \| `operator` \| `viewer` |
+| `GET /routines` | read | рутины проекта, назначения группам/аккаунтам |
+| `POST /routines` | manage | создать: `name`, `description`, `steps` (`[{action, offset_minutes}]`), `is_default` |
+| `POST /routines/:id` | manage | частичная правка |
+| `POST /routines/:id/assign` | manage | `group_ids`, `account_ids` |
+| `POST /routines/:id/delete` | manage | удалить |
+| `GET /tasks?status=&limit=` | read | задачи рутин |
 
 ### Загрузка файла
 

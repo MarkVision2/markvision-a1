@@ -26,6 +26,8 @@
  *   { action: "campaign_list" | "campaign_get" | "campaign_upsert" | "campaign_items_add" | "campaign_items_remove"
  *             | "campaign_status" | "campaign_plan_now", project_id, campaign_id?, ... } — кампании (docs/JOBS.md)
  *   { action: "webhook_list" | "webhook_upsert" | "webhook_delete" | "webhook_deliveries", project_id, webhook_id?, ... }
+ *   { action: "member_list" | "member_role_set", project_id, user_id?, role? } — роли участников (RBAC)
+ *   { action: "routine_list" | "routine_upsert" | "routine_delete" | "routine_assign" | "tasks_list", project_id, ... } — рутины
  *   { action: "job_get", job_id }                                — задание + трасса шагов (publish_job_events)
  *   { action: "notifications_list", project_id, unread_only?, limit? } — центр уведомлений
  *   { action: "notification_read", project_id, notification_id? | all: true }
@@ -37,7 +39,8 @@
  *       — API-ключи проекта для edge-функции api (docs/PUBLIC-API.md); ключ отдаётся один раз при создании
  */
 import { createClient, type SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.95.0";
-import { requireProjectAccess, requireUser } from "../_lib/auth.ts";
+import { projectRoleOf, requireProjectAccess, requireUser } from "../_lib/auth.ts";
+import { ASSIGNABLE_ROLES, canDo, isProjectRole, levelForAction, type ProjectRole } from "../_lib/rbac.ts";
 import { generateApiKey, hashApiKey, normalizeScopes } from "../_lib/apiKeys.ts";
 import { resolveMetaAccessToken } from "../_lib/metaToken.ts";
 import { resolveCapabilities, tokenKindOf } from "../_lib/publishCapabilities.ts";
@@ -166,6 +169,7 @@ Deno.serve(async (req) => {
     { table: "publish_jobs", key: "job_id", label: "задание" },
     { table: "publish_campaigns", key: "campaign_id", label: "кампания" },
     { table: "publish_webhooks", key: "webhook_id", label: "вебхук" },
+    { table: "publish_routines", key: "routine_id", label: "рутина" },
   ];
   for (const o of owned) {
     if (typeof body?.[o.key] !== "string" || !body[o.key]) continue;
@@ -180,16 +184,25 @@ Deno.serve(async (req) => {
   // Скриптовый онбординг ходит с ключом автоматизации, интерфейс — под пользователем.
   const viaAutomation = await automationKeyValid(req, admin);
   let userId: string | null = null;
+  // Роль в проекте (RBAC, _lib/rbac.ts): ключ автоматизации = владелец; пользователь — по
+  // владению проектом, явной роли участника и глобальной роли команды.
+  let role: ProjectRole = "owner";
   if (!viaAutomation) {
     const auth = await requireUser(req);
     if (!auth.ok) return json({ error: "unauthorized" }, 401);
     userId = auth.userId;
     const access = await requireProjectAccess(auth.authHeader, pid);
     if (!access.ok) return access.response;
+    const resolved = await projectRoleOf(userId, pid);
+    if (!resolved) return json({ error: "нет доступа к проекту" }, 403);
+    role = resolved;
+    if (!canDo(role, action)) {
+      return json({ error: `действие «${action}» требует уровня ${levelForAction(action)}, ваша роль в проекте — ${role}`, role }, 403);
+    }
   }
 
   /** Группа/персона из тела должна быть из этого же проекта; null — снять. */
-  const ownedRef = async (table: "publish_account_groups" | "personas", id: unknown): Promise<{ ok: true; value: string | null } | { ok: false }> => {
+  const ownedRef = async (table: "publish_account_groups" | "personas" | "publish_routines", id: unknown): Promise<{ ok: true; value: string | null } | { ok: false }> => {
     if (id === null) return { ok: true, value: null };
     if (typeof id !== "string" || !id) return { ok: true, value: undefined as unknown as null };
     const owner = await projectOf(table, id);
@@ -201,11 +214,11 @@ Deno.serve(async (req) => {
       if (!projectId) return json({ error: "project_id обязателен" }, 400);
       const { data, error } = await admin.from("publish_accounts")
         .select(
-          "id, platform, account_name, handle, external_account_id, fb_page_id, status, publish_enabled, daily_limit, last_post_at, consecutive_errors, last_error, token_expires_at, group_id, persona_id, timezone, window_start, window_end, ramp_enabled, ramp_started_at, health_score, health_reasons, last_checked_at, published_today, published_day, token_refreshed_at, followers, oauth_scope, capabilities, connection_type, auth_status",
+          "id, platform, account_name, handle, external_account_id, fb_page_id, status, publish_enabled, daily_limit, last_post_at, consecutive_errors, last_error, token_expires_at, group_id, persona_id, timezone, window_start, window_end, ramp_enabled, ramp_started_at, health_score, health_reasons, last_checked_at, published_today, published_day, token_refreshed_at, followers, oauth_scope, capabilities, connection_type, auth_status, routine_id",
         )
         .eq("project_id", projectId).order("platform").order("account_name");
       if (error) return json({ error: error.message }, 500);
-      return json({ ok: true, accounts: data ?? [] });
+      return json({ ok: true, accounts: data ?? [], role });
     }
 
     if (action === "available") {
@@ -328,6 +341,11 @@ Deno.serve(async (req) => {
         if (!p.ok) return json({ error: "персона не из этого проекта" }, 400);
         patch.persona_id = p.value;
       }
+      if (body?.routine_id === null || typeof body?.routine_id === "string") {
+        const r = await ownedRef("publish_routines", body.routine_id);
+        if (!r.ok) return json({ error: "рутина не из этого проекта" }, 400);
+        patch.routine_id = r.value;
+      }
       if (body?.timezone === null || typeof body?.timezone === "string") patch.timezone = body.timezone?.trim() || null;
       if (body?.window_start === null || typeof body?.window_start === "string") patch.window_start = body.window_start || null;
       if (body?.window_end === null || typeof body?.window_end === "string") patch.window_end = body.window_end || null;
@@ -395,6 +413,11 @@ Deno.serve(async (req) => {
         const p = await ownedRef("personas", body.persona_id);
         if (!p.ok) return json({ error: "персона не из этого проекта" }, 400);
         row.persona_id = p.value;
+      }
+      if (body?.routine_id === null || typeof body?.routine_id === "string") {
+        const r = await ownedRef("publish_routines", body.routine_id);
+        if (!r.ok) return json({ error: "рутина не из этого проекта" }, 400);
+        row.routine_id = r.value;
       }
       if (typeof body?.review_mode === "string") {
         if (!["review_required", "auto_publish", "paused"].includes(body.review_mode)) {
@@ -633,6 +656,142 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    /* ── участники проекта и их роли (RBAC) ── */
+    if (action === "member_list") {
+      const [{ data: project }, { data: members, error }] = await Promise.all([
+        admin.from("projects").select("created_by").eq("id", pid).maybeSingle(),
+        admin.from("project_members").select("user_id, role, created_at").eq("project_id", pid),
+      ]);
+      if (error) return json({ error: error.message }, 500);
+      const rows = (members ?? []) as { user_id: string; role: string; created_at: string }[];
+      const ownerId = (project as { created_by?: string | null } | null)?.created_by ?? null;
+      const ids = [...new Set([...rows.map((m) => m.user_id), ...(ownerId ? [ownerId] : [])])];
+      const [{ data: profiles }, { data: globals }] = ids.length
+        ? await Promise.all([
+          admin.from("profiles").select("id, name, display_role").in("id", ids),
+          admin.from("user_roles").select("user_id, role").in("user_id", ids),
+        ])
+        : [{ data: [] }, { data: [] }];
+      const byId = new Map(((profiles ?? []) as { id: string; name: string | null; display_role: string | null }[]).map((p) => [p.id, p]));
+      const globalOf = new Map<string, string>();
+      for (const g of (globals ?? []) as { user_id: string; role: string }[]) if (!globalOf.has(g.user_id) || g.role === "admin") globalOf.set(g.user_id, g.role);
+      const list = rows.map((m) => ({
+        user_id: m.user_id,
+        name: byId.get(m.user_id)?.name ?? null,
+        member_role: m.role,
+        global_role: byId.get(m.user_id)?.display_role ?? globalOf.get(m.user_id) ?? null,
+        is_owner: m.user_id === ownerId,
+        since: m.created_at,
+      }));
+      if (ownerId && !rows.some((m) => m.user_id === ownerId)) {
+        list.unshift({ user_id: ownerId, name: byId.get(ownerId)?.name ?? null, member_role: "owner", global_role: byId.get(ownerId)?.display_role ?? globalOf.get(ownerId) ?? null, is_owner: true, since: "" });
+      }
+      return json({ ok: true, members: list, me: { user_id: userId, role }, assignable: ASSIGNABLE_ROLES });
+    }
+    if (action === "member_role_set") {
+      const targetId = String(body?.user_id ?? "");
+      const newRole = String(body?.role ?? "");
+      if (!targetId) return json({ error: "user_id обязателен" }, 400);
+      if (!isProjectRole(newRole) || newRole === "owner") return json({ error: `role — одна из: ${ASSIGNABLE_ROLES.join(", ")}` }, 400);
+      const { data: project } = await admin.from("projects").select("created_by").eq("id", pid).maybeSingle();
+      if ((project as { created_by?: string | null } | null)?.created_by === targetId) return json({ error: "роль владельца проекта не меняется" }, 400);
+      // admin (не владелец) не может раздавать admin — иначе роль размножается сама.
+      if (newRole === "admin" && role !== "owner") return json({ error: "назначать администраторов может только владелец проекта" }, 403);
+      const { data, error } = await admin.from("project_members").update({ role: newRole }).eq("project_id", pid).eq("user_id", targetId).select("user_id, role").maybeSingle();
+      if (error) return json({ error: error.message }, 500);
+      if (!data) return json({ error: "пользователь не участник проекта — сначала добавьте его в команду" }, 404);
+      return json({ ok: true, member: data });
+    }
+
+    /* ── рутины: шаги вокруг публикации ── */
+    const ROUTINE_SELECT = "id, project_id, name, description, steps, is_default, created_at, updated_at";
+    const ROUTINE_ACTIONS = ["ACCOUNT_HEALTH_CHECK", "TOKEN_CHECK", "METRICS_SYNC"];
+    if (action === "routine_list") {
+      const [{ data, error }, { data: groups }, { data: accounts }] = await Promise.all([
+        admin.from("publish_routines").select(ROUTINE_SELECT).eq("project_id", pid).order("is_default", { ascending: false }).order("name"),
+        admin.from("publish_account_groups").select("id, name, routine_id").eq("project_id", pid),
+        admin.from("publish_accounts").select("id, account_name, routine_id").eq("project_id", pid).not("routine_id", "is", null),
+      ]);
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, routines: data ?? [], groups: groups ?? [], accounts: accounts ?? [] });
+    }
+    if (action === "routine_upsert") {
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      const routineId = typeof body?.routine_id === "string" ? body.routine_id : null;
+      const row: Record<string, unknown> = {};
+      if (body?.name !== undefined) {
+        const name = String(body.name ?? "").trim().slice(0, 80);
+        if (!name) return json({ error: "name обязателен" }, 400);
+        row.name = name;
+      }
+      if (body?.description !== undefined) row.description = body.description == null ? null : String(body.description).slice(0, 1000);
+      if (body?.steps !== undefined) {
+        if (!Array.isArray(body.steps)) return json({ error: "steps — список шагов" }, 400);
+        const steps: { action: string; offset_minutes: number }[] = [];
+        for (const st of body.steps as Record<string, unknown>[]) {
+          const act = String(st?.action ?? "");
+          const off = Number(st?.offset_minutes);
+          if (!ROUTINE_ACTIONS.includes(act)) return json({ error: `шаг: action — одно из ${ROUTINE_ACTIONS.join(", ")}` }, 400);
+          if (!Number.isInteger(off) || Math.abs(off) > 60 * 24 * 30) return json({ error: "шаг: offset_minutes — целое число минут (до ±30 дней)" }, 400);
+          if (act === "METRICS_SYNC" && off < 0) return json({ error: "METRICS_SYNC возможен только после публикации (offset ≥ 0)" }, 400);
+          if (act !== "METRICS_SYNC" && off >= 0) return json({ error: `${act} имеет смысл только до публикации (offset < 0)` }, 400);
+          steps.push({ action: act, offset_minutes: off });
+        }
+        if (steps.length > 20) return json({ error: "не больше 20 шагов" }, 400);
+        row.steps = steps.sort((a, b) => a.offset_minutes - b.offset_minutes);
+      }
+      if (typeof body?.is_default === "boolean") row.is_default = body.is_default;
+      if (!routineId && !row.name) return json({ error: "name обязателен" }, 400);
+      if (row.is_default === true) {
+        // Одна рутина по умолчанию на проект (частичный уникальный индекс): снимаем флаг с прежней.
+        await admin.from("publish_routines").update({ is_default: false }).eq("project_id", pid).eq("is_default", true);
+      }
+      const q = routineId
+        ? admin.from("publish_routines").update(row).eq("id", routineId).eq("project_id", pid).select(ROUTINE_SELECT).maybeSingle()
+        : admin.from("publish_routines").insert({ steps: [], ...row, project_id: pid, created_by: userId }).select(ROUTINE_SELECT).maybeSingle();
+      const { data, error } = await q;
+      if (error) return json({ error: error.message }, 500);
+      if (!data) return json({ error: "рутина не найдена" }, 404);
+      return json({ ok: true, routine: data });
+    }
+    if (action === "routine_delete") {
+      const routineId = String(body?.routine_id ?? "");
+      if (!routineId) return json({ error: "routine_id обязателен" }, 400);
+      const { error } = await admin.from("publish_routines").delete().eq("id", routineId).eq("project_id", pid);
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true });
+    }
+    if (action === "routine_assign") {
+      // routine_id (или null — снять) → группам и/или аккаунтам проекта.
+      const routineId = body?.routine_id === null ? null : String(body?.routine_id ?? "");
+      if (routineId === "") return json({ error: "routine_id обязателен (или null — снять)" }, 400);
+      const groupIds: string[] = Array.isArray(body?.group_ids) ? body.group_ids.map(String) : [];
+      const accountIds: string[] = Array.isArray(body?.account_ids) ? body.account_ids.map(String) : [];
+      if (!groupIds.length && !accountIds.length) return json({ error: "group_ids и/или account_ids" }, 400);
+      let groups = 0, accounts = 0;
+      if (groupIds.length) {
+        const { count, error } = await admin.from("publish_account_groups").update({ routine_id: routineId }, { count: "exact" }).eq("project_id", pid).in("id", groupIds);
+        if (error) return json({ error: error.message }, 500);
+        groups = count ?? 0;
+      }
+      if (accountIds.length) {
+        const { count, error } = await admin.from("publish_accounts").update({ routine_id: routineId }, { count: "exact" }).eq("project_id", pid).in("id", accountIds);
+        if (error) return json({ error: error.message }, 500);
+        accounts = count ?? 0;
+      }
+      return json({ ok: true, groups, accounts });
+    }
+    if (action === "tasks_list") {
+      let q = admin.from("publish_tasks")
+        .select("id, job_id, account_id, routine_id, task_type, run_at, status, attempts, result, error, finished_at, created_at, publish_accounts(account_name)")
+        .eq("project_id", pid).order("run_at", { ascending: false })
+        .limit(Math.min(Math.max(Number(body?.limit ?? 100), 1), 500));
+      if (typeof body?.status === "string") q = q.eq("status", body.status);
+      const { data, error } = await q;
+      if (error) return json({ error: error.message }, 500);
+      return json({ ok: true, tasks: data ?? [] });
+    }
+
     /* ── кампании: период × аккаунты × очередь контента × правило публикации ── */
     const CAMPAIGN_SELECT = "id, project_id, name, objective, status, start_date, end_date, timezone, group_id, account_ids, posts_per_day, slot_times, weekdays, mode, distribution, planned_until, completed_at, created_at, updated_at";
     if (action === "campaign_list") {
@@ -850,9 +1009,11 @@ Deno.serve(async (req) => {
       ]);
       if (error) return json({ error: error.message }, 500);
       if (!job) return json({ error: "задание не найдено" }, 404);
-      const { data: metrics } = await admin.from("post_metrics")
-        .select("checkpoint, captured_at, views, reach, likes, comments, shares, saves, followers").eq("job_id", jobId).order("captured_at");
-      return json({ ok: true, job, events: events ?? [], logs: logs ?? [], metrics: metrics ?? [] });
+      const [{ data: metrics }, { data: tasks }] = await Promise.all([
+        admin.from("post_metrics").select("checkpoint, captured_at, views, reach, likes, comments, shares, saves, followers").eq("job_id", jobId).order("captured_at"),
+        admin.from("publish_tasks").select("id, task_type, run_at, status, attempts, result, error, finished_at").eq("job_id", jobId).order("run_at"),
+      ]);
+      return json({ ok: true, job, events: events ?? [], logs: logs ?? [], metrics: metrics ?? [], tasks: tasks ?? [] });
     }
 
     /* ── центр уведомлений ── */

@@ -60,6 +60,7 @@ export interface PublishAccount {
   capabilities?: Record<string, boolean> | null;
   connection_type?: "oauth" | "device" | "hybrid";
   auth_status?: PublishAuthStatus;
+  routine_id?: string | null;
 }
 
 export type PublishAuthStatus = "connected" | "expiring" | "expired" | "reconnect_required";
@@ -522,7 +523,7 @@ export interface PublishVideoInput {
 }
 
 export const publishingApi = {
-  list: (project_id: string) => call<{ accounts: PublishAccount[] }>("list", { project_id }),
+  list: (project_id: string) => call<{ accounts: PublishAccount[]; role?: ProjectRole }>("list", { project_id }),
   /** meta_token — вставленный вручную User Access Token, когда токены проекта площадка отклоняет. */
   available: (project_id: string, meta_token?: string | null) =>
     call<{ pages: AvailablePage[] }>("available", { project_id, ...(meta_token ? { meta_token } : {}) }),
@@ -557,6 +558,18 @@ export const publishingApi = {
     call<{ jobs: PublishJob[] }>("jobs_list", { project_id, ...opts }),
   metrics: (project_id: string) => call<MetricsResponse>("metrics", { project_id }),
   jobGet: (project_id: string, job_id: string) => call<JobDetail>("job_get", { project_id, job_id }),
+
+  memberList: (project_id: string) => call<{ members: ProjectMember[]; me: { user_id: string | null; role: ProjectRole }; assignable: ProjectRole[] }>("member_list", { project_id }),
+  memberRoleSet: (project_id: string, user_id: string, role: ProjectRole) => call<{ member: { user_id: string; role: string } }>("member_role_set", { project_id, user_id, role }),
+  routineList: (project_id: string) =>
+    call<{ routines: PublishRoutine[]; groups: { id: string; name: string; routine_id: string | null }[]; accounts: { id: string; account_name: string; routine_id: string | null }[] }>("routine_list", { project_id }),
+  routineUpsert: (project_id: string, input: { routine_id?: string; name?: string; description?: string | null; steps?: RoutineStep[]; is_default?: boolean }) =>
+    call<{ routine: PublishRoutine }>("routine_upsert", { project_id, ...input }),
+  routineDelete: (project_id: string, routine_id: string) => call<{ ok: true }>("routine_delete", { project_id, routine_id }),
+  routineAssign: (project_id: string, routine_id: string | null, target: { group_ids?: string[]; account_ids?: string[] }) =>
+    call<{ groups: number; accounts: number }>("routine_assign", { project_id, routine_id, ...target }),
+  tasksList: (project_id: string, opts: { status?: PublishTask["status"]; limit?: number } = {}) =>
+    call<{ tasks: (PublishTask & { job_id: string | null; publish_accounts: { account_name: string } | null })[] }>("tasks_list", { project_id, ...opts }),
 
   campaignList: (project_id: string) => call<{ campaigns: PublishCampaign[]; metrics: CampaignMetrics[] }>("campaign_list", { project_id }),
   campaignGet: (project_id: string, campaign_id: string) =>
@@ -614,6 +627,7 @@ export interface JobDetail {
   events: JobEvent[];
   logs: { id: string; level: string; message: string; created_at: string }[];
   metrics: { checkpoint: string; captured_at: string; views: number; reach: number; likes: number; comments: number; shares: number; saves: number; followers: number | null }[];
+  tasks?: PublishTask[];
 }
 
 export interface PublishNotification {
@@ -790,6 +804,76 @@ export const WEBHOOK_EVENT_OPTIONS: { value: string; label: string }[] = [
   { value: "campaign.completed", label: "Кампания завершена" },
   { value: "report.daily", label: "Ежедневный отчёт" },
 ];
+
+/* ───────────────────────────── роли и рутины ───────────────────────────── */
+
+export type ProjectRole = "owner" | "admin" | "manager" | "content_manager" | "operator" | "viewer";
+
+export const PROJECT_ROLE_LABELS: Record<ProjectRole, string> = {
+  owner: "Владелец",
+  admin: "Администратор",
+  manager: "Менеджер",
+  content_manager: "Контент-менеджер",
+  operator: "Оператор",
+  viewer: "Наблюдатель",
+};
+
+const ROLE_RANK: Record<ProjectRole, number> = { viewer: 0, operator: 1, content_manager: 2, manager: 3, admin: 4, owner: 5 };
+export type PermissionLevel = "read" | "operate" | "publish" | "manage" | "admin";
+const LEVEL_RANK: Record<PermissionLevel, number> = { read: 0, operate: 1, publish: 2, manage: 3, admin: 4 };
+
+/** Зеркало _lib/rbac.ts: хватает ли роли для уровня действия (интерфейс прячет кнопки, сервер решает). */
+export function roleAllows(role: ProjectRole | null | undefined, level: PermissionLevel): boolean {
+  if (!role) return true; // роль ещё не известна — не прячем, сервер откажет сам
+  return ROLE_RANK[role] >= LEVEL_RANK[level];
+}
+
+export interface ProjectMember {
+  user_id: string;
+  name: string | null;
+  member_role: string;
+  global_role: string | null;
+  is_owner: boolean;
+  since: string;
+}
+
+export type RoutineAction = "ACCOUNT_HEALTH_CHECK" | "TOKEN_CHECK" | "METRICS_SYNC";
+export interface RoutineStep { action: RoutineAction; offset_minutes: number }
+
+export interface PublishRoutine {
+  id: string;
+  name: string;
+  description: string | null;
+  steps: RoutineStep[];
+  is_default: boolean;
+  created_at: string;
+}
+
+export const ROUTINE_ACTION_LABELS: Record<RoutineAction, string> = {
+  ACCOUNT_HEALTH_CHECK: "Проверка аккаунта",
+  TOKEN_CHECK: "Проверка токена",
+  METRICS_SYNC: "Снять метрики",
+};
+
+export interface PublishTask {
+  id: number;
+  task_type: RoutineAction;
+  run_at: string;
+  status: "pending" | "running" | "done" | "failed" | "skipped";
+  attempts: number;
+  result: Record<string, unknown> | null;
+  error: string | null;
+  finished_at: string | null;
+}
+
+/** Разбор строки шагов «-15 health, +20 metrics» не нужен: форма собирает шаги по строкам. */
+export function formatOffset(minutes: number): string {
+  const sign = minutes < 0 ? "−" : "+";
+  const abs = Math.abs(minutes);
+  if (abs % 1440 === 0 && abs >= 1440) return `${sign}${abs / 1440} д`;
+  if (abs % 60 === 0 && abs >= 60) return `${sign}${abs / 60} ч`;
+  return `${sign}${abs} мин`;
+}
 
 /* ───────────────────────────── проверка здоровья ───────────────────────────── */
 

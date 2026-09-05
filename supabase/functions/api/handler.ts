@@ -30,6 +30,9 @@
  *        start | pause | complete | archive | plan — кампании (publish)
  *   GET|POST /api/v1/webhooks, POST /webhooks/:id | /delete, GET /webhooks/:id/deliveries — вебхуки (manage)
  *   GET  /api/v1/reports/daily                — отчёт за сутки по проекту
+ *   GET  /api/v1/members, POST /members/:userId/role — участники проекта и роли (RBAC)
+ *   GET|POST /api/v1/routines, POST /routines/:id | /delete | /assign — рутины (шаги вокруг публикации)
+ *   GET  /api/v1/tasks?status=&limit=         — задачи рутин
  *
  * Сама функция тонкая: проверяет ключ и границы проекта, а работу делают
  * существующие функции (publish-intake, r2-presign-upload, publish-accounts),
@@ -150,6 +153,7 @@ const CAMPAIGN_FIELDS = [
   "posts_per_day", "slot_times", "weekdays", "mode", "distribution",
 ] as const;
 const WEBHOOK_FIELDS = ["name", "url", "events", "enabled", "rotate_secret"] as const;
+const ROUTINE_FIELDS = ["name", "description", "steps", "is_default"] as const;
 
 /** Только известные поля — чужие ключи тела в соседнюю функцию не утекают. */
 function pick(body: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
@@ -483,6 +487,44 @@ async function reportDaily(deps: Deps, ctx: ApiKeyContext): Promise<Response> {
   return json({ ok: true, report: reports[0] ?? null });
 }
 
+/* ───────────── участники, рутины, задачи ───────────── */
+
+async function memberRoleSet(req: Request, deps: Deps, ctx: ApiKeyContext, userId: string): Promise<Response> {
+  const body = await readJson(req);
+  if (typeof body.role !== "string") return json({ error: "role обязателен" }, 400);
+  return passthrough(await accountsAction(deps, ctx, "member_role_set", { user_id: userId, role: body.role }));
+}
+
+async function routineUpsert(req: Request, deps: Deps, ctx: ApiKeyContext, id: string | null): Promise<Response> {
+  if (id && !(await ownsRow(deps.admin, "publish_routines", id, ctx.projectId))) return json({ error: "рутина не найдена" }, 404);
+  const body = pick(await readJson(req), ROUTINE_FIELDS);
+  if (!id && typeof body.name !== "string") return json({ error: "name обязателен" }, 400);
+  if (id && !Object.keys(body).length) return json({ error: `нечего менять — поля: ${ROUTINE_FIELDS.join(", ")}` }, 400);
+  return passthrough(await accountsAction(deps, ctx, "routine_upsert", { ...(id ? { routine_id: id } : {}), ...body }));
+}
+
+async function routineAssign(req: Request, deps: Deps, ctx: ApiKeyContext, id: string): Promise<Response> {
+  if (!(await ownsRow(deps.admin, "publish_routines", id, ctx.projectId))) return json({ error: "рутина не найдена" }, 404);
+  const body = await readJson(req);
+  return passthrough(await accountsAction(deps, ctx, "routine_assign", {
+    routine_id: id,
+    group_ids: Array.isArray(body.group_ids) ? body.group_ids.map(String) : [],
+    account_ids: Array.isArray(body.account_ids) ? body.account_ids.map(String) : [],
+  }));
+}
+
+async function routineDelete(deps: Deps, ctx: ApiKeyContext, id: string): Promise<Response> {
+  if (!(await ownsRow(deps.admin, "publish_routines", id, ctx.projectId))) return json({ error: "рутина не найдена" }, 404);
+  return passthrough(await accountsAction(deps, ctx, "routine_delete", { routine_id: id }));
+}
+
+async function tasksList(req: Request, deps: Deps, ctx: ApiKeyContext): Promise<Response> {
+  const q = new URL(req.url).searchParams;
+  const limit = Math.min(500, Math.max(1, Number(q.get("limit") ?? 100)));
+  const status = q.get("status");
+  return passthrough(await accountsAction(deps, ctx, "tasks_list", { limit, ...(status ? { status } : {}) }));
+}
+
 /** Аудит вызова (api_request_logs): ключ, маршрут, статус, хэш параметров — без содержимого и без ожидания. */
 async function paramsHash(url: URL, bodyText: string | null): Promise<string | null> {
   const src = `${url.search}${bodyText ?? ""}`;
@@ -548,6 +590,14 @@ async function dispatch(req: Request, deps: Deps, ctx: ApiKeyContext, route: Api
     case "webhook_delete": return webhookSimple(deps, ctx, route.id, "webhook_delete");
     case "webhook_deliveries": return webhookSimple(deps, ctx, route.id, "webhook_deliveries");
     case "report_daily": return reportDaily(deps, ctx);
+    case "members_list": return passthrough(await accountsAction(deps, ctx, "member_list", {}));
+    case "member_role_set": return memberRoleSet(req, deps, ctx, route.id);
+    case "routines_list": return passthrough(await accountsAction(deps, ctx, "routine_list", {}));
+    case "routine_create": return routineUpsert(req, deps, ctx, null);
+    case "routine_update": return routineUpsert(req, deps, ctx, route.id);
+    case "routine_delete": return routineDelete(deps, ctx, route.id);
+    case "routine_assign": return routineAssign(req, deps, ctx, route.id);
+    case "tasks_list": return tasksList(req, deps, ctx);
   }
 }
 

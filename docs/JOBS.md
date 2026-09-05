@@ -104,6 +104,37 @@ due-доставки): `POST` с заголовками `X-MarkVision-Event`, `X
 2xx — `delivered`; 5xx / 429 / сеть — `retry` по лестнице 1 → 5 → 15 → 60 → 180 мин (5 попыток →
 `failed`); прочие 4xx — `failed` сразу. Чистая часть — `_lib/webhooks.ts` (`src/test/webhooks.test.ts`).
 
+## Рутины (Routine Engine)
+
+`publish_routines.steps` — `[{ "action": "ACCOUNT_HEALTH_CHECK", "offset_minutes": -15 }, { "action": "METRICS_SYNC",
+"offset_minutes": 20 }, …]`. Отрицательное смещение — от `scheduled_at` задания (проверки), положительное —
+от `published_at` (метрики). Рутина берётся: аккаунт → группа → рутина проекта по умолчанию.
+
+Триггер `publish_jobs_routine_tasks` материализует шаги в `publish_tasks`: «до»-шаги при создании
+задания (и пересчитывает при переносе слота), «после»-шаги при переходе в `published`; при `failed` /
+`cancelled` / уже состоявшейся публикации pending-проверки снимаются (`skipped`). Воркер
+`publish-tasks` (крон ежеминутно, только при due-задачах) забирает задачи (`claim_publish_tasks`) и зовёт
+существующие функции: health — `publish-monitor {mode: health, account_ids}`, метрики —
+`publish-metrics {job_ids, checkpoint: "r<N>m"}` (точка `r20m`, `r240m`, … в `post_metrics`). До 3 попыток
+с паузой 5 минут, потом `failed`. Задачи видны в трассе задания и `GET /api/v1/tasks`.
+
+## Роли (RBAC)
+
+Роль в проекте (`_lib/rbac.ts`, SQL `project_role_of`): владелец → `owner`; явная `project_members.role`;
+иначе по глобальной роли команды (admin/director → `admin`, manager → `manager`, marketer → `content_manager`,
+viewer → `viewer`), участник без роли — `manager` (как до RBAC). Уровни вложены:
+
+| Уровень | Роли | Действия |
+|---|---|---|
+| read | все | списки, метрики, трасса, уведомления, кампании, вебхуки (чтение) |
+| operate | operator+ | повтор/отмена задания, проверка здоровья, отметить уведомление |
+| publish | content_manager+ | «Залить видео», кампании (создать, очередь, start/pause) |
+| manage | manager+ | аккаунты (подключить/отключить/правка), группы, персоны, настройки, ключи API, вебхуки, рутины |
+| admin | admin, owner | роли участников (`member_role_set`; назначать `admin` может только владелец) |
+
+Сервер (`publish-accounts`) отказывает 403 с текстом уровня; интерфейс прячет кнопки по `roleAllows`.
+Ключи публичного API живут своими правами `read|publish|manage` и внутрь ходят как владелец.
+
 ## Ежедневный отчёт
 
 `publish-monitor { mode: "daily_report" }` (крон `publish-monitor-daily-report`, 05:00 UTC): по каждому
@@ -115,7 +146,7 @@ due-доставки): `POST` с заголовками `X-MarkVision-Event`, `X
 ## Ретеншн
 
 `publish_maintenance_gc(events_days=90, logs_days=90, api_logs_days=90, notif_days=180)` — крон
-`publish-maintenance-daily` (03:50 UTC); доставки вебхуков (`delivered`/`failed`) — 30 дней.
+`publish-maintenance-daily` (03:50 UTC); доставки вебхуков и задачи рутин (завершённые) — 30 дней.
 Значения — аргументы функции в `cron.job.command`.
 
 ## Нагрузочный тест (Mock)
