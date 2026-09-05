@@ -64,6 +64,15 @@ export interface RadarPost {
   analysis_status: RadarAnalysisStatus;
   analyzed_at: string | null;
   error: string | null;
+  /** Медиана просмотров / лайков по другим постам автора («обычно»). */
+  baseline_views: number | null;
+  baseline_likes: number | null;
+  /** Ожидаемые просмотры для аудитории автора. */
+  norm_views: number | null;
+  /** Во сколько раз пост обошёл «обычно» автора (или норму). */
+  x_factor: number | null;
+  /** Транскрипт речи (если видео расшифровано) — только в разборе поста. */
+  transcript?: string | null;
 }
 
 export interface Idea {
@@ -112,11 +121,15 @@ export interface RadarCrawlerInfo {
 
 export interface RadarMetrics {
   sources: number;
+  posts_total: number;
   posts_7d: number;
   posts_unanalyzed: number;
+  /** Постов с X-фактором ≥ 2. */
+  posts_viral: number;
   ideas_new: number;
   ideas_used: number;
   spent_month_usd: number;
+  last_run_at: string | null;
 }
 
 export interface RadarGroup {
@@ -166,48 +179,49 @@ export interface PromoteInput {
 
 /* ───────────────────────────── словари ───────────────────────────── */
 
+// Палитра чипов: приложение тёмное, поэтому светлые оттенки (300–400) на полупрозрачной подложке.
 export const SOURCE_KIND_META: Record<RadarSourceKind, { label: string; cls: string }> = {
-  competitor_account: { label: "Конкурент", cls: "bg-sky-500/10 text-sky-700" },
-  hashtag: { label: "Хештег", cls: "bg-violet-500/10 text-violet-700" },
-  ad_library_query: { label: "Библиотека рекламы", cls: "bg-amber-500/10 text-amber-700" },
-  own_account: { label: "Свой аккаунт", cls: "bg-emerald-500/10 text-emerald-700" },
+  competitor_account: { label: "Конкурент", cls: "bg-sky-500/15 text-sky-300 ring-1 ring-inset ring-sky-500/30" },
+  hashtag: { label: "Хештег", cls: "bg-violet-500/15 text-violet-300 ring-1 ring-inset ring-violet-500/30" },
+  ad_library_query: { label: "Библиотека рекламы", cls: "bg-amber-500/15 text-amber-300 ring-1 ring-inset ring-amber-500/30" },
+  own_account: { label: "Свой аккаунт", cls: "bg-success/15 text-success ring-1 ring-inset ring-success/30" },
 };
 
-export const PLATFORM_META: Record<RadarPlatform, { label: string; cls: string }> = {
-  instagram: { label: "Instagram", cls: "bg-pink-500/10 text-pink-700" },
-  tiktok: { label: "TikTok", cls: "bg-slate-500/10 text-slate-700" },
-  youtube: { label: "YouTube", cls: "bg-red-500/10 text-red-700" },
-  threads: { label: "Threads", cls: "bg-zinc-500/10 text-zinc-700" },
-  facebook: { label: "Facebook", cls: "bg-blue-500/10 text-blue-700" },
+export const PLATFORM_META: Record<RadarPlatform, { label: string; short: string; cls: string }> = {
+  instagram: { label: "Instagram", short: "IG", cls: "bg-pink-500/15 text-pink-300 ring-1 ring-inset ring-pink-500/30" },
+  tiktok: { label: "TikTok", short: "TT", cls: "bg-slate-400/15 text-slate-200 ring-1 ring-inset ring-slate-400/30" },
+  youtube: { label: "YouTube", short: "YT", cls: "bg-red-500/15 text-red-300 ring-1 ring-inset ring-red-500/30" },
+  threads: { label: "Threads", short: "TH", cls: "bg-zinc-400/15 text-zinc-200 ring-1 ring-inset ring-zinc-400/30" },
+  facebook: { label: "Facebook", short: "FB", cls: "bg-blue-500/15 text-blue-300 ring-1 ring-inset ring-blue-500/30" },
 };
 
 export const ANALYSIS_STATUS_META: Record<RadarAnalysisStatus, { label: string; cls: string }> = {
   pending: { label: "В очереди", cls: "bg-muted text-muted-foreground" },
-  analyzing: { label: "Разбираем", cls: "bg-amber-500/10 text-amber-700" },
-  done: { label: "Разобран", cls: "bg-emerald-500/10 text-emerald-700" },
-  failed: { label: "Ошибка", cls: "bg-destructive/10 text-destructive" },
+  analyzing: { label: "Разбираем", cls: "bg-warning/15 text-warning" },
+  done: { label: "Разобран", cls: "bg-success/15 text-success" },
+  failed: { label: "Ошибка", cls: "bg-destructive/15 text-destructive" },
   skipped: { label: "Пропущен", cls: "bg-muted text-muted-foreground" },
 };
 
 export const RUN_STATUS_META: Record<RadarRunStatus, { label: string; cls: string }> = {
-  running: { label: "Собираем", cls: "bg-amber-500/10 text-amber-700" },
-  done: { label: "Готово", cls: "bg-emerald-500/10 text-emerald-700" },
-  failed: { label: "Ошибка", cls: "bg-destructive/10 text-destructive" },
+  running: { label: "Собираем", cls: "bg-warning/15 text-warning" },
+  done: { label: "Готово", cls: "bg-success/15 text-success" },
+  failed: { label: "Ошибка", cls: "bg-destructive/15 text-destructive" },
 };
 
 export const IDEA_STATUS_META: Record<IdeaStatus, { label: string; cls: string }> = {
-  new: { label: "Новая", cls: "bg-sky-500/10 text-sky-700" },
-  approved: { label: "Одобрена", cls: "bg-emerald-500/10 text-emerald-700" },
-  used: { label: "В плане", cls: "bg-violet-500/10 text-violet-700" },
+  new: { label: "Новая", cls: "bg-sky-500/15 text-sky-300 ring-1 ring-inset ring-sky-500/30" },
+  approved: { label: "Одобрена", cls: "bg-success/15 text-success ring-1 ring-inset ring-success/30" },
+  used: { label: "В плане", cls: "bg-violet-500/15 text-violet-300 ring-1 ring-inset ring-violet-500/30" },
   rejected: { label: "Отклонена", cls: "bg-muted text-muted-foreground" },
 };
 
 export type ScoreTone = "hot" | "warm" | "cold";
 
 export const SCORE_TONE_CLS: Record<ScoreTone, string> = {
-  hot: "bg-emerald-500/15 text-emerald-700",
-  warm: "bg-amber-500/15 text-amber-700",
-  cold: "bg-muted text-muted-foreground",
+  hot: "bg-success/20 text-success ring-1 ring-inset ring-success/40",
+  warm: "bg-warning/20 text-warning ring-1 ring-inset ring-warning/40",
+  cold: "bg-muted text-muted-foreground ring-1 ring-inset ring-border",
 };
 
 /* ───────────────────────────── чистые помощники ───────────────────────────── */
@@ -271,6 +285,8 @@ export const radarApi = {
   crawlSource: (id: string) => call<{ kicked: boolean; run_id?: string | null }>(`radar/sources/${id}/crawl`, "POST", {}),
   analyzeUrl: (projectId: string, url: string) =>
     call<{ kicked: boolean; run_id?: string | null; message: string }>("radar/analyze-url", "POST", { project_id: projectId, url }),
+  post: (id: string) =>
+    call<{ post: RadarPost & { video_url: string | null; transcript: string | null }; ideas: Pick<Idea, "id" | "title" | "status" | "content_item_id" | "score">[] }>(`radar/posts/${id}`, "GET"),
   analyzePost: (id: string) =>
     call<{ ok: boolean; idea_id: string | null; error: string | null }>(`radar/posts/${id}/analyze`, "POST", {}),
   updateIdea: (id: string, patch: IdeaPatch) => call<{ idea: Idea }>(`radar/ideas/${id}`, "POST", { ...patch }),

@@ -171,6 +171,26 @@ pending ──claim──► processing ──► published
 Ответ: `{ ok, video_id, created, skipped, accounts: [{ id, account_name, scheduled_at }] }`.
 `skipped` — задания, которые уже стояли по этой паре видео+аккаунт.
 
+**`action: "distribute"`** — пачка контент-завода, один ролик → один аккаунт (чистая раскладка —
+`_lib/publishDistribute.ts`, тест `_tests/publishDistribute_test.ts`):
+
+```jsonc
+{
+  "action": "distribute",
+  "project_id": "uuid",
+  "videos": [{ "id": "uuid", "topic_key": "сеть-аккаунтов" }],   // или video_ids: ["uuid", …]
+  "batch_id": "2026-09-08-1",                                      // пишется в publish_videos.batch_id
+  "target": { "group_id": "uuid", "account_ids": ["uuid"], "platforms": ["tiktok"],
+              "start_at": "2026-09-08T09:00:00Z", "per_day": 3, "max_days": 30 }
+}
+```
+
+Аккаунты по кругу, здоровые вперёд; ≤ `per_day` роликов на аккаунт в сутки; один `topic_key` —
+разные дни и разные аккаунты; время в дне ставит `plan_publish_slots` на одном аккаунте.
+Ответ: `{ ok, created, skipped, unassigned: [video_id], assignments: [{ video_id, account_id,
+account_name, day, scheduled_at }] }`. Снаружи — `POST /publications/distribute` публичного API
+и MCP `markvision_distribute`.
+
 ### `POST publish-dispatch/<platform>`
 
 Контракт из ТЗ (`POST /publish/instagram`). Два режима:

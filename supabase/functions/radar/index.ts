@@ -4,6 +4,7 @@
  *
  *   Пользовательский API (JWT + доступ к проекту):
  *     GET  /radar?project_id=…                 обзор: источники, витрина, идеи, лучшие посты
+ *     GET  /radar/posts/:id                    пост целиком (транскрипт, X-фактор) + его идеи
  *     POST /radar/sources                      { project_id, kind, platform, handle, label?, crawl_interval_hours?, id? }
  *     POST /radar/sources/:id/delete
  *     POST /radar/sources/:id/crawl            собрать сейчас (пинок n8n-сборщика)
@@ -139,6 +140,8 @@ interface IngestResult {
   ids: string[];
   /** Только новые посты — их ждёт разбор. */
   newIds: string[];
+  /** Автор каждого затронутого поста — для пересчёта медиан. */
+  authors: Map<string, { platform: string; handle: string }>;
 }
 
 /** Элементы любого провайдера → radar_posts (+ пересчёт оценок). */
@@ -146,7 +149,7 @@ async function ingestItems(
   db: SupabaseClient,
   input: { projectId: string; sourceId: string | null; platformDefault: string; items: unknown[] },
 ): Promise<IngestResult> {
-  const out: IngestResult = { received: input.items.length, inserted: 0, updated: 0, skipped: 0, ids: [], newIds: [] };
+  const out: IngestResult = { received: input.items.length, inserted: 0, updated: 0, skipped: 0, ids: [], newIds: [], authors: new Map() };
   for (const rawItem of input.items) {
     const item = normalizeIngestItem(String((rawItem as Json)?.platform ?? input.platformDefault), (rawItem ?? {}) as Json);
     if (!item) { out.skipped++; continue; }
@@ -175,16 +178,27 @@ async function ingestItems(
       const { error } = await db.from("radar_posts").update({ ...row, ...(input.sourceId ? {} : { source_id: undefined }) }).eq("id", id);
       if (error) { out.skipped++; continue; }
       out.ids.push(id);
+      if (item.author_handle) out.authors.set(id, { platform: item.platform, handle: item.author_handle });
       out.updated++;
     } else {
       const { data: ins, error } = await db.from("radar_posts").insert({ ...row, analysis_status: "pending" }).select("id").maybeSingle();
       if (error || !ins) { out.skipped++; continue; }
       out.ids.push((ins as { id: string }).id);
       out.newIds.push((ins as { id: string }).id);
+      if (item.author_handle) out.authors.set((ins as { id: string }).id, { platform: item.platform, handle: item.author_handle });
       out.inserted++;
     }
   }
-  for (const id of out.ids) await db.rpc("radar_recompute_post", { p_post_id: id });
+  // Пересчёт «обычно» и X-фактора: один раз на автора, остальным постам — по одному.
+  const authors = new Map<string, { platform: string; handle: string }>();
+  const orphans: string[] = [];
+  for (const id of out.ids) {
+    const a = out.authors.get(id);
+    if (a) authors.set(`${a.platform}:${a.handle}`, a);
+    else orphans.push(id);
+  }
+  for (const a of authors.values()) await db.rpc("radar_recompute_author", { p_project_id: input.projectId, p_platform: a.platform, p_author_handle: a.handle });
+  for (const id of orphans) await db.rpc("radar_recompute_post", { p_post_id: id });
   return out;
 }
 
@@ -426,6 +440,7 @@ async function analyzePost(db: SupabaseClient, post: PostRow, context: { busines
     ownNiche: context.niche,
   });
   let analysis = null;
+  let rawContent = "";
   try {
     const completion = await aiChatCompletion({
       messages: [{ role: "system", content: prompt.system }, { role: "user", content: prompt.user }],
@@ -434,14 +449,19 @@ async function analyzePost(db: SupabaseClient, post: PostRow, context: { busines
       openAiModel: "gpt-4o-mini",
       timeoutMs: 60_000,
     }) as { choices?: { message?: { content?: string } }[] };
-    analysis = parseAnalysis(completion?.choices?.[0]?.message?.content ?? "");
+    rawContent = String(completion?.choices?.[0]?.message?.content ?? "");
+    analysis = parseAnalysis(rawContent);
   } catch (e) {
     const message = safeTechMessage(e);
     await db.from("radar_posts").update({ analysis_status: "failed", error: message.slice(0, 500) }).eq("id", post.id);
     return { ok: false, error: message };
   }
   if (!analysis) {
-    await db.from("radar_posts").update({ analysis_status: "failed", error: "модель вернула невалидный JSON" }).eq("id", post.id);
+    const preview = rawContent.replace(/\s+/g, " ").trim().slice(0, 300);
+    await db.from("radar_posts").update({
+      analysis_status: "failed",
+      error: preview ? `модель вернула невалидный JSON: ${preview}` : "модель вернула пустой ответ",
+    }).eq("id", post.id);
     return { ok: false, error: "invalid analysis" };
   }
   const cost = estimateAnalysisCostUsd(seconds, prompt.system.length + prompt.user.length);
@@ -595,8 +615,8 @@ async function handleUser(req: Request, segments: string[], url: URL): Promise<R
       db.from("radar_metrics").select("*").eq("project_id", projectId!).maybeSingle(),
       db.from("idea_bank").select("*").eq("project_id", projectId!).order("score", { ascending: false }).limit(200),
       db.from("radar_posts")
-        .select("id, source_id, platform, external_id, url, author_handle, published_at, media_type, caption, thumbnail_url, metrics, followers, engagement_rate, velocity, score, analysis, analysis_status, analyzed_at, error")
-        .eq("project_id", projectId!).order("score", { ascending: false, nullsFirst: false }).limit(100),
+        .select("id, source_id, platform, external_id, url, author_handle, published_at, media_type, caption, thumbnail_url, metrics, followers, engagement_rate, velocity, score, analysis, analysis_status, analyzed_at, error, baseline_views, baseline_likes, norm_views, x_factor")
+        .eq("project_id", projectId!).order("score", { ascending: false, nullsFirst: false }).limit(200),
       db.from("publish_account_groups").select("id, name, persona_id, review_mode").eq("project_id", projectId!).order("name"),
       db.from("radar_runs").select("*").eq("project_id", projectId!).order("started_at", { ascending: false }).limit(20),
     ]);
@@ -606,6 +626,17 @@ async function handleUser(req: Request, segments: string[], url: URL): Promise<R
       ok: true, sources: sources ?? [], metrics: metrics ?? null, ideas: ideas ?? [], posts: posts ?? [], groups: groups ?? [], runs: runs ?? [],
       crawler: { direct: hasDirectCrawler(), n8n: hasN8nCrawler(), ai: hasAiProvider() },
     });
+  }
+  // GET /radar/posts/:id — пост целиком (с транскриптом) для панели разбора.
+  if (req.method === "GET" && segments[0] === "posts" && UUID.test(segments[1] ?? "")) {
+    const { data: post } = await db.from("radar_posts")
+      .select("id, project_id, source_id, platform, external_id, url, author_handle, published_at, media_type, caption, thumbnail_url, video_url, metrics, followers, engagement_rate, velocity, score, analysis, analysis_status, analyzed_at, error, transcript, baseline_views, baseline_likes, norm_views, x_factor")
+      .eq("id", segments[1]).maybeSingle();
+    const p = post as { project_id: string } | null;
+    if (!p || !(await projectOk(p.project_id))) return json({ error: "Пост не найден" }, 404);
+    const { data: ideas } = await db.from("idea_bank").select("id, title, status, content_item_id, score")
+      .eq("project_id", p.project_id).contains("source_post_ids", [segments[1]]).limit(5);
+    return json({ ok: true, post, ideas: ideas ?? [] });
   }
   if (req.method !== "POST") return json({ error: "Метод не поддерживается" }, 405);
 

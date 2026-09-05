@@ -29,6 +29,7 @@ import {
   type Target,
   validateVideoRef,
 } from "../_lib/publishSchedule.ts";
+import { DEFAULT_PER_DAY, planDistribution } from "../_lib/publishDistribute.ts";
 
 interface AccountRow {
   id: string;
@@ -196,6 +197,111 @@ async function createJobs(
   };
 }
 
+interface DistributeInput {
+  videos: { id: string; topic_key?: string | null }[];
+  batch_id?: string | null;
+  target: Target & { per_day?: number; max_days?: number };
+}
+
+/**
+ * Пачка контент-завода: один ролик → один аккаунт (action = "distribute").
+ * Аккаунты — по группе / списку / всему проекту, как в createJobs; кто куда и в
+ * какой день — planDistribution; точное время в дне — plan_publish_slots на
+ * одном аккаунте. Ролики чужого проекта отбрасываются с ошибкой.
+ */
+async function distributeBatch(
+  admin: SupabaseClient,
+  projectId: string,
+  input: DistributeInput,
+): Promise<{
+  created: number;
+  skipped: number;
+  unassigned: string[];
+  assignments: { video_id: string; account_id: string; account_name: string; day: number; scheduled_at: string | null }[];
+}> {
+  const ids = input.videos.map((v) => v.id);
+  const { data: rows } = await admin.from("publish_videos").select("id").eq("project_id", projectId).in("id", ids);
+  const known = new Set(((rows ?? []) as { id: string }[]).map((r) => r.id));
+  const alien = ids.filter((id) => !known.has(id));
+  if (alien.length) throw new Error(`видео не найдены в проекте: ${alien.join(", ")}`);
+
+  // Ключ темы и пачка запоминаются на видео — по ним потом сводится статистика прогона.
+  for (const v of input.videos) {
+    const patch: Record<string, unknown> = {};
+    if (v.topic_key !== undefined) patch.topic_key = v.topic_key;
+    if (input.batch_id) patch.batch_id = input.batch_id;
+    if (Object.keys(patch).length) await admin.from("publish_videos").update(patch).eq("id", v.id);
+  }
+
+  const target = await applyGroupStrategy(admin, projectId, input.target);
+  const accounts = await resolveAccounts(admin, projectId, target);
+  const { data: health } = accounts.length
+    ? await admin.from("publish_accounts").select("id, health_score").in("id", accounts.map((a) => a.id))
+    : { data: [] };
+  const healthById = new Map(((health ?? []) as { id: string; health_score: number | null }[]).map((h) => [h.id, h.health_score]));
+
+  const plan = planDistribution(
+    input.videos,
+    accounts.map((a) => ({ id: a.id, health_score: healthById.get(a.id) ?? 0 })),
+    {
+      start: target.start_at ? new Date(target.start_at) : new Date(),
+      perDay: input.target.per_day ?? DEFAULT_PER_DAY,
+      maxDays: input.target.max_days,
+    },
+  );
+
+  const byId = new Map(accounts.map((a) => [a.id, a]));
+  let created = 0;
+  let skipped = 0;
+  const assignments: { video_id: string; account_id: string; account_name: string; day: number; scheduled_at: string | null }[] = [];
+  for (const a of plan.assignments) {
+    const { data, error } = await admin.rpc("plan_publish_slots", {
+      p_video_id: a.video_id,
+      p_group_id: target.group_id ?? null,
+      p_account_ids: [a.account_id],
+      p_start: a.start_at,
+      p_mode: "drip",
+    });
+    if (error) throw new Error(error.message);
+    const planned = ((data ?? []) as { account_id: string; scheduled_at: string; created: boolean }[])[0];
+    if (planned?.created) created += 1; else skipped += 1;
+    assignments.push({
+      video_id: a.video_id,
+      account_id: a.account_id,
+      account_name: byId.get(a.account_id)?.account_name ?? "",
+      day: a.day,
+      scheduled_at: planned?.scheduled_at ?? null,
+    });
+  }
+  return { created, skipped, unassigned: plan.unassigned, assignments };
+}
+
+/** Тело distribute: список видео (id + topic_key), пачка, цель с per_day. */
+function parseDistributeBody(body: Record<string, unknown>): { ok: true; input: DistributeInput } | { ok: false; error: string } {
+  const raw = Array.isArray(body.videos) ? body.videos : Array.isArray(body.video_ids) ? body.video_ids : [];
+  const videos = raw
+    .map((v: unknown) => (typeof v === "string" ? { id: v } : (v ?? {}) as { id?: unknown; topic_key?: unknown }))
+    .filter((v: { id?: unknown }) => typeof v.id === "string" && v.id)
+    .map((v: { id?: unknown; topic_key?: unknown }) => ({
+      id: String(v.id),
+      ...(v.topic_key !== undefined ? { topic_key: v.topic_key == null ? null : String(v.topic_key).slice(0, 200) } : {}),
+    }));
+  if (!videos.length) return { ok: false, error: "videos — список {id, topic_key?} или video_ids" };
+  const t = ((body.target ?? {}) as Record<string, unknown>);
+  const perDay = t.per_day == null ? undefined : Number(t.per_day);
+  if (perDay != null && (!Number.isFinite(perDay) || perDay < 1)) return { ok: false, error: "target.per_day — целое число от 1" };
+  const maxDays = t.max_days == null ? undefined : Number(t.max_days);
+  if (maxDays != null && (!Number.isFinite(maxDays) || maxDays < 1)) return { ok: false, error: "target.max_days — целое число от 1" };
+  return {
+    ok: true,
+    input: {
+      videos,
+      batch_id: body.batch_id ? String(body.batch_id).slice(0, 120) : null,
+      target: { ...(t as Target), ...(perDay != null ? { per_day: perDay } : {}), ...(maxDays != null ? { max_days: maxDays } : {}) },
+    },
+  };
+}
+
 /** Пинок воркеру, чтобы первое задание не ждало минуту до крона. */
 async function kickWorker(admin: SupabaseClient): Promise<void> {
   const { data } = await admin
@@ -242,6 +348,16 @@ Deno.serve(async (req) => {
       const result = await createJobs(admin, video, (body?.target ?? {}) as Target);
       if (result.created) await kickWorker(admin);
       return json({ ok: true, video_id: video.id, ...result });
+    }
+
+    if (action === "distribute") {
+      const projectId = String(body?.project_id ?? "");
+      if (!projectId) return json({ error: "project_id обязателен" }, 400);
+      const parsed = parseDistributeBody(body ?? {});
+      if (!parsed.ok) return json({ error: parsed.error }, 400);
+      const result = await distributeBatch(admin, projectId, parsed.input);
+      if (result.created) await kickWorker(admin);
+      return json({ ok: true, ...result });
     }
 
     if (action !== "video_ready") return json({ error: `неизвестное действие: ${action}` }, 400);

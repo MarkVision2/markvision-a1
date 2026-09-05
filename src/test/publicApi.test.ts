@@ -2,7 +2,7 @@
  * Публичный API: маршруты, права на них и разбор тела публикации.
  */
 import { describe, expect, it } from "vitest";
-import { matchRoute, parsePublicationInput, requiredScope } from "../../supabase/functions/_lib/publicApi.ts";
+import { matchRoute, parseDistributeInput, parsePublicationInput, requiredScope } from "../../supabase/functions/_lib/publicApi.ts";
 
 const ID = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
 
@@ -29,6 +29,9 @@ describe("matchRoute", () => {
     expect(matchRoute("POST", "/api/v1/publications")).toEqual({ name: "publication_create" });
     expect(matchRoute("GET", `/api/v1/publications/${ID}`)).toEqual({ name: "publication_get", id: ID });
     expect(matchRoute("POST", `/api/v1/publications/${ID}/jobs`)).toEqual({ name: "publication_jobs_create", id: ID });
+    expect(matchRoute("POST", "/api/v1/publications/distribute")).toEqual({ name: "publications_distribute" });
+    expect(matchRoute("GET", "/api/v1/publications/distribute")).toBeNull();
+    expect(requiredScope({ name: "publications_distribute" })).toBe("publish");
     expect(matchRoute("POST", `/api/v1/jobs/${ID}/cancel`)).toEqual({ name: "job_cancel", id: ID });
     expect(matchRoute("POST", `/api/v1/jobs/${ID}/retry`)).toEqual({ name: "job_retry", id: ID });
   });
@@ -55,6 +58,29 @@ describe("matchRoute", () => {
     expect(requiredScope({ name: "upload_url" })).toBe("publish");
     expect(requiredScope({ name: "publication_create" })).toBe("publish");
     expect(requiredScope({ name: "job_cancel", id: ID })).toBe("publish");
+  });
+});
+
+describe("parseDistributeInput", () => {
+  it("видео строками или объектами с topic_key, цель без mode, per_day/max_days", () => {
+    const r = parseDistributeInput({
+      videos: [ID, { id: ID, topic_key: "  Тема  " }, { id: ID, topic_key: null }],
+      batch_id: " b1 ",
+      target: { group_id: ID, per_day: 3, max_days: 14, start_at: "2026-09-08T09:00:00Z" },
+    });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.input.videos).toEqual([{ id: ID }, { id: ID, topic_key: "Тема" }, { id: ID, topic_key: null }]);
+    expect(r.input.batch_id).toBe("b1");
+    expect(r.input.target).toEqual({ mode: "drip", group_id: ID, start_at: "2026-09-08T09:00:00.000Z", per_day: 3, max_days: 14 });
+  });
+
+  it("плохой вход — понятная ошибка", () => {
+    expect(parseDistributeInput({})).toMatchObject({ ok: false, error: expect.stringContaining("videos") });
+    expect(parseDistributeInput({ video_ids: ["x"] })).toMatchObject({ ok: false, error: expect.stringContaining("uuid") });
+    expect(parseDistributeInput({ video_ids: [ID], target: { per_day: 0 } })).toMatchObject({ ok: false, error: expect.stringContaining("per_day") });
+    expect(parseDistributeInput({ video_ids: [ID], target: { max_days: 365 } })).toMatchObject({ ok: false, error: expect.stringContaining("max_days") });
+    expect(parseDistributeInput({ video_ids: [ID], target: { group_id: "g" } })).toMatchObject({ ok: false, error: expect.stringContaining("group_id") });
   });
 });
 
