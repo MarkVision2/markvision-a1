@@ -134,6 +134,9 @@ export interface PublishJob {
   publish_videos: { title: string | null; file_url: string } | null;
 }
 
+/** Сколько заданий в каждом статусе по всей очереди проекта (не по отданной странице). */
+export type JobCounts = Partial<Record<PublishJobStatus | "all", number>>;
+
 export interface PublishMetrics {
   accounts_total: number;
   accounts_active: number;
@@ -309,6 +312,42 @@ export const JOB_ACTIONS: Record<PublishJobStatus, { retry: boolean; cancel: boo
   cancelled: { retry: true, cancel: false },
 };
 
+/**
+ * Человеческий разбор отказа задания: что случилось и что с этим делать.
+ *
+ * Коды приходят из публикаторов (_lib/publishers/*): у Meta и Threads это
+ * числовой код графа, у TikTok/YouTube — строковый reason, плюс собственные
+ * коды раннера. Оператору «190» и «container_error» не говорят ничего, поэтому
+ * рядом с сырым сообщением площадки показываем причину и следующий шаг.
+ */
+export interface JobErrorHint {
+  /** Короткая причина для строки таблицы. */
+  title: string;
+  /** Что сделать оператору. */
+  action: string;
+}
+
+const JOB_ERROR_HINTS: { match: RegExp; hint: JobErrorHint }[] = [
+  { match: /^(no_token|token_unreadable)$/, hint: { title: "Токен аккаунта не читается", action: "Переподключите аккаунт кнопкой «Подключить аккаунт» — задание уйдёт само." } },
+  { match: /^(190|102|10|200|401|403|invalid_token|access_token_invalid|unauthorized|invalid_grant)$/i, hint: { title: "Площадка отвергла токен", action: "Переподключите аккаунт: токен отозван или истёк." } },
+  { match: /^(4|17|32|613|429|rateLimitExceeded|quotaExceeded|spam_risk_too_many_posts|reached_active_user_cap)$/i, hint: { title: "Лимит площадки", action: "Задание повторится само позже. Если повторяется — снизьте дневной лимит аккаунта." } },
+  { match: /^(no_account)$/, hint: { title: "Аккаунт удалён", action: "Задание уже не выполнить — отмените его или залейте видео заново." } },
+  { match: /^(no_video)$/, hint: { title: "Видео удалено из библиотеки", action: "Залейте ролик заново и поставьте публикацию." } },
+  { match: /^(processing_timeout)$/, hint: { title: "Площадка не обработала видео", action: "Обычно виноват формат или размер файла: перезалейте mp4 (H.264 + AAC) и повторите." } },
+  { match: /^(container_error|container_expired)$/, hint: { title: "Площадка не собрала контейнер публикации", action: "Проверьте, что ссылка на видео открывается публично, и повторите задание." } },
+  { match: /^(source_unavailable|upload_failed|no_upload_url)$/, hint: { title: "Площадка не смогла забрать файл", action: "Ссылка на видео недоступна с их стороны: проверьте, что файл отдаётся по https без авторизации." } },
+  { match: /^(video_size|video_duration|duration|file_format|picture_size_check_failed)$/i, hint: { title: "Файл не подошёл площадке", action: "Проверьте длительность, вес и соотношение сторон под требования площадки и перезалейте." } },
+  { match: /^(not_implemented)$/, hint: { title: "Публикация в эту площадку ещё не подключена", action: "Оставьте задание в ручном разборе или отмените его." } },
+  { match: /^(publisher_exception|timeout|internal_error|server_error|2)$/i, hint: { title: "Временный сбой площадки", action: "Повторите задание — обычно проходит со второго раза." } },
+];
+
+/** Разбор кода отказа; null — код незнакомый, показываем только текст площадки. */
+export function jobErrorHint(code: string | null | undefined): JobErrorHint | null {
+  if (!code) return null;
+  const found = JOB_ERROR_HINTS.find((h) => h.match.test(code.trim()));
+  return found?.hint ?? null;
+}
+
 export const STRATEGY_META: Record<PublishStrategy, { label: string }> = {
   all_at_once: { label: "Все сразу" },
   drip: { label: "Постепенно (drip)" },
@@ -392,6 +431,37 @@ export function effectiveDailyLimit(account: Pick<PublishAccount, "daily_limit" 
   return stage.limit == null ? account.daily_limit : Math.min(account.daily_limit, stage.limit);
 }
 
+/** Часовой пояс, по которому у аккаунта считается «сегодня», когда свой не задан. */
+export const DEFAULT_TIMEZONE = "Asia/Almaty";
+
+/** Локальная дата площадки в формате YYYY-MM-DD — тем же способом, что (now() AT TIME ZONE tz)::date в SQL. */
+export function localDay(timezone: string | null | undefined, now: Date | number = Date.now()): string {
+  const d = typeof now === "number" ? new Date(now) : now;
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: timezone || DEFAULT_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  } catch {
+    // Пояс из базы может быть мусором — не роняем страницу из-за одной строки.
+    return new Intl.DateTimeFormat("en-CA", { timeZone: DEFAULT_TIMEZONE, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  }
+}
+
+/**
+ * Сколько аккаунт опубликовал именно сегодня.
+ *
+ * В базе счётчик живёт парой published_today + published_day и обнуляется не
+ * в полночь, а при первой публикации нового дня (триггер
+ * publish_jobs_account_bookkeeping). claim_publish_jobs это учитывает и берёт
+ * ноль, если день сменился, а интерфейс показывал вчерашнее «3 / 3» и врал,
+ * будто лимит исчерпан.
+ */
+export function publishedToday(
+  account: Pick<PublishAccount, "published_today" | "published_day" | "timezone">,
+  now: Date | number = Date.now(),
+): number {
+  if (!account.published_day) return 0;
+  return account.published_day.slice(0, 10) === localDay(account.timezone, now) ? account.published_today : 0;
+}
+
 /* ───────────────────────────── API ───────────────────────────── */
 
 async function call<T>(action: string, body: Record<string, unknown> = {}): Promise<T> {
@@ -463,6 +533,12 @@ export interface PersonaUpsertInput {
   eleven_voice_id?: string | null;
   reels_theme?: string | null;
   caption_style?: string | null;
+}
+
+/** settings_upsert отдаёт сохранённые строки — форма показывает то, что легло в базу. */
+export interface SettingsUpsertResult {
+  settings: PublishSettings["settings"] | null;
+  budget: PublishSettings["budget"] | null;
 }
 
 export interface SettingsUpsertInput {
@@ -545,10 +621,10 @@ export const publishingApi = {
 
   settingsGet: (project_id: string) => call<PublishSettings>("settings_get", { project_id }),
   settingsUpsert: (project_id: string, input: SettingsUpsertInput) =>
-    call<{ ok: true }>("settings_upsert", { project_id, ...input }),
+    call<SettingsUpsertResult>("settings_upsert", { project_id, ...input }),
 
   jobsList: (project_id: string, opts: { status?: PublishJobStatus; limit?: number; video_id?: string } = {}) =>
-    call<{ jobs: PublishJob[] }>("jobs_list", { project_id, ...opts }),
+    call<{ jobs: PublishJob[]; counts?: JobCounts }>("jobs_list", { project_id, ...opts }),
   metrics: (project_id: string) => call<MetricsResponse>("metrics", { project_id }),
   jobRetry: (project_id: string, job_id: string) => call<{ ok: true; status: "pending" }>("job_retry", { project_id, job_id }),
   jobCancel: (project_id: string, job_id: string) => call<{ ok: true; status: "cancelled" }>("job_cancel", { project_id, job_id }),

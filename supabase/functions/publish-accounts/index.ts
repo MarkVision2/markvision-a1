@@ -22,7 +22,7 @@
  *   { action: "connect_threads", project_id, threads_user_id, access_token, account_name?, expires_at? }
  *   { action: "persona_list" | "persona_upsert" | "persona_delete", project_id, ... }
  *   { action: "settings_get" | "settings_upsert", project_id,  notify_mode?, digest_chat_id?, paused?, daily_usd?, monthly_usd? }
- *   { action: "jobs_list", project_id, status?, limit? }
+ *   { action: "jobs_list", project_id, status?, limit?, video_id? } → { jobs, counts } — counts по всей очереди
  *   { action: "job_retry" | "job_cancel", project_id, job_id }   — повтор остановленного / отмена не ушедшего
  *   { action: "publish_video", project_id, file_url | video_id, group_id?, account_ids?, mode?, title?, caption?, hashtags? }
  *   { action: "metrics", project_id } → { publish, radar, videos, groups, accounts } — accounts из publish_account_metrics
@@ -545,13 +545,21 @@ Deno.serve(async (req) => {
     }
     if (action === "settings_upsert") {
       if (!projectId) return json({ error: "project_id обязателен" }, 400);
-      if (typeof body?.notify_mode === "string" || typeof body?.digest_chat_id === "string" || body?.digest_chat_id === null || typeof body?.paused === "boolean") {
+      const touchesSettings = typeof body?.notify_mode === "string"
+        || typeof body?.digest_chat_id === "string" || body?.digest_chat_id === null
+        || typeof body?.paused === "boolean";
+      if (touchesSettings) {
         const row: Record<string, unknown> = { project_id: projectId };
         if (typeof body?.notify_mode === "string") {
           if (!["digest", "each", "silent"].includes(body.notify_mode)) return json({ error: "недопустимый notify_mode" }, 400);
           row.notify_mode = body.notify_mode;
         }
-        if (body?.digest_chat_id === null || typeof body?.digest_chat_id === "string") row.digest_chat_id = body.digest_chat_id;
+        if (body?.digest_chat_id === null || typeof body?.digest_chat_id === "string") {
+          const chat = typeof body.digest_chat_id === "string" ? body.digest_chat_id.trim() : null;
+          // Telegram chat id — число (у групп со знаком минус); «-100…» из подсказки в поле сохранять нечего.
+          if (chat && !/^-?\d{5,20}$/.test(chat)) return json({ error: "Telegram chat id — число, например -1001234567890" }, 400);
+          row.digest_chat_id = chat || null;
+        }
         // Аварийная пауза: claim_publish_jobs и plan_publish_slots читают этот флаг напрямую.
         if (typeof body?.paused === "boolean") row.paused = body.paused;
         const { error } = await admin.from("publish_project_settings").upsert(row, { onConflict: "project_id" });
@@ -567,7 +575,13 @@ Deno.serve(async (req) => {
         const { error } = await admin.from("project_budgets").upsert(row, { onConflict: "project_id" });
         if (error) return json({ error: error.message }, 500);
       }
-      return json({ ok: true });
+      // Отдаём сохранённое: форма показывает то, что реально легло в базу
+      // (обрезанные значения, подставленные умолчания), а не свой черновик.
+      const [{ data: s2 }, { data: b2 }] = await Promise.all([
+        admin.from("publish_project_settings").select("*").eq("project_id", projectId).maybeSingle(),
+        admin.from("project_budgets").select("*").eq("project_id", projectId).maybeSingle(),
+      ]);
+      return json({ ok: true, settings: s2 ?? null, budget: b2 ?? null });
     }
 
     /* ── API-ключи проекта: список, выдача (ключ показывается один раз), отзыв ── */
@@ -624,7 +638,20 @@ Deno.serve(async (req) => {
       if (typeof body?.video_id === "string") q = q.eq("video_id", body.video_id);
       const { data, error } = await q;
       if (error) return json({ error: error.message }, 500);
-      return json({ ok: true, jobs: data ?? [] });
+
+      // Счётчики по всей очереди, а не по отданной странице: чипы фильтра
+      // показывали «Ошибка 3» из первых 200 строк и врали на большой сети.
+      const statuses = ["pending", "retry", "processing", "published", "failed", "manual_review", "cancelled"] as const;
+      const counted = await Promise.all(statuses.map(async (st) => {
+        let c = admin.from("publish_jobs").select("id", { count: "exact", head: true })
+          .eq("project_id", projectId).eq("status", st);
+        if (typeof body?.video_id === "string") c = c.eq("video_id", body.video_id);
+        const { count } = await c;
+        return [st, count ?? 0] as const;
+      }));
+      const counts = Object.fromEntries(counted) as Record<string, number>;
+      counts.all = counted.reduce((sum, [, n]) => sum + n, 0);
+      return json({ ok: true, jobs: data ?? [], counts });
     }
     if (action === "metrics") {
       if (!projectId) return json({ error: "project_id обязателен" }, 400);

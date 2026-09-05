@@ -30,6 +30,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AccountsTable, PLATFORM_DOT } from "@/components/publishing/AccountsTable";
 import { JobsTab } from "@/components/publishing/JobsTab";
 import { NetworkTab } from "@/components/publishing/NetworkTab";
@@ -53,6 +54,7 @@ import {
   type PersonaEngine,
   type PublishAccount,
   type PublishGroup,
+  type PublishJobStatus,
   type PublishPlatform,
   type PublishStrategy,
   type PublishVideo,
@@ -82,6 +84,20 @@ function numOrNull(s: string): number | null | undefined {
 
 function EmptyState({ text }: { text: string }) {
   return <div className="rounded-2xl border border-dashed p-8 text-center text-sm text-muted-foreground">{text}</div>;
+}
+
+/**
+ * Подпись под вкладкой: что это за сущность и зачем она нужна.
+ * «Группа» и «Персона» — внутренние слова этого раздела, и без одной строки
+ * объяснения оператор видит колонку с выпадающим списком и не понимает, что там.
+ */
+function TabIntro({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-2xl border border-border/60 bg-muted/30 px-4 py-3 text-sm">
+      <span className="font-medium">{title}</span>{" "}
+      <span className="text-muted-foreground">{children}</span>
+    </div>
+  );
 }
 
 function Chip({ label, cls }: { label: string; cls: string }) {
@@ -186,7 +202,15 @@ export default function Publishing() {
           </div>
         )}
 
-        {projectId && <SummaryBar pub={pub} />}
+        {projectId && (
+          <SummaryBar
+            pub={pub}
+            onOpen={(next, status) => {
+              if (status) { pub.setJobsVideo(null); pub.setJobsStatus(status); }
+              setTab(next);
+            }}
+          />
+        )}
 
         {/* Шесть вкладок: статистика по аккаунтам живёт видом внутри «Аккаунтов»,
             сводка по группам — над их настройками, «Видео» — библиотека роликов с
@@ -204,6 +228,11 @@ export default function Publishing() {
           <TabsContent value="accounts" forceMount className="mt-3 data-[state=inactive]:hidden"><AccountsTable pub={pub} /></TabsContent>
           <TabsContent value="groups" className="mt-3">
             <div className="space-y-4">
+              <TabIntro title="Группа — расписание для пачки аккаунтов.">
+                Когда публиковать (окно и часовой пояс), как часто (стратегия и темп), нужно ли согласование
+                перед выходом. Заливаете ролик на группу — задания сами разложатся по всем её аккаунтам
+                с паузами между постами. Без группы аккаунт публикуется по своим настройкам.
+              </TabIntro>
               {(pub.metrics?.groups?.length ?? 0) > 0 && (
                 <section className="space-y-2">
                   <h3 className="px-1 text-sm font-semibold">Сводка по группам</h3>
@@ -213,18 +242,37 @@ export default function Publishing() {
               <GroupsTab pub={pub} />
             </div>
           </TabsContent>
-          <TabsContent value="personas" className="mt-3"><PersonasTab pub={pub} /></TabsContent>
-          <TabsContent value="videos" className="mt-3">
+          <TabsContent value="personas" className="mt-3">
+            <div className="space-y-4">
+              <TabIntro title="Персона — голос и лицо аккаунта.">
+                Ниша, тон, запретные фразы, язык, аватар HeyGen или голос ElevenLabs. Персона нужна там, где
+                MarkVision сам сочиняет контент: конвейер тем и Reels берут из неё стиль текста и озвучку.
+                На публикацию готового файла она не влияет — можно не заполнять.
+              </TabIntro>
+              <PersonasTab pub={pub} />
+            </div>
+          </TabsContent>
+          <TabsContent value="videos" className="mt-3 space-y-4">
+            <TabIntro title="Видео — библиотека роликов проекта.">
+              Всё, что залито вручную, пришло из конвейера контента, монтажа или по API. Отсюда ролик
+              выпускается повторно в другие аккаунты и открывается очередь заданий именно по нему.
+            </TabIntro>
             <VideosTab
               pub={pub}
               onRepost={(v) => setRepostVideo(v)}
               onShowJobs={(v) => { pub.setJobsVideo(v.id); setTab("jobs"); }}
             />
           </TabsContent>
-          <TabsContent value="jobs" className="mt-3"><JobsTab pub={pub} /></TabsContent>
+          <TabsContent value="jobs" className="mt-3 space-y-4">
+            <TabIntro title="Задания — очередь публикаций.">
+              Одно задание = один ролик в один аккаунт. «В очереди» ждёт слота, «Публикуется» сейчас в работе,
+              «Ошибка» — площадка отказала (причина в колонке «Что происходит»), «Ручная проверка» — нужен человек.
+            </TabIntro>
+            <JobsTab pub={pub} />
+          </TabsContent>
           <TabsContent value="settings" className="mt-3 space-y-4">
             <SettingsTab pub={pub} />
-            <div className="max-w-xl rounded-2xl border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
+            <div className="max-w-4xl rounded-2xl border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
               Ключи API и подключение Claude через MCP — в{" "}
               <Link to="/settings?tab=api" className="font-medium text-primary hover:underline">Настройках → API и MCP</Link>.
             </div>
@@ -246,10 +294,11 @@ export default function Publishing() {
 
 /* ───────────────────────────── сводка ───────────────────────────── */
 
-function SummaryBar({ pub }: { pub: UsePublishing }) {
+function SummaryBar({ pub, onOpen }: { pub: UsePublishing; onOpen: (tab: string, status?: PublishJobStatus) => void }) {
   const m = pub.metrics?.publish;
   const spend = m?.spent_month_usd ?? pub.settings?.spend.month_usd ?? null;
   const today = pub.settings?.spend.today_usd ?? null;
+  const budget = pub.settings?.budget.monthly_usd ?? null;
 
   // Сколько аккаунтов на каждой площадке — будущие TikTok / YouTube / Threads
   // видны сразу, даже пока их ноль.
@@ -258,16 +307,25 @@ function SummaryBar({ pub }: { pub: UsePublishing }) {
 
   const attention = m ? m.accounts_token_expired + m.accounts_limited_or_error : 0;
 
-  const cells: { label: string; value: string; sub: React.ReactNode; tone?: "warn" | "bad" }[] = [
+  // Каждая плитка — вход в свой список: «ошибок 3» без клика по ним бесполезно.
+  const cells: {
+    label: string;
+    value: string;
+    sub: React.ReactNode;
+    hint: string;
+    tone?: "warn" | "bad";
+    onClick?: () => void;
+  }[] = [
     {
       label: "Аккаунты активны",
       value: m ? `${m.accounts_active} / ${m.accounts_total}` : "—",
+      hint: "Активен = площадка принимает токен и публикация включена. Остальные подключены, но заданий не получают.",
       sub: (
         <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
           {(Object.keys(PLATFORM_META) as PublishPlatform[]).map((p) => {
             const n = byPlatform.get(p) ?? 0;
             return (
-              <span key={p} className={cn("inline-flex items-center gap-1 tabular-nums", n === 0 && "opacity-50")} title={PLATFORM_META[p].label}>
+              <span key={p} aria-label={PLATFORM_META[p].label} className={cn("inline-flex items-center gap-1 tabular-nums", n === 0 && "opacity-50")}>
                 <span className={cn("h-1.5 w-1.5 rounded-full", PLATFORM_DOT[p])} aria-hidden />
                 {PLATFORM_META[p].label} {n}
               </span>
@@ -275,59 +333,84 @@ function SummaryBar({ pub }: { pub: UsePublishing }) {
           })}
         </span>
       ),
+      onClick: () => onOpen("accounts"),
     },
     {
       label: "В очереди",
       value: m ? String(m.jobs_queued) : "—",
+      hint: "Задания, которые ждут своего слота. Воркер забирает их по расписанию раз в минуту.",
       sub: m?.jobs_processing
         ? `публикуется сейчас: ${m.jobs_processing}`
         : m?.next_slot_at
         ? `ближайший слот ${fmtRelative(m.next_slot_at)}`
         : "заданий на публикацию нет",
+      onClick: () => onOpen("jobs", "pending"),
     },
     {
-      label: "За 24 часа",
+      label: "Опубликовано за сутки",
       value: m ? String(m.published_24h) : "—",
+      hint: "Успешные посты за последние 24 часа. Рядом — сколько заданий упало и сколько ждёт ручного разбора.",
       sub: m
-        ? `опубликовано · ошибок ${m.failed_24h}${m.manual_review ? ` · ручная проверка ${m.manual_review}` : ""}`
+        ? `ошибок ${m.failed_24h}${m.manual_review ? ` · ручная проверка ${m.manual_review}` : ""}`
         : "",
       tone: m?.failed_24h ? "bad" : undefined,
+      onClick: () => onOpen("jobs", m?.failed_24h ? "failed" : "published"),
     },
     {
       label: "Здоровье сети",
       value: m?.health_avg != null ? `${Math.round(m.health_avg)}%` : "—",
+      hint: "Среднее здоровье подключённых аккаунтов (0–100). Ниже 20 планировщик аккаунт не берёт вовсе.",
       sub: m
         ? attention || m.tokens_expiring_7d
-          ? `требуют внимания ${attention} · токены истекают ${m.tokens_expiring_7d}`
+          ? `внимания требуют ${attention} · токены истекают у ${m.tokens_expiring_7d}`
           : "все аккаунты в порядке"
         : "",
       tone: attention ? "bad" : m?.health_avg != null && m.health_avg < 70 ? "warn" : m?.tokens_expiring_7d ? "warn" : undefined,
+      onClick: () => onOpen("accounts"),
     },
     {
-      label: "Расход за месяц",
+      label: "Расход проекта за месяц",
       value: spend != null ? `$${spend.toFixed(2)}` : "—",
-      sub: today != null ? `сегодня $${today.toFixed(2)}` : "",
+      hint: "Общий расход проекта на генерацию и публикацию из журнала usage_ledger. Месячный бюджет задаётся во вкладке «Настройки».",
+      sub: [
+        today != null ? `сегодня $${today.toFixed(2)}` : null,
+        budget != null ? `бюджет $${budget.toFixed(0)}` : null,
+      ].filter(Boolean).join(" · "),
+      tone: spend != null && budget != null && budget > 0 && spend >= budget ? "bad" : undefined,
+      onClick: () => onOpen("settings"),
     },
   ];
 
   return (
-    <div className="grid grid-cols-2 divide-x divide-y overflow-hidden rounded-2xl border bg-card md:grid-cols-5 md:divide-y-0">
-      {cells.map((c) => (
-        <div key={c.label} className="min-w-0 px-4 py-2.5">
-          <div className="truncate text-xs text-muted-foreground">{c.label}</div>
-          <div
-            className={cn(
-              "mt-0.5 text-xl font-semibold leading-tight tabular-nums",
-              c.tone === "bad" && "text-destructive",
-              c.tone === "warn" && "text-amber-600 dark:text-amber-400",
-            )}
-          >
-            {c.value}
-          </div>
-          <div className="mt-0.5 truncate text-xs text-muted-foreground">{c.sub || "\u00A0"}</div>
-        </div>
-      ))}
-    </div>
+    <TooltipProvider delayDuration={200}>
+      <div className="grid grid-cols-2 divide-x divide-y overflow-hidden rounded-2xl border bg-card md:grid-cols-5 md:divide-y-0">
+        {cells.map((c) => (
+          <Tooltip key={c.label}>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={c.onClick}
+                className="min-w-0 px-4 py-2.5 text-left transition-colors hover:bg-muted/40 focus-visible:bg-muted/40 focus-visible:outline-none"
+              >
+                <div className="truncate text-xs text-muted-foreground">{c.label}</div>
+                <div
+                  className={cn(
+                    "mt-0.5 text-xl font-semibold leading-tight tabular-nums",
+                    c.tone === "bad" && "text-destructive",
+                    c.tone === "warn" && "text-amber-600 dark:text-amber-400",
+                  )}
+                >
+                  {c.value}
+                </div>
+                {/* Без truncate: «токены ...» в обрезанной строке не сообщал ничего. */}
+                <div className="mt-0.5 min-h-[1.75rem] text-xs leading-tight text-muted-foreground">{c.sub || "\u00A0"}</div>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">{c.hint}</TooltipContent>
+          </Tooltip>
+        ))}
+      </div>
+    </TooltipProvider>
   );
 }
 
@@ -788,6 +871,13 @@ function PersonasTab({ pub }: { pub: UsePublishing }) {
 
 /* ───────────────────────────── настройки ───────────────────────────── */
 
+/** Что именно делает каждый режим уведомлений — иначе выбор наугад. */
+const NOTIFY_HINT: Record<NotifyMode, string> = {
+  digest: "Раз в час один отчёт по проекту: сколько вышло, что упало и какие аккаунты требуют внимания.",
+  each: "Сообщение на каждое событие очереди: провал, ручной разбор, протухший токен. Шумно на большой сети.",
+  silent: "Молчим. Провалы видно только здесь, во вкладке «Задания».",
+};
+
 function SettingsTab({ pub }: { pub: UsePublishing }) {
   const disabled = pub.busy != null;
   const s = pub.settings;
@@ -808,7 +898,19 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
 
   if (!s) return <EmptyState text="Настройки не загружены — выберите проект или обновите страницу." />;
 
+  // Чужой формат chat id площадка молча проглотит, а дайджест потом не придёт.
+  const chatValid = chat.trim() === "" || /^-?\d{5,20}$/.test(chat.trim());
+  const dirty =
+    notify !== s.settings.notify_mode ||
+    chat.trim() !== (s.settings.digest_chat_id ?? "") ||
+    daily.trim() !== String(s.budget.daily_usd) ||
+    monthly.trim() !== String(s.budget.monthly_usd);
+
   const save = async () => {
+    if (!chatValid) {
+      toast.error("Telegram chat id — число, например -1001234567890");
+      return;
+    }
     try {
       await pub.settingsUpsert({
         notify_mode: notify,
@@ -834,17 +936,36 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
     }
   };
 
+  const queued = pub.metrics?.publish?.jobs_queued ?? 0;
+  const monthlyLimit = Number(s.budget.monthly_usd);
+  const spentMonth = s.spend.month_usd;
+  const overMonth = monthlyLimit > 0 && spentMonth >= monthlyLimit;
+  const overDay = Number(s.budget.daily_usd) > 0 && s.spend.today_usd >= Number(s.budget.daily_usd);
+
   return (
-    <div className="max-w-xl space-y-4 rounded-2xl border bg-card p-4">
-      <div className={cn("flex items-center justify-between gap-3 rounded-xl border p-3", paused ? "border-amber-500/40 bg-amber-500/10" : "border-border")}>
-        <div>
-          <div className="text-sm font-medium">Пауза публикаций проекта</div>
-          <div className="text-xs text-muted-foreground">Воркер не берёт задания, новые слоты не планируются. Очередь сохраняется.</div>
+    <div className="grid max-w-4xl items-start gap-4 lg:grid-cols-2">
+      {/* Рубильник: единственная настройка, которая действует немедленно */}
+      <section className={cn("space-y-3 rounded-2xl border p-4 lg:col-span-2", paused ? "border-amber-500/40 bg-amber-500/10" : "bg-card")}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-1">
+            <div className="text-sm font-medium">Пауза публикаций проекта</div>
+            <p className="text-xs text-muted-foreground">
+              Воркер перестаёт забирать задания, новые слоты не планируются. Очередь никуда не девается и поедет
+              дальше, как только паузу снять.
+              {queued > 0 && (paused ? ` Сейчас заморожено заданий: ${queued}.` : ` Сейчас в очереди: ${queued}.`)}
+            </p>
+          </div>
+          <Switch checked={paused} disabled={disabled} onCheckedChange={(v) => void togglePause(v)} aria-label="Пауза публикаций проекта" />
         </div>
-        <Switch checked={paused} disabled={disabled} onCheckedChange={(v) => void togglePause(v)} aria-label="Пауза публикаций проекта" />
-      </div>
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="Уведомления">
+      </section>
+
+      {/* Уведомления */}
+      <section className="space-y-3 rounded-2xl border bg-card p-4">
+        <div>
+          <h3 className="text-sm font-medium">Уведомления в Telegram</h3>
+          <p className="mt-1 text-xs text-muted-foreground">Кто узнаёт о провалах и выходах постов.</p>
+        </div>
+        <Field label="Когда писать">
           <Select value={notify} onValueChange={(v) => setNotify(v as NotifyMode)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
@@ -854,23 +975,71 @@ function SettingsTab({ pub }: { pub: UsePublishing }) {
             </SelectContent>
           </Select>
         </Field>
-        <Field label="Telegram chat id для дайджеста">
-          <Input value={chat} placeholder="-100…" onChange={(e) => setChat(e.target.value)} />
+        <p className="text-xs text-muted-foreground">{NOTIFY_HINT[notify]}</p>
+        <Field label="Telegram chat id">
+          <Input
+            value={chat}
+            aria-label="Telegram chat id"
+            placeholder="-1001234567890"
+            aria-invalid={!chatValid}
+            className={cn(!chatValid && "border-destructive")}
+            onChange={(e) => setChat(e.target.value)}
+          />
         </Field>
-        <Field label="Бюджет в день, $">
-          <Input type="number" min={0} step="0.01" value={daily} onChange={(e) => setDaily(e.target.value)} />
-        </Field>
-        <Field label="Бюджет в месяц, $">
-          <Input type="number" min={0} step="0.01" value={monthly} onChange={(e) => setMonthly(e.target.value)} />
-        </Field>
+        <p className={cn("text-xs", chatValid ? "text-muted-foreground" : "text-destructive")}>
+          {chatValid
+            ? "Пусто — пишем в чат, привязанный к проекту в Telegram. Свой id нужен, чтобы увести отчёты в отдельную группу."
+            : "Это число: id личного чата или группы (у групп со знаком минус)."}
+        </p>
+      </section>
+
+      {/* Бюджет */}
+      <section className="space-y-3 rounded-2xl border bg-card p-4">
+        <div>
+          <h3 className="text-sm font-medium">Бюджет проекта на ИИ</h3>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Считается по журналу расходов проекта: генерация, радар идей, конвейер. При превышении радар
+            перестаёт собирать конкурентов и генерировать. Публикация уже готовых заданий не останавливается —
+            для этого пауза выше. Ноль — без ограничения.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="В день, $">
+            <Input type="number" min={0} step="0.01" aria-label="Бюджет в день, $" value={daily} onChange={(e) => setDaily(e.target.value)} />
+          </Field>
+          <Field label="В месяц, $">
+            <Input type="number" min={0} step="0.01" aria-label="Бюджет в месяц, $" value={monthly} onChange={(e) => setMonthly(e.target.value)} />
+          </Field>
+        </div>
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className={cn("text-muted-foreground", overDay && "text-destructive")}>
+              Сегодня ${s.spend.today_usd.toFixed(2)}{Number(s.budget.daily_usd) > 0 ? ` из $${Number(s.budget.daily_usd).toFixed(0)}` : ""}
+            </span>
+            <span className={cn("text-muted-foreground", overMonth && "text-destructive")}>
+              За месяц ${spentMonth.toFixed(2)}{monthlyLimit > 0 ? ` из $${monthlyLimit.toFixed(0)}` : ""}
+            </span>
+          </div>
+          {monthlyLimit > 0 && (
+            <div className="h-1.5 overflow-hidden rounded-full bg-muted" role="presentation">
+              <div
+                className={cn("h-full rounded-full", overMonth ? "bg-destructive" : "bg-primary")}
+                style={{ width: `${Math.min(100, (spentMonth / monthlyLimit) * 100)}%` }}
+              />
+            </div>
+          )}
+          {(overDay || overMonth) && (
+            <p className="text-xs text-destructive">Бюджет выбран — генерация нового контента остановлена до смены лимита.</p>
+          )}
+        </div>
+      </section>
+
+      <div className="flex flex-wrap items-center gap-3 lg:col-span-2">
+        <Button onClick={() => void save()} disabled={disabled || !dirty || !chatValid}>
+          {pub.busy === "settings_upsert" && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />} Сохранить
+        </Button>
+        {dirty && <span className="text-xs text-muted-foreground">Есть несохранённые изменения.</span>}
       </div>
-      <div className="text-sm text-muted-foreground">
-        Расход: сегодня <b className="text-foreground">${s.spend.today_usd.toFixed(2)}</b>, за месяц{" "}
-        <b className="text-foreground">${s.spend.month_usd.toFixed(2)}</b> · параллельных воркеров: {s.settings.max_parallel_workers}
-      </div>
-      <Button onClick={() => void save()} disabled={disabled}>
-        {pub.busy === "settings_upsert" && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />} Сохранить
-      </Button>
     </div>
   );
 }

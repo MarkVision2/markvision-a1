@@ -5,6 +5,7 @@ import {
   runHealthCheck,
   type AccountUpdateInput,
   type GroupUpsertInput,
+  type JobCounts,
   type MetricsResponse,
   type PersonaUpsertInput,
   type PublishAccount,
@@ -35,6 +36,8 @@ export function usePublishing() {
   const [settings, setSettings] = useState<PublishSettings | null>(null);
   const [metrics, setMetrics] = useState<MetricsResponse | null>(null);
   const [jobs, setJobs] = useState<PublishJob[]>([]);
+  // Счётчики по всей очереди — чипы фильтра врали, считая только загруженную страницу.
+  const [jobCounts, setJobCounts] = useState<JobCounts>({});
   const [jobsStatus, setJobsStatusRaw] = useState<PublishJobStatus | "all">("all");
   // Страница заданий: сервер отдаёт до 500, начинаем с 200 и подгружаем по кнопке.
   const [jobsLimit, setJobsLimit] = useState(JOBS_PAGE);
@@ -54,7 +57,9 @@ export function usePublishing() {
         ...(status === "all" ? {} : { status }),
         ...(videoId ? { video_id: videoId } : {}),
       });
-      if (alive.current) setJobs(r.jobs ?? []);
+      if (!alive.current) return;
+      setJobs(r.jobs ?? []);
+      setJobCounts(r.counts ?? {});
     },
     [projectId, jobsStatus, jobsLimit, jobsVideo],
   );
@@ -67,6 +72,7 @@ export function usePublishing() {
       setSettings(null);
       setMetrics(null);
       setJobs([]);
+      setJobCounts({});
       return;
     }
     setLoading(true);
@@ -138,6 +144,7 @@ export function usePublishing() {
     settings,
     metrics,
     jobs,
+    jobCounts,
     jobsStatus,
     setJobsStatus,
     jobsLimit,

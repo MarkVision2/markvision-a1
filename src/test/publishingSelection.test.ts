@@ -164,12 +164,29 @@ describe("formatStep", () => {
 });
 
 describe("todayLoad", () => {
+  /** Сегодняшняя дата в поясе аккаунта — так её пишет триггер в published_day. */
+  const today = (tz = "Asia/Almaty") =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+
   it("учитывает ступень разгона, а не сырой daily_limit", () => {
-    const ramping = acc({ daily_limit: 10, ramp_enabled: true, ramp_started_at: new Date().toISOString(), published_today: 1 });
+    const ramping = acc({ daily_limit: 10, ramp_enabled: true, ramp_started_at: new Date().toISOString(), published_today: 1, published_day: today() });
     expect(todayLoad(ramping)).toEqual({ used: 1, limit: 1, full: true });
   });
 
   it("без разгона показывает полный лимит", () => {
-    expect(todayLoad(acc({ daily_limit: 5, published_today: 2 }))).toEqual({ used: 2, limit: 5, full: false });
+    expect(todayLoad(acc({ daily_limit: 5, published_today: 2, published_day: today() }))).toEqual({ used: 2, limit: 5, full: false });
+  });
+
+  it("вчерашний счётчик — это ноль сегодня, как в claim_publish_jobs", () => {
+    // Триггер в базе не обнуляет published_today в полночь: он переписывает его
+    // при первой публикации нового дня. Интерфейс показывал вчерашнее «3 / 3»
+    // и врал, что лимит выбран, пока планировщик спокойно брал задания.
+    const stale = acc({ daily_limit: 3, published_today: 3, published_day: "2020-01-01" });
+    expect(todayLoad(stale)).toEqual({ used: 0, limit: 3, full: false });
+  });
+
+  it("день считается по часовому поясу аккаунта", () => {
+    const tokyo = acc({ daily_limit: 3, published_today: 2, published_day: today("Asia/Tokyo"), timezone: "Asia/Tokyo" });
+    expect(todayLoad(tokyo).used).toBe(2);
   });
 });

@@ -19,7 +19,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { initials } from "@/components/publishing/PostPreview";
 import { videoLabel } from "@/components/publishing/VideosTab";
 import type { UsePublishing } from "@/hooks/usePublishing";
-import { jobActions, JOB_STATUS_META, PLATFORM_META, type PublishJob, type PublishJobStatus } from "@/lib/publishingClient";
+import { jobActions, jobErrorHint, JOB_STATUS_META, PLATFORM_META, type PublishJob, type PublishJobStatus } from "@/lib/publishingClient";
 import { fmtExact, fmtRelative } from "@/lib/publishingFormat";
 import { cn } from "@/lib/utils";
 
@@ -43,6 +43,55 @@ export function jobMatches(j: PublishJob, q: string): boolean {
   return hay.some((v) => v && v.toLowerCase().includes(s));
 }
 
+/**
+ * «Что происходит» — единственная колонка, ради которой сюда заходят.
+ *
+ * Раньше отказ прятался за значком ⚠ и оператор видел четыре одинаковые строки
+ * «Ошибка», не понимая, чинить токен, файл или просто подождать. Теперь в
+ * строке — разобранная причина, а сырое сообщение площадки и следующий шаг
+ * лежат в подсказке.
+ */
+function JobOutcome({ job }: { job: PublishJob }) {
+  const hint = jobErrorHint(job.error_code);
+  const raw = job.error_message?.trim() || null;
+  const { stale } = jobActions(job);
+
+  if (job.status === "published") {
+    return <span className="text-xs text-muted-foreground">Пост ушёл в аккаунт{job.attempts > 1 ? ` с ${job.attempts}-й попытки` : ""}.</span>;
+  }
+  if (!raw && !hint) {
+    const idle: Partial<Record<PublishJobStatus, string>> = {
+      pending: "Ждёт своего слота — воркер заберёт задание, когда время подойдёт.",
+      retry: "Повторная попытка запланирована.",
+      processing: stale ? "Воркер не отвечает больше 10 минут — задание можно повторить." : "Воркер публикует прямо сейчас.",
+      manual_review: "Площадка не приняла публикацию автоматически — нужен ручной разбор.",
+      cancelled: "Задание отменено вручную.",
+    };
+    return <span className="text-xs text-muted-foreground">{idle[job.status] ?? "—"}</span>;
+  }
+
+  const tone = job.status === "failed" ? "text-destructive" : "text-amber-600 dark:text-amber-400";
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div tabIndex={0} className="min-w-0 cursor-help space-y-0.5">
+          <div className={cn("truncate text-xs font-medium", tone)}>{hint?.title ?? raw}</div>
+          <div className="truncate text-xs text-muted-foreground">{hint ? raw : job.error_code ? `код площадки ${job.error_code}` : "\u00A0"}</div>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-sm">
+        <div className="space-y-1 text-xs">
+          {hint && <div className="font-medium">{hint.title}</div>}
+          {raw && <div className="break-words text-muted-foreground">Ответ площадки: {raw}</div>}
+          {job.error_code && <div className="text-muted-foreground">Код: {job.error_code}</div>}
+          {hint && <div>{hint.action}</div>}
+          {job.attempts > 0 && <div className="text-muted-foreground">Попыток: {job.attempts}</div>}
+        </div>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function JobsTab({ pub }: { pub: UsePublishing }) {
   const busy = pub.busy != null;
   const [q, setQ] = useState("");
@@ -54,24 +103,16 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
       toast.error(e instanceof Error ? e.message : "Ошибка");
     }
   };
-  // Счётчики по загруженной выборке — подсказка, а не точная статистика:
-  // при фильтре по статусу видно только его, поэтому «все» показываем всегда.
-  const counts = useMemo(() => {
-    const m = new Map<PublishJobStatus, number>();
-    for (const j of pub.jobs) m.set(j.status, (m.get(j.status) ?? 0) + 1);
-    return m;
-  }, [pub.jobs]);
+  // Счётчики приходят с сервера по всей очереди: страница отдаёт максимум 500
+  // заданий, и считать чипы по ней значило показывать «Ошибка 3» при сотне.
+  const counts = pub.jobCounts ?? {};
 
   const visible = useMemo(() => pub.jobs.filter((j) => jobMatches(j, q)), [pub.jobs, q]);
   const videoFilter = pub.jobsVideo ? pub.metrics?.videos?.find((v) => v.id === pub.jobsVideo) ?? null : null;
 
-  const filters: { value: PublishJobStatus | "all"; label: string; count: number | null }[] = [
-    { value: "all", label: "Все", count: pub.jobsStatus === "all" ? pub.jobs.length : null },
-    ...ORDER.map((s) => ({
-      value: s,
-      label: JOB_STATUS_META[s].label,
-      count: pub.jobsStatus === "all" ? (counts.get(s) ?? 0) : pub.jobsStatus === s ? pub.jobs.length : null,
-    })),
+  const filters: { value: PublishJobStatus | "all"; label: string; count: number }[] = [
+    { value: "all", label: "Все", count: counts.all ?? pub.jobs.length },
+    ...ORDER.map((s) => ({ value: s, label: JOB_STATUS_META[s].label, count: counts[s] ?? 0 })),
   ];
 
   return (
@@ -90,8 +131,8 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
                 onClick={() => pub.setJobsStatus(f.value)}
               >
                 {f.label}
-                {f.count != null && f.count > 0 && (
-                  <span className="ml-1.5 rounded-full bg-muted px-1.5 text-xs tabular-nums">{f.count}</span>
+                {f.count > 0 && (
+                  <span className={cn("ml-1.5 rounded-full px-1.5 text-xs tabular-nums", active ? "bg-background/70" : "bg-muted")}>{f.count}</span>
                 )}
               </Button>
             );
@@ -139,40 +180,32 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
           </div>
         ) : (
           <div className="overflow-x-auto rounded-2xl border">
-            <Table>
+            {/* Фиксированная раскладка: свободное место достаётся колонке
+                «Что происходит», а не пустому хвосту, и длинный ответ площадки
+                не распирает таблицу. Минимум 1300px: на узком экране колонка
+                причины иначе схлопывалась в столбик по букве. */}
+            <Table className="min-w-[1300px] table-fixed">
               <TableHeader>
                 <TableRow className="hover:bg-transparent">
-                  <TableHead className="h-9 w-[150px]">Статус</TableHead>
-                  <TableHead className="h-9">Аккаунт</TableHead>
-                  <TableHead className="h-9">Видео</TableHead>
-                  <TableHead className="h-9 w-[130px]">Запланировано</TableHead>
-                  <TableHead className="h-9 w-[70px] text-right">Попыток</TableHead>
-                  <TableHead className="h-9 w-[90px]">Пост</TableHead>
-                  <TableHead className="h-9 w-[190px]" />
+                  <TableHead className="h-9 w-[130px]">Статус</TableHead>
+                  <TableHead className="h-9 w-[220px]">Аккаунт</TableHead>
+                  <TableHead className="h-9 w-[160px]">Видео</TableHead>
+                  <TableHead className="h-9">Что происходит</TableHead>
+                  <TableHead className="h-9 w-[120px] whitespace-nowrap">Когда</TableHead>
+                  <TableHead className="h-9 w-[100px]">Пост</TableHead>
+                  {/* Действия липнут к правому краю: на узком экране «Повторить»
+                      уезжало за границу прокрутки, и строку было нечем чинить. */}
+                  <TableHead className="sticky right-0 z-10 h-9 w-[280px] bg-card shadow-[inset_1px_0_0_hsl(var(--border))]" />
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {visible.map((j) => {
                   const st = JOB_STATUS_META[j.status] ?? JOB_STATUS_META.pending;
                   const acc = j.publish_accounts;
-                  const failed = j.error_code || j.error_message;
                   return (
                     <TableRow key={j.id}>
                       <TableCell className="py-2">
-                        <div className="flex items-center gap-1">
-                          <Badge variant="outline" className={cn("whitespace-nowrap border-transparent font-medium", st.cls)}>{st.label}</Badge>
-                          {failed && (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span tabIndex={0} aria-label={`Ошибка задания ${acc?.account_name ?? ""}`} className="cursor-help text-xs text-destructive">⚠</span>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-xs">
-                                {j.error_code && <code className="mr-1">{j.error_code}</code>}
-                                {j.error_message}
-                              </TooltipContent>
-                            </Tooltip>
-                          )}
-                        </div>
+                        <Badge variant="outline" className={cn("whitespace-nowrap border-transparent font-medium", st.cls)}>{st.label}</Badge>
                       </TableCell>
                       <TableCell className="py-2">
                         <div className="flex items-center gap-2.5">
@@ -187,23 +220,42 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="max-w-[220px] py-2 text-sm">
-                        <span className="block truncate" title={j.publish_videos?.file_url}>
-                          {j.publish_videos?.title || j.publish_videos?.file_url?.split("/").pop() || "—"}
-                        </span>
+                      <TableCell className="py-2 text-sm">
+                        {j.publish_videos ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span tabIndex={0} className="block cursor-help truncate">
+                                {j.publish_videos.title || j.publish_videos.file_url.split("/").pop()}
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent className="max-w-sm break-all">{j.publish_videos.file_url}</TooltipContent>
+                          </Tooltip>
+                        ) : <span className="text-muted-foreground">видео удалено</span>}
                       </TableCell>
-                      <TableCell className="py-2 text-xs text-muted-foreground">
-                        {j.scheduled_at ? (
+
+                      {/* Ради этой колонки вкладку и открывают: почему задание встало.
+                          Ширина фиксирована: длинный ответ площадки иначе распирал
+                          таблицу и выталкивал кнопки за край прокрутки. */}
+                      <TableCell className="py-2"><JobOutcome job={j} /></TableCell>
+
+                      <TableCell className="whitespace-nowrap py-2 text-xs text-muted-foreground">
+                        {j.status === "published" && j.published_at ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span tabIndex={0} className="cursor-help">{fmtRelative(j.published_at)}</span>
+                            </TooltipTrigger>
+                            <TooltipContent>Опубликовано {fmtExact(j.published_at)}</TooltipContent>
+                          </Tooltip>
+                        ) : j.scheduled_at ? (
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <span tabIndex={0} className="cursor-help">{fmtRelative(j.scheduled_at)}</span>
                             </TooltipTrigger>
-                            <TooltipContent>{fmtExact(j.scheduled_at)}</TooltipContent>
+                            <TooltipContent>
+                              {Date.parse(j.scheduled_at) > Date.now() ? "Слот публикации" : "Слот прошёл"}: {fmtExact(j.scheduled_at)}
+                            </TooltipContent>
                           </Tooltip>
                         ) : "—"}
-                      </TableCell>
-                      <TableCell className={cn("py-2 text-right text-sm tabular-nums", j.attempts > 1 && "text-amber-600 dark:text-amber-400")}>
-                        {j.attempts || "—"}
                       </TableCell>
                       <TableCell className="py-2">
                         {j.external_post_url ? (
@@ -227,10 +279,7 @@ export function JobsTab({ pub }: { pub: UsePublishing }) {
                           </Tooltip>
                         )}
                       </TableCell>
-                      <TableCell className="py-2 text-right">
-                        {jobActions(j).stale && (
-                          <span className="mr-1 text-xs text-amber-600 dark:text-amber-400" title="Воркер не отвечает больше 10 минут">зависло</span>
-                        )}
+                      <TableCell className="sticky right-0 z-10 whitespace-nowrap bg-card py-2 text-right shadow-[inset_1px_0_0_hsl(var(--border))]">
                         {jobActions(j).retry && (
                           <Button
                             size="sm" variant="ghost" className="h-7 px-2" disabled={busy}

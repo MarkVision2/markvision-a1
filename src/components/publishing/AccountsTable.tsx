@@ -42,18 +42,27 @@ import { initials } from "@/components/publishing/PostPreview";
 import type { UsePublishing } from "@/hooks/usePublishing";
 import {
   ACCOUNT_STATUS_META,
+  DEFAULT_TIMEZONE,
   PLATFORM_DOT as PLATFORM_DOT_META,
   PLATFORM_META,
-  effectiveDailyLimit,
   formatFollowers,
   healthTone,
   rampStage,
   type AccountMetrics,
   type PublishAccount,
+  type PublishGroup,
   type PublishPlatform,
 } from "@/lib/publishingClient";
 import { fmtExact, fmtNum, fmtRelative } from "@/lib/publishingFormat";
-import { ANY, EMPTY_FILTERS, filterAccounts, type AccountFilters } from "@/lib/publishingSelection";
+import {
+  ANY,
+  EMPTY_FILTERS,
+  REASON_SHORT,
+  accountEligibility,
+  filterAccounts,
+  todayLoad,
+  type AccountFilters,
+} from "@/lib/publishingSelection";
 import { cn } from "@/lib/utils";
 
 const NONE = "__none";
@@ -93,17 +102,6 @@ function rampLabel(a: Pick<PublishAccount, "ramp_enabled" | "ramp_started_at">):
   return `Ступень ${st.stage} · ${st.limit}/день · ещё ${st.daysLeft} дн.`;
 }
 
-function fmtLastPost(iso: string | null): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  const days = Math.floor((Date.now() - d.getTime()) / 86_400_000);
-  if (days === 0) return "сегодня";
-  if (days === 1) return "вчера";
-  if (days < 30) return `${days} дн. назад`;
-  return d.toLocaleDateString("ru-RU", { timeZone: "Asia/Almaty", day: "2-digit", month: "2-digit", year: "2-digit" });
-}
-
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : "Ошибка";
 }
@@ -141,8 +139,13 @@ function HealthCell({ a, name }: { a: { health_score: number; health_reasons?: s
   );
 }
 
-/** Кто: аватар, имя, площадка, @хэндл, подписчики — одинаково в обоих видах. */
-function Identity({ a, personaName, followers }: { a: PublishAccount; personaName?: string | null; followers?: number | null }) {
+/**
+ * Кто: аватар, имя, площадка, @хэндл, подписчики — одинаково в обоих видах.
+ * Группа и персона живут здесь же подписью: отдельная колонка с выпадающим
+ * списком «Без…» занимала треть таблицы и ничего не объясняла, а назначение —
+ * действие редкое, ему место в меню строки.
+ */
+function Identity({ a, personaName, groupName, followers }: { a: PublishAccount; personaName?: string | null; groupName?: string | null; followers?: number | null }) {
   const platform = PLATFORM_META[a.platform];
   const subs = followers ?? a.followers;
   return (
@@ -162,9 +165,59 @@ function Identity({ a, personaName, followers }: { a: PublishAccount; personaNam
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {a.handle && <span className="truncate">@{a.handle}</span>}
           {subs != null && <span className="shrink-0">{formatFollowers(subs)}</span>}
+          {groupName && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span tabIndex={0} className="shrink-0 cursor-help truncate rounded bg-muted px-1.5 py-px">{groupName}</span>
+              </TooltipTrigger>
+              <TooltipContent>Группа «{groupName}»: общее расписание и режим согласования. Сменить — в меню строки.</TooltipContent>
+            </Tooltip>
+          )}
           {personaName && <span className="shrink-0 truncate">· {personaName}</span>}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Что со строкой на самом деле: чип статуса площадки плюс причина, по которой
+ * планировщик её всё равно не возьмёт. «Активен» у аккаунта с выключенной
+ * публикацией или здоровьем ниже 20 — самая дорогая ложь этой таблицы.
+ */
+function StatusCell({ a, groups, projectPaused, scopeHint }: { a: PublishAccount; groups: PublishGroup[]; projectPaused: boolean; scopeHint: string | null }) {
+  const status = ACCOUNT_STATUS_META[a.status] ?? ACCOUNT_STATUS_META.error;
+  const e = accountEligibility(a, { groups, projectPaused });
+  const note = a.last_error ?? scopeHint;
+  return (
+    <div className="space-y-0.5">
+      <div className="flex items-center gap-1">
+        <Badge variant="outline" className={cn("whitespace-nowrap border-transparent font-medium", status.cls)}>{status.label}</Badge>
+        {note && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                tabIndex={0}
+                aria-label={`Подробности статуса ${a.account_name}`}
+                className="cursor-help text-xs text-amber-600 dark:text-amber-400"
+              >
+                ⚠
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">{note}</TooltipContent>
+          </Tooltip>
+        )}
+      </div>
+      {!e.ok && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span tabIndex={0} className="block cursor-help truncate text-xs text-amber-600 dark:text-amber-400">
+              не публикует: {REASON_SHORT[e.reason!]}
+            </span>
+          </TooltipTrigger>
+          <TooltipContent className="max-w-xs">{e.hint}</TooltipContent>
+        </Tooltip>
+      )}
     </div>
   );
 }
@@ -420,12 +473,19 @@ export function AccountsTable({ pub }: { pub: UsePublishing }) {
                 {view === "manage" ? (
                   <>
                     <TableHead className="h-9">Аккаунт</TableHead>
-                    <TableHead className="h-9 w-[135px]">Статус</TableHead>
-                    <TableHead className="h-9 w-[150px]">Группа</TableHead>
-                    <TableHead className="h-9 w-[90px] text-right">Сегодня</TableHead>
-                    <TableHead className="h-9 w-[110px] text-right">Здоровье</TableHead>
-                    <TableHead className="h-9 w-[105px] whitespace-nowrap">Пост</TableHead>
-                    <TableHead className="h-9 w-[60px] text-center">Вкл</TableHead>
+                    <TableHead className="h-9 w-[180px]">Состояние</TableHead>
+                    <TableHead className="h-9 w-[120px] text-right">
+                      <ColumnHint label="Сегодня" hint="Опубликовано за сегодня из дневного лимита аккаунта. Счётчик обнуляется в полночь по часовому поясу аккаунта." />
+                    </TableHead>
+                    <TableHead className="h-9 w-[110px] text-right">
+                      <ColumnHint label="Здоровье" hint="0–100 по итогам проверки токена и доле отказов. Ниже 20 планировщик аккаунт не берёт." />
+                    </TableHead>
+                    <TableHead className="h-9 w-[130px] whitespace-nowrap">
+                      <ColumnHint label="Последний пост" hint="Когда в этот аккаунт ушла последняя успешная публикация." />
+                    </TableHead>
+                    <TableHead className="h-9 w-[70px] text-center">
+                      <ColumnHint label="Вкл" hint="Выключенный аккаунт остаётся подключённым, но заданий на него не создаётся." />
+                    </TableHead>
                     <TableHead className="h-9 w-10" />
                   </>
                 ) : (
@@ -508,6 +568,18 @@ function SortButton({ label, hint, numeric, active, desc, onClick }: { label: st
   );
 }
 
+/** Заголовок колонки с пояснением: что именно тут за число. */
+function ColumnHint({ label, hint }: { label: string; hint: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span tabIndex={0} className="cursor-help whitespace-nowrap underline decoration-dotted underline-offset-4">{label}</span>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs">{hint}</TooltipContent>
+    </Tooltip>
+  );
+}
+
 function Total({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border bg-card px-3 py-2">
@@ -577,12 +649,13 @@ function AccountRow({
   // Действие идёт именно по этой строке (update:<id>, disconnect:<id>) — спиннер только у неё.
   const rowBusy = pub.busy != null && pub.busy.endsWith(`:${a.id}`);
 
-  const status = ACCOUNT_STATUS_META[a.status] ?? ACCOUNT_STATUS_META.error;
-  const effLimit = effectiveDailyLimit(a);
+  const load = todayLoad(a);
   const group = pub.groups.find((g) => g.id === a.group_id) ?? null;
   const persona = pub.personas.find((p) => p.id === a.persona_id) ?? null;
   const ramping = rampStage(a.ramp_enabled, a.ramp_started_at).stage < 4;
   const scopeHint = metricsScopeHint(a);
+  const projectPaused = Boolean(pub.settings?.settings.paused ?? pub.metrics?.publish?.paused);
+  const tz = a.timezone ?? group?.timezone ?? DEFAULT_TIMEZONE;
 
   const commitLimit = () => {
     const n = Number(limit);
@@ -605,71 +678,58 @@ function AccountRow({
         <Checkbox checked={checked} onCheckedChange={onToggle} aria-label={`Выбрать ${a.account_name}`} />
       </TableCell>
 
-      <TableCell className="py-2"><Identity a={a} personaName={persona?.name} /></TableCell>
+      <TableCell className="py-2"><Identity a={a} personaName={persona?.name} groupName={group?.name} /></TableCell>
 
-      {/* Статус: чип, а ошибка и подсказка по правам — в тултипе, а не третьей строкой */}
       <TableCell className="py-2">
-        <div className="flex items-center gap-1">
-          <Badge variant="outline" className={cn("whitespace-nowrap border-transparent font-medium", status.cls)}>{status.label}</Badge>
-          {(a.last_error || scopeHint) && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span
-                  tabIndex={0}
-                  aria-label={`Подробности статуса ${a.account_name}`}
-                  className="cursor-help text-xs text-amber-600 dark:text-amber-400"
-                >
-                  ⚠
-                </span>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">{a.last_error ?? scopeHint}</TooltipContent>
-            </Tooltip>
-          )}
-        </div>
-      </TableCell>
-
-      {/* Группа — самая частая правка, поэтому осталась инлайн, но без рамки */}
-      <TableCell className="py-2">
-        <Select
-          value={a.group_id ?? NONE}
-          disabled={disabled}
-          onValueChange={(v) => void run("Группа обновлена", () => pub.updateAccount(a.id, { group_id: v === NONE ? null : v }))}
-        >
-          <SelectTrigger
-            aria-label={`Группа для ${a.account_name}`}
-            className={cn(
-              "h-8 w-full border-transparent bg-transparent px-2 hover:bg-muted focus:bg-background",
-              !group && "text-muted-foreground",
-            )}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={NONE}>Без группы</SelectItem>
-            {pub.groups.map((g) => <SelectItem key={g.id} value={g.id}>{g.name}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <StatusCell a={a} groups={pub.groups} projectPaused={projectPaused} scopeHint={scopeHint} />
       </TableCell>
 
       {/* Сегодня: сколько из действующего лимита; иконка — идёт разгон */}
       <TableCell className="py-2 text-right">
         <Tooltip>
           <TooltipTrigger asChild>
-            <span className="inline-flex cursor-help items-center gap-1 text-sm tabular-nums">
-              {ramping && <Sparkles className="h-3 w-3 text-muted-foreground" />}
-              {a.published_today} / {effLimit}
+            <span
+              tabIndex={0}
+              aria-label={`Публикаций сегодня у ${a.account_name}`}
+              className={cn(
+                "inline-flex cursor-help items-center gap-1 text-sm tabular-nums",
+                load.full && "font-medium text-amber-600 dark:text-amber-400",
+              )}
+            >
+              {ramping && <Sparkles className="h-3 w-3 text-muted-foreground" aria-hidden />}
+              {load.used} / {load.limit}
             </span>
           </TooltipTrigger>
-          <TooltipContent>
-            {rampLabel(a)} · базовый лимит {a.daily_limit}/день
-            {a.window_start && a.window_end ? ` · окно ${a.window_start.slice(0, 5)}–${a.window_end.slice(0, 5)}` : ""}
+          <TooltipContent className="max-w-xs">
+            <div className="space-y-0.5 text-xs">
+              <div>{load.full ? "Дневная норма на сегодня выбрана — остальные задания уедут завтра." : `Сегодня можно ещё ${load.limit - load.used}.`}</div>
+              <div>{rampLabel(a)} · базовый лимит {a.daily_limit}/день</div>
+              <div>
+                {a.window_start && a.window_end
+                  ? `Окно публикаций ${a.window_start.slice(0, 5)}–${a.window_end.slice(0, 5)} (${tz})`
+                  : `Окно публикаций — как у группы (${tz})`}
+              </div>
+              <div className="text-muted-foreground">Счётчик обнуляется в полночь по {tz}.</div>
+            </div>
           </TooltipContent>
         </Tooltip>
       </TableCell>
 
       <TableCell className="py-2 text-right"><HealthCell a={a} name={a.account_name} /></TableCell>
 
-      <TableCell className="py-2 text-xs text-muted-foreground">{fmtLastPost(a.last_post_at)}</TableCell>
+      <TableCell className="py-2 text-xs text-muted-foreground">
+        {a.last_post_at ? (
+          <Tooltip>
+            <TooltipTrigger asChild><span tabIndex={0} className="cursor-help">{fmtRelative(a.last_post_at)}</span></TooltipTrigger>
+            <TooltipContent>{fmtExact(a.last_post_at)}</TooltipContent>
+          </Tooltip>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger asChild><span tabIndex={0} className="cursor-help">ещё не публиковал</span></TooltipTrigger>
+            <TooltipContent>В этот аккаунт из MarkVision ещё ничего не выходило.</TooltipContent>
+          </Tooltip>
+        )}
+      </TableCell>
 
       <TableCell className="py-2 text-center">
         <Switch
@@ -731,8 +791,30 @@ function AccountRow({
             </DropdownMenuItem>
 
             <DropdownMenuSub>
-              <DropdownMenuSubTrigger>Персона{persona ? `: ${persona.name}` : ""}</DropdownMenuSubTrigger>
+              <DropdownMenuSubTrigger>Группа{group ? `: ${group.name}` : ": без группы"}</DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
+                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                  Общее расписание и режим согласования
+                </DropdownMenuLabel>
+                <DropdownMenuRadioGroup
+                  value={a.group_id ?? NONE}
+                  onValueChange={(v) => void run("Группа обновлена", () => pub.updateAccount(a.id, { group_id: v === NONE ? null : v }))}
+                >
+                  <DropdownMenuRadioItem value={NONE}>Без группы</DropdownMenuRadioItem>
+                  {pub.groups.map((g) => <DropdownMenuRadioItem key={g.id} value={g.id}>{g.name}</DropdownMenuRadioItem>)}
+                </DropdownMenuRadioGroup>
+                {!pub.groups.length && (
+                  <DropdownMenuItem disabled>Групп ещё нет — создайте во вкладке «Группы»</DropdownMenuItem>
+                )}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+
+            <DropdownMenuSub>
+              <DropdownMenuSubTrigger>Персона{persona ? `: ${persona.name}` : ": не задана"}</DropdownMenuSubTrigger>
+              <DropdownMenuSubContent>
+                <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+                  Голос и движок генерации для этого аккаунта
+                </DropdownMenuLabel>
                 <DropdownMenuRadioGroup
                   value={a.persona_id ?? NONE}
                   onValueChange={(v) => void run("Персона обновлена", () => pub.updateAccount(a.id, { persona_id: v === NONE ? null : v }))}
@@ -740,6 +822,9 @@ function AccountRow({
                   <DropdownMenuRadioItem value={NONE}>Без персоны</DropdownMenuRadioItem>
                   {pub.personas.map((p) => <DropdownMenuRadioItem key={p.id} value={p.id}>{p.name}</DropdownMenuRadioItem>)}
                 </DropdownMenuRadioGroup>
+                {!pub.personas.length && (
+                  <DropdownMenuItem disabled>Персон ещё нет — создайте во вкладке «Персоны»</DropdownMenuItem>
+                )}
               </DropdownMenuSubContent>
             </DropdownMenuSub>
 

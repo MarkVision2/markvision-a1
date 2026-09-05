@@ -8,6 +8,7 @@
  */
 import {
   effectiveDailyLimit,
+  publishedToday,
   type PublishAccount,
   type PublishGroup,
   type PublishMode,
@@ -82,6 +83,17 @@ export function accountEligibility(a: PublishAccount, ctx: PlanContext = {}): El
                   : null;
   return { ok: reason == null, reason, hint: reason ? REASON_HINT[reason] : null };
 }
+
+/** Та же причина в две-три слова — под чипом статуса в таблице. */
+export const REASON_SHORT: Record<IneligibleReason, string> = {
+  disabled: "публикация выключена",
+  not_active: "нужен reconnect",
+  low_health: `здоровье ниже ${MIN_HEALTH_TO_PUBLISH}`,
+  not_in_group: "не в выбранной группе",
+  platform_mismatch: "другая площадка",
+  group_paused: "группа на паузе",
+  project_paused: "пауза проекта",
+};
 
 export function isPublishable(a: PublishAccount): boolean {
   return accountEligibility(a).ok;
@@ -202,8 +214,14 @@ export function almatyLocalNow(now: number = Date.now()): string {
   return shifted.toISOString().slice(0, 16);
 }
 
-/** Сегодняшняя загрузка аккаунта с учётом разгона: «1 / 3». */
-export function todayLoad(a: PublishAccount): { used: number; limit: number; full: boolean } {
-  const limit = effectiveDailyLimit(a);
-  return { used: a.published_today, limit, full: a.published_today >= limit };
+/**
+ * Сегодняшняя загрузка аккаунта с учётом разгона: «1 / 3».
+ *
+ * Счётчик в базе относится к дню published_day: если он вчерашний, сегодня
+ * опубликовано ноль — ровно так же считает claim_publish_jobs.
+ */
+export function todayLoad(a: PublishAccount, now: Date | number = Date.now()): { used: number; limit: number; full: boolean } {
+  const limit = effectiveDailyLimit(a, now);
+  const used = publishedToday(a, now);
+  return { used, limit, full: used >= limit };
 }
