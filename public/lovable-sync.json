@@ -1,7 +1,7 @@
 {
-  "git_sha": "8fe6281",
-  "git_sha_full": "8fe6281b1dabd0d51c0c3085c206d973b0d1b6af",
-  "updated_at": "2026-09-05T21:40:04+04:00",
-  "label": "docs(radar): сводка метрик — расшифровки и источник расхода",
+  "git_sha": "46dac0c",
+  "git_sha_full": "46dac0c03579df792f574dfc4354c9d5892c6e94",
+  "updated_at": "2026-09-05T22:17:46+04:00",
+  "label": "feat(radar): удаление источника уносит данные, просмотр видео на странице, понятные фильтры и сводка [vercel-deploy]",
   "publish_hint": "push main → www.markvision.kz (Vercel) + Lovable sync markvision-a1.lovable.app"
 }
