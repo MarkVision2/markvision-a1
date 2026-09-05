@@ -217,6 +217,11 @@ verify_jwt = false
 [functions.publish-intake]
 verify_jwt = false
 
+# Публичный API для внешних клиентов (MCP, агенты): авторизация — API-ключ
+# проекта внутри функции (_lib/apiKeys.ts), без пользовательского JWT.
+[functions.api]
+verify_jwt = false
+
 [functions.publish-dispatch]
 verify_jwt = false
 

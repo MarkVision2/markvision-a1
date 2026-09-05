@@ -1,0 +1,95 @@
+/**
+ * Публичный API: маршруты, права на них и разбор тела публикации.
+ */
+import { describe, expect, it } from "vitest";
+import { matchRoute, parsePublicationInput, requiredScope } from "../../supabase/functions/_lib/publicApi.ts";
+
+const ID = "3fa85f64-5717-4562-b3fc-2c963f66afa6";
+
+describe("matchRoute", () => {
+  it("понимает путь и из edge-runtime, и через шлюз", () => {
+    expect(matchRoute("GET", "/api/v1/me")).toEqual({ name: "me" });
+    expect(matchRoute("GET", "/functions/v1/api/v1/me")).toEqual({ name: "me" });
+  });
+
+  it("все маршруты", () => {
+    expect(matchRoute("GET", "/api/v1/accounts")).toEqual({ name: "accounts" });
+    expect(matchRoute("POST", `/api/v1/accounts/${ID}`)).toEqual({ name: "account_update", id: ID });
+    expect(matchRoute("POST", "/api/v1/accounts/health-check")).toEqual({ name: "accounts_health_check" });
+    expect(matchRoute("GET", "/api/v1/groups")).toEqual({ name: "groups" });
+    expect(matchRoute("POST", "/api/v1/groups")).toEqual({ name: "group_create" });
+    expect(matchRoute("POST", `/api/v1/groups/${ID}`)).toEqual({ name: "group_update", id: ID });
+    expect(matchRoute("POST", `/api/v1/groups/${ID}/delete`)).toEqual({ name: "group_delete", id: ID });
+    expect(matchRoute("GET", "/api/v1/settings")).toEqual({ name: "settings_get" });
+    expect(matchRoute("POST", "/api/v1/settings")).toEqual({ name: "settings_update" });
+    expect(matchRoute("GET", "/api/v1/jobs")).toEqual({ name: "jobs_list" });
+    expect(matchRoute("GET", "/api/v1/metrics")).toEqual({ name: "metrics" });
+    expect(matchRoute("POST", "/api/v1/media/upload-url")).toEqual({ name: "upload_url" });
+    expect(matchRoute("GET", "/api/v1/publications")).toEqual({ name: "publications_list" });
+    expect(matchRoute("POST", "/api/v1/publications")).toEqual({ name: "publication_create" });
+    expect(matchRoute("GET", `/api/v1/publications/${ID}`)).toEqual({ name: "publication_get", id: ID });
+    expect(matchRoute("POST", `/api/v1/publications/${ID}/jobs`)).toEqual({ name: "publication_jobs_create", id: ID });
+    expect(matchRoute("POST", `/api/v1/jobs/${ID}/cancel`)).toEqual({ name: "job_cancel", id: ID });
+    expect(matchRoute("POST", `/api/v1/jobs/${ID}/retry`)).toEqual({ name: "job_retry", id: ID });
+  });
+
+  it("чужие пути, не-uuid и не тот метод — null", () => {
+    expect(matchRoute("GET", "/api/v2/me")).toBeNull();
+    expect(matchRoute("DELETE", "/api/v1/me")).toBeNull();
+    expect(matchRoute("GET", "/api/v1/publications/not-a-uuid")).toBeNull();
+    expect(matchRoute("GET", `/api/v1/jobs/${ID}/cancel`)).toBeNull();
+    expect(matchRoute("POST", "/api/v1/accounts/not-uuid")).toBeNull();
+    expect(matchRoute("GET", `/api/v1/groups/${ID}`)).toBeNull();
+    expect(matchRoute("GET", "/other/v1/me")).toBeNull();
+  });
+
+  it("чтение — read, очередь — publish, аккаунты/группы/настройки — manage", () => {
+    expect(requiredScope({ name: "accounts" })).toBe("read");
+    expect(requiredScope({ name: "settings_get" })).toBe("read");
+    expect(requiredScope({ name: "jobs_list" })).toBe("read");
+    expect(requiredScope({ name: "account_update", id: ID })).toBe("manage");
+    expect(requiredScope({ name: "accounts_health_check" })).toBe("manage");
+    expect(requiredScope({ name: "group_delete", id: ID })).toBe("manage");
+    expect(requiredScope({ name: "settings_update" })).toBe("manage");
+    expect(requiredScope({ name: "publication_get", id: ID })).toBe("read");
+    expect(requiredScope({ name: "upload_url" })).toBe("publish");
+    expect(requiredScope({ name: "publication_create" })).toBe("publish");
+    expect(requiredScope({ name: "job_cancel", id: ID })).toBe("publish");
+  });
+});
+
+describe("parsePublicationInput", () => {
+  it("минимум — только ссылка, без цели", () => {
+    const r = parsePublicationInput({ file_url: "https://cdn.example.com/v.mp4" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.input.target).toBeNull();
+    expect(r.input.hashtags).toEqual([]);
+    expect(r.input.title).toBeNull();
+  });
+
+  it("цель плоско или вложенно, хэштеги без решётки, дата в ISO", () => {
+    const flat = parsePublicationInput({
+      file_url: "https://x/v.mp4", group_id: ID, mode: "now", hashtags: ["#a", "b", " "], start_at: "2026-09-10T09:00:00+05:00",
+    });
+    expect(flat.ok).toBe(true);
+    if (!flat.ok) return;
+    expect(flat.input.hashtags).toEqual(["a", "b"]);
+    expect(flat.input.target).toEqual({ mode: "now", group_id: ID, start_at: "2026-09-10T04:00:00.000Z" });
+
+    const nested = parsePublicationInput({ file_url: "https://x/v.mp4", target: { account_ids: [ID], per_hour: 2 } });
+    expect(nested.ok).toBe(true);
+    if (!nested.ok) return;
+    expect(nested.input.target).toEqual({ mode: "drip", account_ids: [ID], per_hour: 2 });
+  });
+
+  it("плохой вход — понятная ошибка", () => {
+    expect(parsePublicationInput({})).toMatchObject({ ok: false, error: expect.stringContaining("file_url") });
+    expect(parsePublicationInput({ file_url: "http://x/v.mp4" })).toMatchObject({ ok: false });
+    expect(parsePublicationInput({ file_url: "https://x/v.mp4", mode: "later" })).toMatchObject({ ok: false, error: expect.stringContaining("mode") });
+    expect(parsePublicationInput({ file_url: "https://x/v.mp4", group_id: "g1" })).toMatchObject({ ok: false, error: expect.stringContaining("group_id") });
+    expect(parsePublicationInput({ file_url: "https://x/v.mp4", account_ids: ["a"] })).toMatchObject({ ok: false, error: expect.stringContaining("account_ids") });
+    expect(parsePublicationInput({ file_url: "https://x/v.mp4", start_at: "вчера" })).toMatchObject({ ok: false, error: expect.stringContaining("start_at") });
+    expect(parsePublicationInput({ file_url: "https://x/v.mp4", duration_sec: -1 })).toMatchObject({ ok: false, error: expect.stringContaining("duration_sec") });
+  });
+});

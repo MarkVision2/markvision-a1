@@ -33,6 +33,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { AccountPicker } from "@/components/publishing/AccountPicker";
+import { ApiKeysSection } from "@/components/publishing/ApiKeysSection";
 import { BulkAccountsBar } from "@/components/publishing/BulkAccountsBar";
 import { AccountsTable } from "@/components/publishing/AccountsTable";
 import { ConnectedAccountsTab } from "@/components/publishing/ConnectedAccountsTab";
@@ -237,7 +238,10 @@ export default function Publishing() {
           <TabsContent value="groups" className="mt-4"><GroupsTab pub={pub} /></TabsContent>
           <TabsContent value="personas" className="mt-4"><PersonasTab pub={pub} /></TabsContent>
           <TabsContent value="jobs" className="mt-4"><JobsTab pub={pub} /></TabsContent>
-          <TabsContent value="settings" className="mt-4"><SettingsTab pub={pub} /></TabsContent>
+          <TabsContent value="settings" className="mt-4 space-y-4">
+            <SettingsTab pub={pub} />
+            <ApiKeysSection projectId={pub.projectId} />
+          </TabsContent>
         </Tabs>
       </div>
 
